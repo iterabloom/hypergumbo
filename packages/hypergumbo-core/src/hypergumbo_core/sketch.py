@@ -21,8 +21,10 @@ what remains after the structural sections; etc.).
 Sections in emission order:
 1.  Header — repo name, plus the README-derived elevator pitch when
     one is available (always)
-2.  Overview — language breakdown and LOC estimate
-3.  Structure — top-level directory tree
+2.  Overview — language breakdown and LOC estimate, plus the
+    installed-dependency-source disclosure line when deps were skipped
+3.  Structure — tree of paths to important files across up to 10 root
+    dirs (top-level listing when there are none)
 4.  Frameworks — detected build systems / web frameworks /
     test frameworks
 5.  Tests — test framework + estimated coverage breakdown
@@ -34,7 +36,9 @@ Sections in emission order:
     embedding for the leftover budget). The ``sketch`` CLI defaults to
     ``--config-extraction hybrid``; embedding modes fall back to
     heuristic when sentence-transformers is unavailable.
-    Environment variables and dotenv keys are NOT extracted
+    Heuristic mode extracts no environment variables or dotenv keys;
+    embedding/hybrid (the CLI default) can surface ENV /
+    ``environment:`` lines from Dockerfile and docker-compose files.
 7.  Entry Points — CLI commands, HTTP routes, IPC handlers,
     cron / scheduler entries, grouped by kind; one entry budget is
     shared across the groups (``_share_entry_budget``) so a repo with
@@ -63,9 +67,9 @@ Behavioral flags
   table.
 - ``config_extraction_mode`` — heuristic / embedding / hybrid config
   extraction for section 6 (function default heuristic).
-- ``language_proportional`` — switch from global ranking to
-  per-language proportional selection (avoids one language
-  dominating the sketch on polyglot repos).
+- ``language_proportional`` (default True) — language-stratified
+  Phase-1 Key Symbols selection (avoids one language dominating on
+  polyglot repos).
 - ``--no-sketch-fan-out`` (``survey`` CLI, not ``sketch``) — skip the
   ``<stem>.{4k,16k,64k}.json`` sketch-tier preview files written next
   to ``--out`` (equivalent to ``--budgets none``). Per-handler slice
@@ -79,7 +83,9 @@ Centrality dampening
 --------------------
 Symbol ranking flows through ``compute_dampened_centrality``, which
 applies the pinned ``_CANONICAL_DAMPENERS`` stage stack — seven stages:
-tier, noise, utility, common_method, trivial_sink, generated, file_kind.
+tier, noise, utility, common_method, trivial_sink, generated, file_kind
+(Key Symbols skips file_kind, a no-op there since kind='file' symbols
+are pre-filtered).
 (The sibling-impl group weighting was removed by WI-karad.) The stack
 order is invariant — ``_CANONICAL_DAMPENERS`` is defined in
 ``ranking.py`` and pinned by
@@ -2351,7 +2357,7 @@ def _extract_config_info(
 
     Supports three extraction modes:
     - HEURISTIC: Fast pattern-based extraction of known fields (default)
-    - EMBEDDING: Semantic selection using UnixCoder + question centroid
+    - EMBEDDING: Semantic selection using UnixCoder + top-k mean probe similarity
     - HYBRID: Heuristics first, then embeddings for remaining budget
 
     For long config files (e.g., package.json with hundreds of deps), only
@@ -6377,7 +6383,7 @@ def _generate_sketch_impl(
 
     Args:
         repo_root: Path to the repository root.
-        max_tokens: Target tokens for output. Defaults to 4000 if None.
+        max_tokens: Target tokens for output. Defaults to 8000 if None.
         exclude_tests: If True, skip analyzing test files for faster performance.
             When using cached_results, filters test symbols/edges at load time.
         first_party_priority: If True (default), boost first-party symbols in
@@ -6386,7 +6392,7 @@ def _generate_sketch_impl(
             Useful for excluding project-specific files (e.g., "*.json", "vendor").
         config_extraction_mode: Mode for extracting config file metadata.
             - HEURISTIC (default): Fast pattern-based extraction
-            - EMBEDDING: Semantic selection using UnixCoder + question centroid
+            - EMBEDDING: Semantic selection using UnixCoder + top-k mean probe similarity
             - HYBRID: Heuristics first, then embeddings for remaining budget
         verbose: If True, print progress messages to stderr.
         max_config_files: Maximum config files to process (embedding mode).

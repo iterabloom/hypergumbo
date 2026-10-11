@@ -915,24 +915,26 @@ modules:
   hypergumbo_tracker.preview:
     zone: dev_zone
     commands:
-    - tracker:tui
+    - library
     sites:
     - function: _svg_to_png
       primitive: cairosvg.svg2png
       family: fs_write
       count: 1
-      purpose: cairosvg rasterizes the preview SVG to PNG (write_to a temp path)
+      purpose: cairosvg rasterizes the SVG to in-memory PNG bytes (no file write; svg2png called
+        without write_to)
     - function: render_svg_preview
       primitive: subprocess.run
       family: process
       count: 1
       target: chafa (resolved by shutil.which)
-      purpose: render an SVG preview as terminal art
+      purpose: render an SVG preview as terminal art; no caller in packages/*/src today (the
+        TUI imports only extract_svg_paths and format_preview_placeholder and shows placeholders)
   hypergumbo_tracker.preview_pipeline:
     zone: dev_zone
     target: chafa --size <w>x <tmp.png>
     commands:
-    - tracker:tui
+    - library
     purpose: 'render a preview: SVG -> PNG (cairosvg, NamedTemporaryFile) -> chafa terminal
       art'
     sites:

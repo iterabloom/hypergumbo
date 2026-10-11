@@ -1,17 +1,18 @@
 # SPDX-License-Identifier: MPL-2.0
 """SVG→PNG→ANSI rendering pipeline with graceful degradation (ADR-0020).
 
-Renders SVG screenshot files as approximate ANSI-art previews for inline
-display in TUI discussion threads.  Degrades gracefully when optional
+SVG→PNG→ANSI rendering helpers.  Not wired as of 2026-10: no production
+code imports this module (only tests do).  The TUI imports ``preview.py``
+instead (only its path extraction and placeholder), and this module
+duplicates preview.py's render path.  Degrades gracefully when optional
 dependencies (cairosvg, chafa) are unavailable — falls back to a text
 placeholder showing the filename.
 
 Pipeline:
     SVG → PNG (cairosvg) → ANSI text (chafa subprocess) → display string
 
-Caching is keyed on (svg_path, mtime, panel_width) to avoid redundant
-rasterization.  The cache is invalidated when the SVG is re-annotated
-(mtime changes) or the panel width changes significantly.
+``PreviewCache`` is a standalone exact-key (svg_path, mtime, panel_width)
+dict that ``render_svg_preview`` does not use.
 
 Both cairosvg and chafa are optional.  The preview feature is a
 human-facing display concern — the agent reads SVGs directly.

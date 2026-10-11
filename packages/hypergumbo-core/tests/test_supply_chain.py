@@ -2196,7 +2196,7 @@ class TestClassifySymbolsDependencyTier:
 
 
 class TestWorkspaceSiblingDependencyTier:
-    """INV-nuzas / ADR-0041 D8a: a workspace sibling that another workspace
+    """INV-nuzas / ADR-0041 §1: a workspace sibling that another workspace
     package declares as a *dependency* is workspace-INTERNAL (tier 2
     ``internal_dep``), not a third-party external (tier 3).
 

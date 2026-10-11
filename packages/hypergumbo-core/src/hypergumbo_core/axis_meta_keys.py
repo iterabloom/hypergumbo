@@ -878,8 +878,9 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "with it the contract that ``confidence <= 0.5`` on "
                 "the same edge — see INV-zuhub. Consumers filter the "
                 "fallback population from the precision-resolved one "
-                "by checking this flag. Currently set by "
-                "``linkers/inheritance.py``; per-linker conformance "
+                "by checking this flag. Set by several linkers "
+                "(inheritance, dependency, the FFI bridges, "
+                "framework-dispatch linkers, ...); per-linker conformance "
                 "for the four remaining edge-type families "
                 "(calls / dispatches_to / references / module_exports) "
                 "tracked under INV-zuhub items 1-3."),

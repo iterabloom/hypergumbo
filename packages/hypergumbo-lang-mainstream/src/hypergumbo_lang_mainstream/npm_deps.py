@@ -25,8 +25,9 @@ Sources
   read with line/regex scanning rather than a YAML parser -- only the entry
   keys are needed, and that keeps pnpm locks free of a PyYAML dependency.
 * Neither: each ``package.json``'s own ``name`` (workspace siblings,
-  ADR-0041 D8a, as ``py_deps`` subtracts pyproject names), and any dependency
-  whose version is a ``workspace:`` / ``file:`` / ``link:`` reference --
+  INV-nuzas / ADR-0041 §1, as ``py_deps`` subtracts pyproject names), and any
+  dependency whose version is a ``workspace:`` / ``file:`` / ``link:`` /
+  ``portal:`` reference --
   in-repo source, not a registry package.
 
 The specifier -> package rule (``@scope/name/sub`` -> ``@scope/name``,

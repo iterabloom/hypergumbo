@@ -1,19 +1,25 @@
 # SPDX-License-Identifier: MPL-2.0
 """Auth config schema for htrac serve (ADR-0019).
 
-Defines the ``auth`` section of config.yaml: session TTL, duress module path,
-rate limiting parameters, and WebAuthn relying party configuration.
+Schema for an ``auth`` section of config.yaml: session TTL, duress module
+path, rate limiting parameters, and WebAuthn relying party configuration.
+
+Not yet consumed as of 2026-10: ``load_config``/``_parse_config_dict`` in
+models.py ignore ``auth`` and serve.py never constructs an AuthConfig (only
+tests call ``from_dict``), so validation runs only when a caller invokes
+``from_dict``.
 
 How It Works
 ------------
-``AuthConfig`` is a validated dataclass parsed from the ``auth`` section of
-config.yaml via ``from_dict()``. Validation runs in ``__post_init__`` to
-catch configuration errors at server startup rather than at request time.
+``AuthConfig`` is a validated dataclass parsed from a raw ``auth`` dict via
+``from_dict()``. Validation runs in ``__post_init__``, so configuration
+errors surface at construction time rather than at request time.
 
 Why This Design
 ---------------
-- Dataclass with ``from_dict()`` / ``to_dict()`` follows the same pattern
-  as TrackerConfig in models.py.
+- Dataclass with ``from_dict()`` / ``to_dict()`` round-tripping (unlike
+  TrackerConfig, which is built by the module-level
+  ``models._parse_config_dict``).
 - Validation at construction time prevents runtime surprises.
 - Defaults are conservative: 15-minute TTL, 2-second base delay, 10 max
   failures before lockout.

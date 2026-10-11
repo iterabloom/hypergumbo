@@ -15,7 +15,9 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Parse all files, extract all symbols into global registry
+1. Pass 1: Parse all files, extract symbols, and register all of them
+   except record fields (kept out of the resolver so a bare call cannot
+   suffix-match ``Rec.field``) in the global registry
 2. Pass 2: Detect calls and resolve against global symbol registry
 
 The base class handles grammar checking, parser creation, file discovery,

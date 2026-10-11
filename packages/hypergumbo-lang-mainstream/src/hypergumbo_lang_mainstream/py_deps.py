@@ -39,7 +39,7 @@ dep.
 Mirrors :func:`hypergumbo_lang_mainstream.py._detect_source_roots`,
 which fixed the same monorepo gap for file discovery (WI-davan E1).
 
-Workspace-member subtraction (INV-nuzas, ADR-0041 D8a): the walk also reads
+Workspace-member subtraction (INV-nuzas, ADR-0041 §1): the walk also reads
 each pyproject's OWN distribution name (``_extract_distribution_name``:
 ``[project].name``, else ``[tool.poetry].name``). Those names go through the
 same dist-to-import resolution and are removed from the final set, after the
@@ -55,8 +55,9 @@ The dist name on PyPI doesn't always equal the Python import name —
 to invert at parse time when the dev environment has the package
 installed (the bakeoff context usually does). Unknown dist names fall
 through to the dist name verbatim with hyphens swapped for underscores
-— most deps match this anyway, and a false-negative just lands in
-tier 3, the current default (no regression).
+— most deps match this anyway. A false negative stamps the import
+``directness='undeclared'`` (a declared dependency reads as phantom)
+whenever some pyproject produced entries; tier is unaffected.
 
 Stdlib carve-out
 ----------------
@@ -143,7 +144,7 @@ def _extract_distribution_name(data: dict) -> str | None:
     is the fallback. Returns ``None`` when neither is a non-empty string.
 
     Used for workspace-member subtraction (supply-verdict F3 / INV-nuzas,
-    ADR-0041 D8a). In a monorepo, a sibling package that another package
+    ADR-0041 §1). In a monorepo, a sibling package that another package
     declares as a dependency is first-party workspace source, not a
     third-party direct dependency. Collecting each package's own name lets
     :func:`parse_python_dependencies` remove the sibling from the declared
@@ -224,8 +225,9 @@ def _resolve_import_names(dist_names: set[str]) -> set[str]:
     the dist installed, ``packages_distributions()`` gives us the real
     mapping; otherwise we fall back to the dist name verbatim (with
     hyphens swapped for underscores) — most deps match this anyway, and
-    a false negative leaves a dependency unstamped rather than silently
-    stamping something direct.
+    a false negative stamps the import ``undeclared`` (a declared
+    dependency reads as phantom) rather than silently stamping something
+    direct.
     """
     dist_to_import = _build_dist_to_import_map()
     out: set[str] = set()
@@ -322,7 +324,7 @@ def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
     import_names = {n for n in import_names if not stdlib_catalog.is_stdlib_module(n)}
 
     # Workspace-member subtraction (supply-verdict F3 / INV-nuzas, ADR-0041
-    # D8a). A monorepo sibling that another package declares as a dependency is
+    # §1). A monorepo sibling that another package declares as a dependency is
     # first-party workspace source, not a third-party direct dependency.
     # Resolve each package's own distribution name through the same
     # dist→import path and remove it, so the boundary classifier does not stamp

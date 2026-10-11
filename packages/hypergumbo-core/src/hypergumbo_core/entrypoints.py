@@ -32,16 +32,28 @@ concepts to entrypoint types.
 
 Confidence Scores
 -----------------
-- 0.95: All semantic detection (based on actual pattern matching)
+Base confidence is tiered: 0.99 manifest-declared CLI; 0.95 framework-pattern
+concepts; 0.90 generic/route-marker pass; 0.85 structural (shell script, HTML
+entry, main guard); 0.80 language conventions (main, test functions,
+serialization callbacks, script modules); 0.75 library exports; 0.70 naming
+heuristics; 0.50 connectivity fallback; 0.05 route-looking handlers in
+frontend files.
 
 Connectivity Boost (concept-based only):
-- Entrypoints with outgoing edges get a RANK_SCORE boost (up to +0.25)
-- Boost formula: min(0.25, log(1 + out_edges) / 10)
+- Entrypoints with outgoing edges get a RANK_SCORE boost of
+  min(0.25, log(1 + effective_out_degree) / 10), where the effective
+  out-degree is the direct out-degree plus 0.5 x the callees' out-degree
+  (one hop), scaled by language dominance (0.5 + 0.5 x language weight)
+- LIBRARY_EXPORT entries with callers also get an in-degree boost of
+  min(0.35, log(1 + in_degree) / 8), with the same language scale
 - This ranks "interesting" entrypoints higher (those that call many functions)
 - Entrypoints are sorted by final RANK_SCORE (highest first). Post-ADR-0039
   `confidence` is pure detection reliability and carries only the base; the
   penalties and the boost live on `rank_score`, which is what ordering uses.
-- CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid double-counting
+- CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid
+  double-counting; TEST_FUNCTION entries, symbols in test files and
+  ``boost_suppressed_ids`` (build wrappers, vendored or infrastructure-path
+  library exports) skip it too, so the boost cannot undo their demotion
 
 Connectivity-Based Fallback:
 - When no concept-based entrypoints are found, the system falls back to
@@ -52,19 +64,23 @@ Connectivity-Based Fallback:
   matching YAML patterns (e.g., Rust libraries without pub tracking)
 
 One Entrypoint Per Symbol (INV-liraj):
-- When several detectors classify the same symbol (a Phoenix route marker is
-  both a route marker and, by the Elixir export convention, a public
-  function), the most CONFIDENT entry is kept, ties going to the earlier
-  detector. Keeping the first-emitted entry made the kind an accident of
-  detector order and filed every Phoenix route under library_export.
+- When several detectors classify the same symbol (e.g. a function that is
+  both main() and a CLI command), the most CONFIDENT entry is kept, ties
+  going to the earlier detector. Historically a Phoenix route marker also
+  matched the Elixir library_export convention and, under first-emitted-wins,
+  every Phoenix route was filed under library_export; framework_patterns now
+  drops that concept upstream (INV-liraj).
 
 Post-Processing Filters (INV-mahap):
 - Minimum confidence threshold (MIN_ENTRYPOINT_CONFIDENCE = 0.10): entries below
   this threshold are excluded. This removes noise entries like library_export
-  entries demoted to 0.08 when semantic entries exist, and test-file entries
-  penalized to 0.08.
-- Count cap (MAX_ENTRYPOINT_COUNT = 50): prevents output flooding for repos
-  with hundreds of high-confidence entries (e.g., microservice gateways)
+  entries demoted to 0.075-0.08 when semantic entries exist, and test-file
+  entries penalized to 0.08.
+- Size-scaled cap (``compute_entrypoint_cap``: node_count // 100, clamped to
+  50-500): prevents output flooding for repos with hundreds of
+  high-confidence entries (e.g., microservice gateways). When it applies,
+  ``_diversity_cap`` first gives each kind up to 40% of the cap, then fills
+  any slots still empty from the overflow.
 """
 from __future__ import annotations
 

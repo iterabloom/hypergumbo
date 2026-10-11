@@ -68,8 +68,8 @@ Call-Site Resolution
   hoisted, then the file's module scope and imports) and resolves a
   declaration by POSITION. A declaration in scope wins outright (0.90); a
   parameter or local value is a callee nothing can name and emits nothing;
-  only a name no scope in the file binds reaches the import, same-package and
-  repo-wide name lookups (WI-sofuh). A called module binding
+  only a name bound by an import, or by nothing in the file, reaches the
+  import, same-package and repo-wide name lookups (WI-sofuh). A called module binding
   (``import m from 'x'; m()``) emits ``x``'s ``default``; a name nothing binds
   and nothing in the repo carries emits the ``external`` placeholder
   (WI-fahod).
@@ -137,7 +137,8 @@ How It Works
 1. Check if tree-sitter and language grammars are available
 2. If not available, return empty result with skip reason
 3. Three-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
+   - Pass 1: Parse all JS/TS files plus the <script> blocks of Svelte / Vue
+     files, and extract all symbols into the global registry
    - Pass 2: Detect calls and resolve against global symbol registry
    - Pass 3: Build framework UsageContexts straight from each file's AST
      (Express/Hapi routes, Next.js file routes, index-file library
@@ -146,7 +147,6 @@ How It Works
    ``meta.base_classes``, ``decorated_by`` from ``meta.decorators``, and
    ``references`` edges with evidence_type ``ast_type_ref`` from TypeScript
    type-alias and interface declarations (read from the parse trees)
-5. For Svelte / Vue files, extract <script> blocks and parse as TS/JS
 
 Svelte / Vue Support
 --------------------
@@ -6466,9 +6466,14 @@ def _extract_edges(
                         # same name. That collision was only possible because
                         # route markers were NAMED AFTER THEIR HANDLER, which is
                         # the defect the make_route_symbol migration removed: a
-                        # marker is now "{METHOD} {path}", which is never a valid
-                        # identifier, so an identifier lookup can no longer
-                        # return one. The branch became unreachable and is gone.
+                        # marker built by make_route_symbol is "{METHOD} {path}",
+                        # which is never a valid identifier, so an identifier
+                        # lookup cannot return it. The branch was removed. This
+                        # does NOT hold for JSX <Route> markers: they are still
+                        # hand-built in _extract_symbols and named after their
+                        # component, so a name lookup outside the binder's reach
+                        # (no import, no in-scope declaration) can still return
+                        # the route marker in place of the component function.
                         if (
                             target is not None
                             and target.kind in ("function", "method", "route")
@@ -7265,12 +7270,10 @@ def _analyze_javascript_impl(
         # ``attributes:`` entries in io_primitives/javascript.yaml —
         # without this emission, env_read / ipc_send / ipc_recv chains
         # that target ``process.env`` / ``process.stdout`` / etc. were
-        # silently inert.  The src is a file-level module pseudo-symbol
-        # (``file_mod_sym`` when registered by Pass 1, or a synthetic
-        # file-id symbol otherwise) — Python-side per-function granularity
-        # is not plumbed through the io_boundary pipeline's attribute
-        # matching, so the file-level caller matches the Go PR 1
-        # convention and is sufficient for the tagging pipeline.
+        # silently inert.  The src is the innermost callable containing the
+        # read (``enclosing_symbols`` below, INV-fafol); a read outside any
+        # callable falls back to the file pseudo-symbol ``file_mod_sym``
+        # registered by Pass 1.
         # WI-fiham: the binding's module in the CALL path's spelling, scheme
         # dropped (``node:path`` -> ``path``), so a read and a call through one
         # require name one module. Relative leaders are kept (INV-juvul).

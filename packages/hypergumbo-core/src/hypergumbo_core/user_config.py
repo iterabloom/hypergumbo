@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""User and project configuration files (ADR-0045 rulings 1, 2, 3).
+"""User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ADR-0057 §5 [merge]; ADR-0004 trace_deps).
 
 WHAT THIS IS FOR, AND WHAT IT DELIBERATELY REFUSES TO HOLD. hypergumbo had no
 user configuration of any kind before this module: every preference was
@@ -26,7 +26,9 @@ fact does not belong in config at all. :func:`project_forbidden_settings`
 be able to make a security decision *about itself* — the inversion of
 ADR-0016 §35 / ADR-0017 §370, where project-local overlays deliberately
 outrank built-ins (correct for catalogs, exactly backwards for a gate). Today
-both sets name the same single setting. They are kept separate because
+both are the same registry-derived set (:func:`project_forbidden_settings`
+returns :func:`trust_only_settings`): ``backends.rust_analyzer`` when the SCIP
+Rust package is installed, empty otherwise. They are kept separate because
 collapsing them would silently widen whichever rule outlived the other.
 
 UNKNOWN KEYS RAISE. A silently-dropped setting is how someone spends an

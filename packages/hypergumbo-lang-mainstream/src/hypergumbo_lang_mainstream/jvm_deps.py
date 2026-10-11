@@ -2,18 +2,19 @@
 """JVM dependency manifest parsing for Gradle and Maven projects.
 
 Extracts declared dependencies from build.gradle, build.gradle.kts, and
-pom.xml files so that ``create_boundary_nodes`` can classify unresolved
-Java/Kotlin imports as tier 2 (direct dependency the project declares) vs
-tier 3 (unknown external).
+pom.xml files so that ``create_boundary_nodes`` can stamp
+``meta["directness"]`` on Java/Kotlin boundary nodes: "direct" for imports
+under a declared groupId, "undeclared" otherwise (every boundary node is
+tier 3 per ADR-0041; the manifest no longer promotes nodes to tier 2).
 
 The key insight: Maven/Gradle dependency coordinates use ``groupId`` as the
 organizational namespace, which *usually* matches the Java/Kotlin package
 prefix. For example, ``org.apache.kafka:kafka-clients`` → imports under
 ``org.apache.kafka.*``. This heuristic works well for most libraries; the
 few where groupId diverges from the package namespace (e.g., Guava's
-``com.google.guava`` groupId vs ``com.google.common.*`` packages) fall
-through to the default EXTERNAL_DEP tier, which is correct — they're
-still external.
+``com.google.guava`` groupId vs ``com.google.common.*`` packages) match
+no entry and read as "undeclared"; the node is still an external tier-3
+boundary.
 
 WI-duhom: Gradle/Maven projects had near-zero external_dep boundary nodes
 because the file-path-based classifier can never see dependencies that

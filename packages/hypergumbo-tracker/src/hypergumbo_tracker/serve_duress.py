@@ -1,10 +1,15 @@
 # SPDX-License-Identifier: MPL-2.0
 """DuressHandler Protocol for htrac serve (ADR-0019).
 
-Defines the interface for user-implemented duress behavior. The handler is
-loaded at server startup from a Python file specified in config.yaml under
-``auth.duress_module``. The file must define a module-level ``handler`` variable
-that satisfies the ``DuressHandler`` Protocol.
+Defines the interface for user-implemented duress behavior (the ADR-0019
+duress contract). By design the handler is loaded from a Python file named in
+config.yaml under ``auth.duress_module``; the file must define a module-level
+``handler`` variable that satisfies the ``DuressHandler`` Protocol.
+
+Not yet wired as of 2026-10 (WI-hopip): nothing loads the handler at server
+startup or calls these hooks, and config.yaml's ``auth.duress_module`` is not
+read by ``load_config``. The "called once" / "called on every API response"
+descriptions below are the contract a future caller must honour.
 
 How It Works
 ------------
@@ -26,10 +31,12 @@ Why This Design
 ---------------
 - Deliberately underspecified: the attacker cannot predict duress behavior
   because it's user-defined, not shipped with the software.
-- The handler file is gitignored and not tracked — it exists only on the
-  server machine.
-- Timeout enforcement prevents a slow handler from creating a timing
-  side-channel (duress login taking longer than normal login).
+- The handler file should be kept out of version control by the operator
+  (the repo does not gitignore it; its path is user-chosen) so it exists
+  only on the server machine.
+- Timeout enforcement caps a slow handler at ``timeout`` seconds (default
+  5.0). It bounds, but does not eliminate, the timing difference between
+  duress and normal logins.
 - Protocol (structural typing) rather than ABC: the handler doesn't need
   to import anything from hypergumbo.
 """
@@ -133,8 +140,8 @@ async def call_on_duress_login(
     """Call handler.on_duress_login with timeout enforcement.
 
     Returns True if the call completed within timeout, False if timed out.
-    Timeout prevents timing side-channels (duress login taking noticeably
-    longer than normal login).
+    The timeout bounds, but does not eliminate, the timing difference
+    between duress and normal logins (normal logins are not padded).
     """
     try:
         await asyncio.wait_for(
