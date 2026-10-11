@@ -152,6 +152,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **ADR-0049's Lazy rows outside Django were checked against library source**: `getResultStream` leaves the list, and the rest are held with reasons.
 - **[Audit 0022](docs/audits/0022-inv-nular-remainder-sweep-tranche-3.md) source-checks 335 more catalogue rows** and files 19 candidate fixes.
 - **Module docstrings corrected or extended in 83 files, then 59 more** in an audit that also read a random sample of modules no audit had reached; measurement 0030 and corrections to earlier measurement records; `VERIFY-CLAIMS-SCOPE.md` explains why no verdict consults partial parses.
+- **ADR-0020 no longer claims inline screenshot previews ship.** Its status now reads partially implemented: screenshot annotation works in the TUI, discussion threads show only a placeholder line, and the preview renderer exists as library code the TUI never calls.
 
 ## [8.1.0] - 2026-09-25
 

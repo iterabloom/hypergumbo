@@ -211,7 +211,7 @@ The tracker's auto-sync gained a GitHub write path (dormant dual-mode), now live
 #### TUI screenshot annotation mode (ADR-0020)
 
 - **Annotation overlay**: Press `S` to capture a screenshot, then annotate with rectangles (`R` + drag), arrows (`A` + drag), and numbered text labels (`L` + click). Arrow key nudge (±1 cell) mitigates SSH mouse coordinate drift. Annotations injected as SVG elements; label text XML-sanitized.
-- **Inline SVG preview**: Discussion entries referencing `.svg` files show placeholders. SVG→PNG→ANSI pipeline via optional `cairosvg` + `chafa` with graceful degradation.
+- **Inline SVG preview**: Discussion entries referencing `.svg` files show placeholders. An SVG→PNG→ANSI pipeline via optional `cairosvg` + `chafa` was added as library code only; the TUI never calls it (see ADR-0020 *Implementation status*).
 - **Label UX redesign**: Replaced raw keystroke capture with Textual `Input` widget for full editing support. Numbered markers provide visual feedback before text entry.
 
 #### htrac serve and web frontend (ADR-0019 Part A)
