@@ -1,0 +1,20 @@
+Original commit body from 2f8daf97afa29c5c32616ca657b20627bad0d3b6:
+
+The AUTO manifest scan concatenates per-ecosystem results, so a name two
+scanners detect (hardhat from JS and Solidity, ktor from Kotlin and
+Gradle) appeared once per scanner in survey.json profile.frameworks and
+the sketch's Frameworks section. An EXPLICIT --frameworks list with a
+repeat had the same defect, and refine_frameworks passed repeats through.
+
+RepoProfile.__post_init__ is now the single place that normalises the
+framework fields for every producer (auto scan, explicit list, refine,
+cached from_dict): frameworks, dev_frameworks and requested_frameworks
+are sorted and unique, dev_frameworks excludes prod frameworks, and
+framework_evidence keys only listed frameworks with sorted unique nodes.
+
+Also corrects the sketch _format_frameworks docstring, which claimed prod
+frameworks were listed before dev ones (the list is alphabetical).
+
+Refs INV-vapov-bahav-vuhod-zivop-pasav-nifig-supus-farom
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
