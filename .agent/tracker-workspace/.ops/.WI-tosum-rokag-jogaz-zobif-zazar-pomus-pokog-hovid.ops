@@ -67,3 +67,10 @@
   clock: 8  # 9f20
   nonce: 9f20  # 9f20
   message: "From WI-darik's branch (jgstern-agent/fix/darik): each package's call-anchor gate (_assert_contained) now also asserts hypergumbo_core.analyze.edge_source.unemitted_edge_sources(...) == [] -- no edge's src is an id no symbol carries. It passes for every VERIFIED analyzer's fixture (40). The UNVERIFIED rows listed here are therefore unchecked for dangling srcs as well as for containment. cuda moved from unenumerated to VERIFIED (it spelled edge_type through a variable, so _CALLS never saw it)."  # 9f20
+- op: discuss  # 48a3
+  at: '2026-10-11T04:32:12Z'  # 48a3
+  by: agent  # 48a3
+  actor: jgstern_agent  # 48a3
+  clock: 9  # 48a3
+  nonce: 48a3  # 48a3
+  message: "2026-10-10 docstring audit: commonlisp.py ~322 `local_symbols.get(name)` finds the enclosing function by NAME via one-per-name symbol_by_name. Repro: two `(defmethod area ...)` forms -> the call inside the first is credited to area@4; a later `(defvar tick)` becomes the caller of calls inside `(defun tick)`. ocaml.py has the same shape (filed separately)."  # 48a3

@@ -1,0 +1,24 @@
+- op: create  # d5f8
+  at: '2026-10-11T07:21:49Z'  # d5f8
+  by: agent  # d5f8
+  actor: jgstern_agent  # d5f8
+  clock: 1  # d5f8
+  nonce: d5f8  # d5f8
+  data:  # d5f8
+    kind: invariant  # d5f8
+    title: "python: bare import of a same-directory module (tests/test_a.py: import conftest) stays unresolved and reads as third-party"  # d5f8
+    status: violated  # d5f8
+    priority: 3  # d5f8
+    parent:  # d5f8
+    tags:  # d5f8
+    - analyzers  # d5f8
+    - python  # d5f8
+    - import_resolution  # d5f8
+    isbefore: []  # d5f8
+    duplicate_of: []  # d5f8
+    not_duplicate_of: []  # d5f8
+    pr_ref:  # d5f8
+    description: "Found while fixing INV-nuraf-nuvif-pifut-budoh-gafim-midab-juvuv-zonin (dependency linker counted first-party imports).\n\nRepro: repo with src/pkg/{__init__,a,b}.py, tests/test_a.py containing `import conftest` and tests/conftest.py, pyproject.toml with no dependencies. The Python analyzer resolves `from pkg.a import fa` (src-layout) to `python:src/pkg/a.py:...`, but `import conftest` from tests/test_a.py stays unresolved as `python:conftest:0-0:module:module` (dst_ref ExternalRef(module_path='conftest')) although tests/conftest.py is analyzed. Python puts the importing script's directory on sys.path (and pytest's rootdir insertion does the same for test dirs), so a bare import of a same-directory module names first-party code.\n\nConsequence: the edge reaches the graph as an external boundary, and `hypergumbo survey` on that repo still prints 'DEPENDENCY-LINKER linker found 1 third-party Rust/Python import edges but 0 TOML dependency declarations' after the INV-nuraf fix (which keys on resolution: dst is an in-repo symbol id). Every other consumer of resolution (supply-chain ecosystem/directness stamps, io-boundaries, verify-claims disclosure) sees a phantom third-party module too.\n\nFix direction: Python import resolution falls back to a module in the importing file's own directory for a bare absolute import that matches no other in-repo module. Not done in the INV-nuraf PR because the dependency linker should read the resolution verdict rather than re-derive it by name."  # d5f8
+    fields:  # d5f8
+      statement: "A Python import that names a module analyzed in the importing file's own directory resolves to that module's in-repo file id."  # d5f8
+      root_cause: "Not investigated: the Python import resolver does not try the importing file's own directory for a bare absolute import (observed, resolver code not yet read)."  # d5f8
