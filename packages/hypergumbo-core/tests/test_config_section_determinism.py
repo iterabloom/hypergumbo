@@ -10,6 +10,17 @@ sets — so their order followed the per-process str-hash salt, and because
 the section is cut to ``max_lines`` WHICH manifests survive the cut varied
 too. The subprocess test is the behavioral evidence (three hash salts, one
 answer); the in-process tests pin the ordering contracts.
+
+INV-rikor: the embedding/hybrid path (the CLI default) had the same defect
+one layer down. ``_collect_config_content`` iterated the frozenset
+``_MONOREPO_MANIFEST_NAMES`` and unsorted globs, and its discovery caller a
+``set``; ``_extract_config_embedding`` keeps the first ``max_config_files``
+(15) candidates that yield chunks and its first-pass cross-file dedup keeps
+whichever near-duplicate comes first, so on a monorepo with more than 15
+manifests WHICH files the section shows followed the hash salt. The
+monorepo fixture below has 32 manifests, so the cap is exercised; the
+subprocess test runs the embedding extraction under three salts, and the
+in-process tests pin the candidate order and the cap.
 """
 
 from __future__ import annotations
@@ -18,6 +29,8 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 from hypergumbo_core import sketch
 
@@ -81,3 +94,100 @@ def test_same_section_under_different_hash_salts(tmp_path: Path) -> None:
         )
         outputs.add(result.stdout)
     assert len(outputs) == 1
+
+
+_MANIFESTS = {
+    "package.json": lambda n: (
+        '{"name": "%s", "version": "1.0.0", "dependencies": {"express": "4"}}' % n
+    ),
+    "pyproject.toml": lambda n: (
+        '[project]\nname = "%s"\nversion = "0.1.0"\ndependencies = ["flask"]\n' % n
+    ),
+    "Cargo.toml": lambda n: (
+        '[package]\nname = "%s"\nversion = "0.1.0"\nedition = "2021"\n' % n
+    ),
+    "go.mod": lambda n: (
+        "module example.com/%s\n\ngo 1.21\nrequire github.com/gin-gonic/gin v1\n" % n
+    ),
+}
+
+
+def _monorepo(root: Path) -> Path:
+    """32 depth-2 manifests (8 packages x 4 kinds): over the 15-file cap."""
+    for i in range(8):
+        for kind, body in _MANIFESTS.items():
+            pkg = root / "packages" / f"pkg{i}{kind.split('.')[0].lower()}"
+            pkg.mkdir(parents=True, exist_ok=True)
+            (pkg / kind).write_text(body(pkg.name))
+    (root / "main.py").write_text("print(1)\n")
+    return root
+
+
+def test_monorepo_manifest_names_keep_declaration_order() -> None:
+    assert isinstance(sketch._MONOREPO_MANIFEST_NAMES, tuple)
+    assert list(sketch._MONOREPO_MANIFEST_NAMES) == [
+        f for f in sketch.CONFIG_FILES if "*" not in f
+    ]
+
+
+def test_monorepo_candidates_grouped_by_kind_then_sorted(tmp_path: Path) -> None:
+    root = _monorepo(tmp_path)
+    content, _seen = sketch._collect_config_content(root)
+    sources = [source for source, _ in content]
+    rank = {name: i for i, name in enumerate(sketch.CONFIG_FILES)}
+    expected = sorted(
+        sources, key=lambda s: (rank[Path(s).name], Path(s).parts)
+    )
+    assert sources == expected
+    assert len(sources) == 32
+
+
+def test_discovered_path_already_collected_is_not_appended_twice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Discovery yields unresolved paths; seen_paths holds resolved ones."""
+    monkeypatch.chdir(tmp_path)
+    _monorepo(Path("repo"))
+    rel_root = Path("repo")
+    unresolved = rel_root / "packages" / "pkg0cargo" / "Cargo.toml"
+    monkeypatch.setattr(
+        sketch, "_discover_config_files_embedding", lambda _root: {unresolved}
+    )
+    content = sketch._collect_config_content_with_discovery(rel_root)
+    sources = [source for source, _ in content]
+    assert len(sources) == len(set(sources)) == 32
+
+
+def test_embedding_extraction_stops_at_the_file_cap(tmp_path: Path) -> None:
+    root = _monorepo(tmp_path)
+    candidates = [
+        s for s, _ in sketch._collect_config_content_with_discovery(root)
+    ]
+    assert len(candidates) > 15
+    lines = sketch._extract_config_embedding(root, max_config_files=15)
+    shown = {ln[1:-1] for ln in lines if ln.startswith("[") and ln.endswith("]")}
+    assert shown
+    assert shown <= set(candidates[:15])
+
+
+def test_same_embedding_section_under_different_hash_salts(tmp_path: Path) -> None:
+    root = _monorepo(tmp_path)
+    code = (
+        "import sys; from pathlib import Path;"
+        "from hypergumbo_core.sketch import ("
+        "_collect_config_content_with_discovery, _extract_config_embedding);"
+        "root = Path(sys.argv[1]);"
+        "srcs = [s for s, _ in _collect_config_content_with_discovery(root)];"
+        "sys.stdout.write('\\n'.join(srcs) + '\\n---\\n'"
+        " + '\\n'.join(_extract_config_embedding(root)))"
+    )
+    outputs = set()
+    for salt in ("0", "1", "2"):
+        env = {**os.environ, "PYTHONHASHSEED": salt}
+        result = subprocess.run(
+            [sys.executable, "-c", code, str(root)],
+            capture_output=True, text=True, env=env, check=True,
+        )
+        outputs.add(result.stdout)
+    assert len(outputs) == 1
+    assert "[packages/" in next(iter(outputs))
