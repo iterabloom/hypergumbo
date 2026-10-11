@@ -1,0 +1,25 @@
+Original commit body from 1ab6cc8e83f39db1b0b6da6e0656c07a658d7fd7:
+
+The default (hybrid) Configuration section depended on PYTHONHASHSEED on
+any repo with more than 15 manifests. _collect_config_content iterated the
+frozenset _MONOREPO_MANIFEST_NAMES and unsorted globs, and its discovery
+caller iterated a set; _extract_config_embedding keeps the first 15
+candidates that yield chunks and its first-pass cross-file dedup keeps the
+first near-duplicate, so WHICH files were shown followed the str-hash salt
+(three salts on a 32-manifest fixture -> three file sets). PR #1509 fixed
+only the heuristic path.
+
+- _MONOREPO_MANIFEST_NAMES is a tuple in CONFIG_FILES declaration order.
+- Monorepo matches are gathered per kind and sorted (mirrors the heuristic).
+- *-pattern globs, the discovered set, known_names and the rglob fallbacks
+  in _discover_config_files_embedding / _get_repo_languages are sorted.
+- Discovery compared unresolved paths against resolved seen_paths, so a
+  manifest already collected was appended twice under a relative root
+  (40 entries for 32 files); it now compares resolved paths.
+- The 15-file cap is exercised by a test; its pragma is removed.
+- Removed sketch_embeddings._get_repo_languages, an unreferenced duplicate
+  of the sketch.py helper with the same unsorted-rglob early exit.
+
+Refs INV-rikor-minud-bulip-paniv-pihag-dibok-kanur-dipuf
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
