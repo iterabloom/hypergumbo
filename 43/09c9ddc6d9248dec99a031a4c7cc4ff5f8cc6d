@@ -1,0 +1,30 @@
+Original commit body from ff911ae7d2203d8590e699f0790ec1253ff4219b:
+
+_extract_phoenix_routes walked every call in every file and minted a
+route marker for any get/post/put/patch/delete/head/options/resources/
+live call whose first positional argument was a string. Two families of
+plain calls matched: a cache module's own get("user_#{id}") and a
+Phoenix.ConnTest request conn |> get("/pages") in a test (the pipe
+supplies the conn, so the path becomes argument 0).
+
+_iter_router_calls now yields only calls lexically inside a defmodule
+whose top-level body runs `use Phoenix.Router`, the generated web-module
+dispatcher `use AppWeb, :router` (its def router quotes use
+Phoenix.Router, so the :router atom is the evidence and the web module
+itself is no router), or `use Plug.Router`. A Plug.Router module mints
+the HTTP verbs only (Plug.Router has no resources/live). A nested
+defmodule starts afresh. A call on the right of |> is never a route
+macro, inside a router too (a piped get in a router's plug function is a
+request helper; a route macro taking the conn as its path would not
+compile).
+
+Test fixtures that declared routes in a module with no `use` (which
+would not compile under Phoenix) now carry `use Phoenix.Router` /
+`use MyAppWeb, :router`.
+
+thc: 738 Phoenix route symbols (377 router.ex, 348 test, 13 lib cache)
+-> 377, all router.ex, identical names/lines/controllers/actions.
+
+Refs INV-hurun-gozod-nobub-titiv-supur-jatot-dipuv-mipub
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
