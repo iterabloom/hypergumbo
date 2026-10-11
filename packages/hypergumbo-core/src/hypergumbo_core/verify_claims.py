@@ -213,12 +213,10 @@ How It Works
    they sit inside the analysed repository (a file inside it also carries its
    git state). ``user_supplied`` is also true when a ``yours`` / ``in_repo``
    file came from the config tiers or a channel directory, and a
-   ``module_completeness`` grant in a community file reached through the
-   config tiers or a channel directory is listed under
-   ``withheld_completeness_grants`` (INV-lamap). Files given by CLI flag or
-   in the claims file are not checked for community provenance: their grants
-   stay under ``completeness_grants`` (the load still withholds them). It
-   changes no verdict.
+   ``module_completeness`` grant in a community file is listed under
+   ``withheld_completeness_grants`` whatever path loaded it -- CLI flag,
+   claims file, config tier or channel directory -- because the load
+   withholds it on every one (INV-lamap). It changes no verdict.
 """
 from __future__ import annotations
 
@@ -2344,11 +2342,10 @@ def catalog_provenance(
     / ``in_repo`` (:func:`catalogue_tiers`), and ``io_overlay_origins`` -- each
     I/O overlay path with where it came from -- lets the completeness grants of
     the config-tier and channel files be named like the flag's. A grant in a
-    COMMUNITY file is withheld at load (INV-lamap); when that file came from
-    the config tiers or a channel directory it is listed under
-    ``withheld_completeness_grants`` instead. Files from the CLI flag or the
-    claims file skip that check, so a community file's grant given that way
-    is still listed under ``completeness_grants``.
+    COMMUNITY file is withheld at load (INV-lamap), whatever path loaded it,
+    so it is listed under ``withheld_completeness_grants`` instead -- for the
+    CLI flag and the claims file exactly as for the config tiers and channel
+    directories.
 
     Returns:
         ``{"user_supplied": bool, "layers": {kind: {"cli": [...],
@@ -2375,22 +2372,25 @@ def catalog_provenance(
         any_user = any_user or bool(cli_list) or bool(claims_list)
         out[kind] = {"cli": cli_list, "claims_file": claims_list}
     io_cli, io_claims = layers.get("io_primitives", ((), ()))
-    grants = [
-        *_completeness_grants(io_cli, "cli"),
-        *_completeness_grants(io_claims, "claims_file"),
+    # INV-kobam: ONE partition for every origin. ``load_catalog`` withholds a
+    # community file's grants whatever path loaded it, so the disclosure asks
+    # the same question of the flag's and the claims file's files as of the
+    # config tiers' -- skipping it for those two listed a withheld grant as an
+    # applied one. The flag and claims-file paths are read from ``layers``
+    # (which every caller supplies) and skipped in ``io_overlay_origins`` only
+    # so they are not listed twice.
+    sources: list[tuple[Path, str]] = [
+        *((Path(p), "cli") for p in io_cli),
+        *((Path(p), "claims_file") for p in io_claims),
+        *((Path(p), origin) for p, origin in io_overlay_origins
+          if origin not in ("cli", "claims_file")),
     ]
-    from .io_boundary import overlay_declares_community
-
+    grants: list[dict[str, Any]] = []
     withheld: list[dict[str, Any]] = []
-    for path, origin in io_overlay_origins:
-        if origin in ("cli", "claims_file"):
-            continue  # named above, from ``layers``
-        # Every path here loaded already -- a bad one ended the run with exit 2
-        # before a verdict existed -- so re-reading its declaration is safe.
-        community = overlay_declares_community(Path(path))
-        (withheld if community else grants).extend(
-            _completeness_grants([path], origin),
-        )
+    for path, origin in sources:
+        applied, held = _partition_completeness_grants(path, origin)
+        grants.extend(applied)
+        withheld.extend(held)
     tiers = catalogue_tiers(tier_files, repo_root)
     any_user = any_user or bool(tiers["yours"]) or bool(tiers["in_repo"])
     # THE THIRD STATE (ADR-0047). ``user_supplied`` is a boolean and this is a
@@ -2447,6 +2447,26 @@ def catalog_provenance(
         "load_bearing_grants": bearing,
         "kind_adjudication": census,
     }
+
+
+def _partition_completeness_grants(
+    path: Path, origin: str,
+) -> "tuple[list[dict[str, Any]], list[dict[str, Any]]]":
+    """``(applied, withheld)`` grant records for one overlay file.
+
+    A file declaring ``provenance: community`` has its grants withheld at load
+    for every origin (ADR-0061 ruling 2, INV-lamap), so its records go in the
+    second list; the tier is the file's own line, never where it came from.
+    The declaration is read only when the file vouches for something, and only
+    after :func:`_completeness_grants` re-read it successfully, so the read
+    cannot raise on a file the describe step had to skip.
+    """
+    from .io_boundary import overlay_declares_community
+
+    records = _completeness_grants([path], origin)
+    if records and overlay_declares_community(path):
+        return [], records
+    return records, []
 
 
 def _completeness_grants(
@@ -2677,9 +2697,7 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
             "(closed-world):",
         )
         for grant in grants:
-            label = _GRANT_ORIGIN_LABELS.get(
-                str(grant.get("origin")), str(grant.get("origin")),
-            )
+            label = _grant_origin_label(grant)
             modules = ", ".join(grant.get("modules") or ())
             lines.append(
                 f"    {grant.get('language')}: {modules}",
@@ -2699,10 +2717,12 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
             "a file:",
         )
         for grant in withheld:
+            label = _grant_origin_label(grant)
             lines.append(
                 f"    {grant.get('language')}: "
-                f"{', '.join(grant.get('modules') or ())}  from {grant.get('path')}",
+                f"{', '.join(grant.get('modules') or ())}",
             )
+            lines.append(f"      from {grant.get('path')}  [{label}]")
     return lines
 
 
@@ -2714,6 +2734,16 @@ _GRANT_ORIGIN_LABELS: dict[str, str] = {
     "config": "your config.toml",
     "in_repo_config": "the repository's .hypergumbo.toml, opted in",
 }
+
+
+def _grant_origin_label(grant: "Mapping[str, Any]") -> str:
+    """The text rendering's name for a grant record's origin, else the raw one.
+
+    Shared by the applied and the withheld blocks so both say where a file
+    came from in the same words.
+    """
+    origin = str(grant.get("origin"))
+    return _GRANT_ORIGIN_LABELS.get(origin, origin)
 
 
 def validate_taint_flow_vocabulary(

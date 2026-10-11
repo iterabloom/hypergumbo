@@ -271,6 +271,34 @@ class TestCatalogProvenance:
         ]
         assert prov["user_supplied"] is True
 
+    @pytest.mark.parametrize("origin", ["cli", "claims_file"])
+    def test_a_community_grant_is_withheld_whatever_path_loaded_it(
+        self, tmp_path: Path, origin: str,
+    ) -> None:
+        """INV-kobam: the load withholds a community file's grants for EVERY
+        origin, so the disclosure must too. A community file passed by flag or
+        through the claims file used to be listed as an APPLIED grant."""
+        community = tmp_path / "comm.yaml"
+        community.write_text(_GRANT.format(provenance="provenance: community\n"))
+        mine = tmp_path / "mine.yaml"
+        mine.write_text(_GRANT.format(provenance=""))
+        layer = ([community, mine], []) if origin == "cli" else (
+            [], [community, mine])
+        prov = catalog_provenance(
+            {"io_primitives": layer},
+            io_overlay_origins=[(community, origin), (mine, origin)],
+        )
+        assert [(g["path"], g["origin"]) for g in prov["completeness_grants"]] == [
+            (str(mine), origin),
+        ]
+        assert [(g["path"], g["origin"], g["modules"]) for g in
+                prov["withheld_completeness_grants"]] == [
+            (str(community), origin, ["vendorlib"]),
+        ]
+        # The load agrees: the community file's grant never applied.
+        catalog = iob.load_catalog("python", [community])
+        assert "vendorlib" not in catalog.module_completeness
+
     def test_a_yours_file_alone_is_user_supplied_input(self, tmp_path: Path) -> None:
         """config.toml or a channel file is the operator's input exactly as a
         flag is; a run resting on one used to report ``user_supplied: false``."""
@@ -318,6 +346,9 @@ class TestTheTextRendering:
         assert "io_primitives: deps.yaml  [in-repo, modified]" in text
         assert "the repository's .hypergumbo.toml, opted in" in text
         assert "WITHHELD GRANTS" in text and "vendorlib" in text
+        # A withheld grant names where its file came from, as an applied one
+        # does.
+        assert "from c.yaml  [your io_primitives.d]" in text
 
 
 class TestWhatTheRunLoaded:
