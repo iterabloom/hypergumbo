@@ -1,0 +1,25 @@
+- op: create  # 487c
+  at: '2026-10-11T04:30:19Z'  # 487c
+  by: agent  # 487c
+  actor: jgstern_agent  # 487c
+  clock: 1  # 487c
+  nonce: 487c  # 487c
+  data:  # 487c
+    kind: invariant  # 487c
+    title: "ocaml: every local let becomes a function symbol and calls are credited by name, first definition wins"  # 487c
+    status: violated  # 487c
+    priority: 3  # 487c
+    parent:  # 487c
+    tags:  # 487c
+    - ocaml  # 487c
+    - analyzer  # 487c
+    - calls  # 487c
+    - docstring_audit  # 487c
+    isbefore: []  # 487c
+    duplicate_of: []  # 487c
+    not_duplicate_of: []  # 487c
+    pr_ref:  # 487c
+    description: "Repro: f and g each define a local `inner` calling helper -> edges credited to the first inner; inner -> helper replaces f -> helper. Related family: WI-tosum (enclosing lookup by name).\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 487c
+    fields:  # 487c
+      statement: "An OCaml call is credited to the enclosing top-level (or correctly scoped) function by position."  # 487c
+      root_cause: "ocaml.py makes every value_definition kind function (local `let inner z = ... in` included), finds the caller by walking parents and looking the name up in local_symbols, and seen_names drops later duplicates."  # 487c

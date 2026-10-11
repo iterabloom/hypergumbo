@@ -1,0 +1,25 @@
+- op: create  # 88a3
+  at: '2026-10-11T04:30:08Z'  # 88a3
+  by: agent  # 88a3
+  actor: jgstern_agent  # 88a3
+  clock: 1  # 88a3
+  nonce: 88a3  # 88a3
+  data:  # 88a3
+    kind: invariant  # 88a3
+    title: "hcl: references inside locals/variable/provider blocks emit no edge, nested expressions emit duplicate edges, and ../ module sources get no imports edge"  # 88a3
+    status: violated  # 88a3
+    priority: 3  # 88a3
+    parent:  # 88a3
+    tags:  # 88a3
+    - hcl  # 88a3
+    - terraform  # 88a3
+    - analyzer  # 88a3
+    - docstring_audit  # 88a3
+    isbefore: []  # 88a3
+    duplicate_of: []  # 88a3
+    not_duplicate_of: []  # 88a3
+    pr_ref:  # 88a3
+    description: "Repro: `locals { name = var.region }` -> no edge; `lower(var.region)` -> same edge id twice (deduped later by cli.py ~12551, so only direct callers see it); `source = \"../net\"` -> no imports edge while `./a` gets one.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 88a3
+    fields:  # 88a3
+      statement: "Every resolvable HCL reference produces one depends_on edge from its enclosing block, and every local module source produces an imports edge."  # 88a3
+      root_cause: "_find_enclosing_block_symbol (hcl.py ~342-349) handles only resource/data/module/output; each nested expression node is walked over its whole subtree; module imports require startswith('./')."  # 88a3
