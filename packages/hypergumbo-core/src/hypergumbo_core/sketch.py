@@ -891,9 +891,14 @@ CONFIG_FILES = list(dict.fromkeys(
 CONFIG_SUBDIRS = ["", "server", "client", "backend", "frontend", "src", "app", "api"]
 
 # Exact-name manifest files for monorepo discovery (depth 1-2 glob).
-# Derived from CONFIG_FILES_BY_LANG, excluding glob patterns like *.csproj.
-_MONOREPO_MANIFEST_NAMES: frozenset[str] = frozenset(
-    f for files in CONFIG_FILES_BY_LANG.values() for f in files if "*" not in f
+# Derived from CONFIG_FILES, excluding glob patterns like *.csproj. A tuple in
+# declaration order, NOT a frozenset: _collect_config_content iterates it to
+# build the embedding candidate list, and the 15-file cap and first-come
+# cross-file dedup downstream turn that order into WHICH files the
+# Configuration section shows, so set (str-hash) order made it vary with
+# PYTHONHASHSEED (INV-rikor).
+_MONOREPO_MANIFEST_NAMES: tuple[str, ...] = tuple(
+    f for f in CONFIG_FILES if "*" not in f
 )
 
 # Key dependencies to highlight (db drivers, frameworks, etc.)
@@ -1355,30 +1360,36 @@ def _collect_config_content(
 
     # Monorepo discovery: scan depth 1-2 for manifest files.
     # Catches packages/core/pyproject.toml, services/api/package.json, etc.
+    # Manifest kinds go in declaration order and each kind's matches are
+    # sorted (glob yields filesystem order), mirroring
+    # _extract_config_heuristic: this list's order decides which files survive
+    # _extract_config_embedding's file cap and cross-file dedup (INV-rikor).
     _exclude_dirs = (
         _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES) | DEPENDENCY_DIR_NAMES
     )
     for manifest_name in _MONOREPO_MANIFEST_NAMES:
+        matches: list[Path] = []
         for pattern in (f"*/{manifest_name}", f"*/*/{manifest_name}"):
-            for match in repo_root.glob(pattern):
-                if not match.is_file():
-                    continue  # pragma: no cover
-                resolved = match.resolve()
-                if resolved in seen_paths:
-                    continue
-                # Skip hidden dirs and excluded dirs
-                rel = match.relative_to(repo_root)
-                parts = rel.parts[:-1]  # directory components only
-                if any(p.startswith(".") or p in _exclude_dirs for p in parts):
-                    continue
-                if under_content_rule_dir(repo_root, parts):
-                    continue
-                try:
-                    content = match.read_text(encoding="utf-8", errors="replace")
-                    config_content.append((str(rel), content))
-                    seen_paths.add(resolved)
-                except OSError:  # pragma: no cover
-                    pass  # pragma: no cover
+            matches.extend(repo_root.glob(pattern))
+        for match in sorted(matches):
+            if not match.is_file():
+                continue  # pragma: no cover
+            resolved = match.resolve()
+            if resolved in seen_paths:
+                continue
+            # Skip hidden dirs and excluded dirs
+            rel = match.relative_to(repo_root)
+            parts = rel.parts[:-1]  # directory components only
+            if any(p.startswith(".") or p in _exclude_dirs for p in parts):
+                continue
+            if under_content_rule_dir(repo_root, parts):
+                continue
+            try:
+                content = match.read_text(encoding="utf-8", errors="replace")
+                config_content.append((str(rel), content))
+                seen_paths.add(resolved)
+            except OSError:  # pragma: no cover
+                pass  # pragma: no cover
 
     return config_content, seen_paths
 
@@ -1409,7 +1420,9 @@ def _get_repo_languages(repo_root: Path) -> set[str]:
                     if len(languages) > 10:  # pragma: no cover - early exit
                         break
         else:  # pragma: no cover - only without global FileIndex
-            for item in repo_root.rglob("*"):
+            # sorted: the >10 early exit makes WHICH languages are detected
+            # depend on visit order, and rglob yields filesystem order
+            for item in sorted(repo_root.rglob("*")):
                 if item.is_file():
                     ext = item.suffix.lower()
                     if ext in ext_to_lang:
@@ -1476,9 +1489,10 @@ def _discover_config_files_embedding(
     if not relevant_configs:  # pragma: no cover
         relevant_configs = set(CONFIG_FILES)
 
-    # Get base names (strip glob patterns)
+    # Get base names (strip glob patterns). sorted: relevant_configs is a set,
+    # and every order-dependent step below must not see str-hash order.
     known_names = []
-    for name in relevant_configs:
+    for name in sorted(relevant_configs):
         if "*" in name:  # pragma: no cover - glob patterns
             # For patterns like "*.csproj", use the extension as semantic hint
             known_names.append(name.replace("*", "config"))
@@ -1493,7 +1507,9 @@ def _discover_config_files_embedding(
         if file_index is not None and file_index.repo_root == repo_root:
             all_items = file_index.all_files()
         else:
-            all_items = [f for f in repo_root.rglob("*") if f.is_file()]
+            # sorted like FileIndex.all_files(): candidate order feeds the
+            # max_candidates truncation's tie-break
+            all_items = sorted(f for f in repo_root.rglob("*") if f.is_file())
         for item in all_items:
             # Skip hidden directories and common non-config paths
             parts = item.relative_to(repo_root).parts
@@ -1632,7 +1648,7 @@ def _collect_config_content_with_discovery(
             for subdir in CONFIG_SUBDIRS:
                 search_dir = repo_root / subdir if subdir else repo_root
                 if search_dir.exists():
-                    for match in search_dir.glob(config_name):
+                    for match in sorted(search_dir.glob(config_name)):
                         resolved = match.resolve()
                         if match.is_file() and resolved not in seen_paths:
                             try:
@@ -1646,11 +1662,16 @@ def _collect_config_content_with_discovery(
     if not use_discovery:
         return config_content  # pragma: no cover - discovery disabled
 
-    # Discover additional config files using embeddings
+    # Discover additional config files using embeddings. sorted: a set, and
+    # appended order decides which files survive the downstream file cap
+    # (INV-rikor). seen_paths holds RESOLVED paths, so compare resolved — the
+    # unresolved path never matched under a relative or symlinked repo_root,
+    # and a manifest already collected was appended a second time.
     discovered = _discover_config_files_embedding(repo_root)
 
-    for path in discovered:  # pragma: no cover - discovery integration
-        if path in seen_paths:
+    for path in sorted(discovered):  # pragma: no cover - discovery integration
+        resolved = path.resolve()
+        if resolved in seen_paths:
             continue
         try:
             rel_path = path.relative_to(repo_root)
@@ -1658,7 +1679,7 @@ def _collect_config_content_with_discovery(
                 continue
             content = path.read_text(encoding="utf-8", errors="replace")
             config_content.append((str(rel_path), content))
-            seen_paths.add(path)
+            seen_paths.add(resolved)
         except OSError:
             pass
 
@@ -1929,7 +1950,7 @@ def _extract_config_embedding(
     total_files = min(len(config_content), max_config_files)
 
     for source, content in config_content:
-        if processed_files >= max_config_files:  # pragma: no cover
+        if processed_files >= max_config_files:
             break
 
         # Skip files in excluded directories or with excluded filenames

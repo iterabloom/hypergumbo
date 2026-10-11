@@ -655,44 +655,6 @@ def _decode_probe_embeddings(b64_data: str, num_probes: int) -> "np.ndarray":
     return arr.astype(np.float32)
 
 
-def _get_repo_languages(repo_root: Path) -> set[str]:
-    """Detect languages in a repo by scanning for common file extensions."""
-    ext_to_lang = {
-        ".py": "python", ".js": "javascript", ".ts": "typescript",
-        ".go": "go", ".rs": "rust", ".java": "java", ".kt": "kotlin",
-        ".scala": "scala", ".rb": "ruby", ".php": "php",
-        ".ex": "elixir", ".exs": "elixir", ".erl": "erlang",
-        ".hs": "haskell", ".swift": "swift", ".cs": "csharp",
-        ".fs": "fsharp", ".c": "c", ".cpp": "cpp", ".cc": "cpp",
-        ".ml": "ocaml", ".clj": "clojure", ".zig": "zig",
-        ".nim": "nim", ".dart": "dart", ".jl": "julia",
-        ".groovy": "groovy",
-        ".tla": "tlaplus",
-    }
-    languages: set[str] = set()
-    try:
-        from hypergumbo_core.discovery import get_file_index
-        file_index = get_file_index()
-        if file_index is not None and file_index.repo_root == repo_root:
-            for item in file_index.all_files():
-                ext = item.suffix.lower()
-                if ext in ext_to_lang:
-                    languages.add(ext_to_lang[ext])
-                    if len(languages) > 10:
-                        break
-        else:
-            for item in repo_root.rglob("*"):
-                if item.is_file():
-                    ext = item.suffix.lower()
-                    if ext in ext_to_lang:
-                        languages.add(ext_to_lang[ext])
-                        if len(languages) > 10:
-                            break
-    except OSError:
-        pass
-    return languages if languages else {"_common"}
-
-
 # Probe patterns for README description extraction
 # These are mission statements from well-known open source projects
 # Used to identify lines that describe what a project does
