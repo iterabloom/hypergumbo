@@ -1791,7 +1791,7 @@ class TestTagIoBoundaries:
         # emits "python:external:0-0:replace:unresolved" for any unresolved
         # `something.replace(...)` call (40+ such edges in hypergumbo's own
         # 2026-04-23 self-analysis came from string normalization in
-        # linkers, e.g. linkers/dependency.py:49 'name.replace("-", "_")').
+        # linkers, e.g. linkers/dependency.py:69 'name.replace("-", "_")').
         # `replace` must be in python.yaml#ambiguous_names so the matcher
         # refuses to fall back to the short-name match when there's no
         # discriminating module context — same discipline that `read`,

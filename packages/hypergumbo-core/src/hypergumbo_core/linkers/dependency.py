@@ -24,15 +24,14 @@ How It Works
 
 Requirement diagnostics
 -----------------------
-The ``import_edges`` requirement counts only Rust/Python import edges, minus
-Rust toolchain roots (``std``, ``core``, ...) and Python stdlib modules, so the
-partial-requirement warning names the manifests this linker actually reads
-(Cargo.toml, pyproject.toml) and stays silent on repos whose imports are in
-other languages. Resolved first-party Python imports (a dst such as
-``python:src/pkg/b.py:1-1:file:file``) are not excluded and are counted too,
-so a Python repo whose modules import each other can trip the warning with no
-third-party import at all; the warning text still calls the count
-"third-party". Mix, npm, go.mod and
+The ``import_edges`` requirement counts only what step 3 can use --
+third-party Rust/Python imports -- so the partial-requirement warning names
+the manifests this linker actually reads (Cargo.toml, pyproject.toml) and stays
+silent on repos whose imports are in other languages or only in their own code.
+Excluded: Rust toolchain roots (``std``, ``core``, ...), catalogued Python
+stdlib modules, imports the analyzer resolved to an in-repo symbol (a dst such
+as ``python:src/pkg/b.py:1-1:file:file``), and Rust imports of the crate's own
+modules or own package name (see ``_count_import_edges``). Mix, npm, go.mod and
 Gradle/Maven declarations reach boundary nodes through ``DependencyManifest``
 (``supply_chain``), not through this linker (WI-juzaj).
 
@@ -277,9 +276,48 @@ def _count_toml_dependencies(ctx: LinkerContext) -> int:
 #: no Cargo.toml ever declares them, so they can never be linked.
 _RUST_NON_DEPENDENCY_ROOTS = frozenset({"std", "core", "alloc", "crate", "self", "super"})
 
+#: Rust file stems that name a crate root (``main``/``lib``), a directory
+#: module's body (``mod``) or a build script, never a module of that name.
+_RUST_NON_MODULE_STEMS = frozenset({"main", "lib", "mod", "build"})
+
+
+def _rust_first_party_roots(ctx: LinkerContext) -> set[str]:
+    """Names a Rust ``use`` path can start with and still mean this repo's code.
+
+    Rust import dsts are never resolved to in-repo ids (the analyzer emits
+    ``rust:util::helper:0-0:module:module`` for every ``use``), so unlike
+    Python there is no resolution verdict to read and the name is the only
+    evidence. Two sources, both from symbols the analysis already holds:
+
+    - module names: the stem of every analyzed ``.rs`` file (``src/util.rs``
+      -> ``util``) and the directory of every ``mod.rs`` (``src/net/mod.rs``
+      -> ``net``), which a 2018-edition ``use util::helper`` beside
+      ``mod util;`` names;
+    - the crate's own published name: every Cargo.toml ``[package]`` name,
+      hyphens folded (``my-crate`` -> ``my_crate``), which a ``tests/`` or
+      ``src/bin/`` file imports the library by.
+
+    Over-matching only lowers a diagnostic count; a crate that really depends
+    on a crate sharing a local module's name cannot spell that import with a
+    bare root anyway (rustc rejects the ambiguity unless it is written
+    ``::name``, which yields no root here).
+    """
+    roots: set[str] = set()
+    for s in ctx.symbols:
+        if s.language == "rust" and s.kind == "file" and s.path.endswith(".rs"):
+            parts = s.path[:-3].split("/")
+            if parts[-1] == "mod" and len(parts) > 1:
+                roots.add(parts[-2])
+            elif parts[-1] not in _RUST_NON_MODULE_STEMS:
+                roots.add(parts[-1])
+        elif (s.language == "toml" and s.kind == "package"
+              and s.path.rsplit("/", 1)[-1] == "Cargo.toml"):
+            roots.add(_normalize_crate_name(s.name))
+    return roots
+
 
 def _count_import_edges(ctx: LinkerContext) -> int:
-    """Count the import edges this linker could link to a manifest entry.
+    """Count the third-party import edges this linker could link to a manifest.
 
     Only Rust and Python imports are read by :func:`link_dependencies`
     (``_extract_root_package`` returns None for every other language), and a
@@ -289,21 +327,36 @@ def _count_import_edges(ctx: LinkerContext) -> int:
     but 0 TOML dependency declarations" on a Phoenix app whose imports are
     Elixir and JavaScript, whose mix.exs / package.json this linker never
     reads (WI-juzaj). The stdlib test is the single-source python catalog
-    (ADR-0041 §3). Resolved first-party Python imports are not filtered out,
-    so they are counted as well.
+    (ADR-0041 §3).
+
+    First-party imports are not counted either: no manifest declares the repo's
+    own code. An edge whose dst is an in-repo symbol id is first-party by the
+    ADR-0037 definition of resolution -- the same ``dst in symbol ids`` test the
+    finalize boundary step uses, read directly because ``Edge.is_resolved`` is
+    still the producer's advisory default (True) when linkers run. That is how
+    the Python analyzer reports ``from pkg import b``; counting it made a repo
+    whose modules import each other warn about missing pyproject dependencies
+    with no third-party import at all (INV-nuraf). Rust imports never resolve,
+    so their first-party test is by name (:func:`_rust_first_party_roots`).
     """
     from ..io_boundary import load_catalog
 
     python_catalog = load_catalog("python")
+    in_repo_ids = {s.id for s in ctx.symbols}
+    rust_first_party: set[str] | None = None
     count = 0
     for e in ctx.edges:
-        if e.edge_type != "imports":
+        if e.edge_type != "imports" or e.dst in in_repo_ids:
             continue
         root = _extract_root_package(e.dst)
         if not root:
             continue
         if e.dst.startswith("rust:"):
-            if root not in _RUST_NON_DEPENDENCY_ROOTS:
+            if root in _RUST_NON_DEPENDENCY_ROOTS:
+                continue
+            if rust_first_party is None:
+                rust_first_party = _rust_first_party_roots(ctx)
+            if root not in rust_first_party:
                 count += 1
         elif not python_catalog.is_stdlib_module(root):
             count += 1
@@ -318,9 +371,8 @@ DEPENDENCY_REQUIREMENTS = [
     ),
     LinkerRequirement(
         name="import_edges",
-        # User-visible in the warning text. The count is non-stdlib Rust/Python
-        # import edges, resolved first-party Python imports included (see
-        # _count_import_edges), so "third-party" overstates what it measures.
+        # User-visible in the warning text; see _count_import_edges for what
+        # is excluded (stdlib/toolchain and first-party imports).
         description="third-party Rust/Python import edges",
         check=_count_import_edges,
     ),
