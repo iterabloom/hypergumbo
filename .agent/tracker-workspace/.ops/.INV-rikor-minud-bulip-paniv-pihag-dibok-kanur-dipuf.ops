@@ -1,0 +1,25 @@
+- op: create  # 9123
+  at: '2026-10-11T04:27:07Z'  # 9123
+  by: agent  # 9123
+  actor: jgstern_agent  # 9123
+  clock: 1  # 9123
+  nonce: '9123'  # 9123
+  data:  # 9123
+    kind: invariant  # 9123
+    title: "sketch: embedding/hybrid config extraction (the CLI default) still depends on string-hash order — WI-vosag fixed only the heuristic path"  # 9123
+    status: violated  # 9123
+    priority: 2  # 9123
+    parent:  # 9123
+    tags:  # 9123
+    - sketch  # 9123
+    - determinism  # 9123
+    - embeddings  # 9123
+    - docstring_audit  # 9123
+    isbefore: []  # 9123
+    duplicate_of: []  # 9123
+    not_duplicate_of: []  # 9123
+    pr_ref:  # 9123
+    description: "Repro: _extract_config_embedding on a 32-manifest fixture under PYTHONHASHSEED 0/1/2 -> three different output digests and file sets. The heuristic path sorts (sketch.py ~1253); the embedding path does not. Same defect class as WI-vosag (PR #1509), whose fix missed this path. Fix: sort every set/frozenset/glob iteration feeding the candidate list; add a seed-varying determinism test that exercises the cap.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 9123
+    fields:  # 9123
+      statement: "The same repository produces the same sketch Configuration section on every run, independent of PYTHONHASHSEED."  # 9123
+      root_cause: "_collect_config_content iterates the frozenset _MONOREPO_MANIFEST_NAMES and an unsorted glob (sketch.py ~1355-1357), and a `discovered` set loop (~1646) adds more hash order; the 15-file cap (~1926, `# pragma: no cover`) keeps the first 15 that yield chunks and the first-pass cross-file dedup (~2062-2070) keeps whichever near-duplicate comes first. The final sort (~2171) only orders survivors."  # 9123

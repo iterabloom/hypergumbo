@@ -1,0 +1,26 @@
+- op: create  # 381e
+  at: '2026-10-11T04:27:01Z'  # 381e
+  by: agent  # 381e
+  actor: jgstern_agent  # 381e
+  clock: 1  # 381e
+  nonce: 381e  # 381e
+  data:  # 381e
+    kind: invariant  # 381e
+    title: "verify-claims: a community overlay passed by --io-primitives or a claims file is listed as an APPLIED completeness grant although the load withholds it"  # 381e
+    status: violated  # 381e
+    priority: 2  # 381e
+    parent:  # 381e
+    tags:  # 381e
+    - verify_claims  # 381e
+    - io_boundary  # 381e
+    - catalogue_tiers  # 381e
+    - disclosure  # 381e
+    - docstring_audit  # 381e
+    isbefore: []  # 381e
+    duplicate_of: []  # 381e
+    not_duplicate_of: []  # 381e
+    pr_ref:  # 381e
+    description: "Repro: a python overlay with `provenance: community` and a complete module_completeness grant for telnetlib, passed with origin cli or claims_file: catalog_provenance puts telnetlib in completeness_grants (withheld empty) and the text renderer prints 'COMPLETENESS GRANTS ... counts as an EXAMINED negative ... python: telnetlib from comm.yaml [CLI flag]'. With origin config it is withheld. load_catalog(...).module_completeness does not contain telnetlib, so the VERDICT is unaffected; the disclosure is false. The module docstring was reworded to describe the current behaviour in the 2026-10-10 audit PR; revert that wording when fixed.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 381e
+    fields:  # 381e
+      statement: "catalog_provenance lists every module_completeness grant from a `provenance: community` file under withheld_completeness_grants, whatever path loaded the file (ADR-0061)."  # 381e
+      root_cause: "catalog_provenance skips the community check for origins 'cli' and 'claims_file' (verify_claims.py ~2367-2369: `if origin in (\"cli\", \"claims_file\"): continue`), while io_boundary.load_catalog withholds community grants for every origin."  # 381e
