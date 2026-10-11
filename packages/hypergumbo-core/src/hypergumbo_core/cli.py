@@ -96,8 +96,11 @@ After a survey, ``cmd_run`` evicts stale cache entries
 cache footprint.
 
 ``--backend {tree-sitter,rust-analyzer,scip-python}`` is a global flag.
-``main`` accepts it in any position relative to the subcommand, strips it
-from argv, and resolves it at parse time (``_apply_backend_choice``). A
+``main`` accepts it in any position relative to the subcommand, in both the
+``--backend X`` and ``--backend=X`` forms, strips it from argv
+(``_strip_backend_flag``, which rejects a missing or unknown value with exit
+2, since argparse never sees the stripped flag), and resolves it at parse
+time (``_apply_backend_choice``). A
 backend whose integration package or binary is missing exits with an error
 right there instead of silently falling back to tree-sitter; the resolved
 choice reaches the analyzer registry's backend gate through its environment
@@ -3439,6 +3442,53 @@ def cmd_uninstall_gitleaks(args: argparse.Namespace) -> int:
     return 0 if success else 1
 
 
+BACKEND_CHOICES: tuple[str, ...] = ("tree-sitter", "rust-analyzer", "scip-python")
+"""The values ``--backend`` accepts: the root parser's ``choices=`` and the
+pre-scan's validation read this one tuple, so they cannot drift apart."""
+
+
+def _strip_backend_flag(
+    argv: list[str], parser: argparse.ArgumentParser,
+) -> tuple[list[str], str | None]:
+    """Remove ``--backend X`` / ``--backend=X`` from argv, wherever it sits.
+
+    ``--backend`` is registered on the root parser only, so argparse rejects
+    it after the subcommand. ``main`` strips it here instead, which means
+    argparse never sees the flag and none of its checks run. This function
+    therefore enforces them itself, with argparse's wording, through
+    ``parser.error`` (exit 2):
+
+    * a missing value (``--backend`` as the last token, or followed by
+      another option) is "expected one argument";
+    * a value outside ``BACKEND_CHOICES`` is "invalid choice".
+
+    Every token is examined, the last one included: the ``=`` form carries
+    its own value. The scan stops at ``--``, after which argparse reads
+    every token as a positional. Returns the remaining argv and the choice,
+    or the argv unchanged and ``None`` when the flag is absent.
+    """
+    for idx, token in enumerate(argv):
+        if token == "--":
+            break
+        if token == "--backend":
+            value = argv[idx + 1] if idx + 1 < len(argv) else None
+            if value is None or value.startswith("-"):
+                parser.error("argument --backend: expected one argument")
+            rest = argv[:idx] + argv[idx + 2:]
+        elif token.startswith("--backend="):
+            value = token.split("=", 1)[1]
+            rest = argv[:idx] + argv[idx + 1:]
+        else:
+            continue
+        if value not in BACKEND_CHOICES:
+            parser.error(
+                f"argument --backend: invalid choice: {value!r} (choose from "
+                f"{', '.join(BACKEND_CHOICES)})"
+            )
+        return rest, value
+    return argv, None
+
+
 def _apply_backend_choice(choice: str) -> None:
     """Resolve ``--backend <choice>`` and record it for the backend gate.
 
@@ -3463,7 +3513,8 @@ def _apply_backend_choice(choice: str) -> None:
       Never write a config-sourced decision here: it would shadow the
       environment it is supposed to lose to.
 
-    An unrecognised choice writes nothing and is left for argparse to reject.
+    An unrecognised choice writes nothing. ``main`` never passes one: its
+    pre-scan (``_strip_backend_flag``) rejects it with exit 2 first.
     """
     decision = resolve_rust_analyzer_optin(flag_choice=choice, environ={})
     if decision is True:
@@ -9698,7 +9749,7 @@ For help on ALL commands:   hypergumbo --help --all"""
     )
     p.add_argument(
         "--backend",
-        choices=["tree-sitter", "rust-analyzer", "scip-python"],
+        choices=list(BACKEND_CHOICES),
         default=None,
         help=(
             "Select an opt-in analysis backend for this run. 'rust-analyzer' "
@@ -13176,15 +13227,9 @@ def main(argv=None) -> int:
     # clear error here rather than at first-engagement so the user's
     # mental model ("--backend rust-analyzer ran, so the SCIP backend
     # ran") is corrected immediately at parse time.
-    for idx in range(len(argv) - 1):
-        if argv[idx] == "--backend":
-            _apply_backend_choice(argv[idx + 1])
-            argv = argv[:idx] + argv[idx + 2:]
-            break
-        if argv[idx].startswith("--backend="):
-            _apply_backend_choice(argv[idx].split("=", 1)[1])
-            argv = argv[:idx] + argv[idx + 1:]
-            break
+    argv, backend_choice = _strip_backend_flag(argv, parser)
+    if backend_choice is not None:
+        _apply_backend_choice(backend_choice)
 
     # WI-balij (UAT UX-03): if the first positional doesn't name a known
     # subcommand AND clearly isn't a path (no path separators, no leading
