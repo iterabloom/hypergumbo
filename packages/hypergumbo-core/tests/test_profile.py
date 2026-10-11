@@ -5009,3 +5009,79 @@ def test_all_mode_frameworks_are_sorted(tmp_path: Path) -> None:
     profile = detect_profile(tmp_path, frameworks="all")
     assert len(profile.frameworks) > 1
     assert profile.frameworks == sorted(profile.frameworks)
+
+
+def _write_two_ecosystem_repo(root: Path) -> None:
+    """A repo where hardhat (JS + Solidity) and ktor (Kotlin + Java/Gradle) are
+    each detected by two ecosystem scanners (INV-vapov's filed repro)."""
+    (root / "package.json").write_text(
+        '{"name": "x", "dependencies": {"hardhat": "^2.0.0", "ethers": "^6.0.0"}}'
+    )
+    (root / "hardhat.config.js").write_text("module.exports = {};\n")
+    (root / "build.gradle.kts").write_text(
+        'dependencies { implementation("io.ktor:ktor-server-core:2.3.0") }\n'
+    )
+    (root / "App.kt").write_text("fun main() {}\n")
+    (root / "src").mkdir()
+    (root / "src" / "index.js").write_text("const x = 1;\n")
+
+
+def test_framework_detected_by_two_ecosystems_listed_once(tmp_path: Path) -> None:
+    """INV-vapov: ``_detect_frameworks`` concatenates per-ecosystem results, so a
+    name two scanners both detect (hardhat: JS + Solidity; ktor: Kotlin + Gradle)
+    appeared twice in ``profile.frameworks`` and in survey.json."""
+    from hypergumbo_core.profile import detect_profile
+
+    _write_two_ecosystem_repo(tmp_path)
+    profile = detect_profile(tmp_path)
+    assert profile.frameworks == ["ethers", "hardhat", "ktor"]
+    assert profile.to_dict()["frameworks"] == ["ethers", "hardhat", "ktor"]
+
+
+def test_explicit_frameworks_repeated_on_the_command_line_listed_once(tmp_path: Path) -> None:
+    """INV-vapov analogue: ``--frameworks flask,flask`` echoed both copies into
+    ``frameworks`` and ``requested_frameworks``."""
+    from hypergumbo_core.profile import detect_profile
+
+    (tmp_path / "app.py").write_text("x = 1\n")
+    d = detect_profile(tmp_path, frameworks="flask,celery,flask").to_dict()
+    assert d["frameworks"] == ["celery", "flask"]
+    assert d["requested_frameworks"] == ["celery", "flask"]
+
+
+def test_repo_profile_guarantees_unique_disjoint_framework_lists() -> None:
+    """INV-vapov: RepoProfile is the one place that guarantees each framework is
+    listed once, in sorted order, whatever producer built it (manifest scan,
+    explicit list, refine, cached ``from_dict``). A framework confirmed for prod
+    is not also listed as dev, and ``framework_evidence`` only keys frameworks
+    the profile lists."""
+    from hypergumbo_core.profile import RepoProfile
+
+    profile = RepoProfile.from_dict({
+        "frameworks": ["ktor", "hardhat", "ktor", "hardhat"],
+        "dev_frameworks": ["pytest", "hardhat", "pytest"],
+        "framework_mode": "explicit",
+        "requested_frameworks": ["ktor", "hardhat", "ktor"],
+        "framework_evidence": {"ktor": ["b", "a", "b"], "flask": ["c"]},
+    })
+    assert profile.frameworks == ["hardhat", "ktor"]
+    assert profile.dev_frameworks == ["pytest"]
+    assert profile.requested_frameworks == ["hardhat", "ktor"]
+    assert profile.framework_evidence == {"ktor": ["a", "b"]}
+
+
+def test_refine_frameworks_output_unique_and_evidence_consistent() -> None:
+    """INV-vapov: refine over a duplicated input list yields each framework once,
+    and every ``framework_evidence`` key is a listed (confirmed) framework."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    src_id = "python:src/app.py:1-5:handler:function"
+    profile = _make_profile(["flask", "pytest", "flask", "pytest"])
+    edges = [_make_edge(src=src_id, dst="python:flask:0-0:module:module")]
+    symbols = [_make_symbol(src_id, "src/app.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert result.frameworks == ["flask"]
+    assert result.dev_frameworks == ["pytest"]
+    assert set(result.framework_evidence) <= set(result.frameworks)
+    assert result.framework_evidence == {"flask": [src_id]}

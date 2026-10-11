@@ -7916,6 +7916,27 @@ class TestCachedResults:
         assert "django" in sketch.lower() or "Django" in sketch
         assert "celery" in sketch.lower() or "Celery" in sketch
 
+    def test_frameworks_section_lists_each_framework_once(self, tmp_path: Path) -> None:
+        """INV-vapov: a framework two ecosystems detect (hardhat: JS + Solidity;
+        ktor: Kotlin + Gradle) appeared twice in the sketch's Frameworks section."""
+        (tmp_path / "package.json").write_text(
+            '{"name": "x", "dependencies": {"hardhat": "^2.0.0", "ethers": "^6.0.0"}}'
+        )
+        (tmp_path / "hardhat.config.js").write_text("module.exports = {};\n")
+        (tmp_path / "build.gradle.kts").write_text(
+            'dependencies { implementation("io.ktor:ktor-server-core:2.3.0") }\n'
+        )
+        (tmp_path / "App.kt").write_text("fun main() {}\n")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "index.js").write_text("const x = 1;\n")
+
+        sketch = generate_sketch(tmp_path)
+
+        section = sketch.split("## Frameworks", 1)[1].split("\n## ", 1)[0]
+        items = [ln[2:].split(" ")[0] for ln in section.splitlines() if ln.startswith("- ")]
+        assert items, section
+        assert len(items) == len(set(items)), section
+
     def test_uses_cached_sketch_precomputed_config(self, tmp_path: Path) -> None:
         """Sketch uses config_info from sketch_precomputed when available."""
         # Create a minimal repo with a config file

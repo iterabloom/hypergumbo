@@ -56,6 +56,9 @@ only later, by ``refine_frameworks``, which promotes/demotes frameworks:
   (Rails) are exempt: they load at boot without an explicit import.
 - The prod importer node ids of each confirmed framework are kept in
   ``RepoProfile.framework_evidence`` as provenance.
+``RepoProfile`` itself lists each framework once, sorted, whichever path
+produced it: the ecosystem scanners overlap (hardhat is both a JS and a
+Solidity framework), so the raw scan can name one framework twice.
 ``IMPORT_OVERRIDES`` translates manifest names that differ from their
 import module (``scikit-learn`` imports as ``sklearn``).
 
@@ -821,7 +824,23 @@ class LanguageStats:
 
 @dataclass
 class RepoProfile:
-    """Profile of a repository's languages and frameworks."""
+    """Profile of a repository's languages and frameworks.
+
+    The framework fields are normalised once, here, in ``__post_init__``
+    (INV-vapov), so every producer gets the same guarantee: the AUTO manifest
+    scan (which concatenates per-ecosystem results, so a name two scanners
+    detect, such as hardhat from JS and Solidity, arrives twice), an EXPLICIT
+    ``--frameworks`` list a user typed with a repeat, ``refine_frameworks``,
+    and a cached ``from_dict`` written before this rule existed:
+
+    - ``frameworks``, ``dev_frameworks`` and ``requested_frameworks`` each list
+      a name at most once, sorted (the order ``to_dict`` already emitted).
+    - ``dev_frameworks`` excludes anything in ``frameworks``: a framework
+      confirmed for prod is not also dev-only (``refine_frameworks`` sends each
+      name to one side; a cached or hand-built profile may not).
+    - ``framework_evidence`` keys only names in ``frameworks`` (its contract is
+      provenance for confirmed frameworks), each with a sorted, unique node list.
+    """
 
     languages: dict[str, LanguageStats] = field(default_factory=dict)
     frameworks: list[str] = field(default_factory=list)
@@ -836,6 +855,19 @@ class RepoProfile:
     # JS lib on a repo with unavailable JS/TS extraction) is absent here, not
     # keyed to an empty list — "evidence where the graph supports it".
     framework_evidence: dict[str, list[str]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # INV-vapov: the single place that guarantees unique, sorted,
+        # mutually consistent framework fields (see the class docstring).
+        self.frameworks = sorted(set(self.frameworks))
+        prod = set(self.frameworks)
+        self.dev_frameworks = sorted(set(self.dev_frameworks) - prod)
+        self.requested_frameworks = sorted(set(self.requested_frameworks))
+        self.framework_evidence = {
+            fw: sorted(set(nodes))
+            for fw, nodes in sorted(self.framework_evidence.items())
+            if fw in prod
+        }
 
     def to_dict(self) -> dict[str, Any]:
         result = {
@@ -3086,7 +3118,10 @@ def _detect_frameworks(repo_root: Path) -> list[str]:
         repo_root: Path to the repository root.
 
     Returns:
-        List of detected framework names.
+        Detected framework names, in scanner order. A name several ecosystem
+        scanners detect (hardhat from JS and Solidity, ktor from Kotlin and
+        Gradle) appears once per scanner; ``RepoProfile`` collapses the
+        repeats, so callers build a profile rather than emit this list.
     """
     frameworks: list[str] = []
     frameworks.extend(_detect_python_frameworks(repo_root))
