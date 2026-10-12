@@ -1,0 +1,37 @@
+Original commit body from 16651c9f23d74cad15a561038c8258cb67991a1f:
+
+dist, build, _build, out, target, site, _site and the coverage-report
+directory names were bare DEFAULT_EXCLUDES entries matched at any depth,
+so every source directory sharing a name with some tool's output was
+dropped silently: plausible's lib/plausible/site/ (28 Elixir files),
+qemu's root target/ (653 C files), next.js's packages/next/src/build,
+grafana's pkg/build, gitlab's lib/gitlab/ci/build and .../coverage.
+Hugo's public/ was the first instance of the same category error.
+
+Apply the structure ADR-0004 already uses for installed dependency
+source: BUILD_OUTPUT_RULES now holds one {name, producing tool} content
+rule per tool -- the tool's manifest beside the directory (Cargo.toml,
+pom.xml, build.sbt -> target/; mix.exs, rebar.config, Sphinx conf.py ->
+_build/; mkdocs.yml and its site_dir -> site/; Jekyll _config.yml ->
+_site/; Gradle -> build/ ...), a declared output (package.json entry
+points, tsconfig outDir, action.yml runs.main), or a marker the tool
+writes into it (CMakeCache.txt, CACHEDIR.TAG, coverage report files, a
+self-ignoring .gitignore ...). Committed output is still output; git is
+used only as supporting evidence for dist/build/out beside a bare
+package.json, and only when positively untracked. A name with no
+evidence is analysed. Pruned output is disclosed on stderr, in the
+sketch and in supply_chain_summary.generated_output_skipped.
+supply_chain's tier-4 test, the derived_skipped scan, the DDG file walk
+and the sketch's config-candidate filter ask the same rules instead of
+matching bare names (the DDG walk also matched absolute path parts).
+
+Measured over the 273-repo local corpus: 354 directories pruned before,
+25 after; the other 329 (5,224 files, 2,796 source) are analysed.
+Survey time plausible 35s -> 35s, clover 71s -> 73s, spring-boot 291s
+-> 303s; nodes +0.9% / +3.7% / +4.3%.
+
+ADR-0004 point 7 amended in place.
+
+Refs INV-hagof-kuzun-havub-zihaz-fudin-rihop-vafaf-dulud
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
