@@ -1,0 +1,41 @@
+Original commit body from 426dd525d54d492a36c36999886d23d37e89cb3a:
+
+Erlang behaviours were modelled only through the OTP_BEHAVIOUR_CALLBACKS
+table: `-callback` declared nothing, and a custom `-behaviour(X)` produced
+one `imports` edge. The Elixir analyzer did not read `@behaviour :atom`
+(an Erlang module) at all.
+
+Erlang now gets the shape WI-vitas gave Elixir:
+- `-callback name(Args) -> T.` (both spellings, multi-clause specs) is a
+  `name/arity` function symbol with modifiers=["abstract"],
+  meta["optional"] when `-optional_callbacks` lists it, kept out of every
+  call lookup and of global_symbols.
+- `-behaviour(X)` emits `implements` module -> every in-repo module X, else
+  `erlang:external:0-0:X:unresolved` (OTP behaviours included, so
+  owner_ancestry sees the library ancestor; the OTP rooting is kept), and
+  each X callback `dispatches_to` the same-name/arity function.
+
+Elixir reads `@behaviour :gen_cycle` (atom, colon stripped, never
+alias-expanded) to an unresolved implements target and roots OTP callbacks
+for `@behaviour :gen_statem`. `use :atom` stays unread (an Erlang module
+cannot define __using__; 0 corpus sites).
+
+New Bridge linker `beam-behaviour-linker` (elixir+erlang) resolves an
+Elixir atom stub to the in-repo Erlang module and links each Erlang
+callback to the Elixir function admitting its arity.
+
+The shared edge shapes and the callback stable_id live in
+hypergumbo_core.behaviours. Callback stable_ids are minted by the
+producer: the backstop floor collided with a same-named function in the
+behaviour module and nulled both (an analogue that also hit Elixir
+@callback; fixed there too).
+
+Erlang joins the interface-dispatch parity column (hard pass).
+
+Measured: cowboy 0 -> 62 implements, 90 callback dispatches; ejabberd
+0 -> 242 implements, 1283 erlang->erlang and 14 erlang->elixir callback
+dispatches; plausible's 3 atom behaviour sites now emit implements.
+
+Refs WI-hidit-rufak-gijun-kibaf-rogus-sodiv-rulut-dizat
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
