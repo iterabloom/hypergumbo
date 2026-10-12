@@ -20,3 +20,18 @@
     pr_ref:  # 7a85
     description: "**Erlang behaviours are modelled only for the OTP table, the sibling of WI-vitas-bovod-tojos-lukin-kutip-jabah-konuj-fatis (Elixir).** Repro (erlang analyzer, dev @ 4dfb1d645a, 2026-10-01):\n\n    %% shape.erl\n    -module(shape).\n    -callback area() -> integer().\n    %% square.erl\n    -module(square).\n    -behaviour(shape).\n    -export([area/0]).\n    area() -> 1.\n\nEmitted: `module shape`, `module square`, `function area/0`, files, and ONE edge `imports square.erl -> erlang:shape:0-0:module:module` (evidence `behaviour`). Absent:\n1. `-callback area() -> integer().` produces no symbol, so a custom behaviour's required function does not exist;\n2. `-behaviour(shape)` produces no module -> behaviour type relationship (`implements`), and no callback -> implementation `dispatches_to`. `_extract_behaviour_callback_edges` acts only for OTP_BEHAVIOUR_CALLBACKS keys (gen_server etc.), as module -> callback `dispatches_to`.\n\nThe Elixir side now emits a `@callback` symbol (kind function/macro, `modifiers=[\"abstract\"]`, kept out of call resolution), `implements` module -> behaviour (in-repo module, else `elixir:external:0-0:<B>:unresolved`), and callback -> implementation `dispatches_to` (evidence `behaviour_callback`); see that item's branch. Erlang should get the same shape. Note Erlang function names carry arity (`area/0`), so the callback can match by name/arity exactly, which Elixir cannot.\n\nRelated, Elixir-side: `@behaviour :gen_cycle` (an Erlang module as an atom) is not read by the Elixir analyzer at all: plausible 3 sites (`:gen_cycle` x2, `:otel_sampler`), livebook 1. Not on the parity column: erlang is not in `test_interface_dispatch_parity.py` CASES."  # 7a85
     fields: {}  # 7a85
+- op: update  # 2c4e
+  at: '2026-10-12T15:37:42Z'  # 2c4e
+  by: agent  # 2c4e
+  actor: jgstern_agent  # 2c4e
+  clock: 2  # 2c4e
+  nonce: 2c4e  # 2c4e
+  set:  # 2c4e
+    status: done  # 2c4e
+- op: discuss  # 7880
+  at: '2026-10-12T15:37:42Z'  # 7880
+  by: agent  # 7880
+  actor: jgstern_agent  # 7880
+  clock: 3  # 7880
+  nonce: '7880'  # 7880
+  message: "Fixed in PR #1555 (198d765995). Root cause: Erlang modelled behaviours only via OTP_BEHAVIOUR_CALLBACKS; -callback minted no symbol, -behaviour emitted only an imports edge; Elixir _behaviour_directives read only alias arguments. Fix: -callback -> name/arity function symbol (abstract, meta.optional from -optional_callbacks, producer-minted stable_id, excluded from call lookup); -behaviour(X) -> implements to every in-repo module X else erlang:external:0-0:X:unresolved (OTP included, rooting kept) + callback->impl dispatches_to by exact name/arity; Elixir reads @behaviour :atom (unresolved target, OTP rooting for :gen_statem); new Bridge linker beam-behaviour-linker resolves an Elixir atom stub to the in-repo Erlang module + callback dispatch by arity; shared shape in hypergumbo_core.behaviours; erlang added to test_interface_dispatch_parity (hard pass). Evidence: hypergumbo run on the filed shape.erl/square.erl repro -> symbol shape.erl area/0 [abstract] stable_id sha256:ac178f403ce058af; implements square.erl:square -> shape.erl:shape (ast_implements); dispatches_to shape.erl:area/0 -> square.erl:area/0 (behaviour_callback). Corpus: cowboy implements 0->62, callback dispatches 0->90; ejabberd implements 0->242, 1283 erlang->erlang and 14 erlang->elixir callback dispatches (Ejabberd.Auth.Example -> src/ejabberd_auth.erl); plausible's 3 @behaviour :gen_cycle/:otel_sampler sites now emit implements (132->135). Analogue fixed: Elixir @callback beside a same-named def nulled both stable_ids (floor collision)."  # 7880

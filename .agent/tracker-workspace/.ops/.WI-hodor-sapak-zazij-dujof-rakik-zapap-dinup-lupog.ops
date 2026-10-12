@@ -1,0 +1,21 @@
+- op: create  # 9e12
+  at: '2026-10-12T15:38:24Z'  # 9e12
+  by: agent  # 9e12
+  actor: jgstern_agent  # 9e12
+  clock: 1  # 9e12
+  nonce: '9e12'  # 9e12
+  data:  # 9e12
+    kind: work_item  # 9e12
+    title: "erlang: -behaviour(X) imports edge targets the placeholder erlang:X:0-0:module:module even when module X is in the repo"  # 9e12
+    status: todo_hard  # 9e12
+    priority: 4  # 9e12
+    parent:  # 9e12
+    tags:  # 9e12
+    - erlang  # 9e12
+    - analyzer  # 9e12
+    isbefore: []  # 9e12
+    duplicate_of: []  # 9e12
+    not_duplicate_of: []  # 9e12
+    pr_ref:  # 9e12
+    description: "Reported by the WI-hidit fix agent (PR #1555, 2026-10-12); not independently reproduced. The imports edge emitted for -behaviour(X) points at a synthesized placeholder id rather than the in-repo module symbol; left unchanged because the dependency linker parses that placeholder format. The new implements edge does resolve to the in-repo module, so the type relationship is correct; this is only the imports edge. Fix direction: resolve to the in-repo module when present and teach the dependency linker the resolved form, or document why the placeholder is the contract."  # 9e12
+    fields: {}  # 9e12

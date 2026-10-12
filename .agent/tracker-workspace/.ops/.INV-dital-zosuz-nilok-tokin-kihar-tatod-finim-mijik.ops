@@ -1,0 +1,23 @@
+- op: create  # 6e9f
+  at: '2026-10-12T15:38:36Z'  # 6e9f
+  by: agent  # 6e9f
+  actor: jgstern_agent  # 6e9f
+  clock: 1  # 6e9f
+  nonce: 6e9f  # 6e9f
+  data:  # 6e9f
+    kind: invariant  # 6e9f
+    title: "elixir: behaviour callback -> implementation matching ignores arity (a @callback f/1 dispatches_to every same-named def f regardless of arity)"  # 6e9f
+    status: violated  # 6e9f
+    priority: 3  # 6e9f
+    parent:  # 6e9f
+    tags:  # 6e9f
+    - elixir  # 6e9f
+    - analyzer  # 6e9f
+    isbefore: []  # 6e9f
+    duplicate_of: []  # 6e9f
+    not_duplicate_of: []  # 6e9f
+    pr_ref:  # 6e9f
+    description: "Reported by the WI-hidit fix agent (PR #1555, 2026-10-12); not independently reproduced yet. Erlang callbacks now match implementations exactly by name/arity (hypergumbo_core/behaviours.py); Elixir's path matches by name only, so a module defining f/1 and f/2 gets an edge from @callback f(term) to both. Consider landing WI-tusad's shared arity helper first and using it here. Repro to write: @callback f(term) in B; defmodule M do @behaviour B; def f(a); def f(a, b) end -> expect exactly one dispatches_to."  # 6e9f
+    fields:  # 6e9f
+      statement: "An Elixir @callback dispatches_to only implementations of the same name AND arity in the implementing module."  # 6e9f
+      root_cause: "The WI-vitas callback -> implementation path in hypergumbo_lang_common/elixir.py matches by bare name; Elixir def symbols carry no arity the matcher reads (the shared-arity gap named in WI-tusad's 2026-10-12 owner scope). Reported by the WI-hidit fix agent, not yet independently reproduced."  # 6e9f
