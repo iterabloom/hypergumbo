@@ -1,0 +1,26 @@
+Original commit body from 88f9cd3d91c6a5719aafc4708a4acec5f67dc717:
+
+The Phoenix web-module dispatcher (defmacro __using__(which) doing
+apply(__MODULE__, which, [])) puts the quote a user runs in a public
+`def live_view`, not in __using__, so `use AppWeb, :live_view` declared
+no behaviour and rooted no LiveView callback.
+
+- The __using__ index is keyed by template: (module, None) for the
+  __using__ quote, (module, name) for a public def of a dispatcher
+  module (apply(__MODULE__, w, _) with w bound in the head; both
+  __using__(which) and __using__([{which, opts}]) forms). `use M, :name`
+  and `use M, name: opts` read it, followed transitively.
+- Each directive is resolved once and feeds both the implements edges
+  and the framework callback table; the table now skips directives
+  inside quote, so a web module is not rooted as a LiveView by its own
+  quote.
+- Analogue: the table's bare-name fallback rooted a sibling module's
+  same-named function (use GenServer in A -> B.init); lookup is now by
+  qualified name only.
+
+plausible: implements -> LiveView 3 -> 36, LiveComponent 1 -> 25;
+livebook: 0 -> 14 and 0 -> 66. No existing callback root removed.
+
+Refs WI-nunar-vorif-sidal-tonol-safof-gutob-nujag-nazom
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
