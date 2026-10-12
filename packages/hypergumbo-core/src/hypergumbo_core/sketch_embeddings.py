@@ -26,8 +26,9 @@ The module also hosts the per-repo XDG cache layout under
 ``$XDG_CACHE_HOME/hypergumbo/<fingerprint>/`` (``_get_repo_fingerprint``,
 ``_get_xdg_cache_base``): the content-hash-keyed embedding cache
 (``_get_cache_dir``) and the analysis-results cache (``_get_results_cache_dir``),
-keyed by repo state hash, resolved opt-in backend set, trace_deps token and
-analyzer identity. ``cli.py`` and ``sketch.py`` import the results-cache
+keyed by repo state hash, resolved opt-in backend set, trace_deps token,
+digests of the analysis-stage user catalogue channels and the config tiers,
+and analyzer identity. ``cli.py`` and ``sketch.py`` import the results-cache
 helpers from here; they have nothing to do with embeddings.
 
 Degradation contract — TWO failure modes, not one
@@ -1539,7 +1540,17 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     The same segment is suffixed ``-deps-all`` / ``-deps-<hash>`` when
     installed dependency source is traced (``--trace-deps`` or the
     ``trace_deps`` config key; ``discovery.resolve_trace_deps``), so a traced
-    and an untraced survey of one tree never share an entry.
+    and an untraced survey of one tree never share an entry. It is then
+    suffixed ``-cat-<hash>`` with a digest of the user catalogue channels the
+    analysis reads (the registry's analysis-stage families: ``frameworks.d``,
+    ``dataflow_patterns.d``, ``library_signatures.d`` —
+    ``catalogue_home.analysis_channel_token``) and ``-cfg-<hash>`` with a
+    digest of ``config.toml`` and ``.hypergumbo.toml``
+    (``user_config.config_cache_token``). Neither is repository source the
+    state hash sees, and without them a cached survey kept answering after a
+    channel file was added, edited or broken — the broken file never read, so
+    never reported. Each suffix is absent when its files are, so a user with
+    no channel files and no config keeps every existing entry's key.
 
     The fourth segment (``<analyzer_identity>``) keys on the analyzer
     surface that produces the cached output — ``__version__`` plus a
@@ -1548,8 +1559,9 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     installs (or RCT arms, or post-lang-upgrade runs) share a cache
     entry and poison each other's results on the same source tree.
 
-    Results are cached per-(repo, state, analyzer) because they depend
-    on the entire repo contents AND on the specific analyzer running.
+    Results are cached per-(repo, state, run configuration, analyzer)
+    because they depend on the entire repo contents, on the user inputs
+    and settings the analysis reads, AND on the specific analyzer running.
 
     Args:
         repo_root: Repository root path.
@@ -1559,7 +1571,9 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     """
     from . import backend_selection
     from .analyzer_identity import compute_analyzer_identity_hash
+    from .catalogue_home import analysis_channel_token
     from .discovery import resolve_trace_deps
+    from .user_config import config_cache_token
 
     fingerprint = _get_repo_fingerprint(repo_root)
     state_hash = _get_repo_state_hash(repo_root)
@@ -1570,8 +1584,13 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     # source was traced is run configuration too. Suffixed only when something
     # is traced, so every untraced entry keeps its key.
     trace_token = resolve_trace_deps(repo_root).cache_token()
-    if trace_token:
-        state_hash = f"{state_hash}-{trace_token}"
+    # The user files the analysis reads outside the repository's source:
+    # analysis-stage catalogue channels and the two config tiers. Each token
+    # is "" when no such file exists, so those users keep their key.
+    for token in (trace_token, analysis_channel_token(),
+                  config_cache_token(repo_root)):
+        if token:
+            state_hash = f"{state_hash}-{token}"
     analyzer_identity = compute_analyzer_identity_hash()
     cache_base = _get_xdg_cache_base()
     cache_dir = (

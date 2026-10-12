@@ -26,8 +26,10 @@ How it works. ``YAML_CATALOGS`` is the source of truth — one ``CatalogSpec``
 per directory, naming the directory, the loader module that consumes it, the
 governing ADR (optional), and a one-line purpose — plus the ADR-0047 ruling-7
 extensibility fields ``user_channel`` / ``no_channel_reason`` and their
-``channel_scope`` / ``channel_gated`` qualifiers, which declare whether a
-category can be extended from a user's own config directory and, if not, why. ``enumerate_catalogs()`` walks the
+``channel_scope`` / ``channel_gated`` / ``channel_stage`` qualifiers, which
+declare whether a category can be extended from a user's own config directory
+and, if not, why. ``channel_stage`` says whether the survey's analysis reads the
+channel, which is what decides whether the results-cache key must carry it. ``enumerate_catalogs()`` walks the
 package root and pairs each registered spec with its actual ``*.yaml`` file
 count. ``validate_registry()`` returns drift findings — registered directories that
 are absent, on-disk YAML directories not yet registered, ruling-7 declaration
@@ -97,6 +99,18 @@ class CatalogSpec:
             accepting one changes what the tool will CLAIM rather than only
             what it sees. ``function_summaries`` is the live case: a
             terminating user summary IS a sanitizer declaration.
+        channel_stage: WHEN the channel is read, required exactly when
+            ``user_channel`` is set (``validate_registry`` refuses a channel
+            without one). :data:`CHANNEL_STAGE_ANALYSIS` means the survey's
+            analysis reads it, so its contents shape the cached behavior map
+            and are folded into the results-cache key
+            (``catalogue_home.analysis_channel_token``); without that a cached
+            survey keeps answering after the file changes, or breaks.
+            :data:`CHANNEL_STAGE_COMMAND` means a command reads it on every
+            run over the cached graph (``io-boundaries``, ``verify-claims``),
+            so keying the cache on it would only force a needless re-survey.
+            ``test_results_cache_input_key`` pins the declaration against what
+            a survey actually reads.
     """
 
     directory: str
@@ -107,6 +121,14 @@ class CatalogSpec:
     no_channel_reason: Optional[str]
     channel_scope: Optional[str] = None
     channel_gated: Optional[str] = None
+    channel_stage: Optional[str] = None
+
+
+#: ``CatalogSpec.channel_stage`` values: read by the survey's analysis (and so
+#: part of the results-cache key), or by a command over the cached graph.
+CHANNEL_STAGE_ANALYSIS = "analysis"
+CHANNEL_STAGE_COMMAND = "command"
+_CHANNEL_STAGES = (CHANNEL_STAGE_ANALYSIS, CHANNEL_STAGE_COMMAND)
 
 
 YAML_CATALOGS: tuple[CatalogSpec, ...] = (
@@ -119,6 +141,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         # Conventions, including in-house ones — the user's world.
         user_channel="frameworks.d",
         no_channel_reason=None,
+        channel_stage=CHANNEL_STAGE_ANALYSIS,
     ),
     CatalogSpec(
         directory="dataflow_patterns",
@@ -130,6 +153,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         user_channel="dataflow_patterns.d",
         no_channel_reason=None,
         channel_scope="library_patterns",
+        channel_stage=CHANNEL_STAGE_ANALYSIS,
     ),
     CatalogSpec(
         directory="io_primitives",
@@ -140,6 +164,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         # Libraries and their I/O. The channel already exists.
         user_channel="io_primitives.d",
         no_channel_reason=None,
+        channel_stage=CHANNEL_STAGE_COMMAND,
     ),
     CatalogSpec(
         directory="io_primitives_overlays",
@@ -173,6 +198,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         # The user's trust model. The channel already exists.
         user_channel="taint_sources.d",
         no_channel_reason=None,
+        channel_stage=CHANNEL_STAGE_COMMAND,
     ),
     CatalogSpec(
         directory="taint_sanitizers",
@@ -181,6 +207,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         adr="ADR-0017",
         user_channel="taint_sanitizers.d",
         no_channel_reason=None,
+        channel_stage=CHANNEL_STAGE_COMMAND,
     ),
     CatalogSpec(
         directory="taint_sinks",
@@ -195,6 +222,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         # can be that home. (An I/O sink still belongs in io_primitives.d.)
         user_channel="taint_sinks.d",
         no_channel_reason=None,
+        channel_stage=CHANNEL_STAGE_COMMAND,
     ),
     CatalogSpec(
         directory="function_summaries",
@@ -208,6 +236,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         user_channel="function_summaries.d",
         no_channel_reason=None,
         channel_gated="CAVEAT_USER_SUPPLIED_SANITIZER",
+        channel_stage=CHANNEL_STAGE_COMMAND,
     ),
     CatalogSpec(
         directory="url_folding",
@@ -234,6 +263,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         # the shipped catalogue cannot.
         user_channel="library_signatures.d",
         no_channel_reason=None,
+        channel_stage=CHANNEL_STAGE_ANALYSIS,
     ),
 )
 
@@ -358,10 +388,22 @@ def _validate_user_channels(
                 f"must be '{d}.d' — the channel name is derived from the "
                 f"directory so the two cannot drift"
             )
+        if spec.user_channel is not None and spec.channel_stage is None:
+            findings.append(
+                f"catalog '{d}' has a user channel but declares no "
+                f"channel_stage; say whether the analysis or a command reads it"
+            )
+        elif (spec.channel_stage is not None
+              and spec.channel_stage not in _CHANNEL_STAGES):
+            findings.append(
+                f"catalog '{d}' declares channel_stage '{spec.channel_stage}'; "
+                f"it must be one of {', '.join(_CHANNEL_STAGES)}"
+            )
         if spec.user_channel is None:
             for field, value in (
                 ("channel_scope", spec.channel_scope),
                 ("channel_gated", spec.channel_gated),
+                ("channel_stage", spec.channel_stage),
             ):
                 if value is not None:
                     findings.append(

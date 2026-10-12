@@ -255,6 +255,61 @@ def project_config_path(repo_root: Path) -> Path:
     return Path(repo_root) / _PROJECT_CONFIG_BASENAME
 
 
+#: Hashed in place of a file's bytes when it cannot be read, so an unreadable
+#: input still yields a key and not a crash (the run that reads it reports it).
+_UNREADABLE = b"\x00hypergumbo:unreadable-file\x00"
+
+
+def file_digest_token(prefix: str, entries: "list[tuple[str, Path]]") -> str:
+    """``<prefix>-<12 hex>`` over ``(label, sha256(bytes))`` pairs, or ``""``.
+
+    The results-cache key's digest of user files the analysis reads (this
+    module's config tiers, ``catalogue_home``'s analysis-stage channels). The
+    label names the file without its absolute location, so moving a home does
+    not churn the key; the pairs are sorted so listing order cannot either.
+    ``""`` for no files, which leaves the key exactly as it was before any
+    user file existed.
+    """
+    import hashlib
+
+    if not entries:
+        return ""
+    pairs = []
+    for label, path in entries:
+        try:
+            data = path.read_bytes()
+        except OSError:
+            data = _UNREADABLE
+        pairs.append(f"{label}\x00{hashlib.sha256(data).hexdigest()}")
+    digest = hashlib.sha256("\n".join(sorted(pairs)).encode()).hexdigest()
+    return f"{prefix}-{digest[:12]}"
+
+
+def config_cache_token(
+    repo_root: Path, environ: Optional[Mapping[str, str]] = None,
+) -> str:
+    """Results-cache key component for both config tiers' bytes, or ``""``.
+
+    The analysis reads these files (``trace_deps``, the ``[merge]`` arbitration
+    policy, the ``[backends]`` opt-ins), and neither is a source file the repo
+    state hash covers: ``config.toml`` lives outside the repository and
+    ``.hypergumbo.toml`` has no source extension. The WHOLE file is digested
+    rather than the keys known to shape analysis today, so a key added later
+    cannot be forgotten here, and a file the loader refuses moves the key too:
+    the run that reports it at exit 2 is not skipped by a cache hit. The cost
+    is a re-survey after an edit to a command-stage key (``io_primitives``).
+    """
+    entries = [
+        (label, path)
+        for label, path in (
+            ("user", user_config_path(environ=environ)),
+            ("project", project_config_path(repo_root)),
+        )
+        if path.is_file()
+    ]
+    return file_digest_token("cfg", entries)
+
+
 def _flatten(raw: Mapping[str, Any], prefix: str = "") -> Dict[str, Any]:
     """Dotted-key view of a nested TOML table.
 

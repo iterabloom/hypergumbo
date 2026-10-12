@@ -42,6 +42,11 @@ tell "declared extensible" from "wired", and a test pins its contents. The
 seeded README uses it to tell the user which directories are read and which
 are inert.
 
+THE CACHE KEY READS THE SAME LISTING. :func:`analysis_channel_token` digests
+every file in the channels the registry marks analysis-stage
+(``channel_stage``) into the results-cache key, so a cached survey is not
+reused after one of them changes; command-stage channels stay out of the key.
+
 SEEDING DOES NOT VOUCH (ADR-0061 ruling 3). The loader takes a file's tier
 from its ``provenance:`` line, never from its directory, so a community overlay
 seeded here stays community wherever it sits: its rows can add a detection but
@@ -63,12 +68,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional, Sequence
 
-from .user_config import user_config_path
-from .yaml_catalogs import YAML_CATALOGS
+from .user_config import file_digest_token, user_config_path
+from .yaml_catalogs import CHANNEL_STAGE_ANALYSIS, YAML_CATALOGS
 
 __all__ = [
     "WIRED_CHANNELS",
     "MaterializeResult",
+    "analysis_channel_token",
     "channel_directories",
     "materialize_catalogue_home",
     "repo_catalogue_home",
@@ -198,6 +204,37 @@ def user_channel_files(
     if not directory.is_dir():
         return []
     return sorted(directory.glob("*.yaml"))
+
+
+def analysis_channel_token(
+    environ: "Optional[Mapping[str, str]]" = None,
+    home: "Optional[Path]" = None,
+) -> str:
+    """Results-cache key component for the channels the ANALYSIS reads.
+
+    A cached survey answers ``sketch``, ``routes``, ``verify-claims`` and the
+    rest, so a channel the survey's analysis reads must be part of the cache
+    key or an added, edited or broken file in it is never seen: the cache
+    answers and the loader never runs. Which channels those are is the
+    registry's ``channel_stage`` (:data:`CHANNEL_STAGE_ANALYSIS`), not a list
+    kept here, so a family declared analysis-stage is keyed with no edit in
+    this module. Command-stage channels (``io_primitives.d``, the taint
+    channels, ``function_summaries.d``) are read over the cached graph on every
+    run and stay out, so editing a taint model does not force a re-survey.
+
+    The digest is each file's channel-relative name (``frameworks.d/flask.yaml``
+    -- the loaders select a file by its stem, so a rename matters) and the
+    sha256 of its bytes, in sorted order; the home's absolute location is not
+    part of it. ``""`` when no analysis-stage channel holds a file, so a user
+    who has never written one keeps every existing cache entry's key.
+    """
+    entries = [
+        (f"{spec.user_channel}/{path.name}", path)
+        for spec in YAML_CATALOGS
+        if spec.channel_stage == CHANNEL_STAGE_ANALYSIS
+        for path in user_channel_files(spec.directory, environ, home)
+    ]
+    return file_digest_token("cat", entries)
 
 
 @dataclass(frozen=True)
