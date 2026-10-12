@@ -637,15 +637,15 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("node", AXIS_LANGUAGE_CONSTRUCT,
                    "Node symbol (k8s / DSL). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("inductive", AXIS_LANGUAGE_CONSTRUCT,
-                   "Lean ``inductive`` type declaration (``lean.py:247``). "
+                   "Lean ``inductive`` type declaration (``lean.py:392``). "
                    "CANONICAL per audit-findings 0007 (reclassified Wave 6 "
                    "PR 4 — the original DEPRECATE-NO-FOLD verdict was a "
                    "literal-grep blind-spot miss; ``lean.py`` emits via "
                    "``add_symbol(..., 'inductive')`` indirection)."),
     SymbolKindSpec("theorem", AXIS_LANGUAGE_CONSTRUCT,
                    "Theorem-prover top-level construct (Lean theorems and "
-                   "lemmas at ``lean.py:222,231``; TLA+ theorems at "
-                   "``tlaplus.py:207``). CANONICAL per audit-findings 0007 "
+                   "lemmas at ``lean.py:356,369``; TLA+ theorems at "
+                   "``tlaplus.py:287``). CANONICAL per audit-findings 0007 "
                    "(reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD "
                    "verdict was a literal-grep blind-spot miss; both producers "
                    "emit via ``add_symbol(..., 'theorem')`` indirection)."),

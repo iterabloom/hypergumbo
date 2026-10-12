@@ -619,10 +619,11 @@ record Pair (A B : Set) : Set where
 """)
         result = analyze_agda(tmp_path)
         symbols = result.symbols
-        fst_sym = next((s for s in symbols if s.name == "fst"), None)
-        snd_sym = next((s for s in symbols if s.name == "snd"), None)
-        assert fst_sym is not None, f"Expected 'fst' field, got: {[s.name for s in symbols]}"
-        assert snd_sym is not None, f"Expected 'snd' field, got: {[s.name for s in symbols]}"
+        # A field is named with its record, as Agda names it (INV-kagib).
+        fst_sym = next((s for s in symbols if s.name == "Pair.fst"), None)
+        snd_sym = next((s for s in symbols if s.name == "Pair.snd"), None)
+        assert fst_sym is not None, f"Expected 'Pair.fst' field, got: {[s.name for s in symbols]}"
+        assert snd_sym is not None, f"Expected 'Pair.snd' field, got: {[s.name for s in symbols]}"
         assert fst_sym.kind == "field"
         assert snd_sym.kind == "field"
 
@@ -639,7 +640,7 @@ record Pair : Set where
     snd : Bool
 """)
         result = analyze_agda(tmp_path)
-        fst_sym = next((s for s in result.symbols if s.name == "fst"), None)
+        fst_sym = next((s for s in result.symbols if s.name == "Pair.fst"), None)
         assert fst_sym is not None
         assert fst_sym.signature == ": Nat"
 

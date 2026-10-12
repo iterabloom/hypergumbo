@@ -1,14 +1,6 @@
 {
   "_comment": "WI-tusad shrink-only ratchet over packages/hypergumbo-core/tests/test_stable_id_floor_gate.py's per-language fixture corpus. floor_and_null: per language and callable/member kind (GATED_KINDS), how many records ride the ADR-0035 backstop floor (id == make_declaration_stable_id(kind, language, path, name)) and how many are null. sibling_deletion_moves: the languages where deleting an earlier same-name sibling moved or nulled another symbol's stable_id. The gate fails on any count above this baseline (or a language it does not list) AND on any count below it: when a producer migrates to the ADR-0035 formula, ratchet the entry down in the same change (the failure message prints the live values). Never raise an entry. Target: both sections empty.",
   "floor_and_null": {
-    "agda": {
-      "field": {
-        "floor": 1
-      },
-      "function": {
-        "floor": 4
-      }
-    },
     "capnp": {
       "method": {
         "null": 2
@@ -51,23 +43,12 @@
         "floor": 1
       }
     },
-    "elm": {
-      "function": {
-        "floor": 3
-      }
-    },
     "fortran": {
       "function": {
         "floor": 2
       },
       "subroutine": {
         "floor": 1
-      }
-    },
-    "fsharp": {
-      "function": {
-        "floor": 1,
-        "null": 2
       }
     },
     "gdscript": {
@@ -80,11 +61,6 @@
       "function": {
         "floor": 1,
         "null": 2
-      }
-    },
-    "haskell": {
-      "function": {
-        "floor": 1
       }
     },
     "julia": {
@@ -104,11 +80,6 @@
         "floor": 1
       }
     },
-    "lean": {
-      "function": {
-        "floor": 2
-      }
-    },
     "llvm_ir": {
       "function": {
         "floor": 3
@@ -118,11 +89,6 @@
       "function": {
         "floor": 1,
         "null": 2
-      }
-    },
-    "ocaml": {
-      "function": {
-        "floor": 2
       }
     },
     "php": {
@@ -160,20 +126,9 @@
         "null": 2
       }
     },
-    "tlaplus": {
-      "operator": {
-        "floor": 3,
-        "null": 2
-      }
-    },
     "wgsl": {
       "function": {
         "floor": 2
-      }
-    },
-    "wolfram": {
-      "function": {
-        "floor": 1
       }
     },
     "zig": {
@@ -190,21 +145,17 @@
   },
   "sibling_deletion_moves": [
     "ada",
-    "agda",
     "bash",
     "capnp",
     "cpp",
     "cuda",
-    "fsharp",
     "gdscript",
     "glsl",
     "hlsl",
     "julia",
     "jupyter",
-    "lean",
     "nim",
     "nix",
-    "ocaml",
     "pascal",
     "pony",
     "proto",
@@ -217,9 +168,7 @@
     "solidity",
     "sql",
     "thrift",
-    "tlaplus",
     "twig",
-    "v",
-    "wolfram"
+    "v"
   ]
 }

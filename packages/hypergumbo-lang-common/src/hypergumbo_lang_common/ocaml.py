@@ -39,6 +39,35 @@ OCaml-Specific Considerations
 - Modules are defined with `module X = struct ... end`
 - `open Module` brings module into scope
 - Function application uses whitespace (no parens needed)
+
+Scope and identity (INV-kagib, WI-tusad)
+----------------------------------------
+Every ``let`` binding of a structure is its own symbol: each ``and``-joined
+binding of a ``let rec ... and ...``, a shadowing redefinition of a name, and a
+same-name binding in another module. Before, a per-file set of seen names kept
+only the first, so ``module B``'s ``run`` was absent from the graph whenever
+``module A`` also bound one. A binding inside ``module A = struct ... end`` is
+named ``A.run`` (nested modules chain: ``A.C.deep``), the way OCaml code outside
+the module refers to it; a top-level binding keeps its bare name. Type and
+module symbols are emitted per declaration too but keep their bare names: their
+ids come from the type/module table formula over the name, so qualifying them
+would change ids already computed (a scheme-bump change, ADR-0035 §6). Two
+same-name types in one file are told apart by the per-file occurrence pass.
+
+A ``let`` local to an expression (``let g z = z in ...``) is emitted only when it
+binds a function (it has parameters or its body is a ``fun`` / ``function``),
+named bare, with the enclosing bindings in its scope chain (``f/g``); a local
+value binding (``let x = 1 in``) is a variable, not a function, and is not
+emitted. The first binding of a definition spans the whole ``value_definition``
+(as before); a later ``and`` binding spans its own ``let_binding``.
+
+Each binding records its parameters in ``meta["parameters"]`` (an optional
+``?x`` parameter is a default; the empty list for a value) and mints the
+ADR-0035 producer stable_id through ``overload_arity.declared_arity_stable_id``
+over the scope chain, so deleting an earlier same-name binding moves no other
+binding's id. Calls are anchored on the enclosing binding by its declaration
+position, never its name, and a call written ``A.run`` first tries the
+module-qualified name.
 """
 from __future__ import annotations
 
@@ -52,14 +81,20 @@ from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
     make_file_id,
     make_symbol_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -71,14 +106,6 @@ PASS_ID = make_pass_id("ocaml")
 def find_ocaml_files(repo_root: Path) -> Iterator[Path]:
     """Yield all OCaml files in the repository."""
     yield from find_files(repo_root, ["*.ml"])
-
-
-def _get_let_binding_name(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract function name from let_binding node."""
-    value_name = find_child_by_type(node, "value_name")
-    if value_name:
-        return node_text(value_name, source)
-    return ""  # pragma: no cover - fallback for unparseable
 
 
 def _get_type_name(node: "tree_sitter.Node", source: bytes) -> str:
@@ -151,6 +178,102 @@ def _extract_ocaml_signature(
     return None  # No params = value, not function
 
 
+#: Parents of a ``value_definition`` that make it a structure-level binding
+#: (top of the file or a ``struct ... end`` body), as opposed to a local
+#: ``let ... in`` (parent ``let_expression``).
+_OCAML_STRUCTURE_PARENTS = frozenset({"compilation_unit", "structure"})
+
+#: Bodies that make a parameterless binding a function (``let f = fun x -> x``).
+_OCAML_FUNCTION_BODIES = frozenset({"fun_expression", "function_expression"})
+
+
+def _ocaml_let_bindings(value_def: "tree_sitter.Node") -> list["tree_sitter.Node"]:
+    """Every ``let_binding`` of a ``value_definition`` (``let ... and ...``)."""
+    return [c for c in value_def.children if c.type == "let_binding"]
+
+
+def _ocaml_symbol_node(let_binding: "tree_sitter.Node") -> "tree_sitter.Node":
+    """The node a binding's symbol spans and is keyed by.
+
+    The first binding of a definition spans the whole ``value_definition`` (the
+    span it always had); a later ``and`` binding spans its own ``let_binding``.
+    """
+    value_def = let_binding.parent
+    if value_def is not None and _ocaml_let_bindings(value_def)[0] == let_binding:
+        return value_def
+    return let_binding
+
+
+def _ocaml_module_chain(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Names of the modules enclosing ``node``, outermost first."""
+    chain: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type == "module_binding":
+            name = _get_module_name(current, source)
+            if name:
+                chain.append(name)
+        current = current.parent
+    return list(reversed(chain))
+
+
+def _ocaml_is_function_binding(let_binding: "tree_sitter.Node") -> bool:
+    """True when the binding takes parameters or its body is a function."""
+    return any(
+        c.type == "parameter" or c.type in _OCAML_FUNCTION_BODIES
+        for c in let_binding.children
+    )
+
+
+def _ocaml_parameters(
+    let_binding: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, object]]:
+    """``meta["parameters"]`` of a ``let_binding``: one entry per ``parameter``.
+
+    The entry's name is the parameter as written (``x``, ``~l``, ``(a, b)``);
+    an optional ``?x`` / ``?(x = 1)`` parameter is a default.
+    """
+    entries: list[dict[str, object]] = []
+    for child in let_binding.children:
+        if child.type == "=":
+            break
+        if child.type == "parameter":
+            text = node_text(child, source).strip()
+            entries.append(parameter_entry(text, default=text.startswith("?")))
+    return entries
+
+
+def _ocaml_binding_names(
+    let_binding: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, str]]:
+    """``(symbol name, scope chain)`` of a binding, or None when not emitted.
+
+    A structure-level binding is named with its module chain (``A.run``) and
+    that is its scope chain. A local binding is emitted only when it binds a
+    function: named bare, its chain is the enclosing binding's chain plus
+    ``/name``. A binding without a ``value_name`` (``let () = ...``, a pattern,
+    an operator) is not emitted, as before.
+    """
+    value_name = find_child_by_type(let_binding, "value_name")
+    value_def = let_binding.parent
+    if value_name is None or value_def is None:
+        return None
+    name = node_text(value_name, source)
+    if value_def.parent is None or value_def.parent.type in _OCAML_STRUCTURE_PARENTS:
+        qualified = ".".join([*_ocaml_module_chain(value_def, source), name])
+        return qualified, qualified
+    if not _ocaml_is_function_binding(let_binding):
+        return None
+    current: Optional["tree_sitter.Node"] = value_def.parent
+    while current is not None:
+        if current.type == "let_binding":
+            outer = _ocaml_binding_names(current, source)
+            if outer is not None:
+                return name, f"{outer[1]}/{name}"
+        current = current.parent
+    return name, name  # a local of `let () = ...`: no named binding encloses it
+
+
 def _extract_symbols_from_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -160,24 +283,21 @@ def _extract_symbols_from_tree(
     """Extract all symbols from a parsed OCaml file.
 
     Detects:
-    - value_definition: let bindings (functions)
+    - value_definition: every let binding (see the module docstring for scope)
     - type_definition: type declarations
     - module_definition: module declarations
     """
     analysis = FileAnalysis()
-    seen_names: set[str] = set()
 
     def add_symbol(
         node: "tree_sitter.Node",
         name: str,
         kind: str,
         signature: Optional[str] = None,
+        cc_node: "Optional[tree_sitter.Node]" = None,
+        meta: Optional[dict[str, object]] = None,
+        stable_id: Optional[str] = None,
     ) -> None:
-        """Add a symbol if not already seen."""
-        if not name or name in seen_names:
-            return  # pragma: no cover - skip empty/duplicate names
-        seen_names.add(name)
-
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
         span = Span(
@@ -189,6 +309,7 @@ def _extract_symbols_from_tree(
         sym_id = make_symbol_id("ocaml", file_path, start_line, end_line, name, kind)
         sym = Symbol(
             id=sym_id,
+            stable_id=stable_id,
             name=name,
             kind=kind,
             language="ocaml",
@@ -197,10 +318,11 @@ def _extract_symbols_from_tree(
             origin=PASS_ID,
             origin_run_id=run_id,
             signature=signature,
+            meta=meta,
             # INV-loguk: CC only for callables (kind=="function"); type/module
             # subtrees would otherwise aggregate. LOC likewise callable-only.
             cyclomatic_complexity=(
-                compute_cyclomatic_complexity(node, "ocaml")
+                compute_cyclomatic_complexity(cc_node or node, "ocaml")
                 if kind == "function" else None
             ),
             line_span=(end_line - start_line + 1) if kind == "function" else None,
@@ -210,14 +332,24 @@ def _extract_symbols_from_tree(
 
     for node in iter_tree(tree.root_node):
         if node.type == "value_definition":
-            # Let binding - function definition
-            let_binding = find_child_by_type(node, "let_binding")
-            if let_binding:
-                name = _get_let_binding_name(let_binding, source)
-                if name:
-                    # Extract signature
-                    signature = _extract_ocaml_signature(let_binding, source)
-                    add_symbol(node, name, "function", signature=signature)
+            for let_binding in _ocaml_let_bindings(node):
+                names = _ocaml_binding_names(let_binding, source)
+                if names is None:
+                    continue
+                name, chain = names
+                meta: dict[str, object] = {
+                    PARAMETERS_KEY: _ocaml_parameters(let_binding, source),
+                }
+                add_symbol(
+                    _ocaml_symbol_node(let_binding), name, "function",
+                    signature=_extract_ocaml_signature(let_binding, source),
+                    meta=meta,
+                    stable_id=declared_arity_stable_id(
+                        kind="function", lang="ocaml", path=file_path,
+                        name=name.rsplit(".", 1)[-1], qualified_name=chain,
+                        arity=declared_arity(meta),
+                    ),
+                )
 
         elif node.type == "type_definition":
             # Type definition
@@ -240,18 +372,20 @@ def _extract_symbols_from_tree(
 
 def _find_enclosing_ocaml_function(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Find the function that contains this node by walking up the parent chain."""
+    """The emitted binding whose ``let_binding`` contains ``node``.
+
+    Keyed by the binding's declaration POSITION (INV-midag), never its name:
+    ``A.run`` and ``B.run`` are both ``run`` in the tree. A local value binding
+    has no symbol and is walked past to the function holding it.
+    """
     current = node.parent
     while current:
-        if current.type == "value_definition":
-            let_binding = find_child_by_type(current, "let_binding")
-            if let_binding:
-                name = _get_let_binding_name(let_binding, source)
-                if name in local_symbols:
-                    return local_symbols[name]
+        if current.type == "let_binding":
+            sym = symbol_declared_by(_ocaml_symbol_node(current), decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -298,7 +432,7 @@ def _extract_edges_from_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: str,
-    local_symbols: dict[str, Symbol],
+    file_symbols: list[Symbol],
     resolver: NameResolver,
     run_id: str,
     module_aliases: dict[str, str],
@@ -314,6 +448,7 @@ def _extract_edges_from_tree(
     """
     edges: list[Edge] = []
     file_id = make_file_id("ocaml", file_path)
+    decl_index = symbols_at(file_symbols)
 
     for node in iter_tree(tree.root_node):
         if node.type == "open_module":
@@ -339,6 +474,7 @@ def _extract_edges_from_tree(
                 first_child = node.children[0]
                 callee_name = None
                 path_hint: Optional[str] = None
+                module_prefix: Optional[str] = None
 
                 if first_child.type == "value_path":
                     value_name = find_child_by_type(first_child, "value_name")
@@ -352,13 +488,19 @@ def _extract_edges_from_tree(
                         if module_name_node:
                             module_alias = node_text(module_name_node, source)
                             path_hint = module_aliases.get(module_alias)
+                            module_prefix = node_text(module_path_node, source)
 
                 if callee_name and callee_name not in ("print_int", "print_string", "print_endline", "print_newline"):
                     # Find the caller (enclosing function)
-                    caller = _find_enclosing_ocaml_function(node, source, local_symbols)
+                    caller = _find_enclosing_ocaml_function(node, decl_index)
                     if caller:
-                        # Resolve callee via global resolver
-                        lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                        # A module-qualified call (``A.run``) names a binding
+                        # this analyzer emits as ``A.run``; try that first.
+                        lookup_result = resolver.lookup(
+                            f"{module_prefix}.{callee_name}", allow_suffix=False,
+                        ) if module_prefix else None
+                        if lookup_result is None or not lookup_result.found:
+                            lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
                             confidence = 0.85 * lookup_result.confidence
@@ -434,7 +576,7 @@ class OcamlAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract call and import edges from an OCaml file."""
         return _extract_edges_from_tree(
-            tree, source, rel_path, local_symbols,
+            tree, source, rel_path, self.file_symbols(local_symbols),
             resolver, run.execution_id, import_aliases,
         )
 
