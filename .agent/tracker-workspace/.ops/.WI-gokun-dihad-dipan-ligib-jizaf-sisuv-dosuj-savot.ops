@@ -1,0 +1,23 @@
+- op: create  # 324c
+  at: '2026-10-12T11:19:24Z'  # 324c
+  by: agent  # 324c
+  actor: jgstern_agent  # 324c
+  clock: 1  # 324c
+  nonce: 324c  # 324c
+  data:  # 324c
+    kind: work_item  # 324c
+    title: "elixir: a 'use X' that injects functions without a behaviour (use Tesla) has no relationship edge, so calls through the using module never reach X's rows; HTTPoison.Base row lacks the injected verbs"  # 324c
+    status: todo_hard  # 324c
+    priority: 2  # 324c
+    parent:  # 324c
+    tags:  # 324c
+    - catalogue  # 324c
+    - io_boundary  # 324c
+    - elixir  # 324c
+    - recall  # 324c
+    isbefore: []  # 324c
+    duplicate_of: []  # 324c
+    not_duplicate_of: []  # 324c
+    pr_ref:  # 324c
+    description: "FOUND while fixing WI-gabuv (owner_ancestry, finalize sub-step 7d).\n\nSTATEMENT. A module whose `use X` injects X's functions WITHOUT declaring a behaviour has no relationship edge, so `owner_ancestry` cannot walk from the module to X and calls through the module stay `external_potential`. Verified from source for Tesla: `use Tesla` -> `use Tesla.Builder`, whose `__using__` quote registers attributes and splices `generate_http_verbs(opts)` (get/post/put/... and request) with no `@behaviour` (~/t5_stdlib_srcs/ex-tesla/lib/tesla/builder.ex:7-103). So `defmodule MyApi do use Tesla end` + `MyApi.get(\"/x\")` never reaches the shipped `Tesla` row in io_primitives_overlays/elixir-web-and-db.yaml. The elixir analyzer emits only a FILE-level `imports` edge (evidence `use_directive`) for such a `use`.\n\nRelated, same family: `use HTTPoison.Base` DOES declare `@behaviour HTTPoison.Base` (now in USE_IMPLIED_BEHAVIOURS, so the walk reaches `HTTPoison.Base`), but the `HTTPoison.Base` row lists only `request`/`request!` while `__using__` injects get/post/put/patch/delete/head/options and bang forms too (httpoison lib/httpoison/base.ex). Not measured on a corpus repository.\n\nFIX DIRECTION. Emit a module-level relationship for a `use` of a LIBRARY module whose __using__ is known to inject functions (a USE_INJECTS table beside USE_IMPLIED_BEHAVIOURS, read from source; `includes` is the closest existing edge type, which owner_ancestry already walks), rather than widening `implements` to mean something it does not. Then extend the HTTPoison.Base row to the injected verbs with a cited source."  # 324c
+    fields: {}  # 324c
