@@ -128,6 +128,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Identity and output
 
 - **`stable_id` is filled for symbol populations whose producers computed none**, when the floor key is unique in its file (ADR-0035 §1; no `stable_id_scheme` bump).
+- **An Elixir function is one node, with its own `stable_id`.** The clauses of one name and arity (`def greet(:a)`, `def greet(:b)`) now fold into a single `function` or `macro` node spanning them, as Erlang's do; `greet/1` and `greet/2` stay two nodes, both named `Demo.greet`, with the arity in `meta.parameters`. Node and edge counts drop for multi-clause functions (phoenix/lib: 2,231 → 1,837 nodes). Functions, macros and struct fields get an id computed from their module, name and arity instead of the floor key or null (phoenix/lib: 678 null ids → 0), so deleting a clause or a sibling function no longer moves other ids.
 - **Swift and Rust symbols no longer vary with the installed grammar**: the floors rise to tree-sitter-swift 0.7.4 and tree-sitter-rust 0.24.2.
 - **An imported file's node carries its own language**; an imported asset has none (`discovery_language` records the importer's).
 - **Route markers are HTTP routes, not library exports.** When several detectors classify one symbol, the most confident one now wins (it was the first to run), and a route marker no longer picks up the `library_export` concept by name. On a Phoenix app (thc) `http_route` entrypoints go 2 → 240, and the sketch's HTTP Routes section lists the router's routes.

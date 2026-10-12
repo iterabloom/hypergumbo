@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """WI-motiz: the stable_id floor, end to end, for analyzers that compute none.
 
-The clojure / elixir / erlang / haskell / ocaml / proto producers never compute
-a ``stable_id`` for their functions, messages and rpc methods, and those kinds
+The clojure / erlang / haskell / ocaml / proto producers never compute a
+``stable_id`` for their functions, messages and rpc methods, and those kinds
 have no entry in the backstop's factory table (``populate_kind_stable_ids``,
 core ``analyze/base.py``). The backstop now gives such a symbol the FLOOR key
 ``make_declaration_stable_id(kind, language, path, name)`` when that key is
@@ -14,12 +14,17 @@ Two halves are pinned here through the real survey path:
 * Where ``name`` already identifies the symbol in its file (an erlang
   ``greet/1``, a haskell or ocaml top-level binding) the floor is exact and
   the value is filled.
-* Where names repeat in one file (an elixir clause per arity, all named
-  ``Demo.greet``; proto ``A.Inner`` / ``B.Inner`` both named ``Inner``; rpc
-  ``Get`` in two services) the backstop abstains. The two-run tests delete an
-  EARLIER same-name sibling between runs and check that no survivor takes an
-  id another symbol held before the edit -- the failure an occurrence split of
-  floor keys produces (``B.Inner`` inheriting ``A.Inner``'s id).
+* Where names repeat in one file (proto ``A.Inner`` / ``B.Inner`` both named
+  ``Inner``; rpc ``Get`` in two services) the backstop abstains. The two-run
+  tests delete an EARLIER same-name sibling between runs and check that no
+  survivor takes an id another symbol held before the edit -- the failure an
+  occurrence split of floor keys produces (``B.Inner`` inheriting
+  ``A.Inner``'s id).
+
+Elixir left the floor (WI-tusad): its producer mints the ADR-0035 formula
+over the module scope chain and the arity, so its same-name functions of
+three arities (all named ``Demo.greet``) are pinned here as producer-filled,
+and the deletion run as moving none of them.
 """
 from __future__ import annotations
 
@@ -66,7 +71,7 @@ _ELIXIR = (
     "  def main(), do: greet(\"x\")\n"
     "end\n"
 )
-# The same file with the FIRST clause deleted; line numbers kept (a blank
+# The same file with greet/1 deleted; line numbers kept (a blank
 # line), so each survivor is matched to itself across the two runs by line.
 _ELIXIR_EDITED = _ELIXIR.replace("  def greet(name), do: \"hi \" <> name\n", "\n")
 
@@ -129,18 +134,17 @@ def test_exact_floor_fills_every_function(tmp_path: Path) -> None:
     assert erlang == {"greet/1", "main/0", "main/1"}  # the name carries arity
 
 
-def test_elixir_same_name_clauses_abstain(tmp_path: Path) -> None:
-    """Reach: the three ``Demo.greet`` clauses are nulls, not occurrence
-    ordinals; ``Demo.main`` is filled; the validator counts the abstentions."""
+def test_elixir_same_name_functions_have_producer_ids(tmp_path: Path) -> None:
+    """Reach: the three ``Demo.greet`` functions (arities 1, 2, 3) each hold a
+    distinct producer id, not a null; nothing abstains."""
     bm = _survey(tmp_path, {"a.ex": _ELIXIR})
     fns = _by_line(bm["nodes"], "elixir", "function")
     assert {fns[n]["name"] for n in (2, 3, 4)} == {"Demo.greet"}
-    assert [fns[n]["stable_id"] for n in (2, 3, 4)] == [None, None, None]
+    ids = [fns[n]["stable_id"] for n in (2, 3, 4, 5)]
+    assert None not in ids
+    assert len(set(ids)) == 4
     assert fns[5]["name"] == "Demo.main"
-    assert fns[5]["stable_id"] is not None
-    stats = bm["validation_report"]["stable_id_stats"]
-    assert stats["floor_abstained"] == 3
-    assert stats["floor_cohort"] >= 1
+    assert bm["validation_report"]["stable_id_stats"]["floor_abstained"] == 0
 
 
 def _assert_no_id_moved(before: dict[int, dict], after: dict[int, dict]) -> None:
@@ -155,16 +159,16 @@ def _assert_no_id_moved(before: dict[int, dict], after: dict[int, dict]) -> None
         )
 
 
-def test_deleting_an_earlier_elixir_clause_moves_no_id(tmp_path: Path) -> None:
-    """Two runs: delete the first ``Demo.greet`` clause. Each survivor's id is
-    unchanged or null -- never the deleted clause's or a sibling's old id."""
+def test_deleting_an_earlier_elixir_sibling_moves_no_id(tmp_path: Path) -> None:
+    """Two runs: delete ``Demo.greet/1``. Each survivor keeps its id -- never
+    null, never the deleted function's or a sibling's old id."""
     before = _by_line(_survey(tmp_path / "r1", {"a.ex": _ELIXIR})["nodes"],
                       "elixir", "function")
     after = _by_line(_survey(tmp_path / "r2", {"a.ex": _ELIXIR_EDITED})["nodes"],
                      "elixir", "function")
     assert set(after) == {3, 4, 5}  # reach: the edit deleted exactly line 2
     for line, node in after.items():
-        assert node["stable_id"] in (before[line]["stable_id"], None), line
+        assert node["stable_id"] == before[line]["stable_id"] is not None, line
     _assert_no_id_moved(before, after)
 
 
