@@ -266,7 +266,9 @@ class TestOCamlFindFiles:
     """Branch coverage for file discovery."""
 
     def test_excludes_build_directory(self, tmp_path: Path) -> None:
-        """Test _build directory is excluded."""
+        """Test dune's _build directory is excluded (dune-project beside it is
+        the evidence; a bare _build is analysed -- ADR-0004 point 7)."""
+        (tmp_path / "dune-project").write_text("(lang dune 3.0)\n")
         build = tmp_path / "_build" / "default"
         build.mkdir(parents=True)
         (build / "generated.ml").write_text("let x = 1")

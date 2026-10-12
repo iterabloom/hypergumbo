@@ -23,7 +23,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Easier to vet before installing.** The README says in plain language what hypergumbo reads, writes, downloads and runs, and a new CI gate checks every file-write, process-launch and network call site in the source against a reviewed list.
 - **`build-grammars` works from a PyPI install**; in 8.1.0 it failed for all three source-built grammars.
 
-`SCHEMA_VERSION` advances 0.20.13 → 0.20.14 (additive: `metrics.edge_confidence`, `profile.languages[*].test_files`, `AnalysisRun.cpu_ms`, slice `limits_detail`, the pub/sub `*_identifier` meta keys, `supply_chain_summary.installed_deps_skipped`), the `verify-claims --json` envelope 2.4 → 2.6, the `io-boundaries --json` envelope 2.3 → 2.4 (additive: `untraced_modules`, per-chain `dst_ecosystem`), and the validation report 0.3 → 0.4.
+`SCHEMA_VERSION` advances 0.20.13 → 0.20.14 (additive: `metrics.edge_confidence`, `profile.languages[*].test_files`, `AnalysisRun.cpu_ms`, slice `limits_detail`, the pub/sub `*_identifier` meta keys, `supply_chain_summary.installed_deps_skipped` and `generated_output_skipped`), the `verify-claims --json` envelope 2.4 → 2.6, the `io-boundaries --json` envelope 2.3 → 2.4 (additive: `untraced_modules`, per-chain `dst_ecosystem`), and the validation report 0.3 → 0.4.
 
 ### Added
 
@@ -47,6 +47,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`--trace-deps <pkg,...|all|none>`** on `sketch`, `survey` and `slice`, or the `trace_deps` configuration key (ADR-0045), analyses the named packages (or all) as tier 3. The setting is part of the results-cache key.
 - **A committed directory is never treated as installed**: `node_modules` and `vendor` left `DEFAULT_EXCLUDES`, so a committed vendor tree (`go mod vendor` included) is analysed as tier 3 instead of silently dropped. Such repositories take longer to survey; `--exclude vendor` restores the old behaviour.
 - **Build output is excluded by content**: `.elixir_ls/`, Mix `cover/`, Phoenix `priv/static/assets/`, `.dart_tool/`, `.stack-work/`, `elm-stuff/`. Phoenix digest output and Carthage, Yarn PnP, Bower, Swift PM and `cargo vendor` trees are not covered yet.
+- **Generated output is recognised by the tool that writes it, not by its name.** `dist`, `build`, `_build`, `out`, `target`, `site`, `_site` and the coverage-report directories are pruned only on their tool's evidence (a `Cargo.toml` beside `target/`, a `mkdocs.yml` beside `site/`, a `package.json` entry point into `dist/`, a coverage report inside `coverage/`, …) and disclosed in `supply_chain_summary.generated_output_skipped` and on stderr; a same-named source directory is now analysed (329 of the 354 directories pruned across the 273-repo corpus, among them qemu's `target/` and plausible's `lib/plausible/site/`).
 
 #### Analysis output
 

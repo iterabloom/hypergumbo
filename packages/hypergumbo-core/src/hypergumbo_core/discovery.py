@@ -68,10 +68,7 @@ respecting exclude patterns. Also provides:
   recorded by ``cli.main`` (``set_trace_deps_override``) and
   ``resolve_trace_deps`` is the one place flag, config and default are
   combined, read by both the walk and the results-cache key.
-  ``BUILD_OUTPUT_RULES`` uses the same shape for tool output whose name is
-  too generic to exclude outright (Mix ``cover/``, Phoenix
-  ``priv/static/assets``, ``.dart_tool``, ``.stack-work``, ``elm-stuff``):
-  always pruned, no opt-in, not disclosed. ``FileIndex.build`` records every
+  ``FileIndex.build`` records every
   installed directory it meets (``installed_dep_roots``);
   ``installed_deps_summary`` / ``format_installed_deps_disclosure`` turn
   those into ``supply_chain_summary.installed_deps_skipped`` and the
@@ -79,10 +76,61 @@ respecting exclude patterns. Also provides:
   (``walks_into`` + ``manifest_walk_skip``) never enter a content-claimed
   directory, traced or not, and keep skipping ``node_modules`` / ``vendor``
   by name: a dependency's manifest never names the project.
+
+- **Generated output, recognised by the tool that writes it (ADR-0004
+  §"Installed dependency source" point 7).** The same shape again, for build,
+  documentation and coverage output: ``BUILD_OUTPUT_RULES`` holds one
+  ``ContentRule`` per {output directory name, producing tool} -- ``target/``
+  beside ``Cargo.toml`` / ``pom.xml`` / ``build.sbt``, ``_build/`` beside
+  ``mix.exs`` / ``rebar.config`` / ``conf.py`` (Sphinx), ``site/`` beside a
+  ``mkdocs.yml`` whose ``site_dir`` names it, ``_site/`` beside Jekyll's
+  ``_config.yml``, ``build/`` beside a Gradle build or holding
+  ``CMakeCache.txt``, ``dist``/``build``/``out`` that a ``package.json``
+  entry point, a ``tsconfig`` ``outDir`` or an ``action.yml`` names, a
+  ``coverage``-family directory holding a coverage report -- plus two
+  tool-agnostic declarations inside the directory (``CACHEDIR.TAG``; a
+  ``.gitignore`` that ignores everything). These names used to be bare
+  ``DEFAULT_EXCLUDES`` entries matched at ANY depth, which deleted source:
+  measured over the 273-repo local corpus, 354 directories were pruned; 25
+  of them carry their tool's evidence and 329 (5,224 files, 2,796 source) do
+  not -- qemu's ``target/`` (653 source files), next.js's ``packages/next/src/build`` (259), grafana's
+  ``pkg/build`` (350), gitlab's ``lib/gitlab/ci/build`` and ``.../coverage``,
+  plausible's ``lib/plausible/site/``. Hugo's ``public/`` was the first
+  instance (removed in v0.5.1). Build output is always pruned (no opt-in) and
+  COMMITTED output is still output (a GitHub Action commits the
+  ``dist/index.js`` it runs), so git status never exempts it; the one place
+  git is consulted is as SUPPORTING evidence -- ``dist``/``build``/``out``
+  beside a ``package.json`` with no declared entry point are claimed only
+  when positively untracked (``_is_untracked_dir``), because VS Code's
+  committed ``extensions/*/build/`` are build scripts. A sibling-manifest
+  rule never claims a directory that holds a project manifest of its own (a
+  subproject named ``build``).
+
+  THE FALLBACK: a directory with an output NAME and no tool evidence is
+  ANALYSED. A wrong exclusion is silent and removes findings (every instance
+  above); a wrong inclusion is visible -- extra symbols, extra time -- and
+  ``--exclude <name>`` removes it for a run. ``FileIndex.build`` records each
+  pruned output directory (``generated_output_roots``);
+  ``generated_output_summary`` / ``format_generated_output_disclosure`` turn
+  them into ``supply_chain_summary.generated_output_skipped`` and a stderr /
+  sketch line naming the directory and the evidence (``target/ (Cargo
+  build)``), so a wrong exclusion can be seen. ``supply_chain`` asks the same
+  rules for tier 4, so a directory the walk analyses is never dropped as
+  derived by name either.
+
+  WHAT STAYS NAME-BASED, AND WHY: VCS (``.git``, ``.svn``, ``.hg``), caches
+  and IDE/tool state (``__pycache__``, ``.mypy_cache``, ``.pytest_cache``,
+  ``.ruff_cache``, ``.tox``, ``.nox``, ``.cache``, ``.ipynb_checkpoints``,
+  ``.terraform``, ``.eggs``, ``*.egg-info``, ``.elixir_ls``, ``.nyc_output``,
+  ``.c8_output``, ``.jest``), report and lock FILES (``coverage.xml``,
+  ``lcov.info``, ``package-lock.json``, ...) and hypergumbo's own outputs.
+  Each is dot-prefixed or a name a tool coined for itself; no project names a
+  source directory ``__pycache__``, so the name IS the evidence.
 """
 from __future__ import annotations
 
 import functools
+import json
 import re
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
@@ -463,13 +511,20 @@ DEFAULT_EXCLUDES = [
     # manager filled it, not because of its name -- and a committed
     # (git-tracked) directory is never installed. See match_content_rule.
     ".eggs",
-    # Build output
-    "dist",
-    "build",
-    "_build",  # Sphinx docs, Mix
+    # Generated output (build, docs, coverage reports).
+    # NOTE: dist / build / _build / out / target / site / _site / coverage /
+    # htmlcov / lcov-report / TestResults (and the other report-directory
+    # names) are NOT here. A directory is generated output because a TOOL
+    # writes it -- Cargo writes target/ beside Cargo.toml, MkDocs writes site/
+    # beside mkdocs.yml -- not because of its name: matched by name at any
+    # depth they deleted qemu's target/ (653 source files), next.js's
+    # packages/next/src/build (259), gitlab's ci/build and every
+    # plausible .../site/ module from the analysis. They are recognised per
+    # tool through BUILD_OUTPUT_RULES (ADR-0004 §"Installed dependency
+    # source" point 7) and disclosed when skipped. Hugo's public/ left this
+    # list in v0.5.1 for the same reason (Airflow routes/public/, 109 API
+    # handlers; Laravel/Symfony public/).
     ".elixir_ls",  # ElixirLS language-server build/cache dir (ADR-0004 §7)
-    "out",
-    "target",  # Rust, Maven
     # VCS and IDE
     ".git",
     ".svn",
@@ -485,32 +540,18 @@ DEFAULT_EXCLUDES = [
     ".cache",
     "*.egg-info",
     ".terraform",  # Terraform providers and modules cache
-    # Coverage and test reports
-    "htmlcov",  # Python (pytest-cov)
-    "coverage",  # Generic (Ruby, JS)
+    # Coverage tool state and single report FILES (dot-prefixed or a tool's
+    # own file name; never a source directory's name)
     ".coverage",  # Python coverage.py
     "coverage.xml",  # Python, generic (Cobertura format)
     ".nyc_output",  # JavaScript (nyc/Istanbul)
-    "lcov-report",  # JavaScript/C++ (LCOV HTML)
     "lcov.info",  # JavaScript/C++ (LCOV data)
     ".c8_output",  # JavaScript (c8)
     "coverage.out",  # Go
     "cover.out",  # Go (alternate name)
     "cover.html",  # Go (HTML report)
-    "tarpaulin-report",  # Rust (cargo-tarpaulin)
-    "TestResults",  # .NET (dotnet test)
-    "coverlet",  # .NET (Coverlet)
-    "gcov-reports",  # C/C++ (gcov)
-    "jest-coverage",  # JavaScript (Jest)
     ".jest",  # JavaScript (Jest cache)
     "snapshot_report.html",  # pytest-html snapshot report
-    # Documentation output
-    "site",  # mkdocs
-    "_site",  # Jekyll
-    # NOTE: Hugo uses public/ for generated output, but it's typically
-    # gitignored.  Excluding "public" caused severe false positives:
-    # Airflow routes/public/ (109 API handlers), Laravel/Symfony public/
-    # (web root), etc.  Removed in v0.5.1.
     # Hypergumbo output artifacts and agent governance
     ".hypergumbo",
     ".agent",  # Agent tracker ops, hooks, config — not source code
@@ -847,20 +888,392 @@ INSTALLED_DEP_RULES: tuple[ContentRule, ...] = (
     ),
 )
 
-#: Tool build output and tool state that is conditioned on content because the
-#: name alone is too generic (``cover``, ``assets``) or is shared with source
-#: elsewhere. Always pruned, no opt-in, not disclosed -- like ``_build``.
-#: ``.dart_tool``, ``.stack-work`` and ``elm-stuff`` (Elm 0.19) hold generated
-#: code and build products; Dart, Stack and Elm keep package SOURCE in a
-#: per-user cache outside the repository, so there is nothing to trace.
-#: NOT YET COVERED: Phoenix ``mix phx.digest`` output (``priv/static/*-<hash>.*``
-#: beside ``cache_manifest.json``), which is per-file, not per-directory.
+# ---------------------------------------------------------------------------
+# Generated output, recognised by the tool that writes it (ADR-0004
+# §"Installed dependency source" point 7)
+# ---------------------------------------------------------------------------
+
+#: Files whose presence INSIDE a candidate directory makes it a project of its
+#: own -- a subproject that happens to be called ``build`` or ``target``
+#: (dart-lang/build's ``build/`` package beside the workspace
+#: ``pubspec.yaml``; a Maven module ``coverage/`` holding a ``pom.xml``) --
+#: rather than the output of the manifest beside it. Applied to the
+#: sibling-manifest rules only: output a tool DECLARES (``"main":
+#: "dist/index.js"``) may itself carry a ``package.json``, as ncc's does.
+_PROJECT_MANIFESTS: tuple[str, ...] = (
+    "package.json", "Cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts",
+    "build.sbt", "mix.exs", "pyproject.toml", "setup.py", "go.mod",
+    "CMakeLists.txt", "meson.build", "pubspec.yaml", "project.clj",
+    "mkdocs.yml", "mkdocs.yaml",
+)
+
+
+def _sibling_output(*names: str) -> Callable[[Path], bool]:
+    """Marker: one of ``names`` (the producing tool's manifest) sits beside
+    the candidate, and the candidate is not a project of its own."""
+    def check(d: Path) -> bool:
+        return (
+            any((d.parent / n).is_file() for n in names)
+            and not any((d / m).is_file() for m in _PROJECT_MANIFESTS)
+        )
+    return check
+
+
+def _contains(*names: str) -> Callable[[Path], bool]:
+    """Marker: one of ``names`` (a file or directory the tool writes into its
+    own output) is directly inside the candidate."""
+    def check(d: Path) -> bool:
+        return any((d / n).exists() for n in names)
+    return check
+
+
+def _read_small(path: Path, limit: int = 256 * 1024) -> str:
+    """``path``'s text, or ``""`` when it is absent, unreadable or larger than
+    ``limit`` (a config file is never that large; a huge one is not worth
+    reading to decide a prune)."""
+    try:
+        if not path.is_file() or path.stat().st_size > limit:
+            return ""
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:  # pragma: no cover - raced deletion / unreadable file
+        return ""
+
+
+def _head_segment(value: str) -> str | None:
+    """The first directory segment of a relative FILE path that has one:
+    ``./dist/index.js`` -> ``dist``; ``index.js`` (no directory) and
+    absolute or parent-relative paths -> ``None``."""
+    v = value.strip().replace("\\", "/")
+    while v.startswith("./"):
+        v = v[2:]
+    if not v or v.startswith(("/", "../")) or "/" not in v:
+        return None
+    return v.split("/", 1)[0]
+
+
+def _dir_segment(value: str) -> str | None:
+    """The first segment of a configured DIRECTORY value (``outDir``,
+    ``site_dir``): ``./build`` -> ``build``, ``out/js`` -> ``out``."""
+    v = value.strip().replace("\\", "/")
+    while v.startswith("./"):
+        v = v[2:]
+    if not v or v.startswith(("/", "../")):
+        return None
+    return v.split("/", 1)[0]
+
+
+#: package.json fields that name a file the published package RUNS or SHIPS
+#: as its entry point. ``files`` is deliberately absent: it lists what is
+#: published, which routinely includes ``src/``.
+_PACKAGE_ENTRY_FIELDS: tuple[str, ...] = (
+    "main", "module", "browser", "types", "typings", "bin", "exports",
+    "unpkg", "jsdelivr",
+)
+
+
+def _strings(value: Any) -> Iterator[str]:
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from _strings(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from _strings(v)
+
+
+_TSCONFIG_OUTDIR_RE = re.compile(r'"outDir"\s*:\s*"([^"]+)"')
+_ACTION_ENTRY_RE = re.compile(
+    r"^\s*(?:main|pre|post)\s*:\s*['\"]?([^'\"\s#]+)", re.MULTILINE,
+)
+
+
+@functools.lru_cache(maxsize=4096)
+def _js_declared_dirs(directory: str) -> frozenset[str]:
+    """Top-level directories of ``directory`` that its JavaScript tooling
+    DECLARES as output: the first segment of every package.json entry point
+    (``"main": "dist/index.js"``), every ``tsconfig*.json`` ``outDir``, and
+    every GitHub Action ``runs.main`` / ``pre`` / ``post`` (``action.yml``).
+
+    tsconfig allows comments and trailing commas, so ``outDir`` is read with
+    a pattern rather than a JSON parser; a commented-out ``outDir`` is
+    honoured too -- accepted, because it still names where tsc's output went.
+    """
+    base = Path(directory)
+    found: set[str] = set()
+    text = _read_small(base / "package.json")
+    if text:
+        try:
+            pkg = json.loads(text)
+        except ValueError:
+            pkg = None
+        if isinstance(pkg, dict):
+            for key in _PACKAGE_ENTRY_FIELDS:
+                for s in _strings(pkg.get(key)):
+                    seg = _head_segment(s)
+                    if seg:
+                        found.add(seg)
+    try:
+        tsconfigs = sorted(base.glob("tsconfig*.json"))
+    except OSError:  # pragma: no cover - unreadable directory
+        tsconfigs = []
+    for ts in tsconfigs:
+        for m in _TSCONFIG_OUTDIR_RE.finditer(_read_small(ts)):
+            seg = _dir_segment(m.group(1))
+            if seg:
+                found.add(seg)
+    for name in ("action.yml", "action.yaml"):
+        for m in _ACTION_ENTRY_RE.finditer(_read_small(base / name)):
+            seg = _head_segment(m.group(1))
+            if seg:
+                found.add(seg)
+    return frozenset(found)
+
+
+def _js_declared_output(d: Path) -> bool:
+    return d.name in _js_declared_dirs(str(d.parent))
+
+
+def _untracked_beside_package_json(d: Path) -> bool:
+    """``dist``/``build``/``out`` beside a ``package.json`` and UNTRACKED in a
+    git work tree that has commits. The name and the manifest alone are not
+    enough -- VS Code's ``extensions/*/build/`` are committed build SCRIPTS
+    beside a package.json -- so absence from HEAD is the supporting evidence
+    here, and only here. A directory outside git, or in a repository with no
+    commits, gets no such evidence (:func:`_is_untracked_dir` is ``False``)."""
+    return (
+        (d.parent / "package.json").is_file()
+        and not (d / "package.json").is_file()
+        and _is_untracked_dir(str(d))
+    )
+
+
+_MKDOCS_SITE_DIR_RE = re.compile(r"^site_dir\s*:\s*['\"]?([^'\"#\n]+?)['\"]?\s*(?:#.*)?$", re.MULTILINE)
+
+
+def _mkdocs_site(d: Path) -> bool:
+    """MkDocs ``site/``: a ``mkdocs.yml`` beside it whose ``site_dir`` is
+    unset (default ``site``) or names this directory. A custom ``site_dir``
+    with another name is not followed (that directory was never excluded;
+    it is analysed)."""
+    for cfg in ("mkdocs.yml", "mkdocs.yaml"):
+        text = _read_small(d.parent / cfg)
+        if not text and not (d.parent / cfg).is_file():
+            continue
+        m = _MKDOCS_SITE_DIR_RE.search(text)
+        declared = _dir_segment(m.group(1)) if m else "site"
+        return declared == d.name and not (d / cfg).is_file()
+    return False
+
+
+def _sphinx_split_build(d: Path) -> bool:
+    """Sphinx ``build/`` in the separate source/build layout
+    (``sphinx-quickstart --sep``): ``source/conf.py`` beside it."""
+    return (d.parent / "source" / "conf.py").is_file()
+
+
+def _sbt_target(d: Path) -> bool:
+    """sbt ``target/`` beside ``build.sbt``, or the meta-build's
+    ``project/target/`` under a ``build.sbt`` project."""
+    if _sibling_output("build.sbt")(d):
+        return True
+    return d.parent.name == "project" and (d.parent.parent / "build.sbt").is_file()
+
+
+def _ninja_out(d: Path) -> bool:
+    """GN/Ninja ``out/``: ``build.ninja`` inside it, or in one of its
+    configuration directories (``out/Default/args.gn``, Chromium and V8)."""
+    if (d / "build.ninja").is_file():
+        return True
+    return any(
+        (c / "args.gn").is_file() or (c / "build.ninja").is_file()
+        for c in _child_dirs(d)
+    )
+
+
+_PYTHON_MANIFESTS: tuple[str, ...] = ("pyproject.toml", "setup.py", "setup.cfg")
+_SETUPTOOLS_BUILD_PREFIXES: tuple[str, ...] = ("lib.", "bdist.", "temp.")
+_PYTHON_DIST_SUFFIXES: tuple[str, ...] = (".whl", ".tar.gz", ".zip", ".egg")
+
+
+def _setuptools_build(d: Path) -> bool:
+    """setuptools ``build/``: a Python manifest beside it and the
+    ``lib.<platform>`` / ``bdist.<platform>`` / ``temp.<platform>``
+    directories setuptools writes into it."""
+    return any((d.parent / m).is_file() for m in _PYTHON_MANIFESTS) and any(
+        c.name.startswith(_SETUPTOOLS_BUILD_PREFIXES) for c in _child_dirs(d)
+    )
+
+
+def _python_dist(d: Path) -> bool:
+    """``python -m build`` ``dist/``: a Python manifest beside it and nothing
+    inside but distribution archives."""
+    if not any((d.parent / m).is_file() for m in _PYTHON_MANIFESTS):
+        return False
+    try:
+        entries = [e for e in d.iterdir() if not e.name.startswith(".")]
+    except OSError:  # pragma: no cover - unreadable directory
+        return False
+    return bool(entries) and all(
+        e.is_file() and e.name.endswith(_PYTHON_DIST_SUFFIXES) for e in entries
+    )
+
+
+def _cachedir_tag(d: Path) -> bool:
+    """A ``CACHEDIR.TAG`` (the Cache Directory Tagging Specification; Cargo
+    writes one into every ``target/``) declares the directory a cache."""
+    return (d / "CACHEDIR.TAG").is_file()
+
+
+def _self_ignoring(d: Path) -> bool:
+    """A ``.gitignore`` inside the directory that ignores everything in it
+    (only ``*`` / ``**/*`` lines, plus ``!.gitignore``): the tool that wrote
+    the directory declared it generated -- coverage.py's ``htmlcov``, and
+    many bundlers' output. Files COMMITTED there anyway were force-added on
+    purpose (piper-tts-web's ``build/build.sh``), which overrides the
+    declaration, so a committed directory is not claimed by this marker."""
+    text = _read_small(d / ".gitignore")
+    lines = {
+        ln.strip() for ln in text.splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    }
+    return (
+        bool(lines & {"*", "**/*", "/*"})
+        and lines <= {"*", "**/*", "/*", "!.gitignore"}
+        and not _is_committed_dir(str(d))
+    )
+
+
+#: Report files a coverage or test-report tool writes into its output
+#: directory: LCOV, Istanbul JSON and HTML assets, Clover, Cobertura (incl.
+#: coverlet's ``coverage.cobertura.xml``), JaCoCo, SimpleCov's
+#: ``.resultset.json``, coverage.py's HTML script, genhtml's stylesheet.
+_COVERAGE_REPORT_FILES: frozenset[str] = frozenset({
+    "lcov.info", "coverage-final.json", "coverage-summary.json", "clover.xml",
+    "cobertura-coverage.xml", "coverage.cobertura.xml", "cobertura.xml",
+    "jacoco.xml", ".resultset.json", "coverage_html.js", "sorter.js",
+    "gcov.css",
+})
+
+
+def _coverage_report(d: Path) -> bool:
+    """A coverage / test-report directory: one of
+    :data:`_COVERAGE_REPORT_FILES` inside it, a coverage.py 7.x
+    ``coverage_html_cb_*.js``, a ``.trx`` result file (``dotnet test``), an
+    ``lcov-report/`` subdirectory (Jest/Istanbul), or a per-run subdirectory
+    holding ``coverage.cobertura.xml`` (``TestResults/<guid>/``)."""
+    try:
+        entries = list(d.iterdir())
+    except OSError:  # pragma: no cover - unreadable directory
+        return False
+    for e in entries:
+        n = e.name
+        if n in _COVERAGE_REPORT_FILES or n.endswith(".trx") or (
+            n.startswith("coverage_html_cb_") and n.endswith(".js")
+        ):
+            return True
+        if e.is_dir() and not e.is_symlink() and (
+            n == "lcov-report" or (e / "coverage.cobertura.xml").is_file()
+        ):
+            return True
+    return False
+
+
+#: Directory names that are generated output only when a tool's evidence says
+#: so -- conventional output names that are also ordinary English words a
+#: project uses for source (``build`` for build tooling, ``target`` for an
+#: emulator's CPU targets, ``site`` for a web app's Site model).
+GENERATED_OUTPUT_DIR_NAMES: frozenset[str] = frozenset({
+    "dist", "build", "_build", "out", "target", "site", "_site",
+})
+
+#: Directory names a coverage or test-report tool writes. Conditioned on the
+#: report files inside (:func:`_coverage_report`): ``coverage`` is a module
+#: name in gitlab, scala3 and kubernetes.
+COVERAGE_DIR_NAMES: frozenset[str] = frozenset({
+    "coverage", "htmlcov", "lcov-report", "TestResults", "coverlet",
+    "gcov-reports", "jest-coverage", "tarpaulin-report",
+})
+
+#: Tool build output, recognised by the tool that writes it. Always pruned,
+#: no opt-in, DISCLOSED (``generated_output_summary``). A name only selects
+#: which rules are tried; the first whose marker passes claims the directory
+#: and labels it in the disclosure. Committed or not does not matter: a
+#: project may commit its generated output (a GitHub Action commits the
+#: ``dist/index.js`` its ``action.yml`` runs) and it is still generated --
+#: only :func:`_untracked_beside_package_json` uses git, as supporting
+#: evidence where the manifest alone is too weak. A directory with an output
+#: NAME and no evidence is ANALYSED (see the module docstring for why).
+#: NOT YET COVERED (analysed if present): Phoenix ``mix phx.digest`` output
+#: (per-file ``priv/static/*-<hash>.*``), a custom MkDocs ``site_dir`` /
+#: Jekyll ``destination`` / Cargo ``target-dir`` with a non-conventional
+#: name, Bazel ``bazel-*`` symlinks (never followed anyway), Hugo
+#: ``public/``.
 BUILD_OUTPUT_RULES: tuple[ContentRule, ...] = (
     ContentRule("cover", "Mix coverage report", _sibling_file("mix.exs")),
     ContentRule("assets", "Phoenix built assets", _phoenix_assets_marker),
     ContentRule(".dart_tool", "Dart tool state", _sibling_file("pubspec.yaml")),
     ContentRule(".stack-work", "Stack build output", _sibling_file("stack.yaml")),
     ContentRule("elm-stuff", "Elm build output", _sibling_file("elm.json")),
+    # Documentation sites
+    ContentRule("site", "MkDocs site", _mkdocs_site),
+    ContentRule("_site", "Jekyll site",
+                _sibling_output("_config.yml", "_config.yaml", "_config.toml")),
+    ContentRule("_site", "Eleventy site", _sibling_output(
+        ".eleventy.js", "eleventy.config.js", "eleventy.config.mjs",
+        "eleventy.config.cjs")),
+    ContentRule("_site", "Quarto site", _sibling_output("_quarto.yml", "_quarto.yaml")),
+    ContentRule("_build", "Sphinx build", _sibling_output("conf.py")),
+    ContentRule("_build", "Jupyter Book build", _sibling_output("_toc.yml")),
+    ContentRule("build", "Sphinx build", _sphinx_split_build),
+    ContentRule("build", "Docusaurus build", _sibling_output(
+        "docusaurus.config.js", "docusaurus.config.ts", "docusaurus.config.mjs")),
+    # Language build tools
+    ContentRule("_build", "Mix build", _sibling_output("mix.exs")),
+    ContentRule("_build", "rebar3 build", _sibling_output("rebar.config")),
+    ContentRule("_build", "Dune build", _sibling_output("dune-project", "dune-workspace")),
+    ContentRule("target", "Cargo build", _sibling_output("Cargo.toml")),
+    ContentRule("target", "Maven build", _sibling_output("pom.xml")),
+    ContentRule("target", "sbt build", _sbt_target),
+    ContentRule("target", "Leiningen build", _sibling_output("project.clj", "build.boot")),
+    ContentRule("target", "Clojure tools.build", _sibling_output("build.clj")),
+    ContentRule("build", "Gradle build", _sibling_output(
+        "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts")),
+    ContentRule("build", "Flutter build", _sibling_output("pubspec.yaml")),
+    ContentRule("build", "Gleam build", _sibling_output("gleam.toml")),
+    ContentRule("build", "CMake build", _contains("CMakeCache.txt")),
+    ContentRule("build", "Meson build", _contains("meson-private")),
+    ContentRule("build", "Ninja build", _contains("build.ninja")),
+    ContentRule("out", "Ninja build", _ninja_out),
+    ContentRule("build", "setuptools build", _setuptools_build),
+    ContentRule("dist", "Python distributions", _python_dist),
+    ContentRule("out", "Next.js export", _sibling_output(
+        "next.config.js", "next.config.mjs", "next.config.ts")),
+    # ``next export`` writes ``_next/`` into its output; a copied export (the
+    # litellm proxy UI's ``_experimental/out``) has no next.config beside it.
+    ContentRule("out", "Next.js export", _contains("_next")),
+    *(
+        ContentRule(name, "declared JS output", _js_declared_output)
+        for name in ("dist", "build", "out")
+    ),
+    # Tool-agnostic declarations inside the directory itself
+    *(
+        ContentRule(name, "cache directory (CACHEDIR.TAG)", _cachedir_tag)
+        for name in sorted(GENERATED_OUTPUT_DIR_NAMES | COVERAGE_DIR_NAMES)
+    ),
+    *(
+        ContentRule(name, "self-ignored output", _self_ignoring)
+        for name in sorted(GENERATED_OUTPUT_DIR_NAMES | COVERAGE_DIR_NAMES)
+    ),
+    *(
+        ContentRule(name, "coverage report", _coverage_report)
+        for name in sorted(COVERAGE_DIR_NAMES)
+    ),
+    # Supporting evidence: the manifest beside it AND absent from HEAD
+    *(
+        ContentRule(name, "untracked JS build output", _untracked_beside_package_json)
+        for name in ("dist", "build", "out")
+    ),
 )
 
 _RULES_BY_NAME: dict[str, tuple[ContentRule, ...]] = {}
@@ -873,8 +1286,11 @@ CONTENT_RULE_DIR_NAMES: frozenset[str] = frozenset(_RULES_BY_NAME)
 
 
 @functools.lru_cache(maxsize=4096)
-def _is_committed_dir(directory: str) -> bool:
-    """Does HEAD's tree hold a non-dot file under ``directory``?
+def _head_entries(directory: str) -> tuple[str, ...] | None:
+    """HEAD's non-dot entries under ``directory``, or ``None`` when git cannot
+    say (no git, not a work tree, no commits, any git error).
+
+    Backs :func:`_is_committed_dir` and :func:`_is_untracked_dir`.
 
     THE DECISION (owner, 2026-10-06; ADR-0004 §"Installed dependency source"
     point 3): a directory whose files are committed is vendored code, never
@@ -895,8 +1311,10 @@ def _is_committed_dir(directory: str) -> bool:
     empty ``vendor/`` in the tree does not make the installed contents
     committed.
 
-    Fails open to "not committed" (markers then decide): no git binary, not a
-    work tree, no commits yet, or any git error. ``GIT_DIR`` and friends are
+    ``None`` (no git binary, not a work tree, no commits yet, or any git
+    error) is read by :func:`_is_committed_dir` as "not committed" (markers
+    then decide) and by :func:`_is_untracked_dir` as "not known to be
+    untracked" (no evidence either way). ``GIT_DIR`` and friends are
     dropped from the child environment so an ambient hook environment cannot
     point the query at a different repository; ``GIT_NO_LAZY_FETCH`` keeps a
     partial clone from fetching over the network.
@@ -909,7 +1327,7 @@ def _is_committed_dir(directory: str) -> bool:
 
     git = shutil.which("git")
     if git is None:  # pragma: no cover - git is installed wherever the suite runs
-        return False
+        return None
     d = Path(directory)
     env = {
         k: v for k, v in os.environ.items()
@@ -924,13 +1342,27 @@ def _is_committed_dir(directory: str) -> bool:
             env=env, timeout=30,
         )
     except (OSError, subprocess.SubprocessError):  # pragma: no cover - defensive
-        return False
+        return None
     if proc.returncode != 0:
-        return False
-    return any(
-        line and not line.rsplit("/", 1)[-1].startswith(".")
-        for line in proc.stdout.splitlines()
+        return None
+    return tuple(
+        line for line in proc.stdout.splitlines()
+        if line and not line.rsplit("/", 1)[-1].startswith(".")
     )
+
+
+def _is_committed_dir(directory: str) -> bool:
+    """Does HEAD's tree hold a non-dot file under ``directory``? Fails open
+    to ``False`` (see :func:`_head_entries`)."""
+    return bool(_head_entries(directory))
+
+
+def _is_untracked_dir(directory: str) -> bool:
+    """Is ``directory`` POSITIVELY untracked: git answers, HEAD exists, and
+    HEAD holds no non-dot file under it? ``False`` whenever git cannot say --
+    the opposite failure direction from :func:`_is_committed_dir`, because
+    here "untracked" is evidence FOR a prune and must not be assumed."""
+    return _head_entries(directory) == ()
 
 
 @functools.lru_cache(maxsize=8192)
@@ -940,7 +1372,12 @@ def _match_content_rule(directory: str, name: str) -> ContentRule | None:
         return None
     for rule in _RULES_BY_NAME.get(name, ()):
         if rule.marker(path):
-            return None if _is_committed_dir(directory) else rule
+            # Point 3 is about INSTALLED source: committed dependency code is
+            # vendored and analysed. Generated output stays generated when a
+            # project commits it (point 7), so no git query for build output.
+            if rule.is_installed_dep and _is_committed_dir(directory):
+                return None
+            return rule
     return None
 
 
@@ -950,7 +1387,9 @@ def match_content_rule(path: Path) -> ContentRule | None:
     THE single test for "is this installed dependency source / tool build
     output". The name selects candidate rules (a set lookup, so every other
     directory costs nothing); the first rule whose marker passes claims the
-    directory unless it is committed (:func:`_is_committed_dir`). Cached per
+    directory -- unless it is an installed-dependency rule and the directory
+    is committed (:func:`_is_committed_dir`; committed generated output is
+    still generated output). Cached per
     path: discovery asks once per candidate per walk and the answer cannot
     change within a run.
     """
@@ -1219,6 +1658,48 @@ def format_installed_deps_disclosure(summary: "dict[str, Any] | None") -> str | 
     return (
         f"Installed dependency source not analysed: {', '.join(parts)}. "
         f"Calls into them appear as external stubs. {TRACE_DEPS_HINT}"
+    )
+
+
+def generated_output_summary(
+    roots: "Iterable[tuple[Path, ContentRule]]", repo_root: Path,
+) -> dict[str, Any]:
+    """``supply_chain_summary.generated_output_skipped`` for the generated
+    output directories a walk pruned (``FileIndex.generated_output_roots``):
+    ``{dirs, entries: [{path, tool}]}``, ``entries`` sorted by path and capped
+    at 10 like ``installed_deps_skipped``. ``tool`` is the claiming rule's
+    label (``Cargo build``, ``MkDocs site``) -- the evidence a reader checks
+    when an exclusion looks wrong."""
+    entries: list[dict[str, Any]] = []
+    for root, rule in roots:
+        try:
+            rel = root.relative_to(repo_root).as_posix()
+        except ValueError:  # pragma: no cover - the walk only yields children
+            rel = root.as_posix()
+        entries.append({"path": rel, "tool": rule.ecosystem})
+    entries.sort(key=lambda e: str(e["path"]))
+    return {"dirs": len(entries), "entries": entries[:10]}
+
+
+def format_generated_output_disclosure(
+    summary: "dict[str, Any] | None",
+) -> str | None:
+    """The one-line disclosure, or ``None`` when nothing was pruned.
+
+    ``Generated output not analysed: site/ (MkDocs site), target/ (Cargo
+    build). Recognised by the tool that writes each (ADR-0004).`` -- naming
+    at most three directories, like the installed-dependency line beside it.
+    """
+    if not summary or not summary.get("dirs"):
+        return None
+    entries = summary.get("entries") or []
+    parts = [f"{e['path']}/ ({e['tool']})" for e in entries[:3]]
+    more = int(summary["dirs"]) - len(parts)
+    if more > 0:
+        parts.append(f"{more} more director{'y' if more == 1 else 'ies'}")
+    return (
+        f"Generated output not analysed: {', '.join(parts)}. "
+        "Recognised by the tool that writes each (ADR-0004)."
     )
 
 
@@ -1522,7 +2003,8 @@ class FileIndex:
     """
 
     __slots__ = (
-        "_all_files", "_by_ext", "_by_name", "_installed_dep_roots", "_repo_root",
+        "_all_files", "_by_ext", "_by_name", "_generated_output_roots",
+        "_installed_dep_roots", "_repo_root",
     )
 
     def __init__(
@@ -1532,12 +2014,14 @@ class FileIndex:
         by_name: dict[str, list[Path]],
         all_files: list[Path],
         installed_dep_roots: "list[tuple[Path, ContentRule]] | None" = None,
+        generated_output_roots: "list[tuple[Path, ContentRule]] | None" = None,
     ) -> None:
         self._repo_root = repo_root
         self._by_ext = by_ext
         self._by_name = by_name
         self._all_files = all_files
         self._installed_dep_roots = installed_dep_roots or []
+        self._generated_output_roots = generated_output_roots or []
 
     @property
     def installed_dep_roots(self) -> "list[tuple[Path, ContentRule]]":
@@ -1545,6 +2029,13 @@ class FileIndex:
         (never one nested inside a pruned directory) -- the input to
         :func:`installed_deps_summary`."""
         return self._installed_dep_roots
+
+    @property
+    def generated_output_roots(self) -> "list[tuple[Path, ContentRule]]":
+        """Generated-output directories the walk pruned by a build-output
+        rule (never one nested inside a pruned directory) -- the input to
+        :func:`generated_output_summary`."""
+        return self._generated_output_roots
 
     @classmethod
     def build(
@@ -1577,6 +2068,7 @@ class FileIndex:
         by_name: dict[str, list[Path]] = {}
         all_files: list[Path] = []
         installed_roots: list[tuple[Path, ContentRule]] = []
+        generated_roots: list[tuple[Path, ContentRule]] = []
         # Per-package --trace-deps is the one mode in which a FILE can be
         # pruned by the content-rule arm (a stray file beside the traced
         # packages); every other mode skips that per-file check entirely.
@@ -1605,6 +2097,10 @@ class FileIndex:
                 rule = match_content_rule(dirpath / d)
                 if rule is not None and rule.is_installed_dep:
                     installed_roots.append((dirpath / d, rule))
+                elif rule is not None:
+                    # Build output is always pruned; record it for the
+                    # disclosure so a wrong exclusion is visible.
+                    generated_roots.append((dirpath / d, rule))
                 # Shared with _is_excluded_classified — see is_pruned_dir for why
                 # this is not an inline membership test any more.
                 if is_pruned_dir(d, dirpath / d, exact_exc, glob_exc):
@@ -1650,7 +2146,9 @@ class FileIndex:
         for v in by_name.values():
             v.sort()
 
-        return cls(repo_root, by_ext, by_name, all_files, installed_roots)
+        return cls(
+            repo_root, by_ext, by_name, all_files, installed_roots, generated_roots,
+        )
 
     @classmethod
     def from_paths(cls, repo_root: Path, paths: Iterable[Path]) -> "FileIndex":

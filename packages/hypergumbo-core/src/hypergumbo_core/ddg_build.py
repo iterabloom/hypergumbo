@@ -139,7 +139,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 _SKIP_DIRS = frozenset({
     ".git", ".venv", "venv", ".tox", "__pycache__",
     ".ci", "node_modules", ".mypy_cache", ".pytest_cache",
-    ".ruff_cache", "build", "dist", ".eggs",
+    ".ruff_cache", ".eggs",
 })
 
 
@@ -732,10 +732,19 @@ def _spec_files(repo_root: Path, spec: LanguageDdgSpec) -> list[Path]:
     ``rglob`` order is the filesystem's; sorting makes a walk's output order
     independent of both.
     """
+    from .discovery import under_content_rule_dir
+
     found: set[Path] = set()
     for pattern in spec.globs():
         for path in repo_root.rglob(pattern):
-            if any(part in _SKIP_DIRS for part in path.parts):
+            # Repo-relative parts: a checkout under ``~/build/`` is not inside
+            # a skipped directory. Generated output (``build``/``dist`` ...)
+            # and installed dependency source are decided by discovery's
+            # content rules, never by a bare name (ADR-0004).
+            dirs = path.relative_to(repo_root).parts[:-1]
+            if any(part in _SKIP_DIRS for part in dirs):
+                continue
+            if under_content_rule_dir(repo_root, dirs):
                 continue
             found.add(path)
     return sorted(found)

@@ -204,8 +204,9 @@ def test_default_excludes_contains_expected_patterns() -> None:
         # (VENV_DIR_NAMES + _looks_like_virtualenv), not what it is called. As bare
         # names they also deleted 427 first-party source files across 39 corpus repos.
         # test_discovery_venv_content_discriminator.py asserts both directions.
-        "dist",
-        "build",
+        # dist / build / target / site ... are DELIBERATELY ABSENT as well:
+        # generated output is recognised by the tool that writes it
+        # (BUILD_OUTPUT_RULES, ADR-0004 point 7); test_generated_output.py.
         ".git",
         "__pycache__",
         ".hypergumbo",  # Hypergumbo output directory

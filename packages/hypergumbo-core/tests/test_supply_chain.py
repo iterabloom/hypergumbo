@@ -76,11 +76,30 @@ class TestFileClassification:
 class TestDerivedArtifactDetection:
     """Test tier 4 (derived) detection via path patterns."""
 
+    @pytest.mark.parametrize("path,evidence", [
+        ("dist/bundle.js", ("package.json", '{"main": "dist/bundle.js"}')),
+        ("build/app.js", ("build.gradle", "")),
+        ("out/index.js", ("tsconfig.json", '{"compilerOptions": {"outDir": "out"}}')),
+        ("target/release/main", ("Cargo.toml", "")),
+    ])
+    def test_generated_output_by_tool_evidence(
+        self, path: str, evidence: tuple[str, str], tmp_path: Path,
+    ) -> None:
+        """dist/ build/ out/ target/ are tier 4 when the tool that writes them
+        left its evidence (ADR-0004 point 7) -- and NOT by name: qemu's root
+        ``target/`` is CPU-emulation source."""
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("// content")
+        assert classify_file(file_path, tmp_path).tier != Tier.DERIVED
+        # A fresh tree: discovery caches its answer per directory.
+        other = tmp_path / "with-evidence"
+        (other / path).parent.mkdir(parents=True, exist_ok=True)
+        (other / path).write_text("// content")
+        (other / evidence[0]).write_text(evidence[1])
+        assert classify_file(other / path, other).tier == Tier.DERIVED
+
     @pytest.mark.parametrize("path", [
-        "dist/bundle.js",
-        "build/app.js",
-        "out/index.js",
-        "target/release/main",
         ".next/static/chunks/main.js",
         ".nuxt/dist/client.js",
         ".output/server/index.mjs",
@@ -1201,6 +1220,7 @@ class TestTestFileClassification:
         not exposed as a test file because it isn't read as source.
         """
         # dist/tests/ should still be tier 4 (derived), not tier 2 (test)
+        (tmp_path / "package.json").write_text('{"main": "dist/index.js"}')
         dist_tests = tmp_path / "dist" / "tests"
         dist_tests.mkdir(parents=True)
         (dist_tests / "test_main.js").write_text("// compiled test")
@@ -1300,6 +1320,7 @@ class TestFuzzBenchClassification:
 
     def test_fuzz_lower_priority_than_derived(self, tmp_path):
         """Derived artifacts take priority over fuzz classification."""
+        (tmp_path / "package.json").write_text('{"main": "dist/index.js"}')
         dist_fuzz = tmp_path / "dist" / "fuzz"
         dist_fuzz.mkdir(parents=True)
         (dist_fuzz / "fuzz.js").write_text("// compiled fuzz")
@@ -1452,6 +1473,7 @@ class TestClassificationPriority:
 
     def test_derived_takes_priority_over_first_party(self, tmp_path):
         """dist/src/app.js is DERIVED despite 'src' in path."""
+        (tmp_path / "package.json").write_text('{"main": "dist/index.js"}')
         file_path = tmp_path / "dist" / "src" / "app.js"
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text("// built")

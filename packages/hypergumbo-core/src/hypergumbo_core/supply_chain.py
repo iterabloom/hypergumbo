@@ -21,7 +21,12 @@ calls :func:`classify_file` once per file path and stamps every symbol in that
 file. Signals are checked in order; first match wins:
 
 1. Derived artifact detection (tier 4) - ``derived_patterns``, then
-   path and filename patterns, then a content check for minified output
+   generated output that discovery's build-output content rules recognise
+   (``_build_output_root``: ``target/`` beside ``Cargo.toml``, ``site/``
+   beside ``mkdocs.yml`` ... -- never a bare ``dist``/``build``/``out``/
+   ``target`` name), then the remaining path patterns (dot-named tool
+   directories, ``__pycache__``) and filename patterns, then a content check
+   for minified output
 2. External dependency detection (tier 3) - root-anchored node_modules/,
    vendor/, third_party/ (and the third-party/, thirdparty/ spellings),
    external/, deps/, Pods/, Carthage/, .yarn/cache/, _vendor/
@@ -456,12 +461,13 @@ class FileClassification:
     is_generated: bool = False
 
 
-# Path patterns for tier inference (checked as prefixes on relative path)
+# Path patterns for tier inference (checked as prefixes on relative path).
+# Only names no project uses for source. ``dist/`` / ``build/`` / ``out/`` /
+# ``target/`` are NOT here: whether one is generated output is decided by the
+# tool that writes it (discovery.BUILD_OUTPUT_RULES, asked through
+# ``_build_output_root``) -- qemu's root ``target/`` is 653 files of CPU
+# emulation source, and matching it by name made all of it tier 4.
 DERIVED_PATH_PATTERNS = [
-    r"^dist/",
-    r"^build/",
-    r"^out/",
-    r"^target/",
     r"^\.next/",
     r"^\.nuxt/",
     r"^\.output/",
@@ -945,7 +951,14 @@ def _classify_file_core(
             if rel.startswith(pattern) or re.match(f"^{re.escape(pattern)}", rel):
                 return FileClassification(Tier.DERIVED, f"config derived_patterns: {pattern}")
 
-    # 1. Check derived patterns first (these should be skipped)
+    # 1. Check derived patterns first (these should be skipped). Generated
+    # output first, by the same content rule that prunes it from discovery,
+    # so the walk and the classifier can never disagree about what is output.
+    output = _build_output_root(rel, repo_root)
+    if output is not None:
+        return FileClassification(
+            Tier.DERIVED, f"in {output[1]} output {output[0]}/",
+        )
     for pattern in DERIVED_PATH_PATTERNS:
         if re.match(pattern, rel):
             return FileClassification(Tier.DERIVED, f"path matches {pattern}")
@@ -1324,6 +1337,21 @@ def _extract_package_name(rel_path: str, pattern_label: str) -> Optional[str]:
             return parts[0]
         return parts[0]
 
+    return None
+
+
+def _build_output_root(rel: str, repo_root: Path) -> Optional[tuple[str, str]]:
+    """``(root, tool)`` when ``rel`` lies inside a directory discovery's
+    build-output rules claim as generated output (ADR-0004 point 7), else
+    ``None``. Name-gated by ``match_content_rule``, so an ancestor that is no
+    candidate costs one set lookup."""
+    from .discovery import match_content_rule
+
+    parts = rel.split("/")[:-1]
+    for i in range(len(parts)):
+        rule = match_content_rule(repo_root.joinpath(*parts[: i + 1]))
+        if rule is not None and not rule.is_installed_dep:
+            return "/".join(parts[: i + 1]), rule.ecosystem
     return None
 
 

@@ -249,7 +249,8 @@ class TestPodsAndVirtualenvs:
 
 
 class TestBuildOutput:
-    """ADR-0004 point 7: build output is pruned with no opt-in and no disclosure."""
+    """ADR-0004 point 7: build output is pruned with no opt-in (and disclosed --
+    see test_generated_output.py)."""
 
     @pytest.mark.parametrize("name,sibling", [
         ("cover", "mix.exs"),
@@ -652,7 +653,9 @@ class TestManifestWalks:
         from hypergumbo_core.cli import _find_derived_skipped
 
         _mix_project(tmp_path)
+        _write(tmp_path / "deps" / "foo" / "package.json", '{"main": "dist/bundle.js"}')
         _write(tmp_path / "deps" / "foo" / "dist" / "bundle.js", "x")
+        _write(tmp_path / "package.json", '{"main": "dist/app.js"}')
         _write(tmp_path / "dist" / "app.js", "x")
         assert _find_derived_skipped(tmp_path) == ["dist/app.js"]
 
@@ -710,16 +713,16 @@ class TestManifestWalks:
 
     def test_additional_files_still_name_exclude(self, tmp_path: Path) -> None:
         """The name-pattern arm still drops a default-excluded directory that no
-        content rule claims (``dist/``)."""
+        content rule claims (``__pycache__/``)."""
         from hypergumbo_core.sketch import _select_additional_files
 
         _write(tmp_path / "README.md", "# app\n")
-        _write(tmp_path / "dist" / "NOTES.md", "# built\n")
+        _write(tmp_path / "__pycache__" / "NOTES.md", "# built\n")
         _selected, candidates, _per_file, _deg = _select_additional_files(
             tmp_path, [], [], {},
         )
         names = {p.relative_to(tmp_path).as_posix() for p in candidates}
-        assert "README.md" in names and "dist/NOTES.md" not in names
+        assert "README.md" in names and "__pycache__/NOTES.md" not in names
 
     def test_additional_files_skip_installed_source(self, tmp_path: Path) -> None:
         from hypergumbo_core.sketch import _select_additional_files

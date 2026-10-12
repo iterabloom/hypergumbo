@@ -42,7 +42,10 @@ this order:
    package-manager ``vendor/``, ``Pods/``) is skipped unless ``--trace-deps``
    (sketch/survey/slice) or the ``trace_deps`` config key opts back in. The
    skip is disclosed on stderr and in
-   ``supply_chain_summary.installed_deps_skipped``. ``main`` installs the
+   ``supply_chain_summary.installed_deps_skipped``; generated output
+   recognised by the tool that writes it (``target/`` beside ``Cargo.toml``,
+   ``site/`` beside ``mkdocs.yml``, ...) is always skipped and disclosed the
+   same way, in ``generated_output_skipped``. ``main`` installs the
    per-command ``--trace-deps`` override (``set_trace_deps_override``) and
    clears it on every exit path.
 1. **Analyzers** run independently across 100+ languages
@@ -11950,13 +11953,10 @@ def _make_ecosystem_classifier() -> Callable[[str, str], Optional[str]]:
 # build/cache artifact dirs that discovery gitignore-excludes BEFORE the tier-4
 # derived classifier runs, so they never surface in derived_skipped without the
 # dedicated scan below (WI-jafoz). Kept in sync with the directory-name half of
-# each DERIVED_PATH_PATTERNS entry.
+# each DERIVED_PATH_PATTERNS entry. Generated output recognised by its tool
+# (``dist``/``build``/``out``/``target`` ...) is found by content instead.
 _DERIVED_DIR_NAMES = frozenset(
     {
-        "dist",
-        "build",
-        "out",
-        "target",
         ".next",
         ".nuxt",
         ".output",
@@ -11981,6 +11981,10 @@ def _find_derived_skipped(repo_root: Path) -> list[str]:
     dependency/VCS excludes so we neither descend into huge dep trees nor
     misattribute a dependency's *own* build output as the project's.
 
+    Generated output recognised by its tool (discovery's build-output
+    content rules -- ``target/`` beside ``Cargo.toml``, ...) is a derived root
+    too, found by the same ``match_content_rule`` that pruned it.
+
     Returns sorted repo-relative POSIX paths of every file beneath a derived
     directory.
     """
@@ -11999,7 +12003,9 @@ def _find_derived_skipped(repo_root: Path) -> list[str]:
     for dirpath, dirnames, _filenames in os.walk(repo_root):
         rel = os.path.relpath(dirpath, repo_root)
         rel_norm = "" if rel == "." else rel.replace(os.sep, "/") + "/"
-        if rel_norm and any(r.search(rel_norm) for r in derived_res):
+        rule = match_content_rule(Path(dirpath)) if rel_norm else None
+        is_output = rule is not None and not rule.is_installed_dep
+        if is_output or (rel_norm and any(r.search(rel_norm) for r in derived_res)):
             # Derived root: record every file beneath it, then stop the outer
             # walk from descending (the nested walk already covered it).
             for sub_dp, _sub_dn, sub_files in os.walk(dirpath):
@@ -12009,22 +12015,34 @@ def _find_derived_skipped(repo_root: Path) -> list[str]:
             continue
         dirnames[:] = [
             d for d in dirnames
-            if d not in prune and match_content_rule(Path(dirpath) / d) is None
+            if d not in prune and not _is_installed_dir(Path(dirpath) / d)
         ]
     return sorted(skipped)
+
+
+def _is_installed_dir(path: Path) -> bool:
+    """Installed dependency source (a content rule with packages). Its own
+    build output is a dependency's, so the derived scan never enters it."""
+    from .discovery import match_content_rule
+
+    rule = match_content_rule(path)
+    return rule is not None and rule.is_installed_dep
 
 
 def _compute_supply_chain_summary(
     symbols: list[Symbol],
     derived_paths: list[str],
     installed_deps_skipped: Optional[Dict[str, Any]] = None,
+    generated_output_skipped: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Compute supply chain summary from classified symbols.
 
-    Returns a dict with counts per tier plus the two exclusion-disclosure
-    buckets: ``derived_skipped`` and ``installed_deps_skipped`` (ADR-0004
+    Returns a dict with counts per tier plus the three exclusion-disclosure
+    buckets: ``derived_skipped``, ``installed_deps_skipped`` (ADR-0004
     §"Installed dependency source" -- ``discovery.installed_deps_summary``'s
-    ``{dirs, packages, entries}``, empty when nothing was skipped). Tier-3
+    ``{dirs, packages, entries}``, empty when nothing was skipped) and
+    ``generated_output_skipped`` (point 7 --
+    ``discovery.generated_output_summary``'s ``{dirs, entries}``). Tier-3
     (external_dep) carries two sub-buckets counting its symbols by ``meta``
     provenance stamps: ``ecosystem`` (ADR-0041 §3: stdlib / third_party / unknown)
     and ``directness`` (ADR-0041 §2: direct / transitive / undeclared / unknown).
@@ -12077,6 +12095,9 @@ def _compute_supply_chain_summary(
     }
     summary["installed_deps_skipped"] = installed_deps_skipped or {
         "dirs": 0, "packages": 0, "entries": [],
+    }
+    summary["generated_output_skipped"] = generated_output_skipped or {
+        "dirs": 0, "entries": [],
     }
 
     return summary
@@ -12541,7 +12562,8 @@ def run_survey(
     # This replaces 80+ redundant rglob() calls across analyzers,
     # profile detection, and linkers — ~75% of uncached runtime.
     from hypergumbo_core.discovery import (
-        DEFAULT_EXCLUDES, FileIndex, format_installed_deps_disclosure,
+        DEFAULT_EXCLUDES, FileIndex, format_generated_output_disclosure,
+        format_installed_deps_disclosure, generated_output_summary,
         installed_deps_summary, resolve_trace_deps, set_active_trace_deps,
         set_file_index, set_max_file_bytes,
     )
@@ -12569,6 +12591,14 @@ def run_survey(
     _deps_disclosure = format_installed_deps_disclosure(installed_deps_skipped)
     if _deps_disclosure:
         print(_deps_disclosure, file=sys.stderr)
+    # ADR-0004 point 7: generated output is always pruned, so a wrong
+    # exclusion would otherwise be invisible -- name what was pruned and why.
+    generated_output_skipped = generated_output_summary(
+        file_index.generated_output_roots, repo_root,
+    )
+    _output_disclosure = format_generated_output_disclosure(generated_output_skipped)
+    if _output_disclosure:
+        print(_output_disclosure, file=sys.stderr)
 
     # Detect repo profile (languages, frameworks) with LOC counting.
     # Analyzers will read the same files shortly, so OS cache is warm.
@@ -13042,6 +13072,7 @@ def run_survey(
     behavior_map["supply_chain_summary"] = _compute_supply_chain_summary(
         all_symbols, derived_paths=_find_derived_skipped(repo_root),
         installed_deps_skipped=installed_deps_skipped,
+        generated_output_skipped=generated_output_skipped,
     )
 
     # Pre-extract sketch data (config, readme)

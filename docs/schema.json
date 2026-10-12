@@ -213,7 +213,7 @@
     },
     "supply_chain_summary": {
       "type": "object",
-      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus the exclusion-disclosure buckets derived_skipped and installed_deps_skipped. Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets, derived_skipped a {files, paths} shape, and installed_deps_skipped a {dirs, packages, entries} shape (ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
+      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus the exclusion-disclosure buckets derived_skipped, installed_deps_skipped and generated_output_skipped. Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets, derived_skipped a {files, paths} shape, installed_deps_skipped a {dirs, packages, entries} shape and generated_output_skipped a {dirs, entries} shape (ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
       "properties": {
         "installed_deps_skipped": {
           "type": "object",
@@ -263,6 +263,41 @@
                       "type": "string"
                     },
                     "description": "Packages analysed under a per-package --trace-deps."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "generated_output_skipped": {
+          "type": "object",
+          "description": "Generated-output directories (build, docs-site and coverage output) pruned because the tool that writes them left its evidence -- target/ beside Cargo.toml, site/ beside mkdocs.yml, a package.json entry point into dist/ (ADR-0004 \u00a7\"Installed dependency source\" point 7). entries is capped at 10. {dirs: 0, entries: []} when nothing was pruned.",
+          "required": [
+            "dirs",
+            "entries"
+          ],
+          "properties": {
+            "dirs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "entries": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "tool"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Repo-relative directory."
+                  },
+                  "tool": {
+                    "type": "string",
+                    "description": "Label of the rule whose evidence claimed it, e.g. Cargo build, MkDocs site, coverage report."
                   }
                 }
               }
