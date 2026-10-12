@@ -1,0 +1,30 @@
+Original commit body from 56bb52499ce0efbb207a6bdd125abab1af7d8b3e:
+
+Batch 1 of the WI-tusad campaign: inventory, enforcement, shared arity.
+No language producer is migrated here.
+
+Gate: packages/hypergumbo-core/tests/test_stable_id_floor_gate.py runs the
+full pipeline over 79 per-language fixtures, each carrying an earlier
+same-name sibling (overload, clause, same-name function in another scope),
+then again with that sibling deleted. It ratchets, against the shrink-only
+.ci/stable-id-floor-baseline.json, (1) the per-(language, kind) count of
+callable/member records whose stable_id is the ADR-0035 backstop floor key
+or null, and (2) the set of languages where the deletion moved, nulled or
+dropped another symbol's id. Growth and shrink both fail, so each migration
+ratchets its rows down in the same PR. Baseline: 38 languages, 67 floor +
+43 null; 38 languages fail the deletion check (incl. producer-computed
+cpp/hlsl/nim/ada/pascal/sql overload ties and line-hashed pony/scss/twig).
+The gate functions live in the test module: WI-ratuv forbids new
+production functions with test-only callers. coverage-only-deps maps the
+78 analyzer files and base.py to the gate.
+
+Shared arity: overload_arity.declared_arity / declared_arity_stable_id
+derive a callable's ADR-0035 id from meta["parameters"] (or a bare
+meta["arity"]) for grammars where compute_stable_id finds no params node;
+untyped values equal compute_stable_id's for the same parameters, typed
+tier when a parameter declares a type. behaviours.callback_stable_id now
+mints through it, byte-identically (pinned).
+
+Refs WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
