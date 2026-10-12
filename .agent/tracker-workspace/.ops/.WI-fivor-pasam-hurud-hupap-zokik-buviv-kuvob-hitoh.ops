@@ -1,0 +1,23 @@
+- op: create  # 9b03
+  at: '2026-10-12T11:20:17Z'  # 9b03
+  by: agent  # 9b03
+  actor: jgstern_agent  # 9b03
+  clock: 1  # 9b03
+  nonce: 9b03  # 9b03
+  data:  # 9b03
+    kind: work_item  # 9b03
+    title: "ruby: ActiveRecord model calls (User.where / find / create) are stamped with an inherited owner but ruby has no io catalogue, and the external base is recorded as 'Base' not 'ActiveRecord::Base'"  # 9b03
+    status: todo_hard  # 9b03
+    priority: 2  # 9b03
+    parent:  # 9b03
+    tags:  # 9b03
+    - catalogue  # 9b03
+    - io_boundary  # 9b03
+    - ruby  # 9b03
+    - recall  # 9b03
+    isbefore: []  # 9b03
+    duplicate_of: []  # 9b03
+    not_duplicate_of: []  # 9b03
+    pr_ref:  # 9b03
+    description: "FOUND while fixing WI-gabuv (owner_ancestry, finalize sub-step 7d).\n\nSTATEMENT. Rails models are the Ruby analogue of `use Ecto.Repo`: `class User < ApplicationRecord` (`ApplicationRecord < ActiveRecord::Base`) called as `User.where(...)` / `User.find(1)` / `User.create(...)`. owner_ancestry stamps these calls (verified on a fixture: `ruby:User:0-0:where:external_symbol`, receiver_type_hint User), but (1) there is NO ruby io_primitives catalogue at all (io_primitives/ has no ruby.yaml and no overlay), so nothing can classify them; and (2) the stamped parent is `Base`, not `ActiveRecord::Base`: the extends edge is `ruby:external:0-0:Base:external_symbol`, the ruby analyzer having dropped the namespace of the external base (same family as WI-kazut). An unqualified `Base` would be a poor module key for any future row.\n\nFIX DIRECTION. (a) Keep the qualified external base name on the ruby extends edge (`ActiveRecord::Base`); (b) a ruby catalogue (at least an ActiveRecord community overlay: where/find/find_by/all/pluck/exists? as db_read; create/update/save/destroy/delete_all/update_all/insert_all as db_write; note `where` builds a lazy Relation -- ADR-0049's deferred-crossing ruling applies, like Ecto.Query). Not measured on a corpus repository (postal/mastodon/chatwoot are present locally)."  # 9b03
+    fields: {}  # 9b03
