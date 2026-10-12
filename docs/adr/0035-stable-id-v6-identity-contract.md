@@ -141,6 +141,8 @@ already validates *every* `Symbol.kind` (synthetic stand-ins via the `language=N
 `make_*_stable_id` factory chosen, ADR-0034). The gates are live and the fixture corpus is
 collision-free.
 
+**Floor ratchet for callables and members (WI-tusad).** The shrink-only baseline this section calls for, for the producers still on the §1 floor: the gate `packages/hypergumbo-core/tests/test_stable_id_floor_gate.py` counts, per language and callable/member kind, records whose id equals the floor key or is null, on one fixture per language, and lists the languages where deleting an earlier same-name sibling moves or nulls another id (`.ci/stable-id-floor-baseline.json`). Both ratchet to empty as each producer moves to the producer formula; a producer with no parameter-list node reads its declared parameters through `overload_arity.declared_arity_stable_id`, which gives the untyped-tier value `compute_stable_id` would give had it found the list. Replacing a floor value or a null that way is no scheme bump (§6 below); changing a value a producer already computes (the C family hashes `param_count 0` for every overload, and the listed languages whose ids move on deletion) is governed by §6.
+
 **Producer reconciliation (landed; stays scheme v6 per §6).** The per-file collisions the gate
 surfaced are now driven to zero by two post-linker passes (`analyze/base.py`,
 `split_within_file_stable_id_collisions` + `dedup_logical_synthetic_identities`), run after the
