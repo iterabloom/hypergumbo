@@ -15,7 +15,8 @@ Regex-based extraction (no tree-sitter grammar available on PyPI):
 
 Symbols Extracted
 -----------------
-- **function**: Named functions (f(x) = x**2)
+- **function**: Named functions (f(x) = x**2), with their dummy variables in
+  ``meta["parameters"]``
 - **variable**: Variable assignments (a = 3.14)
 - **plot**: Plot commands (plot, splot, replot)
 
@@ -24,6 +25,17 @@ Why This Design
 - Gnuplot is widely used in scientific computing and publications
 - Function definitions and variables reveal computation structure
 - Plot commands are the key outputs of Gnuplot scripts
+
+Function identity (WI-tusad)
+----------------------------
+A function's stable_id is the ADR-0035 producer formula, minted here through
+``overload_arity.declared_arity_stable_id`` over the repo-relative path, the
+name and the dummy-variable count read from ``f(x, y)``. Gnuplot functions are
+global, so the scope chain is the file. ``f(x)`` and ``f(x, y)`` in one
+script are two definitions; with the count in the hash, deleting the first
+leaves the second's id alone. Without it they shared the backstop floor key
+and both were left null. Gnuplot has no parameter types, defaults or
+variadics, so every entry is a plain ``parameter_entry``.
 """
 from __future__ import annotations
 
@@ -35,11 +47,15 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+)
+from hypergumbo_core.paths import to_relative_path
 
 PASS_ID = make_pass_id("gnuplot")
 
 # function_name(args) = expression
-_FUNC_RE = re.compile(r"^(\w+)\s*\([^)]*\)\s*=\s*(.+)", re.MULTILINE)
+_FUNC_RE = re.compile(r"^(\w+)\s*\(([^)]*)\)\s*=\s*(.+)", re.MULTILINE)
 # variable = value (not a function, no parens before =)
 _VAR_RE = re.compile(r"^(\w+)\s*=\s*(?!\s*\()(.+)", re.MULTILINE)
 # plot/splot/replot commands
@@ -48,6 +64,13 @@ _PLOT_RE = re.compile(r"^((?:re)?[sp]?plot)\b", re.MULTILINE)
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
     return f"gnuplot:{path}:{line}-{line}:{name}:{kind}"
+
+
+def _function_parameters(args: str) -> list[dict[str, object]]:
+    """``meta["parameters"]`` of ``f(x, y) = ...`` from its ``x, y``."""
+    return [
+        parameter_entry(arg.strip()) for arg in args.split(",") if arg.strip()
+    ]
 
 
 def find_gnuplot_files(
@@ -72,6 +95,7 @@ def analyze_gnuplot(
         except OSError:  # pragma: no cover
             continue
         path_str = str(gp_file)
+        rel_path = to_relative_path(gp_file, repo_root)
         lines = content.splitlines()
 
         # Track which lines have functions (so we skip them for variable detection)
@@ -86,8 +110,14 @@ def analyze_gnuplot(
             if m:
                 name = m.group(1)
                 func_lines.add(line_num)
+                meta = {PARAMETERS_KEY: _function_parameters(m.group(2))}
                 symbols.append(Symbol(
                     id=_make_symbol_id(path_str, line_num, name, "function"),
+                    stable_id=declared_arity_stable_id(
+                        kind="function", lang="gnuplot", path=rel_path,
+                        name=name, qualified_name=name,
+                        arity=declared_arity(meta),
+                    ),
                     name=name,
                     kind="function",
                     language="gnuplot",
@@ -96,6 +126,7 @@ def analyze_gnuplot(
                               start_col=0, end_col=len(line)),
                     origin=PASS_ID,
                     origin_run_id="",
+                    meta=meta,
                 ))
                 continue
 

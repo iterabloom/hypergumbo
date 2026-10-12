@@ -1,19 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """WI-motiz: the stable_id floor, end to end, for analyzers that compute none.
 
-The clojure / erlang / haskell / ocaml / proto producers never compute a
-``stable_id`` for their functions, messages and rpc methods, and those kinds
-have no entry in the backstop's factory table (``populate_kind_stable_ids``,
-core ``analyze/base.py``). The backstop now gives such a symbol the FLOOR key
+The haskell / ocaml / proto producers never compute a ``stable_id`` for
+their functions, messages and rpc methods, and those kinds have no entry in
+the backstop's factory table (``populate_kind_stable_ids``, core
+``analyze/base.py``). The backstop now gives such a symbol the FLOOR key
 ``make_declaration_stable_id(kind, language, path, name)`` when that key is
 unique among the file's floor candidates, and leaves it ``None`` otherwise
 (ADR-0035 §1).
 
 Two halves are pinned here through the real survey path:
 
-* Where ``name`` already identifies the symbol in its file (an erlang
-  ``greet/1``, a haskell or ocaml top-level binding) the floor is exact and
-  the value is filled.
+* Where ``name`` already identifies the symbol in its file (a haskell or
+  ocaml top-level binding) the floor is exact and the value is filled. The
+  clojure and erlang functions of the same fixture are filled by their
+  producers now (WI-tusad); the test still pins that none is null.
 * Where names repeat in one file (proto ``A.Inner`` / ``B.Inner`` both named
   ``Inner``; rpc ``Get`` in two services) the backstop abstains. The two-run
   tests delete an EARLIER same-name sibling between runs and check that no
@@ -21,10 +22,12 @@ Two halves are pinned here through the real survey path:
   occurrence split of floor keys produces (``B.Inner`` inheriting
   ``A.Inner``'s id).
 
-Elixir left the floor (WI-tusad): its producer mints the ADR-0035 formula
-over the module scope chain and the arity, so its same-name functions of
-three arities (all named ``Demo.greet``) are pinned here as producer-filled,
-and the deletion run as moving none of them.
+Elixir, Erlang and Clojure left the floor (WI-tusad). Elixir's producer
+mints the ADR-0035 formula over the module scope chain and the arity, so its
+same-name functions of three arities (all named ``Demo.greet``) are pinned
+here as producer-filled, and the deletion run as moving none of them. The
+Erlang and Clojure producers are pinned in
+``test_callable_producer_stable_ids.py``.
 """
 from __future__ import annotations
 

@@ -31,6 +31,19 @@ Why This Design
   earlier in iteration order; unresolved names are treated as external library
   references
 - Build-system-specific: targets, functions, macros are first-class
+
+Function and macro identity (WI-tusad)
+--------------------------------------
+``function(name A B)`` / ``macro(name A B)`` record their named arguments in
+``meta["parameters"]`` and mint the ADR-0035 producer stable_id through
+``overload_arity.declared_arity_stable_id`` over the file, the name as written
+and that argument count. CMake commands are global, so the scope chain is the
+file. Without the count, two definitions of one name in a file shared the
+backstop floor key and were both left null; now ``function(run x)`` and a
+later ``function(run x y)`` hold ids that do not depend on each other. Every
+CMake function also accepts extra arguments through ``ARGN``; that is true of
+all of them, so it is not recorded as a variadic entry and does not enter the
+hash.
 """
 from __future__ import annotations
 
@@ -43,6 +56,9 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+)
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
@@ -92,26 +108,38 @@ def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None  # pragma: no cover
 
 
+def _get_parameter_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The named arguments of ``function(name A B)`` / ``macro(name A B)``: ``[A, B]``."""
+    return _get_arguments(node, source)[1:]
+
+
 def _extract_cmake_signature(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract function/macro signature from function_command or macro_command.
 
     CMake functions are defined as: function(name ARG1 ARG2 ...)
     Returns signature in format: (ARG1, ARG2, ...)
     """
-    params: list[str] = []
-    found_name = False
+    return f"({', '.join(_get_parameter_names(node, source))})"
 
-    for child in node.children:
-        if child.type == "argument_list":
-            for arg in child.children:
-                if arg.type == "argument":
-                    if not found_name:
-                        # First argument is the function name, skip it
-                        found_name = True
-                    else:
-                        params.append(node_text(arg, source))
 
-    return f"({', '.join(params)})"
+def _command_definition_identity(
+    node: "tree_sitter.Node", source: bytes, rel_path: str, kind: str, name: str,
+) -> tuple[Optional[str], dict[str, object]]:
+    """``(stable_id, meta)`` of a ``function()`` / ``macro()`` definition.
+
+    See the module docstring: the named arguments become ``meta["parameters"]``
+    and the ADR-0035 producer formula hashes their count.
+    """
+    meta: dict[str, object] = {
+        PARAMETERS_KEY: [
+            parameter_entry(arg) for arg in _get_parameter_names(node, source)
+        ],
+    }
+    stable_id = declared_arity_stable_id(
+        kind=kind, lang="cmake", path=rel_path, name=name, qualified_name=name,
+        arity=declared_arity(meta),
+    )
+    return stable_id, meta
 
 
 def _process_cmake_tree(
@@ -315,10 +343,13 @@ def _process_cmake_tree(
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         symbol_id = make_symbol_id("cmake", rel_path, start_line, end_line, func_name, "function")
+                        stable_id, meta = _command_definition_identity(
+                            child, source, rel_path, "function", func_name,
+                        )
 
                         sym = Symbol(
                             id=symbol_id,
-                            stable_id=None,
+                            stable_id=stable_id,
                             shape_id=None,
                             # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                             kind="function",
@@ -333,6 +364,7 @@ def _process_cmake_tree(
                             ),
                             origin=PASS_ID,
                             signature=_extract_cmake_signature(child, source),
+                            meta=meta,
                             # INV-loguk: function() bodies carry control flow
                             # (if/elseif/foreach/while); walk the full
                             # function_def subtree (node). LOC from span.
@@ -354,10 +386,13 @@ def _process_cmake_tree(
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         symbol_id = make_symbol_id("cmake", rel_path, start_line, end_line, macro_name, "macro")
+                        stable_id, meta = _command_definition_identity(
+                            child, source, rel_path, "macro", macro_name,
+                        )
 
                         sym = Symbol(
                             id=symbol_id,
-                            stable_id=None,
+                            stable_id=stable_id,
                             shape_id=None,
                             # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                             kind="macro",
@@ -372,6 +407,7 @@ def _process_cmake_tree(
                             ),
                             origin=PASS_ID,
                             signature=_extract_cmake_signature(child, source),
+                            meta=meta,
                             # INV-loguk: macro() bodies carry control flow too;
                             # walk the full macro_def subtree (node). LOC from span.
                             cyclomatic_complexity=compute_cyclomatic_complexity(

@@ -270,15 +270,16 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
         line=1182,
         anchor='MetaKeySpec("parameters"',
         home='Symbol.meta["parameters"] / Symbol.meta["params"]',
-        populated_by=("18 analyzers, including py.py, cpp, elixir and nim",),
+        populated_by=("24 analyzers, including py.py, cpp, elixir and nim",),
         note=(
             "A structured list has a length; a rendered string has to be "
             "re-parsed to get one, and the two consumers that count "
             "parameters do exactly that. 'params' is the name-only short "
             "form for analyzers that do not extract types. This is the "
-            "best-supplied of the three homes -- 18 analyzers populate it "
-            "(apex, cpp, elixir, fennel, fortran, hack, janet, jsonnet, "
-            "luau, nim, odin, pony, puppet, py, scala, scss, thrift, zig), "
+            "best-supplied of the three homes -- 24 analyzers populate it "
+            "(apex, clojure, cmake, commonlisp, cpp, elixir, erlang macros, "
+            "fennel, fortran, gnuplot, hack, janet, jsonnet, luau, nim, "
+            "odin, pony, puppet, py, r, scala, scss, thrift, zig), "
             "so unlike the return-type and field-type registries, PYTHON "
             "ALREADY WRITES HERE. The arity parsers are csharp and "
             "jackson_dispatch. The consumer that reads the HOME is "

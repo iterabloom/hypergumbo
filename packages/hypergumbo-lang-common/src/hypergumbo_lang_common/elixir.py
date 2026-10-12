@@ -2576,9 +2576,7 @@ def _function_symbol(
     """
     nodes = [node for node, _keyword in clauses]
     first, last = nodes[0], nodes[-1]
-    # Equal to ``key.kind`` (the same keyword decided it); read from the
-    # keyword so the producer-axis ratchet sees the two literal kinds.
-    kind = _def_kind(clauses[0][1])
+    kind = key.kind
     span = Span(
         start_line=first.start_point[0] + 1,
         end_line=last.end_point[0] + 1,

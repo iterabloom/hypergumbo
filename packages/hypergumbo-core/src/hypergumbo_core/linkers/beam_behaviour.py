@@ -22,9 +22,10 @@ For each such stub whose atom names an Erlang module in the run:
 * ``dispatches_to`` from each of that module's ``-callback`` symbols
   (``name/arity``, ``abstract``) to the Elixir module's public functions named
   ``<Module>.<name>`` whose declared parameters admit the callback's arity
-  (``overload_arity.narrow_by_arity``: a clause of unknown arity is kept). Elixir
-  names a clause without its arity, so the arity check is what keeps
-  ``start/1`` from claiming a ``start/0`` helper.
+  (``overload_arity.narrow_by_arity``: a function of unknown arity is kept).
+  Elixir emits one function per name/arity but names it without the arity
+  (``M.start`` for both ``start/0`` and ``start/1``), so the arity check is
+  what keeps ``start/1`` from claiming a ``start/0`` helper.
 
 Both edges come from ``hypergumbo_core.behaviours``, the shape the two
 analyzers emit for a same-language behaviour, and carry the consumed stub in

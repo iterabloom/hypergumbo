@@ -77,8 +77,20 @@ def _analyzer_sources() -> tuple[tuple[str, tuple[str, ...]], ...]:
     return tuple((source, names) for _path, source, names in _analyzer_modules())
 
 
+#: stable_id helpers whose keyword names are hash inputs, never meta keys.
+_IDENTITY_HELPERS: frozenset[str] = frozenset({
+    "make_typed_stable_id", "declared_arity_stable_id", "assemble_stable_id",
+})
+
+
 def _pass_ids_writing(*tokens: str) -> set[str]:
-    """Analyzer pass ids whose module names any of ``tokens`` as data."""
+    """Analyzer pass ids whose module names any of ``tokens`` as data.
+
+    Data is a string constant or a keyword-argument name (see the module
+    docstring), except a keyword of the stable_id helpers
+    (:data:`_IDENTITY_HELPERS`): their ``decorators=`` is a hash input that
+    writes nothing to ``meta``, so it is no route record a reader can match.
+    """
     wanted = set(tokens)
     found: set[str] = set()
     for source, names in _analyzer_sources():
@@ -92,6 +104,10 @@ def _pass_ids_writing(*tokens: str) -> set[str]:
             keyword.arg
             for node in ast.walk(tree)
             if isinstance(node, ast.Call)
+            and not (
+                isinstance(node.func, ast.Name)
+                and node.func.id in _IDENTITY_HELPERS
+            )
             for keyword in node.keywords
             if keyword.arg
         }
@@ -161,6 +177,11 @@ class TestTheScannerCanReturnBothAnswers:
 
     def test_a_token_analyzers_do_write_is_found(self) -> None:
         assert "python" in _pass_ids_writing("base_classes")
+
+    def test_an_identity_helper_keyword_is_not_a_meta_write(self) -> None:
+        """commonlisp passes ``decorators=`` (method qualifiers) only to
+        ``declared_arity_stable_id``; it writes no ``meta["decorators"]``."""
+        assert "commonlisp" not in _pass_ids_writing("decorators")
 
     def test_edge_type_scan_ignores_the_word_outside_the_argument(self) -> None:
         """``includes`` appears in prose in most analyzers and as an

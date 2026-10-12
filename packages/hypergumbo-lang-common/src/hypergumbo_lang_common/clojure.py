@@ -46,6 +46,31 @@ Clojure-Specific Considerations
 - Protocols provide interface-like polymorphism
 - Records are value types implementing protocols
 - Multimethods provide ad-hoc polymorphism via dispatch function
+
+Callable identity (WI-tusad)
+----------------------------
+``defn``/``defn-``, ``defmacro``, ``defmethod`` and ``defmulti`` mint the
+ADR-0035 producer stable_id at construction, through
+``overload_arity.declared_arity_stable_id``, instead of riding the backstop
+floor (where two same-name forms in one file null each other). Inputs:
+
+- the scope chain: the var's namespace-qualified name ``ns/name`` (every def
+  form interns a namespace-level var, however deeply it is nested), from the
+  file's latest ``(ns ...)`` form, or the bare name before any;
+- for a ``defmethod``, its dispatch value, appended to that chain with its
+  whitespace and commas collapsed (``area :circle``), so the methods of one
+  multimethod hash apart and reformatting a vector value moves nothing;
+- the parameters, written to ``meta["parameters"]``. A multi-arity form is
+  ONE node whose arity bodies merge into one list: the longest fixed body's
+  parameters, those past the shortest body's count marked ``default``, and a
+  ``& rest`` as the variadic entry. So ``([x] ...) ([x y] ...)`` admits one or
+  two arguments, and a later ``(defn run ([x] x) ([x y] ...))`` hashes apart
+  from an earlier ``(defn run [x] x)``. Non-contiguous arities (``[x]`` and
+  ``[x y z]``) merge to one to three, which ``narrow_by_arity`` reads as a
+  superset. A ``defmulti`` declares no parameters (its dispatch function
+  does), so it takes the zero-parameter formula.
+
+Visibility is not an input: ``defn`` -> ``defn-`` is the same var.
 """
 from __future__ import annotations
 
@@ -66,6 +91,9 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -160,19 +188,111 @@ def _clojure_constructed_from(
 
 
 def _clojure_def_meta(
-    visibility: str, constructed_from: "str | None",
-) -> "dict[str, str] | None":
+    visibility: str,
+    constructed_from: "str | None",
+    parameters: "list[dict[str, object]] | None" = None,
+) -> "dict[str, object] | None":
     """Assemble a def's meta, omitting the dict entirely when empty.
 
-    Kept as a helper so adding a third key later cannot silently drop one of
-    the first two — the shape that made a conditional literal fragile.
+    Kept as a helper so adding a key later cannot silently drop another —
+    the shape that made a conditional literal fragile.
     """
-    meta: dict[str, str] = {}
+    meta: dict[str, object] = {}
     if visibility == "private":
         meta["visibility"] = visibility
     if constructed_from:
         meta["constructed_from"] = constructed_from
+    if parameters is not None:
+        meta[PARAMETERS_KEY] = parameters
     return meta or None
+
+
+#: Kinds whose stable_id the producer mints (see the module docstring).
+_CLOJURE_IDENTITY_KINDS: frozenset[str] = frozenset(
+    {"function", "macro", "method", "multimethod"}
+)
+
+#: Kinds whose form carries a parameter vector (or several arity bodies).
+_CLOJURE_PARAMETER_KINDS: frozenset[str] = frozenset(
+    {"function", "macro", "method"}
+)
+
+#: Children of a parameter vector that are not parameters.
+_NON_PARAMETER_NODES: frozenset[str] = frozenset(
+    {"[", "]", "meta_lit", "old_meta_lit", "comment", "dis_expr"}
+)
+
+
+def _collapse(text: str) -> str:
+    """``text`` with commas (whitespace in Clojure) and runs of space collapsed."""
+    return " ".join(text.replace(",", " ").split())
+
+
+def _vector_parameters(
+    vec: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, object]]:
+    """``meta["parameters"]`` entries of one parameter vector ``[x {:keys [a]} & more]``.
+
+    Each form is one parameter (a destructuring map or vector included, named
+    by its collapsed text); the form after ``&`` is the variadic one.
+    """
+    entries: list[dict[str, object]] = []
+    rest = False
+    for child in vec.children:
+        if child.type in _NON_PARAMETER_NODES:
+            continue
+        if child.type == "sym_lit":
+            name = _get_sym_name(child, source)
+            if name == "&":
+                rest = True
+                continue
+        else:
+            name = _collapse(node_text(child, source))
+        entries.append(parameter_entry(name, variadic=rest))
+    return entries
+
+
+def _merge_arity_bodies(
+    bodies: "list[list[dict[str, object]]]",
+) -> list[dict[str, object]]:
+    """One parameter list for a multi-arity form (see the module docstring)."""
+    if len(bodies) == 1:
+        return bodies[0]
+    fixed = [[e for e in body if not e.get("variadic")] for body in bodies]
+    required = min(len(f) for f in fixed)
+    longest = max(fixed, key=len)
+    merged = [
+        parameter_entry(str(e["name"]), default=i >= required)
+        for i, e in enumerate(longest)
+    ]
+    merged.extend(
+        next(([e] for body in bodies for e in body if e.get("variadic")), []),
+    )
+    return merged
+
+
+def _clojure_parameters(
+    forms: "list[tree_sitter.Node]", source: bytes,
+) -> "list[dict[str, object]] | None":
+    """The parameters of a callable def form from the forms after its name.
+
+    ``forms`` starts after the name (after the dispatch value of a
+    ``defmethod``). A docstring and an attribute map are skipped; then either
+    one parameter vector or a run of ``([params] body)`` arity bodies follows.
+    None when neither does (a malformed or macro-generated form).
+    """
+    rest = [f for f in forms if f.type not in ("str_lit", "map_lit")]
+    if rest and rest[0].type == "vec_lit":
+        return _vector_parameters(rest[0], source)
+    bodies: list[list[dict[str, object]]] = []
+    for form in rest:
+        if form.type != "list_lit":
+            break
+        head = next((c for c in form.children if c.type != "("), None)
+        if head is None or head.type != "vec_lit":
+            break
+        bodies.append(_vector_parameters(head, source))
+    return _merge_arity_bodies(bodies) if bodies else None
 
 
 def _is_def_form(sym_name: str) -> tuple[str, str] | None:
@@ -213,6 +333,7 @@ def _extract_symbols_from_file(
     - defmulti (multimethods)
     """
     symbols: list[Symbol] = []
+    current_ns = ""
 
     for node in iter_tree(tree.root_node):
         if node.type == "list_lit":
@@ -227,6 +348,7 @@ def _extract_symbols_from_file(
                 if first_sym == "ns" and len(inner) > 1:
                     if inner[1].type == "sym_lit":
                         ns_name = _get_sym_name(inner[1], source)
+                        current_ns = ns_name
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         span = Span(
@@ -269,8 +391,31 @@ def _extract_symbols_from_file(
                             signature = _extract_clojure_signature(node, source)
 
                         is_callable = kind in _CLOJURE_CALLABLE_KINDS
+                        parameters: "list[dict[str, object]] | None" = None
+                        stable_id: "str | None" = None
+                        if kind in _CLOJURE_IDENTITY_KINDS:
+                            qualified = (
+                                f"{current_ns}/{def_name}" if current_ns else def_name
+                            )
+                            after_name = inner[2:]
+                            if kind == "method" and after_name:
+                                qualified += " " + _collapse(
+                                    node_text(after_name[0], source),
+                                )
+                                after_name = after_name[1:]
+                            if kind in _CLOJURE_PARAMETER_KINDS:
+                                parameters = _clojure_parameters(after_name, source)
+                            stable_id = declared_arity_stable_id(
+                                kind=kind, lang="clojure", path=file_path,
+                                name=def_name, qualified_name=qualified,
+                                arity=declared_arity(
+                                    None if parameters is None
+                                    else {PARAMETERS_KEY: parameters},
+                                ),
+                            )
                         symbols.append(Symbol(
                             id=sym_id,
+                            stable_id=stable_id,
                             name=def_name,
                             kind=kind,
                             language="clojure",
@@ -282,6 +427,7 @@ def _extract_symbols_from_file(
                             meta=_clojure_def_meta(
                                 visibility,
                                 _clojure_constructed_from(inner, source),
+                                parameters,
                             ),
                             cyclomatic_complexity=(
                                 compute_cyclomatic_complexity(node, "clojure")

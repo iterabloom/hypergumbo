@@ -82,12 +82,18 @@ What it deliberately does NOT do
   call rather than following imports.
 - Attribute reads on ``self`` / ``cls``. Instance state is filled across
   methods and runs; tracking it is type inference, not value flow.
-- Typing the object of an attribute read. ``ref.edge_type`` resolves against
-  every module-local record class that declares ``edge_type``, whatever
-  ``ref`` is. An object of an IMPORTED class with a same-named field is the
-  documented unsoundness; the realistic case (re-emitting an existing
-  ``Edge``'s ``edge_type``) has no module-local class to match and stays
-  ``None``.
+- Typing the object of an attribute read, beyond its own declaration.
+  ``ref.edge_type`` resolves against every module-local record class that
+  declares ``edge_type``, whatever ``ref`` is, with one narrowing: when
+  ``ref`` is a name whose ONLY binding in its scope is a parameter or an
+  annotated assignment annotated with one of those classes (``key:
+  _FunctionKey``, or the string form), only that class is read. Without it,
+  a module holding two records with a same-named field (Elixir's
+  ``_FunctionKey.kind`` and ``_Directive.kind``) attributed one record's
+  values to reads of the other (WI-firog). An object of an IMPORTED class
+  with a same-named field is the documented unsoundness; the realistic case
+  (re-emitting an existing ``Edge``'s ``edge_type``) has no module-local
+  class to match and stays ``None``.
 """
 
 from __future__ import annotations
@@ -178,6 +184,39 @@ class _Binding:
 
 class _Unresolvable(Exception):
     """Internal: unwinds a resolution that hit something it cannot model."""
+
+
+def _annotation_name(annotation: Optional[ast.expr]) -> Optional[str]:
+    """``C`` for an annotation ``C`` or ``"C"``; None for anything else."""
+    if isinstance(annotation, ast.Name):
+        return annotation.id
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        return annotation.value
+    return None
+
+
+#: Annotations whose one type argument is the element a loop yields.
+_ELEMENT_GENERICS: Final[frozenset[str]] = frozenset({
+    "list", "List", "set", "Set", "frozenset", "FrozenSet", "Sequence",
+    "Iterable", "Iterator", "Collection", "AbstractSet", "MutableSequence",
+})
+
+
+def _element_annotation_name(annotation: Optional[ast.expr]) -> Optional[str]:
+    """``C`` for ``list[C]`` / ``Sequence["C"]`` / ``"list[C]"``; None otherwise."""
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        try:
+            annotation = ast.parse(annotation.value, mode="eval").body
+        except SyntaxError:
+            return None
+    if not isinstance(annotation, ast.Subscript):
+        return None
+    if _annotation_name(annotation.value) not in _ELEMENT_GENERICS and not (
+        isinstance(annotation.value, ast.Attribute)
+        and annotation.value.attr in _ELEMENT_GENERICS
+    ):
+        return None
+    return _annotation_name(annotation.slice)
 
 
 def _callee_name(node: ast.expr) -> Optional[str]:
@@ -1348,12 +1387,72 @@ class ModuleValueFlow:
                 raise _Unresolvable
         if not classes:
             raise _Unresolvable
+        declared = self._declared_type(receiver)
+        if declared is not None:
+            # The receiver says what it is: read that record only, and an
+            # object of any other class (an imported ``Symbol``) not at all.
+            classes = [c for c in classes if c.name == declared]
+            if not classes:
+                raise _Unresolvable
         out: frozenset[str] = frozenset()
         step: Path = (("attr", field),) + path
         for cls in classes:
             for call in self._call_sites(cls, cls.name):
                 out |= self._construction(cls, call, step)
         return out | self._replacements(field, path)
+
+    def _declared_type(self, receiver: ast.expr) -> Optional[str]:
+        """The class name the receiver's own declaration gives it, or None.
+
+        A name is typed when every binding of it in its scope declares the
+        same class: parameters and assignments annotated ``C`` (or ``"C"``),
+        or one plain ``for x in xs`` loop over a name declared as a
+        collection of ``C`` (``list[C]``, ``Sequence[C]``, ...). A rebinding
+        without an annotation, or two different annotations, leaves it
+        untyped.
+        """
+        if not isinstance(receiver, ast.Name):
+            return None
+        scope = self._binding_scope(receiver, receiver.id)
+        if scope is None:
+            return None
+        declared: list[Optional[str]] = [
+            _annotation_name(param.annotation) for param in self._params(scope)
+            if param.arg == receiver.id
+        ]
+        others = [b for b in self._bindings(scope, receiver.id) if b.kind != "param"]
+        annotated = [
+            node.annotation for node in self._own(scope)
+            if isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == receiver.id and node.value is not None
+        ]
+        if annotated and len(annotated) == len(others):
+            declared.extend(_annotation_name(a) for a in annotated)
+        elif (
+            len(others) == 1 and others[0].kind == "for"
+            and not others[0].positions and not declared
+        ):
+            collection = self._declared_annotation(others[0].value)
+            declared.append(_element_annotation_name(collection))
+        elif others:
+            return None
+        names = set(declared)
+        return names.pop() if len(names) == 1 else None
+
+    def _declared_annotation(self, expr: Optional[ast.expr]) -> Optional[ast.expr]:
+        """The annotation a parameter named by *expr* is declared with, if one."""
+        if not isinstance(expr, ast.Name):
+            return None
+        scope = self._binding_scope(expr, expr.id)
+        if scope is None:
+            return None
+        bindings = self._bindings(scope, expr.id)
+        if len(bindings) != 1 or bindings[0].kind != "param":
+            return None
+        return next(
+            (p.annotation for p in self._params(scope) if p.arg == expr.id), None,
+        )
 
     def _replacements(self, field: str, path: Path) -> frozenset[str]:
         """Values ``dataclasses.replace(x, field=...)`` / ``x._replace(...)`` set."""
