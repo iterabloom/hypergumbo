@@ -1,0 +1,45 @@
+Original commit body from 181d6d934932a3d5e9a83d572c0d983cf39ffbc2:
+
+An unparseable function_summaries.d file crashed verify-claims with
+"internal error" and exit 1, the code verify-claims uses for violated:
+load_function_summaries parsed with no handling. A live survey of every
+catalogue channel found the same defect in more places:
+
+- I/O overlays (--io-primitives, claims extra_catalogs, config.toml,
+  io_primitives.d, .hypergumbo.toml): a syntax error crashed in the
+  provenance pre-read (overlay_declares_community), before the load that
+  would have refused it; a wrong-typed section (net_send: 5) was skipped in
+  silence; a repeated key escaped as DuplicateYamlKeyError.
+- function_summaries.d: wrong shape skipped in silence, wrong field type
+  crashed; under --no-default-overlays the summary split used the taint
+  reader and called the file a taint catalog.
+- frameworks.d: crashed survey and sketch with exit 1.
+- library_signatures.d: py.py reads it at import, so registry discovery
+  swallowed the error and the python analyzer vanished (survey exit 0); in
+  the analyzer pool the fail-open handler hid it the same way.
+- dataflow_patterns.d: a syntax error was skipped in silence.
+- sketch swallowed any exception from its cold-cache analysis, so all of
+  the above gave a sketch of no analysis at exit 0.
+
+Fix: yaml_catalogs.CatalogueError is the one base type (TaintCatalogError,
+IoPrimitiveOverlayError, DuplicateYamlKeyError, DefaultOverlayError derive
+from it; the summary, framework, library-signature and dataflow loaders
+raise it), read_catalogue_yaml is the shared parse-and-shape check, and
+cli.main maps CatalogueError to "Error: <message>" exit 2 at the same
+chokepoint as SubstrateError. Analyzer discovery, the analyzer pool and the
+sketch auto-run re-raise it instead of containing it. verify-claims reads
+the function summaries with the rest of the taint model, so a broken file
+is refused there even when no language has both a source and a sink.
+IoBoundaryCatalog._from_dict refuses a non-list section or non-mapping row.
+
+Live: 15 verify-claims channels x {syntax, shape, field} with and without
+--no-default-overlays, io-boundaries x 4 overlay channels, and survey/sketch
+x 3 analysis channels all exit 2 with the file named.
+
+Filed separately: the results cache is not keyed on the user's
+analysis-stage channels, so a cached sketch never sees a changed or broken
+frameworks.d file (INV-horob-sotir-vijut-bibur-rilob-butun-litad-jijuk).
+
+Refs INV-nuram-bugod-norib-vusof-ligam-dumiz-jupip-nopib
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
