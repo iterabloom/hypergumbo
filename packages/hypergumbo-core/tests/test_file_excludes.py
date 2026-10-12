@@ -97,9 +97,11 @@ def test_excludes_dot_venv(tmp_path: Path) -> None:
 
 
 def test_excludes_dist(tmp_path: Path) -> None:
-    """Should not analyze files in dist directory."""
+    """Should not analyze files in a dist directory its tool declares as output
+    (ADR-0004 point 7: a bare ``dist`` with no evidence is analysed)."""
     root_file = tmp_path / "app.py"
     root_file.write_text("def main(): pass")
+    (tmp_path / "package.json").write_text('{"main": "dist/bundle.js"}')
 
     dist_dir = tmp_path / "dist"
     dist_dir.mkdir()
@@ -116,12 +118,14 @@ def test_excludes_dist(tmp_path: Path) -> None:
 
 
 def test_excludes_build(tmp_path: Path) -> None:
-    """Should not analyze files in build directory."""
+    """Should not analyze files in a build directory its tool wrote
+    (setuptools' ``lib.<platform>`` inside, ``setup.py`` beside)."""
     root_file = tmp_path / "app.py"
     root_file.write_text("def main(): pass")
+    (tmp_path / "setup.py").write_text("")
+    (tmp_path / "build" / "lib.linux-x86_64-3.12").mkdir(parents=True)
 
     build_dir = tmp_path / "build"
-    build_dir.mkdir()
     excluded_file = build_dir / "output.py"
     excluded_file.write_text("def excluded(): pass")
 

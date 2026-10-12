@@ -753,8 +753,15 @@ class TestTopLevelBlockTyping:
                     "traced": [],
                 }],
             },
+            "generated_output_skipped": {
+                "dirs": 1, "entries": [{"path": "target", "tool": "Cargo build"}],
+            },
         }
         jsonschema.Draft202012Validator(scs).validate(real)
+        # ADR-0004 point 7: the generated-output bucket's shape is pinned too.
+        bad = dict(real, generated_output_skipped={"dirs": 1, "entries": [{"path": "x"}]})
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.Draft202012Validator(scs).validate(bad)
         # ADR-0004 §"Installed dependency source": the bucket's shape is pinned,
         # not just its name.
         real["installed_deps_skipped"] = {"dirs": 1, "packages": 1}

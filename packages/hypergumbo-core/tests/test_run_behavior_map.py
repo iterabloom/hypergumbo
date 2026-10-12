@@ -231,7 +231,9 @@ def test_find_derived_skipped_enumerates_derived_dirs_and_prunes_deps(tmp_path):
     repo = tmp_path / "repo"
     (repo / "src").mkdir(parents=True)
     (repo / "src" / "a.py").write_text("x = 1\n")
-    # Top-level derived dir, with a nested subdir.
+    # Top-level derived dir, with a nested subdir. Its tool's evidence (the
+    # package.json entry point) is what makes it output (ADR-0004 point 7).
+    (repo / "package.json").write_text('{"main": "dist/bundle.js"}')
     (repo / "dist" / "assets").mkdir(parents=True)
     (repo / "dist" / "bundle.js").write_text("//\n")
     (repo / "dist" / "assets" / "chunk.js").write_text("//\n")
@@ -267,8 +269,10 @@ def test_run_behavior_map_derived_skipped_accounts_for_excluded_dirs(tmp_path):
     repo_root = tmp_path / "repo"
     (repo_root / "src").mkdir(parents=True)
     (repo_root / "src" / "app.py").write_text("def main(): pass\n")
-    # A derived dir discovery gitignore-excludes before the tier-4 classifier.
+    # A derived dir discovery excludes before the tier-4 classifier -- a CMake
+    # build tree, recognised by the CMakeCache.txt CMake writes into it.
     (repo_root / "build").mkdir()
+    (repo_root / "build" / "CMakeCache.txt").write_text("\n")
     (repo_root / "build" / "artifact.o").write_text("\n")
     (repo_root / "build" / "artifact.js").write_text("//\n")
 

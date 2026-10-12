@@ -109,7 +109,8 @@ if TYPE_CHECKING:
 
 from .discovery import (
     DEFAULT_EXCLUDES, DEPENDENCY_DIR_NAMES, find_files,
-    format_installed_deps_disclosure, match_content_rule, under_content_rule_dir,
+    format_generated_output_disclosure, format_installed_deps_disclosure,
+    match_content_rule, under_content_rule_dir,
 )
 from .profile import detect_profile, RepoProfile
 from .ir import Symbol, Edge, is_external_boundary
@@ -1517,8 +1518,12 @@ def _discover_config_files_embedding(
             if any(p.startswith(".") and p not in {".ruby-version"} for p in parts[:-1]):
                 continue  # pragma: no cover - hidden dir filtering
             if any(p in {"node_modules", "vendor", "venv", ".venv", "__pycache__",
-                        "dist", "build", "target", "_build", "deps"} for p in parts):
+                        "deps"} for p in parts):
                 continue  # pragma: no cover - common non-config dirs
+            # Generated output by its tool's evidence, never by a bare
+            # ``build``/``dist``/``target`` name (ADR-0004 point 7).
+            if under_content_rule_dir(repo_root, parts[:-1]):
+                continue  # pragma: no cover - the index already pruned these
 
             # Check parent directory size (skip if too large)
             parent = item.parent
@@ -6575,13 +6580,16 @@ def _generate_sketch_impl(
         )
     # ADR-0004 §"Installed dependency source": say what was not analysed, in
     # the section that states what was. Absent when nothing was skipped.
-    deps_line = format_installed_deps_disclosure(
-        ((cached_results or {}).get("supply_chain_summary") or {}).get(
-            "installed_deps_skipped",
-        ),
-    )
+    _scs = (cached_results or {}).get("supply_chain_summary") or {}
+    deps_line = format_installed_deps_disclosure(_scs.get("installed_deps_skipped"))
     if deps_line:
         header = f"{header}\n\n{deps_line}"
+    # ADR-0004 point 7: and the generated output pruned by its tool's evidence.
+    output_line = format_generated_output_disclosure(
+        _scs.get("generated_output_skipped"),
+    )
+    if output_line:
+        header = f"{header}\n\n{output_line}"
     sections.append(header)
 
     # Section 2: Structure (using tree format from the start)
