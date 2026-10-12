@@ -33,7 +33,8 @@ What this carrier (run-lifecycle:F1) implements vs. defers
   validates it; it also re-derives an ``evidence_derived`` confidence from the verdict,
   INV-fazim**); receiver-blind magnet demotion (6c, INV-fahub, before 7); same-site stub
   demotion (7a, ADR-0057 §14); the visibility fold (7b, INV-jusot); repro-grammar pruning
-  (7c); commit-dicts (8); referential-integrity validate_ir lift (10, now also carrying the
+  (7c); the inherited-owner stamp (7d, ``owner_ancestry`` — a call on an in-repo type that
+  does not define the member names the type's external ancestors); commit-dicts (8); referential-integrity validate_ir lift (10, now also carrying the
   ADR-0037 ruling-5 ``is_resolved ⇒ first-party`` FK predicate). Violations are sorted
   before the validation report is built, so the serialized order is stable.
 * **Two §6.1 stub slots stayed empty.** ADR-0043 §6.1 planned three Phase-2 families each
@@ -84,6 +85,7 @@ from .arbitration import BUILTIN_POLICY, ArbitrationPolicy
 from .arbitration import SUPERSEDED_STUB_RANK_FACTOR as SUPERSEDED_STUB_RANK_FACTOR  # re-export: the §14 level
 from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
 from .pass_metadata import PassMetadataLookup
+from .owner_ancestry import stamp_external_owner_ancestors
 from .receiver_blind_magnets import demote_harmful_magnets
 from .repo_fingerprint import compute_repo_fingerprint_field
 from .visibility import (
@@ -651,6 +653,15 @@ def _finalize_demote_superseded_stubs(ctx: FinalizeContext) -> None:
     demote_superseded_stubs(ctx.symbols, ctx.edges, policy=ctx.arbitration_policy)
 
 
+def _finalize_stamp_external_owner_ancestors(ctx: FinalizeContext) -> None:
+    """Sub-step 7d (WI-gabuv): see :func:`owner_ancestry.stamp_external_owner_ancestors`.
+
+    After 7 because the stamp considers only edges the verdict calls unresolved;
+    before 8 so the serialized edges carry it to every catalogue consumer.
+    """
+    stamp_external_owner_ancestors(ctx.symbols, ctx.edges)
+
+
 def _rederive_confidence_from_verdict(edge: "Edge") -> None:
     """INV-fazim: re-derive ``evidence_derived`` confidence from the verdict above.
 
@@ -875,6 +886,7 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap:
     _finalize_demote_superseded_stubs(ctx)  # 7a same-site stub demotion (ADR-0057 §14; after 7)
     _finalize_compute_visibility(ctx)       # 7b visibility fold (INV-jusot; before 8)
     _finalize_prune_repro_grammars(ctx)     # 7c repro grammars → used-only (WI-fonod/WI-givad; before 8)
+    _finalize_stamp_external_owner_ancestors(ctx)  # 7d inherited-owner stamp (WI-gabuv; after 7, before 8)
     _finalize_commit_dicts(ctx)             # 8  commit reconciled view
     _finalize_referential_integrity(ctx)    # 10 validate_ir — LAST (R3)
     ctx.violations.sort(key=_violation_sort_key)  # §6 determinism: stable serialized order
