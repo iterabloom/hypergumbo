@@ -25,14 +25,16 @@ same-named function in its own module (a behaviour may define a default
 two hash apart.
 
 WHY A SHARED MODULE. Three producers emit these edges: the Erlang analyzer
-(``-behaviour``), the Elixir analyzer (``@behaviour``) and the BEAM behaviour
-bridge linker (an Elixir module whose ``@behaviour :name`` names an in-repo
+(``-behaviour``), the Elixir analyzer (``@behaviour``, and ``defimpl``: an
+Elixir protocol is a behaviour whose ``def`` heads are its callbacks,
+WI-forof) and the BEAM behaviour bridge linker (an Elixir module whose ``@behaviour :name`` names an in-repo
 ERLANG module, which neither analyzer can see). They must agree on edge type,
 evidence, the unresolved-target spelling and the meta, or a consumer reading
 one language's behaviours misreads the other's. HOW EACH PRODUCER FINDS the
 behaviour and the implementation stays with it: Erlang matches a callback to
-its implementation by ``name/arity`` exactly, Elixir by name within the
-implementing module, the bridge by name plus arity bounds.
+its implementation by ``name/arity`` exactly, Elixir and the bridge by name
+within the implementing module plus arity bounds (``meta["arity"]`` against
+the clause's ``meta["parameters"]``, ``overload_arity.narrow_by_arity``).
 """
 from __future__ import annotations
 
@@ -44,7 +46,8 @@ from .paths import normalize_path
 
 #: The modifier on a callback declaration -- the marking cpp and kotlin give
 #: an abstract member. A symbol bearing it is a required function with no
-#: body: never a call target, never a caller.
+#: body: never a caller, and never a call target -- except an Elixir protocol
+#: function, which is the protocol's dispatch function (``Size.size(x)``).
 CALLBACK_MODIFIER = "abstract"
 
 
