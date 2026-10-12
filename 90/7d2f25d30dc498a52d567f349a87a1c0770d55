@@ -1,0 +1,54 @@
+Original commit body from bfc80a2a1bd407e4e8248ac6ed2588a4b47ef490:
+
+INV-kagib: the OCaml, Agda, Lean and Wolfram analyzers kept a per-file
+set of seen names, so the second same-name declaration of a file was
+absent from the graph: `run` in a second OCaml/Agda module or Lean
+namespace, a second Agda record's `field fst`, the Wolfram overload
+`run[x_String]` beside `run[x_Integer]`. Every declaration is now
+emitted with its scope chain:
+
+- ocaml: each let binding (every `and` binding, shadowing
+  redefinitions) is a symbol; module-nested bindings are named `A.run`
+  (`A.C.deep`); local functions keep their bare name with `f/g` in the
+  chain; local `let x = ... in` values are no longer emitted as
+  functions. Types/modules are emitted per declaration under their bare
+  names (table-formula ids, unchanged). Calls anchor by position and a
+  `A.run` call tries the qualified name first.
+- agda: chain over nested modules (`module _` adds nothing), data types,
+  records and where-owners; `A.run`, `Pair.fst`, constructors bare with
+  the data type in the chain; reference sources found by chain.
+- lean: namespace stack over namespace/section/end (`_root_` opts out);
+  `A.run`, `B.foo`; an unnamed instance keeps the class name with its
+  type application in the chain; struct/class keep table ids. Reference
+  sources found by position.
+- wolfram: definitions read from the left-hand side text (the grammar
+  does not parse blank patterns; `helper[] := 2` was missed); patterns
+  become meta.parameters with heads/tests/literals as types (typed
+  tier), `__`/`___`/OptionsPattern variadic, `x_:d`/`x_.` defaults.
+- fsharp: nested-module chain (`A.run`, `A.Point.X`, class-level
+  `Shape.helper`), local functions chained `outer/inner`; dotted calls
+  try the qualified name first. Class types and members are still not
+  emitted (filed WI-tamib).
+- tlaplus: LET-local operators chained by their enclosing operators
+  (`A/f`), higher-order parameters counted; reference sources by
+  position and LET-locals resolved by scope before the repo lookup.
+- haskell: arity from the first equation's patterns (meta.arity).
+- elm: parameters from the function's patterns.
+
+All mint the ADR-0035 producer formula through
+overload_arity.declared_arity_stable_id; non-callable kinds that rode
+the floor are migrated too (haskell data/instance, fsharp
+record/union/field, elm port, agda data/record/field, lean
+theorem/inductive/instance, tlaplus constant/theorem/assumption).
+
+Floor/null -> producer only: every previously producer-computed id is
+byte-identical on the gate fixtures and a corpus sample (40 files per
+language where available). Baseline: the eight languages leave
+floor_and_null and the six failing ones leave sibling_deletion_moves.
+Producer-count docs for meta.parameters updated; stale lean/tlaplus
+line citations in symbol_kinds.py / concept-axes.md repointed.
+
+Refs WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral
+Refs INV-kagib-tugal-novif-tival-hivun-hurag-vujaf-jazov
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
