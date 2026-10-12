@@ -1,0 +1,33 @@
+Original commit body from 397b387d079c4cf4ebe4843644e51c50168fb59d:
+
+The Elixir analyzer emitted one symbol per def clause, all named M.f, so
+every multi-clause or multi-arity function rode the ADR-0035 backstop
+floor and same-name groups were left stable_id=null (phoenix/lib: 678 of
+2,231 nodes).
+
+Clauses of one module/name/arity now fold into ONE function or macro
+symbol (the Erlang shape): span first clause start to last clause end,
+first clause's signature, parameters merged with any clause's defaults
+(so def f(a, b \\ 1) is one f/2 node reachable at arity 1), CC
+aggregated as Erlang does. Clauses split by another definition still
+fold. The name stays M.f (call resolution, behaviour/protocol dispatch,
+framework callbacks, routes and the catalogue key on it); arity is in
+meta["parameters"]. The stable_id is minted through
+overload_arity.declared_arity_stable_id with qualified_name=M.f; defstruct
+fields get the same formula. A call in any clause anchors on the folded
+function via a clause-position index (_clause_positions). Arity-narrowed
+lookup now uses the shared narrow_by_arity (_reachable_clauses removed).
+
+Floor -> producer only: the 59 (phoenix) / 1,470 (plausible) previously
+producer-computed elixir ids (callbacks, protocol heads, modules, routes)
+are byte-identical. Baseline: elixir removed from floor_and_null and
+sibling_deletion_moves; the gate's elixir fixture's earlier sibling is now
+a function of another arity.
+
+Measured: phoenix/lib 2,231 -> 1,837 nodes, floor_abstained 678 -> 0;
+plausible 13,916 -> 12,637 nodes, floor_abstained 1,943 -> 4 (the 4 are
+not elixir).
+
+Refs WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
