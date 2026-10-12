@@ -424,7 +424,7 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`luajit_ffi_load`** — LuaJIT FFI call through a library handle returned by `ffi.load(...)` (`lib.<name>(`), matched by name to a C/C++ function (linkers/lua_ffi.py). Sibling of `luajit_ffi_c`. At-risk Cluster C: fold candidate to `luajit_ffi_lookup` + a meta key naming the namespace. Pending cluster-C audit.
 - **`napi_addon_api`** — node-addon-api C++ export registration (`exports.Set("name", Napi::Function::New(...))`, `InstanceMethod` / `StaticMethod` / `InstanceAccessor`, plain and template forms) pairing a JS name with its C++ implementation (linkers/napi.py). Sibling of `napi_create_function`. At-risk Cluster C: fold candidate as for its sibling. Pending cluster-C audit.
 - **`napi_create_function`** — N-API C export registration `napi_create_function(env, "jsName", ..., CCallback, ...)` pairing a JS call name with its C callback (linkers/napi.py). Sibling of `napi_addon_api`. At-risk Cluster C: fold candidate to one N-API export pathway + a meta key naming the API layer. Pending cluster-C audit.
-- **`qualified_call`** — R qualified function call via `pkg::fn` (hypergumbo-lang-common/r_lang.py:385). Sibling of the canonical `static` inference label; emitted from the inline ternary ``'static' if not path_hint else 'qualified_call'`` that the pre-WI-nubuv classifier silently skipped. At-risk Cluster D call-construct: fold candidate to `static` + `meta['call_construct']='qualified'`. Pending cluster-D audit.
+- **`qualified_call`** — R qualified function call via `pkg::fn` (hypergumbo-lang-common/r_lang.py:489). Sibling of the canonical `static` inference label; emitted from the inline ternary ``'static' if not path_hint else 'qualified_call'`` that the pre-WI-nubuv classifier silently skipped. At-risk Cluster D call-construct: fold candidate to `static` + `meta['call_construct']='qualified'`. Pending cluster-D audit.
 - **`topic_match`** — Message-queue topic-name matching inference (linkers/message_queue.py:516). Emitted in the canonical-`event_publishes` fold for MQ publisher→subscriber via topic when the publisher's topic matches the subscriber's pattern. Sibling of `variable_match`. At-risk Cluster A: candidate for promotion or fold to `naming_convention` + `meta['detection_pattern']='mq_topic'`. Pending cluster-A/C audit.
 
 ### Derived confidence — `base_confidence` projection (ADR-0039)
@@ -615,7 +615,7 @@ A consumer needing one of these reads its home. The nine that parse the string i
 | Fact | Declared home | Populated by |
 | --- | --- | --- |
 | `return_type` | `FileAnalysis.method_return_types` | go, rust, scala, swift, objc |
-| `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 18 analyzers, including py.py, cpp, elixir and nim |
+| `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 24 analyzers, including py.py, cpp, elixir and nim |
 | `value_type` | `FileAnalysis.class_field_types` | csharp, cpp, go, rust, swift |
 
 **Closed parser set.** 8 consumers parse the value and are grandfathered by the 2026-09-21 owner ruling; `signature_axis.find_undeclared_value_parsers` fails on any site not among them. Adding one is a decision, and that gate is where it gets made. The count may only go DOWN — it was 9 at declaration and each drop is one language reading its declared home instead.

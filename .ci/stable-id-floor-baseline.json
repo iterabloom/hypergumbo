@@ -19,40 +19,9 @@
         "floor": 2
       }
     },
-    "clojure": {
-      "function": {
-        "floor": 1,
-        "null": 2
-      },
-      "macro": {
-        "floor": 1
-      },
-      "method": {
-        "null": 2
-      },
-      "multimethod": {
-        "floor": 1
-      }
-    },
-    "cmake": {
-      "function": {
-        "null": 2
-      },
-      "macro": {
-        "floor": 1
-      }
-    },
     "cobol": {
       "program": {
         "floor": 2
-      }
-    },
-    "commonlisp": {
-      "function": {
-        "floor": 1
-      },
-      "method": {
-        "null": 2
       }
     },
     "cpp": {
@@ -87,14 +56,6 @@
         "floor": 3
       }
     },
-    "erlang": {
-      "function": {
-        "floor": 3
-      },
-      "macro": {
-        "floor": 1
-      }
-    },
     "fortran": {
       "function": {
         "floor": 2
@@ -116,12 +77,6 @@
       }
     },
     "glsl": {
-      "function": {
-        "floor": 1,
-        "null": 2
-      }
-    },
-    "gnuplot": {
       "function": {
         "floor": 1,
         "null": 2
@@ -186,12 +141,6 @@
         "null": 2
       }
     },
-    "r": {
-      "function": {
-        "floor": 1,
-        "null": 2
-      }
-    },
     "scala": {
       "object": {
         "floor": 1,
@@ -244,15 +193,11 @@
     "agda",
     "bash",
     "capnp",
-    "clojure",
-    "cmake",
-    "commonlisp",
     "cpp",
     "cuda",
     "fsharp",
     "gdscript",
     "glsl",
-    "gnuplot",
     "hlsl",
     "julia",
     "jupyter",
@@ -265,7 +210,6 @@
     "proto",
     "purescript",
     "qml",
-    "r",
     "racket",
     "scala",
     "scheme",

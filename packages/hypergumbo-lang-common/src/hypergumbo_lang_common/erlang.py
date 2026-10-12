@@ -30,6 +30,20 @@ complexity summed across the clauses and the line span covering all of
 them. Emitting a symbol per clause would triple-count a idiomatic
 pattern-matched function.
 
+Function and macro identity (WI-tusad). A function's stable_id is the
+ADR-0035 producer formula, minted at construction through
+``overload_arity.declared_arity_stable_id`` from ``name/arity`` and the
+``meta["arity"]`` count, the same inputs ``callback_stable_id`` hashes for a
+``-callback`` (which adds the ``abstract`` decorator, so a callback and a
+same-named function in one module stay apart). The scope chain is the file:
+the compiler binds one module to one file. A ``-define(NAME(A, B), ...)``
+macro records ``A, B`` in ``meta["parameters"]``, so ``?MAX`` and
+``?MAX(X)`` (Erlang allows both) hash apart; a macro without an argument
+list takes the zero-parameter formula. Before this both kinds rode the
+backstop floor, and a same-named pair in one file (``-ifdef``/``-else``
+alternatives) was left null; such a pair is now a same-scope tie the
+per-file occurrence pass orders.
+
 If tree-sitter with Erlang support is not installed, the analyzer
 gracefully degrades and returns an empty result.
 
@@ -83,6 +97,10 @@ from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    ARITY_KEY, PARAMETERS_KEY, declared_arity, declared_arity_stable_id,
+    parameter_entry,
+)
 from hypergumbo_core.behaviours import (
     CALLBACK_MODIFIER,
     behaviour_implements_edge,
@@ -269,6 +287,25 @@ def _callback_symbol(
     )
 
 
+def _macro_meta(
+    macro_lhs: "tree_sitter.Node", source: bytes,
+) -> Optional[dict[str, object]]:
+    """``meta["parameters"]`` of ``-define(NAME(A, B), ...)``; None for ``-define(NAME, ...)``.
+
+    ``NAME()`` gives the empty list. A macro without an argument list has no
+    parameters to record, so it gets no meta (see the module docstring).
+    """
+    var_args = find_child_by_type(macro_lhs, "var_args")
+    if var_args is None:
+        return None
+    return {
+        PARAMETERS_KEY: [
+            parameter_entry(node_text(arg, source))
+            for arg in var_args.children if arg.type == "var"
+        ],
+    }
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -322,8 +359,16 @@ def _extract_symbols_from_file(
         cc = 1
         for clause_node in pf["clause_nodes"]:
             cc += compute_cyclomatic_complexity(clause_node, "erlang") - 1
+        meta: dict[str, object] = {
+            ARITY_KEY: pf["arity"], "base_name": pf["func_name"],
+        }
         symbols.append(Symbol(
             id=sym_id,
+            stable_id=declared_arity_stable_id(
+                kind="function", lang="erlang", path=file_path,
+                name=full_name, qualified_name=full_name,
+                arity=declared_arity(meta),
+            ),
             name=full_name,
             kind="function",
             language="erlang",
@@ -331,7 +376,7 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
-            meta={"arity": pf["arity"], "base_name": pf["func_name"]},
+            meta=meta,
             signature=pf["signature"],
             cyclomatic_complexity=cc,
             line_span=pf["end_line"] - pf["start_line"] + 1,
@@ -449,8 +494,14 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     )
                     sym_id = make_symbol_id("erlang", file_path, start_line, end_line, macro_name, "macro")
+                    macro_meta = _macro_meta(macro_lhs, source)
                     symbols.append(Symbol(
                         id=sym_id,
+                        stable_id=declared_arity_stable_id(
+                            kind="macro", lang="erlang", path=file_path,
+                            name=macro_name, qualified_name=macro_name,
+                            arity=declared_arity(macro_meta),
+                        ),
                         name=macro_name,
                         kind="macro",
                         language="erlang",
@@ -458,6 +509,7 @@ def _extract_symbols_from_file(
                         span=span,
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        meta=macro_meta,
                     ))
 
         # Behaviour callback declaration (WI-hidit)

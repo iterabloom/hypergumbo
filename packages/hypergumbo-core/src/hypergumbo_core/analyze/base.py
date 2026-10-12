@@ -1393,7 +1393,7 @@ def symbols_at(symbols: "Sequence[Symbol]", file_path: Optional[str] = None) -> 
     declaration node that contains it, and that node IS the symbol's node, so
     its start position identifies the symbol exactly. A name does not: two
     methods ``parse`` in two classes of one file, an Erlang ``-ifdef``/``-else``
-    pair, an Elixir clause per arity or a C ``#ifdef`` alternative all share one,
+    pair, an Elixir function per arity or a C ``#ifdef`` alternative share one,
     and every name-keyed lookup returned whichever registered last. On a pinned
     26-repo run that anchored 2,014 kotlin and 964 scala call edges to a function
     that does not contain them.
@@ -1780,8 +1780,8 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
     file's floor candidates and no other symbol in the file already holds it;
     otherwise it stays ``None``. The occurrence index must never disambiguate a
     floor key: the key has no scope chain, arity or decorators, so a floor
-    collision (an Elixir clause per arity, all named ``Demo.greet``; proto
-    ``A.Inner`` / ``B.Inner``, both named ``Inner``) is not a same-scope tie,
+    collision (two CUDA overloads ``f(int)`` / ``f(float)``, both named ``f``;
+    proto ``A.Inner`` / ``B.Inner``, both named ``Inner``) is no same-scope tie,
     and an emission-order ordinal over it would move an id onto a different
     symbol when an earlier sibling is deleted. A null means "this run cannot
     back an identity"; a moved id is a wrong join that no validator can see.

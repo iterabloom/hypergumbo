@@ -499,7 +499,7 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
                      "audit."),
     EvidenceTypeSpec("qualified_call", AXIS_PENDING,
                      "R qualified function call via `pkg::fn` "
-                     "(hypergumbo-lang-common/r_lang.py:385). Sibling of "
+                     "(hypergumbo-lang-common/r_lang.py:489). Sibling of "
                      "the canonical `static` inference label; emitted "
                      "from the inline ternary "
                      "``'static' if not path_hint else 'qualified_call'`` "

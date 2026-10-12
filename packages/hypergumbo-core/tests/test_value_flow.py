@@ -36,6 +36,13 @@ def _resolve(source: str) -> Optional[frozenset[str]]:
 
 F = frozenset
 
+#: Two record classes with a same-named field, each constructed once.
+_TWO_KIND_RECORDS = (
+    "class K(NamedTuple):\n    name: str\n    kind: str\n"
+    "class D(NamedTuple):\n    kind: str\n"
+    'K("a", "function")\nD("use")\n'
+)
+
 CASES: dict[str, tuple[str, Optional[frozenset[str]]]] = {
     # -- constants, operators -------------------------------------------
     "literal": ('sink("a")', F({"a"})),
@@ -562,6 +569,102 @@ CASES: dict[str, tuple[str, Optional[frozenset[str]]]] = {
     ),
     "record_unknown_field_in_construction_refused": (
         '@dataclass\nclass P:\n    a: str\nsink(P("x").b)', None,
+    ),
+    # -- a receiver's own annotation picks the record (WI-firog) -------------
+    "record_field_narrowed_by_parameter_annotation": (
+        _TWO_KIND_RECORDS + 'def _f(key: K) -> None:\n    sink(key.kind)',
+        F({"function"}),
+    ),
+    "record_field_narrowed_by_string_annotation": (
+        _TWO_KIND_RECORDS + 'def _f(key: "D") -> None:\n    sink(key.kind)',
+        F({"use"}),
+    ),
+    "record_field_narrowed_by_annotated_assignment": (
+        _TWO_KIND_RECORDS + 'key: K = make()\nsink(key.kind)', F({"function"}),
+    ),
+    "record_field_unannotated_receiver_reads_every_record": (
+        _TWO_KIND_RECORDS + 'def _f(key) -> None:\n    sink(key.kind)',
+        F({"function", "use"}),
+    ),
+    "record_field_rebound_receiver_reads_every_record": (
+        _TWO_KIND_RECORDS
+        + 'def _f(key: K) -> None:\n    key = other()\n    sink(key.kind)',
+        F({"function", "use"}),
+    ),
+    # A receiver declared as another class (an imported Symbol) is not any of
+    # the module's records: its field is unknown, not their union.
+    "record_field_foreign_annotation_refused": (
+        _TWO_KIND_RECORDS + 'def _f(key: Other) -> None:\n    sink(key.kind)', None,
+    ),
+    "record_field_loop_over_annotated_collection": (
+        _TWO_KIND_RECORDS
+        + 'def _f(keys: list[K]) -> None:\n    for key in keys:\n        sink(key.kind)',
+        F({"function"}),
+    ),
+    "record_field_loop_over_string_annotated_collection": (
+        _TWO_KIND_RECORDS
+        + 'def _f(keys: "Sequence[D]") -> None:\n    for key in keys:\n'
+        '        sink(key.kind)',
+        F({"use"}),
+    ),
+    "record_field_loop_over_dotted_generic": (
+        _TWO_KIND_RECORDS
+        + 'def _f(keys: typing.Iterable[K]) -> None:\n    for key in keys:\n'
+        '        sink(key.kind)',
+        F({"function"}),
+    ),
+    "record_field_loop_over_foreign_collection_refused": (
+        _TWO_KIND_RECORDS
+        + 'def _f(syms: list[Symbol]) -> None:\n    for s in syms:\n'
+        '        sink(s.kind)',
+        None,
+    ),
+    "record_field_loop_over_non_generic_reads_every_record": (
+        _TWO_KIND_RECORDS
+        + 'def _f(keys: K) -> None:\n    for key in keys:\n        sink(key.kind)',
+        F({"function", "use"}),
+    ),
+    "record_field_loop_over_unparsable_annotation_reads_every_record": (
+        _TWO_KIND_RECORDS
+        + 'def _f(keys: "list[") -> None:\n    for key in keys:\n        sink(key.kind)',
+        F({"function", "use"}),
+    ),
+    "record_field_loop_over_mapping_reads_every_record": (
+        _TWO_KIND_RECORDS
+        + 'def _f(keys: dict[K, int]) -> None:\n    for key in keys:\n'
+        '        sink(key.kind)',
+        F({"function", "use"}),
+    ),
+    "record_field_loop_over_unannotated_reads_every_record": (
+        _TWO_KIND_RECORDS
+        + 'def _f(keys) -> None:\n    for key in keys:\n        sink(key.kind)',
+        F({"function", "use"}),
+    ),
+    "record_field_loop_over_call_reads_every_record": (
+        _TWO_KIND_RECORDS + 'for key in make():\n    sink(key.kind)',
+        F({"function", "use"}),
+    ),
+    "record_field_loop_over_unbound_reads_every_record": (
+        _TWO_KIND_RECORDS + 'for key in nowhere:\n    sink(key.kind)',
+        F({"function", "use"}),
+    ),
+    "record_field_loop_over_local_reads_every_record": (
+        _TWO_KIND_RECORDS
+        + 'def _f(keys: list[K]) -> None:\n    keys = other()\n'
+        '    for key in keys:\n        sink(key.kind)',
+        F({"function", "use"}),
+    ),
+    "record_field_unpacking_loop_reads_every_record": (
+        _TWO_KIND_RECORDS
+        + 'def _f(keys: list[K]) -> None:\n    for i, key in enumerate(keys):\n'
+        '        sink(key.kind)',
+        F({"function", "use"}),
+    ),
+    "record_field_unbound_receiver_reads_every_record": (
+        _TWO_KIND_RECORDS + 'sink(nowhere.kind)', F({"function", "use"}),
+    ),
+    "record_field_attribute_receiver_reads_every_record": (
+        _TWO_KIND_RECORDS + 'sink(a.key.kind)', F({"function", "use"}),
     ),
 }
 
