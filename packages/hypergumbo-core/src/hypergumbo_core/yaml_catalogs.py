@@ -34,13 +34,28 @@ are absent, on-disk YAML directories not yet registered, ruling-7 declaration
 incoherence, and derived-channel-name mismatches (:func:`_validate_user_channels`)
 — and accepts a ``catalogs=`` override for testing; the companion
 ``scripts/yaml-catalog-index --check`` mode exits non-zero on any finding.
+
+One error type for every family. A catalogue file a user path supplied can be
+unparseable or the wrong shape, and that is the same event whichever loader
+meets it: :class:`CatalogueError` is the base every loader's refusal derives
+from (``TaintCatalogError``, ``IoPrimitiveOverlayError``,
+``DuplicateYamlKeyError``, and the summary, framework, library-signature and
+dataflow loaders raise it directly), and ``cli.main`` maps that one type to
+exit 2 naming the file. Per-family handlers stay where they print a better
+sentence; the chokepoint is what stops a family that forgot from surfacing as
+an "internal error" with exit 1, which ``verify-claims`` reserves for
+``violated``. :func:`read_catalogue_yaml` is the parse-and-shape check the
+loaders share, so the message a reader gets names the file the same way in
+every family.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+import yaml
 
 
 @dataclass(frozen=True)
@@ -240,6 +255,47 @@ def declares_community(data: object) -> bool:
     2), so the loaders that merge by key ask this of each shipped file.
     """
     return isinstance(data, dict) and data.get("provenance") == PROVENANCE_COMMUNITY
+
+
+class CatalogueError(Exception):
+    """A catalogue file could not be parsed or has the wrong shape.
+
+    The message names the file. ``cli.main`` turns any instance into
+    ``Error: <message>`` and exit 2 (inconclusive): a broken catalogue means the
+    command could not do what it was asked, which is never a clean result (0)
+    and never ``violated`` (1).
+    """
+
+
+def read_catalogue_yaml(
+    path: Path,
+    *,
+    what: str = "catalogue file",
+    error: "type[CatalogueError]" = CatalogueError,
+    mapping: bool = True,
+) -> Any:
+    """Parse one catalogue file, refusing it with ``error`` naming ``path``.
+
+    ``what`` is the noun the message uses ("taint catalog", "function summary
+    file"). With ``mapping`` (the default) the document must be a mapping, and
+    an empty file reads as ``{}``; without it the parsed value is returned
+    as-is, for a question (``declares_community``) that has an answer for any
+    shape and leaves the shape to the real load.
+    """
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise error(f"could not parse {what} {path}: {exc}") from exc
+    if not mapping:
+        return data
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise error(
+            f"{what} {path} must be a mapping at top level, got "
+            f"{type(data).__name__}."
+        )
+    return data
 
 
 _PKG_ROOT = Path(__file__).parent

@@ -149,8 +149,6 @@ from typing import (
 
 import re
 
-import yaml
-
 from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_callback_registration, is_grpc_rpc_implementation
 from .member_names import MEMBER_NAME_SEPARATORS, member_owner
@@ -169,6 +167,7 @@ from .io_boundary import (
     target_kinds_cross_no_boundary,
 )
 from .ir import symbol_name_slot, symbol_path_slot
+from .yaml_catalogs import CatalogueError, read_catalogue_yaml
 
 if TYPE_CHECKING:
     from .cfg import DdgEdge
@@ -1655,7 +1654,7 @@ def source_origin_languages(
     )
 
 
-class TaintCatalogError(Exception):
+class TaintCatalogError(CatalogueError):
     """A project-local taint catalog file could not be parsed or has an
     invalid shape.
 
@@ -1683,19 +1682,9 @@ def _safe_load_catalog_yaml(
     top-level ``section`` whose value is not an instance of ``section_type``.
     Returns the parsed mapping (``{}`` for an empty file).
     """
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise TaintCatalogError(
-            f"could not parse taint catalog {path}: {exc}"
-        ) from exc
-    if data is None:
-        return {}
-    if not isinstance(data, dict):
-        raise TaintCatalogError(
-            f"taint catalog {path} must be a mapping at top level, got "
-            f"{type(data).__name__}."
-        )
+    data: dict[str, Any] = read_catalogue_yaml(
+        path, what="taint catalog", error=TaintCatalogError,
+    )
     section_val = data.get(section)
     if section_val is not None and not isinstance(section_val, section_type):
         raise TaintCatalogError(
@@ -2443,13 +2432,9 @@ def _declares_community_file(path: Path) -> bool:
     """
     from .yaml_catalogs import declares_community
 
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise TaintCatalogError(
-            f"could not parse taint catalog {path}: {exc}"
-        ) from exc
-    return declares_community(data)
+    return declares_community(read_catalogue_yaml(
+        path, what="taint catalog", error=TaintCatalogError, mapping=False,
+    ))
 
 
 def split_community_files(

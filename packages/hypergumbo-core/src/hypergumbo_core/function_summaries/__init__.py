@@ -28,6 +28,15 @@ How It Works
 YAML Format
 -----------
 See ``function_summaries/*.yaml`` files and ADR-0017 §4b for the schema.
+
+A file that does not parse, is not a mapping, carries a ``summaries:`` that is
+not a list, or an entry the parser cannot read raises
+:class:`~hypergumbo_core.yaml_catalogs.CatalogueError` naming the file, which
+the CLI reports as exit 2. Every file is checked as it is read -- shipped, the
+user's ``function_summaries.d`` -- so a broken file is never skipped in silence
+and never escapes as an uncaught parser exception. An empty file, or a
+mapping without ``summaries:`` (a provenance header alone), contributes
+nothing and is not an error, matching the taint loaders.
 """
 from __future__ import annotations
 
@@ -36,9 +45,11 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Optional
 
-import yaml
-
-from ..yaml_catalogs import declares_community
+from ..yaml_catalogs import (
+    CatalogueError,
+    declares_community,
+    read_catalogue_yaml,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -190,13 +201,11 @@ def load_function_summaries(
         user_paths = user_channel_files("function_summaries")
         paths = [*paths, *user_paths]
 
-    loaded: "list[tuple[Path, dict[str, Any]]]" = []
+    loaded: "list[tuple[Path, dict[str, Any], list[FunctionSummary]]]" = []
     for yaml_path in paths:
-        with open(yaml_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-        if not data or "summaries" not in data:
-            continue
-        loaded.append((yaml_path, data))
+        data, summaries = _read_summary_file(yaml_path)
+        if summaries:
+            loaded.append((yaml_path, data, summaries))
 
     # ADR-0061 ruling 2: a COMMUNITY row only adds. Community files load after
     # the built-in ones and take a name -- full or short -- only when no
@@ -210,7 +219,7 @@ def load_function_summaries(
     # directory first stamped such a file ``user_supplied``: its terminating
     # summary closed a branch on nobody's word and survived
     # --no-default-overlays.
-    def _rank(item: "tuple[Path, dict[str, Any]]") -> int:
+    def _rank(item: "tuple[Path, dict[str, Any], list[FunctionSummary]]") -> int:
         if declares_community(item[1]):
             return 1
         return 2 if item[0] in user_paths else 0
@@ -219,9 +228,8 @@ def load_function_summaries(
                     key=lambda pair: pair[0])
     if not include_community:
         ranked = [pair for pair in ranked if pair[0] != 1]
-    for rank, (_path, data) in ranked:
-        for entry in data["summaries"]:
-            summary = _parse_summary(entry)
+    for rank, (_path, _data, summaries) in ranked:
+        for summary in summaries:
             if rank == 2:
                 summary = replace(summary, user_supplied=True)
             if rank == 1:
@@ -236,6 +244,64 @@ def load_function_summaries(
 
     _SUMMARY_CACHE[cache_key] = result
     return result
+
+
+_WHAT = "function summary file"
+
+
+def _read_summary_file(
+    path: Path,
+) -> "tuple[dict[str, Any], list[FunctionSummary]]":
+    """``(document, parsed summaries)`` for one file, or a refusal naming it.
+
+    Parsed here, per file, rather than after ranking: a broken entry in a
+    community file ``include_community=False`` will drop is still a broken
+    file, and a refusal that depends on which flag was passed would be a
+    refusal a reader cannot reproduce.
+    """
+    data: dict[str, Any] = read_catalogue_yaml(path, what=_WHAT)
+    entries = data.get("summaries")
+    if entries is None:
+        return data, []
+    if not isinstance(entries, list):
+        raise CatalogueError(
+            f"{_WHAT} {path}: 'summaries:' must be a list, got "
+            f"{type(entries).__name__}."
+        )
+    parsed: list[FunctionSummary] = []
+    for number, entry in enumerate(entries, start=1):
+        if not isinstance(entry, dict):
+            raise CatalogueError(
+                f"{_WHAT} {path}: summary {number} must be a mapping, got "
+                f"{type(entry).__name__}."
+            )
+        try:
+            parsed.append(_parse_summary(entry))
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise CatalogueError(
+                f"{_WHAT} {path}: summary {number} could not be read "
+                f"({type(exc).__name__}: {exc})."
+            ) from exc
+    return data, parsed
+
+
+def split_community_summary_files(
+    paths: "list[Path]",
+) -> "tuple[list[Path], list[Path]]":
+    """``(yours, community)``: summary files split by their provenance line.
+
+    The question the verify-claims disclosure asks of the user's
+    ``function_summaries.d`` (ADR-0061 ruling 3), answered with this family's
+    noun: an unparseable file is refused as a function summary file, not as a
+    taint catalogue. A wrong-shape document answers "yours" and the load
+    refuses it.
+    """
+    yours: list[Path] = []
+    community: list[Path] = []
+    for path in paths:
+        data = read_catalogue_yaml(path, what=_WHAT, mapping=False)
+        (community if declares_community(data) else yours).append(path)
+    return yours, community
 
 
 def clear_summary_cache() -> None:

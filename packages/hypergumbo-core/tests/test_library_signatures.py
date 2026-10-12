@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.library_signatures import load_library_signatures
+from hypergumbo_core.yaml_catalogs import CatalogueError
 
 
 class TestTheRowsThemselves:
@@ -280,7 +281,7 @@ class TestARowFileThatIsWrongIsREFUSED:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         load_library_signatures.cache_clear()
         try:
-            with pytest.raises(ValueError, match="'signatures' must be a mapping"):
+            with pytest.raises(CatalogueError, match="'signatures' must be a mapping"):
                 load_library_signatures("go")
         finally:
             load_library_signatures.cache_clear()
@@ -292,7 +293,7 @@ class TestARowFileThatIsWrongIsREFUSED:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         load_library_signatures.cache_clear()
         try:
-            with pytest.raises(ValueError, match="non-empty type"):
+            with pytest.raises(CatalogueError, match="non-empty type"):
                 load_library_signatures("go")
         finally:
             load_library_signatures.cache_clear()
@@ -343,7 +344,7 @@ class TestPackageVariables:
             assert rows["http.DefaultClient"] == "http.Client", "shipped rows must survive"
             (d / "go.yaml").write_text("language: go\npackage_variables:\n  - a list\n")
             load_library_package_variables.cache_clear()
-            with pytest.raises(ValueError, match="'package_variables' must be a mapping"):
+            with pytest.raises(CatalogueError, match="'package_variables' must be a mapping"):
                 load_library_package_variables("go")
         finally:
             load_library_package_variables.cache_clear()

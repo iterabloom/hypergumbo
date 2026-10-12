@@ -67,20 +67,23 @@ _DIR = Path(__file__).parent / "library_signatures"
 ROW_PARENTS: dict[str, str] = {"kotlin": "java", "scala": "java"}
 
 
+_WHAT = "library signature file"
+
+
 def _rows_from(path: "Path", section: str = "signatures") -> dict[str, str]:
     """One section of a row file, validated. A mis-keyed row never matches and raises
     nothing, so the shape of a row is checked where it is read rather than where it
     is used."""
-    import yaml
+    from hypergumbo_core.yaml_catalogs import CatalogueError, read_catalogue_yaml
 
-    raw: Any = yaml.safe_load(path.read_text()) or {}
+    raw: dict[str, Any] = read_catalogue_yaml(path, what=_WHAT)
     rows: Any = raw.get(section) or {}
     if not isinstance(rows, dict):
-        raise ValueError(f"{path}: '{section}' must be a mapping")
+        raise CatalogueError(f"{path}: '{section}' must be a mapping")
     out: dict[str, str] = {}
     for key, value in rows.items():
         if not isinstance(key, str) or not isinstance(value, str) or not value:
-            raise ValueError(
+            raise CatalogueError(
                 f"{path}: row {key!r} must map a string key to a non-empty type"
             )
         out[key] = value
@@ -95,13 +98,11 @@ def _community_companions(lang: str) -> "list[Path]":
     ``language:`` line and declares itself community, because a file has one
     tier and a built-in file may name only the standard library.
     """
-    import yaml
-
-    from hypergumbo_core.yaml_catalogs import declares_community
+    from hypergumbo_core.yaml_catalogs import declares_community, read_catalogue_yaml
 
     found: "list[Path]" = []
     for path in sorted(_DIR.glob("*.yaml")):
-        data = yaml.safe_load(path.read_text()) or {}
+        data = read_catalogue_yaml(path, what=_WHAT)
         if data.get("language") == lang and declares_community(data):
             found.append(path)
     return found

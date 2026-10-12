@@ -174,6 +174,7 @@ from .survey_io import (
     find_survey_in_dir,
     load_substrate,
 )
+from .yaml_catalogs import CatalogueError
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 # ADR-0043 §6: finalize() is the single pre-serialization reconcile point. _relativize_ir_paths
 # lives there now (finalize sub-step 1 owns it); re-exported here for the Phase B call below
@@ -5658,9 +5659,11 @@ def _split_named_taint_files(
     ] + community
     _notice_omitted_community(
         [p for p, _, _ in omitted], "taint catalogue file(s)")
+    from .function_summaries import split_community_summary_files
+
     summaries = [
         (p, "user_channel", "function_summaries") for p in
-        split_community_files(user_channel_files("function_summaries"))[1]
+        split_community_summary_files(user_channel_files("function_summaries"))[1]
     ]
     _notice_omitted_community(
         [p for p, _, _ in summaries], "function-summary file(s)")
@@ -5693,7 +5696,10 @@ def _loaded_catalogue_files(
     the graph the verdict reads, and which of them the analysis consulted is
     not recorded in the graph.
     """
-    from .function_summaries import get_summaries_dir
+    from .function_summaries import (
+        get_summaries_dir,
+        split_community_summary_files,
+    )
     from .io_boundary import default_overlays, shipped_catalog_paths
     from .taint import (
         _TAINT_SANITIZERS_DIR,
@@ -5717,11 +5723,14 @@ def _loaded_catalogue_files(
             ("taint_sources", _TAINT_SOURCES_DIR),
             ("taint_sinks", _TAINT_SINKS_DIR),
             ("taint_sanitizers", _TAINT_SANITIZERS_DIR),
-            ("function_summaries", get_summaries_dir()),
         ):
             files += [F(family, p, True) for p in sorted(directory.glob("*.yaml"))
                       if include_default_overlays
                       or not _declares_community_file(p)]
+        shipped_summaries = sorted(get_summaries_dir().glob("*.yaml"))
+        files += [F("function_summaries", p, True) for p in (
+            shipped_summaries if include_default_overlays
+            else split_community_summary_files(shipped_summaries)[0])]
         for family, paths in taint_paths.items():
             # WI-mimap: the operator's taint channel for this family. Like the
             # shipped files, a community file -- whatever named it -- is
@@ -5731,10 +5740,10 @@ def _loaded_catalogue_files(
                                 *user_channel_files(family)]
                       if include_default_overlays
                       or not _declares_community_file(p)]
-        files += [F("function_summaries", p, False)
-                  for p in user_channel_files("function_summaries")
-                  if include_default_overlays
-                  or not _declares_community_file(p)]
+        user_summaries = user_channel_files("function_summaries")
+        files += [F("function_summaries", p, False) for p in (
+            user_summaries if include_default_overlays
+            else split_community_summary_files(user_summaries)[0])]
     for family in ("frameworks", "dataflow_patterns", "library_signatures"):
         files += [F(family, p, False, "analysis")
                   for p in user_channel_files(family)]
@@ -7162,7 +7171,6 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     ddg_forfeited_count = 0
 
     from .taint import (
-        TaintCatalogError,
         load_full_taint_catalog,
         propagate_taint_structural,
     )
@@ -7227,7 +7235,16 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 channel_sink_paths=user_channel_files("taint_sinks"),
                 channel_sanitizer_paths=user_channel_files("taint_sanitizers"),
             )
-        except (FileNotFoundError, TaintCatalogError) as exc:
+            if has_taint_claims:
+                # Read with the rest of the taint model, so a broken
+                # function_summaries.d file is refused here, beside a broken
+                # taint file, rather than wherever the walk first asks for a
+                # summary -- or not at all, when no language has both a
+                # source and a sink. Cached: the walk's own call is free.
+                from .function_summaries import load_function_summaries
+                load_function_summaries(include_community=not getattr(
+                    args, "no_default_overlays", False))
+        except (FileNotFoundError, CatalogueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 2
         taint_layers, named_community_taint, omitted_taint = (
@@ -13482,6 +13499,16 @@ def main(argv=None) -> int:
         # 120 exit instead of being caught here (INV-vopuh, the `| head` UX).
         sys.stdout.flush()
         return result
+    except CatalogueError as exc:
+        # A catalogue file -- a taint file, an I/O overlay, a function summary
+        # or framework file from a user's channel -- did not parse or had the
+        # wrong shape. Same chokepoint posture as SubstrateError below: exit 2
+        # with the loader's message, which names the file. Without it a family
+        # whose command did not catch its own error surfaced through the
+        # safety net as an "internal error" with exit 1 -- the code
+        # verify-claims uses for ``violated``.
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
     except SubstrateError as exc:
         # A --input substrate failed the strict load (INV-sozop / WI-jukah /
         # INV-gapib): convert the typed failure to a clean rc=2 + message for
