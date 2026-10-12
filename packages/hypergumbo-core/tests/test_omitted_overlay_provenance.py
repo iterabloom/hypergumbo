@@ -127,26 +127,85 @@ class TestTheOmittedFile:
         assert f"{comm}  [{label}]" in out
 
 
+@pytest.mark.parametrize("origin", ["cli", "claims_file"])
 @pytest.mark.parametrize("json_output", [True, False])
 def test_without_the_flag_the_grant_is_still_withheld(
-    json_output: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    json_output: bool, origin: str, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """THE CONTROL: loaded, the file is user-supplied input whose grant the
-    load withheld (INV-kobam), and nothing is reported omitted."""
+    """THE CONTROL: loaded, the file's grant is withheld (INV-kobam), and
+    nothing is reported omitted. The file is a COMMUNITY row, whatever named
+    it (ADR-0061 ruling 3): it is listed under ``named_community_files``,
+    never as user-supplied input -- the taint arm's rule, which the JSON
+    ``tiers`` already followed while the text and ``user_supplied`` did not."""
     _, out, _, comm = _run(
         tmp_path, monkeypatch, capsys,
-        origin="cli", flag=False, json_output=json_output,
+        origin=origin, flag=False, json_output=json_output,
     )
     if json_output:
         prov = json.loads(out)["catalog_provenance"]
-        assert prov["user_supplied"] is True
+        assert prov["user_supplied"] is False
+        assert prov["layers"]["io_primitives"] == {"cli": [], "claims_file": []}
+        assert prov["named_community_files"] == [
+            {"family": "io_primitives", "path": str(comm), "origin": origin},
+        ]
+        assert comm.name in [
+            Path(e["path"]).name for e in prov["tiers"]["community"]]
         assert prov["omitted_community_overlays"] == []
         assert [(g["path"], g["origin"]) for g in
-                prov["withheld_completeness_grants"]] == [(str(comm), "cli")]
+                prov["withheld_completeness_grants"]] == [(str(comm), origin)]
+        assert prov["completeness_grants"] == []
     else:
-        assert "USER-SUPPLIED" in out and "WITHHELD GRANTS" in out
+        label = "CLI flag" if origin == "cli" else "claims-file extra_catalogs"
+        assert "USER-SUPPLIED" not in out
+        assert "WITHHELD GRANTS" in out
+        assert f"from {comm}  [{label}]" in out
+        assert f"{comm}  [{label}, io_primitives]" in out
         assert "omitted by --no-default-overlays" not in out
+
+
+def test_your_overlay_by_flag_is_still_user_supplied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """THE CONTROL for the tier: with the line deleted the file is yours."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "no-config"))
+    (tmp_path / "hg.json").write_text(json.dumps({
+        "schema_version": SCHEMA_VERSION, "nodes": [], "edges": []}))
+    mine = tmp_path / "mine.yaml"
+    mine.write_text(_COMMUNITY_GRANT.replace("provenance: community\n", ""))
+    (tmp_path / "claims.yaml").write_text(yaml.dump({"claims": [{
+        "id": "NS-1", "text": "never sends over the network",
+        "constraint": {"boundary": "net_send", "must_not_exist": True},
+    }]}))
+    args = _Args()
+    args.path = str(tmp_path)
+    args.input = str(tmp_path / "hg.json")
+    args.claims = str(tmp_path / "claims.yaml")
+    args.json_output = True
+    args.io_primitives = [str(mine)]
+    args.no_default_overlays = False
+    cmd_verify_claims(args)
+    prov = json.loads(capsys.readouterr().out)["catalog_provenance"]
+    assert prov["user_supplied"] is True
+    assert prov["layers"]["io_primitives"]["cli"] == [str(mine)]
+    assert prov["named_community_files"] == []
+    assert [g["path"] for g in prov["completeness_grants"]] == [str(mine)]
+
+
+def test_the_withheld_block_renders_without_user_input() -> None:
+    """A community overlay is not user input, so its withheld grant must not
+    wait for the user-supplied block to be rendered at all."""
+    text = "\n".join(render_catalog_provenance_text({
+        "user_supplied": False,
+        "withheld_completeness_grants": [{
+            "path": "seed.yaml", "origin": "user_channel",
+            "language": "python", "modules": ["vendorlib"],
+        }],
+    }))
+    assert "WITHHELD GRANTS" in text
+    assert "from seed.yaml  [your io_primitives.d]" in text
+    assert "USER-SUPPLIED" not in text
 
 
 def test_the_key_is_always_present() -> None:

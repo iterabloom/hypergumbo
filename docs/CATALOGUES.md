@@ -36,9 +36,9 @@ cleaner, only added structure and flows (ADR-0061 ruling 2).
 
 **A file's tier is its own `provenance:` line**, never the directory it sits
 in or the flag that named it. A community file you copy into your config home,
-or name with `--taint-*` or a claims file's `extra_catalogs:`, is still
-community; deleting its `provenance: community` line is how you vouch for it,
-and it is then yours.
+or name with `--io-primitives`, `--taint-*` or a claims file's
+`extra_catalogs:`, is still community; deleting its `provenance: community`
+line is how you vouch for it, and it is then yours.
 
 ## Every family
 
@@ -167,8 +167,9 @@ in-repo catalogue data says which files it did not load.
 shipped community I/O overlays, every overlay declaring
 `provenance: community`, the taint sinks and sources derived from them, and
 the community taint and function-summary files -- a community taint file
-named by `--taint-*`, a claims file or a `taint_*.d/` channel included. It does
-not reach the analysis that builds the graph.
+named by `--taint-*`, a claims file or a `taint_*.d/` channel, and a community
+file in `function_summaries.d/`, included. It does not reach the analysis that
+builds the graph.
 
 ## Seeing what a run rested on
 
@@ -176,10 +177,10 @@ not reach the analysis that builds the graph.
   `catalog_provenance.tiers` (`builtin` / `community` / `yours` / `in_repo`,
   with git state `committed` / `modified` / `untracked` for a file inside the
   repository), names every `module_completeness` grant and where it came from,
-  lists a community file's withheld grants separately, names each overlay or
-  taint file `--no-default-overlays` omitted under
-  `omitted_community_overlays`, and each community taint file a flag or
-  claims file named under `named_community_files`.
+  lists a community file's withheld grants separately, names each overlay,
+  taint or function-summary file `--no-default-overlays` omitted under
+  `omitted_community_overlays`, and each community taint file or overlay a
+  flag or claims file named under `named_community_files`.
 - `hypergumbo catalog-inventory` shows each family, its file count, your
   channel and whether it is read.
 - `hypergumbo init-catalogs` creates your catalogue home and seeds the

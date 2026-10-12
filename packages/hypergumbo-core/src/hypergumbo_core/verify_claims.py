@@ -216,14 +216,16 @@ How It Works
    ``module_completeness`` grant in a community file is listed under
    ``withheld_completeness_grants`` whatever path loaded it -- CLI flag,
    claims file, config tier or channel directory -- because the load
-   withholds it on every one (INV-lamap). Only files the run LOADED are
+   withholds it on every one (INV-lamap); the text names withheld grants
+   whether or not anything was user-supplied. Only files the run LOADED are
    described: an overlay ``--no-default-overlays`` omitted is listed under
    ``omitted_community_overlays`` (and a text NOTE), never as user-supplied
-   input or a withheld grant (INV-dozav); a community taint file it omitted
-   is listed there too, with its ``family``. A taint file a flag or claims
-   file named that declares ``provenance: community`` loaded as a community
-   row, so it is listed under ``named_community_files`` (and a text NOTE),
-   never in ``layers`` or the user-supplied block, and it does not set
+   input or a withheld grant (INV-dozav); a community taint or
+   function-summary file it omitted is listed there too, with its
+   ``family``. A taint file or I/O overlay a flag or claims file named that
+   declares ``provenance: community`` loaded as a community row, so it is
+   listed under ``named_community_files`` (and a text NOTE), never in
+   ``layers`` or the user-supplied block, and it does not set
    ``user_supplied``. It changes no verdict.
 """
 from __future__ import annotations
@@ -2366,16 +2368,19 @@ def catalog_provenance(
     omitted file's rows or grants was used, so it is not user-supplied input
     and its grant is not "withheld": the run never read it.
 
-    A NAMED TAINT FILE'S TIER IS ITS LINE TOO (ADR-0061 ruling 3). A taint
-    file a flag or the claims file named that declares ``provenance:
-    community`` loads into the community layer: it only adds, and its
-    sanitizers are withheld. So the caller leaves it out of ``layers`` --
-    which hold the user-supplied input a verdict rests on -- and passes it as
-    ``named_community`` (``(path, origin, family)``), listed under
-    ``named_community_files``; ``tiers`` lists it under ``community``. Under
-    ``--no-default-overlays`` the caller passes it, with any community file in
-    the user's ``taint_*.d`` channels, as ``omitted_taint`` instead, listed
-    under ``omitted_community_overlays`` with its ``family``.
+    A NAMED FILE'S TIER IS ITS LINE TOO (ADR-0061 ruling 3). A taint file or
+    I/O overlay a flag or the claims file named that declares ``provenance:
+    community`` loads as a community row: it only adds, its sanitizers are
+    withheld and so are its completeness grants. So the caller leaves it out
+    of ``layers`` -- which hold the user-supplied input a verdict rests on --
+    and passes it as ``named_community`` (``(path, origin, family)``), listed
+    under ``named_community_files`` (an overlay's grants still go to
+    ``withheld_completeness_grants``); ``tiers`` lists it under
+    ``community``. Under ``--no-default-overlays`` the caller passes a taint
+    file, with any community file in the user's ``taint_*.d`` channels and
+    ``function_summaries.d``, as ``omitted_taint`` instead, listed under
+    ``omitted_community_overlays`` with its ``family`` (an omitted overlay
+    arrives as ``omitted_overlays``).
 
     Returns:
         ``{"user_supplied": bool, "layers": {kind: {"cli": [...],
@@ -2411,9 +2416,15 @@ def catalog_provenance(
     # applied one. The flag and claims-file paths are read from ``layers``
     # (which every caller supplies) and skipped in ``io_overlay_origins`` only
     # so they are not listed twice.
+    #
+    # A community overlay a flag or claims file named is not in ``layers``
+    # (ADR-0061 ruling 3: it is a community row, passed as
+    # ``named_community``), but its grants are still withheld ones to list.
     sources: list[tuple[Path, str]] = [
         *((Path(p), "cli") for p in io_cli),
         *((Path(p), "claims_file") for p in io_claims),
+        *((Path(p), origin) for p, origin, family in named_community
+          if family == "io_primitives"),
         *((Path(p), origin) for p, origin in io_overlay_origins
           if origin not in ("cli", "claims_file")),
     ]
@@ -2711,16 +2722,39 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
             f"claims file declare provenance: community,",
         )
         lines.append(
-            "  so they loaded as COMMUNITY rows: they only add, and their "
-            "sanitizers never clear a",
+            "  so they loaded as COMMUNITY rows: they only add -- a sanitizer "
+            "never clears a flow, a",
         )
         lines.append(
-            "  flow (ADR-0061). Delete the line to vouch for a file:",
+            "  completeness grant never applies (ADR-0061). Delete the line to "
+            "vouch for a file:",
         )
         for entry in named_community:
             lines.append(
                 f"    {entry.get('path')}  [{_grant_origin_label(entry)}]",
             )
+    # INV-kobam's withheld grants, BEFORE the user-supplied early return: the
+    # file that carries one declares provenance: community, so it is not user
+    # input (ADR-0061 ruling 3) and a run with nothing else of the user's
+    # would otherwise list the grant in JSON and never on the page.
+    withheld = provenance.get("withheld_completeness_grants") or []
+    if withheld:
+        lines.append("")
+        lines.append(
+            "NOTE: WITHHELD GRANTS — these files declare provenance: community, "
+            "so their completeness",
+        )
+        lines.append(
+            "  grants did not apply (ADR-0061); delete the line to vouch for "
+            "a file:",
+        )
+        for grant in withheld:
+            label = _grant_origin_label(grant)
+            lines.append(
+                f"    {grant.get('language')}: "
+                f"{', '.join(grant.get('modules') or ())}",
+            )
+            lines.append(f"      from {grant.get('path')}  [{label}]")
     if not provenance.get("user_supplied"):
         return lines
     lines += [
@@ -2786,24 +2820,6 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
             lines.append(
                 f"      from {grant.get('path')}  [{label}]",
             )
-    withheld = provenance.get("withheld_completeness_grants") or []
-    if withheld:
-        lines.append("")
-        lines.append(
-            "  WITHHELD GRANTS — these files declare provenance: community, so "
-            "their completeness",
-        )
-        lines.append(
-            "  grants did not apply (ADR-0061); delete the line to vouch for "
-            "a file:",
-        )
-        for grant in withheld:
-            label = _grant_origin_label(grant)
-            lines.append(
-                f"    {grant.get('language')}: "
-                f"{', '.join(grant.get('modules') or ())}",
-            )
-            lines.append(f"      from {grant.get('path')}  [{label}]")
     return lines
 
 

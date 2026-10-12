@@ -5565,17 +5565,33 @@ def _split_community_overlays(
     the shipped originals, and so does one named by flag or claims file. A
     path that does not exist is kept for the real load to refuse.
     """
-    from .io_boundary import overlay_declares_community
-
-    kept: "list[tuple[Path, str]]" = []
-    omitted: "list[tuple[Path, str]]" = []
-    for path, origin in origins:
-        if path.is_file() and overlay_declares_community(path):
-            omitted.append((path, origin))
-        else:
-            kept.append((path, origin))
+    kept, omitted = _partition_community_overlays(origins)
     _notice_omitted_community([p for p, _ in omitted], "overlay(s)")
     return kept, omitted
+
+
+def _partition_community_overlays(
+    origins: "Sequence[tuple[Path, str]]",
+) -> "tuple[list[tuple[Path, str]], list[tuple[Path, str]]]":
+    """``(yours, community)``: overlays split by their own provenance line.
+
+    The one question both halves of ADR-0061 ruling 3 ask of an I/O overlay:
+    ``--no-default-overlays`` drops the community half before the load
+    (:func:`_split_community_overlays`), and verify-claims' report lists a
+    loaded community file a flag or claims file named as a community row,
+    not user-supplied input. A path that does not exist is "yours", for the
+    real load to refuse.
+    """
+    from .io_boundary import overlay_declares_community
+
+    yours: "list[tuple[Path, str]]" = []
+    community: "list[tuple[Path, str]]" = []
+    for path, origin in origins:
+        if path.is_file() and overlay_declares_community(path):
+            community.append((path, origin))
+        else:
+            yours.append((path, origin))
+    return yours, community
 
 
 def _notice_omitted_community(paths: "Sequence[Path]", noun: str) -> None:
@@ -5609,9 +5625,11 @@ def _split_named_taint_files(
       withheld. Empty under ``--no-default-overlays``.
     - ``omitted`` -- the same records for each community file
       ``--no-default-overlays`` dropped: named, and never read. The user's
-      ``taint_*.d`` channels are included here (origin ``user_channel``),
-      since the flag drops theirs too; a loaded community channel file is
-      already in ``tiers.community`` and needs no second listing.
+      ``taint_*.d`` channels and ``function_summaries.d`` are included here
+      (origin ``user_channel``), since the flag drops theirs too -- the
+      summary loader reads the same line (ADR-0061 ruling 3); a loaded
+      community channel file is already in ``tiers.community`` and needs no
+      second listing.
 
     Paths are the ones the load already resolved successfully, so the
     resolution here cannot raise.
@@ -5640,7 +5658,13 @@ def _split_named_taint_files(
     ] + community
     _notice_omitted_community(
         [p for p, _, _ in omitted], "taint catalogue file(s)")
-    return yours, [], omitted
+    summaries = [
+        (p, "user_channel", "function_summaries") for p in
+        split_community_files(user_channel_files("function_summaries"))[1]
+    ]
+    _notice_omitted_community(
+        [p for p, _, _ in summaries], "function-summary file(s)")
+    return yours, [], omitted + summaries
 
 
 def _loaded_catalogue_files(
@@ -5658,9 +5682,9 @@ def _loaded_catalogue_files(
     and every overlay path. When the taint
     catalogue loaded (``taint_paths`` is not ``None``): the shipped taint and
     function-summary files, the files the flags and claims file named (a
-    directory stands for its YAML files) and the user's taint channels -- a
-    community one of these only when community rows loaded, since its tier
-    is its own line whatever named it -- and the user's function_summaries.d.
+    directory stands for its YAML files), the user's taint channels and the
+    user's function_summaries.d -- a community one of these only when
+    community rows loaded, since its tier is its own line whatever named it.
     Then the user's analysis-stage channels (frameworks.d, dataflow_patterns.d,
     library_signatures.d), marked ``stage="analysis"``.
 
@@ -5708,7 +5732,9 @@ def _loaded_catalogue_files(
                       if include_default_overlays
                       or not _declares_community_file(p)]
         files += [F("function_summaries", p, False)
-                  for p in user_channel_files("function_summaries")]
+                  for p in user_channel_files("function_summaries")
+                  if include_default_overlays
+                  or not _declares_community_file(p)]
     for family in ("frameworks", "dataflow_patterns", "library_signatures"):
         files += [F(family, p, False, "analysis")
                   for p in user_channel_files(family)]
@@ -7623,11 +7649,19 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # those still hold a file --no-default-overlays omitted, which the report
     # then named as user-supplied input with a withheld grant (INV-dozav). The
     # omitted files are passed on separately and reported as omitted.
+    #
+    # ADR-0061 ruling 3, the io_primitives arm: a loaded overlay a flag or the
+    # claims file named that declares provenance: community is a COMMUNITY
+    # row (its grants withheld, its rows unvouched), so it is reported beside
+    # the named community taint files, never in the user-supplied layers.
     from .verify_claims import catalog_provenance, render_catalog_provenance_text
+    _named_io, _named_io_community = _partition_community_overlays(
+        [(p, origin) for p, origin in io_overlay_origins
+         if origin in ("cli", "claims_file")])
     _provenance = catalog_provenance({
         "io_primitives": (
-            [p for p, origin in io_overlay_origins if origin == "cli"],
-            [p for p, origin in io_overlay_origins if origin == "claims_file"],
+            [p for p, origin in _named_io if origin == "cli"],
+            [p for p, origin in _named_io if origin == "claims_file"],
         ),
         # ADR-0061 ruling 3: the operator's own taint files only. A named
         # file declaring provenance: community loaded as a community row (or
@@ -7659,7 +7693,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
        repo_root=repo_root,
        io_overlay_origins=io_overlay_origins,
        omitted_overlays=omitted_io_overlays,
-       named_community=named_community_taint,
+       named_community=[
+           *((p, origin, "io_primitives") for p, origin in _named_io_community),
+           *named_community_taint,
+       ],
        omitted_taint=omitted_taint)
 
     # Output
