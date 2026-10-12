@@ -95,7 +95,10 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
     OTP X roots its callbacks from the Erlang analyzer's
     ``OTP_BEHAVIOUR_CALLBACKS`` (``@behaviour :gen_statem``).
   * each callback ``dispatches_to`` every clause of the same-named, same-kind
-    public function in each implementing module (evidence ``behaviour_callback``), the
+    public function in each implementing module whose parameters admit the
+    callback's arity (``meta["arity"]``, ``overload_arity.narrow_by_arity``:
+    ``@callback f(term)`` is not implemented by an ``f/2`` beside ``f/1``;
+    INV-dital), evidence ``behaviour_callback`` -- the
     abstract-member -> implementation shape ``linkers/type_hierarchy`` builds
     for languages with methods. That linker cannot build it here: it indexes
     ``kind == "method"`` only, and an Elixir function is not a method.
@@ -104,6 +107,39 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
   emits nothing here (the INV-sinah rule), and so does a ``@callback`` there;
   this holds for the callback table too, so the web module is never rooted
   as a LiveView by its own ``def live_view`` quote.
+- Protocols (WI-forof). A protocol IS a behaviour -- ``defprotocol`` generates
+  a ``@callback`` per function head and ``defimpl`` sets ``@behaviour P`` on
+  its module -- so it is modelled with the behaviour machinery above:
+
+  * IDENTITY. ``defprotocol P`` is a module ``P``, nested like ``defmodule``;
+    each ``def`` head in it is a callback-shaped symbol (kind ``function``,
+    ``modifiers=["abstract"]``, ``meta["arity"]``, ``callback_stable_id``).
+    ``defimpl P, for: T`` is the module ``P.T`` -- an ABSOLUTE name, never
+    prefixed by an enclosing module -- and owns its defs (``P.T.size``). ``for:
+    [A, B]`` is one impl module per target, each owning its own copy of the
+    body's defs; no ``for:`` (inside ``defmodule T``) and ``for: __MODULE__``
+    take the enclosing module. P and T are alias-expanded against the file's
+    ``alias`` directives and the automatic alias a nested ``defmodule`` sets
+    (``_scope_aliases``). An impl whose name cannot be read (``for:
+    unquote(m)``, a ``quote`` template) owns nothing: no symbol beats a bare or
+    mis-owned one. All three definers share ``_enclosing_module_names``, so a
+    call in an impl's body outside any ``def`` is anchored on the impl module.
+  * EDGES (``_extract_protocol_edges``). ``implements`` ``P.T -> P`` (the
+    in-repo protocol, else ``elixir:external:0-0:P:unresolved``) and protocol
+    function ``dispatches_to`` impl function by name and arity -- both from
+    ``_behaviour_edges``. A protocol function, unlike a behaviour callback,
+    IS a call target, by qualified name only: ``Size.size(x)`` is the dispatch.
+  * ROOTS. An impl of a protocol the repo does not define (``String.Chars``,
+    ``Enumerable``, ``Jason.Encoder``, ``Phoenix.Param``) is called by code
+    outside the tree, so its module ``dispatches_to`` each of its public
+    functions, as the framework table roots a GenServer's callbacks.
+  * NOT MODELLED. ``@derive [Jason.Encoder]`` generates its impl module at
+    compile time from the protocol's ``Any`` impl or ``__deriving__``; there is
+    no source to own, and the deriving struct gets no ``implements`` edge.
+    ``@fallback_to_any true`` needs nothing: a ``P.Any`` impl is an impl like
+    any other and already receives the protocol function's dispatch. Calls
+    inside a multi-target impl anchor on one target's copy of the enclosing
+    def (position lookup keeps the last).
 
 If tree-sitter with Elixir support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -114,7 +150,8 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract all symbols into global registry
 2. Pass 2: Detect calls, resolve against global registry, extract Phoenix
    routes and OTP behaviour callback edges. A call in no ``def`` (module
-   body, ``test`` / ``setup`` blocks) is anchored on its ``defmodule``, else
+   body, ``test`` / ``setup`` blocks) is anchored on its ``defmodule`` /
+   ``defprotocol`` / ``defimpl``, else
    the file (``_caller_outside_def``); call-shaped nodes inside ``@spec`` /
    ``@type`` / ``@callback`` are types and emit nothing (``_inside_typespec``).
    A ``def`` / ``defmacro`` / ``defstruct`` inside ``quote`` is a template
@@ -171,7 +208,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
-    PARAMETERS_KEY, arity_bounds, parameter_entry,
+    PARAMETERS_KEY, arity_bounds, narrow_by_arity, parameter_entry,
 )
 from hypergumbo_core.behaviours import (
     CALLBACK_MODIFIER,
@@ -253,6 +290,11 @@ _CALLBACK_MODIFIER = CALLBACK_MODIFIER
 #: its callback symbols. Mirrors ``__multi__``; callbacks live here INSTEAD of
 #: the call-resolution indexes (see ``ElixirAnalyzer.register_symbol``).
 _CALLBACKS_KEY = "__callbacks__"
+
+#: ``Symbol.meta`` key of a callback declaration's arity (a ``@callback`` or a
+#: protocol function head) -- the key the Erlang analyzer writes on its
+#: ``-callback`` symbols and the BEAM behaviour bridge linker reads.
+_ARITY_KEY = "arity"
 
 # Elixir Kernel and stdlib functions that are auto-imported into every
 # module.  Bare calls to these names (e.g., ``inspect(data)``) should
@@ -350,9 +392,14 @@ def _extract_alias_hints(
 
     Returns a dict mapping short names to full module paths.
     """
+    return _alias_hints_under(tree.root_node, source)
+
+
+def _alias_hints_under(root: "tree_sitter.Node", source: bytes) -> dict[str, str]:
+    """:func:`_extract_alias_hints` from a root node (no tree object needed)."""
     hints: dict[str, str] = {}
 
-    for node in iter_tree(tree.root_node):
+    for node in iter_tree(root):
         if node.type != "call":
             continue
 
@@ -571,19 +618,204 @@ def _bare_call_source_module(
     return None
 
 
-def _get_enclosing_modules(node: "tree_sitter.Node", source: bytes) -> list[str]:
-    """Walk up the tree to find all enclosing module names, innermost first."""
-    modules: list[str] = []
+#: The calls that define a module (WI-forof). ``defprotocol P`` IS a
+#: ``defmodule`` (its name nests the same way); ``defimpl P, for: T`` defines
+#: the module ``P.T``, an ABSOLUTE name: Elixir builds it with
+#: ``Module.concat(P, T)`` and passes the atom to ``defmodule``, so the
+#: enclosing module is not prefixed (a ``defimpl Size, for: Outer`` inside
+#: ``defmodule Outer`` is ``Size.Outer``, not ``Outer.Size.Outer``).
+_MODULE_DEFINERS: frozenset[str] = frozenset({"defmodule", "defprotocol", "defimpl"})
+
+
+def _definer_keyword(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """``defmodule`` / ``defprotocol`` / ``defimpl`` for such a call, else None."""
+    if node.type != "call":
+        return None
+    target = find_child_by_type(node, "identifier")
+    keyword = node_text(target, source) if target is not None else None
+    return keyword if keyword in _MODULE_DEFINERS else None
+
+
+def _nearest_definer(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional["tree_sitter.Node"]:
+    """The nearest ancestor call that defines a module, else None."""
     current = node.parent
     while current is not None:
-        if current.type == "call":
-            target = find_child_by_type(current, "identifier")
-            if target and node_text(target, source) == "defmodule":
-                mod_name = _get_module_name_from_call(current, source)
-                if mod_name:
-                    modules.append(mod_name)
+        if _definer_keyword(current, source) is not None:
+            return current
         current = current.parent
-    return list(reversed(modules))  # Return outermost first
+    return None
+
+
+def _enclosing_module_names(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[list[str]]:
+    """The full name(s) of the module the code at ``node`` belongs to.
+
+    ``[]`` outside any module. Usually one name; several inside ``defimpl P,
+    for: [A, B]``, whose body is compiled once per target (``P.A``, ``P.B``).
+    An atom-named ``defmodule`` (``defmodule :"x"``) is walked past, as it
+    always was. None inside a ``defprotocol`` / ``defimpl`` whose name cannot
+    be read (``for: unquote(m)``, no ``for:`` outside any module, a ``quote``
+    template): the code there has no knowable module, and a caller emitting a
+    symbol must emit none rather than a bare or mis-owned name.
+    """
+    definer = _nearest_definer(node, source)
+    while definer is not None:
+        names = _defined_module_names(definer, source)
+        if names:
+            return names
+        if _definer_keyword(definer, source) != "defmodule":
+            return None
+        definer = _nearest_definer(definer, source)
+    return []
+
+
+def _enclosing_module(node: "tree_sitter.Node", source: bytes) -> str:
+    """The (first) module the code at ``node`` belongs to; ``""`` for none."""
+    names = _enclosing_module_names(node, source)
+    return names[0] if names else ""
+
+
+def _defined_module_names(definer: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The full name(s) of the module(s) a definer call defines; [] if unreadable."""
+    if _definer_keyword(definer, source) == "defimpl":
+        impl = _impl_modules(definer, source)
+        return impl[1] if impl is not None else []
+    name = _get_module_name(definer, source)
+    if name is None:
+        return []
+    outer = _enclosing_module_names(definer, source)
+    if outer is None:
+        return []
+    return [f"{outer[0]}.{name}" if outer else name]
+
+
+def _keyword_value(
+    args: "tree_sitter.Node", key: str, source: bytes,
+) -> Optional["tree_sitter.Node"]:
+    """The value node of ``key:`` in a call's trailing keyword list, else None."""
+    keywords = find_child_by_type(args, "keywords")
+    if keywords is None:
+        return None
+    for pair in keywords.children:
+        if (pair.type == "pair" and len(pair.children) >= 2
+                and node_text(pair.children[0], source).strip().rstrip(":") == key):
+            value: "tree_sitter.Node" = pair.children[-1]
+            return value
+    return None
+
+
+#: One-entry cache for :func:`_file_alias_hints`, ``[source, hints]``. Module
+#: names are read for every def, struct and directive of a file; the alias map
+#: they consult inside a ``defimpl`` is the file's, so it is computed once per
+#: source buffer rather than once per lookup. Keyed by identity: the cache
+#: holds the buffer, so a different file can never share its address.
+_FILE_ALIAS_CACHE: list[Any] = [None, {}]
+
+
+def _file_alias_hints(node: "tree_sitter.Node", source: bytes) -> dict[str, str]:
+    """The ``alias`` / ``import`` hints of the file ``node`` is in."""
+    if _FILE_ALIAS_CACHE[0] is not source:
+        root = node
+        while root.parent is not None:
+            root = root.parent
+        _FILE_ALIAS_CACHE[:] = [source, _alias_hints_under(root, source)]
+    hints: dict[str, str] = _FILE_ALIAS_CACHE[1]
+    return hints
+
+
+def _scope_aliases(node: "tree_sitter.Node", source: bytes) -> dict[str, str]:
+    """The aliases visible at ``node``: the file's directives, then the
+    automatic alias each NESTED module sets in its parent (``defmodule A do
+    defmodule B`` makes ``B`` mean ``A.B`` inside ``A``; ``defmodule
+    C.D`` nested in ``A`` makes ``C`` mean ``A.C``). Inner scopes win.
+
+    Like the rest of this analyzer it reads a file's ``alias`` directives
+    wherever they are written, not only before ``node``.
+    """
+    hints = dict(_file_alias_hints(node, source))
+    scopes: list[tuple[str, "tree_sitter.Node"]] = []
+    definer = _nearest_definer(node, source)
+    while definer is not None:
+        names = (
+            _defined_module_names(definer, source)
+            if _definer_keyword(definer, source) != "defimpl" else []
+        )
+        if names:
+            scopes.append((names[0], definer))
+        definer = _nearest_definer(definer, source)
+    for module, definer in reversed(scopes):
+        body = find_child_by_type(definer, "do_block")
+        for child in body.named_children if body is not None else ():
+            if _definer_keyword(child, source) in ("defmodule", "defprotocol"):
+                written = _get_module_name(child, source)
+                if written is not None:
+                    head = written.split(".", 1)[0]
+                    hints[head] = f"{module}.{head}"
+    return hints
+
+
+def _module_expression(
+    node: "tree_sitter.Node",
+    source: bytes,
+    scope: Optional[str],
+    aliases: dict[str, str],
+) -> Optional[str]:
+    """The module a written ``defimpl`` operand names, else None.
+
+    An alias (expanded), ``__MODULE__`` (the enclosing module) or
+    ``__MODULE__.Sub``. Anything else -- ``unquote(m)``, a variable -- is a
+    module only the compiler knows.
+    """
+    if node.type == "alias":
+        return _expand_alias(node_text(node, source), aliases)
+    text = node_text(node, source)
+    if node.type == "identifier" and text == "__MODULE__":
+        return scope
+    if node.type == "dot" and scope is not None:
+        parts = node.named_children
+        if (len(parts) == 2 and node_text(parts[0], source) == "__MODULE__"
+                and parts[1].type == "alias"):
+            return f"{scope}.{node_text(parts[1], source)}"
+    return None
+
+
+def _impl_modules(
+    defimpl: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, list[str]]]:
+    """``(protocol, impl module names)`` of a ``defimpl``, or None if unreadable.
+
+    ``defimpl P, for: T`` is ``P.T``; ``for: [A, B]`` is one impl per target;
+    no ``for:`` takes the enclosing module (Elixir's ``env.module``). P and T
+    are alias-expanded (:func:`_scope_aliases`). A ``defimpl`` inside
+    ``quote`` is a template for the module that runs ``use`` (INV-sinah), and
+    an unreadable target is dropped rather than guessed.
+    """
+    if _has_quote_ancestor(defimpl, source):
+        return None
+    args = find_child_by_type(defimpl, "arguments")
+    if args is None or not args.named_children:
+        return None
+    outer = _enclosing_module_names(defimpl, source)
+    scope = outer[0] if outer else None
+    aliases = _scope_aliases(defimpl, source)
+    protocol = _module_expression(args.named_children[0], source, scope, aliases)
+    if protocol is None:
+        return None
+    written = _keyword_value(args, "for", source)
+    if written is None:
+        targets: list[Optional[str]] = [scope]
+    elif written.type == "list":
+        targets = [
+            _module_expression(t, source, scope, aliases)
+            for t in written.named_children
+        ]
+    else:
+        targets = [_module_expression(written, source, scope, aliases)]
+    names = list(dict.fromkeys(f"{protocol}.{t}" for t in targets if t))
+    return (protocol, names) if names else None
 
 
 _DEF_KEYWORDS = ("def", "defp", "defmacro", "defmacrop")
@@ -729,25 +961,51 @@ def _callback_symbol(
         return None
     name, signature, arity = head
     kind = _CALLBACK_ATTRIBUTES[attribute[0]]
-    full_name = f"{'.'.join(_get_enclosing_modules(node, source))}.{name}"
-    start_line = node.start_point[0] + 1
-    end_line = node.end_point[0] + 1
+    full_name = f"{_enclosing_module(node, source)}.{name}"
+    return _callback_shaped_symbol(
+        node, file_path, run_id, full_name, kind, arity, signature,
+    )
+
+
+def _span_of(node: "tree_sitter.Node") -> Span:
+    return Span(
+        start_line=node.start_point[0] + 1,
+        end_line=node.end_point[0] + 1,
+        start_col=node.start_point[1],
+        end_col=node.end_point[1],
+    )
+
+
+def _callback_shaped_symbol(
+    node: "tree_sitter.Node",
+    file_path: str,
+    run_id: str,
+    full_name: str,
+    kind: str,
+    arity: int,
+    signature: Optional[str],
+) -> Symbol:
+    """A required member with no body: a ``@callback`` or a protocol head.
+
+    ``modifiers=["abstract"]``, ``meta["arity"]`` (the BEAM callback's arity
+    key, as on an Erlang ``-callback``; ``_behaviour_edges`` matches on it) and
+    a stable_id from ``callback_stable_id``.
+    """
+    span = _span_of(node)
     return Symbol(
-        id=make_symbol_id("elixir", file_path, start_line, end_line, full_name, kind),
+        id=make_symbol_id(
+            "elixir", file_path, span.start_line, span.end_line, full_name, kind,
+        ),
         stable_id=callback_stable_id("elixir", file_path, full_name, arity, kind),
         name=full_name,
         kind=kind,
         language="elixir",
         path=file_path,
-        span=Span(
-            start_line=start_line,
-            end_line=end_line,
-            start_col=node.start_point[1],
-            end_col=node.end_point[1],
-        ),
+        span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
         signature=signature,
+        meta={_ARITY_KEY: arity},
         modifiers=[_CALLBACK_MODIFIER],
     )
 
@@ -758,7 +1016,7 @@ def _caller_outside_def(
     symbols_at: SymbolsAt,
     file_anchor: Optional[Symbol],
 ) -> Optional[Symbol]:
-    """The anchor for a call in no ``def``: its ``defmodule``, else the file.
+    """The anchor for a call in no ``def``: its module definer, else the file.
 
     WI-dokib. Module-body code (``for path <- :code.get_path()`` in mix.exs, a
     module attribute's value) and ``test`` / ``setup`` MACRO blocks are inside
@@ -768,15 +1026,12 @@ def _caller_outside_def(
     """
     if file_anchor is None or _inside_typespec(node, source):
         return None
-    current = node.parent
+    current = _nearest_definer(node, source)
     while current is not None:
-        if current.type == "call":
-            target = find_child_by_type(current, "identifier")
-            if target and node_text(target, source) == "defmodule":
-                sym = symbol_declared_by(current, symbols_at)
-                if sym is not None:
-                    return sym
-        current = current.parent
+        sym = symbol_declared_by(current, symbols_at)
+        if sym is not None:
+            return sym
+        current = _nearest_definer(current, source)
     return file_anchor
 
 
@@ -801,16 +1056,6 @@ def _is_def_head(node: "tree_sitter.Node", source: bytes) -> bool:
     owner = parent.parent
     target = find_child_by_type(owner, "identifier") if owner is not None else None
     return target is not None and node_text(target, source) in _DEF_KEYWORDS
-
-
-def _get_module_name_from_call(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Extract module name from defmodule call node."""
-    args = find_child_by_type(node, "arguments")
-    if args:
-        for child in args.children:
-            if child.type == "alias":
-                return node_text(child, source)
-    return None
 
 
 def _get_module_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -1734,7 +1979,7 @@ def _dispatching_modules(tree: "tree_sitter.Tree", source: bytes) -> set[str]:
                 and not _has_quote_ancestor(node, source)
                 and _nearest_enclosing_module_resolvable(node, source)
                 and _is_self_apply(node, source)):
-            modules.add(".".join(_get_enclosing_modules(node, source)))
+            modules.add(_enclosing_module(node, source))
     return modules
 
 
@@ -1755,7 +2000,7 @@ def _template_key(
         if keyword == "defmacro" and _get_function_name(current, source) == "__using__":
             if not _nearest_enclosing_module_resolvable(current, source):
                 return None
-            return (".".join(_get_enclosing_modules(current, source)), None)
+            return (_enclosing_module(current, source), None)
         if keyword is not None and nearest_def is None:
             nearest_def = current
         current = current.parent
@@ -1764,7 +2009,7 @@ def _template_key(
             or _has_quote_ancestor(nearest_def, source)
             or not _nearest_enclosing_module_resolvable(nearest_def, source)):
         return None
-    module = ".".join(_get_enclosing_modules(nearest_def, source))
+    module = _enclosing_module(nearest_def, source)
     name = _get_function_name(nearest_def, source)
     if module not in dispatchers or name is None:
         return None
@@ -1910,7 +2155,7 @@ def _extract_behaviour_callbacks(
         behaviours: list[str] = [expanded]
         if directive.kind == "use":
             modules, behaviours = _adopted(expanded, directive.which, using_index)
-        module_name = ".".join(_get_enclosing_modules(node, source))
+        module_name = _enclosing_module(node, source)
         module_sym = file_symbols.get(module_name) or global_symbols.get(module_name)
         if module_sym is None:  # pragma: no cover - a resolvable module always has a symbol
             continue
@@ -2013,12 +2258,87 @@ def _behaviour_edges(
 
     for callback in callbacks_by_behaviour.get(behaviour, ()):
         short_name = callback.name.rsplit(".", 1)[-1]
-        for impl in global_symbols_multi.get(f"{module_name}.{short_name}", ()):
-            if impl.kind != callback.kind or "private" in impl.modifiers:
-                continue
+        arity = (callback.meta or {}).get(_ARITY_KEY)
+        candidates = [
+            impl for impl in global_symbols_multi.get(f"{module_name}.{short_name}", ())
+            if impl.kind == callback.kind and "private" not in impl.modifiers
+        ]
+        # By name AND arity (INV-dital): ``f/1`` is not implemented by an
+        # ``f/2`` beside it. A clause of unknown arity is kept.
+        for impl in narrow_by_arity(
+            candidates, arity if isinstance(arity, int) else None,
+        ):
             edges.append(callback_dispatch_edge(
                 callback_id=callback.id, impl_id=impl.id, line=line,
                 origin=PASS_ID, run_id=run_id,
+            ))
+    return edges
+
+
+def _extract_protocol_edges(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_symbols: list[Symbol],
+    global_symbols: dict[str, Any],
+    global_symbols_multi: dict[str, list[Symbol]],
+    run_id: str,
+) -> list[Edge]:
+    """The edges each ``defimpl`` in this file implies (WI-forof).
+
+    A protocol is a behaviour -- ``defprotocol`` generates a ``@callback``
+    per function head and ``defimpl`` sets ``@behaviour P`` on the impl
+    module -- so the type relationship is the behaviour's, built by
+    ``_behaviour_edges`` from ``hypergumbo_core.behaviours``: ``implements``
+    ``P.T -> P`` (the in-repo protocol module, else the unresolved
+    ``elixir:external:0-0:P:unresolved``) and each protocol function
+    ``dispatches_to`` the impl's same-name, same-arity public functions.
+
+    An impl of a protocol OUTSIDE the repository (``String.Chars``,
+    ``Enumerable``, ``Inspect``, ``Jason.Encoder``, ``Phoenix.Param``) has no
+    in-repo protocol function to be dispatched from, yet the runtime calls it
+    (``to_string/1``, ``Enum.count/1``, ``Jason.encode/1`` dispatch to it). Its
+    impl module ``dispatches_to`` each of its public functions instead, the
+    way the framework callback table roots a GenServer's callbacks. The roots
+    are DERIVED from "implements a protocol the repo does not define", not
+    listed per protocol: an impl module exists only to be dispatched to, and
+    a protocol's functions are exactly what it defines publicly (helpers are
+    ``defp``). An in-repo protocol's impls are reached through the protocol
+    function, so their module does not root them.
+    """
+    callbacks_by_behaviour: dict[str, list[Symbol]] = global_symbols.get(
+        _CALLBACKS_KEY, {},
+    )
+    modules = {s.name: s for s in file_symbols if s.kind == "module"}
+    edges: list[Edge] = []
+    seen: set[tuple[str, str]] = set()
+    for node in iter_tree(tree.root_node):
+        if _definer_keyword(node, source) != "defimpl":
+            continue
+        impl = _impl_modules(node, source)
+        if impl is None:
+            continue
+        protocol, impl_names = impl
+        target = global_symbols.get(protocol)
+        in_repo = isinstance(target, Symbol) and target.kind == "module"
+        line = node.start_point[0] + 1
+        for impl_name in impl_names:
+            module_sym = modules.get(impl_name)
+            if module_sym is None:  # pragma: no cover - every impl name minted a module symbol in Pass 1
+                continue
+            edges.extend(_behaviour_edges(
+                module_sym, impl_name, protocol, line, global_symbols,
+                callbacks_by_behaviour, global_symbols_multi, run_id,
+            ))
+            if in_repo:
+                continue
+            public = sorted({
+                s.name.rsplit(".", 1)[-1] for s in file_symbols
+                if s.kind == "function" and _symbol_module(s.name) == impl_name
+                and "private" not in s.modifiers
+            })
+            edges.extend(_framework_callback_edges(
+                module_sym, impl_name, public, line, {}, global_symbols, {},
+                global_symbols_multi, run_id, seen,
             ))
     return edges
 
@@ -2136,23 +2456,93 @@ def _has_quote_ancestor(node: "tree_sitter.Node", source: bytes) -> bool:
 def _nearest_enclosing_module_resolvable(
     node: "tree_sitter.Node", source: bytes
 ) -> bool:
-    """True iff the NEAREST enclosing ``defmodule`` has a resolvable (alias) name.
+    """True iff the NEAREST enclosing module definer has a resolvable name.
 
     An atom-named module (``defmodule :"x"``) yields None from ``_get_module_name``
-    and is SKIPPED by ``_get_enclosing_modules``, so a defstruct nested inside it
+    and is SKIPPED by ``_enclosing_module_names``, so a defstruct nested inside it
     would be mis-attributed to a resolvable ANCESTOR module (a wrong owner).
     Gating on the nearest module's resolvability drops the field instead
     (fails-safe). Also returns False for a defstruct with NO enclosing module
-    (top-level — invalid but parseable), so it emits nothing.
+    (top-level — invalid but parseable), so it emits nothing. A
+    ``defprotocol`` / ``defimpl`` is a module definer like ``defmodule``.
     """
-    current = node.parent
-    while current is not None:
-        if current.type == "call":
-            target = find_child_by_type(current, "identifier")
-            if target is not None and node_text(target, source) == "defmodule":
-                return _get_module_name(current, source) is not None
-        current = current.parent
-    return False
+    definer = _nearest_definer(node, source)
+    return definer is not None and bool(_defined_module_names(definer, source))
+
+
+def _module_symbol(
+    node: "tree_sitter.Node", file_path: str, run_id: str, full_name: str,
+) -> Symbol:
+    """The ``module`` symbol of a ``defmodule`` / ``defprotocol`` / ``defimpl``."""
+    span = _span_of(node)
+    return Symbol(
+        id=make_symbol_id(
+            "elixir", file_path, span.start_line, span.end_line, full_name, "module",
+        ),
+        name=full_name,
+        kind="module",
+        language="elixir",
+        path=file_path,
+        span=span,
+        origin=PASS_ID,
+        origin_run_id=run_id,
+    )
+
+
+def _def_clause_symbol(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: str,
+    run_id: str,
+    full_name: str,
+    keyword: str,
+) -> Symbol:
+    """One clause of a ``def`` / ``defp`` (``function``) or ``defmacro`` /
+    ``defmacrop`` (``macro``); the ``p`` forms are ``private``."""
+    kind = "macro" if keyword.startswith("defmacro") else "function"
+    span = _span_of(node)
+    return Symbol(
+        id=make_symbol_id(
+            "elixir", file_path, span.start_line, span.end_line, full_name, kind,
+        ),
+        name=full_name,
+        kind=kind,
+        language="elixir",
+        path=file_path,
+        span=span,
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        signature=_extract_elixir_signature(node, source),
+        meta=_parameters_meta(node, source),
+        modifiers=["private"] if keyword.endswith("p") else [],
+        # INV-loguk: homoiconic head-symbol CC; LOC from span. The analyzer
+        # emits one Symbol per def clause, so the walker is applied
+        # per-clause (no aggregation).
+        cyclomatic_complexity=compute_cyclomatic_complexity(node, "elixir"),
+        line_span=span.end_line - span.start_line + 1,
+    )
+
+
+def _protocol_function_symbol(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: str,
+    run_id: str,
+    full_name: str,
+) -> Symbol:
+    """The declaration a ``def`` head inside ``defprotocol`` makes (WI-forof).
+
+    Callback-shaped (kind ``function``), because it IS one: ``defprotocol``
+    generates a ``@callback`` per head. Unlike a behaviour callback it is a
+    call target, by qualified name: ``Size.size(x)`` is the protocol's
+    dispatch function (``ElixirAnalyzer.register_symbol``).
+    """
+    params = _def_head_arguments(node)
+    arity = len(params) if params is not None else 0
+    return _callback_shaped_symbol(
+        node, file_path, run_id, full_name, "function", arity,
+        _extract_elixir_signature(node, source),
+    )
 
 
 def _extract_symbols_from_tree(
@@ -2160,8 +2550,12 @@ def _extract_symbols_from_tree(
     source: bytes,
     file_path: str,
     run_id: str,
+    protocols: Optional[set[str]] = None,
 ) -> tuple[list[Symbol], dict[str, Symbol], dict[str, list[Symbol]]]:
     """Extract symbols from a parsed Elixir tree.
+
+    ``protocols``, when given, collects the full name of every ``defprotocol``
+    in the file (``ElixirAnalyzer.register_symbol`` reads it).
 
     Returns:
         Tuple of (symbols, symbol_by_name, symbols_by_name).
@@ -2173,133 +2567,57 @@ def _extract_symbols_from_tree(
     symbols_by_name: dict[str, list[Symbol]] = {}
 
     for node in iter_tree(tree.root_node):
-        # Check for defmodule
         if node.type == "call":
             target = find_child_by_type(node, "identifier")
             if target:
                 target_name = node_text(target, source)
 
-                if target_name == "defmodule":
-                    module_name = _get_module_name(node, source)
-                    if module_name:
-                        # Handle nested modules by walking up
-                        enclosing_modules = _get_enclosing_modules(node, source)
-                        if enclosing_modules:
-                            full_name = f"{'.'.join(enclosing_modules)}.{module_name}"
-                        else:
-                            full_name = module_name
-
-                        start_line = node.start_point[0] + 1
-                        end_line = node.end_point[0] + 1
-
-                        symbol = Symbol(
-                            id=make_symbol_id("elixir", file_path, start_line, end_line, full_name, "module"),
-                            name=full_name,
-                            kind="module",
-                            language="elixir",
-                            path=file_path,
-                            span=Span(
-                                start_line=start_line,
-                                end_line=end_line,
-                                start_col=node.start_point[1],
-                                end_col=node.end_point[1],
-                            ),
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                        )
+                if target_name in _MODULE_DEFINERS:
+                    # ``defmodule`` / ``defprotocol`` / ``defimpl`` (WI-forof):
+                    # one module symbol per name the call defines -- a
+                    # ``defimpl P, for: [A, B]`` defines ``P.A`` and ``P.B``.
+                    for full_name in _defined_module_names(node, source):
+                        symbol = _module_symbol(node, file_path, run_id, full_name)
                         symbols.append(symbol)
                         symbol_by_name[full_name] = symbol
+                        if target_name == "defprotocol" and protocols is not None:
+                            protocols.add(full_name)
 
-                elif (target_name in ("def", "defp")
+                elif (target_name in _DEF_KEYWORDS
                       and not _has_quote_ancestor(node, source)):
-                    # INV-sinah: a def/defp inside a `quote` (an `__using__`
+                    # INV-sinah: a def/defmacro inside a `quote` (an `__using__`
                     # template) is injected into the module that runs `use`, not
                     # defined on the defining module — suppress rather than
                     # mis-attribute (fails-safe, mirroring the defstruct guard).
                     func_name = _get_function_name(node, source)
-                    if func_name:
-                        enclosing_modules = _get_enclosing_modules(node, source)
-                        current_module = ".".join(enclosing_modules) if enclosing_modules else ""
-                        full_name = f"{current_module}.{func_name}" if current_module else func_name
-
-                        start_line = node.start_point[0] + 1
-                        end_line = node.end_point[0] + 1
-
-                        # defp = private function
-                        modifiers = ["private"] if target_name == "defp" else []
-
-                        symbol = Symbol(
-                            id=make_symbol_id("elixir", file_path, start_line, end_line, full_name, "function"),
-                            name=full_name,
-                            kind="function",
-                            language="elixir",
-                            path=file_path,
-                            span=Span(
-                                start_line=start_line,
-                                end_line=end_line,
-                                start_col=node.start_point[1],
-                                end_col=node.end_point[1],
-                            ),
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                            signature=_extract_elixir_signature(node, source),
-                            meta=_parameters_meta(node, source),
-                            modifiers=modifiers,
-                            # INV-loguk: homoiconic head-symbol CC; LOC from span.
-                            # The analyzer emits one Symbol per def clause, so the
-                            # walker is applied per-clause (no aggregation).
-                            cyclomatic_complexity=compute_cyclomatic_complexity(
-                                node, "elixir",
-                            ),
-                            line_span=end_line - start_line + 1,
+                    owners = _enclosing_module_names(node, source)
+                    if not func_name or owners is None:
+                        # No name, or inside a protocol / impl whose module
+                        # cannot be read: no symbol beats a bare or mis-owned one.
+                        continue
+                    definer = _nearest_definer(node, source)
+                    in_protocol = (
+                        definer is not None and target_name == "def"
+                        and _definer_keyword(definer, source) == "defprotocol"
+                    )
+                    for owner in owners or [""]:
+                        full_name = f"{owner}.{func_name}" if owner else func_name
+                        if in_protocol:
+                            # A protocol's ``def`` head is its callback
+                            # (``defprotocol`` generates ``@callback`` for it).
+                            symbols.append(_protocol_function_symbol(
+                                node, source, file_path, run_id, full_name,
+                            ))
+                            continue
+                        symbol = _def_clause_symbol(
+                            node, source, file_path, run_id, full_name, target_name,
                         )
                         symbols.append(symbol)
-                        symbol_by_name[func_name] = symbol  # Store by short name for local calls
-                        # Multi-clause index: all symbols with the same short name
-                        symbols_by_name.setdefault(func_name, []).append(symbol)
-
-                elif (target_name in ("defmacro", "defmacrop")
-                      and not _has_quote_ancestor(node, source)):
-                    # INV-sinah: same fails-safe suppression as def/defp above —
-                    # a defmacro inside a `quote` is a template for the using
-                    # module, not a macro on the defining module.
-                    macro_name = _get_function_name(node, source)
-                    if macro_name:
-                        enclosing_modules = _get_enclosing_modules(node, source)
-                        current_module = ".".join(enclosing_modules) if enclosing_modules else ""
-                        full_name = f"{current_module}.{macro_name}" if current_module else macro_name
-
-                        start_line = node.start_point[0] + 1
-                        end_line = node.end_point[0] + 1
-
-                        # defmacrop = private macro
-                        modifiers = ["private"] if target_name == "defmacrop" else []
-
-                        symbol = Symbol(
-                            id=make_symbol_id("elixir", file_path, start_line, end_line, full_name, "macro"),
-                            name=full_name,
-                            kind="macro",
-                            language="elixir",
-                            path=file_path,
-                            span=Span(
-                                start_line=start_line,
-                                end_line=end_line,
-                                start_col=node.start_point[1],
-                                end_col=node.end_point[1],
-                            ),
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                            signature=_extract_elixir_signature(node, source),
-                            meta=_parameters_meta(node, source),
-                            modifiers=modifiers,
-                            # INV-loguk: homoiconic head-symbol CC; LOC from span.
-                            cyclomatic_complexity=compute_cyclomatic_complexity(
-                                node, "elixir",
-                            ),
-                            line_span=end_line - start_line + 1,
-                        )
-                        symbols.append(symbol)
-                        symbol_by_name[macro_name] = symbol
+                        # By short name for local calls.
+                        symbol_by_name[func_name] = symbol
+                        if symbol.kind == "function":
+                            # Multi-clause index: all symbols with the same short name
+                            symbols_by_name.setdefault(func_name, []).append(symbol)
 
                 elif (target_name == "defstruct"
                       and not _has_quote_ancestor(node, source)
@@ -2309,7 +2627,7 @@ def _extract_symbols_from_tree(
                     # defstruct inside a `quote` is a template for a DIFFERENT
                     # module (via `use`); one whose nearest enclosing module is
                     # atom-named or absent has no reliable owner — both excluded.
-                    owner = ".".join(_get_enclosing_modules(node, source))
+                    owner = _enclosing_module(node, source)
                     field_names = _extract_defstruct_field_names(node, source)
                     if field_names:
                         start_line = node.start_point[0] + 1
@@ -2443,7 +2761,7 @@ def _extract_edges_from_tree(
                                 ))
 
                 # Detect function calls within a function body
-                elif (target_name not in (*_DEF_KEYWORDS, "defmodule")
+                elif (target_name not in (*_DEF_KEYWORDS, *_MODULE_DEFINERS)
                       and not _is_def_head(node, source)):
                     current_function = _get_enclosing_function(
                         node, source, symbols_at,
@@ -2871,10 +3189,14 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
     #: ``template -> (behaviours, used)`` its ``use`` templates declare,
     #: filled in Pass 1 (``_extract_using_index``) and reset per ``analyze()``.
     _using_index: _UsingIndex
+    #: Full names of every ``defprotocol`` in the run, filled in Pass 1 and
+    #: read by ``register_symbol`` (WI-forof); reset per ``analyze()``.
+    _protocols: set[str]
 
     def __init__(self) -> None:
         super().__init__()
         self._using_index = {}
+        self._protocols = set()
     language_pack_name = "elixir"
     create_file_symbols = False
 
@@ -2904,6 +3226,10 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
         body; under its qualified name ``Shape.area()`` -- an undefined-function
         error in Elixir -- would resolve to it. Pass 2 reads the index to link
         each callback to its implementations.
+
+        A protocol function head (WI-forof) is filed in the same index -- it is
+        the protocol's callback -- and, because a protocol function IS
+        callable, also under its qualified name (never its short one).
         """
         if symbol.kind == "field":
             return
@@ -2911,7 +3237,18 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
             callbacks: dict[str, list[Symbol]] = global_symbols.setdefault(
                 _CALLBACKS_KEY, {},
             )
-            callbacks.setdefault(_symbol_module(symbol.name), []).append(symbol)
+            module = _symbol_module(symbol.name)
+            callbacks.setdefault(module, []).append(symbol)
+            if module in self._protocols:
+                # A protocol function (WI-forof) IS called -- ``Size.size(x)``
+                # is the dispatch -- so it is also a call target, by its
+                # qualified name only: a bare ``size(...)`` names a local
+                # function, never the bodiless head.
+                global_symbols[symbol.name] = symbol
+                multi_q: dict[str, list[Symbol]] = global_symbols.setdefault(
+                    "__multi__", {},
+                )
+                multi_q.setdefault(symbol.name, []).append(symbol)
             return
         global_symbols[symbol.name] = symbol
         short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
@@ -2928,7 +3265,7 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
         self._current_run_id = run.execution_id
         analysis = FileAnalysis()
         symbols, symbol_by_name, _symbols_by_name = _extract_symbols_from_tree(
-            tree, source, rel_path, run.execution_id,
+            tree, source, rel_path, run.execution_id, protocols=self._protocols,
         )
         analysis.symbols = symbols
         analysis.symbol_by_name = symbol_by_name
@@ -2990,6 +3327,11 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
             using_index=self._using_index,
         )
         edges.extend(callback_edges)
+        # Protocols: implements + protocol-function dispatch (WI-forof).
+        edges.extend(_extract_protocol_edges(
+            tree, source, self.file_symbols(local_symbols), global_symbols,
+            global_multi or {}, run.execution_id,
+        ))
 
         return edges
 
@@ -3032,6 +3374,7 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
         """Override to initialize pending route symbols before analysis."""
         self._pending_route_symbols: list[Symbol] = []
         self._using_index = {}
+        self._protocols = set()
         self._current_run_id = ""
         return super().analyze(repo_root, max_files=max_files)
 
