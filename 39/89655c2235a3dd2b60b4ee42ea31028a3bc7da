@@ -1,0 +1,33 @@
+Original commit body from 297d4008d9326f896fac6d39d922d4b9f69444e6:
+
+A cached survey answers sketch, routes, verify-claims and every other
+command that reads a behavior map, but its key (repo state, backend set,
+trace_deps, analyzer identity) did not include the user catalogue channels
+the analysis reads. A frameworks.d / library_signatures.d /
+dataflow_patterns.d file added, edited or broken after a survey was cached
+was never read: sketch kept exiting 0 on a file survey refused at exit 2.
+config.toml and .hypergumbo.toml had the same gap (neither is source the
+state hash covers), so a [merge] edit or a broken config was masked too.
+
+Fix:
+- yaml_catalogs.CatalogSpec gains channel_stage (analysis | command),
+  required for every family with a user channel and refused without one
+  by validate_registry. frameworks, dataflow_patterns and
+  library_signatures are analysis-stage; io_primitives, the taint
+  families and function_summaries are read per command over the cached
+  graph and stay out of the key.
+- catalogue_home.analysis_channel_token digests every file in the
+  analysis-stage channels (channel-relative name + sha256 of bytes,
+  sorted); user_config.config_cache_token digests both config tiers.
+  _get_results_cache_dir appends -cat-<hash> / -cfg-<hash>, each absent
+  when its files are, so users with neither keep every existing key.
+- A behavioural test spies on user_channel_files during a real survey
+  and asserts the families read equal the registry's analysis-stage set,
+  so a loader that starts reading a command-stage channel fails it.
+
+cache-status needs no change: it counts state directories and does not
+describe the key's components (it did not explain -deps-* either).
+
+Refs INV-horob-sotir-vijut-bibur-rilob-butun-litad-jijuk
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
