@@ -1,0 +1,23 @@
+- op: create  # c2dc
+  at: '2026-10-12T17:11:21Z'  # c2dc
+  by: agent  # c2dc
+  actor: jgstern_agent  # c2dc
+  clock: 1  # c2dc
+  nonce: c2dc  # c2dc
+  data:  # c2dc
+    kind: invariant  # c2dc
+    title: "ocaml/agda/lean/wolfram analyzers drop the second same-name callable in a file (nested modules, namespaces, records, overloads)"  # c2dc
+    status: violated  # c2dc
+    priority: 2  # c2dc
+    parent:  # c2dc
+    tags:  # c2dc
+    - analysis_quality  # c2dc
+    - schema  # c2dc
+    isbefore: []  # c2dc
+    duplicate_of: []  # c2dc
+    not_duplicate_of: []  # c2dc
+    pr_ref:  # c2dc
+    description: "Found by the WI-tusad B1 delete-an-earlier-sibling harness (packages/hypergumbo-core/tests/test_stable_id_floor_gate.py, 2026-10-12, dev f300785189 + B1 branch). Four analyzers emit only ONE symbol when a file declares two same-name callables/members in different scopes or as overloads; the second is silently absent from the graph (not null, absent), so its calls and identity are lost.\n\nMeasured (probe files written to a temp dir, full pipeline, kinds/names from the behavior map):\n- ocaml: `module A = struct let run x = x end` + `module B = struct let run x y = x + y end` -> one `function run` (A's, line 2); B's run missing. Also `let run x = x` / `let run x y = ...` at top level -> one node.\n- agda: `run` declared in `module A where` and `module B where` -> one `function run`; two records each with `field fst` -> one `field fst`.\n- lean: `def run` in `namespace A` and `namespace B` -> one `function run` (line 2).\n- wolfram: `run[x_Integer] := x` and `run[x_String] := ...` -> one `function run` (line 1); a later `helper[] := 2` was also absent in the fixture.\n\nInvariant: every declaration the analyzer recognises is emitted as its own symbol; same-name declarations in different scopes (or overloads) are not merged or dropped. Likely mechanism (NOT verified): a name-keyed dict of symbols per file (last/first registration wins). The WI-tusad migration for these languages (B4 in the campaign plan) needs this fixed first, since a producer id cannot be given to a symbol that is not emitted; the gate lists all four in sibling_deletion_moves with \"no counterpart before the deletion\"."  # c2dc
+    fields:  # c2dc
+      statement: "Every declaration an analyzer recognises is emitted as its own symbol; same-name declarations in different scopes or overloads are neither merged nor dropped."  # c2dc
+      root_cause: "Not verified. Likely a per-file name-keyed symbol table in each of the four analyzers where one registration wins."  # c2dc
