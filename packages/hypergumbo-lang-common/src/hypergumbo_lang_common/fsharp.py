@@ -45,6 +45,32 @@ F#-Specific Considerations
 - Modules organize code hierarchically
 - Pattern matching is pervasive
 - .fs files may be Forth (Open Firmware Forth, GForth) — content heuristics disambiguate
+
+Scope and identity (WI-tusad)
+-----------------------------
+A declaration inside a nested ``module A =`` is named with the module chain,
+the way code outside the module refers to it: ``A.run``, ``A.Inner.deep``,
+record ``A.Point`` and its field ``A.Point.x``, union ``A.Shape``; a class-level
+``let helper`` inside ``type Shape(...) =`` is ``Shape.helper``. The file's
+own ``module Demo`` header adds nothing (a top-level ``let run`` stays ``run``).
+A function bound inside another function keeps its bare name and holds the
+enclosing function in its scope chain (``run/inner``). Module-level ``let``
+values (``variable``) and the ``module`` symbol keep their names: their ids
+come from the variable/module table formulas over the name, and qualifying
+them would change ids already computed (ADR-0035 §6). A qualified call
+(``A.run x``) first looks up the dotted name, then falls back to the bare one.
+
+Functions record their argument patterns in ``meta["parameters"]`` (one entry
+per pattern, written as the pattern's text; ``()`` counts as one) and mint the
+ADR-0035 producer stable_id through ``overload_arity.declared_arity_stable_id``
+over the scope chain; records, fields and unions mint the same formula with no
+arity. Before, all of them rode the backstop floor key, and ``run`` in
+``module A`` and in ``module B`` (two same-name symbols in one file) were left
+null.
+
+Not emitted: class types (``type Shape(r) = ...``) and their ``member``
+definitions (WI-tamib), and a binding with an optional ``?x`` argument,
+which the grammar parses as a value pattern.
 """
 from __future__ import annotations
 
@@ -68,6 +94,9 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -237,6 +266,77 @@ def _fsharp_value_is_module_level(node: "tree_sitter.Node") -> bool:
     return scope is not None and scope.type in _FSHARP_MODULE_SCOPES
 
 
+def _fsharp_module_prefix(node: "tree_sitter.Node", source: bytes) -> str:
+    """``A.Inner.`` for a declaration inside ``module A = ... module Inner = ...``.
+
+    Nested ``module_defn`` blocks count, and so does a class type for a
+    class-level ``let`` (``Shape.helper``); the file's ``named_module`` header
+    (``module Demo``) adds nothing.
+    """
+    parts: list[str] = []
+    current = node.parent
+    while current is not None:
+        name_node = None
+        if current.type == "module_defn":
+            name_node = find_child_by_type(current, "identifier")
+        elif current.type == "anon_type_defn":
+            type_name = find_child_by_type(current, "type_name")
+            name_node = find_child_by_type(type_name, "identifier") if type_name else None
+        if name_node is not None:
+            parts.append(node_text(name_node, source))
+        current = current.parent
+    return "".join(f"{part}." for part in reversed(parts))
+
+
+def _fsharp_function_names(
+    node: "tree_sitter.Node", source: bytes, func_name: str,
+) -> tuple[str, str]:
+    """``(symbol name, scope chain)`` of the function ``node`` binds.
+
+    A function bound inside another function keeps its bare name; its chain is
+    the enclosing function's chain plus ``/name``. Otherwise both are the
+    module-qualified name.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "function_or_value_defn":
+            outer = _fsharp_function_name(current, source)
+            if outer is not None:
+                return func_name, (
+                    f"{_fsharp_function_names(current, source, outer)[1]}/{func_name}"
+                )
+        current = current.parent
+    qualified = _fsharp_module_prefix(node, source) + func_name
+    return qualified, qualified
+
+
+def _fsharp_function_name(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """The name a ``function_or_value_defn`` binds as a function, else None."""
+    func_left = find_child_by_type(node, "function_declaration_left")
+    name_node = find_child_by_type(func_left, "identifier") if func_left else None
+    return node_text(name_node, source) if name_node is not None else None
+
+
+def _fsharp_parameters(
+    func_left: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, object]]:
+    """``meta["parameters"]``: each argument pattern of ``function_declaration_left``."""
+    args = find_child_by_type(func_left, "argument_patterns")
+    if args is None:
+        return []  # pragma: no cover - a function_declaration_left has arguments
+    return [parameter_entry(node_text(child, source)) for child in args.named_children]
+
+
+def _fsharp_member_stable_id(kind: str, file_path: str, qualified: str) -> str:
+    """The producer stable_id of a record, union or field (no arity)."""
+    return declared_arity_stable_id(
+        kind=kind, lang="fsharp", path=file_path,
+        name=qualified.rsplit(".", 1)[-1], qualified_name=qualified, arity=None,
+    )
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -289,7 +389,12 @@ def _extract_symbols_from_file(
             if func_left:
                 name_node = find_child_by_type(func_left, "identifier")
                 if name_node:
-                    func_name = node_text(name_node, source)
+                    func_name, chain = _fsharp_function_names(
+                        node, source, node_text(name_node, source),
+                    )
+                    meta: dict[str, object] = {
+                        PARAMETERS_KEY: _fsharp_parameters(func_left, source),
+                    }
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
                     span = Span(
@@ -305,6 +410,12 @@ def _extract_symbols_from_file(
 
                     symbols.append(Symbol(
                         id=sym_id,
+                        stable_id=declared_arity_stable_id(
+                            kind="function", lang="fsharp", path=file_path,
+                            name=node_text(name_node, source),
+                            qualified_name=chain, arity=declared_arity(meta),
+                        ),
+                        meta=meta,
                         name=func_name,
                         kind="function",
                         language="fsharp",
@@ -359,7 +470,10 @@ def _extract_symbols_from_file(
                 if type_name_node:
                     name_node = find_child_by_type(type_name_node, "identifier")
                     if name_node:
-                        type_name = node_text(name_node, source)
+                        type_name = (
+                            _fsharp_module_prefix(node, source)
+                            + node_text(name_node, source)
+                        )
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         span = Span(
@@ -371,6 +485,9 @@ def _extract_symbols_from_file(
                         sym_id = make_symbol_id("fsharp", file_path, start_line, end_line, type_name, "record")
                         symbols.append(Symbol(
                             id=sym_id,
+                            stable_id=_fsharp_member_stable_id(
+                                "record", file_path, type_name,
+                            ),
                             name=type_name,
                             kind="record",
                             language="fsharp",
@@ -397,6 +514,9 @@ def _extract_symbols_from_file(
                                 qualified = f"{type_name}.{fname}"
                                 symbols.append(Symbol(
                                     id=make_symbol_id("fsharp", file_path, f_start, f_end, qualified, "field"),
+                                    stable_id=_fsharp_member_stable_id(
+                                        "field", file_path, qualified,
+                                    ),
                                     name=qualified,
                                     kind="field",
                                     language="fsharp",
@@ -418,7 +538,10 @@ def _extract_symbols_from_file(
                 if type_name_node:
                     name_node = find_child_by_type(type_name_node, "identifier")
                     if name_node:
-                        type_name = node_text(name_node, source)
+                        type_name = (
+                            _fsharp_module_prefix(node, source)
+                            + node_text(name_node, source)
+                        )
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         span = Span(
@@ -430,6 +553,9 @@ def _extract_symbols_from_file(
                         sym_id = make_symbol_id("fsharp", file_path, start_line, end_line, type_name, "union")
                         symbols.append(Symbol(
                             id=sym_id,
+                            stable_id=_fsharp_member_stable_id(
+                                "union", file_path, type_name,
+                            ),
                             name=type_name,
                             kind="union",
                             language="fsharp",
@@ -559,6 +685,7 @@ def _extract_edges_from_file(
                 if first_child.type == "long_identifier_or_op":
                     callee_name: Optional[str] = None
                     path_hint: Optional[str] = None
+                    dotted: Optional[str] = None
 
                     # Check for qualified call (long_identifier with dots)
                     long_id = find_child_by_type(first_child, "long_identifier")
@@ -574,6 +701,7 @@ def _extract_edges_from_file(
                             receiver = identifiers[0]
                             callee_name = identifiers[-1]
                             path_hint = module_aliases.get(receiver)
+                            dotted = ".".join(identifiers)
                         elif len(identifiers) == 1:  # pragma: no cover - single ident fallback
                             callee_name = identifiers[0]
                     else:
@@ -583,7 +711,13 @@ def _extract_edges_from_file(
                             callee_name = node_text(name_node, source)
 
                     if callee_name:
-                        lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                        # ``A.run x`` names the function this analyzer emits
+                        # as ``A.run``; try the dotted name first.
+                        lookup_result = resolver.lookup(
+                            dotted, allow_suffix=False,
+                        ) if dotted else None
+                        if lookup_result is None or not lookup_result.found:
+                            lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
                             confidence = 0.85 * lookup_result.confidence

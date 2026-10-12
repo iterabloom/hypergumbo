@@ -46,6 +46,44 @@ Agda-Specific Considerations
 - Records have fields and potentially a constructor
 - Postulates are axioms (functions without implementation)
 - Import can be `open import`, `import`, with using/hiding/renaming
+
+Scope and identity (INV-kagib, WI-tusad)
+----------------------------------------
+A declaration's scope chain is the named blocks it sits in, outermost first:
+nested ``module M where`` blocks (an anonymous ``module _`` adds nothing), the
+``data`` type a constructor belongs to, the ``record`` a field belongs to, and,
+for a function bound in a ``where`` block, the function whose clause holds it.
+``private`` / ``postulate`` / ``mutual`` / ``abstract`` blocks are transparent,
+and the file's own ``module X where`` header encloses nothing in the grammar.
+
+Every declaration is emitted. Before, a per-file set of seen names kept only
+the first symbol of any name, so ``run`` in ``module B`` was dropped when
+``module A`` also declared it, and a second record's ``field fst`` vanished.
+(A forward ``data D : Set`` is a ``data_signature`` node, not emitted, so the
+later ``data D where`` is the one data symbol.) Two declarations with one
+chain (a ``go`` in the ``where`` block of each of two clauses of ``run``) are
+a same-scope tie the per-file occurrence pass orders. Known grammar gap: in
+every probe tried (two top-level functions, or two clauses of one function,
+each with a ``where`` block), the bundled tree-sitter-agda nested only the
+first block; the second one's functions come out at top level and are
+emitted without their owner in the chain. Names
+carry the chain where code outside the block uses it: ``A.run``, ``Pair.fst``
+(a field), ``A.Tree`` (a data type in a nested module). A constructor is in
+scope in its module under its bare name, so it is named ``zero`` (``A.zero``
+in a nested module) while its chain holds the data type (``Nat.zero``), and
+two data types' same-name constructors stay apart. A ``where``-bound function
+keeps its bare name (``go``) and holds the enclosing function in its chain
+(``A.run/go``). Module symbols keep
+their bare names: their ids come from the module table formula over the name,
+so qualifying them would change ids already computed (ADR-0035 §6); two
+same-name modules in one file are told apart by the per-file occurrence pass.
+
+Functions, constructors, postulates, data types, records and fields mint the
+ADR-0035 producer stable_id through ``overload_arity.declared_arity_stable_id``
+over the chain (no arity: Agda resolves names by scope, never by argument
+count, so the chain alone separates same-name declarations). Reference edges
+take their source from the declaration the clause or signature belongs to,
+looked up by chain within the file, not by a repo-wide bare-name lookup.
 """
 from __future__ import annotations
 
@@ -63,8 +101,11 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_symbol_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import declared_arity_stable_id
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
@@ -140,6 +181,69 @@ def _extract_agda_signature(
     return None  # pragma: no cover - defensive, called only for type signatures
 
 
+def _clause_name(node: "tree_sitter.Node", source: bytes) -> str:
+    """The name a pattern clause (``run x = ...``) defines: its first ``qid`` atom."""
+    lhs = find_child_by_type(node, "lhs")
+    if lhs is None:
+        return ""  # pragma: no cover - a function node always has an lhs
+    for child in lhs.children:
+        if child.type == "atom":
+            qid_node = find_child_by_type(child, "qid")
+            if qid_node:
+                return node_text(qid_node, source).strip()
+    return ""  # pragma: no cover - a clause's lhs opens with a name atom
+
+
+def _block_name(node: "tree_sitter.Node", source: bytes) -> str:
+    """The name a ``module`` / ``data`` / ``record`` block adds to a chain."""
+    field = {"module": "module_name", "data": "data_name", "record": "record_name"}
+    name_node = find_child_by_type(node, field[node.type])
+    if name_node is None:
+        return ""  # pragma: no cover - every such block names itself
+    text = node_text(name_node, source).strip()
+    return "" if text == "_" else text
+
+
+def _scope_chain(node: "tree_sitter.Node", source: bytes) -> tuple[str, str, bool]:
+    """``(name prefix, chain prefix, is_local)`` of the declaration ``node``.
+
+    The chain prefix joins the enclosing ``module`` / ``data`` / ``record`` names
+    with ``.`` and an enclosing function (a ``where`` block's owner) with ``/``;
+    ``is_local`` says a function encloses ``node``. The name prefix is the part
+    of the chain code outside the block uses: the modules and records, not the
+    ``data`` type (a constructor is in scope in its module under its bare name).
+    See the module docstring.
+    """
+    name_parts: list[str] = []
+    chain_parts: list[str] = []
+    is_local = False
+    current = node.parent
+    while current is not None:
+        if current.type in ("module", "data", "record"):
+            name = _block_name(current, source)
+            if name:
+                chain_parts.append(name + ".")
+                if current.type != "data":
+                    name_parts.append(name + ".")
+        elif current.type == "function":
+            name = _clause_name(current, source)
+            if name:
+                chain_parts.append(name + "/")
+                is_local = True
+        current = current.parent
+    return (
+        "".join(reversed(name_parts)), "".join(reversed(chain_parts)), is_local,
+    )
+
+
+def _declared_names(
+    node: "tree_sitter.Node", source: bytes, name: str,
+) -> tuple[str, str]:
+    """``(symbol name, scope chain)`` for a declaration named ``name``."""
+    name_prefix, chain_prefix, is_local = _scope_chain(node, source)
+    return (name if is_local else name_prefix + name), chain_prefix + name
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -156,7 +260,6 @@ def _extract_symbols_from_file(
     - field: Record field declarations
     """
     symbols: list[Symbol] = []
-    seen_names: set[str] = set()
 
     def add_symbol(
         node: "tree_sitter.Node",
@@ -165,10 +268,20 @@ def _extract_symbols_from_file(
         meta: dict[str, Any] | None = None,
         signature: Optional[str] = None,
     ) -> None:
-        """Add a symbol if not already seen."""
-        if not name or name in seen_names:
-            return
-        seen_names.add(name)
+        """Add one symbol for the declaration ``node``."""
+        if not name:
+            return  # pragma: no cover - callers pass a non-empty name
+        raw = name
+        if kind == "module":
+            # Module ids come from the table formula over the bare name.
+            name, chain = name, _scope_chain(node, source)[1] + name
+            stable_id = None
+        else:
+            name, chain = _declared_names(node, source, name)
+            stable_id = declared_arity_stable_id(
+                kind=kind, lang="agda", path=file_path,
+                name=raw, qualified_name=chain, arity=None,
+            )
 
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
@@ -187,6 +300,7 @@ def _extract_symbols_from_file(
         _is_callable = kind == "function"
         sym = Symbol(
             id=sym_id,
+            stable_id=stable_id,
             name=name,
             kind=kind,
             language="agda",
@@ -390,6 +504,21 @@ def _extract_edges_from_file(
     # In Agda, type signatures carry architecturally significant dependencies:
     #   double : Nat -> Nat  -- "double" depends on "Nat"
     # Scanning only pattern clause bodies (= ...) misses these.
+    #
+    # The SOURCE of an edge is the declaration the clause or signature belongs
+    # to, found by scope chain in this file (INV-kagib): ``run`` in module A and
+    # ``run`` in module B are both ``run`` to a repo-wide name lookup.
+    decl_index = symbols_at(file_symbols)
+    by_chain: dict[str, Symbol] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type == "function":
+            rhs = find_child_by_type(node, "rhs")
+            sym = symbol_declared_by(node, decl_index)
+            if rhs is not None and sym is not None and _is_type_signature(rhs, source):
+                lhs = find_child_by_type(node, "lhs")
+                name = _get_function_name_from_lhs(lhs, source) if lhs else ""
+                by_chain.setdefault(_declared_names(node, source, name)[1], sym)
+
     seen_ref_pairs: set[tuple[str, str]] = set()
     for node in iter_tree(tree.root_node):
         if node.type != "function":
@@ -401,79 +530,46 @@ def _extract_edges_from_file(
 
         if rhs_text.startswith("="):
             # Pattern clause: scan RHS body for references
-            lhs = find_child_by_type(node, "lhs")
-            if not lhs:
-                continue  # pragma: no cover
-            enclosing_name = ""
-            for child in lhs.children:
-                if child.type == "atom":
-                    qid_node = find_child_by_type(child, "qid")
-                    if qid_node:
-                        enclosing_name = node_text(qid_node, source).strip()
-                        break
+            enclosing_name = _clause_name(node, source)
             if not enclosing_name:
                 continue  # pragma: no cover
-
-            enclosing_result = resolver.lookup(enclosing_name)
-            if not enclosing_result.symbol:
-                continue
-
-            for rhs_child in iter_tree(rhs):
-                if rhs_child.type != "qid":
-                    continue
-                ref_name = node_text(rhs_child, source).strip()
-                if not ref_name or ref_name == enclosing_name:
-                    continue
-                ref_result = resolver.lookup(ref_name)
-                if ref_result.symbol:
-                    pair = (enclosing_result.symbol.id, ref_result.symbol.id)
-                    if pair not in seen_ref_pairs:
-                        seen_ref_pairs.add(pair)
-                        edges.append(Edge.create(
-                            src=enclosing_result.symbol.id,
-                            dst=ref_result.symbol.id,
-                            edge_type="references",
-                            evidence_type="reference",
-                            line=rhs_child.start_point[0] + 1,
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                            confidence=0.80,
-                        ))
-
+            confidence = 0.80
         elif rhs_text.startswith(":"):
             # Type signature: scan for qid references to defined types
             lhs = find_child_by_type(node, "lhs")
             if not lhs:
                 continue  # pragma: no cover
-            fn_name = _get_function_name_from_lhs(lhs, source)
-            if not fn_name:
+            enclosing_name = _get_function_name_from_lhs(lhs, source)
+            if not enclosing_name:
                 continue  # pragma: no cover
+            confidence = 0.75
+        else:
+            continue  # pragma: no cover - an rhs opens with = or :
+        enclosing = by_chain.get(_declared_names(node, source, enclosing_name)[1])
+        if enclosing is None:
+            continue
 
-            fn_result = resolver.lookup(fn_name)
-            if not fn_result.symbol:
-                continue  # pragma: no cover - type sig name always resolves
-
-            for rhs_child in iter_tree(rhs):
-                if rhs_child.type != "qid":
-                    continue
-                ref_name = node_text(rhs_child, source).strip()
-                if not ref_name or ref_name == fn_name:
-                    continue  # pragma: no cover - skip self-ref
-                ref_result = resolver.lookup(ref_name)
-                if ref_result.symbol:
-                    pair = (fn_result.symbol.id, ref_result.symbol.id)
-                    if pair not in seen_ref_pairs:
-                        seen_ref_pairs.add(pair)
-                        edges.append(Edge.create(
-                            src=fn_result.symbol.id,
-                            dst=ref_result.symbol.id,
-                            edge_type="references",
-                            evidence_type="reference",
-                            line=rhs_child.start_point[0] + 1,
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                            confidence=0.75,
-                        ))
+        for rhs_child in iter_tree(rhs):
+            if rhs_child.type != "qid":
+                continue
+            ref_name = node_text(rhs_child, source).strip()
+            if not ref_name or ref_name == enclosing_name:
+                continue
+            ref_result = resolver.lookup(ref_name)
+            if ref_result.symbol:
+                pair = (enclosing.id, ref_result.symbol.id)
+                if pair not in seen_ref_pairs:
+                    seen_ref_pairs.add(pair)
+                    edges.append(Edge.create(
+                        src=enclosing.id,
+                        dst=ref_result.symbol.id,
+                        edge_type="references",
+                        evidence_type="reference",
+                        line=rhs_child.start_point[0] + 1,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                        confidence=confidence,
+                    ))
 
     return edges, import_aliases
 
@@ -527,9 +623,10 @@ class AgdaAnalyzer(TreeSitterAnalyzer):
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:
-        """Extract import edges from an Agda file."""
+        """Extract import and reference edges from an Agda file."""
         edges, _aliases = _extract_edges_from_file(
-            tree, source, rel_path, [], resolver, run.execution_id,
+            tree, source, rel_path, self.file_symbols(local_symbols),
+            resolver, run.execution_id,
         )
         return edges
 

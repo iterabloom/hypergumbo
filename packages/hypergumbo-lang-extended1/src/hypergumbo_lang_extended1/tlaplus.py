@@ -30,10 +30,20 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 start from a real node. Reference edges are deduplicated per
 (enclosing, referenced) pair, at confidence 0.80.
 
-Known gap: both the enclosing operator/theorem/assumption and the referenced
-name are resolved through the repo-wide resolver by bare name, so when two
-specs define a same-named operator, references can be credited to or aimed
-at the other spec's symbol.
+The enclosing operator/theorem/assumption of a reference is the symbol its
+definition node declares, found by POSITION in this file. Known gap: the
+referenced name is resolved through the repo-wide resolver by bare name, so
+when two specs define a same-named operator, a reference can be aimed at the
+other spec's symbol.
+
+Identity (WI-tusad): operators record their parameters in
+``meta["parameters"]`` (an identifier or a higher-order ``G(_, _)``
+declaration each count as one) and mint the ADR-0035 producer stable_id
+through ``overload_arity.declared_arity_stable_id``. A LET-local operator keeps
+its bare name and carries the operators it is defined in as its scope chain
+(``A/f``), so ``LET f == ...`` inside ``A`` and inside ``B`` hash apart; before,
+both shared the backstop floor key and were left null. Constants, theorems and
+assumptions mint the same formula with no arity.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly.  This module provides only the TLA+-specific
@@ -75,8 +85,13 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_symbol_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -117,6 +132,51 @@ def _extract_operator_signature(
     return None
 
 
+#: Kinds minted here with the producer formula; ``module`` and ``variable``
+#: take their table formulas downstream.
+_TLA_PRODUCER_KINDS = frozenset({"operator", "constant", "theorem", "assumption"})
+
+
+def _operator_parameters(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, object]]:
+    """``meta["parameters"]`` of an ``operator_definition``.
+
+    Each ``identifier`` between ``(`` and ``)`` is a parameter, and so is each
+    ``operator_declaration`` (a higher-order ``G(_, _)``), named by its
+    identifier.
+    """
+    entries: list[dict[str, object]] = []
+    in_params = False
+    for child in node.children:
+        if child.type == "(" and not in_params:
+            in_params = True
+        elif child.type in (")", "def_eq"):
+            break
+        elif in_params and child.type == "identifier":
+            entries.append(parameter_entry(node_text(child, source).strip()))
+        elif in_params and child.type == "operator_declaration":
+            name_node = find_child_by_type(child, "identifier")
+            text = node_text(name_node if name_node else child, source).strip()
+            entries.append(parameter_entry(text))
+    return entries
+
+
+def _operator_scope_chain(
+    node: "tree_sitter.Node", source: bytes, name: str,
+) -> str:
+    """``A/f`` for an operator ``f`` defined in a LET inside operator ``A``."""
+    chain = [name]
+    current = node.parent
+    while current is not None:
+        if current.type == "operator_definition":
+            outer = find_child_by_type(current, "identifier")
+            if outer is not None:
+                chain.append(node_text(outer, source).strip())
+        current = current.parent
+    return "/".join(reversed(chain))
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -143,6 +203,13 @@ def _extract_symbols_from_file(
         meta: dict[str, Any] | None = None,
         signature: Optional[str] = None,
     ) -> None:
+        stable_id: Optional[str] = None
+        if kind in _TLA_PRODUCER_KINDS:
+            stable_id = declared_arity_stable_id(
+                kind=kind, lang="tlaplus", path=file_path, name=name,
+                qualified_name=_operator_scope_chain(node, source, name),
+                arity=declared_arity(meta),
+            )
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
         span = Span(
@@ -154,6 +221,7 @@ def _extract_symbols_from_file(
         sym_id = make_symbol_id("tlaplus", file_path, start_line, end_line, name, kind)
         sym = Symbol(
             id=sym_id,
+            stable_id=stable_id,
             name=name,
             kind=kind,
             language="tlaplus",
@@ -188,7 +256,9 @@ def _extract_symbols_from_file(
             name_node = find_child_by_type(node, "identifier")
             if name_node:
                 name = node_text(name_node, source).strip()
-                meta: dict[str, Any] = {}
+                meta: dict[str, Any] = {
+                    PARAMETERS_KEY: _operator_parameters(node, source),
+                }
                 # Check if inside local_definition
                 if node.parent and node.parent.type == "local_definition":
                     meta["is_local"] = True
@@ -196,7 +266,7 @@ def _extract_symbols_from_file(
                 if name in recursive_names:
                     meta["is_recursive"] = True
                 sig = _extract_operator_signature(node, source)
-                add_symbol(node, name, "operator", meta or None, signature=sig)
+                add_symbol(node, name, "operator", meta, signature=sig)
 
         elif node.type == "constant_declaration":
             for child in node.children:
@@ -223,6 +293,25 @@ def _extract_symbols_from_file(
                 add_symbol(node, name, "assumption")
 
     return symbols
+
+
+def _local_operator(
+    local_ops: dict[str, Symbol], node: "tree_sitter.Node", source: bytes,
+    enclosing_name: str, ref_name: str,
+) -> Optional[Symbol]:
+    """The LET-local operator ``ref_name`` visible from definition ``node``.
+
+    Tries ``<chain>/ref``, then each shorter prefix of the definition's chain:
+    a LET binds its operators for the definition it sits in and everything
+    nested inside it.
+    """
+    parts = _operator_scope_chain(node, source, enclosing_name).split("/")
+    while parts:
+        found = local_ops.get("/".join([*parts, ref_name]))
+        if found is not None:
+            return found
+        parts.pop()
+    return None
 
 
 def _extract_edges_from_file(
@@ -277,6 +366,16 @@ def _extract_edges_from_file(
     # --- Reference edges ---
     # Build quick lookup: symbol name → symbol (from this file's symbols)
     seen_ref_pairs: set[tuple[str, str]] = set()
+    decl_index = symbols_at(file_symbols)
+    # LET-local operators by scope chain, so a reference to ``f`` inside ``A``
+    # reaches ``A/f`` before the repo-wide bare-name lookup.
+    local_ops: dict[str, Symbol] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type == "operator_definition" and node.parent is not None \
+                and node.parent.type == "let_in":
+            sym = symbol_declared_by(node, decl_index)
+            if sym is not None:
+                local_ops[_operator_scope_chain(node, source, sym.name)] = sym
 
     # Walk operator_definition, theorem, assumption nodes for body references
     for node in iter_tree(tree.root_node):
@@ -288,9 +387,11 @@ def _extract_edges_from_file(
             continue  # pragma: no cover — unnamed theorems already skip
         enclosing_name = node_text(name_node, source).strip()
 
-        enclosing_result = resolver.lookup(enclosing_name)
-        if not enclosing_result.symbol:
-            continue  # pragma: no cover
+        # The definition's own symbol, by position: two LET-local ``f``s (or a
+        # same-named operator in another spec) share the bare name.
+        enclosing = symbol_declared_by(node, decl_index)
+        if enclosing is None:
+            continue  # pragma: no cover - every named definition is emitted
 
         # Walk all identifier_ref descendants of this node
         for desc in iter_tree(node):
@@ -300,14 +401,16 @@ def _extract_edges_from_file(
             if not ref_name or ref_name == enclosing_name:
                 continue
 
-            ref_result = resolver.lookup(ref_name)
-            if ref_result.symbol:
-                pair = (enclosing_result.symbol.id, ref_result.symbol.id)
+            target = _local_operator(local_ops, node, source, enclosing_name, ref_name)
+            if target is None:
+                target = resolver.lookup(ref_name).symbol
+            if target is not None:
+                pair = (enclosing.id, target.id)
                 if pair not in seen_ref_pairs:
                     seen_ref_pairs.add(pair)
                     edges.append(Edge.create(
-                        src=enclosing_result.symbol.id,
-                        dst=ref_result.symbol.id,
+                        src=enclosing.id,
+                        dst=target.id,
                         edge_type="references",
                         evidence_type="reference",
                         line=desc.start_point[0] + 1,
@@ -348,7 +451,8 @@ class TLAPlusAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract import and reference edges from a TLA+ file."""
         return _extract_edges_from_file(
-            tree, source, rel_path, [], resolver, run.execution_id,
+            tree, source, rel_path, self.file_symbols(local_symbols),
+            resolver, run.execution_id,
         )
 
 
