@@ -45,13 +45,69 @@ whose bounds admit the argument count decides:
 
 An unknown argument count (a spread, a splice, a macro) admits everything, so
 the choice degrades to the pre-arity behaviour rather than inventing a fact.
+
+THE SAME FACT IS AN IDENTITY INPUT (:func:`declared_arity`,
+:func:`declared_arity_stable_id`; WI-tusad). ADR-0035's producer formula hashes
+a callable's parameter count and flags beside its name and scope.
+``BaseAnalyzer.compute_stable_id`` reads them from a parameter-list node, and in
+many grammars there is none under the definition: Elixir and Erlang clauses,
+Haskell and OCaml equations, Clojure arity bodies, and the C family, whose
+``parameter_list`` sits under the declarator. Those producers either hashed
+``param_count 0`` for every overload (the siblings tie, and the per-file split
+pass numbers them by emission order) or computed nothing and rode the backstop
+floor (two same-name siblings null each other). The parameters were usually
+already known: the producer writes them here for overload selection. So the
+identity reads the same home, through one helper, instead of each language
+growing its own counter.
+
+:func:`declared_arity` reads ``meta["parameters"]`` (the structured list) and
+falls back to ``meta["arity"]`` (:data:`ARITY_KEY`), the bare count a producer
+records when it knows how many parameters a callable takes but not what they
+are -- a BEAM ``@callback`` head, ``name/arity``. ``meta["params"]`` (a name
+list) is not read: it cannot say which parameter has a default or takes any
+number, and a producer adopting this helper writes :func:`parameter_entry`
+records instead. :func:`declared_arity_stable_id` turns the result into the
+ADR-0035 formula, anchored to the declaring file the way ``compute_stable_id``
+anchors a top-level symbol:
+
+* no parameter declares a type: the untyped tier, ``assemble_stable_id`` with
+  the count and the ``ArityFlags`` string. For the same parameters this is the
+  value ``compute_stable_id`` would produce had it found the list. A bare count
+  has no flags, and its flags slot is empty rather than a claim of "no
+  defaults";
+* some parameter declares a type (Julia ``f(x::Int)``, GLSL ``vec2 f(vec2)``):
+  the typed tier, ``make_typed_stable_id`` over ``(T1,T2)``, a parameter with
+  no declared type spelled ``_``, a default marked ``=`` and a variadic ``*``.
+  Same-arity overloads that differ only in type need this; the count alone
+  ties them.
+
+HOW A LANGUAGE PLUGS IN. (1) Write ``meta["parameters"]`` for every callable
+with :func:`parameter_entry`, passing ``type_`` where the grammar declares one
+(the empty list for a callable taking none, never an absent key), or
+``meta["arity"]`` when only the count is known. (2) Mint ``stable_id`` at
+construction with ``declared_arity_stable_id(kind=..., lang=..., path=<repo-
+relative path>, name=..., qualified_name=<full scope chain>,
+arity=declared_arity(meta), decorators=..., containing_stable_id=<enclosing
+scope's id, if the producer threads one>)``. A callable whose arity is unknown
+(``declared_arity`` returns None) takes the zero-parameter untyped formula, the
+value ``compute_stable_id`` gives it today. ``behaviours.callback_stable_id``
+is the first adopter. ``test_stable_id_floor_gate.py`` is how a migration shows: the
+language's floor and null counts fall, and its deletion check passes. Replacing
+a floor value or a null this way is no scheme bump (ADR-0035 §6); changing a
+value the producer already computes (a C-family overload hashed with
+``param_count 0``) is a hash-input change §6 governs.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, Optional, Sequence
+
+from .analyze.base import (
+    ArityFlags, assemble_stable_id, make_file_stable_id, make_typed_stable_id,
+)
+from .paths import normalize_path
 
 if TYPE_CHECKING:
     from .ir import Symbol
@@ -59,6 +115,11 @@ if TYPE_CHECKING:
 
 #: The ``Symbol.meta`` key holding the structured parameter list.
 PARAMETERS_KEY = "parameters"
+
+#: The ``Symbol.meta`` key holding a bare parameter count, written where a
+#: producer knows how many parameters a callable takes but not what they are
+#: (a BEAM ``@callback``; Erlang ``name/arity``).
+ARITY_KEY = "arity"
 
 
 def parameter_entry(
@@ -194,3 +255,110 @@ def choose_overload(
             pick, 1.0 / math.sqrt(len(ordered)), True, tuple(ordered),
         )
     return OverloadChoice(None, 0.0, False, ())
+
+
+@dataclass(frozen=True)
+class DeclaredArity:
+    """What a callable's declaration says about its parameters, as identity input.
+
+    ``flags`` is the ``ArityFlags`` string (``"False,False,False"``) when the
+    parameters are known, and ``""`` for a bare count, whose defaults and
+    variadics were never observed. ``types`` is the per-parameter type
+    spelling, empty unless some parameter declares one.
+    """
+
+    param_count: int
+    flags: str
+    types: tuple[str, ...] = ()
+
+    @property
+    def type_signature(self) -> str:
+        """``(T1,T2)`` for the typed tier, or ``""`` when no type is declared."""
+        return f"({','.join(self.types)})" if self.types else ""
+
+
+def declared_arity_of_entries(entries: Sequence[Any]) -> Optional[DeclaredArity]:
+    """:class:`DeclaredArity` of a ``meta["parameters"]`` list; None if malformed.
+
+    Variadic and default are read the way :func:`bounds_of_entries` reads them,
+    including Python's ``*args`` / ``**kwargs`` spelling (``**`` is the
+    keyword variadic).
+    """
+    has_defaults = has_varargs = has_kwargs = False
+    spelled: list[str] = []
+    typed = False
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return None
+        name = entry.get("name")
+        star = isinstance(name, str) and name.startswith("*")
+        kwargs = isinstance(name, str) and name.startswith("**")
+        variadic = bool(entry.get("variadic")) or (star and not kwargs)
+        default = bool(entry.get("default"))
+        has_kwargs = has_kwargs or kwargs
+        has_varargs = has_varargs or variadic
+        has_defaults = has_defaults or default
+        type_ = entry.get("type")
+        typed = typed or bool(type_)
+        mark = "*" if variadic or kwargs else ""
+        spelled.append(f"{mark}{type_ or '_'}{'=' if default else ''}")
+    flags = ArityFlags(
+        param_count=len(spelled),
+        has_defaults=has_defaults,
+        has_varargs=has_varargs,
+        has_kwargs=has_kwargs,
+    )
+    return DeclaredArity(
+        len(spelled), flags.as_flags_str(), tuple(spelled) if typed else (),
+    )
+
+
+def declared_arity(meta: Optional[Mapping[str, Any]]) -> Optional[DeclaredArity]:
+    """The arity a callable's ``meta`` declares, or None when it declares none.
+
+    ``meta["parameters"]`` wins; a bare ``meta["arity"]`` count is the
+    fallback. None is UNKNOWN, as for :func:`arity_bounds`.
+    """
+    if not meta:
+        return None
+    entries = meta.get(PARAMETERS_KEY)
+    if isinstance(entries, list):
+        return declared_arity_of_entries(entries)
+    count = meta.get(ARITY_KEY)
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        return DeclaredArity(count, "")
+    return None
+
+
+def declared_arity_stable_id(
+    *,
+    kind: str,
+    lang: str,
+    path: str,
+    name: str,
+    qualified_name: str,
+    arity: Optional[DeclaredArity],
+    decorators: str = "",
+    containing_stable_id: str = "",
+) -> str:
+    """The ADR-0035 producer stable_id of a callable whose arity came from meta.
+
+    See the module docstring for the tier choice. ``path`` must be
+    repo-relative (it is folded in as the file anchor when
+    ``containing_stable_id`` is empty, as ``compute_stable_id`` does), and
+    ``decorators`` is the sorted, comma-joined modifier list.
+    """
+    containing = containing_stable_id or make_file_stable_id(
+        lang, normalize_path(path),
+    )
+    if arity is not None and arity.types:
+        return make_typed_stable_id(
+            kind, arity.type_signature, "", containing, decorators,
+            name=name, qualified_name=qualified_name,
+        )
+    if arity is None:
+        arity = DeclaredArity(0, ArityFlags(0, False, False, False).as_flags_str())
+    return assemble_stable_id(
+        kind, arity.param_count, arity.flags, decorators, containing,
+        name, qualified_name,
+    )

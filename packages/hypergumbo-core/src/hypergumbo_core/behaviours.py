@@ -40,9 +40,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .analyze.base import assemble_stable_id, make_file_stable_id
 from .ir import Edge
-from .paths import normalize_path
+from .overload_arity import ARITY_KEY, declared_arity, declared_arity_stable_id
 
 #: The modifier on a callback declaration -- the marking cpp and kotlin give
 #: an abstract member. A symbol bearing it is a required function with no
@@ -61,11 +60,14 @@ def callback_stable_id(
 
     The ADR-0035 v6 formula, anchored to the declaring file the way
     ``BaseAnalyzer.compute_stable_id`` anchors a top-level symbol, with
-    ``CALLBACK_MODIFIER`` in the decorators slot.
+    ``CALLBACK_MODIFIER`` in the decorators slot. It is minted through the
+    shared ``overload_arity`` helper every producer without a parameter-list
+    node uses: the callback knows its parameter count (``meta["arity"]``),
+    not its parameters, so the flags slot is empty.
     """
-    return assemble_stable_id(
-        kind, arity, "", CALLBACK_MODIFIER,
-        make_file_stable_id(lang, normalize_path(path)), name, name,
+    return declared_arity_stable_id(
+        kind=kind, lang=lang, path=path, name=name, qualified_name=name,
+        arity=declared_arity({ARITY_KEY: arity}), decorators=CALLBACK_MODIFIER,
     )
 
 
