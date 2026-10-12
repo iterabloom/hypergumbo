@@ -1658,12 +1658,12 @@ class TestElixirMultiClauseEdges:
         def handle_call(:get, _from, state), do: {:reply, state, state}
         def handle_call(:put, _from, state), do: {:noreply, state}
 
-    Each clause is a separate symbol. When function X calls handle_call,
-    edges should target ALL clauses, not just the last one.
+    The clauses of one name/arity are ONE function symbol (WI-tusad, the
+    Erlang shape), spanning every clause; a call of it reaches that symbol.
     """
 
     def test_call_to_multi_clause_function_targets_all_clauses(self, tmp_path: Path) -> None:
-        """Call to a function with multiple clauses creates edges to all clauses."""
+        """Three clauses of handle_call/3 are one symbol, and the call reaches it."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "server.ex").write_text('''
@@ -1691,13 +1691,14 @@ end
         handle_call_syms = [s for s in result.symbols if "handle_call" in s.name]
 
         assert dispatch_sym is not None
-        assert len(handle_call_syms) == 3, f"Should find 3 handle_call clauses, got {len(handle_call_syms)}"
+        assert len(handle_call_syms) == 1, f"Should fold 3 handle_call clauses into 1, got {len(handle_call_syms)}"
+        assert (handle_call_syms[0].span.start_line, handle_call_syms[0].span.end_line) == (3, 13)
 
         call_edges = [
             e for e in result.edges
             if e.edge_type == "calls" and e.src == dispatch_sym.id
         ]
-        # Should create edges to ALL 3 handle_call clauses
+        # The folded handle_call/3 is reached
         edge_dsts = {e.dst for e in call_edges}
         for clause_sym in handle_call_syms:
             assert clause_sym.id in edge_dsts, (
@@ -1706,7 +1707,7 @@ end
             )
 
     def test_cross_file_call_to_multi_clause(self, tmp_path: Path) -> None:
-        """Cross-file calls also target all clauses."""
+        """A cross-file call reaches the folded function."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "handler.ex").write_text('''
@@ -1736,7 +1737,7 @@ end
         process_syms = [s for s in result.symbols if "process" in s.name]
 
         assert run_sym is not None
-        assert len(process_syms) == 2
+        assert len(process_syms) == 1
 
         call_edges = [
             e for e in result.edges
@@ -1749,7 +1750,7 @@ end
             )
 
     def test_behaviour_callback_targets_all_clauses(self, tmp_path: Path) -> None:
-        """invokes_callback edges also target all clauses of a callback function."""
+        """The callback edge reaches the folded init/1 (both clauses)."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "server.ex").write_text('''
@@ -1771,7 +1772,7 @@ end
         init_syms = [s for s in result.symbols if "init" in s.name and s.kind == "function"]
 
         assert module_sym is not None
-        assert len(init_syms) == 2, f"Should find 2 init clauses, got {len(init_syms)}"
+        assert len(init_syms) == 1, f"Should fold 2 init clauses into 1, got {len(init_syms)}"
 
         callback_edges = [
             e for e in result.edges
@@ -1797,7 +1798,7 @@ class TestMultiClauseGuardExtraction:
     """
 
     def test_guarded_multi_clause_all_nodes_present(self, tmp_path: Path) -> None:
-        """Multi-clause def with when guards must appear as separate symbol nodes."""
+        """Guarded clauses of one arity fold into one node spanning both."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "naming.ex").write_text('''
@@ -1813,14 +1814,15 @@ end
         result = analyze_elixir(tmp_path)
 
         humanize_syms = [s for s in result.symbols if "humanize" in s.name and s.kind == "function"]
-        assert len(humanize_syms) == 2, (
-            f"Expected 2 humanize clauses, got {len(humanize_syms)}. "
+        assert len(humanize_syms) == 1, (
+            f"Expected 1 humanize function, got {len(humanize_syms)}. "
             f"All symbols: {[s.name for s in result.symbols]}"
         )
 
-        # Both should have the full module-qualified name
+        # The full module-qualified name, spanning both clauses
         for sym in humanize_syms:
             assert sym.name == "Phoenix.Naming.humanize"
+            assert (sym.span.start_line, sym.span.end_line) == (3, 8)
 
     def test_guarded_function_signature_includes_params(self, tmp_path: Path) -> None:
         """Guarded functions should still have correct parameter signatures."""
@@ -1840,9 +1842,9 @@ end
         result = analyze_elixir(tmp_path)
 
         parse_syms = [s for s in result.symbols if "parse" in s.name and s.kind == "function"]
-        assert len(parse_syms) == 2
+        assert len(parse_syms) == 1
 
-        # Each clause should have a signature with the parameter
+        # The folded function's signature (its first clause's) names the parameter
         for sym in parse_syms:
             assert sym.signature is not None, f"Missing signature for clause at line {sym.span.start_line}"
             assert "input" in sym.signature, f"Signature should contain 'input', got: {sym.signature}"
@@ -1862,11 +1864,11 @@ end
         result = analyze_elixir(tmp_path)
 
         format_syms = [s for s in result.symbols if "format" in s.name and s.kind == "function"]
-        assert len(format_syms) == 2
+        assert len(format_syms) == 1
         assert all("private" in s.modifiers for s in format_syms)
 
     def test_guarded_call_edges_target_all_clauses(self, tmp_path: Path) -> None:
-        """Call to a guarded multi-clause function creates edges to all clauses."""
+        """A call of a guarded multi-clause function reaches the folded node."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "converter.ex").write_text('''
@@ -1884,7 +1886,7 @@ end
         convert_syms = [s for s in result.symbols if "convert" in s.name and s.kind == "function"]
         process_sym = next((s for s in result.symbols if "process" in s.name), None)
 
-        assert len(convert_syms) == 2
+        assert len(convert_syms) == 1
         assert process_sym is not None
 
         call_edges = [

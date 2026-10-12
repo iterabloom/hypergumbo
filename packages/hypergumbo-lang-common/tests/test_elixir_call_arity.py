@@ -1,19 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-rodiz, elixir: a local call reaches the clauses of the function its ARITY names.
+"""WI-rodiz, elixir: a local call reaches the function its ARITY names.
 
 Elixir names a function by name AND arity: ``get_timeout/0`` and
-``get_timeout/2`` are two functions. The analyzer emits one symbol per clause
-named without the arity, and a local call fanned a ``calls`` edge out to every
-same-named clause in the file, whatever the arity, so ``get_timeout()`` inside
-``get_timeout/2`` drew a self-loop. Erlang had the same wrong-callee shape
-and INV-mozas keyed it on name/arity.
+``get_timeout/2`` are two functions. Their symbols share the name (no arity in
+it), and a local call fanned a ``calls`` edge out to every same-named symbol in
+the file, whatever the arity, so ``get_timeout()`` inside ``get_timeout/2``
+drew a self-loop. Erlang had the same wrong-callee shape and INV-mozas keyed it
+on name/arity.
 
-Clauses of ONE arity are one function, so a call still reaches all of them;
-default arguments (``b \\\\ 1``) make one function callable at several arities;
-a pipe passes its left side as the first argument; a ``do`` block is one more.
+Clauses of ONE arity are one function and, since WI-tusad, one symbol spanning
+them, so a call reaches that symbol; default arguments (``b \\\\ 1``) make one
+function callable at several arities; a pipe passes its left side as the first
+argument; a ``do`` block is one more.
 
 Each test asserts REACH (an edge exists at the call line) before asserting
-which clauses it reaches.
+which function it reaches.
 """
 from __future__ import annotations
 
@@ -52,8 +53,9 @@ end
     assert _callees_at(analyze_elixir(tmp_path), 3) == [("Conn.get_timeout", 6)]
 
 
-def test_every_clause_of_the_called_arity_and_no_other(tmp_path: Path) -> None:
-    """livebook's do_transform: recursion reaches each /2 clause, not the /3."""
+def test_the_function_of_the_called_arity_and_no_other(tmp_path: Path) -> None:
+    """livebook's do_transform: recursion reaches the /2 function (both of its
+    clauses, folded into the symbol at line 2), not the /3."""
     _write(tmp_path, """\
 defmodule T do
   def do_transform(acc, []), do: acc
@@ -66,12 +68,13 @@ defmodule T do
 end
 """)
     result = analyze_elixir(tmp_path)
-    assert _callees_at(result, 5) == [("T.do_transform", 2), ("T.do_transform", 4)]
-    assert _callees_at(result, 8) == [("T.do_transform", 2), ("T.do_transform", 4)]
+    assert _callees_at(result, 5) == [("T.do_transform", 2)]
+    assert _callees_at(result, 8) == [("T.do_transform", 2)]
 
 
 def test_a_default_argument_makes_the_shorter_call_reach(tmp_path: Path) -> None:
-    """A bodiless head declares the defaults of every clause after it."""
+    """A bodiless head declares the defaults of every clause after it: head and
+    clauses are one fetch/2 symbol, reached by the one-argument call."""
     _write(tmp_path, """\
 defmodule D do
   def fetch(key, default \\\\ nil)
@@ -85,9 +88,7 @@ defmodule D do
   end
 end
 """)
-    assert _callees_at(analyze_elixir(tmp_path), 9) == [
-        ("D.fetch", 2), ("D.fetch", 3), ("D.fetch", 4),
-    ]
+    assert _callees_at(analyze_elixir(tmp_path), 9) == [("D.fetch", 2)]
 
 
 def test_a_pipe_passes_one_more_argument(tmp_path: Path) -> None:
@@ -153,9 +154,9 @@ end
     assert _callees_at(analyze_elixir(tmp_path), 5) == []
 
 
-def test_a_spliced_argument_list_reaches_every_clause(tmp_path: Path) -> None:
+def test_a_spliced_argument_list_reaches_every_arity(tmp_path: Path) -> None:
     """``unquote_splicing`` passes an unknown number of arguments: arity cannot
-    exclude a clause, so the fan-out is what it was."""
+    exclude a function, so the fan-out is what it was."""
     _write(tmp_path, """\
 defmodule Q do
   def f(a), do: a
@@ -171,7 +172,7 @@ end
     assert _callees_at(analyze_elixir(tmp_path), 7) == [("Q.f", 2), ("Q.f", 3)]
 
 
-def test_clauses_carry_their_parameters(tmp_path: Path) -> None:
+def test_functions_carry_their_parameters(tmp_path: Path) -> None:
     _write(tmp_path, """\
 defmodule S do
   def a, do: 1

@@ -322,7 +322,7 @@ end
 
 
 class TestBehaviourCallbackArity:
-    """INV-dital: a ``@callback`` dispatches only to clauses of its arity."""
+    """INV-dital: a ``@callback`` dispatches only to the function of its arity."""
 
     def test_callback_reaches_only_its_arity(self, tmp_path: Path) -> None:
         _write(tmp_path, {"b.ex": """defmodule B do

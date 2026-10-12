@@ -3,11 +3,18 @@
 
 This analyzer uses tree-sitter to parse Elixir files and extract:
 - Module declarations (defmodule)
-- Function declarations (def/defp)
-- Macro declarations (defmacro/defmacrop)
+- Function declarations (def/defp) and macro declarations
+  (defmacro/defmacrop): ONE symbol per function, i.e. per module, name and
+  arity, with every clause of it folded in (``_function_symbol``, WI-tusad;
+  the Erlang shape). The name is ``M.f`` without the arity, which sits in
+  ``meta["parameters"]``; the stable_id is the ADR-0035 producer formula over
+  the module scope chain and that arity
+  (``overload_arity.declared_arity_stable_id``), so adding or deleting a
+  clause, or a function of another arity, moves no other id
 - ``defstruct`` fields as ``field`` symbols owned by the enclosing module
-  (``_extract_defstruct_field_names``); they are data anchors and never
-  enter call resolution
+  (``_extract_defstruct_field_names``), with a producer stable_id over that
+  module's scope chain; they are data anchors and never enter call
+  resolution
 - Phoenix route-marker symbols (``_extract_phoenix_routes``), stashed per
   file and appended in ``post_process``. Only a route macro written in a
   router module mints one -- a ``defmodule`` whose body runs ``use
@@ -94,9 +101,8 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
     behaviour bridge linker resolves it to an in-repo Erlang module), and an
     OTP X roots its callbacks from the Erlang analyzer's
     ``OTP_BEHAVIOUR_CALLBACKS`` (``@behaviour :gen_statem``).
-  * each callback ``dispatches_to`` every clause of the same-named, same-kind
-    public function in each implementing module whose parameters admit the
-    callback's arity (``meta["arity"]``, ``overload_arity.narrow_by_arity``:
+  * each callback ``dispatches_to`` the same-named, same-kind public function
+    in each implementing module whose parameters admit the callback's arity (``meta["arity"]``, ``overload_arity.narrow_by_arity``:
     ``@callback f(term)`` is not implemented by an ``f/2`` beside ``f/1``;
     INV-dital), evidence ``behaviour_callback`` -- the
     abstract-member -> implementation shape ``linkers/type_hierarchy`` builds
@@ -156,17 +162,17 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    ``@type`` / ``@callback`` are types and emit nothing (``_inside_typespec``).
    A ``def`` / ``defmacro`` / ``defstruct`` inside ``quote`` is a template
    for the module that runs ``use`` and emits no symbol (INV-sinah).
-   A bare call reaches the clauses of the function its ARITY names
-   (WI-rodiz): Elixir identifies a function by name and arity, and a clause
-   symbol's name carries no arity, so each clause records its parameters in
-   ``meta["parameters"]`` (a ``\\\\`` default marked) and the call's argument
-   count -- one more for a ``|>`` left side, one more for a ``do`` block a
-   keyword list does not absorb -- selects among them
-   (``_reachable_clauses``). Clauses of the admitted arity are one function
-   and are all reached; a bodiless head's defaults count for every clause of
-   its arity. A call no local clause can take falls through to the import,
-   Kernel and cross-file resolutions; ``unquote_splicing`` makes the count
-   unknown and excludes nothing.
+   A bare call reaches the function its ARITY names (WI-rodiz): Elixir
+   identifies a function by name and arity, and a function symbol's name
+   carries no arity, so each records its parameters in ``meta["parameters"]``
+   (a ``\\\\`` default marked, from whichever clause or bodiless head declares
+   it) and the call's argument count -- one more for a ``|>`` left side, one
+   more for a ``do`` block a keyword list does not absorb -- selects among the
+   same-named functions (``overload_arity.narrow_by_arity``). A call no local
+   function can take falls through to the import, Kernel and cross-file
+   resolutions; ``unquote_splicing`` makes the count unknown and excludes
+   nothing. A call in any clause is anchored on the function that clause
+   folded into (``_clause_positions``).
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Elixir-specific
@@ -177,7 +183,8 @@ Why This Design
 - TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Uses tree-sitter-language-pack for grammar (elixir)
 - Two-pass allows cross-file call resolution
-- Multi-clause function support via global_symbols __multi__ index
+- Multi-arity lookup via the global_symbols ``__multi__`` index (every
+  function of a short or qualified name, each arity)
 - Phoenix routes and OTP callbacks integrated into the two-pass pipeline
 """
 from __future__ import annotations
@@ -208,7 +215,8 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
-    PARAMETERS_KEY, arity_bounds, narrow_by_arity, parameter_entry,
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, narrow_by_arity,
+    parameter_entry,
 )
 from hypergumbo_core.behaviours import (
     CALLBACK_MODIFIER,
@@ -825,16 +833,16 @@ def _get_enclosing_function(
     source: bytes,
     symbols_at: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Find the def clause whose declaration encloses ``node``.
+    """Find the function whose def clause encloses ``node``.
 
     Keyed by the declaration's POSITION, not its name. INV-mozas: the key
-    used to be the short name, but Elixir emits one symbol per clause and the
-    name carries no arity, so ``get_timeout/0``, ``get_timeout/2`` and a
-    same-named function in another module of the same file all share it. The
-    lookup returned whichever registered last, anchoring 22-27% of calls on
-    phoenix and plausible to a clause that does not contain them. The
-    enclosing ``def`` node IS the symbol's node, so its start position
-    identifies the clause exactly.
+    used to be the short name, but the name carries no arity, so
+    ``get_timeout/0``, ``get_timeout/2`` and a same-named function in another
+    module of the same file all share it. The lookup returned whichever
+    registered last, anchoring 22-27% of calls on phoenix and plausible to a
+    symbol that does not contain them. The enclosing ``def`` node's start
+    position identifies its clause exactly, and ``symbols_at`` maps every
+    clause's position to the function it folded into (``_clause_positions``).
 
     A def with no symbol -- one inside ``quote``, suppressed by INV-sinah
     because it is injected into the module that runs ``use`` -- is walked
@@ -1218,15 +1226,6 @@ def _elixir_parameters(
     return entries
 
 
-def _parameters_meta(
-    node: "tree_sitter.Node", source: bytes,
-) -> Optional[dict[str, Any]]:
-    """A def clause's ``meta``: its parameters, or None when the head is not
-    a plain name (the arity is then unknown, never zero)."""
-    entries = _elixir_parameters(node, source)
-    return None if entries is None else {PARAMETERS_KEY: entries}
-
-
 def _is_pipe_rhs(node: "tree_sitter.Node", source: bytes) -> bool:
     """True when ``node`` is the right operand of ``|>``: it gets the left
     side as its first argument.
@@ -1273,42 +1272,6 @@ def _elixir_call_arity(node: "tree_sitter.Node", source: bytes) -> Optional[int]
     if _is_pipe_rhs(node, source):
         count += 1
     return count
-
-
-def _reachable_clauses(
-    clauses: list[Symbol], arg_count: Optional[int],
-) -> list[Symbol]:
-    """The clauses a call passing ``arg_count`` arguments reaches (WI-rodiz).
-
-    Clauses are grouped into FUNCTIONS by qualified name and total parameter
-    count -- Elixir's name/arity. A function's lowest arity is the fewest
-    required parameters over its clauses, because a bodiless head's defaults
-    (``def f(a, b \\\\ 1)``) apply to every clause after it. Every clause of
-    each function that admits the count is reached; a clause with no
-    recorded parameters (unknown arity) is never excluded, and neither is
-    anything when the count is unknown.
-    """
-    if arg_count is None:
-        return clauses
-    shapes: list[Optional[tuple[str, int, int]]] = []
-    lowest: dict[tuple[str, int], int] = {}
-    for clause in clauses:
-        bounds = arity_bounds(clause)
-        if bounds is None or bounds.maximum is None:  # pragma: no cover - defensive
-            # Every def/defmacro clause records its parameters, and the other
-            # symbols in the multi-clause index (modules, by their capitalised
-            # short name) cannot be named by a bare lowercase call. Kept so an
-            # unrecorded clause is never EXCLUDED, only kept.
-            shapes.append(None)
-            continue
-        shapes.append((clause.name, bounds.required, bounds.maximum))
-        key = (clause.name, bounds.maximum)
-        lowest[key] = min(lowest.get(key, bounds.required), bounds.required)
-    return [
-        clause for clause, shape in zip(clauses, shapes, strict=True)
-        if shape is None
-        or lowest[(shape[0], shape[2])] <= arg_count <= shape[2]
-    ]
 
 
 #: ``Phoenix.Router.Resource``'s action set, in its own order. ``only:`` keeps
@@ -2197,7 +2160,7 @@ def _framework_callback_edges(
     run_id: str,
     seen: set[tuple[str, str]],
 ) -> list[Edge]:
-    """Module -> each implemented framework callback, once per (module, clause).
+    """Module -> each implemented framework callback, once per (module, function).
 
     Looked up by QUALIFIED name only (``<module>.<callback>``). A bare-name
     fallback used to be tried last, and in a file holding several modules it
@@ -2264,7 +2227,7 @@ def _behaviour_edges(
             if impl.kind == callback.kind and "private" not in impl.modifiers
         ]
         # By name AND arity (INV-dital): ``f/1`` is not implemented by an
-        # ``f/2`` beside it. A clause of unknown arity is kept.
+        # ``f/2`` beside it. A function of unknown arity is kept.
         for impl in narrow_by_arity(
             candidates, arity if isinstance(arity, int) else None,
         ):
@@ -2489,38 +2452,207 @@ def _module_symbol(
     )
 
 
-def _def_clause_symbol(
-    node: "tree_sitter.Node",
+class _FunctionKey(NamedTuple):
+    """What makes two ``def`` clauses ONE Elixir function (WI-tusad).
+
+    Elixir identifies a function by module, name and arity, so clauses agreeing
+    on all three fold into one symbol; ``kind`` is part of the key because a
+    ``def`` and a ``defmacro`` of one name/arity are two definitions (Elixir
+    rejects the pair, but they must not merge here). ``arity`` is the TOTAL
+    parameter count, defaulted ones included: ``def f(a, b \\\\ 1)`` is the
+    one function ``f/2``, also callable as ``f/1``, exactly the grouping the
+    compiler uses (a separate ``def f(a)`` beside it is a conflicting
+    definition). None when the head is not a plain name list.
+    """
+
+    full_name: str
+    kind: str
+    arity: Optional[int]
+
+
+class _DefClause(NamedTuple):
+    """One ``def`` / ``defp`` / ``defmacro`` / ``defmacrop`` call that defines
+    something: its short name, the function each owning module gets, and
+    whether it is a protocol head (a callback, not a function body)."""
+
+    func_name: str
+    keys: list[_FunctionKey]
+    in_protocol: bool
+
+
+def _def_kind(keyword: str) -> str:
+    """``macro`` for ``defmacro`` / ``defmacrop``, else ``function``."""
+    return "macro" if keyword.startswith("defmacro") else "function"
+
+
+def _def_clause(
+    node: "tree_sitter.Node", source: bytes, keyword: str,
+) -> Optional[_DefClause]:
+    """Read a def call; None when it defines no symbol.
+
+    No symbol inside ``quote`` (INV-sinah: a template for the module that runs
+    ``use``), for a head that is not a name (``def unquote(n)(a)``), or inside a
+    protocol / impl whose module cannot be read: no symbol beats a bare or
+    mis-owned one. A ``defimpl P, for: [A, B]`` gives one key per impl module.
+    The ONE reading shared by Pass 1 (which folds clauses by key) and Pass 2
+    (which maps every clause back to its function, ``_clause_positions``).
+    """
+    if _has_quote_ancestor(node, source):
+        return None
+    func_name = _get_function_name(node, source)
+    owners = _enclosing_module_names(node, source)
+    if not func_name or owners is None:
+        return None
+    definer = _nearest_definer(node, source)
+    in_protocol = (
+        definer is not None and keyword == "def"
+        and _definer_keyword(definer, source) == "defprotocol"
+    )
+    kind = _def_kind(keyword)
+    params = _def_head_arguments(node)
+    arity = len(params) if params is not None else None
+    return _DefClause(func_name, [
+        _FunctionKey(f"{owner}.{func_name}" if owner else func_name, kind, arity)
+        for owner in owners or [""]
+    ], in_protocol)
+
+
+def _function_parameters(
+    clauses: list["tree_sitter.Node"], source: bytes,
+) -> Optional[list[dict[str, Any]]]:
+    """``meta["parameters"]`` of a function folded from ``clauses``.
+
+    Each position is named by the first clause that knows it (a bodiless head's
+    plain names, when the function has one) and is defaulted when ANY clause
+    defaults it: Elixir allows defaults on one clause only, the head or the
+    first, and they apply to every clause, so this is the function's arity
+    range (``overload_arity.arity_bounds``).
+    """
+    per_clause = [
+        entries for entries in (_elixir_parameters(c, source) for c in clauses)
+        if entries is not None
+    ]
+    if not per_clause:  # pragma: no cover - only via _elixir_parameters' defensive None
+        return None
+    return [
+        parameter_entry(
+            entry["name"],
+            default=any(p[i]["default"] for p in per_clause if i < len(p)),
+        )
+        for i, entry in enumerate(per_clause[0])
+    ]
+
+
+def _function_symbol(
+    key: _FunctionKey,
+    func_name: str,
+    clauses: list[tuple["tree_sitter.Node", str]],
     source: bytes,
     file_path: str,
     run_id: str,
-    full_name: str,
-    keyword: str,
 ) -> Symbol:
-    """One clause of a ``def`` / ``defp`` (``function``) or ``defmacro`` /
-    ``defmacrop`` (``macro``); the ``p`` forms are ``private``."""
-    kind = "macro" if keyword.startswith("defmacro") else "function"
-    span = _span_of(node)
+    """The ONE symbol of an Elixir function: every ``(node, keyword)`` clause
+    of a name/arity in this file (WI-tusad, the Erlang shape).
+
+    ``def`` / ``defp`` is a ``function``, ``defmacro`` / ``defmacrop`` a
+    ``macro``; the ``p`` forms are ``private``. The name stays ``M.f`` (arity
+    is in ``meta["parameters"]``): call resolution, the behaviour and protocol
+    dispatch, the framework callback table, Phoenix route handlers and the
+    catalogue all key on ``M.f``, and ``narrow_by_arity`` picks the arity.
+
+    The span runs from the first clause's start to the last clause's end, and
+    the signature is the first clause's. Clauses split by another definition
+    are still one function (the compiler warns and compiles them as one), so
+    such a span also covers what sits between them. Cyclomatic complexity is
+    aggregated as the Erlang analyzer does: one entry path, plus each clause's
+    own decision points.
+
+    The stable_id is the ADR-0035 producer formula over the module scope chain
+    (``qualified_name`` = ``M.f``) and the declared arity, through the shared
+    ``overload_arity.declared_arity_stable_id``. Clause count, order and span
+    are not inputs, so adding or deleting a clause, or a function of another
+    arity, moves no id. Visibility is not an input either: Elixir has no
+    decorators, and ``def`` -> ``defp`` is the same function.
+    """
+    nodes = [node for node, _keyword in clauses]
+    first, last = nodes[0], nodes[-1]
+    # Equal to ``key.kind`` (the same keyword decided it); read from the
+    # keyword so the producer-axis ratchet sees the two literal kinds.
+    kind = _def_kind(clauses[0][1])
+    span = Span(
+        start_line=first.start_point[0] + 1,
+        end_line=last.end_point[0] + 1,
+        start_col=first.start_point[1],
+        end_col=last.end_point[1],
+    )
+    parameters = _function_parameters(nodes, source)
+    meta = None if parameters is None else {PARAMETERS_KEY: parameters}
     return Symbol(
         id=make_symbol_id(
-            "elixir", file_path, span.start_line, span.end_line, full_name, kind,
+            "elixir", file_path, span.start_line, span.end_line,
+            key.full_name, kind,
         ),
-        name=full_name,
+        stable_id=declared_arity_stable_id(
+            kind=kind, lang="elixir", path=file_path, name=func_name,
+            qualified_name=key.full_name, arity=declared_arity(meta),
+        ),
+        name=key.full_name,
         kind=kind,
         language="elixir",
         path=file_path,
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        signature=_extract_elixir_signature(node, source),
-        meta=_parameters_meta(node, source),
-        modifiers=["private"] if keyword.endswith("p") else [],
-        # INV-loguk: homoiconic head-symbol CC; LOC from span. The analyzer
-        # emits one Symbol per def clause, so the walker is applied
-        # per-clause (no aggregation).
-        cyclomatic_complexity=compute_cyclomatic_complexity(node, "elixir"),
+        signature=_extract_elixir_signature(first, source),
+        meta=meta,
+        modifiers=["private"] if clauses[0][1].endswith("p") else [],
+        # INV-loguk: homoiconic head-symbol CC, aggregated over the clauses;
+        # LOC from span.
+        cyclomatic_complexity=1 + sum(
+            cc - 1 for cc in (
+                compute_cyclomatic_complexity(node, "elixir") for node in nodes
+            ) if cc is not None
+        ),
         line_span=span.end_line - span.start_line + 1,
     )
+
+
+def _clause_positions(
+    tree: "tree_sitter.Tree", source: bytes, file_symbols: list[Symbol],
+) -> SymbolsAt:
+    """Where each def clause starts -> the function symbol it folded into.
+
+    INV-mozas finds a call's enclosing function by the position of the def
+    node a walk up reaches (``symbol_declared_by``). A folded function's span
+    starts at its FIRST clause, so a call in a later clause would find no
+    symbol and fall out to the module. This adds every clause's position,
+    re-reading each def call with the same ``_def_clause`` Pass 1 folded by.
+    In a multi-target ``defimpl`` the last target's copy wins, as the plain
+    position index does.
+    """
+    by_key: dict[_FunctionKey, Symbol] = {}
+    for sym in file_symbols:
+        if sym.kind in ("function", "macro") and _CALLBACK_MODIFIER not in sym.modifiers:
+            params = (sym.meta or {}).get(PARAMETERS_KEY)
+            by_key[_FunctionKey(
+                sym.name, sym.kind, len(params) if isinstance(params, list) else None,
+            )] = sym
+    index: SymbolsAt = {}
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+        target = find_child_by_type(node, "identifier")
+        keyword = node_text(target, source) if target is not None else None
+        if keyword not in _DEF_KEYWORDS:
+            continue
+        clause = _def_clause(node, source, keyword)
+        if clause is None or clause.in_protocol:
+            continue
+        for key in clause.keys:
+            function = by_key.get(key)
+            if function is not None:
+                index[(node.start_point[0] + 1, node.start_point[1])] = function
+    return index
 
 
 def _protocol_function_symbol(
@@ -2557,14 +2689,20 @@ def _extract_symbols_from_tree(
     ``protocols``, when given, collects the full name of every ``defprotocol``
     in the file (``ElixirAnalyzer.register_symbol`` reads it).
 
+    The clauses of one name/arity become ONE function symbol
+    (``_function_symbol``), placed where its first clause is.
+
     Returns:
         Tuple of (symbols, symbol_by_name, symbols_by_name).
         symbol_by_name maps short names to the most recent symbol.
-        symbols_by_name maps short names to ALL symbols (for multi-clause).
+        symbols_by_name maps short names to every function (each arity).
     """
-    symbols: list[Symbol] = []
+    # ``None`` holds a function's place until all of its clauses are seen.
+    symbols: list[Optional[Symbol]] = []
     symbol_by_name: dict[str, Symbol] = {}
     symbols_by_name: dict[str, list[Symbol]] = {}
+    clauses: dict[_FunctionKey, list[tuple["tree_sitter.Node", str]]] = {}
+    pending: dict[int, tuple[_FunctionKey, str]] = {}
 
     for node in iter_tree(tree.root_node):
         if node.type == "call":
@@ -2583,41 +2721,30 @@ def _extract_symbols_from_tree(
                         if target_name == "defprotocol" and protocols is not None:
                             protocols.add(full_name)
 
-                elif (target_name in _DEF_KEYWORDS
-                      and not _has_quote_ancestor(node, source)):
+                elif target_name in _DEF_KEYWORDS:
                     # INV-sinah: a def/defmacro inside a `quote` (an `__using__`
                     # template) is injected into the module that runs `use`, not
-                    # defined on the defining module — suppress rather than
-                    # mis-attribute (fails-safe, mirroring the defstruct guard).
-                    func_name = _get_function_name(node, source)
-                    owners = _enclosing_module_names(node, source)
-                    if not func_name or owners is None:
-                        # No name, or inside a protocol / impl whose module
-                        # cannot be read: no symbol beats a bare or mis-owned one.
+                    # defined on the defining module — suppressed by
+                    # ``_def_clause`` rather than mis-attributed.
+                    clause = _def_clause(node, source, target_name)
+                    if clause is None:
                         continue
-                    definer = _nearest_definer(node, source)
-                    in_protocol = (
-                        definer is not None and target_name == "def"
-                        and _definer_keyword(definer, source) == "defprotocol"
-                    )
-                    for owner in owners or [""]:
-                        full_name = f"{owner}.{func_name}" if owner else func_name
-                        if in_protocol:
+                    for key in clause.keys:
+                        if clause.in_protocol:
                             # A protocol's ``def`` head is its callback
                             # (``defprotocol`` generates ``@callback`` for it).
                             symbols.append(_protocol_function_symbol(
-                                node, source, file_path, run_id, full_name,
+                                node, source, file_path, run_id, key.full_name,
                             ))
                             continue
-                        symbol = _def_clause_symbol(
-                            node, source, file_path, run_id, full_name, target_name,
-                        )
-                        symbols.append(symbol)
-                        # By short name for local calls.
-                        symbol_by_name[func_name] = symbol
-                        if symbol.kind == "function":
-                            # Multi-clause index: all symbols with the same short name
-                            symbols_by_name.setdefault(func_name, []).append(symbol)
+                        # WI-tusad: a clause joins its name/arity's function;
+                        # the symbol is built once every clause is known, in
+                        # the place of the first.
+                        if key not in clauses:
+                            clauses[key] = []
+                            pending[len(symbols)] = (key, clause.func_name)
+                            symbols.append(None)
+                        clauses[key].append((node, target_name))
 
                 elif (target_name == "defstruct"
                       and not _has_quote_ancestor(node, source)
@@ -2649,6 +2776,14 @@ def _extract_symbols_from_tree(
                                     "elixir", file_path, start_line, end_line,
                                     full_name, "field",
                                 ),
+                                # WI-tusad: the ADR-0035 producer formula over
+                                # the owning module's scope chain (a field
+                                # takes no parameters).
+                                stable_id=declared_arity_stable_id(
+                                    kind="field", lang="elixir", path=file_path,
+                                    name=field_name, qualified_name=full_name,
+                                    arity=None,
+                                ),
                                 name=full_name,
                                 kind="field",
                                 language="elixir",
@@ -2671,7 +2806,18 @@ def _extract_symbols_from_tree(
             if callback is not None:
                 symbols.append(callback)
 
-    return symbols, symbol_by_name, symbols_by_name
+    for position, (key, func_name) in pending.items():
+        function = _function_symbol(
+            key, func_name, clauses[key], source, file_path, run_id,
+        )
+        symbols[position] = function
+        # By short name for local calls.
+        symbol_by_name[func_name] = function
+        if function.kind == "function":
+            # Multi-arity index: every function with this short name.
+            symbols_by_name.setdefault(func_name, []).append(function)
+
+    return [s for s in symbols if s is not None], symbol_by_name, symbols_by_name
 
 
 def _extract_edges_from_tree(
@@ -2699,7 +2845,7 @@ def _extract_edges_from_tree(
             table.
         file_symbols: Every symbol of this file (INV-mozas). The enclosing
             def is found by position among these; ``local_symbols`` keeps one
-            symbol per short name and so cannot tell clauses apart.
+            symbol per short name and so cannot tell arities apart.
         imported_modules: Set of module names from ``import`` directives. When
             provided, bare cross-module calls are only resolved if the target
             function's module was imported. This prevents false edges from
@@ -2711,15 +2857,19 @@ def _extract_edges_from_tree(
     edges: list[Edge] = []
     file_id = make_file_id("elixir", file_path)
     file_anchor = file_anchor_symbol("elixir", file_path, PASS_ID, run_id)
-    # Every clause of this file, by position. ``file_symbols`` is the whole
+    # Every symbol of this file, by position. ``file_symbols`` is the whole
     # list (TreeSitterAnalyzer.file_symbols); without it -- a direct call --
-    # the name-keyed dict plus the clause index is the best available.
-    symbols_at = index_symbols_at(
+    # the name-keyed dict plus the multi-arity index is the best available.
+    known = (
         file_symbols if file_symbols is not None else
         [*local_symbols.values(),
-         *(s for syms in (local_symbols_multi or {}).values() for s in syms)],
-        file_path,
+         *(s for syms in (local_symbols_multi or {}).values() for s in syms)]
     )
+    # A folded function is found from ANY of its clauses (WI-tusad).
+    symbols_at = {
+        **_clause_positions(tree, source, known),
+        **index_symbols_at(known, file_path),
+    }
 
     for node in iter_tree(tree.root_node):
         if node.type == "call":
@@ -2767,14 +2917,14 @@ def _extract_edges_from_tree(
                         node, source, symbols_at,
                     ) or _caller_outside_def(node, source, symbols_at, file_anchor)
                     if current_function is not None:
-                        # Multi-clause: check local file for all clauses with this
+                        # Check the local file for every function with this
                         # name, then keep the ones the call's arity reaches
                         # (WI-rodiz). A name defined locally at another arity only
                         # is not a local call: it falls through below.
                         call_arity = _elixir_call_arity(node, source)
                         named_multi = local_symbols_multi.get(target_name) if local_symbols_multi else None
                         local_multi = (
-                            _reachable_clauses(named_multi, call_arity)
+                            narrow_by_arity(named_multi, call_arity)
                             if named_multi else None
                         )
                         if local_multi:
@@ -2848,7 +2998,7 @@ def _extract_edges_from_tree(
                                 meta={"call_construct": "function", "binding": "explicit_import"},
                                 dst_ref=ext_ref,
                             ))
-                        # Cross-file: multi-clause global lookup, then resolver.
+                        # Cross-file: multi-arity global lookup, then resolver.
                         # Skip for Kernel/stdlib names — bare ``inspect(x)`` is
                         # almost always Kernel.inspect, not a project function.
                         elif target_name not in _ELIXIR_STDLIB_FUNCTIONS:
@@ -2863,7 +3013,7 @@ def _extract_edges_from_tree(
                                         s for s in global_multi
                                         if _symbol_module(s.name) in imported_modules
                                     ]
-                                global_multi = _reachable_clauses(
+                                global_multi = narrow_by_arity(
                                     global_multi, call_arity,
                                 )
                                 for callee in global_multi:
@@ -2923,7 +3073,7 @@ def _extract_edges_from_tree(
                         # ``data |> func``: a call of func/1 (WI-rodiz).
                         local_multi = local_symbols_multi.get(func_name) if local_symbols_multi else None
                         if local_multi:
-                            local_multi = _reachable_clauses(local_multi, 1)
+                            local_multi = narrow_by_arity(local_multi, 1)
                         if local_multi:
                             for callee in local_multi:
                                 edges.append(Edge.create(
@@ -2944,7 +3094,7 @@ def _extract_edges_from_tree(
                                         s for s in global_multi
                                         if _symbol_module(s.name) in imported_modules
                                     ]
-                                for callee in _reachable_clauses(global_multi, 1):
+                                for callee in narrow_by_arity(global_multi, 1):
                                     edges.append(Edge.create(
                                         src=current_function.id,
                                         dst=callee.id,
@@ -3176,12 +3326,12 @@ def _emit_unresolved_dot_edge(
 class ElixirAnalyzer(TreeSitterAnalyzer):
     """Elixir language analyzer using tree-sitter-language-pack.
 
-    Handles multi-clause functions (same name, different patterns),
+    Handles multi-clause functions (one symbol per name/arity, WI-tusad),
     Phoenix routes, OTP/Phoenix behaviour callbacks, and
     module-qualified calls with alias resolution.
 
-    The multi-clause index is stored in global_symbols under a ``__multi__``
-    key to enable multi-clause edge resolution.
+    The multi-arity index is stored in global_symbols under a ``__multi__``
+    key: every function of one name, each arity, for arity-narrowed resolution.
     """
 
     lang = "elixir"
@@ -3208,11 +3358,11 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
         """Register symbol by qualified name only.
 
         The ``NameResolver`` suffix index handles short-name lookups.
-        Also builds a multi-clause index under ``__multi__`` key for
-        Elixir's multi-clause function dispatch. The ``__multi__`` index
-        keeps both short and qualified name keys because call sites use
-        bare function names (e.g., ``handle_call``) to look up all
-        clauses of ``MyApp.Server.handle_call``.
+        Also builds a multi-arity index under ``__multi__`` key: one name,
+        every arity (``f/1`` and ``f/2`` are two symbols named ``M.f``). The
+        ``__multi__`` index keeps both short and qualified name keys because
+        call sites use bare function names (e.g., ``handle_call``) to look up
+        every arity of ``MyApp.Server.handle_call``.
 
         A ``defstruct`` ``field`` (WI-jusus) is skipped: it is a data anchor,
         never a call target, and its qualified name (``User.name``) would
@@ -3292,8 +3442,9 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
 
         # Reconstruct local multi from global multi filtered to this file.
         # We filter by path (not by local_symbols IDs) because local_symbols
-        # is a dict keyed by name, so multi-clause functions (3 handle_call
-        # clauses) only have one entry. Filtering by path captures all clauses.
+        # is a dict keyed by name, so a name defined at several arities
+        # (handle_call/2, handle_call/3) has one entry. Filtering by path
+        # captures every arity.
         local_symbols_multi: dict[str, list[Symbol]] | None = None
         if global_multi:
             local_symbols_multi = {}

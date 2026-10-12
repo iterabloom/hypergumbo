@@ -54,7 +54,8 @@ vacuously.
 
 **What each fixture holds.** The same-name form the language actually has: an
 overload (cpp, csharp, java, julia, glsl, nim, ada, sql ...), a clause of
-another arity or pattern (elixir, clojure), a same-name function in another
+another arity or pattern (clojure), a function of another arity (elixir, whose
+clauses of one arity fold into one node), a same-name function in another
 scope (methods of two classes, two modules, two inner classes, two attribute
 sets, LET-local operators). Where the language has no such form in one file
 (elm, gleam, llvm_ir, wgsl, haxe ...), ``earlier`` is an earlier declaration of
@@ -364,9 +365,12 @@ CASES: dict[str, SiblingCase] = {
         "lib/mod.dart", "class Mod {\n", "  Mod();\n",
         "  Mod.named(int x);\n  int get size => 0;\n  set size(int v) {}\n"
         "  int run(int x) => x;\n}\nint helper() => 2;\n"),
+    # The clauses of one name/arity are ONE elixir function node, so the earlier
+    # same-name sibling is a function of another arity.
     "elixir": SiblingCase(
-        "lib/demo.ex", "defmodule Demo do\n  defstruct [:a, :b]\n", "  def greet(:a), do: 1\n",
-        "  def greet(:b), do: 2\n  def greet(x, y), do: {x, y}\n"
+        "lib/demo.ex", "defmodule Demo do\n  defstruct [:a, :b]\n",
+        "  def greet(a, b, c), do: {a, b, c}\n",
+        "  def greet(:a), do: 1\n  def greet(:b), do: 2\n  def greet(x, y), do: {x, y}\n"
         "  def other, do: 1\n  defmacro mk(x), do: x\nend\n"),
     "elm": SiblingCase(
         "src/Demo.elm", "module Demo exposing (..)\n\n\n",

@@ -23,8 +23,8 @@ What these tests pin:
 - ``implements`` from the module to its behaviour: resolved to the in-repo
   module, else an unresolved ``elixir:external:0-0:<Behaviour>:unresolved``
   target; ``use X`` only where X's ``__using__`` is known to set the behaviour;
-- ``dispatches_to`` from each callback to the implementing function's clauses,
-  same-file and cross-file, kind-matched (a ``@callback`` never links to a
+- ``dispatches_to`` from each callback to the implementing function (its
+  clauses folded into one symbol per name/arity), same-file and cross-file, kind-matched (a ``@callback`` never links to a
   same-named ``defmacro``).
 """
 
@@ -456,7 +456,8 @@ end
 
 
 class TestCallbackDispatch:
-    """Each callback ``dispatches_to`` the implementing module's clauses."""
+    """Each callback ``dispatches_to`` the implementing module's function (one
+    symbol per name/arity, its clauses folded in)."""
 
     def _dispatch_pairs(self, result) -> list[tuple[str, str, int]]:
         sym = {s.id: s for s in result.symbols}
@@ -483,7 +484,7 @@ end
         assert edge.evidence_type == "behaviour_callback"
         assert (edge.meta or {}).get("mechanism") == "callback"
 
-    def test_cross_file_every_clause_and_only_callbacks(self, tmp_path: Path) -> None:
+    def test_cross_file_folded_function_and_only_callbacks(self, tmp_path: Path) -> None:
         _write(tmp_path, {
             "shape.ex": _SHAPE,
             "square.ex": """defmodule Square do
@@ -501,7 +502,6 @@ end
             ("Shape.area", "Square.area", 3),
             ("Shape.mk", "Square.mk", 6),
             ("Shape.scale", "Square.scale", 4),
-            ("Shape.scale", "Square.scale", 5),
         ]
 
     def test_kind_and_visibility_must_match(self, tmp_path: Path) -> None:

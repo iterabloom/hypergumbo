@@ -5,8 +5,9 @@ Verifies the homoiconic head-symbol walker against the REAL tree-sitter-elixir
 grammar. Elixir control forms are ``call`` nodes whose first named child is an
 ``identifier`` head (if/unless/cond/case/with/for/receive/try). ``&&``/``||``/
 ``and``/``or`` are ``binary_operator`` nodes (NOT calls) and are conservatively
-NOT counted in v1. The analyzer emits one Symbol per def clause, so the walker
-is applied per-clause. The ``module`` symbol stays None.
+NOT counted in v1. The analyzer emits one Symbol per function (name/arity), so
+a multi-clause function's CC aggregates its clauses the Erlang way
+(``test_elixir_function_folding``). The ``module`` symbol stays None.
 """
 from pathlib import Path
 
