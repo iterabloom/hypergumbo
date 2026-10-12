@@ -1,0 +1,31 @@
+Original commit body from 319e8f26f3374950c4573212f7045a6fd5099e29:
+
+ADR-0061 ruling 3 says a catalogue file's tier is its own provenance line,
+never the directory. load_function_summaries ranked every
+function_summaries.d file as the user's before reading that line, so a file
+still declaring provenance: community was stamped user_supplied: its
+terminating summary closed the taint branch (violated -> inconclusive, caveat
+user_supplied_sanitizer naming "your own function_summaries.d/"), it won name
+collisions over built-in rows, and --no-default-overlays kept it, while the
+JSON tiers listed it as community.
+
+The loader now asks the provenance line first: a community channel file
+ranks with the shipped community files (adds only, stamped community, so the
+walk withholds its terminating summaries and the violated verdict names them
+as withheld_community_summary) and include_community=False drops it. In
+verify-claims it is listed in tiers only when loaded, and under
+--no-default-overlays it goes to omitted_community_overlays with family
+function_summaries plus a stderr notice.
+
+Same rule, io_primitives disclosure: a loaded community overlay named by
+--io-primitives or a claims file's extra_catalogs was listed as USER-SUPPLIED
+input with user_supplied: true. It now goes to named_community_files (family
+io_primitives) beside the community taint files; its grants are still listed
+as withheld, and the WITHHELD GRANTS text block now renders whether or not
+anything was user-supplied.
+
+Spec ADR-0061 status rows and docs/CATALOGUES.md updated.
+
+Refs INV-rirud-hamik-vitah-vapus-pijov-vulab-rusil-rakuv
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
