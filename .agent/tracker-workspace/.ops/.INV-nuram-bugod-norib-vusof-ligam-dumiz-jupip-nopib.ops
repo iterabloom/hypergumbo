@@ -1,0 +1,38 @@
+- op: create  # 1419
+  at: '2026-10-12T00:50:53Z'  # 1419
+  by: agent  # 1419
+  actor: jgstern_agent  # 1419
+  clock: 1  # 1419
+  nonce: '1419'  # 1419
+  data:  # 1419
+    kind: invariant  # 1419
+    title: "verify-claims: an unparseable function_summaries.d file crashes with exit 1, the 'violated' exit code"  # 1419
+    status: violated  # 1419
+    priority: 3  # 1419
+    parent:  # 1419
+    tags:  # 1419
+    - catalogue  # 1419
+    - verify_claims  # 1419
+    isbefore: []  # 1419
+    duplicate_of: []  # 1419
+    not_duplicate_of: []  # 1419
+    pr_ref:  # 1419
+    description: "Found 2026-10-11 while fixing INV-rirud (PR #1543). Repro (dev e0abdace0a): XDG_CONFIG_HOME/hypergumbo/function_summaries.d/bad.yaml = 'summaries: [unclosed'; 'hypergumbo verify-claims repo --claims claims.yaml' with a taint_flow claim -> exit 1, stderr ends with the YAML parse error and 'This is a bug; re-run with --debug for a full traceback.' Exit 1 is the violated exit code, so a CI gate reads a crash as a violation. The taint arm raises TaintCatalogError (exit 2) for the same input since PR #1542. Under --no-default-overlays the provenance pre-read (taint.split_community_files) would raise TaintCatalogError outside the load's try block, still uncaught. Fix direction: parse failures in the summary loader raise a catalogue error that cmd_verify_claims maps to exit 2, matching the taint arm."  # 1419
+    fields:  # 1419
+      statement: "A broken catalogue file is a clean exit-2 error naming the file, never an uncaught exception, and never exit 1 (violated)."  # 1419
+      root_cause: "load_function_summaries calls yaml.safe_load on every function_summaries.d file with no error handling, and cmd_verify_claims does not catch yaml.YAMLError; the top-level handler exits 1."  # 1419
+- op: update  # bd73
+  at: '2026-10-12T03:06:46Z'  # bd73
+  by: agent  # bd73
+  actor: jgstern_agent  # bd73
+  clock: 2  # bd73
+  nonce: bd73  # bd73
+  set:  # bd73
+    status: satisfied  # bd73
+- op: discuss  # ff75
+  at: '2026-10-12T03:06:46Z'  # ff75
+  by: agent  # ff75
+  actor: jgstern_agent  # ff75
+  clock: 3  # ff75
+  nonce: ff75  # ff75
+  message: "Fixed in PR #1545 (436a19a122). Root cause: load_function_summaries yaml.safe_loaded with no handling and cmd_verify_claims did not catch it, so main's safety net exited 1; the same class hit the I/O overlay provenance pre-read (overlay_declares_community parsed before the load that would refuse it), silently-skipped wrong-typed overlay sections, frameworks.d (crash), library_signatures.d (py.py reads it at import; registry discovery swallowed the error so the python analyzer vanished, exit 0), dataflow_patterns.d (syntax error skipped), and sketch's cold-cache auto-run (swallowed everything). Fix: one base yaml_catalogs.CatalogueError (TaintCatalogError, IoPrimitiveOverlayError, DuplicateYamlKeyError, DefaultOverlayError derive; summary/framework/library-signature/dataflow loaders raise it), shared read_catalogue_yaml, cli.main maps CatalogueError to 'Error: ...' exit 2; analyzer discovery, analyzer pool and sketch auto-run re-raise it; verify-claims loads summaries in the taint-model try block; summary provenance split uses its own noun. Evidence (dev 436a19a122, filed repro): function_summaries.d/bad.yaml='summaries: [unclosed', 'hypergumbo verify-claims repo --claims claims.yaml --input hg.json' with a taint_flow claim -> rc=2, 'Error: could not parse function summary file $T/xdg/hypergumbo/function_summaries.d/bad.yaml: while parsing a flow sequence' (before: rc=1 'This is a bug'). Live harness: 15 verify-claims channels x {syntax, shape, field} with and without --no-default-overlays all rc=2 naming the file; survey and sketch x frameworks.d/library_signatures.d/dataflow_patterns.d x 3 all rc=2. Filed INV-horob for the results-cache key ignoring user analysis-stage channels."  # ff75

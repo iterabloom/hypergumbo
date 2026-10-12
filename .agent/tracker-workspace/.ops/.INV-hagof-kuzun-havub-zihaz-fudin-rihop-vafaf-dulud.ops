@@ -1,0 +1,23 @@
+- op: create  # fbf7
+  at: '2026-10-12T07:15:53Z'  # fbf7
+  by: agent  # fbf7
+  actor: jgstern_agent  # fbf7
+  clock: 1  # fbf7
+  nonce: fbf7  # fbf7
+  data:  # fbf7
+    kind: invariant  # fbf7
+    title: "discovery excludes every directory named site/ at any depth (mkdocs output rule), silently dropping app source: 28 Elixir files on plausible"  # fbf7
+    status: violated  # fbf7
+    priority: 2  # fbf7
+    parent:  # fbf7
+    tags:  # fbf7
+    - discovery  # fbf7
+    - analyzer  # fbf7
+    isbefore: []  # fbf7
+    duplicate_of: []  # fbf7
+    not_duplicate_of: []  # fbf7
+    pr_ref:  # fbf7
+    description: "**Discovery drops every source directory named `site/`, at any depth.** `DEFAULT_EXCLUDES` in packages/hypergumbo-core/src/hypergumbo_core/discovery.py lists the bare name `\"site\"` (comment: \"mkdocs\"), and it matches a path segment anywhere, so application source in `lib/<app>/site/` is never analysed.\n\nFound while measuring the Elixir web-module-dispatcher fix (WI-nunar) on plausible: 4 of 28 `use PlausibleWeb, :live_component` modules got no edge because their files were never discovered. `find ~/whole_bunch_of_repos/plausible -path '*/site/*' \\( -name '*.ex' -o -name '*.exs' \\)` -> 28 Elixir source files, none of which `find_elixir_files` yields (checked: `find_elixir_files(plausible)` contains no `toggle_live.ex`, `people.ex`). Dirs: lib/plausible/site, extra/lib/plausible/site, lib/plausible_web/{components,controllers,views,templates}/site, test/plausible/site, ...\n\nmkdocs writes `site/` at the project ROOT (its `site_dir` default). Fix direction (not designed): anchor the exclusion to the repo root (or require an mkdocs.yml sibling), as was done for Hugo's `public/` (removed in v0.5.1 for the same class of false positive). Check the other bare names in the list (`out`, `coverage`, ...) for the same root-vs-anywhere confusion."  # fbf7
+    fields:  # fbf7
+      statement: "A build-output exclusion removes only the directory the tool writes, never a same-named source directory elsewhere in the tree"  # fbf7
+      root_cause: "DEFAULT_EXCLUDES matches the bare segment 'site' at any depth, but mkdocs writes site/ only at the project root"  # fbf7
