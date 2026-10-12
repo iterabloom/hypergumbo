@@ -1,0 +1,32 @@
+Original commit body from deb4b444521c064ec632f4f4cf6d35dd9462d186:
+
+defprotocol/defimpl were unmodelled: a protocol's bodiless def heads
+and impl defs were emitted as bare-named functions with no module, and
+a defimpl nested in defmodule Outer was attributed to Outer.size
+though its module is Size.Outer. No module symbol, no type
+relationship, no dispatch.
+
+Identity: defprotocol P is a module (nested like defmodule); its def
+heads are callback-shaped symbols (abstract, meta["arity"],
+callback_stable_id). defimpl P, for: T is the absolute module P.T owning
+its defs; for: [A, B] yields one impl per target; no for: / __MODULE__
+take the enclosing module; P and T are alias-expanded (file aliases
+plus nested-module auto-aliases). An unreadable impl (unquote target,
+quote template) owns nothing rather than a bare name. All three
+definers share _enclosing_module_names.
+
+Edges reuse hypergumbo_core.behaviours via _behaviour_edges:
+implements P.T -> P (or the external unresolved target) and protocol
+function -> impl dispatches_to by name and arity. Impls of protocols
+outside the repo are rooted by their module, derived from "implements
+a protocol the repo does not define". Protocol functions are qualified
+call targets.
+
+Behaviour callbacks now carry meta["arity"] and match implementations
+through overload_arity.narrow_by_arity (INV-dital): 10 false
+callback edges dropped on phoenix.
+
+Refs WI-forof-mohip-himul-mokus-togih-lujaj-jimal-nizov
+Refs INV-dital-zosuz-nilok-tokin-kihar-tatod-finim-mijik
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
