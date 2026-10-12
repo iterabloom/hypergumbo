@@ -1,0 +1,55 @@
+- op: create  # f580
+  at: '2026-10-11T21:53:57Z'  # f580
+  by: agent  # f580
+  actor: jgstern_agent  # f580
+  clock: 1  # f580
+  nonce: f580  # f580
+  data:  # f580
+    kind: invariant  # f580
+    title: "A taint file declaring provenance: community, named by --taint-* flag or claims-file extra_catalogs, loads as YOURS: its sanitizer clears a flow, --no-default-overlays keeps it, yet tiers lists it as community"  # f580
+    status: violated  # f580
+    priority: 2  # f580
+    parent:  # f580
+    tags:  # f580
+    - catalogue  # f580
+    - adr_0061  # f580
+    - taint  # f580
+    isbefore: []  # f580
+    duplicate_of: []  # f580
+    not_duplicate_of: []  # f580
+    pr_ref:  # f580
+    description: "Found 2026-10-11, investigating a residual the INV-dozav fixer (PR #1540) reported.\n\nADR-0061 ruling 3: \"The loader reads the tier from that line, never from the directory.\" Ruling 2: a community sanitizer never makes a verdict cleaner. Ruling 5: \"--no-default-overlays omits community rows from every family, taint included.\" The I/O-overlay family obeys all three for a file passed by flag or claims file (INV-kobam #1533, INV-dozav #1540), and the taint CHANNELS (taint_*.d/) do too. The taint FLAG and CLAIMS-FILE paths do not.\n\nROOT CAUSE (taint.py `load_taint_catalog_with_user_extras`, ~2299-2420): `channel_*_paths` are partitioned by `_declares_community_file` into the community layer vs the yours layer, but `cli_*_paths` (--taint-sources/--taint-sinks/--taint-sanitizers) and `extra_*_paths` (claims-file `extra_catalogs: sources/sinks/sanitizers`) go straight into `claims_layer`/`cli_layer`, whose sanitizers are stamped `user_supplied=True` and never `community=True`. `include_community` (the --no-default-overlays switch) is never consulted for them. Meanwhile `catalogue_tiers` reads the provenance line and lists the same file under `tiers.community`.\n\nREPRO (dev 020b5bd7ce): repo/app.py `key = os.urandom(32); wrapped = mylib.wrap(key); open(\"out.bin\",\"wb\").write(wrapped)`; san_community.yaml = `provenance: community`, `retrieved: 2026-01-01`, transform key_material->wrapped_key via python `mylib.wrap`; claim taint_flow source_taint key_material, prohibited_sink_zone host_fs.\n\n| load path | exit | verdict | caveats | tiers |\n|---|---|---|---|---|\n| no sanitizer | 1 | violated | - | - |\n| --taint-sanitizers san_community.yaml | 3 | confirmed_with_caveats | user_supplied_sanitizer | community |\n| same + --no-default-overlays | 3 | confirmed_with_caveats | user_supplied_sanitizer | community |\n| claims-file extra_catalogs.sanitizers | 3 | confirmed_with_caveats | user_supplied_sanitizer | community |\n| same + --no-default-overlays | 3 | confirmed_with_caveats | user_supplied_sanitizer | community |\n| CONTROL: XDG taint_sanitizers.d/ copy | 1 | violated | withheld_community_sanitizer | community |\n| CONTROL: channel + --no-default-overlays | 1 | violated | - | community |\n\nSo a community sanitizer clears the flow (violated -> confirmed_with_caveats) when named by flag or claims file, survives --no-default-overlays, and the text report lists the file only under \"USER-SUPPLIED catalogue input ... [CLI flag]\" while the JSON lists it under tiers.community -- text and JSON disagree about its tier, and the treatment matches neither the ADR nor the I/O family.\n\nSources and sinks from such a file only add, so for them the effect is limited to --no-default-overlays not omitting them and a community sink/source acting at user precedence (it can REPLACE a shipped entry on (module, name, kind) -- a displacement -- where the community layer may only add).\n\nFix direction: partition cli_*/extra_* paths by `_declares_community_file` exactly as the channels are -- community ones join the community layer (sanitizers stamped community=True and withheld; sources/sinks add-only; whole layer dropped when include_community is False, and disclosed as omitted like `omitted_community_overlays`). Then text and JSON report the same tier. Also fix spec docs/hypergumbo-spec.md's ADR-0061 status table: \"The other families' user channels do not read it yet\" is stale for the taint channels and should name this flag/claims-file gap until fixed."  # f580
+    fields:  # f580
+      statement: "A taint file's tier is its provenance line whatever path loaded it: a community file named by flag or claims file only adds, its sanitizers are withheld, --no-default-overlays omits it, and text and JSON report the same tier."  # f580
+      root_cause: "load_taint_catalog_with_user_extras partitions only the taint_*.d channel paths by provenance; cli_* and extra_* paths go straight into user layers stamped user_supplied and never consult include_community."  # f580
+- op: update  # 6f6c
+  at: '2026-10-11T21:54:12Z'  # 6f6c
+  by: agent  # 6f6c
+  actor: jgstern_agent  # 6f6c
+  clock: 2  # 6f6c
+  nonce: 6f6c  # 6f6c
+  set:  # 6f6c
+    fields:  # 6f6c
+      root_cause: "load_full_taint_catalog (taint.py:2299) partitions only the taint_*.d channel paths by provenance; cli_* and extra_* paths go straight into user layers stamped user_supplied and never consult include_community."  # 6f6c
+- op: discuss  # 6ff1
+  at: '2026-10-11T21:54:12Z'  # 6ff1
+  by: agent  # 6ff1
+  actor: jgstern_agent  # 6ff1
+  clock: 3  # 6ff1
+  nonce: 6ff1  # 6ff1
+  message: "Correction to the description: the function is load_full_taint_catalog (taint.py:2299), not load_taint_catalog_with_user_extras."  # 6ff1
+- op: update  # 7c72
+  at: '2026-10-11T23:25:21Z'  # 7c72
+  by: agent  # 7c72
+  actor: jgstern_agent  # 7c72
+  clock: 4  # 7c72
+  nonce: 7c72  # 7c72
+  set:  # 7c72
+    status: satisfied  # 7c72
+- op: discuss  # 5215
+  at: '2026-10-11T23:25:21Z'  # 5215
+  by: agent  # 5215
+  actor: jgstern_agent  # 5215
+  clock: 5  # 5215
+  nonce: '5215'  # 5215
+  message: "Fixed in PR #1542 (c803f56cfb). Root cause: load_full_taint_catalog partitioned only taint_*.d channel paths by provenance; cli_*/extra_* paths went straight into user layers stamped user_supplied and ignored include_community. Fix: every taint path family goes through taint.split_community_files; community files join the community layer (add-only, sanitizers stamped community and withheld, dropped by include_community=False). verify-claims applies the same partition to the report: layers/user_supplied hold only yours files; loaded community files go under new catalog_provenance.named_community_files (+ text note, stderr line); under --no-default-overlays they go under omitted_community_overlays with family (+ stderr notice), as do community taint_*.d channel files (which tiers previously listed as loaded although omitted). Evidence (dev c803f56cfb, fixture from the description, verify-claims --json): --taint-sanitizers san_community.yaml -> exit 1 violated, withheld_community_sanitizer, tiers community, user_supplied false, named_community_files [cli]; +--no-default-overlays -> exit 1 violated, omitted_community_overlays [taint_sanitizers:cli], not in tiers; claims-file extra_catalogs -> exit 1 violated withheld_community_sanitizer, named_community_files [claims_file]; +--no-default-overlays -> exit 1, omitted [taint_sanitizers:claims_file]; channel control -> exit 1 withheld_community_sanitizer; channel+--no-default-overlays -> exit 1, omitted [taint_sanitizers:user_channel], tiers empty. Non-regression: --taint-sanitizers san_yours.yaml (no provenance line) -> exit 3 confirmed_with_caveats user_supplied_sanitizer, tiers yours, user_supplied true. Text output names the flag file under 'NOTE: 1 catalogue file(s) named by flag or claims file declare provenance: community' and has no USER-SUPPLIED block."  # 5215
