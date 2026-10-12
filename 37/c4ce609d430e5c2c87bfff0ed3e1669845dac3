@@ -1,0 +1,41 @@
+Original commit body from d0c88d36f8abfc06c66a7b25ebfbd634fe08c264:
+
+Six analyzers left their functions, macros and methods at stable_id=None
+for the ADR-0035 backstop floor, which nulls every same-name group in a
+file (a multimethod's defmethods, a generic's methods, an R name
+reassigned to a function of another arity). Each now mints the producer
+formula at construction through overload_arity.declared_arity_stable_id:
+
+- erlang: name/arity with meta["arity"] (the callback_stable_id inputs,
+  minus the abstract decorator); -define(NAME(A, B)) macros record their
+  arguments in meta["parameters"].
+- clojure: ns-qualified name; a defmethod's dispatch value appended
+  (whitespace/commas collapsed); a multi-arity form stays one node whose
+  arity bodies merge into one parameter list (extra arities as defaults,
+  & rest as the variadic entry); defmulti takes the zero-parameter formula.
+- commonlisp: package::name (latest in-package); lambda-list sections
+  mapped to parameter entries; a defmethod's specializers are parameter
+  types (typed tier) and its qualifiers the decorators slot.
+- r: parameters from function(...) (defaults, ... variadic); scope chain
+  outer/inner over enclosing named functions.
+- cmake, gnuplot: named arguments / dummy variables as parameters.
+
+Floor/null -> producer only: every previously producer-computed id is
+byte-identical on the gate fixtures and a corpus sample (erlang 59 files,
+clojure 60, r 80, cmake 60, gnuplot 2). Baseline: the six languages leave
+floor_and_null and sibling_deletion_moves.
+
+Carry-overs: base.py's floor-collision example and beam_behaviour.py no
+longer describe Elixir per-clause symbols. The producer-axis ratchet's
+value_flow typed `x.kind` as every module-local record with a `kind`
+field; it now honours the receiver's own declaration (an annotated
+parameter/assignment, or a loop over a collection annotated list[C]),
+and a receiver declared as a foreign class is unresolvable rather than
+the union. elixir.py drops its workaround (kind = key.kind). The
+route-producer scanner in test_depends_on_producer_sets no longer counts
+a stable_id helper's decorators= keyword as a meta write.
+
+Refs WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral
+Refs WI-firog-nunis-juhib-hutur-sumum-hogan-duras-filik
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
