@@ -139,6 +139,7 @@ from .selection.token_budget import (
     truncate_to_tokens,
 )
 from .taxonomy import SOURCE_EXTENSIONS, is_additional_file_candidate
+from .yaml_catalogs import CatalogueError
 from dataclasses import dataclass
 
 
@@ -6510,6 +6511,12 @@ def _generate_sketch_impl(
                     import json
                     _log(f"Using freshly generated results: {fresh_path}")
                     cached_results = json.loads(fresh_path.read_text())
+        except CatalogueError:
+            # NOT a cache-discovery error: the analysis met a catalogue file
+            # that does not parse (a user's frameworks.d, say). Swallowed, the
+            # sketch was built from no analysis at all and exited 0; the CLI
+            # reports the file with exit 2 instead.
+            raise
         except Exception:  # pragma: no cover - cache discovery errors shouldn't block sketch
             pass
 

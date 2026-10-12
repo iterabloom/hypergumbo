@@ -55,6 +55,7 @@ from typing import Any, Callable, Iterable, Iterator, Mapping
 
 from .base import AnalysisResult
 from ..ir import compute_pass_version
+from ..yaml_catalogs import CatalogueError
 
 logger = logging.getLogger(__name__)
 
@@ -857,10 +858,13 @@ def _import_module_list(module_paths: list[str]) -> None:
     for module_path in module_paths:
         try:
             importlib.import_module(module_path)
-        except LanguageDeclarationError:
+        except (LanguageDeclarationError, CatalogueError):
             # WI-juzig: a misdeclared registration is a defect, not a missing
             # optional dependency; swallowing it would make the analyzer
-            # silently vanish from the catalogue.
+            # silently vanish from the catalogue. So is a catalogue file the
+            # module reads at import (py.py derives a table from the user's
+            # library_signatures.d): swallowed, a broken file removed the
+            # python analyzer and the survey exited 0 with no python in it.
             raise
         except Exception:
             logger.debug("Failed to import analyzer module %s", module_path)

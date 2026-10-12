@@ -787,6 +787,25 @@ class TestEnsureDiscovered:
             with pytest.raises(LanguageDeclarationError):
                 ensure_discovered()
 
+    def test_catalogue_error_is_not_swallowed_by_discovery(self) -> None:
+        """A module that reads a catalogue at import (py.py and the user's
+        library_signatures.d) and meets a broken file must not vanish from the
+        registry: the survey then exits 0 with the language missing."""
+        from hypergumbo_core.yaml_catalogs import CatalogueError
+
+        mock_ep = MagicMock()
+        mock_ep.load.return_value = ["good_module", "catalogue_module"]
+
+        def side_effect(name):
+            if name == "catalogue_module":
+                raise CatalogueError("library signature file /x/python.yaml")
+
+        with patch(
+            "importlib.metadata.entry_points", return_value=[mock_ep]
+        ), patch("importlib.import_module", side_effect=side_effect):
+            with pytest.raises(CatalogueError):
+                ensure_discovered()
+
     def test_handles_import_error_gracefully(self) -> None:
         """Import errors for individual modules are caught and logged."""
         mock_ep = MagicMock()

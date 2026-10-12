@@ -94,8 +94,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import yaml
-
 from hypergumbo_core.name_matcher import NameMatcher
 
 if TYPE_CHECKING:
@@ -104,6 +102,7 @@ if TYPE_CHECKING:
 # Import UsageContext at runtime since it's used by matches_usage and extract_usage_value
 from .axis_meta_keys import filter_meta_key, write_meta_key
 from .ir import UsageContext
+from .yaml_catalogs import CatalogueError, read_catalogue_yaml
 
 # Note for YAML authors: if your framework's canonical usage is manifest-declared
 # but never imported in app code (Rails-style autoload-by-convention), also add
@@ -1034,10 +1033,17 @@ def load_framework_patterns(framework_id: str) -> FrameworkPatternDef | None:
         _PATTERN_CACHE[cache_key] = None
         return None
 
-    with open(yaml_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-
-    pattern_def = FrameworkPatternDef.from_dict(data)
+    # A broken file -- the user's or shipped -- is refused naming it
+    # (CatalogueError -> exit 2), never a raw parser or AttributeError that
+    # surfaces as an internal error with exit 1.
+    data = read_catalogue_yaml(yaml_path, what="framework pattern file")
+    try:
+        pattern_def = FrameworkPatternDef.from_dict(data)
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise CatalogueError(
+            f"framework pattern file {yaml_path} could not be read "
+            f"({type(exc).__name__}: {exc})."
+        ) from exc
     _PATTERN_CACHE[cache_key] = pattern_def
     return pattern_def
 

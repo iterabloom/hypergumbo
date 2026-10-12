@@ -286,18 +286,25 @@ def _with_user_library_patterns(
     silence it.
     """
     from .catalogue_home import user_channel_files
+    from .yaml_catalogs import CatalogueError, read_catalogue_yaml
 
     extra: "List[Dict[str, Any]]" = []
     for path in user_channel_files("dataflow_patterns"):
         if path.stem != language:
             continue
-        try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        except (OSError, yaml.YAMLError):  # pragma: no cover - unreadable file
-            continue
-        rows = data.get("library_patterns")
-        if isinstance(rows, list):
-            extra.extend(rows)
+        # Refused, not skipped: a file that does not parse, is not a mapping,
+        # or whose ``library_patterns`` is not a list of rows was read as "no
+        # extra rows" in silence, a narrower recognition the user never asked
+        # for. CatalogueError names the file and the CLI exits 2.
+        data = read_catalogue_yaml(path, what="dataflow pattern file")
+        rows = data.get("library_patterns") or []
+        if not isinstance(rows, list) or not all(
+                isinstance(row, dict) for row in rows):
+            raise CatalogueError(
+                f"dataflow pattern file {path}: 'library_patterns:' must be a "
+                f"list of mappings."
+            )
+        extra.extend(rows)
     if not extra:
         return config
     return replace(config,

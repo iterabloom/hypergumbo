@@ -6,6 +6,7 @@ and boundary map generation.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -1424,25 +1425,31 @@ class TestMatchEdgeToPrimitive:
         stdout = go_catalog.lookup("os.Stdout")
         assert stdout is not None
 
-    def test_catalog_ignores_malformed_yaml_entries(self, tmp_path: Path) -> None:
-        """Non-list boundary values and non-dict entries are skipped."""
-        yaml_content = """\
-language: broken
-status: in_progress
-
-fs_read: "not a list"
-
-fs_write:
-  - "not a dict"
-  - module: ok
-    functions: [write_file]
-"""
+    @pytest.mark.parametrize(("body", "message"), [
+        ('fs_read: "not a list"\n', "'fs_read:' must be a list of rows"),
+        ('fs_write:\n  - "not a dict"\n  - module: ok\n'
+         '    functions: [write_file]\n', "each 'fs_write:' row must be a mapping"),
+    ])
+    def test_catalog_refuses_malformed_yaml_entries(
+        self, tmp_path: Path, body: str, message: str,
+    ) -> None:
+        """A non-list boundary value or a non-dict entry is refused, not
+        skipped: in an overlay, a skipped ``net_send: 5`` read as "no net_send
+        rows", a clean answer the file never gave (the load turns this
+        ValueError into IoPrimitiveOverlayError, exit 2)."""
         yaml_file = tmp_path / "broken.yaml"
-        yaml_file.write_text(yaml_content)
+        yaml_file.write_text("language: broken\nstatus: in_progress\n\n" + body)
+        with pytest.raises(ValueError, match=re.escape(message)):
+            IoBoundaryCatalog.from_yaml(yaml_file)
+
+    def test_a_null_boundary_section_is_empty(self, tmp_path: Path) -> None:
+        """``fs_read:`` with no value is an empty section, not a wrong type."""
+        yaml_file = tmp_path / "broken.yaml"
+        yaml_file.write_text(
+            "language: broken\nstatus: in_progress\nfs_read:\n"
+            "fs_write:\n  - module: ok\n    functions: [write_file]\n")
         catalog = IoBoundaryCatalog.from_yaml(yaml_file)
-        assert catalog.language == "broken"
-        assert len(catalog.primitives) == 1
-        assert catalog.primitives[0].name == "write_file"
+        assert [p.name for p in catalog.primitives] == ["write_file"]
 
 
 class TestModuleMatches:

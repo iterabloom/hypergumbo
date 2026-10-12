@@ -11,7 +11,11 @@ normalizes paths, dedups edges, and merges the dependency manifest — so it is
 not a pure facade. Each analyzer runs inside ``_run_costed`` on its pool
 worker, which reads the pass's own-thread CPU time there (WI-nuvam: wall time
 under the pool overlaps and inflates with contention, see ``pass_clock``) and
-hands the cost to ``collect_analyzer_result`` to stamp before serialization. It provides the stable import points used by cli.py and
+hands the cost to ``collect_analyzer_result`` to stamp before serialization.
+An analyzer that raises is recorded as a crashed pass and the run continues
+(§17 fail-open) -- except a ``CatalogueError``, a catalogue file that does not
+parse, which would fail identically on every run and is re-raised for the CLI
+to report with exit 2. It provides the stable import points used by cli.py and
 partial_install_warnings.py.
 
 Import points:
@@ -39,6 +43,7 @@ from ..pass_silence import (
 )
 from ..pass_clock import PassClock, PassCost
 from ..paths import normalize_path
+from ..yaml_catalogs import CatalogueError
 from .base import (
     populate_kind_stable_ids,
     synthesize_file_anchors_for_node_bearing_paths,
@@ -449,6 +454,14 @@ def run_all_analyzers(
             analyzer = futures[future]
             try:
                 result, cost = future.result()
+            except CatalogueError:
+                # NOT fail-open: a catalogue file that does not parse -- a
+                # user's library_signatures.d or dataflow_patterns.d file --
+                # would fail the same way for every run, and recording it as
+                # one crashed pass emitted a map with the whole language
+                # missing and exit 0. Re-raised so the CLI reports the file
+                # with exit 2, like a broken file read outside the pool.
+                raise
             except Exception as exc:
                 # §17 fail-open (WI-madal L3): a single analyzer raising must
                 # not abort the whole run. Record it pass-level and continue so

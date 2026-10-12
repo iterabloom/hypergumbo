@@ -30,7 +30,10 @@ Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
   FILE's ``provenance: community`` line wherever the file sits (ADR-0061,
   ``overlay_declares_community``), so a copy seeded into the user's
   io_primitives.d stays unvouched and its completeness grants are withheld
-  until the line is deleted.
+  until the line is deleted. An overlay that does not parse, repeats a key, is
+  not a mapping, or carries a boundary section or row of the wrong type is
+  refused as ``IoPrimitiveOverlayError`` (a ``CatalogueError``, exit 2) -- by
+  the load and by the provenance pre-read alike (``_read_overlay_yaml``).
 - **Mode discrimination.** A primitive can be rowed at more than one mode, so
   a write stops classifying as a read, and a single primitive can name more
   than one boundary at once.
@@ -166,6 +169,7 @@ from .io_boundary_types import (
     opacity_names,
 )
 from .ir import symbol_name_slot, symbol_path_slot
+from .yaml_catalogs import CatalogueError
 
 if TYPE_CHECKING:
     from .ir import Edge, ExternalRef
@@ -1571,12 +1575,21 @@ class IoBoundaryCatalog:
         # module level so verify_claims can validate against the same
         # vocabulary; see CATALOG_BOUNDARY_TYPES / KNOWN_IO_BOUNDARIES).
         for boundary in CATALOG_BOUNDARY_TYPES:
-            entries = data.get(boundary, [])
+            # A section or row of the wrong type is refused, not skipped: a
+            # skipped ``net_send: 5`` in an overlay read as "no net_send rows",
+            # a clean answer the file never gave.
+            entries = data.get(boundary) or []
             if not isinstance(entries, list):
-                continue
+                raise ValueError(
+                    f"{language}: '{boundary}:' must be a list of rows, got "
+                    f"{type(entries).__name__}."
+                )
             for entry in entries:
                 if not isinstance(entry, dict):
-                    continue
+                    raise ValueError(
+                        f"{language}: each '{boundary}:' row must be a "
+                        f"mapping, got {type(entry).__name__}."
+                    )
                 module = entry.get("module", "")
                 notes = entry.get("notes", "")
                 # INV-zumin. Row-level rather than catalogue-level so it sits
@@ -1901,7 +1914,7 @@ def is_language_supported(language: str) -> bool:
     return load_catalog(language).is_supported
 
 
-class DuplicateYamlKeyError(Exception):
+class DuplicateYamlKeyError(CatalogueError):
     """A catalogue or overlay YAML declared the same mapping key twice.
 
     INV-nular. PyYAML's mapping constructor takes the LAST occurrence of a
@@ -2035,7 +2048,7 @@ def _apply_abstention_targets(
     return primitives
 
 
-class IoPrimitiveOverlayError(Exception):
+class IoPrimitiveOverlayError(CatalogueError):
     """A project-local I/O primitive overlay could not be loaded.
 
     Its own exception type so callers can map it to the "inconclusive" exit
@@ -2043,6 +2056,26 @@ class IoPrimitiveOverlayError(Exception):
     degraded to "no extra primitives" would read exactly like a clean repo,
     which is the failure direction this project spends most of its gates on.
     """
+
+
+def _read_overlay_yaml(path: Path) -> Any:
+    """Parse an overlay FILE, refusing it as :class:`IoPrimitiveOverlayError`.
+
+    The one read every question about an overlay goes through -- the load, and
+    the provenance pre-read :func:`overlay_declares_community` makes BEFORE the
+    load (the ``--no-default-overlays`` split, the community notice). That
+    pre-read used to parse with no handler, so an unparseable overlay escaped
+    as a raw parser exception before the load that would have refused it ran.
+    A repeated key is refused here too, under the same type.
+    """
+    try:
+        return load_yaml_strict(
+            path.read_text(encoding="utf-8"), origin=str(path),
+        )
+    except (yaml.YAMLError, DuplicateYamlKeyError) as exc:
+        raise IoPrimitiveOverlayError(
+            f"I/O primitive overlay {path} is not valid YAML: {exc}",
+        ) from exc
 
 
 def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
@@ -2073,14 +2106,7 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
         raise IoPrimitiveOverlayError(
             f"I/O primitive overlay not found: {path}",
         )
-    try:
-        data = load_yaml_strict(
-            path.read_text(encoding="utf-8"), origin=str(path),
-        ) or {}
-    except yaml.YAMLError as exc:
-        raise IoPrimitiveOverlayError(
-            f"I/O primitive overlay {path} is not valid YAML: {exc}",
-        ) from exc
+    data = _read_overlay_yaml(path) or {}
     if not isinstance(data, dict):
         raise IoPrimitiveOverlayError(
             f"I/O primitive overlay {path} must be a mapping at the top level, "
@@ -2153,7 +2179,7 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
 _DEFAULT_OVERLAY_DIR = Path(__file__).parent / "io_primitives_overlays"
 
 
-class DefaultOverlayError(Exception):
+class DefaultOverlayError(CatalogueError):
     """A shipped default overlay violates the contract defaults must meet."""
 
 
@@ -2444,14 +2470,14 @@ def overlay_declares_community(path: Path) -> bool:
     The tier is read from the file's own line, so a community file copied
     anywhere -- a user's io_primitives.d, a path in config.toml, a command-line
     flag -- stays community until the line is deleted. The file has already
-    been loaded successfully by :func:`load_overlay_catalog` wherever this is
-    asked during a load, so a parse error here cannot be a new one.
+    been loaded by :func:`load_overlay_catalog` wherever this is asked during
+    a load, but it is also asked BEFORE one (the ``--no-default-overlays``
+    split, the community notice), so an unparseable file is refused here with
+    the load's own error rather than escaping as a parser exception.
     """
     from .yaml_catalogs import declares_community
 
-    return declares_community(load_yaml_strict(
-        path.read_text(encoding="utf-8"), origin=str(path),
-    ))
+    return declares_community(_read_overlay_yaml(path))
 
 
 def _is_known_overlay_language(language: str) -> bool:

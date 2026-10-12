@@ -136,6 +136,22 @@ class TestAnalyzerOrchestratorFailOpen:
         assert "analyzer boom" in crashed[0]["reason"]
         assert limits.partial_results_reason
 
+    def test_a_broken_catalogue_file_is_not_contained(self, tmp_path: Path) -> None:
+        """The exception to fail-open: a CatalogueError (a user's
+        library_signatures.d file that does not parse) would crash the pass
+        identically on every run, and containing it emitted a map with the
+        language missing at exit 0. It reaches the CLI, which exits 2."""
+        from hypergumbo_core.yaml_catalogs import CatalogueError
+
+        @register_analyzer("catalogue-an", priority=10,
+                           language_state="no_language")
+        def _broken(root, **kwargs):
+            raise CatalogueError("library signature file /x/go.yaml: bad")
+
+        _analyzer_registry_mod._discovered = True
+        with pytest.raises(CatalogueError, match=r"/x/go\.yaml"):
+            _all_analyzers.run_all_analyzers(tmp_path)
+
 
 class TestLinkerOrchestratorFailOpen:
     """linkers/registry.run_all_linkers — serial + parallel dispatch paths."""
