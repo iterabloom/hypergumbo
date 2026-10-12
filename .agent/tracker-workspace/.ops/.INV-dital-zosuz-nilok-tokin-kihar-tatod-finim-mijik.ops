@@ -21,3 +21,18 @@
     fields:  # 6e9f
       statement: "An Elixir @callback dispatches_to only implementations of the same name AND arity in the implementing module."  # 6e9f
       root_cause: "The WI-vitas callback -> implementation path in hypergumbo_lang_common/elixir.py matches by bare name; Elixir def symbols carry no arity the matcher reads (the shared-arity gap named in WI-tusad's 2026-10-12 owner scope). Reported by the WI-hidit fix agent, not yet independently reproduced."  # 6e9f
+- op: update  # a9ce
+  at: '2026-10-12T16:42:06Z'  # a9ce
+  by: agent  # a9ce
+  actor: jgstern_agent  # a9ce
+  clock: 2  # a9ce
+  nonce: a9ce  # a9ce
+  set:  # a9ce
+    status: satisfied  # a9ce
+- op: discuss  # d627
+  at: '2026-10-12T16:42:06Z'  # d627
+  by: agent  # d627
+  actor: jgstern_agent  # d627
+  clock: 3  # d627
+  nonce: d627  # d627
+  message: "Fixed in PR #1556 (merge 9f400e64fc), alongside WI-forof. Root cause confirmed: _behaviour_edges matched impls by name only. Fix: Elixir @callback symbols now carry meta['arity'] (the key Erlang -callback symbols use) and _behaviour_edges filters candidates with overload_arity.narrow_by_arity (shared helper; clause arity from meta['parameters'], unknown kept). Evidence: analyze_elixir on the item's repro (@callback f(term) in B; M: @behaviour B, def f(a) line 6, def f(a, b) line 7) on dev -> exactly one edge, dispatches_to B.f -> M.f at line 6. Test: test_elixir_protocols.py::TestBehaviourCallbackArity. Corpus: 10 false callback edges removed on phoenix (Phoenix.Socket.Transport.connect/1 -> UserSocket connect/2,3; those clauses keep their correct Phoenix.Socket.connect dispatch), 0 change on plausible/livebook/nex-framework."  # d627

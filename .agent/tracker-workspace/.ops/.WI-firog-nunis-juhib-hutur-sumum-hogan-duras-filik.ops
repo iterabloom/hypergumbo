@@ -1,0 +1,35 @@
+- op: create  # c31c
+  at: '2026-10-12T20:19:47Z'  # c31c
+  by: agent  # c31c
+  actor: jgstern_agent  # c31c
+  clock: 1  # c31c
+  nonce: c31c  # c31c
+  data:  # c31c
+    kind: work_item  # c31c
+    title: "Producer-axis ratchet: value_flow resolves x.kind against every record class with a kind field, ignoring x's annotated type (false positive)"  # c31c
+    status: todo_hard  # c31c
+    priority: 3  # c31c
+    parent:  # c31c
+    tags:  # c31c
+    - analysis_quality  # c31c
+    isbefore: []  # c31c
+    duplicate_of: []  # c31c
+    not_duplicate_of: []  # c31c
+    pr_ref:  # c31c
+    description: "FALSE POSITIVE in the producer-axis ratchet (scripts/check-producer-axis-coherence -> hypergumbo_core.producer_coherence.unregistered_symbol_kinds -> hypergumbo_core.value_flow). value_flow._attribute resolves an attribute read `x.kind` against EVERY module-local @dataclass/NamedTuple that declares a field named `kind`, whatever `x` is (the module docstring lists this as the documented unsoundness of \"typing the object of an attribute read\"). When a module holds two record classes with a same-named field, one class's construction values are attributed to reads of the other's.\n\nREPRO (dev c5561d4a93, elixir.py has two NamedTuples with a `kind` field: _FunctionKey(full_name, kind, arity) and _Directive(kind=\"use\"/\"behaviour\", ...)): in _function_symbol (elixir.py ~2581, `key: _FunctionKey` is the parameter) replace `kind = _def_kind(clauses[0][1])` with `kind = key.kind`, then run `scripts/check-producer-axis-coherence`. Observed: exit 1, \"Symbol.kind: 'behaviour' emitted at: .../elixir.py:2590\" and \"'use' emitted at: .../elixir.py:2590\" -- values only _Directive is ever constructed with. With the committed workaround (kind derived from the def keyword) the check exits 0. B2 of WI-tusad shipped that workaround.\n\nROOT CAUSE: no receiver typing at all, even when the receiver is a parameter the function annotates with one of the candidate record classes.\n\nFIX SHAPE: narrow the candidate classes to the one the receiver's own declaration names, when the receiver is a Name whose only binding in its scope is an annotated parameter (or an annotated assignment) whose annotation is a module-local record class (`key: _FunctionKey` or the string form). Otherwise keep today's union (sound default). Not a governance file: the logic lives in packages/hypergumbo-core/src/hypergumbo_core/value_flow.py; scripts/check-producer-axis-coherence is only the wrapper."  # c31c
+    fields: {}  # c31c
+- op: update  # 7eab
+  at: '2026-10-12T22:20:30Z'  # 7eab
+  by: agent  # 7eab
+  actor: jgstern_agent  # 7eab
+  clock: 2  # 7eab
+  nonce: 7eab  # 7eab
+  set:  # 7eab
+    status: done  # 7eab
+- op: discuss  # 196c
+  at: '2026-10-12T22:20:32Z'  # 196c
+  by: agent  # 196c
+  actor: jgstern_agent  # 196c
+  clock: 3  # 196c
+  nonce: 196c  # 196c
+  message: "Fixed in PR #1560 (merge 37c4ce609d). Root cause: value_flow._attribute resolved x.kind against every module-local record class with a kind field, whatever x was. Fix: the receiver's own declaration narrows it (annotated parameter/assignment, or a plain for-loop over a parameter annotated list[C]/Sequence[C]/...); a receiver declared as a class that is not one of the candidates (an imported Symbol) is unresolvable instead of the union. 16 test_value_flow cases. The second hop mattered: _FunctionKey is also constructed from sym.kind in a loop over file_symbols: list[Symbol], which the union typed as _Directive too. Evidence on dev 37c4ce609d: elixir.py:2579 now reads 'kind = key.kind' (B2 workaround removed); scripts/check-producer-axis-coherence -> exit 0, 'L3 producer-coherence ratchet OK (0 new leaks; 1 baselined value(s) pending drain)' (same as before the change). Before the fix the same edit gave exit 1 with 'use'/'behaviour' at elixir.py:2590."  # 196c
