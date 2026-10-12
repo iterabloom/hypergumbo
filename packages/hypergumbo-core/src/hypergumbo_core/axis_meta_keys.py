@@ -1355,6 +1355,16 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "low rank is a stated fact rather than an unexplained number. "
                 "Present only on a superseded edge; confidence is untouched "
                 "and the edge is never deleted."),
+    MetaKeySpec("external_owner_ancestors", AXIS_EDGE_META,
+                "WI-gabuv: on an unresolved ``calls`` edge whose owner is an "
+                "in-repo type that does not define the member (typed receiver, "
+                "module slot, or enclosing class of a bare/self call), the "
+                "names of that type's EXTERNAL ancestors, nearest first "
+                "(``[\"Ecto.Repo\"]`` for ``App.Repo.all`` under ``use "
+                "Ecto.Repo``). Stamped by finalize sub-step 7d "
+                "(``owner_ancestry``); read by the io-boundary and taint "
+                "catalogue matchers, which retry the lookup with each ancestor "
+                "as the module. Absent when nothing qualifies."),
     MetaKeySpec("superseded_by_origin", AXIS_EDGE_META,
                 "ADR-0057 §14: the origin (pass ids) of the superseding edge "
                 "named in ``superseded_by`` — which producer saw the site as "

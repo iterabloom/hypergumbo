@@ -236,7 +236,8 @@ end
 
     def test_use_implies_only_the_behaviour_its_using_sets(self, tmp_path: Path) -> None:
         """Verified against each library's ``__using__``: Plug.Builder sets
-        ``@behaviour Plug``; Agent, Task and Phoenix.Component set none."""
+        ``@behaviour Plug``; Ecto.Repo and HTTPoison.Base set themselves;
+        Agent, Task and Phoenix.Component set none."""
         _write(tmp_path, {"u.ex": """defmodule A do
   use GenServer
 end
@@ -258,6 +259,12 @@ defmodule E do
   use Supervisor
   use WebSockex
 end
+defmodule F do
+  use Ecto.Repo, otp_app: :app, adapter: Ecto.Adapters.Postgres
+end
+defmodule G do
+  use HTTPoison.Base
+end
 """})
         result = analyze_elixir(tmp_path)
         names = {s.id: s.name for s in result.symbols}
@@ -271,6 +278,8 @@ end
             ("E", ext("Phoenix.LiveView")),
             ("E", ext("Supervisor")),
             ("E", ext("WebSockex")),
+            ("F", ext("Ecto.Repo")),
+            ("G", ext("HTTPoison.Base")),
         ]
 
     def test_use_and_behaviour_of_the_same_module_give_one_edge(self, tmp_path: Path) -> None:

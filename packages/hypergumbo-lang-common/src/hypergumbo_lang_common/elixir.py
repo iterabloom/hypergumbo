@@ -214,6 +214,13 @@ USE_IMPLIED_BEHAVIOURS: dict[str, str] = {
     "Plug.Builder": "Plug",
     "Plug.Router": "Plug",
     "WebSockex": "WebSockex",
+    # ``use Ecto.Repo`` / ``use HTTPoison.Base``: each ``__using__`` quote opens
+    # with ``@behaviour <itself>`` (ecto lib/ecto/repo.ex, httpoison
+    # lib/httpoison/base.ex) and injects the library's functions into the using
+    # module, which is how ``App.Repo.all`` reaches the ``Ecto.Repo`` catalogue
+    # row (``hypergumbo_core.owner_ancestry``, WI-gabuv).
+    "Ecto.Repo": "Ecto.Repo",
+    "HTTPoison.Base": "HTTPoison.Base",
 }
 
 #: Module attributes that declare a behaviour's required member, and the

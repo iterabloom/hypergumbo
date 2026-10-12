@@ -23,7 +23,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Easier to vet before installing.** The README says in plain language what hypergumbo reads, writes, downloads and runs, and a new CI gate checks every file-write, process-launch and network call site in the source against a reviewed list.
 - **`build-grammars` works from a PyPI install**; in 8.1.0 it failed for all three source-built grammars.
 
-`SCHEMA_VERSION` advances 0.20.13 → 0.20.14 (additive: `metrics.edge_confidence`, `profile.languages[*].test_files`, `AnalysisRun.cpu_ms`, slice `limits_detail`, the pub/sub `*_identifier` meta keys, `supply_chain_summary.installed_deps_skipped` and `generated_output_skipped`), the `verify-claims --json` envelope 2.4 → 2.6, the `io-boundaries --json` envelope 2.3 → 2.4 (additive: `untraced_modules`, per-chain `dst_ecosystem`), and the validation report 0.3 → 0.4.
+`SCHEMA_VERSION` advances 0.20.13 → 0.20.14 (additive: `metrics.edge_confidence`, `profile.languages[*].test_files`, `AnalysisRun.cpu_ms`, slice `limits_detail`, the pub/sub `*_identifier` meta keys, the `external_owner_ancestors` edge meta key, `supply_chain_summary.installed_deps_skipped` and `generated_output_skipped`), the `verify-claims --json` envelope 2.4 → 2.6, the `io-boundaries --json` envelope 2.3 → 2.4 (additive: `untraced_modules`, per-chain `dst_ecosystem`), and the validation report 0.3 → 0.4.
 
 ### Added
 
@@ -119,6 +119,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Module matching is exact**: a row no longer claims a longer module ending in its name (koel: 41 false network sends), Go rows are keyed by import path, and C++ `<cstdio>`-style headers reach the C rows.
 - **Channels are named for what they are**: a process's own standard output is `logging` in every catalogue, Kotlin/Scala `System.out` included, and a Go Unix-domain socket is IPC.
 - **More calls reach their row** (from-imported modules, typed receivers, fully-qualified Scala and Rust, PHP grouped `use`), and `io-boundaries` lists calls into unclassified libraries again.
+- **A call on an application type that inherits a library type reaches the library's row** when the type does not define the member itself: a `use Ecto.Repo` module's `Repo.all`, a `requests.Session` subclass's `self.get`, a Java `FileInputStream` subclass's `read()` (plausible: 434 Repo calls move from `external_potential` to `db_read`/`db_write`).
 - **Row corrections**: added C `open`/`creat`, Go file-handle writes, Swift and Objective-C launches, `defusedcsv` and Django storage; removed calls that cross nothing (process exits, logging configuration, in-process notifications, Erlang table info, data-less Node events); moved directory reads to `host_info_read`, `exec.LookPath` to `fs_read`, Elixir message sends to `process_send`, and `Oban.insert*` and `sqlite3` backup to `db_write`.
 
 #### Identity and output

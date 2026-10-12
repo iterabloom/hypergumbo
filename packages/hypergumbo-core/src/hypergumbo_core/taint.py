@@ -1394,10 +1394,24 @@ def _match_propagation_entry(
     # in-repo symbol, so it takes no row by short name -- the io consumer's
     # rule, asked through the one predicate both consumers share (INV-foda).
     from .io_boundary import short_name_fallback_withheld
+    from .owner_ancestry import ancestor_retry_hints
+    module_hint = _extract_callee_module(edge_dst)
+    callee_language = _extract_callee_language(edge_dst)
+    # WI-gabuv: a call on an in-repo type that does not define the member tries
+    # the owner's own row, then the type's external ancestors, before the
+    # short-name arm -- the io consumer's order, from the one shared helper.
+    for hint in ancestor_retry_hints(module_hint, edge_meta):
+        inherited = _lookup_named_entry(
+            hits, callee_name, hint, ambiguous_names,
+            call_construct=call_construct, language=callee_language,
+            allow_short_name_fallback=False,
+        )
+        if inherited is not None:
+            return inherited
     return _lookup_named_entry(
-        hits, callee_name, _extract_callee_module(edge_dst), ambiguous_names,
+        hits, callee_name, module_hint, ambiguous_names,
         call_construct=call_construct,
-        language=_extract_callee_language(edge_dst),
+        language=callee_language,
         allow_short_name_fallback=not short_name_fallback_withheld(
             edge_dst, edge_meta,
         ),

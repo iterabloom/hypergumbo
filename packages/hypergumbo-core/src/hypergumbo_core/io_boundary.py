@@ -112,7 +112,10 @@ How It Works
    module-hint filtering, FFI redirection, ``io_mode`` discrimination
    (across every collapsed call site — INV-vukiv), ``io_target_kind``
    discrimination from the call site's own stamp (so a write whose target
-   is a pipe rather than a file selects the right row or none), a retry with
+   is a pipe rather than a file selects the right row or none), the call
+   owner's external ancestors when finalize stamped them (a call on an in-repo
+   type that does not define the member reaches its library parent's row:
+   ``App.Repo.all`` -> ``Ecto.Repo``; ``owner_ancestry``), a retry with
    the module qualifier stripped when the name slot re-states it, and a
    short-name fallback that :func:`short_name_fallback_withheld` withholds
    when the destination is a first-party callable or the unresolved stub was
@@ -169,6 +172,7 @@ from .io_boundary_types import (
     opacity_names,
 )
 from .ir import symbol_name_slot, symbol_path_slot
+from .owner_ancestry import ancestor_retry_hints
 from .yaml_catalogs import CatalogueError
 
 if TYPE_CHECKING:
@@ -5629,17 +5633,29 @@ def classify_call_in_catalog(
     if catalog is None:
         return None, None
     edge_meta = meta or {}
+    fallback_allowed = not short_name_fallback_withheld(dst, edge_meta)
 
-    def _lookup(name: str) -> Optional[IoPrimitive]:
+    def _lookup(
+        name: str, hint: Optional[str] = adjusted_hint, *, fallback: bool = fallback_allowed,
+    ) -> Optional[IoPrimitive]:
         return catalog.lookup_with_module(
-            name, adjusted_hint,
+            name, hint,
             call_construct=edge_meta.get("call_construct"),
             io_modes=call_site_modes(edge_meta),
             io_target_kinds=call_site_target_kinds(edge_meta),
-            allow_short_name_fallback=not short_name_fallback_withheld(
-                dst, edge_meta,
-            ),
+            allow_short_name_fallback=fallback,
         )
+
+    # WI-gabuv: the call is on an in-repo type that does not define the member,
+    # and finalize named the type's external ancestors (``owner_ancestry``,
+    # whose docstring carries the precedence rules). A row keyed on the owner AS
+    # WRITTEN is tried first, then each ancestor nearest-first, all without the
+    # bare-short-name fallback -- which only then gets its usual turn below. An
+    # edge with no stamp takes exactly the path it took before.
+    for hint in ancestor_retry_hints(adjusted_hint, edge_meta) if callee else ():
+        hit = _lookup(callee, hint, fallback=False)
+        if hit is not None:
+            return hit, catalog
 
     hit = _lookup(callee) if callee else None
     if hit is not None:
