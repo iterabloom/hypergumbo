@@ -107,6 +107,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **TypeScript, Dart and Kotlin interface inheritance emit edges**, and C++/C# dispatch through abstract bases (grpc: +1,905 `dispatches_to`).
 - **JS/TS `module_exports` edges reach only exported names** (koel: 2,084 → 94). Module links resolve tsconfig `paths` whatever the working directory, JS-family linkers label TypeScript `typescript`, and HTML `<script src>` edges land on the in-repo file.
 - **Pub/sub linkers store an unresolved identifier under `topic_identifier`/`channel_identifier`/`event_identifier`**, not as the topic.
+- **Elixir modules written as `use AppWeb, :live_view` / `:live_component` implement `Phoenix.LiveView` / `Phoenix.LiveComponent` and have `mount`, `render` and `handle_event` rooted**: the generated web module's `apply(__MODULE__, which, [])` dispatcher is followed into its `def live_view` quote (livebook: 0 → 80 `implements` edges). A `use` inside a quote no longer roots the defining module's own functions, and a callback is no longer matched to a same-named function of another module in the file.
 
 #### Reaching the I/O catalogue
 

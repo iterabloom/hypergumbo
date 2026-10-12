@@ -540,6 +540,28 @@ end
         ) == ["MyPlug.call", "MyPlug.init"]
 
 
+class TestFrameworkTableScope:
+    """The framework table roots only the directive's OWN module's functions."""
+
+    def test_a_sibling_modules_same_named_function_is_not_rooted(
+        self, tmp_path: Path,
+    ) -> None:
+        """Two modules in one file: ``use GenServer`` in ``A`` roots nothing
+        of ``B``, whose ``init`` merely shares the callback's name."""
+        _write(tmp_path, {"two.ex": """defmodule A do
+  use GenServer
+end
+defmodule B do
+  def init(x), do: x
+end
+"""})
+        result = analyze_elixir(tmp_path)
+        assert [
+            e for e in _edges(result, "dispatches_to")
+            if (e.meta or {}).get("mechanism") == "callback"
+        ] == []
+
+
 class TestPipeline:
     """End to end: the emitted behavior map carries the parity shape."""
 
@@ -568,4 +590,224 @@ class TestPipeline:
         assert got == [
             ("dispatches_to", ("Shape.area", "function"), ("Square.area", "function")),
             ("implements", ("Square", "module"), ("Shape", "module")),
+        ]
+
+
+class TestWebModuleDispatcher:
+    """``use AppWeb, :live_view`` adopts what ``AppWeb.live_view``'s quote does.
+
+    The Phoenix generator's web module dispatches ``use AppWeb, :which`` to
+    ``apply(__MODULE__, which, [])``: the quote that runs in the user lives in
+    a public ``def which``, not in ``__using__``. That template is read like a
+    ``__using__`` one (behaviours, and every ``use`` followed), and it feeds
+    BOTH the ``implements`` edges and the framework callback table, so a
+    LiveView's ``mount`` / ``render`` / ``handle_event`` are rooted.
+    """
+
+    _WEB = """defmodule MyAppWeb do
+  alias MyAppWeb.Flash
+
+  def live_view(opts \\\\ []) do
+    quote do
+      use Phoenix.LiveView, layout: {MyAppWeb.Layouts, :app}
+      use Flash
+    end
+  end
+
+  def live_component do
+    quote do
+      use Phoenix.LiveComponent
+    end
+  end
+
+  defp helpers do
+    quote do
+      use Phoenix.LiveView
+    end
+  end
+
+  defmacro __using__(which) when is_atom(which) do
+    apply(__MODULE__, which, [])
+  end
+
+  defmacro __using__([{which, opts}]) when is_atom(which) do
+    apply(__MODULE__, which, [List.wrap(opts)])
+  end
+
+  def mount(_p, _s, socket), do: {:ok, socket}
+  def update(a, s), do: {a, s}
+end
+defmodule MyAppWeb.Flash do
+  @callback flash() :: :ok
+  defmacro __using__(_) do
+    quote do
+      @behaviour MyAppWeb.Flash
+    end
+  end
+end
+"""
+
+    _USERS = """defmodule MyAppWeb.SitesLive do
+  use MyAppWeb, :live_view
+  def mount(_p, _s, socket), do: {:ok, socket}
+  def render(assigns), do: assigns
+  def handle_event(_e, _p, s), do: {:noreply, s}
+  def flash, do: :ok
+end
+defmodule MyAppWeb.Modal do
+  use MyAppWeb, :live_component
+  def update(_a, s), do: {:ok, s}
+  def render(assigns), do: assigns
+end
+defmodule MyAppWeb.WithOpts do
+  use MyAppWeb, live_view: [:no_sentry]
+  def mount(_p, _s, socket), do: {:ok, socket}
+end
+defmodule MyAppWeb.Private do
+  use MyAppWeb, :helpers
+  def mount(_p, _s, socket), do: {:ok, socket}
+end
+defmodule MyAppWeb.Dynamic do
+  use MyAppWeb, kind
+  def mount(_p, _s, socket), do: {:ok, socket}
+end
+"""
+
+    def _implements(self, result) -> list[tuple[str, str]]:
+        names = {s.id: s.name for s in result.symbols}
+        return sorted(
+            (names[e.src], names.get(e.dst, e.dst))
+            for e in _edges(result, "implements")
+        )
+
+    def _rooted(self, result) -> list[tuple[str, str]]:
+        """Framework-table edges: module -> its callback functions."""
+        sym = {s.id: s for s in result.symbols}
+        return sorted(
+            (sym[e.src].name, sym[e.dst].name)
+            for e in _edges(result, "dispatches_to")
+            if e.src in sym and e.dst in sym and sym[e.src].kind == "module"
+        )
+
+    def test_dispatched_template_declares_its_behaviours(self, tmp_path: Path) -> None:
+        """``:live_view`` / ``:live_component`` / ``live_view: opts`` each adopt
+        their def's quote, followed through its nested in-repo ``use``; a
+        ``defp`` is never ``apply``-able, and a non-literal name names no
+        function: both declare nothing."""
+        _write(tmp_path, {"web.ex": self._WEB, "users.ex": self._USERS})
+        result = analyze_elixir(tmp_path)
+        assert self._implements(result) == [
+            ("MyAppWeb.Modal", "elixir:external:0-0:Phoenix.LiveComponent:unresolved"),
+            ("MyAppWeb.SitesLive", "MyAppWeb.Flash"),
+            ("MyAppWeb.SitesLive", "elixir:external:0-0:Phoenix.LiveView:unresolved"),
+            ("MyAppWeb.WithOpts", "MyAppWeb.Flash"),
+            ("MyAppWeb.WithOpts", "elixir:external:0-0:Phoenix.LiveView:unresolved"),
+        ]
+        sym = {s.id: s.name for s in result.symbols}
+        assert ("MyAppWeb.Flash.flash", "MyAppWeb.SitesLive.flash") in [
+            (sym.get(e.src), sym.get(e.dst)) for e in _edges(result, "dispatches_to")
+        ]
+
+    def test_dispatched_template_roots_the_framework_callbacks(
+        self, tmp_path: Path,
+    ) -> None:
+        """The callback table fires for the USER, and never for the web
+        module, whose own ``mount`` / ``update`` are not callbacks of the
+        ``use Phoenix.LiveView`` written inside its quote."""
+        _write(tmp_path, {"web.ex": self._WEB, "users.ex": self._USERS})
+        result = analyze_elixir(tmp_path)
+        assert self._rooted(result) == [
+            ("MyAppWeb.Modal", "MyAppWeb.Modal.render"),
+            ("MyAppWeb.Modal", "MyAppWeb.Modal.update"),
+            ("MyAppWeb.SitesLive", "MyAppWeb.SitesLive.handle_event"),
+            ("MyAppWeb.SitesLive", "MyAppWeb.SitesLive.mount"),
+            ("MyAppWeb.SitesLive", "MyAppWeb.SitesLive.render"),
+            ("MyAppWeb.WithOpts", "MyAppWeb.WithOpts.mount"),
+        ]
+
+    def test_only_an_apply_dispatcher_exposes_its_defs(self, tmp_path: Path) -> None:
+        """A module whose ``__using__`` is an ordinary template, or applies
+        some OTHER module, or applies a name that is not its parameter, is no
+        dispatcher: ``use M, :live_view`` there reads only ``__using__``."""
+        _write(tmp_path, {"m.ex": """defmodule Plain do
+  def live_view do
+    quote do
+      use Phoenix.LiveView
+    end
+  end
+  defmacro __using__(_opts) do
+    quote do
+      import Plain
+    end
+  end
+end
+defmodule Elsewhere do
+  def live_view do
+    quote do
+      use Phoenix.LiveView
+    end
+  end
+  defmacro __using__(which), do: apply(Other, which, [])
+end
+defmodule Fixed do
+  def live_view do
+    quote do
+      use Phoenix.LiveView
+    end
+  end
+  defmacro __using__(which), do: apply(__MODULE__, :live_view, [which])
+end
+defmodule Unrelated do
+  def live_view do
+    quote do
+      use Phoenix.LiveView
+    end
+  end
+  defmacro __using__(which), do: apply(__MODULE__, other, [which])
+end
+defmodule A do
+  use Plain, :live_view
+  def mount(_p, _s, socket), do: {:ok, socket}
+end
+defmodule B do
+  use Elsewhere, :live_view
+  def mount(_p, _s, socket), do: {:ok, socket}
+end
+defmodule C do
+  use Fixed, :live_view
+  def mount(_p, _s, socket), do: {:ok, socket}
+end
+defmodule D do
+  use Unrelated, :live_view
+  def mount(_p, _s, socket), do: {:ok, socket}
+end
+"""})
+        result = analyze_elixir(tmp_path)
+        assert self._implements(result) == []
+        assert self._rooted(result) == []
+
+    def test_a_using_template_roots_the_user_not_its_definer(
+        self, tmp_path: Path,
+    ) -> None:
+        """The second half: ``use GenServer`` inside a ``__using__`` quote
+        roots the callbacks of the module that runs ``use``, not those of the
+        module that writes the template."""
+        _write(tmp_path, {"c.ex": """defmodule MyApp.Base do
+  defmacro __using__(_) do
+    quote do
+      use GenServer
+    end
+  end
+  def init(x), do: x
+end
+defmodule MyApp.Worker do
+  use MyApp.Base
+  def init(x), do: {:ok, x}
+  def handle_call(_m, _f, s), do: {:reply, s, s}
+end
+"""})
+        result = analyze_elixir(tmp_path)
+        assert self._rooted(result) == [
+            ("MyApp.Worker", "MyApp.Worker.handle_call"),
+            ("MyApp.Worker", "MyApp.Worker.init"),
         ]
