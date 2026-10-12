@@ -221,6 +221,7 @@ import hypergumbo_core.linkers.message_queue as _message_queue_linker  # noqa: F
 import hypergumbo_core.linkers.napi as _napi_linker  # noqa: F401
 import hypergumbo_core.linkers.openapi as _openapi_linker  # noqa: F401
 import hypergumbo_core.linkers.otp as _otp_linker  # noqa: F401
+import hypergumbo_core.linkers.beam_behaviour as _beam_behaviour_linker  # noqa: F401
 import hypergumbo_core.linkers.phoenix_ipc as _phoenix_ipc_linker  # noqa: F401
 import hypergumbo_core.linkers.route_handler as _route_handler_linker  # noqa: F401
 import hypergumbo_core.linkers.subprocess_cli as _subprocess_linker  # noqa: F401

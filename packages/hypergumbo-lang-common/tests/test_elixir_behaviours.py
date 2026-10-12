@@ -820,3 +820,111 @@ end
             ("MyApp.Worker", "MyApp.Worker.handle_call"),
             ("MyApp.Worker", "MyApp.Worker.init"),
         ]
+
+
+class TestAtomBehaviour:
+    """WI-hidit: ``@behaviour :gen_cycle`` names an ERLANG module by its atom.
+
+    It used to be read not at all -- only an ``alias`` argument was a
+    directive -- so plausible's two ``:gen_cycle`` workers and its
+    ``:otel_sampler``, and livebook's ``:gen_statem`` connection, implemented
+    nothing. The atom is the module's full name (no alias expansion applies)
+    and is spelled without the colon, as the atom call form spells it.
+    Resolving it to an in-repo Erlang module is the BEAM behaviour bridge
+    linker's job; this analyzer cannot see Erlang symbols.
+    """
+
+    _WORKER = """defmodule Plausible.Cache.Warmer do
+  @behaviour :gen_cycle
+  def init_cycle(opts), do: {:ok, opts}
+end
+"""
+
+    def _implements(self, result) -> list[str]:
+        return [e.dst for e in _edges(result, "implements")]
+
+    def test_atom_behaviour_is_an_unresolved_target(self, tmp_path: Path) -> None:
+        _write(tmp_path, {"w.ex": self._WORKER})
+        result = analyze_elixir(tmp_path)
+        implements = _edges(result, "implements")
+        assert self._implements(result) == ["elixir:external:0-0:gen_cycle:unresolved"]
+        assert implements[0].is_resolved is False
+        assert implements[0].src == _by_name(result, "Plausible.Cache.Warmer").id
+        assert implements[0].line == 2
+
+    def test_otp_atom_behaviour_roots_its_callbacks(self, tmp_path: Path) -> None:
+        """``@behaviour :gen_statem`` roots OTP's callbacks, as Erlang does."""
+        _write(tmp_path, {"c.ex": """defmodule Livebook.Teams.Connection do
+  @behaviour :gen_statem
+  def callback_mode, do: :handle_event_function
+  def init(arg), do: {:ok, :idle, arg}
+  def other, do: :ok
+end
+"""})
+        result = analyze_elixir(tmp_path)
+        module = _by_name(result, "Livebook.Teams.Connection")
+        by_id = {s.id: s for s in result.symbols}
+        rooted = sorted(
+            by_id[e.dst].name for e in _edges(result, "dispatches_to")
+            if e.src == module.id
+        )
+        assert rooted == [
+            "Livebook.Teams.Connection.callback_mode",
+            "Livebook.Teams.Connection.init",
+        ]
+        assert self._implements(result) == ["elixir:external:0-0:gen_statem:unresolved"]
+
+    def test_atom_behaviour_in_a_using_template_is_adopted(self, tmp_path: Path) -> None:
+        _write(tmp_path, {"t.ex": """defmodule Tmpl do
+  defmacro __using__(_) do
+    quote do
+      @behaviour :gen_cycle
+    end
+  end
+end
+defmodule User do
+  use Tmpl
+end
+"""})
+        result = analyze_elixir(tmp_path)
+        user = _by_name(result, "User")
+        assert [(e.src, e.dst) for e in _edges(result, "implements")] == [
+            (user.id, "elixir:external:0-0:gen_cycle:unresolved"),
+        ]
+
+    def test_quoted_atom_and_use_of_an_atom_are_not_read(self, tmp_path: Path) -> None:
+        """``:"Elixir.Foo"`` is not an Erlang module name, and ``use :mod``
+        needs a ``__using__`` macro, which an Erlang module cannot define."""
+        _write(tmp_path, {"q.ex": """defmodule Q do
+  @behaviour :"Elixir.Foo"
+  use :gen_cycle
+end
+"""})
+        result = analyze_elixir(tmp_path)
+        assert _edges(result, "implements") == []
+
+
+class TestCallbackStableId:
+    """WI-hidit analogue: a callback beside a same-named ``def`` in its own
+    module shared the backstop floor key with it, and both stable_ids were
+    nulled. The callback's id is now minted by the analyzer."""
+
+    def test_callback_and_same_named_def_both_keep_an_identity(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_core.analyze.base import populate_kind_stable_ids
+
+        _write(tmp_path, {"s.ex": """defmodule Shape do
+  @callback area() :: integer
+  @callback area(t) :: integer
+  def area, do: 0
+end
+"""})
+        result = analyze_elixir(tmp_path)
+        symbols = list(result.symbols)
+        populate_kind_stable_ids(symbols)
+        areas = [s for s in symbols if s.name == "Shape.area"]
+        assert len(areas) == 3
+        ids = [s.stable_id for s in areas]
+        assert None not in ids
+        assert len(set(ids)) == 3

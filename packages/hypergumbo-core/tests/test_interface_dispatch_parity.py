@@ -21,7 +21,7 @@ method exist in the behavior map?" — which is the thing a consumer sees.
 
 Why one shared run
 ------------------
-Sixteen full-pipeline invocations is ~30s; one polyglot run is ~2s and the
+Seventeen full-pipeline invocations is ~30s; one polyglot run is ~2s and the
 per-language assertions stay independently xfail-able. The corpus is
 generated into ``tmp_path_factory`` rather than committed under
 ``tests/fixtures/`` for two measured reasons: the pipeline's own test-path
@@ -99,6 +99,16 @@ CASES: dict[str, tuple[str, str]] = {
     "elixir": ("s.ex",
                "defmodule Shape do\n  @callback area() :: integer\nend\n\n"
                "defmodule Square do\n  @behaviour Shape\n  def area, do: 1\nend\n"),
+    "erlang": ("shape.erl", "-module(shape).\n-callback area() -> integer().\n"),
+}
+
+# Languages whose fixture needs a second file, keyed like CASES. Erlang
+# declares ONE module per file (``-module`` names the file's module), so its
+# behaviour and its implementor cannot share one.
+EXTRA_FILES: dict[str, tuple[str, str]] = {
+    "erlang": ("square.erl",
+               "-module(square).\n-behaviour(shape).\n-export([area/0]).\n"
+               "area() -> 1.\n"),
 }
 
 # Measured 2026-07-31, one cause per entry. Each is a strict xfail: fixing a
@@ -141,7 +151,7 @@ def polyglot_map(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     make several cells vacuously green.
     """
     root = tmp_path_factory.mktemp("iface-dispatch")
-    for filename, source in CASES.values():
+    for filename, source in [*CASES.values(), *EXTRA_FILES.values()]:
         (root / filename).write_text(source)
     out = root / "bm.json"
     run_behavior_map(
@@ -240,6 +250,10 @@ def test_scope_is_declared_and_disjoint() -> None:
     naming a language the corpus no longer covers (a hole for nothing), and a
     language appearing in both the gated and not-applicable maps.
     """
+    assert set(EXTRA_FILES) <= set(CASES), (
+        f"EXTRA_FILES names languages absent from the corpus: "
+        f"{sorted(set(EXTRA_FILES) - set(CASES))}"
+    )
     assert set(KNOWN_HOLES) <= set(CASES), (
         f"KNOWN_HOLES names languages absent from the corpus: "
         f"{sorted(set(KNOWN_HOLES) - set(CASES))}"

@@ -21,6 +21,7 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | airflow_framework_dispatch | Framework | Airflow class-based plugin dispatch: subclasses of `BaseOperator` / `BaseHook` / `BaseSensor` / `BaseTrigger` → their framework-called lifecycle methods (`execute`, `poke`, `run`, `on_kill`, …) via `dispatches_to` edges. |
 | annotation_convention | Protocol | Developer-provided comment directives (`@hg:dispatches`, `@hg:publishes`, `@hg:subscribes`) for cases where pattern-matching alone cannot recover the edge. |
 | argparse_dispatch | Framework | Python `argparse` subcommand dispatch: `set_defaults(func=...)` registrations → the handler function the parser dispatches to. |
+| beam_behaviour | Bridge | Elixir `@behaviour :erlang_module` (an atom-named behaviour) ↔ the in-repo Erlang module: `implements`, and each Erlang `-callback` `dispatches_to` the Elixir function admitting its arity. |
 | build_target | Infrastructure | Build manifest files (`Dockerfile`, `Makefile`, entry scripts) → `main()` function or equivalent entry point. |
 | caddy_module_dispatch | Framework | Caddy module structs (identified by the `CaddyModule()` marker method) → their framework-called handler methods via `dispatches_to` edges. |
 | cgo | Bridge | Go `C.funcName()` calls via `import "C"` pseudo-package ↔ C/C++ function implementations. |
@@ -81,7 +82,7 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | websocket | Protocol | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket — senders ↔ receivers by event name. |
 | yjs_crdt | Framework | Yjs shared-type reactive data flow — writers → observers via `crdt_publishes` edges. |
 
-**Count:** 62 linkers — Protocol 11, Bridge 10, Framework 32, Infrastructure 9. One row is keyed by module rather than linker name: `_third_party_bases` registers `django-third-party-dispatch-linker`.
+**Count:** 63 linkers — Protocol 11, Bridge 11, Framework 32, Infrastructure 9. One row is keyed by module rather than linker name: `_third_party_bases` registers `django-third-party-dispatch-linker`.
 
 Subcategory assignments above are the initial baseline per ADR-3bbb Appendix B; borderline cases (e.g., `grpc` is framework-specific in protocol but cross-language in use) are documented in that ADR's appendix and will be refined as the subcategory vocabulary matures.
 

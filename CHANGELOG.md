@@ -58,6 +58,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Scala types receivers bound by inference** (sbt: typed external method calls 19.7% → 24.6%).
 - **Elixir behaviours are modelled**: `@callback`, `implements` and callback dispatch.
+- **Erlang behaviours are modelled the same way**: `-callback` symbols, `implements` and callback dispatch by name/arity, and an Elixir `@behaviour :erlang_module` is read and reaches the in-repo Erlang behaviour (ejabberd: 0 → 242 `implements` edges).
 - **Java records are analysed** (trino: +4,480 `instantiates` edges); implicit accessors are not emitted yet.
 - **Fifteen C headers with no I/O surface** (`stdint`, `ctype`, `math`, ...) are declared complete.
 

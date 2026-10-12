@@ -87,7 +87,13 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
     quote of ``AppWeb``'s public ``def live_view`` the same way (WI-nunar).
     What a ``use`` adopts feeds both this relationship and the framework
     callback table above, so a LiveView written as ``use AppWeb,
-    :live_view`` has its ``mount`` / ``render`` rooted.
+    :live_view`` has its ``mount`` / ``render`` rooted. ``@behaviour
+    :gen_cycle`` names an ERLANG module by its atom (WI-hidit): X is the atom
+    without its colon, never alias-expanded, its target is always the
+    unresolved one (this analyzer sees no Erlang symbols; the core BEAM
+    behaviour bridge linker resolves it to an in-repo Erlang module), and an
+    OTP X roots its callbacks from the Erlang analyzer's
+    ``OTP_BEHAVIOUR_CALLBACKS`` (``@behaviour :gen_statem``).
   * each callback ``dispatches_to`` every clause of the same-named, same-kind
     public function in each implementing module (evidence ``behaviour_callback``), the
     abstract-member -> implementation shape ``linkers/type_hierarchy`` builds
@@ -167,6 +173,13 @@ from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, arity_bounds, parameter_entry,
 )
+from hypergumbo_core.behaviours import (
+    CALLBACK_MODIFIER,
+    behaviour_implements_edge,
+    callback_dispatch_edge,
+    callback_stable_id,
+)
+from hypergumbo_lang_common.erlang import OTP_BEHAVIOUR_CALLBACKS
 
 # Phoenix HTTP method macros for route detection
 PHOENIX_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
@@ -231,8 +244,10 @@ _CALLBACK_ATTRIBUTES: dict[str, str] = {
 }
 
 #: The modifier that marks a callback declaration -- the marking cpp and
-#: kotlin give an abstract member. Nothing else in this analyzer emits it.
-_CALLBACK_MODIFIER = "abstract"
+#: kotlin give an abstract member, shared with the Erlang analyzer's
+#: ``-callback`` (``hypergumbo_core.behaviours``). Nothing else in this
+#: analyzer emits it.
+_CALLBACK_MODIFIER = CALLBACK_MODIFIER
 
 #: ``global_symbols`` key of the callback index: behaviour module name ->
 #: its callback symbols. Mirrors ``__multi__``; callbacks live here INSTEAD of
@@ -651,8 +666,8 @@ def _inside_typespec(node: "tree_sitter.Node", source: bytes) -> bool:
 
 def _callback_head(
     attribute_call: "tree_sitter.Node", source: bytes,
-) -> Optional[tuple[str, str]]:
-    """``(name, signature)`` of a ``@callback`` declaration, or None.
+) -> Optional[tuple[str, str, int]]:
+    """``(name, signature, arity)`` of a ``@callback`` declaration, or None.
 
     The attribute's argument is the typespec ``head :: return``, optionally
     wrapped as ``head :: return when t: term``. Both wrappers are a
@@ -663,7 +678,8 @@ def _callback_head(
 
     The signature is the declaration surface after the name, verbatim
     (ADR-0058): the parameter list (``()`` when the source wrote none) and
-    the rest of the spec -- ``() :: integer``.
+    the rest of the spec -- ``() :: integer``. The arity is the head's
+    parameter count, which the callback's stable_id hashes (WI-hidit).
     """
     args = find_child_by_type(attribute_call, "arguments")
     if args is None or not args.named_children:
@@ -672,6 +688,7 @@ def _callback_head(
     head = spec
     while head.type == "binary_operator" and head.children:
         head = head.children[0]
+    arity = 0
     if head.type == "identifier":
         name, params = node_text(head, source), "()"
     elif head.type == "call":
@@ -681,10 +698,12 @@ def _callback_head(
         name = node_text(name_node, source)
         params_node = find_child_by_type(head, "arguments")
         params = node_text(params_node, source) if params_node is not None else "()"
+        if params_node is not None:
+            arity = sum(1 for c in params_node.named_children if c.type != "comment")
     else:
         return None
     rest = source[head.end_byte:spec.end_byte].decode("utf-8", errors="replace")
-    return name, f"{params} {rest.strip()}".strip()
+    return name, f"{params} {rest.strip()}".strip(), arity
 
 
 def _callback_symbol(
@@ -695,6 +714,9 @@ def _callback_symbol(
     Owned by the enclosing module. Not emitted inside ``quote`` (a template
     for the module that runs ``use``, INV-sinah) or where the nearest module
     is atom-named or absent (no reliable owner) -- the ``defstruct`` rules.
+    Its stable_id is minted here (``callback_stable_id``): the backstop floor
+    would collide with a same-named ``def`` in the behaviour module itself and
+    null both (WI-hidit).
     """
     attribute = _module_attribute_call(node, source)
     if attribute is None or attribute[0] not in _CALLBACK_ATTRIBUTES:
@@ -705,13 +727,14 @@ def _callback_symbol(
     head = _callback_head(attribute[1], source)
     if head is None:
         return None
-    name, signature = head
+    name, signature, arity = head
     kind = _CALLBACK_ATTRIBUTES[attribute[0]]
     full_name = f"{'.'.join(_get_enclosing_modules(node, source))}.{name}"
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
     return Symbol(
         id=make_symbol_id("elixir", file_path, start_line, end_line, full_name, kind),
+        stable_id=callback_stable_id("elixir", file_path, full_name, arity, kind),
         name=full_name,
         kind=kind,
         language="elixir",
@@ -1558,6 +1581,16 @@ class _Directive(NamedTuple):
     #: ``@behaviour`` and for a ``use`` with no atom / keyword second argument.
     which: Optional[str]
     node: "tree_sitter.Node"
+    #: ``@behaviour :gen_cycle`` (WI-hidit): ``module`` is an Erlang module's
+    #: atom, colon stripped -- its full name, so no alias expands it.
+    atom: bool = False
+
+
+def _directive_module(directive: _Directive, alias_hints: dict[str, str]) -> str:
+    """The module a directive names: alias-expanded, unless it is an atom."""
+    if directive.atom:
+        return directive.module
+    return _expand_alias(directive.module, alias_hints)
 
 
 def _use_dispatch_name(args: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -1591,8 +1624,12 @@ def _behaviour_directives(
     behaviour type relationship and the ``__using__`` index all read it, so
     they cannot disagree about what a file declared. The module is an alias,
     or -- for ``@behaviour`` only -- ``unquote(__MODULE__)``, recorded as
-    ``_UNQUOTED_MODULE`` and meaningful only inside a ``quote``. Any other
-    argument (``@behaviour :gen_cycle``, an Erlang module) is not read.
+    ``_UNQUOTED_MODULE`` and meaningful only inside a ``quote``, or an atom
+    naming an Erlang module (``@behaviour :gen_cycle``, WI-hidit), recorded
+    without its colon and flagged ``atom``. Not read: a quoted atom
+    (``:"Elixir.Foo"`` is an alias spelled the hard way, never an Erlang
+    module), and ``use :mod`` -- ``use`` calls the module's ``__using__``
+    MACRO, which an Erlang module cannot define (0 sites on the local corpus).
     """
     directives: list[_Directive] = []
     for node in iter_tree(tree.root_node):
@@ -1619,6 +1656,14 @@ def _behaviour_directives(
                 directives.append(_Directive(
                     "behaviour", _UNQUOTED_MODULE, None, node,
                 ))
+            else:
+                args = find_child_by_type(attribute[1], "arguments")
+                atom = find_child_by_type(args, "atom") if args is not None else None
+                if atom is not None:
+                    directives.append(_Directive(
+                        "behaviour", node_text(atom, source).lstrip(":"),
+                        None, node, atom=True,
+                    ))
     return directives
 
 
@@ -1760,7 +1805,7 @@ def _extract_using_index(
         if directive.module == _UNQUOTED_MODULE:
             behaviours.append(key[0])
         elif directive.kind == "behaviour":
-            behaviours.append(_expand_alias(directive.module, alias_hints))
+            behaviours.append(_directive_module(directive, alias_hints))
         else:
             used.append(
                 (_expand_alias(directive.module, alias_hints), directive.which),
@@ -1860,7 +1905,7 @@ def _extract_behaviour_callbacks(
                 or _has_quote_ancestor(node, source)
                 or not _nearest_enclosing_module_resolvable(node, source)):
             continue
-        expanded = _expand_alias(directive.module, alias_hints)
+        expanded = _directive_module(directive, alias_hints)
         modules: list[str] = []
         behaviours: list[str] = [expanded]
         if directive.kind == "use":
@@ -1871,8 +1916,15 @@ def _extract_behaviour_callbacks(
             continue
         line = node.start_point[0] + 1
         for framework in dict.fromkeys(modules + behaviours):
+            # An Erlang behaviour (``@behaviour :gen_statem``) roots OTP's
+            # callbacks from the Erlang analyzer's table; the two tables cannot
+            # collide, an alias being capitalised and an atom not.
+            callback_names = (
+                BEHAVIOUR_CALLBACKS.get(framework)
+                or OTP_BEHAVIOUR_CALLBACKS.get(framework, [])
+            )
             edges.extend(_framework_callback_edges(
-                module_sym, module_name, BEHAVIOUR_CALLBACKS.get(framework, []),
+                module_sym, module_name, callback_names,
                 line, file_symbols, global_symbols, file_symbols_multi or {},
                 global_symbols_multi, run_id, seen_callbacks,
             ))
@@ -1944,45 +1996,29 @@ def _behaviour_edges(
     global_symbols_multi: dict[str, list[Symbol]],
     run_id: str,
 ) -> list[Edge]:
-    """The ``implements`` edge and the callback dispatch for one pair."""
-    edges: list[Edge] = []
+    """The ``implements`` edge and the callback dispatch for one pair.
+
+    The edges themselves come from ``hypergumbo_core.behaviours``, shared
+    with the Erlang analyzer and the BEAM behaviour bridge linker.
+    """
     target = global_symbols.get(behaviour)
-    if isinstance(target, Symbol) and target.kind == "module":
-        edges.append(Edge.create(
-            src=module_sym.id,
-            dst=target.id,
-            edge_type="implements",
-            line=line,
-            evidence_type="ast_implements",
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        ))
-    else:
-        edges.append(Edge.create(
-            src=module_sym.id,
-            dst=f"elixir:external:0-0:{behaviour}:unresolved",
-            edge_type="implements",
-            line=line,
-            evidence_type="ast_implements",
-            is_resolved=False,
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        ))
+    edges: list[Edge] = [behaviour_implements_edge(
+        src=module_sym.id, lang="elixir", behaviour=behaviour,
+        target_id=(
+            target.id
+            if isinstance(target, Symbol) and target.kind == "module" else None
+        ),
+        line=line, origin=PASS_ID, run_id=run_id,
+    )]
 
     for callback in callbacks_by_behaviour.get(behaviour, ()):
         short_name = callback.name.rsplit(".", 1)[-1]
         for impl in global_symbols_multi.get(f"{module_name}.{short_name}", ()):
             if impl.kind != callback.kind or "private" in impl.modifiers:
                 continue
-            edges.append(Edge.create(
-                src=callback.id,
-                dst=impl.id,
-                edge_type="dispatches_to",
-                line=line,
-                evidence_type="behaviour_callback",
-                origin=PASS_ID,
-                origin_run_id=run_id,
-                meta={"mechanism": "callback"},
+            edges.append(callback_dispatch_edge(
+                callback_id=callback.id, impl_id=impl.id, line=line,
+                origin=PASS_ID, run_id=run_id,
             ))
     return edges
 
