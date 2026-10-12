@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **355** Python modules (147 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 105 core, 4 CLI, 37 tracker)
-- **53586** symbols (functions, classes, methods)
-- **211843** edges by type:
-  - calls: 120728
-  - contains: 49128
-  - imports: 17571
-  - instantiates: 12309
-  - references: 8514
-  - module_attr_ref: 1978
-  - other: 1615
+- **356** Python modules (147 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 106 core, 4 CLI, 37 tracker)
+- **54008** symbols (functions, classes, methods)
+- **213608** edges by type:
+  - calls: 121741
+  - contains: 49524
+  - imports: 17738
+  - instantiates: 12350
+  - references: 8648
+  - module_attr_ref: 1982
+  - other: 1625
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 53586 Symbols + 211843 Edges + UsageContexts           │
+│  Output: 54008 Symbols + 213608 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,21 +279,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10105.3 | ir.py |
-| `len` | external_symbol | 7776.0 | <external> |
-| `write_text` | external_symbol | 7046.0 | <external> |
-| `Span` | class | 6643.0 | ir.py |
-| `LinkerContext` | class | 3622.7 | registry.py |
-| `get` | external_symbol | 3392.0 | <external> |
-| `load_catalog` | function | 3308.5 | io_boundary.py |
-| `Edge.create` | method | 2452.7 | ir.py |
-| `str` | external_symbol | 2322.0 | <external> |
-| `Path` | external_symbol | 2287.0 | <external> |
-| `next` | external_symbol | 2190.0 | <external> |
-| `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
+| `Symbol` | class | 10128.5 | ir.py |
+| `len` | external_symbol | 7798.0 | <external> |
+| `write_text` | external_symbol | 7072.0 | <external> |
+| `Span` | class | 6654.8 | ir.py |
+| `LinkerContext` | class | 3635.1 | registry.py |
+| `get` | external_symbol | 3418.0 | <external> |
+| `load_catalog` | function | 3312.5 | io_boundary.py |
+| `Edge.create` | method | 2467.3 | ir.py |
+| `str` | external_symbol | 2371.0 | <external> |
+| `Path` | external_symbol | 2306.0 | <external> |
+| `next` | external_symbol | 2195.0 | <external> |
+| `load_framework_patterns` | function | 2107.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
+| `append` | external_symbol | 1792.0 | <external> |
 | `main` | function | 1781.4 | cli.py |
-| `append` | external_symbol | 1776.0 | <external> |
 
 ## Pattern System
 
@@ -645,6 +645,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
 - **`hypergumbo_core.noise_filter`**: Default-view noise predicate for the survey pipeline (Phase D).
 - **`hypergumbo_core.overload_arity`**: Choose among same-named callables by the call's argument count.
+- **`hypergumbo_core.owner_ancestry`**: A call on an in-repo type it does not define reaches the type's LIB...
 - **`hypergumbo_core.partial_install_warnings`**: Runtime warnings for partial installations (ADR-0010 Item 8).
 - **`hypergumbo_core.pass_clock`**: Per-pass cost clock: a pass's wall time AND its own-thread CPU time.
 - **`hypergumbo_core.pass_metadata`**: Per-pass metadata lookup for the finalize stage (run-lifecycle:F1 /...
@@ -962,8 +963,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: f78e4aff940a
-  commit_count: 8224
+  commit: 586800add792
+  commit_count: 8255
   hypergumbo: 8.1.0
   python: 3.12.3
 -->
