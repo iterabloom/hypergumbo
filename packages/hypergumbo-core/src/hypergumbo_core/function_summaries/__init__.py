@@ -108,13 +108,15 @@ class FunctionSummary:
     callback: Optional[CallbackFlow] = None
     #: True when this entry came from the USER'S channel
     #: (``$XDG_CONFIG_HOME/hypergumbo/function_summaries.d/``), ADR-0047
-    #: ruling 10. Stamped at LOAD, never read from the YAML, so a file cannot
-    #: claim to be shipped. A user-supplied TERMINATING summary closes a branch
+    #: ruling 10, in a file with no ``provenance: community`` line. Stamped
+    #: at LOAD, never read from the YAML, so a file cannot claim to be
+    #: shipped. A user-supplied TERMINATING summary closes a branch
     #: that is really open and DELETES a real finding, so verify_claims has to
     #: be able to say whose word a clean answer rests on.
     user_supplied: bool = False
-    #: ADR-0061 ruling 2 (WI-tigud): True when this entry came from a SHIPPED
-    #: file declaring ``provenance: community``. A terminating summary removes
+    #: ADR-0061 ruling 2 (WI-tigud): True when this entry came from a file
+    #: declaring ``provenance: community`` -- shipped, or left in the user's
+    #: channel with the line intact (ruling 3). A terminating summary removes
     #: a finding -- the half an unvouched row may not do -- so the walk never
     #: lets a community summary close a branch. Stamped at load, never read
     #: from the YAML.
@@ -158,7 +160,8 @@ def load_function_summaries(
     Returns a dict mapping function name → FunctionSummary.
     Caches results to avoid repeated disk I/O.
 
-    ``include_community=False`` leaves the shipped COMMUNITY files out -- what
+    ``include_community=False`` leaves the COMMUNITY files out -- shipped, or
+    in the user's channel still declaring the line -- what
     ``--no-default-overlays`` asks of every family (ADR-0061 ruling 5,
     INV-fikoh). The two answers are cached apart.
     """
@@ -175,9 +178,11 @@ def load_function_summaries(
     # ADR-0047 ruling 10 (WI-sofov). The user's entries load AFTER the shipped
     # ones so they win on a name collision, and they are stamped
     # ``user_supplied`` at merge rather than read from the file -- a summary
-    # cannot declare itself vouched-for. Only when the DEFAULT directory is
-    # being loaded, so an explicit ``search_dir`` (tests, and any caller asking
-    # about one particular tree) still means exactly that.
+    # cannot declare itself vouched-for (a channel file still declaring
+    # ``provenance: community`` is not theirs; see ``_rank``). Only when the
+    # DEFAULT directory is being loaded, so an explicit ``search_dir`` (tests,
+    # and any caller asking about one particular tree) still means exactly
+    # that.
     paths = sorted(search.glob("*.yaml"))
     user_paths: "list[Path]" = []
     if search_dir is None:
@@ -193,25 +198,33 @@ def load_function_summaries(
             continue
         loaded.append((yaml_path, data))
 
-    # ADR-0061 ruling 2: a shipped COMMUNITY row only adds. Community files load
-    # after the built-in ones and take a name -- full or short -- only when no
+    # ADR-0061 ruling 2: a COMMUNITY row only adds. Community files load after
+    # the built-in ones and take a name -- full or short -- only when no
     # built-in row holds it, so which file happens to sort first cannot decide
     # whose word a summary is. The user's files still load last and win.
+    #
+    # Ruling 3: the tier is the file's own provenance line, asked FIRST, so a
+    # community file copied into function_summaries.d is still community --
+    # adds only, never closes a branch, dropped by ``include_community=False``
+    # -- and deleting the line is what makes it the user's. Asking the
+    # directory first stamped such a file ``user_supplied``: its terminating
+    # summary closed a branch on nobody's word and survived
+    # --no-default-overlays.
     def _rank(item: "tuple[Path, dict[str, Any]]") -> int:
-        if item[0] in user_paths:
-            return 2
-        return 1 if declares_community(item[1]) else 0
+        if declares_community(item[1]):
+            return 1
+        return 2 if item[0] in user_paths else 0
 
-    loaded.sort(key=_rank)
+    ranked = sorted(((_rank(item), item) for item in loaded),
+                    key=lambda pair: pair[0])
     if not include_community:
-        loaded = [item for item in loaded if _rank(item) != 1]
-    for yaml_path, data in loaded:
-        adds_only = _rank((yaml_path, data)) == 1
+        ranked = [pair for pair in ranked if pair[0] != 1]
+    for rank, (_path, data) in ranked:
         for entry in data["summaries"]:
             summary = _parse_summary(entry)
-            if yaml_path in user_paths:
+            if rank == 2:
                 summary = replace(summary, user_supplied=True)
-            if adds_only:
+            if rank == 1:
                 summary = replace(summary, community=True)
                 result.setdefault(summary.function, summary)
             else:
