@@ -140,17 +140,19 @@ def test_julia_parameter_shapes(tmp_path: Path) -> None:
         ],
         "k": [parameter_entry("x")],
         "m": [parameter_entry("ex"), parameter_entry("y")],
+        "Base.show": [parameter_entry("io", "IO"), parameter_entry("x", "Int")],
+        "stub": None,
     }
 
 
-def test_julia_where_forms_are_emitted_and_base_extensions_are_not(tmp_path: Path) -> None:
-    """A ``where`` clause no longer hides a method; ``Base.show`` (a method of
-    another module's function, named by a field expression) and the
-    zero-method ``function stub end`` are still not emitted, and nothing is
-    invented for them."""
+def test_julia_where_forms_base_extensions_and_generics_are_emitted(tmp_path: Path) -> None:
+    """A ``where`` clause no longer hides a method; nor (B8a) does a field-
+    expression name, ``Base.show`` (a method of another module's function),
+    nor the zero-method ``function stub end``, which declares the generic and
+    gives it no method (no parameters are recorded for it)."""
     syms = _symbols(analyze_julia, tmp_path, "a.jl", _JULIA)
     names = sorted(s.name for s in syms if s.kind == "function")
-    assert names == ["f", "f", "f", "g", "h", "k"]
+    assert names == ["Base.show", "f", "f", "f", "g", "h", "k", "stub"]
     (g,) = _named(syms, "function", "g")
     assert g.signature == "(a::Vector{T}, b)"
     (k,) = _named(syms, "function", "k")
@@ -170,7 +172,7 @@ def test_julia_macro_abstract_and_const_ids(tmp_path: Path) -> None:
 def test_julia_deleting_an_earlier_method_moves_nothing(tmp_path: Path) -> None:
     _assert_deletion_moves_nothing(
         analyze_julia, tmp_path, "a.jl", _JULIA, "f(x::Int) = x\n",
-        {"function", "macro", "abstract", "const"}, survivors=8,
+        {"function", "macro", "abstract", "const"}, survivors=10,
     )
 
 

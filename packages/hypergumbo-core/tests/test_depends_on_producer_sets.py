@@ -80,6 +80,7 @@ def _analyzer_sources() -> tuple[tuple[str, tuple[str, ...]], ...]:
 #: stable_id helpers whose keyword names are hash inputs, never meta keys.
 _IDENTITY_HELPERS: frozenset[str] = frozenset({
     "make_typed_stable_id", "declared_arity_stable_id", "assemble_stable_id",
+    "scoped_stable_id", "pass_minted_stable_id",
 })
 
 

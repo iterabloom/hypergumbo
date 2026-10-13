@@ -38,6 +38,13 @@ preferring the source's directory; ``name=role`` ->
 ``_jinja_fanout_candidates`` to one edge per matching file at
 ``_JINJA_FANOUT_CONFIDENCE`` (0.30); an unresolvable target keeps its
 raw string and drops to confidence 0.50.
+
+Identity (ADR-0035, WI-tusad): playbooks, tasks and handlers mint
+``overload_arity.scoped_stable_id`` over their ``name``, a task or handler
+scoped by the play it sits in. Two plays that each run a task named
+``Install`` hold two symbols, which the floor key ``(kind, path, name)``
+nulled. Two same-named tasks in one play remain a same-scope tie. Variables
+keep the backstop's ``variable`` table formula.
 """
 
 from __future__ import annotations
@@ -51,6 +58,8 @@ import yaml
 
 from hypergumbo_core.discovery import is_excluded
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.overload_arity import scoped_stable_id
+from hypergumbo_core.paths import to_relative_path
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -316,11 +325,14 @@ def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
+    repo_root: Path,
 ) -> tuple[list[Symbol], list[Edge]]:
     """Extract symbols and edges from a single Ansible file."""
     symbols: list[Symbol] = []
     edges: list[Edge] = []
     rel_path = str(file_path)
+    # stable_ids hash the repo-relative path (ids are location-independent).
+    id_path = to_relative_path(file_path, repo_root)
     file_id = make_file_id("ansible", rel_path)
 
     try:
@@ -367,6 +379,9 @@ def _extract_symbols_from_file(
                     symbol_id = make_symbol_id("ansible", rel_path, line, end_line, value, "playbook")
                     symbols.append(Symbol(
                         id=symbol_id,
+                        stable_id=scoped_stable_id(
+                            kind="playbook", lang="ansible", path=id_path, name=value,
+                        ),
                         name=value,
                         kind="playbook",
                         language="ansible",
@@ -383,6 +398,10 @@ def _extract_symbols_from_file(
                     symbol_id = make_symbol_id("ansible", rel_path, line, end_line, value, kind)
                     symbols.append(Symbol(
                         id=symbol_id,
+                        stable_id=scoped_stable_id(
+                            kind=kind, lang="ansible", path=id_path, name=value,
+                            scope=(current_play_name,) if current_play_name else (),
+                        ),
                         name=value,
                         kind=kind,
                         language="ansible",
@@ -658,7 +677,7 @@ class AnsibleAnalyzer(TreeSitterAnalyzer):
             if max_files is not None and len(all_symbols) >= max_files:
                 break  # pragma: no cover
 
-            symbols, edges = _extract_symbols_from_file(ansible_file, parser, run)
+            symbols, edges = _extract_symbols_from_file(ansible_file, parser, run, repo_root)
             all_symbols.extend(symbols)
             all_edges.extend(edges)
 

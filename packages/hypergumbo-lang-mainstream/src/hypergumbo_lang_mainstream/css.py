@@ -38,6 +38,15 @@ Why This Design
   placeholder, not resolved to the imported file)
 - Variable detection helps identify design system patterns
 - Useful for frontend-heavy applications
+- Identity (ADR-0035, WI-tusad): keyframes, media, font-face and selector
+  symbols mint ``overload_arity.scoped_stable_id`` with the enclosing rules
+  as the scope chain: each at-rule (``@media print``, ``@supports (...)``)
+  and the selector list of the rule a selector sits in (``.btn:hover,
+  #main``; :func:`_css_scope_label`). ``.btn`` in a rule under ``@media
+  print`` and again under ``@media (max-width: 600px)`` is two symbols that
+  the floor key ``(kind, path, name)`` nulled. The same selector twice in one
+  rule list (``.btn, .btn .icon``) remains a same-scope tie. Variables keep
+  the backstop's ``variable`` table formula.
 """
 
 import hashlib
@@ -49,8 +58,9 @@ from hypergumbo_core.ir import (
     AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id,
     sanitize_id_name_segment,
 )
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -159,6 +169,33 @@ def _extract_font_family(node: "tree_sitter.Node", source: bytes) -> str | None:
     return None  # pragma: no cover - defensive
 
 
+def _css_scope_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The scope an ancestor opens, for a stable_id scope chain (see docstring).
+
+    An at-rule (``media_statement``, ``supports_statement``,
+    ``keyframes_statement``, ``at_rule``) is labelled by its prelude, the text
+    before ``{``; a ``rule_set`` by its selector list. Whitespace collapsed.
+    """
+    if node.type == "rule_set":
+        for child in node.children:
+            if child.type == "selectors":
+                return " ".join(_get_node_text(child, source).split())
+        return None  # pragma: no cover - a rule_set always has selectors
+    if node.type in ("media_statement", "supports_statement", "keyframes_statement", "at_rule"):
+        return " ".join(_get_node_text(node, source).split("{", 1)[0].split())
+    return None
+
+
+def _css_stable_id(
+    node: "tree_sitter.Node", source: bytes, rel_path: str, kind: str, name: str,
+) -> str:
+    """The ADR-0035 stable_id of a CSS symbol (see the module docstring)."""
+    return scoped_stable_id(
+        kind=kind, lang="css", path=rel_path, name=name,
+        scope=ancestor_labels(node, lambda n: _css_scope_label(n, source)),
+    )
+
+
 def _process_css_tree(
     root_node: "tree_sitter.Node",
     symbols: list[Symbol],
@@ -233,7 +270,7 @@ def _process_css_tree(
                 symbols.append(
                     Symbol(
                         id=symbol_id,
-                        stable_id=None,
+                        stable_id=_css_stable_id(node, source, rel_path, "keyframes", name),
                         shape_id=None,
                         # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                         kind="keyframes",
@@ -259,7 +296,7 @@ def _process_css_tree(
             symbols.append(
                 Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_css_stable_id(node, source, rel_path, "media", query),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="media",
@@ -295,7 +332,7 @@ def _process_css_tree(
                 symbols.append(
                     Symbol(
                         id=symbol_id,
-                        stable_id=None,
+                        stable_id=_css_stable_id(node, source, rel_path, "font_face", name),
                         shape_id=None,
                         # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                         kind="font_face",
@@ -324,7 +361,7 @@ def _process_css_tree(
                 symbols.append(
                     Symbol(
                         id=symbol_id,
-                        stable_id=None,
+                        stable_id=_css_stable_id(node, source, rel_path, "class_selector", class_name),
                         shape_id=None,
                         # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                         kind="class_selector",
@@ -352,7 +389,7 @@ def _process_css_tree(
                 symbols.append(
                     Symbol(
                         id=symbol_id,
-                        stable_id=None,
+                        stable_id=_css_stable_id(node, source, rel_path, "id_selector", id_name),
                         shape_id=None,
                         # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                         kind="id_selector",

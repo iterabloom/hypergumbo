@@ -63,6 +63,11 @@ no names.
 
 Why override _find_source_files: Bash scripts can have no extension but
 a shebang line (#!/bin/bash), requiring special detection beyond glob patterns.
+
+Alias identity (WI-tusad): an ``alias`` mints
+``overload_arity.scoped_stable_id`` with the functions enclosing it as the
+scope chain, so the same alias defined in two functions is two symbols (the
+floor key ``(kind, path, name)`` nulled both).
 """
 
 from __future__ import annotations
@@ -85,6 +90,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -92,6 +98,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
 )
@@ -1115,6 +1122,14 @@ class BashAnalyzer(TreeSitterAnalyzer):
 
                                 symbol = Symbol(
                                     id=symbol_id,
+                                    stable_id=scoped_stable_id(
+                                        kind="alias", lang="bash", path=rel_path,
+                                        name=alias_name,
+                                        scope=ancestor_labels(
+                                            node, lambda n: _extract_function_name(n, source)
+                                            if n.type == "function_definition" else None,
+                                        ),
+                                    ),
                                     name=alias_name,
                                     kind="alias",
                                     language="bash",

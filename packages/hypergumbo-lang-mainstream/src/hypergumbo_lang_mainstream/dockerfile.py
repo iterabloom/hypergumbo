@@ -28,6 +28,12 @@ Why This Design
 - Uses tree-sitter-dockerfile package for grammar
 - The stage registry persists across files within the single pass, allowing COPY --from / base-image references to resolve to stages defined in other Dockerfiles.
 - Container-specific: stages, ports, env vars are first-class symbols
+- Identity (ADR-0035, WI-tusad): every symbol mints
+  ``overload_arity.scoped_stable_id`` with its build stage as the scope
+  chain (an ``ARG``/``ENV``/``EXPOSE`` before the first ``FROM`` has none).
+  The same ``ARG VERSION`` in two stages is two symbols, and the floor key
+  ``(kind, path, name)`` nulled both. An unnamed stage is named by its
+  ordinal (``0``, ``1``), so deleting an earlier unnamed stage renames it.
 """
 from __future__ import annotations
 
@@ -39,6 +45,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, find_child_by_type, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
@@ -155,6 +162,8 @@ def _process_dockerfile_tree(
         stage_registry: Registry mapping stage names to symbol IDs
         stage_counter: Counter for unnamed stages (wrapped in list for mutability)
     """
+    # The build stage an instruction belongs to: the scope chain of its id.
+    current_stage: tuple[str, ...] = ()
     for node in iter_tree(root_node):
         if node.type == "from_instruction":
             # Extract image name and optional alias
@@ -163,6 +172,7 @@ def _process_dockerfile_tree(
 
             stage_name = stage_alias if stage_alias else str(stage_counter[0])
             stage_counter[0] += 1
+            current_stage = (stage_name,)
 
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
@@ -170,7 +180,9 @@ def _process_dockerfile_tree(
 
             sym = Symbol(
                 id=symbol_id,
-                stable_id=None,
+                stable_id=scoped_stable_id(
+                    kind="stage", lang="dockerfile", path=rel_path, name=stage_name,
+                ),
                 shape_id=None,
                 # ADR-0032: canonical_name dropped (was redundant with name=).
                 fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
@@ -216,7 +228,10 @@ def _process_dockerfile_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=scoped_stable_id(
+                        kind="exposed_port", lang="dockerfile", path=rel_path, name=port_value,
+                        scope=current_stage,
+                    ),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=).
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
@@ -246,7 +261,10 @@ def _process_dockerfile_tree(
 
                     sym = Symbol(
                         id=symbol_id,
-                        stable_id=None,
+                        stable_id=scoped_stable_id(
+                            kind="env_var", lang="dockerfile", path=rel_path, name=var_name,
+                            scope=current_stage,
+                        ),
                         shape_id=None,
                         # ADR-0032: canonical_name dropped (was redundant with name=).
                         fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
@@ -274,7 +292,10 @@ def _process_dockerfile_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=scoped_stable_id(
+                        kind="build_arg", lang="dockerfile", path=rel_path, name=arg_name,
+                        scope=current_stage,
+                    ),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=).
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)

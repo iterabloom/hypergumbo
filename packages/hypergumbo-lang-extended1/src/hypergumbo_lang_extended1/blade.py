@@ -33,6 +33,10 @@ Why This Design
 - Blade is the default templating engine for Laravel (PHP)
 - Section/yield patterns reveal template inheritance hierarchy
 - Component references show composition relationships
+- Identity (ADR-0035, WI-tusad): sections, yields and components mint
+  ``overload_arity.scoped_stable_id`` over their name (Blade has no nesting
+  this analyzer models, so the scope is the file); the same name twice in a
+  template is a same-scope tie, which the per-file split pass orders
 """
 from __future__ import annotations
 
@@ -44,6 +48,8 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, make_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import scoped_stable_id
+from hypergumbo_core.paths import to_relative_path
 
 PASS_ID = make_pass_id("blade")
 
@@ -81,12 +87,14 @@ def analyze_blade(
         except OSError:  # pragma: no cover
             continue
         path_str = str(blade_file)
+        rel_path = to_relative_path(blade_file, repo_root)
 
         for line_num, line in enumerate(content.splitlines(), 1):
             for match in _SECTION_RE.finditer(line):
                 name = match.group(1)
                 sym = Symbol(
                     id=_make_symbol_id(path_str, line_num, name, "section"),
+                    stable_id=scoped_stable_id(kind="section", lang="blade", path=rel_path, name=name),
                     name=name,
                     kind="section",
                     language="blade",
@@ -102,6 +110,7 @@ def analyze_blade(
                 name = match.group(1)
                 symbols.append(Symbol(
                     id=_make_symbol_id(path_str, line_num, name, "yield"),
+                    stable_id=scoped_stable_id(kind="yield", lang="blade", path=rel_path, name=name),
                     name=name,
                     kind="yield",
                     language="blade",
@@ -136,6 +145,7 @@ def analyze_blade(
                 name = match.group(1)
                 symbols.append(Symbol(
                     id=_make_symbol_id(path_str, line_num, name, "component"),
+                    stable_id=scoped_stable_id(kind="component", lang="blade", path=rel_path, name=name),
                     name=name,
                     kind="component",
                     language="blade",

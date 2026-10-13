@@ -96,6 +96,29 @@ language's floor and null counts fall, and its deletion check passes. Replacing
 a floor value or a null this way is no scheme bump (ADR-0035 §6); changing a
 value the producer already computes (a C-family overload hashed with
 ``param_count 0``) is a hash-input change §6 governs.
+
+SYMBOLS MINTED OUTSIDE THE LANGUAGE ANALYZER (:func:`pass_minted_stable_id`;
+INV-fufij). The backstop floor runs in ``analyze.all_analyzers`` before the
+linkers, and the ``make_synthetic_symbol_identity`` chokepoint stamps only
+``language=None`` stand-ins, so a linker that mints a symbol WITH a language
+(the gRPC linker's proto ``interface`` per service, the view-template
+linker's ``template``) and sets no ``stable_id`` ships it null; a format pass
+that runs as an analyzer but is no language's producer (``manifest_targets``:
+a ``Package.swift`` target, a Gradle ``mainClass``) rode the floor key. Each
+such site mints at construction through this one helper: the ADR-0035
+formula of :func:`scoped_stable_id`, its scope chain LED BY THE MINTING PASS
+(``owner/scope.../name`` in the qualified-name slot). The pass
+is a scope because the language analyzer may emit its own symbol of the same
+kind and name in the same file (the proto analyzer's ``interface S`` beside
+the gRPC linker's), and the two are different records. ``scope`` carries what
+the pass knows of the enclosing scopes (a proto package). Filling a null or a
+floor value this way is no scheme bump (ADR-0035 §6).
+
+:func:`scoped_stable_id` is the same formula for a language producer whose
+symbols take no parameters but nest (a Dockerfile ``ARG`` in a build stage, a
+CSS selector in an ``@media`` rule): the producer passes its scope chain as a
+list and the helper joins it with the name, so no producer spells its own
+qualified-name format.
 """
 
 from __future__ import annotations
@@ -360,4 +383,61 @@ def declared_arity_stable_id(
     return assemble_stable_id(
         kind, arity.param_count, arity.flags, decorators, containing,
         name, qualified_name,
+    )
+
+
+
+#: Joins a scope chain and the symbol's name in the qualified-name slot
+#: :func:`scoped_stable_id` hashes.
+SCOPE_SEPARATOR = "/"
+
+
+def scoped_stable_id(
+    *,
+    kind: str,
+    lang: str,
+    path: str,
+    name: str,
+    scope: Sequence[str] = (),
+    arity: Optional[DeclaredArity] = None,
+    decorators: str = "",
+) -> str:
+    """The ADR-0035 producer stable_id of a declaration whose scope chain the
+    producer holds as a list: :func:`declared_arity_stable_id` with the
+    qualified name ``scope[0]/.../scope[-1]/name``.
+
+    For the producers whose symbols have no parameter list (a Dockerfile
+    ``ARG``, a CSS selector, a Makefile target, a TOML table) ``arity`` stays
+    None; ``scope`` is what the grammar nests the symbol in (the build stage,
+    the ``@media`` query and rule, the conditional branch). Two symbols that
+    are still identical after that are a same-scope tie, which the per-file
+    split pass orders (ADR-0035 §1). ``path`` must be repo-relative.
+    """
+    return declared_arity_stable_id(
+        kind=kind, lang=lang, path=path, name=name,
+        qualified_name=SCOPE_SEPARATOR.join((*scope, name)), arity=arity,
+        decorators=decorators,
+    )
+
+
+def pass_minted_stable_id(
+    *,
+    owner: str,
+    kind: str,
+    lang: str,
+    path: str,
+    name: str,
+    scope: Sequence[str] = (),
+    arity: Optional[DeclaredArity] = None,
+) -> str:
+    """The ADR-0035 producer stable_id of a symbol a pass outside the language
+    analyzer mints (INV-fufij; see the module docstring): :func:`scoped_stable_id`
+    with the minting pass as the outermost scope.
+
+    ``owner`` is the minting pass's id (``make_pass_id`` name, which carries no
+    version, so a pass upgrade moves no id); ``path`` must be repo-relative.
+    """
+    return scoped_stable_id(
+        kind=kind, lang=lang, path=path, name=name, scope=(owner, *scope),
+        arity=arity,
     )

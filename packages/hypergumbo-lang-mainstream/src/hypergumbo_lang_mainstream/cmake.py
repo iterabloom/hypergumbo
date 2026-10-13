@@ -44,6 +44,17 @@ later ``function(run x y)`` hold ids that do not depend on each other. Every
 CMake function also accepts extra arguments through ``ARGN``; that is true of
 all of them, so it is not recorded as a variadic entry and does not enter the
 hash.
+
+Target identity (WI-tusad)
+--------------------------
+``add_library`` / ``add_executable`` / ``add_subdirectory`` / ``find_package``
+symbols mint ``overload_arity.scoped_stable_id`` with the blocks enclosing the
+command as the scope chain: each ``body`` is labelled by the command that
+opens it (``if(WIN32)``, ``elseif(APPLE)``, ``else()``, ``function(setup)``,
+``foreach(...)``; :func:`_block_label`). ``add_library(foo ...)`` in two
+branches of an ``if`` is two symbols that the floor key ``(kind, path,
+name)`` nulled. Two ``find_package(X)`` in one block remain a same-scope tie.
+``project`` keeps the backstop's table formula.
 """
 from __future__ import annotations
 
@@ -53,11 +64,14 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree, make_symbol_id, node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+    scoped_stable_id,
 )
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
@@ -142,6 +156,28 @@ def _command_definition_identity(
     return stable_id, meta
 
 
+def _block_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The scope a ``body`` opens: the command before it, whitespace collapsed.
+
+    ``if(WIN32)``, ``elseif(APPLE)``, ``else()``, ``function(setup)`` ... so
+    each branch of a conditional, and each function or loop body, is its own
+    scope in a target's stable_id chain.
+    """
+    if node.type != "body" or node.prev_sibling is None:
+        return None
+    return " ".join(node_text(node.prev_sibling, source).split())
+
+
+def _target_stable_id(
+    node: "tree_sitter.Node", source: bytes, rel_path: str, kind: str, name: str,
+) -> str:
+    """The ADR-0035 stable_id of a target-like command (see the docstring)."""
+    return scoped_stable_id(
+        kind=kind, lang="cmake", path=rel_path, name=name,
+        scope=ancestor_labels(node, lambda n: _block_label(n, source)),
+    )
+
+
 def _process_cmake_tree(
     root_node: "tree_sitter.Node",
     source: bytes,
@@ -203,7 +239,7 @@ def _process_cmake_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_target_stable_id(node, source, rel_path, "library", lib_name),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="library",
@@ -230,7 +266,7 @@ def _process_cmake_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_target_stable_id(node, source, rel_path, "executable", exe_name),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="executable",
@@ -291,7 +327,7 @@ def _process_cmake_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_target_stable_id(node, source, rel_path, "subdirectory", subdir),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="subdirectory",
@@ -317,7 +353,7 @@ def _process_cmake_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_target_stable_id(node, source, rel_path, "package", pkg_name),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="package",

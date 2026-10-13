@@ -29,6 +29,16 @@ Why This Design
 - Just is increasingly popular as a simpler Make alternative
 - Recipe definitions are the primary unit of organization
 - Dependency edges reveal task execution order
+
+Identity (ADR-0035, WI-tusad)
+-----------------------------
+Recipes and aliases mint ``overload_arity.scoped_stable_id``. A recipe's
+parameters (``test target='x' *args``) go to ``meta["parameters"]`` (``=`` a
+default, ``*``/``+`` a variadic) and its attributes (``[linux]``,
+``[group('ci')]``, the lines right above it) are its decorators: just lets
+one name be defined once per attribute set (``[linux] build`` and ``[macos]
+build``), and those two shared the floor key ``(kind, path, name)`` and were
+both null. Variables keep the backstop's ``variable`` table formula.
 """
 from __future__ import annotations
 
@@ -40,6 +50,10 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, parameter_entry, scoped_stable_id,
+)
+from hypergumbo_core.paths import to_relative_path
 
 PASS_ID = make_pass_id("just")
 
@@ -52,6 +66,24 @@ _VAR_RE = re.compile(r"^([a-zA-Z_]\w*)\s*:?=\s*(.+)", re.MULTILINE)
 _ALIAS_RE = re.compile(r"^alias\s+(\w+)\s*:=\s*(\w+)", re.MULTILINE)
 # Lines starting with @ or whitespace are recipe body, not definitions
 _BODY_LINE_RE = re.compile(r"^[\s@#]")
+# [attr] / [attr1, attr2] on the line(s) above a recipe
+_ATTRIBUTE_RE = re.compile(r"^\[(.+)\]\s*$")
+
+
+def _recipe_parameters(line: str, name: str) -> list[dict[str, object]]:
+    """``meta["parameters"]`` of a recipe line: the words between its name and ``:``.
+
+    ``x='1'`` / ``x=y`` has a default; ``*x`` / ``+x`` takes any number; a
+    leading ``$`` (exported to the recipe's environment) is not part of the name.
+    """
+    head = line[len(name):].split(":", 1)[0]
+    entries: list[dict[str, object]] = []
+    for word in head.split():
+        variadic = word[0] in "*+"
+        word = word.lstrip("*+$")
+        param, _, default = word.partition("=")
+        entries.append(parameter_entry(param, default=bool(default), variadic=variadic))
+    return entries
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
@@ -85,11 +117,20 @@ def analyze_just(
         except OSError:  # pragma: no cover
             continue
         path_str = str(just_file)
+        rel_path = to_relative_path(just_file, repo_root)
         recipe_symbols: dict[str, Symbol] = {}
+        attributes: list[str] = []
 
         for line_num, line in enumerate(content.splitlines(), 1):
             if _BODY_LINE_RE.match(line) or not line.strip():
                 continue
+
+            m = _ATTRIBUTE_RE.match(line)
+            if m:
+                attributes.extend(a.strip() for a in m.group(1).split(","))
+                continue
+            decorators = ",".join(sorted(attributes))
+            attributes = []
 
             # Check alias first (alias name := recipe)
             m = _ALIAS_RE.match(line)
@@ -97,6 +138,10 @@ def analyze_just(
                 name = m.group(1)
                 symbols.append(Symbol(
                     id=_make_symbol_id(path_str, line_num, name, "alias"),
+                    stable_id=scoped_stable_id(
+                        kind="alias", lang="just", path=rel_path, name=name,
+                        decorators=decorators,
+                    ),
                     name=name,
                     kind="alias",
                     language="just",
@@ -134,8 +179,15 @@ def analyze_just(
                 # Skip keywords that look like recipes
                 if name in {"set", "export", "import", "mod", "alias"}:
                     continue
+                meta: dict[str, object] = {
+                    PARAMETERS_KEY: _recipe_parameters(line, name),
+                }
                 sym = Symbol(
                     id=_make_symbol_id(path_str, line_num, name, "recipe"),
+                    stable_id=scoped_stable_id(
+                        kind="recipe", lang="just", path=rel_path, name=name,
+                        arity=declared_arity(meta), decorators=decorators,
+                    ),
                     name=name,
                     kind="recipe",
                     language="just",
@@ -144,6 +196,7 @@ def analyze_just(
                               start_col=0, end_col=len(line)),
                     origin=PASS_ID,
                     origin_run_id="",
+                    meta=meta,
                 )
                 symbols.append(sym)
                 recipe_symbols[name] = sym

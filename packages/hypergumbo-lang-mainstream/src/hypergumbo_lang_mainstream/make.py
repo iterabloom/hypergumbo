@@ -39,6 +39,14 @@ Why This Design
 - Uses tree-sitter-make package for grammar
 - Single-pass because prerequisite references need the registry built in-flight
 - Build-system-specific: targets, prerequisites, variables are first-class
+- Identity (ADR-0035, WI-tusad): targets, pattern rules, special targets and
+  ``define`` blocks mint ``overload_arity.scoped_stable_id`` with the
+  enclosing conditionals as the scope chain (``ifeq (...)``, then ``else``
+  for the alternative branch; see :func:`_conditional_label`). The same
+  target defined in both branches of an ``ifeq`` is two symbols that the
+  floor key ``(kind, path, name)`` nulled. Repeated ``.PHONY:`` lines in one
+  branch remain a same-scope tie, ordered by the per-file split pass.
+  Variables keep the backstop's ``variable`` table formula.
 """
 from __future__ import annotations
 
@@ -51,12 +59,14 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    ancestor_labels,
     iter_tree,
     make_file_id,
     make_symbol_id,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
@@ -127,6 +137,21 @@ def _get_include_files(node: "tree_sitter.Node", source: bytes) -> list[str]:
                 if subchild.type == "word":
                     files.append(node_text(subchild, source))
     return files
+
+
+def _conditional_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The scope a conditional opens, for a stable_id scope chain.
+
+    A ``conditional`` is labelled by its opening directive's first line
+    (``ifeq ($(OS),Windows_NT)``, whitespace collapsed); its ``else_directive``
+    adds ``else`` (or its own first line for ``else ifeq ...``), so the two
+    branches of one conditional are two scopes.
+    """
+    if node.type == "conditional" and node.children:
+        return " ".join(node_text(node.children[0], source).split("\n")[0].split())
+    if node.type == "else_directive":
+        return " ".join(node_text(node, source).split("\n")[0].split())
+    return None
 
 
 def _process_make_tree(
@@ -217,7 +242,12 @@ def _process_make_tree(
 
                     sym = Symbol(
                         id=symbol_id,
-                        stable_id=None,
+                        stable_id=scoped_stable_id(
+                            kind=kind, lang="makefile", path=rel_path, name=target_name,
+                            scope=ancestor_labels(
+                                node, lambda n: _conditional_label(n, source),
+                            ),
+                        ),
                         shape_id=None,
                         # ADR-0032: canonical_name dropped (was redundant with name=).
                         fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
@@ -273,7 +303,13 @@ def _process_make_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=scoped_stable_id(
+                        kind="function", lang="makefile", path=rel_path,
+                        name=define_name,
+                        scope=ancestor_labels(
+                            node, lambda n: _conditional_label(n, source),
+                        ),
+                    ),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=).
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)

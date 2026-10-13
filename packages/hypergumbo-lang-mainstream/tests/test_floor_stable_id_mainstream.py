@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-motiz: the stable_id floor fills mainstream kinds whose name is exact.
+"""WI-motiz / WI-tusad: mainstream kinds that rode the stable_id floor.
 
 json/toml ``package`` (the manifest's own package name) has no entry in the
-backstop's factory table and its producer computes no ``stable_id``; it
+backstop's factory table; its producer computed no ``stable_id`` and it
 shipped ``null`` (the self-map's ``packages/htrac-frontend/package.json``
-among them). Its name is unique in its file, so the floor key
-``make_declaration_stable_id(kind, language, path, name)`` identifies it and
-the backstop (core ``populate_kind_stable_ids``, ADR-0035 §1) fills it.
+among them) until the floor (core ``populate_kind_stable_ids``, ADR-0035 §1)
+filled it with ``make_declaration_stable_id(kind, language, path, name)``.
+Its producers now mint ``overload_arity.scoped_stable_id`` over the name
+(WI-tusad B8a); it is pinned here as producer-filled, distinct from the floor.
 
 csharp ``property`` rode the same floor until its producer took the ADR-0035
 formula (WI-tusad): ``make_typed_stable_id`` over the declared type and the
@@ -22,6 +23,7 @@ from hypergumbo_core.analyze.base import (
     make_declaration_stable_id, make_file_stable_id, make_typed_stable_id,
 )
 from hypergumbo_core.cli import run_behavior_map
+from hypergumbo_core.overload_arity import scoped_stable_id
 
 _FILES = {
     "package.json": (
@@ -62,7 +64,7 @@ _PROPERTY_INPUTS = {
 }
 
 
-def test_package_takes_the_exact_floor_and_property_its_producer_id(tmp_path: Path) -> None:
+def test_package_and_property_take_their_producer_ids(tmp_path: Path) -> None:
     for name, text in _FILES.items():
         (tmp_path / name).write_text(text)
     out = tmp_path / "out.json"
@@ -76,7 +78,9 @@ def test_package_takes_the_exact_floor_and_property_its_producer_id(tmp_path: Pa
     for (language, kind, name, path), sid in picked.items():
         floor = make_declaration_stable_id(kind, language, path, name)
         if kind == "package":
-            assert sid == floor, (kind, name, sid)
+            assert sid == scoped_stable_id(
+                kind="package", lang=language, path=path, name=name,
+            ) != floor, (kind, name, sid)
             continue
         prop_type, qualified = _PROPERTY_INPUTS[name]
         assert sid == make_typed_stable_id(

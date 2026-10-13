@@ -2700,3 +2700,45 @@ class TestATsClientPatternCarriesTheHostFileLanguage:
         patterns = _scan_ts_file(Path("src/client.ts"), "const client = new UserServiceClient('localhost:50051');\n")
         assert patterns
         assert {p.language for p in patterns} == {"typescript"}
+
+
+class TestLinkerMintedSymbolsCarryAStableId:
+    """INV-fufij: the services, servicers and stubs this linker mints carry a
+    language, and the analyzer-side backstop runs before the linkers, so they
+    shipped ``stable_id=None``. Each is minted through
+    ``pass_minted_stable_id``, scoped by the framework role and proto package."""
+
+    def test_services_and_python_mints_hold_distinct_producer_ids(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import floor_stable_id_key
+        from hypergumbo_core.linkers.grpc import PASS_ID, link_grpc
+        from hypergumbo_core.overload_arity import pass_minted_stable_id
+
+        (tmp_path / "api").mkdir()
+        (tmp_path / "api" / "svc.proto").write_text(
+            'syntax = "proto3";\npackage demo;\n'
+            "service S {\n  rpc Get(Req) returns (Req);\n}\n"
+            "service T {\n  rpc Get(Req) returns (Req);\n  rpc Put(Req) returns (Req);\n}\n"
+        )
+        (tmp_path / "svc.py").write_text(
+            "import demo_pb2_grpc\n\n"
+            "class SServicer(demo_pb2_grpc.SServicer):\n    pass\n\n"
+            "stub = demo_pb2_grpc.SStub(channel)\n"
+        )
+        result = link_grpc(tmp_path)
+        minted = [s for s in result.symbols if s.language is not None]
+        assert {(s.kind, s.name) for s in minted} >= {
+            ("interface", "S"), ("interface", "T"), ("class", "S"), ("function", "S"),
+        }
+        ids = [s.stable_id for s in minted]
+        assert None not in ids and len(set(ids)) == len(ids)
+        service_t = next(s for s in minted if s.kind == "interface" and s.name == "T")
+        assert service_t.stable_id == pass_minted_stable_id(
+            owner=PASS_ID, kind="interface", lang="proto", path="api/svc.proto",
+            name="T", scope=("grpc_service", "demo"),
+        )
+        assert service_t.stable_id != floor_stable_id_key("interface", "proto", "api/svc.proto", "T")
+        servicer = next(s for s in minted if s.kind == "class")
+        assert servicer.stable_id == pass_minted_stable_id(
+            owner=PASS_ID, kind="class", lang="python", path="svc.py", name="S",
+            scope=("grpc_servicer",),
+        )

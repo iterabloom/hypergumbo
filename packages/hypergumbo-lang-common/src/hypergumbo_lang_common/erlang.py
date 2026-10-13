@@ -42,7 +42,8 @@ macro records ``A, B`` in ``meta["parameters"]``, so ``?MAX`` and
 list takes the zero-parameter formula. Before this both kinds rode the
 backstop floor, and a same-named pair in one file (``-ifdef``/``-else``
 alternatives) was left null; such a pair is now a same-scope tie the
-per-file occurrence pass orders.
+per-file occurrence pass orders. A ``-record(name, ...)`` mints the same
+formula over its name with no arity (record names are unique per module).
 
 If tree-sitter with Erlang support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -467,6 +468,10 @@ def _extract_symbols_from_file(
                 sym_id = make_symbol_id("erlang", file_path, start_line, end_line, record_name, "record")
                 symbols.append(Symbol(
                     id=sym_id,
+                    stable_id=declared_arity_stable_id(
+                        kind="record", lang="erlang", path=file_path,
+                        name=record_name, qualified_name=record_name, arity=None,
+                    ),
                     name=record_name,
                     kind="record",
                     language="erlang",

@@ -27,6 +27,12 @@ Why This Design
 - Uses tree-sitter-graphql package for grammar (grammar_module)
 - GraphQL-specific: types, fields, queries, mutations are first-class
 - Useful for API schema analysis and documentation generation
+- Identity (ADR-0035, WI-tusad): ``input`` / ``scalar`` / ``union`` types,
+  directives, fragments and operations mint
+  ``overload_arity.scoped_stable_id`` over their name (GraphQL names are
+  unique in a schema or document, so the chain is the name). ``type`` /
+  ``interface`` / ``enum`` keep the backstop's table formulas
+  (:func:`_graphql_stable_id`)
 """
 from __future__ import annotations
 
@@ -38,6 +44,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    is_table_kind,
     iter_tree,
     make_symbol_id,
     node_text,
@@ -45,6 +52,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import scoped_stable_id
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -113,6 +121,13 @@ def _extract_graphql_signature(
     return sig
 
 
+def _graphql_stable_id(kind: str, name: str, rel_path: str) -> Optional[str]:
+    """The producer stable_id of a GraphQL definition, or None for a table kind."""
+    if is_table_kind(kind):
+        return None
+    return scoped_stable_id(kind=kind, lang="graphql", path=rel_path, name=name)
+
+
 def _process_graphql_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -154,7 +169,7 @@ def _process_graphql_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_graphql_stable_id(kind, type_name, rel_path),
                     shape_id=None,
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind=kind,
@@ -182,7 +197,7 @@ def _process_graphql_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_graphql_stable_id("directive", directive_name, rel_path),
                     shape_id=None,
                     display_label=f"@{directive_name}",
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
@@ -215,7 +230,7 @@ def _process_graphql_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_graphql_stable_id("fragment", frag_name, rel_path),
                     shape_id=None,
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="fragment",
@@ -253,7 +268,7 @@ def _process_graphql_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_graphql_stable_id(op_type, op_name, rel_path),
                     shape_id=None,
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind=op_type,

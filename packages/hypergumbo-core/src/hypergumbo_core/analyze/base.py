@@ -103,7 +103,9 @@ Shared helpers
   factories behind ``populate_kind_stable_ids``, ``make_doc_stable_id``,
   ``make_entry_stable_id`` (shader entry points), ``make_protocol_stable_id``
   (linker stand-ins) and ``make_synthetic_symbol_identity`` (Class-B
-  stand-ins).
+  stand-ins). ``is_table_kind`` tells a producer which of its kinds the
+  backstop's table owns, and ``ancestor_labels`` collects the enclosing
+  scopes a producer hashes into its scope chain.
 
 Why This Design
 ---------------
@@ -1721,10 +1723,10 @@ _KIND_STABLE_ID_FACTORIES = {
     "trait": _declaration_kind_stable_id,
     "protocol": _declaration_kind_stable_id,
     "contract": _declaration_kind_stable_id,
-    # META-nomiz: view-template stand-ins (linkers/_view_template_core.py) mint
-    # kind="template" with a language but no stable_id, falling through every other
-    # backstop. They share the generic kind-scoped formula — kind is folded into the
-    # hash, so a "template" node stays distinct from a "file" node at the same path.
+    # META-nomiz: the generic kind-scoped formula for a "template" symbol minted
+    # before the linkers. The view-template linker's own templates are minted
+    # AFTER this backstop runs, so this row never reached them (they shipped null);
+    # they stamp their own id (INV-fufij, overload_arity.pass_minted_stable_id).
     "template": _declaration_kind_stable_id,
 }
 
@@ -1756,6 +1758,21 @@ def floor_stable_id_key(
     if kind in _KIND_STABLE_ID_FACTORIES:
         return None
     return make_declaration_stable_id(kind, language, path, name)
+
+
+def is_table_kind(kind: str) -> bool:
+    """True when the backstop owns ``kind``'s identity with a table formula.
+
+    A table kind (``file``, ``module``, ``variable``, ``class``, ``template``
+    ...; ``_KIND_STABLE_ID_FACTORIES``) takes its table value from
+    :func:`populate_kind_stable_ids`; every other kind with no producer value
+    falls to the floor. A producer that emits a mix (a GraphQL ``type`` beside
+    an ``input``, a TOML ``project`` beside a ``table``) mints its own formula
+    for the floor kinds and leaves the table kinds to their table formula:
+    replacing a table value would change a value already computed, which
+    ADR-0035 §6 governs.
+    """
+    return kind in _KIND_STABLE_ID_FACTORIES
 
 
 def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
@@ -2788,6 +2805,30 @@ def iter_tree(root: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
         yield node
         # Add children in reverse order so leftmost is processed first
         stack.extend(reversed(node.children))
+
+
+def ancestor_labels(
+    node: "tree_sitter.Node",
+    label_of: Callable[["tree_sitter.Node"], Optional[str]],
+) -> list[str]:
+    """The labels of ``node``'s enclosing scopes, outermost first.
+
+    Walks up the parents of ``node`` (not ``node`` itself) and keeps
+    ``label_of(ancestor)`` wherever it is not ``None``. A producer that hashes
+    a scope chain (ADR-0035 §1) passes a ``label_of`` naming the ancestors
+    that open a scope in its grammar (a CSS ``@media`` query, a LaTeX
+    section's title, a CMake ``function``) and joins the result with the
+    symbol's own name.
+    """
+    labels: list[str] = []
+    current = node.parent
+    while current is not None:
+        label = label_of(current)
+        if label is not None:
+            labels.append(label)
+        current = current.parent
+    labels.reverse()
+    return labels
 
 
 def iter_tree_with_context(
