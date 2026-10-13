@@ -101,6 +101,13 @@ CASES = {
                "namespace B {\n    class Inner {\n        Inner() {}\n        int Go() { return 2; }\n"
                "        int f;\n        public int this[int i] { get { return i; } }\n"
                "        enum E { X }\n    }\n    interface I { }\n    struct S { }\n}\n"),
+    # A property hashed its qualified name, which kept only the innermost
+    # namespace: ``Inner.C.P`` in namespaces A and B tied.
+    "csharp-nested-namespace": (analyze_csharp, "src/Spaces.cs",
+                                "namespace A {\n    namespace Inner {\n        class C {\n"
+                                "            int P { get; set; }\n        }\n    }\n}\n",
+                                "namespace B {\n    namespace Inner {\n        class C {\n"
+                                "            int P { get; set; }\n        }\n    }\n}\n"),
     "swift": (analyze_swift, "src/Outer.swift",
               "class A {\n    class Inner {\n        func go() -> Int { return 1 }\n        var v: Int = 1\n"
               "    }\n    enum E {\n        case x\n    }\n    protocol P {\n        func p()\n    }\n}\n",
@@ -209,6 +216,43 @@ def test_php_namespace_is_read_per_declaration(tmp_path: Path) -> None:
     plain = _symbols(analyze_php, tmp_path / "p", "z.php", "<?php\nclass Z {}\n")
     assert [s.qualified_name for s in plain] == ["Z"]
     assert plain[0].stable_id == make_declaration_stable_id("class", "php", "z.php", "Z")
+
+
+def test_csharp_qualified_name_carries_every_enclosing_namespace(tmp_path: Path) -> None:
+    """Nested block namespaces (``namespace A { namespace B {`` and the dotted
+    ``namespace X.Y { namespace Z {``) are all in ``qualified_name``; it kept
+    the innermost one only (``B.C.Go``). A single namespace, block or
+    file-scoped, reads as before."""
+    syms = _symbols(analyze_csharp, tmp_path / "n", "a.cs",
+                    "namespace A {\n  namespace B {\n    class C {\n      void Go() {}\n"
+                    "      int P { get; set; }\n      int f;\n      enum E { X }\n    }\n  }\n}\n"
+                    "namespace X.Y {\n  namespace Z {\n    class D { }\n  }\n}\n")
+    assert {s.name: s.qualified_name for s in syms} == {
+        "C": "A.B.C", "C.Go": "A.B.C.Go", "C.P": "A.B.C.P", "C.f": "A.B.C.f",
+        "E": "A.B.C.E", "E.X": "A.B.C.E.X", "D": "X.Y.Z.D",
+    }
+    single = _symbols(analyze_csharp, tmp_path / "s", "b.cs",
+                      "namespace N.M;\nclass K {\n  int P { get; set; }\n}\n")
+    assert {s.name: s.qualified_name for s in single} == {"K": "N.M.K", "K.P": "N.M.K.P"}
+
+
+def test_typescript_qualified_name_carries_enclosing_namespaces(tmp_path: Path) -> None:
+    """A TypeScript ``namespace`` / ``module`` block is a source-level
+    namespace, so ``qualified_name`` carries it (``A.B.C.go``); it held the
+    class chain alone (``C.go``). Functions are not namespaces and stay out,
+    and a string-named ambient ``declare module "m"`` names a module
+    specifier, not a namespace."""
+    syms = _symbols(analyze_javascript, tmp_path, "src/n.ts",
+                    "namespace A {\n  export namespace B {\n    export class C {\n"
+                    "      go(): number { return 1; }\n    }\n"
+                    "    export function f(): number { return 1; }\n"
+                    "    export interface I { x: number; }\n  }\n}\n"
+                    "declare module \"m\" {\n  export class K {}\n}\n"
+                    "function outer() {\n  class Local {}\n  return Local;\n}\n")
+    assert {s.name: s.qualified_name for s in syms if s.kind != "module"} == {
+        "C": "A.B.C", "C.go": "A.B.C.go", "f": "A.B.f", "I": "A.B.I", "I.x": "A.B.I.x",
+        "K": "K", "outer": "outer", "Local": "Local",
+    }
 
 
 # -- the tree-sitter-kotlin nested one-line body -------------------------------

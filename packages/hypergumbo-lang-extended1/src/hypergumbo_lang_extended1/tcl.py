@@ -12,8 +12,10 @@ Implementation approach:
 - Uses TreeSitterAnalyzer base class for two-pass orchestration
 - Uses tree-sitter-language-pack for Tcl grammar
 - Handles Tcl-specific constructs like proc, namespace eval, and command substitution
-- stable_ids hash every enclosing ``namespace eval`` (INV-fabih), not only the
-  innermost one the emitted name carries
+- stable_ids hash every enclosing ``namespace eval`` (INV-fabih); a proc's id
+  name slot and ``meta.namespace`` carry every one too (``a::inner::go``,
+  Tcl's own name), where they kept the innermost only (WI-tusad scheme bump).
+  The hashed name stays ``inner::go`` beside the chain, so ids did not move
 
 Key constructs extracted:
 - procedure: proc name {args} {body}
@@ -32,6 +34,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     make_symbol_id,
     make_unresolved_edge,
 )
@@ -93,6 +96,14 @@ def _get_namespace_name(node: "tree_sitter.Node") -> Optional[str]:
     return None  # pragma: no cover
 
 
+def _namespace_path(node: "tree_sitter.Node") -> tuple[str, ...]:
+    """Every ``namespace eval`` enclosing ``node``, outermost first: the
+    namespace a proc's id and ``meta.namespace`` carry (``a::inner``)."""
+    return tuple(ancestor_labels(
+        node, lambda n: _get_namespace_name(n) if n.type == "namespace" else None,
+    ))
+
+
 def _count_namespace_procs(node: "tree_sitter.Node") -> int:
     """Count procedures in a namespace."""
     count = 0
@@ -140,14 +151,10 @@ def _find_enclosing_proc(
 ) -> Optional[str]:
     """Find the enclosing procedure for a node."""
     current = node.parent
-    namespace_name = None
     proc_name = None
     proc_node = None
 
     while current is not None:
-        if current.type == "namespace":
-            if namespace_name is None:
-                namespace_name = _get_namespace_name(current)
         if current.type == "procedure":
             if proc_name is None:
                 proc_name = _get_proc_name(current)
@@ -155,7 +162,7 @@ def _find_enclosing_proc(
         current = current.parent
 
     if proc_name and proc_node is not None:
-        qualified_name = f"{namespace_name}::{proc_name}" if namespace_name else proc_name
+        qualified_name = "::".join((*_namespace_path(proc_node), proc_name))
         rel_path = str(path.relative_to(repo_root))
         return make_symbol_id("tcl", rel_path, proc_node.start_point[0] + 1, proc_node.end_point[0] + 1, qualified_name, "proc")
     return None  # pragma: no cover
@@ -198,11 +205,12 @@ class TclAnalyzer(TreeSitterAnalyzer):
     ) -> None:
         """Extract symbols from a syntax tree node recursively.
 
-        ``namespace`` is the innermost enclosing ``namespace eval`` (what the
-        emitted name, id and ``meta.namespace`` carry); ``ns_path`` is every
-        enclosing one, outermost first, which the stable_id hashes (INV-fabih:
-        ``a::inner::go`` and ``b::inner::go`` both hashed ``inner::go``, tied,
-        and deleting the first moved the second).
+        ``namespace`` is the innermost enclosing ``namespace eval``, the
+        prefix of the name the stable_id hashes; ``ns_path`` is every
+        enclosing one, outermost first, which the stable_id hashes beside it
+        (INV-fabih: ``a::inner::go`` and ``b::inner::go`` both hashed
+        ``inner::go``, tied, and deleting the first moved the second) and the
+        node id and ``meta.namespace`` carry.
         """
         if node.type == "procedure":
             name = _get_proc_name(node)
@@ -210,13 +218,14 @@ class TclAnalyzer(TreeSitterAnalyzer):
                 params = _get_proc_params(node)
                 signature = f"proc {name} {{{', '.join(params)}}}"
 
-                qualified_name = f"{namespace}::{name}" if namespace else name
+                hashed_name = f"{namespace}::{name}" if namespace else name
+                full_name = "::".join((*ns_path, name))
 
                 sym = Symbol(
-                    id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "proc"),
+                    id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, full_name, "proc"),
                     stable_id=self.compute_stable_id(
-                        node, kind="proc", name=qualified_name,
-                        qualified_name=nested_member_qualified_name(ns_path, qualified_name, "::"),
+                        node, kind="proc", name=hashed_name,
+                        qualified_name=nested_member_qualified_name(ns_path, hashed_name, "::"),
                         file_stable_id=file_anchor,
                     ),
                     name=name,
@@ -232,7 +241,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
-                    meta={"namespace": namespace} if namespace else None,
+                    meta={"namespace": "::".join(ns_path)} if ns_path else None,
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "tcl"),
                     line_span=node.end_point[0] - node.start_point[0] + 1,
                 )
@@ -246,7 +255,10 @@ class TclAnalyzer(TreeSitterAnalyzer):
                 proc_count = _count_namespace_procs(node)
 
                 sym = Symbol(
-                    id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "namespace"),
+                    id=make_symbol_id(
+                        "tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1,
+                        "::".join((*ns_path, name)), "namespace",
+                    ),
                     stable_id=self.compute_stable_id(
                         node, kind="namespace", name=name,
                         qualified_name=nested_member_qualified_name(ns_path, name, "::"),

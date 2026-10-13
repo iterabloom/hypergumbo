@@ -234,3 +234,38 @@ def test_wolfram_scope_skips_binary_expressions_that_define_nothing(tmp_path: Pa
     inner = [s for s in syms if s.name == "inner"]
     assert len(inner) == 1
     assert inner[0].stable_id == next(s.stable_id for s in plain if s.name == "inner")
+
+
+def test_tcl_names_carry_every_enclosing_namespace_eval(tmp_path: Path) -> None:
+    """A proc's id name slot and ``meta.namespace`` carry every enclosing
+    ``namespace eval`` (``a::inner::go``, Tcl's own name for it), not the
+    innermost only (``inner::go``); a nested namespace's id slot is
+    ``a::inner``. The stable_ids are the values they had: they already hashed
+    the full path."""
+    syms = {s.name: s for s in _symbols(
+        analyze_tcl, tmp_path, "src/n.tcl",
+        "namespace eval a {\n  namespace eval inner {\n    proc go {} { return 1 }\n"
+        "  }\n}\nproc top {} { go }\n")}
+    assert syms["go"].id == "tcl:src/n.tcl:3-3:a..inner..go:proc"  # ids spell : as .
+    assert syms["go"].meta == {"namespace": "a::inner"}
+    assert syms["inner"].id == "tcl:src/n.tcl:2-4:a..inner:namespace"
+    assert syms["a"].id == "tcl:src/n.tcl:1-5:a:namespace"
+    assert syms["top"].meta is None
+    assert {n: s.stable_id for n, s in syms.items()} == {
+        "a": "sha256:5f8ecf75437ae496", "inner": "sha256:67a662494d8be518",
+        "go": "sha256:5a06c54a2c6ba3bd", "top": "sha256:94b7459b9a4080ad",
+    }
+
+
+def test_tcl_call_edges_leave_the_renamed_proc(tmp_path: Path) -> None:
+    """The caller of a call edge is the proc's node id, rebuilt from the call
+    site: it must carry the same full namespace path."""
+    root = tmp_path
+    (root / "n.tcl").write_text(
+        "namespace eval a {\n  namespace eval inner {\n    proc go {} { helper }\n"
+        "  }\n}\nproc helper {} { return 1 }\n")
+    result = analyze_tcl(root)
+    ids = {s.id for s in result.symbols}
+    calls = [e for e in result.edges if e.edge_type == "calls"]
+    assert calls and all(e.src in ids for e in calls)
+

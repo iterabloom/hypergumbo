@@ -178,7 +178,15 @@ DEAD_CODE_MAYBE_SCHEMA_VERSION = "0.3.0"
 # incompatible change. `test_confidence_model_matches_documented_grammar` pins
 # the format.
 CONFIDENCE_MODEL = "hypergumbo-evidence-v2.1"  # v2.1 (ADR-0057 §13): a new confidence_source, ``corroborated``, and its declared 0.95 level for an edge two distinct pathways reached -- a MINOR refinement (new evidence handling), no change to any single-producer score
-STABLE_ID_SCHEME = "hypergumbo-stableid-v8"
+STABLE_ID_SCHEME = "hypergumbo-stableid-v9"
+# v9 (WI-tusad / INV-fabih; ADR-0035 §6 "Follow-on v8 -> v9"): every producer
+# hashes every enclosing scope that can repeat within one file (types,
+# functions, block namespaces/modules/packages, template blocks and
+# branches), no line number or ordinal, repo-relative paths only, and the
+# declared parameters (an Ada function also its result type) where callables
+# overload on them; every kind is covered. A top-level declaration and a member
+# of a top-level type keep their v8 value unless one of those inputs changed.
+# The per-transition record is the spec's stable_id_scheme version history.
 # v3 (WI-linon): the Python shape_id hash now folds the symbol kind
 # (class/method/function) and the concrete AST node type into its prefix, so
 # structurally-trivial symbols of different kinds no longer collide — a

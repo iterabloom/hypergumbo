@@ -18,6 +18,9 @@ This analyzer uses tree-sitter to parse C# files and extract:
   (INV-fabih: two nested ``class Inner``, or two in sibling namespace blocks,
   shared one bare-name table key, so deleting the first moved the second's
   ids). A file-scoped namespace is single per file and not in the chain.
+  The emitted ``qualified_name`` carries every enclosing namespace, the
+  file-scoped one included (``A.B.C.Go``, ``N.M.K``; it kept the innermost
+  block namespace only).
 - Indexers (``subscript``, named ``Type.this[]``), operators and conversion
   operators (``method``, ``Type.operator+`` / ``Type.operator int``),
   destructors (``method``, ``Type.~Type``) and events declared with
@@ -648,22 +651,35 @@ def _get_csharp_class_ancestors(
 def _get_csharp_enclosing_namespace(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
-    """Walk up the tree to find the enclosing namespace (if any).
+    """The namespace ``node`` sits in, every enclosing one joined outermost
+    first (``A.B`` for ``namespace A { namespace B {``), or None.
 
     Handles both block-style ``namespace Foo.Bar { ... }`` and the C# 10
-    ``file_scoped_namespace_declaration`` form.
+    file-scoped ``namespace Foo.Bar;``, which the grammar parses as an
+    earlier SIBLING of the declarations it covers, not their ancestor. It
+    returned the innermost block namespace only, and never a file-scoped
+    one, so ``qualified_name`` read ``B.C.Go`` for ``A.B.C.Go`` and ``K``
+    for ``N.M.K`` (WI-tusad scheme bump).
     """
-    current = node.parent
-    while current is not None:
-        if current.type in (
-            "namespace_declaration", "file_scoped_namespace_declaration",
-        ):
-            # The name child can be an identifier or qualified_name
-            for child in current.children:
-                if child.type in ("qualified_name", "identifier"):
-                    return node_text(child, source)
-        current = current.parent
-    return None
+    def name_of(n: "tree_sitter.Node") -> Optional[str]:
+        # The name child can be an identifier or qualified_name
+        for child in n.children:
+            if child.type in ("qualified_name", "identifier"):
+                return node_text(child, source)
+        return None  # pragma: no cover - a namespace declaration is named
+    chain = ancestor_labels(
+        node, lambda n: name_of(n) if n.type == "namespace_declaration" else None,
+    )
+    root = node
+    while root.parent is not None:
+        root = root.parent
+    file_scoped = [
+        name_of(c) for c in root.children
+        if c.type == "file_scoped_namespace_declaration"
+        and c.start_byte < node.start_byte
+    ]
+    chain = [n for n in file_scoped[-1:] if n] + chain
+    return ".".join(chain) if chain else None
 
 
 #: Type declarations a C# member or nested type can sit in.
@@ -1236,11 +1252,13 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    # The block namespaces and types around it (a file-scoped
+                    # namespace is single per file: the file anchor has it).
                     stable_id=make_typed_stable_id(
                         "property",
                         node_text(prop_type, source) if prop_type is not None else "",
                         visibility_from_modifiers(prop_modifiers),
-                        name=name, qualified_name=prop_qualified,
+                        name=name, qualified_name=_csharp_member_chain(node, source, name),
                         file_stable_id=file_stable_id,
                     ),
                     modifiers=prop_modifiers,

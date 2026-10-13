@@ -35,7 +35,9 @@ in a ``define`` form, so no function hashed its arity. Definitions now mint
 ``module+`` / ``module*`` names as their scope chain (``scheme.form_scope``),
 and a function writes its lambda list to ``meta["parameters"]``
 (``scheme.lambda_list_entries``: ``[y 1]`` has a default, the parameter after
-``.`` is variadic, keyword parameters are by name and not counted). A
+``.`` is variadic, keyword parameters are by name and not counted;
+``meta["param_count"]`` counts the same entries and the signature spells the
+lambda list as written, ``scheme.lambda_list_signature``). A
 top-level definition has no scope, so a zero-parameter top-level function,
 variable or struct keeps its value. The submodule forms still produce no symbol
 of their own.
@@ -59,7 +61,7 @@ from hypergumbo_core.overload_arity import (
     nested_qualified_name,
 )
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
-from hypergumbo_lang_common.scheme import form_scope, lambda_list_entries
+from hypergumbo_lang_common.scheme import form_scope, lambda_list_entries, lambda_list_signature
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -116,21 +118,6 @@ def _get_function_name(node: "tree_sitter.Node") -> Optional[str]:
     if sig_children and sig_children[0].type == "symbol":
         return _get_node_text(sig_children[0])
     return None  # pragma: no cover
-
-
-def _get_function_params(node: "tree_sitter.Node") -> list[str]:
-    """Get parameters from a function define form."""
-    params: list[str] = []
-    children = [c for c in node.children if c.type not in ("(", ")")]
-    if len(children) < 2:
-        return params  # pragma: no cover
-    sig_list = children[1]
-    sig_children = [c for c in sig_list.children if c.type not in ("(", ")")]
-    # Skip the first symbol (function name)
-    for child in sig_children[1:]:
-        if child.type == "symbol":
-            params.append(_get_node_text(child))
-    return params
 
 
 def _lambda_list(node: "tree_sitter.Node") -> list["tree_sitter.Node"]:
@@ -286,12 +273,15 @@ class _RacketExtractor:
             if _is_function_define(node):
                 name = _get_function_name(node)
                 if name:
-                    params = _get_function_params(node)
-                    signature = f"(define ({name} {' '.join(params)}) ...)"
+                    lambda_list = _lambda_list(node)
+                    signature = lambda_list_signature(name, lambda_list)
                     rel_path = str(path.relative_to(self.repo_root))
+                    entries = lambda_list_entries(lambda_list)
                     meta: dict[str, Any] = {
-                        "param_count": len(params),
-                        PARAMETERS_KEY: lambda_list_entries(_lambda_list(node)),
+                        # What meta.parameters lists: a keyword's parameter is
+                        # passed by name, so it is not counted.
+                        "param_count": len(entries),
+                        PARAMETERS_KEY: entries,
                     }
 
                     sym = Symbol(

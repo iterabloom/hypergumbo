@@ -87,6 +87,30 @@ def test_racket_lambda_list_parameters(tmp_path: Path) -> None:
         ("x", False, False), ("y", True, False), ("more", False, True)]
 
 
+def test_racket_param_count_and_signature_follow_the_lambda_list(tmp_path: Path) -> None:
+    """``meta.param_count`` counts what ``meta.parameters`` lists (positional
+    parameters, optional and rest included; a keyword and its parameter are
+    passed by name and left out), and the signature spells the lambda list
+    as written. The keyword's parameter was counted when bare (``#:scale s``),
+    the optional ``[y 1]`` never was, and neither appeared in the signature
+    as written."""
+    text = "#lang racket\n(define (f x [y 1] #:scale s #:k [k 2] . more) x)\n"
+    f = next(s for s in _symbols(analyze_racket, tmp_path, "src/a.rkt", text)
+             if s.name == "f")
+    assert [p["name"] for p in f.meta[PARAMETERS_KEY]] == ["x", "y", "more"]
+    assert f.meta["param_count"] == 3
+    assert f.signature == "(define (f x [y 1] #:scale s #:k [k 2] . more) ...)"
+
+
+def test_scheme_param_count_and_signature_follow_the_lambda_list(tmp_path: Path) -> None:
+    text = "(define (g a [b 1] . rest) a)\n(define (h) 1)\n"
+    syms = {s.name: s for s in _symbols(analyze_scheme, tmp_path, "a.scm", text)}
+    assert syms["g"].meta["param_count"] == 3
+    assert syms["g"].signature == "(define (g a [b 1] . rest) ...)"
+    assert syms["h"].meta["param_count"] == 0
+    assert syms["h"].signature == "(define (h) ...)"
+
+
 def test_racket_top_level_zero_parameter_ids_are_unchanged(tmp_path: Path) -> None:
     """A top-level definition has no scope, and a zero-parameter function no
     arity: their ids are the compute_stable_id values they had."""
