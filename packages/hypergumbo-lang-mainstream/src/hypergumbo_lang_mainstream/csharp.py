@@ -8,7 +8,9 @@ This analyzer uses tree-sitter to parse C# files and extract:
 - Enum declarations
 - Method declarations (inside classes/structs)
 - Constructor declarations
-- Property declarations
+- Property declarations, whose stable_id is the ADR-0035 producer formula
+  (``make_typed_stable_id`` over the declared type and the namespace/type
+  chain; WI-tusad: they rode the backstop floor key)
 - Indexers (``subscript``, named ``Type.this[]``), operators and conversion
   operators (``method``, ``Type.operator+`` / ``Type.operator int``),
   destructors (``method``, ``Type.~Type``) and events declared with
@@ -1146,6 +1148,8 @@ def _extract_symbols_from_file(
                 prop_modifiers = _extract_modifiers(node)
                 ns_name = _get_csharp_enclosing_namespace(node, source)
                 cls_ancestors = _get_csharp_class_ancestors(node, source)
+                prop_qualified = _make_csharp_qualified_name(ns_name, cls_ancestors, name)
+                prop_type = node.child_by_field_name("type")
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, full_name, "property"),
                     name=full_name,
@@ -1160,10 +1164,17 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=make_typed_stable_id(
+                        "property",
+                        node_text(prop_type, source) if prop_type is not None else "",
+                        visibility_from_modifiers(prop_modifiers),
+                        name=name, qualified_name=prop_qualified,
+                        file_stable_id=file_stable_id,
+                    ),
                     modifiers=prop_modifiers,
                     line_span=end_line - start_line + 1,
                     is_exported="public" in prop_modifiers,
-                    qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),
+                    qualified_name=prop_qualified,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node

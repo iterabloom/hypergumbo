@@ -146,7 +146,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`enum`** — Enum declaration.
 - **`env_var`** — Environment variable symbol. CANONICAL per audit-findings 0006.
 - **`environment`** — Environment symbol (LaTeX / shell). CANONICAL per audit-findings 0007.
-- **`error_set`** — Zig error-set declaration. Surfaced by WI-nubuv's inline-IfExp / non-string-Constant classifier fixes from the function-local kind union in hypergumbo-lang-extended1/zig.py:259. Zig errors are a first-class language construct sibling to `struct` / `enum` / `union`.
+- **`error_set`** — Zig error-set declaration. Surfaced by WI-nubuv's inline-IfExp / non-string-Constant classifier fixes from the function-local kind union in hypergumbo-lang-extended1/zig.py:332. Zig errors are a first-class language construct sibling to `struct` / `enum` / `union`.
 - **`event`** — Event symbol (DSL / Solidity). CANONICAL per audit-findings 0007.
 - **`executable`** — Executable declaration (CMake `add_executable`, Meson `executable`). CANONICAL per audit-findings 0005.
 - **`export`** — Export declaration (JS / TS / TOML / Rust).
@@ -180,7 +180,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`macro`** — Macro definition (Rust / C / Scheme).
 - **`map`** — Smithy `map` shape — a named key->value associative-type declaration (`map Foo { key: Bar, value: Baz }`). Sibling aggregate shape to `list` / `union` / `enum`; not a `struct` (associative, not fixed named members) and no generic map/dict kind exists to fold to. Producer: `smithy.py` `map_statement` -> `_extract_shape(..., "map", ...)`. Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`media`** — CSS @media symbol. CANONICAL per audit-findings 0007.
-- **`message`** — Protobuf ``message`` declaration (``proto.py:260``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``proto.py`` emits via ``_make_proto_symbol(..., 'message', ...)`` indirection).
+- **`message`** — Protobuf ``message`` declaration (``proto.py:296``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``proto.py`` emits via ``_make_proto_symbol(..., 'message', ...)`` indirection).
 - **`method`** — Method on a class / struct / interface.
 - **`mixin`** — Mixin declaration (Ruby / Sass).
 - **`modifier`** — Solidity / Vyper modifier declaration. A function modifier is a reusable pre/post-condition block applied to contract functions (e.g., `onlyOwner`). Producer: `solidity.py:302` emits `add_symbol(mod_name, "modifier", ...)` for `modifier_definition` AST nodes.

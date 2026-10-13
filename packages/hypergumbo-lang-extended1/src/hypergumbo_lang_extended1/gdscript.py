@@ -19,6 +19,16 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, variables, signals, and classes
 2. Pass 2: Extract preload/load import edges and function call edges
 
+Identity (WI-tusad): a function or signal is qualified by the inner classes
+(and, for a lambda-held ``func``, the functions) enclosing it, ``A.run``, and
+mints the ADR-0035 producer stable_id over that chain: functions through
+``compute_stable_id`` (parameter count and flags from the ``parameters`` node),
+signals through ``overload_arity.declared_arity_stable_id`` with no arity.
+Before, neither computed a stable_id and rode the backstop floor key (kind,
+file, bare name), which ``run`` in inner classes ``A`` and ``B`` share, so both
+were null. Variables and classes keep the backstop's table formula. Names stay
+bare.
+
 For a call edge the caller is the enclosing ``function_definition``, found by
 its position rather than its name, so same-named functions in two inner
 classes are kept apart. Calls with no enclosing function (e.g. in a
@@ -69,6 +79,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import declared_arity_stable_id
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -148,6 +159,20 @@ def _get_enclosing_function_gdscript(
     return None  # pragma: no cover - no enclosing function found
 
 
+def _scope_chain(node: "tree_sitter.Node", source: bytes, name: str) -> str:
+    """``name`` qualified by every inner class and function enclosing ``node``,
+    outermost first (``A.run``; WI-tusad)."""
+    parts = [name]
+    current = node.parent
+    while current is not None:
+        if current.type in ("class_definition", "function_definition"):
+            name_node = find_child_by_type(current, "name")
+            if name_node is not None:
+                parts.append(node_text(name_node, source).strip())
+        current = current.parent
+    return ".".join(reversed(parts))
+
+
 def _make_gd_symbol(
     node: "tree_sitter.Node",
     name: str,
@@ -156,6 +181,7 @@ def _make_gd_symbol(
     run_id: str,
     signature: Optional[str] = None,
     complexity: bool = False,
+    stable_id: Optional[str] = None,
 ) -> Symbol:
     """Create a Symbol from a tree-sitter node.
 
@@ -178,6 +204,7 @@ def _make_gd_symbol(
     sym_id = make_symbol_id("gdscript", file_path, start_line, end_line, name, kind)
     return Symbol(
         id=sym_id,
+        stable_id=stable_id,
         name=name,
         kind=kind,
         language="gdscript",
@@ -218,7 +245,15 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                 if name_node:
                     func_name = node_text(name_node, source).strip()
                     sig = _extract_function_signature(node, source)
-                    sym = _make_gd_symbol(node, func_name, "function", rel_path, run.execution_id, signature=sig, complexity=True)
+                    stable_id = self.compute_stable_id(
+                        node, "function", name=func_name,
+                        qualified_name=_scope_chain(node, source, func_name),
+                        file_stable_id=self._file_anchor(rel_path),
+                    )
+                    sym = _make_gd_symbol(
+                        node, func_name, "function", rel_path, run.execution_id,
+                        signature=sig, complexity=True, stable_id=stable_id,
+                    )
                     analysis.symbols.append(sym)
                     analysis.symbol_by_name[func_name] = sym
 
@@ -232,7 +267,15 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                 name_node = find_child_by_type(node, "name")
                 if name_node:
                     signal_name = node_text(name_node, source).strip()
-                    analysis.symbols.append(_make_gd_symbol(node, signal_name, "signal", rel_path, run.execution_id))
+                    analysis.symbols.append(_make_gd_symbol(
+                        node, signal_name, "signal", rel_path, run.execution_id,
+                        stable_id=declared_arity_stable_id(
+                            kind="signal", lang="gdscript", path=rel_path,
+                            name=signal_name,
+                            qualified_name=_scope_chain(node, source, signal_name),
+                            arity=None,
+                        ),
+                    ))
 
             elif node.type == "class_name_statement":
                 name_node = find_child_by_type(node, "name")

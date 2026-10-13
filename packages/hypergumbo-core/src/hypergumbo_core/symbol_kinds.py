@@ -186,7 +186,7 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Zig error-set declaration. Surfaced by WI-nubuv's "
                    "inline-IfExp / non-string-Constant classifier fixes "
                    "from the function-local kind union in "
-                   "hypergumbo-lang-extended1/zig.py:259. Zig errors are "
+                   "hypergumbo-lang-extended1/zig.py:332. Zig errors are "
                    "a first-class language construct sibling to "
                    "`struct` / `enum` / `union`."),
     SymbolKindSpec("list", AXIS_LANGUAGE_CONSTRUCT,
@@ -618,7 +618,7 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("signal", AXIS_LANGUAGE_CONSTRUCT,
                    "Signal symbol (VHDL / Verilog / Qt). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("message", AXIS_LANGUAGE_CONSTRUCT,
-                   "Protobuf ``message`` declaration (``proto.py:260``). "
+                   "Protobuf ``message`` declaration (``proto.py:296``). "
                    "CANONICAL per audit-findings 0007 (reclassified Wave 6 "
                    "PR 4 — the original DEPRECATE-NO-FOLD verdict was a "
                    "literal-grep blind-spot miss; ``proto.py`` emits via "

@@ -73,6 +73,13 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      Only ``java.lang.System``'s three FIELDS are attributes: scala writes
      ``System.currentTimeMillis`` without parentheses, and that is a call.
 
+Identity (WI-tusad): an ``object`` and a named ``given`` (``instance``) mint
+the ADR-0035 producer stable_id with ``make_typed_stable_id``, as fields do,
+qualified by every class, object, trait, enum, given and function enclosing
+them (``A.Inner`` / ``B.Inner``; ``_scala_scope_chain``). Before, they computed none
+and rode the backstop floor key (kind, file, bare name), which two nested
+``object Inner`` share, so both were null. Their emitted names stay bare.
+
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides the Scala-specific extraction
 logic, plus a per-run file-to-package map (reset at the start of each
@@ -751,6 +758,30 @@ def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str
     return None  # pragma: no cover - defensive
 
 
+_SCALA_SCOPE_NODES: Final = frozenset({
+    "class_definition", "object_definition", "trait_definition",
+    "enum_definition", "given_definition", "function_definition",
+})
+
+
+def _scala_scope_chain(node: "tree_sitter.Node", source: bytes, name: str) -> str:
+    """``name`` qualified by every class, object, trait, enum, given and
+    function enclosing ``node``, outermost first (``A.Inner``; WI-tusad).
+
+    ``_get_enclosing_type`` keeps the nearest owner only, which two nested
+    ``object Inner`` in classes ``A`` and ``B`` share.
+    """
+    parts = [name]
+    current = node.parent
+    while current is not None:
+        if current.type in _SCALA_SCOPE_NODES:
+            name_node = find_child_by_type(current, "identifier")
+            if name_node is not None:
+                parts.append(node_text(name_node, source))
+        current = current.parent
+    return ".".join(reversed(parts))
+
+
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
@@ -1154,6 +1185,7 @@ def _extract_symbols_from_file(
                 type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+                modifiers = _extract_modifiers_scala(node)
 
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "object"),
@@ -1169,7 +1201,13 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    modifiers=_extract_modifiers_scala(node),
+                    stable_id=make_typed_stable_id(
+                        "object", "", visibility_from_modifiers(modifiers),
+                        name=type_name,
+                        qualified_name=_scala_scope_chain(node, source, type_name),
+                        file_stable_id=file_stable_id,
+                    ),
+                    modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1334,6 +1372,7 @@ def _extract_symbols_from_file(
                 type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
+                modifiers = _extract_modifiers_scala(node)
 
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "instance"),
@@ -1349,7 +1388,13 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    modifiers=_extract_modifiers_scala(node),
+                    stable_id=make_typed_stable_id(
+                        "instance", "", visibility_from_modifiers(modifiers),
+                        name=type_name,
+                        qualified_name=_scala_scope_chain(node, source, type_name),
+                        file_stable_id=file_stable_id,
+                    ),
+                    modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
