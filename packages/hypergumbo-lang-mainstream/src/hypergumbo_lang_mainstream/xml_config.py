@@ -34,6 +34,12 @@ Why This Design
 - Android: Extract declared components and permissions
 - Intent-filters reveal app entry points and capabilities
 - Useful for mobile app analysis and Java/Kotlin build systems
+- Identity (ADR-0035, WI-tusad): Android permissions and components mint
+  ``overload_arity.declared_arity_stable_id`` over their short name and
+  their fully-qualified name (``android.permission.CAMERA``,
+  ``com.demo.MainActivity``), so two permissions or components that share a
+  short name hash apart; Maven dependencies and modules keep the backstop's
+  table formulas
 """
 from __future__ import annotations
 
@@ -51,6 +57,7 @@ from hypergumbo_core.analyze.base import (
     sanitize_id_name_segment,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import declared_arity_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
@@ -393,7 +400,10 @@ def _process_android_manifest(
 
                             sym = Symbol(
                                 id=symbol_id,
-                                stable_id=None,
+                                stable_id=declared_arity_stable_id(
+                                    kind="permission", lang="xml", path=rel_path,
+                                    name=short_name, qualified_name=perm_name, arity=None,
+                                ),
                                 shape_id=None,
                                 qualified_name=perm_name,
                                 # ADR-0032: fingerprint stamped by central post-pass.
@@ -473,7 +483,10 @@ def _process_android_application(
 
                             sym = Symbol(
                                 id=symbol_id,
-                                stable_id=None,
+                                stable_id=declared_arity_stable_id(
+                                    kind="component", lang="xml", path=rel_path,
+                                    name=short_name, qualified_name=full_name, arity=None,
+                                ),
                                 shape_id=None,
                                 qualified_name=full_name,
                                 # ADR-0032: fingerprint stamped by central post-pass.

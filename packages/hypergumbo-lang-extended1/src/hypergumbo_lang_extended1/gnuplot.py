@@ -36,6 +36,12 @@ script are two definitions; with the count in the hash, deleting the first
 leaves the second's id alone. Without it they shared the backstop floor key
 and both were left null. Gnuplot has no parameter types, defaults or
 variadics, so every entry is a plain ``parameter_entry``.
+
+A plot command is a site, not a declaration: every ``plot`` of a script is
+named ``plot``, and they all shared the floor key and were null. It mints
+``overload_arity.scoped_stable_id`` scoped by what it plots (the rest of the
+command line, whitespace collapsed), so ``plot sin(x)`` and ``plot cos(x)``
+hold their own ids; plotting the same thing twice is a same-scope tie.
 """
 from __future__ import annotations
 
@@ -49,6 +55,7 @@ from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+    scoped_stable_id,
 )
 from hypergumbo_core.paths import to_relative_path
 
@@ -154,6 +161,10 @@ def analyze_gnuplot(
                 cmd = m.group(1)
                 symbols.append(Symbol(
                     id=_make_symbol_id(path_str, line_num, cmd, "plot"),
+                    stable_id=scoped_stable_id(
+                        kind="plot", lang="gnuplot", path=rel_path, name=cmd,
+                        scope=(" ".join(stripped[m.end():].split()),),
+                    ),
                     name=cmd,
                     kind="plot",
                     language="gnuplot",

@@ -47,7 +47,9 @@ packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/cpp.py  packa
 # pipeline over one fixture per language and imports none of the analyzers, so the
 # import slice never selects it. A change to any covered analyzer can raise a floor or
 # null count or move an id on sibling deletion, which is exactly what the gate exists
-# to catch -- so each covered analyzer, and the backstop in base.py, maps to it.
+# to catch -- so each covered analyzer, and the backstop in base.py, maps to it. Since
+# B8a it counts every kind and reaches linker mints (grpc, view templates) and
+# manifest_targets, so those map to it too.
 packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
 packages/hypergumbo-lang-common/src/hypergumbo_lang_common/clojure.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
 packages/hypergumbo-lang-common/src/hypergumbo_lang_common/commonlisp.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
@@ -128,3 +130,42 @@ packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py  pack
 packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/scala.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
 packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/sql.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
 packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/swift.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-core/src/hypergumbo_core/linkers/grpc.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-core/src/hypergumbo_core/linkers/_view_template_core.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-core/src/hypergumbo_core/linkers/view_template_django.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-core/src/hypergumbo_core/overload_arity.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-common/src/hypergumbo_lang_common/astro.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-common/src/hypergumbo_lang_common/graphql.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-common/src/hypergumbo_lang_common/handlebars.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-common/src/hypergumbo_lang_common/hcl.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-common/src/hypergumbo_lang_common/just.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-common/src/hypergumbo_lang_common/latex.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-common/src/hypergumbo_lang_common/meson.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-common/src/hypergumbo_lang_common/puppet.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-common/src/hypergumbo_lang_common/robot.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-common/src/hypergumbo_lang_common/rst.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-common/src/hypergumbo_lang_common/svelte.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-common/src/hypergumbo_lang_common/vue.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/bibtex.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/bitbake.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/blade.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/kdl.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/mermaid.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/prisma.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/smithy.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/sparql.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/verilog.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/vhdl.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/css.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/dockerfile.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/gitignore.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ini.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/json_config.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/make.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/manifest_targets.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/markdown.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/properties.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/requirements.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/toml_config.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/xml_config.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/yaml_ansible.py  packages/hypergumbo-core/tests/test_stable_id_floor_gate.py

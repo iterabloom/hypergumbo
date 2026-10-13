@@ -29,7 +29,13 @@ and result assembly. This module provides only the Julia-specific extraction log
 4. Detect function calls and import statements
 
 A parametric method (``f(x::T) where T``, full or short form) is read through
-its ``where`` clauses; before WI-tusad it emitted no symbol.
+its ``where`` clauses; before WI-tusad it emitted no symbol. Neither did a
+method of a function owned elsewhere (``function Base.show(io, x)``,
+``Base.length(x::Foo) = 1``): it is now emitted under the name as written,
+``Base.show`` (:func:`_julia_callee_name`). A zero-method generic function
+(``function f end``, which declares ``f`` and gives it no method) is emitted
+too, its stable_id marked with the ``generic`` decorator so it never ties a
+zero-parameter method ``f()`` of the same scope.
 
 Identity (WI-tusad)
 -------------------
@@ -190,12 +196,13 @@ def _julia_parameters(call_node: "tree_sitter.Node", source: bytes) -> list[dict
 
 def _julia_stable_id(
     kind: str, file_path: str, name: str, chain: list[str],
-    meta: Optional[dict[str, Any]],
+    meta: Optional[dict[str, Any]], decorators: str = "",
 ) -> str:
     """The ADR-0035 producer stable_id: module chain plus declared parameters."""
     return declared_arity_stable_id(
         kind=kind, lang="julia", path=file_path, name=name,
         qualified_name=".".join([*chain, name]), arity=declared_arity(meta),
+        decorators=decorators,
     )
 
 
@@ -223,14 +230,39 @@ def _get_enclosing_function_julia(
     return None  # pragma: no cover - defensive
 
 
+def _julia_callee_name(call_node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The name a method definition's call is built on, as written.
+
+    ``f(x)`` -> ``f``; ``Base.show(io, x)`` -> ``Base.show`` (a method added to
+    a function another module owns, the usual way to extend ``show`` or
+    ``length``). None for a callable-object definition (``(o::Foo)(x)``).
+    """
+    head = call_node.named_children[0] if call_node.named_children else None
+    if head is not None and head.type in ("identifier", "field_expression"):
+        return node_text(head, source)
+    return None
+
+
+def _julia_generic_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The name a zero-method ``function f end`` declares.
+
+    Its signature is a bare name, not a call; None when it is a call (a
+    method). The grammar does not parse ``function Base.f end`` (an ERROR
+    node), so a qualified zero-method declaration is not reached.
+    """
+    sig_node = find_child_by_type(node, "signature")
+    head = sig_node.named_children[0] if sig_node is not None and sig_node.named_children else None
+    if head is not None and head.type == "identifier":
+        return node_text(head, source)
+    return None
+
+
 def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract function name from signature or assignment."""
     # For full function definitions: function name(args)
     call_node = _julia_signature_call(node)
     if call_node:
-        id_node = find_child_by_type(call_node, "identifier")
-        if id_node:
-            return node_text(id_node, source)
+        return _julia_callee_name(call_node, source)
     return None
 
 
@@ -528,6 +560,35 @@ def _extract_symbols_from_tree(
         # Function definition (full form)
         elif node.type == "function_definition":
             func_name = _extract_function_name(node, source)
+            generic_name = None if func_name else _julia_generic_name(node, source)
+            if generic_name:
+                # ``function f end``: a generic function with no method yet.
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                current_module = _get_enclosing_module(node, source)
+                full_name = f"{current_module}.{generic_name}" if current_module else generic_name
+                symbol = Symbol(
+                    id=make_symbol_id("julia", file_path, start_line, end_line, full_name, "function"),
+                    stable_id=_julia_stable_id(
+                        "function", file_path, generic_name,
+                        _julia_module_chain(node, source), None, "generic",
+                    ),
+                    name=generic_name,
+                    kind="function",
+                    language="julia",
+                    path=file_path,
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    line_span=end_line - start_line + 1,
+                )
+                analysis.symbols.append(symbol)
+                analysis.symbol_by_name.setdefault(generic_name, symbol)
             if func_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
@@ -574,9 +635,9 @@ def _extract_symbols_from_tree(
             # emits a FUNCTION, not a phantom variable named after the return type.
             call_node = _julia_short_form_call_node(node)
             if call_node is not None:
-                id_node = find_child_by_type(call_node, "identifier")
-                if id_node:
-                    func_name = node_text(id_node, source)
+                short_name = _julia_callee_name(call_node, source)
+                if short_name:
+                    func_name = short_name
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
 

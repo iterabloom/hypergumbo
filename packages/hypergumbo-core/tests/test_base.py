@@ -21,6 +21,8 @@ from hypergumbo_core.analyze.base import (
     find_child_by_field,
     find_child_by_type,
     is_grammar_available,
+    ancestor_labels,
+    is_table_kind,
     iter_tree,
     iter_tree_with_context,
     make_doc_stable_id,
@@ -110,6 +112,29 @@ class TestIterTree:
 
         # Depth-first: root, a, a1, a2, b, b1
         assert types == ["root", "a", "a1", "a2", "b", "b1"]
+
+
+class TestAncestorLabels:
+    """``ancestor_labels``: the enclosing scopes a producer hashes (WI-tusad)."""
+
+    def test_outermost_first_skipping_unlabeled_and_self(self) -> None:
+        node = MagicMock(type="leaf")
+        inner = MagicMock(type="section", title="Setup")
+        block = MagicMock(type="block")
+        outer = MagicMock(type="section", title="Intro")
+        node.parent, inner.parent, block.parent, outer.parent = inner, block, outer, None
+        node.title = "Self"
+
+        def label(n):
+            return n.title if n.type == "section" else None
+
+        assert ancestor_labels(node, label) == ["Intro", "Setup"]
+        assert ancestor_labels(outer, label) == []
+
+
+def test_is_table_kind_names_the_backstop_table() -> None:
+    assert is_table_kind("class") and is_table_kind("file") and is_table_kind("template")
+    assert not is_table_kind("function") and not is_table_kind("stage")
 
 
 class TestIterTreeWithContext:

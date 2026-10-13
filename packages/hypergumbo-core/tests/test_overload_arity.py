@@ -11,7 +11,8 @@ from __future__ import annotations
 import math
 
 from hypergumbo_core.analyze.base import (
-    ArityFlags, assemble_stable_id, make_file_stable_id, make_typed_stable_id,
+    ArityFlags, assemble_stable_id, make_declaration_stable_id, make_file_stable_id,
+    make_typed_stable_id,
 )
 from hypergumbo_core.behaviours import CALLBACK_MODIFIER, callback_stable_id
 from hypergumbo_core.ir import Span, Symbol
@@ -28,6 +29,8 @@ from hypergumbo_core.overload_arity import (
     declared_arity_stable_id,
     narrow_by_arity,
     parameter_entry,
+    pass_minted_stable_id,
+    scoped_stable_id,
 )
 
 
@@ -241,4 +244,51 @@ def test_callback_stable_id_is_byte_identical_through_the_shared_helper() -> Non
             make_file_stable_id("elixir", "lib/shape.ex"), "Shape.area",
             "Shape.area",
         )
+    )
+
+
+def test_pass_minted_id_is_the_producer_formula_with_the_pass_as_outer_scope() -> None:
+    """INV-fufij: a symbol a pass outside the language analyzer mints (a
+    linker's gRPC service, a manifest's build target) takes the ADR-0035
+    formula, its scope chain led by the minting pass."""
+    got = pass_minted_stable_id(
+        owner="grpc-linker", kind="interface", lang="proto", path="api/s.proto",
+        name="S", scope=("demo",),
+    )
+    assert got == declared_arity_stable_id(
+        kind="interface", lang="proto", path="api/s.proto", name="S",
+        qualified_name="grpc-linker/demo/S", arity=None,
+    )
+    assert got != make_declaration_stable_id("interface", "proto", "api/s.proto", "S")
+
+
+def test_pass_minted_ids_part_by_owner_scope_kind_and_arity() -> None:
+    """The analyzer's own same-name symbol in the same file, a same-name
+    symbol in another scope, and another arity never share the id."""
+    def sid(owner="p", scope=(), kind="interface", arity=None):
+        return pass_minted_stable_id(
+            owner=owner, kind=kind, lang="proto", path="a.proto", name="S",
+            scope=scope, arity=arity,
+        )
+    analyzer_own = declared_arity_stable_id(
+        kind="interface", lang="proto", path="a.proto", name="S",
+        qualified_name="S", arity=None,
+    )
+    ids = {sid(), sid(owner="q"), sid(scope=("pkg",)), sid(kind="class"),
+           sid(arity=DeclaredArity(1, "")), analyzer_own}
+    assert len(ids) == 6
+
+
+def test_scoped_id_joins_the_chain_into_the_qualified_name() -> None:
+    got = scoped_stable_id(
+        kind="build_arg", lang="dockerfile", path="Dockerfile", name="V",
+        scope=("build",), decorators="d",
+    )
+    assert got == declared_arity_stable_id(
+        kind="build_arg", lang="dockerfile", path="Dockerfile", name="V",
+        qualified_name="build/V", arity=None, decorators="d",
+    )
+    assert got != scoped_stable_id(
+        kind="build_arg", lang="dockerfile", path="Dockerfile", name="V",
+        scope=("run",), decorators="d",
     )

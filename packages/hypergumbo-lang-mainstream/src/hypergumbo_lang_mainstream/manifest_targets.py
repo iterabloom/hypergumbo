@@ -25,7 +25,9 @@ How It Works
 3. Extractors regex-parse the file content and call the shared ``_emit``
    helper directly, appending to the caller-owned ``symbols`` / ``edges``
    lists. They return ``None``; nothing is yielded.
-4. ``_emit`` builds the Symbol + ``defines_target`` Edge for each target
+4. ``_emit`` builds the Symbol + ``defines_target`` Edge for each target;
+   the Symbol's stable_id is minted there (this pass is no language's
+   producer, so the floor key was all it had; INV-fufij)
 5. The build-target linker (``linkers/build_target.py``) later resolves these
    edges to ``main()`` functions
 
@@ -47,6 +49,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, make_symbol_id
 from hypergumbo_core.analyze.registry import LANGUAGE_STATE_NO_LANGUAGE, register_analyzer
+from hypergumbo_core.overload_arity import pass_minted_stable_id
 
 PASS_ID = make_pass_id("manifest_targets")
 
@@ -101,11 +104,20 @@ def _emit(
     target_function: str | None = None,
     run_id: str,
 ) -> None:
-    """Create a build-target Symbol and its ``defines_target`` Edge."""
+    """Create a build-target Symbol and its ``defines_target`` Edge.
+
+    The target carries the language its manifest builds, but this pass is not
+    that language's producer, so it mints the stable_id itself
+    (``pass_minted_stable_id``, scoped by this pass and the target's entry
+    path) instead of leaving it to the backstop floor (INV-fufij).
+    """
     sym_id = make_symbol_id("manifest", rel_path, line, line, name, kind)
     symbols.append(Symbol(
         id=sym_id,
-        stable_id=None,
+        stable_id=pass_minted_stable_id(
+            owner=PASS_ID, kind=kind, lang=language, path=rel_path, name=name,
+            scope=(target_path,),
+        ),
         shape_id=None,
         # ADR-0032: canonical_name dropped (was redundant with name=).
         fingerprint=None,

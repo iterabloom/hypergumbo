@@ -40,6 +40,15 @@ Why This Design
 - Cargo target extraction surfaces build outputs and test entry points
 - ``defines_target`` edges feed cross-language entry-point linking
 - Workspace detection identifies monorepo structures
+- Identity (ADR-0035, WI-tusad): a table or array-of-tables symbol whose kind
+  the backstop's table does not own (``table``, ``workspace``, ``library``,
+  ``package``, ``table_array``, ``binary``, ``test``, ``example``,
+  ``benchmark``) mints ``overload_arity.scoped_stable_id`` over its name, the
+  table's dotted path (or the target's ``name``), which TOML makes unique per
+  file for a table. The elements of one array of tables (``[[tool.x]]``
+  twice) are a same-scope tie, which the per-file split pass orders by
+  position: their array index is what tells them apart. ``project`` and the
+  dependencies keep the backstop's table formulas (:func:`_toml_stable_id`).
 """
 
 import hashlib
@@ -51,10 +60,12 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    is_table_kind,
     iter_tree,
     make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -147,6 +158,13 @@ def _find_pair_value(table_node: "tree_sitter.Node", key: str) -> str | None:
     return None  # pragma: no cover - key not found
 
 
+def _toml_stable_id(kind: str, name: str, rel_path: str) -> Optional[str]:
+    """The producer stable_id of a table-like symbol, or None for a table kind."""
+    if is_table_kind(kind):
+        return None
+    return scoped_stable_id(kind=kind, lang="toml", path=rel_path, name=name)
+
+
 def _process_toml_tree(
     root: "tree_sitter.Node",
     symbols: list[Symbol],
@@ -193,7 +211,7 @@ def _process_toml_tree(
             symbols.append(
                 Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_toml_stable_id(kind, name, rel_path),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind=kind,
@@ -283,7 +301,7 @@ def _process_toml_tree(
             symbols.append(
                 Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_toml_stable_id(kind, name, rel_path),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind=kind,

@@ -31,6 +31,15 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the HCL-specific extraction
 logic.
+
+Identity (ADR-0035, WI-tusad): resources, data sources, outputs, providers
+and locals mint ``overload_arity.scoped_stable_id`` over their Terraform
+address (``aws_s3_bucket.b``, ``data.aws_ami.a``, ``local.l``), which a module
+declares once. A provider is addressed by its name plus its ``alias``
+(``provider "aws"`` and ``provider "aws" { alias = "west" }`` are two
+configurations of one name, which the floor key ``(kind, path, name)``
+nulled), so the alias is its scope. Variables and modules keep the
+backstop's table formulas.
 """
 
 from __future__ import annotations
@@ -51,6 +60,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import scoped_stable_id
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -123,6 +133,20 @@ def _extract_local_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
     return names
 
 
+def _block_attribute(node: "tree_sitter.Node", source: bytes, key: str) -> str | None:
+    """The literal value of attribute ``key`` in a block's body, unquoted."""
+    body = find_child_by_type(node, "body")
+    if body is None:
+        return None
+    for attr in body.children:
+        if attr.type == "attribute":
+            ident = find_child_by_type(attr, "identifier")
+            expr = find_child_by_type(attr, "expression")
+            if ident is not None and expr is not None and node_text(ident, source) == key:
+                return node_text(expr, source).strip('"')
+    return None
+
+
 def _extract_symbols_from_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -156,6 +180,7 @@ def _extract_symbols_from_tree(
                 symbol_id = make_symbol_id("hcl", rel_path, start_line, end_line, name, "resource")
                 symbol = Symbol(
                     id=symbol_id,
+                    stable_id=scoped_stable_id(kind="resource", lang="hcl", path=rel_path, name=name),
                     name=name,
                     kind="resource",
                     language="hcl",
@@ -173,6 +198,7 @@ def _extract_symbols_from_tree(
                 symbol_id = make_symbol_id("hcl", rel_path, start_line, end_line, name, "data")
                 symbol = Symbol(
                     id=symbol_id,
+                    stable_id=scoped_stable_id(kind="data", lang="hcl", path=rel_path, name=name),
                     name=name,
                     kind="data",
                     language="hcl",
@@ -207,6 +233,7 @@ def _extract_symbols_from_tree(
                 symbol_id = make_symbol_id("hcl", rel_path, start_line, end_line, name, "output")
                 symbol = Symbol(
                     id=symbol_id,
+                    stable_id=scoped_stable_id(kind="output", lang="hcl", path=rel_path, name=name),
                     name=name,
                     kind="output",
                     language="hcl",
@@ -239,8 +266,13 @@ def _extract_symbols_from_tree(
                 # provider "name" -> provider.name
                 name = f"provider.{labels[0]}"
                 symbol_id = make_symbol_id("hcl", rel_path, start_line, end_line, name, "provider")
+                alias = _block_attribute(node, source, "alias")
                 symbol = Symbol(
                     id=symbol_id,
+                    stable_id=scoped_stable_id(
+                        kind="provider", lang="hcl", path=rel_path, name=name,
+                        scope=(alias,) if alias else (),
+                    ),
                     name=name,
                     kind="provider",
                     language="hcl",
@@ -260,6 +292,7 @@ def _extract_symbols_from_tree(
                     symbol_id = make_symbol_id("hcl", rel_path, start_line, end_line, name, "local")
                     symbol = Symbol(
                         id=symbol_id,
+                        stable_id=scoped_stable_id(kind="local", lang="hcl", path=rel_path, name=name),
                         name=name,
                         kind="local",
                         language="hcl",

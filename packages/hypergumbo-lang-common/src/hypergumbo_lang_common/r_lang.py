@@ -45,7 +45,8 @@ file. A reassignment of one name in one file (``run <- function(x)`` then
 ``run <- function(x, y)``) is two definitions told apart by their parameters;
 before this both shared the backstop floor key and were left null. Two
 definitions alike in scope, name and parameters are a same-scope tie the
-per-file occurrence pass orders.
+per-file occurrence pass orders. A ``source("x.R")`` symbol takes the same
+chain over the sourced path (``outer/x.R``), with no parameters.
 """
 from __future__ import annotations
 
@@ -354,7 +355,16 @@ def _extract_r_symbols(
                                             source_id = make_symbol_id("r", rel_path, start_line, start_line, file_path, "source")
                                             src_sym = Symbol(
                                                 id=source_id,
-                                                stable_id=None,
+                                                # WI-tusad: scoped by the enclosing
+                                                # named functions (``outer/x.R``).
+                                                stable_id=declared_arity_stable_id(
+                                                    kind="source", lang="r", path=rel_path,
+                                                    name=file_path,
+                                                    qualified_name=_r_scope_chain(
+                                                        node, source, file_path,
+                                                    ),
+                                                    arity=None,
+                                                ),
                                                 shape_id=None,
                                                 fingerprint=hashlib.sha256(file_path.encode()).hexdigest()[:16],
                                                 kind="source",
