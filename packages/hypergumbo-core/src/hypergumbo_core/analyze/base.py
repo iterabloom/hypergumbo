@@ -1781,7 +1781,8 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
     otherwise it stays ``None``. The occurrence index must never disambiguate a
     floor key: the key has no scope chain, arity or decorators, so a floor
     collision (GDScript ``run`` in inner classes ``A`` / ``B``, both named
-    ``run``; proto ``A.Inner`` / ``B.Inner``, both named ``Inner``) is no same-scope tie,
+    ``run``; proto ``A.Inner`` / ``B.Inner``, both named ``Inner``, before
+    their producers took the formula) is no same-scope tie,
     and an emission-order ordinal over it would move an id onto a different
     symbol when an earlier sibling is deleted. A null means "this run cannot
     back an identity"; a moved id is a wrong join that no validator can see.

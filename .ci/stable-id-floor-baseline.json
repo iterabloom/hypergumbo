@@ -1,11 +1,6 @@
 {
   "_comment": "WI-tusad shrink-only ratchet over packages/hypergumbo-core/tests/test_stable_id_floor_gate.py's per-language fixture corpus. floor_and_null: per language and callable/member kind (GATED_KINDS), how many records ride the ADR-0035 backstop floor (id == make_declaration_stable_id(kind, language, path, name)) and how many are null. sibling_deletion_moves: the languages where deleting an earlier same-name sibling moved or nulled another symbol's stable_id. The gate fails on any count above this baseline (or a language it does not list) AND on any count below it: when a producer migrates to the ADR-0035 formula, ratchet the entry down in the same change (the failure message prints the live values). Never raise an entry. Target: both sections empty.",
   "floor_and_null": {
-    "capnp": {
-      "method": {
-        "null": 2
-      }
-    },
     "circom": {
       "function": {
         "floor": 2
@@ -16,37 +11,10 @@
         "floor": 2
       }
     },
-    "csharp": {
-      "property": {
-        "floor": 1
-      }
-    },
-    "dart": {
-      "constructor": {
-        "floor": 2
-      },
-      "getter": {
-        "floor": 1
-      },
-      "setter": {
-        "floor": 1
-      }
-    },
-    "gdscript": {
-      "function": {
-        "floor": 1,
-        "null": 2
-      }
-    },
     "jupyter": {
       "function": {
         "floor": 1,
         "null": 2
-      }
-    },
-    "kotlin": {
-      "object": {
-        "floor": 1
       }
     },
     "llvm_ir": {
@@ -54,60 +22,8 @@
         "floor": 3
       }
     },
-    "nix": {
-      "function": {
-        "floor": 1,
-        "null": 2
-      }
-    },
-    "php": {
-      "field": {
-        "floor": 1
-      }
-    },
-    "proto": {
-      "method": {
-        "null": 2
-      }
-    },
-    "qml": {
-      "function": {
-        "floor": 1,
-        "null": 2
-      }
-    },
-    "scala": {
-      "object": {
-        "floor": 1,
-        "null": 2
-      }
-    },
-    "swift": {
-      "property": {
-        "floor": 1
-      },
-      "subscript": {
-        "floor": 1
-      }
-    },
-    "thrift": {
-      "function": {
-        "null": 2
-      }
-    },
     "wgsl": {
       "function": {
-        "floor": 2
-      }
-    },
-    "zig": {
-      "field": {
-        "floor": 2
-      },
-      "function": {
-        "floor": 1
-      },
-      "method": {
         "floor": 2
       }
     }
@@ -115,25 +31,18 @@
   "sibling_deletion_moves": [
     "ada",
     "bash",
-    "capnp",
     "cpp",
-    "gdscript",
     "hlsl",
     "jupyter",
     "nim",
-    "nix",
     "pascal",
     "pony",
-    "proto",
     "purescript",
-    "qml",
     "racket",
-    "scala",
     "scheme",
     "scss",
     "solidity",
     "sql",
-    "thrift",
     "twig",
     "v"
   ]

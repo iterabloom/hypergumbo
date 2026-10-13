@@ -39,6 +39,17 @@ Thrift-Specific Considerations
 - Structs are like Proto messages
 - Typedefs provide type aliasing
 - Constants are compile-time values
+
+Identity (WI-tusad)
+-------------------
+Functions, typedefs and consts mint the ADR-0035 producer stable_id with
+``overload_arity.declared_arity_stable_id`` over their qualified name
+(namespace, the enclosing service for a function, the name). Thrift allows no
+two functions of one name in a service, so the chain alone is unique; no arity
+is hashed. Before, none of them computed a stable_id and rode the backstop
+floor key (kind, file, bare name), which ``A.run`` / ``B.run`` in two services
+share, so both were null. Services, structs and enums keep the backstop's
+table formula.
 """
 from __future__ import annotations
 
@@ -59,12 +70,17 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import declared_arity_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("thrift")
+
+#: The kinds this analyzer mints a producer stable_id for (WI-tusad); services
+#: (``interface``), structs and enums take the backstop's table formula.
+_PRODUCER_KINDS = frozenset({"function", "typedef", "const"})
 
 
 def find_thrift_files(repo_root: Path) -> Iterator[Path]:
@@ -169,6 +185,10 @@ def _extract_symbols_and_edges(
         sym_id = make_symbol_id("thrift", file_path, start_line, end_line, name, kind)
         return Symbol(
             id=sym_id,
+            stable_id=declared_arity_stable_id(
+                kind=kind, lang="thrift", path=file_path, name=name,
+                qualified_name=qualified_name, arity=None,
+            ) if kind in _PRODUCER_KINDS else None,
             name=name,
             qualified_name=qualified_name,
             kind=kind,

@@ -8,7 +8,9 @@ This analyzer uses tree-sitter to parse Swift files and extract:
 - Protocol declarations (protocol)
 - Enum declarations (enum)
 - Method declarations (inside classes/structs)
-- Computed properties and subscripts
+- Computed properties and subscripts, whose stable_id is the ADR-0035
+  producer formula (``make_typed_stable_id`` over the type or, for a
+  subscript, the parameter types; WI-tusad: they rode the backstop floor key)
 - Enum cases and protocol requirements as ``field`` / member symbols
 - Stored properties (``field``) and top-level bindings (``variable``)
 - Route-marker symbols, extracted per file and appended in ``post_process``
@@ -269,7 +271,7 @@ def _extract_base_classes_swift(node: "tree_sitter.Node", source: bytes) -> list
     return base_classes
 
 
-def _subscript_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+def _subscript_name(node: "tree_sitter.Node", source: bytes) -> str:
     """Build a subscript name like ``subscript(key:)`` from a subscript_declaration node.
 
     Uses parameter label names followed by colons, matching Swift's standard
@@ -1163,6 +1165,7 @@ def _extract_symbols_from_file(
                     signature = f"() -> {ret_type}" if ret_type else None
 
                     type_ancestors = _get_swift_type_ancestors(node, source)
+                    prop_qualified = _make_swift_qualified_name(type_ancestors, prop_name)
                     symbol = Symbol(
                         id=make_symbol_id("swift", str(file_path), start_line, end_line, full_name, "property"),
                         name=full_name,
@@ -1179,9 +1182,16 @@ def _extract_symbols_from_file(
                         origin_run_id=run_id,
                         signature=signature,
                         modifiers=modifiers,
+                        # WI-tusad: the producer formula (rode the floor key).
+                        stable_id=make_typed_stable_id(
+                            "property", signature or "",
+                            visibility_from_modifiers(modifiers),
+                            name=prop_name, qualified_name=prop_qualified,
+                            file_stable_id=file_stable_id,
+                        ),
                         line_span=end_line - start_line + 1,
                         is_exported=any(m in modifiers for m in ("public", "open")),
-                        qualified_name=_make_swift_qualified_name(type_ancestors, prop_name),
+                        qualified_name=prop_qualified,
                     )
                     analysis.symbols.append(symbol)
                     analysis.node_for_symbol[symbol.id] = node
@@ -1285,6 +1295,7 @@ def _extract_symbols_from_file(
             signature = _extract_subscript_signature(node, source)
 
             type_ancestors = _get_swift_type_ancestors(node, source)
+            sub_qualified = _make_swift_qualified_name(type_ancestors, sub_label)
             symbol = Symbol(
                 id=make_symbol_id("swift", str(file_path), start_line, end_line, full_name, "subscript"),
                 name=full_name,
@@ -1301,9 +1312,17 @@ def _extract_symbols_from_file(
                 origin_run_id=run_id,
                 signature=signature,
                 modifiers=modifiers,
+                # WI-tusad: the producer formula over the parameter types, so
+                # two subscript overloads stay apart (they rode the floor key).
+                stable_id=make_typed_stable_id(
+                    "subscript", normalize_swift_signature(signature) or signature or "",
+                    visibility_from_modifiers(modifiers),
+                    name=sub_label, qualified_name=sub_qualified,
+                    file_stable_id=file_stable_id,
+                ),
                 line_span=end_line - start_line + 1,
                 is_exported=any(m in modifiers for m in ("public", "open")),
-                qualified_name=_make_swift_qualified_name(type_ancestors, sub_label),
+                qualified_name=sub_qualified,
                 cyclomatic_complexity=compute_cyclomatic_complexity(node, "swift"),
             )
             analysis.symbols.append(symbol)

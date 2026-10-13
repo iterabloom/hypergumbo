@@ -4,7 +4,9 @@
 This analyzer uses tree-sitter to parse Kotlin files and extract:
 - Function declarations (fun)
 - Class declarations (class, data class)
-- Object declarations (object)
+- Object declarations (object), whose stable_id is the ADR-0035 producer
+  formula (``make_typed_stable_id`` over the package/class chain; WI-tusad:
+  they rode the backstop floor key)
 - Interface declarations (interface)
 - Method declarations (inside classes/objects)
 - Annotations on classes, functions, methods, objects, and properties
@@ -1243,6 +1245,9 @@ def _extract_symbols_from_file(
 
                 obj_modifiers = _extract_modifiers(node)
                 cls_ancestors = _get_kotlin_class_ancestors(node, source)
+                obj_qualified = _make_kotlin_qualified_name(
+                    package_name, cls_ancestors, object_name,
+                )
                 symbol = Symbol(
                     id=make_symbol_id("kotlin", str(file_path), start_line, end_line, object_name, "object"),
                     name=object_name,
@@ -1259,13 +1264,20 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     modifiers=obj_modifiers,
                     meta=obj_meta,
+                    # WI-tusad: the ADR-0035 producer formula over the full
+                    # package/class chain (it rode the backstop floor key).
+                    stable_id=make_typed_stable_id(
+                        "object", "", visibility_from_modifiers(obj_modifiers),
+                        name=object_name, qualified_name=obj_qualified,
+                        file_stable_id=file_stable_id,
+                    ),
                     shape_id=_analyzer.compute_shape_id(node),
                     line_span=end_line - start_line + 1,
                     is_exported=not any(
                         m in obj_modifiers
                         for m in ("private", "internal", "protected")
                     ),
-                    qualified_name=_make_kotlin_qualified_name(package_name, cls_ancestors, object_name),
+                    qualified_name=obj_qualified,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[object_name] = symbol

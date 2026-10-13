@@ -92,7 +92,7 @@ from hypergumbo_core.symbol_kinds import all_symbol_kind_names
 # -- the gate ------------------------------------------------------------------
 
 #: The callable and member kinds the gate counts. A kind not listed here may
-#: still ride the floor (a proto ``message``, a qml ``signal``); WI-tusad's scope
+#: still ride the floor (an erlang ``record``, a cmake ``executable``); WI-tusad's scope
 #: is callables and members. ``object`` is here because a Scala/Kotlin
 #: ``object`` is a member of its enclosing scope the way a field is, and the
 #: owner's scope names it.

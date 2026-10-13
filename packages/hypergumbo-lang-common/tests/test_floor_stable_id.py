@@ -1,33 +1,25 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WI-motiz: the stable_id floor, end to end, for analyzers that compute none.
+"""WI-motiz: the stable_id floor, end to end, and the producers that left it.
 
-The haskell / ocaml / proto producers never compute a ``stable_id`` for
-their functions, messages and rpc methods, and those kinds have no entry in
-the backstop's factory table (``populate_kind_stable_ids``, core
-``analyze/base.py``). The backstop now gives such a symbol the FLOOR key
+The backstop (``populate_kind_stable_ids``, core ``analyze/base.py``) gives a
+symbol whose producer computes no ``stable_id`` the FLOOR key
 ``make_declaration_stable_id(kind, language, path, name)`` when that key is
 unique among the file's floor candidates, and leaves it ``None`` otherwise
-(ADR-0035 §1).
+(ADR-0035 §1). Every language of this file has since moved to the ADR-0035
+producer formula (WI-tusad), so what is pinned here through the real survey
+path is that the move kept the floor's guarantees:
 
-Two halves are pinned here through the real survey path:
+* no function of the exact fixture (clojure, erlang, haskell, ocaml) is null;
+* where names repeat in one file -- elixir ``Demo.greet`` of three arities,
+  proto ``A.Inner`` / ``B.Inner`` (both named ``Inner``), rpc ``Get`` in two
+  services -- every member holds its own id, and the two-run tests delete an
+  EARLIER same-name sibling between runs: each survivor keeps its id and none
+  takes an id another symbol held before the edit (the failure an occurrence
+  split of floor keys produced: ``B.Inner`` inheriting ``A.Inner``'s id).
 
-* Where ``name`` already identifies the symbol in its file (a haskell or
-  ocaml top-level binding) the floor is exact and the value is filled. The
-  clojure and erlang functions of the same fixture are filled by their
-  producers now (WI-tusad); the test still pins that none is null.
-* Where names repeat in one file (proto ``A.Inner`` / ``B.Inner`` both named
-  ``Inner``; rpc ``Get`` in two services) the backstop abstains. The two-run
-  tests delete an EARLIER same-name sibling between runs and check that no
-  survivor takes an id another symbol held before the edit -- the failure an
-  occurrence split of floor keys produces (``B.Inner`` inheriting
-  ``A.Inner``'s id).
-
-Elixir, Erlang and Clojure left the floor (WI-tusad). Elixir's producer
-mints the ADR-0035 formula over the module scope chain and the arity, so its
-same-name functions of three arities (all named ``Demo.greet``) are pinned
-here as producer-filled, and the deletion run as moving none of them. The
-Erlang and Clojure producers are pinned in
-``test_callable_producer_stable_ids.py``.
+The producers are pinned in ``test_callable_producer_stable_ids.py`` (erlang,
+clojure), ``test_ml_family_producer_stable_ids.py`` (haskell, ocaml) and
+``test_idl_scoped_producer_stable_ids.py`` (proto).
 """
 from __future__ import annotations
 
@@ -177,9 +169,9 @@ def test_deleting_an_earlier_elixir_sibling_moves_no_id(tmp_path: Path) -> None:
 
 def test_deleting_proto_message_and_service_moves_no_id(tmp_path: Path) -> None:
     """Two runs: delete ``message A`` (with its nested ``Inner``) and
-    ``service S`` (with its ``Get``). ``B``'s ``Inner`` and ``T``'s ``Get`` may
-    gain the floor value (their names are now unique) but never take the id
-    ``A``'s ``Inner`` or ``S``'s ``Get`` held."""
+    ``service S`` (with its ``Get``). ``B``'s ``Inner`` and ``T``'s ``Get`` keep
+    the producer id they held, which is never the id ``A``'s ``Inner`` or
+    ``S``'s ``Get`` held."""
     r1 = _survey(tmp_path / "r1", {"a.proto": _PROTO})["nodes"]
     r2 = _survey(tmp_path / "r2", {"a.proto": _PROTO_EDITED})["nodes"]
     msgs_before = _by_line(r1, "proto", "message")
@@ -190,12 +182,15 @@ def test_deleting_proto_message_and_service_moves_no_id(tmp_path: Path) -> None:
     assert msgs_before[4]["name"] == msgs_before[8]["name"] == "Inner"
     assert rpcs_before[12]["name"] == rpcs_before[15]["name"] == "Get"
     assert set(msgs_after) == {7, 8} and set(rpcs_after) == {15}
-    # The transfer property first (it is what an occurrence split breaks)...
+    # The transfer property (it is what an occurrence split breaks)...
     _assert_no_id_moved(msgs_before, msgs_after)
     _assert_no_id_moved(rpcs_before, rpcs_after)
-    # ...then the abstention that guarantees it: the pairs are null before the
-    # edit, and the survivors, unique after it, are filled.
-    assert msgs_before[4]["stable_id"] is None and msgs_before[8]["stable_id"] is None
-    assert rpcs_before[12]["stable_id"] is None and rpcs_before[15]["stable_id"] is None
-    assert msgs_after[8]["stable_id"] is not None
-    assert rpcs_after[15]["stable_id"] is not None
+    # ...and the producer ids that guarantee it: each pair is filled and
+    # distinct before the edit, and the survivors keep their ids.
+    assert None not in (msgs_before[4]["stable_id"], msgs_before[8]["stable_id"])
+    assert msgs_before[4]["stable_id"] != msgs_before[8]["stable_id"]
+    assert rpcs_before[12]["stable_id"] != rpcs_before[15]["stable_id"]
+    assert None not in (rpcs_before[12]["stable_id"], rpcs_before[15]["stable_id"])
+    for line in (7, 8):
+        assert msgs_after[line]["stable_id"] == msgs_before[line]["stable_id"], line
+    assert rpcs_after[15]["stable_id"] == rpcs_before[15]["stable_id"]

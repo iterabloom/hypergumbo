@@ -7,7 +7,9 @@ This analyzer uses tree-sitter-php to parse PHP files and extract:
 - Interface, trait and enum declarations (container symbols, so in-file
   interfaces take part in dispatch instead of surfacing as placeholders)
 - Method declarations (symbols)
-- Properties and class constants (``field``) and global constants
+- Properties and class constants (``field``, whose stable_id is the ADR-0035
+  producer formula, ``make_typed_stable_id`` over the namespace/type chain;
+  WI-tusad: they rode the backstop floor key) and global constants
   (``variable``)
 - A per-file ``kind="file"`` pseudo-node that anchors file-level edges
 - Laravel route definitions (Route::get, Route::post, etc.)
@@ -334,6 +336,7 @@ def _php_member_symbol(
     modifiers: list[str],
     exported: bool,
     run: AnalysisRun,
+    stable_id: Optional[str] = None,
 ) -> Symbol:
     """Build a ``field`` / ``variable`` Symbol for a PHP property or constant,
     spanning the individual property/const ``element`` node (so ``$a, $b`` in one
@@ -355,6 +358,7 @@ def _php_member_symbol(
         span=span,
         origin=PASS_ID,
         origin_run_id=run.execution_id,
+        stable_id=stable_id,
         modifiers=modifiers,
         line_span=span.end_line - span.start_line + 1,
         is_exported=exported,
@@ -1208,10 +1212,15 @@ def _extract_symbols(
                     pname = _php_property_element_name(el, source)
                     if pname is None:  # pragma: no cover - defensive
                         continue
+                    qualified = _make_php_qualified_name(namespace_name, enclosing, pname)
                     symbols.append(_php_member_symbol(
                         file_path, el, f"{enclosing}.{pname}", "field",
-                        _make_php_qualified_name(namespace_name, enclosing, pname),
-                        modifiers, exported, run,
+                        qualified, modifiers, exported, run,
+                        stable_id=make_typed_stable_id(
+                            "field", "", visibility_from_modifiers(modifiers),
+                            name=pname, qualified_name=qualified,
+                            file_stable_id=file_stable_id,
+                        ),
                     ))
 
         # Constants: a class/interface/trait/enum constant is a ``field``; a
@@ -1225,10 +1234,15 @@ def _extract_symbols(
                 if cname is None:  # pragma: no cover - defensive
                     continue
                 if enclosing is not None:
+                    qualified = _make_php_qualified_name(namespace_name, enclosing, cname)
                     symbols.append(_php_member_symbol(
                         file_path, el, f"{enclosing}.{cname}", "field",
-                        _make_php_qualified_name(namespace_name, enclosing, cname),
-                        [], True, run,
+                        qualified, [], True, run,
+                        stable_id=make_typed_stable_id(
+                            "field", "", visibility_from_modifiers([]),
+                            name=cname, qualified_name=qualified,
+                            file_stable_id=file_stable_id,
+                        ),
                     ))
                 else:
                     symbols.append(_php_member_symbol(

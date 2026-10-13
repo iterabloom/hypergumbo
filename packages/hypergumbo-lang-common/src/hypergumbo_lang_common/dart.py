@@ -31,6 +31,12 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    linker: Dart has no interface kind, so only the clause separates
    ``extends`` from ``implements`` (see the "Inheritance" block below).
 
+Identity (WI-tusad): functions and methods hash their normalized signature
+(``make_typed_stable_id``). Constructors, getters, setters, mixins and
+extensions record no signature; they take the same formula with an empty one,
+over the owner-qualified name (``Mod.Mod.named``). Before, they computed none
+and rode the backstop floor key (kind, file, name).
+
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Dart-specific
 extraction logic.
@@ -104,6 +110,13 @@ if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = make_pass_id("dart")
+
+#: Kinds that record no signature yet mint the producer stable_id over their
+#: owner-qualified name (WI-tusad). Classes and enums take the backstop's
+#: table formula.
+_UNSIGNED_PRODUCER_KINDS = frozenset({
+    "constructor", "getter", "setter", "mixin", "extension",
+})
 
 
 def find_dart_files(repo_root: Path) -> Iterator[Path]:
@@ -376,6 +389,16 @@ def _extract_symbols_from_file(
                     name=name, qualified_name=full_name,
                     file_stable_id=file_stable_id,
                 )
+        if stable_id is None and kind in _UNSIGNED_PRODUCER_KINDS:
+            # WI-tusad: constructors, getters, setters, mixins and extensions
+            # carry no signature here and rode the backstop floor key. Dart
+            # has no overloading (a named constructor is its own name), so the
+            # owner-qualified name is the whole discriminant.
+            stable_id = make_typed_stable_id(
+                kind, "", visibility_from_modifiers(modifiers),
+                name=name, qualified_name=full_name,
+                file_stable_id=file_stable_id,
+            )
 
         return Symbol(
             id=sym_id,
