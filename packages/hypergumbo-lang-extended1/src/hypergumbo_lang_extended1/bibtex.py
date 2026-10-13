@@ -39,6 +39,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
+    make_doc_stable_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -119,7 +120,9 @@ def _extract_entry(
 
     return Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        # WI-tusad: the node id (it carries the line) was the stable_id; the
+        # citation key is unique in a .bib file, so the doc formula over it is.
+        stable_id=make_doc_stable_id("bibtex", str(rel_path), "entry", citation_key, line, line),
         name=citation_key,
         kind="entry",
         language="bibtex",

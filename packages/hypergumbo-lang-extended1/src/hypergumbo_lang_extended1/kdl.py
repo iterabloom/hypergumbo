@@ -112,7 +112,7 @@ def _extract_node_field(
 
 def _extract_kdl_node(
     node: "tree_sitter.Node", rel_path: str, depth: int,
-    symbols_out: list[Symbol],
+    symbols_out: list[Symbol], chain: tuple[str, ...] = (),
 ) -> None:
     """Extract a KDL node and recursively process children."""
     node_name = ""
@@ -130,7 +130,9 @@ def _extract_kdl_node(
             # Recursively process children
             for nested in child.children:
                 if nested.type == "node":
-                    _extract_kdl_node(nested, rel_path, depth + 1, symbols_out)
+                    _extract_kdl_node(
+                        nested, rel_path, depth + 1, symbols_out, (*chain, node_name),
+                    )
 
     if not node_name:
         return  # pragma: no cover
@@ -149,7 +151,7 @@ def _extract_kdl_node(
     # Both ids are minted together by make_doc_symbol_ids (INV-dulah);
     # node.id stays byte-identical (the doc-family composite shape).
     symbol_id, stable_id = make_doc_symbol_ids(
-        "kdl", str(rel_path), kind, node_name, span.start_line, span.end_line,
+        "kdl", str(rel_path), kind, node_name, span.start_line, span.end_line, chain,
     )
 
     # Build signature

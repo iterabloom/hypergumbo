@@ -48,7 +48,10 @@ from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_doc_symbol_ids, populate_docstrings_from_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult, TreeSitterAnalyzer, make_doc_stable_id, make_doc_symbol_ids,
+    populate_docstrings_from_tree,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -196,9 +199,15 @@ class _RSTExtractor:
         # INV-dulah: node.id and canonical stable_id minted together from one arg
         # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
         # start_line here (was line-less), disambiguating same-name siblings.
-        symbol_id, stable_id = make_doc_symbol_ids(
+        symbol_id, _ordinal_stable_id = make_doc_symbol_ids(
             "rst", rel_path, "section",
             f"section_{self._section_counter}", span.start_line, span.end_line,
+        )
+        # WI-tusad: the stable_id hashes the title, not the ordinal the node id
+        # carries: an ordinal renumbers every later section when an earlier one
+        # is deleted. Two same-titled sections are a same-scope tie.
+        stable_id = make_doc_stable_id(
+            "rst", str(rel_path), "section", title_text, span.start_line, span.end_line,
         )
 
         symbol = Symbol(
@@ -248,9 +257,14 @@ class _RSTExtractor:
 
         # INV-dulah: node.id + canonical stable_id minted together (gains
         # start_line, was line-less).
-        symbol_id, stable_id = make_doc_symbol_ids(
+        symbol_id, _ordinal_stable_id = make_doc_symbol_ids(
             "rst", rel_path, "directive",
             f"directive_{self._directive_counter}", span.start_line, span.end_line,
+        )
+        # WI-tusad: hash the directive and its arguments, not the ordinal.
+        stable_id = make_doc_stable_id(
+            "rst", str(rel_path), "directive", directive_type,
+            span.start_line, span.end_line, (arguments,) if arguments else (),
         )
 
         # Determine directive category

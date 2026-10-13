@@ -408,16 +408,24 @@ class TestMarkdownStableIdCanonical:
         result = analyze_markdown(tmp_path)
         ex = [s for s in result.symbols if s.kind == "section" and s.name == "Examples"]
         assert len(ex) == 2
-        assert ex[0].stable_id != ex[1].stable_id
         assert all(self._canonical(s.stable_id) for s in ex)
+        # WI-tusad: the span left the hash, so two same-level same-name headings
+        # tie at the analyzer and the per-file split pass orders them.
+        assert ex[0].stable_id == ex[1].stable_id
+        from hypergumbo_core.analyze.base import split_within_file_stable_id_collisions
+        split_within_file_stable_id_collisions(ex)
+        assert ex[0].stable_id != ex[1].stable_id
 
     def test_anonymous_code_blocks_distinct_stable_ids(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "# T\n\n```\na\n```\n\nx\n\n```\nb\n```\n")
         result = analyze_markdown(tmp_path)
         blocks = [s for s in result.symbols if s.kind == "code_block"]
         assert len(blocks) == 2
-        assert blocks[0].stable_id != blocks[1].stable_id
         assert all(self._canonical(s.stable_id) for s in blocks)
+        # WI-tusad: a same-scope tie at the analyzer, ordered by the split pass.
+        from hypergumbo_core.analyze.base import split_within_file_stable_id_collisions
+        split_within_file_stable_id_collisions(blocks)
+        assert blocks[0].stable_id != blocks[1].stable_id
 
     def test_link_stable_ids_canonical_and_distinct(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "# T\n\nSee [a](http://x.com) and [b](http://y.com)\n")
