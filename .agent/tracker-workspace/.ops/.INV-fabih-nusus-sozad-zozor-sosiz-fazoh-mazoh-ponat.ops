@@ -21,3 +21,19 @@
     fields:  # a053
       statement: "Deleting an earlier same-name sibling scope never moves another symbol's stable_id (ADR-0035 §1)"  # a053
       root_cause: "method/field producers pass the nearest-owner name as qualified_name; class ids use the name-only table formula; same-name ties are occurrence-split by emission order"  # a053
+- op: update  # c21d
+  at: '2026-10-13T22:37:43Z'  # c21d
+  by: agent  # c21d
+  actor: jgstern_agent  # c21d
+  clock: 2  # c21d
+  nonce: c21d  # c21d
+  set:  # c21d
+    status: satisfied  # c21d
+    pr_ref: '1571'  # c21d
+- op: discuss  # 4602
+  at: '2026-10-13T22:37:45Z'  # 4602
+  by: agent  # 4602
+  actor: jgstern_agent  # 4602
+  clock: 3  # 4602
+  nonce: '4602'  # 4602
+  message: "SATISFIED by PR #1571 (merge 3c9f03a81f, the WI-tusad stable_id scheme bump to hypergumbo-stableid-v9). Root cause: Scala/Kotlin/C#/Swift members passed the nearest-owner emitted name (`Inner.go`) as qualified_name and classes took the backstop's bare-name table key, so A.Inner.go / B.Inner.go tied and the per-file split numbered them by emission order. Fix (F2, in the bump): members hash every enclosing scope that can repeat within a file (_scala_scope incl. block packages, _kotlin_scope, _csharp_scope incl. block namespaces, _swift_scope); nested types mint overload_arity.scoped_table_stable_id; F3 added the C# property under nested same-name namespaces (it hashed the innermost namespace only and tied). Top-level types and their members keep their v8 values. EVIDENCE (behavioural, merged dev): (1) the filed repro re-run unchanged, scratchpad fixes/tusad/b6/nested/probe.py (hypergumbo run with and without class A, A blanked, per-symbol (kind,name,line,col)): scala survivors 4 moved [], kotlin 4 moved [], csharp 5 moved [], swift 4 moved [], java 4 moved [], dart 3 moved [] (filed: scala/kotlin/csharp/swift MOVED). (2) multi-line nested-owner cases via `hypergumbo run --include-docs` on dev 3c9f03a81f (f3/live/live.py): scala 4/4, kotlin 4/4, csharp 5/5, swift 4/4 survivors same id, 0 moved, 0 null; C# nested namespaces with a property 3/3 same. Gate: test_stable_id_floor_gate SCOPE_CASES scala/kotlin/csharp/csharp-namespace/csharp-namespace-nested/swift-nested pass (sibling_deletion_moves [])."  # 4602

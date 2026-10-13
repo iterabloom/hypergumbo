@@ -1,0 +1,24 @@
+- op: create  # f95e
+  at: '2026-10-13T22:38:23Z'  # f95e
+  by: agent  # f95e
+  actor: jgstern_agent  # f95e
+  clock: 1  # f95e
+  nonce: f95e  # f95e
+  data:  # f95e
+    kind: invariant  # f95e
+    title: "Nested same-name scopes still move stable_ids in markdown, rst, scss, puppet, svelte, apex and fish: scheme v9's 'every repeatable enclosing scope is hashed' contract is not met"  # f95e
+    status: violated  # f95e
+    priority: 2  # f95e
+    parent:  # f95e
+    tags:  # f95e
+    - schema  # f95e
+    - analysis_quality  # f95e
+    isbefore:  # f95e
+    - WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral  # f95e
+    duplicate_of: []  # f95e
+    not_duplicate_of: []  # f95e
+    pr_ref:  # f95e
+    description: "FOUND 2026-10-13 by WI-tusad F3, post-merge live check of the scheme-v9 bump (PR #1571, dev 3c9f03a81f). The v9 contract written into the spec, ADR-0035 §6 and the CHANGELOG says every enclosing scope that can repeat within one file is in the hash. It is not, for these producers:\n\nREPRO (scratchpad fixes/f3/live/docprobe.py and sweep2.py: `hypergumbo run --include-docs`, a same-name construct under two different parents, the FIRST parent blanked so lines keep their numbers, survivors matched by (kind, name, line, col)):\n- markdown: `# Alpha / ## Details / ```python` then `# Beta / ## Details / ```python` -> Beta's `## Details` section and its code block MOVE. markdown.py calls make_doc_stable_id with no scope (sections, code blocks, links), so every same-title heading and every same-language code block in a file ties at file scope.\n- rst: `Alpha / Details` then `Beta / Details` (sub-sections) -> Beta's Details MOVES (rst hashes the title, no parent section).\n- scss: `.a { .item {} }` then `.b { .item {} }` -> `.item` under .b MOVES (no enclosing-rule chain).\n- puppet: `class a { file { '/tmp/x': } }` then `class b { file { '/tmp/x': } }` -> b's resource MOVES (no class/define scope).\n- svelte: `<div>{#if x}..{/if}</div>` then `<section>{#if x}..{/if}</section>` -> the second `#if` block MOVES (no element chain; vue got one in F1, svelte did not).\n- apex: `class A { class Inner { go } }` / `class B { class Inner { go } }` inside a top-level class -> Inner and Inner.go MOVE (INV-fabih's shape; apex was outside F2's sweep).\n- fish: `function outer_a; function inner` / `function outer_b; function inner` -> inner MOVES (no enclosing-function chain).\n- mermaid: node `n1` in subgraph A and in subgraph B -> the second MOVES. By Mermaid semantics a node id is global per diagram (one node, declared twice), so this may be a duplicate emission rather than a scope gap: decide.\nClean on the same harness: pony, robot, astro, ruby, python, objc, hack, graphql, sql, haxe, verilog, elixir nested modules, go, haskell where, hcl, toml, latex, lua tables, twig/vue (F1), and every F2 sweep language. NOT CHECKED: sparql, asciidoc/org (no analyzer checked), properties/requirements/gitignore (flat), blade, handlebars nesting beyond B8a's fixture.\n\nFIX SHAPE: pass the enclosing chain as make_doc_stable_id(scope=...) / make_doc_symbol_ids(scope=...) (markdown/rst heading stack, scss rule-selector chain, puppet class/define, svelte element+block chain), apex enclosing types (scoped_table_stable_id + member chain), fish enclosing functions (overload_arity.nested_qualified_name). Add gate SCOPE_CASES for each (red first).\n\nSCHEME: value-changing (these producers already compute ids). v9 is merged to dev but unreleased. The owner must decide: amend v9 before release (consumers of releases still see one v8 -> v9 bump; dev artifacts produced since 3c9f03a81f would change under the same label) or bump to v10. Blocks closing WI-tusad, whose acceptance (3) is \"deleting an earlier same-name sibling moves no other id\"."  # f95e
+    fields:  # f95e
+      statement: "Deleting an earlier same-name sibling or enclosing scope never moves another symbol's stable_id (ADR-0035 §1, scheme v9 contract)"  # f95e
+      root_cause: "doc/template producers call make_doc_stable_id / make_doc_symbol_ids with no scope; apex and fish hash no enclosing type/function chain"  # f95e
