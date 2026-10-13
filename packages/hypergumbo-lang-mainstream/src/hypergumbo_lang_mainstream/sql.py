@@ -23,6 +23,11 @@ The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the SQL-specific extraction
 logic.
 
+A CREATE FUNCTION records its arguments in ``meta["parameters"]``
+(``_sql_parameters``) and its stable_id hashes them
+(``overload_arity.node_declared_arity_stable_id``, WI-tusad): the overloads
+``run(integer)`` / ``run(integer, integer)`` tied on ``param_count 0``.
+
 Why This Design
 ---------------
 - TreeSitterAnalyzer eliminates boilerplate orchestration code
@@ -35,7 +40,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -50,6 +55,9 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, node_declared_arity_stable_id, parameter_entry,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -100,6 +108,45 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
     if obj_ref:
         return node_text(obj_ref, source)
     return None  # pragma: no cover
+
+
+#: Argument-mode keywords: not part of the argument's type.
+_SQL_ARG_MODES = frozenset({"keyword_in", "keyword_out", "keyword_inout", "keyword_variadic"})
+
+
+def _sql_parameters(node: "tree_sitter.Node", source: bytes) -> list[dict[str, Any]]:
+    """``meta["parameters"]`` of a CREATE FUNCTION / PROCEDURE (WI-tusad).
+
+    Each ``function_argument`` is ``[mode] [name] type [DEFAULT expr | = expr]``.
+    The type is the text between the name and the default (``integer``,
+    ``int[]``); an argument with a single word and no other type node is an
+    UNNAMED argument of that type (``run(mytype)``). ``VARIADIC`` is
+    variadic; ``DEFAULT`` / ``=`` is defaulted. Overloads in PostgreSQL are
+    told apart by these types, so they are the identity input.
+    """
+    entries: list[dict[str, Any]] = []
+    args = find_child_by_type(node, "function_arguments")
+    for arg in args.children if args is not None else ():
+        if arg.type != "function_argument":
+            continue
+        variadic = any(c.type == "keyword_variadic" for c in arg.children)
+        default = False
+        parts: list["tree_sitter.Node"] = []
+        for child in arg.children:
+            if child.type in ("keyword_default", "="):
+                default = True
+                break
+            if child.type not in _SQL_ARG_MODES:
+                parts.append(child)
+        name = ""
+        if len(parts) > 1 and parts[0].type == "identifier":
+            name = node_text(parts[0], source)
+            parts = parts[1:]
+        type_text = " ".join(
+            " ".join(node_text(p, source).split()) for p in parts
+        ).lower() or None
+        entries.append(parameter_entry(name, type_text, default=default, variadic=variadic))
+    return entries
 
 
 def _extract_sql_signature(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -278,9 +325,16 @@ def _extract_sql_symbols(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "function")
+                fn_meta = {PARAMETERS_KEY: _sql_parameters(node, source)}
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=_analyzer.compute_stable_id(node, kind="function", name=name, file_stable_id=file_stable_id),
+                    # WI-tusad: arity (with types) from meta["parameters"], so
+                    # the overloads run(int) / run(int, int) stop tying.
+                    stable_id=node_declared_arity_stable_id(
+                        _analyzer, node, kind="function", name=name, meta=fn_meta,
+                        file_stable_id=file_stable_id,
+                    ),
+                    meta=fn_meta,
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="function",
