@@ -22,3 +22,18 @@
     fields:  # f967
       statement: "Every symbol a linker mints with a non-None language carries a computed stable_id, because neither the analyzer-side floor nor the Class-B synthetic chokepoint reaches it (ADR-0035)."  # f967
       root_cause: "linkers/grpc.py:770 and linkers/_view_template_core.py:285 construct Symbol(...) with language set, no protocol_origin and no stable_id; the floor runs before linkers and the chokepoint only stamps language=None stand-ins."  # f967
+- op: update  # c4e7
+  at: '2026-10-13T12:21:40Z'  # c4e7
+  by: agent  # c4e7
+  actor: jgstern_agent  # c4e7
+  clock: 2  # c4e7
+  nonce: c4e7  # c4e7
+  set:  # c4e7
+    status: satisfied  # c4e7
+- op: discuss  # 0a76
+  at: '2026-10-13T12:21:41Z'  # 0a76
+  by: agent  # 0a76
+  actor: jgstern_agent  # 0a76
+  clock: 3  # 0a76
+  nonce: 0a76  # 0a76
+  message: "Fixed in PR #1570 (merge b4a783a901, WI-tusad B8a). Root cause: linker mints that carry a language were reached by neither the analyzer-side floor (runs in all_analyzers before the linkers) nor the Class-B chokepoint (language=None only), so grpc.py's service/servicer/stub and _view_template_core.py's template shipped stable_id=null; manifest_targets (a format pass, no language's producer) rode the floor key. Fix: one shared helper, overload_arity.pass_minted_stable_id (= scoped_stable_id with the minting pass as outermost scope; grpc adds framework role + proto package, manifest the target path), minted at construction at all three sites; static guard test_stable_id_floor_gate.py::test_every_pass_mint_with_a_language_stamps_a_stable_id scans every Symbol(...) in core, the alternative backends and manifest_targets (19 language-bearing mints; 6 exempt with reasons: pre-backstop file anchors, a transient rebuild). Evidence (behavioural, dev b4a783a901): the filed repro svc.proto (service S {rpc Get}, service T {rpc Get; rpc Put}) via hypergumbo run -> grpc_service S sha256:329ac62f080a25db, T sha256:58139bac7f644daf, language=proto, none_cohort=0 (was 4); adding rpc Del to T -> both ids unchanged. View template: a Django view rendering app/page.html -> template page.html (language html) sha256:7ce365d1bba22395 on the gate fixture, and in a live hypergumbo run --include-docs delete-an-earlier-sibling repro (deleting an earlier view that renders another template) the surviving template keeps its id 1/1; gRPC interface 2/2, python servicer/stub 4/4, Package.swift binary 1/1 same. Corpus sample: proto interface 46 null -> 0, python grpc class/function 3 null -> 0, java/swift/haskell/ocaml binary 7 floor -> 0; all previously produced ids byte-identical."  # 0a76
