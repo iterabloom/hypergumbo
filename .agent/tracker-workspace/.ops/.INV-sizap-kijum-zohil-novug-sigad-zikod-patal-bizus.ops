@@ -21,3 +21,10 @@
     fields:  # 95d2
       statement: "A kind used for documentation structure in one language and for callables in another is filtered only for the documentation languages (the rule WI-tisom applied to property)."  # 95d2
       root_cause: "noise_filter._NOISE_SYMBOL_KINDS lists 'section' and 'paragraph' as documentation kinds (~L77-78) and is_noise_symbol filters them by kind alone (~L113), with no language scope; cobol.py emits both kinds for PROCEDURE DIVISION callables."  # 95d2
+- op: discuss  # 12cd
+  at: '2026-10-13T07:29:49Z'  # 12cd
+  by: agent  # 12cd
+  actor: jgstern_agent  # 12cd
+  clock: 2  # 12cd
+  nonce: 12cd  # 12cd
+  message: "Re-observed 2026-10-13 on dev 4c213ee87c (WI-tusad B7): hypergumbo run on a 2-program COBOL file (bank.cob, 6 paragraphs, 2 sections, 8 data items) emits 0 paragraph/section nodes in the default view (2 program + 8 data + file); with --include-docs all 8 appear with producer stable_ids. The analyzer emits them (analyze_cobol: 4 paragraph + 2 section symbols); noise_filter._NOISE_SYMBOL_KINDS drops them. B7 gave them producer ids (program/section chain) so they are ready once the filter stops dropping them."  # 12cd
