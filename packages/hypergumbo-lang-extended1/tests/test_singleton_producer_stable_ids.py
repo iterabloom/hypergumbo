@@ -268,3 +268,18 @@ def test_circom_functions_hash_their_parameter_count(tmp_path: Path) -> None:
         analyze_circom, tmp_path / "del", "src/demo.circom", _CIRCOM,
         "function first(x) {\n    return x;\n}\n", {"function"}, survivors=2,
     )
+
+
+def test_cobol_program_without_program_id_contributes_no_scope(tmp_path: Path) -> None:
+    """A program with no PROGRAM-ID emits no program symbol and puts nothing in
+    its paragraphs' chain."""
+    text = (
+        "       IDENTIFICATION DIVISION.\n       PROCEDURE DIVISION.\n"
+        "       P1.\n           STOP RUN.\n"
+    )
+    syms = _symbols(analyze_cobol, tmp_path, "x.cob", text)
+    assert [(s.kind, s.name) for s in syms] == [("paragraph", "P1")]
+    assert syms[0].stable_id == declared_arity_stable_id(
+        kind="paragraph", lang="cobol", path="x.cob", name="P1",
+        qualified_name="P1", arity=None,
+    )
