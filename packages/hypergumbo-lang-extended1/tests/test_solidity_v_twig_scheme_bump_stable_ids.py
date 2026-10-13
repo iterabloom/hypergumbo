@@ -78,7 +78,7 @@ _V = (
     "module demo\n\nstruct A {}\nstruct B {}\n\n"
     "fn (a A) run() int {\n\treturn 1\n}\n"
     "fn (b B) run(x int) int {\n\treturn x\n}\n"
-    "fn (mut b B) push(xs ...int) {}\n"
+    "fn (mut b B) push(mut dx int, xs ...int) {}\n"
     "fn helper() int {\n\treturn 2\n}\n"
 )
 
@@ -102,7 +102,7 @@ def test_v_parameters_exclude_the_receiver(tmp_path: Path) -> None:
     assert syms["helper"].meta[PARAMETERS_KEY] == []
     push = syms["push"].meta[PARAMETERS_KEY]
     assert [(p["name"], p["type"], p.get("variadic", False)) for p in push] == [
-        ("xs", "int", True)]
+        ("dx", "mut int", False), ("xs", "int", True)]
     run = next(s for s in _symbols(analyze_v, tmp_path / "again", "src/demo.v", _V)
                if s.name == "run" and s.span.start_line == 9)
     assert [(p["name"], p["type"]) for p in run.meta[PARAMETERS_KEY]] == [("x", "int")]
