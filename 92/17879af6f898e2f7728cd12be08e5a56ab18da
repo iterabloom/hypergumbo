@@ -1,0 +1,42 @@
+Original commit body from 2cc2832cf480fd99db2cdeeff5361e5667a9fbb7:
+
+The typed-overload languages computed no stable_id and rode the ADR-0035
+backstop floor key (kind, language, path, name), which same-name overloads
+share: Julia f(x::Int) / f(x::String), CUDA and GLSL f(int) / f(float),
+C++ pure virtuals find(int) / find(int, int) nulled each other.
+
+- core c_family: c_family_parameter_list / c_family_parameters (moved from
+  cpp.py, byte-identical meta.parameters) and c_family_scope_chain, shared
+  by cpp, cuda and glsl (and hlsl in the scheme-bump batch).
+- cuda: meta.parameters with types; declared_arity_stable_id, qualified
+  name = enclosing namespaces/classes.
+- glsl: same for functions; uniforms/in/out/varying/attribute take the
+  formula with no arity.
+- julia: positional parameters (::T types, defaults, splats; keyword
+  params excluded: not dispatched on), module chain; macros, abstract
+  types and consts migrated. `where` methods (full and short form) were
+  not unwrapped and emitted no symbol; they are now emitted.
+- fortran: dummy arguments typed from the unit's declarations (optional
+  = default), unit chain (module/submodule/program/host procedure);
+  programs and derived-type components migrated.
+- cpp: pure virtuals record meta.parameters and mint
+  declared_arity_stable_id (decorators abstract,virtual). cpp definitions
+  are unchanged: their fix changes already-computed ids and is held for
+  the scheme-bump batch.
+
+Floor/null -> producer only: every previously producer-computed id is
+byte-identical on the gate fixtures and a corpus sample (cuda/glsl/cpp/
+sql 40 files, fortran 25, julia 1, hlsl 11, ada 9, pascal 40, plus 40 C++
+files with pure virtuals; node and edge sets identical). Baseline:
+julia/cuda/glsl/fortran and cpp method leave floor_and_null; julia, cuda,
+glsl leave sibling_deletion_moves (cpp stays: definitions still tie).
+
+Also: lean/tlaplus/wolfram wrote Symbol.meta post hoc from a parameter,
+which the Edge.meta key gate reports as unresolved
+(test_meta_key_coherence live-tree test failed on dev); meta now goes
+through the Symbol constructor. base.py floor example, meta.parameters
+producer counts (30 -> 33) and lean/tlaplus/cpp line citations updated.
+
+Refs WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
