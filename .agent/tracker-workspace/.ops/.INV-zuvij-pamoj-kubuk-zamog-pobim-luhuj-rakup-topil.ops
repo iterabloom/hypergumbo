@@ -1,0 +1,22 @@
+- op: create  # 7716
+  at: '2026-10-13T07:58:12Z'  # 7716
+  by: agent  # 7716
+  actor: jgstern_agent  # 7716
+  clock: 1  # 7716
+  nonce: '7716'  # 7716
+  data:  # 7716
+    kind: invariant  # 7716
+    title: "Woodpecker per-PR pytest step passes a run in which every selected test skipped"  # 7716
+    status: violated  # 7716
+    priority: 3  # 7716
+    parent:  # 7716
+    tags:  # 7716
+    - ci  # 7716
+    isbefore: []  # 7716
+    duplicate_of: []  # 7716
+    not_duplicate_of: []  # 7716
+    pr_ref:  # 7716
+    description: "FOUND 2026-10-13 while fixing INV-tazur (PR #1567). The Woodpecker per-PR `pytest` step (.woodpecker/woodpecker.yml) now refuses a manifest naming a missing test and names pytest exit 5 as a zero-collect failure. It still passes a run in which every collected test SKIPPED: pytest exits 0 and the step has no count of executed tests (no --junit-xml, no result-line check). smart-test locally treats that case as ZERO TESTS EXECUTED (exit 5), so local and CI verdicts disagree on it. Not reproduced in CI; derived from reading the step. Fix sketch: pass --junit-xml to the step's pytest and fail when no testcase executed (xfail counts as executed), with a positive control in tests/test_ci_pytest_selection_gate.py. The dormant GitHub ci.yml pytest job has the same shape and was not changed."  # 7716
+    fields:  # 7716
+      statement: "The per-PR CI pytest step never passes a run that executed zero tests"  # 7716
+      root_cause: "the step trusts pytest's exit code alone; all-skipped exits 0 and the step counts no executed tests"  # 7716
