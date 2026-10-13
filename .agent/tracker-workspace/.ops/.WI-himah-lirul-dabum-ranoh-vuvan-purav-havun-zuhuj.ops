@@ -1,0 +1,20 @@
+- op: create  # 60df
+  at: '2026-10-13T22:39:54Z'  # 60df
+  by: agent  # 60df
+  actor: jgstern_agent  # 60df
+  clock: 1  # 60df
+  nonce: 60df  # 60df
+  data:  # 60df
+    kind: work_item  # 60df
+    title: "perl: a sub inside a block-form package (package B { sub go }) is named under the previous package (A::go)"  # 60df
+    status: todo_hard  # 60df
+    priority: 3  # 60df
+    parent:  # 60df
+    tags:  # 60df
+    - analysis_quality  # 60df
+    isbefore: []  # 60df
+    duplicate_of: []  # 60df
+    not_duplicate_of: []  # 60df
+    pr_ref:  # 60df
+    description: "FOUND by WI-tusad F3 (live sweep, f3/live/sweep2.py, dev 3c9f03a81f). Perl block-form packages (`package A { sub go { 1 } }` then `package B { sub go { 2 } }`, Perl 5.14+) emit B's sub as `A::go`: the analyzer applies the package seen earlier in the file, not the block the sub sits in. Observed via `hypergumbo run`: nodes module A (1), function A::go (2), function A::go (5), module B (4). Consequences: wrong name/qualified identity for every sub in a later block package; the two subs tie and the per-file split numbers them, so blanking package A renames the survivor to `B::go` (it does not match its own earlier record). Fix: read the enclosing package_statement block (ancestor) for a sub, falling back to the latest statement-form `package X;` only outside blocks. Statement-form packages were not checked for a regression."  # 60df
+    fields: {}  # 60df

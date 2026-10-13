@@ -1,0 +1,20 @@
+- op: create  # beb3
+  at: '2026-10-13T22:40:14Z'  # beb3
+  by: agent  # beb3
+  actor: jgstern_agent  # beb3
+  clock: 1  # beb3
+  nonce: beb3  # beb3
+  data:  # beb3
+    kind: work_item  # beb3
+    title: "solidity: struct declarations emit no symbol (their fields do, as RoyaltyInfo.receiver)"  # beb3
+    status: todo_hard  # beb3
+    priority: 3  # beb3
+    parent:  # beb3
+    tags:  # beb3
+    - analysis_quality  # beb3
+    isbefore: []  # beb3
+    duplicate_of: []  # beb3
+    not_duplicate_of: []  # beb3
+    pr_ref:  # beb3
+    description: "FOUND by WI-tusad F3 (containment check on the openzeppelin sample). Solidity `struct` declarations emit no symbol: in solidity/token/common/ERC2981.sol the fields `RoyaltyInfo.receiver` / `RoyaltyInfo.royaltyFraction` are emitted, the struct `RoyaltyInfo` is not (an `external_symbol RoyaltyInfo` stands in), so the fields are contained by the contract (span fallback) and a type that 12 fields on the sample name has no node. Fix: emit `struct` (a backstop table kind; nested in a contract it needs overload_arity.scoped_table_stable_id over the contract) and enums if also missing (not checked)."  # beb3
+    fields: {}  # beb3
