@@ -208,7 +208,9 @@ def _extract_scheme_symbols(
                 signature = f"(define ({name} {' '.join(params)}) ...)"
                 rel_path = str(path.relative_to(repo_root))
                 meta: dict[str, Any] = {
-                    "param_count": len(params),
+                    # The ``.`` of a rest list (``(f a . rest)``) is a symbol in
+                    # this grammar, not a parameter: two parameters, not three.
+                    "param_count": sum(1 for p in params if p != "."),
                     PARAMETERS_KEY: lambda_list_entries(_signature_nodes(node)),
                 }
 

@@ -14,6 +14,14 @@ extract:
   ``meta.http_method`` and no ``framework_role``
 - TypeScript-only declarations as their own kinds: ``interface``, ``type``,
   ``enum``, and the members of interfaces and enums
+- stable_ids over the FULL scope chain (``_jsts_scope``: classes, TypeScript
+  namespaces/modules, named functions and methods, the variable a function or
+  object literal is bound to; INV-fabih). Members and callables hashed the
+  class chain alone and classes/interfaces/enums/type aliases the backstop's
+  bare-name table key, so two ``class Inner`` in two namespaces or functions
+  tied and deleting the first moved the second; the table kinds now mint
+  ``overload_arity.scoped_table_stable_id``. Top-level declarations and
+  members of top-level classes keep their values
 - ``field`` symbols for class properties and ``variable`` for module-level
   bindings
 - One ``file`` symbol per module, anchoring top-level calls
@@ -196,6 +204,7 @@ from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    ancestor_labels,
     defer_bare_method_call,
     emit_module_attribute_refs,
     stamp_io_mode_from_call,
@@ -221,6 +230,7 @@ from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
 )
+from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
@@ -3417,6 +3427,42 @@ def _get_jsts_class_ancestors(
     return list(reversed(chain))
 
 
+#: Nodes whose name opens a scope a JS/TS stable_id hashes (INV-fabih).
+_JSTS_NAMED_SCOPES: frozenset[str] = frozenset({
+    "class_declaration", "abstract_class_declaration", "function_declaration",
+    "generator_function_declaration", "method_definition",
+})
+
+
+def _jsts_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The names of every scope enclosing ``node``, outermost first: classes,
+    TypeScript ``namespace`` / ``module`` blocks, named functions and methods,
+    and the variable a function or object literal is bound to (INV-fabih).
+
+    What every JS/TS stable_id hashes beside the symbol's own name. The
+    emitted ``qualified_name`` keeps the class chain alone
+    (:func:`_get_jsts_class_ancestors`), which two ``class Inner`` in
+    namespaces ``A`` and ``B`` (or in functions ``a`` and ``b``) share; their
+    ids tied and deleting the first moved the second. A top-level symbol has an
+    empty scope and keeps its value; so does a member of a top-level class
+    (the scope is its class chain).
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type in _JSTS_NAMED_SCOPES:
+            return _find_name_in_children(n, source)
+        if n.type in ("internal_module", "module", "variable_declarator"):
+            name = n.child_by_field_name("name")
+            return _node_text(name, source) if name is not None else None
+        return None
+    return ancestor_labels(node, label)
+
+
+def _jsts_chain(node: "tree_sitter.Node", source: bytes, name: str, lang: str) -> str:
+    """``name`` qualified by :func:`_jsts_scope`: the qualified name a JS/TS
+    callable or member hashes."""
+    return _make_jsts_qualified_name(_jsts_scope(node, source), name, lang)
+
+
 def _jsts_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """INV-fahub: the innermost enclosing class name of a call site, or None.
 
@@ -3803,6 +3849,8 @@ def _make_container_member_symbols(
     body = next((c for c in container.children if c.type == body_type), None)
     if body is None:  # pragma: no cover - a named container always has a body
         return []
+    # INV-fabih: the member hashes the container's full scope chain.
+    owner_scope = [*_jsts_scope(container, source), container_name]
     out: list["Symbol"] = []
     for member, member_name, kind, signature in _container_member_specs(
         body, source
@@ -3835,7 +3883,7 @@ def _make_container_member_symbols(
             stable_id=make_typed_stable_id(
                 kind, signature or "",
                 name=member_name,
-                qualified_name=qualified_name,
+                qualified_name=_make_jsts_qualified_name(owner_scope, member_name, lang),
                 file_stable_id=file_stable_id,
             ),
             qualified_name=qualified_name,
@@ -4330,9 +4378,7 @@ def _extract_symbols(
                 stable_id = make_typed_stable_id(
                     "function", norm_sig,
                     name=name,
-                    qualified_name=_make_jsts_qualified_name(
-                        _get_jsts_class_ancestors(node, source), name, lang,
-                    ),
+                    qualified_name=_jsts_chain(node, source, name, lang),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
@@ -4404,9 +4450,7 @@ def _extract_symbols(
                         stable_id = make_typed_stable_id(
                             "function", norm_sig,
                             name=name,
-                            qualified_name=_make_jsts_qualified_name(
-                                _get_jsts_class_ancestors(node, source), name, lang,
-                            ),
+                            qualified_name=_jsts_chain(node, source, name, lang),
                             file_stable_id=file_stable_id,
                         ) if norm_sig else None
 
@@ -4523,6 +4567,12 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    # INV-fabih: the table formula over the enclosing scopes
+                    # (the backstop's own value at top level).
+                    stable_id=scoped_table_stable_id(
+                        kind="class", lang=lang, path=file_name, name=name,
+                        scope=_jsts_scope(node, source),
+                    ),
                     meta=meta,
                     modifiers=class_modifiers,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
@@ -4553,6 +4603,10 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=scoped_table_stable_id(
+                        kind="interface", lang=lang, path=file_name, name=name,
+                        scope=_jsts_scope(node, source),
+                    ),
                     meta={"base_classes": iface_bases} if iface_bases else None,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
@@ -4586,6 +4640,10 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=scoped_table_stable_id(
+                        kind="type", lang=lang, path=file_name, name=name,
+                        scope=_jsts_scope(node, source),
+                    ),
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
                 )
@@ -4614,6 +4672,10 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=scoped_table_stable_id(
+                        kind="enum", lang=lang, path=file_name, name=name,
+                        scope=_jsts_scope(node, source),
+                    ),
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
@@ -4666,9 +4728,7 @@ def _extract_symbols(
                         stable_id = make_typed_stable_id(
                             kind, norm_sig,
                             name=name,
-                            qualified_name=_make_jsts_qualified_name(
-                                _get_jsts_class_ancestors(node, source), name, lang,
-                            ),
+                            qualified_name=_jsts_chain(node, source, name, lang),
                             file_stable_id=file_stable_id,
                         )
 
@@ -4729,7 +4789,7 @@ def _extract_symbols(
                 stable_id = make_typed_stable_id(
                     "field", field_type or "",
                     name=name,
-                    qualified_name=qualified_name,
+                    qualified_name=_jsts_chain(node, source, name, lang),
                     file_stable_id=file_stable_id,
                 )
 
@@ -4772,9 +4832,7 @@ def _extract_symbols(
                         stable_id = make_typed_stable_id(
                             "function", norm_sig,
                             name=name,
-                            qualified_name=_make_jsts_qualified_name(
-                                _get_jsts_class_ancestors(child, source), name, lang,
-                            ),
+                            qualified_name=_jsts_chain(child, source, name, lang),
                             file_stable_id=file_stable_id,
                         ) if norm_sig else None
 
@@ -4830,7 +4888,7 @@ def _extract_symbols(
                 stable_id = make_typed_stable_id(
                     "function", norm_sig,
                     name=anon_name,
-                    qualified_name=qualified_name,
+                    qualified_name=_jsts_chain(node, source, anon_name, lang),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
                 symbols.append(Symbol(

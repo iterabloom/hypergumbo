@@ -24,7 +24,8 @@ Symbols Extracted
 - **Blocks**: Block definitions ({% block name %})
 - **Macros**: Reusable template functions ({% macro name() %})
 - **For loops**: Iteration structures ({% for item in items %})
-- **Conditionals**: If statements ({% if condition %})
+- **Conditionals**: ``{% if a %}`` and ``{% elseif b %}`` (named ``if a`` /
+  ``elseif b``); ``{% else %}`` tests nothing and is not a symbol
 - **Call sites**: each ``{{ func() }}`` output call other than ``include()``
   becomes a symbol of kind ``call_site`` (signature ``{{ func() }}``, meta
   ``arg_count`` and ``call_kind="function"``); no call edge is emitted
@@ -401,19 +402,23 @@ def _extract_if_statement(
     node: "tree_sitter.Node", parent_node: "tree_sitter.Node",
     rel_path: str, symbols_out: list[Symbol], scopes: _Scopes,
 ) -> None:
-    """Extract if conditional statement (``if``, ``elseif`` and ``else`` each
-    yield one; only ``if`` opens a scope)."""
+    """Extract a conditional: ``if a`` and ``elseif b`` each yield one, named by
+    their own keyword; only ``if`` opens a scope. ``else`` tests nothing and
+    yields none: it was emitted as a symbol named ``"if "``, and ``elseif b``
+    as ``if b``, indistinguishable from an ``if``."""
     condition = ""
-    opens = False
+    keyword = ""
 
     for child in node.children:
         if child.type == "conditional":
-            opens = _get_node_text(child) == "if"
+            keyword = _get_node_text(child)
         elif child.type == "variable":
             condition = _get_node_text(child)
             break
 
-    name = f"if {condition}"
+    if keyword == "else":
+        return
+    name = f"{keyword} {condition}"
     span = _directive_span(parent_node)
     # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
     # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
@@ -435,7 +440,7 @@ def _extract_if_statement(
         meta={"condition": condition},
     )
     symbols_out.append(symbol)
-    if opens:
+    if keyword == "if":
         scopes.push("if", name)
 
 

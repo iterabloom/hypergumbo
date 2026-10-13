@@ -126,7 +126,22 @@ list and the helper joins it with the name, so no producer spells its own
 qualified-name format. :func:`nested_qualified_name` is the same chain for a
 producer that already hashed an EMPTY qualified name (Bash, Racket, Scheme, V
 methods): it spells the chain only for a nested symbol, so adding the chain in
-the scheme bump moved only the ids that tied, never a top-level one.
+the scheme bump moved only the ids that tied, never a top-level one;
+:func:`nested_member_qualified_name` is that rule for a name that already
+spells its nearest owner (C++ ``Inner::go``, D ``Inner.go``).
+
+NESTED TABLE KINDS (:func:`scoped_table_stable_id`; INV-fabih). A table kind
+(``class``, ``struct``, ``module``, ``type`` ...; ``analyze.base.is_table_kind``)
+takes the backstop's table formula ``{kind}:{language}:{path}:{name}``, which
+holds no scope: ``class Inner`` nested in class ``A`` and in class ``B`` of one
+file share it, the per-file split pass numbers the two by emission order, and
+deleting ``A`` moved ``B.Inner``'s id. A producer whose table-kind symbols
+nest mints this helper instead: the same formula with ``scope/.../name`` in the
+name slot, which is exactly the table value when ``scope`` is empty, so only
+nested declarations (the ones that tied) changed in the WI-tusad scheme bump.
+Their members do the same in their own formula: a method or field hashes the
+FULL owner chain (``A.Inner.go``), not the nearest owner (``Inner.go``), and a
+member of a top-level type keeps its value because there the two agree.
 """
 
 from __future__ import annotations
@@ -136,7 +151,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Mapping, Optional, Sequence
 
 from .analyze.base import (
-    ArityFlags, assemble_stable_id, make_file_stable_id, make_typed_stable_id,
+    ArityFlags, assemble_stable_id, is_table_kind, make_declaration_stable_id,
+    make_file_stable_id, make_typed_stable_id,
 )
 from .paths import normalize_path
 
@@ -374,6 +390,7 @@ def declared_arity_stable_id(
     arity: Optional[DeclaredArity],
     decorators: str = "",
     containing_stable_id: str = "",
+    result_type: str = "",
 ) -> str:
     """The ADR-0035 producer stable_id of a callable whose arity came from meta.
 
@@ -381,9 +398,25 @@ def declared_arity_stable_id(
     repo-relative (it is folded in as the file anchor when
     ``containing_stable_id`` is empty, as ``compute_stable_id`` does), and
     ``decorators`` is the sorted, comma-joined modifier list.
+
+    ``result_type`` is for a language whose overload profile includes the
+    result (Ada: ``function F return Integer`` / ``function F return Float``
+    take no parameter and differ only there). A non-empty one takes the typed
+    tier over ``(T1,...)->R``, a parameter with no declared type spelled
+    ``_``; an empty one leaves the value as above.
     """
     file_anchor = make_file_stable_id(lang, normalize_path(path))
     containing = containing_stable_id or file_anchor
+    if result_type:
+        params = (
+            arity.types if arity is not None and arity.types
+            else ("_",) * (arity.param_count if arity is not None else 0)
+        )
+        return make_typed_stable_id(
+            kind, f"({','.join(params)})->{result_type}", "", containing_stable_id,
+            decorators, name=name, qualified_name=qualified_name,
+            file_stable_id=file_anchor,
+        )
     if arity is not None and arity.types:
         return make_typed_stable_id(
             kind, arity.type_signature, "", containing_stable_id, decorators,
@@ -418,6 +451,26 @@ def nested_qualified_name(scope: Sequence[str], name: str) -> str:
     return SCOPE_SEPARATOR.join((*scope, name)) if scope else ""
 
 
+
+def nested_member_qualified_name(
+    scope: Sequence[str], name: str, separator: str,
+) -> str:
+    """:func:`nested_qualified_name` for a name that already spells its nearest
+    owners (``Inner::go``, ``Inner.go``; INV-fabih).
+
+    Producers that hashed an EMPTY qualified name beside such a name (C++, D)
+    tied two nested ``class Inner`` and their members. ``scope`` is the full
+    chain of enclosing scopes; the trailing ones ``name`` already spells
+    (split on ``separator``) are dropped, and what is left goes through
+    :func:`nested_qualified_name`: ``""`` for a top-level declaration and a
+    member of a top-level type, ``A/Inner::go`` for a member of a nested one.
+    """
+    spelled = name.split(separator)[:-1]
+    if spelled and list(scope[-len(spelled):]) == spelled:
+        scope = scope[:-len(spelled)]
+    return nested_qualified_name(scope, name)
+
+
 def scoped_stable_id(
     *,
     kind: str,
@@ -443,6 +496,35 @@ def scoped_stable_id(
         kind=kind, lang=lang, path=path, name=name,
         qualified_name=SCOPE_SEPARATOR.join((*scope, name)), arity=arity,
         decorators=decorators,
+    )
+
+
+#: Table kinds whose formula is not ``{kind}:{language}:{path}:{name}``: a file
+#: hashes its path alone, a project its name alone. Neither nests.
+_UNSCOPED_TABLE_KINDS = frozenset({"file", "project"})
+
+
+def scoped_table_stable_id(
+    *,
+    kind: str,
+    lang: str,
+    path: str,
+    name: str,
+    scope: Sequence[str] = (),
+) -> str:
+    """The table-formula stable_id of a table-kind declaration nested in
+    ``scope`` (INV-fabih; see the module docstring).
+
+    ``make_declaration_stable_id(kind, lang, path, "scope[0]/.../name")``: the
+    backstop's own value for a top-level declaration (empty ``scope``), the
+    scope chain in the name slot for a nested one. ``path`` must be
+    repo-relative. Raises ``ValueError`` for a kind the backstop has no
+    ``{kind}:{language}:{path}:{name}`` table formula for.
+    """
+    if not is_table_kind(kind) or kind in _UNSCOPED_TABLE_KINDS:
+        raise ValueError(f"{kind!r} has no scoped table formula")
+    return make_declaration_stable_id(
+        kind, lang, normalize_path(path), SCOPE_SEPARATOR.join((*scope, name)),
     )
 
 
@@ -478,6 +560,7 @@ def node_declared_arity_stable_id(
     meta: Optional[Mapping[str, Any]],
     file_stable_id: str,
     qualified_name: str = "",
+    result_type: str = "",
 ) -> str:
     """``compute_stable_id`` with the arity read from ``meta`` instead of the node.
 
@@ -488,6 +571,8 @@ def node_declared_arity_stable_id(
     ones ``compute_stable_id`` reads from the node, and a callable whose
     ``meta`` declares no arity gets exactly ``compute_stable_id``'s value, so
     only the ids of callables WITH parameters change: the scheme-bump scope.
+    ``result_type`` is passed through to :func:`declared_arity_stable_id`
+    (Ada functions).
     """
     arity = declared_arity(meta)
     if arity is None:
@@ -499,5 +584,5 @@ def node_declared_arity_stable_id(
     return declared_arity_stable_id(
         kind=kind, lang=analyzer.lang, path="", name=name,
         qualified_name=qualified_name, arity=arity, decorators=decorators,
-        containing_stable_id=file_stable_id,
+        containing_stable_id=file_stable_id, result_type=result_type,
     )

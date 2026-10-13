@@ -59,6 +59,12 @@ Call-edge details:
   when the call names ``std::`` or the file has ``using namespace std``
   (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
   Member calls carry ``call_construct="method"``.
+- **Scope** (INV-fabih): every stable_id's qualified-name slot holds the
+  enclosing namespaces and classes the name does not already spell
+  (``_cpp_scope_slot``); it was empty, so two nested ``class Inner`` (or
+  two in sibling namespaces, or two namespace-level ``run``) and their
+  members tied. Top-level declarations and members of top-level classes
+  keep their values.
 - **Overloads** (WI-hilum): every definition records its parameters in
   ``meta["parameters"]`` (``hypergumbo_core.overload_arity``), and its
   stable_id hashes them (``node_declared_arity_stable_id``, WI-tusad; they sit
@@ -119,11 +125,13 @@ from hypergumbo_core.ir import (
 from hypergumbo_core.confidence import derive_confidence
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, OverloadChoice, choose_overload, declared_arity,
-    declared_arity_stable_id, node_declared_arity_stable_id,
+    declared_arity_stable_id, nested_member_qualified_name,
+    node_declared_arity_stable_id,
 )
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.c_family import (
     c_family_declarator, c_family_parameter_list, c_family_parameters,
+    c_family_scope_chain,
 )
 from hypergumbo_core.analyze.edge_source import mark_stand_in
 from hypergumbo_lang_mainstream.c import c_family_is_not_a_call
@@ -260,6 +268,23 @@ def _cpp_has_pure_virtual(type_node: "tree_sitter.Node", source: bytes) -> bool:
     )
 
 
+def _cpp_scope_slot(node: "tree_sitter.Node", source: bytes, name: str) -> str:
+    """The qualified-name slot a C++ stable_id hashes (INV-fabih).
+
+    Every cpp producer hashed an EMPTY qualified name beside a name that
+    spells at most the nearest class (``Inner::go``, ``Inner``), so two
+    nested ``class Inner`` in ``A`` and ``B`` -- or two in namespaces ``a``
+    and ``b``, or two ``run`` in two namespaces -- tied, and deleting the
+    first moved the second's id. This is
+    ``overload_arity.nested_member_qualified_name`` over the enclosing
+    namespaces and classes (``c_family_scope_chain``), which drops the
+    trailing ones ``name`` already spells: ``""`` for a top-level declaration and a member of a
+    top-level class (their ids do not move), ``A/Inner::go`` for a member of
+    a nested one.
+    """
+    return nested_member_qualified_name(c_family_scope_chain(node, source), name, "::")
+
+
 def _emit_cpp_pure_virtual(
     field_decl: "tree_sitter.Node",
     method_name: str,
@@ -315,7 +340,8 @@ def _emit_cpp_pure_virtual(
         meta=meta,
         stable_id=declared_arity_stable_id(
             kind="method", lang="cpp", path=str(file_path), name=full_name,
-            qualified_name="", arity=declared_arity(meta),
+            qualified_name=_cpp_scope_slot(field_decl, source, full_name),
+            arity=declared_arity(meta),
             decorators="abstract,virtual", containing_stable_id=file_stable_id,
         ),
     ))
@@ -793,6 +819,7 @@ def _emit_cpp_field_symbols(
                 line_span=end_line - start_line + 1,
                 stable_id=_analyzer.compute_stable_id(
                     child, kind="field", name=full_name,
+                    qualified_name=_cpp_scope_slot(child, source, full_name),
                     file_stable_id=file_stable_id,
                 ),
             )
@@ -874,6 +901,7 @@ def _extract_symbols_from_tree(
                     meta=meta,
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="class", name=name,
+                        qualified_name=_cpp_scope_slot(node, source, name),
                         file_stable_id=file_stable_id,
                     ),
                 )
@@ -924,6 +952,7 @@ def _extract_symbols_from_tree(
                     meta=meta,
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="struct", name=name,
+                        qualified_name=_cpp_scope_slot(node, source, name),
                         file_stable_id=file_stable_id,
                     ),
                 )
@@ -969,6 +998,7 @@ def _extract_symbols_from_tree(
                     origin_run_id=run.execution_id,
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="enum", name=name,
+                        qualified_name=_cpp_scope_slot(node, source, name),
                         file_stable_id=file_stable_id,
                     ),
                 )
@@ -1025,6 +1055,7 @@ def _extract_symbols_from_tree(
                         is_exported=True,
                         stable_id=_analyzer.compute_stable_id(
                             member, kind="field", name=m_full,
+                            qualified_name=_cpp_scope_slot(node, source, m_full),
                             file_stable_id=file_stable_id,
                         ),
                         line_span=m_end - m_start + 1,
@@ -1083,6 +1114,7 @@ def _extract_symbols_from_tree(
                     stable_id=node_declared_arity_stable_id(
                         _analyzer, node, kind=kind, name=name, meta=fn_meta,
                         file_stable_id=file_stable_id,
+                        qualified_name=_cpp_scope_slot(node, source, name),
                     ),
                 )
                 analysis.symbols.append(symbol)
@@ -1144,6 +1176,7 @@ def _extract_symbols_from_tree(
                             line_span=end_line - start_line + 1,
                             stable_id=_analyzer.compute_stable_id(
                                 node, kind="variable", name=var_name,
+                                qualified_name=_cpp_scope_slot(node, source, var_name),
                                 file_stable_id=file_stable_id,
                             ),
                         )

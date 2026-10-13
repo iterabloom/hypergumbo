@@ -73,10 +73,10 @@ scope in its module under its bare name, so it is named ``zero`` (``A.zero``
 in a nested module) while its chain holds the data type (``Nat.zero``), and
 two data types' same-name constructors stay apart. A ``where``-bound function
 keeps its bare name (``go``) and holds the enclosing function in its chain
-(``A.run/go``). Module symbols keep
-their bare names: their ids come from the module table formula over the name,
-so qualifying them would change ids already computed (ADR-0035 §6); two
-same-name modules in one file are told apart by the per-file occurrence pass.
+(``A.run/go``). A nested module is named the same way (``A.C``; WI-tusad
+scheme bump, INV-fabih): it kept its bare name, so ``module C`` in modules
+``A`` and ``B`` shared one table key and deleting ``A`` moved ``B.C``'s id.
+Its id is the backstop's module table formula over that name.
 
 Functions, constructors, postulates, data types, records and fields mint the
 ADR-0035 producer stable_id through ``overload_arity.declared_arity_stable_id``
@@ -273,8 +273,10 @@ def _extract_symbols_from_file(
             return  # pragma: no cover - callers pass a non-empty name
         raw = name
         if kind == "module":
-            # Module ids come from the table formula over the bare name.
-            name, chain = name, _scope_chain(node, source)[1] + name
+            # The backstop's table formula over the name, which carries the
+            # enclosing modules (``A.C``) like every other declaration's
+            # (INV-fabih: the bare ``C`` of two nested modules tied).
+            name, chain = _declared_names(node, source, name)
             stable_id = None
         else:
             name, chain = _declared_names(node, source, name)

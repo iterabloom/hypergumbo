@@ -9,7 +9,8 @@ This analyzer uses tree-sitter to parse Solidity smart contract files and extrac
 - Constructor definitions
 - Modifier definitions
 - Event definitions
-- State variables + struct members (kind="field"; WI-jusus)
+- State variables + struct members (kind="field"; WI-jusus); a member of a
+  struct declared in a contract hashes the contract too (INV-fabih)
 - File-level constants (kind="variable"; WI-jusus)
 - Function call relationships
 - Import relationships
@@ -387,8 +388,12 @@ def _extract_symbols_from_tree(
         vtype: Optional[str],
         modifiers: list[str],
         is_exported: bool,
+        hashed_name: Optional[str] = None,
     ) -> None:
         """Append a field/variable Symbol (WI-jusus).
+
+        ``hashed_name`` is the qualified name a field hashes when it is not
+        ``full_name`` (a struct member's: the contract too, INV-fabih).
 
         Deliberately NOT registered in ``symbol_by_name`` (nor, via
         ``SolidityAnalyzer.register_symbol``, in the global registry): a state
@@ -403,7 +408,7 @@ def _extract_symbols_from_tree(
             stable_id = make_typed_stable_id(
                 "field", vtype or "",
                 visibility_from_modifiers(modifiers),
-                name=name, qualified_name=full_name,
+                name=name, qualified_name=hashed_name or full_name,
                 file_stable_id=file_stable_id,
             )
         else:
@@ -516,7 +521,14 @@ def _extract_symbols_from_tree(
                 owner = _get_enclosing_struct(node, source) or ""
                 vtype = _solidity_value_type(node, source)
                 full_name = f"{owner}.{name}" if owner else name
-                add_value_symbol(node, name, "field", full_name, vtype, [], True)
+                # INV-fabih: a struct declared in a contract hashes the contract
+                # too; ``struct Inner`` in contracts ``A`` and ``B`` shared
+                # ``Inner.v`` and deleting ``A`` moved ``B``'s field id.
+                contract = _get_enclosing_contract(node, source)
+                add_value_symbol(
+                    node, name, "field", full_name, vtype, [], True,
+                    hashed_name=f"{contract}.{full_name}" if contract else None,
+                )
 
         # File-level constant -> variable (contract-level constants parse as
         # state_variable_declaration and are handled above as fields).

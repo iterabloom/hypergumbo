@@ -233,8 +233,9 @@ def test_lean_emits_both_namespaced_definitions(tmp_path: Path) -> None:
     )
     assert syms[13].stable_id != syms[14].stable_id
     assert syms[15].name == "B.named"
-    # A structure keeps its table-formula name and id (computed downstream).
-    assert syms[3].name == "P" and syms[3].stable_id is None
+    # A structure is named with its namespace too (INV-fabih); its id is the
+    # table formula over that name, computed downstream.
+    assert syms[3].name == "A.P" and syms[3].stable_id is None
     assert syms[20].meta == {PARAMETERS_KEY: [parameter_entry("x"), parameter_entry("y")]}
     assert syms[21].name == "top"
 

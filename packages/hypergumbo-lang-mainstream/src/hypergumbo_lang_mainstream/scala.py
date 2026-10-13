@@ -73,12 +73,18 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      Only ``java.lang.System``'s three FIELDS are attributes: scala writes
      ``System.currentTimeMillis`` without parentheses, and that is a call.
 
-Identity (WI-tusad): an ``object`` and a named ``given`` (``instance``) mint
-the ADR-0035 producer stable_id with ``make_typed_stable_id``, as fields do,
-qualified by every class, object, trait, enum, given and function enclosing
-them (``A.Inner`` / ``B.Inner``; ``_scala_scope_chain``). Before, they computed none
-and rode the backstop floor key (kind, file, bare name), which two nested
-``object Inner`` share, so both were null. Their emitted names stay bare.
+Identity (WI-tusad): every stable_id hashes the FULL chain of enclosing
+scopes (``_scala_scope``: block packages, classes, objects, traits, enums,
+givens, functions), never the nearest owner alone. An ``object`` and a named
+``given`` (``instance``) mint ``make_typed_stable_id`` over it (before, they
+rode the backstop floor key, which two nested ``object Inner`` share, so both
+were null); methods, fields and enum cases hash ``A.Inner.go`` where they
+hashed their emitted name ``Inner.go``; classes, traits and enums mint
+``overload_arity.scoped_table_stable_id`` (INV-fabih: ``class Inner`` in two
+outer classes shared the backstop's bare-name table key, so deleting the first
+outer class moved the second ``Inner``'s id and its members'). A member of a
+top-level type, and a top-level type, keep their values: there the chain is
+the nearest owner. Emitted names are unchanged.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides the Scala-specific extraction
@@ -107,6 +113,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     SymbolsAt,
     TreeSitterAnalyzer,
+    ancestor_labels,
     defer_bare_method_call,
     emit_module_attribute_refs,
     find_child_by_type,
@@ -124,6 +131,7 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
     visibility_from_modifiers,
 )
+from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -764,22 +772,33 @@ _SCALA_SCOPE_NODES: Final = frozenset({
 })
 
 
-def _scala_scope_chain(node: "tree_sitter.Node", source: bytes, name: str) -> str:
-    """``name`` qualified by every class, object, trait, enum, given and
-    function enclosing ``node``, outermost first (``A.Inner``; WI-tusad).
+def _scala_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The names of every scope enclosing ``node``, outermost first: each block
+    ``package a { ... }``, class, object, trait, enum, given and function
+    (WI-tusad, INV-fabih).
 
     ``_get_enclosing_type`` keeps the nearest owner only, which two nested
-    ``object Inner`` in classes ``A`` and ``B`` share.
+    ``object Inner`` (or ``class Inner``) in classes ``A`` and ``B`` share, so
+    their ids and their members' ids tied. A header ``package a.b`` is no
+    ancestor (the rest of the file is its sibling) and applies to the whole
+    file, which the file anchor already identifies, so it is not in the chain;
+    a block package can repeat within a file, so it is.
     """
-    parts = [name]
-    current = node.parent
-    while current is not None:
-        if current.type in _SCALA_SCOPE_NODES:
-            name_node = find_child_by_type(current, "identifier")
-            if name_node is not None:
-                parts.append(node_text(name_node, source))
-        current = current.parent
-    return ".".join(reversed(parts))
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type in _SCALA_SCOPE_NODES:
+            name_node = find_child_by_type(n, "identifier")
+            return node_text(name_node, source) if name_node is not None else None
+        if n.type == "package_clause" and find_child_by_type(n, "template_body") is not None:
+            pkg = find_child_by_type(n, "package_identifier")
+            return node_text(pkg, source) if pkg is not None else None
+        return None
+    return ancestor_labels(node, label)
+
+
+def _scala_scope_chain(node: "tree_sitter.Node", source: bytes, name: str) -> str:
+    """``name`` qualified by :func:`_scala_scope` (``A.Inner``, ``A.Inner.go``):
+    the qualified name every Scala member and nested object hashes."""
+    return ".".join((*_scala_scope(node, source), name))
 
 
 def _get_enclosing_function(
@@ -1033,9 +1052,12 @@ def _extract_symbols_from_file(
 
                 # Typed stable_id (ADR-0014 §3)
                 norm_sig = normalize_scala_signature(signature)
+                # INV-fabih: the FULL owner chain, not the nearest owner
+                # (``full_name``), which two nested same-name owners share.
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
-                    name=func_name, qualified_name=full_name,
+                    name=func_name,
+                    qualified_name=_scala_scope_chain(node, source, func_name),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
@@ -1096,7 +1118,8 @@ def _extract_symbols_from_file(
                 norm_sig = normalize_scala_signature(signature)
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
-                    name=func_name, qualified_name=full_name,
+                    name=func_name,
+                    qualified_name=_scala_scope_chain(node, source, func_name),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
@@ -1172,6 +1195,12 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    # INV-fabih: the table formula over the enclosing scopes
+                    # (the backstop's own value for a top-level class).
+                    stable_id=scoped_table_stable_id(
+                        kind="class", lang="scala", path=file_path, name=type_name,
+                        scope=_scala_scope(node, source),
+                    ),
                     meta=class_meta or None,
                     modifiers=_extract_modifiers_scala(node),
                 )
@@ -1236,6 +1265,10 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=scoped_table_stable_id(
+                        kind="trait", lang="scala", path=file_path, name=type_name,
+                        scope=_scala_scope(node, source),
+                    ),
                     meta=meta,
                     modifiers=_extract_modifiers_scala(node),
                 )
@@ -1275,6 +1308,10 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=scoped_table_stable_id(
+                        kind="enum", lang="scala", path=file_path, name=type_name,
+                        scope=_scala_scope(node, source),
+                    ),
                     modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
@@ -1299,6 +1336,7 @@ def _extract_symbols_from_file(
                 # child, so `_extract_modifiers_scala(case_node)` returns []
                 # and a case has no visibility of its own to read.
                 enum_modifiers = _extract_modifiers_scala(node)
+                enum_chain = _scala_scope_chain(node, source, type_name)
                 enum_body = find_child_by_type(node, "enum_body")
                 for group in enum_body.children if enum_body else ():
                     if group.type != "enum_case_definitions":
@@ -1338,7 +1376,8 @@ def _extract_symbols_from_file(
                             stable_id=make_typed_stable_id(
                                 "field", "",
                                 visibility_from_modifiers(enum_modifiers),
-                                name=case_name, qualified_name=case_full,
+                                name=case_name,
+                                qualified_name=f"{enum_chain}.{case_name}",
                                 file_stable_id=file_stable_id,
                             ),
                             line_span=c_end - c_start + 1,
@@ -1432,7 +1471,8 @@ def _extract_symbols_from_file(
                     stable_id = make_typed_stable_id(
                         "field", prop_type or "",
                         visibility_from_modifiers(modifiers),
-                        name=prop_name, qualified_name=full_name,
+                        name=prop_name,
+                        qualified_name=_scala_scope_chain(node, source, prop_name),
                         file_stable_id=file_stable_id,
                     )
                 else:

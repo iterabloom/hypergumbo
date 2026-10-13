@@ -12,6 +12,8 @@ Implementation approach:
 - Uses TreeSitterAnalyzer base class for two-pass orchestration
 - Uses tree-sitter-language-pack for Tcl grammar
 - Handles Tcl-specific constructs like proc, namespace eval, and command substitution
+- stable_ids hash every enclosing ``namespace eval`` (INV-fabih), not only the
+  innermost one the emitted name carries
 
 Key constructs extracted:
 - procedure: proc name {args} {body}
@@ -34,6 +36,7 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import nested_member_qualified_name
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
@@ -184,16 +187,23 @@ class TclAnalyzer(TreeSitterAnalyzer):
 
         self._extract_symbols_recursive(
             tree.root_node, file_path, repo_root, rel_path, run, analysis, None,
-            file_anchor,
+            file_anchor, (),
         )
         return analysis
 
     def _extract_symbols_recursive(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
         rel_path: str, run: "AnalysisRun", analysis: FileAnalysis,
-        namespace: Optional[str], file_anchor: str,
+        namespace: Optional[str], file_anchor: str, ns_path: tuple[str, ...],
     ) -> None:
-        """Extract symbols from a syntax tree node recursively."""
+        """Extract symbols from a syntax tree node recursively.
+
+        ``namespace`` is the innermost enclosing ``namespace eval`` (what the
+        emitted name, id and ``meta.namespace`` carry); ``ns_path`` is every
+        enclosing one, outermost first, which the stable_id hashes (INV-fabih:
+        ``a::inner::go`` and ``b::inner::go`` both hashed ``inner::go``, tied,
+        and deleting the first moved the second).
+        """
         if node.type == "procedure":
             name = _get_proc_name(node)
             if name:
@@ -204,7 +214,11 @@ class TclAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "proc"),
-                    stable_id=self.compute_stable_id(node, kind="proc", name=qualified_name, file_stable_id=file_anchor),
+                    stable_id=self.compute_stable_id(
+                        node, kind="proc", name=qualified_name,
+                        qualified_name=nested_member_qualified_name(ns_path, qualified_name, "::"),
+                        file_stable_id=file_anchor,
+                    ),
                     name=name,
                     kind="function",
                     language="tcl",
@@ -233,7 +247,11 @@ class TclAnalyzer(TreeSitterAnalyzer):
 
                 sym = Symbol(
                     id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "namespace"),
-                    stable_id=self.compute_stable_id(node, kind="namespace", name=name, file_stable_id=file_anchor),
+                    stable_id=self.compute_stable_id(
+                        node, kind="namespace", name=name,
+                        qualified_name=nested_member_qualified_name(ns_path, name, "::"),
+                        file_stable_id=file_anchor,
+                    ),
                     name=name,
                     kind="namespace",
                     language="tcl",
@@ -261,6 +279,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
                                         inner, path, repo_root, rel_path,
                                         run, analysis, namespace=name,
                                         file_anchor=file_anchor,
+                                        ns_path=(*ns_path, name),
                                     )
                 return  # Don't recursively process namespace children again
 
@@ -268,7 +287,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
         for child in node.children:
             self._extract_symbols_recursive(
                 child, path, repo_root, rel_path, run, analysis, namespace,
-                file_anchor,
+                file_anchor, ns_path,
             )
 
     def extract_edges_from_file(

@@ -14,6 +14,13 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
 - Field symbols (``kind="field"``): one per declarator of a class field or
   interface constant, one per enum constant, and one per record component
   (a ``private final`` field, JLS 8.10.3; ``_java_field_symbol``)
+- stable_ids over the types AND methods enclosing a symbol
+  (``_java_hash_scope``; INV-fabih): a local class in two methods, and an
+  anonymous class's members in two methods, shared their emitted dotted
+  name, tied, and moved when the first method was deleted. Symbols outside a
+  method body keep their values. A ``record`` (no table kind) rode the
+  backstop floor key; it now mints the producer formula over that chain
+  (``_java_type_stable_id``)
 - Method call relationships (edges)
 - Inheritance relationships: this analyzer emits ``extends`` / ``implements``
   edges for classes only. A record's ``implements`` and an interface's
@@ -169,6 +176,7 @@ from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    ancestor_labels,
     emit_module_attribute_refs,
     symbols_by_path_index,
     symbols_for_path,
@@ -184,6 +192,7 @@ from hypergumbo_core.analyze.base import (
     node_text as _node_text,
     visibility_from_modifiers,
 )
+from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     IMPLICIT_IMPORT_PACKAGE,
@@ -1489,6 +1498,50 @@ def _get_class_ancestors(
     return list(reversed(ancestors))
 
 
+def _java_hash_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The types AND methods/constructors enclosing ``node``, outermost first
+    (INV-fabih).
+
+    What a Java stable_id hashes. :func:`_get_class_ancestors` (the emitted
+    name's chain) skips methods, so a local class ``Inner`` in methods ``a``
+    and ``b`` -- or an anonymous class's ``run`` in two methods -- shared
+    ``N.Inner`` with its members, tied, and deleting the first moved the
+    second's ids. For every symbol not inside a method body the two chains
+    are equal, so those ids keep their values.
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type in _JAVA_NAMED_TYPE_NODES:
+            return _get_class_name(n, source)
+        if n.type == "method_declaration" or n.type in _JAVA_CONSTRUCTOR_NODES:
+            return _get_method_name(n, source)
+        return None
+    return ancestor_labels(node, label)
+
+
+def _java_type_stable_id(
+    kind: str, name: str, ancestors: list[str], hash_scope: list[str],
+    file_path: Path, repo_root: Optional[Path],
+) -> Optional[str]:
+    """A Java type's stable_id (INV-fabih; see :func:`_java_hash_scope`).
+
+    A class, interface or enum outside any method body keeps the backstop's
+    table value over its dotted name (None here: the backstop stamps it); one
+    inside a method (a local type) mints that table formula over the method
+    chain too. A ``record`` is no table kind: it rode the backstop FLOOR key,
+    which two local records of one name share, so every record mints the
+    ADR-0035 producer formula over its full chain.
+    """
+    path = str(file_path.relative_to(repo_root)) if repo_root is not None else str(file_path)
+    if kind == "record":
+        return scoped_stable_id(kind="record", lang="java", path=path, name=name, scope=hash_scope)
+    if hash_scope == ancestors:
+        return None
+    return scoped_table_stable_id(
+        kind=kind, lang="java", path=path, name=".".join((*hash_scope, name)),
+    )
+
+
+
 def _get_parent_class_base_classes(
     node: "tree_sitter.Node", source: bytes
 ) -> list[str]:
@@ -1680,8 +1733,12 @@ def _java_field_symbol(
     file_stable_id: str,
     file_path: Path,
     run: AnalysisRun,
+    hash_scope: Optional[list[str]] = None,
 ) -> Symbol:
     """One ``kind="field"`` Symbol, for a declared field or a record component.
+
+    ``hash_scope`` is the chain the stable_id hashes when it is not
+    ``ancestors`` (a field of a local class; :func:`_java_hash_scope`).
 
     Class-scoped canonical identity (name + qualified_name + file fold):
     same-named fields in different classes/files stay distinct even when the
@@ -1710,7 +1767,10 @@ def _java_field_symbol(
             "field", field_type or "",
             visibility_from_modifiers(modifiers),
             name=field_name,
-            qualified_name=qualified_name,
+            qualified_name=(
+                qualified_name if hash_scope is None
+                else _make_java_qualified_name(package_name, hash_scope, field_name)
+            ),
             file_stable_id=file_stable_id,
         ),
         signature=field_type,
@@ -1788,8 +1848,12 @@ def _extract_symbols(
                         meta["base_classes"] = base_classes
 
                 modifiers = _extract_modifiers(node, source)
+                hash_scope = _java_hash_scope(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, type_kind),
+                    stable_id=_java_type_stable_id(
+                        type_kind, name, ancestors, hash_scope, file_path, repo_root,
+                    ),
                     name=full_name,
                     kind=type_kind,
                     language="java",
@@ -1825,6 +1889,7 @@ def _extract_symbols(
                         _node_text(comp_type, source) if comp_type is not None else None,
                         ["private", "final"], _extract_annotations(component, source),
                         False, package_name, file_stable_id, file_path, run,
+                        hash_scope=[*hash_scope, name],
                     ))
 
         # Enum declarations
@@ -1840,8 +1905,12 @@ def _extract_symbols(
                     end_col=node.end_point[1],
                 )
                 modifiers = _extract_modifiers(node, source)
+                hash_scope = _java_hash_scope(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "enum"),
+                    stable_id=_java_type_stable_id(
+                        "enum", name, ancestors, hash_scope, file_path, repo_root,
+                    ),
                     name=full_name,
                     kind="enum",
                     language="java",
@@ -1908,7 +1977,9 @@ def _extract_symbols(
                             "field", name,
                             visibility_from_modifiers(modifiers),
                             name=const_name,
-                            qualified_name=const_qualified,
+                            qualified_name=_make_java_qualified_name(
+                                package_name, [*hash_scope, name], const_name,
+                            ),
                             file_stable_id=file_stable_id,
                         ),
                         # A constant is implicitly `public static final` and is
@@ -1985,7 +2056,9 @@ def _extract_symbols(
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
                     name=name,
-                    qualified_name=_make_java_qualified_name(package_name, ancestors, name),
+                    qualified_name=_make_java_qualified_name(
+                        package_name, _java_hash_scope(node, source), name,
+                    ),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
@@ -2043,7 +2116,9 @@ def _extract_symbols(
                 stable_id = make_typed_stable_id(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
                     name=name,
-                    qualified_name=_make_java_qualified_name(package_name, ancestors, name),
+                    qualified_name=_make_java_qualified_name(
+                        package_name, _java_hash_scope(node, source), name,
+                    ),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
@@ -2096,6 +2171,7 @@ def _extract_symbols(
                         # class/enum fields export only with an explicit `public`.
                         ("public" in modifiers) or node.type == "constant_declaration",
                         package_name, file_stable_id, file_path, run,
+                        hash_scope=_java_hash_scope(node, source),
                     ))
 
     return symbols

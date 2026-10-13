@@ -132,10 +132,12 @@ def test_ocaml_emits_both_same_name_module_bindings(tmp_path: Path) -> None:
     assert syms[6].meta == {PARAMETERS_KEY: [
         parameter_entry("?(o = 1)", default=True), parameter_entry("y"),
     ]}
-    # Both type ``t``s are emitted too, under their table-formula names.
+    # Both type ``t``s are emitted too, named with their module chain like the
+    # bindings (WI-tusad scheme bump, INV-fabih): the table formula over the
+    # name then tells them apart.
     types = [s for s in _symbols(analyze_ocaml, tmp_path / "t", "demo.ml", _OCAML)
              if s.kind == "type"]
-    assert [t.name for t in types] == ["t", "t"]
+    assert [t.name for t in types] == ["t", "D.t"]
 
 
 def test_ocaml_and_bindings_and_locals(tmp_path: Path) -> None:

@@ -12,6 +12,9 @@ Detects:
 - Enum definitions and enum members (emitted as kind=field)
 - Struct/class/interface fields (kind=field) and module-level
   variables/constants (kind=variable)
+- stable_ids that hash the enclosing aggregates, enums and functions the
+  name does not spell (``_d_scope``; INV-fabih): two nested ``class Inner``
+  and their members no longer tie
 
 Call edges additionally use UFCS-aware receiver resolution (WI-situj /
 INV-vigaf): a ``thing.method()`` that is really the free function
@@ -50,6 +53,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     SymbolsAt,
     TreeSitterAnalyzer,
+    ancestor_labels,
     find_child_by_type,
     iter_tree,
     make_symbol_id,
@@ -60,6 +64,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.discovery import classify_dot_d_file, find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.overload_arity import nested_member_qualified_name
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -119,8 +124,10 @@ def _make_symbol(
         # symbols with the same (kind, name) in different files hash distinctly.
         # ``rel_path`` is the repo-relative path threaded from
         # extract_symbols_from_file(..., rel_path, ...); the base helper normalizes it.
+        # INV-fabih: the enclosing scopes ``name`` does not already spell.
         stable_id=analyzer.compute_stable_id(
             node, kind=kind, name=name,
+            qualified_name=nested_member_qualified_name(_d_scope(node, source), name, "."),
             file_stable_id=analyzer._file_anchor(rel_path),
         ),
         signature=signature,
@@ -153,6 +160,27 @@ _CONTAINER_NODE_TYPES = frozenset({
     # struct — correctly preserving D's anonymous-union member hoisting.
     "union_declaration",
 })
+
+
+def _d_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The named aggregates, enums and functions enclosing ``node``, outermost
+    first (INV-fabih).
+
+    Every D symbol hashed an EMPTY qualified name beside a name that spells at
+    most the nearest aggregate (``Inner.go``), so two nested ``class Inner``
+    in ``A`` and ``B`` and their members tied, and deleting the first moved
+    the second's ids. ``overload_arity.nested_member_qualified_name`` over
+    this chain keeps ``""`` for a top-level symbol and a member of a
+    top-level type.
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type not in _CONTAINER_NODE_TYPES and n.type not in (
+            "enum_declaration", "function_declaration",
+        ):
+            return None
+        name_node = find_child_by_type(n, "identifier")
+        return node_text(name_node, source) if name_node is not None else None
+    return ancestor_labels(node, label)
 
 
 def _find_parent_container(

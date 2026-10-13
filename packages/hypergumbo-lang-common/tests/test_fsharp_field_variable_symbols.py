@@ -75,7 +75,8 @@ module Nested =
     let nestedVal = 5
 ''')
         result = analyze_fsharp(tmp_path)
-        assert "nestedVal" in _names(result, "variable")
+        # Named with its module chain, like a function in it (INV-fabih).
+        assert "Nested.nestedVal" in _names(result, "variable")
 
     def test_local_binding_not_emitted(self, tmp_path: Path) -> None:
         # A function-body `let` is the SAME function_or_value_defn node, but

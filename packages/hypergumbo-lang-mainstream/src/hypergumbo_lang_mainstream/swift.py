@@ -11,6 +11,12 @@ This analyzer uses tree-sitter to parse Swift files and extract:
 - Computed properties and subscripts, whose stable_id is the ADR-0035
   producer formula (``make_typed_stable_id`` over the type or, for a
   subscript, the parameter types; WI-tusad: they rode the backstop floor key)
+- Every stable_id hashes the FULL chain of enclosing types and functions
+  (``_swift_scope``; INV-fabih): methods hashed their emitted nearest-owner
+  name (``Inner.go``) and types the backstop's bare-name table key, so two
+  nested ``class Inner`` tied and deleting the first outer type moved the
+  second's ids; types now mint ``overload_arity.scoped_table_stable_id``.
+  Top-level types and their members keep their values
 - Enum cases and protocol requirements as ``field`` / member symbols
 - Stored properties (``field``) and top-level bindings (``variable``)
 - Route-marker symbols, extracted per file and appended in ``post_process``
@@ -105,6 +111,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     find_child_by_type,
     iter_tree,
     defer_bare_method_call,
@@ -122,6 +129,7 @@ from hypergumbo_core.analyze.base import (
     SymbolsAt,
     visibility_from_modifiers,
 )
+from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -380,6 +388,40 @@ def _get_swift_type_ancestors(
                 chain.append(node_text(name_node, source))
         current = current.parent
     return list(reversed(chain))
+
+
+#: Declarations whose name opens a scope a Swift stable_id hashes (not
+#: ``_SWIFT_SCOPE_NODES``, the type bodies a field/variable is classified by).
+#: tree-sitter-swift models class/struct/enum/actor and ``extension`` all as
+#: ``class_declaration``.
+_SWIFT_ID_SCOPE_NODES = frozenset({
+    "class_declaration", "protocol_declaration", "function_declaration",
+})
+
+
+def _swift_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The names of the types and functions enclosing ``node``, outermost
+    first: what every Swift stable_id hashes beside the symbol's own name
+    (INV-fabih).
+
+    A method hashed its emitted nearest-owner name (``Inner.go``), which two
+    nested ``class Inner`` in ``A`` and ``B`` share, and a type had only the
+    backstop's bare-name table key; members hashed the type chain but not an
+    enclosing function, which two function-local ``struct Inner`` share. The
+    emitted ``qualified_name`` stays the type chain
+    (:func:`_make_swift_qualified_name`).
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type not in _SWIFT_ID_SCOPE_NODES:
+            return None
+        name_node = n.child_by_field_name("name")
+        return node_text(name_node, source) if name_node is not None else None
+    return ancestor_labels(node, label)
+
+
+def _swift_chain(node: "tree_sitter.Node", source: bytes, name: str) -> str:
+    """``name`` qualified by :func:`_swift_scope` (``A.Inner.go``)."""
+    return ".".join((*_swift_scope(node, source), name))
 
 
 def _make_swift_qualified_name(
@@ -830,9 +872,11 @@ def _extract_symbols_from_file(
 
                 # Typed stable_id (ADR-0014 §3)
                 norm_sig = normalize_swift_signature(signature)
+                # INV-fabih: the full type/function chain, not the nearest
+                # owner (``full_name``) two nested owners share.
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
-                    name=func_name, qualified_name=full_name,
+                    name=func_name, qualified_name=_swift_chain(node, source, func_name),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
@@ -916,6 +960,12 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    # INV-fabih: the table formula over the enclosing scopes
+                    # (the backstop's own value for a top-level type).
+                    stable_id=scoped_table_stable_id(
+                        kind=kind, lang="swift", path=file_path, name=type_name,
+                        scope=_swift_scope(node, source),
+                    ),
                     meta=meta,
                     modifiers=type_modifiers,
                     line_span=end_line - start_line + 1,
@@ -954,6 +1004,10 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=scoped_table_stable_id(
+                        kind="protocol", lang="swift", path=file_path, name=type_name,
+                        scope=_swift_scope(node, source),
+                    ),
                     meta=meta,
                     modifiers=proto_modifiers,
                     line_span=end_line - start_line + 1,
@@ -990,6 +1044,10 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=scoped_table_stable_id(
+                        kind=kind, lang="swift", path=file_path, name=type_name,
+                        scope=_swift_scope(node, source),
+                    ),
                     line_span=end_line - start_line + 1,
                     qualified_name=_make_swift_qualified_name(type_ancestors, type_name),
                 )
@@ -1046,7 +1104,8 @@ def _extract_symbols_from_file(
                         stable_id=make_typed_stable_id(
                             "field", "",
                             visibility_from_modifiers(modifiers),
-                            name=case_name, qualified_name=qualified,
+                            name=case_name,
+                            qualified_name=_swift_chain(node, source, case_name),
                             file_stable_id=file_stable_id,
                         ),
                         line_span=end_line - start_line + 1,
@@ -1124,7 +1183,8 @@ def _extract_symbols_from_file(
                     stable_id=make_typed_stable_id(
                         kind, signature or "",
                         visibility_from_modifiers(modifiers),
-                        name=member_name, qualified_name=qualified,
+                        name=member_name,
+                        qualified_name=_swift_chain(node, source, member_name),
                         file_stable_id=file_stable_id,
                     ),
                     line_span=end_line - start_line + 1,
@@ -1186,7 +1246,8 @@ def _extract_symbols_from_file(
                         stable_id=make_typed_stable_id(
                             "property", signature or "",
                             visibility_from_modifiers(modifiers),
-                            name=prop_name, qualified_name=prop_qualified,
+                            name=prop_name,
+                            qualified_name=_swift_chain(node, source, prop_name),
                             file_stable_id=file_stable_id,
                         ),
                         line_span=end_line - start_line + 1,
@@ -1272,7 +1333,8 @@ def _extract_symbols_from_file(
                     stable_id=make_typed_stable_id(
                         kind, prop_type or "",
                         visibility_from_modifiers(modifiers),
-                        name=prop_name, qualified_name=qualified,
+                        name=prop_name,
+                        qualified_name=_swift_chain(node, source, prop_name),
                         file_stable_id=file_stable_id,
                     ),
                     line_span=end_line - start_line + 1,
@@ -1317,7 +1379,8 @@ def _extract_symbols_from_file(
                 stable_id=make_typed_stable_id(
                     "subscript", normalize_swift_signature(signature) or signature or "",
                     visibility_from_modifiers(modifiers),
-                    name=sub_label, qualified_name=sub_qualified,
+                    name=sub_label,
+                    qualified_name=_swift_chain(node, source, sub_label),
                     file_stable_id=file_stable_id,
                 ),
                 line_span=end_line - start_line + 1,

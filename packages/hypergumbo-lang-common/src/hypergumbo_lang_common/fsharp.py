@@ -54,11 +54,13 @@ record ``A.Point`` and its field ``A.Point.x``, union ``A.Shape``; a class-level
 ``let helper`` inside ``type Shape(...) =`` is ``Shape.helper``. The file's
 own ``module Demo`` header adds nothing (a top-level ``let run`` stays ``run``).
 A function bound inside another function keeps its bare name and holds the
-enclosing function in its scope chain (``run/inner``). Module-level ``let``
-values (``variable``) and the ``module`` symbol keep their names: their ids
-come from the variable/module table formulas over the name, and qualifying
-them would change ids already computed (ADR-0035 §6). A qualified call
-(``A.run x``) first looks up the dotted name, then falls back to the bare one.
+enclosing function in its scope chain (``run/inner``). A module-level ``let``
+value (``variable``) is named with the module chain too (``A.x``; WI-tusad
+scheme bump, INV-fabih): it kept its bare name, so ``let mutable x`` in
+modules ``A`` and ``B`` shared one table key and deleting the first moved the
+second's id. Its id is the backstop's variable table formula over that name;
+the file's ``module`` symbol keeps its name. A qualified call (``A.run x``)
+first looks up the dotted name, then falls back to the bare one.
 
 Functions record their argument patterns in ``meta["parameters"]`` (one entry
 per pattern, written as the pattern's text; ``()`` counts as one) and mint the
@@ -440,7 +442,14 @@ def _extract_symbols_from_file(
                         if long_id:
                             name_node = find_child_by_type(long_id, "identifier")
                             if name_node:
-                                val_name = node_text(name_node, source)
+                                # INV-fabih: named with its module chain like
+                                # a function (``A.x``), so the backstop's
+                                # variable table formula over the name tells
+                                # two modules' ``x`` apart (the bare ``x`` tied).
+                                val_name = (
+                                    _fsharp_module_prefix(node, source)
+                                    + node_text(name_node, source)
+                                )
                                 start_line = node.start_point[0] + 1
                                 end_line = node.end_point[0] + 1
                                 span = Span(

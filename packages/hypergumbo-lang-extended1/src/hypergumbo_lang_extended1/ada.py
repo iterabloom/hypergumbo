@@ -36,8 +36,15 @@ logic.
 Functions and procedures record their parameters in ``meta["parameters"]``,
 typed by subtype mark (``_ada_parameters``), and their stable_id hashes them
 (``overload_arity.node_declared_arity_stable_id``, WI-tusad): ``Run`` and
-``Run (X : Integer)`` tied on ``param_count 0``. Overloads differing only
-in result type still tie (the helper takes no return type).
+``Run (X : Integer)`` tied on ``param_count 0``. A function's stable_id also
+hashes its result subtype (``_ada_result_type``; the typed tier over
+``(T1,...)->R``), which is part of Ada's overload profile: ``function F
+return Integer`` and ``function F return Float`` tied on everything else.
+Every stable_id hashes the packages and subprograms enclosing the symbol
+below the library-level unit (``_ada_scope``; INV-fabih): ``procedure Inner``
+nested in two procedures tied. A library-level declaration's chain is empty,
+so the scope moved only nested declarations' ids, and the result type only
+functions'.
 
 Why This Design
 ---------------
@@ -58,6 +65,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     find_child_by_type,
     iter_tree,
     make_symbol_id,
@@ -67,7 +75,8 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
-    PARAMETERS_KEY, node_declared_arity_stable_id, parameter_entry,
+    PARAMETERS_KEY, nested_qualified_name, node_declared_arity_stable_id,
+    parameter_entry,
 )
 
 if TYPE_CHECKING:
@@ -115,9 +124,53 @@ def _ada_parameters(spec: "tree_sitter.Node", source: bytes) -> list[dict[str, A
     return entries
 
 
+#: The spec nodes a subprogram symbol is anchored on; its scope is read from
+#: the enclosing ``subprogram_body`` / ``subprogram_declaration``, which is the
+#: subprogram itself and not a scope of it.
+_ADA_SPEC_NODES = frozenset({"function_specification", "procedure_specification"})
+
+
+def _ada_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The packages and subprograms enclosing ``node``, outermost first, minus
+    the library-level package (INV-fabih).
+
+    Every Ada symbol hashed an empty qualified name, so ``procedure Inner``
+    nested in procedures ``A`` and ``B`` (or a type in two nested packages)
+    tied and deleting the first moved the second. The library-level unit (a
+    package directly under ``compilation_unit``) encloses the whole file and
+    is not in the chain, so a library-level declaration keeps its value
+    (``overload_arity.nested_qualified_name`` is ``""`` for it).
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type == "subprogram_body":
+            spec = next((c for c in n.children if c.type in _ADA_SPEC_NODES), None)
+            name_node = find_child_by_type(spec, "identifier") if spec is not None else None
+        elif n.type in ("package_body", "package_declaration") and (
+            n.parent is None or n.parent.type != "compilation_unit"
+        ):
+            name_node = find_child_by_type(n, "identifier")
+        else:
+            return None
+        return node_text(name_node, source) if name_node is not None else None
+    start = node.parent if node.type in _ADA_SPEC_NODES and node.parent is not None else node
+    return ancestor_labels(start, label)
+
+
+def _ada_result_type(spec: "tree_sitter.Node", source: bytes) -> str:
+    """The result subtype of a function spec (``return Integer`` -> ``Integer``),
+    whitespace-normalized: part of Ada's overload profile, so a function's
+    stable_id hashes it (``F return Integer`` / ``F return Float``)."""
+    result = find_child_by_type(spec, "result_profile")
+    if result is None:  # pragma: no cover - a function_specification always has one
+        return ""
+    return " ".join(
+        " ".join(node_text(c, source).split()) for c in result.children if c.type != "return"
+    )
+
+
 def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node", name: str, kind: str,
                  source: bytes, signature: Optional[str] = None, meta: Optional[dict[str, Any]] = None,
-                 cc_node: "Optional[tree_sitter.Node]" = None) -> Symbol:
+                 cc_node: "Optional[tree_sitter.Node]" = None, result_type: str = "") -> Symbol:
     """Create a Symbol with consistent formatting.
 
     INV-loguk: ``cc_node`` is the subtree to compute cyclomatic_complexity +
@@ -148,6 +201,9 @@ def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tre
         # meta["parameters"], so the overloads Run / Run (X) stop tying.
         stable_id=node_declared_arity_stable_id(
             analyzer, node, kind=kind, name=name, meta=meta,
+            # INV-fabih: nested packages/subprograms; a function's result type.
+            qualified_name=nested_qualified_name(_ada_scope(node, source), name),
+            result_type=result_type,
             # WI-bokab (v7): fold the declaring file's identity so two symbols
             # with the same (kind, name) in different files hash distinctly.
             # ``rel_path`` is the repo-relative path threaded down from
@@ -233,7 +289,11 @@ def _process_function_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str
 
     signature = " ".join(signature_parts) if signature_parts else None
     meta = {PARAMETERS_KEY: _ada_parameters(node, source)}
-    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature, meta=meta, cc_node=cc_node)
+    return _make_symbol(
+        analyzer, rel_path, run_id, node, func_name, "function", source,
+        signature=signature, meta=meta, cc_node=cc_node,
+        result_type=_ada_result_type(node, source),
+    )
 
 
 def _process_procedure_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node", cc_node: "Optional[tree_sitter.Node]" = None) -> Optional[Symbol]:

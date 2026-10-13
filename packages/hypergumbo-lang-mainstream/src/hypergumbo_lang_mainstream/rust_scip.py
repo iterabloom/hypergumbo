@@ -80,6 +80,7 @@ from hypergumbo_lang_mainstream.rust import (
     _get_trait_owner,
     is_rust_tree_sitter_available,
     normalize_rust_signature,
+    rust_hashed_qualified_name,
 )
 
 if TYPE_CHECKING:
@@ -171,15 +172,15 @@ def compute_rust_stable_id_from_source(
         # Dedup contract (WI-zakub): name/qualified_name must be byte-identical
         # to what rust.py:_analyze_rust computes for the same function_item, so
         # the resulting stable_id matches. rust.py uses func_name (the bare
-        # ``name`` field) and full_name (``{impl_target}::{func_name}`` for
-        # impl methods, else func_name).
+        # ``name`` field) and ``rust_hashed_qualified_name`` (enclosing mods and
+        # functions, the owner, the name; INV-fabih), which this calls too.
         name_node = _find_child_by_field(node, "name")
         func_name = node_text(name_node, source) if name_node else ""
-        full_name = f"{owner}::{func_name}" if owner else func_name
 
         return make_typed_stable_id(
             kind, norm_sig, visibility,
-            name=func_name, qualified_name=full_name,
+            name=func_name,
+            qualified_name=rust_hashed_qualified_name(node, source, owner, func_name),
             file_stable_id=file_stable_id,
         )
 

@@ -35,7 +35,10 @@ Identity (WI-tusad): functions and methods hash their normalized signature
 (``make_typed_stable_id``). Constructors, getters, setters, mixins and
 extensions record no signature; they take the same formula with an empty one,
 over the owner-qualified name (``Mod.Mod.named``). Before, they computed none
-and rode the backstop floor key (kind, file, name).
+and rode the backstop floor key (kind, file, name). A function declared by a
+bare ``function_signature`` (top level, or local to another function's body)
+hashes its full scope chain (``_dart_scope``; INV-fabih), so a local function
+in two functions no longer ties; the top-level ones keep their values.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Dart-specific
@@ -83,6 +86,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     defer_bare_method_call,
     find_child_by_type,
     iter_tree,
@@ -241,6 +245,32 @@ def _find_enclosing_class(
     return None
 
 
+def _dart_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The classes, mixins, extensions and functions enclosing ``node``,
+    outermost first (INV-fabih).
+
+    A local function (``int inner() => 1;`` in a function body) was emitted
+    under its bare name (``C.inner`` inside a method of ``C``), so two local
+    ``inner`` in ``a`` and ``b`` tied and deleting the first moved the second.
+    tree-sitter-dart puts a function's body BESIDE its signature, so an
+    enclosing function is read off the ``function_body`` ancestor's preceding
+    signature. A top-level function or a method of a top-level class keeps
+    its value: there the chain is its owner-qualified name.
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type in ("class_definition", "mixin_declaration", "extension_declaration"):
+            name_node = find_child_by_type(n, "identifier")
+        elif n.type == "function_body" and n.prev_named_sibling is not None:
+            sig = n.prev_named_sibling
+            if sig.type == "method_signature":
+                sig = next((c for c in sig.named_children), sig)
+            name_node = find_child_by_type(sig, "identifier")
+        else:
+            return None
+        return node_text(name_node, source) if name_node is not None else None
+    return ancestor_labels(node, label)
+
+
 # WI-jusus (emission-parity): value-declaration list nodes and the contexts that
 # make them fields vs top-level variables. In tree-sitter-dart a value declaration
 # is an ``initialized_identifier_list`` (var/typed) or ``static_final_declaration_list``
@@ -360,8 +390,12 @@ def _extract_symbols_from_file(
         signature: Optional[str] = None,
         complexity: bool = False,
         def_node: Optional["tree_sitter.Node"] = None,
+        scope_node: Optional["tree_sitter.Node"] = None,
     ) -> Symbol:
         """Create a Symbol with given span.
+
+        ``scope_node``, when given, is the declaration whose full scope chain
+        (:func:`_dart_scope`) the stable_id hashes instead of ``prefix.name``.
 
         ``complexity=True`` (callable kinds) populates cyclomatic_complexity
         (walked from ``def_node`` — the function_body when present, else the
@@ -379,6 +413,11 @@ def _extract_symbols_from_file(
         # Dart visibility: underscore-prefixed names are library-private
         modifiers = ["private"] if name.startswith("_") else []
 
+        hashed_name = (
+            ".".join((*_dart_scope(scope_node, source), name))
+            if scope_node is not None else full_name
+        )
+
         # Typed stable_id (ADR-0014 §3)
         stable_id = None
         if signature:
@@ -386,7 +425,7 @@ def _extract_symbols_from_file(
             if norm_sig:
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
-                    name=name, qualified_name=full_name,
+                    name=name, qualified_name=hashed_name,
                     file_stable_id=file_stable_id,
                 )
         if stable_id is None and kind in _UNSIGNED_PRODUCER_KINDS:
@@ -518,7 +557,7 @@ def _extract_symbols_from_file(
                 body = _find_next_sibling_by_type(node, "function_body")
                 start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                 sig = _extract_dart_signature(node, source)
-                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "function" if not class_name else "method", class_name, signature=sig, complexity=True, def_node=(body if body is not None else node)))
+                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "function" if not class_name else "method", class_name, signature=sig, complexity=True, def_node=(body if body is not None else node), scope_node=node))
             continue
 
         # Constructor signature at top level of class body (rare but possible)
