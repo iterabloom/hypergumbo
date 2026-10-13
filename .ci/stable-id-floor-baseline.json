@@ -16,20 +16,9 @@
         "floor": 2
       }
     },
-    "cpp": {
-      "method": {
-        "null": 2
-      }
-    },
     "csharp": {
       "property": {
         "floor": 1
-      }
-    },
-    "cuda": {
-      "function": {
-        "floor": 1,
-        "null": 2
       }
     },
     "dart": {
@@ -43,27 +32,7 @@
         "floor": 1
       }
     },
-    "fortran": {
-      "function": {
-        "floor": 2
-      },
-      "subroutine": {
-        "floor": 1
-      }
-    },
     "gdscript": {
-      "function": {
-        "floor": 1,
-        "null": 2
-      }
-    },
-    "glsl": {
-      "function": {
-        "floor": 1,
-        "null": 2
-      }
-    },
-    "julia": {
       "function": {
         "floor": 1,
         "null": 2
@@ -148,11 +117,8 @@
     "bash",
     "capnp",
     "cpp",
-    "cuda",
     "gdscript",
-    "glsl",
     "hlsl",
-    "julia",
     "jupyter",
     "nim",
     "nix",

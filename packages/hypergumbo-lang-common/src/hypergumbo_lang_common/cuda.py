@@ -31,6 +31,14 @@ from the nearest enclosing definition that has a symbol, else the file
 anchor, and carries ``meta["src_stands_in_for"] = "unnamed_definition"``
 (WI-tikop). A call in no definition at all is not emitted.
 
+Each definition records its parameters, types included, in
+``meta["parameters"]`` (``c_family_parameters``) and mints the ADR-0035
+producer stable_id over them with ``overload_arity.declared_arity_stable_id``,
+its qualified name carrying the enclosing namespaces and classes
+(``c_family_scope_chain``). Before WI-tusad CUDA computed no stable_id: the
+backstop floor key (kind, path, name) was all it had, so the overloads
+``f(int)`` / ``f(float)`` shared one key and both went null.
+
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the CUDA-specific
 extraction logic.
@@ -64,6 +72,9 @@ from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id,
+)
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -75,7 +86,10 @@ from hypergumbo_core.analyze.base import (
     node_text,
     symbols_at,
 )
-from hypergumbo_core.analyze.c_family import c_family_declarator
+from hypergumbo_core.analyze.c_family import (
+    c_family_declarator, c_family_parameter_list, c_family_parameters,
+    c_family_scope_chain,
+)
 from hypergumbo_core.analyze.edge_source import anchor_in_definitions, mark_stand_in
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -262,20 +276,31 @@ def _extract_cuda_symbols(
                 # Extract signature
                 signature = _extract_cuda_signature(node, source)
 
-                meta: dict[str, Any] | None = None
+                meta: dict[str, Any] = {}
                 if exec_space is not None:
-                    meta = {"cuda_execution_space": exec_space}
+                    meta["cuda_execution_space"] = exec_space
                     if is_global:
                         # Preserve the legacy `is_kernel` flag for external
                         # consumers; no in-tree code reads it (launch edges
                         # are detected from the call-site syntax instead).
                         meta["is_kernel"] = True
+                # WI-tusad: the parameters (with their types) are the arity
+                # fact's home and the identity input that tells overloads
+                # apart: f(int) / f(float) rode the floor key and nulled each
+                # other.
+                param_list = c_family_parameter_list(node)
+                if param_list is not None:
+                    meta[PARAMETERS_KEY] = c_family_parameters(param_list, source)
+                qualified = "::".join([*c_family_scope_chain(node, source), func_name])
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=declared_arity_stable_id(
+                        kind=kind, lang="cuda", path=rel_path, name=func_name,
+                        qualified_name=qualified, arity=declared_arity(meta),
+                    ),
                     shape_id=None,
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind=kind,
@@ -290,7 +315,7 @@ def _extract_cuda_symbols(
                     ),
                     origin=PASS_ID,
                     signature=signature,
-                    meta=meta,
+                    meta=meta or None,
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "cuda"),
                     line_span=end_line - start_line + 1,
                 )

@@ -1780,8 +1780,8 @@ def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
     file's floor candidates and no other symbol in the file already holds it;
     otherwise it stays ``None``. The occurrence index must never disambiguate a
     floor key: the key has no scope chain, arity or decorators, so a floor
-    collision (two CUDA overloads ``f(int)`` / ``f(float)``, both named ``f``;
-    proto ``A.Inner`` / ``B.Inner``, both named ``Inner``) is no same-scope tie,
+    collision (GDScript ``run`` in inner classes ``A`` / ``B``, both named
+    ``run``; proto ``A.Inner`` / ``B.Inner``, both named ``Inner``) is no same-scope tie,
     and an emission-order ordinal over it would move an id onto a different
     symbol when an earlier sibling is deleted. A null means "this run cannot
     back an identity"; a moved id is a wrong join that no validator can see.
