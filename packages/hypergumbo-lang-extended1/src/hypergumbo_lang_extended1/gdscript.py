@@ -26,8 +26,11 @@ mints the ADR-0035 producer stable_id over that chain: functions through
 signals through ``overload_arity.declared_arity_stable_id`` with no arity.
 Before, neither computed a stable_id and rode the backstop floor key (kind,
 file, bare name), which ``run`` in inner classes ``A`` and ``B`` share, so both
-were null. Variables and classes keep the backstop's table formula. Names stay
-bare.
+were null. Variables and inner classes keep the table formula, over the same
+chain (``overload_arity.scoped_table_stable_id``; INV-fabih: ``class Inner``
+and its ``var`` in inner classes ``A`` and ``B`` shared one bare-name table
+key, so deleting ``A`` moved them); top-level ones keep their values. Names
+stay bare.
 
 For a call edge the caller is the enclosing ``function_definition``, found by
 its position rather than its name, so same-named functions in two inner
@@ -66,6 +69,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     SymbolsAt,
     TreeSitterAnalyzer,
+    ancestor_labels,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -79,7 +83,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
-from hypergumbo_core.overload_arity import declared_arity_stable_id
+from hypergumbo_core.overload_arity import declared_arity_stable_id, scoped_table_stable_id
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -159,18 +163,19 @@ def _get_enclosing_function_gdscript(
     return None  # pragma: no cover - no enclosing function found
 
 
+def _gd_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Every inner class and function enclosing ``node``, outermost first."""
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type not in ("class_definition", "function_definition"):
+            return None
+        name_node = find_child_by_type(n, "name")
+        return node_text(name_node, source).strip() if name_node is not None else None
+    return ancestor_labels(node, label)
+
+
 def _scope_chain(node: "tree_sitter.Node", source: bytes, name: str) -> str:
-    """``name`` qualified by every inner class and function enclosing ``node``,
-    outermost first (``A.run``; WI-tusad)."""
-    parts = [name]
-    current = node.parent
-    while current is not None:
-        if current.type in ("class_definition", "function_definition"):
-            name_node = find_child_by_type(current, "name")
-            if name_node is not None:
-                parts.append(node_text(name_node, source).strip())
-        current = current.parent
-    return ".".join(reversed(parts))
+    """``name`` qualified by :func:`_gd_scope` (``A.run``; WI-tusad)."""
+    return ".".join((*_gd_scope(node, source), name))
 
 
 def _make_gd_symbol(
@@ -261,7 +266,13 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                 name_node = find_child_by_type(node, "name")
                 if name_node:
                     var_name = node_text(name_node, source).strip()
-                    analysis.symbols.append(_make_gd_symbol(node, var_name, "variable", rel_path, run.execution_id))
+                    analysis.symbols.append(_make_gd_symbol(
+                        node, var_name, "variable", rel_path, run.execution_id,
+                        stable_id=scoped_table_stable_id(
+                            kind="variable", lang="gdscript", path=rel_path,
+                            name=var_name, scope=_gd_scope(node, source),
+                        ),
+                    ))
 
             elif node.type == "signal_statement":
                 name_node = find_child_by_type(node, "name")
@@ -287,7 +298,13 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                 name_node = find_child_by_type(node, "name")
                 if name_node:
                     class_name = node_text(name_node, source).strip()
-                    analysis.symbols.append(_make_gd_symbol(node, class_name, "class", rel_path, run.execution_id))
+                    analysis.symbols.append(_make_gd_symbol(
+                        node, class_name, "class", rel_path, run.execution_id,
+                        stable_id=scoped_table_stable_id(
+                            kind="class", lang="gdscript", path=rel_path,
+                            name=class_name, scope=_gd_scope(node, source),
+                        ),
+                    ))
 
         return analysis
 

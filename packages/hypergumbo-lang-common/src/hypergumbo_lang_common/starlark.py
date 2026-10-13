@@ -9,6 +9,10 @@ Detects:
 - Dependency edges between targets
 - Function call edges (resolved via NameResolver, with load-alias path hints for cross-file calls)
 
+A symbol inside a function (a nested ``def``, a target a macro declares)
+hashes the enclosing functions' names (INV-fabih); top-level ones keep their
+stable_ids.
+
 Starlark is a Python-like language used for Bazel, Buck, and other build systems.
 The tree-sitter-starlark parser handles BUILD, BUILD.bazel, BUCK, and .bzl files.
 
@@ -38,6 +42,7 @@ from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    ancestor_labels,
     find_child_by_type,
     iter_tree,
     make_symbol_id,
@@ -48,6 +53,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import nested_qualified_name
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
@@ -150,6 +156,14 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
         origin_run_id=ctx.run_id,
         stable_id=analyzer.compute_stable_id(
             node, kind=kind, name=name,
+            # INV-fabih: the functions (macros) enclosing the symbol, "" at
+            # top level: ``def inner`` (or a target) in two macros tied.
+            qualified_name=nested_qualified_name(ancestor_labels(node, lambda n: (
+                node_text(nm, ctx.source)
+                if n.type == "function_definition"
+                and (nm := find_child_by_type(n, "identifier")) is not None
+                else None
+            )), name),
             file_stable_id=ctx.file_anchor,  # WI-bokab (v7): cross-file disambiguation
         ),
         signature=signature,

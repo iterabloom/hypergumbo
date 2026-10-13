@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 
+import pytest
 import tree_sitter_language_pack as tlp
 
 from hypergumbo_core.analyze.base import (
@@ -31,11 +32,13 @@ from hypergumbo_core.overload_arity import (
     declared_arity_of_entries,
     declared_arity_stable_id,
     narrow_by_arity,
+    nested_member_qualified_name,
     nested_qualified_name,
     node_declared_arity_stable_id,
     parameter_entry,
     pass_minted_stable_id,
     scoped_stable_id,
+    scoped_table_stable_id,
 )
 
 
@@ -307,6 +310,41 @@ def test_nested_qualified_name_is_empty_at_top_level() -> None:
     assert nested_qualified_name(["a", "b"], "run") == "a/b/run"
 
 
+def test_nested_member_qualified_name_drops_the_owners_the_name_spells() -> None:
+    """A member of a top-level type keeps the empty slot its producer hashed;
+    a member of a nested type spells only the scopes its name does not."""
+    assert nested_member_qualified_name(["Inner"], "Inner::go", "::") == ""
+    assert nested_member_qualified_name([], "run", "::") == ""
+    assert nested_member_qualified_name(["a"], "run", "::") == "a/run"
+    assert nested_member_qualified_name(["A", "Inner"], "Inner::go", "::") == "A/Inner::go"
+    assert nested_member_qualified_name(["A"], "Inner", ".") == "A/Inner"
+    # an owner the name spells but the scope does not hold is not stripped
+    assert nested_member_qualified_name(["ns"], "Color::Red", "::") == "ns/Color::Red"
+
+
+def test_scoped_table_id_is_the_table_value_at_top_level() -> None:
+    """A top-level table-kind declaration keeps the value the backstop's table
+    formula gives it; a nested one hashes its chain in the name slot, so two
+    ``Inner`` classes in two outer classes stop sharing one key (INV-fabih)."""
+    top = scoped_table_stable_id(kind="class", lang="kotlin", path="a/M.kt", name="Inner")
+    assert top == make_declaration_stable_id("class", "kotlin", "a/M.kt", "Inner")
+    in_a = scoped_table_stable_id(
+        kind="class", lang="kotlin", path="a/M.kt", name="Inner", scope=("A",))
+    in_b = scoped_table_stable_id(
+        kind="class", lang="kotlin", path="a/M.kt", name="Inner", scope=["B"])
+    assert in_a == make_declaration_stable_id("class", "kotlin", "a/M.kt", "A/Inner")
+    assert len({top, in_a, in_b}) == 3
+    # every table kind whose formula has the {kind}:{language}:{path}:{name} shape
+    assert scoped_table_stable_id(kind="module", lang="ocaml", path="m.ml", name="C") == (
+        make_declaration_stable_id("module", "ocaml", "m.ml", "C"))
+
+
+def test_scoped_table_id_refuses_a_kind_without_the_table_shape() -> None:
+    for kind in ("file", "project", "function"):
+        with pytest.raises(ValueError):
+            scoped_table_stable_id(kind=kind, lang="x", path="p", name="n")
+
+
 class _Analyzer(TreeSitterAnalyzer):
     lang = "python"
 
@@ -347,4 +385,52 @@ def test_node_helper_reads_arity_from_meta_and_decorators_from_the_node() -> Non
     ) == assemble_stable_id(
         "function", 1, ArityFlags(1, False, False, False).as_flags_str(), "deco",
         anchor, "f", "",
+    )
+
+
+def test_a_result_type_takes_the_typed_tier_with_the_result_spelled() -> None:
+    """Ada overloads on the result type: ``function F return Integer`` and
+    ``function F return Float`` take no parameter, so only the result tells
+    them apart. A ``result_type`` folds ``(T1,...)->R`` into the typed tier;
+    without one the value is unchanged."""
+    def sid(arity, result_type=""):
+        return declared_arity_stable_id(
+            kind="function", lang="ada", path="m.adb", name="F", qualified_name="",
+            arity=arity, result_type=result_type,
+        )
+    zero = declared_arity_of_entries([])
+    typed = declared_arity_of_entries([parameter_entry("x", "Integer")])
+    untyped = declared_arity_of_entries([parameter_entry("x")])
+    anchor = make_file_stable_id("ada", "m.adb")
+    assert sid(zero, "Integer") == make_typed_stable_id(
+        "function", "()->Integer", "", "", "", name="F", qualified_name="",
+        file_stable_id=anchor,
+    )
+    assert sid(typed, "Float") == make_typed_stable_id(
+        "function", "(Integer)->Float", "", "", "", name="F", qualified_name="",
+        file_stable_id=anchor,
+    )
+    assert sid(untyped, "Float") == make_typed_stable_id(
+        "function", "(_)->Float", "", "", "", name="F", qualified_name="",
+        file_stable_id=anchor,
+    )
+    assert sid(None, "Float") == sid(zero, "Float")
+    assert len({sid(zero, "Integer"), sid(zero, "Float"), sid(zero)}) == 3
+    assert sid(typed) == declared_arity_stable_id(
+        kind="function", lang="ada", path="m.adb", name="F", qualified_name="",
+        arity=typed,
+    )
+
+
+def test_node_helper_passes_the_result_type_through() -> None:
+    analyzer, node = _Analyzer(), _decorated_function()
+    anchor = make_file_stable_id("python", "a.py")
+    meta = {PARAMETERS_KEY: []}
+    assert node_declared_arity_stable_id(
+        analyzer, node, kind="function", name="f", meta=meta,
+        file_stable_id=anchor, result_type="R",
+    ) == declared_arity_stable_id(
+        kind="function", lang="python", path="", name="f", qualified_name="",
+        arity=declared_arity(meta), decorators="deco", containing_stable_id=anchor,
+        result_type="R",
     )

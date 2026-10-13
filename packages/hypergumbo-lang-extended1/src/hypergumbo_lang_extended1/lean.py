@@ -34,9 +34,11 @@ Details of each pass:
   the namespace, as Lean names it (``A.run``; nested and dotted namespaces
   chain, ``def B.run`` inside ``namespace A`` is ``A.B.run``, and a
   ``_root_.`` prefix opts out). Sections and ``mutual`` blocks add nothing.
-  Structures and classes keep the name as written: their ids come from the
-  table formula over the name, so qualifying them would change ids already
-  computed (ADR-0035 §6). An unnamed ``instance : Add Nat where ...`` is named
+  Structures and classes are named the same way (``A.S``; WI-tusad scheme
+  bump, INV-fabih): they kept the name as written, so ``structure S`` in
+  namespaces ``A`` and ``B`` shared one table key and deleting the first
+  moved the second's id. Their ids are the backstop's table formula over
+  that name. An unnamed ``instance : Add Nat where ...`` is named
   after its typeclass (``Add``). Every declaration is emitted; before
   (INV-kagib) only the first symbol of a given name in a file was kept, so
   ``run`` in ``namespace B`` was dropped when ``namespace A`` declared one.
@@ -185,8 +187,8 @@ def _extract_lean_signature(
     return None
 
 
-#: Kinds whose ids come from the table formula over the bare name; they keep
-#: the name as written (see the module docstring).
+#: Kinds whose ids come from the backstop's table formula over the
+#: namespace-qualified name (see the module docstring).
 _LEAN_TABLE_KINDS = frozenset({"struct", "class"})
 
 
@@ -288,7 +290,12 @@ def _extract_symbols_from_file(
         name in the scope chain (an unnamed instance's type application).
         """
         stable_id: Optional[str] = None
-        if kind not in _LEAN_TABLE_KINDS:
+        if kind in _LEAN_TABLE_KINDS:
+            # INV-fabih: named with its namespaces like every other
+            # declaration, so the backstop's table formula over the name
+            # tells ``A.S`` from ``B.S`` (the bare ``S`` tied and moved).
+            name = namespaces.qualify(name)
+        else:
             chain = namespaces.qualify(chain_tail or name)
             if chain_tail is None:
                 name = chain

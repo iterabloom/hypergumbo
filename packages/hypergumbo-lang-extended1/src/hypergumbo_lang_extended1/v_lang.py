@@ -22,6 +22,12 @@ per-file split numbered them. A method now hashes its receiver type as scope
 (``B/run``) and its declared parameters (``meta["parameters"]``, written for
 every function, receiver excluded) through
 ``overload_arity.node_declared_arity_stable_id``: the stable_id scheme bump.
+A struct, enum or interface named by ONE capital letter (``struct A {}``)
+is recovered from the ``ERROR`` the grammar makes of it
+(``_recover_single_letter_type``); it emitted nothing before.
+A method's ``signature`` shows its receiver TYPE and declared parameters
+(``fn (B) (x) int``); it listed the receiver variable among the parameters
+(``fn(b, x) int``), so renaming that variable changed it.
 
 Key constructs extracted:
 - function_declaration: fn name(params) return_type { body }
@@ -94,18 +100,18 @@ def _is_public(node: "tree_sitter.Node") -> bool:
     return False
 
 
-def _extract_function_params(node: "tree_sitter.Node") -> list[str]:
-    """Extract parameter names from a function declaration."""
-    params = []
-    for child in node.children:
-        if child.type == "parameter_list":
-            for param_child in child.children:
-                if param_child.type == "parameter_declaration":
-                    for param_part in param_child.children:
-                        if param_part.type == "identifier":
-                            params.append(_get_node_text(param_part))
-                            break
-    return params
+def _extract_function_params(params: Optional["tree_sitter.Node"]) -> list[str]:
+    """The parameter names of a declared parameter list (never the receiver's:
+    a method's signature read ``fn(b, x)``, so renaming the receiver variable
+    rewrote it)."""
+    names: list[str] = []
+    for param_child in params.children if params is not None else ():
+        if param_child.type == "parameter_declaration":
+            for param_part in param_child.children:
+                if param_part.type == "identifier":
+                    names.append(_get_node_text(param_part))
+                    break
+    return names
 
 
 def _receiver_and_parameter_lists(
@@ -177,6 +183,61 @@ def _extract_return_type(node: "tree_sitter.Node") -> Optional[str]:
         elif child.type == "block":
             break  # Stop at function body
     return None
+
+
+#: Declaration keywords whose single-letter name the grammar misreads, with the
+#: kind slot of the id and the emitted kind (as the regular branches below).
+_V_TYPE_KEYWORDS: dict[str, tuple[str, str]] = {
+    "struct": ("struct", "class"), "enum": ("enum", "enum"),
+    "interface": ("interface", "interface"),
+}
+
+
+def _recover_single_letter_type(
+    node: "tree_sitter.Node",
+) -> Optional[tuple[str, str, "tree_sitter.Node", bool]]:
+    """``(keyword, name, body, is_public)`` of a type declaration the grammar
+    could not parse because its name is ONE capital letter, else None.
+
+    tree-sitter-v lexes a lone capital (``A``) as a ``type_placeholder`` (the
+    ``T`` of a generic), so ``struct A {}`` / ``enum E {...}`` / ``interface
+    I {...}`` became an ``ERROR`` holding the keyword, followed by a
+    ``type_initializer`` (``A {}`` read as a struct literal) or a ``block``,
+    and no symbol was emitted (the gate fixture's ``struct A {}`` among them).
+    ``node`` is the ``ERROR``; ``body`` is the sibling ending the declaration.
+    """
+    kids = node.children
+    keyword = next((c for c in kids if c.type in _V_TYPE_KEYWORDS), None)
+    if keyword is None:
+        return None
+    body = node.next_sibling
+    if kids[-1].type == "type_placeholder":
+        placeholder = kids[-1]
+        if body is None or body.type != "block":
+            return None
+    elif (
+        body is not None and body.type == "type_initializer"
+        and body.named_children and body.named_children[0].type == "type_placeholder"
+    ):
+        placeholder = body.named_children[0]
+    else:
+        return None
+    return (
+        keyword.type, _get_node_text(placeholder), body,
+        any(c.type == "pub" for c in kids),
+    )
+
+
+def _body_member_lines(body: "tree_sitter.Node") -> int:
+    """Members of a recovered declaration's body, one per non-empty line (the
+    grammar garbles the members themselves: ``y string`` reads as two names).
+    A ``type_initializer`` body (``A {...}``) is read from its braces on."""
+    if body.type == "type_initializer":
+        body = body.named_children[-1]
+    return sum(
+        1 for line in _get_node_text(body).splitlines()
+        if line.strip() not in ("", "{", "}", "{}")
+    )
 
 
 def _count_struct_fields(node: "tree_sitter.Node") -> int:
@@ -256,14 +317,18 @@ class VAnalyzer(TreeSitterAnalyzer):
         if node.type == "function_declaration":
             name = _get_identifier(node)
             if name:
-                params = _extract_function_params(node)
                 return_type = _extract_return_type(node)
                 is_pub = _is_public(node)
+                receiver, param_list = _receiver_and_parameter_lists(node)
+                params = _extract_function_params(param_list)
 
-                signature = f"fn({', '.join(params)})"
+                # A method shows its receiver TYPE, never the receiver
+                # variable's name: ``fn (B) (x) int``.
+                signature = f"fn({', '.join(params)})" if receiver is None else (
+                    f"fn ({_receiver_type(receiver)}) ({', '.join(params)})"
+                )
                 if return_type:
                     signature += f" {return_type}"
-                receiver, param_list = _receiver_and_parameter_lists(node)
                 meta: dict[str, object] = {
                     "is_public": is_pub,
                     PARAMETERS_KEY: _parameter_entries(param_list),
@@ -381,6 +446,34 @@ class VAnalyzer(TreeSitterAnalyzer):
                 )
                 analysis.symbols.append(sym)
                 analysis.node_for_symbol[sym.id] = node
+
+        elif node.type == "ERROR" and (recovered := _recover_single_letter_type(node)):
+            keyword, name, body, is_pub = recovered
+            id_kind, kind = _V_TYPE_KEYWORDS[keyword]
+            rec_meta: dict[str, object] = {"is_public": is_pub}
+            if keyword == "struct":
+                rec_meta["field_count"] = _body_member_lines(body)
+            elif keyword == "enum":
+                rec_meta["variant_count"] = _body_member_lines(body)
+            sym = Symbol(
+                id=make_symbol_id("v", rel_path, node.start_point[0] + 1, body.end_point[0] + 1, name, id_kind),
+                stable_id=self.compute_stable_id(node, kind=id_kind, name=name, file_stable_id=file_stable_id),
+                name=name,
+                kind=kind,
+                language="v",
+                path=rel_path,
+                span=Span(
+                    start_line=node.start_point[0] + 1,
+                    end_line=body.end_point[0] + 1,
+                    start_col=node.start_point[1],
+                    end_col=body.end_point[1],
+                ),
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                meta=rec_meta,
+            )
+            analysis.symbols.append(sym)
+            analysis.node_for_symbol[sym.id] = node
 
         # Recursively process children
         for child in node.children:

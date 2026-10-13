@@ -26,6 +26,9 @@ Odin grammar key patterns:
 - call_expression: func(args) or obj.method(args)
 - member_expression: module.symbol
 
+Identity: every stable_id hashes the procedures enclosing the symbol
+(``_odin_scope``; INV-fabih), empty at top level.
+
 Symbol kinds: a procedure is ``kind="function"``, a struct ``kind="class"``,
 an enum ``kind="enum"``, and a union ``kind="class"`` with ``meta["is_union"]``.
 A plain call resolves its callee by name through the registry, else it gets
@@ -48,10 +51,12 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     make_symbol_id,
     make_unresolved_edge,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import nested_qualified_name
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
@@ -120,6 +125,16 @@ def _extract_procedure_return_type(node: "tree_sitter.Node") -> Optional[str]:
     return None
 
 
+def _odin_scope(node: "tree_sitter.Node") -> list[str]:
+    """The procedures enclosing ``node``, outermost first (INV-fabih): every
+    Odin symbol hashed an empty qualified name, so ``inner :: proc`` nested in
+    procedures ``a`` and ``b`` tied and deleting the first moved the second.
+    ``overload_arity.nested_qualified_name`` over it is ``""`` at top level."""
+    return ancestor_labels(
+        node, lambda n: _get_identifier(n) if n.type == "procedure_declaration" else None,
+    )
+
+
 def _extract_symbols_recursive(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
     analyzer: "OdinAnalyzer", file_stable_id: str,
@@ -147,6 +162,7 @@ def _extract_symbols_recursive(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "proc"),
                 stable_id=analyzer.compute_stable_id(
                     node, kind="proc", name=name,
+                    qualified_name=nested_qualified_name(_odin_scope(node), name),
                     file_stable_id=file_stable_id,
                 ),
                 name=name,
@@ -178,6 +194,7 @@ def _extract_symbols_recursive(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "struct"),
                 stable_id=analyzer.compute_stable_id(
                     node, kind="struct", name=name,
+                    qualified_name=nested_qualified_name(_odin_scope(node), name),
                     file_stable_id=file_stable_id,
                 ),
                 name=name,
@@ -204,6 +221,7 @@ def _extract_symbols_recursive(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
                 stable_id=analyzer.compute_stable_id(
                     node, kind="enum", name=name,
+                    qualified_name=nested_qualified_name(_odin_scope(node), name),
                     file_stable_id=file_stable_id,
                 ),
                 name=name,
@@ -229,6 +247,7 @@ def _extract_symbols_recursive(
                 id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "union"),
                 stable_id=analyzer.compute_stable_id(
                     node, kind="union", name=name,
+                    qualified_name=nested_qualified_name(_odin_scope(node), name),
                     file_stable_id=file_stable_id,
                 ),
                 name=name,

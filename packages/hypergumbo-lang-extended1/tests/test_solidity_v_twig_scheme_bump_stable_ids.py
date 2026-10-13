@@ -92,8 +92,9 @@ def test_v_deleting_an_earlier_method_moves_nothing(tmp_path: Path) -> None:
     survivors = _assert_deletion_moves_nothing(
         analyze_v, tmp_path, "src/demo.v", _V, "fn (a A) run() int {\n\treturn 1\n}\n",
     )
-    # run, push, helper (an empty `struct A {}` is a parse ERROR in the grammar)
-    assert survivors == 3
+    # structs A and B (a one-letter name is recovered from the grammar's
+    # ERROR node, v_lang._recover_single_letter_type), run, push, helper
+    assert survivors == 5
 
 
 def test_v_parameters_exclude_the_receiver(tmp_path: Path) -> None:

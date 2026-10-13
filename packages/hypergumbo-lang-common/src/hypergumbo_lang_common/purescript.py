@@ -39,7 +39,10 @@ declaration block (the module, a class, an instance) fold into one symbol at
 the first equation, spanning to the last (the Haskell analyzer's shape), with
 the signature as its ``signature`` and the cyclomatic complexity summed over
 the equations; calls in any equation come from it. A signature with no
-equations beside it (a class member) is still a symbol of its own.
+equations beside it (a class member) is still a symbol of its own, whatever
+its type (``size :: Int`` too: a bare type read as no type and emitted
+nothing; the PureScript compiler rejects a top-level signature without a
+definition, so the class member is the case that matters).
 
 Identity: the module-qualified name plus, for a class member or an instance
 method, the class name or instance name (an unnamed instance's head, ``Shape
@@ -118,11 +121,19 @@ def _get_class_name(node: "tree_sitter.Node") -> Optional[str]:
 
 
 def _get_type_signature(node: "tree_sitter.Node") -> Optional[str]:
-    """Get the type signature from a signature node."""
+    """The type a signature node declares: whatever follows its ``::``.
+
+    It read only ``type_infix`` / ``type_apply`` / ``type`` nodes, so a bare
+    type (``helper :: Int`` is a ``type_name``; ``r :: { a :: Int }`` a
+    ``record_type_literal``) gave None: the function lost its signature, and
+    a class member declared that way (``size :: Int``) emitted no symbol.
+    """
+    after = False
     for child in node.children:
-        if child.type in ("type_infix", "type_apply", "type"):
+        if after:
             return _get_node_text(child)
-    return None
+        after = child.type == "::"
+    return None  # pragma: no cover - the grammar always puts a type after ``::``
 
 
 def _get_instance_name(node: "tree_sitter.Node") -> Optional[str]:

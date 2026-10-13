@@ -90,9 +90,13 @@ sets, LET-local operators). Where the language has no such form in one file
 another name, so the check still proves a deletion moves nothing. Each fixture
 also carries a member where the analyzer emits one, and the doc/config
 fixtures their nesting (two stages, two ``@media`` rules, two branches of a
-conditional, two plays). The forms are recorded per language in the WI-tusad
-ledger, with the census they produced. Languages whose analyzer emits only file
-nodes (html, yaml) have no fixture: there is nothing for them to count.
+conditional, two plays). :data:`SCOPE_CASES` adds a second fixture for the
+languages whose ids can tie across two same-name ENCLOSING scopes: nested
+types and their members (INV-fabih: ``A.Inner.go`` / ``B.Inner.go``), two
+namespace or module blocks, a local function in two functions. The forms are
+recorded per language in the WI-tusad ledger, with the census they produced.
+Languages whose analyzer emits only file nodes (html, yaml) have no fixture:
+there is nothing for them to count.
 
 **Why the corpus is written at runtime.** As for ``test_doc_family_id_parity``:
 the fixtures deliberately reproduce defects (nulls, moved ids), and committing
@@ -847,6 +851,230 @@ CASES: dict[str, SiblingCase] = {
         "const B = struct {\n    v: i32,\n    fn run(self: B, x: i32) i32 { return x; }\n};\n"
         "fn helper() i32 { return 2; }\n"),
 }
+
+
+#: Second fixtures, keyed ``<language>-<shape>`` (the key is only the directory
+#: name; the census reads each record's own language). Each nests one
+#: same-name scope inside two outer scopes (INV-fabih and its cousins found by
+#: the WI-tusad sweep): members and types of two ``Inner`` classes, two
+#: namespace or module blocks, two functions holding a same-name local
+#: function, two macros, two instances. Every one of them failed the deletion
+#: check before the scheme bump (an id hashed the nearest owner only, or no
+#: owner at all, or a type took the bare-name table key), and the last three
+#: pin the F1 cousins: a Twig ``else`` emitting an ``if`` symbol, a PureScript
+#: class member with a bare type emitting nothing, a Scheme rest list.
+SCOPE_CASES: dict[str, SiblingCase] = {
+    # -- INV-fabih: members and types of two same-name nested owners ---------
+    "scala-nested": SiblingCase(
+        "src/Outer.scala", "",
+        "class A {\n  class Inner {\n    def go(): Int = 1\n    val v: Int = 1\n  }\n"
+        "  object Obj {\n    def go(): Int = 1\n  }\n  trait T\n}\n",
+        "class B {\n  class Inner {\n    def go(): Int = 2\n    val v: Int = 2\n  }\n"
+        "  object Obj {\n    def go(): Int = 2\n  }\n  trait T\n}\n"
+        "object Run {\n  def a(): Int = {\n    def local(): Int = 1\n    local()\n  }\n"
+        "  def b(): Int = {\n    def local(): Int = 2\n    local()\n  }\n}\n"),
+    # The one-line nested body is the tree-sitter-kotlin 1.1.0 shape that
+    # turned the whole class into an ERROR (kotlin._close_brace_repair).
+    "kotlin-nested": SiblingCase(
+        "src/Outer.kt", "",
+        "class A {\n    class Inner {\n        fun go(): Int = 1\n        val v: Int = 1\n    }\n"
+        "    class Line { fun go(): Int = 1 }\n    interface I {\n        fun f(): Int\n    }\n}\n",
+        "class B {\n    class Inner {\n        fun go(): Int = 2\n        val v: Int = 2\n    }\n"
+        "    class Line { fun go(): Int = 2 }\n    interface I {\n        fun f(): Int\n    }\n}\n"
+        "fun a(): Int {\n    fun local(): Int = 1\n    return local()\n}\n"
+        "fun b(): Int {\n    fun local(): Int = 2\n    return local()\n}\n"),
+    "csharp-nested": SiblingCase(
+        "src/Outer.cs", "",
+        "class A {\n    class Inner {\n        int Go() { return 1; }\n        int f;\n"
+        "        int P { get; set; }\n        enum E { X }\n    }\n}\n",
+        "class B {\n    class Inner {\n        int Go() { return 2; }\n        int f;\n"
+        "        int P { get; set; }\n        enum E { X }\n    }\n}\n"),
+    "csharp-namespace": SiblingCase(
+        "src/Spaces.cs", "",
+        "namespace A {\n    class Inner {\n        int Go() { return 1; }\n        int f;\n    }\n"
+        "    interface I { }\n    struct S { }\n}\n",
+        "namespace B {\n    class Inner {\n        int Go() { return 2; }\n        int f;\n    }\n"
+        "    interface I { }\n    struct S { }\n}\n"),
+    "swift-nested": SiblingCase(
+        "src/Outer.swift", "",
+        "class A {\n    class Inner {\n        func go() -> Int { return 1 }\n        var v: Int = 1\n    }\n"
+        "    enum E {\n        case x\n    }\n}\n",
+        "class B {\n    class Inner {\n        func go() -> Int { return 2 }\n        var v: Int = 2\n    }\n"
+        "    enum E {\n        case x\n    }\n}\n"
+        "func a() -> Int {\n    struct Local {\n        var v: Int = 1\n    }\n"
+        "    func local() -> Int { return 1 }\n    return local()\n}\n"
+        "func b() -> Int {\n    struct Local {\n        var v: Int = 2\n    }\n"
+        "    func local() -> Int { return 2 }\n    return local()\n}\n"),
+    # Member classes were told apart by their dotted names; local classes in
+    # two methods (and an anonymous class's methods) were not.
+    "java-local": SiblingCase(
+        "src/Outer.java", "class Outer {\n",
+        "    int a() {\n        class Local {\n            int v;\n            int go() { return 1; }\n"
+        "        }\n        return new Local().go();\n    }\n",
+        "    int b() {\n        class Local {\n            int v;\n            int go() { return 2; }\n"
+        "        }\n        return new Local().go();\n    }\n"
+        "    class Inner {\n        int go() { return 3; }\n    }\n}\n"),
+    "typescript-nested": SiblingCase(
+        "src/outer.ts", "",
+        "namespace A {\n  export class Inner {\n    v: number = 1;\n    go(): number { return 1; }\n  }\n"
+        "  export interface I { x: number; }\n  export enum E { X }\n  export type T = number;\n"
+        "  export function run(): number { return 1; }\n}\n",
+        "namespace B {\n  export class Inner {\n    v: number = 2;\n    go(): number { return 2; }\n  }\n"
+        "  export interface I { x: number; }\n  export enum E { X }\n  export type T = number;\n"
+        "  export function run(): number { return 2; }\n}\n"),
+    "javascript-nested": SiblingCase(
+        "src/outer.js", "",
+        "function a() {\n  class Inner {\n    go() { return 1; }\n  }\n"
+        "  function local() { return 1; }\n  return [Inner, local];\n}\n"
+        "const objA = {\n  go() { return 1; },\n};\n",
+        "function b() {\n  class Inner {\n    go() { return 2; }\n  }\n"
+        "  function local() { return 2; }\n  return [Inner, local];\n}\n"
+        "const objB = {\n  go() { return 2; },\n};\n"),
+    "php-namespace": SiblingCase(
+        "src/spaces.php", "<?php\n",
+        "namespace A {\n    class Inner {\n        private $v = 1;\n        const C = 1;\n"
+        "        function go() { return 1; }\n    }\n    interface I {}\n    trait T {}\n}\n",
+        "namespace B {\n    class Inner {\n        private $v = 2;\n        const C = 2;\n"
+        "        function go() { return 2; }\n    }\n    interface I {}\n    trait T {}\n}\n"),
+    "cpp-nested": SiblingCase(
+        "src/outer.cpp", "",
+        "class A {\n  class Inner {\n    int go() { return 1; }\n    int v;\n  };\n"
+        "  enum E { X };\n};\nnamespace na {\nint run() { return 1; }\nint value = 1;\n"
+        "struct S { int v; };\n}\n",
+        "class B {\n  class Inner {\n    int go() { return 2; }\n    int v;\n  };\n"
+        "  enum E { X };\n};\nnamespace nb {\nint run() { return 2; }\nint value = 2;\n"
+        "struct S { int v; };\n}\n"),
+    "rust-nested": SiblingCase(
+        "src/nested.rs", "",
+        "mod a {\n    struct Inner { v: i32 }\n    impl Inner {\n        fn go(&self) -> i32 { 1 }\n    }\n"
+        "    enum E { X }\n    trait T { fn t(&self); }\n    fn run() -> i32 { 1 }\n}\n"
+        "fn outer_a() -> i32 {\n    fn local() -> i32 { 1 }\n    local()\n}\n",
+        "mod b {\n    struct Inner { v: i32 }\n    impl Inner {\n        fn go(&self) -> i32 { 2 }\n    }\n"
+        "    enum E { X }\n    trait T { fn t(&self); }\n    fn run() -> i32 { 2 }\n}\n"
+        "fn outer_b() -> i32 {\n    fn local() -> i32 { 2 }\n    local()\n}\n"),
+    "groovy-nested": SiblingCase(
+        "src/Outer.groovy", "",
+        "class A {\n    class Inner {\n        int go() { 1 }\n    }\n    interface I {}\n    enum E { X }\n}\n",
+        "class B {\n    class Inner {\n        int go() { 2 }\n    }\n    interface I {}\n    enum E { X }\n}\n"),
+    "d-nested": SiblingCase(
+        "src/outer.d", "module outer;\n",
+        "class A {\n    class Inner {\n        int go() { return 1; }\n        int v;\n    }\n}\n"
+        "int fa() {\n    int local() { return 1; }\n    return local();\n}\n",
+        "class B {\n    class Inner {\n        int go() { return 2; }\n        int v;\n    }\n}\n"
+        "int fb() {\n    int local() { return 2; }\n    return local();\n}\n"),
+    "julia-nested": SiblingCase(
+        "src/nested.jl", "",
+        "module A\nstruct Inner\n    v::Int\nend\nlimit = 1\nmodule Sub\nend\n"
+        "function run()\n    function inner()\n        1\n    end\n    inner()\nend\nend\n",
+        "module B\nstruct Inner\n    v::Int\nend\nlimit = 2\nmodule Sub\nend\n"
+        "function run()\n    function inner()\n        2\n    end\n    inner()\nend\nend\n"),
+    "zig-nested": SiblingCase(
+        "src/nested.zig", "",
+        "const A = struct {\n    const Inner = struct {\n        v: i32,\n        fn go() i32 { return 1; }\n"
+        "    };\n    const E = enum { x };\n};\n",
+        "const B = struct {\n    const Inner = struct {\n        v: i32,\n        fn go() i32 { return 2; }\n"
+        "    };\n    const E = enum { x };\n};\n"),
+    "gdscript-nested": SiblingCase(
+        "src/nested.gd", "extends Node\n",
+        "class A:\n\tclass Inner:\n\t\tvar v = 1\n\t\tfunc go():\n\t\t\treturn 1\n\n",
+        "class B:\n\tclass Inner:\n\t\tvar v = 2\n\t\tfunc go():\n\t\t\treturn 2\n"),
+    "solidity-nested": SiblingCase(
+        "src/Nested.sol", "pragma solidity ^0.8.0;\n",
+        "contract A {\n    struct Inner { uint v; }\n    function go() public pure returns (uint) { return 1; }\n}\n",
+        "contract B {\n    struct Inner { uint v; }\n    function go() public pure returns (uint) { return 2; }\n}\n"),
+    "capnp-nested": SiblingCase(
+        "src/nested.capnp", "@0xdbb9ad1f14bf0b38;\n",
+        "struct A {\n  struct Inner {\n    v @0 :Int32;\n  }\n  enum E {\n    x @0;\n  }\n}\n",
+        "struct B {\n  struct Inner {\n    v @0 :Int32;\n  }\n  enum E {\n    x @0;\n  }\n}\n"),
+    "tcl-nested": SiblingCase(
+        "src/nested.tcl", "",
+        "namespace eval a {\n  namespace eval inner {\n    proc go {} { return 1 }\n  }\n}\n",
+        "namespace eval b {\n  namespace eval inner {\n    proc go {} { return 2 }\n  }\n}\n"),
+    # -- functions nested in two same-name enclosing functions ---------------
+    "ada-nested": SiblingCase(
+        "src/nested.adb", "package body Nested is\n",
+        "   function F return Integer is begin return 1; end F;\n"
+        "   procedure A is\n      procedure Inner is begin null; end Inner;\n   begin Inner; end A;\n",
+        "   function F return Float is begin return 1.0; end F;\n"
+        "   procedure B is\n      procedure Inner is begin null; end Inner;\n   begin Inner; end B;\n"
+        "end Nested;\n"),
+    "nim-nested": SiblingCase(
+        "src/nested.nim", "",
+        "proc a() =\n  proc inner() = discard\n  inner()\n",
+        "proc b() =\n  proc inner() = discard\n  inner()\n"),
+    "matlab-nested": SiblingCase(
+        "src/nested.m", "",
+        "function a()\n  function inner()\n  end\nend\n",
+        "function b()\n  function inner()\n  end\nend\n"),
+    "odin-nested": SiblingCase(
+        "src/nested.odin", "package nested\n\n",
+        "a :: proc() {\n\tinner :: proc() {}\n\tinner()\n}\n",
+        "b :: proc() {\n\tinner :: proc() {}\n\tinner()\n}\n"),
+    "lua-nested": SiblingCase(
+        "src/nested.lua", "",
+        "function a()\n  local function inner() return 1 end\n  return inner()\nend\n",
+        "function b()\n  local function inner() return 2 end\n  return inner()\nend\n"),
+    "luau-nested": SiblingCase(
+        "src/nested.luau", "",
+        "function a()\n  local function inner(): number return 1 end\n  local Mod = {}\n"
+        "  return inner()\nend\n",
+        "function b()\n  local function inner(): number return 2 end\n  local Mod = {}\n"
+        "  return inner()\nend\n"),
+    "starlark-nested": SiblingCase(
+        "build/nested.bzl", "",
+        "def a():\n    def inner():\n        return 1\n    return inner()\n\n",
+        "def b():\n    def inner():\n        return 2\n    return inner()\n"),
+    "powershell-nested": SiblingCase(
+        "src/nested.ps1", "",
+        "function A {\n  function Inner { 1 }\n  Inner\n}\n",
+        "function B {\n  function Inner { 2 }\n  Inner\n}\n"),
+    "dart-nested": SiblingCase(
+        "lib/nested.dart", "",
+        "int a() {\n  int inner() => 1;\n  return inner();\n}\n",
+        "int b() {\n  int inner() => 2;\n  return inner();\n}\n"),
+    "wolfram-nested": SiblingCase(
+        "src/nested.wl", "",
+        "a[x_] := Module[{inner}, inner[y_] := y; inner[x]]\n",
+        "b[x_] := Module[{inner}, inner[y_] := y; inner[x]]\n"),
+    "jsonnet-nested": SiblingCase(
+        "src/nested.jsonnet", "{\n",
+        "  a: { inner(x):: x },\n",
+        "  b: { inner(x):: x },\n}\n"),
+    # -- B4 table kinds named by their module/namespace ----------------------
+    "ocaml-nested": SiblingCase(
+        "src/nested.ml", "",
+        "module A = struct\n  type t = int\n  module C = struct\n    let v = 1\n  end\nend\n",
+        "module B = struct\n  type t = int\n  module C = struct\n    let v = 2\n  end\nend\n"),
+    "lean-nested": SiblingCase(
+        "src/Nested.lean", "",
+        "namespace A\nstructure S where\n  x : Nat\nclass K (a : Type) where\n  k : a\nend A\n",
+        "namespace B\nstructure S where\n  x : Nat\nclass K (a : Type) where\n  k : a\nend B\n"),
+    # tree-sitter-agda 1.3.3 swallows the declarations after a ONE-constructor
+    # data type into it; the two-constructor Nat keeps the modules apart.
+    "agda-nested": SiblingCase(
+        "src/Nested.agda",
+        "module Nested where\n\ndata Nat : Set where\n  zero : Nat\n  suc : Nat -> Nat\n\n",
+        "module A where\n  module C where\n    v : Nat\n    v = zero\n"
+        "  record R : Set where\n    field\n      x : Nat\n\n",
+        "module B where\n  module C where\n    v : Nat\n    v = zero\n"
+        "  record R : Set where\n    field\n      x : Nat\n"),
+    "fsharp-nested": SiblingCase(
+        "src/Nested.fs", "module Nested\n\n",
+        "module A =\n    let mutable x = 1\n\n",
+        "module B =\n    let mutable x = 1\n"),
+    # -- the F1 "noticed, not fixed" cousins ---------------------------------
+    "twig-nested": SiblingCase(
+        "templates/nested.twig", "",
+        "{% macro first(a) %}{% if a %}x{% elseif b %}y{% else %}z{% endif %}{% endmacro %}\n",
+        "{% macro second(a) %}{% if a %}x{% elseif b %}y{% else %}z{% endif %}{% endmacro %}\n"),
+    "purescript-nested": SiblingCase(
+        "src/Nested.purs", "module Nested where\n\n",
+        "class Default a where\n  def :: a\n\nhelper :: Int\nhelper = 2\n\n",
+        "class Sized a where\n  size :: Int\n\nother :: Int\nother = 3\n"),
+    "scheme-nested": SiblingCase(
+        "src/nested.scm", "", "(define (f a . rest) a)\n", "(define (g a . rest) a)\n"),
+}
+CASES.update(SCOPE_CASES)
 
 
 def _baseline() -> dict:

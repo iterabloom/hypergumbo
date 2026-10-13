@@ -11,6 +11,14 @@ This analyzer uses tree-sitter-php to parse PHP files and extract:
   producer formula, ``make_typed_stable_id`` over the namespace/type chain;
   WI-tusad: they rode the backstop floor key) and global constants
   (``variable``)
+- The namespace of each declaration, read per declaration
+  (``_php_namespace_resolver``): braced ``namespace A { }`` blocks and
+  repeated ``namespace A;`` statements. It was read once from the first
+  definition, so a second namespace's declarations carried the first one's
+  name in ``qualified_name`` and stable_id and tied with it (INV-fabih
+  sweep). Classes, interfaces, traits and enums mint
+  ``overload_arity.scoped_table_stable_id`` scoped by that namespace (they
+  had the backstop's bare-name table key)
 - A per-file ``kind="file"`` pseudo-node that anchors file-level edges
 - Laravel route definitions (Route::get, Route::post, etc.)
 - Function call relationships (edges)
@@ -55,7 +63,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
@@ -77,6 +85,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     visibility_from_modifiers,
 )
+from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -366,20 +375,47 @@ def _php_member_symbol(
     )
 
 
-def _extract_php_namespace(
-    root: "tree_sitter.Node", source: bytes
+def _php_namespace_name(
+    definition: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
-    """Extract the PHP namespace from the top-level ``namespace_definition``.
-
-    Returns ``None`` for files without a namespace declaration (the global
-    namespace).
-    """
-    for child in root.children:
-        if child.type == "namespace_definition":
-            for sub in child.children:
-                if sub.type in ("namespace_name", "qualified_name"):
-                    return node_text(sub, source)
+    """The name a ``namespace_definition`` declares; None for ``namespace {``
+    (the global namespace)."""
+    for sub in definition.children:
+        if sub.type in ("namespace_name", "qualified_name"):
+            return node_text(sub, source)
     return None
+
+
+def _php_namespace_resolver(
+    root: "tree_sitter.Node", source: bytes
+) -> "Callable[[tree_sitter.Node], Optional[str]]":
+    """A function giving the namespace each node of the file is declared in.
+
+    A file may declare several namespaces: braced (``namespace A { ... }``,
+    whose declarations are its descendants) or statement-form (``namespace
+    A;``, which holds until the next one, its declarations being SIBLINGS at
+    the top level). The namespace used to be read once, from the FIRST
+    definition, so every declaration of a later namespace carried the first
+    one's name in its ``qualified_name`` and stable_id: ``A\\Inner`` and
+    ``B\\Inner`` were both ``A\\Inner``, tied, and deleting the first moved
+    the second's id (INV-fabih sweep). None is the global namespace.
+    """
+    statements = [
+        (child.start_byte, _php_namespace_name(child, source))
+        for child in root.children
+        if child.type == "namespace_definition"
+        and not any(c.type == "compound_statement" for c in child.children)
+    ]
+
+    def namespace_of(node: "tree_sitter.Node") -> Optional[str]:
+        current = node.parent
+        while current is not None:
+            if current.type == "namespace_definition":
+                return _php_namespace_name(current, source)
+            current = current.parent
+        before = [name for start, name in statements if start < node.start_byte]
+        return before[-1] if before else None
+    return namespace_of
 
 
 def _make_php_qualified_name(
@@ -1030,8 +1066,9 @@ def _extract_symbols(
     ``str(file_path)`` for tests that call this helper directly.
     """
     symbols: list[Symbol] = []
-    # ADR-0032 Phase 4 PR4: extract namespace once for qualified_name population.
-    namespace_name = _extract_php_namespace(tree.root_node, source)
+    # ADR-0032 Phase 4 PR4: the namespace for qualified_name population, per
+    # declaration (a file may declare several; INV-fabih sweep).
+    namespace_of = _php_namespace_resolver(tree.root_node, source)
 
     # INV-kokaj: emit the file pseudo-node as kind="file" with the
     # canonical file-id shape so the orchestrator file-symbol synthesizer
@@ -1073,6 +1110,7 @@ def _extract_symbols(
         # Function declarations
         if node.type == "function_definition":
             name = _find_name_in_children(node, source)
+            namespace_name = namespace_of(node)
             if name:
                 span = Span(
                     start_line=node.start_point[0] + 1,
@@ -1116,6 +1154,7 @@ def _extract_symbols(
         # Type-container declarations (class / interface / trait / enum)
         elif node.type in _PHP_CONTAINER_KINDS:
             name = _find_name_in_children(node, source)
+            namespace_name = namespace_of(node)
             if name:
                 span = Span(
                     start_line=node.start_point[0] + 1,
@@ -1138,6 +1177,12 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    # INV-fabih: the table formula scoped by the namespace (a
+                    # file may declare two ``Inner`` in two namespaces).
+                    stable_id=scoped_table_stable_id(
+                        kind=container_kind, lang="php", path=file_name, name=name,
+                        scope=[namespace_name] if namespace_name else [],
+                    ),
                     meta=meta,
                     modifiers=_extract_modifiers_php(node),
                     shape_id=_analyzer.compute_shape_id(node),
@@ -1150,6 +1195,7 @@ def _extract_symbols(
         # Method declarations (inside classes)
         elif node.type == "method_declaration":
             name = _find_name_in_children(node, source)
+            namespace_name = namespace_of(node)
             if name:
                 span = Span(
                     start_line=node.start_point[0] + 1,
@@ -1201,6 +1247,7 @@ def _extract_symbols(
         # so a method-body local (an assignment_expression) can never reach here.
         elif node.type == "property_declaration":
             enclosing = _enclosing_type_name(node, source)
+            namespace_name = namespace_of(node)
             if enclosing is not None:
                 modifiers = _extract_modifiers_php(node)
                 exported = (
@@ -1227,6 +1274,7 @@ def _extract_symbols(
         # top-level (global) constant is a ``variable``.
         elif node.type == "const_declaration":
             enclosing = _enclosing_type_name(node, source)
+            namespace_name = namespace_of(node)
             for el in node.children:
                 if el.type != "const_element":
                     continue

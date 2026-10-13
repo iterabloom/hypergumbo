@@ -138,7 +138,8 @@ end
         modules = [s for s in result.symbols if s.kind == "module"]
         names = [m.name for m in modules]
         assert "Outer" in names
-        assert "Inner" in names
+        # Named with its enclosing module, like a binding (INV-fabih).
+        assert "Outer.Inner" in names
 
     def test_module_alias(self, tmp_path: Path) -> None:
         """Test module alias definition."""

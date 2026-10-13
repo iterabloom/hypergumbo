@@ -73,6 +73,8 @@ are ordered by the per-file occurrence pass. ``signature`` is the argument list
 as written (``[x_Integer]``). ``f[x_][y_] := ...`` (a curried definition) is
 read by its first argument group. ``a[[1]] = v`` (a Part assignment) and
 ``f[x_] /; c := ...`` (a conditioned left-hand side) are not definitions here.
+A definition inside another definition's right-hand side (a ``Module`` local)
+hashes the enclosing definitions' names too (INV-fabih).
 """
 from __future__ import annotations
 
@@ -87,6 +89,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     find_child_by_type,
+    ancestor_labels,
     iter_tree,
     make_file_id,
     make_symbol_id,
@@ -226,6 +229,19 @@ def _pattern_parameter(arg: str) -> dict[str, Any]:
     return parameter_entry(text, text)
 
 
+def _definition_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The name ``node`` defines when it is a ``name[args] := ...`` /
+    ``name[args] = ...`` definition, else None."""
+    if node.type != "binary":
+        return None
+    op_node = next((c for c in node.children if c.type in (":=", "=")), None)
+    if op_node is None:
+        return None
+    lhs = source[node.start_byte:op_node.start_byte].decode("utf-8", errors="replace")
+    definition = _definition_lhs(lhs.strip())
+    return definition[0] if definition is not None else None
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -257,9 +273,13 @@ def _extract_symbols_from_file(
                 return
             seen_variables.add(name)
         else:
+            # INV-fabih: a definition inside another one's right-hand side
+            # (a ``Module`` local) hashes the enclosing definitions; ``inner``
+            # in ``a[x_] := Module[...]`` and ``b[x_] := ...`` tied.
+            enclosing = ancestor_labels(node, lambda n: _definition_name(n, source))
             stable_id = declared_arity_stable_id(
                 kind=kind, lang="wolfram", path=file_path, name=name,
-                qualified_name=name, arity=declared_arity(meta),
+                qualified_name=".".join((*enclosing, name)), arity=declared_arity(meta),
             )
 
         start_line = node.start_point[0] + 1

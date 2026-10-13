@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Callable, Optional, Sequence
 
 from hypergumbo_core.analyze.base import (
-    AnalysisResult, floor_stable_id_key,
+    AnalysisResult, floor_stable_id_key, make_declaration_stable_id,
 )
 from hypergumbo_core.ir import Symbol
 from hypergumbo_core.overload_arity import (
@@ -178,8 +178,14 @@ def test_zig_symbols_hash_the_full_container_chain(tmp_path: Path) -> None:
     })
     # The emitted names keep the immediate container only.
     assert by_line[4].name == by_line[10].name == "Inner.run"
-    # Structs keep the backstop's table formula.
-    assert all(s.stable_id is None for s in syms if s.kind == "struct")
+    # Structs keep the table formula, over their container chain (INV-fabih):
+    # the two nested ``Inner`` no longer share the bare-name key, and a
+    # top-level struct has exactly the backstop's value.
+    structs = {(s.name, s.span.start_line): s.stable_id for s in syms if s.kind == "struct"}
+    assert structs[("A", 1)] == make_declaration_stable_id("struct", "zig", "demo.zig", "A")
+    assert structs[("Inner", 2)] == make_declaration_stable_id(
+        "struct", "zig", "demo.zig", "A/Inner")
+    assert structs[("Inner", 2)] != structs[("Inner", 8)]
     _assert_deletion_moves_nothing(
         analyze_zig, tmp_path / "del", "demo.zig", _ZIG,
         "const A = struct {\n    const Inner = struct {\n        v: i32,\n"

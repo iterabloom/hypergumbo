@@ -47,7 +47,10 @@ nothing) and mint the ADR-0035 producer stable_id over that chain with
 of one name in a scope, so no arity is hashed. Before, neither computed a
 stable_id and rode the backstop floor key (kind, file, bare name), which
 ``A.run`` / ``B.run`` in two interfaces share, so both were null. Structs,
-interfaces and enums keep the backstop's table formula.
+interfaces and enums keep the table formula, over the same chain
+(``overload_arity.scoped_table_stable_id``; INV-fabih: ``struct Inner`` in
+``A`` and in ``B`` shared one bare-name table key, so deleting ``A`` moved
+``B.Inner``); top-level ones keep their values.
 """
 from __future__ import annotations
 
@@ -67,7 +70,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
-from hypergumbo_core.overload_arity import declared_arity_stable_id
+from hypergumbo_core.overload_arity import declared_arity_stable_id, scoped_table_stable_id
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -77,7 +80,7 @@ if TYPE_CHECKING:
 PASS_ID = make_pass_id("capnp")
 
 #: The kinds this analyzer mints a producer stable_id for (WI-tusad); structs,
-#: interfaces and enums take the backstop's table formula.
+#: interfaces and enums take the table formula over their scope chain.
 _PRODUCER_KINDS = frozenset({"method", "const"})
 
 
@@ -199,12 +202,18 @@ def _extract_symbols_and_edges(
             end_col=end_col,
         )
         sym_id = make_symbol_id("capnp", file_path, start_line, end_line, name, kind)
+        scope = _scope_chain(node, source)
         return Symbol(
             id=sym_id,
+            # Structs, interfaces and enums: the table formula over every
+            # enclosing struct and interface (INV-fabih).
             stable_id=declared_arity_stable_id(
                 kind=kind, lang="capnp", path=file_path, name=name,
                 qualified_name=qualified_name, arity=None,
-            ) if kind in _PRODUCER_KINDS else None,
+            ) if kind in _PRODUCER_KINDS else scoped_table_stable_id(
+                kind=kind, lang="capnp", path=file_path, name=name,
+                scope=scope.split(".") if scope else (),
+            ),
             name=name,
             qualified_name=qualified_name,
             kind=kind,

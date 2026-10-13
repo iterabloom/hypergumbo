@@ -71,6 +71,15 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      error types.
 3. Post-process: Extract decorated_by edges from attribute metadata
 
+Scope in identity (INV-fabih). Every stable_id hashes the inline ``mod``
+blocks and functions enclosing the item (``_rust_hash_scope``): callables and
+members through ``rust_hashed_qualified_name`` (``a::Inner::go`` where they
+hashed ``Inner::go``), structs, enums and traits through
+``overload_arity.scoped_table_stable_id`` (they had the backstop's bare-name
+table key). Two ``struct Inner`` in ``mod a`` and ``mod b`` and their members
+tied, and deleting the first moved the second's ids. Top-level items keep
+their values.
+
 Parity with the SCIP backend
 ----------------------------
 Symbol ids and ``stable_id`` values emitted here must be byte-identical to
@@ -122,6 +131,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     defer_bare_method_call,
     emit_module_attribute_refs,
     find_child_by_type,
@@ -135,6 +145,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
     visibility_from_modifiers,
 )
+from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import (
     SPAN_ROLE_ITEM,
@@ -828,6 +839,35 @@ def _get_rust_mod_path(
     return list(reversed(mods))
 
 
+def _rust_hash_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The inline ``mod`` blocks and functions enclosing ``node``, outermost
+    first: what a Rust stable_id hashes beside the owner and name (INV-fabih).
+
+    Members hashed ``Owner::name`` and types the backstop's bare-name table
+    key, so two ``struct Inner`` (and their ``impl``) in ``mod a`` and ``mod
+    b`` -- or two ``fn run`` in them, or two helpers nested in two functions
+    -- tied, and deleting the first moved the second's id. The crate-level
+    module is the file itself, which the file anchor identifies, so a
+    top-level item keeps its value. ``rust_scip`` hashes the same chain
+    (WI-zakub parity).
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type not in ("mod_item", "function_item"):
+            return None
+        name_node = _find_child_by_field(n, "name")
+        return node_text(name_node, source) if name_node is not None else None
+    return ancestor_labels(node, label)
+
+
+def rust_hashed_qualified_name(
+    node: "tree_sitter.Node", source: bytes, owner: Optional[str], name: str,
+) -> str:
+    """``scope::owner::name`` over :func:`_rust_hash_scope`: the qualified
+    name a Rust callable or member hashes. Public because ``rust_scip`` must
+    hash exactly this for the same item."""
+    return "::".join((*_rust_hash_scope(node, source), *((owner,) if owner else ()), name))
+
+
 def _make_rust_qualified_name(
     mod_path: list[str], impl_target: Optional[str], name: str
 ) -> str:
@@ -1434,7 +1474,8 @@ def _extract_symbols_from_file(
                 norm_sig = normalize_rust_signature(signature)
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
-                    name=func_name, qualified_name=full_name,
+                    name=func_name,
+                    qualified_name=rust_hashed_qualified_name(node, source, owner, func_name),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
@@ -1503,6 +1544,7 @@ def _extract_symbols_from_file(
 
                 struct_modifiers = _extract_modifiers_rust(node, source)
                 mod_path = _get_rust_mod_path(node, source)
+                type_scope = _rust_hash_scope(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("rust", str(file_path), start_line, end_line, struct_name, "struct"),
                     name=struct_name,
@@ -1517,6 +1559,12 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    # INV-fabih: the table formula over the enclosing mods and
+                    # functions (the backstop's own value at top level).
+                    stable_id=scoped_table_stable_id(
+                        kind="struct", lang="rust", path=file_path,
+                        name=struct_name, scope=type_scope,
+                    ),
                     meta=meta,
                     modifiers=struct_modifiers,
                     line_span=end_line - start_line + 1,
@@ -1567,7 +1615,8 @@ def _extract_symbols_from_file(
                         stable_id=make_typed_stable_id(
                             "field", ftype or "",
                             visibility_from_modifiers(f_modifiers),
-                            name=fname, qualified_name=f_full,
+                            name=fname,
+                            qualified_name="::".join((*type_scope, f_full)),
                             file_stable_id=file_stable_id,
                         ),
                         line_span=f_end - f_start + 1,
@@ -1648,6 +1697,7 @@ def _extract_symbols_from_file(
 
                 enum_modifiers = _extract_modifiers_rust(node, source)
                 mod_path = _get_rust_mod_path(node, source)
+                type_scope = _rust_hash_scope(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("rust", str(file_path), start_line, end_line, enum_name, "enum"),
                     name=enum_name,
@@ -1662,6 +1712,10 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=scoped_table_stable_id(
+                        kind="enum", lang="rust", path=file_path,
+                        name=enum_name, scope=type_scope,
+                    ),
                     meta=meta,
                     modifiers=enum_modifiers,
                     line_span=end_line - start_line + 1,
@@ -1719,7 +1773,8 @@ def _extract_symbols_from_file(
                         stable_id=make_typed_stable_id(
                             "field", "",
                             visibility_from_modifiers(v_modifiers),
-                            name=vname, qualified_name=v_full,
+                            name=vname,
+                            qualified_name="::".join((*type_scope, v_full)),
                             file_stable_id=file_stable_id,
                         ),
                         line_span=v_end - v_start + 1,
@@ -1796,7 +1851,8 @@ def _extract_symbols_from_file(
                     stable_id=make_typed_stable_id(
                         "function", f_norm_sig,
                         visibility_from_modifiers(f_modifiers),
-                        name=f_name, qualified_name=f_name,
+                        name=f_name,
+                        qualified_name=rust_hashed_qualified_name(node, source, None, f_name),
                         file_stable_id=file_stable_id,
                     ) if f_norm_sig else None,
                     docstring=extract_preceding_doc_comment(node, source, "rust"),
@@ -1856,7 +1912,10 @@ def _extract_symbols_from_file(
                     stable_id=make_typed_stable_id(
                         "method", s_norm_sig,
                         visibility_from_modifiers(s_modifiers),
-                        name=sig_name, qualified_name=sig_full,
+                        name=sig_name,
+                        qualified_name=rust_hashed_qualified_name(
+                            node, source, trait_owner, sig_name,
+                        ),
                         file_stable_id=file_stable_id,
                     ) if s_norm_sig else None,
                     line_span=s_end - s_start + 1,
@@ -1900,6 +1959,10 @@ def _extract_symbols_from_file(
                     modifiers=trait_modifiers,
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=scoped_table_stable_id(
+                        kind="trait", lang="rust", path=file_path,
+                        name=trait_name, scope=_rust_hash_scope(node, source),
+                    ),
                     meta=meta,
                     line_span=end_line - start_line + 1,
                     is_exported="pub" in trait_modifiers,

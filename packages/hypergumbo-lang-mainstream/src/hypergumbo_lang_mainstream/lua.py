@@ -7,7 +7,8 @@ This analyzer uses tree-sitter to parse Lua files and extract:
 - Function call relationships (direct, dot-index, method)
 - require statements (imports) with alias tracking
 - Cross-file require-alias call resolution
-- One ``file`` symbol per module, plus per-symbol identity (``stable_id``,
+- One ``file`` symbol per module, plus per-symbol identity (``stable_id``;
+  a function nested in another hashes the enclosing functions, INV-fabih,
   ``shape_id``) and metrics (cyclomatic complexity, line span)
 - ADR-0015 dataflow annotation on the emitted edges
 
@@ -76,6 +77,7 @@ from hypergumbo_core.analyze.base import (
     record_partial_parse,
     AnalysisResult,
     TreeSitterAnalyzer,
+    ancestor_labels,
     defer_bare_method_call,
     find_child_by_type,
     iter_tree,
@@ -86,6 +88,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import nested_qualified_name
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -238,8 +241,15 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=_extract_lua_signature(node, source),
+                    # INV-fabih: a function nested in another hashes the
+                    # enclosing functions ("" at top level, unchanged).
                     stable_id=_analyzer.compute_stable_id(
-                        node, kind=kind, name=name, file_stable_id=file_stable_id,
+                        node, kind=kind, name=name,
+                        qualified_name=nested_qualified_name(ancestor_labels(
+                            node, lambda n: _get_function_name(n, source)[0]
+                            if n.type == "function_declaration" else None,
+                        ), name),
+                        file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "lua"),

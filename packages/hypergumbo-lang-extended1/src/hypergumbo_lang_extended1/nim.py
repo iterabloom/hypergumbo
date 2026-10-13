@@ -46,7 +46,9 @@ logic.
 A callable's stable_id hashes its ``meta["parameters"]``, types included
 (``overload_arity.node_declared_arity_stable_id``, WI-tusad): the grammar has
 no parameter-list child where ``compute_stable_id`` looks, so the overloads
-``run(x: int)`` / ``run(x: string)`` tied on ``param_count 0``.
+``run(x: int)`` / ``run(x: string)`` tied on ``param_count 0``. Every
+stable_id also hashes the routines enclosing the symbol (``_nim_scope``;
+INV-fabih), so a proc nested in two procs no longer ties.
 
 Why This Design
 ---------------
@@ -71,6 +73,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     SymbolsAt,
     TreeSitterAnalyzer,
+    ancestor_labels,
     find_child_by_type,
     iter_tree,
     make_symbol_id,
@@ -82,7 +85,8 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
-    PARAMETERS_KEY, choose_overload, node_declared_arity_stable_id, parameter_entry,
+    PARAMETERS_KEY, choose_overload, nested_qualified_name,
+    node_declared_arity_stable_id, parameter_entry,
 )
 from hypergumbo_core.symbol_resolution import LookupResult
 
@@ -132,6 +136,24 @@ def _declared_name_node(
     return None, False  # pragma: no cover - defensive: a declaration always names
 
 
+#: Routine declarations whose name opens a scope a nested routine sits in.
+_NIM_ROUTINES = frozenset({"proc_declaration", "func_declaration", "method_declaration"})
+
+
+def _nim_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The procs, funcs and methods enclosing ``node``, outermost first
+    (INV-fabih): every Nim symbol hashed an empty qualified name, so ``proc
+    inner`` nested in procs ``a`` and ``b`` tied and deleting the first moved
+    the second. ``overload_arity.nested_qualified_name`` over it is ``""``
+    for a top-level symbol, which keeps its value."""
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type not in _NIM_ROUTINES:
+            return None
+        name_node, _ = _declared_name_node(n)
+        return node_text(name_node, source) if name_node is not None else None
+    return ancestor_labels(node, label)
+
+
 def _make_symbol(
     analyzer: "NimAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node",
     name: str, kind: str, source: bytes,
@@ -171,6 +193,7 @@ def _make_symbol(
         stable_id=node_declared_arity_stable_id(
             analyzer, node, kind=kind, name=name, meta=meta,
             file_stable_id=analyzer._file_anchor(rel_path),
+            qualified_name=nested_qualified_name(_nim_scope(node, source), name),
         ),
         signature=signature,
         meta=meta,

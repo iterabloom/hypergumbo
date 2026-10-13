@@ -45,11 +45,17 @@ record their positional parameters in ``meta["parameters"]`` (``::T`` as the
 type, ``y=2`` a default, ``xs...`` variadic; keyword parameters after ``;`` are
 not dispatched on and not listed) and mint the ADR-0035 producer stable_id
 with ``overload_arity.declared_arity_stable_id``: the typed tier as soon as a
-parameter declares a type, the enclosing module chain as the qualified name.
+parameter declares a type, the enclosing module chain -- and, for a function
+nested in another, the enclosing functions (``_julia_scope_chain``; INV-fabih)
+-- as the qualified name.
 Abstract types and consts take the same formula with no arity. Before, none of
 them computed one, and two methods of one name nulled each other on the
-backstop floor key. Struct fields keep their typed formula; modules, structs
-and variables keep the table formula.
+backstop floor key. Struct fields keep their typed formula, over the module
+chain and the struct; modules, structs and variables keep the table formula,
+over the module chain (``overload_arity.scoped_table_stable_id``; INV-fabih:
+two ``struct Inner`` in modules ``A`` and ``B`` shared one bare-name table key,
+so deleting the first moved the second's id and its fields'). Top-level ones
+keep their values.
 
 Why This Design
 ---------------
@@ -70,6 +76,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     SymbolsAt,
     TreeSitterAnalyzer,
+    ancestor_labels,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -85,6 +92,7 @@ from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+    scoped_table_stable_id,
 )
 
 if TYPE_CHECKING:
@@ -124,6 +132,23 @@ def _julia_module_chain(node: "tree_sitter.Node", source: bytes) -> list[str]:
         current = current.parent
     chain.reverse()
     return chain
+
+
+def _julia_scope_chain(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Every module AND function enclosing ``node``, outermost first: the
+    chain a function's stable_id hashes (INV-fabih). ``function inner`` (or a
+    short-form ``inner(x) = x``) nested in functions ``a`` and ``b`` shared
+    the module chain alone, tied, and deleting the first moved the second; a
+    function outside any function keeps its value."""
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type == "module_definition":
+            id_node = find_child_by_type(n, "identifier")
+            return node_text(id_node, source) if id_node is not None else None
+        if n.type == "function_definition":
+            return _extract_function_name(n, source)
+        return None
+    return ancestor_labels(node, label)
+
 
 
 def _julia_call_of(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
@@ -486,7 +511,8 @@ def _extract_symbols_from_tree(
     file_stable_id = make_file_stable_id("julia", file_path)
 
     def add_struct_field(
-        field_node: "tree_sitter.Node", name: str, vtype: Optional[str], owner: str
+        field_node: "tree_sitter.Node", name: str, vtype: Optional[str], owner: str,
+        owner_scope: list[str],
     ) -> None:
         """Append a ``kind="field"`` struct-member Symbol (WI-jusus).
 
@@ -517,9 +543,12 @@ def _extract_symbols_from_tree(
             ),
             origin=PASS_ID,
             origin_run_id=run_id,
+            # INV-fabih: the owner's module chain too (two ``struct Inner``
+            # in modules ``A`` and ``B`` shared ``Inner.v``).
             stable_id=make_typed_stable_id(
                 "field", vtype or "", visibility_from_modifiers(modifiers),
-                name=name, qualified_name=full_name, file_stable_id=file_stable_id,
+                name=name, qualified_name=".".join((*owner_scope, full_name)),
+                file_stable_id=file_stable_id,
             ),
             signature=vtype,
             modifiers=modifiers,
@@ -553,6 +582,10 @@ def _extract_symbols_from_tree(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=scoped_table_stable_id(
+                        kind="module", lang="julia", path=file_path, name=module_name,
+                        scope=_julia_module_chain(node, source),
+                    ),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[module_name] = symbol
@@ -571,7 +604,7 @@ def _extract_symbols_from_tree(
                     id=make_symbol_id("julia", file_path, start_line, end_line, full_name, "function"),
                     stable_id=_julia_stable_id(
                         "function", file_path, generic_name,
-                        _julia_module_chain(node, source), None, "generic",
+                        _julia_scope_chain(node, source), None, "generic",
                     ),
                     name=generic_name,
                     kind="function",
@@ -605,7 +638,7 @@ def _extract_symbols_from_tree(
                     id=make_symbol_id("julia", file_path, start_line, end_line, full_name, "function"),
                     stable_id=_julia_stable_id(
                         "function", file_path, func_name,
-                        _julia_module_chain(node, source), fn_meta,
+                        _julia_scope_chain(node, source), fn_meta,
                     ),
                     meta=fn_meta,
                     name=func_name,
@@ -649,7 +682,7 @@ def _extract_symbols_from_tree(
                         id=make_symbol_id("julia", file_path, start_line, end_line, func_name, "function"),
                         stable_id=_julia_stable_id(
                             "function", file_path, func_name,
-                            _julia_module_chain(node, source), fn_meta,
+                            _julia_scope_chain(node, source), fn_meta,
                         ),
                         meta=fn_meta,
                         name=func_name,
@@ -704,6 +737,10 @@ def _extract_symbols_from_tree(
                             ),
                             origin=PASS_ID,
                             origin_run_id=run_id,
+                            stable_id=scoped_table_stable_id(
+                                kind="variable", lang="julia", path=file_path,
+                                name=var_name, scope=_julia_module_chain(node, source),
+                            ),
                         )
                         # A module variable is a DATA anchor kept OUT of call
                         # resolution (not written to symbol_by_name, and skipped by
@@ -731,6 +768,7 @@ def _extract_symbols_from_tree(
 
                 if id_node:
                     struct_name = node_text(id_node, source)
+                    struct_scope = _julia_module_chain(node, source)
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
 
@@ -748,6 +786,10 @@ def _extract_symbols_from_tree(
                         ),
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        stable_id=scoped_table_stable_id(
+                            kind="struct", lang="julia", path=file_path,
+                            name=struct_name, scope=struct_scope,
+                        ),
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[struct_name] = symbol
@@ -768,7 +810,7 @@ def _extract_symbols_from_tree(
                         if member.type in ("typed_expression", "identifier"):
                             fname, ftype = _julia_struct_field(member, source)
                             if fname is not None:
-                                add_struct_field(member, fname, ftype, struct_name)
+                                add_struct_field(member, fname, ftype, struct_name, struct_scope)
 
         # Abstract type definition
         elif node.type == "abstract_definition":

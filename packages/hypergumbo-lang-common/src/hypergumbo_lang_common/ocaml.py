@@ -49,10 +49,11 @@ only the first, so ``module B``'s ``run`` was absent from the graph whenever
 ``module A`` also bound one. A binding inside ``module A = struct ... end`` is
 named ``A.run`` (nested modules chain: ``A.C.deep``), the way OCaml code outside
 the module refers to it; a top-level binding keeps its bare name. Type and
-module symbols are emitted per declaration too but keep their bare names: their
-ids come from the type/module table formula over the name, so qualifying them
-would change ids already computed (a scheme-bump change, ADR-0035 §6). Two
-same-name types in one file are told apart by the per-file occurrence pass.
+module symbols are emitted per declaration and named the same way (``A.t``,
+``A.C``; WI-tusad scheme bump, INV-fabih): they kept their bare names, so
+``type t`` in modules ``A`` and ``B`` shared one table key and deleting the
+first moved the second's id. Their ids are the backstop's type/module table
+formula over that name.
 
 A ``let`` local to an expression (``let g z = z in ...``) is emitted only when it
 binds a function (it has parameters or its body is a ``fun`` / ``function``),
@@ -357,7 +358,10 @@ def _extract_symbols_from_tree(
             if type_binding:
                 name = _get_type_name(type_binding, source)
                 if name:
-                    add_symbol(node, name, "type")
+                    # INV-fabih: named with the module chain (``A.t``) like a
+                    # binding, so the backstop's table formula over the name
+                    # tells two modules' ``type t`` apart.
+                    add_symbol(node, ".".join([*_ocaml_module_chain(node, source), name]), "type")
 
         elif node.type == "module_definition":
             # Module definition
@@ -365,7 +369,7 @@ def _extract_symbols_from_tree(
             if module_binding:
                 name = _get_module_name(module_binding, source)
                 if name:
-                    add_symbol(node, name, "module")
+                    add_symbol(node, ".".join([*_ocaml_module_chain(node, source), name]), "module")
 
     return analysis
 

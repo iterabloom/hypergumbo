@@ -6,7 +6,13 @@ This analyzer uses tree-sitter to parse Kotlin files and extract:
 - Class declarations (class, data class)
 - Object declarations (object), whose stable_id is the ADR-0035 producer
   formula (``make_typed_stable_id`` over the package/class chain; WI-tusad:
-  they rode the backstop floor key)
+  they rode the backstop floor key). Methods, fields and enum entries hash
+  the FULL class/object/function chain (``_kotlin_scope``: ``A.Inner.go``,
+  where they hashed the emitted nearest-owner name ``Inner.go``), and classes
+  and interfaces mint ``overload_arity.scoped_table_stable_id`` over it
+  (INV-fabih: two nested ``class Inner`` shared one bare-name table key, so
+  deleting the first outer class moved the second's ids). Top-level types and
+  their members keep their values.
 - Interface declarations (interface)
 - Method declarations (inside classes/objects)
 - Annotations on classes, functions, methods, objects, and properties
@@ -105,6 +111,17 @@ type is emitted UNRESOLVED with ``receiver_type_hint``; the shared
 ``receiver_type_dispatch`` linker emits the resolved ``ast_call_extension``
 edge.
 
+Grammar repair (WI-tusad; WI-rufub). tree-sitter-kotlin 1.1.0 turns a body
+whose last member shares the line of its closing brace into one ERROR node
+when it is nested (``class Inner { fun go() = 1 }`` inside a class) or when a
+second such declaration follows (``interface Shape { fun area(): Int }`` then
+``class Square : Shape { ... }``), which dropped the declarations around it. ``_parse_kotlin`` retries such a parse on a same-length copy
+with a ``;`` before that brace (``_close_brace_repair``) and keeps whichever
+tree has fewer errors; positions are unchanged, so node text still comes from
+the original bytes. Measured: 0 of 2,470 corpus ``.kt`` files change (the 32
+that fail to parse fail for other reasons); the shape is legal Kotlin that the
+corpus happens not to write outside test strings.
+
 Population of ``is_exported`` follows Kotlin's default-public rule: a
 declaration is exported unless its modifier list contains ``private``,
 ``internal``, or ``protected``. Extension functions are unconditionally
@@ -116,12 +133,13 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Iterator, Optional
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
@@ -129,6 +147,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     SymbolsAt,
     TreeSitterAnalyzer,
+    ancestor_labels,
     populate_docstrings_from_tree,
     find_child_by_type,
     iter_tree,
@@ -487,6 +506,149 @@ def _make_kotlin_qualified_name(
     parts.extend(ancestors)
     parts.append(name)
     return sep.join(parts)
+
+
+#: Declarations whose name opens a scope a Kotlin member is nested in (an
+#: anonymous ``object : T { }`` literal names none and is not listed).
+_KOTLIN_SCOPE_NODES: Final = frozenset({
+    "class_declaration", "object_declaration", "function_declaration",
+})
+
+
+def _kotlin_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The names of the classes, objects and functions enclosing ``node``,
+    outermost first (INV-fabih).
+
+    What a member's and a nested type's stable_id hash beside its own name.
+    The emitted name keeps the nearest owner (``Inner.go``), which two nested
+    ``class Inner`` in ``A`` and ``B`` share; the package is single per file,
+    so the file anchor already identifies it and it is left out (a member of
+    a top-level class keeps the value it had).
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type not in _KOTLIN_SCOPE_NODES:
+            return None
+        name_node = _find_child_by_field(n, "name")
+        return node_text(name_node, source) if name_node is not None else None
+    return ancestor_labels(node, label)
+
+
+def _close_brace_repair(source: bytes) -> bytes:
+    """``source`` with the blank before each same-line closing ``}`` turned
+    into ``;``: same length, same line and column for every byte.
+
+    tree-sitter-kotlin 1.1.0 cannot parse a NESTED body whose last member
+    ends on the line of its closing brace (``class A {`` / ``class Inner {
+    fun go(): Int = 1 }`` / ``}``, ``companion object { val x = 1 }``, an
+    ``object { ... }`` literal in a function): the whole enclosing
+    declaration became an ERROR node, and the analyzer emitted only the
+    stray ``function go`` it found inside, dropping ``A``, ``Inner`` and
+    everything after. A ``;`` before the brace is a legal statement/member
+    separator and the grammar accepts it. Only a ``}`` in code (not in a
+    comment, string, character literal or ``${}`` template) that follows
+    other code on its line, not an opening ``{``, and a blank is rewritten.
+    """
+    out = bytearray(source)
+    n = len(source)
+    i = 0
+    # [mode, brace depth, is a ${...} template]; mode is code, str or raw.
+    stack: list[list[Any]] = [["code", 0, False]]
+    line_has_code = False
+    last_code = 0
+    while i < n:
+        c = source[i]
+        top = stack[-1]
+        if top[0] != "code":
+            if top[0] == "str" and c == 0x5C:  # backslash escape
+                i += 2
+                continue
+            if top[0] == "str" and c == 0x22:
+                stack.pop()
+                i += 1
+                continue
+            if top[0] == "raw" and source.startswith(b'"""', i):
+                while i < n and source[i] == 0x22:  # a run of quotes closes at its end
+                    i += 1
+                stack.pop()
+                continue
+            if source.startswith(b"${", i):
+                stack.append(["code", 0, True])
+                i += 2
+                continue
+            line_has_code = line_has_code and c != 0x0A
+            i += 1
+            continue
+        if c == 0x0A:
+            line_has_code = False
+        elif source.startswith(b"//", i):
+            end = source.find(b"\n", i)
+            i = n if end < 0 else end
+            continue
+        elif source.startswith(b"/*", i):
+            depth, i = 1, i + 2
+            while i < n and depth:
+                step = source[i:i + 2]
+                depth += 1 if step == b"/*" else -1 if step == b"*/" else 0
+                i += 2 if step in (b"/*", b"*/") else 1
+            continue
+        elif c == 0x22:
+            raw = source.startswith(b'"""', i)
+            stack.append(["raw" if raw else "str", 0, False])
+            i += 3 if raw else 1
+            line_has_code, last_code = True, c
+            continue
+        elif c == 0x27:  # a character literal: skip it whole
+            close = source.find(b"'", i + (3 if source[i + 1:i + 2] == b"\\" else 2))
+            i = n if close < 0 else close + 1
+            line_has_code, last_code = True, c
+            continue
+        elif c == 0x7B:
+            top[1] += 1
+        elif c == 0x7D:
+            if top[2] and top[1] == 0:  # the end of a ${...} template
+                stack.pop()
+                i += 1
+                continue
+            top[1] -= 1
+            if (not top[2] and line_has_code and last_code != 0x7B
+                    and source[i - 1] in (0x20, 0x09)):
+                out[i - 1] = 0x3B
+        if c not in (0x0A, 0x20, 0x09, 0x0D):
+            line_has_code, last_code = True, c
+        i += 1
+    return bytes(out)
+
+
+def _error_count(tree: "tree_sitter.Tree") -> int:
+    """The error sites in ``tree``: ERROR and MISSING nodes, and nodes flagged
+    ``has_error`` with no child that is (the grammar can flag a body whose
+    error node it does not expose). Descends only where errors are."""
+    count = 0
+    stack = [tree.root_node]
+    while stack:
+        node = stack.pop()
+        if not node.has_error:
+            continue
+        children = node.children
+        if node.is_error or node.is_missing or not any(c.has_error for c in children):
+            count += 1
+        stack.extend(children)
+    return count
+
+
+def _parse_kotlin(parser: "tree_sitter.Parser", source: bytes) -> "tree_sitter.Tree":
+    """Parse ``source``, retrying through :func:`_close_brace_repair` when the
+    grammar reports an error; the repaired tree is kept only when it has fewer
+    errors. Positions match ``source`` either way (the repair keeps every
+    byte's offset, line and column), so node text is still read from the
+    original bytes. Every parse of a Kotlin file goes through here, so the
+    symbol, edge and dataflow passes see the same tree.
+    """
+    tree = parser.parse(source)
+    if not tree.root_node.has_error:
+        return tree
+    repaired = parser.parse(_close_brace_repair(source))
+    return repaired if _error_count(repaired) < _error_count(tree) else tree
 
 
 def _get_enclosing_function(
@@ -1004,7 +1166,7 @@ def _extract_symbols_from_file(
     """
     try:
         source = file_path.read_bytes()
-        tree = parser.parse(source)
+        tree = _parse_kotlin(parser, source)
     except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
         run.record_failed_file(str(file_path), f"{type(e).__name__}: {e}")
         return FileAnalysis()
@@ -1042,9 +1204,12 @@ def _extract_symbols_from_file(
 
                 # Typed stable_id (ADR-0014 §3)
                 norm_sig = normalize_kotlin_signature(signature)
+                # INV-fabih: the full class/object/function chain, not the
+                # nearest owner (``full_name``) two nested owners share.
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
-                    name=func_name, qualified_name=full_name,
+                    name=func_name,
+                    qualified_name=".".join((*_kotlin_scope(node, source), func_name)),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
@@ -1148,6 +1313,12 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    # INV-fabih: the table formula over the enclosing scopes
+                    # (the backstop's own value for a top-level type).
+                    stable_id=scoped_table_stable_id(
+                        kind=kind, lang="kotlin", path=rel_path, name=type_name,
+                        scope=_kotlin_scope(node, source),
+                    ),
                     meta=meta,
                     modifiers=class_modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
@@ -1184,6 +1355,7 @@ def _extract_symbols_from_file(
                 # `value_arguments` after the identifier and is otherwise the
                 # same shape.
                 enum_body = find_child_by_type(node, "enum_class_body")
+                enum_chain = ".".join((*_kotlin_scope(node, source), type_name))
                 for entry in enum_body.children if enum_body else ():
                     if entry.type != "enum_entry":
                         continue
@@ -1220,7 +1392,7 @@ def _extract_symbols_from_file(
                         stable_id=make_typed_stable_id(
                             "field", "",
                             visibility_from_modifiers(class_modifiers),
-                            name=e_name, qualified_name=e_full,
+                            name=e_name, qualified_name=f"{enum_chain}.{e_name}",
                             file_stable_id=file_stable_id,
                         ),
                         line_span=e_end - e_start + 1,
@@ -1330,7 +1502,8 @@ def _extract_symbols_from_file(
                     stable_id = make_typed_stable_id(
                         "field", prop_type or "",
                         visibility_from_modifiers(prop_modifiers),
-                        name=prop_name, qualified_name=full_name,
+                        name=prop_name,
+                        qualified_name=".".join((*_kotlin_scope(node, source), prop_name)),
                         file_stable_id=file_stable_id,
                     )
                 else:
@@ -1446,7 +1619,7 @@ def _extract_edges_from_file(
     decl_index = symbols_at(decl_symbols)
     try:
         source = file_path.read_bytes()
-        tree = parser.parse(source)
+        tree = _parse_kotlin(parser, source)
     except (OSError, IOError):
         return []
 
@@ -2661,7 +2834,7 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             try:
                 _kt_source = kt_file.read_bytes()
-                _kt_tree = parser.parse(_kt_source)
+                _kt_tree = _parse_kotlin(parser, _kt_source)
                 _kt_df = _get_dataflow_config("kotlin")
                 if _kt_df is not None:
                     edges = _annotate_dataflow(edges, _kt_tree, _kt_source, _kt_df)

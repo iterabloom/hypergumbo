@@ -13,7 +13,8 @@ This analyzer uses tree-sitter to parse PowerShell files and extract:
 - Module imports (Import-Module, using module)
 - One ``file`` symbol per script, which is the enclosing scope Pass 2
   attributes top-level calls to
-- Per-symbol identity (``stable_id``, anchored on the file's own stable id)
+- Per-symbol identity (``stable_id``, anchored on the file's own stable id;
+  a function nested in another hashes the enclosing functions, INV-fabih)
   and metrics (cyclomatic complexity, line span)
 
 If tree-sitter with PowerShell support is not installed, the analyzer
@@ -52,6 +53,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     SymbolsAt,
     TreeSitterAnalyzer,
+    ancestor_labels,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -65,6 +67,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import nested_qualified_name
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
@@ -296,8 +299,17 @@ def _extract_powershell_symbols(
                 sym = _make_powershell_symbol(
                     file_path, run_id, node, func_name, kind, signature=sig
                 )
+                # INV-fabih: a function nested in another hashes the
+                # enclosing functions ("" at top level, which keeps its value).
+                enclosing = ancestor_labels(node, lambda n: (
+                    node_text(nm, source).strip()
+                    if n.type == "function_statement"
+                    and (nm := find_child_by_type(n, "function_name")) is not None
+                    else None
+                ))
                 sym.stable_id = _analyzer.compute_stable_id(
                     node, kind=kind, name=func_name,
+                    qualified_name=nested_qualified_name(enclosing, func_name),
                     file_stable_id=file_stable_id,
                 )
                 symbols.append(sym)

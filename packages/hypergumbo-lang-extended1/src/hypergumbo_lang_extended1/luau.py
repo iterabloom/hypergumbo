@@ -24,6 +24,9 @@ Symbol Types
   (meant for module tables such as ``local MyModule = {}``); the value is
   not checked, and declarations nested inside functions are included too
 
+Every stable_id hashes the functions enclosing the symbol
+(``_luau_scope_slot``; INV-fabih), empty at top level.
+
 Edge Types
 ----------
 - calls: Function calls from one symbol to another
@@ -52,9 +55,11 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import nested_qualified_name
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
@@ -138,6 +143,20 @@ def _extract_params(node: "tree_sitter.Node") -> list[str]:
     return params
 
 
+def _luau_scope_slot(node: "tree_sitter.Node", name: str) -> str:
+    """The qualified-name slot a Luau stable_id hashes: the functions enclosing
+    ``node`` (INV-fabih; every Luau symbol hashed an empty one, so a local
+    ``inner`` in functions ``a`` and ``b`` tied), ``""`` at top level."""
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type != "function_declaration":
+            return None
+        return next((
+            _get_node_text(c) for c in n.children
+            if c.type in ("identifier", "dot_index_expression", "method_index_expression")
+        ), None)
+    return nested_qualified_name(ancestor_labels(node, label), name)
+
+
 def _extract_function(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
     analyzer: "LuauAnalyzer", file_anchor: str,
@@ -182,7 +201,8 @@ def _extract_function(
         sym = Symbol(
             id=make_symbol_id("luau", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "function"),
             stable_id=analyzer.compute_stable_id(
-                node, kind="function", name=name, file_stable_id=file_anchor,
+                node, kind="function", name=name,
+                qualified_name=_luau_scope_slot(node, name), file_stable_id=file_anchor,
             ),
             name=name,
             kind="function",
@@ -228,7 +248,8 @@ def _extract_type(
         sym = Symbol(
             id=make_symbol_id("luau", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "type"),
             stable_id=analyzer.compute_stable_id(
-                node, kind="type", name=name, file_stable_id=file_anchor,
+                node, kind="type", name=name,
+                qualified_name=_luau_scope_slot(node, name), file_stable_id=file_anchor,
             ),
             name=name,
             kind="type",
@@ -269,6 +290,7 @@ def _extract_variable(
                                     id=make_symbol_id("luau", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "variable"),
                                     stable_id=analyzer.compute_stable_id(
                                         node, kind="variable", name=name,
+                                        qualified_name=_luau_scope_slot(node, name),
                                         file_stable_id=file_anchor,
                                     ),
                                     name=name,

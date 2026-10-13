@@ -24,7 +24,11 @@ the ADR-0035 producer stable_id through ``compute_stable_id`` (parameter count
 and flags from the ``parameters`` node); fields, unions, error sets and tests
 through ``overload_arity.declared_arity_stable_id`` with no arity. Before, none
 of them computed a stable_id and rode the backstop floor key (kind, file,
-name). Structs, enums and variables keep the backstop's table formula.
+name). Structs and enums keep the table formula, over that chain
+(``overload_arity.scoped_table_stable_id``; INV-fabih: two nested ``const
+Inner = struct`` shared one bare-name table key, so deleting the first moved
+the second's id); top-level ones keep their values. Variables (module level
+only) keep the backstop's table formula.
 
 Known gaps: a call's enclosing function is looked up by name through the
 repo-wide resolver, so two files defining a same-named function can have a
@@ -65,7 +69,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
-from hypergumbo_core.overload_arity import declared_arity_stable_id
+from hypergumbo_core.overload_arity import declared_arity_stable_id, scoped_table_stable_id
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -337,9 +341,16 @@ def _extract_symbols_from_tree(
                     end_line = node.end_point[0] + 1
                     sym = Symbol(
                         id=make_symbol_id("zig", rel_path, start_line, end_line, var_name, kind),
+                        # INV-fabih: structs and enums keep the table formula,
+                        # over the enclosing chain (two ``const Inner = struct``
+                        # in ``A`` and ``B`` shared one bare-name key).
                         stable_id=(
                             scoped_id(kind, var_name, chain)
-                            if kind in ("union", "error_set") else None
+                            if kind in ("union", "error_set")
+                            else scoped_table_stable_id(
+                                kind=kind, lang="zig", path=rel_path,
+                                name=var_name, scope=chain,
+                            )
                         ),
                         name=var_name,
                         kind=kind,

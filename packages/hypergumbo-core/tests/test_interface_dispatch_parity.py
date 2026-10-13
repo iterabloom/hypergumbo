@@ -115,18 +115,12 @@ EXTRA_FILES: dict[str, tuple[str, str]] = {
 # language XPASSes its cell and forces removal of the entry in the same PR.
 #
 # Note how little these share. The item that produced this column named ONE
-# of them. Three of the eight are producer gaps, three are vocabulary gaps in
-# a consumer, one is an unrelated analyzer crash, one is an anchoring choice.
-KNOWN_HOLES: dict[str, str] = {
-    "kotlin": (
-        "ANALYZER CRASH, unrelated to dispatch. The Kotlin analyzer emits ZERO "
-        "type symbols when a file holds 2+ bodied type declarations, "
-        "re-emitting the first method as a top-level function (WI-rufub) — and this "
-        "fixture has exactly that shape. Each construct is correct in "
-        "isolation. Pre-existing (reproduces at 9f0a163833^). This cell cannot "
-        "go green until that is fixed; it is not a dispatch defect."
-    ),
-}
+# of them. Three of the eight were producer gaps, three vocabulary gaps in a
+# consumer, one an anchoring choice. The last one, Kotlin's (WI-rufub: a file
+# with two bodied type declarations came out as one ERROR node, the
+# tree-sitter-kotlin 1.1.0 nested one-line-body bug), went green with
+# ``kotlin._close_brace_repair`` in the WI-tusad scheme bump.
+KNOWN_HOLES: dict[str, str] = {}
 
 # Languages deliberately outside this column, with the reason. Declared as
 # DATA so the scope is checkable rather than implied: a gate's "N of N green"

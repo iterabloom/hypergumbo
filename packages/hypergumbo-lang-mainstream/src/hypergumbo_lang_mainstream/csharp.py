@@ -10,7 +10,14 @@ This analyzer uses tree-sitter to parse C# files and extract:
 - Constructor declarations
 - Property declarations, whose stable_id is the ADR-0035 producer formula
   (``make_typed_stable_id`` over the declared type and the namespace/type
-  chain; WI-tusad: they rode the backstop floor key)
+  chain; WI-tusad: they rode the backstop floor key). Methods, constructors,
+  fields, enum members and the WI-binap members hash the FULL chain of block
+  namespaces and types (``_csharp_scope``: ``A.Inner.Go``, where they hashed
+  the emitted nearest-owner name ``Inner.Go``), and classes, interfaces,
+  structs and enums mint ``overload_arity.scoped_table_stable_id`` over it
+  (INV-fabih: two nested ``class Inner``, or two in sibling namespace blocks,
+  shared one bare-name table key, so deleting the first moved the second's
+  ids). A file-scoped namespace is single per file and not in the chain.
 - Indexers (``subscript``, named ``Type.this[]``), operators and conversion
   operators (``method``, ``Type.operator+`` / ``Type.operator int``),
   destructors (``method``, ``Type.~Type``) and events declared with
@@ -83,6 +90,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis as _BaseFileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     defer_bare_method_call,
     find_child_by_type,
     iter_tree,
@@ -99,6 +107,7 @@ from hypergumbo_core.analyze.base import (
     SymbolsAt,
     symbols_at,
 )
+from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -657,6 +666,42 @@ def _get_csharp_enclosing_namespace(
     return None
 
 
+#: Type declarations a C# member or nested type can sit in.
+_CSHARP_TYPE_DECLS: frozenset[str] = frozenset({
+    "class_declaration", "interface_declaration", "struct_declaration",
+    "enum_declaration", "record_declaration",
+})
+
+
+def _csharp_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The block namespaces and types enclosing ``node``, outermost first: what
+    a member's and a nested type's stable_id hash beside its own name
+    (INV-fabih).
+
+    A block ``namespace A { ... }`` can repeat within a file (two ``class
+    Inner`` in namespaces ``A`` and ``B``), so it is a scope; a file-scoped
+    ``namespace A;`` is single per file, already identified by the file
+    anchor, and left out. Types: every enclosing class, interface, struct,
+    enum and record, not only the nearest (``_get_enclosing_class``), which
+    two nested ``Inner`` share.
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type == "namespace_declaration":
+            name = n.child_by_field_name("name")
+        elif n.type in _CSHARP_TYPE_DECLS:
+            name = n.child_by_field_name("name")
+        else:
+            return None
+        return node_text(name, source) if name is not None else None
+    return ancestor_labels(node, label)
+
+
+def _csharp_member_chain(node: "tree_sitter.Node", source: bytes, name: str) -> str:
+    """``name`` qualified by :func:`_csharp_scope`, the qualified name a member
+    hashes (``A.Inner.Go``; the emitted name stays ``Inner.Go``)."""
+    return ".".join((*_csharp_scope(node, source), name))
+
+
 def _make_csharp_qualified_name(
     namespace: Optional[str], ancestors: list[str], name: str
 ) -> str:
@@ -854,6 +899,12 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    # INV-fabih: the table formula over the enclosing block
+                    # namespaces and types (the backstop's value at top level).
+                    stable_id=scoped_table_stable_id(
+                        kind="class", lang="csharp", path=rel_path, name=name,
+                        scope=_csharp_scope(node, source),
+                    ),
                     modifiers=class_modifiers,
                     line_span=end_line - start_line + 1,
                     is_exported="public" in class_modifiers,
@@ -887,6 +938,12 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    # INV-fabih: the table formula over the enclosing block
+                    # namespaces and types (the backstop's value at top level).
+                    stable_id=scoped_table_stable_id(
+                        kind="interface", lang="csharp", path=rel_path, name=name,
+                        scope=_csharp_scope(node, source),
+                    ),
                     modifiers=iface_modifiers,
                     line_span=end_line - start_line + 1,
                     is_exported="public" in iface_modifiers,
@@ -920,6 +977,12 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    # INV-fabih: the table formula over the enclosing block
+                    # namespaces and types (the backstop's value at top level).
+                    stable_id=scoped_table_stable_id(
+                        kind="struct", lang="csharp", path=rel_path, name=name,
+                        scope=_csharp_scope(node, source),
+                    ),
                     modifiers=struct_modifiers,
                     line_span=end_line - start_line + 1,
                     is_exported="public" in struct_modifiers,
@@ -953,6 +1016,12 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    # INV-fabih: the table formula over the enclosing block
+                    # namespaces and types (the backstop's value at top level).
+                    stable_id=scoped_table_stable_id(
+                        kind="enum", lang="csharp", path=rel_path, name=name,
+                        scope=_csharp_scope(node, source),
+                    ),
                     modifiers=enum_modifiers,
                     line_span=end_line - start_line + 1,
                     is_exported="public" in enum_modifiers,
@@ -972,6 +1041,7 @@ def _extract_symbols_from_file(
                 member_list = find_child_by_type(
                     node, "enum_member_declaration_list",
                 )
+                enum_chain = _csharp_member_chain(node, source, name)
                 for member in member_list.children if member_list else ():
                     if member.type != "enum_member_declaration":
                         continue
@@ -1005,7 +1075,7 @@ def _extract_symbols_from_file(
                         stable_id=make_typed_stable_id(
                             "field", name,
                             visibility_from_modifiers(enum_modifiers),
-                            name=m_name, qualified_name=m_full,
+                            name=m_name, qualified_name=f"{enum_chain}.{m_name}",
                             file_stable_id=file_stable_id,
                         ),
                         modifiers=enum_modifiers,
@@ -1046,9 +1116,11 @@ def _extract_symbols_from_file(
 
                 # Typed stable_id (ADR-0014 §3)
                 norm_sig = normalize_csharp_signature(signature)
+                # INV-fabih: the full namespace/type chain, not the nearest
+                # owner (``full_name``) two nested owners share.
                 stable_id = make_typed_stable_id(
                     "method", norm_sig, visibility_from_modifiers(modifiers),
-                    name=name, qualified_name=full_name,
+                    name=name, qualified_name=_csharp_member_chain(node, source, name),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
@@ -1101,7 +1173,7 @@ def _extract_symbols_from_file(
                 norm_sig = normalize_csharp_signature(signature)
                 stable_id = make_typed_stable_id(
                     "constructor", norm_sig, visibility_from_modifiers(modifiers),
-                    name=name, qualified_name=full_name,
+                    name=name, qualified_name=_csharp_member_chain(node, source, name),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
@@ -1219,7 +1291,8 @@ def _extract_symbols_from_file(
                     meta={"annotations": annotations} if annotations else None,
                     stable_id=make_typed_stable_id(
                         m_kind, norm_sig, visibility_from_modifiers(modifiers),
-                        name=m_name, qualified_name=full_name,
+                        name=m_name,
+                        qualified_name=_csharp_member_chain(node, source, m_name),
                         file_stable_id=file_stable_id,
                     ),
                     signature=m_signature,
@@ -1304,7 +1377,8 @@ def _extract_symbols_from_file(
                             stable_id=make_typed_stable_id(
                                 "field", field_type or "",
                                 visibility_from_modifiers(modifiers),
-                                name=field_name, qualified_name=full_name,
+                                name=field_name,
+                                qualified_name=_csharp_member_chain(node, source, field_name),
                                 file_stable_id=file_stable_id,
                             ),
                             signature=field_type,
