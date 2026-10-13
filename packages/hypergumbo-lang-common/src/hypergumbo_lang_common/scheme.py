@@ -24,7 +24,9 @@ redefinition of another arity (``(define (run x))`` then ``(define (run x y))``)
 tied, the per-file split pass numbered them by emission, and deleting the first
 renumbered the second. A function now writes its lambda list to
 ``meta["parameters"]`` (:func:`lambda_list_entries`, shared with Racket) and
-mints ``overload_arity.declared_arity_stable_id`` from it; functions and
+mints ``overload_arity.declared_arity_stable_id`` from it (``meta["param_count"]``
+counts those entries, and the signature is the lambda list as written,
+:func:`lambda_list_signature`); functions and
 variables hash the ``define-library`` / ``library`` / ``module`` forms around
 them as their scope (:func:`form_scope`; a top-level definition has none, and a
 zero-parameter top-level function keeps its value). Two definitions of one name
@@ -101,21 +103,6 @@ def _get_function_name(node: "tree_sitter.Node") -> Optional[str]:
     return None  # pragma: no cover
 
 
-def _get_function_params(node: "tree_sitter.Node") -> list[str]:
-    """Get parameters from a function define form."""
-    params: list[str] = []
-    children = [c for c in node.children if c.type not in ("(", ")")]
-    if len(children) < 2:
-        return params  # pragma: no cover
-    sig_list = children[1]
-    sig_children = [c for c in sig_list.children if c.type not in ("(", ")")]
-    # Skip the first symbol (function name)
-    for child in sig_children[1:]:
-        if child.type == "symbol":
-            params.append(_get_node_text(child))
-    return params
-
-
 def lambda_list_entries(params: Sequence["tree_sitter.Node"]) -> list[dict[str, Any]]:
     """``meta["parameters"]`` for a Scheme-family lambda list (the nodes after
     the name in ``(define (name ...) ...)``; shared with ``racket.py``).
@@ -144,6 +131,16 @@ def lambda_list_entries(params: Sequence["tree_sitter.Node"]) -> list[dict[str, 
             if names:
                 entries.append(parameter_entry(_get_node_text(names[0]), default=True))
     return entries
+
+
+def lambda_list_signature(name: str, params: Sequence["tree_sitter.Node"]) -> str:
+    """The ``signature`` of ``(define (name ...) ...)``: the lambda list as
+    written (``(define (f x [y 1] #:k k . more) ...)``; shared with
+    ``racket.py``). It listed only the plain symbols, so an optional
+    ``[y 1]`` and a Racket keyword were missing and a keyword's parameter
+    read as positional."""
+    spelled = " ".join(" ".join(_get_node_text(p).split()) for p in params)
+    return f"(define ({name}{' ' if spelled else ''}{spelled}) ...)"
 
 
 def form_scope(node: "tree_sitter.Node", heads: frozenset[str]) -> list[str]:
@@ -204,14 +201,15 @@ def _extract_scheme_symbols(
         if _is_function_define(node):
             name = _get_function_name(node)
             if name:
-                params = _get_function_params(node)
-                signature = f"(define ({name} {' '.join(params)}) ...)"
+                lambda_list = _signature_nodes(node)
+                signature = lambda_list_signature(name, lambda_list)
                 rel_path = str(path.relative_to(repo_root))
+                entries = lambda_list_entries(lambda_list)
                 meta: dict[str, Any] = {
-                    # The ``.`` of a rest list (``(f a . rest)``) is a symbol in
-                    # this grammar, not a parameter: two parameters, not three.
-                    "param_count": sum(1 for p in params if p != "."),
-                    PARAMETERS_KEY: lambda_list_entries(_signature_nodes(node)),
+                    # What meta.parameters lists: the ``.`` of a rest list
+                    # (``(f a . rest)``, a symbol in this grammar) is not one.
+                    "param_count": len(entries),
+                    PARAMETERS_KEY: entries,
                 }
 
                 sym = Symbol(

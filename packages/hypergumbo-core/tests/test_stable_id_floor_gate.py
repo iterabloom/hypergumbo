@@ -895,6 +895,14 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "    interface I { }\n    struct S { }\n}\n",
         "namespace B {\n    class Inner {\n        int Go() { return 2; }\n        int f;\n    }\n"
         "    interface I { }\n    struct S { }\n}\n"),
+    # A property hashed its qualified name, which held the innermost
+    # namespace only: ``Inner.C.P`` in namespaces A and B tied.
+    "csharp-namespace-nested": SiblingCase(
+        "src/Nested.cs", "",
+        "namespace A {\n    namespace Inner {\n        class C {\n"
+        "            int P { get; set; }\n        }\n    }\n}\n",
+        "namespace B {\n    namespace Inner {\n        class C {\n"
+        "            int P { get; set; }\n        }\n    }\n}\n"),
     "swift-nested": SiblingCase(
         "src/Outer.swift", "",
         "class A {\n    class Inner {\n        func go() -> Int { return 1 }\n        var v: Int = 1\n    }\n"

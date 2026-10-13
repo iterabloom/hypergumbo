@@ -21,7 +21,9 @@ extract:
   bare-name table key, so two ``class Inner`` in two namespaces or functions
   tied and deleting the first moved the second; the table kinds now mint
   ``overload_arity.scoped_table_stable_id``. Top-level declarations and
-  members of top-level classes keep their values
+  members of top-level classes keep their values. The emitted
+  ``qualified_name`` carries the enclosing classes and TypeScript namespaces
+  (``A.B.C.go``; it held the class chain alone)
 - ``field`` symbols for class properties and ``variable`` for module-level
   bindings
 - One ``file`` symbol per module, anchoring top-level calls
@@ -3414,7 +3416,9 @@ def _get_jsts_class_ancestors(
     """Walk up the tree collecting all enclosing class names.
 
     Returns the chain from outermost to innermost (excluding the current
-    node itself). Used to build qualified names for nested classes/methods.
+    node itself). The implicit-``this`` owner of a call site is its last
+    entry (:func:`_jsts_enclosing_class`); qualified names also carry the
+    enclosing namespaces (:func:`_jsts_qualified_ancestors`).
     """
     chain: list[str] = []
     current = node.parent
@@ -3425,6 +3429,29 @@ def _get_jsts_class_ancestors(
                 chain.append(name)
         current = current.parent
     return list(reversed(chain))
+
+
+def _jsts_qualified_ancestors(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """The enclosing classes and TypeScript ``namespace`` / ``module`` blocks
+    of ``node``, outermost first: the chain its ``qualified_name`` carries.
+
+    A ``namespace A { namespace B { class C`` is a source-level namespace, so
+    ``C``'s qualified name is ``A.B.C``; it was the class chain alone
+    (:func:`_get_jsts_class_ancestors`, still the implicit-``this`` owner
+    lookup), ``C``. Functions are not namespaces and stay out, as does an
+    ambient ``declare module "m"``, whose string names a module specifier.
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type in ("class_declaration", "abstract_class_declaration"):
+            return _find_name_in_children(n, source)
+        if n.type in ("internal_module", "module"):
+            name = n.child_by_field_name("name")
+            if name is not None and name.type != "string":
+                return _node_text(name, source)
+        return None
+    return ancestor_labels(node, label)
 
 
 #: Nodes whose name opens a scope a JS/TS stable_id hashes (INV-fabih).
@@ -3440,9 +3467,10 @@ def _jsts_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     and the variable a function or object literal is bound to (INV-fabih).
 
     What every JS/TS stable_id hashes beside the symbol's own name. The
-    emitted ``qualified_name`` keeps the class chain alone
-    (:func:`_get_jsts_class_ancestors`), which two ``class Inner`` in
-    namespaces ``A`` and ``B`` (or in functions ``a`` and ``b``) share; their
+    emitted ``qualified_name`` carries classes and namespaces but no
+    functions (:func:`_jsts_qualified_ancestors`), which two ``class Inner``
+    in functions ``a`` and ``b`` share (and before the scheme bump it held
+    the class chain alone, shared by two namespaces ``A`` and ``B``); their
     ids tied and deleting the first moved the second. A top-level symbol has an
     empty scope and keeps its value; so does a member of a top-level class
     (the scope is its class chain).
@@ -3482,11 +3510,12 @@ def _jsts_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[s
 def _make_jsts_qualified_name(
     ancestors: list[str], name: str, lang: str
 ) -> str:
-    """Build a JS/TS qualified name: ``Class1.Class2.symbol_name``.
+    """Build a JS/TS qualified name: ``Namespace.Class1.Class2.symbol_name``.
 
     JS/TS has no source-level package concept (modules are file-scoped),
-    so qualified_name comprises only the class-ancestor chain plus the
-    symbol name. The ``lang`` argument selects the separator (always ``.``
+    so qualified_name comprises the TypeScript namespaces and classes
+    enclosing the symbol (:func:`_jsts_qualified_ancestors`) plus its
+    name. The ``lang`` argument selects the separator (always ``.``
     for both javascript and typescript, but passed through the catalog
     for consistency with the other analyzers).
     """
@@ -3865,7 +3894,8 @@ def _make_container_member_symbols(
         # linker splits on, matching the class-member branches.
         full_name = f"{container_name}.{member_name}"
         qualified_name = _make_jsts_qualified_name(
-            [container_name], member_name, lang,
+            [*_jsts_qualified_ancestors(container, source), container_name],
+            member_name, lang,
         )
         out.append(Symbol(
             id=_make_symbol_id(
@@ -4397,7 +4427,7 @@ def _extract_symbols(
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
-                        _get_jsts_class_ancestors(node, source), name, lang,
+                        _jsts_qualified_ancestors(node, source), name, lang,
                     ),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, lang),
                 )
@@ -4469,7 +4499,7 @@ def _extract_symbols(
                             shape_id=_jsts_analyzer.compute_shape_id(value_node),
                             line_span=span.end_line - span.start_line + 1,
                             qualified_name=_make_jsts_qualified_name(
-                                _get_jsts_class_ancestors(node, source), name, lang,
+                                _jsts_qualified_ancestors(node, source), name, lang,
                             ),
                             cyclomatic_complexity=compute_cyclomatic_complexity(value_node, lang),
                         )
@@ -4578,7 +4608,7 @@ def _extract_symbols(
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
-                        _get_jsts_class_ancestors(node, source), name, lang,
+                        _jsts_qualified_ancestors(node, source), name, lang,
                     ),
                 )
                 symbols.append(symbol)
@@ -4611,7 +4641,7 @@ def _extract_symbols(
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
-                        _get_jsts_class_ancestors(node, source), name, lang,
+                        _jsts_qualified_ancestors(node, source), name, lang,
                     ),
                 )
                 symbols.append(symbol)
@@ -4679,7 +4709,7 @@ def _extract_symbols(
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
-                        _get_jsts_class_ancestors(node, source), name, lang,
+                        _jsts_qualified_ancestors(node, source), name, lang,
                     ),
                 )
                 symbols.append(symbol)
@@ -4748,7 +4778,7 @@ def _extract_symbols(
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
-                        _get_jsts_class_ancestors(node, source), name, lang,
+                        _jsts_qualified_ancestors(node, source), name, lang,
                     ),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, lang),
                 )
@@ -4781,7 +4811,7 @@ def _extract_symbols(
 
                 field_type = _extract_field_type(node, source)
                 qualified_name = _make_jsts_qualified_name(
-                    _get_jsts_class_ancestors(node, source), name, lang,
+                    _jsts_qualified_ancestors(node, source), name, lang,
                 )
                 # Class-scoped canonical identity: name + qualified_name +
                 # file fold make same-named fields in different classes/files
@@ -4851,7 +4881,7 @@ def _extract_symbols(
                             shape_id=_jsts_analyzer.compute_shape_id(child),
                             line_span=span.end_line - span.start_line + 1,
                             qualified_name=_make_jsts_qualified_name(
-                                _get_jsts_class_ancestors(child, source), name, lang,
+                                _jsts_qualified_ancestors(child, source), name, lang,
                             ),
                             cyclomatic_complexity=compute_cyclomatic_complexity(child, lang),
                         )
@@ -4883,7 +4913,7 @@ def _extract_symbols(
                 signature = _extract_jsts_signature(node, source)
                 norm_sig = normalize_jsts_signature(signature)
                 qualified_name = _make_jsts_qualified_name(
-                    _get_jsts_class_ancestors(node, source), anon_name, lang,
+                    _jsts_qualified_ancestors(node, source), anon_name, lang,
                 )
                 stable_id = make_typed_stable_id(
                     "function", norm_sig,
