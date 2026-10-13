@@ -157,7 +157,9 @@ ID Schemes
   signature use the typed tier (``make_typed_stable_id``: kind, normalized signature,
   visibility, decorators, ``name``, ``qualified_name``); the untyped fallback hashes
   kind, param count, arity flags, decorators, ``name``, ``qualified_name`` and
-  ``occurrence_index``. It does NOT survive a rename or a move: both the name and
+  ``occurrence_index``. Both tiers are chosen in one place,
+  ``python_callable_stable_id``, which ``jupyter.py`` also calls for a notebook's
+  functions. It does NOT survive a rename or a move: both the name and
   the containing file feed the hash. Use ``fingerprint`` to join a symbol across a
   rename (INV-zudob).
 - **shape_id**: sha256 of AST structure (control flow, nesting).
@@ -2229,6 +2231,42 @@ def _compute_stable_id(
     )
 
 
+def python_callable_stable_id(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    kind: str,
+    containing_stable_id: str,
+    modifiers: list[str],
+    *,
+    name: str,
+    qualified_name: str,
+) -> str:
+    """The Python producer's stable_id for a ``def`` (function or method).
+
+    Typed tier first (ADR-0014 §3): ``make_typed_stable_id`` over the
+    normalized signature (parameter names, then annotations, ``self`` dropped),
+    the visibility the name convention gives, and the decorator names. The
+    untyped tier (:func:`_compute_stable_id`: parameter count and flags) is the
+    fallback for a signature that does not normalize. ``containing_stable_id``
+    is the file anchor for a function and the owning class's id for a method;
+    ``qualified_name`` carries the scope chain.
+
+    One definition for every ``def`` the Python AST path sees: ``py.py``'s
+    functions and methods, and the code cells of a notebook (``jupyter.py``),
+    so a notebook's functions take the same formula as a module's.
+    """
+    norm_sig = normalize_python_signature(_format_function_signature(node))
+    if norm_sig:
+        return make_typed_stable_id(
+            kind, norm_sig, visibility_from_modifiers(modifiers),
+            containing_stable_id, _extract_py_decorator_names(node),
+            name=name, qualified_name=qualified_name,
+        )
+    return _compute_stable_id(
+        node, containing_stable_id=containing_stable_id,
+        name=name, qualified_name=qualified_name,
+    )
+
+
 def _ast_structure(node: ast.AST) -> str:
     """Generate structural representation of an AST node, ignoring names/literals."""
     parts = [type(node).__name__]
@@ -3458,22 +3496,11 @@ def _extract_file_analysis(
                     # INV-bazij (Phase 6 PR3): the method's qualified name threads
                     # through name/qualified_name so two same-signature test methods
                     # in one class don't collide.
-                    sig = _format_function_signature(item)
-                    norm_sig = normalize_python_signature(sig)
-                    modifiers = _python_visibility_modifiers(method_name)
-                    if norm_sig:
-                        stable_id = make_typed_stable_id(
-                            "method", norm_sig,
-                            visibility_from_modifiers(modifiers),
-                            symbol.stable_id,
-                            _extract_py_decorator_names(item),
-                            name=item.name, qualified_name=method_name,
-                        )
-                    else:
-                        stable_id = _compute_stable_id(
-                            item, containing_stable_id=symbol.stable_id,
-                            name=item.name, qualified_name=method_name,
-                        )
+                    stable_id = python_callable_stable_id(
+                        item, "method", symbol.stable_id or "",
+                        _python_visibility_modifiers(method_name),
+                        name=item.name, qualified_name=method_name,
+                    )
 
                     # Build rich metadata for method (ADR-3aaa)
                     method_meta: dict[str, object] = {}
@@ -3660,34 +3687,15 @@ def _extract_file_analysis(
                 if node.returns is not None:
                     func_meta["return_type"] = ast.unparse(node.returns)
 
-                # Try typed tier first (ADR-0014 §3), fall back to untyped
-                func_sig = _format_function_signature(node)
+                # INV-zudob: the file identity is the containing scope of a
+                # top-level function, so two same-signature functions in
+                # different modules get distinct stable_ids; INV-bazij: the
+                # scope-chain name splits same-named nested functions.
                 func_modifiers = _python_visibility_modifiers(node.name)
-                norm_sig = normalize_python_signature(func_sig)
-                if norm_sig:
-                    # INV-zudob: typed tier also threads file identity as
-                    # the containing scope for top-level functions, so
-                    # two same-signature functions in different modules
-                    # get distinct stable_ids.
-                    # INV-bazij (Phase 6 PR3): prepend qualified_name into
-                    # the normalized signature so two same-signature
-                    # top-level functions in the same module split.
-                    func_stable_id = make_typed_stable_id(
-                        "function", norm_sig,
-                        visibility_from_modifiers(func_modifiers),
-                        file_containing_id,
-                        decorators=_extract_py_decorator_names(node),
-                        name=node.name, qualified_name=scoped_id_name,
-                    )
-                else:
-                    # INV-zudob: same threading for the untyped fallback.
-                    # INV-bazij: thread qualified_name as the disambiguator
-                    # so nested functions and same-named top-level functions
-                    # in different modules stay distinct.
-                    func_stable_id = _compute_stable_id(
-                        node, containing_stable_id=file_containing_id,
-                        name=node.name, qualified_name=scoped_id_name,
-                    )
+                func_stable_id = python_callable_stable_id(
+                    node, "function", file_containing_id, func_modifiers,
+                    name=node.name, qualified_name=scoped_id_name,
+                )
 
                 _fds = ast.get_docstring(node)
                 _fds_line = _fds.split("\n")[0].strip()[:80] if _fds else None

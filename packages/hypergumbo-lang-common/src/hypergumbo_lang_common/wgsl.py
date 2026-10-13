@@ -21,6 +21,20 @@ The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the WGSL-specific extraction
 logic.
 
+Identity (WI-tusad)
+-------------------
+An entry point keeps ``make_entry_stable_id`` (stage, name, file). Every other
+function mints ``compute_stable_id`` (its ``parameter_list`` is a direct
+child, so the parameter count is read from it), and a ``uniform`` / ``storage``
+binding ``overload_arity.declared_arity_stable_id`` with no arity; other
+bindings are kind ``variable`` and take the backstop's variable formula.
+WGSL has no overloading, but generated shader sources are templates: whisper.cpp
+defines ``store_scale`` under ``#ifdef INPLACE`` and again under ``#else``, and
+``rotate`` in two ``#decl(...)`` blocks. tree-sitter recovers past the
+directive lines and emits both. So the scope chain is the template branches
+open at the declaration (``_template_scopes``): each definition holds its own
+id, and deleting one branch moves no id in another.
+
 Why This Design
 ---------------
 - TreeSitterAnalyzer eliminates boilerplate orchestration code
@@ -50,6 +64,7 @@ from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import declared_arity_stable_id
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -171,6 +186,44 @@ def _detect_binding(node: "tree_sitter.Node", source: bytes) -> Optional[dict]:
     return None  # pragma: no cover - no bindings found
 
 
+#: Template directives (not WGSL: shader generators such as whisper.cpp's
+#: ``ggml-webgpu`` preprocess them away) that open, switch and close a branch.
+_TEMPLATE_OPEN = frozenset({"if", "ifdef", "ifndef", "decl"})
+_TEMPLATE_ALTERNATIVE = frozenset({"else", "elif", "elifdef", "elifndef"})
+_TEMPLATE_CLOSE = frozenset({"endif", "enddecl", "end"})
+
+
+def _template_scopes(source: bytes) -> list[tuple[str, ...]]:
+    """The template branches open at each line (0-based), outermost first.
+
+    A branch is labelled by its opening directive (``#ifdef INPLACE``,
+    ``#decl(ROTATE)``, ``#define(SHADER)``), an alternative by the opening
+    directive plus its own (``#ifdef INPLACE #else``), so the label of one
+    branch does not depend on any other. ``#define NAME value`` (a macro, no
+    block) opens nothing; an unbalanced close or alternative is ignored.
+    """
+    scopes: list[tuple[str, ...]] = []
+    stack: list[tuple[str, str]] = []
+    for line in source.decode("utf-8", errors="replace").split("\n"):
+        text = " ".join(line.split())
+        if text.startswith("#"):
+            body = text[1:].lstrip()
+            word = body.split("(", 1)[0].split(" ", 1)[0]
+            if word in _TEMPLATE_OPEN or (word == "define" and body.startswith("define(")):
+                stack.append((text, ""))
+            elif word in _TEMPLATE_ALTERNATIVE and stack:
+                stack[-1] = (stack[-1][0], text)
+            elif word in _TEMPLATE_CLOSE and stack:
+                stack.pop()
+        scopes.append(tuple(f"{opened} {alt}" if alt else opened for opened, alt in stack))
+    return scopes
+
+
+def _scoped_name(scopes: list[tuple[str, ...]], node: "tree_sitter.Node", name: str) -> str:
+    """``name`` under the template branches open where ``node`` starts."""
+    return "/".join([*scopes[node.start_point[0]], name])
+
+
 def _find_enclosing_function_wgsl(
     node: "tree_sitter.Node",
     source: bytes,
@@ -194,6 +247,7 @@ def _find_enclosing_function_wgsl(
 
 
 def _extract_wgsl_symbols(
+    analyzer: TreeSitterAnalyzer,
     root: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
@@ -204,6 +258,7 @@ def _extract_wgsl_symbols(
     """Extract symbols from WGSL AST tree (pass 1).
 
     Args:
+        analyzer: The analyzer, for ``compute_stable_id`` and the file anchor
         root: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
@@ -216,6 +271,7 @@ def _extract_wgsl_symbols(
             ``TreeSitterAnalyzer`` subclass and does not override ``analyze``, so
             populating this is all that is needed to stamp shape_id (WI-lutob).
     """
+    scopes = _template_scopes(source)
     for node in iter_tree(root):
         # Function definitions (fn name(...) { ... })
         if node.type == "function_declaration":
@@ -241,7 +297,11 @@ def _extract_wgsl_symbols(
                     id=symbol_id,
                     stable_id=(
                         make_entry_stable_id(entry_type, func_name, rel_path)
-                        if entry_type else None
+                        if entry_type else analyzer.compute_stable_id(
+                            node, "function", name=func_name,
+                            qualified_name=_scoped_name(scopes, node, func_name),
+                            file_stable_id=analyzer._file_anchor(rel_path),
+                        )
                     ),
                     shape_id=None,
                     fingerprint=None,  # stamped by the central post-pass (WI-lisog facet c)
@@ -339,7 +399,12 @@ def _extract_wgsl_symbols(
 
                     sym = Symbol(
                         id=symbol_id,
-                        stable_id=None,
+                        # ``variable`` takes the backstop's variable formula.
+                        stable_id=declared_arity_stable_id(
+                            kind=kind, lang="wgsl", path=rel_path, name=var_name,
+                            qualified_name=_scoped_name(scopes, node, var_name),
+                            arity=None,
+                        ) if kind != "variable" else None,
                         shape_id=None,
                         fingerprint=None,  # stamped by the central post-pass (WI-lisog facet c)
                         kind=kind,
@@ -428,7 +493,7 @@ class WgslAnalyzer(TreeSitterAnalyzer):
         analysis = FileAnalysis()
 
         _extract_wgsl_symbols(
-            tree.root_node, source, rel_path,
+            self, tree.root_node, source, rel_path,
             analysis.symbols, analysis.symbol_by_name,
             analysis.node_for_symbol,
         )
