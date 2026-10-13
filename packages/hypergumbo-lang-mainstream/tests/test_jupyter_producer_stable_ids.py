@@ -148,3 +148,18 @@ def test_deleting_an_earlier_cell_moves_no_id(tmp_path: Path) -> None:
     for pos, sym in after.items():
         assert sym.stable_id is not None, (pos, sym.name)
         assert sym.stable_id == before[pos].stable_id, (pos, sym.name)
+
+
+def test_classes_take_the_python_class_formula(tmp_path: Path) -> None:
+    import ast
+    src = "def f():\n    class K:\n        pass\n    return K\n"
+    _notebook(tmp_path, ["class K:\n    pass\n", src])
+    classes = {s.span.start_line: s for s in analyze_jupyter(tmp_path).symbols
+               if s.kind == "class"}
+    top, nested = ast.parse("class K:\n    pass\n").body[0], ast.parse(src).body[0].body[0]
+    assert isinstance(top, ast.ClassDef) and isinstance(nested, ast.ClassDef)
+    anchor = make_file_stable_id("jupyter", NB)
+    assert classes[1].stable_id == _compute_stable_id(
+        top, containing_stable_id=anchor, name="K", qualified_name="K")
+    assert classes[5].stable_id == _compute_stable_id(
+        nested, containing_stable_id=anchor, name="K", qualified_name="f.K")

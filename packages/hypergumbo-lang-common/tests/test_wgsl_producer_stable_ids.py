@@ -144,3 +144,20 @@ def test_template_scopes_track_open_alternative_and_close() -> None:
         ("#if A #elif B", "#define(SHADER)"), ("#if A #elif B", "#define(SHADER)"),
         ("#if A #elif B",), (), (), (), (),
     ]
+
+
+def test_structs_and_other_bindings_hash_the_template_branch(tmp_path: Path) -> None:
+    text = (
+        "#ifdef A\nstruct P { x: f32 };\n@group(0) @binding(0) var t: texture_2d<f32>;\n"
+        "#else\nstruct P { y: f32 };\n@group(0) @binding(0) var t: texture_2d<f32>;\n#endif\n"
+    )
+    (tmp_path / PATH).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / PATH).write_text(text)
+    got = sorted((s.span.start_line, s.kind, s.stable_id)
+                 for s in analyze_wgsl_files(tmp_path).symbols)
+    assert got == sorted([
+        (2, "struct", _var("struct", "P", "#ifdef A/P")),
+        (3, "variable", _var("variable", "t", "#ifdef A/t")),
+        (5, "struct", _var("struct", "P", "#ifdef A #else/P")),
+        (6, "variable", _var("variable", "t", "#ifdef A #else/t")),
+    ])
