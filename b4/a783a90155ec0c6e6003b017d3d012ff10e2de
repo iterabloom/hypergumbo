@@ -1,0 +1,50 @@
+Original commit body from d0b0a206aff7069b0b44e9323de12aff6c839cac:
+
+Symbols minted outside a language analyzer with a language were reached by
+neither the backstop floor (it runs before the linkers) nor the Class-B
+chokepoint (language=None only): the gRPC linker's services, servicers and
+stubs and the view-template linker's templates shipped stable_id=null, and
+manifest_targets' build targets (Package.swift, Gradle, Cabal ...) rode the
+floor key. One shared helper now mints them: overload_arity.scoped_stable_id
+(declared_arity_stable_id over a scope chain held as a list) and its wrapper
+pass_minted_stable_id, whose chain is led by the minting pass. A static scan
+in the floor gate fails any future language-bearing Symbol(...) minted
+outside an analyzer without a stable_id.
+
+The gate (test_stable_id_floor_gate.py) now counts EVERY kind (it counted
+callables and members), runs the pipeline with include_docs so doc/config
+kinds are seen, matches deletion survivors by (kind, name, line, col), and
+gains 34 fixtures (css, dockerfile, hcl, latex, just, makefile, mermaid,
+toml, xml, json, ansible, blade, handlebars, graphql, vhdl, verilog, smithy,
+kdl, sparql, robot, puppet, bitbake, prisma, ini, properties, markdown, rst,
+svelte, vue, astro, meson, requirements, gitignore, bibtex) plus extra files
+reaching the linker/pass mints (gRPC servicer, Django view + template,
+Package.swift, build.gradle, .cabal). Folded into floor_and_null rather than
+a new section: that section was already empty, and one census over all kinds
+needs no second definition.
+
+Every non-callable kind still on floor/null migrated floor->producer with
+its grammar's scope chain: dockerfile (stage), make (conditional branch),
+cmake (enclosing block), css (at-rules + rule selector), toml/json manifest
+entries, ansible (play), android xml (full name), bash alias (functions),
+latex (sections), just (attributes as decorators, parameters to
+meta.parameters), handlebars (open blocks), graphql non-table kinds, hcl
+(provider alias), vhdl (entity/architecture), mermaid (diagram), blade,
+gnuplot plot (plotted text), erlang record, r source (function chain).
+Table kinds keep their table formulas (base.is_table_kind). Julia now emits
+`function Base.show(...)`, `Base.length(x) = ...` and zero-method
+`function f end` (decorator "generic").
+
+Floor/null -> producer only: every previously produced id is byte-identical
+(24,079 + 4,761 ids on two corpus samples, 1,064 on the gate fixtures; the
+only fixture ids that differ are solidity's, which vary with the checkout
+path on dev as well). Corpus floor/null all kinds: 333 -> 0 (code sample),
+1,083 -> 0 (config sample). Gate: floor_and_null stays empty over every kind;
+sibling_deletion_moves 15 -> 29 languages, the 14 added being what the wider
+measurement finds (doc family hashing line numbers via make_doc_stable_id,
+and bibtex whose stable_id is its node id): value-changing, scheme batch.
+
+Refs WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral
+Refs INV-fufij-bodur-tugil-pilar-rituj-nigip-lupas-kizom
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
