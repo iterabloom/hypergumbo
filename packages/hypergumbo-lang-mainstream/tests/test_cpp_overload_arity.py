@@ -306,9 +306,25 @@ void run() {
 
 
 def test_an_unknown_signature_is_not_an_if_alternative(tmp_path: Path) -> None:
-    """A pure virtual records no parameters (unknown arity), so it is admitted
-    beside a same-named overload and the two are NOT taken for ``#if``
-    alternatives of one function: the choice stays ambiguous."""
+    """A candidate that records no parameters (unknown arity) is admitted
+    beside a same-named overload, and the two are NOT taken for ``#if``
+    alternatives of one function: the choice stays ambiguous. Every cpp
+    callable writes ``meta["parameters"]`` now (pure virtuals too, WI-tusad),
+    so the unknown one is built by hand."""
+    from hypergumbo_core.ir import Span, Symbol
+    from hypergumbo_lang_mainstream.cpp import _alternatives_of_one_function
+
+    def sym(line: int, meta) -> Symbol:
+        return Symbol(
+            id=f"cpp:a.hpp:{line}-{line}:Base::run:method", name="Base::run",
+            kind="method", language="cpp", path="a.hpp",
+            span=Span(line, line, 0, 1), meta=meta,
+        )
+
+    typed = {"parameters": [{"name": "x", "type": "double", "default": False}]}
+    assert not _alternatives_of_one_function((sym(3, None), sym(4, typed)))
+    assert _alternatives_of_one_function((sym(3, typed), sym(4, typed)))
+    # a pure virtual beside a same-arity overload of another type: ambiguous
     (tmp_path / "a.hpp").write_text("""\
 class Base {
  public:

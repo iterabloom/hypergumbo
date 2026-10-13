@@ -8,7 +8,9 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Function definitions (standalone and class methods)
 - Pure-virtual methods, which carry ``modifiers=[visibility, "virtual",
   "abstract"]``; the enclosing class is marked ``abstract`` in turn
-  (``_emit_cpp_pure_virtual`` / ``_cpp_has_pure_virtual``)
+  (``_emit_cpp_pure_virtual`` / ``_cpp_has_pure_virtual``). Each records its
+  ``meta["parameters"]`` and takes the ADR-0035 producer stable_id over them
+  (``declared_arity_stable_id``), so ``find(int)`` / ``find(int, int)`` differ
 - Data-member fields, one ``field`` Symbol per class/struct member
   (``_emit_cpp_field_symbols``)
 - Enum members, one ``field`` Symbol per enumerator named ``Color::Red``
@@ -113,10 +115,13 @@ from hypergumbo_core.ir import (
 )
 from hypergumbo_core.confidence import derive_confidence
 from hypergumbo_core.overload_arity import (
-    PARAMETERS_KEY, OverloadChoice, choose_overload, parameter_entry,
+    PARAMETERS_KEY, OverloadChoice, choose_overload, declared_arity,
+    declared_arity_stable_id,
 )
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.c_family import c_family_declarator
+from hypergumbo_core.analyze.c_family import (
+    c_family_declarator, c_family_parameter_list, c_family_parameters,
+)
 from hypergumbo_core.analyze.edge_source import mark_stand_in
 from hypergumbo_lang_mainstream.c import c_family_is_not_a_call
 from hypergumbo_lang_mainstream.header_owner import headers_owned_by
@@ -258,6 +263,8 @@ def _emit_cpp_pure_virtual(
     owner_name: str,
     visibility: str,
     file_path: "Path",
+    file_stable_id: str,
+    source: bytes,
     analysis: "AnalysisResult",
     run: AnalysisRun,
 ) -> None:
@@ -266,10 +273,26 @@ def _emit_cpp_pure_virtual(
     Named ``Owner::method`` to match every other cpp member, so the shared
     member-name splitter recovers the owner. Carries the ``abstract``
     modifier, which is where ``is_abstract_type`` reads abstractness.
+
+    Its parameters go to ``meta["parameters"]`` like a definition's, and its
+    stable_id is the ADR-0035 producer formula over them
+    (``declared_arity_stable_id``, WI-tusad): ``virtual int find(int) = 0`` and
+    ``find(int, int)`` in one class used to tie on the backstop floor key and
+    both go null. ``abstract,virtual`` is its decorator string, so it never
+    ties with an out-of-line definition of the same pure virtual in the file.
     """
     start_line = field_decl.start_point[0] + 1
     end_line = field_decl.end_point[0] + 1
     full_name = f"{owner_name}::{method_name}"
+    declarator = _find_child_by_type(field_decl, "function_declarator")
+    param_list = (
+        _find_child_by_type(declarator, "parameter_list")
+        if declarator is not None else None
+    )
+    meta = (
+        {PARAMETERS_KEY: c_family_parameters(param_list, source)}
+        if param_list is not None else None
+    )
     analysis.symbols.append(Symbol(
         id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
         name=full_name,
@@ -286,6 +309,12 @@ def _emit_cpp_pure_virtual(
         origin_run_id=run.execution_id,
         modifiers=[visibility, "virtual", "abstract"],
         line_span=end_line - start_line + 1,
+        meta=meta,
+        stable_id=declared_arity_stable_id(
+            kind="method", lang="cpp", path=str(file_path), name=full_name,
+            qualified_name="", arity=declared_arity(meta),
+            decorators="abstract,virtual", containing_stable_id=file_stable_id,
+        ),
     ))
 
 
@@ -391,81 +420,6 @@ def _extract_field_types_cpp(
     return fields
 
 
-def _cpp_parameter_list(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
-    """The ``parameter_list`` of a function definition or prototype, or None.
-
-    The function's own declarator, at any depth (``c_family_declarator``). A
-    conversion operator (``operator bool() const``) has none: its parameter
-    list sits in the ``operator_cast``'s abstract declarator.
-    """
-    shape = c_family_declarator(node)
-    declarator = shape.function_declarator
-    if declarator is None and shape.name is not None:
-        declarator = next(
-            (n for n in iter_tree(shape.name) if n.type == "abstract_function_declarator"),
-            None,
-        )
-    if declarator is None:
-        return None
-    return _find_child_by_type(declarator, "parameter_list")
-
-
-def _cpp_parameter_name(param: "tree_sitter.Node", source: bytes) -> str:
-    """The declared name of one parameter (``*&x`` -> ``x``), "" if unnamed."""
-    current = param.child_by_field_name("declarator")
-    while current is not None and current.type not in ("identifier", "field_identifier"):
-        inner = current.child_by_field_name("declarator")
-        if inner is None:
-            inner = next(
-                (c for c in current.named_children
-                 if c.type.endswith("declarator") or c.type == "identifier"),
-                None,
-            )
-        current = inner
-    return _node_text(current, source) if current is not None else ""
-
-
-def _cpp_parameters(
-    param_list: "tree_sitter.Node", source: bytes,
-) -> list[dict[str, Any]]:
-    """``meta["parameters"]`` for a C++ parameter list (WI-hilum, ADR-0058).
-
-    ``f(void)`` declares no parameter. ``int y = 2`` is an
-    ``optional_parameter_declaration`` (``default``); C's ``...`` token and a
-    pack ``Args&&... args`` (``variadic_parameter_declaration``) take any number
-    of arguments (``variadic``). A default written only on a separate
-    declaration is merged in later (``CppAnalyzer.register_symbol``).
-    """
-    entries: list[dict[str, Any]] = []
-    for child in param_list.children:
-        if child.type == "...":
-            entries.append(parameter_entry("...", variadic=True))
-            continue
-        if child.type not in (
-            "parameter_declaration", "optional_parameter_declaration",
-            "variadic_parameter_declaration",
-        ):
-            continue
-        # The type as written before the declarator, qualifiers included
-        # (``const char``); the ``*`` / ``&`` belong to the declarator.
-        declarator = child.child_by_field_name("declarator")
-        end = declarator.start_byte if declarator is not None else (
-            child.child_by_field_name("type") or child
-        ).end_byte
-        type_text = " ".join(
-            source[child.start_byte:end].decode("utf-8", errors="replace").split()
-        ) or None
-        name = _cpp_parameter_name(child, source)
-        if child.type == "parameter_declaration" and not name and type_text == "void":
-            continue  # ``f(void)``: the C spelling of an empty list
-        entries.append(parameter_entry(
-            name, type_text,
-            default=child.type == "optional_parameter_declaration",
-            variadic=child.type == "variadic_parameter_declaration",
-        ))
-    return entries
-
-
 def _cpp_call_arity(call_node: "tree_sitter.Node") -> Optional[int]:
     """How many arguments a call passes; None when it cannot be counted.
 
@@ -533,7 +487,7 @@ def _record_cpp_prototype(
     legal. Prototypes are therefore collected here and their defaults merged
     into the matching definition when the run's symbols are registered.
     """
-    param_list = _cpp_parameter_list(node)
+    param_list = c_family_parameter_list(node)
     if param_list is None:
         return
     shape = c_family_declarator(node)
@@ -544,7 +498,7 @@ def _record_cpp_prototype(
         owner = _get_enclosing_class(node, source)
         if owner:
             name = f"{owner}::{name}"
-    prototypes.setdefault(name, []).append(_cpp_parameters(param_list, source))
+    prototypes.setdefault(name, []).append(c_family_parameters(param_list, source))
 
 
 def _extract_cpp_signature(
@@ -558,7 +512,7 @@ def _extract_cpp_signature(
         return None  # pragma: no cover
 
     shape = c_family_declarator(node)
-    param_list = _cpp_parameter_list(node)
+    param_list = c_family_parameter_list(node)
     if not param_list:
         return None  # pragma: no cover - every definition shape names its parameters
 
@@ -800,7 +754,7 @@ def _emit_cpp_field_symbols(
         if pure_virtual is not None:
             _emit_cpp_pure_virtual(
                 child, pure_virtual, owner_name, current_visibility,
-                file_path, analysis, run,
+                file_path, file_stable_id, source, analysis, run,
             )
             continue
         names, is_function, has_nested_type = _cpp_data_declarators(child, source)
@@ -1093,9 +1047,9 @@ def _extract_symbols_from_tree(
                 # WI-hilum: the arity fact's declared home (ADR-0058), read by
                 # overload selection in Pass 2. Written for every definition,
                 # ``[]`` included: absent would mean UNKNOWN.
-                param_list = _cpp_parameter_list(node)
+                param_list = c_family_parameter_list(node)
                 fn_meta = (
-                    {PARAMETERS_KEY: _cpp_parameters(param_list, source)}
+                    {PARAMETERS_KEY: c_family_parameters(param_list, source)}
                     if param_list is not None else None
                 )
 

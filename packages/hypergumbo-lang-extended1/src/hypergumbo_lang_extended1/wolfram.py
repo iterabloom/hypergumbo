@@ -291,9 +291,8 @@ def _extract_symbols_from_file(
                 compute_cyclomatic_complexity(node, "wolfram") if _is_callable else None
             ),
             line_span=(end_line - start_line + 1) if _is_callable else None,
+            meta=meta or None,
         )
-        if meta:
-            sym.meta = meta
         symbols.append(sym)
 
     for node in iter_tree(tree.root_node):

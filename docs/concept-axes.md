@@ -166,7 +166,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`id_selector`** — CSS id selector symbol. CANONICAL per audit-findings 0007.
 - **`import`** — Top-level wasm-bindgen FFI import declaration. Reclassified DEPRECATE-NO-FOLD → CANONICAL on 2026-05-07 by the indirection-aware re-audit: the original Cluster E sub-case (b) drop verdict in audit-findings 0010 was correct for the css.py / jsonnet.py / astro.py / r_lang.py producers it inventoried, but Wave 6 PR 3 (wasm_import → kind="import" + meta["compilation_target"]="wasm") added wasm_bindgen.py:266 as a new producer for a different purpose — a synthetic boundary node the slicer BFS needs for continuity. The wasm-bindgen `import` is a real top-level construct in its source DSL, not a relabel of the imports Edge.
 - **`index`** — Index symbol (SQL / DSL). CANONICAL per audit-findings 0007.
-- **`inductive`** — Lean ``inductive`` type declaration (``lean.py:392``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``lean.py`` emits via ``add_symbol(..., 'inductive')`` indirection).
+- **`inductive`** — Lean ``inductive`` type declaration (``lean.py:391``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``lean.py`` emits via ``add_symbol(..., 'inductive')`` indirection).
 - **`input`** — Input symbol (Terraform / shader). CANONICAL per audit-findings 0007.
 - **`instance`** — Typeclass / interface instance declaration (Haskell / Lean / PureScript `instance`, Scala 3 `given`).
 - **`interface`** — Interface declaration.
@@ -239,7 +239,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`task`** — Generic task symbol. CANONICAL per audit-findings 0006.
 - **`template`** — Template declaration (C++ / Vue / Handlebars).
 - **`test`** — Test-case symbol. CANONICAL per audit-findings 0006.
-- **`theorem`** — Theorem-prover top-level construct (Lean theorems and lemmas at ``lean.py:356,369``; TLA+ theorems at ``tlaplus.py:287``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; both producers emit via ``add_symbol(..., 'theorem')`` indirection).
+- **`theorem`** — Theorem-prover top-level construct (Lean theorems and lemmas at ``lean.py:355,368``; TLA+ theorems at ``tlaplus.py:286``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; both producers emit via ``add_symbol(..., 'theorem')`` indirection).
 - **`trait`** — Trait declaration (Rust / Scala / Groovy).
 - **`trigger`** — Pipeline / DB trigger symbol. CANONICAL per audit-findings 0006.
 - **`type`** — Type declaration (TypeScript type, Haskell type, etc.).
@@ -615,7 +615,7 @@ A consumer needing one of these reads its home. The nine that parse the string i
 | Fact | Declared home | Populated by |
 | --- | --- | --- |
 | `return_type` | `FileAnalysis.method_return_types` | go, rust, scala, swift, objc |
-| `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 30 analyzers, including py.py, cpp, elixir and nim |
+| `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 33 analyzers, including py.py, cpp, elixir and nim |
 | `value_type` | `FileAnalysis.class_field_types` | csharp, cpp, go, rust, swift |
 
 **Closed parser set.** 8 consumers parse the value and are grandfathered by the 2026-09-21 owner ruling; `signature_axis.find_undeclared_value_parsers` fails on any site not among them. Adding one is a decision, and that gate is where it gets made. The count may only go DOWN — it was 9 at declaration and each drop is one language reading its declared home instead.

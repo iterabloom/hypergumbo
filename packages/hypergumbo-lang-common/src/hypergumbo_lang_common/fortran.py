@@ -26,6 +26,16 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    ``use m, only: local => orig`` (``_extract_use_aliases``) map
    ``local`` to ``m.orig`` as the resolver's path_hint (ADR-0007)
 
+Identity (WI-tusad): functions and subroutines record their dummy arguments in
+``meta["parameters"]``, each typed from the unit's own declaration of it
+(``_fortran_parameters``), and mint the ADR-0035 producer stable_id with
+``overload_arity.declared_arity_stable_id``, the enclosing units (module,
+submodule, program, host procedure) as the qualified name. Programs and
+derived-type components take the same formula with no arity. Before, none of
+them computed a stable_id and rode the backstop floor key, which two
+same-name procedures in one file (``run`` in two modules) share and lose.
+Modules, types and variables keep the table formula.
+
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Fortran-specific extraction
 logic.
@@ -50,7 +60,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -64,6 +74,9 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -311,6 +324,91 @@ def _extract_vardecl_type(node: "tree_sitter.Node", source: bytes) -> str:
     return node_text(node.children[0], source)
 
 
+#: The units that scope a declaration, and the statement naming each.
+_FORTRAN_SCOPE_STATEMENTS = {
+    "module": "module_statement",
+    "submodule": "submodule_statement",
+    "program": "program_statement",
+    "function": "function_statement",
+    "subroutine": "subroutine_statement",
+}
+
+
+def _fortran_scope_chain(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The (lowercased) names of the units enclosing ``node``, outermost first.
+
+    A module procedure sits in its module, an internal procedure in its host
+    (``contains``), a component in its derived type. Two modules of one file
+    may each define ``run``; the chain is what tells them apart in a
+    stable_id's qualified name. A unit whose name cannot be read adds nothing.
+    """
+    chain: list[str] = []
+    current = node.parent
+    while current is not None:
+        statement = _FORTRAN_SCOPE_STATEMENTS.get(current.type)
+        if statement is not None:
+            name = _get_statement_name(current, source, statement)
+            if name is not None:
+                chain.append(name)
+        elif current.type == "derived_type_definition":
+            type_name = _get_type_name(current, source)
+            if type_name is not None:
+                chain.append(type_name)
+        current = current.parent
+    chain.reverse()
+    return chain
+
+
+def _fortran_parameters(
+    node: "tree_sitter.Node", source: bytes, stmt_type: str,
+) -> list[dict[str, Any]]:
+    """``meta["parameters"]`` of a function or subroutine: its dummy arguments.
+
+    Names come from the statement's ``parameters``; each type from the unit's
+    own declaration of that name (``integer, intent(in) :: x`` -> ``integer``,
+    ``type(point) :: p`` -> ``type(point)``), lowercased and space-normalised
+    since Fortran is case-insensitive; an ``optional`` dummy is defaulted. A
+    dummy with no declaration (implicit typing) has no type. Fortran's generic
+    interfaces resolve by these types, so they are the identity input
+    (``declared_arity_stable_id``'s typed tier).
+    """
+    names: list[str] = []
+    for child in node.children:
+        if child.type == stmt_type:
+            params = next((c for c in child.children if c.type == "parameters"), None)
+            for ident in params.children if params is not None else ():
+                if ident.type == "identifier":
+                    names.append(node_text(ident, source).lower())
+    declared: dict[str, tuple[str, bool]] = {}
+    for child in node.children:
+        if child.type != "variable_declaration" or not child.children:
+            continue
+        type_text = " ".join(_extract_vardecl_type(child, source).lower().split())
+        optional = any(
+            q.type == "type_qualifier" and node_text(q, source).strip().lower() == "optional"
+            for q in child.children
+        )
+        for var_name in _iter_vardecl_names(child, source):
+            declared.setdefault(var_name, (type_text, optional))
+    entries: list[dict[str, Any]] = []
+    for name in names:
+        type_text, optional = declared.get(name, ("", False))
+        entries.append(parameter_entry(name, type_text or None, default=optional))
+    return entries
+
+
+def _fortran_stable_id(
+    kind: str, rel_path: str, name: str, node: "tree_sitter.Node", source: bytes,
+    meta: Optional[dict[str, Any]],
+) -> str:
+    """The ADR-0035 producer stable_id: unit chain plus declared dummy arguments."""
+    return declared_arity_stable_id(
+        kind=kind, lang="fortran", path=rel_path, name=name,
+        qualified_name=".".join([*_fortran_scope_chain(node, source), name]),
+        arity=declared_arity(meta),
+    )
+
+
 def _make_data_symbol(
     name: str,
     kind: str,
@@ -318,6 +416,7 @@ def _make_data_symbol(
     rel_path: str,
     run_id: str,
     signature: Optional[str],
+    source: bytes,
 ) -> Symbol:
     """Build a field/variable Symbol anchored on a ``variable_declaration`` node."""
     start_line = decl_node.start_point[0] + 1
@@ -325,7 +424,14 @@ def _make_data_symbol(
     symbol_id = make_symbol_id("fortran", rel_path, start_line, end_line, name, kind)
     return Symbol(
         id=symbol_id,
-        stable_id=None,
+        # A component's chain ends in its derived type, which its display name
+        # already carries (``point.x``), so the chain drops it. A variable
+        # keeps the table formula (stable_id None here).
+        stable_id=declared_arity_stable_id(
+            kind=kind, lang="fortran", path=rel_path, name=name,
+            qualified_name=".".join([*_fortran_scope_chain(decl_node, source)[:-1], name]),
+            arity=None,
+        ) if kind == "field" else None,
         shape_id=None,
         fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this
         kind=kind,
@@ -516,7 +622,7 @@ def _extract_fortran_symbols(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_fortran_stable_id("program", rel_path, name, node, source, None),
                     shape_id=None,
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="program",
@@ -545,10 +651,12 @@ def _extract_fortran_symbols(
 
                 # Extract signature
                 signature = _extract_fortran_signature(node, source, is_function=True)
+                fn_meta = {PARAMETERS_KEY: _fortran_parameters(node, source, "function_statement")}
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_fortran_stable_id("function", rel_path, name, node, source, fn_meta),
+                    meta=fn_meta,
                     shape_id=None,
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="function",
@@ -580,10 +688,12 @@ def _extract_fortran_symbols(
 
                 # Extract signature
                 signature = _extract_fortran_signature(node, source, is_function=False)
+                sub_meta = {PARAMETERS_KEY: _fortran_parameters(node, source, "subroutine_statement")}
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_fortran_stable_id("subroutine", rel_path, name, node, source, sub_meta),
+                    meta=sub_meta,
                     shape_id=None,
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="subroutine",
@@ -654,13 +764,13 @@ def _extract_fortran_symbols(
                     for var_name in names:
                         symbols.append(_make_data_symbol(
                             f"{owner}.{var_name}", "field",
-                            node, rel_path, run_id, signature,
+                            node, rel_path, run_id, signature, source,
                         ))
             elif _scope_is_variable_unit(scope):
                 for var_name in names:
                     symbols.append(_make_data_symbol(
                         var_name, "variable",
-                        node, rel_path, run_id, signature,
+                        node, rel_path, run_id, signature, source,
                     ))
             # else: subroutine/function local, block-construct local, or
             # interface-body parameter -> skipped.

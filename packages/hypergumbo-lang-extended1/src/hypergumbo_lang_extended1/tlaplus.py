@@ -230,9 +230,8 @@ def _extract_symbols_from_file(
             origin=PASS_ID,
             origin_run_id=run_id,
             signature=signature,
+            meta=meta or None,
         )
-        if meta:
-            sym.meta = meta
         symbols.append(sym)
 
     # First pass: collect RECURSIVE names

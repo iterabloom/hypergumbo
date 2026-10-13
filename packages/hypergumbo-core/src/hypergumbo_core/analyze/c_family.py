@@ -37,10 +37,32 @@ returns no declarator rather than let a caller mint a symbol named after the
 macro. Calls inside such a definition are anchored by the caller's rule for an
 unnamed definition (``hypergumbo_core.analyze.edge_source``), never on an
 invented name.
+
+The parameters, too
+-------------------
+The same declarator holds the function's ``parameter_list``, and every
+C-family analyzer needs it twice: as ``meta["parameters"]``, the declared
+home of the arity fact that overload selection reads (WI-hilum), and as the
+identity input that tells same-name overloads apart (WI-tusad:
+``overload_arity.declared_arity_stable_id``, whose typed tier hashes the
+parameter types, since ``f(int)`` / ``f(float)`` tie on the count alone).
+``compute_stable_id`` looks for the list as a DIRECT child of the definition
+and never finds it here, so it hashed ``param_count 0`` for every C-family
+overload. :func:`c_family_parameter_list` finds it through
+:func:`c_family_declarator`, and :func:`c_family_parameters` turns it into
+``parameter_entry`` records. They began in ``cpp.py``; CUDA, GLSL and HLSL
+share the grammar shape (tree-sitter-cuda and tree-sitter-hlsl extend
+tree-sitter-cpp, tree-sitter-glsl extends tree-sitter-c) and cannot import
+``hypergumbo-lang-mainstream``, so they live here, with
+:func:`c_family_scope_chain`, the enclosing namespaces and classes an
+inline member's identity needs beside its bare name.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, NamedTuple, Optional
+
+from ..overload_arity import parameter_entry
+from .base import iter_tree
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -121,3 +143,115 @@ def c_family_declarator(node: "tree_sitter.Node") -> CFamilyDeclarator:
     return CFamilyDeclarator(
         function_declarator, current, outer_functions > 0, pointers_at_function,
     )
+
+
+def c_family_parameter_list(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The ``parameter_list`` of a function definition or prototype, or None.
+
+    The function's own declarator, at any depth (:func:`c_family_declarator`).
+    A C++ conversion operator (``operator bool() const``) has none: its
+    parameter list sits in the ``operator_cast``'s abstract declarator.
+    """
+    shape = c_family_declarator(node)
+    declarator = shape.function_declarator
+    if declarator is None and shape.name is not None:
+        declarator = next(
+            (n for n in iter_tree(shape.name) if n.type == "abstract_function_declarator"),
+            None,
+        )
+    if declarator is None:
+        return None
+    return next((c for c in declarator.children if c.type == "parameter_list"), None)
+
+
+def c_family_parameter_name(param: "tree_sitter.Node", source: bytes) -> str:
+    """The declared name of one parameter (``*&x`` -> ``x``), "" if unnamed."""
+    current = param.child_by_field_name("declarator")
+    while current is not None and current.type not in ("identifier", "field_identifier"):
+        inner = current.child_by_field_name("declarator")
+        if inner is None:
+            inner = next(
+                (c for c in current.named_children
+                 if c.type.endswith("declarator") or c.type == "identifier"),
+                None,
+            )
+        current = inner
+    if current is None:
+        return ""
+    return source[current.start_byte:current.end_byte].decode("utf-8", errors="replace")
+
+
+def c_family_parameters(
+    param_list: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, Any]]:
+    """``meta["parameters"]`` for a C-family parameter list (WI-hilum, ADR-0058).
+
+    ``f(void)`` declares no parameter. ``int y = 2`` is an
+    ``optional_parameter_declaration`` (``default``); C's ``...`` token and a
+    pack ``Args&&... args`` (``variadic_parameter_declaration``) take any number
+    of arguments (``variadic``). The type is the text before the declarator,
+    qualifiers included (``const char``, GLSL ``in vec2``, HLSL ``uniform
+    float``); the ``*`` / ``&`` / ``[2]`` belong to the declarator and are not in
+    it. A default written only on a separate C++ declaration is merged in by
+    ``cpp.py`` at registration, never here.
+    """
+    entries: list[dict[str, Any]] = []
+    for child in param_list.children:
+        if child.type == "...":
+            entries.append(parameter_entry("...", variadic=True))
+            continue
+        if child.type not in (
+            "parameter_declaration", "optional_parameter_declaration",
+            "variadic_parameter_declaration",
+        ):
+            continue
+        declarator = child.child_by_field_name("declarator")
+        end = declarator.start_byte if declarator is not None else (
+            child.child_by_field_name("type") or child
+        ).end_byte
+        type_text = " ".join(
+            source[child.start_byte:end].decode("utf-8", errors="replace").split()
+        ) or None
+        name = c_family_parameter_name(child, source)
+        if child.type == "parameter_declaration" and not name and type_text == "void":
+            continue  # ``f(void)``: the C spelling of an empty list
+        entries.append(parameter_entry(
+            name, type_text,
+            default=child.type == "optional_parameter_declaration",
+            variadic=child.type == "variadic_parameter_declaration",
+        ))
+    return entries
+
+
+#: The C-family nodes that scope a definition, and the child naming each.
+_SCOPE_NAMES = {
+    "namespace_definition": (
+        "namespace_identifier", "nested_namespace_specifier", "identifier",
+    ),
+    "class_specifier": ("type_identifier",),
+    "struct_specifier": ("type_identifier",),
+    "union_specifier": ("type_identifier",),
+}
+
+
+def c_family_scope_chain(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The names of the namespaces and classes enclosing ``node``, outermost first.
+
+    An inline member function is named by its bare ``field_identifier``
+    (``int size() { ... }`` in ``struct A``), so two classes' ``size`` share a
+    name; the chain is what tells them apart in a stable_id's qualified name.
+    An anonymous namespace or class contributes nothing.
+    """
+    chain: list[str] = []
+    current = node.parent
+    while current is not None:
+        name_types = _SCOPE_NAMES.get(current.type)
+        if name_types is not None:
+            name = next((c for c in current.children if c.type in name_types), None)
+            if name is not None:
+                chain.append(
+                    source[name.start_byte:name.end_byte].decode("utf-8", errors="replace")
+                )
+        current = current.parent
+    chain.reverse()
+    return chain

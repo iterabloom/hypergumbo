@@ -2651,6 +2651,64 @@ class TestCppPureVirtualEmission:
         assert not is_abstract_type(by_name["Square"].kind, by_name["Square"].modifiers)
 
 
+class TestCppPureVirtualStableId:
+    """WI-tusad: a pure virtual takes the ADR-0035 producer stable_id.
+
+    It computed none and rode the backstop floor key (kind, path, name), so
+    ``virtual int find(int) = 0`` and ``find(int, int)`` in one class shared a
+    key and both went null. It now records its parameters (types included) and
+    mints ``declared_arity_stable_id`` over them, the class in its name and
+    ``abstract,virtual`` as its decorators.
+    """
+
+    _CODE = (
+        "class Box {\n"
+        " public:\n"
+        "  virtual int find(int x) = 0;\n"
+        "  virtual int find(int x, int y = 0) const = 0;\n"
+        "  virtual void reset() = 0;\n"
+        "};\n"
+    )
+
+    def _methods(self, root: Path, code: str) -> list:
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "s.cpp").write_text(code)
+        return [s for s in analyze_cpp(root).symbols if s.kind == "method"]
+
+    def test_overloaded_pure_virtuals_get_distinct_producer_ids(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_core.analyze.base import make_file_stable_id
+        from hypergumbo_core.overload_arity import (
+            declared_arity, declared_arity_stable_id, parameter_entry,
+        )
+
+        methods = self._methods(tmp_path, self._CODE)
+        assert [m.name for m in methods] == ["Box::find", "Box::find", "Box::reset"]
+        assert [(m.meta or {}).get("parameters") for m in methods] == [
+            [parameter_entry("x", "int")],
+            [parameter_entry("x", "int"), parameter_entry("y", "int", default=True)],
+            [],
+        ]
+        for m in methods:
+            assert m.stable_id == declared_arity_stable_id(
+                kind="method", lang="cpp", path="s.cpp", name=m.name,
+                qualified_name="", arity=declared_arity(m.meta),
+                decorators="abstract,virtual",
+                containing_stable_id=make_file_stable_id("cpp", "s.cpp"),
+            )
+        assert len({m.stable_id for m in methods}) == 3
+
+    def test_deleting_an_earlier_overload_moves_nothing(self, tmp_path: Path) -> None:
+        deleted = "  virtual int find(int x) = 0;\n"
+        before = {m.span.start_line: m for m in self._methods(tmp_path / "a", self._CODE)}
+        after = self._methods(tmp_path / "b", self._CODE.replace(deleted, "\n"))
+        assert len(after) == 2
+        for m in after:
+            assert m.stable_id is not None
+            assert m.stable_id == before[m.span.start_line].stable_id
+
+
 class TestCppUsingAndTypePositionsAreNotAttributeReads:
     """INV-pusin, C++ half: ``using std::string;`` is an import and
     ``std::string f(int)`` is a type. Neither is an attribute read, and
