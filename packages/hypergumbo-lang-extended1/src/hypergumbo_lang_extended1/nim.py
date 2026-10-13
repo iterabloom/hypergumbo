@@ -43,6 +43,11 @@ The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Nim-specific extraction
 logic.
 
+A callable's stable_id hashes its ``meta["parameters"]``, types included
+(``overload_arity.node_declared_arity_stable_id``, WI-tusad): the grammar has
+no parameter-list child where ``compute_stable_id`` looks, so the overloads
+``run(x: int)`` / ``run(x: string)`` tied on ``param_count 0``.
+
 Why This Design
 ---------------
 - TreeSitterAnalyzer eliminates ~150 lines of boilerplate
@@ -77,7 +82,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
-    PARAMETERS_KEY, choose_overload, parameter_entry,
+    PARAMETERS_KEY, choose_overload, node_declared_arity_stable_id, parameter_entry,
 )
 from hypergumbo_core.symbol_resolution import LookupResult
 
@@ -161,8 +166,10 @@ def _make_symbol(
         # ``extract_symbols_from_file(... rel_path ...)``, so the anchor is
         # location-independent — two same-(kind, name) procs in different
         # files now hash distinctly.
-        stable_id=analyzer.compute_stable_id(
-            node, kind=kind, name=name,
+        # WI-tusad: arity (with types) from meta["parameters"], so the
+        # overloads run(int) / run(string) stop tying.
+        stable_id=node_declared_arity_stable_id(
+            analyzer, node, kind=kind, name=name, meta=meta,
             file_stable_id=analyzer._file_anchor(rel_path),
         ),
         signature=signature,

@@ -60,7 +60,10 @@ Call-edge details:
   (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
   Member calls carry ``call_construct="method"``.
 - **Overloads** (WI-hilum): every definition records its parameters in
-  ``meta["parameters"]`` (``hypergumbo_core.overload_arity``), with a
+  ``meta["parameters"]`` (``hypergumbo_core.overload_arity``), and its
+  stable_id hashes them (``node_declared_arity_stable_id``, WI-tusad; they sit
+  under the declarator, so ``compute_stable_id`` tied ``run()`` / ``run(int)``
+  on ``param_count 0``), with a
   default written only on a separate prototype merged in at registration
   (``_merge_prototype_defaults``). The callee the name gives is then
   re-chosen among its same-named definitions by the call's argument count
@@ -116,7 +119,7 @@ from hypergumbo_core.ir import (
 from hypergumbo_core.confidence import derive_confidence
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, OverloadChoice, choose_overload, declared_arity,
-    declared_arity_stable_id,
+    declared_arity_stable_id, node_declared_arity_stable_id,
 )
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.c_family import (
@@ -1074,8 +1077,11 @@ def _extract_symbols_from_tree(
                     cyclomatic_complexity=compute_cyclomatic_complexity(
                         node, "cpp",
                     ),
-                    stable_id=_analyzer.compute_stable_id(
-                        node, kind=kind, name=name,
+                    # WI-tusad: arity from meta["parameters"] (the declarator's
+                    # list compute_stable_id never finds), so run() / run(int)
+                    # stop tying on param_count 0.
+                    stable_id=node_declared_arity_stable_id(
+                        _analyzer, node, kind=kind, name=name, meta=fn_meta,
                         file_stable_id=file_stable_id,
                     ),
                 )

@@ -31,6 +31,12 @@ and result assembly. This module provides only the HLSL-specific extraction logi
    (confidence 0.85 * resolver confidence) or to an
    'hlsl:external:<name>:function' target at 0.70 confidence.
 
+A function records its parameters, types included, in ``meta["parameters"]``
+(``c_family_parameters``) and its stable_id hashes them
+(``overload_arity.node_declared_arity_stable_id``, WI-tusad): the list sits
+under the declarator, where ``compute_stable_id`` never looked, so the
+overloads ``f(float)`` / ``f(float2)`` tied on ``param_count 0``.
+
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
@@ -56,8 +62,10 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
 )
+from hypergumbo_core.analyze.c_family import c_family_parameters
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.overload_arity import PARAMETERS_KEY, node_declared_arity_stable_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
@@ -144,8 +152,11 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", rel_path: str, run_id: str,
         # tree-sitter producer passes no enclosing-scope containing, so the
         # anchor lands in the containing slot. ``rel_path`` is repo-relative
         # (the base ``analyze()`` loop derives it via relative_to(repo_root)).
-        stable_id=analyzer.compute_stable_id(
-            node, kind=kind, name=name,
+        # WI-tusad: the arity comes from meta["parameters"] (the declarator's
+        # list, which compute_stable_id never finds), so f(float) / f(float2)
+        # stop tying.
+        stable_id=node_declared_arity_stable_id(
+            analyzer, node, kind=kind, name=name, meta=meta,
             file_stable_id=analyzer._file_anchor(rel_path),
         ),
         signature=signature,
@@ -184,8 +195,13 @@ def _extract_hlsl_symbols(
                 continue  # pragma: no cover
             func_name = node_text(name_node, source)
             signature = _extract_function_signature(func_decl, source)
+            param_list = find_child_by_type(func_decl, "parameter_list")
+            meta = (
+                {PARAMETERS_KEY: c_family_parameters(param_list, source)}
+                if param_list is not None else None
+            )
             sym = _make_symbol(analyzer, rel_path, run_id, source, node, func_name, "function",
-                               signature=signature)
+                               signature=signature, meta=meta)
             symbols.append(sym)
             local_symbols[func_name] = sym
             node_for_symbol[sym.id] = node

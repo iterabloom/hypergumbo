@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import math
 
+import tree_sitter_language_pack as tlp
+
 from hypergumbo_core.analyze.base import (
-    ArityFlags, assemble_stable_id, make_declaration_stable_id, make_file_stable_id,
+    ArityFlags, TreeSitterAnalyzer, assemble_stable_id, make_declaration_stable_id,
+    make_file_stable_id,
     make_typed_stable_id,
 )
 from hypergumbo_core.behaviours import CALLBACK_MODIFIER, callback_stable_id
@@ -28,6 +31,7 @@ from hypergumbo_core.overload_arity import (
     declared_arity_of_entries,
     declared_arity_stable_id,
     narrow_by_arity,
+    node_declared_arity_stable_id,
     parameter_entry,
     pass_minted_stable_id,
     scoped_stable_id,
@@ -291,4 +295,47 @@ def test_scoped_id_joins_the_chain_into_the_qualified_name() -> None:
     assert got != scoped_stable_id(
         kind="build_arg", lang="dockerfile", path="Dockerfile", name="V",
         scope=("run",), decorators="d",
+    )
+
+
+class _Analyzer(TreeSitterAnalyzer):
+    lang = "python"
+
+
+def _decorated_function():
+    tree = tlp.get_parser("python").parse(b"@deco\ndef f(x):\n    pass\n")
+    return tree.root_node.children[0]  # decorated_definition
+
+
+def test_node_helper_without_declared_arity_is_compute_stable_id() -> None:
+    """A producer moving onto the helper keeps every id whose meta declares no
+    arity: the scheme-bump churn is confined to callables with parameters."""
+    analyzer, node = _Analyzer(), _decorated_function()
+    anchor = make_file_stable_id("python", "a.py")
+    assert node_declared_arity_stable_id(
+        analyzer, node, kind="function", name="f", meta=None,
+        file_stable_id=anchor, qualified_name="M.f",
+    ) == analyzer.compute_stable_id(
+        node, kind="function", name="f", qualified_name="M.f", file_stable_id=anchor,
+    )
+
+
+def test_node_helper_reads_arity_from_meta_and_decorators_from_the_node() -> None:
+    analyzer, node = _Analyzer(), _decorated_function()
+    anchor = make_file_stable_id("python", "a.py")
+    meta = {PARAMETERS_KEY: [parameter_entry("x", "int")]}
+    got = node_declared_arity_stable_id(
+        analyzer, node, kind="function", name="f", meta=meta, file_stable_id=anchor,
+    )
+    assert got == declared_arity_stable_id(
+        kind="function", lang="python", path="a.py", name="f", qualified_name="",
+        arity=declared_arity(meta), decorators="deco", containing_stable_id=anchor,
+    )
+    untyped = {PARAMETERS_KEY: [parameter_entry("x")]}
+    # untyped: the count the node itself never showed compute_stable_id
+    assert node_declared_arity_stable_id(
+        analyzer, node, kind="function", name="f", meta=untyped, file_stable_id=anchor,
+    ) == assemble_stable_id(
+        "function", 1, ArityFlags(1, False, False, False).as_flags_str(), "deco",
+        anchor, "f", "",
     )

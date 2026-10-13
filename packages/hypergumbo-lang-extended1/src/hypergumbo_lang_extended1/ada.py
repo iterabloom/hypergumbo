@@ -33,6 +33,12 @@ The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Ada-specific extraction
 logic.
 
+Functions and procedures record their parameters in ``meta["parameters"]``,
+typed by subtype mark (``_ada_parameters``), and their stable_id hashes them
+(``overload_arity.node_declared_arity_stable_id``, WI-tusad): ``Run`` and
+``Run (X : Integer)`` tied on ``param_count 0``. Overloads differing only
+in result type still tie (the helper takes no return type).
+
 Why This Design
 ---------------
 - TreeSitterAnalyzer eliminates ~150 lines of boilerplate
@@ -60,6 +66,9 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, node_declared_arity_stable_id, parameter_entry,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -80,6 +89,30 @@ def _extract_formal_part(node: "tree_sitter.Node", source: bytes) -> Optional[st
     if formal_part:
         return node_text(formal_part, source)
     return None
+
+
+def _ada_parameters(spec: "tree_sitter.Node", source: bytes) -> list[dict[str, Any]]:
+    """``meta["parameters"]`` of a subprogram spec (WI-tusad).
+
+    One ``parameter_specification`` may name several parameters of one
+    subtype (``Y, Z : in out Float := 1.0``); each is an entry typed by its
+    subtype mark (the mode is not part of Ada's overload profile), defaulted
+    when the specification has ``:=``. No ``formal_part`` is ``[]``.
+    """
+    entries: list[dict[str, Any]] = []
+    formal = find_child_by_type(spec, "formal_part")
+    for param in formal.children if formal is not None else ():
+        if param.type != "parameter_specification":
+            continue
+        mark = param.child_by_field_name("subtype_mark")
+        type_text = " ".join(node_text(mark, source).split()) if mark is not None else None
+        default = any(c.type == ":=" for c in param.children)
+        for child in param.children:
+            if child.type == ":":
+                break
+            if child.type == "identifier":
+                entries.append(parameter_entry(node_text(child, source), type_text, default=default))
+    return entries
 
 
 def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node", name: str, kind: str,
@@ -111,8 +144,10 @@ def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tre
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        stable_id=analyzer.compute_stable_id(
-            node, kind=kind, name=name,
+        # WI-tusad: the arity (with subtype marks) comes from
+        # meta["parameters"], so the overloads Run / Run (X) stop tying.
+        stable_id=node_declared_arity_stable_id(
+            analyzer, node, kind=kind, name=name, meta=meta,
             # WI-bokab (v7): fold the declaring file's identity so two symbols
             # with the same (kind, name) in different files hash distinctly.
             # ``rel_path`` is the repo-relative path threaded down from
@@ -197,7 +232,8 @@ def _process_function_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str
         signature_parts.append(node_text(result, source))
 
     signature = " ".join(signature_parts) if signature_parts else None
-    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature, cc_node=cc_node)
+    meta = {PARAMETERS_KEY: _ada_parameters(node, source)}
+    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature, meta=meta, cc_node=cc_node)
 
 
 def _process_procedure_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node", cc_node: "Optional[tree_sitter.Node]" = None) -> Optional[Symbol]:
@@ -208,7 +244,8 @@ def _process_procedure_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: st
 
     proc_name = node_text(name_node, source)
     signature = _extract_formal_part(node, source)
-    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "procedure", source, signature=signature, cc_node=cc_node)
+    meta = {PARAMETERS_KEY: _ada_parameters(node, source)}
+    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "procedure", source, signature=signature, meta=meta, cc_node=cc_node)
 
 
 def _process_type_declaration(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:

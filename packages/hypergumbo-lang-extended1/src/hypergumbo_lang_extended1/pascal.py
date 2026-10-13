@@ -54,11 +54,17 @@ Key constructs extracted:
 - procedure TA.Run / constructor TA.Create ... - method implementations
 - a procedure declared inside another - a local function
 - name(args) - procedure/function calls
+
+A routine records its parameters in ``meta["parameters"]`` (``var`` /
+``const`` / ``out`` kept in the type, ``_pascal_parameters``) and its
+stable_id hashes them (``overload_arity.node_declared_arity_stable_id``,
+WI-tusad): the overloads ``Run`` / ``Run(X: Integer)`` tied on
+``param_count 0``.
 """
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -78,6 +84,9 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, node_declared_arity_stable_id, parameter_entry,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -167,6 +176,42 @@ def _get_proc_params(node: "tree_sitter.Node") -> list[str]:
                                 if arg_child.type == "identifier":
                                     params.append(_get_node_text(arg_child))
     return params
+
+
+def _pascal_parameters(node: "tree_sitter.Node") -> list[dict[str, Any]]:
+    """``meta["parameters"]`` of a ``defProc`` (WI-tusad).
+
+    One ``declArg`` may name several parameters of one type (``X, Y:
+    Integer``); each is an entry. Its type is the declared type prefixed by a
+    ``var`` / ``const`` / ``out`` keyword when present (Delphi overloads tell
+    ``var X: Integer`` from ``X: Integer``); an untyped ``var Z`` has just the
+    keyword. A ``defaultValue`` makes it defaulted.
+    """
+    entries: list[dict[str, Any]] = []
+    for child in node.children:
+        if child.type != "declProc":
+            continue
+        for subchild in child.children:
+            if subchild.type != "declArgs":
+                continue
+            for arg in subchild.children:
+                if arg.type != "declArg":
+                    continue
+                type_node = arg.child_by_field_name("type")
+                parts = [
+                    _get_node_text(c).lower() for c in arg.children
+                    if c.type in ("kVar", "kConst", "kOut", "kConstref")
+                ]
+                if type_node is not None:
+                    parts.append(" ".join(_get_node_text(type_node).split()))
+                default = any(c.type == "defaultValue" for c in arg.children)
+                for arg_child in arg.children:
+                    if arg_child.type == "identifier":
+                        entries.append(parameter_entry(
+                            _get_node_text(arg_child), " ".join(parts) or None,
+                            default=default,
+                        ))
+    return entries
 
 
 def _get_return_type(node: "tree_sitter.Node") -> Optional[str]:
@@ -437,14 +482,17 @@ class PascalAnalyzer(TreeSitterAnalyzer):
         meta: dict[str, object] = {"param_count": len(params), "proc_kind": proc_kind}
         if enclosing is not None:
             meta["is_local"] = True
+        meta[PARAMETERS_KEY] = _pascal_parameters(node)
         sym = Symbol(
             id=make_symbol_id(
                 "pascal", rel_path,
                 node.start_point[0] + 1, node.end_point[0] + 1,
                 name, kind,
             ),
-            stable_id=self.compute_stable_id(
-                node, kind=kind, name=name,
+            # WI-tusad: the arity (with types) comes from meta["parameters"],
+            # so the overloads Run / Run(X) stop tying.
+            stable_id=node_declared_arity_stable_id(
+                self, node, kind=kind, name=name, meta=meta,
                 qualified_name=f"{enclosing}.{name}" if enclosing else "",
                 file_stable_id=file_anchor,
             ),

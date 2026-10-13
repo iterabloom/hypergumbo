@@ -328,3 +328,35 @@ def test_fortran_deleting_an_earlier_procedure_moves_nothing(tmp_path: Path) -> 
         analyze_fortran_files, tmp_path, "a.f90", _FORTRAN, deleted,
         {"function", "subroutine", "program", "field"}, survivors=4,
     )
+
+
+# -- HLSL (scheme bump: these ids were producer-computed with param_count 0) --
+
+_HLSL = (
+    "float f(float x) { return x; }\n"
+    "float2 f(float2 x : TEXCOORD0, uniform float y = 1.0) { return x; }\n"
+    "float4 main() : SV_Target { return 0; }\n"
+)
+
+
+def test_hlsl_overloads_get_distinct_typed_ids(tmp_path: Path) -> None:
+    from hypergumbo_lang_common.hlsl import analyze_hlsl
+
+    syms = _symbols(analyze_hlsl, tmp_path, "a.hlsl", _HLSL)
+    fs = _named(syms, "function", "f")
+    assert [(s.meta or {}).get(PARAMETERS_KEY) for s in fs] == [
+        [parameter_entry("x", "float")],
+        [parameter_entry("x", "float2"), parameter_entry("y", "uniform float", default=True)],
+    ]
+    assert len({s.stable_id for s in fs}) == 2 and None not in {s.stable_id for s in fs}
+    (main,) = _named(syms, "function", "main")
+    assert main.meta == {PARAMETERS_KEY: []}
+
+
+def test_hlsl_deleting_an_earlier_overload_moves_nothing(tmp_path: Path) -> None:
+    from hypergumbo_lang_common.hlsl import analyze_hlsl
+
+    _assert_deletion_moves_nothing(
+        analyze_hlsl, tmp_path, "a.hlsl", _HLSL,
+        "float f(float x) { return x; }\n", {"function"}, survivors=2,
+    )

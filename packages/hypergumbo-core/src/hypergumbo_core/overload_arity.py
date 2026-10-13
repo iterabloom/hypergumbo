@@ -95,7 +95,12 @@ is the first adopter. ``test_stable_id_floor_gate.py`` is how a migration shows:
 language's floor and null counts fall, and its deletion check passes. Replacing
 a floor value or a null this way is no scheme bump (ADR-0035 §6); changing a
 value the producer already computes (a C-family overload hashed with
-``param_count 0``) is a hash-input change §6 governs.
+``param_count 0``) is a hash-input change §6 governs. A producer that mints
+``analyzer.compute_stable_id(node, ...)`` today moves with
+:func:`node_declared_arity_stable_id`, which keeps that method's decorators and
+its exact value for a callable declaring no arity, so only the ids of
+callables with parameters change (C++ definitions, HLSL, Nim, Ada, Pascal,
+SQL: the WI-tusad scheme bump).
 
 SYMBOLS MINTED OUTSIDE THE LANGUAGE ANALYZER (:func:`pass_minted_stable_id`;
 INV-fufij). The backstop floor runs in ``analyze.all_analyzers`` before the
@@ -133,6 +138,9 @@ from .analyze.base import (
 from .paths import normalize_path
 
 if TYPE_CHECKING:
+    import tree_sitter
+
+    from .analyze.base import TreeSitterAnalyzer
     from .ir import Symbol
 
 
@@ -386,7 +394,6 @@ def declared_arity_stable_id(
     )
 
 
-
 #: Joins a scope chain and the symbol's name in the qualified-name slot
 #: :func:`scoped_stable_id` hashes.
 SCOPE_SEPARATOR = "/"
@@ -440,4 +447,38 @@ def pass_minted_stable_id(
     return scoped_stable_id(
         kind=kind, lang=lang, path=path, name=name, scope=(owner, *scope),
         arity=arity,
+    )
+
+
+def node_declared_arity_stable_id(
+    analyzer: "TreeSitterAnalyzer",
+    node: "tree_sitter.Node",
+    *,
+    kind: str,
+    name: str,
+    meta: Optional[Mapping[str, Any]],
+    file_stable_id: str,
+    qualified_name: str = "",
+) -> str:
+    """``compute_stable_id`` with the arity read from ``meta`` instead of the node.
+
+    For a producer that already mints ``analyzer.compute_stable_id(node, ...)``
+    and whose grammar puts no parameter-list node where that method looks
+    (the C family's declarator, Nim, Ada, Pascal, SQL), so every overload
+    hashed ``param_count 0`` and the siblings tied. The decorators are the
+    ones ``compute_stable_id`` reads from the node, and a callable whose
+    ``meta`` declares no arity gets exactly ``compute_stable_id``'s value, so
+    only the ids of callables WITH parameters change: the scheme-bump scope.
+    """
+    arity = declared_arity(meta)
+    if arity is None:
+        return analyzer.compute_stable_id(
+            node, kind=kind, name=name, qualified_name=qualified_name,
+            file_stable_id=file_stable_id,
+        )
+    decorators = ",".join(sorted(analyzer._extract_decorator_names(node)))
+    return declared_arity_stable_id(
+        kind=kind, lang=analyzer.lang, path="", name=name,
+        qualified_name=qualified_name, arity=arity, decorators=decorators,
+        containing_stable_id=file_stable_id,
     )
