@@ -98,10 +98,25 @@ run_package() {
 # trusted the banner went hunting for a test-placement problem that did not
 # exist. Print the failing test ids when tests failed, and reserve the
 # coverage-gap advice for an actual shortfall.
+# INV-tazur's analogue here: a package run that COLLECTED NOTHING (pytest exit
+# 5, "no tests ran") also exits non-zero, and used to be reported as a coverage
+# gap with an empty gap list and advice to move tests between packages. Nothing
+# ran, so there is no coverage to have a gap in; say that instead.
+collected_nothing() {
+    grep -qE "no tests ran|^ERROR: file or directory not found" "/tmp/pkg-cov-$1.log" 2>/dev/null
+}
+
 report_failure() {
     local pkg="$1"
     local log="/tmp/pkg-cov-$pkg.log"
     local failed_tests
+
+    if collected_nothing "$pkg"; then
+        echo "pytest collected 0 tests for $pkg (NOT a coverage gap):"
+        grep -E "no tests ran|^ERROR: " "$log" 2>/dev/null | sed 's/^/  /' || true
+        echo ""
+        return
+    fi
     failed_tests=$(grep -E "^(FAILED|ERROR) " "$log" 2>/dev/null || true)
 
     if [[ -n "$failed_tests" ]]; then
@@ -196,6 +211,13 @@ if [[ ${#FAILED[@]} -gt 0 ]]; then
     echo ""
     for pkg in "${FAILED[@]}"; do
         report_failure "$pkg"
+    done
+    for pkg in "${FAILED[@]}"; do
+        if collected_nothing "$pkg"; then
+            echo "❌ ZERO TESTS EXECUTED for $pkg: its run collected nothing, so"
+            echo "   no coverage was measured. That is a failure, not a gap."
+            exit 1
+        fi
     done
     if any_test_failures "${FAILED[@]}"; then
         echo "❌ Some packages have FAILING TESTS. Coverage is a separate"

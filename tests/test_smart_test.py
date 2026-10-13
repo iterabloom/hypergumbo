@@ -34,14 +34,19 @@ SMART_TEST = REPO_ROOT / "scripts" / "smart-test"
 
 
 def _changed_test_files_pattern() -> str:
-    """Pull the live ``CHANGED_TEST_FILES`` regex out of the script."""
+    """Pull the live changed-test regex out of the script.
+
+    It lives on ``CHANGED_TEST_PATHS``; ``CHANGED_TEST_FILES`` is that list
+    narrowed to the paths still on disk (INV-tazur), so the pattern is read
+    where it is applied.
+    """
     for line in SMART_TEST.read_text().splitlines():
         stripped = line.strip()
-        if stripped.startswith("CHANGED_TEST_FILES=") and "grep -E" in stripped:
+        if stripped.startswith("CHANGED_TEST_PATHS=") and "grep -E" in stripped:
             match = re.search(r"grep -E '([^']+)'", stripped)
             assert match, f"could not parse the regex out of: {stripped}"
             return match.group(1)
-    raise AssertionError("CHANGED_TEST_FILES assignment not found in smart-test")
+    raise AssertionError("CHANGED_TEST_PATHS assignment not found in smart-test")
 
 
 def _selects(path: str) -> bool:
