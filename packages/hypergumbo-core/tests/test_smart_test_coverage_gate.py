@@ -243,11 +243,27 @@ def test_summarize_result_grep_cannot_abort() -> None:
 # ---------------------------------------------------------------------------
 
 _STUB_PYTEST = """#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    --junit-xml=*) junit="${{arg#--junit-xml=}}" ;;
+  esac
+done
+if [ -n "${{junit:-}}" ] && [ -n '{junit_body}' ]; then
+  printf '%s\\n' '{junit_body}' > "$junit"
+fi
 cat <<'LOG'
 {log_body}
 LOG
 exit {rc}
 """
+
+# A junit report with one executed (passing) testcase. INV-tazur's verdict
+# counts what ran from the report run_pytest asks for, so a stub that claims a
+# green run has to write one, exactly as real pytest does.
+_JUNIT_ONE_PASSED = (
+    '<testsuites><testsuite tests="1"><testcase classname="t" name="ok"/>'
+    "</testsuite></testsuites>"
+)
 
 _DRIVER = """set -euo pipefail
 export PATH="$PWD/bin:$PATH"
@@ -271,7 +287,9 @@ echo "RUN_PYTEST_RETURNED=$?"
 """
 
 
-def _drive_run_pytest(tmp_path: Path, log_body: str, stub_rc: int) -> tuple[int, str]:
+def _drive_run_pytest(
+    tmp_path: Path, log_body: str, stub_rc: int, junit_body: str = "",
+) -> tuple[int, str]:
     """Run the REAL run_pytest from scripts/smart-test against a stub pytest.
 
     Returns ``(return_code_of_run_pytest, combined_output)``.
@@ -284,7 +302,9 @@ def _drive_run_pytest(tmp_path: Path, log_body: str, stub_rc: int) -> tuple[int,
 
     (tmp_path / "bin").mkdir()
     stub = tmp_path / "bin" / "pytest"
-    stub.write_text(_STUB_PYTEST.format(log_body=log_body, rc=stub_rc))
+    stub.write_text(
+        _STUB_PYTEST.format(log_body=log_body, rc=stub_rc, junit_body=junit_body)
+    )
     stub.chmod(0o755)
 
     text = _text()
@@ -296,7 +316,9 @@ def _drive_run_pytest(tmp_path: Path, log_body: str, stub_rc: int) -> tuple[int,
         return "\n".join(lines[start:end + 1])
 
     (tmp_path / "fns.sh").write_text(
-        _extract("summarize_pytest_output") + "\n" + _extract("run_pytest") + "\n"
+        _extract("count_executed_tests") + "\n"
+        + _extract("summarize_pytest_output") + "\n"
+        + _extract("run_pytest") + "\n"
     )
     (tmp_path / "drive.sh").write_text(_DRIVER)
 
@@ -355,6 +377,68 @@ def test_run_pytest_still_reports_green_on_a_clean_run(tmp_path: Path) -> None:
         tmp_path,
         log_body="=========== 11756 passed, 2 xfailed in 214.44s ===========",
         stub_rc=0,
+        junit_body=_JUNIT_ONE_PASSED,
     )
     assert rc == 0, f"run_pytest must still return 0 on a genuinely green run\n{out}"
     assert "✅" in out, f"a genuinely green run should still print the ✅\n{out}"
+
+
+# ---------------------------------------------------------------------------
+# INV-tazur: run_pytest must not report green when NOTHING executed.
+#
+# The filed log, verbatim in shape: a dead path handed to `pytest -n` is not a
+# usage error under xdist. The controller prints "N workers [0 items]" and "no
+# tests ran", exits 5, and the "file or directory not found" message stays in a
+# worker. The summary then printed "COVERAGE: (all files at 100%)".
+# ---------------------------------------------------------------------------
+
+
+def test_run_pytest_fails_loudly_on_the_filed_zero_collect_log(
+    tmp_path: Path,
+) -> None:
+    rc, out = _drive_run_pytest(
+        tmp_path,
+        log_body=(
+            "created: 6/6 workers\n"
+            "6 workers [0 items]\n\n"
+            "============================ no tests ran in 1.47s ============================="
+        ),
+        stub_rc=5,
+        junit_body='<testsuites><testsuite tests="0"/></testsuites>',
+    )
+    assert rc != 0, f"a zero-collect run returned 0\n{out}"
+    assert "ZERO TESTS EXECUTED" in out, out
+    assert "(all files at 100%)" not in out, (
+        "the summary claimed coverage for a run that measured nothing\n" + out
+    )
+    assert "no tests ran" in out, (
+        "the result line of an empty run must be shown, not dropped\n" + out
+    )
+
+
+def test_run_pytest_counts_from_the_log_when_no_report_was_written(
+    tmp_path: Path,
+) -> None:
+    """With no junit report, the result line decides; an empty one is a zero.
+
+    Exit 0 with ``N skipped`` and nothing else: every test skipped, so nothing
+    ran, and the run must be escalated rather than trusted.
+    """
+    rc, out = _drive_run_pytest(
+        tmp_path,
+        log_body="============================ 3 skipped in 0.12s =============================",
+        stub_rc=0,
+    )
+    assert rc == 5, f"an all-skipped run must exit 5, got {rc}\n{out}"
+    assert "ZERO TESTS EXECUTED" in out, out
+
+
+def test_run_pytest_trusts_the_exit_code_when_nothing_can_be_counted(
+    tmp_path: Path,
+) -> None:
+    """No report and no recognisable result line: the count is unknown, and an
+    unknown is not a zero. The exit code stands, so this exotic-output green
+    run stays green rather than being failed on a guess."""
+    rc, out = _drive_run_pytest(tmp_path, log_body="(quiet)", stub_rc=0)
+    assert rc == 0, out
+    assert "ZERO TESTS EXECUTED" not in out, out
