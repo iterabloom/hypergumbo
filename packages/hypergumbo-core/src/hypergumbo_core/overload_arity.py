@@ -348,13 +348,12 @@ def declared_arity_stable_id(
     ``containing_stable_id`` is empty, as ``compute_stable_id`` does), and
     ``decorators`` is the sorted, comma-joined modifier list.
     """
-    containing = containing_stable_id or make_file_stable_id(
-        lang, normalize_path(path),
-    )
+    file_anchor = make_file_stable_id(lang, normalize_path(path))
+    containing = containing_stable_id or file_anchor
     if arity is not None and arity.types:
         return make_typed_stable_id(
-            kind, arity.type_signature, "", containing, decorators,
-            name=name, qualified_name=qualified_name,
+            kind, arity.type_signature, "", containing_stable_id, decorators,
+            name=name, qualified_name=qualified_name, file_stable_id=file_anchor,
         )
     if arity is None:
         arity = DeclaredArity(0, ArityFlags(0, False, False, False).as_flags_str())

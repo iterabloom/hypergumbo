@@ -74,6 +74,7 @@ def is_circom_tree_sitter_available() -> bool:
 
 
 def _extract_symbols_from_file(
+    analyzer: TreeSitterAnalyzer,
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: str,
@@ -85,6 +86,12 @@ def _extract_symbols_from_file(
     - class: template definitions (Circom's primary abstraction)
     - function: function definitions (pure computations)
     - variable: main component, signal declarations, component declarations
+
+    A function's ``stable_id`` is ``analyzer.compute_stable_id`` (WI-tusad):
+    its ``parameter_list`` is a direct child, so the ADR-0035 untyped tier
+    reads the parameter count from it. Circom functions are file-level and
+    their names are unique, so the chain is the name. Templates and signals
+    take the backstop's class and variable formulas.
     """
     symbols: list[Symbol] = []
 
@@ -141,6 +148,10 @@ def _extract_symbols_from_file(
 
             sym = Symbol(
                 id=make_symbol_id("circom", file_path, span.start_line, span.end_line, name, "function"),
+                stable_id=analyzer.compute_stable_id(
+                    node, "function", name=name, qualified_name=name,
+                    file_stable_id=analyzer._file_anchor(file_path),
+                ),
                 name=name,
                 kind="function",
                 language="circom",
@@ -201,7 +212,7 @@ def _extract_symbols_from_file(
                 span=span,
                 origin=PASS_ID,
                 origin_run_id=run_id,
-                modifiers=modifiers if modifiers else None,
+                modifiers=modifiers,
             )
             symbols.append(sym)
 
@@ -429,7 +440,7 @@ class CircomTreeSitterAnalyzer(TreeSitterAnalyzer):
         run: "AnalysisRun",
     ) -> FileAnalysis:
         """Extract symbols from a single Circom file."""
-        symbols = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        symbols = _extract_symbols_from_file(self, tree, source, rel_path, run.execution_id)
         return FileAnalysis(symbols=symbols)
 
     def extract_edges_from_file(

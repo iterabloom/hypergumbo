@@ -1,39 +1,11 @@
 {
   "_comment": "WI-tusad shrink-only ratchet over packages/hypergumbo-core/tests/test_stable_id_floor_gate.py's per-language fixture corpus. floor_and_null: per language and callable/member kind (GATED_KINDS), how many records ride the ADR-0035 backstop floor (id == make_declaration_stable_id(kind, language, path, name)) and how many are null. sibling_deletion_moves: the languages where deleting an earlier same-name sibling moved or nulled another symbol's stable_id. The gate fails on any count above this baseline (or a language it does not list) AND on any count below it: when a producer migrates to the ADR-0035 formula, ratchet the entry down in the same change (the failure message prints the live values). Never raise an entry. Target: both sections empty.",
-  "floor_and_null": {
-    "circom": {
-      "function": {
-        "floor": 2
-      }
-    },
-    "cobol": {
-      "program": {
-        "floor": 2
-      }
-    },
-    "jupyter": {
-      "function": {
-        "floor": 1,
-        "null": 2
-      }
-    },
-    "llvm_ir": {
-      "function": {
-        "floor": 3
-      }
-    },
-    "wgsl": {
-      "function": {
-        "floor": 2
-      }
-    }
-  },
+  "floor_and_null": {},
   "sibling_deletion_moves": [
     "ada",
     "bash",
     "cpp",
     "hlsl",
-    "jupyter",
     "nim",
     "pascal",
     "pony",

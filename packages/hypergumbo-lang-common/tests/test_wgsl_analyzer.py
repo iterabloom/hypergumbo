@@ -258,7 +258,8 @@ fn main() -> @builtin(position) vec4<f32> {
     assert main_fn.span.start_line >= 1
 
 def test_non_entry_point_function(tmp_path):
-    """Test that non-entry-point functions are detected without stable_id."""
+    """A non-entry-point function takes the producer formula (WI-tusad), an
+    entry point its entry id."""
     wgsl_file = tmp_path / "shader.wgsl"
     wgsl_file.write_text("""
 fn helper(x: f32) -> f32 {
@@ -277,7 +278,15 @@ fn main() -> @builtin(position) vec4<f32> {
 
     helper_fn = next((f for f in functions if f.name == "helper"), None)
     assert helper_fn is not None
-    assert helper_fn.stable_id is None  # No @vertex/@fragment/@compute
+    # No @vertex/@fragment/@compute: compute_stable_id, one untyped parameter
+    from hypergumbo_core.overload_arity import (
+        declared_arity_of_entries, declared_arity_stable_id, parameter_entry,
+    )
+    assert helper_fn.stable_id == declared_arity_stable_id(
+        kind="function", lang="wgsl", path="shader.wgsl", name="helper",
+        qualified_name="helper",
+        arity=declared_arity_of_entries([parameter_entry("x")]),
+    )
 
     main_fn = next((f for f in functions if f.name == "main"), None)
     assert main_fn is not None
