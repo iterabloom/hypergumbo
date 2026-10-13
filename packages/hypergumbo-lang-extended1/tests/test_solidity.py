@@ -1733,3 +1733,27 @@ contract Token {}
             "solidity:./ERC20.sol:0-0:module:module",
             "solidity:@openzeppelin/contracts/token/ERC20/IERC20.sol:0-0:module:module",
         ]
+
+
+def test_library_has_a_producer_stable_id_not_the_floor(tmp_path: Path) -> None:
+    """A ``library`` is no backstop table kind, so with no producer value it
+    rode the WI-motiz floor key (5 openzeppelin libraries on a corpus sample:
+    ``stable_id_stats.floor_cohort`` 5). It mints the producer formula now
+    (``overload_arity.scoped_stable_id``; a library cannot nest, so its scope
+    is empty), which no floor key equals."""
+    from hypergumbo_core.analyze.base import floor_stable_id_key
+    from hypergumbo_core.overload_arity import scoped_stable_id
+    from hypergumbo_lang_extended1.solidity import analyze_solidity
+
+    src = tmp_path / "src" / "Lib.sol"
+    src.parent.mkdir(parents=True)
+    src.write_text(
+        "pragma solidity ^0.8.0;\nlibrary Math {\n"
+        "    function add(uint a, uint b) internal pure returns (uint) { return a + b; }\n}\n"
+    )
+    lib = next(s for s in analyze_solidity(tmp_path).symbols if s.kind == "library")
+    assert lib.stable_id == scoped_stable_id(
+        kind="library", lang="solidity", path="src/Lib.sol", name="Math",
+    )
+    assert lib.stable_id != floor_stable_id_key("library", "solidity", "src/Lib.sol", "Math")
+

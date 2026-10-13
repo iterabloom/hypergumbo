@@ -35,7 +35,8 @@ Both passes take the REPO-RELATIVE path. It is an identity input (the file
 anchor folded into every callable and field stable_id, a file-level
 constant's ``make_variable_stable_id``); the absolute path these passes took
 until the WI-tusad scheme bump made every Solidity id differ between two
-checkouts of the same repository.
+checkouts of the same repository. A ``library``, which is no backstop table
+kind, mints ``overload_arity.scoped_stable_id``; it rode the floor key.
 
 Why This Design
 ---------------
@@ -51,6 +52,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -80,8 +82,11 @@ PASS_ID = make_pass_id("solidity")
 
 # WI-vibad: callable kinds that mint their own typed stable_id at the producer
 # (rather than via the WI-rihob name-scoped backstop, which would collide on
-# overloads). Container kinds (contract / interface / library) are NOT here —
-# they get their stable_id from the backstop.
+# overloads). Container kinds (contract / interface / library) are NOT here.
+# ``contract`` and ``interface`` are backstop table kinds and take their table
+# value; ``library`` is not, so with no producer value it rode the WI-motiz
+# floor key (WI-tusad): it mints ``overload_arity.scoped_stable_id`` instead
+# (a library cannot nest, so its scope is empty).
 _CALLABLE_STABLE_ID_KINDS: frozenset[str] = frozenset(
     {"function", "method", "constructor", "modifier", "event"}
 )
@@ -325,10 +330,15 @@ def _extract_symbols_from_tree(
         # collides on overloads (two ``Token.mint(...)`` bind to one id). They
         # must carry the typed producer stable_id — the signature keeps overloads
         # distinct — exactly as the field path (``add_value_symbol``) already
-        # does. Container kinds (contract / interface / library) leave
-        # ``stable_id=None`` here and receive it from the backstop.
+        # does. ``contract`` / ``interface`` leave ``stable_id=None`` here and
+        # receive their table value from the backstop; ``library``, no table
+        # kind, mints its producer id here (it rode the floor).
         callable_stable_id: Optional[str] = None
-        if kind in _CALLABLE_STABLE_ID_KINDS:
+        if kind == "library":
+            callable_stable_id = scoped_stable_id(
+                kind=kind, lang="solidity", path=file_path, name=name,
+            )
+        elif kind in _CALLABLE_STABLE_ID_KINDS:
             # _extract_solidity_signature always returns a "(...)" string, so
             # the fallback is a real signature, never empty.
             norm_sig = signature or _extract_solidity_signature(node, source)

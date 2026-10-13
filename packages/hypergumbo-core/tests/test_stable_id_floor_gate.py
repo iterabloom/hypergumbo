@@ -761,7 +761,9 @@ CASES: dict[str, SiblingCase] = {
         "src/Demo.sol", "pragma solidity ^0.8.0;\ncontract Demo {\n",
         "    function run() public pure returns (uint) { return 1; }\n",
         "    function run(uint x) public pure returns (uint) { return x; }\n"
-        "    uint public size;\n}\n"),
+        "    uint public size;\n}\n"
+        "library Math {\n    function add(uint a, uint b) internal pure returns (uint) "
+        "{ return a + b; }\n}\n"),
     "sparql": SiblingCase(
         "queries/q.rq", "PREFIX ex: <http://example.org/>\n",
         "PREFIX foaf: <http://xmlns.com/foaf/0.1/>\n",
