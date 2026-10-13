@@ -1,0 +1,20 @@
+- op: create  # 0815
+  at: '2026-10-13T07:57:19Z'  # 0815
+  by: agent  # 0815
+  actor: jgstern_agent  # 0815
+  clock: 1  # 0815
+  nonce: '0815'  # 0815
+  data:  # 0815
+    kind: work_item  # 0815
+    title: "smart-test: a deleted source module may not select the tests that still import it"  # 0815
+    status: todo_soft  # 0815
+    priority: 3  # 0815
+    parent:  # 0815
+    tags:  # 0815
+    - ci  # 0815
+    isbefore: []  # 0815
+    duplicate_of: []  # 0815
+    not_duplicate_of: []  # 0815
+    pr_ref:  # 0815
+    description: "FOUND 2026-10-13 while fixing INV-tazur (PR #1567); NOT reproduced. smart-test splits deleted TEST paths off the selection now, but deleted SOURCE paths still flow into CHANGED_FILE_LIST (the reverse-slice seed) and CHANGED_SOURCE_FILES. The slice runs on the post-change tree, so a deleted module contributes no symbols, and tests that imported it are selected only if they were edited too, or by per_package_fallback's one-test-per-package floor. A change that deletes a module and forgets a test still importing it would then pass the targeted run and fail at full-suite time. Also: a change whose only source edit is a deletion reaches the \"no test files in slice result\" branch and falls back to a full-suite manifest. Question to answer first: does the slice (or the stable hypergumbo) resolve the dangling import edge from the surviving test to the deleted module? If yes, this is a non-issue; record the evidence. If no, seed the selection for deleted sources from the baseline tree (e.g. grep the post-change tests for the deleted module's import path)."  # 0815
+    fields: {}  # 0815

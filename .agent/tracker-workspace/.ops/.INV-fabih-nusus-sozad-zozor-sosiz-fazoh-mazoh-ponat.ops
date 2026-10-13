@@ -1,0 +1,23 @@
+- op: create  # a053
+  at: '2026-10-13T05:18:07Z'  # a053
+  by: agent  # a053
+  actor: jgstern_agent  # a053
+  clock: 1  # a053
+  nonce: a053  # a053
+  data:  # a053
+    kind: invariant  # a053
+    title: "Members of nested same-name owners (scala/kotlin/csharp/swift methods, fields, classes) hash the nearest owner only: deleting an earlier outer type moves survivors' stable_ids"  # a053
+    status: violated  # a053
+    priority: 2  # a053
+    parent:  # a053
+    tags:  # a053
+    - schema  # a053
+    - analysis_quality  # a053
+    isbefore: []  # a053
+    duplicate_of: []  # a053
+    not_duplicate_of: []  # a053
+    pr_ref:  # a053
+    description: "FOUND 2026-10-13 by WI-tusad B6 (analogue check), reproduced on dev f5b3e71949.\n\nDEFECT. In Scala, Kotlin, C# and Swift, methods and fields hash a qualified name holding only the NEAREST owner (scala _get_enclosing_type, csharp/kotlin/swift full_name = \"<nearest class>.<member>\"), and class ids come from the backstop table formula (kind, language, path, bare name). So members of two nested same-name owners (class A { class Inner { go } } / class B { class Inner { go } }) tie, and split_within_file_stable_id_collisions numbers them by emission order. Deleting the earlier outer type moves the survivor's id.\n\nREPRO (scratchpad fixes/tusad/b6/nested/probe.py: hypergumbo run with and without class A, A's lines blanked, per-symbol (kind, name, line, col) match): scala method Inner.go + field Inner.v MOVE; kotlin class Inner + method Inner.go + field Inner.v MOVE; csharp class Inner + method Inner.Go + field Inner.f MOVE; swift class Inner + method Inner.go MOVE. java and dart: nothing moves. The B6 member kinds (scala object, csharp property, swift computed property) hash the full chain and do NOT move.\n\nFIX SHAPE: hash the full owner chain (scala _scala_scope_chain; csharp/kotlin/swift type-ancestor helpers) for methods/fields; the class part is the B4 carry item (qualify table-kind names in nested scopes). Changes already-computed ids: belongs in the WI-tusad scheme-bump batch. Top-level-class members keep their values if the chain omits the namespace/package (chain == nearest owner there)."  # a053
+    fields:  # a053
+      statement: "Deleting an earlier same-name sibling scope never moves another symbol's stable_id (ADR-0035 §1)"  # a053
+      root_cause: "method/field producers pass the nearest-owner name as qualified_name; class ids use the name-only table formula; same-name ties are occurrence-split by emission order"  # a053
