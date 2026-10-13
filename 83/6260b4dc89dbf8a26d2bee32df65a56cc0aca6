@@ -1,0 +1,30 @@
+Original commit body from 55bc684ce5a67c8feb8c937905f98d32e2701894:
+
+Root cause: CHANGED_TEST_FILES was built from `git diff --name-only`, which
+names a deleted file exactly as it names an edited one, so a `git rm`'d test
+went into the selection. `pytest -n` given a dead path does not raise a usage
+error under xdist: "N workers [0 items]", exit 5, and the not-found message
+stays in a worker. summarize_pytest_output had no result-line pattern for
+"no tests ran" and printed "COVERAGE: (all files at 100%)", which is
+vacuously true of a run that measured nothing.
+
+(a) Selection: changed test paths are split into the ones on disk (selected)
+and the deleted ones (named, not selected). require_selection_on_disk refuses,
+exit 1, a manifest or local run set naming a missing path, so a future
+selector cannot reach pytest with one. A deletion-only change is the
+nothing-to-run success and now says so instead of "docs/config only".
+
+(b) Verdict: run_pytest counts executed tests from a fresh junit report
+(falling back to the result line; "unknown" never becomes zero). Exit 5,
+exit 4 and all-skipped runs print "ZERO TESTS EXECUTED", claim no coverage
+and exit non-zero (5 when pytest said 0). Also fixes a sed|head SIGPIPE that
+turned long-traceback failures into exit 141 mid-summary.
+
+CI: the Woodpecker pytest step refuses a manifest naming a path absent from
+the commit and names pytest exit 5 as a zero-collect failure.
+check-package-coverage reports an empty package run as such, not as a
+coverage gap with move-your-tests advice.
+
+Refs INV-tazur-firun-lafoj-diziv-mopir-tasin-susof-mudus
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
