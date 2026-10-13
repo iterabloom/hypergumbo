@@ -1,0 +1,20 @@
+- op: create  # 5c35
+  at: '2026-10-13T22:40:07Z'  # 5c35
+  by: agent  # 5c35
+  actor: jgstern_agent  # 5c35
+  clock: 1  # 5c35
+  nonce: 5c35  # 5c35
+  data:  # 5c35
+    kind: work_item  # 5c35
+    title: "v: a one-letter type alias (type A = int) does not parse (tree-sitter-v generic-placeholder lexing); V emits no alias kind"  # 5c35
+    status: todo_hard  # 5c35
+    priority: 4  # 5c35
+    parent:  # 5c35
+    tags:  # 5c35
+    - analysis_quality  # 5c35
+    isbefore: []  # 5c35
+    duplicate_of: []  # 5c35
+    not_duplicate_of: []  # 5c35
+    pr_ref:  # 5c35
+    description: "FOUND by WI-tusad F2 (finding 8). tree-sitter-v lexes any one-capital name as a generic placeholder. F2 recovers `struct A {}`, `enum E`, `interface I` from the ERROR node (_recover_single_letter_type), but a one-letter type alias (`type A = int`) still does not parse and is not recovered; V emits no alias kind at all, so nothing is lost relative to multi-letter aliases today, but the alias kind gap and the grammar bug both stand. Fix path: emit V type aliases (kind `type`) and extend the recovery to `type X = ...`, or bump/patch the grammar."  # 5c35
+    fields: {}  # 5c35

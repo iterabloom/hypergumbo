@@ -1,0 +1,20 @@
+- op: create  # dd80
+  at: '2026-10-13T22:40:01Z'  # dd80
+  by: agent  # dd80
+  actor: jgstern_agent  # dd80
+  clock: 1  # dd80
+  nonce: dd80  # dd80
+  data:  # dd80
+    kind: work_item  # dd80
+    title: "ocaml: call resolution can bind a call to a type symbol (1 case left on a 40-file sample: mime_type -> type Destination.path)"  # dd80
+    status: todo_hard  # dd80
+    priority: 3  # dd80
+    parent:  # dd80
+    tags:  # dd80
+    - analysis_quality  # dd80
+    isbefore: []  # dd80
+    duplicate_of: []  # dd80
+    not_duplicate_of: []  # dd80
+    pr_ref:  # dd80
+    description: "FOUND by WI-tusad F2 (finding 4, ledger), re-stated by F3. The OCaml analyzer registers type and module symbols in symbol_by_name, so a call can bind to a TYPE. After F2 named nested types with their module (`A.t`), 16 of 17 such calls on a 723-node OCaml sample now reach the function; 1 still binds a type: `mime_type` -> type `Destination.path` (b8a corpus, ocaml). Fix: keep non-callable kinds out of the call-resolution table (or filter by kind at resolution). Not measured beyond the 40-file sample."  # dd80
+    fields: {}  # dd80
