@@ -1,0 +1,43 @@
+Original commit body from d04bed16a5bd6d320eb35eb1368c163e49ab2419:
+
+Proto, Thrift, Cap'n Proto, QML, Nix, Zig and GDScript, and a few member
+kinds of Scala, Kotlin, C#, Swift, PHP and Dart, computed no stable_id and
+rode the ADR-0035 backstop floor key (kind, language, path, name). The key
+has no scope, so the same name in two scopes of one file (rpc Get in two
+services, message Inner nested in two messages, run in two QML elements or
+two Nix attribute sets, object Inner in two Scala classes) shared it and
+both members were null.
+
+- proto: messages and rpc methods mint declared_arity_stable_id over the
+  package plus EVERY enclosing message/service; qualified_name now carries
+  the full chain (demo.A.B.Inner, was demo.B.Inner).
+- thrift: functions, typedefs, consts over namespace.service.name.
+- capnp: methods and consts over every enclosing struct/interface.
+- gdscript: functions via compute_stable_id, signals arity-less, over the
+  inner-class/function chain.
+- zig: functions/methods via compute_stable_id; fields, unions, error sets,
+  tests arity-less; the hash takes the full container/function chain (the
+  emitted name keeps the immediate container).
+- qml: every symbol over the chain of enclosing object declarations,
+  tracked by brace depth (Type, prop:Type, Type#id).
+- nix: every symbol over the attribute-path chain (let-bound names marked
+  let:, file-level function contents under the file stem).
+- scala object/given, kotlin object, csharp property, swift computed
+  property and subscript (parameter types), php field: make_typed_stable_id
+  over the type and the full scope chain, as their producers' fields do.
+- dart constructors, getters, setters, mixins, extensions: the typed
+  formula with an empty signature over the owner-qualified name.
+
+Floor/null -> producer only: every previously producer-computed id is
+byte-identical on the gate fixtures and a corpus sample (13 languages,
+up to 40 files each plus 47 envoy api protos; no node renamed, added or
+removed). Baseline: 18 langs 28 floor / 16 null, 23 deletion failures ->
+5 langs 10 floor / 2 null, 16.
+
+Also: swift _subscript_name is annotated str (it never returns None),
+which shrinks the mypy strict surface 498 -> 497; signature_axis /
+module_key_axis / symbol_kinds line citations re-pointed.
+
+Refs WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
