@@ -27,8 +27,8 @@ classes and functions in the qualified name (``A.predict``,
 ``outer.helper``). So ``run(x)`` and its redefinition ``run(x, y)`` in a later
 cell hold two ids, and deleting an earlier cell moves no other function's id.
 A redefinition with the SAME signature in the same scope is a same-scope tie,
-which the run's split pass numbers (ADR-0035 §1). Classes take the backstop's
-class formula.
+which the run's split pass numbers (ADR-0035 §1). A class takes the Python
+class formula (``py._compute_stable_id``) over the same chain.
 
 Why This Design
 ---------------
@@ -71,6 +71,7 @@ from hypergumbo_core.paths import normalize_path
 from hypergumbo_lang_mainstream.py import (
     _compute_cyclomatic_complexity,
     _compute_line_span,
+    _compute_stable_id,
     _python_visibility_modifiers,
     python_callable_stable_id,
 )
@@ -306,6 +307,11 @@ def _analyze_notebook_file(
                 span=span,
                 origin=PASS_ID,
                 origin_run_id="",
+                # The Python producer's class formula, on the notebook file.
+                stable_id=_compute_stable_id(
+                    node, containing_stable_id=file_stable_id, name=class_name,
+                    qualified_name=".".join(scope_chain(node) + [class_name]),
+                ),
             )
             symbols.append(class_symbol)
             symbol_by_name[class_name] = class_symbol

@@ -283,3 +283,44 @@ def test_cobol_program_without_program_id_contributes_no_scope(tmp_path: Path) -
         kind="paragraph", lang="cobol", path="x.cob", name="P1",
         qualified_name="P1", arity=None,
     )
+
+
+_CIRCOM_SIGNALS = (
+    "pragma circom 2.0.0;\n"
+    "template A() {\n"
+    "    signal input in;\n"
+    "    signal output out;\n"
+    "    out <== in;\n"
+    "}\n"
+    "template B(n) {\n"
+    "    signal input in;\n"
+    "    signal output out;\n"
+    "    out <== in;\n"
+    "}\n"
+    "component main = B(1);\n"
+)
+
+
+def test_circom_templates_and_signals_hash_the_template(tmp_path: Path) -> None:
+    syms = _symbols(analyze_circom, tmp_path, "src/s.circom", _CIRCOM_SIGNALS)
+    by_pos = _at(syms, {"variable", "class"})
+    expect = {
+        ("variable", 3, 4): "A/in", ("variable", 4, 4): "A/out",
+        ("variable", 8, 4): "B/in", ("variable", 9, 4): "B/out",
+        ("variable", 12, 0): "main",
+    }
+    for key, chain in expect.items():
+        sym = by_pos[key]
+        assert sym.stable_id == declared_arity_stable_id(
+            kind="variable", lang="circom", path="src/s.circom", name=sym.name,
+            qualified_name=chain, arity=None,
+        ), key
+    assert by_pos[("class", 7, 0)].stable_id == declared_arity_stable_id(
+        kind="class", lang="circom", path="src/s.circom", name="B",
+        qualified_name="B", arity=declared_arity_of_entries([parameter_entry("n")]),
+    )
+    _assert_deletion_moves_nothing(
+        analyze_circom, tmp_path / "del", "src/s.circom", _CIRCOM_SIGNALS,
+        "template A() {\n    signal input in;\n    signal output out;\n    out <== in;\n}\n",
+        {"variable", "class"}, survivors=4,
+    )

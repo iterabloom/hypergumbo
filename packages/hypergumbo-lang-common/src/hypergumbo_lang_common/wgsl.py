@@ -26,8 +26,8 @@ Identity (WI-tusad)
 An entry point keeps ``make_entry_stable_id`` (stage, name, file). Every other
 function mints ``compute_stable_id`` (its ``parameter_list`` is a direct
 child, so the parameter count is read from it), and a ``uniform`` / ``storage``
-binding ``overload_arity.declared_arity_stable_id`` with no arity; other
-bindings are kind ``variable`` and take the backstop's variable formula.
+binding, any other binding (kind ``variable``) and a struct
+``overload_arity.declared_arity_stable_id`` with no arity.
 WGSL has no overloading, but generated shader sources are templates: whisper.cpp
 defines ``store_scale`` under ``#ifdef INPLACE`` and again under ``#else``, and
 ``rotate`` in two ``#decl(...)`` blocks. tree-sitter recovers past the
@@ -337,7 +337,11 @@ def _extract_wgsl_symbols(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=declared_arity_stable_id(
+                        kind="struct", lang="wgsl", path=rel_path, name=struct_name,
+                        qualified_name=_scoped_name(scopes, node, struct_name),
+                        arity=None,
+                    ),
                     shape_id=None,
                     fingerprint=None,  # stamped by the central post-pass (WI-lisog facet c)
                     kind="struct",
@@ -399,12 +403,11 @@ def _extract_wgsl_symbols(
 
                     sym = Symbol(
                         id=symbol_id,
-                        # ``variable`` takes the backstop's variable formula.
                         stable_id=declared_arity_stable_id(
                             kind=kind, lang="wgsl", path=rel_path, name=var_name,
                             qualified_name=_scoped_name(scopes, node, var_name),
                             arity=None,
-                        ) if kind != "variable" else None,
+                        ),
                         shape_id=None,
                         fingerprint=None,  # stamped by the central post-pass (WI-lisog facet c)
                         kind=kind,
