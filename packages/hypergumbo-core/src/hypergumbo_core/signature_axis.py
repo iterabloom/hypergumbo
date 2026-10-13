@@ -342,7 +342,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=2004,
+        line=2011,
         anchor="resolved_nav_sym.signature",
         fact="return_type",
         note="Navigation-target return type.",
@@ -352,7 +352,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=2169,
+        line=2176,
         anchor="resolved_simple_sym.signature",
         fact="return_type",
         note="Simple-name receiver return type.",

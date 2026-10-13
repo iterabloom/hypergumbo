@@ -909,7 +909,7 @@ class TestKotlinFileReadErrors:
         kt_file.write_text("fun test() {}")
 
         with patch.object(Path, "read_bytes", side_effect=OSError("Read failed")):
-            result = _extract_symbols_from_file(kt_file, parser, run)
+            result = _extract_symbols_from_file(kt_file, parser, run, rel_path="test.kt")
 
         assert result.symbols == []
 
@@ -1558,7 +1558,7 @@ fun main() {
 }
 """)
 
-        analysis = _extract_symbols_from_file(kt_file, parser, run)
+        analysis = _extract_symbols_from_file(kt_file, parser, run, rel_path=kt_file.name)
 
         # Check imports are extracted
         assert "Helper" in analysis.imports
@@ -1609,7 +1609,7 @@ class Helper {
 """)
 
         # Extract symbols and imports
-        analysis = _extract_symbols_from_file(caller_file, parser, run)
+        analysis = _extract_symbols_from_file(caller_file, parser, run, rel_path=caller_file.name)
         local_symbols = analysis.symbol_by_name
         imports = analysis.imports
 

@@ -17,18 +17,38 @@ Key constructs extracted:
 - (define (name args) body) - function definitions
 - (define name value) - variable definitions
 - (name args) - function calls
+
+Identity (WI-tusad scheme bump): ``compute_stable_id`` finds no parameter-list
+node in a ``define`` form, so every function hashed ``param_count 0`` and a
+redefinition of another arity (``(define (run x))`` then ``(define (run x y))``)
+tied, the per-file split pass numbered them by emission, and deleting the first
+renumbered the second. A function now writes its lambda list to
+``meta["parameters"]`` (:func:`lambda_list_entries`, shared with Racket) and
+mints ``overload_arity.declared_arity_stable_id`` from it; functions and
+variables hash the ``define-library`` / ``library`` / ``module`` forms around
+them as their scope (:func:`form_scope`; a top-level definition has none, and a
+zero-parameter top-level function keeps its value). Two definitions of one name
+and arity in one scope are a same-scope tie (ADR-0035 §1).
 """
 
 from pathlib import Path
-from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
+from typing import Any, ClassVar, Iterator, Optional, Sequence, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    ancestor_labels,
     make_symbol_id,
     populate_docstrings_from_tree,
+)
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY,
+    declared_arity,
+    declared_arity_stable_id,
+    nested_qualified_name,
+    parameter_entry,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -96,6 +116,64 @@ def _get_function_params(node: "tree_sitter.Node") -> list[str]:
     return params
 
 
+def lambda_list_entries(params: Sequence["tree_sitter.Node"]) -> list[dict[str, Any]]:
+    """``meta["parameters"]`` for a Scheme-family lambda list (the nodes after
+    the name in ``(define (name ...) ...)``; shared with ``racket.py``).
+
+    A symbol is a required parameter; the one after a ``.`` (Scheme spells it
+    as a symbol, Racket as a ``dot`` node) takes the rest, so it is variadic;
+    a bracketed or parenthesised ``[y 1]`` is an optional parameter with a
+    default. A Racket keyword (``#:scale``) and the parameter after it are
+    passed by name, not position, so they are not entries: arity counts
+    positions, the way Julia's keyword parameters are left out.
+    """
+    entries: list[dict[str, Any]] = []
+    rest = keyword = False
+    for child in params:
+        if child.type == "dot" or (child.type == "symbol" and _get_node_text(child) == "."):
+            rest = True
+        elif child.type == "keyword":
+            keyword = True
+        elif keyword:
+            keyword = False
+        elif child.type == "symbol":
+            entries.append(parameter_entry(_get_node_text(child), variadic=rest))
+            rest = False
+        elif child.type == "list":
+            names = [c for c in child.children if c.type == "symbol"]
+            if names:
+                entries.append(parameter_entry(_get_node_text(names[0]), default=True))
+    return entries
+
+
+def form_scope(node: "tree_sitter.Node", heads: frozenset[str]) -> list[str]:
+    """The labels of the forms enclosing ``node`` whose head symbol is in
+    ``heads`` (``define-library``, Racket's ``module+`` ...), outermost first:
+    a Scheme-family definition's scope chain (WI-tusad). A form's label is
+    its second element, the module or library name, as written."""
+    def label_of(form: "tree_sitter.Node") -> Optional[str]:
+        if form.type != "list":
+            return None
+        items = [c for c in form.children if c.type not in ("(", ")", "[", "]")]
+        if len(items) < 2 or items[0].type != "symbol" or _get_node_text(items[0]) not in heads:
+            return None
+        return " ".join(_get_node_text(items[1]).split())
+    return ancestor_labels(node, label_of)
+
+
+def _signature_nodes(node: "tree_sitter.Node") -> list["tree_sitter.Node"]:
+    """The lambda list of a ``(define (name ...) ...)`` form: what follows the
+    name in the signature list."""
+    children = [c for c in node.children if c.type not in ("(", ")")]
+    sig_children = [c for c in children[1].children if c.type not in ("(", ")")]
+    return sig_children[1:]
+
+
+#: Forms that open a scope around the definitions inside them: an R7RS
+#: library and R6RS / Chicken-style modules.
+_SCOPE_FORMS = frozenset({"define-library", "library", "module"})
+
+
 def _get_variable_name(node: "tree_sitter.Node") -> Optional[str]:
     """Get the variable name from a variable define form."""
     children = [c for c in node.children if c.type not in ("(", ")")]
@@ -129,6 +207,10 @@ def _extract_scheme_symbols(
                 params = _get_function_params(node)
                 signature = f"(define ({name} {' '.join(params)}) ...)"
                 rel_path = str(path.relative_to(repo_root))
+                meta: dict[str, Any] = {
+                    "param_count": len(params),
+                    PARAMETERS_KEY: lambda_list_entries(_signature_nodes(node)),
+                }
 
                 sym = Symbol(
                     id=make_symbol_id(
@@ -136,9 +218,12 @@ def _extract_scheme_symbols(
                         node.start_point[0] + 1, node.end_point[0] + 1,
                         name, "function",
                     ),
-                    stable_id=analyzer.compute_stable_id(
-                        node, kind="function", name=name,
-                        file_stable_id=analyzer._file_anchor(rel_path),
+                    stable_id=declared_arity_stable_id(
+                        kind="function", lang="scheme", path=rel_path, name=name,
+                        qualified_name=nested_qualified_name(
+                            form_scope(node, _SCOPE_FORMS), name,
+                        ),
+                        arity=declared_arity(meta),
                     ),
                     name=name,
                     kind="function",
@@ -152,7 +237,7 @@ def _extract_scheme_symbols(
                     ),
                     origin=PASS_ID,
                     signature=signature,
-                    meta={"param_count": len(params)},
+                    meta=meta,
                     # INV-loguk: homoiconic head-symbol CC; LOC from the span.
                     cyclomatic_complexity=compute_cyclomatic_complexity(
                         node, "scheme",
@@ -171,9 +256,12 @@ def _extract_scheme_symbols(
                         node.start_point[0] + 1, node.end_point[0] + 1,
                         name, "variable",
                     ),
-                    stable_id=analyzer.compute_stable_id(
-                        node, kind="variable", name=name,
-                        file_stable_id=analyzer._file_anchor(rel_path),
+                    stable_id=declared_arity_stable_id(
+                        kind="variable", lang="scheme", path=rel_path, name=name,
+                        qualified_name=nested_qualified_name(
+                            form_scope(node, _SCOPE_FORMS), name,
+                        ),
+                        arity=None,
                     ),
                     name=name,
                     kind="variable",

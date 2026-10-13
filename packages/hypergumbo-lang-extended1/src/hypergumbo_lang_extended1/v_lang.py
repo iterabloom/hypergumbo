@@ -14,6 +14,15 @@ Implementation approach:
   (kind ``class``), enums and interfaces; ``module`` declarations are not
   handled
 
+Identity (WI-tusad): a plain function mints ``compute_stable_id``. A method
+``fn (b B) run(x int)`` has no name of its own beyond ``run``, and its first
+parameter list is the RECEIVER, which ``compute_stable_id`` reads as the
+parameters; so ``fn (a A) run()`` and ``fn (b B) run(x int)`` tied and the
+per-file split numbered them. A method now hashes its receiver type as scope
+(``B/run``) and its declared parameters (``meta["parameters"]``, written for
+every function, receiver excluded) through
+``overload_arity.node_declared_arity_stable_id``: the stable_id scheme bump.
+
 Key constructs extracted:
 - function_declaration: fn name(params) return_type { body }
 - struct_declaration: struct Name { fields } (kind ``class``)
@@ -40,6 +49,10 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, nested_qualified_name, node_declared_arity_stable_id,
+    parameter_entry,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -93,6 +106,64 @@ def _extract_function_params(node: "tree_sitter.Node") -> list[str]:
                             params.append(_get_node_text(param_part))
                             break
     return params
+
+
+def _receiver_and_parameter_lists(
+    node: "tree_sitter.Node",
+) -> tuple[Optional["tree_sitter.Node"], Optional["tree_sitter.Node"]]:
+    """``(receiver list, parameter list)`` of a function declaration.
+
+    A method ``fn (b B) run(x int)`` has two ``parameter_list`` children, the
+    receiver's before the name; a plain function has one, after it.
+    """
+    receiver: Optional["tree_sitter.Node"] = None
+    params: Optional["tree_sitter.Node"] = None
+    seen_name = False
+    for child in node.children:
+        if child.type == "identifier":
+            seen_name = True
+        elif child.type == "parameter_list":
+            if seen_name:
+                params = child
+            else:
+                receiver = child
+    return receiver, params
+
+
+def _receiver_type(receiver: "tree_sitter.Node") -> str:
+    """The receiver's type name (``B`` for ``(b B)``, ``(mut b &B)``)."""
+    for decl in receiver.children:
+        if decl.type == "parameter_declaration":
+            for part in decl.children:
+                if part.type not in ("identifier", "mutable_identifier"):
+                    return _get_node_text(part).lstrip("&").strip()
+    return ""  # pragma: no cover - a receiver always declares a type
+
+
+def _parameter_entries(params: Optional["tree_sitter.Node"]) -> list[dict[str, object]]:
+    """``meta["parameters"]`` for a V parameter list: typed, ``mut`` kept in the
+    type (it changes how the argument is passed), ``...T`` variadic."""
+    entries: list[dict[str, object]] = []
+    if params is None:
+        return entries  # pragma: no cover - the grammar always has a list
+    for decl in params.children:
+        if decl.type != "parameter_declaration":
+            continue
+        name, type_, mutable = "", "", False
+        for part in decl.children:
+            if part.type == "identifier":
+                name = _get_node_text(part)
+            elif part.type == "mutable_identifier":
+                mutable = True
+                name = _get_node_text(part).split()[-1]
+            else:
+                type_ = _get_node_text(part)
+        variadic = type_.startswith("...")
+        entries.append(parameter_entry(
+            name, ("mut " if mutable else "") + type_.removeprefix("..."),
+            variadic=variadic,
+        ))
+    return entries
 
 
 def _extract_return_type(node: "tree_sitter.Node") -> Optional[str]:
@@ -192,10 +263,30 @@ class VAnalyzer(TreeSitterAnalyzer):
                 signature = f"fn({', '.join(params)})"
                 if return_type:
                     signature += f" {return_type}"
+                receiver, param_list = _receiver_and_parameter_lists(node)
+                meta: dict[str, object] = {
+                    "is_public": is_pub,
+                    PARAMETERS_KEY: _parameter_entries(param_list),
+                }
+                if receiver is None:
+                    stable_id = self.compute_stable_id(
+                        node, kind="fn", name=name, file_stable_id=file_stable_id,
+                    )
+                else:
+                    # A method: the receiver type scopes it, and its arity is
+                    # the declared parameter list, not the receiver list
+                    # compute_stable_id would read (WI-tusad scheme bump).
+                    stable_id = node_declared_arity_stable_id(
+                        self, node, kind="fn", name=name, meta=meta,
+                        file_stable_id=file_stable_id,
+                        qualified_name=nested_qualified_name(
+                            [_receiver_type(receiver)], name,
+                        ),
+                    )
 
                 sym = Symbol(
                     id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "fn"),
-                    stable_id=self.compute_stable_id(node, kind="fn", name=name, file_stable_id=file_stable_id),
+                    stable_id=stable_id,
                     name=name,
                     kind="function",
                     language="v",
@@ -209,7 +300,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
-                    meta={"is_public": is_pub},
+                    meta=meta,
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "v"),
                     line_span=node.end_point[0] - node.start_point[0] + 1,
                 )

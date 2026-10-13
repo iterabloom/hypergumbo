@@ -25,11 +25,25 @@ Key constructs extracted:
 - (define name value) - variable definitions
 - (struct name (fields)) - struct definitions, emitted as ``kind="class"``
 - (name args) - function calls
+
+Identity (WI-tusad scheme bump): every definition hashed only its name, so
+``run`` in ``(module+ a ...)`` and ``run`` in ``(module+ b ...)`` tied, the
+per-file split pass numbered them by emission, and deleting the first
+renumbered the second; and ``compute_stable_id`` finds no parameter-list node
+in a ``define`` form, so no function hashed its arity. Definitions now mint
+``overload_arity.declared_arity_stable_id`` with the enclosing ``module`` /
+``module+`` / ``module*`` names as their scope chain (``scheme.form_scope``),
+and a function writes its lambda list to ``meta["parameters"]``
+(``scheme.lambda_list_entries``: ``[y 1]`` has a default, the parameter after
+``.`` is variadic, keyword parameters are by name and not counted). A
+top-level definition has no scope, so a zero-parameter top-level function,
+variable or struct keeps its value. The submodule forms still produce no symbol
+of their own.
 """
 
 import time
 from pathlib import Path
-from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
+from typing import Any, Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
@@ -37,7 +51,15 @@ from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, mak
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY,
+    DeclaredArity,
+    declared_arity,
+    declared_arity_stable_id,
+    nested_qualified_name,
+)
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
+from hypergumbo_lang_common.scheme import form_scope, lambda_list_entries
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -109,6 +131,30 @@ def _get_function_params(node: "tree_sitter.Node") -> list[str]:
         if child.type == "symbol":
             params.append(_get_node_text(child))
     return params
+
+
+def _lambda_list(node: "tree_sitter.Node") -> list["tree_sitter.Node"]:
+    """What follows the name in ``(define (name ...) ...)``."""
+    children = [c for c in node.children if c.type not in ("(", ")")]
+    return [c for c in children[1].children if c.type not in ("(", ")")][1:]
+
+
+#: Forms whose body is a (sub)module: a definition inside one is scoped by it.
+_MODULE_FORMS = frozenset({"module", "module+", "module*"})
+
+
+def _racket_stable_id(
+    node: "tree_sitter.Node", kind: str, name: str, rel_path: str,
+    arity: Optional[DeclaredArity] = None,
+) -> str:
+    """The ADR-0035 producer id of a Racket definition: its enclosing
+    ``module`` / ``module+`` / ``module*`` names as the scope chain, a
+    function's lambda list as its arity (see the module docstring)."""
+    return declared_arity_stable_id(
+        kind=kind, lang="racket", path=rel_path, name=name,
+        qualified_name=nested_qualified_name(form_scope(node, _MODULE_FORMS), name),
+        arity=arity,
+    )
 
 
 def _get_variable_name(node: "tree_sitter.Node") -> Optional[str]:
@@ -243,6 +289,10 @@ class _RacketExtractor:
                     params = _get_function_params(node)
                     signature = f"(define ({name} {' '.join(params)}) ...)"
                     rel_path = str(path.relative_to(self.repo_root))
+                    meta: dict[str, Any] = {
+                        "param_count": len(params),
+                        PARAMETERS_KEY: lambda_list_entries(_lambda_list(node)),
+                    }
 
                     sym = Symbol(
                         id=make_symbol_id(
@@ -250,9 +300,8 @@ class _RacketExtractor:
                             node.start_point[0] + 1, node.end_point[0] + 1,
                             name, "function",
                         ),
-                        stable_id=self._ts_analyzer.compute_stable_id(
-                            node, kind="function", name=name,
-                            file_stable_id=self._ts_analyzer._file_anchor(rel_path),
+                        stable_id=_racket_stable_id(
+                            node, "function", name, rel_path, declared_arity(meta),
                         ),
                         name=name,
                         kind="function",
@@ -266,7 +315,7 @@ class _RacketExtractor:
                         ),
                         origin=PASS_ID,
                         signature=signature,
-                        meta={"param_count": len(params)},
+                        meta=meta,
                         # INV-loguk: homoiconic head-symbol CC; LOC from span.
                         cyclomatic_complexity=compute_cyclomatic_complexity(
                             node, "racket",
@@ -287,10 +336,7 @@ class _RacketExtractor:
                             node.start_point[0] + 1, node.end_point[0] + 1,
                             name, "variable",
                         ),
-                        stable_id=self._ts_analyzer.compute_stable_id(
-                            node, kind="variable", name=name,
-                            file_stable_id=self._ts_analyzer._file_anchor(rel_path),
-                        ),
+                        stable_id=_racket_stable_id(node, "variable", name, rel_path),
                         name=name,
                         kind="variable",
                         language="racket",
@@ -318,10 +364,7 @@ class _RacketExtractor:
                         node.start_point[0] + 1, node.end_point[0] + 1,
                         name, "class",
                     ),
-                    stable_id=self._ts_analyzer.compute_stable_id(
-                        node, kind="class", name=name,
-                        file_stable_id=self._ts_analyzer._file_anchor(rel_path),
-                    ),
+                    stable_id=_racket_stable_id(node, "class", name, rel_path),
                     name=name,
                     kind="class",
                     language="racket",

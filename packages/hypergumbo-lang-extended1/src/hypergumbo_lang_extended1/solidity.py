@@ -30,6 +30,12 @@ The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Solidity-specific
 extraction logic.
 
+Both passes take the REPO-RELATIVE path. It is an identity input (the file
+anchor folded into every callable and field stable_id, a file-level
+constant's ``make_variable_stable_id``); the absolute path these passes took
+until the WI-tusad scheme bump made every Solidity id differ between two
+checkouts of the same repository.
+
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
@@ -44,6 +50,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -370,7 +377,7 @@ def _extract_symbols_from_tree(
 
     # WI-jusus (emission-parity): file-identity anchor so same-named state
     # variables / constants in different files hash to distinct stable_ids.
-    file_stable_id = make_file_stable_id("solidity", file_path)
+    file_stable_id = make_file_stable_id("solidity", normalize_path(file_path))
 
     def add_value_symbol(
         node: "tree_sitter.Node",
@@ -400,7 +407,7 @@ def _extract_symbols_from_tree(
                 file_stable_id=file_stable_id,
             )
         else:
-            stable_id = make_variable_stable_id("solidity", file_path, name)
+            stable_id = make_variable_stable_id("solidity", normalize_path(file_path), name)
         analysis.symbols.append(Symbol(
             id=make_symbol_id(
                 "solidity", file_path, start_line, end_line, full_name, kind
@@ -871,11 +878,15 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single Solidity file."""
         analysis = FileAnalysis()
+        # The REPO-RELATIVE path: it is an identity input (the file anchor,
+        # a constant's make_variable_stable_id). Passing str(file_path) made
+        # every Solidity stable_id depend on where the repo was checked out
+        # (WI-tusad scheme bump).
         _extract_symbols_from_tree(
-            tree, source, str(file_path), run.execution_id, analysis,
+            tree, source, rel_path, run.execution_id, analysis,
         )
         # Store full symbol list for position-based lookup in Pass 2
-        self._file_symbols[str(file_path)] = list(analysis.symbols)
+        self._file_symbols[rel_path] = list(analysis.symbols)
         return analysis
 
     def extract_edges_from_file(
@@ -886,9 +897,9 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
         resolver: "NameResolver",
     ) -> list[Edge]:
         """Extract call and import edges from a single Solidity file."""
-        all_local = self._file_symbols.get(str(file_path))
+        all_local = self._file_symbols.get(rel_path)
         edges, _aliases = _extract_edges_from_tree(
-            tree, source, str(file_path),
+            tree, source, rel_path,
             local_symbols, global_symbols,
             run.execution_id, resolver,
             all_local_symbols=all_local,
