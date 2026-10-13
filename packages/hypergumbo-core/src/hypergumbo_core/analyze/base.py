@@ -1501,7 +1501,8 @@ def make_export_stable_id(language: str, path: str, name: str) -> str:
 
 
 def make_doc_stable_id(
-    language: str, path: str, kind: str, name: str, start_line: int, end_line: int
+    language: str, path: str, kind: str, name: str, start_line: int, end_line: int,
+    scope: "Sequence[str]" = (),
 ) -> str:
     """Stable identity for documentation / config noise-node Symbols (id-format:F2 4a).
 
@@ -1524,14 +1525,26 @@ def make_doc_stable_id(
     exact. For single-line nodes (e.g. markdown links) pass the same value for
     both ``start_line`` and ``end_line``; the factory hashes the span verbatim
     and does not validate span plausibility.
+
+    **The span left the hash (WI-tusad, stable_id scheme bump).** ADR-0035 §3
+    keeps line numbers out of identity hashes; with the span in it, deleting
+    or inserting any line above a doc node moved its id (the floor gate's
+    delete-an-earlier-sibling check failed for every adopter). The hash is now
+    ``doc:{language}:{path}:{kind}:{scope/.../name}``: ``scope`` is the chain
+    the producer nests the node in (an INI setting's section, a KDL node's
+    parents), and two nodes still identical after it (two anonymous ``code``
+    blocks under one heading) are a same-scope tie the per-file split pass
+    orders. ``start_line`` / ``end_line`` are still accepted (every caller has
+    them, for the node id) but no longer enter the value.
     """
-    return _short_sha256(
-        f"doc:{language}:{path}:{kind}:{name}:{start_line}-{end_line}"
-    )
+    del start_line, end_line  # kept for the callers; no longer hashed (see above)
+    chain = "/".join((*scope, name))
+    return _short_sha256(f"doc:{language}:{path}:{kind}:{chain}")
 
 
 def make_doc_symbol_ids(
-    language: str, path: str, kind: str, name: str, start_line: int, end_line: int
+    language: str, path: str, kind: str, name: str, start_line: int, end_line: int,
+    scope: "Sequence[str]" = (),
 ) -> tuple[str, str]:
     """Mint the ``(node.id, stable_id)`` PAIR for a doc/markup/template Symbol
     together, from one argument set (INV-dulah).
@@ -1585,7 +1598,7 @@ def make_doc_symbol_ids(
     """
     spath = str(path)
     symbol_id = make_symbol_id(language, spath, start_line, end_line, name, kind)
-    stable_id = make_doc_stable_id(language, spath, kind, name, start_line, end_line)
+    stable_id = make_doc_stable_id(language, spath, kind, name, start_line, end_line, scope)
     return symbol_id, stable_id
 
 

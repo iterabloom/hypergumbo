@@ -2627,13 +2627,17 @@ class TestMakeDocStableId:
         sid = make_doc_stable_id("markdown", "README.md", "section", "Intro", 1, 2)
         assert re.match(r"^sha256:[0-9a-f]{16}$", sid), sid
 
-    def test_span_disambiguates_same_name_and_kind(self) -> None:
-        # INV-dubam/INV-tazaj guard: two same-name same-kind nodes at different
-        # spans (anonymous code blocks all named "code"; repeated headings) must
-        # NOT collapse to one stable_id.
+    def test_span_is_not_hashed_and_scope_separates(self) -> None:
+        # WI-tusad (stable_id scheme bump): lines stay out of the hash (ADR-0035
+        # §3), so deleting a line above a doc node moves no id. Two same-name
+        # same-kind nodes in one scope are a same-scope tie the per-file split
+        # pass orders; the producer's scope chain is what tells nested ones apart.
         a = make_doc_stable_id("markdown", "R.md", "code_block", "code:text", 5, 7)
         b = make_doc_stable_id("markdown", "R.md", "code_block", "code:text", 10, 12)
-        assert a != b
+        assert a == b
+        in_a = make_doc_stable_id("ini", "a.ini", "setting", "port", 2, 2, ("server",))
+        in_b = make_doc_stable_id("ini", "a.ini", "setting", "port", 2, 2, ("client",))
+        assert in_a != in_b != make_doc_stable_id("ini", "a.ini", "setting", "port", 2, 2)
 
     def test_each_component_changes_the_hash(self) -> None:
         base = make_doc_stable_id("markdown", "R.md", "section", "X", 1, 2)
@@ -2641,8 +2645,8 @@ class TestMakeDocStableId:
         assert make_doc_stable_id("markdown", "Q.md", "section", "X", 1, 2) != base
         assert make_doc_stable_id("markdown", "R.md", "link", "X", 1, 2) != base
         assert make_doc_stable_id("markdown", "R.md", "section", "Y", 1, 2) != base
-        assert make_doc_stable_id("markdown", "R.md", "section", "X", 9, 2) != base
-        assert make_doc_stable_id("markdown", "R.md", "section", "X", 1, 9) != base
+        assert make_doc_stable_id("markdown", "R.md", "section", "X", 1, 2, ("P",)) != base
+        assert make_doc_stable_id("markdown", "R.md", "section", "X", 9, 9) == base
 
     def test_deterministic(self) -> None:
         assert make_doc_stable_id("markdown", "R.md", "section", "X", 1, 2) == \
@@ -2709,14 +2713,17 @@ class TestMakeDocSymbolIds:
         path_ids = make_doc_symbol_ids("rst", Path("docs/index.rst"), "section", "Intro", 3, 9)
         assert str_ids == path_ids
 
-    def test_start_line_disambiguates_same_name_siblings(self) -> None:
-        # The reason the line-less adopters (rst/robot/pony/sparql) GAIN the
-        # start_line segment: two same-name same-kind nodes in one file used to
-        # collapse to one node.id; the line now separates them (in BOTH halves).
+    def test_start_line_separates_node_ids_but_not_stable_ids(self) -> None:
+        # The line-less adopters (rst/robot/pony/sparql) gained the start_line
+        # segment in node.id, which separates two same-name nodes. The stable_id
+        # no longer hashes it (WI-tusad): the two are a same-scope tie, ordered
+        # by the per-file split pass; a scope tells nested ones apart.
         a_id, a_sid = make_doc_symbol_ids("rst", "d.rst", "section", "Overview", 5, 6)
         b_id, b_sid = make_doc_symbol_ids("rst", "d.rst", "section", "Overview", 40, 41)
         assert a_id != b_id
-        assert a_sid != b_sid
+        assert a_sid == b_sid
+        _, c_sid = make_doc_symbol_ids("rst", "d.rst", "section", "Overview", 40, 41, ("Intro",))
+        assert c_sid != a_sid
 
 
 class TestSynthesizeFileAnchorsForNodeBearingPaths:

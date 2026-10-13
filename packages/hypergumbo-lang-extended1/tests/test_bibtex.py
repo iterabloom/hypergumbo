@@ -202,7 +202,11 @@ class TestAnalyzeBibtex:
         result = analyze_bibtex(tmp_path)
         entry = next((s for s in result.symbols if s.kind == "entry"), None)
         assert entry is not None
-        assert entry.id == entry.stable_id
+        # WI-tusad: the stable_id was the node id, which carries the line; it
+        # is now the doc formula over the citation key (unique in a .bib file).
+        from hypergumbo_core.analyze.base import make_doc_stable_id
+        assert entry.stable_id == make_doc_stable_id("bibtex", "refs.bib", "entry", "test", 1, 1)
+        assert entry.stable_id != entry.id
         assert "bibtex:" in entry.id
 
     def test_span_info(self, tmp_path: Path) -> None:
