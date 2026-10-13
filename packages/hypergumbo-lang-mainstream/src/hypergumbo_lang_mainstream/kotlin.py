@@ -983,6 +983,8 @@ def _extract_symbols_from_file(
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
     file_stable_id: str = "",
+    *,
+    rel_path: str,
 ) -> FileAnalysis:
     """Extract symbols from a single Kotlin file.
 
@@ -994,6 +996,11 @@ def _extract_symbols_from_file(
     ``make_typed_stable_id`` call's ``file_stable_id=`` slot so same-name
     functions/methods in different files hash distinctly. Defaults to ``""``
     (the no-op fold) for legacy/test callers that don't supply it.
+
+    ``rel_path`` is that repo-relative path, for the identity inputs that take
+    a path rather than the anchor: a top-level ``val``'s
+    ``make_variable_stable_id``. It hashed ``str(file_path)`` until the
+    WI-tusad scheme bump, so the same file had another id in every checkout.
     """
     try:
         source = file_path.read_bytes()
@@ -1329,7 +1336,7 @@ def _extract_symbols_from_file(
                 else:
                     full_name = prop_name
                     stable_id = make_variable_stable_id(
-                        "kotlin", str(file_path), prop_name
+                        "kotlin", normalize_path(rel_path), prop_name
                     )
 
                 symbol = Symbol(
@@ -2580,7 +2587,9 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
             # location-dependent — the regression the WI-bokab smoke test guards.
             rel_path = str(kt_file.relative_to(repo_root))
             file_stable_id = make_file_stable_id("kotlin", normalize_path(rel_path))
-            analysis = _extract_symbols_from_file(kt_file, parser, run, file_stable_id)
+            analysis = _extract_symbols_from_file(
+                kt_file, parser, run, file_stable_id, rel_path=rel_path,
+            )
             if analysis.symbols:
                 file_analyses[kt_file] = analysis
             else:

@@ -123,7 +123,10 @@ floor value this way is no scheme bump (ADR-0035 §6).
 symbols take no parameters but nest (a Dockerfile ``ARG`` in a build stage, a
 CSS selector in an ``@media`` rule): the producer passes its scope chain as a
 list and the helper joins it with the name, so no producer spells its own
-qualified-name format.
+qualified-name format. :func:`nested_qualified_name` is the same chain for a
+producer that already hashed an EMPTY qualified name (Bash, Racket, Scheme, V
+methods): it spells the chain only for a nested symbol, so adding the chain in
+the scheme bump moved only the ids that tied, never a top-level one.
 """
 
 from __future__ import annotations
@@ -397,6 +400,22 @@ def declared_arity_stable_id(
 #: Joins a scope chain and the symbol's name in the qualified-name slot
 #: :func:`scoped_stable_id` hashes.
 SCOPE_SEPARATOR = "/"
+
+
+def nested_qualified_name(scope: Sequence[str], name: str) -> str:
+    """The qualified-name slot for a producer that hashed an EMPTY one.
+
+    Several producers mint ``compute_stable_id`` with no qualified name (Bash,
+    Racket, Scheme, V), so two same-name symbols in different scopes of one
+    file (``run`` nested in two Bash functions, ``run`` in two Racket
+    submodules) tie and the per-file split pass orders them by emission. This
+    returns ``scope[0]/.../scope[-1]/name`` for a nested symbol and ``""`` for
+    a top-level one, so the scheme bump that adds the chain changes only the
+    ids that tied: a top-level symbol keeps the value it had. (A producer
+    adopting a chain from scratch uses :func:`scoped_stable_id`, which spells
+    the top-level name too.)
+    """
+    return SCOPE_SEPARATOR.join((*scope, name)) if scope else ""
 
 
 def scoped_stable_id(

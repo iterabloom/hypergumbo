@@ -40,11 +40,19 @@ every symbol (of any kind) that survives the deletion must hold the same
 non-null stable_id in both, matched on its own position. A null in either run is reported as well, because the
 contract the campaign ratchets to is "no null", not "no change"; so is a
 surviving symbol with no counterpart (an analyzer that drops a same-name
-sibling). A producer whose formula hashes LINE NUMBERS (the doc/markup family
-on ``make_doc_stable_id``: markdown, rst, ini, kdl, gitignore, properties,
-requirements, robot, sparql, svelte, vue, astro, puppet; bibtex, whose stable_id
-is its node id) fails here on ANY earlier deletion: changing a value it already
-computes is a scheme bump (ADR-0035 §6), so those languages are listed.
+sibling, or one whose span is wrong, as Twig's was). A producer that hashed
+LINE NUMBERS (the doc/markup family on ``make_doc_stable_id``) or an
+occurrence index failed here on ANY earlier deletion; fixing a value a producer
+already computes is a scheme bump (ADR-0035 §6), and the WI-tusad bump did it
+once for every language this check listed.
+
+WHY A THIRD RUN, IN ANOTHER DIRECTORY. ``stable_id`` must not depend on where
+the repository is checked out: ADR-0035 hashes the repo-relative path. A
+producer that folded the ABSOLUTE path (Solidity's every id, Kotlin's top-level
+``val``) gave the same file two identities in two clones, and the deletion
+check above only caught it by accident (its two runs sit in two directories).
+:func:`location_dependent_ids` compares the with-sibling run against the same
+files written under a deeper, differently named root, and must find nothing.
 
 **The static companion.** :func:`pass_mints_without_stable_id` scans every
 ``Symbol(...)`` minted outside a language analyzer (core linkers and passes, the
@@ -304,6 +312,38 @@ def sibling_deletion_moves(
     return problems
 
 
+def location_dependent_ids(
+    here: Sequence[Any], elsewhere: Sequence[Any],
+) -> list[str]:
+    """Symbols whose stable_id differs between two checkouts of the same files.
+
+    ``here`` and ``elsewhere`` are the records of one run each over identical
+    file contents written under two different roots (paths are repo-relative,
+    so the records pair up). Each record is matched on ``(path, kind, name,
+    start line, start column)``, same-position records in emission order.
+    Returns one line per record whose identity differs or has no counterpart;
+    ``[]`` means no stable_id depends on the checkout location.
+    """
+    others: dict[tuple[Any, ...], list[Any]] = {}
+    for rec in elsewhere:
+        key = (_get(rec, "path"), _get(rec, "kind"), _get(rec, "name"), *_start(rec))
+        others.setdefault(key, []).append(rec)
+    seen: Counter[tuple[Any, ...]] = Counter()
+    problems: list[str] = []
+    for rec in here:
+        key = (_get(rec, "path"), _get(rec, "kind"), _get(rec, "name"), *_start(rec))
+        index = seen[key]
+        seen[key] += 1
+        matches = others.get(key, [])
+        there = _get(matches[index], "stable_id") if index < len(matches) else "(no counterpart)"
+        if there != _get(rec, "stable_id"):
+            problems.append(
+                f"{key[0]} {key[1]} {key[2]} (line {key[3]}): "
+                f"{_get(rec, 'stable_id')} here, {there} elsewhere"
+            )
+    return problems
+
+
 # -- the corpus ----------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -557,7 +597,7 @@ CASES: dict[str, SiblingCase] = {
     "kotlin": SiblingCase(
         "src/Mod.kt", "class Mod {\n", "    fun run(): Int = 1\n",
         "    fun run(x: Int): Int = x\n    val size: Int = 0\n}\nfun helper(): Int = 2\n"
-        "object Registry {\n    fun go(): Int = 1\n}\n"),
+        "object Registry {\n    fun go(): Int = 1\n}\nval limit: Int = 3\n"),
     "latex": SiblingCase(
         "doc/main.tex",
         "\\documentclass{article}\n\\newcommand{\\foo}{bar}\n"
@@ -949,19 +989,34 @@ def test_symbol_without_span_is_line_zero() -> None:
     assert _start(_sym("f", "function", "sha256:a", line=7)) == (7, 0)
 
 
+def test_location_check_pairs_records_by_position() -> None:
+    here = [_sym("f", "function", "sha256:a", line=1), _sym("f", "function", "sha256:b", line=2)]
+    same = [_sym("f", "function", "sha256:a", line=1), _sym("f", "function", "sha256:b", line=2)]
+    assert location_dependent_ids(here, same) == []
+    moved = [_sym("f", "function", "sha256:a", line=1), _sym("f", "function", "sha256:z", line=2)]
+    assert location_dependent_ids(here, moved) == [
+        "a.x function f (line 2): sha256:b here, sha256:z elsewhere"]
+    assert location_dependent_ids(here, same[:1]) == [
+        "a.x function f (line 2): sha256:b here, (no counterpart) elsewhere"]
+
+
 # -- live: the ratchet over the fixture corpus ---------------------------------
 
 
 @pytest.fixture(scope="module")
 def runs(tmp_path_factory) -> dict:
-    """Both variants of every fixture through the full pipeline, nodes by file."""
+    """Both variants of every fixture through the full pipeline, nodes by file
+    (and the with-sibling variant once more, checked out elsewhere)."""
     ensure_discovered()
     base = tmp_path_factory.mktemp("stable-id-floor")
     out: dict = {}
-    for variant in ("with", "without"):
-        root = base / variant
+    # "elsewhere": the with-sibling files again, under a deeper root with
+    # another name, for test_stable_ids_do_not_depend_on_the_checkout_location.
+    roots = {"with": base / "with", "without": base / "without",
+             "elsewhere": base / "another" / "checkout" / "clone"}
+    for variant, root in roots.items():
         for lang, case in CASES.items():
-            text = case.with_sibling() if variant == "with" else case.without_sibling()
+            text = case.without_sibling() if variant == "without" else case.with_sibling()
             for rel, body in ((case.filename, text), *case.extra):
                 target = root / lang / rel
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -1024,6 +1079,15 @@ def test_sibling_deletion_matches_baseline(runs) -> None:
         + "\n  ".join(breaches) + f"\nWhat moved:\n{detail}\nLive failing set: "
         + json.dumps(sorted(failing))
     )
+
+
+def test_stable_ids_do_not_depend_on_the_checkout_location(runs) -> None:
+    """The same files at another path carry the same ids (ADR-0035 hashes the
+    repo-relative path; an absolute one makes every clone a different graph)."""
+    moved = location_dependent_ids(
+        _fixture_nodes(runs, "with"), _fixture_nodes(runs, "elsewhere"),
+    )
+    assert moved == [], "stable_id depends on the checkout path:\n  " + "\n  ".join(moved)
 
 
 def test_baseline_names_only_fixture_languages() -> None:

@@ -67,7 +67,12 @@ a shebang line (#!/bin/bash), requiring special detection beyond glob patterns.
 Alias identity (WI-tusad): an ``alias`` mints
 ``overload_arity.scoped_stable_id`` with the functions enclosing it as the
 scope chain, so the same alias defined in two functions is two symbols (the
-floor key ``(kind, path, name)`` nulled both).
+floor key ``(kind, path, name)`` nulled both). A function nested in another
+hashes the same chain in ``compute_stable_id``'s qualified-name slot
+(``overload_arity.nested_qualified_name``: ``outer_a/run``), so ``run`` inside
+``outer_a`` and ``run`` inside ``outer_b`` no longer tie and deleting
+``outer_a`` no longer renumbers the other (the stable_id scheme bump); a
+top-level function hashes an empty qualified name, as it always did.
 """
 
 from __future__ import annotations
@@ -98,7 +103,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
-from hypergumbo_core.overload_arity import scoped_stable_id
+from hypergumbo_core.overload_arity import nested_qualified_name, scoped_stable_id
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
 )
@@ -243,6 +248,15 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> str | Non
     if word_node:
         return node_text(word_node, source)
     return None  # pragma: no cover
+
+
+def _enclosing_function_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The functions ``node`` is defined inside, outermost first: the scope
+    chain of a nested function or alias (WI-tusad)."""
+    return ancestor_labels(
+        node, lambda n: _extract_function_name(n, source)
+        if n.type == "function_definition" else None,
+    )
 
 
 def _extract_alias_info(node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -1065,6 +1079,9 @@ class BashAnalyzer(TreeSitterAnalyzer):
                         ),
                         stable_id=self.compute_stable_id(
                             node, kind="function", name=func_name,
+                            qualified_name=nested_qualified_name(
+                                _enclosing_function_names(node, source), func_name,
+                            ),
                             file_stable_id=file_anchor,
                         ),
                     )
@@ -1125,10 +1142,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                     stable_id=scoped_stable_id(
                                         kind="alias", lang="bash", path=rel_path,
                                         name=alias_name,
-                                        scope=ancestor_labels(
-                                            node, lambda n: _extract_function_name(n, source)
-                                            if n.type == "function_definition" else None,
-                                        ),
+                                        scope=_enclosing_function_names(node, source),
                                     ),
                                     name=alias_name,
                                     kind="alias",

@@ -31,6 +31,17 @@ Edges Extracted
   (ADR-0023 §6 folded the former `imports_component` type into
   canonical `imports`)
 
+Identity
+--------
+Every symbol mints ``make_doc_symbol_ids``. A directive and a slot hash the
+chain of elements around their element (``template/div``), and a directive
+also the expression it binds, so ``<p v-if="loading">`` and ``<p
+v-if="error">`` under one ``div`` are two identities and deleting the first
+moves nothing (they tied, and the per-file split pass numbered them, before the
+WI-tusad scheme bump); a ``<style>`` block hashes its attributes (``scoped``,
+``module``, ``lang``), so a global and a scoped block do not tie. Two identical
+directives in one element chain are a same-scope tie (ADR-0035 §1).
+
 Why This Design
 ---------------
 - Vue uses single-file components with three sections
@@ -51,6 +62,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    ancestor_labels,
     make_doc_symbol_ids,
     make_file_id,
     populate_docstrings_from_tree,
@@ -154,6 +166,33 @@ def _extract_braced_content(text: str, start_pos: int) -> str:
                 return text[start_pos:i + 1]
         i += 1
     return ""  # pragma: no cover - unclosed brace
+
+
+def _attribute_value(attribute: "tree_sitter.Node") -> str:
+    """The value bound by a directive attribute (``first`` in ``v-if="first"``),
+    or ``""`` for a bare one (``v-show``, ``v-else``)."""
+    for child in attribute.children:
+        if child.type == "attribute_value":
+            return _get_node_text(child)
+        if child.type == "quoted_attribute_value":
+            return _get_node_text(child)[1:-1]
+    return ""
+
+
+def _enclosing_elements(tag: "tree_sitter.Node") -> list[str]:
+    """The tag names of the elements around the element ``tag`` opens,
+    outermost first (``template``, ``div`` ...)."""
+    def label_of(node: "tree_sitter.Node") -> Optional[str]:
+        if node.type not in ("element", "template_element"):
+            return None
+        for child in node.children:
+            if child.type in ("start_tag", "self_closing_tag"):
+                for part in child.children:
+                    if part.type == "tag_name":
+                        return _get_node_text(part)
+        return None  # pragma: no cover - an element always opens with a tag
+    element = tag.parent
+    return ancestor_labels(element, label_of) if element is not None else []
 
 
 def _build_style_signature(is_scoped: bool, is_module: bool, lang: str) -> str:
@@ -490,6 +529,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
         """Process a tag node (start_tag or self_closing_tag)."""
         tag_name = ""
         directives: list[str] = []
+        directive_values: list[str] = []
         handler_expressions: list[str] = []
         has_slot_attr = False
 
@@ -498,16 +538,20 @@ class VueAnalyzer(TreeSitterAnalyzer):
                 tag_name = _get_node_text(child)
             elif child.type == "directive_attribute":
                 directive_text = _get_node_text(child)
+                value = _attribute_value(child)
                 if directive_text.startswith("@"):
                     directives.append(f"v-on:{directive_text[1:].split('=')[0]}")
+                    directive_values.append(value)
                     handler_expressions.append(
                         _extract_handler_name(directive_text)
                     )
                 elif directive_text.startswith(":"):
                     directives.append(f"v-bind:{directive_text[1:].split('=')[0]}")
+                    directive_values.append(value)
                     handler_expressions.append("")
                 elif directive_text.startswith("v-"):
                     directives.append(directive_text.split("=")[0])
+                    directive_values.append(value)
                     if directive_text.startswith("v-on"):
                         handler_expressions.append(
                             _extract_handler_name(directive_text)
@@ -528,6 +572,9 @@ class VueAnalyzer(TreeSitterAnalyzer):
 
         rel_path = path.relative_to(repo_root)
         line = node.start_point[0] + 1
+        # The elements this tag sits inside: the scope chain of its
+        # directives and slots (WI-tusad scheme bump).
+        enclosing = _enclosing_elements(node)
 
         is_component = (
             tag_name[0].isupper()
@@ -594,9 +641,13 @@ class VueAnalyzer(TreeSitterAnalyzer):
             )
             # node.id and stable_id are minted together by the shared
             # make_doc_symbol_ids helper (INV-dulah).
+            # The bound expression tells two same directives on sibling
+            # elements apart (``<p v-if="loading">`` / ``<p v-if="error">``).
+            bound = directive_values[i]
             symbol_id, stable_id = make_doc_symbol_ids(
                 "vue", rel_path, "directive", f"{tag_name}:{directive}",
                 span.start_line, span.end_line,
+                scope=[*enclosing, f"={bound}"] if bound else enclosing,
             )
 
             meta: dict[str, str | bool] = {
@@ -646,7 +697,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
             # make_doc_symbol_ids helper (INV-dulah).
             symbol_id, stable_id = make_doc_symbol_ids(
                 "vue", rel_path, "slot", slot_name,
-                span.start_line, span.end_line,
+                span.start_line, span.end_line, scope=enclosing,
             )
 
             symbol = Symbol(
@@ -702,9 +753,12 @@ class VueAnalyzer(TreeSitterAnalyzer):
         )
         # node.id and stable_id are minted together by the shared
         # make_doc_symbol_ids helper (INV-dulah).
+        # A component may have several <style> blocks (a global one and a
+        # scoped one); their attributes tell them apart.
+        signature = _build_style_signature(is_scoped, is_module, lang)
         symbol_id, stable_id = make_doc_symbol_ids(
             "vue", rel_path, "style_block", "style",
-            span.start_line, span.end_line,
+            span.start_line, span.end_line, scope=[signature],
         )
 
         symbol = Symbol(
@@ -716,7 +770,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
             path=str(rel_path),
             span=span,
             origin=PASS_ID,
-            signature=_build_style_signature(is_scoped, is_module, lang),
+            signature=signature,
             meta={
                 "is_scoped": is_scoped,
                 "is_module": is_module,

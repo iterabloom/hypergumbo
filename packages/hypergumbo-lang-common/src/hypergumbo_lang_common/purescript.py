@@ -30,8 +30,22 @@ skip-list (``pure``, ``map``, ``show``, ``liftEffect``, ...). The callee is
 looked up by the bare name, then qualified with the current module: a hit is
 confidence 1.0, a miss goes to ``purescript:unresolved:<name>`` at 0.6.
 
-Known gap: a function preceded by its type signature yields two function
-symbols, one for the ``signature`` node and one for the ``function`` node.
+One function, one symbol (WI-tusad scheme bump). A function is written as a
+type signature and one ``function`` node per equation (``fact 0 = 1`` /
+``fact n = ...``). Each used to become its own symbol, all with one name and
+one hash, so the per-file split pass numbered them and deleting the signature
+or an earlier equation renumbered the rest. Now the equations of a name in one
+declaration block (the module, a class, an instance) fold into one symbol at
+the first equation, spanning to the last (the Haskell analyzer's shape), with
+the signature as its ``signature`` and the cyclomatic complexity summed over
+the equations; calls in any equation come from it. A signature with no
+equations beside it (a class member) is still a symbol of its own.
+
+Identity: the module-qualified name plus, for a class member or an instance
+method, the class name or instance name (an unnamed instance's head, ``Shape
+Boolean``) as scope: ``Demo.shapeInt.area``, hashed only (the emitted name
+stays ``Demo.area``), so ``area`` in two instances no longer ties. A top-level
+function's value is unchanged.
 """
 
 import time
@@ -112,11 +126,45 @@ def _get_type_signature(node: "tree_sitter.Node") -> Optional[str]:
 
 
 def _get_instance_name(node: "tree_sitter.Node") -> Optional[str]:
-    """Get the instance name from a class_instance node."""
+    """Get the instance name from a class_instance node (None when unnamed)."""
     for child in node.children:
         if child.type == "instance_name":
             return _get_node_text(child)
-    return None  # pragma: no cover
+    return None
+
+
+def _equations(node: "tree_sitter.Node", name: str) -> list["tree_sitter.Node"]:
+    """Every ``function`` node named ``name`` in ``node``'s declaration block
+    (its parent), in source order: the equations of one function."""
+    siblings = node.parent.children if node.parent is not None else [node]
+    return [c for c in siblings if c.type == "function" and _get_function_name(c) == name]
+
+
+def _has_equations(node: "tree_sitter.Node", name: str) -> bool:
+    """Whether ``node``'s declaration block implements ``name``."""
+    return bool(_equations(node, name))
+
+
+def _declared_signature(node: "tree_sitter.Node", name: str) -> Optional[str]:
+    """The type of the ``signature`` declaring ``name`` beside ``node``, if any."""
+    siblings = node.parent.children if node.parent is not None else []
+    for sibling in siblings:
+        if sibling.type == "signature" and _get_function_name(sibling) == name:
+            return _get_type_signature(sibling)
+    return None
+
+
+def _instance_label(node: "tree_sitter.Node") -> str:
+    """An instance's scope label: its name, or for an unnamed instance
+    (``instance Shape Boolean where``) its head, which tells it from another
+    instance of the class."""
+    name = _get_instance_name(node)
+    if name:
+        return name
+    for child in node.children:
+        if child.type == "instance_head":
+            return " ".join(_get_node_text(child).split())
+    return ""  # pragma: no cover - the grammar always gives a name or a head
 
 
 def _get_call_name(node: "tree_sitter.Node") -> Optional[str]:
@@ -141,6 +189,11 @@ class _PureScriptExtractor:
         self._symbol_registry: dict[str, str] = {}  # name -> id
         self._run_id: str = ""
         self._current_module: Optional[str] = None
+        # The enclosing class / instance labels of the declaration being
+        # extracted (the stable_id scope chain), and, per (path, start byte)
+        # of every equation, the id of the function symbol it folded into.
+        self._scope: list[str] = []
+        self._equation_owner: dict[tuple[str, int], str] = {}
 
     def analyze(self) -> AnalysisResult:
         """Analyze all PureScript files in the repository."""
@@ -241,15 +294,27 @@ class _PureScriptExtractor:
                 self.symbols.append(sym)
 
         elif node.type == "function":
-            # Function definition
+            # Function definition: one symbol per name per declaration block,
+            # from its first equation (see the module docstring).
             name = _get_function_name(node)
             if name:
+                equations = _equations(node, name)
+                if equations[0].start_byte == node.start_byte:
+                    self._add_function(node, name, equations, path)
+            return  # Don't recurse into function bodies
+
+        elif node.type == "signature":
+            # A type signature carries a symbol only when nothing in its
+            # declaration block implements it (a class member, a standalone
+            # declaration); otherwise the function's symbol takes it.
+            name = _get_function_name(node)
+            type_sig = _get_type_signature(node)
+            if name and type_sig and not _has_equations(node, name):
                 rel_path = str(path.relative_to(self.repo_root))
                 qualified_name = f"{self._current_module}.{name}" if self._current_module else name
-
                 sym = Symbol(
                     id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "function"),
-                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="function", name=name, qualified_name=qualified_name, file_stable_id=self._ts_analyzer._file_anchor(rel_path)),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="function", name=name, qualified_name=self._scoped(name), file_stable_id=self._ts_analyzer._file_anchor(rel_path)),
                     name=qualified_name,
                     kind="function",
                     language="purescript",
@@ -261,48 +326,12 @@ class _PureScriptExtractor:
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    signature=type_sig,
                     meta={"module": self._current_module},
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "purescript"),
                     line_span=node.end_point[0] - node.start_point[0] + 1,
                 )
                 self.symbols.append(sym)
-            return  # Don't recurse into function bodies
-
-        elif node.type == "signature":
-            # Type signature - we'll use this to enhance function info
-            # but create symbol here for standalone signatures
-            name = _get_function_name(node)
-            type_sig = _get_type_signature(node)
-            if name and type_sig:
-                # Check if we already have a function with this name
-                qualified_name = f"{self._current_module}.{name}" if self._current_module else name
-                existing = next((s for s in self.symbols if s.name == qualified_name), None)
-                if existing:  # pragma: no cover
-                    # Update signature (rare: signature after implementation)
-                    existing.signature = type_sig
-                else:
-                    # Create symbol for signature without implementation
-                    rel_path = str(path.relative_to(self.repo_root))
-                    sym = Symbol(
-                        id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "function"),
-                        stable_id=self._ts_analyzer.compute_stable_id(node, kind="function", name=name, qualified_name=qualified_name, file_stable_id=self._ts_analyzer._file_anchor(rel_path)),
-                        name=qualified_name,
-                        kind="function",
-                        language="purescript",
-                        path=rel_path,
-                        span=Span(
-                            start_line=node.start_point[0] + 1,
-                            end_line=node.end_point[0] + 1,
-                            start_col=node.start_point[1],
-                            end_col=node.end_point[1],
-                        ),
-                        origin=PASS_ID,
-                        signature=type_sig,
-                        meta={"module": self._current_module},
-                        cyclomatic_complexity=compute_cyclomatic_complexity(node, "purescript"),
-                        line_span=node.end_point[0] - node.start_point[0] + 1,
-                    )
-                    self.symbols.append(sym)
 
         elif node.type == "data":
             # Data type definition
@@ -381,6 +410,8 @@ class _PureScriptExtractor:
                     meta={"module": self._current_module},
                 )
                 self.symbols.append(sym)
+                self._extract_scoped_children(node, path, name)
+                return
 
         elif node.type == "class_instance":
             # Instance declaration
@@ -406,10 +437,66 @@ class _PureScriptExtractor:
                     meta={"module": self._current_module},
                 )
                 self.symbols.append(sym)
+            self._extract_scoped_children(node, path, _instance_label(node))
+            return
 
         # Recursively process children
         for child in node.children:
             self._extract_symbols(child, path)
+
+    def _scoped(self, name: str) -> str:
+        """The qualified name a member's stable_id hashes: module, then the
+        enclosing class or instance, then the name (``Demo.shapeInt.area``).
+        The emitted name stays ``Demo.area``: calls resolve by it."""
+        return ".".join(p for p in (self._current_module, *self._scope, name) if p)
+
+    def _extract_scoped_children(
+        self, node: "tree_sitter.Node", path: Path, label: str,
+    ) -> None:
+        """Extract a class's or instance's members with ``label`` as their scope."""
+        self._scope.append(label)
+        try:
+            for child in node.children:
+                self._extract_symbols(child, path)
+        finally:
+            self._scope.pop()
+
+    def _add_function(
+        self, node: "tree_sitter.Node", name: str,
+        equations: list["tree_sitter.Node"], path: Path,
+    ) -> None:
+        """Emit ONE function symbol for ``equations`` (all of one name in one
+        declaration block), spanning the first to the last, with the type
+        signature declared beside them."""
+        rel_path = str(path.relative_to(self.repo_root))
+        qualified_name = f"{self._current_module}.{name}" if self._current_module else name
+        last = equations[-1]
+        start_line, end_line = node.start_point[0] + 1, last.end_point[0] + 1
+        sym = Symbol(
+            id=make_symbol_id("purescript", rel_path, start_line, end_line, qualified_name, "function"),
+            stable_id=self._ts_analyzer.compute_stable_id(node, kind="function", name=name, qualified_name=self._scoped(name), file_stable_id=self._ts_analyzer._file_anchor(rel_path)),
+            name=qualified_name,
+            kind="function",
+            language="purescript",
+            path=rel_path,
+            span=Span(
+                start_line=start_line,
+                end_line=end_line,
+                start_col=node.start_point[1],
+                end_col=last.end_point[1],
+            ),
+            origin=PASS_ID,
+            signature=_declared_signature(node, name),
+            meta={"module": self._current_module},
+            # Each equation is one alternative of the function's pattern match.
+            cyclomatic_complexity=sum(
+                compute_cyclomatic_complexity(eq, "purescript") or 0 for eq in equations
+            ),
+            line_span=end_line - start_line + 1,
+        )
+        self.symbols.append(sym)
+        for eq in equations:
+            self._equation_owner[(rel_path, eq.start_byte)] = sym.id
 
     def _extract_edges(self, node: "tree_sitter.Node", path: Path) -> None:
         """Extract edges from a syntax tree node."""
@@ -474,8 +561,13 @@ class _PureScriptExtractor:
             if current.type == "function":
                 name = _get_function_name(current)
                 if name:
-                    qualified = f"{self._current_module}.{name}" if self._current_module else name
                     rel_path = str(path.relative_to(self.repo_root))
+                    owner = self._equation_owner.get((rel_path, current.start_byte))
+                    if owner is not None:
+                        return owner
+                    # A ``where`` / ``let`` local function: no symbol of its
+                    # own, so the id is minted from its node as before.
+                    qualified = f"{self._current_module}.{name}" if self._current_module else name
                     return make_symbol_id("purescript", rel_path,
                         current.start_point[0]+1, current.end_point[0]+1, qualified, "function")
             current = current.parent

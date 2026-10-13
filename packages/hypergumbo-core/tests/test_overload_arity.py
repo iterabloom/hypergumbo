@@ -31,6 +31,7 @@ from hypergumbo_core.overload_arity import (
     declared_arity_of_entries,
     declared_arity_stable_id,
     narrow_by_arity,
+    nested_qualified_name,
     node_declared_arity_stable_id,
     parameter_entry,
     pass_minted_stable_id,
@@ -296,6 +297,14 @@ def test_scoped_id_joins_the_chain_into_the_qualified_name() -> None:
         kind="build_arg", lang="dockerfile", path="Dockerfile", name="V",
         scope=("run",), decorators="d",
     )
+
+
+def test_nested_qualified_name_is_empty_at_top_level() -> None:
+    """A top-level symbol keeps the empty qualified name its producer hashed;
+    a nested one spells its chain the way scoped_stable_id does."""
+    assert nested_qualified_name((), "run") == ""
+    assert nested_qualified_name(("outer_a",), "run") == "outer_a/run"
+    assert nested_qualified_name(["a", "b"], "run") == "a/b/run"
 
 
 class _Analyzer(TreeSitterAnalyzer):
