@@ -1,0 +1,50 @@
+Original commit body from 70d21f08da2a5c3c32dcf869f7579806cc8fc686:
+
+Pool: 78 files = 10 flagged by check-docstring-drift, 30 from the rolling
+read (never reviewed), 18 whose code changed since the 2026-10-10 audit
+with the module docstring untouched, and the 20 most heavily changed
+files whose docstring WAS touched. 21 read-only reviewers read every file
+in full; 7 default-REJECT verifiers re-read the code for each finding and
+built repros for code-defect claims. 97 first-pass findings: 96 confirmed,
+1 rejected (module_key_axis's ExternalRef count is accurate). A blind
+re-review of 5 "matches" found 1 more drifted file (validation_ratchet).
+49 of 78 files drifted (lower bound).
+
+This commit applies the A, B and D findings; the C omissions follow
+separately. 44 of the 47 files are pool files; base.py, behaviours.py and
+py.py carry the same stale BaseAnalyzer.compute_stable_id name that
+overload_arity's A finding renames (no BaseAnalyzer class exists).
+
+Notable corrections:
+- library_signatures: no longer "DRAFT"; the rows merge at four sites
+  (base analyze plus go/java/objc), not one.
+- visibility: is_exported is constrained by visibility, not an alias.
+- selection/filters: is_excluded_kind(kind, meta); the pre-fold
+  kind="event_subscriber" shape is NOT excluded any more.
+- receiver_blind_magnets: the real consumers are finalize and the
+  validator; no fixture matrix or survey harness ever existed.
+- taxonomy: the CODE/ANALYZABLE role composition is designed, not wired;
+  CONFIG_FILES_BY_LANG and ADDITIONAL_FILES_EXCLUDES still live in sketch.
+- rust_analyzer_install: two probes gate the backend, not one.
+- fingerprint: bash/hcl/ini/gitignore/dockerfile ARE fingerprinted; the
+  post-pass recomputes non-hgfp2 values and keeps linker identity hashes.
+- dataflow: Tier 1 needs a dataflow YAML; nine analyzers call
+  annotate_dataflow directly.
+- openapi: path+method first, operationId only as a fallback, no tag
+  matching; symbols are kind=function with framework_role.
+- trackerset: reconcile() has no production caller.
+- symbol_introspection: extract_signature has no production caller.
+- routes, receiver_type_dispatch: first lines were wrapped and published
+  truncated in ARCHITECTURE.md; now one sentence each.
+- controller_routes: Grails is not supported.
+
+Not applied: agda's B finding (renaming aliases "feed alias resolution").
+The verifier also filed it as a code defect: the alias map is built and
+then discarded, so the docstring states the intent and the code is wrong.
+It goes to the tracker instead of the docstring.
+
+signature_axis LEGACY_VALUE_PARSERS citations into kotlin.py re-pointed
+after the 2-line shift (MODULE_KEY_NOTIONS checked: no drift). Ledger
+records all 78 reviews. ARCHITECTURE.md and schema.json regenerated.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
