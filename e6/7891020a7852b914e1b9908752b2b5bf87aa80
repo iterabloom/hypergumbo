@@ -1,0 +1,34 @@
+Original commit body from ff854b41344775e7c838a87b1bc240788085b1b4:
+
+release-check's pip-audit failed with six advisories, every one fixable:
+
+- sentence-transformers 5.2.2, PYSEC-2026-4164 (local model loading
+  bypasses trust_remote_code and runs custom Python), fixed in 5.6.0.
+  The embeddings extra pinned ~=5.2.2, which admits 5.2.x only, so a
+  user could not reach the fix. Now ~=5.7. Verified on 5.7.0: both
+  models hypergumbo loads (modernbert-embed-base truncated to 256,
+  unixcoder-base 768) load through its own loaders and encode, and the
+  1,241 tests that import sketch_embeddings pass.
+
+  The requirement lived in five places (both extras, install-embeddings,
+  scripts/install-embeddings, the io-allowlist target). It is now
+  cli.EMBEDDINGS_REQUIREMENT, and test_embeddings_requirement holds the
+  other four to it. install-embeddings (CLI and script) reported any
+  importable version as installed, so 5.2.2 stayed in place; an older
+  copy is now upgraded, and --check exits 1 for it. Live: with a fake
+  5.2.2 on PYTHONPATH both --check forms exit 1 naming ~=5.7; with 5.7.0
+  both exit 0.
+
+- urllib3 2.7.0, PYSEC-2026-4175/4176/4177, fixed in 2.8.0: the audit
+  pins in release-check, woodpecker.yml, ci.yml and release.yml (the
+  pre-publish audit) move to >=2.8.0.
+
+- fsspec (CVE-2026-104851), cairosvg (CVE-2026-107378) and
+  sentence-transformers join release-check's upgrade-only-if-installed
+  list; neither fsspec nor cairosvg is a declared dependency.
+
+With these, pip-audit with release-check's ignore list reports "No known
+vulnerabilities found, 3 ignored" on this box. check-io-allowlist OK.
+smart-test: 12145 passed, cli.py at 100%.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
