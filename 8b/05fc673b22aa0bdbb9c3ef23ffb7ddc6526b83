@@ -1,0 +1,44 @@
+Original commit body from fdae905ca7c954e3059c6ced034e071f82105114:
+
+Second half of the 2026-10-14 audit (the A+B+D half is PR #1583). Each
+docstring below was accurate after that PR but silent on substantial
+behaviour; every added sentence comes from a default-REJECT verifier that
+checked it against the code, and was re-read in place here.
+
+- library_signatures: the four-layer row precedence (parent, built-in,
+  ADR-0061 community, user) and the package_variables section.
+- confidence: find_constant_confidence_violations (ADR-0039 ruling 2),
+  test-only caller.
+- race_log: the compile_suppressed event and the default XDG location.
+- selection/filters: the key-symbol policy sketch and compact share.
+- receiver_blind_magnets: what happens to a magnet (the two harmful
+  sub-classes, finalize demotion, the validator's non-mutating twin).
+- elixir: the Mix DependencyManifest that stamps boundary directness.
+- serve: the shipped htrac serve path wires no TrackerSet, so only
+  /health answers; the ops watcher and the static frontend mount.
+- user_config: the results-cache key digest, the project tier's
+  io_primitives opt-in gate (ADR-0061 ruling 4), backends.* opt-ins.
+- paths: classify_test_file, is_migration_file, names_no_source_file.
+- trackerset: the cross-tier :N positional aliases.
+- taxonomy: the extension helpers and additional_file_candidates.
+- dataflow: the community and user library_patterns channels; the
+  access_mode N/A skip.
+- routes: method_matches, transport_meta and the method-token helpers.
+- graphql_resolver: resolvers are synthetic symbols; both edges start
+  there and nothing links them to the host function.
+- kotlin: call sources outside functions and the AMB-METHOD guard.
+- cpp: included-header primitives are left unresolved.
+- tui: background reload, ID hotspots and ItemNavModal, dependency
+  chains, automatic human-unread detection.
+- erlang: OTP logger-macro expansion.
+- symbol_kinds: is_initializer and SOLIDITY_CALLABLE_DECLARATION_KINDS.
+- sketch: the data source (map-scoped FileIndex, cache discovery, cold
+  run, sketch_precomputed reuse).
+- taint: which edges carry taint.
+- cli: the verify-claims orchestration (overlay precedence, blindness
+  reason, exit codes 0/1/2/3).
+
+module_key_axis (cpp.py) and signature_axis (kotlin.py) file:line
+citations re-pointed after the line shifts. ARCHITECTURE.md regenerated.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
