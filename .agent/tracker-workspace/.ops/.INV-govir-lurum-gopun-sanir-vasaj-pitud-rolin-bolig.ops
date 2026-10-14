@@ -1,0 +1,23 @@
+- op: create  # 6896
+  at: '2026-10-14T10:29:27Z'  # 6896
+  by: agent  # 6896
+  actor: jgstern_agent  # 6896
+  clock: 1  # 6896
+  nonce: '6896'  # 6896
+  data:  # 6896
+    kind: invariant  # 6896
+    title: "TrackerSet.reconcile flags cross_tier_conflict on a discarded CompiledItem, so the cap and no-winner conflicts are never visible to ready/CLI/TUI"  # 6896
+    status: violated  # 6896
+    priority: 3  # 6896
+    parent:  # 6896
+    tags:  # 6896
+    - docstring_audit  # 6896
+    - tracker  # 6896
+    isbefore: []  # 6896
+    duplicate_of: []  # 6896
+    not_duplicate_of: []  # 6896
+    pr_ref:  # 6896
+    description: "Found by the 2026-10-14 docstring-staleness audit (trackerset.py review, verifier v4, reproduced). Latent: no CLI, hook or script calls `TrackerSet.reconcile()` (verified by grep of packages/, scripts/, .agent/hooks, .githooks, .github, .woodpecker; `tracker reconcile` is the unrelated git-level `_cmd_reconcile`), so production never reaches this path today.\n\ntrackerset.py's module docstring and `reconcile()`'s own docstring say reconciliation is capped at `_MAX_RECONCILE_ATTEMPTS` before flagging a persistent cross-tier conflict. The flag never becomes visible.\n\nEvidence (as of b0c9ee1872):\n- The cap branch sets `item.cross_tier_conflict = True` on a throwaway `compile_ops(...)` result and discards it (~trackerset.py:763-767).\n- The no-winner branch appends a \"reconcile\" op (~786-799), but `compile_ops` (store.py ~597 onward) never turns a reconcile op into `cross_tier_conflict`. The only other place the flag is set is the cache read-back (cache.py ~499).\n- So `ready()` (~trackerset.py:302, store.py ~2653), the CLI (cli.py ~253) and the TUI (tui.py ~848) can never show it.\n\nRepro (script kept in the audit scratchpad, reproduced here): create a TrackerSet over empty canonical/workspace/stealth dirs, `ts.add(\"invariant\", ..., tier=Tier.WORKSPACE)`, copy its ops file from workspace into canonical, then call `ts.reconcile()` `_MAX_RECONCILE_ATTEMPTS + 1` times. Observed: the first calls return the ID, then the cap is reached and later calls return []; both copies still have `cross_tier_conflict=False`, and the item is still in `ready()`. Expected: both copies flagged and excluded from `ready()`.\n\nFix: persist the conflict as state compile_ops understands (e.g. compile a reconcile-cap op into cross_tier_conflict=True), with a test through ready()."  # 6896
+    fields:  # 6896
+      statement: "When TrackerSet.reconcile gives up on a cross-tier duplicate (attempt cap or no winner), every copy reads back with cross_tier_conflict=True and is excluded from ready()."  # 6896
+      root_cause: "The cap branch sets cross_tier_conflict on a throwaway compile_ops() result and discards it, and compile_ops never turns the appended reconcile op into the flag; only the cache read-back sets it."  # 6896
