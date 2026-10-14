@@ -37,6 +37,7 @@ from hypergumbo_lang_extended1.luau import analyze_luau
 from hypergumbo_lang_extended1.nim import analyze_nim
 from hypergumbo_lang_extended1.odin import analyze_odin
 from hypergumbo_lang_extended1.solidity import analyze_solidity
+from hypergumbo_lang_extended1.sparql import analyze_sparql
 from hypergumbo_lang_extended1.tcl import analyze_tcl
 from hypergumbo_lang_extended1.twig import analyze_twig
 from hypergumbo_lang_extended1.v_lang import analyze_v
@@ -328,3 +329,23 @@ def test_top_level_symbols_keep_their_chain_free_values(tmp_path: Path) -> None:
     blade = _symbols(analyze_blade, tmp_path / "b", "v.blade.php", "@yield('top')\n")
     assert blade[0].stable_id == scoped_stable_id(
         kind="yield", lang="blade", path="v.blade.php", name="top")
+
+
+def test_sparql_queries_are_named_by_form_not_ordinal(tmp_path: Path) -> None:
+    """A query was ``query_N``: deleting an earlier query renamed the later
+    ones. Named by its form, a later query keeps its name and id; two of one
+    form keep distinct node ids and both draw their prefix edges."""
+    after = _check(analyze_sparql, tmp_path / "d", "q/two.rq",
+                   "CONSTRUCT { ?s ex:p ?o } WHERE { ?s ex:p ?o . }\n",
+                   "SELECT ?s WHERE { ?s ex:p ?o . }\n", "PREFIX ex: <http://example.org/>\n")
+    assert [s.name for s in after if s.kind == "query"] == ["SELECT"]
+    root = tmp_path / "e"
+    (root / "q").mkdir(parents=True)
+    (root / "q" / "same.rq").write_text(
+        "PREFIX ex: <http://example.org/>\nSELECT ?s WHERE { ?s ex:p ?o . }\n"
+        "SELECT ?o WHERE { ?s ex:q ?o . }\n")
+    result = analyze_sparql(root)
+    queries = [s for s in result.symbols if s.kind == "query"]
+    assert [q.name for q in queries] == ["SELECT", "SELECT"]
+    assert len({q.id for q in queries}) == 2
+    assert {e.src for e in result.edges if e.edge_type == "references"} == {q.id for q in queries}

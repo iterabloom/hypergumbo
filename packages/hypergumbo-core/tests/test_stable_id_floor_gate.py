@@ -73,7 +73,10 @@ the two-parent fixtures found ten more producers that hashed no parent
 blocks, HLSL namespaces and functions, JSON and TOML dependency groups,
 TOML 3-part table names, Meson branches, assembler local labels) and an
 ``else`` labelled without its ``if`` (CMake, Meson, gnuplot); a Maven
-artifactId under two groupIds tied too (fixture ``xml-maven``). :func:`test_every_registered_language_has_a_fixture`
+artifactId under two groupIds tied too (fixture ``xml-maven``), and so did a
+Perl sub in a block-form package, named under the package before it
+(``perl-blocks``); a SPARQL query was named by its ordinal
+(``sparql-queries``). :func:`test_every_registered_language_has_a_fixture`
 closes the last gap: a language with no fixture at all.
 
 **The static companion.** :func:`pass_mints_without_stable_id` scans every
@@ -1406,6 +1409,11 @@ PARENT_CASES: dict[str, SiblingCase] = {
     "perl-parents": _two(
         "lib/Two.pm", "", "package A;\n", "package B;\n", "sub go { return 1; }\n",
         tail_extra="1;\n"),
+    # Block-form packages (Perl 5.14+): a sub in ``package B { }`` was named
+    # under the package before it, and a sub after the block kept it.
+    "perl-blocks": _two(
+        "lib/Blocks.pm", "", "package A {\n", "package B {\n", "  sub go { return 1; }\n",
+        "}\n", "}\n", "sub top { return 2; }\n1;\n"),
     "pony-parents": _two(
         "src/two.pony", "", "class A\n", "class B\n",
         "  fun run(): U32 => 1\n  new create() => None\n", "\n", "\n"),
@@ -1475,6 +1483,12 @@ PARENT_CASES: dict[str, SiblingCase] = {
     "meson-else": _two(
         "else/meson.build", "project('else', 'c')\n", "if get_option('a')\n  x = 1\nelse\n",
         "if get_option('b')\n  x = 1\nelse\n", "  executable('tool', 't.c')\n", "endif\n", "endif\n"),
+    # Anonymous queries were named by ordinal (``query_2``): deleting an
+    # earlier query renamed the later one, and moved its id.
+    "sparql-queries": SiblingCase(
+        "queries/two.rq", "PREFIX ex: <http://example.org/>\n",
+        "CONSTRUCT { ?s ex:p ?o } WHERE { ?s ex:p ?o . }\n",
+        "SELECT ?s WHERE { ?s ex:p ?o . }\n"),
     # A shader template's preprocessor branches (whisper.cpp's shape).
     "wgsl-parents": _two(
         "src/two.wgsl", "", "#ifdef A\n", "#ifdef B\n",
