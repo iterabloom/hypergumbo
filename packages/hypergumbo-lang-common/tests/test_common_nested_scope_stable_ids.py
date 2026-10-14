@@ -18,15 +18,22 @@ from typing import Callable
 
 import pytest
 
-from hypergumbo_core.analyze.base import populate_kind_stable_ids
+from hypergumbo_core.analyze.base import make_doc_stable_id, populate_kind_stable_ids
+from hypergumbo_lang_common.astro import analyze_astro
 from hypergumbo_lang_common.dart import analyze_dart
 from hypergumbo_lang_common.fsharp import analyze_fsharp
+from hypergumbo_lang_common.hlsl import analyze_hlsl
 from hypergumbo_lang_common.julia import analyze_julia
 from hypergumbo_lang_common.matlab import analyze_matlab
+from hypergumbo_lang_common.meson import analyze_meson
 from hypergumbo_lang_common.ocaml import analyze_ocaml
+from hypergumbo_lang_common.puppet import analyze_puppet
 from hypergumbo_lang_common.purescript import analyze_purescript
+from hypergumbo_lang_common.rst import analyze_rst
 from hypergumbo_lang_common.scheme import analyze_scheme
+from hypergumbo_lang_common.scss import analyze_scss
 from hypergumbo_lang_common.starlark import analyze_starlark
+from hypergumbo_lang_common.svelte import analyze_svelte
 
 
 def _symbols(analyze: Callable, root: Path, rel: str, text: str) -> list:
@@ -132,3 +139,81 @@ def test_purescript_bare_type_signatures_are_read(tmp_path: Path) -> None:
     assert sigs == {
         "M.def": "a", "M.size": "Int", "M.helper": "Int", "M.r": "{ a :: Int }",
     }
+
+
+# -- INV-punig: one construct under two different parents ---------------------
+
+
+def _parents(
+    open_a: str, open_b: str, child: str, close_a: str = "", close_b: str = "", extra: str = "",
+) -> tuple:
+    """``(earlier, rest)``: ``child`` under ``open_a`` and again under ``open_b``
+    (each closed by its own ``close_*``)."""
+    return open_a + child + close_a, open_b + child + close_b + extra
+
+
+PARENT_CASES = {
+    "astro": (analyze_astro, "src/pages/two.astro",
+              *_parents("<div>\n", "<section>\n", "  <slot name=\"h\" />\n  <Card client:load />\n",
+                        "</div>\n", "</section>\n"),
+              "---\nconst x = 1;\n---\n"),
+    "hlsl": (analyze_hlsl, "src/two.hlsl",
+             *_parents("namespace a {\n", "namespace b {\n",
+                       "float f(float x) {\n  float y = x;\n  return y;\n}\nstruct S { float v; };\n",
+                       "}\n", "}\n")),
+    "meson": (analyze_meson, "sub/meson.build",
+              *_parents("if get_option('a')\n", "if get_option('b')\n",
+                        "  executable('tool', 't.c')\n",
+                        "elif x\n  library('l', 'l.c')\nelse\n  library('l', 'm.c')\nendif\n",
+                        "elif x\n  library('l', 'l.c')\nelse\n  library('l', 'm.c')\nendif\n"),
+              "project('two', 'c')\n"),
+    "puppet": (analyze_puppet, "manifests/two.pp",
+               *_parents("class a {\n", "class b {\n",
+                         "  file { '/tmp/x':\n    ensure => present,\n  }\n"
+                         "  if $x { file { '/y': } } else { file { '/y': } }\n"
+                         "  case $os { 'linux': { file { '/z': } } default: { file { '/z': } } }\n",
+                         "}\n", "}\n")),
+    "rst": (analyze_rst, "docs/two.rst",
+            *_parents("Alpha\n-----\n\n", "Beta\n----\n\n",
+                      "Details\n~~~~~~~\n\n.. _details:\n\n.. note::\n   See it.\n\n"),
+            "=====\nGuide\n=====\n\n"),
+    "scss": (analyze_scss, "src/two.scss",
+             *_parents(".a {\n", ".b {\n",
+                       "  .item { color: red; }\n  @if $x { .y { a: 1; } } @else { .y { a: 1; } }\n"
+                       "  @mixin m { .q { b: 1; } }\n", "}\n", "}\n")),
+    "svelte": (analyze_svelte, "src/Two.svelte",
+               *_parents("<div>\n", "<section>\n",
+                         "  {#each items as i}{#if i}<slot />{/if}{/each}\n"
+                         "  <button on:click={go}>go</button>\n", "</div>\n", "</section>\n"),
+               "<script>\n  let x = 1;\n</script>\n"),
+}
+
+
+@pytest.mark.parametrize("lang", sorted(PARENT_CASES))
+def test_deleting_the_first_of_two_parents_moves_no_id(tmp_path: Path, lang: str) -> None:
+    analyze, rel, earlier, rest, *head = PARENT_CASES[lang]
+    after = _check(analyze, tmp_path, rel, earlier, rest, *head)
+    assert after
+
+
+def test_rst_levels_follow_the_order_adornment_styles_first_appear(tmp_path: Path) -> None:
+    """tree-sitter-rst emits every section as a sibling; the level is the
+    index of the section's adornment style (an overlined ``=`` differs from an
+    underlined one) in first-use order."""
+    syms = _symbols(analyze_rst, tmp_path, "docs/l.rst",
+                    "=====\nTop\n=====\n\nA\n=\n\nB\n-\n\nC\n=\n\nD\n-\n")
+    levels = {s.name: s.meta["level"] for s in syms if s.kind == "section"}
+    assert levels == {"Top": 1, "A": 2, "B": 3, "C": 2, "D": 3}
+    sigs = {s.name: s.signature for s in syms if s.kind == "section"}
+    assert sigs["B"] == "### B"
+
+
+def test_top_level_doc_symbols_hash_no_scope(tmp_path: Path) -> None:
+    """A symbol with no enclosing parent keeps the value it had: the doc
+    formula with an empty scope."""
+    rst = _symbols(analyze_rst, tmp_path / "r", "a.rst", "Title\n=====\n")
+    assert rst[0].stable_id == make_doc_stable_id("rst", "a.rst", "section", "Title", 0, 0)
+    scss = _symbols(analyze_scss, tmp_path / "s", "a.scss", ".top { a: 1; }\n")
+    assert scss[0].stable_id == make_doc_stable_id("scss", "a.scss", "rule_set", ".top", 0, 0)
+    puppet = _symbols(analyze_puppet, tmp_path / "p", "a.pp", "class top {\n}\n")
+    assert puppet[0].stable_id == make_doc_stable_id("puppet", "a.pp", "class", "top", 0, 0)

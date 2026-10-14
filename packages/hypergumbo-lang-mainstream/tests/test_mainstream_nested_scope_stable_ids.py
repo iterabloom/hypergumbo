@@ -23,23 +23,29 @@ from typing import Callable
 import pytest
 
 from hypergumbo_core.analyze.base import (
-    make_declaration_stable_id, make_file_stable_id, make_typed_stable_id,
+    make_declaration_stable_id, make_doc_stable_id, make_file_stable_id, make_typed_stable_id,
     populate_kind_stable_ids, visibility_from_modifiers,
 )
 from hypergumbo_lang_mainstream import kotlin as kotlin_mod
+from hypergumbo_lang_mainstream.c import analyze_c
+from hypergumbo_lang_mainstream.cmake import analyze_cmake_files
 from hypergumbo_lang_mainstream.cpp import analyze_cpp
 from hypergumbo_lang_mainstream.csharp import analyze_csharp
 from hypergumbo_lang_mainstream.groovy import analyze_groovy
 from hypergumbo_lang_mainstream.java import analyze_java
 from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+from hypergumbo_lang_mainstream.json_config import analyze_json_files
 from hypergumbo_lang_mainstream.lua import analyze_lua
+from hypergumbo_lang_mainstream.markdown import analyze_markdown
 from hypergumbo_lang_mainstream.php import analyze_php
 from hypergumbo_lang_mainstream.powershell import analyze_powershell
 from hypergumbo_lang_mainstream.rust import analyze_rust
 from hypergumbo_lang_mainstream.rust_scip import compute_rust_stable_id_from_source
 from hypergumbo_lang_mainstream.scala import analyze_scala
 from hypergumbo_lang_mainstream.swift import analyze_swift
+from hypergumbo_lang_mainstream.toml_config import analyze_toml_files
+from hypergumbo_lang_mainstream.xml_config import analyze_xml_files
 
 
 def _symbols(analyze: Callable, root: Path, rel: str, text: str) -> list:
@@ -298,3 +304,78 @@ def test_parse_kotlin_keeps_the_original_when_the_repair_does_not_help() -> None
     tree = kotlin_mod._parse_kotlin(parser, hopeless)
     assert tree.root_node.has_error
     assert kotlin_mod._error_count(tree) >= 1
+
+
+# -- INV-punig: one construct under two different parents ---------------------
+
+_MD_CHILD = "## Details\n\nSee [home](index.md).\n\n```python\nprint(1)\n```\n\n"
+_C_CHILD = "  struct inner { int w; };\n  enum e { X };\n  typedef int t;\n  int f(void);\n"
+_CMAKE_CHILD = "  add_library(core a.c)\n  function(helper x)\n  endfunction()\n"
+
+PARENT_CASES = {
+    "markdown": (analyze_markdown, "docs/two.md",
+                 "# Alpha\n\n" + _MD_CHILD, "# Beta\n\n" + _MD_CHILD),
+    "c": (analyze_c, "src/two.c",
+          "void a(void) {\n" + _C_CHILD + "}\n", "void b(void) {\n" + _C_CHILD + "}\n"),
+    "cmake": (analyze_cmake_files, "CMakeLists.txt",
+              "if(WIN32)\n" + _CMAKE_CHILD + "else()\n" + _CMAKE_CHILD + "endif()\n",
+              "if(UNIX)\n" + _CMAKE_CHILD + "else()\n" + _CMAKE_CHILD + "endif()\n",
+              "cmake_minimum_required(VERSION 3.10)\n"),
+    "json": (analyze_json_files, "package.json",
+             '  "dependencies": {"lodash": "1.0.0"},\n',
+             '  "devDependencies": {"lodash": "1.0.0"}\n}\n', '{\n  "name": "two",\n'),
+    "toml": (analyze_toml_files, "Cargo.toml", "[dependencies]\nserde = \"1\"\n",
+             "[dev-dependencies]\nserde = \"1\"\n"
+             "[target.'cfg(windows)'.dependencies]\nserde = \"1\"\n",
+             "[package]\nname = \"two\"\n"),
+    "xml": (analyze_xml_files, "pom.xml",
+            "    <dependency>\n      <groupId>a</groupId>\n      <artifactId>x</artifactId>\n"
+            "    </dependency>\n",
+            "    <dependency>\n      <groupId>b</groupId>\n      <artifactId>x</artifactId>\n"
+            "    </dependency>\n  </dependencies>\n</project>\n",
+            "<project>\n  <dependencies>\n"),
+}
+
+
+@pytest.mark.parametrize("lang", sorted(PARENT_CASES))
+def test_deleting_the_first_of_two_parents_moves_no_id(tmp_path: Path, lang: str) -> None:
+    analyze, rel, earlier, rest, *head = PARENT_CASES[lang]
+    assert _check(analyze, tmp_path, rel, earlier, rest, *head)
+
+
+def test_top_level_declarations_keep_their_scope_free_values(tmp_path: Path) -> None:
+    """A heading under no section, a production dependency and a ``[dependencies]``
+    crate hash no scope: the doc formula, and the backstop's table value."""
+    md = _symbols(analyze_markdown, tmp_path / "m", "README.md", "# Top\n\nText.\n")
+    assert md[0].stable_id == make_doc_stable_id("markdown", "README.md", "section", "Top", 0, 0)
+    js = _symbols(analyze_json_files, tmp_path / "j", "package.json",
+                  '{"name": "x", "dependencies": {"lodash": "1.0.0"}}\n')
+    dep = next(s for s in js if s.kind == "dependency")
+    assert dep.stable_id == make_declaration_stable_id("dependency", "json", "package.json", "lodash")
+    toml = _symbols(analyze_toml_files, tmp_path / "t", "Cargo.toml",
+                    "[package]\nname = \"x\"\n[dependencies]\nserde = \"1\"\n")
+    crate = next(s for s in toml if s.kind == "dependency")
+    assert crate.stable_id == make_declaration_stable_id("dependency", "toml", "Cargo.toml", "serde")
+
+
+def test_cmake_else_branches_carry_their_if(tmp_path: Path) -> None:
+    """The ``else()`` of two conditionals were one label; under their ``if``
+    they are two, and the then-branch keeps its chain."""
+    from hypergumbo_core.overload_arity import scoped_stable_id
+
+    syms = _symbols(analyze_cmake_files, tmp_path, "CMakeLists.txt",
+                    "if(A)\n  add_library(x a.c)\nelseif(B)\n  add_library(x a.c)\nelse()\n"
+                    "  add_library(x a.c)\nendif()\n")
+    ids = [s.stable_id for s in syms if s.kind == "library"]
+    assert ids == [
+        scoped_stable_id(kind="library", lang="cmake", path="CMakeLists.txt", name="x", scope=chain)
+        for chain in (["if(A)"], ["if(A)", "elseif(B)"], ["if(A)", "else()"])
+    ]
+
+
+def test_markdown_empty_heading_names_nothing_and_scopes_nothing(tmp_path: Path) -> None:
+    """A bare ``#`` emits no section, and its section adds no label to the
+    chain of what sits in it."""
+    syms = _symbols(analyze_markdown, tmp_path, "docs/e.md", "#\n\n## Sub\n\ntext\n")
+    assert [(s.kind, s.name) for s in syms] == [("section", "Sub")]
+    assert syms[0].stable_id == make_doc_stable_id("markdown", "docs/e.md", "section", "Sub", 0, 0)

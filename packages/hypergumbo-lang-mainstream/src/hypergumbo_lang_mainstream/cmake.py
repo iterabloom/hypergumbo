@@ -36,11 +36,15 @@ Function and macro identity (WI-tusad)
 --------------------------------------
 ``function(name A B)`` / ``macro(name A B)`` record their named arguments in
 ``meta["parameters"]`` and mint the ADR-0035 producer stable_id through
-``overload_arity.declared_arity_stable_id`` over the file, the name as written
-and that argument count. CMake commands are global, so the scope chain is the
-file. Without the count, two definitions of one name in a file shared the
-backstop floor key and were both left null; now ``function(run x)`` and a
-later ``function(run x y)`` hold ids that do not depend on each other. Every
+``overload_arity.scoped_stable_id`` over the file, the name as written, that
+argument count and the blocks enclosing the definition (:func:`_block_label`,
+as for targets below). CMake commands are global, but a project defines one
+conditionally (``if(WIN32) function(helper) ... else() function(helper)``),
+and the two definitions are two identities (INV-punig, scheme v9); a
+top-level definition hashes no chain. Without the count, two definitions of
+one name in a file shared the backstop floor key and were both left null;
+now ``function(run x)`` and a later ``function(run x y)`` hold ids that do not
+depend on each other. Every
 CMake function also accepts extra arguments through ``ARGN``; that is true of
 all of them, so it is not recorded as a variadic entry and does not enter the
 hash.
@@ -50,8 +54,9 @@ Target identity (WI-tusad)
 ``add_library`` / ``add_executable`` / ``add_subdirectory`` / ``find_package``
 symbols mint ``overload_arity.scoped_stable_id`` with the blocks enclosing the
 command as the scope chain: each ``body`` is labelled by the command that
-opens it (``if(WIN32)``, ``elseif(APPLE)``, ``else()``, ``function(setup)``,
-``foreach(...)``; :func:`_block_label`). ``add_library(foo ...)`` in two
+opens it (``if(WIN32)``, ``function(setup)``, ``foreach(...)``; an
+``elseif(APPLE)`` / ``else()`` branch under its ``if``: ``if(WIN32)`` /
+``else()``; :func:`_block_label`). ``add_library(foo ...)`` in two
 branches of an ``if`` is two symbols that the floor key ``(kind, path,
 name)`` nulled. Two ``find_package(X)`` in one block remain a same-scope tie.
 ``project`` keeps the backstop's table formula.
@@ -70,7 +75,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.overload_arity import (
-    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+    PARAMETERS_KEY, declared_arity, parameter_entry,
     scoped_stable_id,
 )
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -149,21 +154,33 @@ def _command_definition_identity(
             parameter_entry(arg) for arg in _get_parameter_names(node, source)
         ],
     }
-    stable_id = declared_arity_stable_id(
-        kind=kind, lang="cmake", path=rel_path, name=name, qualified_name=name,
+    # The definition node (``function_def`` / ``macro_def``) sits in the
+    # blocks that enclose it; a top-level definition has no chain and keeps
+    # the value ``qualified_name=name`` gave it before INV-punig.
+    definition = node.parent if node.parent is not None else node
+    stable_id = scoped_stable_id(
+        kind=kind, lang="cmake", path=rel_path, name=name,
+        scope=ancestor_labels(definition, lambda n: _block_label(n, source)),
         arity=declared_arity(meta),
     )
     return stable_id, meta
 
 
 def _block_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """The scope a ``body`` opens: the command before it, whitespace collapsed.
+    """The scope a block opens, its opening command whitespace collapsed.
 
-    ``if(WIN32)``, ``elseif(APPLE)``, ``else()``, ``function(setup)`` ... so
-    each branch of a conditional, and each function or loop body, is its own
-    scope in a target's stable_id chain.
+    A ``body`` is labelled by the command before it (``function(setup)``,
+    ``foreach(...)``, ``elseif(APPLE)``, ``else()``), so each function or loop
+    body and each branch is its own scope in a target's stable_id chain. A
+    whole conditional (``if_condition``) is labelled by its ``if(...)``, and its
+    first branch adds nothing more, so an ``elseif`` / ``else`` branch is
+    ``if(WIN32)`` / ``else()`` (the Makefile chain's shape): the ``else()`` of
+    two different conditionals were one label, and two definitions in them
+    tied (INV-punig). The ``if`` branch keeps the chain it had.
     """
-    if node.type != "body" or node.prev_sibling is None:
+    if node.type == "if_condition":
+        return " ".join(node_text(node.children[0], source).split())
+    if node.type != "body" or node.prev_sibling is None or node.prev_sibling.type == "if_command":
         return None
     return " ".join(node_text(node.prev_sibling, source).split())
 

@@ -54,6 +54,28 @@ check above only caught it by accident (its two runs sit in two directories).
 :func:`location_dependent_ids` compares the with-sibling run against the same
 files written under a deeper, differently named root, and must find nothing.
 
+WHY A GUARD OVER THE FIXTURES THEMSELVES (INV-punig). The deletion check
+proves only the shapes the fixtures hold. After the scheme bump it passed
+while markdown, rst, scss, puppet, svelte, apex and fish hashed no parent:
+their fixtures deleted a sibling, never the first of two parents. So
+:func:`test_every_language_has_a_two_parent_fixture_or_is_flat` requires,
+for every language a fixture emits, a TWO-PARENT fixture (``SiblingCase.
+nested``: one text, byte for byte, under two different parents, the first
+deleted) whose copies emit the same kinds and keep their ids, which only a
+producer that hashes the parent can do (two same-scope copies tie;
+:func:`two_parent_languages`), or a reason in :data:`FLAT_LANGUAGES` why
+nothing it emits can nest. "Nests" is not decided from the output alone:
+:func:`nesting_languages` (one symbol's span inside another's) misses a
+markdown section, which spans its heading line, and a Svelte element, which
+is no symbol, so it only catches a flat entry whose symbols do nest. Writing
+the two-parent fixtures found ten more producers that hashed no parent
+(astro slots, Blade sections, C block scopes, CMake functions, gnuplot
+blocks, HLSL namespaces and functions, JSON and TOML dependency groups,
+TOML 3-part table names, Meson branches, assembler local labels) and an
+``else`` labelled without its ``if`` (CMake, Meson, gnuplot); a Maven
+artifactId under two groupIds tied too (fixture ``xml-maven``). :func:`test_every_registered_language_has_a_fixture`
+closes the last gap: a language with no fixture at all.
+
 **The static companion.** :func:`pass_mints_without_stable_id` scans every
 ``Symbol(...)`` minted outside a language analyzer (core linkers and passes, the
 alternative backends, ``manifest_targets``): one that carries a language must
@@ -120,7 +142,7 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 import pytest
 
 from hypergumbo_core.analyze.base import floor_stable_id_key, make_declaration_stable_id
-from hypergumbo_core.analyze.registry import ensure_discovered
+from hypergumbo_core.analyze.registry import ensure_discovered, get_all_analyzers
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.ir import Span, Symbol
 
@@ -235,6 +257,15 @@ class SiblingCase:
     manifests and companion sources a pass outside the language analyzer
     reads (a ``Package.swift``, a gRPC servicer). Their symbols are counted by
     the census; the deletion check reads the fixture file only.
+
+    ``nested`` makes the case a TWO-PARENT fixture (INV-punig): the same text,
+    byte for byte, once in ``earlier`` and once in ``tail``, each copy inside a
+    different enclosing construct (two classes, two headings, two branches).
+    :func:`nested_twin_kinds` finds the symbols each copy emits, and
+    :func:`two_parent_coverage` credits their languages. ``nested_lines``
+    gives those copies' ``(first, last)`` symbol lines instead, for a file
+    whose symbol lines are not its text lines (a notebook numbers its cells'
+    source, not the JSON holding them).
     """
 
     filename: str
@@ -244,6 +275,8 @@ class SiblingCase:
     boundary: Optional[int] = None
     shift: Optional[int] = None
     extra: tuple[tuple[str, str], ...] = ()
+    nested: str = ""
+    nested_lines: tuple[tuple[int, int], ...] = ()
 
     def with_sibling(self) -> str:
         """The file with the earlier sibling."""
@@ -348,6 +381,100 @@ def location_dependent_ids(
     return problems
 
 
+def _end(record: Any) -> tuple[int, int]:
+    """``(end_line, end_col)`` of a record's span; ``(0, 0)`` without one."""
+    span = _get(record, "span")
+    if isinstance(span, Mapping):
+        return int(span.get("end_line", 0)), int(span.get("end_col", 0))
+    if span is None:
+        return 0, 0
+    return int(getattr(span, "end_line", 0)), int(getattr(span, "end_col", 0))
+
+
+def _text_position(text: str, offset: int) -> tuple[int, int]:
+    """``(line, column)`` of character ``offset`` in ``text`` (line 1-based,
+    column 0-based, as spans count them)."""
+    return text.count("\n", 0, offset) + 1, offset - (text.rfind("\n", 0, offset) + 1)
+
+
+def nested_twin_kinds(
+    case: SiblingCase, with_sibling: Sequence[Any],
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """The ``(kind, language)`` of every symbol each copy of ``case.nested``
+    emits in the with-sibling run: ``(earlier copy's, tail copy's)``, sorted.
+
+    A symbol belongs to a copy when its start lies inside the copy's text
+    (or, with ``nested_lines``, on the copy's lines). ``([], [])`` for a case
+    that is not a two-parent fixture.
+    """
+    if not case.nested:
+        return [], []
+    if case.nested_lines:
+        ranges = [((first, 0), (last + 1, 0)) for first, last in case.nested_lines]
+    else:
+        text = case.with_sibling()
+        ranges = []
+        for base, part in ((len(case.head), case.earlier),
+                           (len(case.head) + len(case.earlier), case.tail)):
+            at = base + part.index(case.nested)
+            ranges.append((_text_position(text, at),
+                           _text_position(text, at + len(case.nested))))
+    twins = [
+        sorted((_get(rec, "kind"), _get(rec, "language")) for rec in with_sibling
+               if _get(rec, "kind") != "file" and start <= _start(rec) < end)
+        for start, end in ranges
+    ]
+    return twins[0], twins[1]
+
+
+def two_parent_languages(
+    case: SiblingCase, with_sibling: Sequence[Any], without_sibling: Sequence[Any],
+) -> set[str]:
+    """The languages ``case`` proves hash the enclosing parent (INV-punig).
+
+    ``case.nested`` is one text under two different parents; deleting
+    ``earlier`` deletes the first parent with its copy. Two same-scope copies
+    of one text tie (ADR-0035 §1), and the per-file split pass numbers them,
+    so the second copy's symbols keep their ids across the deletion only when
+    the producer hashed something outside the copy, and the copies differ in
+    nothing but their parent (and their position, which no hash may hold).
+    So a case proves the languages of its copies' symbols when both copies
+    emit the same kinds, at least one, and the deletion moves nothing.
+    """
+    earlier, tail = nested_twin_kinds(case, with_sibling)
+    if not earlier or [k for k, _ in earlier] != [k for k, _ in tail]:
+        return set()
+    if sibling_deletion_moves(case, with_sibling, without_sibling):
+        return set()
+    return {language for _, language in tail if language}
+
+
+def nesting_languages(records: Iterable[Any]) -> set[str]:
+    """Languages with a symbol whose span lies strictly inside another symbol's
+    span of the same file (``file`` nodes aside): the analyzer emits nesting.
+
+    A producer that nests without saying so in its spans (a markdown section
+    spans its heading line only, a Svelte element is no symbol) is invisible
+    here, which is why :data:`FLAT_LANGUAGES` is a reviewed list and not this
+    function's complement.
+    """
+    by_path: dict[Any, list[tuple[str, tuple[int, int], tuple[int, int]]]] = defaultdict(list)
+    for rec in records:
+        language = _get(rec, "language")
+        if _get(rec, "kind") != "file" and language and _get(rec, "span") is not None:
+            by_path[_get(rec, "path")].append((language, _start(rec), _end(rec)))
+    found: set[str] = set()
+    for spans in by_path.values():
+        for language, start, end in spans:
+            if language not in found and any(
+                outer_start <= start and end <= outer_end
+                and (outer_start, outer_end) != (start, end)
+                for _, outer_start, outer_end in spans
+            ):
+                found.add(language)
+    return found
+
+
 # -- the corpus ----------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -400,7 +527,8 @@ CASES: dict[str, SiblingCase] = {
         "const second = 2;\n---\n<main><slot name=\"header\" /><h1>{title}</h1></main>\n"),
     "bash": SiblingCase(
         "bin/demo.sh", "#!/bin/bash\n", "outer_a() {\n  run() { echo 1; }\n}\n",
-        "outer_b() {\n  run() { echo 2; }\n}\nhelper() { echo 3; }\n"),
+        "outer_b() {\n  run() { echo 1; }\n}\nhelper() { echo 3; }\n",
+        nested="  run() { echo 1; }\n"),
     "bibtex": SiblingCase(
         "doc/refs.bib", "",
         "@article{first,\n  title = {First},\n}\n",
@@ -455,9 +583,10 @@ CASES: dict[str, SiblingCase] = {
     "css": SiblingCase(
         "src/site.css", "",
         "@media (max-width: 600px) {\n  .btn { color: red; }\n}\n",
-        "@media print {\n  .btn { color: blue; }\n}\n.btn:hover, #main { color: green; }\n"
+        "@media print {\n  .btn { color: red; }\n}\n.btn:hover, #main { color: green; }\n"
         "@font-face { font-family: 'Demo'; src: url(d.woff); }\n"
-        "@keyframes spin { from { opacity: 0; } }\n:root { --gap: 4px; }\n"),
+        "@keyframes spin { from { opacity: 0; } }\n:root { --gap: 4px; }\n",
+        nested="  .btn { color: red; }\n"),
     "cuda": SiblingCase(
         "src/demo.cu", "", "__device__ int f(int x) { return x; }\n",
         "__device__ float f(float x) { return x; }\n"
@@ -472,7 +601,8 @@ CASES: dict[str, SiblingCase] = {
     "dockerfile": SiblingCase(
         "docker/Dockerfile", "ARG BASE=alpine\n",
         "FROM alpine AS build\nARG VERSION\nENV MODE=build\n",
-        "FROM alpine AS run\nARG VERSION\nENV MODE=run\nEXPOSE 8080\n"),
+        "FROM alpine AS run\nARG VERSION\nENV MODE=run\nEXPOSE 8080\n",
+        nested="ARG VERSION\n"),
     # The clauses of one name/arity are ONE elixir function node, so the earlier
     # same-name sibling is a function of another arity.
     "elixir": SiblingCase(
@@ -537,7 +667,8 @@ CASES: dict[str, SiblingCase] = {
         "templates/page.hbs", "",
         "{{#if user}}\n  {{> header}}\n{{/if}}\n",
         "{{#if admin}}\n  {{> header}}\n{{/if}}\n{{#each items}}{{this}}{{/each}}\n"
-        "{{#formatDate when}}x{{/formatDate}}\n"),
+        "{{#formatDate when}}x{{/formatDate}}\n",
+        nested="  {{> header}}\n"),
     "haskell": SiblingCase(
         "src/Demo.hs", "module Demo where\n\nclass Shape a where\n  area :: a -> Int\n\n",
         "instance Shape Int where\n  area x = x\n\n",
@@ -562,7 +693,8 @@ CASES: dict[str, SiblingCase] = {
     "ini": SiblingCase(
         "conf/app.ini", "",
         "[server]\nport = 80\n",
-        "[client]\nport = 8080\nhost = localhost\n"),
+        "[client]\nport = 80\nhost = localhost\n",
+        nested="port = 80\n"),
     "janet": SiblingCase(
         "src/demo.janet", "", "(defn run [x] x)\n", "(defn run [x y] x)\n(defn helper [] 2)\n"),
     "java": SiblingCase(
@@ -597,7 +729,8 @@ CASES: dict[str, SiblingCase] = {
     "kdl": SiblingCase(
         "conf/app.kdl", "",
         "server {\n  port 80\n}\n",
-        "client {\n  port 8080\n}\n"),
+        "client {\n  port 80\n}\n",
+        nested="  port 80\n"),
     "kotlin": SiblingCase(
         "src/Mod.kt", "class Mod {\n", "    fun run(): Int = 1\n",
         "    fun run(x: Int): Int = x\n    val size: Int = 0\n}\nfun helper(): Int = 2\n"
@@ -607,7 +740,8 @@ CASES: dict[str, SiblingCase] = {
         "\\documentclass{article}\n\\newcommand{\\foo}{bar}\n"
         "\\newenvironment{note}{}{}\n\\begin{document}\n",
         "\\section{Intro}\n\\subsection{Setup}\n\\label{sec:a}\n",
-        "\\section{Usage}\n\\subsection{Setup}\n\\label{sec:b}\n\\end{document}\n"),
+        "\\section{Usage}\n\\subsection{Setup}\n\\label{sec:b}\n\\end{document}\n",
+        nested="\\subsection{Setup}\n"),
     "lean": SiblingCase(
         "src/Demo.lean", "", "namespace A\ndef run (x : Nat) : Nat := x\nend A\n",
         "namespace B\ndef run (x y : Nat) : Nat := x + y\nend B\ndef helper : Nat := 2\n"),
@@ -627,7 +761,8 @@ CASES: dict[str, SiblingCase] = {
         "Makefile", "CC = gcc\n",
         "ifeq ($(OS),Windows_NT)\nall:\n\techo win\nendif\n",
         "ifneq ($(OS),Windows_NT)\nall:\n\techo unix\nendif\n%.o: %.c\n\t$(CC) -c $<\n"
-        ".PHONY: all\ndefine greet\necho hi\nendef\n"),
+        ".PHONY: all\ndefine greet\necho hi\nendef\n",
+        nested="all:\n"),
     "markdown": SiblingCase(
         "docs/guide.md", "# Guide\n\n",
         "## Install\n\nRun it.\n\n",
@@ -686,7 +821,8 @@ CASES: dict[str, SiblingCase] = {
     "proto": SiblingCase(
         "api/demo.proto", 'syntax = "proto3";\npackage demo;\nmessage Req { int32 x = 1; }\n',
         "service A {\n  rpc Get(Req) returns (Req);\n}\n",
-        "service B {\n  rpc Get(Req) returns (Req);\n}\n"),
+        "service B {\n  rpc Get(Req) returns (Req);\n}\n",
+        nested="  rpc Get(Req) returns (Req);\n"),
     "puppet": SiblingCase(
         "manifests/init.pp", "",
         "class first {\n}\n",
@@ -800,7 +936,8 @@ CASES: dict[str, SiblingCase] = {
         "service B {\n  i32 run(1: i32 x, 2: i32 y)\n}\nstruct Box {\n  1: i32 size\n}\n"),
     "tlaplus": SiblingCase(
         "spec/Demo.tla", "---- MODULE Demo ----\n", "A == LET f == 1 IN f\n",
-        "B == LET f == 2 IN f\nRun(x) == x\n====\n"),
+        "B == LET f == 1 IN f\nRun(x) == x\n====\n",
+        nested="LET f == 1 IN f"),
     "toml": SiblingCase(
         "rs/Cargo.toml", "[package]\nname = \"demo\"\n",
         "[[bin]]\nname = \"first\"\npath = \"src/first.rs\"\n",
@@ -871,32 +1008,40 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "src/Outer.scala", "",
         "class A {\n  class Inner {\n    def go(): Int = 1\n    val v: Int = 1\n  }\n"
         "  object Obj {\n    def go(): Int = 1\n  }\n  trait T\n}\n",
-        "class B {\n  class Inner {\n    def go(): Int = 2\n    val v: Int = 2\n  }\n"
-        "  object Obj {\n    def go(): Int = 2\n  }\n  trait T\n}\n"
+        "class B {\n  class Inner {\n    def go(): Int = 1\n    val v: Int = 1\n  }\n"
+        "  object Obj {\n    def go(): Int = 1\n  }\n  trait T\n}\n"
         "object Run {\n  def a(): Int = {\n    def local(): Int = 1\n    local()\n  }\n"
-        "  def b(): Int = {\n    def local(): Int = 2\n    local()\n  }\n}\n"),
+        "  def b(): Int = {\n    def local(): Int = 2\n    local()\n  }\n}\n",
+        nested="  class Inner {\n    def go(): Int = 1\n    val v: Int = 1\n  }\n"
+               "  object Obj {\n    def go(): Int = 1\n  }\n  trait T\n"),
     # The one-line nested body is the tree-sitter-kotlin 1.1.0 shape that
     # turned the whole class into an ERROR (kotlin._close_brace_repair).
     "kotlin-nested": SiblingCase(
         "src/Outer.kt", "",
         "class A {\n    class Inner {\n        fun go(): Int = 1\n        val v: Int = 1\n    }\n"
         "    class Line { fun go(): Int = 1 }\n    interface I {\n        fun f(): Int\n    }\n}\n",
-        "class B {\n    class Inner {\n        fun go(): Int = 2\n        val v: Int = 2\n    }\n"
-        "    class Line { fun go(): Int = 2 }\n    interface I {\n        fun f(): Int\n    }\n}\n"
+        "class B {\n    class Inner {\n        fun go(): Int = 1\n        val v: Int = 1\n    }\n"
+        "    class Line { fun go(): Int = 1 }\n    interface I {\n        fun f(): Int\n    }\n}\n"
         "fun a(): Int {\n    fun local(): Int = 1\n    return local()\n}\n"
-        "fun b(): Int {\n    fun local(): Int = 2\n    return local()\n}\n"),
+        "fun b(): Int {\n    fun local(): Int = 2\n    return local()\n}\n",
+        nested="    class Inner {\n        fun go(): Int = 1\n        val v: Int = 1\n    }\n"
+               "    class Line { fun go(): Int = 1 }\n    interface I {\n        fun f(): Int\n    }\n"),
     "csharp-nested": SiblingCase(
         "src/Outer.cs", "",
         "class A {\n    class Inner {\n        int Go() { return 1; }\n        int f;\n"
         "        int P { get; set; }\n        enum E { X }\n    }\n}\n",
-        "class B {\n    class Inner {\n        int Go() { return 2; }\n        int f;\n"
-        "        int P { get; set; }\n        enum E { X }\n    }\n}\n"),
+        "class B {\n    class Inner {\n        int Go() { return 1; }\n        int f;\n"
+        "        int P { get; set; }\n        enum E { X }\n    }\n}\n",
+        nested="    class Inner {\n        int Go() { return 1; }\n        int f;\n"
+               "        int P { get; set; }\n        enum E { X }\n    }\n"),
     "csharp-namespace": SiblingCase(
         "src/Spaces.cs", "",
         "namespace A {\n    class Inner {\n        int Go() { return 1; }\n        int f;\n    }\n"
         "    interface I { }\n    struct S { }\n}\n",
-        "namespace B {\n    class Inner {\n        int Go() { return 2; }\n        int f;\n    }\n"
-        "    interface I { }\n    struct S { }\n}\n"),
+        "namespace B {\n    class Inner {\n        int Go() { return 1; }\n        int f;\n    }\n"
+        "    interface I { }\n    struct S { }\n}\n",
+        nested="    class Inner {\n        int Go() { return 1; }\n        int f;\n    }\n"
+               "    interface I { }\n    struct S { }\n"),
     # A property hashed its qualified name, which held the innermost
     # namespace only: ``Inner.C.P`` in namespaces A and B tied.
     "csharp-namespace-nested": SiblingCase(
@@ -904,102 +1049,128 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "namespace A {\n    namespace Inner {\n        class C {\n"
         "            int P { get; set; }\n        }\n    }\n}\n",
         "namespace B {\n    namespace Inner {\n        class C {\n"
-        "            int P { get; set; }\n        }\n    }\n}\n"),
+        "            int P { get; set; }\n        }\n    }\n}\n",
+        nested="    namespace Inner {\n        class C {\n"
+               "            int P { get; set; }\n        }\n    }\n"),
     "swift-nested": SiblingCase(
         "src/Outer.swift", "",
         "class A {\n    class Inner {\n        func go() -> Int { return 1 }\n        var v: Int = 1\n    }\n"
         "    enum E {\n        case x\n    }\n}\n",
-        "class B {\n    class Inner {\n        func go() -> Int { return 2 }\n        var v: Int = 2\n    }\n"
+        "class B {\n    class Inner {\n        func go() -> Int { return 1 }\n        var v: Int = 1\n    }\n"
         "    enum E {\n        case x\n    }\n}\n"
         "func a() -> Int {\n    struct Local {\n        var v: Int = 1\n    }\n"
         "    func local() -> Int { return 1 }\n    return local()\n}\n"
         "func b() -> Int {\n    struct Local {\n        var v: Int = 2\n    }\n"
-        "    func local() -> Int { return 2 }\n    return local()\n}\n"),
+        "    func local() -> Int { return 2 }\n    return local()\n}\n",
+        nested="    class Inner {\n        func go() -> Int { return 1 }\n        var v: Int = 1\n    }\n"
+               "    enum E {\n        case x\n    }\n"),
     # Member classes were told apart by their dotted names; local classes in
     # two methods (and an anonymous class's methods) were not.
     "java-local": SiblingCase(
         "src/Outer.java", "class Outer {\n",
         "    int a() {\n        class Local {\n            int v;\n            int go() { return 1; }\n"
         "        }\n        return new Local().go();\n    }\n",
-        "    int b() {\n        class Local {\n            int v;\n            int go() { return 2; }\n"
+        "    int b() {\n        class Local {\n            int v;\n            int go() { return 1; }\n"
         "        }\n        return new Local().go();\n    }\n"
-        "    class Inner {\n        int go() { return 3; }\n    }\n}\n"),
+        "    class Inner {\n        int go() { return 3; }\n    }\n}\n",
+        nested="        class Local {\n            int v;\n            int go() { return 1; }\n"
+               "        }\n        return new Local().go();\n"),
     "typescript-nested": SiblingCase(
         "src/outer.ts", "",
         "namespace A {\n  export class Inner {\n    v: number = 1;\n    go(): number { return 1; }\n  }\n"
         "  export interface I { x: number; }\n  export enum E { X }\n  export type T = number;\n"
         "  export function run(): number { return 1; }\n}\n",
-        "namespace B {\n  export class Inner {\n    v: number = 2;\n    go(): number { return 2; }\n  }\n"
+        "namespace B {\n  export class Inner {\n    v: number = 1;\n    go(): number { return 1; }\n  }\n"
         "  export interface I { x: number; }\n  export enum E { X }\n  export type T = number;\n"
-        "  export function run(): number { return 2; }\n}\n"),
+        "  export function run(): number { return 1; }\n}\n",
+        nested="  export class Inner {\n    v: number = 1;\n    go(): number { return 1; }\n  }\n"
+               "  export interface I { x: number; }\n  export enum E { X }\n  export type T = number;\n"
+               "  export function run(): number { return 1; }\n"),
     "javascript-nested": SiblingCase(
         "src/outer.js", "",
         "function a() {\n  class Inner {\n    go() { return 1; }\n  }\n"
         "  function local() { return 1; }\n  return [Inner, local];\n}\n"
         "const objA = {\n  go() { return 1; },\n};\n",
-        "function b() {\n  class Inner {\n    go() { return 2; }\n  }\n"
-        "  function local() { return 2; }\n  return [Inner, local];\n}\n"
-        "const objB = {\n  go() { return 2; },\n};\n"),
+        "function b() {\n  class Inner {\n    go() { return 1; }\n  }\n"
+        "  function local() { return 1; }\n  return [Inner, local];\n}\n"
+        "const objB = {\n  go() { return 2; },\n};\n",
+        nested="  class Inner {\n    go() { return 1; }\n  }\n"
+               "  function local() { return 1; }\n  return [Inner, local];\n"),
     "php-namespace": SiblingCase(
         "src/spaces.php", "<?php\n",
         "namespace A {\n    class Inner {\n        private $v = 1;\n        const C = 1;\n"
         "        function go() { return 1; }\n    }\n    interface I {}\n    trait T {}\n}\n",
-        "namespace B {\n    class Inner {\n        private $v = 2;\n        const C = 2;\n"
-        "        function go() { return 2; }\n    }\n    interface I {}\n    trait T {}\n}\n"),
+        "namespace B {\n    class Inner {\n        private $v = 1;\n        const C = 1;\n"
+        "        function go() { return 1; }\n    }\n    interface I {}\n    trait T {}\n}\n",
+        nested="    class Inner {\n        private $v = 1;\n        const C = 1;\n"
+               "        function go() { return 1; }\n    }\n    interface I {}\n    trait T {}\n"),
     "cpp-nested": SiblingCase(
         "src/outer.cpp", "",
         "class A {\n  class Inner {\n    int go() { return 1; }\n    int v;\n  };\n"
         "  enum E { X };\n};\nnamespace na {\nint run() { return 1; }\nint value = 1;\n"
         "struct S { int v; };\n}\n",
-        "class B {\n  class Inner {\n    int go() { return 2; }\n    int v;\n  };\n"
+        "class B {\n  class Inner {\n    int go() { return 1; }\n    int v;\n  };\n"
         "  enum E { X };\n};\nnamespace nb {\nint run() { return 2; }\nint value = 2;\n"
-        "struct S { int v; };\n}\n"),
+        "struct S { int v; };\n}\n",
+        nested="  class Inner {\n    int go() { return 1; }\n    int v;\n  };\n  enum E { X };\n"),
     "rust-nested": SiblingCase(
         "src/nested.rs", "",
         "mod a {\n    struct Inner { v: i32 }\n    impl Inner {\n        fn go(&self) -> i32 { 1 }\n    }\n"
         "    enum E { X }\n    trait T { fn t(&self); }\n    fn run() -> i32 { 1 }\n}\n"
         "fn outer_a() -> i32 {\n    fn local() -> i32 { 1 }\n    local()\n}\n",
-        "mod b {\n    struct Inner { v: i32 }\n    impl Inner {\n        fn go(&self) -> i32 { 2 }\n    }\n"
-        "    enum E { X }\n    trait T { fn t(&self); }\n    fn run() -> i32 { 2 }\n}\n"
-        "fn outer_b() -> i32 {\n    fn local() -> i32 { 2 }\n    local()\n}\n"),
+        "mod b {\n    struct Inner { v: i32 }\n    impl Inner {\n        fn go(&self) -> i32 { 1 }\n    }\n"
+        "    enum E { X }\n    trait T { fn t(&self); }\n    fn run() -> i32 { 1 }\n}\n"
+        "fn outer_b() -> i32 {\n    fn local() -> i32 { 2 }\n    local()\n}\n",
+        nested="    struct Inner { v: i32 }\n    impl Inner {\n        fn go(&self) -> i32 { 1 }\n    }\n"
+               "    enum E { X }\n    trait T { fn t(&self); }\n    fn run() -> i32 { 1 }\n"),
     "groovy-nested": SiblingCase(
         "src/Outer.groovy", "",
         "class A {\n    class Inner {\n        int go() { 1 }\n    }\n    interface I {}\n    enum E { X }\n}\n",
-        "class B {\n    class Inner {\n        int go() { 2 }\n    }\n    interface I {}\n    enum E { X }\n}\n"),
+        "class B {\n    class Inner {\n        int go() { 1 }\n    }\n    interface I {}\n    enum E { X }\n}\n",
+        nested="    class Inner {\n        int go() { 1 }\n    }\n    interface I {}\n    enum E { X }\n"),
     "d-nested": SiblingCase(
         "src/outer.d", "module outer;\n",
         "class A {\n    class Inner {\n        int go() { return 1; }\n        int v;\n    }\n}\n"
         "int fa() {\n    int local() { return 1; }\n    return local();\n}\n",
-        "class B {\n    class Inner {\n        int go() { return 2; }\n        int v;\n    }\n}\n"
-        "int fb() {\n    int local() { return 2; }\n    return local();\n}\n"),
+        "class B {\n    class Inner {\n        int go() { return 1; }\n        int v;\n    }\n}\n"
+        "int fb() {\n    int local() { return 2; }\n    return local();\n}\n",
+        nested="    class Inner {\n        int go() { return 1; }\n        int v;\n    }\n"),
     "julia-nested": SiblingCase(
         "src/nested.jl", "",
         "module A\nstruct Inner\n    v::Int\nend\nlimit = 1\nmodule Sub\nend\n"
         "function run()\n    function inner()\n        1\n    end\n    inner()\nend\nend\n",
-        "module B\nstruct Inner\n    v::Int\nend\nlimit = 2\nmodule Sub\nend\n"
-        "function run()\n    function inner()\n        2\n    end\n    inner()\nend\nend\n"),
+        "module B\nstruct Inner\n    v::Int\nend\nlimit = 1\nmodule Sub\nend\n"
+        "function run()\n    function inner()\n        1\n    end\n    inner()\nend\nend\n",
+        nested="struct Inner\n    v::Int\nend\nlimit = 1\nmodule Sub\nend\n"
+               "function run()\n    function inner()\n        1\n    end\n    inner()\nend\n"),
     "zig-nested": SiblingCase(
         "src/nested.zig", "",
         "const A = struct {\n    const Inner = struct {\n        v: i32,\n        fn go() i32 { return 1; }\n"
         "    };\n    const E = enum { x };\n};\n",
-        "const B = struct {\n    const Inner = struct {\n        v: i32,\n        fn go() i32 { return 2; }\n"
-        "    };\n    const E = enum { x };\n};\n"),
+        "const B = struct {\n    const Inner = struct {\n        v: i32,\n        fn go() i32 { return 1; }\n"
+        "    };\n    const E = enum { x };\n};\n",
+        nested="    const Inner = struct {\n        v: i32,\n        fn go() i32 { return 1; }\n"
+               "    };\n    const E = enum { x };\n"),
     "gdscript-nested": SiblingCase(
         "src/nested.gd", "extends Node\n",
         "class A:\n\tclass Inner:\n\t\tvar v = 1\n\t\tfunc go():\n\t\t\treturn 1\n\n",
-        "class B:\n\tclass Inner:\n\t\tvar v = 2\n\t\tfunc go():\n\t\t\treturn 2\n"),
+        "class B:\n\tclass Inner:\n\t\tvar v = 1\n\t\tfunc go():\n\t\t\treturn 1\n",
+        nested="\tclass Inner:\n\t\tvar v = 1\n\t\tfunc go():\n\t\t\treturn 1\n"),
     "solidity-nested": SiblingCase(
         "src/Nested.sol", "pragma solidity ^0.8.0;\n",
         "contract A {\n    struct Inner { uint v; }\n    function go() public pure returns (uint) { return 1; }\n}\n",
-        "contract B {\n    struct Inner { uint v; }\n    function go() public pure returns (uint) { return 2; }\n}\n"),
+        "contract B {\n    struct Inner { uint v; }\n    function go() public pure returns (uint) { return 1; }\n}\n",
+        nested="    struct Inner { uint v; }\n    function go() public pure returns (uint) { return 1; }\n"),
     "capnp-nested": SiblingCase(
         "src/nested.capnp", "@0xdbb9ad1f14bf0b38;\n",
         "struct A {\n  struct Inner {\n    v @0 :Int32;\n  }\n  enum E {\n    x @0;\n  }\n}\n",
-        "struct B {\n  struct Inner {\n    v @0 :Int32;\n  }\n  enum E {\n    x @0;\n  }\n}\n"),
+        "struct B {\n  struct Inner {\n    v @0 :Int32;\n  }\n  enum E {\n    x @0;\n  }\n}\n",
+        nested="  struct Inner {\n    v @0 :Int32;\n  }\n  enum E {\n    x @0;\n  }\n"),
     "tcl-nested": SiblingCase(
         "src/nested.tcl", "",
         "namespace eval a {\n  namespace eval inner {\n    proc go {} { return 1 }\n  }\n}\n",
-        "namespace eval b {\n  namespace eval inner {\n    proc go {} { return 2 }\n  }\n}\n"),
+        "namespace eval b {\n  namespace eval inner {\n    proc go {} { return 1 }\n  }\n}\n",
+        nested="  namespace eval inner {\n    proc go {} { return 1 }\n  }\n"),
     # -- functions nested in two same-name enclosing functions ---------------
     "ada-nested": SiblingCase(
         "src/nested.adb", "package body Nested is\n",
@@ -1007,58 +1178,71 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "   procedure A is\n      procedure Inner is begin null; end Inner;\n   begin Inner; end A;\n",
         "   function F return Float is begin return 1.0; end F;\n"
         "   procedure B is\n      procedure Inner is begin null; end Inner;\n   begin Inner; end B;\n"
-        "end Nested;\n"),
+        "end Nested;\n",
+        nested="      procedure Inner is begin null; end Inner;\n"),
     "nim-nested": SiblingCase(
         "src/nested.nim", "",
         "proc a() =\n  proc inner() = discard\n  inner()\n",
-        "proc b() =\n  proc inner() = discard\n  inner()\n"),
+        "proc b() =\n  proc inner() = discard\n  inner()\n",
+        nested="  proc inner() = discard\n  inner()\n"),
     "matlab-nested": SiblingCase(
         "src/nested.m", "",
         "function a()\n  function inner()\n  end\nend\n",
-        "function b()\n  function inner()\n  end\nend\n"),
+        "function b()\n  function inner()\n  end\nend\n",
+        nested="  function inner()\n  end\n"),
     "odin-nested": SiblingCase(
         "src/nested.odin", "package nested\n\n",
         "a :: proc() {\n\tinner :: proc() {}\n\tinner()\n}\n",
-        "b :: proc() {\n\tinner :: proc() {}\n\tinner()\n}\n"),
+        "b :: proc() {\n\tinner :: proc() {}\n\tinner()\n}\n",
+        nested="\tinner :: proc() {}\n\tinner()\n"),
     "lua-nested": SiblingCase(
         "src/nested.lua", "",
         "function a()\n  local function inner() return 1 end\n  return inner()\nend\n",
-        "function b()\n  local function inner() return 2 end\n  return inner()\nend\n"),
+        "function b()\n  local function inner() return 1 end\n  return inner()\nend\n",
+        nested="  local function inner() return 1 end\n  return inner()\n"),
     "luau-nested": SiblingCase(
         "src/nested.luau", "",
         "function a()\n  local function inner(): number return 1 end\n  local Mod = {}\n"
         "  return inner()\nend\n",
-        "function b()\n  local function inner(): number return 2 end\n  local Mod = {}\n"
-        "  return inner()\nend\n"),
+        "function b()\n  local function inner(): number return 1 end\n  local Mod = {}\n"
+        "  return inner()\nend\n",
+        nested="  local function inner(): number return 1 end\n  local Mod = {}\n  return inner()\n"),
     "starlark-nested": SiblingCase(
         "build/nested.bzl", "",
         "def a():\n    def inner():\n        return 1\n    return inner()\n\n",
-        "def b():\n    def inner():\n        return 2\n    return inner()\n"),
+        "def b():\n    def inner():\n        return 1\n    return inner()\n",
+        nested="    def inner():\n        return 1\n    return inner()\n"),
     "powershell-nested": SiblingCase(
         "src/nested.ps1", "",
         "function A {\n  function Inner { 1 }\n  Inner\n}\n",
-        "function B {\n  function Inner { 2 }\n  Inner\n}\n"),
+        "function B {\n  function Inner { 1 }\n  Inner\n}\n",
+        nested="  function Inner { 1 }\n  Inner\n"),
     "dart-nested": SiblingCase(
         "lib/nested.dart", "",
         "int a() {\n  int inner() => 1;\n  return inner();\n}\n",
-        "int b() {\n  int inner() => 2;\n  return inner();\n}\n"),
+        "int b() {\n  int inner() => 1;\n  return inner();\n}\n",
+        nested="  int inner() => 1;\n  return inner();\n"),
     "wolfram-nested": SiblingCase(
         "src/nested.wl", "",
         "a[x_] := Module[{inner}, inner[y_] := y; inner[x]]\n",
-        "b[x_] := Module[{inner}, inner[y_] := y; inner[x]]\n"),
+        "b[x_] := Module[{inner}, inner[y_] := y; inner[x]]\n",
+        nested="Module[{inner}, inner[y_] := y; inner[x]]"),
     "jsonnet-nested": SiblingCase(
         "src/nested.jsonnet", "{\n",
         "  a: { inner(x):: x },\n",
-        "  b: { inner(x):: x },\n}\n"),
+        "  b: { inner(x):: x },\n}\n",
+        nested="{ inner(x):: x }"),
     # -- B4 table kinds named by their module/namespace ----------------------
     "ocaml-nested": SiblingCase(
         "src/nested.ml", "",
         "module A = struct\n  type t = int\n  module C = struct\n    let v = 1\n  end\nend\n",
-        "module B = struct\n  type t = int\n  module C = struct\n    let v = 2\n  end\nend\n"),
+        "module B = struct\n  type t = int\n  module C = struct\n    let v = 1\n  end\nend\n",
+        nested="  type t = int\n  module C = struct\n    let v = 1\n  end\n"),
     "lean-nested": SiblingCase(
         "src/Nested.lean", "",
         "namespace A\nstructure S where\n  x : Nat\nclass K (a : Type) where\n  k : a\nend A\n",
-        "namespace B\nstructure S where\n  x : Nat\nclass K (a : Type) where\n  k : a\nend B\n"),
+        "namespace B\nstructure S where\n  x : Nat\nclass K (a : Type) where\n  k : a\nend B\n",
+        nested="structure S where\n  x : Nat\nclass K (a : Type) where\n  k : a\n"),
     # tree-sitter-agda 1.3.3 swallows the declarations after a ONE-constructor
     # data type into it; the two-constructor Nat keeps the modules apart.
     "agda-nested": SiblingCase(
@@ -1067,16 +1251,20 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "module A where\n  module C where\n    v : Nat\n    v = zero\n"
         "  record R : Set where\n    field\n      x : Nat\n\n",
         "module B where\n  module C where\n    v : Nat\n    v = zero\n"
-        "  record R : Set where\n    field\n      x : Nat\n"),
+        "  record R : Set where\n    field\n      x : Nat\n",
+        nested="  module C where\n    v : Nat\n    v = zero\n"
+               "  record R : Set where\n    field\n      x : Nat\n"),
     "fsharp-nested": SiblingCase(
         "src/Nested.fs", "module Nested\n\n",
         "module A =\n    let mutable x = 1\n\n",
-        "module B =\n    let mutable x = 1\n"),
+        "module B =\n    let mutable x = 1\n",
+        nested="    let mutable x = 1\n"),
     # -- the F1 "noticed, not fixed" cousins ---------------------------------
     "twig-nested": SiblingCase(
         "templates/nested.twig", "",
         "{% macro first(a) %}{% if a %}x{% elseif b %}y{% else %}z{% endif %}{% endmacro %}\n",
-        "{% macro second(a) %}{% if a %}x{% elseif b %}y{% else %}z{% endif %}{% endmacro %}\n"),
+        "{% macro second(a) %}{% if a %}x{% elseif b %}y{% else %}z{% endif %}{% endmacro %}\n",
+        nested="{% if a %}x{% elseif b %}y{% else %}z{% endif %}"),
     "purescript-nested": SiblingCase(
         "src/Nested.purs", "module Nested where\n\n",
         "class Default a where\n  def :: a\n\nhelper :: Int\nhelper = 2\n\n",
@@ -1085,6 +1273,263 @@ SCOPE_CASES: dict[str, SiblingCase] = {
         "src/nested.scm", "", "(define (f a . rest) a)\n", "(define (g a . rest) a)\n"),
 }
 CASES.update(SCOPE_CASES)
+
+
+def _two(
+    filename: str, head: str, open_a: str, open_b: str, child: str,
+    close_a: str = "", close_b: str = "", tail_extra: str = "",
+) -> SiblingCase:
+    """A two-parent fixture: ``child``, byte for byte, under ``open_a`` (in
+    ``earlier``, deleted with it) and under ``open_b`` (in ``tail``)."""
+    return SiblingCase(
+        filename, head, open_a + child + close_a, open_b + child + close_b + tail_extra,
+        nested=child,
+    )
+
+
+#: Two-parent fixtures (INV-punig), keyed ``<language>-parents``: one text
+#: under two different parents, the first parent deleted. Before them the
+#: gate held this shape for some languages only (:data:`SCOPE_CASES`), and
+#: markdown, rst, scss, puppet, svelte, apex and fish, which hashed no parent,
+#: passed it; so did astro, blade, C block scopes, CMake functions, gnuplot
+#: blocks, HLSL namespaces, JSON and TOML dependency groups, Maven groupIds,
+#: Meson branches and assembler local labels, found by writing these.
+#: :func:`test_every_language_has_a_two_parent_fixture_or_is_flat` requires
+#: one per language (or a reason in :data:`FLAT_LANGUAGES`).
+PARENT_CASES: dict[str, SiblingCase] = {
+    "ansible-parents": _two(
+        "playbooks/two.yml", "---\n", "- name: Web\n  hosts: web\n", "- name: Db\n  hosts: db\n",
+        "  tasks:\n    - name: Install\n      apt:\n        name: nginx\n"),
+    "apex-parents": _two(
+        "src/Outer.cls", "public class Outer {\n", "  public class A {\n", "  public class B {\n",
+        "    public class Inner {\n      public Integer size;\n"
+        "      public Integer go() { return 1; }\n    }\n    public enum E { X }\n",
+        "  }\n", "  }\n", "}\n"),
+    # Local labels (GAS numeric, NASM-style dotted) repeat under each global one.
+    "asm-parents": _two(
+        "src/two.s", ".text\n", "a:\n", "b:\n", "1:\n    jmp 1b\n.Lloop:\n    ret\n"),
+    "astro-parents": _two(
+        "src/pages/two.astro", "---\nconst x = 1;\n---\n", "<div>\n", "<section>\n",
+        "  <slot name=\"h\" />\n  <Card client:load />\n", "</div>\n", "</section>\n"),
+    "blade-parents": _two(
+        "resources/views/two.blade.php", "", "@section('a')\n", "@section('b')\n",
+        "@yield('inner')\n@component('alert')\n@endcomponent\n", "@endsection\n", "@endsection\n"),
+    # C tags declared at block scope are scoped to the block (C11 6.2.1).
+    "c-parents": _two(
+        "src/two.c", "", "void a(void) {\n", "void b(void) {\n",
+        "  struct inner { int w; };\n  enum e { X };\n  typedef int t;\n  int f(void);\n",
+        "}\n", "}\n"),
+    "circom-parents": _two(
+        "src/two.circom", "pragma circom 2.0.0;\n", "template A() {\n", "template B() {\n",
+        "    signal input a;\n", "}\n", "}\n"),
+    "clojure-parents": _two(
+        "src/two.clj", "", "(ns a)\n", "(ns b)\n",
+        "(defn run [x] x)\n(defmulti area :shape)\n(defmethod area :circle [s] 1)\n"),
+    "cmake-parents": _two(
+        "build/CMakeLists.txt", "cmake_minimum_required(VERSION 3.10)\n", "if(WIN32)\n", "if(UNIX)\n",
+        "  add_library(core a.c)\n  function(helper x)\n  endfunction()\n"
+        "  macro(mk)\n  endmacro()\n", "endif()\n", "endif()\n"),
+    "cobol-parents": SiblingCase(
+        "src/two.cob", "",
+        "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. A.\n       PROCEDURE DIVISION.\n"
+        "       MAIN-PARA.\n           GOBACK.\n       END PROGRAM A.\n",
+        "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. B.\n       PROCEDURE DIVISION.\n"
+        "       MAIN-PARA.\n           GOBACK.\n       END PROGRAM B.\n",
+        nested="       MAIN-PARA.\n           GOBACK.\n"),
+    "commonlisp-parents": _two(
+        "src/two.lisp", "", "(in-package :a)\n", "(in-package :b)\n",
+        "(defun run (x) x)\n(defmethod area ((s circle)) 1)\n"),
+    "cuda-parents": _two(
+        "src/two.cu", "", "namespace a {\n", "namespace b {\n",
+        "__device__ int f(int x) { return x; }\n", "}\n", "}\n"),
+    "elixir-parents": _two(
+        "lib/two.ex", "", "defmodule A do\n", "defmodule B do\n",
+        "  defmodule Inner do\n    defstruct [:a]\n    def go, do: 1\n"
+        "    defmacro mk(x), do: x\n  end\n", "end\n", "end\n"),
+    "fish-parents": _two(
+        "bin/two.fish", "", "function outer_a\n", "function outer_b\n",
+        "  function inner\n    echo a\n  end\n  set -g level 1\n  alias ll 'ls -l'\n",
+        "end\n", "end\n"),
+    "fortran-parents": _two(
+        "src/two.f90", "", "module a\ncontains\n", "module b\ncontains\n",
+        "  subroutine run(x)\n    integer :: x\n  end subroutine run\n", "end module a\n",
+        "end module b\n"),
+    "gnuplot-parents": _two(
+        "src/two.gp", "", "if (a) {\n", "if (b) {\n", "  f(x) = x\n  n = 1\n  plot sin(x)\n",
+        "}\n", "}\n"),
+    "go-parents": _two(
+        "src/two.go", "package app\n\n", "type A struct {\n", "type B struct {\n",
+        "\tv int\n", "}\n", "}\n"),
+    "hack-parents": _two(
+        "src/two.hack", "", "namespace A {\n", "namespace B {\n",
+        "  class Inner { public function go(): int { return 1; } }\n", "}\n", "}\n"),
+    "haxe-parents": _two(
+        "src/Two.hx", "", "class A {\n", "class B {\n",
+        "  function go() { return 1; }\n  var size:Int = 0;\n", "}\n", "}\n"),
+    "hlsl-parents": _two(
+        "src/two.hlsl", "", "namespace a {\n", "namespace b {\n",
+        "float f(float x) { return x; }\nstruct S { float v; };\nstatic float k = 1.0;\n",
+        "}\n", "}\n"),
+    "json-parents": SiblingCase(
+        "web/package.json", "{\n  \"name\": \"two\",\n",
+        "  \"dependencies\": {\"lodash\": \"1.0.0\"},\n",
+        "  \"devDependencies\": {\"lodash\": \"1.0.0\"}\n}\n",
+        nested="{\"lodash\": \"1.0.0\"}"),
+    # A notebook's symbol lines number its cells' source, one blank line
+    # between cells: the second cell starts at line 5.
+    "jupyter-parents": SiblingCase(
+        "nb/two.ipynb", '{"cells": [\n',
+        '{"cell_type": "code", "metadata": {}, "source": ["class A:\\n", '
+        '"    def go(self):\\n", "        return 1\\n"], "outputs": [], "execution_count": null},\n',
+        '{"cell_type": "code", "metadata": {}, "source": ["class B:\\n", '
+        '"    def go(self):\\n", "        return 1\\n"], "outputs": [], "execution_count": null}\n'
+        '], "metadata": {"language_info": {"name": "python"}}, "nbformat": 4, "nbformat_minor": 5}\n',
+        boundary=0, shift=4,
+        nested='"    def go(self):\\n", "        return 1\\n"', nested_lines=((2, 3), (6, 7))),
+    "markdown-parents": _two(
+        "docs/two.md", "", "# Alpha\n\n", "# Beta\n\n",
+        "## Details\n\nSee [home](index.md).\n\n```python\nprint(1)\n```\n\n"),
+    "meson-parents": _two(
+        "sub/meson.build", "project('two', 'c')\n", "if get_option('a')\n", "if get_option('b')\n",
+        "  executable('tool', 't.c')\n", "endif\n", "endif\n"),
+    "mermaid-parents": _two(
+        "docs/two.mmd", "", "flowchart TD\n", "graph LR\n", "  n1[One]\n  n2{Two}\n"),
+    "nix-parents": _two(
+        "pkgs/two.nix", "{\n", "  a = ", "  b = ", "{ run = x: x; inner = { v = 1; }; };\n",
+        tail_extra="}\n"),
+    "objc-parents": _two(
+        "src/Two.m", "", "@implementation A\n", "@implementation B\n",
+        "- (int)go { return 1; }\n", "@end\n", "@end\n"),
+    "pascal-parents": _two(
+        "src/two.pas", "program Two;\n", "procedure A;\n", "procedure B;\n",
+        "  procedure Inner;\n  begin\n  end;\n", "begin\nend;\n", "begin\nend;\n", "begin\nend.\n"),
+    "perl-parents": _two(
+        "lib/Two.pm", "", "package A;\n", "package B;\n", "sub go { return 1; }\n",
+        tail_extra="1;\n"),
+    "pony-parents": _two(
+        "src/two.pony", "", "class A\n", "class B\n",
+        "  fun run(): U32 => 1\n  new create() => None\n", "\n", "\n"),
+    "puppet-parents": _two(
+        "manifests/two.pp", "", "class a {\n", "class b {\n",
+        "  file { '/tmp/x':\n    ensure => present,\n  }\n", "}\n", "}\n"),
+    "purescript-parents": _two(
+        "src/Two.purs", "module Two where\n\nclass Shape a where\n  area :: a -> Int\n\n",
+        "instance shapeInt :: Shape Int where\n", "instance shapeBool :: Shape Boolean where\n",
+        "  area _ = 0\n", "\n", "\n"),
+    "python-parents": _two(
+        "src/two.py", "", "class A:\n", "class B:\n",
+        "    class Inner:\n        def go(self):\n            return 1\n"
+        "    def run(self):\n        def local():\n            return 1\n        return local()\n",
+        "\n\n", "\n\n"),
+    "qml-parents": _two(
+        "src/Two.qml", "import QtQuick 2.0\nItem {\n", "    Rectangle {\n", "    Text {\n",
+        "        function run() { return 1 }\n        property int size: 0\n",
+        "    }\n", "    }\n", "}\n"),
+    "r-parents": _two(
+        "R/two.R", "", "a <- function() {\n", "b <- function() {\n",
+        "  inner <- function(x) x\n  inner(1)\n", "}\n", "}\n"),
+    "racket-parents": _two(
+        "src/two.rkt", "#lang racket\n", "(module+ a\n", "(module+ b\n", "  (define (run x) x)\n",
+        ")\n", ")\n"),
+    "rst-parents": _two(
+        "docs/two.rst", "Guide\n=====\n\n", "Alpha\n-----\n\n", "Beta\n----\n\n",
+        "Details\n~~~~~~~\n\n.. _details:\n\n.. note::\n   See it.\n\n"),
+    "ruby-parents": _two(
+        "lib/two.rb", "", "module A\n", "module B\n",
+        "  class Inner\n    attr_reader :size\n    def go\n      1\n    end\n  end\n",
+        "end\n", "end\n"),
+    "scheme-parents": _two(
+        "src/two.scm", "", "(define-library (a)\n  (begin\n", "(define-library (b)\n  (begin\n",
+        "    (define (run x) x)\n", "  ))\n", "  ))\n"),
+    "scss-parents": _two(
+        "src/two.scss", "", ".a {\n", ".b {\n",
+        "  .item { color: red; }\n  &:hover { color: blue; }\n", "}\n", "}\n"),
+    "svelte-parents": _two(
+        "src/Two.svelte", "<script>\n  let x = 1;\n</script>\n", "<div>\n", "<section>\n",
+        "  {#if x}<slot />{/if}\n  <button on:click={go}>go</button>\n",
+        "</div>\n", "</section>\n"),
+    "thrift-parents": _two(
+        "api/two.thrift", "", "service A {\n", "service B {\n", "  i32 run(1: i32 x)\n",
+        "}\n", "}\n"),
+    "toml-parents": _two(
+        "rs/Cargo.toml", "[package]\nname = \"two\"\n", "[dependencies]\n", "[dev-dependencies]\n",
+        "serde = \"1\"\n"),
+    "vhdl-parents": _two(
+        "rtl/two.vhd", "library ieee;\nentity a is\nend entity a;\nentity b is\nend entity b;\n",
+        "architecture rtl of a is\n", "architecture rtl of b is\n",
+        "  component sub is port (clk : in bit); end component;\n",
+        "begin\nend architecture rtl;\n", "begin\nend architecture rtl;\n"),
+    "vue-parents": _two(
+        "src/Two.vue", "<template>\n", "  <div>\n", "  <section>\n", "    <p v-if=\"a\">A</p>\n",
+        "  </div>\n", "  </section>\n",
+        "</template>\n<script>\nexport default { name: \"Two\" }\n</script>\n"),
+    # The else branches of two different conditionals: an ``else`` label
+    # alone named both, and the definitions in them tied.
+    "cmake-else": _two(
+        "else/CMakeLists.txt", "cmake_minimum_required(VERSION 3.10)\n",
+        "if(WIN32)\n  set(a 1)\nelse()\n", "if(UNIX)\n  set(a 1)\nelse()\n",
+        "  add_library(core a.c)\n  function(helper x)\n  endfunction()\n", "endif()\n", "endif()\n"),
+    "gnuplot-else": _two(
+        "src/else.gp", "", "if (a) {\n  x = 1\n} else {\n", "if (b) {\n  x = 1\n} else {\n",
+        "  f(x) = x\n", "}\n", "}\n"),
+    "meson-else": _two(
+        "else/meson.build", "project('else', 'c')\n", "if get_option('a')\n  x = 1\nelse\n",
+        "if get_option('b')\n  x = 1\nelse\n", "  executable('tool', 't.c')\n", "endif\n", "endif\n"),
+    # A shader template's preprocessor branches (whisper.cpp's shape).
+    "wgsl-parents": _two(
+        "src/two.wgsl", "", "#ifdef A\n", "#ifdef B\n",
+        "fn run(x: f32) -> f32 { return x; }\n", "#endif\n", "#endif\n"),
+    # Not a two-parent shape (the groupId is a discriminant beside the
+    # artifactId, not a parent), found while writing them: one artifactId
+    # under two groupIds tied on the backstop's table key.
+    "xml-maven": SiblingCase(
+        "pom.xml", "<project>\n  <dependencies>\n",
+        "    <dependency>\n      <groupId>a</groupId>\n      <artifactId>x</artifactId>\n"
+        "    </dependency>\n",
+        "    <dependency>\n      <groupId>b</groupId>\n      <artifactId>x</artifactId>\n"
+        "    </dependency>\n  </dependencies>\n</project>\n"),
+}
+CASES.update(PARENT_CASES)
+
+#: Languages whose analyzer emits no symbol inside another construct of the
+#: same file that could repeat, so no two-parent fixture can exist, each with
+#: the reason. :func:`nesting_languages` cannot decide this alone (a markdown
+#: section spans its heading line only; a Svelte element is no symbol), so
+#: the list is reviewed; the gate fails an entry whose symbols do nest, or
+#: that a two-parent fixture covers.
+FLAT_LANGUAGES: dict[str, str] = {
+    "bibtex": "entries are top-level; their fields are not emitted",
+    "bitbake": "tasks and variables are recipe-level; nothing nests",
+    "elm": "top-level declarations only; let bindings and constructors are not emitted",
+    "erlang": "module-level forms only; record fields and funs are not emitted",
+    "fennel": "only top-level fn forms are emitted",
+    "gitignore": "one pattern per line",
+    "gleam": "top-level declarations only; constructors are not emitted",
+    "glsl": "GLSL has no namespaces; struct members are not emitted",
+    "graphql": "definitions are top-level; fields are not emitted",
+    "haskell": "top-level declarations only; class and instance members, where and let "
+               "bindings are not emitted",
+    "hcl": "every emitted block is top-level (a provider alias is a discriminant, "
+           "not a parent); nested blocks and attributes are not emitted",
+    "janet": "only top-level def forms are emitted",
+    "just": "recipes, aliases and variables are file-level (attributes are discriminants)",
+    "llvm_ir": "globals are unique per module; basic blocks are not emitted",
+    "prisma": "models and enums are top-level; fields are not emitted",
+    "properties": "one key per line",
+    "requirements": "one requirement per line",
+    "robot": "test, task and keyword names are unique per suite file; a section header "
+             "is not a scope",
+    "smithy": "one namespace per file; shapes are top-level and members are not emitted",
+    "sparql": "prologue and queries are top-level",
+    "sql": "statements are top-level (a schema qualifier is part of the name); columns "
+           "are not emitted",
+    "v": "no declaration nests; a method's owner is its receiver, written in the "
+         "declaration itself (the v fixture deletes a same-name method of another receiver)",
+    "verilog": "only modules and interfaces are emitted",
+    "xml": "Android components and permissions are named by their full name, and a Maven "
+           "dependency sits under the one project (its groupId is a discriminant, fixture "
+           "xml-maven)",
+}
 
 
 def _baseline() -> dict:
@@ -1238,6 +1683,87 @@ def test_location_check_pairs_records_by_position() -> None:
         "a.x function f (line 2): sha256:b here, (no counterpart) elsewhere"]
 
 
+# -- unit: the two-parent guard ---------------------------------------------------
+
+
+_TWO = _two("a.x", "head\n", "open A\n", "open B\n", "child\n", "close\n", "close\n", "tail\n")
+
+
+def test_two_parent_constructor_puts_one_text_under_both_parents() -> None:
+    assert _TWO.earlier == "open A\nchild\nclose\n"
+    assert _TWO.tail == "open B\nchild\nclose\ntail\n"
+    assert _TWO.nested == "child\n"
+
+
+def test_twin_kinds_are_the_symbols_starting_in_each_copy() -> None:
+    records = [
+        _sym("A", "class", "s1", line=2), _sym("go", "method", "s2", line=3),
+        _sym("B", "class", "s3", line=5), _sym("go", "method", "s4", line=6),
+        _sym("tail", "function", "s5", line=8),
+    ]
+    assert nested_twin_kinds(_TWO, records) == ([("method", "x")], [("method", "x")])
+    assert nested_twin_kinds(_CASE, records) == ([], [])
+
+
+def test_twin_kinds_read_explicit_lines_for_a_notebook() -> None:
+    case = SiblingCase("a.x", "", "e\n", "t\n", nested="e", nested_lines=((2, 3), (6, 7)))
+    records = [_sym("go", "function", "s1", line=3), _sym("go", "function", "s2", line=6),
+               _sym("other", "function", "s3", line=8)]
+    assert nested_twin_kinds(case, records) == ([("function", "x")], [("function", "x")])
+
+
+def test_two_parent_case_proves_its_twins_language_only_when_nothing_moves() -> None:
+    with_sibling = [_sym("A", "class", "s1", line=2), _sym("go", "method", "s2", line=3),
+                    _sym("B", "class", "s3", line=5), _sym("go", "method", "s4", line=6)]
+    kept = [_sym("B", "class", "s3", line=2), _sym("go", "method", "s4", line=3)]
+    moved = [_sym("B", "class", "s3", line=2), _sym("go", "method", "s2", line=3)]
+    assert two_parent_languages(_TWO, with_sibling, kept) == {"x"}
+    assert two_parent_languages(_TWO, with_sibling, moved) == set()
+    # copies that emit nothing prove nothing
+    bare = [_sym("A", "class", "s1", line=2), _sym("B", "class", "s3", line=5)]
+    assert two_parent_languages(_TWO, bare, [_sym("B", "class", "s3", line=2)]) == set()
+
+
+def test_nesting_is_one_symbol_strictly_inside_another_of_the_same_file() -> None:
+    outer = Symbol(id="o", name="A", kind="class", language="x", path="a.x",
+                   span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+                   origin="t", stable_id="s1")
+    inner = Symbol(id="i", name="go", kind="method", language="x", path="a.x",
+                   span=Span(start_line=2, end_line=3, start_col=2, end_col=3),
+                   origin="t", stable_id="s2")
+    elsewhere = Symbol(id="e", name="go", kind="method", language="y", path="b.x",
+                       span=Span(start_line=2, end_line=3, start_col=2, end_col=3),
+                       origin="t", stable_id="s3")
+    twin = Symbol(id="t", name="A", kind="class", language="y", path="b.x",
+                  span=Span(start_line=2, end_line=3, start_col=2, end_col=3),
+                  origin="t", stable_id="s4")
+    assert nesting_languages([outer, inner]) == {"x"}
+    # same span is not nesting, nor is a symbol in another file
+    assert nesting_languages([outer, elsewhere, twin]) == set()
+    assert nesting_languages([{"kind": "file", "language": "x", "path": "a.x"}]) == set()
+
+
+def test_span_end_reads_dicts_objects_and_absence() -> None:
+    assert _end({"span": {"end_line": 4, "end_col": 2}}) == (4, 2)
+    assert _end({"span": None}) == (0, 0)
+    assert _end(Symbol(id="i", name="n", kind="k", language="x", path="p",
+                       span=Span(start_line=1, end_line=3, start_col=0, end_col=7),
+                       origin="t")) == (3, 7)
+
+
+def test_nested_text_occurs_once_in_each_part() -> None:
+    """A two-parent fixture's text must sit once under each parent, or the
+    copies the guard compares are not the ones the fixture means."""
+    bad = [key for key, case in CASES.items() if case.nested and not (
+        case.earlier.count(case.nested) == 1 and case.tail.count(case.nested) == 1)]
+    assert bad == []
+
+
+def test_flat_languages_each_carry_a_reason() -> None:
+    assert all(reason.strip() for reason in FLAT_LANGUAGES.values())
+    assert all(reason.strip() for reason in _NO_FIXTURE.values())
+
+
 # -- live: the ratchet over the fixture corpus ---------------------------------
 
 
@@ -1317,6 +1843,81 @@ def test_sibling_deletion_matches_baseline(runs) -> None:
         + "\n  ".join(breaches) + f"\nWhat moved:\n{detail}\nLive failing set: "
         + json.dumps(sorted(failing))
     )
+
+
+def test_every_language_has_a_two_parent_fixture_or_is_flat(runs) -> None:
+    """INV-punig's structural guard. The deletion check above only sees the
+    shapes the fixtures hold, and before the two-parent fixtures it held a
+    same-name construct under two different parents for some languages only:
+    markdown, rst, scss, puppet, svelte, apex and fish hashed no parent and
+    passed. So every language that emits a symbol must either be proved by a
+    two-parent fixture (:func:`two_parent_languages`) or be listed in
+    :data:`FLAT_LANGUAGES` with the reason nothing it emits can nest; a listed
+    language whose symbols do nest (:func:`nesting_languages`), or that a
+    fixture proves, is a stale entry. A two-parent fixture whose copies emit
+    nothing, or different kinds, proves nothing and fails too."""
+    emitting: set[str] = set()
+    proved: dict[str, list[str]] = defaultdict(list)
+    problems: list[str] = []
+    for key, case in CASES.items():
+        path = f"{key}/{case.filename}"
+        with_sibling = runs["with"].get(path, [])
+        emitting |= {
+            n["language"] for n in with_sibling if n.get("kind") != "file" and n.get("language")
+        }
+        if not case.nested:
+            continue
+        earlier, tail = nested_twin_kinds(case, with_sibling)
+        if not earlier or [k for k, _ in earlier] != [k for k, _ in tail]:
+            problems.append(
+                f"{key}: the two copies of its nested text emit {earlier} and {tail}; a "
+                "two-parent fixture's copies must emit the same kinds, at least one"
+            )
+        for language in two_parent_languages(case, with_sibling, runs["without"].get(path, [])):
+            proved[language].append(key)
+    nesting = nesting_languages(_fixture_nodes(runs, "with"))
+    for language in sorted(emitting - set(proved) - set(FLAT_LANGUAGES)):
+        why = "its symbols nest in the fixtures" if language in nesting else (
+            "no fixture shows it nesting, which is not evidence it cannot (a markdown "
+            "section spans its heading line only)"
+        )
+        problems.append(
+            f"MISSING {language}: no two-parent fixture proves it hashes the parent ({why}). "
+            "Add a PARENT_CASES entry (_two: one text under two different parents), or, if "
+            "nothing it emits can nest, a FLAT_LANGUAGES entry saying why."
+        )
+    for language in sorted(set(FLAT_LANGUAGES) & set(proved)):
+        problems.append(f"STALE {language}: listed as flat, but {proved[language]} prove it nests")
+    for language in sorted(set(FLAT_LANGUAGES) & nesting):
+        problems.append(f"STALE {language}: listed as flat, but its symbols nest in the fixtures")
+    for language in sorted(set(FLAT_LANGUAGES) - emitting):
+        problems.append(f"STALE {language}: listed as flat, but no fixture emits it")
+    assert problems == [], "two-parent coverage (INV-punig):\n  " + "\n  ".join(problems)
+
+
+def test_every_registered_language_has_a_fixture() -> None:
+    """A language with no fixture escapes every check above. Each registered
+    analyzer that declares a language must have a fixture keyed by one of its
+    languages (or ``<language>-<shape>``), or a reason in
+    :data:`_NO_FIXTURE`."""
+    ensure_discovered()
+    keyed = {key.split("-")[0] for key in CASES} | set(CASES)
+    missing = sorted(
+        reg.name for reg in get_all_analyzers()
+        if reg.languages and not set(reg.languages) & (keyed | set(_NO_FIXTURE))
+    )
+    assert missing == [], f"registered analyzers with no gate fixture: {missing}"
+
+
+#: Registered languages with no fixture of their own, and why.
+_NO_FIXTURE: dict[str, str] = {
+    "yaml": "a YAML file outside the Ansible shapes yields its file node only",
+    "html": "the HTML analyzer yields file nodes only (the template the view-template "
+            "linker mints is in the python fixture's extra files)",
+    "play-routes": "its route markers carry language scala, and under hypergumbo run it "
+                   "reads only the repository's root conf/routes, which a fixture written "
+                   "under its own directory cannot be",
+}
 
 
 def test_stable_ids_do_not_depend_on_the_checkout_location(runs) -> None:

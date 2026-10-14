@@ -47,8 +47,12 @@ Why This Design
   table's dotted path (or the target's ``name``), which TOML makes unique per
   file for a table. The elements of one array of tables (``[[tool.x]]``
   twice) are a same-scope tie, which the per-file split pass orders by
-  position: their array index is what tells them apart. ``project`` and the
-  dependencies keep the backstop's table formulas (:func:`_toml_stable_id`).
+  position: their array index is what tells them apart. ``project`` keeps the
+  backstop's table formula (:func:`_toml_stable_id`); a Cargo dependency
+  mints ``overload_arity.scoped_table_stable_id`` scoped by its table
+  (``dev``, ``build``, a ``target.'cfg(..)'`` table), the backstop's value for
+  ``[dependencies]`` (:func:`_extract_cargo_dependencies`; INV-punig), and a
+  pyproject dependency keeps the backstop's table formula.
 """
 
 import hashlib
@@ -65,7 +69,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
-from hypergumbo_core.overload_arity import scoped_stable_id
+from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -99,17 +103,24 @@ def find_toml_files(root: Path) -> Iterator[Path]:
 
 
 def _get_key_text(node: "tree_sitter.Node") -> str:
-    """Extract key text from a key node."""
+    """Extract key text from a key node.
+
+    tree-sitter-toml nests a dotted key of three or more parts
+    (``a.b.c`` is ``dotted_key(dotted_key(a, b), c)``), so the inner
+    ``dotted_key`` is joined too: skipping it named ``[tool.poetry.dependencies]``
+    and ``[target.'cfg(windows)'.dependencies]`` both ``dependencies``, one
+    name under two different parents, whose ids tied (INV-punig).
+    """
     if node.type == "bare_key":
         return node.text.decode("utf-8", errors="replace") if node.text else ""
-    elif node.type == "quoted_key":  # pragma: no cover - rare in practice
-        text = node.text.decode("utf-8", errors="replace") if node.text else ""  # pragma: no cover - rare in practice
-        return text.strip('"').strip("'")  # pragma: no cover - rare in practice
+    elif node.type == "quoted_key":
+        text = node.text.decode("utf-8", errors="replace") if node.text else ""
+        return text.strip('"').strip("'")
     elif node.type == "dotted_key":
         # Join dotted key parts
         parts = []
         for child in node.children:
-            if child.type in ("bare_key", "quoted_key"):
+            if child.type in ("bare_key", "quoted_key", "dotted_key"):
                 parts.append(_get_key_text(child))
         return ".".join(parts)
     return node.text.decode("utf-8", errors="replace") if node.text else ""  # pragma: no cover
@@ -246,8 +257,14 @@ def _process_toml_tree(
                 _extract_cargo_dependencies(
                     node, rel_path, symbols, content, _DEP_SCOPE[table_name],
                 )
-            elif is_cargo and table_name.endswith(".dependencies"):  # pragma: no cover - nested deps
-                _extract_cargo_dependencies(node, rel_path, symbols, content, None)  # pragma: no cover
+            elif is_cargo and table_name.endswith(".dependencies"):
+                # ``[target.'cfg(windows)'.dependencies]``: the target table
+                # scopes the identity (not the meta, which names the
+                # dependency_scope axis's dev/build values only).
+                _extract_cargo_dependencies(
+                    node, rel_path, symbols, content, None,
+                    id_scope=table_name[: -len(".dependencies")],
+                )
             elif is_pyproject and table_name == "project":
                 _extract_pyproject_dependencies(node, rel_path, symbols, content)
             # Process pyproject.toml [project.scripts] and [project.gui-scripts]
@@ -462,7 +479,7 @@ def analyze_toml_files(root: Path) -> AnalysisResult:
 
 def _extract_cargo_dependencies(
     table_node: "tree_sitter.Node", rel_path: str, symbols: list[Symbol],
-    content: str, scope: str | None = None,
+    content: str, scope: str | None = None, id_scope: str | None = None,
 ) -> None:
     """Extract dependencies from a Cargo.toml dependencies table.
 
@@ -473,6 +490,13 @@ def _extract_cargo_dependencies(
     naming the table the entry lives in (``dev``, ``build``, or absent
     for production dependencies). WI-limas wired the producer side here
     so the YAML side could migrate off the legacy bare-kind regexes.
+
+    The stable_id is ``overload_arity.scoped_table_stable_id`` scoped by the
+    table the entry lives in (INV-punig, scheme v9): ``scope`` for
+    ``[dev-dependencies]`` / ``[build-dependencies]``, ``id_scope`` for a
+    target table (``target.'cfg(windows)'``), so ``serde`` in two of them is
+    two identities. A ``[dependencies]`` entry has neither and keeps the
+    backstop's table value.
     """
     for child in table_node.children:
         if child.type == "pair":
@@ -488,10 +512,14 @@ def _extract_cargo_dependencies(
                 symbol_id = _make_toml_symbol_id(rel_path, start_line, end_line, dep_name, "dependency")
 
                 meta = {"dependency_scope": scope} if scope else None
+                table = scope or id_scope
                 symbols.append(
                     Symbol(
                         id=symbol_id,
-                        stable_id=None,
+                        stable_id=scoped_table_stable_id(
+                            kind="dependency", lang="toml", path=rel_path, name=dep_name,
+                            scope=(table,) if table else (),
+                        ),
                         shape_id=None,
                         # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                         kind="dependency",

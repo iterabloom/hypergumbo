@@ -24,6 +24,12 @@ Key constructs extracted:
 - var = command(...) - variable assignments are tracked (not emitted as symbols) to resolve cross-target dependencies
 - subdir('path') - subdirectory includes
 - dependencies: [...] - target dependencies
+
+Identity (ADR-0035 §1, scheme v9; INV-punig): a target defined inside an
+``if`` / ``elif`` / ``else`` branch or a ``foreach`` loop hashes the headers of
+the blocks around it, so ``executable('tool', ...)`` in two branches (a common
+per-platform pattern) is two identities and deleting the first branch moves
+nothing; a top-level target hashes no chain and keeps its value.
 """
 
 import time
@@ -33,10 +39,14 @@ from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult, TreeSitterAnalyzer, ancestor_labels, make_symbol_id,
+    populate_docstrings_from_tree,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
+from hypergumbo_core.overload_arity import nested_qualified_name
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -151,6 +161,27 @@ def _get_dependencies_from_command(node: "tree_sitter.Node") -> list[str]:
     return deps
 
 
+#: The nodes that scope a target, labelled by their header line. A whole
+#: ``if`` (``if_condition``) is labelled by its ``if`` header and holds its
+#: ``elif`` / ``else`` branches, so an ``else`` is ``if x`` / ``else`` and the
+#: ``else`` of two different conditionals are two scopes.
+_BLOCK_NODES = frozenset({"if_condition", "elseif_command", "else_command", "foreach_command"})
+
+
+def _block_label(node: "tree_sitter.Node") -> Optional[str]:
+    """The scope a branch or loop opens: its header line (``if get_option('a')``,
+    ``elif x``, ``else``, ``foreach f : fs``), whitespace collapsed."""
+    if node.type not in _BLOCK_NODES:
+        return None
+    return " ".join(_get_node_text(node).split("\n", 1)[0].split())
+
+
+def _qualified_name(node: "tree_sitter.Node", name: str) -> str:
+    """The qualified-name slot of a meson symbol: the branches and loops
+    enclosing it, ``""`` at top level (INV-punig, scheme v9)."""
+    return nested_qualified_name(ancestor_labels(node, _block_label), name)
+
+
 def _extract_symbols_recursive(
     node: "tree_sitter.Node",
     path: Path,
@@ -177,6 +208,7 @@ def _extract_symbols_recursive(
                         ),
                         stable_id=analyzer.compute_stable_id(
                             node, kind="project", name=proj_name,
+                            qualified_name=_qualified_name(node, proj_name),
                             file_stable_id=analyzer._file_anchor(rel_path),
                         ),
                         name=proj_name,
@@ -215,6 +247,7 @@ def _extract_symbols_recursive(
                         ),
                         stable_id=analyzer.compute_stable_id(
                             node, kind=kind, name=target_name,
+                            qualified_name=_qualified_name(node, target_name),
                             file_stable_id=analyzer._file_anchor(rel_path),
                         ),
                         name=target_name,

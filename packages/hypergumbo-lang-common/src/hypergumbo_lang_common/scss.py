@@ -32,6 +32,16 @@ Edges Extracted
   when the mixin was already seen in any file processed so far, else 0.6 to
   a dangling mixin id)
 
+Identity
+--------
+Every symbol mints ``make_doc_symbol_ids``. Mixins, functions and rule sets
+hash the rules and directives enclosing them (``_scope``: a rule's selector
+list, an at-rule's or control directive's prelude), so ``.item``
+nested in ``.a`` and in ``.b``, or in the ``@if`` and the ``@else`` branch,
+are two identities and deleting the first parent moves nothing (INV-punig;
+ADR-0035 §1, scheme v9). Variables are top-level by construction. A
+top-level symbol hashes no scope and keeps its value.
+
 Why This Design
 ---------------
 - SCSS variables reveal design tokens and theming
@@ -50,6 +60,8 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    ancestor_labels,
+    block_prelude,
     make_doc_symbol_ids,
     make_file_id,
     populate_docstrings_from_tree,
@@ -112,6 +124,14 @@ def _categorize_selector(selector: str) -> str:
     elif "," in selector:
         return "multiple"
     return "element"
+
+
+def _scope(node: "tree_sitter.Node") -> list[str]:
+    """The rules and directives enclosing ``node``, outermost first: each
+    labelled by what precedes its ``{ ... }`` block (``block_prelude``), a
+    rule set by its selector list, an at-rule or control directive by its
+    prelude."""
+    return ancestor_labels(node, block_prelude)
 
 
 def _extract_params(node: "tree_sitter.Node") -> list[str]:
@@ -244,7 +264,7 @@ def _extract_mixin(
     # byte-identical to the historical raw composite for this analyzer.
     symbol_id, stable_id = make_doc_symbol_ids(
         "scss", rel_path, "mixin", mixin_name,
-        span.start_line, span.end_line,
+        span.start_line, span.end_line, _scope(node),
     )
 
     # Track mixin for edge creation
@@ -305,7 +325,7 @@ def _extract_function(
     # byte-identical to the historical raw composite for this analyzer.
     symbol_id, stable_id = make_doc_symbol_ids(
         "scss", rel_path, "function", func_name,
-        span.start_line, span.end_line,
+        span.start_line, span.end_line, _scope(node),
     )
 
     param_str = ", ".join(params) if params else ""
@@ -361,7 +381,7 @@ def _extract_rule_set(
     # byte-identical to the historical raw composite for this analyzer.
     symbol_id, stable_id = make_doc_symbol_ids(
         "scss", rel_path, "rule_set", selector[:30],
-        span.start_line, span.end_line,
+        span.start_line, span.end_line, _scope(node),
     )
 
     # Categorize selector

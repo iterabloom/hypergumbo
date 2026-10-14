@@ -33,6 +33,12 @@ Assembly-Specific Considerations
   `_REGISTER_NAMES` set, since registers aren't function names and would
   otherwise create false external call edges.
 - Section directives (.text, .data, .bss, .rodata) hint at symbol purpose
+- Identity (ADR-0035 §1, scheme v9; INV-punig): a local label (numeric
+  ``1:``, which GAS lets a file repeat, or dotted ``.loop`` / ``.Lx``) hashes
+  the global label before it (``overload_arity.nested_qualified_name``), so
+  ``1:`` after ``a:`` and after ``b:`` are two identities and deleting ``a``
+  with its labels moves nothing. A global label, and a local one before any
+  global label, hash no owner and keep their value.
 """
 from __future__ import annotations
 
@@ -53,6 +59,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import nested_qualified_name
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -101,6 +108,13 @@ def _determine_label_kind(current_section: str) -> str:
     return "function"
 
 
+def _is_local_label(name: str) -> bool:
+    """A label scoped to the global label before it: a GAS numeric label
+    (``1:``, referenced as ``1b`` / ``1f``, repeatable at will) or a dotted
+    one (a NASM ``.loop`` local label; a GAS ``.L`` local symbol)."""
+    return name.isdigit() or name.startswith(".")
+
+
 def _find_enclosing_label(
     line: int, file_labels: list[tuple[int, Symbol]]
 ) -> Optional[Symbol]:
@@ -144,6 +158,8 @@ class AsmAnalyzer(TreeSitterAnalyzer):
         # analyzers leave containing_stable_id empty and carry scope only in
         # qualified_name). Additive — this analyzer passes no containing today.
         file_stable_id = self._file_anchor(rel_path)
+        # The last non-local label seen: the owner of the local labels after it.
+        owner: Optional[str] = None
 
         for node in iter_tree(tree.root_node):
             # Track section changes
@@ -165,6 +181,10 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
                     kind = _determine_label_kind(current_section)
+                    local = _is_local_label(label_name)
+                    owners = (owner,) if local and owner is not None else ()
+                    if not local:
+                        owner = label_name
 
                     sym = Symbol(
                         id=make_symbol_id("asm", rel_path, start_line, end_line, label_name, kind),
@@ -182,6 +202,7 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                         origin_run_id=run.execution_id,
                         stable_id=self.compute_stable_id(
                             node, kind=kind, name=label_name,
+                            qualified_name=nested_qualified_name(owners, label_name),
                             file_stable_id=file_stable_id,
                         ),
                         # INV-loguk: degenerate grammar -> base CC=1 for callable

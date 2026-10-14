@@ -20,7 +20,13 @@ Link destinations are reshaped by ``_make_link_dst_id`` into a 5-part
 external symbol id rather than being used raw: a bare URL in the id would
 land in the language slot when ``ir.create_boundary_nodes`` mints the
 boundary node (WI-diruj). Every emitted symbol also carries a canonical
-sha256 ``stable_id`` from ``make_doc_stable_id``.
+sha256 ``stable_id`` from ``make_doc_stable_id``, scoped by the titles of the
+sections it sits in (``_section_scope``; the grammar nests one ``section`` per
+heading level): ``## Details`` under ``# Alpha`` and under ``# Beta``, and
+the code blocks and links inside them, are distinct identities, and deleting
+the first parent moves nothing (INV-punig; ADR-0035 §1, scheme v9). Two
+same-titled headings, or two same-language code blocks, in one section are a
+same-scope tie.
 
 Symbols Extracted
 -----------------
@@ -55,6 +61,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     iter_tree,
     make_symbol_id,
     node_text,
@@ -69,6 +76,32 @@ PASS_ID = make_pass_id("markdown")
 
 # Regex for markdown links: [text](url)
 _LINK_PATTERN = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
+
+
+def _heading_text(heading: "tree_sitter.Node", source: bytes) -> str:
+    """The title an ATX heading carries (``Details`` in ``## Details``)."""
+    for child in heading.children:
+        if child.type == "inline":
+            return node_text(child, source).strip()
+    return ""
+
+
+def _section_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The titles of the sections ``node`` sits in, outermost first.
+
+    tree-sitter-markdown nests a ``section`` per ATX heading level, so the
+    chain is ``ancestor_labels`` over the sections, each labelled by its
+    heading. A setext heading's section holds nothing else in this grammar
+    and contributes no label.
+    """
+    def label_of(ancestor: "tree_sitter.Node") -> Optional[str]:
+        if ancestor.type != "section":
+            return None
+        first = ancestor.children[0] if ancestor.children else None
+        if first is None or first.type != "atx_heading":
+            return None
+        return _heading_text(first, source) or None
+    return ancestor_labels(node, label_of)
 
 
 def _make_link_dst_id(url: str) -> str:
@@ -177,16 +210,14 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
     ) -> None:
         """Extract a heading/section symbol."""
         level = 0
-        text = ""
+        text = _heading_text(node, source)
 
         for child in node.children:
             if child.type.startswith("atx_h") and child.type.endswith("_marker"):
                 level = len(node_text(child, source).strip())
-            elif child.type == "inline":
-                text = node_text(child, source).strip()
 
         if not text:
-            return  # pragma: no cover
+            return  # an empty ``#``: no title to name the section by
 
         line = node.start_point[0] + 1
         symbol_id = make_symbol_id(
@@ -202,13 +233,14 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            # id-format:F2 4a: canonical sha256 stable_id (was the non-canonical
-            # composite Symbol.id). kind+span folded in so repeated headings stay
-            # distinct. Symbol.id (the --include-docs-visible identifier and edge
-            # endpoint) is left unchanged.
+            # Canonical sha256 stable_id scoped by the enclosing sections'
+            # titles (its own section, the heading's parent, is left out):
+            # ``## Details`` under ``# Alpha`` and under ``# Beta`` are two
+            # identities (INV-punig, scheme v9).
             stable_id=make_doc_stable_id(
                 "markdown", str(rel_path), "section", text, line,
                 node.end_point[0] + 1,
+                _section_scope(node.parent, source) if node.parent is not None else (),
             ),
             name=text,
             kind="section",
@@ -263,12 +295,14 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            # id-format:F2 4a: canonical sha256 stable_id. The span is the only
-            # disambiguator for anonymous code blocks (all named "code"); use the
-            # same name-slot the id used (f"code:{language or 'text'}").
+            # Canonical sha256 stable_id over the same name-slot the id used
+            # (f"code:{language or 'text'}"), scoped by the sections the
+            # block sits in; two same-language blocks in one section are a
+            # same-scope tie.
             stable_id=make_doc_stable_id(
                 "markdown", str(rel_path), "code_block",
                 f"code:{language or 'text'}", line, node.end_point[0] + 1,
+                _section_scope(node, source),
             ),
             name=f"code:{language}" if language else "code",
             kind="code_block",
@@ -309,6 +343,7 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
             return  # pragma: no cover
 
         line = node.start_point[0] + 1
+        scope = _section_scope(node, source)
 
         for match in _LINK_PATTERN.finditer(content):
             text = match.group(1)
@@ -334,11 +369,11 @@ class MarkdownAnalyzer(TreeSitterAnalyzer):
 
             symbol = Symbol(
                 id=symbol_id,
-                # id-format:F2 4a: canonical sha256 stable_id, using the same
-                # name-slot the id used (text or url[:20]) plus the line span.
+                # Canonical sha256 stable_id over the same name-slot the id
+                # used (text or url[:20]), scoped by the enclosing sections.
                 stable_id=make_doc_stable_id(
                     "markdown", str(rel_path), "link", text or url[:20], line,
-                    line,
+                    line, scope,
                 ),
                 name=text or url,
                 kind="link",

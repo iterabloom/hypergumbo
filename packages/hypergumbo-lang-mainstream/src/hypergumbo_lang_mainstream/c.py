@@ -40,6 +40,11 @@ Call-edge details:
   returning a function pointer), so no definition is left without a symbol
   and its calls unemitted because its name sat under a second
   ``pointer_declarator`` (WI-saduj).
+- **Block scope in identity** (INV-punig, scheme v9): a ``struct``,
+  ``enum``, ``typedef`` or prototype declared inside a function, and a GNU
+  nested function, hash the functions around it (``_block_scope``), so
+  ``struct inner`` in ``a()`` and in ``b()`` are two identities; a
+  file-scope declaration hashes no chain and keeps its value.
 - **A definition with no honest name** (WI-tikop): one named by a macro
   tree-sitter cannot expand -- ``TEST_BEGIN(test_x) {..}``, ``PFX(f)(args)``,
   ``LUALIB_API int (f)(args)`` -- gets no symbol (a name read off the macro
@@ -108,7 +113,7 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
     SymbolsAt,
 )
-from hypergumbo_core.analyze.c_family import c_family_declarator
+from hypergumbo_core.analyze.c_family import c_family_declarator, c_family_scope_chain
 from hypergumbo_core.analyze.edge_source import anchor_in_definitions, mark_stand_in
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
@@ -117,6 +122,7 @@ from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
 )
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
+from hypergumbo_core.overload_arity import nested_qualified_name
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -256,6 +262,22 @@ def _get_c_parser() -> Optional["tree_sitter.Parser"]:
 
 
 
+def _block_scope(node: "tree_sitter.Node", source: bytes, name: str) -> str:
+    """The qualified-name slot of a C declaration: the functions it is
+    declared inside (a block-scope ``struct``, ``enum``, ``typedef`` or
+    prototype; a GNU nested function), ``""`` at file scope.
+
+    C scopes a tag or typedef declared in a block to that block, so ``struct
+    inner`` in ``a()`` and in ``b()`` are two declarations (INV-punig, scheme
+    v9); a tag declared inside another ``struct`` is file-scope in C (C11
+    6.2.1), so struct nesting is no part of the chain. A file-scope
+    declaration hashes ``""``, as it did before.
+    """
+    return nested_qualified_name(
+        c_family_scope_chain(node, source, types=False, functions=True), name,
+    )
+
+
 def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -312,6 +334,7 @@ def _extract_symbols(
                     ),
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="function", name=name,
+                        qualified_name=_block_scope(node, source, name),
                         file_stable_id=file_stable_id,
                     ),
                 )
@@ -353,6 +376,7 @@ def _extract_symbols(
                             ),
                             stable_id=_analyzer.compute_stable_id(
                                 node, kind="function", name=name,
+                                qualified_name=_block_scope(node, source, name),
                                 file_stable_id=file_stable_id,
                             ),
                         )
@@ -383,6 +407,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="struct", name=name,
+                        qualified_name=_block_scope(node, source, name),
                         file_stable_id=file_stable_id,
                     ),
                 )
@@ -413,6 +438,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="enum", name=name,
+                        qualified_name=_block_scope(node, source, name),
                         file_stable_id=file_stable_id,
                     ),
                 )
@@ -445,6 +471,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="typedef", name=name,
+                        qualified_name=_block_scope(node, source, name),
                         file_stable_id=file_stable_id,
                     ),
                 )

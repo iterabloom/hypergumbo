@@ -155,3 +155,34 @@ int free_fn() { return 2; }
     chains = [c_family_scope_chain(d, code.encode()) for d in defs]
     # an anonymous namespace adds nothing; a free function has no chain
     assert chains == [["outer::inner", "A"], ["outer::inner", "B"], []]
+
+
+def _first(lang: str, code: str, node_type: str):
+    tree = tlp.get_parser(lang).parse(code.encode())
+    stack = [tree.root_node]
+    while stack:
+        node = stack.pop()
+        if node.type == node_type:
+            return node
+        stack.extend(reversed(node.children))
+    raise AssertionError(node_type)  # pragma: no cover - the fixtures hold one
+
+
+def test_scope_chain_adds_enclosing_functions_on_request() -> None:
+    """INV-punig: a block-scope declaration's identity needs the functions
+    around it; C leaves its struct nesting out (tags inside a struct are
+    file-scope there), and a macro-named function contributes nothing."""
+    code = "struct s {\n  int k;\n};\nvoid outer(void) {\n  struct inner { int w; } v;\n}\n"
+    top = _first("c", code, "field_declaration_list").parent
+    body = code[code.index("void"):]
+    tag = _first("c", body, "struct_specifier")
+    assert c_family_scope_chain(top, code.encode(), types=False, functions=True) == []
+    assert c_family_scope_chain(tag, body.encode(), types=False, functions=True) == ["outer"]
+    hlsl = "namespace a {\nfloat f(float x) {\n  float y = x;\n  return y;\n}\n}\n"
+    local = _first("hlsl", hlsl, "declaration")
+    assert c_family_scope_chain(local, hlsl.encode(), functions=True) == ["a", "f"]
+    assert c_family_scope_chain(local, hlsl.encode()) == ["a"]
+    macro = "int PFX(f)(void) {\n  struct t { int v; } x;\n}\n"
+    assert c_family_scope_chain(
+        _first("c", macro, "struct_specifier"), macro.encode(), types=False, functions=True,
+    ) == []

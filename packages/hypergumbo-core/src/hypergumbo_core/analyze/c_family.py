@@ -55,7 +55,8 @@ share the grammar shape (tree-sitter-cuda and tree-sitter-hlsl extend
 tree-sitter-cpp, tree-sitter-glsl extends tree-sitter-c) and cannot import
 ``hypergumbo-lang-mainstream``, so they live here, with
 :func:`c_family_scope_chain`, the enclosing namespaces and classes an
-inline member's identity needs beside its bare name.
+inline member's identity needs beside its bare name (and, on request, the
+enclosing functions a block-scope declaration's identity needs).
 """
 from __future__ import annotations
 
@@ -234,23 +235,39 @@ _SCOPE_NAMES = {
 }
 
 
-def c_family_scope_chain(node: "tree_sitter.Node", source: bytes) -> list[str]:
-    """The names of the namespaces and classes enclosing ``node``, outermost first.
+def c_family_scope_chain(
+    node: "tree_sitter.Node", source: bytes, *, types: bool = True, functions: bool = False,
+) -> list[str]:
+    """The names of the scopes enclosing ``node``, outermost first.
 
-    An inline member function is named by its bare ``field_identifier``
-    (``int size() { ... }`` in ``struct A``), so two classes' ``size`` share a
-    name; the chain is what tells them apart in a stable_id's qualified name.
-    An anonymous namespace or class contributes nothing.
+    By default the namespaces and classes: an inline member function is named
+    by its bare ``field_identifier`` (``int size() { ... }`` in ``struct A``), so
+    two classes' ``size`` share a name; the chain is what tells them apart in a
+    stable_id's qualified name. ``functions=True`` adds the enclosing function
+    definitions, by the name their declarator declares, for a producer that
+    emits declarations at block scope (an HLSL local, a C ``struct`` declared
+    inside a function; INV-punig). ``types=False`` leaves the namespaces and
+    classes out: C scopes a tag declared inside a ``struct`` to the file
+    (C11 6.2.1), so its chain is the functions alone. An anonymous namespace
+    or class, or a macro-named function, contributes nothing.
     """
     chain: list[str] = []
     current = node.parent
     while current is not None:
-        name_types = _SCOPE_NAMES.get(current.type)
+        name_types = _SCOPE_NAMES.get(current.type) if types else None
         if name_types is not None:
             name = next((c for c in current.children if c.type in name_types), None)
             if name is not None:
                 chain.append(
                     source[name.start_byte:name.end_byte].decode("utf-8", errors="replace")
+                )
+        elif functions and current.type == "function_definition":
+            declared = c_family_declarator(current).name
+            if declared is not None:
+                chain.append(
+                    source[declared.start_byte:declared.end_byte].decode(
+                        "utf-8", errors="replace",
+                    )
                 )
         current = current.parent
     chain.reverse()

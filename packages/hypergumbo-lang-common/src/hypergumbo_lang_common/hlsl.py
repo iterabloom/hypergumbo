@@ -35,7 +35,12 @@ A function records its parameters, types included, in ``meta["parameters"]``
 (``c_family_parameters``) and its stable_id hashes them
 (``overload_arity.node_declared_arity_stable_id``, WI-tusad): the list sits
 under the declarator, where ``compute_stable_id`` never looked, so the
-overloads ``f(float)`` / ``f(float2)`` tied on ``param_count 0``.
+overloads ``f(float)`` / ``f(float2)`` tied on ``param_count 0``. Every symbol
+also hashes the namespaces, structs and functions it is declared in
+(``c_family_scope_chain(functions=True)`` through
+``overload_arity.nested_qualified_name``, empty at top level; INV-punig): ``f``
+in ``namespace a`` and in ``namespace b``, or a local ``x`` in two functions,
+are two identities.
 
 Why This Design
 ---------------
@@ -62,10 +67,12 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
 )
-from hypergumbo_core.analyze.c_family import c_family_parameters
+from hypergumbo_core.analyze.c_family import c_family_parameters, c_family_scope_chain
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
-from hypergumbo_core.overload_arity import PARAMETERS_KEY, node_declared_arity_stable_id
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, nested_qualified_name, node_declared_arity_stable_id,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
@@ -154,10 +161,15 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", rel_path: str, run_id: str,
         # (the base ``analyze()`` loop derives it via relative_to(repo_root)).
         # WI-tusad: the arity comes from meta["parameters"] (the declarator's
         # list, which compute_stable_id never finds), so f(float) / f(float2)
-        # stop tying.
+        # stop tying. INV-punig: the namespaces, structs and functions around
+        # the declaration (a local variable is emitted too), empty at top
+        # level, where the value is unchanged.
         stable_id=node_declared_arity_stable_id(
             analyzer, node, kind=kind, name=name, meta=meta,
             file_stable_id=analyzer._file_anchor(rel_path),
+            qualified_name=nested_qualified_name(
+                c_family_scope_chain(node, source, functions=True), name,
+            ),
         ),
         signature=signature,
         meta=meta,

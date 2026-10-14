@@ -45,6 +45,15 @@ Edges Extracted
   (audit-findings 0011). ADR-0023 §6 folded the former
   `imports_component` type into canonical `imports`.
 
+Identity
+--------
+Every symbol mints ``make_doc_symbol_ids``. A frontmatter variable is
+file-level; a slot and a client directive hash the tag names of the elements
+around their own element (``div``, ``main/section`` ...), so ``<slot name="h">``
+in a ``<div>`` and in a ``<section>`` are two identities and deleting the first
+moves nothing (INV-punig; ADR-0035 §1, scheme v9). Two identical slots in one
+element chain are a same-scope tie.
+
 Why This Design
 ---------------
 - TreeSitterAnalyzer eliminates boilerplate orchestration code
@@ -66,6 +75,8 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
+    html_element_tag,
     make_doc_symbol_ids,
     make_file_id,
 )
@@ -318,6 +329,10 @@ class _AstroFileExtractor:
 
         rel_path = self.rel_path
         line = node.start_point[0] + 1
+        # The elements this tag sits inside: the scope chain of its directive
+        # and slot (INV-punig, scheme v9).
+        element = node.parent
+        enclosing = ancestor_labels(element, html_element_tag) if element is not None else []
 
         # Check if this is a component reference (capitalized)
         if tag_name[0].isupper():
@@ -370,7 +385,7 @@ class _AstroFileExtractor:
                 directive_id, directive_stable_id = make_doc_symbol_ids(
                     "astro", str(rel_path), "directive",
                     f"{tag_name}:{client_directive}",
-                    directive_span.start_line, directive_span.end_line,
+                    directive_span.start_line, directive_span.end_line, scope=enclosing,
                 )
 
                 directive_symbol = Symbol(
@@ -417,7 +432,7 @@ class _AstroFileExtractor:
             # by make_doc_symbol_ids, so they can never drift.
             symbol_id, stable_id = make_doc_symbol_ids(
                 "astro", str(rel_path), "slot", slot_name,
-                span.start_line, span.end_line,
+                span.start_line, span.end_line, scope=enclosing,
             )
 
             symbol = Symbol(

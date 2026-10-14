@@ -29,19 +29,24 @@ Why This Design
 Function identity (WI-tusad)
 ----------------------------
 A function's stable_id is the ADR-0035 producer formula, minted here through
-``overload_arity.declared_arity_stable_id`` over the repo-relative path, the
-name and the dummy-variable count read from ``f(x, y)``. Gnuplot functions are
-global, so the scope chain is the file. ``f(x)`` and ``f(x, y)`` in one
-script are two definitions; with the count in the hash, deleting the first
-leaves the second's id alone. Without it they shared the backstop floor key
-and both were left null. Gnuplot has no parameter types, defaults or
-variadics, so every entry is a plain ``parameter_entry``.
+``overload_arity.scoped_stable_id`` over the repo-relative path, the name, the
+dummy-variable count read from ``f(x, y)`` and the brace blocks the
+definition sits in (``if (a) {``, ``do for [...] {``, by their headers; an
+``} else {`` under the ``if`` it continues: ``if (a)`` / ``else``). Gnuplot functions are global, but a script defines one per branch,
+and the two definitions are two identities (INV-punig, scheme v9); a
+top-level definition hashes no block. ``f(x)`` and ``f(x, y)`` in one script
+are two definitions; with the count in the hash, deleting the first leaves
+the second's id alone. Without it they shared the backstop floor key and both
+were left null. Gnuplot has no parameter types, defaults or variadics, so
+every entry is a plain ``parameter_entry``. A variable takes the backstop's
+table value scoped by the same blocks (``overload_arity.scoped_table_stable_id``).
 
 A plot command is a site, not a declaration: every ``plot`` of a script is
 named ``plot``, and they all shared the floor key and were null. It mints
 ``overload_arity.scoped_stable_id`` scoped by what it plots (the rest of the
-command line, whitespace collapsed), so ``plot sin(x)`` and ``plot cos(x)``
-hold their own ids; plotting the same thing twice is a same-scope tie.
+command line, whitespace collapsed) inside its blocks, so ``plot sin(x)`` and
+``plot cos(x)`` hold their own ids; plotting the same thing twice in one
+block is a same-scope tie.
 """
 from __future__ import annotations
 
@@ -54,8 +59,8 @@ from hypergumbo_core.ir import Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import (
-    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
-    scoped_stable_id,
+    PARAMETERS_KEY, declared_arity, parameter_entry, scoped_stable_id,
+    scoped_table_stable_id,
 )
 from hypergumbo_core.paths import to_relative_path
 
@@ -107,11 +112,30 @@ def analyze_gnuplot(
 
         # Track which lines have functions (so we skip them for variable detection)
         func_lines: set[int] = set()
+        # The brace blocks open at this line, outermost first, each as the
+        # labels it adds to a symbol's scope: ``("if (a)",)``, ``("do for
+        # [i=1:3]",)``, and for an ``else`` the branch it continues as well,
+        # ``("if (a)", "else")`` (the Makefile chain's shape).
+        blocks: list[tuple[str, ...]] = []
 
         for line_num, line in enumerate(lines, 1):
             stripped = line.lstrip()
             if stripped.startswith("#") or not stripped:
                 continue
+            rest = stripped
+            closed: tuple[str, ...] = ()
+            while rest.startswith("}"):
+                if blocks:
+                    closed = blocks.pop()
+                rest = rest[1:].lstrip()
+            if rest.rstrip().endswith("{"):
+                header = " ".join(rest.rstrip()[:-1].split())
+                # ``} else {`` / ``} else if (b) {`` continue the branch just
+                # closed, under its ``if``: the ``else`` of two different
+                # ``if`` blocks are two scopes.
+                blocks.append((*closed[:1], header) if header.startswith("else") else (header,))
+                continue
+            scope = [label for block in blocks for label in block]
 
             m = _FUNC_RE.match(stripped)
             if m:
@@ -120,10 +144,9 @@ def analyze_gnuplot(
                 meta = {PARAMETERS_KEY: _function_parameters(m.group(2))}
                 symbols.append(Symbol(
                     id=_make_symbol_id(path_str, line_num, name, "function"),
-                    stable_id=declared_arity_stable_id(
+                    stable_id=scoped_stable_id(
                         kind="function", lang="gnuplot", path=rel_path,
-                        name=name, qualified_name=name,
-                        arity=declared_arity(meta),
+                        name=name, scope=scope, arity=declared_arity(meta),
                     ),
                     name=name,
                     kind="function",
@@ -145,6 +168,10 @@ def analyze_gnuplot(
                                 "print", "pause", "if", "else", "do", "while"}:
                     symbols.append(Symbol(
                         id=_make_symbol_id(path_str, line_num, name, "variable"),
+                        stable_id=scoped_table_stable_id(
+                            kind="variable", lang="gnuplot", path=rel_path,
+                            name=name, scope=scope,
+                        ),
                         name=name,
                         kind="variable",
                         language="gnuplot",
@@ -163,7 +190,7 @@ def analyze_gnuplot(
                     id=_make_symbol_id(path_str, line_num, cmd, "plot"),
                     stable_id=scoped_stable_id(
                         kind="plot", lang="gnuplot", path=rel_path, name=cmd,
-                        scope=(" ".join(stripped[m.end():].split()),),
+                        scope=(*scope, " ".join(stripped[m.end():].split())),
                     ),
                     name=cmd,
                     kind="plot",
