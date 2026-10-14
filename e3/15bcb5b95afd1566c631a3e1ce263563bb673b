@@ -1,0 +1,9 @@
+Original commit body from f2e71c2c3f398d47e68be354fa758307194908fd:
+
+PR #1577 added the perl-blocks and sparql-queries fixtures; the spec, ADR-0035
+and CHANGELOG still said 202 fixtures, 95 two-parent. ADR-0035 §5 also names
+the two names the closure re-check found.
+
+Refs WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
