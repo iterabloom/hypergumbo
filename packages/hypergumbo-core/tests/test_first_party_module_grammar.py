@@ -3,7 +3,7 @@
 unexamined third-party module (INV-juvul).
 
 WHAT WAS BROKEN, measured 2026-08-24 on two UNMODIFIED upstream repos by
-recomputing ``_uncatalogued_external_modules`` over each run's own cached
+recomputing ``_adjudicate_external_modules`` over each run's own cached
 survey (the rendered ``details`` string truncates the list at five)::
 
     express (javascript)  17 modules reported "the I/O catalog could not classify"

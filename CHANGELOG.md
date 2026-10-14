@@ -12,6 +12,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Changed
+
+- Retired test-only `_uncatalogued_external_modules`; gate rationale now on `_adjudicate_external_modules`.
+
 ## [9.0.0] - 2026-10-14
 
 ### Summary
