@@ -231,7 +231,12 @@ steps:
       #           the same venv: with mypy present the ratchet returns 1 and
       #           reports REGRESSION, which is what that test is there to see.
       - pip install --upgrade pip
-      - pip install pytest pytest-xdist pyyaml 'hypothesis~=6.100' rich 'mypy~=2.1.0'
+      #   pytest-cov — test_smart_test_zero_collect runs scripts/smart-test in a
+      #           fixture repo, and smart-test always passes --cov. Without
+      #           the plugin pytest rejects the arguments (exit 4) before
+      #           collecting anything, so all five tests failed here while
+      #           passing on every machine that has pytest-cov.
+      - pip install pytest pytest-xdist pytest-cov pyyaml 'hypothesis~=6.100' rich 'mypy~=2.1.0'
       - |
         if [ -f /sys/fs/cgroup/cpu.max ]; then
           read quota period < /sys/fs/cgroup/cpu.max

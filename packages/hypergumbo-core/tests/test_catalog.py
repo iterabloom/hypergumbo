@@ -667,6 +667,14 @@ class TestINVHujogClosureCriterion:
     a docstring note explaining why). Per the WI-dilab closure criterion.
     """
 
+    @pytest.fixture(autouse=True)
+    def _linkers_registered(self) -> None:
+        """Linkers register when ``cli`` is imported, and several tests here
+        build the catalog before any helper imports it. Run alone (one xdist
+        worker, no earlier test importing ``cli``), the catalog came back with
+        no linkers and ``test_the_allowance_is_actually_exercised`` failed."""
+        import hypergumbo_core.cli
+
     def _all_linkers_with_subcategory(self) -> dict[str, str]:
         """Returns {pass_id: subcategory} by parsing linker module docstrings."""
         # Importing cli triggers eager linker module imports.
@@ -1080,3 +1088,28 @@ class TestEmitFalsifiedDependencySummary:
         err = capsys.readouterr().err
         assert err.count("\n") == 1
         assert "jni-linker" in err
+
+
+class TestBuildCatalogWithNoAnalyzers:
+    """hypergumbo-core installed alone registers linkers and no analyzers.
+
+    The linker loop recorded each name through the analyzer loop's variable,
+    a rename leftover: with analyzers registered it recorded the last
+    analyzer's name instead of the linker's, and with none it raised
+    UnboundLocalError, so ``measure-taint-precision.py`` died on a core-only
+    tree.
+    """
+
+    def test_linkers_only_catalog_builds(self) -> None:
+        from hypergumbo_core.analyze import registry as analyze_registry
+        from hypergumbo_core.catalog import build_catalog_from_registries
+        from hypergumbo_core.linkers import registry as linker_registry
+
+        with patch.dict(analyze_registry._ANALYZER_REGISTRY, clear=True), \
+                patch.dict(linker_registry._LINKER_REGISTRY, clear=True), \
+                patch.object(analyze_registry, "ensure_discovered", lambda: None):
+            linker_registry.register_linker("only-linker-a")(lambda ctx: None)
+            linker_registry.register_linker("only-linker-b")(lambda ctx: None)
+            catalog = build_catalog_from_registries()
+
+        assert [p.id for p in catalog.passes] == ["only-linker-a", "only-linker-b"]

@@ -171,6 +171,23 @@ def pin(
         ])
 
     if choice == "pythonpath":
+        # A PYTHONPATH that supplies some of the in-scope packages but not all
+        # of them is neither arm. ``announce`` catches the missing ones when
+        # they resolve elsewhere (two trees on sys.path); when they resolve
+        # nowhere, it sees one tree and the run would measure core with no
+        # language analyzers. Refuse that here, from PYTHONPATH alone, so the
+        # verdict does not depend on what else is installed.
+        supplied = {name for name in own if _provider(entries, name) is not None}
+        missing = sorted(set(own) - supplied)
+        if supplied and missing:
+            _refuse([
+                f"{script.name}: MIXED TREE: {CHOICE_ENV}=pythonpath, but"
+                " PYTHONPATH supplies only some of the in-scope packages this"
+                " script's tree ships (WI-tumog). Refusing.",
+                *(f"    missing from PYTHONPATH: {name}" for name in missing),
+                "  Put every in-scope package of ONE tree on PYTHONPATH, or set"
+                f" {CHOICE_ENV}=script.",
+            ])
         return Pin(script_tree=tree, scope=scope, choice=choice, pinned=())
     pinned = tuple(dict.fromkeys(own.values()))
     path[:0] = [str(p) for p in pinned]
