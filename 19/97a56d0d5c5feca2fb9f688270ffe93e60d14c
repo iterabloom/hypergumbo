@@ -1,0 +1,64 @@
+Original commit body from 54a42e15ffe9dc76cc2523d1337915407dd180e8:
+
+Scheme v9 promised that every enclosing scope that can repeat in a file is in
+the hash. A post-merge live check found seven producers that hashed no parent
+(markdown sections/code blocks/links, rst sections, scss nested rules, puppet
+resources in classes, svelte template blocks, apex nested classes, fish nested
+functions): the same construct under two different parents tied, the per-file
+split pass ordered the twins, and deleting the first parent moved the second.
+The floor gate passed because its fixtures held that shape for some languages
+only. v9 is unreleased, so these fixes fold into it (no v10).
+
+Producer fixes (all through the shared helpers: ancestor_labels,
+make_doc_stable_id(scope=), scoped_stable_id, scoped_table_stable_id,
+nested_qualified_name, nested_member_qualified_name):
+- markdown: enclosing sections' titles (the grammar nests a section per level)
+- rst: section hierarchy from adornment-style order (tree-sitter-rst emits
+  sections as siblings; meta.level was always 1 and now reports the level)
+- scss / puppet: rules, at-rules, classes, defines, nodes and branches
+  (new base.block_prelude label: the text before a node's block)
+- svelte / astro: element chain (new base.html_element_tag, shared with vue,
+  which keeps byte-identical ids) plus svelte control-flow blocks
+- apex: full enclosing type chain for nested types and their members
+- fish: enclosing-function chain, as bash
+Writing the two-parent fixtures found ten more: blade (open sections and
+components), C (tags/typedefs/prototypes declared in a function; struct
+nesting stays out, C11 6.2.1), CMake functions and macros in blocks, gnuplot
+brace blocks (functions, variables, plots), HLSL namespaces/structs/functions
+(c_family_scope_chain gains functions=/types=), JSON and Cargo dependency
+groups, TOML 3+-part table names (the inner dotted_key was skipped, so
+[tool.poetry.dependencies] and [target.'cfg(..)'.dependencies] were both
+"dependencies"), Meson branches/loops, assembler local labels; and an else
+labelled without its if (CMake, Meson, gnuplot; now the Makefile chain's
+if/else shape). A Maven artifactId under two groupIds tied too (groupId
+scope). Mermaid: a node id repeated in two subgraphs is one Mermaid node (a
+documented same-scope tie); the same node in two diagrams already passed.
+
+The structural guard (test_stable_id_floor_gate.py):
+- SiblingCase.nested: one text, byte for byte, under two different parents,
+  the first deleted. Same-scope copies tie, so a language is proved only when
+  both copies emit the same kinds and the second keeps its ids
+  (two_parent_languages).
+- test_every_language_has_a_two_parent_fixture_or_is_flat: every language a
+  fixture emits is proved, or listed in FLAT_LANGUAGES with a reason (24).
+  "Nests" is not inferred from output alone (a markdown section spans its
+  heading line; a Svelte element is no symbol), so the flat list is reviewed
+  and fails as stale when the language's symbols nest (nesting_languages),
+  when a fixture proves it, or when no fixture emits it.
+- test_every_registered_language_has_a_fixture (yaml, html, play-routes
+  exempt with reasons).
+- 50 PARENT_CASES (49 two-parent, incl. three else-branch shapes, plus
+  xml-maven); 46 existing fixtures gained nested= with identical copies.
+  202 fixtures (95 two-parent), baseline still empty.
+Red on dev 5d7fb73fb2 (new gate, old producers): 17 languages MISSING,
+18 deletion regressions; green here.
+
+Churn (ids changed / total at matched positions, dev -> branch; node and
+edge sets identical except 18 TOML tables renamed by the dotted-key fix;
+checkout-location 0 differing positions on all three samples): see the
+CHANGELOG migration note and the spec v8 -> v9 entry.
+
+Refs INV-punig-pizob-kobof-komok-ronon-kagah-nonob-makaf
+Refs WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
