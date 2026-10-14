@@ -1,0 +1,24 @@
+Original commit body from 68b1e18a77b6b70ad80c12973c61fc2e5b3a39f5:
+
+The cron self-claims-gate went red: every self-claim moved
+confirmed_with_caveats -> inconclusive and lost opaque_boundary. Each
+verdict's details named one cause: "it makes calls into 1 module(s)
+that the I/O catalog could not classify (datetime.date)". The tracker's
+new priority_trend.py and cli.py call datetime.date.fromisoformat;
+io_primitives/python.yaml rows date.today() but declared only
+datetime.datetime complete, so any other date member was an
+unclassifiable module and withheld every clean verdict. Same shape as
+INV-fugus (date.today) and INV-bofab.
+
+Reproduced at dev ffe97d229f in a pinned worktree with its own cache:
+the drift report matched the cron's line for line. With this entry the
+same run prints "OK -- 18 claims unchanged (18 confirmed_with_caveats)",
+so the snapshot and SECURITY.md need no change.
+
+Test: datetime.date is enumerated (red before); and the classmethods of
+datetime.date are exactly today plus the four value converters, so a
+CPython addition is audited before the declaration vouches for it.
+
+The per-PR gap that let this reach dev a third time is INV-jojog.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
