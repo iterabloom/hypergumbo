@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Taint catalog loading and taint-flow propagation (ADR-0017 Phases 1-2).
 
-Provides YAML-driven taint source/sink/sanitizer catalogs and a structural
-(call-graph BFS) taint-flow analyzer. This is the Phase 1 fallback path
-that works for all languages without requiring def/use extractors.
+Provides YAML-driven taint source/sink/sanitizer catalogs and two
+taint-flow propagators: the structural (call-graph BFS) analyzer, the Phase 1
+fallback that works for all languages without def/use extractors, and the
+DDG-backed :func:`propagate_taint_ddg` described below.
 
 How It Works
 ------------
@@ -21,9 +22,10 @@ The structural approach cannot distinguish between two variables in the same
 function — it operates at the symbol level. Its findings are labeled
 ``confidence="approximate"`` and ``analysis_method="structural"`` per ADR-0017.
 
-DDG-backed analysis has LANDED and is not the only producer any more: for
-languages with def/use extractors, :func:`propagate_taint_ddg` (defined in
-this module; the DDG itself is built by ``ddg_build.py``) walks
+DDG-backed analysis has LANDED, so the structural analyzer is no longer the
+only producer: for languages with def/use extractors,
+:func:`propagate_taint_ddg` (defined in this module; the DDG itself is built
+by ``ddg_build.py``) walks
 reaching-definitions and stamps ``analysis_method="ddg"`` when it confirms a
 dependence, ``"ddg_mixed"`` when it does not — which covers the walk
 escaping tracked ground (``escaped``) *and* the walk never running at all
@@ -61,8 +63,10 @@ findings pass through unchanged, since the walk earned their per-pair claim.
 Which Pairs Count
 -----------------
 Upstream of the §3a walk, both propagators share gates that decide what counts
-as a source/sink pair at all. Each refuses only on positive evidence; an
-absent or unrecognised stamp keeps the finding.
+as a source/sink pair at all. The per-call-site and per-pair gates refuse only
+on positive evidence; an absent or unrecognised stamp keeps the finding. The
+catalogue matcher's resolved-edge and name-lookup arms, in the second bullet,
+also refuse when evidence is absent.
 
 - ``_match_propagation_entry`` refuses a callee of another language, and admits
   an entry gated by ``requires_mode`` (sinks only) or ``requires_target_kind``
@@ -70,6 +74,17 @@ absent or unrecognised stamp keeps the finding.
   direction, selects it (INV-vukiv). An abstaining target-kind stamp admits the
   unconditional entries plus the primitive's ``abstention_fallback`` entry, so
   an unstamped call reads here as it does in io-boundaries (INV-minol).
+- On a resolved edge, ``_match_propagation_entry`` matches an entry only when
+  the entry declares no module or its module suffix-matches the called
+  symbol's own path, so a first-party function that merely shares a
+  catalogued name is refused, and a resolved edge with no path to judge on is
+  refused outright. On an unresolved edge it picks the row through
+  ``_lookup_named_entry`` (the rule io-boundaries shares,
+  ``io_boundary.named_lookup_arm``): a present but mismatched module hint
+  refuses; with no usable hint the kind-aware gate applies (an untyped method
+  call never matches); a stub that resolution bound to an in-repo symbol takes
+  no row by short name; and a call on an in-repo type first retries the type's
+  own row and then its external ancestors' rows.
 - ``_sink_call_can_carry_taint`` refuses a sink site whose arguments are all
   literals (INV-fubag), whose target discards (``> /dev/null``, INV-kosur), or
   that no externally-derived name can reach (bash redirects, WI-zovuz).

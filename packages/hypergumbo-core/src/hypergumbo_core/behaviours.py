@@ -59,7 +59,7 @@ def callback_stable_id(
     ``macro`` for an Elixir ``@macrocallback``.
 
     The ADR-0035 v6 formula, anchored to the declaring file the way
-    ``BaseAnalyzer.compute_stable_id`` anchors a top-level symbol, with
+    ``TreeSitterAnalyzer.compute_stable_id`` anchors a top-level symbol, with
     ``CALLBACK_MODIFIER`` in the decorators slot. It is minted through the
     shared ``overload_arity`` helper every producer without a parameter-list
     node uses: the callback knows its parameter count (``meta["arity"]``),

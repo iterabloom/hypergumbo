@@ -9,8 +9,10 @@ carry **both**:
 2. ``meta["disambiguation_fallback"] = True`` provenance flag.
 
 This module walks ``Edge.create(...)`` / ``Edge(...)`` call sites under
-``packages/.../linkers/`` and asserts the contract holds at every site
-that sets ``meta["disambiguation_fallback"] = True``. The shape of the
+``packages/.../linkers/`` and asserts the contract holds at every call
+whose ``meta=`` argument statically declares
+``"disambiguation_fallback": True``: a literal dict, an inline ternary over
+one, or a name bound by a single function-local assignment to either. The shape of the
 test is conservative: if a call site sets the flag, the confidence on
 that same call must be statically resolvable to a value <= 0.5.
 
@@ -35,6 +37,11 @@ The flagless-fallback case is caught by the **per-linker property
 tests** of the form ``test_<edge_type>_deterministic_fallback_when_
 ambiguous`` (INV-zuhub item 1), which exercise the runtime behaviour
 on synthetic fixtures known to trigger a fallback decision.
+
+The walker also skips a flag set any other way: subscript mutation after
+the dict is built (``edge_meta["disambiguation_fallback"] = True``, the
+most common form in the linkers), a dict merge, or a helper that builds
+the meta. This walker does not check the confidence at those sites.
 
 Why a single canonical key name
 -------------------------------

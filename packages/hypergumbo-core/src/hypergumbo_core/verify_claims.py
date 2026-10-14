@@ -186,13 +186,13 @@ How It Works
    that verdict stays ``inconclusive``. ``violated`` is never touched.
    For a taint claim whose source label only a project catalogue declares,
    ``blind_by_source_taint`` substitutes a per-label ``ScopedBlindness``
-   that ignores no-catalogue languages the label cannot start in, and
-   ``_disclose_scoped_blindness`` names those set-aside languages in
-   ``details`` (WI-rusil). A taint claim over one of ``taint_sinks/``'s
-   non-boundary zones (ADR-0060) then passes through ``_apply_sink_zone_gap``:
+   that ignores no-catalogue languages the label cannot start in (WI-rusil).
+   Straight after the gate, a taint claim over one of ``taint_sinks/``'s
+   non-boundary zones (ADR-0060) passes through ``_apply_sink_zone_gap``:
    a present language with no sink in the zone withholds a clean verdict, and
    declared unreached shapes qualify it with ``CAVEAT_UNREACHED_SINK_SHAPES``
-   (INV-pivam). Last, ``_disclose_untraced_vouch`` appends to a confirming
+   (INV-pivam). Then ``_disclose_scoped_blindness`` names the set-aside
+   languages in ``details``. Last, ``_disclose_untraced_vouch`` appends to a confirming
    verdict's ``details`` the modules that only an overlay's
    ``module_completeness`` grant vouched for, whose source was not traced;
    the category and exit code stay the same (WI-pogar, ADR-0016 §7).

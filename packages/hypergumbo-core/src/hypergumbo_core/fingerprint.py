@@ -4,8 +4,8 @@
 What this module does
 ---------------------
 Compute a structural content fingerprint for the source code inside a
-Symbol's span, expressed as a hex SHA-256 prefixed with the scheme tag
-``hgfp2:``. The fingerprint reflects the symbol's source modulo
+Symbol's span, expressed as the first 16 hex digits of a SHA-256,
+prefixed with the scheme tag ``hgfp2:``. The fingerprint reflects the symbol's source modulo
 whitespace and comments — two symbols whose code text is identical
 except for blank lines, indentation choices, and comments produce the
 same fingerprint; renaming an identifier or changing a literal
@@ -19,11 +19,16 @@ was null on 99.7% of source-code Symbols, which made the schema-level
 promise hollow and foreclosed consumer use-cases like symbol-level
 change detection, duplicate-code detection, and per-symbol cache
 invalidation. This module is the one place that knows how to compute a
-fingerprint, and a single orchestrator post-pass stamps every Symbol
-that doesn't already carry one. Since ADR-0032 Phase 2 PR2 demolished
-the producer-side Format-1 hashes (toml / json / cmake / css / sql /
-xml / wasm_bindgen) and this module's WI-falum revision demolished the
-wgsl ones, the post-pass solely owns the field.
+fingerprint, and a single orchestrator post-pass owns the field for
+source-code Symbols. It stamps every Symbol whose fingerprint is null,
+and it recomputes any non-``hgfp2:`` value on a Symbol that has a
+``language`` (WI-lisog), so a producer-side hash never reaches the
+output. ADR-0032 Phase 2 PR2 demolished the Format-1 hashes (toml / json
+/ cmake / css / sql / xml / wasm_bindgen) and this module's WI-falum
+revision demolished the wgsl ones. The one shape the post-pass leaves
+alone is the identity-derived fingerprint (a SHA-256 of the node id)
+that linkers stamp on synthetic ``language is None`` nodes, which have
+no source to hash.
 
 Why the parse is context-aware (v2)
 -----------------------------------
@@ -68,9 +73,9 @@ cursor walk of the located subtree. Internal nodes contribute their
 ``comment``-typed nodes (and the language-specific variants) are
 filtered before they contribute, mirroring the Python-ast behavior.
 
-Languages whose grammars aren't in the language pack — bash, ansible,
-hcl, ini, gitignore, dockerfile-via-text, and the regex-only
-analyzers — return ``None``. The orchestrator post-pass leaves those
+Languages whose name has no grammar in the language pack (ansible, for
+example) return ``None``. Bash, hcl, ini, gitignore and dockerfile do
+have pack grammars and are fingerprinted. The orchestrator post-pass leaves those
 Symbols' ``fingerprint`` as ``None``, so there's no false precision for
 languages we can't honestly fingerprint.
 

@@ -27,8 +27,9 @@ Axis taxonomy (per ADR-0027 §1):
   per-cluster audit-findings docs).
 - ``pending_classification`` — deferred values still on the registry:
   the residual Cluster B / G members, the Cluster H shading/storage
-  qualifiers awaiting their audit, and ``operation``, deferred to v6
-  under id-format:F3. Per-value verdicts arrive with each cluster's
+  qualifiers awaiting their audit, ``operation`` (registered under
+  id-format:F3; its id-changing fold to ``query`` is deferred and not yet
+  scheduled), and ``multimethod`` (Clojure ``defmulti``). Per-value verdicts arrive with each cluster's
   audit-findings doc.
 
 Beyond the axis taxonomy this module also owns the **type-family** surface

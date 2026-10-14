@@ -4,10 +4,10 @@
 This package consolidates the family of "fold a composed URL down to a literal
 route-skeleton" helpers that the HTTP-linker scanners (``linkers/http.py``)
 previously inlined per language. Each YAML sibling file in this directory
-declares one composition **idiom** (string interpolation, array join, printf
-format, string concatenation, ...) and the languages whose route detector is
-covered by that idiom. The Python engine functions (``fold_string_interpolation``,
-``fold_array_join``, ...) are the actual implementations that the per-language
+declares one composition **idiom** (string interpolation and array join today;
+printf format and string concatenation are planned for Phases C and D) and the languages whose route detector is
+covered by that idiom. The Python engine functions (``fold_string_interpolation`` and
+``fold_array_join``, the two ``ENGINES`` entries) are the actual implementations that the per-language
 scanners call into.
 
 Why a per-idiom YAML registry
@@ -58,8 +58,8 @@ regex-match-and-fold blocks in each scanner with a single YAML-driven call.
 Phase A intentionally defers this dispatcher: with only two idioms x two
 language groups today, the abstraction would have to handle Elm's two-pass
 let-binding scan as a special case from day one, and the resulting design
-would be premature. The per-scanner inline calls below are explicit and
-local; the dispatcher returns when Phase B adds a second variant per idiom
+would be premature. The per-scanner inline calls in ``linkers/http.py`` are
+explicit and local; the dispatcher returns when Phase B adds a second variant per idiom
 and the abstraction earns its complexity.
 """
 

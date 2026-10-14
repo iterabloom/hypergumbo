@@ -21,7 +21,7 @@ Why This Design
 ---------------
 - Same core engine (TrackerSet) as CLI and TUI — no separate state.
 - Starlette is async-native, lightweight, and supports WebSocket (the
-  state-snapshot / command / event / error protocol shipped in WI-fakud).
+  state_snapshot / command / result / event / error protocol shipped in WI-fakud).
 - uvicorn is the standard ASGI server for Starlette.
 - PID file is simpler than systemd socket activation for the MVP.
 - Binding to 127.0.0.1 only is a security requirement: Tor and the native

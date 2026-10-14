@@ -11,9 +11,9 @@ This analyzer uses tree-sitter to parse Agda files and extract:
 - Type signatures, captured onto the symbol's ``signature`` field
 - Reference relationships from both pattern clause bodies AND type signatures
 
-Cyclomatic complexity and line span are stamped for callables only (INV-loguk):
-Agda's grammar has no decision-point nodes for the non-callable kinds, so a
-number there would be a constant masquerading as a measurement.
+Cyclomatic complexity and line span are stamped for callables only (INV-loguk).
+Agda's grammar has no decision-point nodes at all (control flow is mixfix
+identifiers), so a callable's complexity is always the base value 1.
 
 Agda is a dependently typed programming language and proof assistant.
 Unlike typical programming languages, "calls" are less meaningful than

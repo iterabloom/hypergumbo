@@ -95,9 +95,11 @@ PrintStream rows require (``requires_target_kind``). ``System.out`` /
 ``.err`` / ``.in`` read as values become ``module_attr_ref`` edges through the
 shared ``emit_module_attribute_refs``, matching ``java.lang.System``'s
 attribute rows (logging; ipc_recv) and naming the call that uses the stream
-(``attr_carrier``). Both follow java's WI-dorus rule through
-``jvm_implicit_imports``: a bare ``System`` counts only when no import, project
-type or local renames it.
+(``attr_carrier``). The call half follows java's WI-dorus rule
+through ``jvm_implicit_imports``: a bare ``System`` counts only when no import,
+project type or local renames it. The value-read half checks only imports and
+project types, because it runs after the walk, when no scope is open to ask
+about locals.
 
 Explicit imports outrank the resolver (WI-tipoh). When the file's import of
 a name contradicts the symbol the name-keyed resolver returns,

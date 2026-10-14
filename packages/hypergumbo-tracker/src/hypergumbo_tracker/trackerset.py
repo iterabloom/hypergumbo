@@ -3,8 +3,9 @@
 
 Merges three Store instances into a single read surface with tier-annotated
 CompiledItems, write routing to the correct tier, tier movement operations
-(promote/demote/stealth/unstealth), scope-aware count_todos, and self-healing
-reconciliation for cross-tier duplicates. Also provides human-authority
+(promote/demote/stealth/unstealth), scope-aware count_todos, and cross-tier
+duplicate reconciliation (``reconcile()``, which no CLI or hook path calls; the
+``tracker reconcile-reset`` subcommand calls only ``reconcile_reset()``). Also provides human-authority
 message moderation / edit-mode windows (edit_mode_on/off/status, delete_msg,
 undelete_msg, edit_msg_text; WI-zonur), field freeze/drift and lock/unlock,
 the hash_todos circuit-breaker fingerprint, the ops_mtime_signature change

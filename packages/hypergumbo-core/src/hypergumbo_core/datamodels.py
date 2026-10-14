@@ -19,7 +19,8 @@ data structures in the codebase - the "nouns" of the domain model:
    decorators in symbol metadata.
 
 3. **Base class detection**: Matches classes inheriting from known data model
-   base classes (BaseModel, Model, Base, declarative_base(), etc.)
+   base classes (BaseModel, Model, DeclarativeBase, and ``Base``, the usual name
+   for a ``declarative_base()`` result, etc.)
 
 4. **Naming conventions**: Classes with names ending in Model, Entity,
    Schema, DTO, Record (with lowercase prefix) are likely data models.
@@ -32,8 +33,11 @@ Confidence Scores
 - 0.70: Naming convention detection (ends with Model, Entity, etc.)
 
 Centrality Boost:
-- Models with high in-degree (many references) get a confidence boost
-- Boost formula: min(0.15, log(1 + in_degree) / 20)
+- Models with high in-degree (many references) get a boost to ``rank_score``,
+  which starts at ``confidence`` and is the sort key; ``confidence`` itself
+  stays the pure detection reliability (ADR-0039)
+- Boost formula: min(0.15, log(1 + in_degree) / 20), with ``rank_score``
+  capped at 1.0
 - This ranks "core" domain models higher than utility DTOs
 """
 from __future__ import annotations

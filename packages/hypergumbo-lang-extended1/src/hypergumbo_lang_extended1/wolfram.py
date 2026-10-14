@@ -37,13 +37,13 @@ Wolfram Language Considerations
 - Pattern matching uses underscores (x_) for arguments
 - Imports use Get["package`"], Needs["package`"], or <<package`; only the
   three call forms are extracted, not ``<<package```
+- Package names end with backtick (`)
+- Comments use (* ... *)
 
 Known gaps: the left-hand side of a definition (``f[x_] := ...``) is itself a
 call node, so every definition also yields a ``calls`` edge to the function it
 defines; and ``.m`` files are not analyzed (``*.m`` is not in the file
 patterns, and ``find_wolfram_files`` has no caller).
-- Package names end with backtick (`)
-- Comments use (* ... *)
 
 Definitions and identity (INV-kagib, WI-tusad)
 ----------------------------------------------

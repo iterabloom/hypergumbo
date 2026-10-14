@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **358** Python modules (147 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 107 core, 4 CLI, 37 tracker)
-- **54879** symbols (functions, classes, methods)
-- **218810** edges by type:
-  - calls: 124053
-  - contains: 51112
-  - imports: 18434
-  - instantiates: 12414
-  - references: 9161
+- **54950** symbols (functions, classes, methods)
+- **219198** edges by type:
+  - calls: 124241
+  - contains: 51183
+  - imports: 18489
+  - instantiates: 12420
+  - references: 9229
   - module_attr_ref: 2003
   - other: 1633
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 54879 Symbols + 218810 Edges + UsageContexts           │
+│  Output: 54950 Symbols + 219198 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,20 +279,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10249.1 | ir.py |
-| `len` | external_symbol | 7918.0 | <external> |
-| `write_text` | external_symbol | 7106.0 | <external> |
-| `Span` | class | 6672.5 | ir.py |
+| `Symbol` | class | 10258.3 | ir.py |
+| `len` | external_symbol | 7922.0 | <external> |
+| `write_text` | external_symbol | 7107.0 | <external> |
+| `Span` | class | 6678.4 | ir.py |
 | `LinkerContext` | class | 3710.1 | registry.py |
-| `get` | external_symbol | 3457.0 | <external> |
+| `get` | external_symbol | 3462.0 | <external> |
 | `load_catalog` | function | 3312.5 | io_boundary.py |
 | `Edge.create` | method | 2478.2 | ir.py |
 | `str` | external_symbol | 2372.0 | <external> |
 | `Path` | external_symbol | 2341.0 | <external> |
-| `next` | external_symbol | 2228.0 | <external> |
+| `next` | external_symbol | 2230.0 | <external> |
 | `load_framework_patterns` | function | 2107.0 | framework_patterns.py |
 | `TrackerApp` | class | 1969.8 | tui.py |
-| `append` | external_symbol | 1844.0 | <external> |
+| `append` | external_symbol | 1848.0 | <external> |
 | `main` | function | 1781.4 | cli.py |
 
 ## Pattern System
@@ -634,7 +634,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.io_boundary_types`**: Canonical registry of I/O-boundary values — the io-boundary axis (A...
 - **`hypergumbo_core.io_primitive_kinds`**: Canonical registry of I/O-primitive kinds — the io-primitive-kind a...
 - **`hypergumbo_core.ir`**: Internal Representation (IR) for code analysis.
-- **`hypergumbo_core.library_signatures`**: DRAFT for WI-lalot — the library-signature catalogue: what a librar...
+- **`hypergumbo_core.library_signatures`**: The library-signature catalogue: what a library producer RETURNS.
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
 - **`hypergumbo_core.member_names`**: Single home for the owner/member separator vocabulary in ``Symbol.n...
@@ -661,7 +661,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.receiver_blind_magnets`**: INV-fahub receiver-blind method-magnet detector (language-agnostic).
 - **`hypergumbo_core.repo_fingerprint`**: Repository fingerprint: spec-defined hash of analyzed code state.
 - **`hypergumbo_core.repo_tier_offer`**: ADR-0047 ruling 9 — the developer-audience offer, and the decision ...
-- **`hypergumbo_core.routes`**: Canonical route accessor — one place to answer "is this symbol a ro...
+- **`hypergumbo_core.routes`**: Canonical route accessor: decides route-ness and extracts path, met...
 - **`hypergumbo_core.runtime_coherence`**: Runtime corpus-based coherence check for the ADR-0023 edge-type axis.
 - **`hypergumbo_core.rust_analyzer_install`**: Installer + availability helpers for the ``rust-analyzer`` binary (...
 - **`hypergumbo_core.safety_zones`**: Hypergumbo's internal write wrappers — declare each write's safety ...
@@ -893,7 +893,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.phoenix_ipc`**: Framework linker: Phoenix Channels IPC for detecting Elixir IPC pat...
 - **`hypergumbo_core.linkers.pyffi`**: Bridge linker: Python FFI, joining ctypes/cffi calls to C/C++ and P...
 - **`hypergumbo_core.linkers.react_component`**: Framework linker: React component for detecting JSX composition edges.
-- **`hypergumbo_core.linkers.receiver_type_dispatch`**: Infrastructure linker: resolve non-hierarchy ``x.foo()`` calls via a
+- **`hypergumbo_core.linkers.receiver_type_dispatch`**: Infrastructure linker: resolve extension-method and UFCS calls via ...
 - **`hypergumbo_core.linkers.route_handler`**: Framework linker: route-handler for connecting routes to their hand...
 - **`hypergumbo_core.linkers.router_routes`**: Framework linker: router → route registrations containment.
 - **`hypergumbo_core.linkers.ruby_ffi`**: Bridge linker: Ruby FFI gem calls and C-extension registrations to ...
@@ -965,8 +965,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: ecb7d51379f0
-  commit_count: 8287
+  commit: 2a3e6d639cf6
+  commit_count: 8300
   hypergumbo: 8.1.0
   python: 3.12.3
 -->

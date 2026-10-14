@@ -16,7 +16,7 @@ class body encloses the method's span in the same source file. Explicitly:
   (``@Controller``/``@RestController`` + ``@GetMapping``/``@PostMapping``),
   ASP.NET (controller base class + ``[HttpGet]``/``[HttpPost]``), Laravel
   (controller base + decorator), Symfony (``@Route`` / ``#[Route]``),
-  Phoenix (pipeline + action), Micronaut, Ktor, Grails, CakePHP.
+  Phoenix (pipeline + action), Micronaut, Ktor, CakePHP.
 - **Does NOT work out of the box**: Rails (route calls live in
   ``config/routes.rb``, handler method in ``app/controllers/*`` — different
   files, handler method lacks ``concept: route``) and Django class-based

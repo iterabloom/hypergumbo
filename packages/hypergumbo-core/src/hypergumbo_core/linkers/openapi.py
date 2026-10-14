@@ -17,20 +17,26 @@ For each path/operation:
 - Method: GET, POST, PUT, DELETE, etc.
 - OperationId: getUserById (if specified)
 - Tags: ["users"] (for grouping)
-- Summary/Description (for documentation)
+- Summary (for documentation)
 
 Handler Matching
 ----------------
-Operations are linked to route handlers by:
-1. OperationId match (if specified) - matches function/method names
-2. Path + Method match - matches route symbols
-3. Tag-based grouping - for controller organization
+Operations are linked to route symbols (``routes.is_route``) by:
+1. Path + method match - every route whose path pattern and HTTP method
+   match (confidence 0.85)
+2. OperationId fallback - only when no path match was found, a route
+   symbol whose name equals the operationId (confidence 0.9)
+Tags are recorded in ``meta["tags"]`` only; no tag-based matching is done.
 
 How It Works
 ------------
-1. Scan for OpenAPI spec files (*.yaml, *.json with openapi/swagger keys)
+1. Find non-test files named openapi, swagger or api with a .yaml/.yml/.json
+   extension (any depth); keep those with an ``openapi: 3.x`` or
+   ``swagger: 2.x`` key or a ``paths`` mapping
 2. Parse spec and extract path operations
-3. Create openapi_operation symbols for each operation
+3. Create a ``kind="function"`` symbol per operation, tagged
+   ``meta["framework_role"]="openapi_operation"`` (``language=None``,
+   ``protocol_origin="openapi"``)
 4. Match to route symbols by path pattern and HTTP method
 5. Create ``references`` edges (spec operation → handler, tagged
    ``meta.ref_construct="openapi_operation"``). The bespoke

@@ -102,9 +102,12 @@ respecting exclude patterns. Also provides:
   git is consulted is as SUPPORTING evidence -- ``dist``/``build``/``out``
   beside a ``package.json`` with no declared entry point are claimed only
   when positively untracked (``_is_untracked_dir``), because VS Code's
-  committed ``extensions/*/build/`` are build scripts. A sibling-manifest
-  rule never claims a directory that holds a project manifest of its own (a
-  subproject named ``build``).
+  committed ``extensions/*/build/`` are build scripts. A rule built on
+  ``_sibling_output`` (the producing tool's manifest beside the candidate) never
+  claims a directory that holds a project manifest of its own (a subproject named
+  ``build``); the ``_sibling_file`` rules (``cover``, ``.dart_tool``,
+  ``.stack-work``, ``elm-stuff``), the Sphinx split-layout ``build/`` rule and
+  sbt's ``project/target`` arm do not apply that check.
 
   THE FALLBACK: a directory with an output NAME and no tool evidence is
   ANALYSED. A wrong exclusion is silent and removes findings (every instance

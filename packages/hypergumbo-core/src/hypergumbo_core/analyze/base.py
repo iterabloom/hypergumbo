@@ -1360,7 +1360,7 @@ def assemble_stable_id(
     ``sha256(kind:param_count:arity_flags:decorators:containing_stable_id
              :name:qualified_name:occurrence_index)``
 
-    This is the one place the formula lives; both :meth:`BaseAnalyzer.compute_stable_id`
+    This is the one place the formula lives; both :meth:`TreeSitterAnalyzer.compute_stable_id`
     (the tree-sitter path) and the Python analyzer's ``_compute_stable_id`` (the AST path)
     call it, so they can no longer diverge (the v5 divergence — py.py folded ``body_sig`` and
     omitted ``qualified_name`` — was the WI-gitun / INV-tazaj defect surface).

@@ -49,7 +49,7 @@ the choice degrades to the pre-arity behaviour rather than inventing a fact.
 THE SAME FACT IS AN IDENTITY INPUT (:func:`declared_arity`,
 :func:`declared_arity_stable_id`; WI-tusad). ADR-0035's producer formula hashes
 a callable's parameter count and flags beside its name and scope.
-``BaseAnalyzer.compute_stable_id`` reads them from a parameter-list node, and in
+``TreeSitterAnalyzer.compute_stable_id`` reads them from a parameter-list node, and in
 many grammars there is none under the definition: Elixir and Erlang clauses,
 Haskell and OCaml equations, Clojure arity bodies, and the C family, whose
 ``parameter_list`` sits under the declarator. Those producers either hashed

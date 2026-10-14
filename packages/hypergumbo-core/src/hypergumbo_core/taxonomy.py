@@ -11,17 +11,21 @@ Every file has both a Tier and a Role:
 - Tier answers "where from?" (first-party, internal dep, external dep, derived)
 - Role answers "what for?" (analyzable, config, documentation, data)
 
-These dimensions compose for analysis decisions:
-- LOC counting: Tiers 1-2, CODE roles (analyzable + config + documentation)
-- Symbol extraction: Tiers 1-2, ANALYZABLE role only
-- Additional Files: Tiers 1-2, CONFIG + DOCUMENTATION roles
+ADR-0004 designs these dimensions to compose for analysis decisions (LOC
+counting over CODE roles, symbol extraction over ANALYZABLE, Additional Files
+over CONFIG + DOCUMENTATION). Only the Additional-Files filter is wired as
+designed (is_additional_file_candidate / additional_file_candidates). Profile
+LOC counting covers every LANGUAGES extension, DATA JSON included. Each
+analyzer's own file discovery decides symbol extraction, not the role, and
+CONFIG languages such as ini have analyzers. is_code, CODE_ROLES and
+is_analyzable have no caller outside this module.
 
 Why This Design
 ---------------
-The previous scattered constants (LANGUAGE_EXTENSIONS, SOURCE_EXTENSIONS,
-CONFIG_FILES_BY_LANG, ADDITIONAL_FILES_EXCLUDES) are unified here into a
-single source of truth. This eliminates duplication and makes the taxonomy
-explicit.
+LANGUAGES is the single source of truth for which extensions belong to
+which language and role: LANGUAGE_EXTENSIONS and SOURCE_EXTENSIONS are derived
+from it here. CONFIG_FILES_BY_LANG and ADDITIONAL_FILES_EXCLUDES still live in
+sketch.py.
 
 Key insight: JSON files are ambiguous by extension alone. We need filename-level
 disambiguation to tell config (package.json) from data (prices_data.json).
