@@ -16,20 +16,22 @@ analyzer's *bare-identifier* free-call path, but the real funnel is the
 *method-selector* path, which resolves through a separate ungated route — and
 nothing measured the finalized graph, so the gap survived per-analyzer unit
 tests. This module is the single, language-agnostic definition of "a
-receiver-blind magnet edge," shared by three consumers so they can never drift:
-the ``spec_validator`` content-gated check (whole-graph CI gate), the
-per-language fixture-matrix test (``run_analyzer`` output, pre-linker), and the
-real-repro survey harness.
+receiver-blind magnet edge," shared so its consumers can never drift: the
+finalize demotion (``demote_harmful_magnets``, finalize step 6c), the
+``spec_validator`` ``no_harmful_receiver_blind_magnets`` whole-graph check
+(``find_harmful_magnets``), and a Rust analyzer test that runs the raw detector
+on ``run_analyzer`` output.
 
 **How it distinguishes a magnet from a legitimate bind.** A legitimate
 resolution *knows the target type* and stamps it — either a receiver-aware
 ``evidence_type`` (``ast_call_type_inferred`` / ``ast_call_ufcs`` /
 ``ast_call_inherited`` — the Site-1/Site-2 recoveries and typed binds), or a
 ``meta.receiver`` marker (``typed_var`` / ``typed_field`` / ``field_chain`` /
-``external`` / ``stdlib`` for a typed/external receiver, or ``qualified`` for an
-explicitly-scoped/static ``Type::method`` call whose type the call site named),
+``external`` / ``constant_external`` / ``stdlib`` for a typed/external receiver,
+or ``qualified`` for an explicitly-scoped/static ``Type::method`` call whose
+type the call site named),
 or ``meta.resolution_quality`` other than ``"ambiguous"``. So a magnet is
-precisely a **resolved** ``calls`` edge to an
+precisely a **resolved** ``calls`` or ``dispatches_to`` edge to an
 **internal ``method``** that carries only the bare ``ast_call`` /
 ``ast_call_direct`` pathway, **no** receiver marker, is **not a framework route
 registration** (a handler bound by reference is a correct dispatch, not a
@@ -40,8 +42,8 @@ resolver understood about the receiver is excluded by construction, so genuine
 inherited-call recoveries (``ast_call_inherited``) and typed binds never trip.
 
 The reader is shape-tolerant (attribute *or* dict key) so the same function runs
-on live ``Symbol``/``Edge`` dataclasses (the validator, the fixture matrix) and
-on deserialized ``survey.json`` node/edge dicts (the survey harness).
+on live ``Symbol``/``Edge`` dataclasses (finalize, the validator) and on
+deserialized ``survey.json`` node/edge dicts.
 """
 from __future__ import annotations
 

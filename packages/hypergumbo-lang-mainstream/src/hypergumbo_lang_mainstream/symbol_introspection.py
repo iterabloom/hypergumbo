@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Shared per-language dispatchers for Symbol introspection fields.
 
-This module provides a uniform entry point so analyzer code does not have
-to know the per-language extraction logic at every Symbol() emit site.
-The dispatcher routes to per-language extractors based on the language
-string passed at call time.
+This module provides per-language dispatchers keyed on the language string
+passed at call time. ``extract_preceding_doc_comment`` is the one wired into
+analyzer emit sites: the 9 mainstream analyzer modules that cover the 10
+``SUPPORTED_LANGUAGES`` call it to populate ``Symbol.docstring``.
+``extract_signature`` has no production caller. Analyzers call their own
+``_extract_X_signature`` helpers directly, and only this package's tests call
+the dispatcher.
 
 Two distinct capability axes
 ----------------------------
@@ -21,23 +24,25 @@ fields they back are independent capabilities:
   :mod:`hypergumbo_core.analyze.cyclomatic` (relocated there per INV-loguk
   slice B so analyzer packages outside ``hypergumbo-lang-mainstream`` —
   ``solidity`` in extended1, ``wgsl`` in common — can reach them). They are
-  re-exported here for back-compat with the 13 mainstream analyzers that
+  re-exported here for back-compat with the 12 mainstream analyzer modules that
   ``from ...symbol_introspection import compute_cyclomatic_complexity``.
 
 ``BRANCH_NODE_TYPES`` is a *superset*: every signature/docstring language
-also computes complexity, but ``bash``/``c``/``cpp``/``solidity``/``wgsl``
-compute complexity (INV-loguk) without having a signature/docstring
-extractor in this module. Do not conflate the two sets — they are
+also computes complexity, and every other key of
+``cyclomatic.BRANCH_NODE_TYPES`` (51 languages, among them
+``bash``/``c``/``cpp``/``solidity``/``wgsl``) computes complexity
+(INV-loguk) without a signature/docstring extractor in this module. Do not conflate the two sets — they are
 different questions, and they no longer even live in the same package.
 
 Why centralized
 ---------------
 - ``Symbol.signature`` was historically extracted by ad-hoc per-analyzer
   helpers (``_extract_go_signature``, ``_extract_csharp_signature``,
-  ``_extract_jsts_signature``, ...). Centralising the dispatch makes
-  "what languages have signature?" a one-file lookup, and adding a new
-  language only requires editing this module (plus its analyzer's
-  ``_extract_X_signature`` helper).
+  ``_extract_jsts_signature``, ...). ``extract_signature`` gathers
+  those helpers behind one dispatch, but no analyzer calls it. Each analyzer
+  still calls its own helper at its emit sites, so adding a signature
+  language means editing that analyzer; adding it here only keeps the
+  dispatcher and its tests in step.
 - ``Symbol.docstring`` was previously populated by ``py.py`` (via
   ``ast.get_docstring``) and a subset of tree-sitter analyzers that
   called ``populate_docstrings_from_tree`` at end-of-extraction. Per

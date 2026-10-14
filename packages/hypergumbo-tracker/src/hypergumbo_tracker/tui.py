@@ -13,8 +13,8 @@ items. The layout adapts to terminal size using a tier system:
   toggles a side panel of status and tag checkboxes (digit keys 1-9 hide/show
   each); it narrows by status and tag, not by free-text title or kind.
 - wide (> 120x38): Extra DataTable columns (created, updated, conflict),
-  longer proquint IDs, split right panel with activity log below detail,
-  filter status indicator. Dynamic resize transitions between standard↔wide.
+  longer proquint IDs, split right panel with activity log below detail.
+  Dynamic resize transitions between standard↔wide.
 
 Two separate DataTable instances exist for compact (#item-table) and standard
 (#std-table) to avoid reparenting complexity. Both use _populate_table() for

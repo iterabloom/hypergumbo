@@ -17,9 +17,9 @@ logic.
 
 Symbol Types
 ------------
-- service: Service definitions
+- interface (meta.framework_role="service"): Service definitions
 - operation: Operation (RPC endpoint) definitions
-- structure: Structure (data type) definitions
+- struct: Structure (data type) definitions
 - resource: Resource definitions
 - simple_type: Simple type aliases (string, integer, etc.)
 - union: Union (tagged union) definitions

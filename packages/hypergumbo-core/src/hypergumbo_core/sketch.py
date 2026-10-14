@@ -22,11 +22,12 @@ Sections in emission order:
 1.  Header — repo name, plus the README-derived elevator pitch when
     one is available (always)
 2.  Overview — language breakdown and LOC estimate, plus the
-    installed-dependency-source disclosure line when deps were skipped
+    installed-dependency-source disclosure line when deps were skipped and
+    the generated-output disclosure line when generated output was pruned
 3.  Structure — tree of paths to important files across up to 10 root
     dirs (top-level listing when there are none)
-4.  Frameworks — detected build systems / web frameworks /
-    test frameworks
+4.  Frameworks — the profile's detected frameworks plus its dev/test-only
+    frameworks (annotated ``(dev)``), in one alphabetical list
 5.  Tests — test framework + estimated coverage breakdown
 6.  Configuration — config-file callouts (``CONFIG_FILES_BY_LANG``),
     extracted per ``config_extraction_mode``: heuristic (known-field

@@ -9,6 +9,8 @@ This analyzer uses tree-sitter to parse Julia files and extract:
 - Abstract type declarations
 - Macro declarations
 - Constant declarations
+- Module-level variable bindings (kind="variable"; WI-jusus), kept out of call
+  resolution
 - Function call relationships
 - Import statements (import/using)
 

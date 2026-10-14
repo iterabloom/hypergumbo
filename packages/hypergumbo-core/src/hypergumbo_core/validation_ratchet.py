@@ -9,8 +9,9 @@ primitive shared by two enforcement loci (WI-jigup):
 - the per-PR fixture ratchet test (``test_validation_report_empty.py``), which
   ratchets the four fixture substrates; and
 - the full-suite **self-tree gate** (a step in ``.github/workflows/full-suite.yml``)
-  that runs ``hypergumbo run .`` on hypergumbo's own tree and ratchets the
-  resulting violation matrix against a committed baseline.
+  that runs ``python -m hypergumbo_core run .`` on hypergumbo's own tree and,
+  through ``scripts/check-self-tree-validation``, ratchets the resulting
+  violation matrix against ``.ci/self-tree-validation-baselines.json``.
 
 **Why a per-(class, severity) matrix and not a single lumped total.** A scalar
 total permits *signed cancellation*: a ``+1`` regression in one warning class

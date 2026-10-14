@@ -24,9 +24,13 @@ How It Works
 
 Two-Tier Model (ADR-0015 §5)
 -----------------------------
-- **Tier 1 (automatic):** Intra-language edges annotated via AST node lookup.
-  One integration point in ``analyze/base.py`` covers all 104 tree-sitter
-  analyzers automatically.
+- **Tier 1 (automatic):** Intra-language edges annotated via AST node lookup,
+  only for a language that has a ``dataflow_patterns/<language>.yaml``
+  (``get_dataflow_config`` returns None otherwise). The ``TreeSitterAnalyzer``
+  hook in ``analyze/base.py`` applies it to every analyzer built on that base.
+  Analyzers that run their own edge pass (C, C#, Go, Java, JS/TS, Kotlin, Lua,
+  PHP, Ruby) call ``annotate_dataflow`` directly, and ``py.py`` calls
+  ``annotate_dataflow_ast``.
 - **Tier 2 (explicit):** Cross-language linker edges annotated by the linker
   itself via ``Edge.create(access_mode=..., channel=...)``. These are skipped
   by ``annotate_dataflow()`` to avoid double-counting.

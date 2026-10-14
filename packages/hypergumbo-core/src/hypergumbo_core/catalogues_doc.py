@@ -18,8 +18,9 @@ module renders.
 
 THE PROSE THAT CANNOT BE DERIVED IS KEYED BY FAMILY. What a family is for comes
 from :data:`catalogue_inventory.FAMILY_CONSEQUENCE`; how to add a row is
-:data:`HOW_TO_ADD`, one example per extensible family. A test asserts both
-cover every family the registry declares, so a new family cannot reach this
+:data:`HOW_TO_ADD`, one example per extensible family. Tests assert
+FAMILY_CONSEQUENCE covers every family the registry declares and HOW_TO_ADD
+covers every family with a user channel, so a new family cannot reach this
 page with a blank answer.
 """
 

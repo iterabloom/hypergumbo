@@ -2183,7 +2183,7 @@ def _compute_stable_id(
     """Compute a v6 stable_id for a Python function/class/method AST node.
 
     Delegates to the shared :func:`assemble_stable_id` (ADR-0035 §1), so the Python AST path
-    and the tree-sitter ``BaseAnalyzer.compute_stable_id`` path emit the identical formula::
+    and the tree-sitter ``TreeSitterAnalyzer.compute_stable_id`` path emit the identical formula::
 
         sha256({kind}:{param_count}:{arity_flags}:{decorators}
                :{containing_stable_id}:{name}:{qualified_name}:{occurrence_index})

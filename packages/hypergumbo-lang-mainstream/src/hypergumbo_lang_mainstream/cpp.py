@@ -75,7 +75,7 @@ Call-edge details:
   re-chosen among its same-named definitions by the call's argument count
   (``overload_choice``): its own file first, the run's others only when
   none there can take the call. Several that can is an ambiguous record
-  (``meta.resolution_quality="ambiguous"``, confidence ``1/sqrt(N)``),
+  (``meta.resolution_quality="ambiguous"``, confidence scaled by ``1/sqrt(N)``),
   except ``#if`` alternatives with one signature; none that can keeps the
   name's pick. A call on an explicit receiver other than ``this`` is not
   re-chosen: with no receiver type the overload set is a guess, and in the

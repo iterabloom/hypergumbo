@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""DRAFT for WI-lalot — the library-signature catalogue: what a library producer RETURNS.
+"""The library-signature catalogue: what a library producer RETURNS.
 
 WHY THIS EXISTS. Every per-language return-type registry in the tree is built from
 ANALYSED DECLARATIONS: an analyzer fills ``FileAnalysis.method_return_types`` during Pass 1
@@ -21,10 +21,13 @@ where an io_primitives extension would be nine parallel additions to nine files,
 to drift.
 
 WHY IT NEEDS NO NEW RESOLUTION PATH. Rows are keyed exactly the way the existing registries
-are keyed, so they merge into the SAME dict the analyzers already read, at the one place
-that dict is built. They merge with ``setdefault`` AFTER the analysed rows, so an in-repo
-declaration always beats a catalogue guess -- a repository that vendors its own ``File``
-is described by its own source, not by this file.
+are keyed, so they merge into the SAME dict the analyzers already read, wherever that dict
+is built: :meth:`TreeSitterAnalyzer.analyze`, plus the go, java and objc analyzers, which
+keep their own aggregation and merge the rows there too. kotlin reads the rows directly to
+type call chains, and python looks up a qualified member's row directly and derives its
+type-preserving members from them. The merges use ``setdefault`` AFTER the analysed
+rows, so an in-repo declaration always beats a catalogue guess -- a repository that vendors
+its own ``File`` is described by its own source, not by this file.
 
 THE KEY SHAPE IS PER-LANGUAGE AND IS THE ONE THING A ROW FILE CAN GET SILENTLY WRONG,
 because a mis-keyed row simply never matches and no error is raised. Go is the sharp case:

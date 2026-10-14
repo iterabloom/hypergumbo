@@ -7,13 +7,11 @@ the inference pathway (``Edge.evidence_type``) rather than hardcoded as a
 literal at each of the ~575 emit sites (the per-emitter accident INV-suvil
 names). This module is the central derivation reader.
 
-This first slice (confidence:F1) is intentionally narrow: it derives only the
-single-valued, behavior-preserving inference pathways whose ``base_confidence``
-is seeded in :data:`hypergumbo_core.evidence_types.EVIDENCE_TYPES` (verified to
-carry exactly one observed confidence each on the live behavior map, so the
-seeded value reproduces today's published value). The derivation is now LIVE (WI-nurun): the table seeds 75 inference pathways
-(single-valued + the multimodal call types ``ast_call`` / ``ast_call_direct``,
-which are ``Edge.is_resolved``-conditioned via ``base_confidence_unresolved``);
+Seeded values live in :data:`hypergumbo_core.evidence_types.EVIDENCE_TYPES`.
+The derivation is LIVE (WI-nurun): the table seeds the single-valued inference
+pathways plus the resolution-conditioned ones (``ast_call`` /
+``ast_call_direct`` / ``macro_expansion``), whose unresolved edges
+(``Edge.is_resolved`` False) take ``base_confidence_unresolved``;
 ``Edge.create`` derives confidence when a producer omits it (the default-flip),
 and the producer migration dropped the literal ``confidence=`` at the analyzer
 emit sites — so analyzer edge confidence is now derived from evidence, closing

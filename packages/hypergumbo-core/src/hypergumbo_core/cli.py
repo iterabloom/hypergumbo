@@ -118,10 +118,11 @@ Why This Design
   they reload it via ``survey_io.load_substrate`` and, where they need IR
   objects, rehydrate it with ``Symbol.from_dict`` / ``Edge.from_dict``
   (``_edge_from_dict`` is a thin wrapper), and ``_get_or_run_analysis`` runs
-  a survey first on a cache miss. ``sketch`` is the exception: it reads a
-  survey only with ``--input`` and otherwise surveys from inside
-  ``sketch.py``. The ``--minimal`` flag (``_add_minimal_argument``) on the
-  ``_get_or_run_analysis`` commands skips that auto-survey's side outputs
+  a survey first on a cache miss. ``sketch`` is the exception: the CLI reads a
+  survey only with ``--input``; otherwise ``sketch.py`` finds the cached
+  survey itself and runs a survey only on a cache miss. The ``--minimal``
+  flag (``_add_minimal_argument``) on the ``_get_or_run_analysis`` commands
+  skips that auto-survey's side outputs
   (budget tiers, handler slices, ``sketch_precomputed``); it has no effect
   when a cached survey is reused.
 """

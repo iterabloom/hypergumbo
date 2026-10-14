@@ -9,14 +9,9 @@ dotted/scoped identifier — ``hypergumbo_core.cli.run_behavior_map`` for
 Python, ``hypergumbo_core::cli::run_behavior_map`` for Rust,
 ``Example\\HelloService::bidiHello`` for PHP.
 
-Staging note: this module lands in Phase 2 PR1 of the ADR-0032 campaign
-together with the ``display_label`` typed field, the static-AST axis
-registration, and the property tests. The ``Symbol.qualified_name`` typed
-field itself lands in Phase 2 PR2 alongside the meta-key retirement and
-consumer migration from the existing ``meta["qualified_name"]`` shape.
-This phasing keeps Phase 2 PR1 small while letting the catalog module
-land first so Phase 2 PR2's atomic meta-to-typed promotion has its
-runtime separator policy ready.
+This module landed first in the ADR-0032 campaign, ahead of the typed
+``Symbol.qualified_name`` field that replaced the old ``meta["qualified_name"]``
+shape, so the meta-to-typed promotion had its runtime separator policy ready.
 
 Unlike a registry-backed axis with an enumerable value set (e.g.,
 ``Symbol.protocol_origin``'s catalog), the qualified-name axis has a
@@ -36,7 +31,7 @@ How consumers and the validator use this module
   languages with declared separators, used by the validator as the
   "axis-is-wired" sanity check.
 
-- The runtime spec validator (ADR-0033 Phase 3 PR1, future) reads
+- The runtime spec validator (ADR-0033 Phase 3 PR1) reads
   :func:`separator_for_language` to verify each emitted
   ``Symbol.qualified_name`` value uses the correct separator for its
   ``Symbol.language``. The check is structural ("does this value match

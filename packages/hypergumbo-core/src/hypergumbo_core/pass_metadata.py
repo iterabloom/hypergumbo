@@ -11,8 +11,9 @@ auto-stamping.
 
 Why hybrid auto-discovery (not a hand-maintained table)
 -------------------------------------------------------
-The pass universe is large (≈117 analyzers + 58 linkers + 3 synthetic passes) and grows
-whenever a language or linker is added. A full hand table would drift silently. Instead we
+The pass universe is large (about 120 analyzers, about 60 linkers, plus the few
+hand-listed :data:`GAP_PASSES`) and grows whenever a language or linker is added. A full
+hand table would drift silently. Instead we
 **derive** the map from the live registries — :func:`get_all_analyzers` (each
 ``RegisteredAnalyzer`` already carries ``.module_path`` and a code-hash ``.pass_version``)
 and :func:`get_all_linkers` — and hand-list only the small set of passes that exist in

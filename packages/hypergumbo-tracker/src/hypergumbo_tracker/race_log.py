@@ -13,7 +13,7 @@ Racing is expected to be rare, so the file grows slowly; no rotation.
 The point is forensic: a future incident gives us timestamps, stat
 snapshots, and process identity to correlate against writer logs.
 
-Two-function interface to keep the dependency out of ``store.py``:
+A small function interface keeps the dependency out of ``store.py``:
 
     configure_race_log(path)
         Set the log destination. Called once at ``TrackerSet`` init.
@@ -21,6 +21,14 @@ Two-function interface to keep the dependency out of ``store.py``:
     log_read_race(filepath, attempt, max_attempts, exc, *, final)
         Append one JSONL record. Swallows every error — the logger
         must never crash the caller.
+    log_compile_suppression(filepath, exc)
+        Append a ``compile_suppressed`` record when a compile path
+        skips a file on ``OSError``. Swallows every error.
+    get_race_log_path()
+        The configured destination, or ``None`` when disabled.
+    compute_default_race_log_path(tracker_root)
+        The default per-tracker-root destination ``TrackerSet``
+        passes to ``configure_race_log``.
 """
 from __future__ import annotations
 

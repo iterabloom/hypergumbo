@@ -5,8 +5,9 @@ This is the orchestration layer above :mod:`hypergumbo_core.cfg`. ``cfg.py``
 knows how to turn *one* function body into a control-flow graph and solve
 reaching definitions; this module knows how to find every function in a
 repository, do that to each of them, and aggregate the result into the
-``(ddg_edges, ddg_symbols, hints_by_caller)`` triple that taint propagation
-consumes.
+:class:`RepoDdg` that taint propagation consumes: ``ddg_edges``,
+``ddg_symbols`` and ``hints_by_caller``, plus the per-function statement
+def/use, forfeit-refutation, unaccounted-name and return-span indexes.
 
 Why This Module Exists
 ----------------------
@@ -42,14 +43,12 @@ Symbol Identity
 ---------------
 Function symbol ids are minted with :func:`analyze.base.make_symbol_id`,
 so they match what the language analyzer emitted for the same function and
-``ddg_symbols`` lines up with the structural BFS's node keys. This is the
-same string the old Python code hand-formatted, so Python ids are
-unchanged by the move.
-
-The match is approximate in one disclosed way, inherited from the original:
-class context is not walked for Python, so a method is keyed as
-``...:function`` rather than ``...:method``. Go *is* receiver-aware,
-because its spec supplies a namer.
+``ddg_symbols`` lines up with the structural BFS's node keys. A spec
+supplies a namer and a kind function where the bare name is not enough.
+Python prefixes the name with its immediate enclosing class or function
+scope (``Outer.meth``, ``top.inner``) and keys a function defined directly
+in a class as ``method``, exactly as ``py.py`` does. Go is receiver-aware
+through its spec's namer.
 
 Callables Named by Their Binding (WI-mufag)
 -------------------------------------------

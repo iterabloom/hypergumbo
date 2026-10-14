@@ -37,8 +37,9 @@ audit-cohort catalogue and the decision background.
   ``(action, class_lower)`` pairs. The helper's flat ``name → list``
   shape doesn't cover that. Stay bespoke.
 * **Dual-shape registries.** ``grpc.py``'s ``servicer_by_name`` is
-  single-value by design (one servicer class per name) and lives in a
-  struct alongside ``proto_service_by_name``. Wrapping it in
+  single-value by design (one servicer per normalized service name, holding
+  ``GrpcPattern`` values rather than Symbols) and is built in the same
+  function as the multi-value ``proto_service_by_name``. Wrapping it in
   ``SymbolByName`` would either lose the single-value invariant or
   require a Path-B-elaborate wrapper. Stay bespoke.
 * **Performance optimisation.** Multi-value lookup is still O(1)

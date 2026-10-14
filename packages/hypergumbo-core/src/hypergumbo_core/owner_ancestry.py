@@ -27,9 +27,10 @@ after the edge-resolution verdict and stub demotion) calls
 ``meta["external_owner_ancestors"]`` on each unresolved ``calls`` edge whose owner
 qualifies: the external ancestor names, nearest first. The io-boundary matcher
 (``io_boundary.classify_call_in_catalog``) and taint's
-(``taint._match_propagation_entry``) both read it through
-:func:`external_owner_ancestors` and retry the lookup with each ancestor as the
-module. A stamp rather than a consumer-side derivation because the consumers
+(``taint._match_propagation_entry``) both call :func:`ancestor_retry_hints`,
+which reads the stamp through :func:`external_owner_ancestors` and returns the
+call's own module hint followed by each ancestor, nearest first; each is tried
+as the module before the usual lookup. A stamp rather than a consumer-side derivation because the consumers
 hold different shapes -- io-boundaries real ``Edge`` objects, verify-claims and
 taint serialized dicts without the inheritance edges at hand -- and the meta
 travels with every one of them. No analyzer changes: the producer reads the

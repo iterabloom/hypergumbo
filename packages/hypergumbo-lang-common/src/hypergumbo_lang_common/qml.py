@@ -27,7 +27,8 @@ Every symbol mints the ADR-0035 producer stable_id with
 function, signal or property of a name), qualified by the chain of object
 declarations enclosing it. The scan tracks that chain by brace depth: a line
 opening ``Type {`` (or ``prop: Type {``) pushes an element, labelled ``Type``
-or, once its ``id:`` line is seen, ``Type#id``; the closing brace pops it. So
+(``prop:Type`` for a property-valued object), with ``#id`` appended once its
+``id:`` line is seen; the closing brace pops it. So
 ``run`` in the root ``Item`` and ``run`` in a nested ``Rectangle`` hash as
 ``Item.run`` and ``Item.Rectangle.run``. Before, nothing computed a stable_id
 and every symbol rode the backstop floor key (kind, file, bare name), which
