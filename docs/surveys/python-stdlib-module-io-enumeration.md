@@ -104,7 +104,7 @@ to be re-run before anything is added to the list, not to be trusted alone.
 | `json` | 153 | `load`/`dump` take file objects; encoding is pure |
 | `time` | 128 | clock reads and `sleep` — no boundary in this vocabulary |
 | `collections`, `collections.Counter` | 90 | pure data structures |
-| `datetime`, `datetime.datetime` | 85 | pure; `now()` reads the clock, not a boundary |
+| `datetime`, `datetime.datetime`, `datetime.date` | 85 | pure; `now()` / `today()` read the clock, not a boundary (`datetime.date` added 2026-10-14) |
 | `hashlib` | 57 | pure digests; `file_digest` takes an object |
 | `typing.Any` | 43 | the sentinel only — the `typing` *module* is refused |
 | `stat` | 30 | constants and `S_IS*` predicates; `os.stat` does the I/O |
