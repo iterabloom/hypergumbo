@@ -2,6 +2,7 @@
  "_comment": "WI-ratuv shrink-only ratchet. Each key is a production FUNCTION whose only callers are test modules. This list may only SHRINK: adding a key requires wiring the function to production or retiring it. Regenerate with scripts/check-test-only-reachability --write-baseline.",
  "keys": [
   "packages/hypergumbo-core/src/hypergumbo_core/analyze/all_analyzers.py::clear_analyzer_cache",
+  "packages/hypergumbo-core/src/hypergumbo_core/analyze/edge_source.py::unemitted_edge_sources",
   "packages/hypergumbo-core/src/hypergumbo_core/analyze/registry.py::get_analyzer",
   "packages/hypergumbo-core/src/hypergumbo_core/analyze/registry.py::list_registered",
   "packages/hypergumbo-core/src/hypergumbo_core/analyze/registry.py::run_analyzer",
@@ -76,6 +77,7 @@
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/view_template.py::link_view_templates",
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/vue_template_method.py::_count_template_directives",
   "packages/hypergumbo-core/src/hypergumbo_core/member_names.py::find_hand_rolled_separator_literals",
+  "packages/hypergumbo-core/src/hypergumbo_core/meta_key_coherence.py::unregistered_edge_meta_keys",
   "packages/hypergumbo-core/src/hypergumbo_core/meta_write_discipline.py::find_discipline_drift",
   "packages/hypergumbo-core/src/hypergumbo_core/meta_write_discipline.py::unaudited_key_count",
   "packages/hypergumbo-core/src/hypergumbo_core/module_key_axis.py::is_axiom_conformant",
@@ -126,6 +128,7 @@
   "packages/hypergumbo-core/src/hypergumbo_core/url_folding/__init__.py::get_covered_languages",
   "packages/hypergumbo-core/src/hypergumbo_core/url_folding/__init__.py::get_scoped_languages",
   "packages/hypergumbo-core/src/hypergumbo_core/validation_ratchet.py::matrix_breaches",
+  "packages/hypergumbo-core/src/hypergumbo_core/verify_claims.py::_uncatalogued_external_modules",
   "packages/hypergumbo-core/src/hypergumbo_core/yaml_catalogs.py::validate_registry",
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/astro.py::find_astro_files",
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/astro.py::is_astro_tree_sitter_available",
