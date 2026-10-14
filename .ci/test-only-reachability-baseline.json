@@ -85,7 +85,6 @@
   "packages/hypergumbo-core/src/hypergumbo_core/multi_value_field_axis.py::find_field_drift",
   "packages/hypergumbo-core/src/hypergumbo_core/paths.py::is_under_directory",
   "packages/hypergumbo-core/src/hypergumbo_core/paths.py::paths_match",
-  "packages/hypergumbo-core/src/hypergumbo_core/paths.py::to_relative_path",
   "packages/hypergumbo-core/src/hypergumbo_core/producer_coherence.py::edge_sites_without_evidence_type",
   "packages/hypergumbo-core/src/hypergumbo_core/producer_coherence.py::find_edge_type_producer_violations",
   "packages/hypergumbo-core/src/hypergumbo_core/producer_coherence.py::find_evidence_type_producer_violations",
