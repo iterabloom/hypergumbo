@@ -3,14 +3,16 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v8.1.0
-- Released **schema** is at: v0.20.13
+- Released **tool** is at: v9.0.0
+- Released **schema** is at: v0.20.14
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 > **Looking for the reader-friendly summary?** See **[docs/RELEASE-NOTES-8.X.md](docs/RELEASE-NOTES-8.X.md)** for the audience-organized release notes of the current line — each opens with a TL;DR naming the breaking changes. Earlier lines: [7.x](docs/RELEASE-NOTES-7.X.md), [6.x](docs/RELEASE-NOTES-6.X.md), [5.x](docs/RELEASE-NOTES-5.X.md). This file is the **implementer log**: structured, mechanism-level entries per release.
 
 ## [Unreleased]
+
+## [9.0.0] - 2026-10-14
 
 ### Summary
 
@@ -2590,7 +2592,7 @@ Initial public release with comprehensive static analysis capabilities.
 
 | Version | Date       | Highlights                                                   |
 | ------- | ---------- | ------------------------------------------------------------ |
-| Unreleased | —          | `stable_id_scheme` v9: deleting a symbol moves no other id; catalogue tiers (only `builtin` rows clear a flow, in-repo catalogue data opt-in); installed dependency source skipped by default (`--trace-deps`); calls bind to the declaration in scope in five languages |
+| 9.0.0 | 2026-10-14 | `stable_id_scheme` v9: deleting a symbol moves no other id; catalogue tiers (only `builtin` rows clear a flow, in-repo catalogue data opt-in); installed dependency source skipped by default (`--trace-deps`); calls bind to the declaration in scope in five languages |
 | 8.1.0   | 2026-09-25 | Calls credited to their enclosing function by position (25 analyzers); receiver typing in 10 languages; opt-in scip-python backend merged per record (ADR-0057); `is_exported` can be `null`; taint useful precision 24.1% → 30.9% |
 | 8.0.0   | 2026-08-20 | **Breaking:** `verify-claims` exit code 3 (`confirmed_with_caveats`), envelope 2.0, `Edge.quality` removed. Analysing a repo no longer runs its code; bounded results cache; cold survey 517.7s → 220.0s |
 | 7.0.0   | 2026-07-27 | **Breaking:** edge types 50 → 25 (stored maps no longer validate), `verify-claims --json` is a versioned object, declared deps move tier 2 → 3. `survey` is the primary verb; Python MRO and DI resolution |
@@ -2624,7 +2626,8 @@ Initial public release with comprehensive static analysis capabilities.
 | 0.6.0   | 2025-12-29 | Lean, Wolfram, Agda analyzers; release automation            |
 | 0.5.0   | 2025-12-26 | Initial release: 32 analyzers, 12 linkers                    |
 
-[Unreleased]: https://github.com/iterabloom/hypergumbo/compare/v8.1.0...HEAD
+[Unreleased]: https://github.com/iterabloom/hypergumbo/compare/v9.0.0...HEAD
+[9.0.0]: https://github.com/iterabloom/hypergumbo/compare/v6.1.0...v9.0.0
 [8.1.0]: https://github.com/iterabloom/hypergumbo/compare/v8.0.0...v8.1.0
 [8.0.0]: https://github.com/iterabloom/hypergumbo/compare/v7.0.0...v8.0.0
 [7.0.0]: https://github.com/iterabloom/hypergumbo/compare/v6.1.0...v7.0.0

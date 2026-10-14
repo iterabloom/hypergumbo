@@ -7,6 +7,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-14
+
 ### Added
 
 - **`tracker priority-trend` plots the open items' mean priority, one point per day**, as an SVG scatterplot (`--out`; `--since`/`--until` set the window; `--json` or `--csv` prints the series instead). Each day is replayed from the items' op logs as of the end of that UTC day; hovering a point shows its date, mean and open-item count. On this repository's tracker (2,663 items) it runs in 0.9 s, and its last point matches the live state. New `Store.item_ops()` returns an item's raw op log.
