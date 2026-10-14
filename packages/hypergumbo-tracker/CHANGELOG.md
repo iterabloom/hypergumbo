@@ -22,6 +22,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 ### Documentation
 
 - **Module docstrings corrected in six modules** (`store`, `serve_password`, `serve_webauthn`, `stop_hook`, `nav_history` and the package `__init__`). Among the false claims removed: `htrac setup` registers credentials, the web server wires authentication, and the login lockout is permanent (it is in-process).
+- **Module docstrings corrected in nine more** (`cache`, `id_matching`, `item_nav_render`, `preview`, `preview_pipeline`, `screenshot_save`, `serve_auth_config`, `serve_duress`, `serve_sessions`); the seven no production code calls (all but `id_matching` and `item_nav_render`) are now described as unwired.
+- **ADR-0020 no longer claims inline screenshot previews ship.** Its status now reads partially implemented: screenshot annotation works in the TUI, discussion threads show only a placeholder line, and the preview renderer exists as library code the TUI never calls. The 0.2.0 entry for the inline SVG preview says the same.
 
 ## [0.9.0] - 2026-09-25
 
