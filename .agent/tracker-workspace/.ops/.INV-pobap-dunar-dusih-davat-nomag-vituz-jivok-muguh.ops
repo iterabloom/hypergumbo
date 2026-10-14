@@ -1,0 +1,23 @@
+- op: create  # ae61
+  at: '2026-10-14T10:28:18Z'  # ae61
+  by: agent  # ae61
+  actor: jgstern_agent  # ae61
+  clock: 1  # ae61
+  nonce: ae61  # ae61
+  data:  # ae61
+    kind: invariant  # ae61
+    title: "Hack analyzer skips <?hh-header .php files: HackAnalyzer discovery uses only *.hack/*.hh, so find_hack_files' PHP sniffing is dead code"  # ae61
+    status: violated  # ae61
+    priority: 2  # ae61
+    parent:  # ae61
+    tags:  # ae61
+    - docstring_audit  # ae61
+    - analyzer  # ae61
+    isbefore: []  # ae61
+    duplicate_of: []  # ae61
+    not_duplicate_of: []  # ae61
+    pr_ref:  # ae61
+    description: "Found by the 2026-10-14 docstring-staleness audit, twice: the first-pass reviewer of hack.py and, independently, the blind re-review (verifier v3 reproduced it).\n\nhack.py's module docstring says \"This module analyzes Hack files (.hack, .hh, and .php files with a <?hh header)\". The analyzer never reads the .php files.\n\nEvidence (as of b0c9ee1872):\n- `HackAnalyzer.file_patterns = [\"*.hack\", \"*.hh\"]` (~hack.py:488). HackAnalyzer does not override `_find_source_files`, so the base default `find_files(repo_root, self.file_patterns)` (analyze/base.py ~4073-4085) is the only discovery path.\n- The `<?hh` sniffing lives only in `find_hack_files` (~hack.py:87-103), whose only callers are tests (tests/test_hack.py, tests/BRANCHES_test_hack.py).\n- Regression, not a never-landed feature: the original commit 0eac60c485 (\"feat(analyze): add Hack language analyzer\") called `find_hack_files(self.repo_root)` in the analysis path; the call was lost when the module moved onto TreeSitterAnalyzer.\n\nRepro: src/a.php = \"<?hh\\nfunction foo(): int { return 1; }\" and src/b.hack = the same with `bar`. `analyze_hack(root).symbols` -> [('bar', 'src/b.hack')] (foo missing), while `find_hack_files(root)` -> ['a.php', 'b.hack'].\n\nSuggested fix: in HackAnalyzer, `def _find_source_files(self, repo_root): yield from find_hack_files(repo_root)`, plus a production-path test with a `<?hh` .php file. Mind the PHP analyzer, which will also claim the .php file."  # ae61
+    fields:  # ae61
+      statement: "Every file the Hack analyzer's docstring names as Hack (.hack, .hh, and .php files with a <?hh header) is analyzed by HackAnalyzer."  # ae61
+      root_cause: "When hack.py moved onto TreeSitterAnalyzer, discovery fell back to the base find_files(file_patterns) with patterns *.hack/*.hh; the find_hack_files call that sniffed .php headers (present in 0eac60c485) was dropped, leaving it test-only."  # ae61
