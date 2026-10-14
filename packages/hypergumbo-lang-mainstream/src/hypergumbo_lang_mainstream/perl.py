@@ -132,22 +132,42 @@ def _extract_perl_signature(
 
 
 def _get_current_package(node: "tree_sitter.Node", source: bytes) -> str:
-    """Walk up the tree to find the most recent package_statement before this node.
+    """The package in force at ``node``: the block-form package enclosing it
+    (``package B { ... }``, Perl 5.14+), else the most recent statement-form
+    ``package X;`` before it in an enclosing scope, else ``"main"``.
 
-    Returns "main" if no package statement is found.
+    A block-form package scopes only its block. Reading it as a statement
+    named every sub in a later ``package B { }`` block after the package
+    before it (``A::go``), and a sub after the block after the block's own
+    package; the twins then tied, and deleting the first block renamed the
+    second's sub (WI-himah; INV-punig's sweep).
     """
     current = node.parent
     while current:
+        if current.type == "package_statement" and _is_block_package(current):
+            return _package_name(current, source) or "main"
         found_self = False
         for sibling in reversed(current.children):
             if sibling is node or (sibling.end_byte <= node.start_byte):
                 found_self = True
-            if found_self and sibling.type == "package_statement":
-                package_nodes = _find_children_by_type(sibling, "package")
-                if len(package_nodes) >= 2:
-                    return node_text(package_nodes[1], source)
+            if (found_self and sibling.type == "package_statement"
+                    and not _is_block_package(sibling)):
+                name = _package_name(sibling, source)
+                if name:
+                    return name
         current = current.parent
-    return "main"  # pragma: no cover - defensive
+    return "main"
+
+
+def _is_block_package(statement: "tree_sitter.Node") -> bool:
+    """Whether a ``package_statement`` is the block form (``package B { }``)."""
+    return find_child_by_type(statement, "block") is not None
+
+
+def _package_name(statement: "tree_sitter.Node", source: bytes) -> str:
+    """The name a ``package_statement`` declares, or ``""`` without one."""
+    package_nodes = _find_children_by_type(statement, "package")
+    return node_text(package_nodes[1], source) if len(package_nodes) >= 2 else ""
 
 
 def _find_enclosing_function_perl(
@@ -333,11 +353,9 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                 if bareword:
                     sub_name = node_text(bareword, source)
                     current_pkg = _get_current_package(node, source)
-                    if current_pkg != "main":
-                        package_name = current_pkg
                     qualified_name = (
-                        f"{package_name}::{sub_name}"
-                        if package_name != "main"
+                        f"{current_pkg}::{sub_name}"
+                        if current_pkg != "main"
                         else sub_name
                     )
                     start_line = node.start_point[0] + 1

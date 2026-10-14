@@ -38,6 +38,7 @@ from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 from hypergumbo_lang_mainstream.json_config import analyze_json_files
 from hypergumbo_lang_mainstream.lua import analyze_lua
 from hypergumbo_lang_mainstream.markdown import analyze_markdown
+from hypergumbo_lang_mainstream.perl import analyze_perl
 from hypergumbo_lang_mainstream.php import analyze_php
 from hypergumbo_lang_mainstream.powershell import analyze_powershell
 from hypergumbo_lang_mainstream.rust import analyze_rust
@@ -379,3 +380,16 @@ def test_markdown_empty_heading_names_nothing_and_scopes_nothing(tmp_path: Path)
     syms = _symbols(analyze_markdown, tmp_path, "docs/e.md", "#\n\n## Sub\n\ntext\n")
     assert [(s.kind, s.name) for s in syms] == [("section", "Sub")]
     assert syms[0].stable_id == make_doc_stable_id("markdown", "docs/e.md", "section", "Sub", 0, 0)
+
+
+def test_perl_block_packages_name_their_own_subs(tmp_path: Path) -> None:
+    """A sub in ``package B { }`` is ``B::go`` (it was named under the package
+    before it), a sub after a block package is back in ``main``, and a
+    statement-form package still names the subs after it."""
+    syms = _symbols(analyze_perl, tmp_path / "n", "lib/N.pm",
+                    "package A {\n  sub go { 1 }\n}\npackage B {\n  sub go { 2 }\n}\n"
+                    "sub top { 3 }\npackage C;\nsub h { 4 }\n1;\n")
+    assert [s.name for s in syms if s.kind == "function"] == ["A::go", "B::go", "top", "C::h"]
+    assert _check(analyze_perl, tmp_path / "d", "lib/D.pm",
+                  "package A {\n  sub go { 1 }\n}\n",
+                  "package B {\n  sub go { 1 }\n}\nsub top { 2 }\n1;\n")
