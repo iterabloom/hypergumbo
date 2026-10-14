@@ -20,7 +20,7 @@ WHY OPENING THE DOOR CANNOT BUY A FALSE ALL-CLEAR. An overlay-only catalogue
 declares no stdlib and dates no module unless the user writes a
 ``module_completeness`` entry, so every module it does not vouch for stays
 UNADJUDICATED and still withholds a clean verdict
-(``_uncatalogued_external_modules``). The item's hard prerequisite, that a
+(``_adjudicate_external_modules``). The item's hard prerequisite, that a
 launch keep its opacity whatever row classifies it, is INV-larol, satisfied.
 ``test_a_clean_claim_over_an_unvouched_module_is_still_withheld`` pins that
 end to end.

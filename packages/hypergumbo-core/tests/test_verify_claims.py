@@ -1467,7 +1467,7 @@ class TestComputeBoundaryCoverage:
         ``supported_languages`` — ``cmd_verify_claims`` builds its catalogs
         dict under ``if catalog.primitives:``, so an empty catalogue is
         dropped and the language is invisible to the ``blind`` check above.
-        It is equally invisible to ``_uncatalogued_external_modules``, whose
+        It is equally invisible to ``_adjudicate_external_modules``, whose
         ``catalog is None`` skip fires for the same reason. So the analysis
         sees the calls, can classify none of them, and says ``confirmed``.
 

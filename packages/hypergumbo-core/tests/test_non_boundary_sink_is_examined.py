@@ -38,7 +38,7 @@ from hypergumbo_core.verify_claims import (
     CAVEAT_OPAQUE_BOUNDARY,
     Claim,
     _opaque_boundary_caveat,
-    _uncatalogued_external_modules,
+    _adjudicate_external_modules,
     compute_boundary_coverage,
     verify_claims,
 )
@@ -107,7 +107,7 @@ def test_a_shipped_sink_call_is_not_a_never_examined_module(
 ) -> None:
     """THE DEFECT: each of these alone withheld every claim in the repo."""
     edge = _edge(lang, module, name)
-    assert _uncatalogued_external_modules([edge], _catalogs()) == []
+    assert _adjudicate_external_modules([edge], _catalogs()).unknown == set()
 
 
 @pytest.mark.parametrize("lang, module, name, site", SINK_CALLS)
@@ -133,7 +133,7 @@ def test_the_module_is_not_marked_examined() -> None:
     assert cov.complete is False
     assert cov.qualifying_only is False
     assert "document" in cov.reason and "could not classify" in cov.reason
-    assert _uncatalogued_external_modules([other], _catalogs()) == ["document"]
+    assert _adjudicate_external_modules([other], _catalogs()).unknown == {"document"}
 
 
 @pytest.mark.parametrize("module, name, etype, reported", [
@@ -149,7 +149,7 @@ def test_only_an_exact_row_match_is_released(
     module: str, name: str, etype: str, reported: str,
 ) -> None:
     edge = _edge("javascript", module, name, etype=etype)
-    assert _uncatalogued_external_modules([edge], _catalogs()) == [reported]
+    assert _adjudicate_external_modules([edge], _catalogs()).unknown == {reported}
 
 
 def test_the_language_must_be_the_rows_language() -> None:
@@ -160,7 +160,7 @@ def test_the_language_must_be_the_rows_language() -> None:
         IoPrimitive(boundary="fs_write", module="os", name="WriteFile", kind="function"),
     ])
     edge = _edge("go", "document", "write")
-    assert _uncatalogued_external_modules([edge], {"go": go}) == ["document"]
+    assert _adjudicate_external_modules([edge], {"go": go}).unknown == {"document"}
 
 
 def test_python_builtins_are_unchanged() -> None:

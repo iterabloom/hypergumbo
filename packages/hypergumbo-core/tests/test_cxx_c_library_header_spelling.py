@@ -40,7 +40,7 @@ from hypergumbo_core.io_boundary import (
     module_hint_disjuncts,
     tag_io_boundaries,
 )
-from hypergumbo_core.verify_claims import _uncatalogued_external_modules
+from hypergumbo_core.verify_claims import _adjudicate_external_modules
 
 _SLOT = "cstdlib,cstring,cstdio,ctime,sys/socket.h"
 
@@ -154,10 +154,10 @@ class TestTheCoverageGate:
     """The ALL question asks the same expansion, scoped the same way."""
 
     def test_an_unenumerated_disjunct_is_reported_by_its_catalogue_key(self) -> None:
-        unknown = _uncatalogued_external_modules(
+        unknown = _adjudicate_external_modules(
             [_edge("cstdlib,cstring")], {"cpp": load_catalog("cpp")},
-        )
-        assert set(unknown) == {"stdlib", "string"}
+        ).unknown
+        assert unknown == {"stdlib", "string"}
 
     def test_enumerated_c_stems_cover_their_cxx_spelling(self) -> None:
         """``<cerrno>`` / ``<cstdint>`` declare what ``errno.h`` / ``stdint.h`` do.
@@ -169,20 +169,20 @@ class TestTheCoverageGate:
         catalog = load_catalog("cpp")
         assert catalog.module_io_is_enumerated("errno")  # reach
         assert catalog.module_io_is_enumerated("stdint")  # reach
-        assert _uncatalogued_external_modules(
+        assert _adjudicate_external_modules(
             [_edge("cerrno,cstdint")], {"cpp": catalog},
-        ) == []
+        ).unknown == set()
 
     def test_python_cmath_is_not_vouched_for_by_math(self) -> None:
         catalog = load_catalog("python")
         assert catalog.module_io_is_enumerated("math")  # reach
         assert not catalog.module_io_is_enumerated("cmath")  # reach
-        unknown = _uncatalogued_external_modules(
+        unknown = _adjudicate_external_modules(
             [{
                 "src": "python:app.py:1-5:f:function",
                 "dst": "python:cmath:0-0:zz_unrowed:external_symbol",
                 "type": "calls", "is_resolved": False, "line": 3,
             }],
             {"python": catalog},
-        )
-        assert unknown == ["cmath"]
+        ).unknown
+        assert unknown == {"cmath"}

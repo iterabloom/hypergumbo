@@ -43,7 +43,7 @@ from hypergumbo_core.io_boundary import (
     load_overlay_catalog,
     module_hint_disjuncts,
 )
-from hypergumbo_core.verify_claims import _uncatalogued_external_modules
+from hypergumbo_core.verify_claims import _adjudicate_external_modules
 
 _JOINED = "string,sys/socket.h,ws2tcpip.h"
 
@@ -103,25 +103,25 @@ def test_the_flat_candidate_list_is_derived_from_the_same_expansion():
 
 def test_the_joined_pseudo_module_is_no_longer_what_gets_reported():
     """`string,sys/socket.h,ws2tcpip.h` names nothing a reader can act on."""
-    unknown = _uncatalogued_external_modules(
+    unknown = _adjudicate_external_modules(
         [_edge(_JOINED)], {"cpp": load_catalog("cpp")},
-    )
+    ).unknown
     assert _JOINED not in unknown
 
 
 def test_every_unenumerated_include_is_reported_by_name():
-    unknown = _uncatalogued_external_modules(
+    unknown = _adjudicate_external_modules(
         [_edge(_JOINED)], {"cpp": load_catalog("cpp")},
-    )
-    assert set(unknown) == {"string", "sys/socket", "ws2tcpip"}
+    ).unknown
+    assert unknown == {"string", "sys/socket", "ws2tcpip"}
 
 
 def test_a_single_module_slot_is_reported_exactly_as_before():
     """The regression guard for every non-C++ language."""
-    unknown = _uncatalogued_external_modules(
+    unknown = _adjudicate_external_modules(
         [_edge("requests")], {"cpp": load_catalog("cpp")},
-    )
-    assert unknown == ["requests"]
+    ).unknown
+    assert unknown == {"requests"}
 
 
 @pytest.fixture()
@@ -150,8 +150,8 @@ def test_enumerating_every_include_finally_covers_the_call(overlay: Path):
     joined string, which no entry can spell.
     """
     catalog = load_overlay_catalog(overlay)
-    assert _uncatalogued_external_modules([_edge(_JOINED)], {"cpp": catalog}) \
-        == []
+    assert _adjudicate_external_modules([_edge(_JOINED)], {"cpp": catalog}).unknown \
+        == set()
 
 
 def test_one_unenumerated_include_still_withholds(tmp_path: Path):
@@ -165,9 +165,9 @@ def test_one_unenumerated_include_still_withholds(tmp_path: Path):
         '    retrieved: "2026-08-26"\n'
     )
     catalog = load_overlay_catalog(tmp_path / "partial.yaml")
-    unknown = _uncatalogued_external_modules([_edge(_JOINED)], {"cpp": catalog})
+    unknown = _adjudicate_external_modules([_edge(_JOINED)], {"cpp": catalog}).unknown
     assert "sys/socket" not in unknown
-    assert set(unknown) == {"string", "ws2tcpip"}
+    assert unknown == {"string", "ws2tcpip"}
 
 
 # ---------------------------------------------------------------------------

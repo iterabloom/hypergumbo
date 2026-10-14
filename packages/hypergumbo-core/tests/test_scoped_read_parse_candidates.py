@@ -40,7 +40,7 @@ are NESTED.
 from hypergumbo_core.io_boundary import load_catalog
 from hypergumbo_core.verify_claims import (
     _same_reference,
-    _uncatalogued_external_modules,
+    _adjudicate_external_modules,
 )
 
 _SRC = "rust:src/main.rs:1-4:main:function"
@@ -59,7 +59,9 @@ _ENV_CONSTS = [
 
 
 def _unknown(edges: list[dict]) -> list[str]:
-    return _uncatalogued_external_modules(edges, {"rust": load_catalog("rust")})
+    return sorted(
+        _adjudicate_external_modules(edges, {"rust": load_catalog("rust")}).unknown,
+    )
 
 
 # ---------------------------------------------------------------------------

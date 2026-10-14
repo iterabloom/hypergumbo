@@ -1508,7 +1508,7 @@ def _own_cargo_package_name(content: str) -> Optional[str]:
     of them on purpose because "what is this repo's executable called" is a
     different question with a different failure direction. Here a dependency's
     name admitted as the repo's own would SUPPRESS a genuine third-party module
-    from :func:`verify_claims._uncatalogued_external_modules`, which is the one
+    from :func:`verify_claims._adjudicate_external_modules`, which is the one
     direction that gate exists to prevent.
     """
     from .profile import _load_toml
@@ -1575,7 +1575,7 @@ def collect_first_party_package_names(repo_root: Path) -> set[str]:
     """The names this repository PUBLISHES ITSELF UNDER, read from its manifests.
 
     THE THIRD FIRST-PARTY MECHANISM (INV-vivok).
-    ``verify_claims._uncatalogued_external_modules`` already excludes a module
+    ``verify_claims._adjudicate_external_modules`` already excludes a module
     whose FILE this analysis read (``_analyzed_modules``, path-derived) and one
     the language marks as internal (``is_definitionally_first_party`` —
     ``crate::``, ``./``). Neither can see a repo that refers to itself by the

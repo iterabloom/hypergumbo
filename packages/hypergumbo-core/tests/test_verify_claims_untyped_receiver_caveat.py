@@ -24,7 +24,7 @@ Exactly one of the two spellings is visible, and the control fires in BOTH arms,
 the null is not a broken run: a security tool certified absence of network egress
 about a function whose entire body is a network send.
 
-WHY THE EXISTING GATES MISSED IT. ``_uncatalogued_external_modules`` counts only a dst
+WHY THE EXISTING GATES MISSED IT. ``_adjudicate_external_modules`` counts only a dst
 that NAMES a module. ARM 1's call edge is ``python:external:0-0:sendall:external_symbol``
 -- the bare placeholder for a receiver the analysis could not type -- which names none,
 so it is skipped by the ``if not module: continue`` residual that function documents.
@@ -179,7 +179,7 @@ class TestTheRepro:
         assert "sendall" in verdict.caveats[0]["detail"]
 
     def test_coverage_completeness_is_deliberately_unchanged(self) -> None:
-        """The residual in ``_uncatalogued_external_modules`` is NOT reversed. This
+        """The residual in ``_adjudicate_external_modules`` is NOT reversed. This
         item is closed at the VERDICT layer precisely so the blanket-inconclusive
         outcome PR #251 rejected is not reintroduced."""
         assert _coverage([_untyped("sendall")]).complete is True

@@ -127,7 +127,6 @@
   "packages/hypergumbo-core/src/hypergumbo_core/url_folding/__init__.py::get_covered_languages",
   "packages/hypergumbo-core/src/hypergumbo_core/url_folding/__init__.py::get_scoped_languages",
   "packages/hypergumbo-core/src/hypergumbo_core/validation_ratchet.py::matrix_breaches",
-  "packages/hypergumbo-core/src/hypergumbo_core/verify_claims.py::_uncatalogued_external_modules",
   "packages/hypergumbo-core/src/hypergumbo_core/yaml_catalogs.py::validate_registry",
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/astro.py::find_astro_files",
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/astro.py::is_astro_tree_sitter_available",
