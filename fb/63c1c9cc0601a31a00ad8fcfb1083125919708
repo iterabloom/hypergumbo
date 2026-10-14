@@ -1,0 +1,12 @@
+Original commit body from 8d9fa23994e665e41fdfe6006c47be254d34488f:
+
+Row: 10 flagged (2 drifted), 30 rolling (26), 18 code-changed with the
+docstring untouched (7), 20 most-changed with the docstring touched (14);
+#1583 (A+B+D), #1584 (C). Notes record the verification counts (97
+first-pass findings, 96 confirmed, 1 rejected), the blind re-review (1 of
+5 matches drifted), the six code defects filed (WI-robug, INV-pobap,
+INV-damas, INV-varup, INV-tukig, INV-govir), and the lesson that a
+docstring edited in a heavy-change PR still drifted (70%, against 39% for
+the untouched group).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
