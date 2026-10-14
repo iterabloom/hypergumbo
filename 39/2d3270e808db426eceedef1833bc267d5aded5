@@ -1,0 +1,23 @@
+Original commit body from df31077846f1be81c2a2bc032464e3e9a81a264f:
+
+prepare-release refuses to run for a new major line without
+docs/RELEASE-NOTES-9.X.md, so this adds it: a TL;DR naming the five
+changes that alter a working setup (stable_id v9, merged and renamed
+nodes, installed dependencies skipped by default, community catalogue
+rows withheld, new exit-code-2 cases) and an Unreleased section that
+prepare-release promotes to 9.0.0.
+
+Also:
+- CHANGELOG Version History: the Unreleased row named two minor fixes;
+  it now names the release's highlights.
+- CHANGELOG Documentation: counts the 2026-10-14 docstring audit.
+- Tracker CHANGELOG: the trackerset and tui docstring changes from
+  #1583 and #1584.
+- README (and the meta-package copy) points at the 9.x notes as the
+  current line.
+
+The validation_report 0.3 -> 0.4 step was checked against v8.1.0: the
+only new keys are stable_id_stats.floor_cohort and floor_abstained, and
+none were removed, so the notes call it additive.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
