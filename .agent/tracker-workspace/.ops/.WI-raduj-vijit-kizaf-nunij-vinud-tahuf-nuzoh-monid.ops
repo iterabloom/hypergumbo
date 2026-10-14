@@ -1,0 +1,20 @@
+- op: create  # cdda
+  at: '2026-10-14T06:57:49Z'  # cdda
+  by: agent  # cdda
+  actor: jgstern_agent  # cdda
+  clock: 1  # cdda
+  nonce: cdda  # cdda
+  data:  # cdda
+    kind: work_item  # cdda
+    title: "play-routes: sub-project */conf/routes files are found by the analyzer but not under hypergumbo run (files_analyzed=0)"  # cdda
+    status: todo_hard  # cdda
+    priority: 3  # cdda
+    parent:  # cdda
+    tags:  # cdda
+    - analysis_quality  # cdda
+    isbefore: []  # cdda
+    duplicate_of: []  # cdda
+    not_duplicate_of: []  # cdda
+    pr_ref:  # cdda
+    description: "FOUND 2026-10-13 by WI-tusad F4 (gate registry check); not fixed there.\n\nREPRO: a sub-project routes file `sub/conf/routes` (`GET /a controllers.A.index()`) next to a Scala file.\n- `analyze_play_routes(root)` called directly finds it (`find_play_routes_files` globs `*/conf/routes`) and emits 2 route markers.\n- `hypergumbo run root` emits nothing for it: the play-routes run records `files_analyzed=0`, `silence_reason=no_candidate_files`. A root-level `conf/routes` IS found and emitted.\nSo multi-module SBT builds (the case the `*/conf/routes` glob exists for) lose their routes under the pipeline; the file index the pipeline hands `find_files` apparently does not serve that pattern.\n\nAlso: route markers carry language `scala`, so the stable_id gate has no `play-routes` fixture (exempted with this reason in test_stable_id_floor_gate._NO_FIXTURE)."  # cdda
+    fields: {}  # cdda

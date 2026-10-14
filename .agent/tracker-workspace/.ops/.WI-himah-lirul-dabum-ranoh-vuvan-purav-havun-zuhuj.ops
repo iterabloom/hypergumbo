@@ -18,3 +18,19 @@
     pr_ref:  # 60df
     description: "FOUND by WI-tusad F3 (live sweep, f3/live/sweep2.py, dev 3c9f03a81f). Perl block-form packages (`package A { sub go { 1 } }` then `package B { sub go { 2 } }`, Perl 5.14+) emit B's sub as `A::go`: the analyzer applies the package seen earlier in the file, not the block the sub sits in. Observed via `hypergumbo run`: nodes module A (1), function A::go (2), function A::go (5), module B (4). Consequences: wrong name/qualified identity for every sub in a later block package; the two subs tie and the per-file split numbers them, so blanking package A renames the survivor to `B::go` (it does not match its own earlier record). Fix: read the enclosing package_statement block (ancestor) for a sub, falling back to the latest statement-form `package X;` only outside blocks. Statement-form packages were not checked for a regression."  # 60df
     fields: {}  # 60df
+- op: update  # b0a2
+  at: '2026-10-14T06:57:31Z'  # b0a2
+  by: agent  # b0a2
+  actor: jgstern_agent  # b0a2
+  clock: 2  # b0a2
+  nonce: b0a2  # b0a2
+  set:  # b0a2
+    status: done  # b0a2
+    pr_ref: '1577'  # b0a2
+- op: discuss  # 680a
+  at: '2026-10-14T06:57:31Z'  # 680a
+  by: agent  # 680a
+  actor: jgstern_agent  # 680a
+  clock: 3  # 680a
+  nonce: 680a  # 680a
+  message: "Fixed in PR #1577 (merge 4d5a8ec889), folded into scheme v9. Root cause: perl._get_current_package read a block-form package_statement (package B { }) as a statement-form one, so a sub inside it took the package before it (A::go) and a sub after the block kept the block's package. Fix: an enclosing block-form package names its subs; a statement-form package in an enclosing scope applies otherwise; block-form siblings are skipped. Evidence: f3/live/sweep2.py (this item's filed repro) on 4d5a8ec889 -> perl survivors 2, same 2, moved 0, unmatched 0 (was unmatched B::go); gate fixture perl-blocks (package A { sub go } / package B { sub go } / sub top) 3/3 same via hypergumbo run; unit test test_perl_block_packages_name_their_own_subs pins A::go, B::go, top, C::h. Statement-form unchanged: 0 perl ids changed on the code corpus sample."  # 680a
