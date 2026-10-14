@@ -1,0 +1,20 @@
+- op: create  # c639
+  at: '2026-10-14T06:57:39Z'  # c639
+  by: agent  # c639
+  actor: jgstern_agent  # c639
+  clock: 1  # c639
+  nonce: c639  # c639
+  data:  # c639
+    kind: work_item  # c639
+    title: "ansible: tasks in a play whose tasks: list is followed by handlers: are emitted as kind handler"  # c639
+    status: todo_hard  # c639
+    priority: 3  # c639
+    parent:  # c639
+    tags:  # c639
+    - analysis_quality  # c639
+    isbefore: []  # c639
+    duplicate_of: []  # c639
+    not_duplicate_of: []  # c639
+    pr_ref:  # c639
+    description: "FOUND 2026-10-13 by WI-tusad F4 (INV-punig two-parent fixtures), not fixed there (kind classification, not identity).\n\nREPRO: a play whose `tasks:` list is followed by `handlers:` (the gate's ansible fixture, playbooks/site.yml):\n  - name: Web / hosts: web / tasks: [Install (apt), Start (service)] / handlers: [Restart]\n`hypergumbo run --include-docs` emits `Install` and `Start` (tasks) with kind `handler`, beside the real handler `Restart`; a task in a play WITHOUT a following handlers list (the second play's `Install`) is kind `task`.\n\nEXPECTED: tasks under `tasks:` are kind `task` whatever follows them.\nNOT CHECKED: roles/tasks/main.yml files, `pre_tasks` / `post_tasks`, `block:` contents (a block's tasks emit nothing)."  # c639
+    fields: {}  # c639

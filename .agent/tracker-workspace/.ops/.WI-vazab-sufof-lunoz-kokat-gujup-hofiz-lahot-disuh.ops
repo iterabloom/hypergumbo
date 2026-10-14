@@ -1,0 +1,20 @@
+- op: create  # 33cf
+  at: '2026-10-14T06:57:44Z'  # 33cf
+  by: agent  # 33cf
+  actor: jgstern_agent  # 33cf
+  clock: 1  # 33cf
+  nonce: 33cf  # 33cf
+  data:  # 33cf
+    kind: work_item  # 33cf
+    title: "robot: a *** Tasks *** section header is parsed as a test named '*** Tasks ***' and its tasks are dropped"  # 33cf
+    status: todo_hard  # 33cf
+    priority: 3  # 33cf
+    parent:  # 33cf
+    tags:  # 33cf
+    - analysis_quality  # 33cf
+    isbefore: []  # 33cf
+    duplicate_of: []  # 33cf
+    not_duplicate_of: []  # 33cf
+    pr_ref:  # 33cf
+    description: "FOUND 2026-10-13 by WI-tusad F4 while probing two-parent shapes; not fixed there.\n\nREPRO: a .robot file with a `*** Tasks ***` section:\n  *** Test Cases ***\n  Case A\n      Log    a\n  *** Tasks ***\n  Case B\n      Log    a\n`hypergumbo run --include-docs` emits a `test` symbol named `*** Tasks ***` (the section header) and no symbol for `Case B`.\n\nEXPECTED: `*** Tasks ***` (Robot Framework 3.1+) is a section header like `*** Test Cases ***`; `Case B` is a task/test symbol."  # 33cf
+    fields: {}  # 33cf
