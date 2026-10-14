@@ -410,6 +410,7 @@ means something only if it beats the rate outside the flags.
 | 2026-10-05 | 19 | 16 (84%) | 15 (most body commits) | 14 (93%) | #1479 (A+B+D), #1481 (C), #1488 (re-scan tail) |
 | 2026-10-06 | — | — | **30 (seeded random, never read)** | **19 (≥63%)**⁵ | #1492 |
 | 2026-10-10 | 4 | 1 (25%) | 30 (rolling, never read) + 23 (code changed since last audit) | 21 (70%) + 18 (78%)⁶ | #1521 (A+B+D), #1522 (C) |
+| 2026-10-14 | 10 | 2 (20%) | 30 (rolling, never read) + 18 (code changed, docstring untouched) + 20 (most changed, docstring touched) | 26 (87%) + 7 (39%) + 14 (70%)⁷ | #1583 (A+B+D), #1584 (C) |
 
 ¹ The pool was the 70 flagged plus 9 tracker-ref-only files; the notebook
 records 55 drifted files across all 79, not split by source.
@@ -427,6 +428,11 @@ wrong reference or a false claim.
 "matches" found drift in 1 (discovery.py), and 12 others were not re-read.
 The code-changed 18 include files touched that week by PRs whose own
 docstrings had not caught up (installed-dependency skip, untraced vouch).
+⁷ A lower bound: a blind re-review of 5 first-pass "matches" found drift
+in 1 (validation_ratchet.py, rolling), and 24 others were not re-read. The
+"docstring touched" 20 are the most-changed files since the last audit whose
+module docstring was ALSO edited in that window; the untouched 18 changed far
+less (2 to 119 changed lines each, against 159 to 2,098).
 
 The 2026-05-15 run also produced #3751 as a side-effect (widening the
 `verify-generated` window 5 → 15 commits). Its notebook entry is at
@@ -579,6 +585,32 @@ citation registries rotted three times across the two PRs: `module_key_axis`
 Re-run both checks (the loop above, plus `test_signature_axis.py`) after EVERY
 bundle, not once per audit. The notebook entry is
 `~/<repo>_lab_notebook/staleness_audit_10102026.md`.
+
+The 2026-10-14 run read 78 files in four groups: the 10 flagged, 30 from the
+rolling read (never reviewed), 18 whose code changed since the 2026-10-10 audit
+with the module docstring untouched, and the 20 most heavily changed files whose
+docstring WAS touched in the same window. 49 drifted (lower bound): 2 of 10, 26
+of 30, 7 of 18 and 14 of 20. The 97 first-pass findings went to default-REJECT
+verifiers: 96 confirmed (4 with a changed severity), 1 rejected (a count the
+reviewer had inflated with two comment lines). The verifiers added one finding
+(a wrapped first line) and the blind re-review one more. Six code defects were
+filed: WI-robug (`htrac serve --background` is a no-op), INV-pobap (the Hack
+analyzer never reads `<?hh` .php files; a regression from the TreeSitterAnalyzer
+move, found by both the first pass and the blind re-review), INV-damas (Agda
+renaming aliases discarded), INV-varup (a C++ struct with a pure virtual is not
+marked abstract), INV-tukig (controller-routes `depends_on` omits five
+controller-producing languages) and INV-govir (`TrackerSet.reconcile` never
+surfaces `cross_tier_conflict`). Two lessons. First, a docstring edited during a
+heavy-change PR is not evidence the docstring is current: the touched group
+drifted at 70%, against 39% for the untouched group. Those edits described the
+new behaviour and left older claims (consumer lists, counts, orderings) stale.
+Change volume confounds the comparison, so read it as "touching the docstring
+did not protect it", not as "touching it makes drift worse". Second, the flagged
+files were again the least drifted group (2 of 10, after 1 of 4 on 2026-10-10),
+and the never-read rolling set again gave most of the yield (26 of 30). When a
+finding is both a docstring claim and a code defect (the Agda aliases), leave
+the docstring stating the intent and file the code. The notebook entry is
+`~/<repo>_lab_notebook/staleness_audit_10142026.md`.
 
 **A caveat to carry into any future run: the flagged count measures the
 scan, not the tree.** The two most consequential findings of the
