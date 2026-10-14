@@ -875,7 +875,7 @@ class TestInstallEmbeddingsCLI:
         args = Namespace(check=True, quiet=False)
 
         with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
-            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"):
                 result = cmd_install_embeddings(args)
 
         assert result == 0
@@ -900,7 +900,7 @@ class TestInstallEmbeddingsCLI:
         args = Namespace(check=False, quiet=True)
 
         with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
-            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"):
                 result = cmd_install_embeddings(args)
 
         assert result == 0
@@ -1063,7 +1063,7 @@ class TestEmbeddingsAvailabilityHelpers:
 
         result = _get_embeddings_version()
         assert isinstance(result, str)
-        # Should be a version like "5.2.2" or "unknown"
+        # Should be a version like "5.7.0" or "unknown"
         assert result
 
 
@@ -1079,13 +1079,13 @@ class TestVerboseOutput:
         args = Namespace(check=False, quiet=False)
 
         with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
-            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"):
                 result = cmd_install_embeddings(args)
 
         assert result == 0
         captured = capsys.readouterr()
         assert "already installed" in captured.out
-        assert "5.2.2" in captured.out
+        assert "5.7.0" in captured.out
 
     def test_cmd_install_embeddings_install_verbose(self, capsys) -> None:
         """cmd_install_embeddings shows progress when installing (verbose)."""

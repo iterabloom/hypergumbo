@@ -41,7 +41,7 @@ dev = [
 # Pulls in sentence-transformers which requires PyTorch (~2GB)
 # Install with: pip install hypergumbo[embeddings] or ./scripts/install-embeddings
 embeddings = [
-  "sentence-transformers~=5.2.2",
+  "sentence-transformers~=5.7",
 ]
 # SCIP-backed Rust analysis via rust-analyzer (BUG-06 path (a)).
 # Without this extra, --backend rust-analyzer hits the BUG-06 runtime gate.

@@ -184,6 +184,7 @@ Details are in the sections below.
 
 #### Tooling and release
 
+- **The `embeddings` extra requires sentence-transformers `~=5.7`** (was `~=5.2.2`, which could not reach the PYSEC-2026-4164 fix in 5.6.0), and `install-embeddings` upgrades an older install instead of reporting it installed. One constant (`cli.EMBEDDINGS_REQUIREMENT`) and a test hold the five copies of the requirement together.
 - **`hypergumbo build-grammars` works from a PyPI install.** The Lean, Wolfram and Circom C sources now ship in `hypergumbo-core` (+0.7 MB); no wheel contained them, so it failed for all three from pip or pipx.
 - **`--backend` is checked wherever it appears**: `--backend=X` as the last argument works (it exited 2 with "unrecognized arguments"), and a missing or unknown value exits 2 instead of being ignored.
 - **`smart-test` never passes a run that executed nothing.** Zero tests executed (pytest exit 5 or 4, all deselected or skipped) fails with "ZERO TESTS EXECUTED"; a change with nothing to test still passes. Deleted test files are left out of the selection, and a selection or Woodpecker manifest naming a missing path is refused.

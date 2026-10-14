@@ -180,7 +180,7 @@ modules:
       primitive: subprocess.run
       family: process
       count: 1
-      target: python -m pip install sentence-transformers~=5.2.2
+      target: python -m pip install sentence-transformers~=5.7
       commands:
       - install-embeddings
       purpose: install sentence-transformers; does NOT fetch the models (see INV-gujus)

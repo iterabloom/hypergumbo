@@ -192,6 +192,11 @@ yet, so they are analysed when present; `--exclude` skips them.
   `scripts/check-io-allowlist`, which imports nothing from hypergumbo.
 - **A repository can no longer feed catalogue data into its own analysis by
   default** (item 4 of the TL;DR).
+- **The embeddings extra now requires sentence-transformers 5.7 or later
+  (within 5.x).** Earlier versions load a local model's custom code even
+  without `trust_remote_code` (PYSEC-2026-4164); 8.x pinned 5.2.x, which
+  cannot be upgraded past it. `hypergumbo install-embeddings` now upgrades an
+  older copy, and `install-embeddings --check` exits 1 for one.
 
 ### Performance and installation
 

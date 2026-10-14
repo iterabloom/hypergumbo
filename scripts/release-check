@@ -217,14 +217,19 @@ echo "  Syncing local audit env to the CI (.woodpecker) baseline pins..."
 # gate audits the same surface as per-PR CI. Best-effort — a pin that can't
 # resolve just leaves the CVE for pip-audit to surface below.
 pip install --upgrade pip wheel setuptools >/dev/null 2>&1 || true
-pip install "requests~=2.33.0" "pygments~=2.20.0" "urllib3>=2.7.0" "idna>=3.15" \
+pip install "requests~=2.33.0" "pygments~=2.20.0" "urllib3>=2.8.0" "idna>=3.15" \
     "msgpack>=1.2.1" "click>=8.3.3" "pyasn1>=0.6.4" "pillow>=12.3.0" \
     "cryptography>=50.0.0" "pyopenssl>=26.4.0" "nltk>=3.10.0" >/dev/null 2>&1 || true
 # Fixable deps this box carries beyond CI's closure (WI-totak, 2026-09-25):
 # anyio < 4.14.2 (CVE-2026-63374/-64847, via httpx/openai), transformers < 5.10.0
-# (PYSEC-2026-3929) and torch < 2.13.0 (CVE-2025-3000). Upgraded only when already
-# installed, so a box without the embeddings extra is not handed a 2 GB torch.
-for fixable in "anyio>=4.14.2" "transformers>=5.10.0,<6" "torch>=2.13.0"; do
+# (PYSEC-2026-3929) and torch < 2.13.0 (CVE-2025-3000). 2026-10-14 (release
+# 9.0.0): fsspec < 2026.6.0 (CVE-2026-104851, via huggingface_hub/torch),
+# cairosvg < 2.9.1 (CVE-2026-107378, tracker preview code, undeclared) and
+# sentence-transformers < 5.7 (PYSEC-2026-4164; the embeddings extra now
+# requires ~=5.7). Upgraded only when already installed, so a box without the
+# embeddings extra is not handed a 2 GB torch.
+for fixable in "anyio>=4.14.2" "transformers>=5.10.0,<6" "torch>=2.13.0" \
+        "fsspec>=2026.6.0" "cairosvg>=2.9.1" "sentence-transformers~=5.7"; do
     if pip show "${fixable%%[<>=]*}" >/dev/null 2>&1; then
         pip install "$fixable" >/dev/null 2>&1 || true
     fi

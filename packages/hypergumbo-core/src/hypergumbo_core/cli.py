@@ -4876,6 +4876,31 @@ def _cache_clear_repo(
     return 0
 
 
+#: The one sentence-transformers requirement. The ``embeddings`` extras of
+#: hypergumbo-core and hypergumbo, ``scripts/install-embeddings`` and the I/O
+#: allowlist repeat it, and test_embeddings_requirement holds them to this
+#: string. The floor is 5.7 because PYSEC-2026-4164 (local model loading
+#: bypasses ``trust_remote_code``) is fixed in 5.6.0, and 5.7.0 is the release
+#: the embedding models were verified on.
+EMBEDDINGS_REQUIREMENT = "sentence-transformers~=5.7"
+
+
+def _embeddings_version_ok(version: str) -> bool:
+    """Does an installed sentence-transformers ``version`` meet the requirement?
+
+    ``~=5.7`` means 5.x at 5.7 or later. Only the leading release numbers are
+    read (``5.7.0rc1`` is 5.7), and a version that does not parse fails.
+    """
+    import re
+
+    floor = tuple(int(p) for p in EMBEDDINGS_REQUIREMENT.split("~=")[1].split("."))
+    parts = re.match(r"(\d+)\.(\d+)", version)
+    if parts is None:
+        return False
+    major, minor = int(parts.group(1)), int(parts.group(2))
+    return major == floor[0] and (major, minor) >= floor
+
+
 def _is_embeddings_available() -> bool:
     """Check if sentence-transformers is available."""
     try:
@@ -4906,22 +4931,30 @@ def cmd_install_embeddings(args: argparse.Namespace) -> int:
 
     Note: This pulls in PyTorch (~2GB download).
     """
+    available = _is_embeddings_available()
+    version = _get_embeddings_version() if available else ""
+    current = available and _embeddings_version_ok(version)
+
     if args.check:
-        available = _is_embeddings_available()
-        symbol = "\u2713" if available else "\u2717"
+        symbol = "\u2713" if current else "\u2717"
         status = "installed" if available else "not installed"
         print(f"embeddings: {symbol} {status}")
         if available:
-            print(f"  sentence-transformers {_get_embeddings_version()}")
-        else:
+            print(f"  sentence-transformers {version}")
+        if not current:
+            if available:
+                print(f"  older than the required {EMBEDDINGS_REQUIREMENT}")
             print("\nRun 'hypergumbo install-embeddings' to install.")
             return 1
         return 0
 
-    if _is_embeddings_available():
+    if current:
         if not args.quiet:
-            print(f"Embeddings already installed (sentence-transformers {_get_embeddings_version()})")
+            print(f"Embeddings already installed (sentence-transformers {version})")
         return 0
+    if available and not args.quiet:
+        print(f"sentence-transformers {version} is older than the required "
+              f"{EMBEDDINGS_REQUIREMENT}; upgrading.")
 
     if not args.quiet:
         print("Installing embedding dependencies...")
@@ -4930,7 +4963,7 @@ def cmd_install_embeddings(args: argparse.Namespace) -> int:
 
     # Install via pip subprocess
     try:
-        cmd = [sys.executable, "-m", "pip", "install", "sentence-transformers~=5.2.2"]
+        cmd = [sys.executable, "-m", "pip", "install", EMBEDDINGS_REQUIREMENT]
         if args.quiet:
             cmd.append("-q")
         result = subprocess.run(cmd, check=False)  # noqa: S603 # nosec B603

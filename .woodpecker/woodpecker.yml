@@ -160,7 +160,7 @@ steps:
       - path: *code_paths
     commands:
       - pip install --upgrade pip wheel setuptools
-      - pip install pip-audit "requests~=2.33.0" "pygments~=2.20.0" "urllib3>=2.7.0" "idna>=3.15" "msgpack>=1.2.1" "click>=8.3.3"
+      - pip install pip-audit "requests~=2.33.0" "pygments~=2.20.0" "urllib3>=2.8.0" "idna>=3.15" "msgpack>=1.2.1" "click>=8.3.3"
       - >
         pip-audit --skip-editable
         --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219
