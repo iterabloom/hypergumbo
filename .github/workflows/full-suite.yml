@@ -951,7 +951,7 @@ jobs:
           pip install --upgrade pip
           # hypothesis is needed by tests/test_transcript_pipeline_properties.py;
           # pin matches packages/hypergumbo-tracker/pyproject.toml.
-          pip install pytest pytest-xdist pyyaml 'hypothesis~=6.100'
+          pip install pytest pytest-xdist pytest-cov pyyaml 'hypothesis~=6.100'
       - name: Run top-level tests
         run: |
           if [ -f /sys/fs/cgroup/cpu.max ]; then

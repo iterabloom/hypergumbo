@@ -670,7 +670,7 @@ def build_catalog_from_registries() -> Catalog:
             reg_pass_label=linker_reg.pass_label,
             reg_depends_on=linker_reg.depends_on,
         ))
-        seen.add(reg.name)
+        seen.add(linker_reg.name)
 
     return Catalog(passes=passes)
 

@@ -94,6 +94,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional
 
 from .edge_types import INHERITANCE_EDGE_TYPES
 from .ir import symbol_name_slot, symbol_path_slot
+from .member_names import MEMBER_NAME_SEPARATORS
 from .symbol_kinds import type_like_kind_names
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -127,9 +128,6 @@ _WALKED_EDGE_TYPES = frozenset(INHERITANCE_EDGE_TYPES | {"includes"})
 
 #: The walk's depth cap, the inherited-calls linker's.
 _DEPTH_CAP = 10
-
-#: Separators an analyzer puts between an owner and its member's name.
-_MEMBER_SEPARATORS = (".", "#", "::")
 
 
 def external_owner_ancestors(meta: Optional[Mapping[str, Any]]) -> tuple[str, ...]:
@@ -246,7 +244,7 @@ def _declares(index: _Index, owner: "Symbol", member: str) -> bool:
     """Does ``owner`` declare a symbol for ``member`` under any separator?"""
     return any(
         (owner.language or "", f"{owner.name}{sep}{member}") in index.names
-        for sep in _MEMBER_SEPARATORS
+        for sep in MEMBER_NAME_SEPARATORS
     )
 
 
