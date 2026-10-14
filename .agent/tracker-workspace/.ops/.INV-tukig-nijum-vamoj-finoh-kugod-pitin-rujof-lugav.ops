@@ -1,0 +1,24 @@
+- op: create  # 97b6
+  at: '2026-10-14T10:29:22Z'  # 97b6
+  by: agent  # 97b6
+  actor: jgstern_agent  # 97b6
+  clock: 1  # 97b6
+  nonce: 97b6  # 97b6
+  data:  # 97b6
+    kind: invariant  # 97b6
+    title: "controller-routes-linker depends_on CNF omits csharp/kotlin/swift/fsharp/scala controller producers (falsified-dependency advisory on ASP.NET repos)"  # 97b6
+    status: violated  # 97b6
+    priority: 3  # 97b6
+    parent:  # 97b6
+    tags:  # 97b6
+    - docstring_audit  # 97b6
+    - linker  # 97b6
+    - framework_linker  # 97b6
+    isbefore: []  # 97b6
+    duplicate_of: []  # 97b6
+    not_duplicate_of: []  # 97b6
+    pr_ref:  # 97b6
+    description: "Found by the 2026-10-14 docstring-staleness audit (linkers/controller_routes.py review, verifier v5, reproduced).\n\n`controller-routes-linker` declares `depends_on=[[\"python\", \"javascript\", \"ruby\", \"java\", \"go\", \"elixir\", \"php\"]]` (~controller_routes.py:124). Framework YAMLs in other languages also produce the `controller` / `route` concepts it consumes: aspnet.yaml (csharp), ktor.yaml (kotlin), vapor.yaml / swiftui.yaml (swift), giraffe.yaml (fsharp) and play.yaml (scala). TypeScript is covered (js_ts registers the pass as \"javascript\"). The comment above the declaration (~120-123) also names Express and Echo/Gin, which are not controller-concept producers.\n\nRepro: App.csproj with a Microsoft.AspNetCore.Mvc reference, plus Controllers/UsersController.cs holding `[ApiController][Route(\"api/users\")] class UsersController : ControllerBase` with `[HttpGet(\"{id}\")] Get` and `[HttpPost] Create`; then `hypergumbo run .`. Expected: no depends_on advisory, since the linker's real prerequisite (csharp) ran. Observed on stderr: \"[passes] 1 pass(es) emitted output with an unsatisfied depends_on conjunct — the DECLARATION is wrong, not the run: controller-routes-linker needs [['python', 'javascript', 'ruby', 'java', 'go', 'elixir', 'php']]\".\n\nSame family as WI-rasal (six depends_on declarations falsified by their own passes' output). Fix: derive or widen the CNF clause to every language whose framework YAML emits a controller/route concept (csharp, kotlin, swift, fsharp, scala), and fix the comment."  # 97b6
+    fields:  # 97b6
+      statement: "A pass's depends_on CNF names every language whose output the pass consumes, so a run that produces controller/route concepts from any language never reports the declaration falsified."  # 97b6
+      root_cause: "controller_routes.py hand-lists [python, javascript, ruby, java, go, elixir, php]; framework YAMLs for csharp (aspnet), kotlin (ktor), swift (vapor, swiftui), fsharp (giraffe) and scala (play) also emit controller/route concepts but were never added."  # 97b6

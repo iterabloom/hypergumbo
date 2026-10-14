@@ -1,0 +1,24 @@
+- op: create  # a163
+  at: '2026-10-14T10:29:12Z'  # a163
+  by: agent  # a163
+  actor: jgstern_agent  # a163
+  clock: 1  # a163
+  nonce: a163  # a163
+  data:  # a163
+    kind: invariant  # a163
+    title: "agda: renaming-import aliases are extracted but never consulted, so references through a renamed name drop"  # a163
+    status: violated  # a163
+    priority: 3  # a163
+    parent:  # a163
+    tags:  # a163
+    - docstring_audit  # a163
+    - analyzer  # a163
+    - agda  # a163
+    isbefore: []  # a163
+    duplicate_of: []  # a163
+    not_duplicate_of: []  # a163
+    pr_ref:  # a163
+    description: "Found by the 2026-10-14 docstring-staleness audit (agda.py review, verifier v6, reproduced).\n\nagda.py's module docstring says `renaming (x to y)` clauses \"feed alias resolution so a renamed import still resolves\". They are parsed and then thrown away.\n\nEvidence (as of b0c9ee1872):\n- agda.py ~599-619 builds the alias map (`get_import_aliases`).\n- `extract_edges_from_file` drops the `import_aliases` parameter and the `_aliases` return value (~agda.py:625-633). The base run loop only passes the aliases through (analyze/base.py ~4624, ~4686).\n- Reference lookup is a bare `resolver.lookup(ref_name)` (~agda.py:560), so the renamed name is looked up literally.\n\nRepro: Data/Lib.agda defines `mapper`; Use.agda has `open import Data.Lib renaming (mapper to lm)`, `go x = lm x` and `go2 x = mapper x`. Expected: `references go -> mapper` and `references go2 -> mapper`. Observed: only `references go2 -> mapper`; no edge for `go`.\n\nThe docstring sentence was left unchanged in the 2026-10-14 A+B+D PR (#1583) on purpose: it states the intent, and the code is what is wrong. Fix: consult the alias map before `resolver.lookup` (map `lm` -> `mapper`), with a production-path test on the repro above."  # a163
+    fields:  # a163
+      statement: "A reference through an Agda renamed import (open import M renaming (x to y); ... y ...) resolves to the original definition x, as the docstring promises."  # a163
+      root_cause: "extract_edges_from_file drops the import_aliases parameter and the _aliases return value, and reference lookup is a bare resolver.lookup(ref_name), so the alias map get_import_aliases builds is never read."  # a163

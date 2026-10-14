@@ -1,0 +1,24 @@
+- op: create  # a2cc
+  at: '2026-10-14T10:29:17Z'  # a2cc
+  by: agent  # a2cc
+  actor: jgstern_agent  # a2cc
+  clock: 1  # a2cc
+  nonce: a2cc  # a2cc
+  data:  # a2cc
+    kind: invariant  # a2cc
+    title: "cpp: struct with a pure-virtual member is not marked abstract (struct_specifier arm skips _cpp_has_pure_virtual)"  # a2cc
+    status: violated  # a2cc
+    priority: 3  # a2cc
+    parent:  # a2cc
+    tags:  # a2cc
+    - docstring_audit  # a2cc
+    - analyzer  # a2cc
+    - cpp  # a2cc
+    isbefore: []  # a2cc
+    duplicate_of: []  # a2cc
+    not_duplicate_of: []  # a2cc
+    pr_ref:  # a2cc
+    description: "Found by the 2026-10-14 docstring-staleness audit (cpp.py review, verifier v6, reproduced).\n\ncpp.py's docstring says a class with a pure virtual member is marked `abstract` in turn, and `_cpp_has_pure_virtual`'s own docstring says it inspects a \"class/struct body\". Only the class arm applies it.\n\nEvidence (as of b0c9ee1872):\n- The `class_specifier` arm sets `modifiers=[\"abstract\"]` when `_cpp_has_pure_virtual` holds (~cpp.py:883-885).\n- The `struct_specifier` arm (~cpp.py:938-958) sets no modifiers, yet still emits the pure-virtual methods through `_emit_cpp_field_symbols` (~970-973).\n\nRepro: a.cpp = `struct I { virtual void f() = 0; }; class C { public: virtual void g() = 0; };`. Observed: `struct I []`, `method I::f ['public','virtual','abstract']`, `class C ['abstract']`. Expected: `struct I ['abstract']`.\n\nConsequence: interface-style structs (common in C++, where `struct` only changes default access) are not treated as abstract by consumers that read `modifiers` (type_hierarchy dispatch admission, dead-code, etc.). Fix: apply the same `_cpp_has_pure_virtual` check in the struct arm, with a test on the repro."  # a2cc
+    fields:  # a2cc
+      statement: "A C++ class OR struct whose body declares a pure virtual member carries modifiers=['abstract'], as cpp.py's docstring and _cpp_has_pure_virtual's docstring state."  # a2cc
+      root_cause: "Only the class_specifier arm calls _cpp_has_pure_virtual; the struct_specifier arm sets no modifiers although it emits the same pure-virtual method symbols."  # a2cc
