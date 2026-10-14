@@ -52,6 +52,30 @@ Manual display reordering (``<``/``>``) lets users visually group related
 items without changing their priority.  The reorder is persisted to a
 ``tui_preferences.json`` file alongside toggle state.
 
+A background timer (every ``HTRAC_RELOAD_INTERVAL`` seconds, default 5)
+compares the ops-file mtime signature and, when another process has written,
+reloads in place, keeping the cursor and scroll offset. The check is skipped
+while a modal screen is open, and the next tick after the modal closes picks
+up what changed.
+
+Item IDs in the Description and Activity panes are clickable hotspots (an ID
+that no longer resolves renders as plain text). A click opens
+``ItemNavModal``, a browser-style view with Back/Forward history and a jump
+input for a typed ID.
+
+In the standard and wide tiers a Deps column shows each item's blockers and
+dependents, built from ``isbefore`` links. The selected item's chain is
+coloured in the table (direct blockers, direct dependents, transitive
+members), chain members hidden by the status/tag filters are appended as
+italic ghost rows, and a chain summary bar gives the direct and transitive
+counts.
+
+An item is unread for the human (blue-dot title) when its last discussion
+entry is not by the human. A Mark Read / Mark Unread override holds until the
+discussion length changes, after which automatic detection applies again.
+Unread items hidden by the status/tag filters are still appended to the end
+of the list.
+
 See ADR-0013 §TUI for the responsive design specification.
 """
 

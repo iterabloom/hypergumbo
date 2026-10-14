@@ -20,6 +20,10 @@ Design rationale:
 - Each tier has its own Store instance; all three share a single config
   loaded once from the canonical tracker directory.
 - Merged reads annotate each CompiledItem with .tier so consumers know provenance.
+- Merged reads (list_items / ready) record their sorted ID order as the ``:N``
+  positional-alias stash, persisted to cache_dir/last_list when a cache_dir is
+  given; _resolve_id resolves ``:N`` against that merged list before prefix
+  resolution.
 - Write routing defaults to workspace; callers can specify tier explicitly.
 - Tier movement appends an audit op and physically moves the ops file.
 - Reconciliation merges all tiers' ops into a winning tier and deletes the

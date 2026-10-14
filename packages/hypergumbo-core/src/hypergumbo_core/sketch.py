@@ -56,6 +56,22 @@ Sections in emission order:
     (only when ``with_source=True``)
 13. Additional Files Content — full source for additional files
 
+Data source
+-----------
+``generate_sketch`` is a thin wrapper around ``_generate_sketch_impl``, which
+holds the section logic. When a behavior map is available (``cached_results``
+from ``--input``, or a warm survey.json in the results cache), the wrapper
+installs a synthetic ``FileIndex`` built from the map's node paths for the
+duration of the call. Test counting, language detection, source-file
+discovery and the Structure tree then summarize the map's files instead of
+re-walking the working tree. Given no ``cached_results``,
+``_generate_sketch_impl`` auto-discovers the cached survey.json. On a cold
+cache it runs ``run_behavior_map`` and loads the fresh map. A
+``CatalogueError`` propagates; other discovery errors fall back to direct
+profile detection and analysis. Profile, symbols and edges come from the map,
+and its ``sketch_precomputed`` block, when present, supplies the README
+description, config info and additional-file centrality scores.
+
 Behavioral flags
 ----------------
 - ``with_source`` — include sections 12-13 (full file content).

@@ -33,6 +33,14 @@ wrong-for-most-of-corpus problem WI-gifat filed.
 checks an edge's confidence sits inside the derived ``[low, base]`` band for
 its pathway — a forward regression guard surfaced as an advisory
 ``cross_field`` violation by :mod:`hypergumbo_core.spec_validator`.
+
+``find_constant_confidence_violations`` is the ADR-0039 ruling-2 guard: it
+groups edges by (``origin`` emitter, confidence value) and reports every group
+of more than ``threshold`` (default 100) edges that is neither entirely
+``confidence_source='emitter_constant'`` nor entirely ``evidence_derived`` with
+each edge at its registry base value, meaning an undeclared flat constant. It
+is exercised as a property test over a behavior map and has no production
+caller.
 """
 
 from __future__ import annotations

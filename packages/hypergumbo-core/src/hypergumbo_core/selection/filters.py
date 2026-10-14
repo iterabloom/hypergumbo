@@ -33,6 +33,16 @@ reflecting the ADR-0027 Phase-4b axis split between
   ``event_subscriber``) from ``EXCLUDED_KINDS``, so a symbol still emitted
   as ``kind="event_subscriber"`` is not excluded.
 
+Key-symbol selection is the population policy sketch ranks over and compact
+applies (its centrality path filters to it; its connectivity path takes seeds
+only from it). ``KEY_SYMBOL_KINDS`` is an allowlist of declaration kinds across
+languages; ``is_key_symbol`` requires a kind in it, a non-test path, no
+``test_`` substring in the name, and ``supply_chain_tier != 4``;
+``key_symbols`` filters a list by it; and ``production_edges`` drops edges
+whose source symbol is in a test file (edges into a test file are kept). The
+allowlist is deliberately not the complement of the ``EXCLUDED_KINDS``
+denylist: ``variable`` is in both.
+
 Why This Design
 ---------------
 Centralizing these filters ensures consistent behavior across all

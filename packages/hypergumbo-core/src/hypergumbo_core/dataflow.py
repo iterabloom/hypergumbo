@@ -21,6 +21,17 @@ How It Works
 4. ``scan_library_patterns()`` matches regex patterns from the
    ``library_patterns`` YAML section against source text, returning
    structured DataflowSite objects for library-specific read/write sites.
+5. ``get_dataflow_config()`` appends two more channels of ``library_patterns``
+   rows after the built-in ones, and reads nothing else from either. First
+   come shipped companion files that name the language on their ``language:``
+   line and declare ``provenance: community`` (ADR-0061, e.g.
+   ``python-pyyaml.yaml``). Then come the user's
+   ``dataflow_patterns/<language>.yaml`` files (ADR-0047 ruling 10), so a user
+   row can only add a match the shipped rows missed. A malformed user file
+   raises ``CatalogueError`` (exit 2); it is not skipped.
+6. Both annotators skip the edge types that ADR-0038 ruling 2 declares N/A for
+   ``access_mode`` (``is_access_mode_not_applicable``), such as
+   ``instantiates`` and the structural types.
 
 Two-Tier Model (ADR-0015 §5)
 -----------------------------

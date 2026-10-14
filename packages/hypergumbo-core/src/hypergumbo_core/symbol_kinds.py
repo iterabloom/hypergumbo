@@ -29,15 +29,22 @@ Axis taxonomy (per ADR-0027 §1):
   the residual Cluster B / G members, the Cluster H shading/storage
   qualifiers awaiting their audit, ``operation`` (registered under
   id-format:F3; its id-changing fold to ``query`` is deferred and not yet
-  scheduled), and ``multimethod`` (Clojure ``defmulti``). Per-value verdicts arrive with each cluster's
-  audit-findings doc.
+  scheduled), and ``multimethod`` (Clojure ``defmulti``). Per-value
+  verdicts arrive with each cluster's audit-findings doc.
 
 Beyond the axis taxonomy this module also owns the **type-family** surface
 (audit-findings 0018): :data:`TYPE_FAMILY_ABSTRACT` / :data:`TYPE_FAMILY_CONCRETE`,
 ``SymbolKindSpec.type_family``, :data:`ABSTRACT_KIND_LANGUAGES`, the query
 helpers :func:`type_like_kind_names` / :func:`abstract_type_kind_names` /
 :func:`is_abstract_type`, and a second registry scanner,
-:func:`find_partial_abstract_family_literals`.
+:func:`find_partial_abstract_family_literals`. It also owns
+:func:`is_initializer`, which says whether a symbol is the code that runs on
+construction: the ``constructor`` kind, or a ``method``/``function`` with its
+language's reserved initializer name (``_INITIALIZER_NAMES_BY_LANGUAGE``:
+python ``__init__``, javascript/typescript ``constructor``, ruby
+``initialize``, php ``__construct``). It also owns
+:data:`SOLIDITY_CALLABLE_DECLARATION_KINDS`, kept in core because both the
+Solidity producer and the ``solidity_abi`` linker read it.
 
 The ``endpoint_shape`` axis was retired in PR #3633 (Phase 4b enum
 closure / WI-butol). All 71 deprecated values that occupied that axis
