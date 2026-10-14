@@ -38,8 +38,10 @@ Why This Design
   ``overload_arity.declared_arity_stable_id`` over their short name and
   their fully-qualified name (``android.permission.CAMERA``,
   ``com.demo.MainActivity``), so two permissions or components that share a
-  short name hash apart; Maven dependencies and modules keep the backstop's
-  table formulas
+  short name hash apart; a Maven dependency, named by its artifactId, mints
+  ``overload_arity.scoped_table_stable_id`` scoped by its groupId, so ``a:x``
+  and ``b:x`` hash apart (INV-punig, scheme v9); Maven modules keep the
+  backstop's table formula
 """
 from __future__ import annotations
 
@@ -57,7 +59,7 @@ from hypergumbo_core.analyze.base import (
     sanitize_id_name_segment,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
-from hypergumbo_core.overload_arity import declared_arity_stable_id
+from hypergumbo_core.overload_arity import declared_arity_stable_id, scoped_table_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
@@ -202,7 +204,13 @@ def _process_maven_dependency(
 
         sym = Symbol(
             id=symbol_id,
-            stable_id=None,
+            # The groupId scopes the artifactId the symbol is named by
+            # (INV-punig, scheme v9): ``a:x`` and ``b:x`` are two
+            # dependencies, which the backstop's table key tied.
+            stable_id=scoped_table_stable_id(
+                kind="dependency", lang="xml", path=rel_path, name=artifact_id,
+                scope=(group_id,),
+            ),
             shape_id=None,
             qualified_name=dep_name,
             # ADR-0032: fingerprint stamped by central post-pass.

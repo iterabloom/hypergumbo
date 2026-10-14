@@ -22,6 +22,8 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     is_grammar_available,
     ancestor_labels,
+    block_prelude,
+    html_element_tag,
     is_table_kind,
     iter_tree,
     iter_tree_with_context,
@@ -130,6 +132,30 @@ class TestAncestorLabels:
 
         assert ancestor_labels(node, label) == ["Intro", "Setup"]
         assert ancestor_labels(outer, label) == []
+
+
+class TestScopeLabels:
+    """The shared ``label_of`` helpers for scope chains (INV-punig)."""
+
+    def test_html_element_tag_names_elements_only(self) -> None:
+        import tree_sitter_language_pack as tlp
+
+        tree = tlp.get_parser("html").parse(b"<div><p>x</p><br/></div>")
+        div = tree.root_node.children[0]
+        paragraph = next(c for c in div.children if c.type == "element")
+        assert html_element_tag(div) == "div"
+        assert html_element_tag(paragraph) == "p"
+        assert html_element_tag(tree.root_node) is None
+
+    def test_block_prelude_is_the_text_before_the_block(self) -> None:
+        import tree_sitter_language_pack as tlp
+
+        source = b".btn-#{$name}  > a {\n  color: red;\n}\n@if $x { .y { z: 1; } }\n"
+        tree = tlp.get_parser("scss").parse(source)
+        rule, conditional = tree.root_node.children[0], tree.root_node.children[1]
+        assert block_prelude(rule) == ".btn-#{$name} > a"
+        assert block_prelude(conditional) == "@if $x"
+        assert block_prelude(tree.root_node) is None
 
 
 def test_is_table_kind_names_the_backstop_table() -> None:

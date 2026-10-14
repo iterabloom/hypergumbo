@@ -131,7 +131,7 @@ def test_cmake_targets_are_scoped_by_enclosing_block(tmp_path: Path) -> None:
     )
     assert before[("library", "foo", 7, 2)].stable_id == scoped_stable_id(
         kind="library", lang="cmake", path="CMakeLists.txt", name="foo",
-        scope=("elseif(APPLE)",),
+        scope=("if(WIN32)", "elseif(APPLE)"),
     )
 
 

@@ -2844,6 +2844,44 @@ def ancestor_labels(
     return labels
 
 
+def html_element_tag(node: "tree_sitter.Node") -> Optional[str]:
+    """The tag name an HTML-family ``element`` (or ``template_element``) opens,
+    or ``None`` for any other node.
+
+    The ``label_of`` an element scope chain passes to :func:`ancestor_labels`
+    in the component grammars that share tree-sitter-html's element shape
+    (Vue, Svelte, Astro): a slot or directive inside ``<div>`` and the same one
+    inside ``<section>`` are two identities (ADR-0035 §1, scheme v9).
+    """
+    if node.type not in ("element", "template_element"):
+        return None
+    for child in node.children:
+        if child.type in ("start_tag", "self_closing_tag"):
+            for part in child.children:
+                if part.type == "tag_name":
+                    return node_own_text(part)
+    return None  # pragma: no cover - an element always opens with a tag
+
+
+def block_prelude(node: "tree_sitter.Node", block_type: str = "block") -> Optional[str]:
+    """What precedes a node's own ``block_type`` child, whitespace collapsed,
+    or ``None`` for a node with no such child.
+
+    The ``label_of`` for :func:`ancestor_labels` in grammars that hang every
+    scope's body on one ``block`` node (SCSS, Puppet): a rule set is labelled
+    by its selector list, an at-rule or a conditional by its prelude
+    (``@media print``, ``if $x``, ``@else``). The text is cut where the block
+    starts, not at the first ``{``, so an interpolation in the prelude
+    (``.btn-#{$name}``) stays whole.
+    """
+    for child in node.children:
+        if child.type == block_type:
+            text = node.text or b""
+            prefix = text[: child.start_byte - node.start_byte]
+            return " ".join(prefix.decode("utf-8", errors="replace").split())
+    return None
+
+
 def iter_tree_with_context(
     root: "tree_sitter.Node",
     context_types: set[str],

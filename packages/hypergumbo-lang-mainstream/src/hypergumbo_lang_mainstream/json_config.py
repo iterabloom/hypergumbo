@@ -32,8 +32,12 @@ Why This Design
 - Useful for frontend/Node.js and PHP ecosystem analysis
 - Identity (ADR-0035, WI-tusad): ``package`` and ``bin`` symbols mint
   ``overload_arity.scoped_stable_id`` over their name (a manifest declares
-  one package and unique bin names); dependency, export and file symbols
-  keep the backstop's table formulas
+  one package and unique bin names); a dependency mints
+  ``overload_arity.scoped_table_stable_id`` scoped by its
+  ``meta["dependency_scope"]`` (``dev`` for devDependencies / require-dev),
+  so one package in both groups is two identities (INV-punig, scheme v9), and
+  a production dependency keeps the backstop's table value; export and file
+  symbols keep the backstop's table formulas
 """
 from __future__ import annotations
 
@@ -47,7 +51,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
-from hypergumbo_core.overload_arity import scoped_stable_id
+from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 
 if TYPE_CHECKING:
@@ -209,7 +213,14 @@ def _process_dependencies(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    # The dependency group is the scope (INV-punig, scheme
+                    # v9): ``lodash`` in dependencies and in devDependencies
+                    # are two declarations. A production dependency has no
+                    # dependency_scope and keeps the backstop's table value.
+                    stable_id=scoped_table_stable_id(
+                        kind=kind_value, lang="json", path=rel_path, name=pkg_name,
+                        scope=(meta["dependency_scope"],) if "dependency_scope" in meta else (),
+                    ),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind=kind_value,

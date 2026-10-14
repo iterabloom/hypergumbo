@@ -63,6 +63,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     ancestor_labels,
+    html_element_tag,
     make_doc_symbol_ids,
     make_file_id,
     populate_docstrings_from_tree,
@@ -182,17 +183,8 @@ def _attribute_value(attribute: "tree_sitter.Node") -> str:
 def _enclosing_elements(tag: "tree_sitter.Node") -> list[str]:
     """The tag names of the elements around the element ``tag`` opens,
     outermost first (``template``, ``div`` ...)."""
-    def label_of(node: "tree_sitter.Node") -> Optional[str]:
-        if node.type not in ("element", "template_element"):
-            return None
-        for child in node.children:
-            if child.type in ("start_tag", "self_closing_tag"):
-                for part in child.children:
-                    if part.type == "tag_name":
-                        return _get_node_text(part)
-        return None  # pragma: no cover - an element always opens with a tag
     element = tag.parent
-    return ancestor_labels(element, label_of) if element is not None else []
+    return ancestor_labels(element, html_element_tag) if element is not None else []
 
 
 def _build_style_signature(is_scoped: bool, is_module: bool, lang: str) -> str:

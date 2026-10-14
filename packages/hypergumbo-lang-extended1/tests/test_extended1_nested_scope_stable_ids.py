@@ -23,9 +23,14 @@ import pytest
 from hypergumbo_core.analyze.base import populate_kind_stable_ids
 from hypergumbo_lang_extended1.ada import analyze_ada
 from hypergumbo_lang_extended1.agda import analyze_agda
+from hypergumbo_lang_extended1.apex import analyze_apex
+from hypergumbo_lang_extended1.asm import analyze_asm
+from hypergumbo_lang_extended1.blade import analyze_blade
 from hypergumbo_lang_extended1.capnp import analyze_capnp
 from hypergumbo_lang_extended1.d_lang import analyze_d
+from hypergumbo_lang_extended1.fish import analyze_fish
 from hypergumbo_lang_extended1.gdscript import analyze_gdscript
+from hypergumbo_lang_extended1.gnuplot import analyze_gnuplot
 from hypergumbo_lang_extended1.jsonnet import analyze_jsonnet
 from hypergumbo_lang_extended1.lean import analyze_lean
 from hypergumbo_lang_extended1.luau import analyze_luau
@@ -269,3 +274,57 @@ def test_tcl_call_edges_leave_the_renamed_proc(tmp_path: Path) -> None:
     calls = [e for e in result.edges if e.edge_type == "calls"]
     assert calls and all(e.src in ids for e in calls)
 
+
+
+# -- INV-punig: one construct under two different parents ---------------------
+
+_APEX_CHILD = (
+    "    public class Inner {\n      public Integer size;\n"
+    "      public Integer go() { return 1; }\n      public Inner() {}\n    }\n"
+    "    public interface I { Integer m(); }\n    public enum E { X }\n"
+)
+_FISH_CHILD = "  function inner\n    echo a\n  end\n  set -g level 1\n  alias ll 'ls -l'\n"
+_BLADE_CHILD = "@yield('inner')\n@component('alert')\n@endcomponent\n"
+_GNUPLOT_CHILD = "  f(x) = x\n  n = 1\n  plot sin(x)\n"
+_ASM_CHILD = "1:\n    jmp 1b\n.Lloop:\n    ret\n"
+
+PARENT_CASES = {
+    "apex": (analyze_apex, "classes/Outer.cls",
+             "  public class A {\n" + _APEX_CHILD + "  }\n",
+             "  public class B {\n" + _APEX_CHILD + "  }\n}\n", "public class Outer {\n"),
+    "asm": (analyze_asm, "src/two.s", "a:\n" + _ASM_CHILD, "b:\n" + _ASM_CHILD,
+            ".text\n0:\n    nop\n"),
+    "blade": (analyze_blade, "resources/views/two.blade.php",
+              "@section('a')\n" + _BLADE_CHILD + "@endsection\n",
+              "@section('b')\n" + _BLADE_CHILD + "@show\n@endsection\n@yield('tail')\n"),
+    "fish": (analyze_fish, "bin/two.fish", "function outer_a\n" + _FISH_CHILD + "end\n",
+             "function outer_b\n" + _FISH_CHILD + "end\n"),
+    "gnuplot": (analyze_gnuplot, "src/two.gp",
+                "if (a) {\n" + _GNUPLOT_CHILD + "} else {\n" + _GNUPLOT_CHILD + "}\n",
+                "if (b) {\n" + _GNUPLOT_CHILD + "} else {\n" + _GNUPLOT_CHILD + "}\n}\n"),
+}
+
+
+@pytest.mark.parametrize("lang", sorted(PARENT_CASES))
+def test_deleting_the_first_of_two_parents_moves_no_id(tmp_path: Path, lang: str) -> None:
+    analyze, rel, earlier, rest, *head = PARENT_CASES[lang]
+    assert _check(analyze, tmp_path, rel, earlier, rest, *head)
+
+
+def test_top_level_symbols_keep_their_chain_free_values(tmp_path: Path) -> None:
+    """A top-level gnuplot function and variable, and a Blade directive in no
+    block, hash no chain: the values they had."""
+    from hypergumbo_core.analyze.base import make_declaration_stable_id
+    from hypergumbo_core.overload_arity import (
+        declared_arity, declared_arity_stable_id, scoped_stable_id,
+    )
+
+    gp = {s.kind: s for s in _symbols(analyze_gnuplot, tmp_path / "g", "a.gp", "f(x) = x\nn = 1\n")}
+    assert gp["function"].stable_id == declared_arity_stable_id(
+        kind="function", lang="gnuplot", path="a.gp", name="f", qualified_name="f",
+        arity=declared_arity(gp["function"].meta),
+    )
+    assert gp["variable"].stable_id == make_declaration_stable_id("variable", "gnuplot", "a.gp", "n")
+    blade = _symbols(analyze_blade, tmp_path / "b", "v.blade.php", "@yield('top')\n")
+    assert blade[0].stable_id == scoped_stable_id(
+        kind="yield", lang="blade", path="v.blade.php", name="top")
