@@ -1,0 +1,22 @@
+- op: create  # b2c1
+  at: '2026-10-13T22:41:03Z'  # b2c1
+  by: agent  # b2c1
+  actor: jgstern_agent  # b2c1
+  clock: 1  # b2c1
+  nonce: b2c1  # b2c1
+  data:  # b2c1
+    kind: invariant  # b2c1
+    title: "file node span shorter than the declarations it holds (lua file node named 'file' spans 1-1; purescript file 1-60 vs module 1-61)"  # b2c1
+    status: violated  # b2c1
+    priority: 3  # b2c1
+    parent:  # b2c1
+    tags:  # b2c1
+    - analysis_quality  # b2c1
+    isbefore: []  # b2c1
+    duplicate_of: []  # b2c1
+    not_duplicate_of: []  # b2c1
+    pr_ref:  # b2c1
+    description: "FOUND by WI-tusad F3 (containment linker fix, corpus check). After the linker started rooting unplaced dotted names at their file, 5 dotted declarations on three samples stayed orphans because their file node's span does not enclose them: the Lua analyzer's file node in lua/moby/contrib/wireshark/memberlist.lua is named `file` with span 1-1 (the file has 587 lines; functions memberlist_protocol.dissector etc. at 122+), and purescript/ce2794/Lib.purs's file node spans 1-60 while its module spans 1-61. Invariant: a kind=\"file\" node's span covers every declaration in the file. Check every analyzer that mints its own file symbol (lua, purescript, others) against the orchestrator's file anchor."  # b2c1
+    fields:  # b2c1
+      statement: "A kind=file node's span covers every declaration in its file"  # b2c1
+      root_cause: "analyzer-minted file symbols compute their own span (lua: 1-1 placeholder; purescript: last line dropped)"  # b2c1

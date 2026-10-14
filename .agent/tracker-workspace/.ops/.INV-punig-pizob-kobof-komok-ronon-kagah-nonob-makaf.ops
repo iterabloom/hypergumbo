@@ -22,3 +22,19 @@
     fields:  # f95e
       statement: "Deleting an earlier same-name sibling or enclosing scope never moves another symbol's stable_id (ADR-0035 §1, scheme v9 contract)"  # f95e
       root_cause: "doc/template producers call make_doc_stable_id / make_doc_symbol_ids with no scope; apex and fish hash no enclosing type/function chain"  # f95e
+- op: discuss  # e625
+  at: '2026-10-13T23:00:27Z'  # e625
+  by: agent  # e625
+  actor: jgstern_agent  # e625
+  clock: 2  # e625
+  nonce: e625  # e625
+  message: "Docs now state this gap (PR #1575, merge 5d7fb73fb2): spec v8 -> v9 entry + field contract, ADR-0035 §5 status, CHANGELOG Summary and Changed. Owner decision pending: amend v9 before release vs v10."  # e625
+- op: update  # a767
+  at: '2026-10-14T06:56:30Z'  # a767
+  by: agent  # a767
+  actor: jgstern_agent  # a767
+  clock: 3  # a767
+  nonce: a767  # a767
+  set:  # a767
+    status: satisfied  # a767
+    pr_ref: '1576'  # a767
