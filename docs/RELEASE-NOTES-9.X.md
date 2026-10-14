@@ -36,7 +36,8 @@ stored ids, node sets and some verdicts differ from 8.x.
    content). Calls into it become I/O unknown, not "no I/O". Pass
    `--trace-deps <pkg,...|all>` to analyse named packages. A *committed*
    `node_modules` or `vendor` directory is now analysed; `--exclude vendor`
-   restores the old behaviour.
+   restores the old behaviour. "Choosing which dependency code to analyse"
+   below says which setting suits which goal.
 4. **Community catalogue rows can no longer make a verdict cleaner.** Their
    sanitizers, function summaries and grants are withheld and named, so some
    `verify-claims` verdicts move from `confirmed` to `violated`. Catalogue
@@ -85,6 +86,49 @@ stored ids, node sets and some verdicts differ from 8.x.
 - **Elixir and Erlang behaviours and Elixir protocols are modelled**:
   `@callback`, `defprotocol` and `defimpl` produce `implements` edges and
   dispatch by name and arity (ejabberd: 0 → 242 `implements` edges).
+
+### Choosing which dependency code to analyse
+
+9.0.0 sorts dependency code into two kinds and treats them differently by
+default:
+
+- **Installed dependency source** is what a package manager put into the
+  working tree and git does not track: Mix `deps/`, `node_modules/` beside a
+  `package.json`, a virtualenv, Composer and Go `vendor/`, Bundler
+  `vendor/bundle`, CocoaPods `Pods/`. It is **skipped**, and the skip is
+  reported on stderr, in the sketch's Overview and in
+  `supply_chain_summary.installed_deps_skipped`.
+- **Committed vendored code** (any of those directories whose files are in
+  git, plus `third_party/` and submodules) is **analysed** and classified
+  tier 3.
+
+Pick the setting from what you want to learn:
+
+| Goal | Setting | Effect on the run |
+|---|---|---|
+| Map, slice or search your own code; find dead code | the default | Installed dependencies are not parsed. Calls into them stay in the graph as external stubs, so you still see which library functions your code calls. |
+| Find out what a library call actually does with your data (taint, `io-boundaries`, `verify-claims` through a library) | `--trace-deps <pkg,...>`, naming only the packages on the path | Only the named packages are parsed, as tier 3. Without this, calls into them are reported as I/O unknown, and a claim that depends on them is withheld unless an I/O overlay vouches for the module. |
+| Trace everything installed | `--trace-deps all` | Every installed package is parsed. This is the costly setting: parsing a 40 MB Mix `deps/` (81 packages) got a 6 GB VM killed for running out of memory, which is why it is no longer the default. |
+| Leave a committed vendor tree out | `--exclude vendor` (or the directory's name) | The tree is never parsed, which saves its parse time. This is the 8.x default behaviour for `vendor/` and `node_modules/`. |
+| Hide dependency symbols from the output | `--first-party-only` or `--max-tier N` | Symbols above the tier are dropped **after** parsing, so this saves no parse time. Use `--exclude` when time or memory is the concern. |
+
+Two things to know when you opt in:
+
+- **Make it persistent for read commands.** The setting is part of the
+  results-cache key. `search`, `slice`, `io-boundaries` and `verify-claims`
+  find a traced survey only when the `trace_deps` key in `config.toml` or
+  `.hypergumbo.toml` matches, so put `trace_deps = ["httpx"]` there rather
+  than passing the flag to a single command.
+- **Package names follow each ecosystem's layout**: the Mix app directory
+  (`phoenix_html`), the npm package (`react`, `@scope/name`), Composer's
+  `vendor/package`, the Go module path, the gem name (`rack`), the pod, and a
+  virtualenv's import name (`yaml`, not `PyYAML`).
+
+We have not measured the run-time cost of `--trace-deps` beyond the
+out-of-memory case above; it grows with the amount of source traced.
+Carthage checkouts, Yarn PnP `.yarn/cache`, `bower_components`, Swift PM
+`.build/checkouts` and `cargo vendor` output are not recognised as installed
+yet, so they are analysed when present; `--exclude` skips them.
 
 ### For `verify-claims` users
 
