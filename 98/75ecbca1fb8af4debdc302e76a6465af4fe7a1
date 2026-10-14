@@ -1,0 +1,42 @@
+Original commit body from 71932c662514a0fae21b958a71c9e1f60b254e3c:
+
+Found when release-check's full suite and `ci-debug cron-status` were
+read before preparing 9.0.0. Each was reproduced before it was fixed.
+
+1. owner_ancestry.py re-declared the member-name separator tuple, which
+   test_member_names' live-tree linter forbids (test-all-packages and
+   all four nightly legs). It now imports MEMBER_NAME_SEPARATORS.
+
+2. catalog.build_catalog_from_registries recorded each linker through
+   the analyzer loop's variable (`seen.add(reg.name)`), a leftover of
+   7a6b18b5ee's rename. With analyzers registered it recorded the last
+   analyzer's name; with none (hypergumbo-core installed alone) it raised
+   UnboundLocalError, which killed measure-taint-precision.py on a
+   core-only tree. New test: a linkers-only registry builds a catalog
+   listing exactly those linkers (red before, green after). Unreleased.
+
+   TestINVHujogClosureCriterion built the catalog before anything
+   imported cli, so run alone (smart-test on test_catalog.py, on dev
+   too) it saw no linkers; an autouse fixture now imports cli first.
+
+3. The cron test-agent-infra step installed no pytest-cov, and
+   smart-test always passes --cov, so pytest exited 4 (usage error)
+   before collecting and all five test_smart_test_zero_collect tests
+   failed there. Reproduced in a venv with exactly that step's packages
+   (5 failed), green with pytest-cov added; tests/ then passes in full in
+   that venv (2211 passed). The INV-tazur behaviour was right; its tests
+   had never run in CI. The dormant GitHub copy gets the same line.
+
+4. measure_code_tree.pin accepted HG_MEASURE_TREE=pythonpath when
+   PYTHONPATH supplied core but not the language packages and those
+   resolved nowhere else: announce() then saw one tree. It now refuses
+   from PYTHONPATH alone, so the verdict does not depend on what else is
+   installed.
+
+Tests: smart-test 25394 passed, changed sources at 100%; root tests for
+the scripts 40 passed in the dev venv.
+
+Not in this commit: the test-only-reachability and self-claims gates,
+also red on the cron; they follow separately.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
