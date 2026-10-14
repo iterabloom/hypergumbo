@@ -25,23 +25,22 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
-- **`stable_id_scheme` `hypergumbo-stableid-v8` → `v9`.** Stored v8 ids are not comparable: re-analyze, and join old to new nodes on path, kind, name and span, or on `fingerprint`. Top-level declarations and members of top-level types keep their v8 id unless one of their hashed inputs changed. Which ids change: see Changed → `stable_id` scheme v9.
-- **Node set and names** (node `id`, `name` and counts change):
-  - folded: an Elixir function's clauses (one node per name/arity), a PureScript function's signature and equations; a Jupyter method is emitted once, as `Class.method`;
-  - renamed: OCaml, F#, Agda and Lean declarations in a nested module or namespace (`A.run`, `A.t`, `A.S`), Agda fields (`Pair.fst`); TOML tables with 3+ key parts keep the full dotted name; a Perl sub in `package B { }` is `B::go`; SPARQL queries are named by form (`SELECT`), not ordinal (`query_2`); Elixir protocol impls are `P.T` modules;
-  - newly emitted: same-name siblings that OCaml, Agda, Lean and Wolfram dropped, and dropped Julia, V, PureScript and Kotlin declarations (Fixed → Identity, naming and containment).
-- **`qualified_name` carries every enclosing scope**: Proto and Cap'n Proto (`demo.A.B.Inner`, not `demo.B.Inner`), C# (outer block and file-scoped namespaces), TypeScript (`namespace`/`module` blocks), PHP (each declaration's own namespace), Tcl (`meta.namespace`).
-- **Discovery defaults** (ADR-0004): installed dependency trees matched by `discovery.INSTALLED_DEP_RULES` are skipped unless `--trace-deps`; `node_modules` and `vendor` leave `DEFAULT_EXCLUDES`, so committed trees are analysed as tier 3 (`--exclude vendor` restores the old set); `dist`, `build`, `target`, `site` and similar are pruned only on their tool's evidence.
-- **Catalogue trust** (ADR-0061): a `provenance: community` sanitizer, function summary or completeness grant is withheld wherever the file comes from, so some verdicts move from `confirmed_with_caveats`/`inconclusive` to `violated`; `.hypergumbo.toml` catalogue data needs `--in-repo-catalogues` or `hypergumbo trust-catalogues`.
-- **Exit codes**: a broken catalogue or config file exits 2 (was a crash with exit 1, or a silent skip); a missing or unknown `--backend` value exits 2 (was ignored); `python -m hypergumbo_core.cli` exits 2 (was a silent 0).
-- **Versions**: `SCHEMA_VERSION` 0.20.13 → 0.20.14 (additive: `metrics.edge_confidence`, `profile.languages[*].test_files`, `AnalysisRun.cpu_ms`, slice `limits_detail`, the pub/sub `*_identifier` meta keys, the `external_owner_ancestors` edge meta key, `supply_chain_summary.installed_deps_skipped` and `generated_output_skipped`); `verify-claims --json` envelope 2.4 → 2.6 (2.5 `trusted_sink_flows`, 2.6 `sink_carriers`); `io-boundaries --json` envelope 2.3 → 2.4 (additive: `untraced_modules`, per-chain `dst_ecosystem`); validation report 0.3 → 0.4.
-- **`smart-test`** fails a run that executes zero tests (pytest exit 5 or 4) instead of passing it.
+Details are in the sections below.
+
+- **`stable_id_scheme` v8 → v9**: stored v8 ids are not comparable; re-analyze and join on path, kind, name and span, or `fingerprint`. Top-level declarations keep their id unless a hashed input changed.
+- **Node set and names**: Elixir clauses and PureScript signature/equations fold into one node; nested OCaml, F#, Agda and Lean declarations, deep TOML tables, Perl block-package subs, SPARQL queries and Elixir protocol impls are renamed; several dropped declarations are now emitted.
+- **`qualified_name`** carries every enclosing scope in Proto, Cap'n Proto, C#, TypeScript, PHP and Tcl.
+- **Discovery defaults** (ADR-0004): installed dependency trees are skipped unless `--trace-deps`; committed `node_modules`/`vendor` are analysed; build-output names are pruned only on tool evidence.
+- **Catalogue trust** (ADR-0061): community sanitizers, summaries and grants are withheld, so some verdicts become `violated`; in-repo catalogue data is opt-in.
+- **Exit codes**: broken catalogue or config files, a bad `--backend` value and `python -m hypergumbo_core.cli` exit 2.
+- **Versions**: `SCHEMA_VERSION` 0.20.13 → 0.20.14 (additive); `verify-claims --json` envelope 2.4 → 2.6 (2.5 `trusted_sink_flows`, 2.6 `sink_carriers`); `io-boundaries --json` envelope 2.3 → 2.4 (additive); validation report 0.3 → 0.4.
+- **`smart-test`** fails a run that executes zero tests.
 
 ### Added
 
 #### Catalogue tiers (ADR-0061)
 
-- **Every shipped catalogue file declares `provenance: builtin` (standard library) or `provenance: community` (third-party)**, and a gate enforces it. Third-party rows moved out of built-in files; the merged catalogues are unchanged.
+- **Every shipped catalogue file declares `provenance: builtin` (standard library) or `community` (third-party)**, enforced by a gate; the merged catalogues are unchanged.
 - **A community row can add a finding but never make a verdict cleaner.** Community sanitizers and function summaries are withheld and named (`withheld_sanitizers`, `withheld_community_summary`), wherever the file sits.
 - **A repository's own `.hypergumbo.toml` catalogue data loads only on opt-in** (`--in-repo-catalogues`, or `hypergumbo trust-catalogues [PATH]`); preferences still load.
 - **User taint channels are read** (`taint_sources.d/`, `taint_sinks.d/`, `taint_sanitizers.d/`), and **the verdict names every catalogue file it rested on**, by tier, under `catalog_provenance.tiers`.
@@ -51,25 +50,24 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **New sink zones `code_execution` and `dom_injection`** (`eval`/`exec`, `document.write`), and a **`navigation_read` boundary** that makes the page URL `untrusted_input` (10 JS/TS repositories: 12 verdicts inconclusive → violated).
 - **The data-flow walk covers more code**: Java and C def/use, JS/TS arrow functions and callbacks, Go function literals under a package-level `var`, and Python `with` bindings. C++ is not covered.
 - **One write is one finding**: a stream use carried by a sink call is folded into it, with carriers listed in `sink_carriers` (envelope 2.6).
-- **`trust_level: trusted` sinks are excluded and disclosed** in `trusted_sink_flows` (envelope 2.5), and a row can require a target kind (`requires_target_kind`: Java's `PrintStream` rows apply only to `System.out`/`System.err`).
+- **`trust_level: trusted` sinks are excluded and disclosed** in `trusted_sink_flows` (envelope 2.5), and a row can require a target kind (`requires_target_kind`).
 
 #### Installed dependency source (ADR-0004)
 
-- **Installed dependency source is skipped by default, and the skip is disclosed.** Directories a package manager filled are recognised by content (`discovery.INSTALLED_DEP_RULES`): Mix `deps/`, `node_modules/`, Composer and Go `vendor/`, Bundler `vendor/bundle`, CocoaPods `Pods/` and virtualenvs. The skip is reported on stderr, in the sketch and in `supply_chain_summary.installed_deps_skipped`; calls into skipped packages become external stubs that `io-boundaries` and `verify-claims` report as I/O unknown. A developer checkout of thc (81 Mix and 69 npm packages installed) now gives the same sketch as a fresh clone.
+- **Installed dependency source is skipped by default, and the skip is disclosed.** Package-manager directories are recognised by content (`discovery.INSTALLED_DEP_RULES`: Mix, npm, Composer, Go, Bundler, CocoaPods, virtualenvs), reported on stderr, in the sketch and in `supply_chain_summary.installed_deps_skipped`; calls into them become external stubs reported as I/O unknown.
 - **`--trace-deps <pkg,...|all|none>`** on `sketch`, `survey` and `slice`, or the `trace_deps` config key (ADR-0045), analyses the named packages as tier 3; it is part of the results-cache key.
-- **A committed directory is never treated as installed**: `node_modules` and `vendor` left `DEFAULT_EXCLUDES`, so a committed vendor tree (`go mod vendor` included) is analysed as tier 3 instead of dropped. `--exclude vendor` restores the old behaviour.
-- **Build output is excluded by content**: `.elixir_ls/`, Mix `cover/`, Phoenix `priv/static/assets/`, `.dart_tool/`, `.stack-work/`, `elm-stuff/`. Not covered yet: Phoenix digest output, Carthage, Yarn PnP, Bower, Swift PM and `cargo vendor` trees.
-- **Generated output is recognised by the tool that writes it, not by its name.** `dist`, `build`, `_build`, `out`, `target`, `site`, `_site` and coverage-report directories are pruned only on their tool's evidence (a `Cargo.toml` beside `target/`, a `mkdocs.yml` beside `site/`, …) and disclosed in `supply_chain_summary.generated_output_skipped`. A same-named source directory, such as qemu's `target/`, is now analysed: across the 273-repo corpus, 329 of the 354 directories the old name rule pruned.
+- **A committed directory is never treated as installed**: `node_modules` and `vendor` left `DEFAULT_EXCLUDES`, so committed vendor trees are analysed as tier 3 (`--exclude vendor` restores the old behaviour).
+- **Build and generated output is recognised by the tool that writes it, not by name**: `.elixir_ls/`, `.dart_tool/`, `elm-stuff/` and similar by content; `dist`, `build`, `target`, `site` and similar only on their tool's evidence (a `Cargo.toml` beside `target/`), disclosed in `supply_chain_summary.generated_output_skipped`. Same-named source directories such as qemu's `target/` are now analysed (329 of the 354 the old name rule pruned on the corpus).
 
 #### Analysis output
 
 - **New fields**: `metrics.edge_confidence` (histogram, median), `profile.languages[*].test_files`, `analysis_runs[].cpu_ms` beside wall time, and per-limit slice truncation counts (`limits_detail`).
-- **Mix and npm manifests mark external calls `direct` or `transitive`.** `mix.exs` (read, never executed) and `package.json` give the direct dependencies, `mix.lock` and the npm, Yarn and pnpm lockfiles the transitive ones; a module is matched to its package by name (`lodash/fp` → `lodash`). A matched stub is also marked `ecosystem=third_party` when the standard-library catalogue is silent, Go and JVM stubs included (thc: `third_party` stubs 3 → 279). `Cargo.toml`, `Gemfile` and `composer.json` are not read yet.
+- **Mix and npm manifests mark external calls `direct` or `transitive`** (from `mix.exs`/`package.json` and their lockfiles; `mix.exs` is read, never executed), and a matched stub is marked `ecosystem=third_party` when the standard-library catalogue is silent. `Cargo.toml`, `Gemfile` and `composer.json` are not read yet.
 
 #### Analyzers
 
 - **Elixir and Erlang behaviours are modelled**: `@callback` / `-callback` symbols, `implements` edges and callback dispatch by name and arity. An Elixir `@behaviour :erlang_module` reaches the in-repo Erlang behaviour (ejabberd: 0 → 242 `implements` edges).
-- **Elixir protocols are modelled**: `defprotocol` and `defimpl` mint the protocol and `P.T` impl modules (impl functions had been bare names or owned by the enclosing module), with `implements` edges and dispatch by name and arity; impls of library protocols such as `Jason.Encoder` are rooted (livebook: impl functions with no incoming edge 284 → 0).
+- **Elixir protocols are modelled**: `defprotocol`/`defimpl` mint the protocol and `P.T` impl modules with `implements` edges and dispatch by name and arity; impls of library protocols such as `Jason.Encoder` are rooted.
 - **Java records are analysed** (trino: +4,480 `instantiates` edges); implicit accessors are not emitted yet.
 - **Scala types receivers bound by inference** (sbt: typed external method calls 19.7% → 24.6%).
 - **Fifteen C headers with no I/O surface** (`stdint`, `ctype`, `math`, ...) are declared complete.
@@ -82,41 +80,29 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - an id that depends on the checkout directory;
   - a language with no fixture, or one that can nest but has no two-parent fixture (flat languages carry a written reason).
 - **Shared `stable_id` helpers** in `overload_arity`: `declared_arity_stable_id`, `scoped_stable_id`, `scoped_table_stable_id` and `pass_minted_stable_id`.
-- **Independent I/O allowlist gate** (`scripts/check-io-allowlist`, per-PR and scheduled CI): every call site of a risky primitive in `packages/*/src` (file writes and deletes, process launches, network, `eval`/`exec`, unsafe deserialization, native loading, dynamic import) must be listed with its purpose in `docs/hypergumbo.io-allowlist.yaml` (264 sites). The checker imports nothing from hypergumbo. Its first review found three behaviours the self-claims miss (the embedding-model download on the first `sketch`, analyser-backend launches, user config writes), now listed in SECURITY.md.
-- **`Edge.meta` keys must be registered**, as a fourth axis of the producer ratchet (the gate that every vocabulary value a producer emits is registered; 79 keys registered, `Symbol(...)` keys not gated yet). **`check-docstring-drift`** gains `--registry-refs` (prose naming vocabulary no registry holds) and `--rolling N` (adds the least-recently-reviewed files from a committed review ledger).
+- **Independent I/O allowlist gate** (`scripts/check-io-allowlist`, per-PR and scheduled CI): every risky call site in `packages/*/src` (file writes, process launches, network, `eval`/`exec`, unsafe deserialization, native loading, dynamic import) must be listed with its purpose in `docs/hypergumbo.io-allowlist.yaml`. The checker imports nothing from hypergumbo; three behaviours its first review found are now in SECURITY.md.
+- **`Edge.meta` keys must be registered** (a fourth producer-ratchet axis; `Symbol(...)` keys not gated yet). **`check-docstring-drift`** gains `--registry-refs` and `--rolling N`.
 
 ### Changed
 
 #### `stable_id` scheme v9 (ADR-0035)
 
-- **`stable_id_scheme` is `hypergumbo-stableid-v9`, completing the ADR-0035 migration: every symbol takes its `stable_id` from its own producer (the analyzer or pass that emits it), and deleting a symbol moves no other symbol's id.** v9 is one bump for every change to a value a producer already computed. The contract:
-  - **Every kind has a producer id**: symbols that had none now hash their own scope, name and declared parameters (written to `meta.parameters`), so same-name definitions in one file no longer null each other.
-    - Languages: Elixir, Erlang, Clojure, Common Lisp, R, CMake, gnuplot, OCaml, F#, Haskell, Elm, Agda, Lean, TLA+, Wolfram, Julia, CUDA, GLSL, Fortran, Proto, Thrift, Cap'n Proto, QML, Nix, Zig, GDScript, Jupyter, LLVM IR, WGSL, COBOL and Circom.
-    - Kinds: Solidity libraries, C++ pure virtuals, the member kinds Scala, Kotlin, C#, Swift, PHP and Dart lacked, the doc, config and build kinds of 20 more analyzers, and symbols minted by linkers and `manifest_targets`.
-    - The backstop's floor key (`populate_kind_stable_ids`: `sha256("{kind}:{language}:{path}:{name}")` when unique in its file), a fallback added during this cycle, remains only as a safety net that the gate keeps at zero.
-  - **Every scope that can repeat within a file is hashed**: enclosing types and functions, block namespaces, modules and packages, template blocks and branches, headings, rules and dependency groups. A scope a file has only once (a Java package, a C# file-scoped namespace) is left to the file anchor.
-  - **No line number or ordinal is hashed.** A genuine same-scope tie is still split by occurrence (ADR-0035 §1).
-  - **Paths are repo-relative**: Solidity symbols and Kotlin top-level `val`s hashed the absolute path.
-  - **Overloads hash their declared parameters**, and Ada functions their result type.
-- **Ids that differ from 8.1.0:**
-  - every id minted through `make_doc_stable_id`, which hashed start and end lines: Markdown, reStructuredText, INI, `.properties`, `.gitignore`, requirements, SCSS, Puppet, Astro, Svelte, Vue and BibTeX, and the symbols it mints for KDL, Pony, Robot Framework, SPARQL and Twig;
-  - nested declarations and members, now hashed with their full scope chain: C++, C#, Java local classes, Kotlin, Scala, Swift, TypeScript, JavaScript, PHP, Rust, Groovy, D, Julia, Zig, GDScript, Solidity, Cap'n Proto, Tcl, Ada, Nim, MATLAB, Odin, Lua, Luau, Starlark, PowerShell, Dart, Wolfram and Jsonnet; Apex, Bash, fish, Racket, Scheme, CMake, Meson, gnuplot and HLSL; C tags declared in a function, assembler local labels, and JSON, Cargo and Maven dependency groups (every Maven dependency, now scoped by `groupId`);
-  - callables whose declared parameters entered the hash: C++ definitions, HLSL, Nim, Ada, Pascal, SQL, Scheme, Racket and V;
-  - Circom templates and signals, Jupyter classes, WGSL structs and bindings, Vue directives, slots and style blocks, Solidity symbols that hashed the path, and every renamed node (see Breaking and contract changes).
-  - Ids in every other language were unchanged on the corpus samples. Symbols that were null in 8.1.0 now have an id.
-- **Per-language churn counts** are in the spec's `stable_id_scheme` version history (v8 → v9) and ADR-0035 §5–§6; they are measured against the pre-bump development tree, not against 8.1.0. The results-cache key hashes the analyzer source, so no survey cached by an older install is reused.
+- **`stable_id_scheme` is `hypergumbo-stableid-v9`, completing the ADR-0035 migration**: every symbol takes its `stable_id` from its own producer (the analyzer or pass that emits it), and deleting a symbol moves no other symbol's id. One bump covers every change to an id a producer already computed. The contract:
+  - **Every kind has a producer id**, hashing its scope, name and declared parameters (written to `meta.parameters`). This newly covers 31 languages (the BEAM, ML, Lisp, IDL and shader analyzers, Jupyter, COBOL, Circom and others), member and doc kinds that lacked one, and symbols minted by linkers and `manifest_targets`. The backstop floor key (`populate_kind_stable_ids`), added this cycle, remains as a safety net the gate holds at zero.
+  - **Every scope that can repeat within a file is hashed** (types, functions, block namespaces, modules, template blocks and branches, headings, rules, dependency groups); a scope a file has once is left to the file anchor.
+  - **No line number or ordinal is hashed**; a genuine same-scope tie is still split by occurrence (ADR-0035 §1).
+  - **Paths are repo-relative**, and **overloads hash their declared parameters** (Ada functions also their result type).
+- **Ids that differ from 8.1.0**: every symbol minted by `make_doc_stable_id` (it hashed line numbers); nested declarations and members in 38 languages, plus C function-local tags, assembler local labels and JSON, Cargo and Maven dependency groups; callables whose declared parameters entered the hash (C++ definitions, HLSL, Nim, Ada, Pascal, SQL, Scheme, Racket, V); Circom, Jupyter, WGSL, Vue and Solidity symbols; and every renamed node. The per-language list and churn are in the spec's `stable_id_scheme` history (measured against the pre-bump tree, not 8.1.0). The results-cache key hashes the analyzer source, so no older cached survey is reused.
 
 ### Fixed
 
 #### Taint and verify-claims
 
 - **A call into dependency source that was not analysed is I/O unknown, not "no I/O"** (ADR-0016 §7). `io-boundaries` lists such modules under *I/O unknown* (`untraced_modules`) instead of printing "No I/O boundary calls detected."; `verify-claims` says why it withholds the verdict. An overlay vouching for the module can still confirm a claim, and the verdict says the source was not traced.
-- **`provenance: community` files stay community whichever channel names them** (ADR-0061): taint files passed by `--taint-*` or a claims file's `extra_catalogs:`, `function_summaries.d/` files, and I/O overlays passed by `--io-primitives` or `extra_catalogs:`.
-  - Before: a community sanitizer cleared the flow (`violated` → `confirmed_with_caveats`, exit 3), a community terminating summary closed the branch (`violated` → `inconclusive`), community sources and sinks could replace shipped rows, and an overlay's ignored grants were reported as applied.
-  - Now such a file only adds. Its sanitizers, summaries and grants are withheld and named (`withheld_community_sanitizer`, `withheld_community_summary`, *WITHHELD GRANTS* with the file's origin), it is listed under `named_community_files`, and `--no-default-overlays` omits it and says so (`catalog_provenance.omitted_community_overlays`).
-- **A broken catalogue or config file is a clean error naming the file, exit 2.** A malformed `function_summaries.d/` file, I/O overlay (from any channel), or user `frameworks.d/`, `library_signatures.d/` or `dataflow_patterns.d/` file crashed `verify-claims`, `io-boundaries`, `survey` or `sketch` with exit 1 (`violated`'s code), or was skipped in silence.
-- **The results-cache key covers the user files the analysis reads**: `frameworks.d/`, `library_signatures.d/`, `dataflow_patterns.d/`, `config.toml` and `.hypergumbo.toml`. Editing one left every command answering from the old survey. Channels read at command time (`io_primitives.d/`, taint, `function_summaries.d/`) are not in the key.
-- **A source a helper returns is followed into its callers** (ADR-0017 §4c; evidence key `source_returned_by`); it read clean in Python and Go. Rust tail expressions and JS/TS arrow bodies are not covered yet.
+- **`provenance: community` files stay community through every channel** (ADR-0061: `--taint-*`, `--io-primitives`, `extra_catalogs:`, `function_summaries.d/`). Such a file used to clear flows or replace shipped rows; now it only adds, its sanitizers, summaries and grants are withheld and named, and it is listed under `named_community_files`.
+- **A broken catalogue or config file is a clean error naming the file, exit 2.** It crashed with exit 1 (`violated`'s code) or was skipped in silence.
+- **The results-cache key covers the user files the analysis reads**: `frameworks.d/`, `library_signatures.d/`, `dataflow_patterns.d/`, `config.toml` and `.hypergumbo.toml`. Editing one left commands answering from the old survey.
+- **A source a helper returns is followed into its callers** (ADR-0017 §4c; `source_returned_by`). Rust tail expressions and JS/TS arrow bodies are not covered yet.
 - **Loop headers, if/switch initializers and `let x = match ..` define their variables** in all six languages the data-flow walk covers, and a nested function or closure body is its own region instead of being inlined.
 - **C and C++ taint finds sources and sinks through the `#include` set**, by the same row rule as `io-boundaries`, and a writer's sink follows its target (11 C/C++ repositories: 11 withheld verdicts → `violated`).
 - **Taint, `io-boundaries` and slices follow a construction into the constructor** (Python, JS/TS, Dart), and a harmless call no longer hides a real one to the same callee in the same function.
@@ -127,7 +113,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Receiver typing and call resolution
 
-- **Declarations that produced no symbol now do, so the calls inside them are kept**: C/C++ definitions of every declarator shape, pointer-returning CUDA functions, C# accessors, indexers, operators and events, Pony behaviours, Pascal methods and nested procedures, and Rust `extern` functions (`meta.ffi_import`). A call in a macro-named C/C++ definition is drawn from the enclosing record (`src_stands_in_for: unnamed_definition`). A gate fails when an edge's source is neither a symbol nor the file.
+- **Declarations that produced no symbol now do, so the calls inside them are kept**: C/C++ declarator shapes, pointer-returning CUDA functions, C# accessors, indexers, operators and events, Pony behaviours, Pascal methods and Rust `extern` functions (`meta.ffi_import`). A gate fails when an edge's source is neither a symbol nor the file.
 - **Calls are credited by position**: C++ and Pony find a call's enclosing function by position, and calls outside any function appear in ten more languages, anchored on the enclosing type or the file.
 - **Overloads are chosen by arity** in C++, Elixir and Nim; several matches stamp `resolution_quality="ambiguous"`.
 - **Names bind to the declaration in scope**:
@@ -146,11 +132,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **TypeScript, Dart and Kotlin interface inheritance emit edges**, and C++/C# dispatch through abstract bases (grpc: +1,905 `dispatches_to`).
 - **JS/TS `module_exports` edges reach only exported names** (koel: 2,084 → 94). Module links resolve tsconfig `paths` whatever the working directory, JS-family linkers label TypeScript `typescript`, and HTML `<script src>` edges land on the in-repo file.
 - **Pub/sub linkers store an unresolved identifier under `topic_identifier`/`channel_identifier`/`event_identifier`**, not as the topic.
-- **Elixir modules written as `use AppWeb, :live_view` / `:live_component` implement `Phoenix.LiveView` / `Phoenix.LiveComponent` and have `mount`, `render` and `handle_event` rooted**: the generated web module's `apply(__MODULE__, which, [])` dispatcher is followed into its `def live_view` quote (livebook: 0 → 80 `implements` edges). A `use` inside a quote no longer roots the defining module's own functions, and a callback is no longer matched to a same-named function of another module in the file.
+- **`use AppWeb, :live_view` / `:live_component` modules implement `Phoenix.LiveView` / `Phoenix.LiveComponent`** with their callbacks rooted: the web module's `apply(__MODULE__, which, [])` dispatcher is followed into its quote. A `use` inside a quote no longer roots the defining module's own functions.
 
 #### Reaching the I/O catalogue
 
-- **A call on an application type that inherits a library type reaches the library's row** when the type does not define the member: a `use Ecto.Repo` module's `Repo.all`, a `requests.Session` subclass's `self.get`, a Java `FileInputStream` subclass's `read()`. The in-repo ancestors walked are recorded in `meta["external_owner_ancestors"]`, nearest ancestor winning (plausible: 434 Repo calls move from `external_potential` to `db_read`/`db_write`).
+- **A call on an application type that inherits a library type reaches the library's row** when the type does not define the member (a `use Ecto.Repo` module's `Repo.all`, a `requests.Session` subclass's `self.get`); the ancestors walked are recorded in `meta["external_owner_ancestors"]`.
 - **A call bound inside the repository no longer falls through to a library row by short name** (gatling: 15 false `StdIn` reads gone).
 - **A launch that returns a handle has its crossing at the read** (`Popen.communicate()`, `popen` streams, `Process.getInputStream()`). Go's `exec.Command` rows stay until re-measured now that returned sources are followed.
 - **Every JS/TS extension** (`.mjs`, `.cjs`, `.jsx`, `.tsx`, `.mts`, `.cts`) reaches the data-flow (DDG) specs and linkers, from one shared list.
@@ -163,18 +149,18 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Identity, naming and containment
 
 - **Elixir functions are one node per name and arity**: the clauses of `def greet(:a)` / `def greet(:b)` fold into one `function` or `macro` node spanning them, as Erlang's do, with the arity in `meta.parameters` (phoenix/lib: 2,231 → 1,837 nodes).
-- **A PureScript function is one node**: its type signature and equations fold into a node spanning the equations, and calls from every equation are drawn from it. A signature with no equations (a class member) stays its own node, is no longer dropped, and no longer lends its type to another file's same-name function; a bare-type member (`size :: Int`) is emitted.
-- **Declarations that were dropped are emitted**: a second same-name declaration in OCaml modules, Agda modules and records, Lean namespaces and Wolfram overloads (`run[x_String]` / `run[x_Integer]`), and Wolfram `helper[] := ...`; Julia methods with a `where` clause, methods of a function owned elsewhere (`function Base.show(io, x)`) and `function f end`; V types named by one capital letter; Kotlin declarations lost when a body's last member shares its closing brace's line (tree-sitter-kotlin 1.1.0 read the whole body as one error).
+- **A PureScript function is one node**: its signature and equations fold into one node; a class member's signature stays its own node and is no longer dropped.
+- **Declarations that were dropped are emitted**: second same-name declarations in OCaml, Agda, Lean and Wolfram; Julia `where` methods, `function Base.show(...)` and `function f end`; one-letter V types; Kotlin declarations whose body closes on the last member's line (a tree-sitter-kotlin 1.1.0 parse error).
 - **Fewer spurious nodes**: a Jupyter method is emitted once, as `Class.method` (40-notebook sample: 89 → 69 function nodes); OCaml local `let x = ... in` values are no longer functions; a Twig `{% else %}` is no longer a `conditional` named `if `.
 - **Names carry their enclosing module, namespace or type**: OCaml, F#, Agda and Lean declarations (`A.run`, `A.C.deep`, `A.t`, `A.S`), Agda fields (`Pair.fst`), F# records, unions and fields (`A.Point.X`) and class-level `let`s (`Shape.helper`). An OCaml call that a same-name type used to capture now reaches the function (16 of 17 such calls on a sample).
-- **`qualified_name` carries every enclosing scope**: PHP follows each declaration's own namespace (a multi-namespace file gave every declaration the first one's); C# carries outer block and file-scoped namespaces (`A.B.C.Go`, not `B.C.Go`: 70 of 316 symbols on a sample); TypeScript carries `namespace`/`module` blocks; Proto and Cap'n Proto carry every enclosing message, struct or interface; a Tcl proc's node id and `meta.namespace` carry the full `namespace eval` path.
+- **`qualified_name` carries every enclosing scope**: PHP (each declaration's own namespace), C# (`A.B.C.Go`, not `B.C.Go`), TypeScript namespaces, Proto and Cap'n Proto (`demo.A.B.Inner`); a Tcl proc's node id and `meta.namespace` carry the full `namespace eval` path.
 - **Other name and metadata fixes**:
-  - TOML tables with three or more key parts keep their dotted name (`[tool.poetry.dependencies]` was `dependencies`: 18 of 79 tables on a config sample);
-  - a Perl sub in a block-form package (`package B { sub go }`) is named under it, and a sub after the block takes the package in force; SPARQL queries are named by form (`SELECT`, `CONSTRUCT`, `ASK`, `DESCRIBE`), not ordinal;
-  - reStructuredText sections report their real `meta.level`, derived from the order in which adornment styles first appear (every section was level 1);
-  - Twig symbols and edges report their own line (not the line above), `{% elseif b %}` is named `elseif b`, and a block shorthand (`{% block title "Hi" %}`) is named `title`;
-  - HLSL, Ada, Pascal, SQL, V, Racket and Scheme callables write `meta.parameters`; Racket and Scheme `meta.param_count` counts what it lists and `signature` spells the lambda list as written; a V method's `signature` shows its receiver type.
-- **The containment linker contains a dotted name whose prefix is no symbol in its file** (a Lean `A.S` in `namespace A`, a C++ out-of-line `Token::get`, an HCL `var.X`; three corpus samples: 388 orphans → 5, 383 `contains` edges added, none removed). A file is never contained (a root-level `Demo.cs` could be contained by `class Demo`), and an owner found by qualified name must sit in the child's file.
+  - TOML tables with three or more key parts keep their dotted name (`[tool.poetry.dependencies]` was `dependencies`);
+  - a Perl sub in `package B { }` is named under `B`; SPARQL queries are named by form (`SELECT`), not ordinal;
+  - reStructuredText sections report their real `meta.level` (all were 1);
+  - Twig symbols report their own line (not the line above), and `{% block title "Hi" %}` is named `title`;
+  - HLSL, Ada, Pascal, SQL, V, Racket and Scheme callables write `meta.parameters`; Racket/Scheme `param_count` and V method `signature` are corrected.
+- **The containment linker contains a dotted name whose prefix is no symbol in its file** (a Lean `A.S`, a C++ out-of-line `Token::get`; 383 `contains` edges added on the corpus samples, none removed). A file is never contained, and an owner found by qualified name must sit in the child's file.
 - **A Circom file with an intermediate signal (`signal x;`) no longer crashes the run** with *"internal error: TypeError"* (`modifiers=None`).
 - **Swift and Rust symbols no longer vary with the installed grammar** (floors raised to tree-sitter-swift 0.7.4 and tree-sitter-rust 0.24.2), and an imported file's node carries its own language (`discovery_language` records the importer's).
 
@@ -182,25 +168,25 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Route markers are HTTP routes, not library exports.** When several detectors classify one symbol, the most confident wins (it was the first to run), and a route marker no longer picks up `library_export` by name (thc: `http_route` entrypoints 2 → 240).
 - **Phoenix routes match `mix phx.routes`.**
-  - Only a module using `Phoenix.Router` (directly or through `use AppWeb, :router`) or `Plug.Router` (HTTP verbs only) defines routes, and never on the right side of `|>` (thc: 361 of 738 route symbols were cache `get`s or test `conn |> get(...)` calls, now gone).
+  - Only a module using `Phoenix.Router` or `Plug.Router` defines routes, and never on the right side of `|>` (cache `get`s and test `conn |> get(...)` calls were routes).
   - `resources` mounts eight routes (`update` on PATCH and PUT) and honours `only:`, `except:`, `singleton:` and `param:`.
   - A route's controller and path carry the enclosing `scope` aliases and prefixes (`AppWeb.UserController`, `/users/:user_id/posts`), so the handler is matched exactly, not by name suffix.
-- **Sketch output no longer depends on the per-process hash salt**: the Tests line, the Configuration section in hybrid mode, `--frameworks all`, `Limits.merge` and the embedding file sampler. Test-framework detection reads a stratified sample of up to 200 files plus root runner config and recognises 21 more frameworks (ExUnit, XCTest, xunit, phpunit, googletest, playwright, node:test, …).
+- **Sketch output no longer depends on the per-process hash salt**: the Tests line, the Configuration section in hybrid mode, `--frameworks all`, `Limits.merge` and the embedding file sampler. Test-framework detection samples up to 200 files plus root runner config and recognises 21 more frameworks.
 - **The sketch's Entry Points section keeps to its budget** (one entry count shared across groups; thc: 22.7k → 7.4k characters), and a route line names its handler (`GET /feed` → `FeedController.index`).
 - **`profile.frameworks` lists each framework once**, even when two ecosystems or a repeated `--frameworks` name detect it.
-- **The dependency linker counts only third-party Rust and Python imports** when it warns about missing TOML declarations; it counted every import, first-party ones included (a Phoenix app warned *"found 9740 Import edges … but 0 TOML dependency declarations"*).
+- **The dependency linker counts only third-party Rust and Python imports** when it warns about missing TOML declarations, not every import.
 - **Python stdlib recognition covers 3.10–3.13**, so `distutils` and the other modules removed in 3.12 are no longer `third_party`.
 - **Smaller**: bash multi-variable `export`; `compact` leads with key symbols; Ansible needs Ansible evidence (repositories with claims 180 → 9); Astro paths and Laravel route literals; no launched programs read from a script's appended binary.
 
 #### Survey speed on large repositories
 
-- **Three stalls fixed**: supply-chain classification reads each file once, not once per symbol (319 s of CPU on flink); the crypto-flow linker checks for a crypto keyword before parsing (over an hour on nextjs); the sketch's file ranking tokenizes each doc once instead of matching a names-wide regex, which changes its output only in that each name now counts on its own. End-to-end times have not been re-measured.
+- **Three stalls fixed**: supply-chain classification reads each file once, not once per symbol (319 s CPU on flink); the crypto-flow linker checks for a keyword before parsing (over an hour on nextjs); the sketch's file ranking tokenizes each doc once. End-to-end times have not been re-measured.
 
 #### Tooling and release
 
-- **`hypergumbo build-grammars` works from a PyPI install.** The Lean, Wolfram and Circom C sources sat in a repo-root `vendor/` that no wheel contained, so from pip or pipx (8.1.0 included) it failed for all three, as did `add-extras`' grammars step. They now ship in `hypergumbo-core` with their MIT licences (+0.7 MB).
+- **`hypergumbo build-grammars` works from a PyPI install.** The Lean, Wolfram and Circom C sources now ship in `hypergumbo-core` (+0.7 MB); no wheel contained them, so it failed for all three from pip or pipx.
 - **`--backend` is checked wherever it appears**: `--backend=X` as the last argument works (it exited 2 with "unrecognized arguments"), and a missing or unknown value exits 2 instead of being ignored.
-- **`smart-test` never passes a run that executed nothing.** A run that executes zero tests (pytest exit 5 or 4, everything deselected or skipped) fails with "ZERO TESTS EXECUTED"; a change with nothing to test still passes and says so. Deleted test files are left out of the selection and named (a `git rm`'d file had made an 824-file run collect 0 items and report "all files at 100%"), and a selection naming a missing path is refused, as is a Woodpecker manifest naming one. `check-package-coverage` stops calling an empty run a coverage gap.
+- **`smart-test` never passes a run that executed nothing.** Zero tests executed (pytest exit 5 or 4, all deselected or skipped) fails with "ZERO TESTS EXECUTED"; a change with nothing to test still passes. Deleted test files are left out of the selection, and a selection or Woodpecker manifest naming a missing path is refused.
 - **Instruments no longer report success on bad input**: `python -m hypergumbo_core.cli` exits 2 instead of a silent 0, measurement scripts name and check the code tree under test, and cohort instruments print `COHORT: covered K of N given` and exit 4 when short.
 - **Registry gates follow values carried through data** (`hypergumbo_core.value_flow`), which found undeclared Kotlin, SCIP and evidence-type producers, now fixed.
 - **CI**: the test-only-reachability ratchet runs on the Woodpecker cron, the catalogue scope gate agrees across Python 3.10–3.13, the scheduled suites cover scip-python, and the release scripts read `SCHEMA_VERSION` correctly (8.1.0 shipped a garbled line).
