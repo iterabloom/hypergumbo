@@ -51,7 +51,7 @@ stored ids, node sets and some verdicts differ from 8.x.
 
 ---
 
-## Unreleased
+## 9.0.0 — 2026-10-14
 
 > `SCHEMA_VERSION` 0.20.13 → 0.20.14, the `verify-claims --json` envelope
 > 2.4 → 2.6, the `io-boundaries --json` envelope 2.3 → 2.4, and the embedded
