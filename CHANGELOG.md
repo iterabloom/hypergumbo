@@ -25,7 +25,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
-- **`stable_id_scheme` `hypergumbo-stableid-v8` → `v9`.** Stored v8 ids are not comparable: re-analyze, and join old to new nodes on path, kind, name and span, or on `fingerprint`. Top-level declarations and members of top-level types keep their v8 id unless an input listed under Changed changed. Scope of the churn: Changed → `stable_id` scheme v9.
+- **`stable_id_scheme` `hypergumbo-stableid-v8` → `v9`.** Stored v8 ids are not comparable: re-analyze, and join old to new nodes on path, kind, name and span, or on `fingerprint`. Top-level declarations and members of top-level types keep their v8 id unless one of their hashed inputs changed. Which ids change: see Changed → `stable_id` scheme v9.
 - **Node set and names** (node `id`, `name` and counts change):
   - folded: an Elixir function's clauses (one node per name/arity), a PureScript function's signature and equations; a Jupyter method is emitted once, as `Class.method`;
   - renamed: OCaml, F#, Agda and Lean declarations in a nested module or namespace (`A.run`, `A.t`, `A.S`), Agda fields (`Pair.fst`); TOML tables with 3+ key parts keep the full dotted name; a Perl sub in `package B { }` is `B::go`; SPARQL queries are named by form (`SELECT`), not ordinal (`query_2`); Elixir protocol impls are `P.T` modules;
@@ -76,7 +76,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Developer tooling
 
-- **`stable_id` gate** (`test_stable_id_floor_gate.py`, shrink-only `.ci/stable-id-floor-baseline.json`, both sections empty). Over 204 fixtures, 96 of which nest a same-name construct under two parents, it fails on a floor-keyed or null id of any kind, an id that moves, nulls or drops when an earlier same-name sibling or parent is deleted, a linker or pass mint with no id, and an id that depends on the checkout directory. Every language a fixture emits needs a two-parent fixture or a written reason it cannot nest. Producers share the `overload_arity` helpers `declared_arity_stable_id`, `scoped_stable_id`, `scoped_table_stable_id` and `pass_minted_stable_id`.
+- **`stable_id` gate** (`test_stable_id_floor_gate.py`, shrink-only baseline `.ci/stable-id-floor-baseline.json`, both sections empty) runs the pipeline over 204 per-language fixtures (96 nest a same-name construct under two parents) and fails on:
+  - a null or floor-keyed id, of any kind, including symbols minted by linkers and passes;
+  - an id that moves, nulls or drops when an earlier same-name sibling or parent is deleted;
+  - an id that depends on the checkout directory;
+  - a language with no fixture, or one that can nest but has no two-parent fixture (flat languages carry a written reason).
+- **Shared `stable_id` helpers** in `overload_arity`: `declared_arity_stable_id`, `scoped_stable_id`, `scoped_table_stable_id` and `pass_minted_stable_id`.
 - **Independent I/O allowlist gate** (`scripts/check-io-allowlist`, per-PR and scheduled CI): every call site of a risky primitive in `packages/*/src` (file writes and deletes, process launches, network, `eval`/`exec`, unsafe deserialization, native loading, dynamic import) must be listed with its purpose in `docs/hypergumbo.io-allowlist.yaml` (264 sites). The checker imports nothing from hypergumbo. Its first review found three behaviours the self-claims miss (the embedding-model download on the first `sketch`, analyser-backend launches, user config writes), now listed in SECURITY.md.
 - **`Edge.meta` keys must be registered**, as a fourth axis of the producer ratchet (the gate that every vocabulary value a producer emits is registered; 79 keys registered, `Symbol(...)` keys not gated yet). **`check-docstring-drift`** gains `--registry-refs` (prose naming vocabulary no registry holds) and `--rolling N` (adds the least-recently-reviewed files from a committed review ledger).
 
@@ -85,7 +90,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### `stable_id` scheme v9 (ADR-0035)
 
 - **`stable_id_scheme` is `hypergumbo-stableid-v9`, completing the ADR-0035 migration: every symbol takes its `stable_id` from its own producer (the analyzer or pass that emits it), and deleting a symbol moves no other symbol's id.** v9 is one bump for every change to a value a producer already computed. The contract:
-  - **Every kind has a producer id.** Symbols that were null, or that only the floor key of the backstop (`populate_kind_stable_ids`) covered (a fallback added this cycle, `sha256("{kind}:{language}:{path}:{name}")`, used only when unique in its file), now hash their own scope, name and declared parameters. This covers Elixir, Erlang, Clojure, Common Lisp, R, CMake, gnuplot, OCaml, F#, Haskell, Elm, Agda, Lean, TLA+, Wolfram, Julia, CUDA, GLSL, Fortran, Proto, Thrift, Cap'n Proto, QML, Nix, Zig, GDScript, Jupyter, LLVM IR, WGSL, COBOL, Circom, Solidity libraries, C++ pure virtuals, the member kinds Scala, Kotlin, C#, Swift, PHP and Dart lacked, the doc, config and build kinds of 20 more analyzers, and symbols minted by linkers and `manifest_targets`. Same-name definitions in one file no longer null each other, and the hashed parameters are written to `meta.parameters`.
+  - **Every kind has a producer id**: symbols that had none now hash their own scope, name and declared parameters (written to `meta.parameters`), so same-name definitions in one file no longer null each other.
+    - Languages: Elixir, Erlang, Clojure, Common Lisp, R, CMake, gnuplot, OCaml, F#, Haskell, Elm, Agda, Lean, TLA+, Wolfram, Julia, CUDA, GLSL, Fortran, Proto, Thrift, Cap'n Proto, QML, Nix, Zig, GDScript, Jupyter, LLVM IR, WGSL, COBOL and Circom.
+    - Kinds: Solidity libraries, C++ pure virtuals, the member kinds Scala, Kotlin, C#, Swift, PHP and Dart lacked, the doc, config and build kinds of 20 more analyzers, and symbols minted by linkers and `manifest_targets`.
+    - The backstop's floor key (`populate_kind_stable_ids`: `sha256("{kind}:{language}:{path}:{name}")` when unique in its file), a fallback added during this cycle, remains only as a safety net that the gate keeps at zero.
   - **Every scope that can repeat within a file is hashed**: enclosing types and functions, block namespaces, modules and packages, template blocks and branches, headings, rules and dependency groups. A scope a file has only once (a Java package, a C# file-scoped namespace) is left to the file anchor.
   - **No line number or ordinal is hashed.** A genuine same-scope tie is still split by occurrence (ADR-0035 §1).
   - **Paths are repo-relative**: Solidity symbols and Kotlin top-level `val`s hashed the absolute path.
@@ -207,7 +215,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **ADR-0049's Lazy rows outside Django were checked against library source**: `getResultStream` leaves the list, and the rest are held with reasons.
 - **[Audit 0022](docs/audits/0022-inv-nular-remainder-sweep-tranche-3.md) source-checks 335 more catalogue rows** and files 19 candidate fixes.
 - **ADR-0035 is Accepted, with the producer migration complete**, and the spec's `stable_id_scheme` version history records the v8 → v9 contract and per-language churn.
-- **Module docstrings corrected or extended in 83 files, then 59 more** in an audit that also read a random sample of modules no audit had reached, **then 33 more corrected and 14 extended** in a third audit; measurement 0030 and corrections to earlier measurement records; `VERIFY-CLAIMS-SCOPE.md` explains why no verdict consults partial parses.
+- **Three module-docstring audits**: 83 files corrected or extended; 59 more, including a random sample of modules no audit had reached; then 33 corrected and 14 extended. Also measurement 0030 and corrections to earlier measurement records; `VERIFY-CLAIMS-SCOPE.md` explains why no verdict consults partial parses.
 
 ## [8.1.0] - 2026-09-25
 
