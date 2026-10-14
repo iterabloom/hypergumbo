@@ -1,0 +1,10 @@
+Original commit body from 7a2f9aac056c755cfb4acee78b16a2ce78fab558:
+
+The notes named --trace-deps and --exclude vendor but did not say when to
+use either, or that --first-party-only and --max-tier filter after parsing
+and so save no time. Adds a goal-by-setting table, the one measured cost
+(a 40 MB Mix deps/ OOM-killed a 6 GB VM), the cache-key reason to put
+trace_deps in config rather than on one command, and the ecosystems not
+yet recognised as installed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
