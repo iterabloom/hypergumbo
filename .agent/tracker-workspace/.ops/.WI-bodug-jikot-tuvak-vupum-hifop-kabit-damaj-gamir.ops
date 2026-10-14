@@ -1,0 +1,20 @@
+- op: create  # 2ddb
+  at: '2026-10-14T06:58:48Z'  # 2ddb
+  by: agent  # 2ddb
+  actor: jgstern_agent  # 2ddb
+  clock: 1  # 2ddb
+  nonce: 2ddb  # 2ddb
+  data:  # 2ddb
+    kind: work_item  # 2ddb
+    title: "verilog: tasks, functions and nets inside a module emit no symbol"  # 2ddb
+    status: todo_hard  # 2ddb
+    priority: 3  # 2ddb
+    parent:  # 2ddb
+    tags:  # 2ddb
+    - analysis_quality  # 2ddb
+    isbefore: []  # 2ddb
+    duplicate_of: []  # 2ddb
+    not_duplicate_of: []  # 2ddb
+    pr_ref:  # 2ddb
+    description: "FOUND 2026-10-13 by WI-tusad F4 (INV-punig two-parent probes); coverage gap, not identity.\n\nREPRO: rtl/a.v\n  module a;\n    task run; begin end endtask\n    function integer f; input x; f = x; endfunction\n    wire w;\n  endmodule\n`hypergumbo run --include-docs` emits only `module a`: tasks, functions (and nets) inside a module produce no symbol, so calls into them have no target and the module's internals are invisible. The F3 live check listed verilog as \"clean\" on a nested-task probe for this reason: nothing was emitted to move.\n\nThe stable_id gate lists verilog in FLAT_LANGUAGES (\"only modules and interfaces are emitted\"); emitting tasks/functions will make it nest, and the gate will then demand a two-parent fixture (module a / module b each with `task run`)."  # 2ddb
+    fields: {}  # 2ddb
