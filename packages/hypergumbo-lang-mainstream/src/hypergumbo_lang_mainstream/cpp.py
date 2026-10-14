@@ -54,6 +54,12 @@ Call-edge details:
   DIFFERENT class's method on weak evidence is withheld
   (``defer_bare_method_call``, INV-fahub) and emitted unresolved with
   ``enclosing_class``.
+- **Included-header primitives**: a free, unqualified call whose resolved
+  target is defined in another file is not bound when the I/O catalogue says
+  one of the file's system ``#include`` headers declares that name
+  (``declared_by_an_included_header``). It is emitted unresolved with the
+  include-set module hint, so a same-named shim elsewhere in the repo does
+  not capture a libc/STL call.
 - **Unresolved module hint**: when the file has system ``#include``
   headers, the hint is the comma-joined include set, prefixed with ``std``
   when the call names ``std::`` or the file has ``using namespace std``

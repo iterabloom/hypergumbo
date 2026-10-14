@@ -11,7 +11,16 @@ How It Works
 ``create_app(tracker_set=ts)`` returns a Starlette application wired to
 the given TrackerSet. API routes delegate to TrackerSet methods and serialize
 results via ``_item_to_dict``. If no TrackerSet is provided, API routes
-return HTTP 503.
+return HTTP 503 and ``/ws`` sends an error and closes. The shipped
+``htrac serve`` path (``run_server``) calls ``create_app()`` with no
+TrackerSet, so only ``/health`` answers there today; a wired TrackerSet
+is reachable only by calling ``create_app(tracker_set=...)`` directly.
+
+When a TrackerSet is wired, the app's lifespan starts a ``watchfiles``
+watcher on the canonical, workspace and stealth ``.ops`` directories; any
+change (a CLI or TUI write) broadcasts a fresh ``state_snapshot`` to every
+connected WebSocket client. ``create_app(static_dir=...)`` optionally mounts
+a static frontend build at ``/`` after the API and WebSocket routes.
 
 PID file management supports ``--background``, ``--stop``, and ``--status``
 flags: ``write_pid_file`` / ``read_pid_file`` / ``remove_pid_file`` handle

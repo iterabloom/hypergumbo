@@ -965,8 +965,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 2a3e6d639cf6
-  commit_count: 8300
+  commit: b0c9ee187200
+  commit_count: 8301
   hypergumbo: 8.1.0
   python: 3.12.3
 -->

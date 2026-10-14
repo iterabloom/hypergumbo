@@ -109,6 +109,19 @@ right there instead of silently falling back to tree-sitter; the resolved
 choice reaches the analyzer registry's backend gate through its environment
 variable.
 
+``verify-claims`` is orchestrated here as well (``cmd_verify_claims`` and its
+helpers). I/O overlays stack in ascending precedence: the user's
+``io_primitives.d/``, then config (user, then project), then opted-in in-repo
+config overlays, then the claims file's ``extra_catalogs``, then
+``--io-primitives``. ``--no-default-overlays`` drops the community-provenance
+files (ADR-0061). Taint claims run per language over the DDG-backed or
+structural propagator. A taint-blindness check (a language with no catalogue,
+or a catalogued language that emitted no call edges) supplies the reason the
+verdict layer uses to report a would-be ``confirmed`` as ``inconclusive``. The
+exit code is 0 when everything is confirmed, 1 when any claim is violated, 2
+when any is inconclusive and none violated, and 3 when any is
+``confirmed_with_caveats`` and none of the above.
+
 Why This Design
 ---------------
 - Subcommand dispatch keeps each operation isolated and testable

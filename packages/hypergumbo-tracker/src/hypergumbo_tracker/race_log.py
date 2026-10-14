@@ -13,6 +13,14 @@ Racing is expected to be rare, so the file grows slowly; no rotation.
 The point is forensic: a future incident gives us timestamps, stat
 snapshots, and process identity to correlate against writer logs.
 
+A second event, ``compile_suppressed``, records each file a compile path
+(``_compile_all``, ``item_ops``, ``_compile_all_cached``) skips on ``OSError``
+so the rest of the tier keeps compiling. A transient read error appears both
+as ``read_retry`` records and as one ``compile_suppressed`` record, and other
+``OSError`` subclasses appear only as the latter. The default log lives at
+``$XDG_CACHE_HOME/hypergumbo/tracker/<sha256(abs tracker root)[:12]>/race_log.jsonl``
+(``~/.cache`` when ``XDG_CACHE_HOME`` is unset).
+
 A small function interface keeps the dependency out of ``store.py``:
 
     configure_race_log(path)

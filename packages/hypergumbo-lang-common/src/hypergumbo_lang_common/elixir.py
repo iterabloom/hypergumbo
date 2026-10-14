@@ -178,6 +178,11 @@ The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Elixir-specific
 extraction logic.
 
+``analyze_elixir`` also attaches the repo's Mix ``DependencyManifest`` to
+every non-skipped result (``mix_deps.parse_mix_dependencies``: ``mix.exs``
+deps are direct, ``mix.lock`` deps transitive; None when the repo has no Mix
+project), so Elixir boundary nodes get a ``directness`` stamp.
+
 Why This Design
 ---------------
 - TreeSitterAnalyzer eliminates boilerplate orchestration code

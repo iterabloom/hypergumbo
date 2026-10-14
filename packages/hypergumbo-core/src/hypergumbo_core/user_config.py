@@ -1,11 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ADR-0057 §5 [merge]; ADR-0004 trace_deps).
+"""User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ADR-0057 §5 [merge]; ADR-0004 trace_deps; ADR-0061 ruling 4).
 
 WHAT THIS IS FOR, AND WHAT IT DELIBERATELY REFUSES TO HOLD. hypergumbo had no
 user configuration of any kind before this module: every preference was
 expressed per-invocation or through the environment, so a project with
 authored I/O overlays retyped ``--io-primitives`` on every run. This adds two
-tiers of TOML file for preferences like that.
+tiers of TOML file for preferences like that. The project tier's
+``io_primitives`` are catalogue data supplied by the analysed repository, so
+they are kept apart (``LayeredConfig.in_repo_io_primitives``) and load only
+when the operator opts in with ``--in-repo-catalogues`` or a recorded
+``trust-catalogues`` grant (ADR-0061 ruling 4).
 
 It also, and more importantly, refuses to hold one particular kind of setting.
 The SCIP Rust backend indexes by **executing the analysed crate's ``build.rs``
@@ -17,7 +21,10 @@ that portability is the entire point of it, and it is disqualifying here. A
 repository on every machine into running build scripts — the same hazard as
 exporting the environment variable globally (WI-sobig), reached by a nicer
 route. Those settings live in a separate trust store outside this file, and
-this module raises rather than accepting them.
+this module raises rather than accepting them. The other half of ruling 5:
+a ``backends.<name> = true|false`` opt-in for a backend that declares
+``executes_analysed_code=False`` (scip-python) is an ordinary preference,
+accepted in either tier, the project tier replacing the user tier per key.
 
 TWO RULES THAT CURRENTLY FORBID THE SAME KEY, AND ARE STILL TWO RULES.
 :func:`trust_only_settings` (ruling 2) is refused in **every** tier because the
@@ -38,6 +45,14 @@ cost is forward compatibility — an older hypergumbo reading a newer config
 refuses it instead of degrading — and that is the tradeoff ADR-0045 OQ4
 (schema versioning) is open on. Loud is the safer of the two failure modes
 while it stays open.
+
+RESULTS-CACHE KEY. :func:`config_cache_token` digests the WHOLE bytes of
+both tiers into the survey cache key (through :func:`file_digest_token`,
+which ``catalogue_home`` also uses), because neither file is repository
+source that the repo-state hash covers. Whole-file rather than known keys,
+so a key added later cannot be forgotten and a file the loader refuses
+still misses the cache; entries are keyed by label (``user`` /
+``project``), not by absolute path, so moving a home does not churn the key.
 """
 
 from __future__ import annotations

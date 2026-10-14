@@ -22,6 +22,11 @@ This analyzer uses tree-sitter to parse Erlang files and extract:
   branch matches a spec node.
 - Function call relationships, including synthetic edges to external
   callees so a remote call still reaches I/O-boundary matching
+- Logger macro calls: in a file that includes a ``logger.hrl`` header, each
+  of the eight OTP ``?LOG_<LEVEL>(...)`` macros becomes a ``calls`` edge from
+  the enclosing function to ``erlang:logger:0-0:<level>:function`` (evidence
+  ``macro_expansion``, an inference, since tree-sitter expands no macros), so
+  logging call sites can match catalogue rows
 - Import statements (-import)
 
 Erlang's multi-clause functions are coalesced: consecutive ``fun_decl``

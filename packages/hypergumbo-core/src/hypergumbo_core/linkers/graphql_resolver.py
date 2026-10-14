@@ -34,6 +34,14 @@ How It Works
    (``meta.protocol="graphql"``), and ``references`` for the coarser
    resolver → type association (``meta.ref_construct="graphql_resolver_type"``).
 
+Each detected resolver becomes a synthetic ``function`` symbol named
+``<Type>.<field>`` (``language=None``, ``discovery_language`` set to the host
+file's language, ``protocol_origin="graphql"``,
+``meta.framework_role="graphql_resolver"``, stable_id from
+``make_protocol_stable_id`` over type and field). Both edge kinds start at
+that synthetic symbol, not at the host-language function the analyzer
+emitted, and no edge connects the two.
+
 Why This Design
 ---------------
 - Resolvers bridge schema to implementation - critical for full-stack understanding

@@ -107,6 +107,15 @@ a name contradicts the symbol the name-keyed resolver returns,
 path; when the project has none, the call falls through to an unresolved
 edge.
 
+Call sources and the ambiguity guard. A call that sits in no function (a
+top-level ``val`` initialiser or lambda, a ``by lazy`` block, a class or
+object body) is drawn from the enclosing class, object or companion
+declaration (``_TYPE_BODY_NODES``) and, failing that, from the file anchor
+symbol. A bare ``helper()`` call whose name 3 or more project methods share
+is dropped with no edge (the AMB-METHOD guard,
+``ListNameResolver(..., ambiguity_threshold=3)``). The guard runs before the
+same-file lookup, so a same-file function of that name is dropped too.
+
 Extension functions (WI-fuhav / WI-lodij). ``fun Receiver.name()`` records
 ``meta.extension_receiver``. A call ``recv.name()`` on a receiver of that
 type is emitted UNRESOLVED with ``receiver_type_hint``; the shared

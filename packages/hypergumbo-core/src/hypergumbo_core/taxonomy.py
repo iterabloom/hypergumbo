@@ -30,6 +30,12 @@ sketch.py.
 Key insight: JSON files are ambiguous by extension alone. We need filename-level
 disambiguation to tell config (package.json) from data (prices_data.json).
 
+LANGUAGES is also the single extension source for DDG specs and
+content-scanning linkers (extension_globs / extension_suffixes /
+grammar_for_path / js_ts_language_for_path), and additional_file_candidates is
+the shared CONFIG/DOC candidate list behind both the file-anchor synthesis and
+the Additional-Files centrality scores.
+
 See docs/adr/0004-file-taxonomy.md for the full design rationale.
 """
 

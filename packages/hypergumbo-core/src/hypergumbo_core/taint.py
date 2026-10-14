@@ -102,6 +102,16 @@ sink that survives names its carrying calls in ``sink_carriers``. A primitive
 declared under two labels (``document.location``) mints one source per label
 (``find_source_callers``, INV-dadu).
 
+Which edges carry taint: ``TAINT_CALL_EDGE_TYPES`` (the call family plus
+``module_attr_ref`` and ``dispatches_to``) as read by ``_is_taint_call_edge``.
+That predicate also admits the folded gRPC ``implements`` edge and a
+``references`` edge that registers a callback, and drops a ``dispatches_to``
+edge whose source is a type node (reachability, not dataflow). Adjacency,
+source minting and sanitizer registration all share the one predicate, so the
+callback widening can add barriers as well as flows. Only an invocation (a
+call-family edge that is not a protocol call) lifts a returned source into its
+caller (``_returns_to_caller``).
+
 Community rows (ADR-0061) only ever add. A community sanitizer is not a
 barrier: the flow is reported and the sanitizer named in
 ``withheld_sanitizers``. A community terminating function summary never closes

@@ -41,6 +41,20 @@ legitimate), and lands at or above ``min_confidence``. Everything the
 resolver understood about the receiver is excluded by construction, so genuine
 inherited-call recoveries (``ast_call_inherited``) and typed binds never trip.
 
+**What happens to a magnet.** Only two cleanly-harmful sub-classes are acted
+on (``_harmful_magnet_reason``): a production caller bound to a method defined
+in a test-support file, and a method whose short name is in
+``_STDLIB_INTERFACE_METHODS`` (PascalCase stdlib interface methods such as
+``Close`` / ``Parse`` / ``Len``, matched case-sensitively so Rust snake_case
+trait methods are not swept). ``demote_harmful_magnets`` runs at finalize,
+before edge resolution, and rewrites each such edge's ``dst`` to
+``{lang}:external:0-0:{method}:unresolved`` with
+``meta.resolution_quality='ambiguous'``. ``find_harmful_magnets`` is its
+non-mutating twin, which the validator runs on the finalized graph, so a
+survivor means a demotion regression. Every other magnet is a
+correct-but-unprovable bind that needs real type resolution (ADR-0012) and is
+kept.
+
 The reader is shape-tolerant (attribute *or* dict key) so the same function runs
 on live ``Symbol``/``Edge`` dataclasses (finalize, the validator) and on
 deserialized ``survey.json`` node/edge dicts.

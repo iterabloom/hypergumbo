@@ -42,6 +42,17 @@ read java.yaml's rows through :data:`ROW_PARENTS` instead of carrying copies of 
 analyzers ask with java's key shape (the fully-qualified owner the file's import or java.lang
 names). Before this they read no row at all, and ``Runtime.getRuntime().exec(c)`` left the
 ``subprocess`` sink unreachable in both.
+
+LAYERING. A language's rows are built in four layers: its :data:`ROW_PARENTS` parent's
+rows (whole, including the parent's user rows), then the built-in ``<lang>.yaml``, then
+ADR-0061 community companion files (found by their ``language:`` line and
+``provenance: community``), which only ADD keys the built-in file left free, then the
+user's ``library_signatures.d`` files named ``<lang>``, which replace any shipped row. A
+row file has two sections read this way: ``signatures`` (producer key -> returned type,
+:func:`load_library_signatures`) and ``package_variables`` (``<package>.<Variable>`` ->
+its type, :func:`load_library_package_variables`), for a typed value a library exposes
+without a call, such as Go's ``http.DefaultClient``. Only the go analyzer reads the second
+section.
 """
 from __future__ import annotations
 
