@@ -1,0 +1,29 @@
+Original commit body from 7db8c2cf4dc2d37eb6daa012e007c0719223febd:
+
+Re-checking WI-tusad's acceptance ("deleting an earlier same-name sibling
+moves no other id") outside the gate's shapes after #1576 found two
+producers that still broke it. v9 is unreleased; both fold into it.
+
+- perl: _get_current_package read a block-form `package B { ... }` (Perl
+  5.14+) as a statement, so a sub in it was named under the package before it
+  (A::go), the twins tied, and deleting the first block renamed the second;
+  a sub after a block package also kept the block's package. A block package
+  now scopes its block only, and a sub takes the package in force at it
+  (statement-form unchanged: 0 ids changed on the corpus sample). WI-himah.
+- sparql: an anonymous query was named by its ordinal (query_N), putting a
+  position into its name and stable_id (v9 hashes no ordinal): deleting an
+  earlier query renamed the later ones. Queries are named by their form
+  (SELECT/CONSTRUCT/ASK/DESCRIBE); same-form queries are a same-scope tie.
+  Pass 2 keys queries by node id, so both of two same-form queries keep
+  their prefix edges.
+
+Gate: perl-blocks (two-parent) and sparql-queries fixtures, red before
+(both REGRESSION in the deletion check), green after. Corpus samples: node
+and edge sets identical, 0 ids changed (no block packages or SPARQL there);
+gate fixtures: 1 SPARQL query renamed.
+
+Refs INV-punig-pizob-kobof-komok-ronon-kagah-nonob-makaf
+Refs WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral
+Refs WI-himah-lirul-dabum-ranoh-vuvan-purav-havun-zuhuj
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
