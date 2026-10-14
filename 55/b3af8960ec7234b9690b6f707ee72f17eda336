@@ -1,0 +1,9 @@
+Original commit body from 56dfc082cf76255186efb26fe2d27d0d69bfbde3:
+
+Orchestrator review pass on the reader-friendly audit: the gate bullet
+becomes a list of what it fails on, the v9 'every kind has a producer
+id' bullet separates languages from kinds and states that the floor
+key remains only as a safety net, and the docstring-audit line reads
+as one sentence.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
