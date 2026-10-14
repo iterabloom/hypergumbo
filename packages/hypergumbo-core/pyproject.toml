@@ -51,7 +51,7 @@ dev = [
   "types-PyYAML~=6.0.12",
 ]
 embeddings = [
-  "sentence-transformers~=5.2.2",
+  "sentence-transformers~=5.7",
 ]
 
 [project.entry-points."hypergumbo.analyzers"]

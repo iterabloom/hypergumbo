@@ -70,7 +70,7 @@ jobs:
           # rather than ignored below.
           pip install "requests~=2.33.0"   # CVE-2026-25645
           pip install "pygments~=2.20.0"   # CVE-2026-4539
-          pip install "urllib3>=2.7.0"     # CVE-2026-44431 / CVE-2026-44432
+          pip install "urllib3>=2.8.0"     # CVE-2026-44431 / CVE-2026-44432; PYSEC-2026-4175/4176/4177
           pip install "idna>=3.15"         # CVE-2026-45409
           pip install "msgpack>=1.2.1"     # GHSA-6v7p-g79w-8964 (via CacheControl->pip-audit)
           pip install "click>=8.3.3"       # PYSEC-2026-2132
