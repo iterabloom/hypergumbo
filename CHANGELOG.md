@@ -201,7 +201,7 @@ Details are in the sections below.
 - **ADR-0049's Lazy rows outside Django were checked against library source**: `getResultStream` leaves the list, and the rest are held with reasons.
 - **[Audit 0022](docs/audits/0022-inv-nular-remainder-sweep-tranche-3.md) source-checks 335 more catalogue rows** and files 19 candidate fixes.
 - **ADR-0035 is Accepted, with the producer migration complete**, and the spec's `stable_id_scheme` version history records the v8 → v9 contract and per-language churn.
-- **Three module-docstring audits**: 83 files corrected or extended; 59 more, including a random sample of modules no audit had reached; then 33 corrected and 14 extended. Also measurement 0030 and corrections to earlier measurement records; `VERIFY-CLAIMS-SCOPE.md` explains why no verdict consults partial parses.
+- **Four module-docstring audits**: 83 files corrected or extended; 59 more, including a random sample of modules no audit had reached; then 33 corrected and 14 extended; then 47 corrected and 22 extended, which also filed six code defects the docstrings had described correctly. Also measurement 0030 and corrections to earlier measurement records; `VERIFY-CLAIMS-SCOPE.md` explains why no verdict consults partial parses.
 
 ## [8.1.0] - 2026-09-25
 
@@ -2589,7 +2589,7 @@ Initial public release with comprehensive static analysis capabilities.
 
 | Version | Date       | Highlights                                                   |
 | ------- | ---------- | ------------------------------------------------------------ |
-| Unreleased | —          | A server launch or composed query now qualifies a clean `untrusted_input` taint verdict, not only the boundary verdict; I/O overlays apply to languages with no shipped catalogue |
+| Unreleased | —          | `stable_id_scheme` v9: deleting a symbol moves no other id; catalogue tiers (only `builtin` rows clear a flow, in-repo catalogue data opt-in); installed dependency source skipped by default (`--trace-deps`); calls bind to the declaration in scope in five languages |
 | 8.1.0   | 2026-09-25 | Calls credited to their enclosing function by position (25 analyzers); receiver typing in 10 languages; opt-in scip-python backend merged per record (ADR-0057); `is_exported` can be `null`; taint useful precision 24.1% → 30.9% |
 | 8.0.0   | 2026-08-20 | **Breaking:** `verify-claims` exit code 3 (`confirmed_with_caveats`), envelope 2.0, `Edge.quality` removed. Analysing a repo no longer runs its code; bounded results cache; cold survey 517.7s → 220.0s |
 | 7.0.0   | 2026-07-27 | **Breaking:** edge types 50 → 25 (stored maps no longer validate), `verify-claims --json` is a versioned object, declared deps move tier 2 → 3. `survey` is the primary verb; Python MRO and DI resolution |
