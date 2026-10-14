@@ -1,0 +1,8 @@
+Original commit body from a7a1e1ff1d432b4389b58896158bf88671e1f34f:
+
+A self-map of this branch (python -m hypergumbo_core run ., 313 s) run
+through scripts/check-test-only-reachability reports it drained:
+production now calls it. The gate exits 0 on that map with the keys
+above; shrinking needs no ratification.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
