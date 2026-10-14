@@ -1,0 +1,9 @@
+Original commit body from 2346503d9b75ee52efa7b032901d3dc322df6118:
+
+The contract block becomes pointers to the sections that hold the
+detail, the v9 entry drops its per-language lists in favour of the
+spec's version history, and evidence parentheticals and repeated
+detail are cut across Added and Fixed. 4,983 -> 3,845 words over 492
+main-changelog commits (8.1.0: 3,790 words over 525).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
