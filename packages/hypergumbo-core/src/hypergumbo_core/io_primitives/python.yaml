@@ -1639,6 +1639,16 @@ module_completeness:
   - module: datetime.datetime
     completeness: complete
     retrieved: "2026-08-15"
+  - module: datetime.date
+    completeness: complete
+    retrieved: "2026-10-14"
+    notes: >-
+      today() is the one clock read and has its own row above; the other
+      classmethods (fromtimestamp, fromordinal, fromisoformat,
+      fromisocalendar) and the instance methods convert a supplied value.
+      Undeclared, the first call into any of them (the tracker's
+      fromisoformat) made datetime.date unclassifiable and withheld every
+      self-claim verdict, as date.today() had (INV-fugus).
   - module: hashlib
     completeness: complete
     retrieved: "2026-08-15"
