@@ -1,0 +1,21 @@
+- op: create  # 683c
+  at: '2026-10-14T18:11:29Z'  # 683c
+  by: agent  # 683c
+  actor: jgstern_agent  # 683c
+  clock: 1  # 683c
+  nonce: 683c  # 683c
+  data:  # 683c
+    kind: work_item  # 683c
+    title: "prepare-release/release-check do not consult the scheduled suites: a release was started on a dev whose cron full-suite and nightly were red"  # 683c
+    status: todo_hard  # 683c
+    priority: 2  # 683c
+    parent:  # 683c
+    tags:  # 683c
+    - release  # 683c
+    - ci  # 683c
+    isbefore: []  # 683c
+    duplicate_of: []  # 683c
+    not_duplicate_of: []  # 683c
+    pr_ref:  # 683c
+    description: "2026-10-14: prepare-release 9.0.0 ran on dev while ci-debug cron-status showed full-suite FAIL (test-all-packages, self-tree-validation, self-claims-gate, test-agent-infra) and all four nightly legs FAIL. release-check's own full suite caught only the one package-test failure; the self-claims, test-only-reachability and root-tests failures are cron-only gates it never runs. Proposed: release-check runs ./scripts/ci-debug cron-status and fails when the most recent full-suite or nightly verdict on dev is red (or older than N hours)."  # 683c
+    fields: {}  # 683c
