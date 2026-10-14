@@ -1,0 +1,31 @@
+- op: create  # 897b
+  at: '2026-10-14T18:12:01Z'  # 897b
+  by: agent  # 897b
+  actor: jgstern_agent  # 897b
+  clock: 1  # 897b
+  nonce: 897b  # 897b
+  data:  # 897b
+    kind: invariant  # 897b
+    title: "Self-claims drift recurred a third time: one unclassified stdlib call (datetime.date.fromisoformat) withheld all 18 self-claim verdicts, seen only by the twice-daily cron"  # 897b
+    status: violated  # 897b
+    priority: 1  # 897b
+    parent:  # 897b
+    tags:  # 897b
+    - self_claims  # 897b
+    - ci  # 897b
+    isbefore: []  # 897b
+    duplicate_of: []  # 897b
+    not_duplicate_of: []  # 897b
+    pr_ref:  # 897b
+    description: "Third occurrence of one shape: INV-bofab (09-03), INV-fugus (09-23, datetime.date.today), now datetime.date.fromisoformat. Each time one module the catalogue could not classify withheld every self-claim verdict (confirmed_with_caveats -> inconclusive, opaque_boundary dropped), seen only by the cron self-claims-gate. Reproduced 2026-10-14 at ffe97d229f in a pinned worktree (~/hypergumbo_lab_notebook/claims_10142026): drift line-for-line the cron's; with datetime.date declared complete the same run reports 'OK -- 18 claims unchanged (18 confirmed_with_caveats)'. Instance fix on branch jgstern-agent/fix/self-claims-datetime-date. STRUCTURAL gap open: no per-PR check catches the next one. Candidate: a fast AST check over packages/*/src that every dotted stdlib call's module is row-covered or module_completeness-declared, run per PR."  # 897b
+    fields:  # 897b
+      statement: "A shipped-code call into a stdlib member the python I/O catalogue neither rows nor enumerates cannot reach dev without a per-PR failure; today it reaches dev and only the cron self-claims-gate sees it."  # 897b
+      root_cause: "io_primitives/python.yaml declared datetime.datetime complete but not datetime.date, so the tracker priority_trend.py / cli.py call datetime.date.fromisoformat made datetime.date an unclassifiable module, which withholds every clean verdict. The detection gap: the self-claims gate needs a ~6 min self-map and runs only on the cron."  # 897b
+- op: update  # 59e1
+  at: '2026-10-14T18:12:11Z'  # 59e1
+  by: agent  # 59e1
+  actor: jgstern_agent  # 59e1
+  clock: 2  # 59e1
+  nonce: '59e1'  # 59e1
+  set:  # 59e1
+    status: violated  # 59e1

@@ -1,0 +1,20 @@
+- op: create  # c205
+  at: '2026-10-14T18:11:45Z'  # c205
+  by: agent  # c205
+  actor: jgstern_agent  # c205
+  clock: 1  # c205
+  nonce: c205  # c205
+  data:  # c205
+    kind: work_item  # c205
+    title: "smart-test prints 'COVERAGE: (all files at 100%)' for a pytest usage error (exit 4, no tests collected, no coverage table)"  # c205
+    status: todo_hard  # c205
+    priority: 3  # c205
+    parent:  # c205
+    tags:  # c205
+    - smart_test  # c205
+    isbefore: []  # c205
+    duplicate_of: []  # c205
+    not_duplicate_of: []  # c205
+    pr_ref:  # c205
+    description: "Seen in the cron test-agent-infra log 2026-10-14: with pytest-cov missing, pytest rejected --cov (exit 4) and smart-test's summary still printed 'COVERAGE: (all files at 100%)'. The exit code stayed non-zero, so nothing passed falsely, but the summary claims coverage for a run that measured nothing. count_executed_tests returns 'unknown' when there is neither a junit file nor a result line, so zero_run stays false. Fix: no coverage section unless a coverage TOTAL line exists; say 'pytest did not run (exit 4: usage error)'."  # c205
+    fields: {}  # c205
