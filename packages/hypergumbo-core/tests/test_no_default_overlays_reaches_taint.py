@@ -30,8 +30,8 @@ import pytest
 import hypergumbo_core.io_boundary as iob
 from hypergumbo_core.cli import (
     _loaded_catalogue_files,
-    _omit_community_overlays,
     _resolve_io_overlay_origins,
+    _split_community_overlays,
 )
 from hypergumbo_core.function_summaries import (
     clear_summary_cache,
@@ -89,10 +89,11 @@ class TestTheOperatorsOverlays:
         yours = tmp_path / "mine.yaml"
         yours.write_text("language: python\nstatus: overlay\nretrieved: 2026-01-01\n")
         missing = tmp_path / "missing.yaml"
-        kept = _omit_community_overlays(
+        kept, omitted = _split_community_overlays(
             [(seeded, "user_channel"), (yours, "config"), (missing, "cli")],
         )
         assert kept == [(yours, "config"), (missing, "cli")]
+        assert omitted == [(seeded, "user_channel")]
         err = capsys.readouterr().err
         assert str(seeded) in err and "--no-default-overlays" in err
 
@@ -101,7 +102,7 @@ class TestTheOperatorsOverlays:
     ) -> None:
         yours = tmp_path / "mine.yaml"
         yours.write_text("language: python\nstatus: overlay\nretrieved: 2026-01-01\n")
-        assert _omit_community_overlays([(yours, "cli")]) == [(yours, "cli")]
+        assert _split_community_overlays([(yours, "cli")]) == ([(yours, "cli")], [])
         assert capsys.readouterr().err == ""
 
     def test_the_resolver_applies_it_only_under_the_flag(

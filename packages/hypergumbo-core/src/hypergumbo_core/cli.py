@@ -5566,13 +5566,6 @@ def _resolve_io_overlay_layers(
     return out, []
 
 
-def _omit_community_overlays(
-    origins: "list[tuple[Path, str]]",
-) -> "list[tuple[Path, str]]":
-    """The overlays :func:`_split_community_overlays` keeps."""
-    return _split_community_overlays(origins)[0]
-
-
 def _split_community_overlays(
     origins: "list[tuple[Path, str]]",
 ) -> "tuple[list[tuple[Path, str]], list[tuple[Path, str]]]":
