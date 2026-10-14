@@ -1,0 +1,39 @@
+- op: create  # 67ae
+  at: '2026-10-11T04:27:54Z'  # 67ae
+  by: agent  # 67ae
+  actor: jgstern_agent  # 67ae
+  clock: 1  # 67ae
+  nonce: 67ae  # 67ae
+  data:  # 67ae
+    kind: invariant  # 67ae
+    title: "profile.frameworks repeats a framework detected by two ecosystems (hardhat, hardhat, ktor, ktor) in survey.json and the sketch"  # 67ae
+    status: violated  # 67ae
+    priority: 3  # 67ae
+    parent:  # 67ae
+    tags:  # 67ae
+    - profile  # 67ae
+    - frameworks  # 67ae
+    - docstring_audit  # 67ae
+    isbefore: []  # 67ae
+    duplicate_of: []  # 67ae
+    not_duplicate_of: []  # 67ae
+    pr_ref:  # 67ae
+    description: "Repro: package.json with hardhat + ethers, hardhat.config.js, build.gradle.kts using ktor, App.kt, src/index.js -> detect_profile(...).to_dict()['frameworks'] == ['ethers','hardhat','hardhat','ktor','ktor']; survey.json profile.frameworks and the sketch's ## Frameworks section show the duplicates. Only symbol enrichment dedups internally (cli.py ~12421).\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 67ae
+    fields:  # 67ae
+      statement: "profile.frameworks lists each detected framework once."  # 67ae
+      root_cause: "_detect_frameworks (profile.py ~3086-3116) concatenates per-ecosystem results; names defined for several ecosystems (hardhat, ktor, grpc, tauri, ethers, foundry, graphql) appear once per detecting ecosystem. refine_frameworks does not dedup either."  # 67ae
+- op: update  # 26fc
+  at: '2026-10-11T07:14:32Z'  # 26fc
+  by: agent  # 26fc
+  actor: jgstern_agent  # 26fc
+  clock: 2  # 26fc
+  nonce: 26fc  # 26fc
+  set:  # 26fc
+    status: satisfied  # 26fc
+- op: discuss  # 0312
+  at: '2026-10-11T07:14:33Z'  # 0312
+  by: agent  # 0312
+  actor: jgstern_agent  # 0312
+  clock: 3  # 0312
+  nonce: '0312'  # 0312
+  message: "Fixed in PR #1530 (merge 1a95dd64a2). Root cause: _detect_frameworks concatenates per-ecosystem scanner results, so a name two scanners detect (hardhat: JS + Solidity; ktor: Kotlin + Gradle) arrived twice; nothing downstream (refine_frameworks, to_dict, sketch) deduplicated. Analogue found and fixed: an EXPLICIT --frameworks list with a repeat (flask,celery,flask) echoed duplicates into frameworks and requested_frameworks. Fix: RepoProfile.__post_init__ is the single normalisation point for every producer (auto scan, explicit, refine, cached from_dict): frameworks/dev_frameworks/requested_frameworks sorted+unique, dev_frameworks minus prod, framework_evidence keys restricted to listed frameworks with sorted unique node lists. Evidence on dev after merge (filed repro repo: package.json hardhat+ethers, hardhat.config.js, build.gradle.kts ktor, App.kt, src/index.js): detect_profile(repo).to_dict()['frameworks'] -> ['ethers', 'hardhat', 'ktor'] (was ['ethers','hardhat','hardhat','ktor','ktor']); run_behavior_map survey.json profile.frameworks -> ['ethers', 'hardhat', 'ktor']; generate_sketch '## Frameworks' section -> '- ethers / - hardhat / - ktor'; detect_profile(repo, frameworks='flask,celery,flask') frameworks -> ['celery', 'flask']. Tests: 4 in test_profile.py + 1 in test_sketch.py (red before, green after); targeted smart-test 6706 passed, 100% coverage on changed files."  # 0312

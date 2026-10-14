@@ -9,6 +9,15 @@ Detects entrypoints via semantic concepts from YAML framework patterns (ADR-3aaa
 - Scheduled jobs
 - GraphQL resolvers
 - Android lifecycle hooks
+- Language conventions and structural entries: main functions and
+  ``__main__`` guards, library exports, test functions, controllers,
+  middleware, error handlers, forms, serializers, SPA bootstrap calls,
+  shell scripts and HTML entry pages
+
+Two detectors do not read YAML concepts: the route-marker pass (symbols an
+analyzer or ``materialize_route_symbols`` minted with ``framework_role ==
+'route'``) and ``_detect_script_modules`` (TS/JS files with top-level calls
+and no inbound imports, which needs the edge set).
 
 How It Works
 ------------
@@ -32,16 +41,28 @@ concepts to entrypoint types.
 
 Confidence Scores
 -----------------
-- 0.95: All semantic detection (based on actual pattern matching)
+Base confidence is tiered: 0.99 manifest-declared CLI; 0.95 framework-pattern
+concepts; 0.90 generic/route-marker pass; 0.85 structural (shell script, HTML
+entry, main guard); 0.80 language conventions (main, test functions,
+serialization callbacks, script modules); 0.75 library exports; 0.70 naming
+heuristics; 0.50 connectivity fallback; 0.05 route-looking handlers in
+frontend files.
 
 Connectivity Boost (concept-based only):
-- Entrypoints with outgoing edges get a RANK_SCORE boost (up to +0.25)
-- Boost formula: min(0.25, log(1 + out_edges) / 10)
+- Entrypoints with outgoing edges get a RANK_SCORE boost of
+  min(0.25, log(1 + effective_out_degree) / 10), where the effective
+  out-degree is the direct out-degree plus 0.5 x the callees' out-degree
+  (one hop), scaled by language dominance (0.5 + 0.5 x language weight)
+- LIBRARY_EXPORT entries with callers also get an in-degree boost of
+  min(0.35, log(1 + in_degree) / 8), with the same language scale
 - This ranks "interesting" entrypoints higher (those that call many functions)
 - Entrypoints are sorted by final RANK_SCORE (highest first). Post-ADR-0039
   `confidence` is pure detection reliability and carries only the base; the
   penalties and the boost live on `rank_score`, which is what ordering uses.
-- CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid double-counting
+- CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid
+  double-counting; TEST_FUNCTION entries, symbols in test files and
+  ``boost_suppressed_ids`` (build wrappers, vendored or infrastructure-path
+  library exports) skip it too, so the boost cannot undo their demotion
 
 Connectivity-Based Fallback:
 - When no concept-based entrypoints are found, the system falls back to
@@ -51,13 +72,45 @@ Connectivity-Based Fallback:
 - This ensures --entry auto never hard-fails, even for repos with no
   matching YAML patterns (e.g., Rust libraries without pub tracking)
 
+Ranking Penalties (``rank_score`` only, applied before the boost):
+- Test files (broad ``paths.is_test_file`` heuristic): x 0.1
+- Utility / example / docs files (``is_utility_file``): x 0.5
+- Vendored or derived code (``supply_chain_tier >= 3``): x 0.3
+- Maven/Gradle build wrappers (``mvnw`` / ``gradlew`` shell scripts): x 0.1,
+  and the boost is suppressed (WI-batit)
+- Go ``main()`` under a ``cmd/`` directory preceded by 2+ path components:
+  x 0.5, so plugin shims do not outrank the primary binary
+- Library-export demotion: x 0.1 for a LIBRARY_EXPORT whose OWN language has
+  a semantic entrypoint (route, command, main, controller, task, ...; ones in
+  utility/example files do not count), so a few Python helper scripts do not
+  bury a Lean library's exports. A vendored (tier >= 3) export is demoted in
+  every language. Vendored and infrastructure-path exports also skip the
+  boost.
+
+One Entrypoint Per Symbol (INV-liraj):
+- When several detectors classify the same symbol (e.g. a function that is
+  both main() and a CLI command), the most CONFIDENT entry is kept, ties
+  going to the earlier detector. Historically a Phoenix route marker also
+  matched the Elixir library_export convention and, under first-emitted-wins,
+  every Phoenix route was filed under library_export; framework_patterns now
+  drops that concept upstream (INV-liraj).
+- Three further dedups follow: when several entries share a symbol NAME,
+  C-style forward declarations (``declaration`` modifier) are dropped in
+  favour of the definition; a file's MAIN_GUARD entry is dropped when the
+  same file also has a MAIN_FUNCTION on a function (INV-hosuh, WI-tuvun);
+  and route entries sharing one ``HTTP <METHOD> <path>`` or ``WS <path>``
+  label collapse to the highest-``rank_score`` one.
+
 Post-Processing Filters (INV-mahap):
 - Minimum confidence threshold (MIN_ENTRYPOINT_CONFIDENCE = 0.10): entries below
   this threshold are excluded. This removes noise entries like library_export
-  entries demoted to 0.08 when semantic entries exist, and test-file entries
-  penalized to 0.08.
-- Count cap (MAX_ENTRYPOINT_COUNT = 50): prevents output flooding for repos
-  with hundreds of high-confidence entries (e.g., microservice gateways)
+  entries demoted to 0.075-0.08 when semantic entries exist, and test-file
+  entries penalized to 0.08.
+- Size-scaled cap (``compute_entrypoint_cap``: node_count // 100, clamped to
+  50-500): prevents output flooding for repos with hundreds of
+  high-confidence entries (e.g., microservice gateways). When it applies,
+  ``_diversity_cap`` first gives each kind up to 40% of the cap, then fills
+  any slots still empty from the overflow.
 """
 from __future__ import annotations
 
@@ -1490,14 +1543,26 @@ def detect_entrypoints(
     # detected here rather than via a concept handler.
     entrypoints.extend(_detect_script_modules(nodes, edges))
 
-    # Remove duplicates (same symbol detected by multiple strategies)
-    # Keep the first (highest confidence) entry for each symbol
-    seen_ids: set[str] = set()
+    # Remove duplicates (same symbol detected by multiple strategies): keep
+    # the MOST CONFIDENT entry per symbol, ties going to the earlier detector.
+    # INV-liraj: this used to keep the first-EMITTED entry, which made the
+    # chosen kind an accident of detector order. A Phoenix route marker
+    # (kind=function, framework_role=route) also matched the Elixir
+    # public-function library_export pattern; the concept pass emits that
+    # LIBRARY_EXPORT (0.75) before the route-marker pass emits HTTP_ROUTE
+    # (0.90), so every Phoenix route was filed under "Library API" and the
+    # sketch's HTTP Routes section lost them all. Choosing by detection
+    # confidence makes the outcome independent of emission order and of the
+    # order concepts happen to be listed on the symbol.
+    best_index: dict[str, int] = {}
     unique_entrypoints: List[Entrypoint] = []
     for ep in entrypoints:
-        if ep.symbol_id not in seen_ids:
-            seen_ids.add(ep.symbol_id)
+        idx = best_index.get(ep.symbol_id)
+        if idx is None:
+            best_index[ep.symbol_id] = len(unique_entrypoints)
             unique_entrypoints.append(ep)
+        elif ep.confidence > unique_entrypoints[idx].confidence:
+            unique_entrypoints[idx] = ep
 
     # Deduplicate declaration vs definition entrypoints (C forward declarations).
     # Functions like cmd_add appear twice: once from builtin.h (declaration) and

@@ -1,0 +1,21 @@
+- op: create  # 7037
+  at: '2026-10-03T10:56:08Z'  # 7037
+  by: agent  # 7037
+  actor: jgstern_agent  # 7037
+  clock: 1  # 7037
+  nonce: '7037'  # 7037
+  data:  # 7037
+    kind: work_item  # 7037
+    title: "cwd/home/temp/chdir family remainder after INV-zufiz/INV-zuhat: haskell setCurrentDirectory is fs_write where python/rust/js chdir are env_write; cwd/home/temp reads unrowed in go, c, cpp, erlang, swift/objc and haskell XDG"  # 7037
+    status: todo_hard  # 7037
+    priority: 3  # 7037
+    parent:  # 7037
+    tags:  # 7037
+    - catalogue  # 7037
+    - parity  # 7037
+    isbefore: []  # 7037
+    duplicate_of: []  # 7037
+    not_duplicate_of: []  # 7037
+    pr_ref:  # 7037
+    description: "Residual of INV-zufiz / INV-zuhat (cwd, home and temp-directory reads are host_info_read). Those items fixed the MISROWED members (rust current_dir / std::path::absolute; haskell getCurrentDirectory / makeAbsolute / getHomeDirectory / getTemporaryDirectory, base + System.Directory.Extra overlay). Enumerated over every catalogue and default overlay on 2026-10-03 (name grep + load_catalog), the rest of the family:\n\nPARITY BREAK (misrowed, same shape as the fixed rows):\n- haskell System.Directory setCurrentDirectory (and the System.Directory.Extra twin) is fs_write; python os.chdir / contextlib.chdir, rust std::env::set_current_dir and javascript process.chdir are env_write. fs_write derives a host_fs sink, env_write a host_env sink, so the zone a value lands in differs by language.\n\nUNROWED (additions, not corrections; each needs its own verification of what the call does):\n- go: os.TempDir (reads TMPDIR), os.Chdir.\n- c: unistd chdir.\n- cpp: std::filesystem::current_path (get and set overloads), temp_directory_path.\n- erlang: file:get_cwd, file:set_cwd.\n- swift / objc: FileManager.currentDirectoryPath, homeDirectoryForCurrentUser, temporaryDirectory, changeCurrentDirectoryPath; NSHomeDirectory(), NSTemporaryDirectory().\n- haskell: getXdgDirectory, getAppUserDataDirectory, getUserDocumentsDirectory (env/XDG lookups), findExecutable (a PATH search: python shutil.which and go exec.LookPath are fs_read).\n\nSTRUCTURAL: nothing enforces that one primitive carries one boundary across catalogues; the mulul branch added per-family parity tables (test_cwd_reads_are_host_info.py, test_home_and_temp_dir_reads_are_host_info.py) which pin the enumerated members only. A cross-catalogue equivalence registry would be the general guard; not designed here."  # 7037
+    fields: {}  # 7037

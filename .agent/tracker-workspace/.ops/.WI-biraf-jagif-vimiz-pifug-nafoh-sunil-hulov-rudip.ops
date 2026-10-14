@@ -1,0 +1,21 @@
+- op: create  # c936
+  at: '2026-10-06T00:43:38Z'  # c936
+  by: agent  # c936
+  actor: jgstern_agent  # c936
+  clock: 1  # c936
+  nonce: c936  # c936
+  data:  # c936
+    kind: work_item  # c936
+    title: "verify-claims parses a claim's taint_flow.allowed_sanitizers and no verdict ever reads it"  # c936
+    status: todo_hard  # c936
+    priority: 3  # c936
+    parent:  # c936
+    tags:  # c936
+    - verify_claims  # c936
+    - taint  # c936
+    isbefore: []  # c936
+    duplicate_of: []  # c936
+    not_duplicate_of: []  # c936
+    pr_ref:  # c936
+    description: "Found by the 2026-10-05 docstring staleness audit. verify_claims.py parses allowed_sanitizers (~L2137, TaintFlowSpec) and validates the key (~L1811), but the verdict filter (~L5778-5783) checks only f.sanitized from the taint catalogue; grep finds no other reader in packages/*/src. So listing a sanitizer in a claim changes nothing, silently. Same shape as trust_level: trusted, which was documented and never read until it was wired. Decide: wire it (a flow whose sanitized_by intersects allowed_sanitizers counts as sanitized, disclosed like sanitized_flows) or reject the key with an error. The module docstring now says it is parsed but not consulted."  # c936
+    fields: {}  # c936

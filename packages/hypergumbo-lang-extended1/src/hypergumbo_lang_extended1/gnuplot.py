@@ -15,7 +15,8 @@ Regex-based extraction (no tree-sitter grammar available on PyPI):
 
 Symbols Extracted
 -----------------
-- **function**: Named functions (f(x) = x**2)
+- **function**: Named functions (f(x) = x**2), with their dummy variables in
+  ``meta["parameters"]``
 - **variable**: Variable assignments (a = 3.14)
 - **plot**: Plot commands (plot, splot, replot)
 
@@ -24,6 +25,28 @@ Why This Design
 - Gnuplot is widely used in scientific computing and publications
 - Function definitions and variables reveal computation structure
 - Plot commands are the key outputs of Gnuplot scripts
+
+Function identity (WI-tusad)
+----------------------------
+A function's stable_id is the ADR-0035 producer formula, minted here through
+``overload_arity.scoped_stable_id`` over the repo-relative path, the name, the
+dummy-variable count read from ``f(x, y)`` and the brace blocks the
+definition sits in (``if (a) {``, ``do for [...] {``, by their headers; an
+``} else {`` under the ``if`` it continues: ``if (a)`` / ``else``). Gnuplot functions are global, but a script defines one per branch,
+and the two definitions are two identities (INV-punig, scheme v9); a
+top-level definition hashes no block. ``f(x)`` and ``f(x, y)`` in one script
+are two definitions; with the count in the hash, deleting the first leaves
+the second's id alone. Without it they shared the backstop floor key and both
+were left null. Gnuplot has no parameter types, defaults or variadics, so
+every entry is a plain ``parameter_entry``. A variable takes the backstop's
+table value scoped by the same blocks (``overload_arity.scoped_table_stable_id``).
+
+A plot command is a site, not a declaration: every ``plot`` of a script is
+named ``plot``, and they all shared the floor key and were null. It mints
+``overload_arity.scoped_stable_id`` scoped by what it plots (the rest of the
+command line, whitespace collapsed) inside its blocks, so ``plot sin(x)`` and
+``plot cos(x)`` hold their own ids; plotting the same thing twice in one
+block is a same-scope tie.
 """
 from __future__ import annotations
 
@@ -35,11 +58,16 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, parameter_entry, scoped_stable_id,
+    scoped_table_stable_id,
+)
+from hypergumbo_core.paths import to_relative_path
 
 PASS_ID = make_pass_id("gnuplot")
 
 # function_name(args) = expression
-_FUNC_RE = re.compile(r"^(\w+)\s*\([^)]*\)\s*=\s*(.+)", re.MULTILINE)
+_FUNC_RE = re.compile(r"^(\w+)\s*\(([^)]*)\)\s*=\s*(.+)", re.MULTILINE)
 # variable = value (not a function, no parens before =)
 _VAR_RE = re.compile(r"^(\w+)\s*=\s*(?!\s*\()(.+)", re.MULTILINE)
 # plot/splot/replot commands
@@ -48,6 +76,13 @@ _PLOT_RE = re.compile(r"^((?:re)?[sp]?plot)\b", re.MULTILINE)
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
     return f"gnuplot:{path}:{line}-{line}:{name}:{kind}"
+
+
+def _function_parameters(args: str) -> list[dict[str, object]]:
+    """``meta["parameters"]`` of ``f(x, y) = ...`` from its ``x, y``."""
+    return [
+        parameter_entry(arg.strip()) for arg in args.split(",") if arg.strip()
+    ]
 
 
 def find_gnuplot_files(
@@ -72,22 +107,47 @@ def analyze_gnuplot(
         except OSError:  # pragma: no cover
             continue
         path_str = str(gp_file)
+        rel_path = to_relative_path(gp_file, repo_root)
         lines = content.splitlines()
 
         # Track which lines have functions (so we skip them for variable detection)
         func_lines: set[int] = set()
+        # The brace blocks open at this line, outermost first, each as the
+        # labels it adds to a symbol's scope: ``("if (a)",)``, ``("do for
+        # [i=1:3]",)``, and for an ``else`` the branch it continues as well,
+        # ``("if (a)", "else")`` (the Makefile chain's shape).
+        blocks: list[tuple[str, ...]] = []
 
         for line_num, line in enumerate(lines, 1):
             stripped = line.lstrip()
             if stripped.startswith("#") or not stripped:
                 continue
+            rest = stripped
+            closed: tuple[str, ...] = ()
+            while rest.startswith("}"):
+                if blocks:
+                    closed = blocks.pop()
+                rest = rest[1:].lstrip()
+            if rest.rstrip().endswith("{"):
+                header = " ".join(rest.rstrip()[:-1].split())
+                # ``} else {`` / ``} else if (b) {`` continue the branch just
+                # closed, under its ``if``: the ``else`` of two different
+                # ``if`` blocks are two scopes.
+                blocks.append((*closed[:1], header) if header.startswith("else") else (header,))
+                continue
+            scope = [label for block in blocks for label in block]
 
             m = _FUNC_RE.match(stripped)
             if m:
                 name = m.group(1)
                 func_lines.add(line_num)
+                meta = {PARAMETERS_KEY: _function_parameters(m.group(2))}
                 symbols.append(Symbol(
                     id=_make_symbol_id(path_str, line_num, name, "function"),
+                    stable_id=scoped_stable_id(
+                        kind="function", lang="gnuplot", path=rel_path,
+                        name=name, scope=scope, arity=declared_arity(meta),
+                    ),
                     name=name,
                     kind="function",
                     language="gnuplot",
@@ -96,6 +156,7 @@ def analyze_gnuplot(
                               start_col=0, end_col=len(line)),
                     origin=PASS_ID,
                     origin_run_id="",
+                    meta=meta,
                 ))
                 continue
 
@@ -107,6 +168,10 @@ def analyze_gnuplot(
                                 "print", "pause", "if", "else", "do", "while"}:
                     symbols.append(Symbol(
                         id=_make_symbol_id(path_str, line_num, name, "variable"),
+                        stable_id=scoped_table_stable_id(
+                            kind="variable", lang="gnuplot", path=rel_path,
+                            name=name, scope=scope,
+                        ),
                         name=name,
                         kind="variable",
                         language="gnuplot",
@@ -123,6 +188,10 @@ def analyze_gnuplot(
                 cmd = m.group(1)
                 symbols.append(Symbol(
                     id=_make_symbol_id(path_str, line_num, cmd, "plot"),
+                    stable_id=scoped_stable_id(
+                        kind="plot", lang="gnuplot", path=rel_path, name=cmd,
+                        scope=(*scope, " ".join(stripped[m.end():].split())),
+                    ),
                     name=cmd,
                     kind="plot",
                     language="gnuplot",

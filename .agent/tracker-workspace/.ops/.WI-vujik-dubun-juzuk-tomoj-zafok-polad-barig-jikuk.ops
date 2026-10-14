@@ -1,0 +1,22 @@
+- op: create  # 8e6d
+  at: '2026-09-29T22:59:11Z'  # 8e6d
+  by: agent  # 8e6d
+  actor: jgstern_agent  # 8e6d
+  clock: 1  # 8e6d
+  nonce: 8e6d  # 8e6d
+  data:  # 8e6d
+    kind: work_item  # 8e6d
+    title: "an attribute source row fires on a use that reads nothing: window.location.assign(url) mints a page-URL source (host_secret, and untrusted_input since INV-dadu)"  # 8e6d
+    status: todo_hard  # 8e6d
+    priority: 3  # 8e6d
+    parent:  # 8e6d
+    tags:  # 8e6d
+    - taint  # 8e6d
+    - javascript  # 8e6d
+    - io_boundary  # 8e6d
+    isbefore: []  # 8e6d
+    duplicate_of: []  # 8e6d
+    not_duplicate_of: []  # 8e6d
+    pr_ref:  # 8e6d
+    description: "FOUND 2026-09-29 reading back the INV-dadu navigation_read A/B (~/hypergumbo_lab_notebook/navread_09292026/).\n\nTHE INSTANCE. workadventure play/src/front/Phaser/Game/GameManager.ts, GameManager.init: `window.location.assign(result.toString())` is the method's only window.location use, and it mints a page-URL source (host_secret before INV-dadu, and untrusted_input too since). assign() NAVIGATES; it reads nothing out of the Location object. The flow recorded from it (-> localStorage.setItem via LocalUserStore.saveUser) carries no value that came from the URL.\n\nTHE SHAPE, stated generally: an ATTRIBUTE-kind source row (document.location, window.location, and by the same mechanism process.env, os.environ) is matched by a module_attr_ref edge, and the analyzer emits that edge for ANY reference to the attribute -- including as the RECEIVER of a call that writes or navigates (location.assign / replace / reload, location.href = x). The source-side twin of INV-hopib (a sink row naming a stream object matches a non-call use).\n\nWHY NOW. It was already a host_secret false source; since INV-dadu it is also an untrusted_input one, so each such use now counts twice.\n\nNOT MEASURED: how many module_attr_ref source matches in the corpus are receiver-of-a-mutating-call uses rather than reads. The A/B sample (10 of 83 added flows) had one."  # 8e6d
+    fields: {}  # 8e6d

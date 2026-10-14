@@ -7,7 +7,8 @@ This analyzer uses tree-sitter to parse Lua files and extract:
 - Function call relationships (direct, dot-index, method)
 - require statements (imports) with alias tracking
 - Cross-file require-alias call resolution
-- One ``file`` symbol per module, plus per-symbol identity (``stable_id``,
+- One ``file`` symbol per module, plus per-symbol identity (``stable_id``;
+  a function nested in another hashes the enclosing functions, INV-fabih,
   ``shape_id``) and metrics (cyclomatic complexity, line span)
 - ADR-0015 dataflow annotation on the emitted edges
 
@@ -73,17 +74,21 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
+    record_partial_parse,
     AnalysisResult,
     TreeSitterAnalyzer,
+    ancestor_labels,
     defer_bare_method_call,
     find_child_by_type,
     iter_tree,
+    file_anchor_symbol,
     make_file_id,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import nested_qualified_name
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -236,8 +241,15 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=_extract_lua_signature(node, source),
+                    # INV-fabih: a function nested in another hashes the
+                    # enclosing functions ("" at top level, unchanged).
                     stable_id=_analyzer.compute_stable_id(
-                        node, kind=kind, name=name, file_stable_id=file_stable_id,
+                        node, kind=kind, name=name,
+                        qualified_name=nested_qualified_name(ancestor_labels(
+                            node, lambda n: _get_function_name(n, source)[0]
+                            if n.type == "function_declaration" else None,
+                        ), name),
+                        file_stable_id=file_stable_id,
                     ),
                     shape_id=_analyzer.compute_shape_id(node),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "lua"),
@@ -260,7 +272,7 @@ def _find_enclosing_lua_function(
             if name in local_symbols:
                 return local_symbols[name]
         current = current.parent
-    return None  # pragma: no cover - defensive
+    return None
 
 
 def _extract_var_types(
@@ -491,6 +503,8 @@ def _extract_edges_from_file(
     edges: list[Edge] = []
     _caller_path = str(file_path)
     file_id = make_file_id("lua", file_path)
+    # The file symbol pass 1 emits under this same id: the anchor of last resort.
+    file_anchor = file_anchor_symbol("lua", str(file_path), PASS_ID, run_id)
 
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -578,8 +592,16 @@ def _extract_edges_from_file(
             elif callee_name:
                 # Regular function call
                 # Find the caller (enclosing function)
-                caller = _find_enclosing_lua_function(node, source, local_symbols)
-                if caller:
+                # INV-bamij: a call outside every function -- module-level
+                # code, a function literal bound to a module-level local or
+                # table field -- is anchored on the FILE, as python and php
+                # anchor module-level code. It used to be dropped, and module
+                # level is where a require-d Lua module does its setup.
+                caller = (
+                    _find_enclosing_lua_function(node, source, local_symbols)
+                    or file_anchor
+                )
+                if caller is not None:
                     # INV-fahub: the enclosing table/type for this call site.
                     # Lua method/function symbols are named ``Table.member``, so
                     # split the caller's own name on ``"."`` to recover the owning
@@ -851,6 +873,7 @@ class LuaAnalyzer(TreeSitterAnalyzer):
                 continue
 
             rel_path = str(lua_file.relative_to(repo_root))
+            record_partial_parse(run, rel_path, tree)  # WI-bulaz
 
             # Create file symbol
             file_symbol = Symbol(
@@ -895,7 +918,7 @@ class LuaAnalyzer(TreeSitterAnalyzer):
 
         for fa in file_analyses:
             edges = _extract_edges_from_file(
-                fa.tree,  # type: ignore
+                fa.tree,  # type: ignore[arg-type]
                 fa.source,
                 fa.path,
                 fa.symbols,

@@ -1,14 +1,20 @@
 # SPDX-License-Identifier: MPL-2.0
 """Inline SVG preview for TUI discussion threads (ADR-0020 Part 2).
 
-Renders approximate inline previews of SVG screenshots referenced in
-discussion messages.  The pipeline is:
+``render_svg_preview()`` can render an approximate preview of an SVG
+screenshot.  Its pipeline is:
 
-    SVG → PNG (cairosvg) → ANSI text (Chafa) → Rich Text
+    SVG → PNG (cairosvg) → ANSI str (Chafa)
 
-Both ``cairosvg`` (pip) and ``chafa`` (system binary) are optional.
-When either is missing, the module degrades gracefully — callers get
-a fallback message instead of a preview.
+and a caller would wrap the result with ``Text.from_ansi()``.  Both
+``cairosvg`` (pip) and ``chafa`` (system binary) are optional; when either
+is missing, ``render_svg_preview()`` returns None.
+
+As of 2026-10 the TUI uses only ``extract_svg_paths()`` and
+``format_preview_placeholder()``: it shows a placeholder line for each
+referenced SVG and never calls ``render_svg_preview()``.
+``format_unavailable_notice()`` builds a "preview unavailable" message but
+has no caller.
 
 Caching: ANSI output is cached keyed on ``(svg_path, mtime, width)``.
 The cache is an in-memory dict (not persisted) — rebuilds are cheap
@@ -149,7 +155,7 @@ def extract_svg_paths(text: str) -> list[str]:
 def format_preview_placeholder(svg_path: str) -> str:
     """Format a collapsed preview placeholder line.
 
-    Shows as: [screenshot: filename.svg — press Enter to expand]
+    Shows as: [screenshot: filename.svg]
     """
     name = Path(svg_path).name
     return f"[screenshot: {name}]"

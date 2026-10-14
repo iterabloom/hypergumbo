@@ -4,6 +4,10 @@
 This module provides diagnostic warnings when hypergumbo detects that:
 1. Files exist for a language but no analyzer is installed for it
 2. A linker has partial requirements met (e.g., Java native methods but no C JNI functions)
+3. The repo contains Rust, so the opt-in rust-analyzer (SCIP) backend is
+   relevant — a disclosure that indexing runs the project's build scripts
+   and proc macros (``check_rust_analyzer_disclosure``, category
+   ``rust_analyzer_optin``)
 
 These warnings help developers diagnose missing functionality and understand
 which packages to install for complete analysis.
@@ -17,6 +21,19 @@ no analyzer trigger "unanalyzed files" warnings.
 After linkers run, we check their requirements using the LinkerRequirement
 system. Linkers with partial requirements (some met, some not) trigger
 "partial linker" warnings, suggesting which packages might be missing.
+``check_partial_linker_requirements`` suppresses three unactionable cases:
+a linker whose activation would not fire on this tree (WI-zamoz), one whose
+only met requirements are ``*_files`` presence counts (WI-vasir), and one
+whose unmet requirements map (via ``LINKER_LANGUAGE_REQUIREMENTS``) only to
+languages absent from the tree (WI-ruman). That third gate, and the package
+suggestions, are currently inert: ``LINKER_LANGUAGE_REQUIREMENTS`` is keyed
+``jni`` / ``swift_objc`` / ``dependency`` while diagnostics carry the
+registered names (``jni-linker``, ...), so the lookup never hits.
+
+The Rust disclosure is emitted whether or not the binary is installed. It
+is skipped when the backend is off and the user has already recorded a
+decision for this repository (``backend_trust.read_decision``); when the
+backend is on, it states that build scripts are running now.
 
 Why This Design
 ---------------
@@ -30,7 +47,9 @@ Usage
 In cli.py after analysis:
 
     from .partial_install_warnings import check_partial_install_warnings
-    check_partial_install_warnings(profile, linker_ctx, emit_warnings=True)
+    check_partial_install_warnings(
+        profile, linker_ctx, emit_warnings=True, repo_root=repo_root,
+    )
 
 The default ``emit_warnings=True`` emits each finding via
 ``warnings.warn(..., UserWarning, stacklevel=2)`` (which the
@@ -59,8 +78,8 @@ from .rust_analyzer_install import is_rust_analyzer_available
 
 # Maps language names to the package that provides their analyzer.
 # This aligns with the ADR-0010 modular package structure.
-# Note: Currently all analyzers are in hypergumbo (monorepo), but this
-# mapping enables future modularization.
+# Note: analyzers ship in the separate ``hypergumbo-lang-*`` packages; this
+# mapping names the package suggested for each language.
 
 LANGUAGE_PACKAGES: dict[str, str] = {
     # hypergumbo-lang-mainstream (ADR-0010)
@@ -275,13 +294,6 @@ def check_unanalyzed_files(
     return warnings
 
 
-#: Values of ``HYPERGUMBO_RUST_ANALYZER`` that mean "opted in", case-insensitive.
-#: DUPLICATED, deliberately: the authority is
-#: ``hypergumbo_lang_rust_analyzer.gate._TRUTHY_VALUES``, but that package is an
-#: OPTIONAL dependency and core must decide what to print whether or not it is
-#: installed. Because a duplicate can drift, the two are pinned together by
-#: ``test_enabled_truthiness_matches_the_gates_own_vocabulary``.
-#: Mirror of ``gate.ENV_VAR_NAME`` for the same optional-dependency reason.
 def rust_analyzer_backend_enabled(
     environ: Mapping[str, str] | None = None,
     repo_root: "Path | None" = None,

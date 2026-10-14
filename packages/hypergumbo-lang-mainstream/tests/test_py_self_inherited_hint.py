@@ -251,10 +251,12 @@ class TestSelfMethodHintNegativeCases:
 
 
 class TestSelfMethodCase2aBoundary:
-    """FM2: the feature fires only when Case 2a's file-global short-name lookup
-    misses. A same-file method of that short name is intercepted earlier and
-    resolves directly — so it never reaches the terminal else and gets no
-    enclosing_class hint. Documents the cross-file-only boundary."""
+    """FM2: the feature fires only when Case 2a misses. Since WI-kutal Case 2a
+    reads the OWN body of the class ``self`` denotes (not the file-global
+    short-name table), so a method of that body is intercepted and resolves
+    directly, while any other same-file namesake -- another class's method, a
+    module-level function -- no longer intercepts: the call reaches the
+    terminal else and carries the hint."""
 
     def test_self_sameclass_method_resolved_no_hint(self, tmp_path: Path) -> None:
         # helper is on the SAME class → Case 2a resolves it directly → a
@@ -279,13 +281,13 @@ class TestSelfMethodCase2aBoundary:
         ]
         assert resolved
 
-    def test_samefile_namesake_shadows_case2a_no_hint(
+    def test_samefile_namesake_no_longer_shadows_case2a(
         self, tmp_path: Path
     ) -> None:
-        # A module-level `def save()` shadows the short name in the file-global
-        # symbol table, so self.save() in Sub resolves to it via Case 2a
-        # (pre-existing last-write-wins) — never reaching the else. PR-2
-        # neither fixes nor regresses this same-file namesake behavior.
+        # A module-level `def save()` is not an attribute of a Sub instance.
+        # Pre-WI-kutal the file-global short-name table let it answer
+        # self.save() (last-write-wins); now the call reaches the else and is
+        # hinted for the Site-1 walk.
         src = (
             "def save():\n"
             "    return 0\n"
@@ -294,7 +296,9 @@ class TestSelfMethodCase2aBoundary:
             "        return self.save()\n"
         )
         res = _analyze(tmp_path, src)
-        assert _unresolved_method_edges(res, "save") == []
+        edges = _unresolved_method_edges(res, "save")
+        assert len(edges) == 1
+        assert (edges[0].meta or {}).get("enclosing_class") == "Sub"
 
 
 class TestSelfInheritedEndToEnd:

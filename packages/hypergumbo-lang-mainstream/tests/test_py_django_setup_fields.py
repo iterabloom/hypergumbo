@@ -123,25 +123,16 @@ class EventTest(TestCase):
         line = _line_of(src, "self.orga.events.create")
         assert _slot_at(edges, line, "create") == DJANGO_ORM_MODULE
 
-    def test_direct_write_on_an_attribute_receiver_is_a_KNOWN_GAP(
+    def test_direct_write_on_an_attribute_receiver_reaches_the_orm(
         self, tmp_path: Path
     ) -> None:
-        """``self.orga.save()`` does NOT reach the catalogue, and the cause is
-        NOT this rule.
+        """``self.orga.save()`` reaches the catalogue (WI-kufok).
 
-        The ORM instance-write re-key (WI-sozoj -> WI-gamas -> WI-sihoh) lives
-        inside ``_process_call``'s ``isinstance(func.value, ast.Name)`` branch,
-        so it only ever sees a BARE-NAME receiver (``order.save()``,
-        ``self.save()``). An ATTRIBUTE receiver never enters that branch at
-        all, whatever typed it. Verified independent of setUp: a declared
-        ``ForeignKey`` field is refused the same way
-        (``self.organizer.save()`` inside the model that declares it).
-
-        This test PINS the gap so it cannot be lost, and asserts the field
-        itself IS typed -- the accessor-hop sibling above resolves through the
-        very same ``self.orga``. Filed as the WI-zamud residual; ~1,110 pretix
-        sites. When that residual lands, this assertion flips and the docstring
-        goes with it.
+        This was pinned as a KNOWN GAP: the instance-write re-key lived only in
+        ``_process_call``'s bare-Name branch, so an ATTRIBUTE receiver never
+        reached it whatever typed it. The write rule is now
+        ``_django_orm_attribute_write`` at every emit site, fed by the same
+        oracle that types the accessor hop below.
         """
         src = '''\
 from django.test import TestCase
@@ -158,11 +149,9 @@ class EventTest(TestCase):
         self.orga.events.create(name="e")
 '''
         edges = _edges(tmp_path, {"models.py": MODELS, "t.py": src})
-        assert _slot_at(edges, _line_of(src, "self.orga.save()"), "save") != (
+        assert _slot_at(edges, _line_of(src, "self.orga.save()"), "save") == (
             DJANGO_ORM_MODULE
         )
-        # ... yet the SAME field, one accessor hop on, does reach it. The
-        # binding is present; only the write branch cannot consume it.
         assert _slot_at(
             edges, _line_of(src, "self.orga.events.create"), "create",
         ) == DJANGO_ORM_MODULE

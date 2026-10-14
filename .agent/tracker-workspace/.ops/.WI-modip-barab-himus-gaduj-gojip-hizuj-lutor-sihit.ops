@@ -1,0 +1,21 @@
+- op: create  # 049d
+  at: '2026-10-03T08:05:15Z'  # 049d
+  by: agent  # 049d
+  actor: jgstern_agent  # 049d
+  clock: 1  # 049d
+  nonce: 049d  # 049d
+  data:  # 049d
+    kind: work_item  # 049d
+    title: "test-only-reachability counts a function called only by a scripts/ tool as test-only: ~37 baseline keys are CI-tool-called, indistinguishable from dead code"  # 049d
+    status: todo_hard  # 049d
+    priority: 3  # 049d
+    parent:  # 049d
+    tags:  # 049d
+    - ci_infrastructure  # 049d
+    - testing  # 049d
+    isbefore: []  # 049d
+    duplicate_of: []  # 049d
+    not_duplicate_of: []  # 049d
+    pr_ref:  # 049d
+    description: "FOUND 2026-10-03 while porting the WI-ratuv gate to the live cron (INV-hokin). test_only_reachability.production_source_files() is packages/*/src/**/*.py only, and the self-map does not analyse the extensionless scripts/check-* files, so a function whose only production caller is a scripts/ tool is counted \"test-only\" and baselined.\n\nMEASURED at dev 62602239c6: 31 of the 317 keys in .ci/test-only-reachability-baseline.json have their bare name in a scripts/ file (git grep -lw; e.g. audit_findings.py::find_audit_findings_docs <- scripts/check-audit-findings, meta_write_discipline.py::find_discipline_drift <- scripts/check-meta-write-discipline). Six of the 21 keys of drift found on the gate's first live run are the same shape: catalogues_doc.py::render_catalogues_markdown (scripts/generate-catalogues-doc), check_id_construction.py::find_id_construction_drift (scripts/check-id-construction), check_recorded_producer_input.py::find_incumbent_fed_tests (scripts/check-recorded-producer-input), io_primitive_kinds.py::find_kind_literal_drift (scripts/check-io-boundary-drift), producer_coherence.py::edge_sites_without_evidence_type (scripts/check-producer-axis-coherence), python_stdlib_versions.py::supported_versions_label (scripts/refresh-stdlib-modules). A name hit is a proxy (31 is an upper bound on real callers: a name can be shared), NOT a per-key verification.\n\nTHE QUESTION (a decision, not a bug until ruled): is a CI/lint tool in scripts/ a production caller for this gate? If yes, scanning scripts/ (the files are Python without a .py suffix; collect_production_references takes a file list, so the demotion arm can include them) would demote ~37 keys and shrink the baseline. If no, say so in the module docstring, so the baseline's script-called keys read as a decision rather than an artefact. Either way the 37 should stop being indistinguishable from the 8 unwired functions filed alongside this."  # 049d
+    fields: {}  # 049d

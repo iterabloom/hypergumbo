@@ -1,0 +1,21 @@
+- op: create  # 2c56
+  at: '2026-10-03T20:17:21Z'  # 2c56
+  by: agent  # 2c56
+  actor: jgstern_agent  # 2c56
+  clock: 1  # 2c56
+  nonce: 2c56  # 2c56
+  data:  # 2c56
+    kind: work_item  # 2c56
+    title: "phoenix_ipc and openapi label nodes with language_from_path (a grammar lookup): .ex/.exs stand-ins get discovery_language=None, spec-file nodes too -- residual of WI-pokij"  # 2c56
+    status: todo_hard  # 2c56
+    priority: 3  # 2c56
+    parent:  # 2c56
+    tags:  # 2c56
+    - linker  # 2c56
+    - elixir  # 2c56
+    isbefore: []  # 2c56
+    duplicate_of: []  # 2c56
+    not_duplicate_of: []  # 2c56
+    pr_ref:  # 2c56
+    description: "**Residual of WI-pokij (branch jgstern-agent/fix/fovus).** `_text_filters.language_from_path` returns a tree-sitter GRAMMAR name from a 30-row map, or None. WI-pokij moved annotation_convention off it (labels now come from `taxonomy.get_language`). Three linkers still use it as a LABEL:\n\n- `phoenix_ipc.py` ~310: `discovery_language=language_from_path(Path(pattern.file_path))`. The map has no elixir row, so every phoenix_ipc stand-in from a `.ex`/`.exs` file carries `discovery_language=None`, although ADR-0031's table says phoenix_ipc's discovery_language is the file language (elixir). Not reproduced through a survey; read from the code.\n- `openapi.py` ~338: `discovery_language=language_from_path(Path(op.file_path))` on spec files (`.yaml`/`.yml`/`.json`), which the map does not contain -> None. Whether the slot should be the taxonomy's `yaml`/`json` (no analyzer emits plain `yaml`; the ansible analyzer emits `yaml_ansible`) is an open decision, not a mechanical fix.\n- `subprocess_cli.py` ~446/457: id language slot and discovery_language from the grammar map. Its scan is `*.py` only, so the value is `python` and correct today; it is listed because the mechanism is the grammar map.\n\nGate: `test_grammar_lookup_is_never_a_new_label` in `hypergumbo-core/tests/test_js_ts_extension_single_source.py` holds the set of linker modules calling `language_from_path` to {_text_filters, websocket, phoenix_ipc, openapi, subprocess_cli}; it may only shrink. Fixing a row removes it from that set."  # 2c56
+    fields: {}  # 2c56

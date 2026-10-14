@@ -23,9 +23,10 @@ syntax is a syntax error to it, and its error recovery falls back to C: a
 Measured over four real ObjC repositories, that cost 74 of 387 files. There is no
 newer grammar to bump to -- 3.0.2 is the newest published and upstream is dormant
 -- so :func:`_objc_parse_source` retries a failing file through a
-byte-length-preserving rewrite of the two macro families that actually break the
-parse (``NS_ASSUME_NONNULL_BEGIN``/``_END`` in the wrapping position, and
-``NS_ENUM``/``NS_OPTIONS``/``NS_CLOSED_ENUM``), keeping the result only when it
+byte-length-preserving rewrite of the three macro families that actually break
+the parse (``NS_ASSUME_NONNULL_BEGIN``/``_END`` in the wrapping position,
+``NS_ENUM``/``NS_OPTIONS``/``NS_CLOSED_ENUM``, and availability/deprecation
+macros such as ``API_AVAILABLE(...)``), keeping the result only when it
 strictly reduces ERROR nodes. **Both passes below go through it and both use the
 bytes it returns**: Pass 2 re-reads and re-parses the file, so rewriting in Pass 1
 alone would desynchronise the two passes' spans.
@@ -33,7 +34,32 @@ alone would desynchronise the two passes' spans.
 Three-pass analysis:
 - Pass 1: Extract all symbols from all files and collect methods into a global registry
 - Pass 1.5: Propagate each class's base_classes into its methods' meta['parent_base_classes'] (so .m @implementation methods inherit the .h @interface bases for framework pattern matching)
-- Pass 2: Extract edges using the global symbol registry — resolve method-call edges (local, then cross-file via NameResolver), emit #import edges, and emit unresolved calls with a module hint for PascalCase (class) receivers.
+- Pass 2: Extract edges using the global symbol registry — resolve method-call edges (local, then cross-file via NameResolver), emit #import edges, and emit unresolved calls with a module hint for PascalCase (class) receivers that the repo does not declare.
+
+Receiver typing (WI-higob, WI-garar): an unresolved send whose receiver is
+lowercase still gets a class. It comes from the receiver's declaration in
+the enclosing body -- a typed parameter, local or fast-enumeration variable
+(``_objc_declared_receiver_types``) -- from the return class of a nested
+send ``[[obj make] frob]`` (``_objc_send_result_class``), or from the
+declared type of a ``self.<property>`` receiver (``_self_property_type``).
+Return classes come from a registry aggregated in Pass 1 and merged with
+``load_library_signatures("objc")``, in-repo declarations first. The class
+is carried in ``receiver_type_hint``, and becomes the module hint only when
+it is not a class the repo declares.
+
+ONE GUARD, BOTH ARMS (WI-dason). The module slot asserts an EXTERNAL owner
+(ADR-0051), so a class the repo declares never fills it -- whichever arm found
+the class. The declared arm has had that guard since WI-higob; the
+class-MESSAGE arm (``[Svc alloc]``, ``[DDLog log:...]``) did not, and 583 of
+3,300 typed slots on the four-repository objc corpus named a first-party
+class. Both arms now put a project class in ``receiver_type_hint`` only, which
+is also what lets ``inherited_calls`` Site 2 look the selector up on that
+class instead of walking the CALLER's class for it (Site 1). A non-class type
+KEYWORD (``__auto_type``, ``instancetype``; :data:`_OBJC_NON_CLASS_TYPE_SPELLINGS`)
+is not a declared class at all: the declaration is read the way ``id x = ...``
+is, so the initialiser's registered return class types it or nothing does. A
+nullability qualifier the grammar misreads as a type (``nonnull``;
+:data:`_OBJC_NULLABILITY_QUALIFIERS`) is skipped for the class after it.
 """
 
 from __future__ import annotations
@@ -42,13 +68,15 @@ import re
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Optional
 
 from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_lang_mainstream.header_owner import headers_owned_by
 from hypergumbo_core.analyze.base import (
+    record_partial_parse,
     AnalysisResult,
     TreeSitterAnalyzer,
     defer_bare_method_call,
@@ -78,15 +106,19 @@ def _is_objc_tree_sitter_available_legacy() -> bool:  # pragma: no cover - repla
 
 
 def find_objc_files(root: Path) -> list[Path]:
-    """Find Objective-C files, disambiguating .m files via content heuristics.
+    """Find Objective-C files, disambiguating .m and .h files via content.
 
     Extensions:
     - .m: Shared with MATLAB and Wolfram — classified by content
     - .mm: Objective-C++ (unambiguous)
-    - .h: Header files (unambiguous for Objective-C analysis)
+    - .h: Shared with C and C++ — only the headers ``header_owner`` gives to
+      ObjC (those carrying an ObjC marker; an unmarked header goes to C or
+      C++ even in a pure-ObjC project). Every
+      ``.h`` had been taken here, so each was parsed by two grammars
+      (WI-somod).
     """
-    # Unambiguous extensions
-    result = list(find_files(root, ["*.mm", "*.h"]))
+    result = list(find_files(root, ["*.mm"]))
+    result.extend(headers_owned_by(root, "objc"))
     # Ambiguous .m files — only include if classified as Objective-C
     result.extend(p for p in find_files(root, ["*.m"]) if classify_dot_m_file(p) == "objc")
     return result
@@ -101,6 +133,48 @@ def _extract_type_name(node: "tree_sitter.Node", source: bytes) -> str:
         elif child.type == "abstract_pointer_declarator":
             parts.append("*")
     return "".join(parts)
+
+
+#: Spellings that sit where a declaration's class would and are NOT classes
+#: (WI-dason). ``__auto_type`` is clang's type-inference keyword and
+#: ``instancetype`` the related-result-type keyword; both parse as a
+#: ``type_identifier``, so a receiver declared with one used to carry the
+#: KEYWORD as its class -- 89 module slots on CocoaLumberjack named
+#: ``__auto_type``. ``id`` and ``Class`` are the same family; the grammar parses
+#: them as non-``type_identifier`` nodes today, and they are listed so that a
+#: grammar change cannot start typing a receiver as ``id``.
+_OBJC_NON_CLASS_TYPE_SPELLINGS: frozenset[str] = frozenset(
+    {"__auto_type", "instancetype", "id", "Class"}
+)
+
+#: Nullability QUALIFIERS the grammar does not know, so they parse as a
+#: ``type_identifier`` AHEAD of the class they qualify (WI-dason):
+#: ``(nonnull NSString *)path`` reads ``nonnull`` first, and 13 slots on the
+#: seven-repository objc corpus (SDWebImage 11, ResearchKit 2) named
+#: ``nonnull``. Unlike a keyword they do not mean "no class": the class is the
+#: NEXT ``type_identifier``. ``nullable`` / ``_Nonnull`` / ``__nonnull`` and the
+#: rest parse as ``type_qualifier`` and never reach here.
+_OBJC_NULLABILITY_QUALIFIERS: frozenset[str] = frozenset(
+    {"nonnull", "null_unspecified", "null_resettable"}
+)
+
+
+def _objc_declared_class(
+    type_identifiers: "Iterable[tree_sitter.Node]", source: bytes,
+) -> str | None:
+    """The class a declaration names, given its ``type_identifier`` nodes in
+    document order, or ``None`` (WI-dason).
+
+    A nullability qualifier is skipped; the first other spelling is the
+    declared type, and a keyword in :data:`_OBJC_NON_CLASS_TYPE_SPELLINGS`
+    means the declaration names no class at all.
+    """
+    for node in type_identifiers:
+        text = node_text(node, source)
+        if text in _OBJC_NULLABILITY_QUALIFIERS:
+            continue
+        return None if text in _OBJC_NON_CLASS_TYPE_SPELLINGS else text
+    return None
 
 
 def _objc_return_class(signature: str | None, owner: str | None) -> str | None:
@@ -432,6 +506,9 @@ def _extract_symbols_from_file(
         return analysis
 
     source, tree = _objc_parse_source(parser, source)
+    # WI-bulaz: recorded AFTER WI-lafom's rewrite retry, so only the damage
+    # the retry could not repair is reported.
+    record_partial_parse(run, repo_rel_path, tree)
 
     for node in iter_tree(tree.root_node):
         if node.type in ("class_interface", "class_implementation"):
@@ -775,10 +852,13 @@ def _objc_declared_receiver_types(
         types: dict[str, str] = {}
         for sub in iter_tree(node):
             if sub.type == "method_parameter":
-                t = _first_descendant(sub, "type_identifier")
+                t_cls = _objc_declared_class(
+                    (d for d in iter_tree(sub) if d.type == "type_identifier"),
+                    source,
+                )
                 names = [c for c in sub.children if c.type == "identifier"]
-                if t is not None and names:
-                    types[node_text(names[-1], source)] = node_text(t, source)
+                if t_cls is not None and names:
+                    types[node_text(names[-1], source)] = t_cls
             elif sub.type in ("declaration", "for_statement"):
                 # WI-higob: `for (NSString *p in paths)` declares `p`'s class in
                 # exactly the shape a local declaration uses -- a direct
@@ -786,7 +866,13 @@ def _objc_declared_receiver_types(
                 # through the same branch. A C-style `for (int i = 0; ...)` wraps
                 # its own `declaration` child, which `iter_tree` reaches on its
                 # own, and contributes no direct `type_identifier` here.
-                t = next((c for c in sub.children if c.type == "type_identifier"), None)
+                # WI-dason: a non-class keyword (``__auto_type x = ...``) is no
+                # declared class, so it falls to the registry branch below; a
+                # leading ``nonnull`` is skipped for the class after it.
+                t = _objc_declared_class(
+                    (c for c in sub.children if c.type == "type_identifier"),
+                    source,
+                )
                 # ...but ONLY the declarator binds in a fast-enumeration loop. The
                 # COLLECTION is also a direct `identifier` child of the
                 # `for_statement`, so accepting `identifier` here typed `paths`
@@ -802,10 +888,11 @@ def _objc_declared_receiver_types(
                         if name is None:  # pragma: no cover - a declarator always names something
                             continue
                         if t is not None:
-                            types[node_text(name, source)] = node_text(t, source)
+                            types[node_text(name, source)] = t
                             continue
                         # WI-higob: ``id x = [obj sel]`` -- no declared class;
-                        # the registry knows what ``sel`` returns.
+                        # the registry knows what ``sel`` returns. WI-dason:
+                        # ``__auto_type x = [obj sel]`` is the same case.
                         msg = next((m for m in c.children if m.type == "message_expression"), None)
                         if msg is not None and registry:
                             ret = _objc_send_result_class(msg, source, types, registry)
@@ -984,9 +1071,8 @@ def _extract_edges_from_file(
                         # message does -- the catalogue's objc rows key by
                         # bare class, so the declaration is the whole match.
                         # A PROJECT class is a symbol, not a module, and rides
-                        # in ``receiver_type_hint`` only; the class-MESSAGE
-                        # arm keeps its WI-nigah behaviour unchanged (a
-                        # project class in that slot is WI-marok's question).
+                        # in ``receiver_type_hint`` only, on the class-MESSAGE
+                        # arm too since WI-dason (below).
                         receiver_name = _extract_message_receiver(node, source)
                         if receiver_name is None:
                             # WI-higob: a NESTED receiver ``[[obj make] frob]``
@@ -1028,12 +1114,30 @@ def _extract_edges_from_file(
                                 if not receiver_name[0].isupper()
                                 else None
                             )
+                        # WI-dason: ONE ``project_classes`` guard for BOTH
+                        # arms. A class message to a class the repo declares
+                        # (``[Svc alloc]``) names a symbol, not an external
+                        # module, so the class rides in ``receiver_type_hint``
+                        # like a declared project-class receiver -- which also
+                        # sends it to inherited_calls Site 2 (the selector on
+                        # THAT class) rather than Site 1 (the CALLER's class,
+                        # where an empty hint sent it: ``[ORKTextAnswerFormat
+                        # new]`` inside ORKOrderedTask bound ORKOrderedTask.new).
+                        # A message to the caller's OWN class
+                        # (``[RACSignal empty]`` in a RACSignal method) is the
+                        # same lookup Site 1 already makes, so it keeps that
+                        # route and no hint: Site 2 refuses any objc class
+                        # with more than one class symbol (interface +
+                        # implementation + categories), and 12 such
+                        # resolutions on the corpus were correct.
+                        _module: str | None = None
                         if receiver_name and receiver_name[0].isupper():
-                            _module: str | None = receiver_name
+                            if receiver_name not in project_classes:
+                                _module = receiver_name
+                            elif receiver_name != _enclosing_type:
+                                _declared = receiver_name
                         elif _declared is not None and _declared not in project_classes:
                             _module = _declared
-                        else:
-                            _module = None
                         if _module is not None:
                             edges.append(make_unresolved_edge(
                                 "objc", current_method.id, selector,

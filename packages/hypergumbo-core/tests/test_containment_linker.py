@@ -333,6 +333,33 @@ class TestContainmentLinker:
         assert result.edges[0].src == proto.id
         assert result.edges[0].dst == requirement.id
 
+    def test_record_contains_its_members(self) -> None:
+        """WI-pidos: a java ``record`` is a container exactly like ``class``.
+
+        Records were not emitted before WI-pidos, so the set never met one;
+        once they were, a record's methods and component fields found no owner
+        and the file's ``contains`` tree skipped them."""
+        rec = _sym(
+            "java:R.java:1-5:R:record", "R", "record",
+            language="java", path="R.java",
+        )
+        field = _sym(
+            "java:R.java:1-1:R.a:field", "R.a", "field",
+            language="java", path="R.java", start=1, end=1,
+        )
+        method = _sym(
+            "java:R.java:2-2:R.twice:method", "R.twice", "method",
+            language="java", path="R.java", start=2, end=2,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[rec, field, method], edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert {(e.src, e.dst) for e in result.edges} == {
+            (rec.id, field.id), (rec.id, method.id),
+        }
+
     def test_nested_class_method(self) -> None:
         """Handles nested class: OuterClass.InnerClass.method -> InnerClass contains method."""
         outer = _sym("py:app.py:1-30:Outer:class", "Outer", "class")
@@ -1031,12 +1058,11 @@ class TestSpanBasedContainment:
         assert contains[0].dst == var.id
         assert contains[0].evidence_type == "span_overlap"
 
-    def test_dotted_function_name_no_spurious_edge_without_container(self) -> None:
-        """dispatch:F4 guard — a dotted function name (JS route-handler idiom)
-        produces NO contains edge when no same-file container of the parent name
-        exists. Phase 1 extracts parent ``userController`` and finds nothing;
-        Phase 2 is skipped because the name has a separator. The result is a
-        missed de-orphan, never a spurious edge."""
+    def test_dotted_function_name_without_container_roots_at_file(self) -> None:
+        """A dotted function name (JS route-handler idiom) whose prefix names
+        no container gets no naming edge to a made-up owner, but the file that
+        encloses its span still contains it (span_overlap). It was an orphan:
+        Phase 2 skipped every dotted name, placed by Phase 1 or not."""
         handler = _sym(
             "javascript:routes.js:5-9:userController.createUser:function",
             "userController.createUser", "function",
@@ -1052,7 +1078,110 @@ class TestSpanBasedContainment:
         )
         result = link_containment(ctx)
         contains = [e for e in result.edges if e.edge_type == "contains"]
-        assert contains == []
+        assert [(e.src, e.dst, e.evidence_type) for e in contains] == [
+            (f.id, handler.id, "span_overlap"),
+        ]
+
+    def test_scope_named_declarations_root_at_their_file(self) -> None:
+        """A Lean ``structure`` in ``namespace A`` is named ``A.S`` and an F#
+        function in ``module A`` ``A.run``; neither namespace nor module is a
+        symbol, so Phase 1 finds no owner. The file encloses them, so it
+        contains them, as it contains the bare-named declarations beside
+        them (WI-tusad: renaming ``S`` to ``A.S`` cost the struct its file
+        edge)."""
+        lean_file = _sym(
+            "lean:Demo.lean:1-20:Demo.lean:file", "Demo.lean", "file",
+            language="lean", path="Demo.lean", start=1, end=20,
+        )
+        struct = _sym(
+            "lean:Demo.lean:3-5:A.S:struct", "A.S", "struct",
+            language="lean", path="Demo.lean", start=3, end=5,
+        )
+        lean_fn = _sym(
+            "lean:Demo.lean:7-8:A.run:function", "A.run", "function",
+            language="lean", path="Demo.lean", start=7, end=8,
+        )
+        fs_file = _sym(
+            "fsharp:Demo.fs:1-10:Demo.fs:file", "Demo.fs", "file",
+            language="fsharp", path="Demo.fs", start=1, end=10,
+        )
+        fs_fn = _sym(
+            "fsharp:Demo.fs:3-4:A.run:function", "A.run", "function",
+            language="fsharp", path="Demo.fs", start=3, end=4,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[lean_file, struct, lean_fn, fs_file, fs_fn], edges=[],
+        )
+        result = link_containment(ctx)
+        got = {(e.src, e.dst, e.evidence_type) for e in result.edges}
+        assert got == {
+            (lean_file.id, struct.id, "span_overlap"),
+            (lean_file.id, lean_fn.id, "span_overlap"),
+            (fs_file.id, fs_fn.id, "span_overlap"),
+        }
+
+    def test_a_file_is_never_a_span_child(self) -> None:
+        """A file node's name is its path, dotted (``lib/x.ex``), and a module
+        or class spanning the whole file encloses its span. A file roots its
+        own tree: no container contains it, whatever its name."""
+        f = _sym(
+            "elixir:lib/x.ex:1-9:lib/x.ex:file", "lib/x.ex", "file",
+            language="elixir", path="lib/x.ex", start=1, end=9,
+        )
+        mod = _sym(
+            "elixir:lib/x.ex:1-9:X.Worker:module", "X.Worker", "module",
+            language="elixir", path="lib/x.ex", start=1, end=9,
+        )
+        bare = _sym(
+            "make:Makefile:1-9:Makefile:file", "Makefile", "file",
+            language="make", path="Makefile", start=1, end=9,
+        )
+        target = _sym(
+            "make:Makefile:1-9:all:module", "all", "module",
+            language="make", path="Makefile", start=1, end=9,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[f, mod, bare, target], edges=[],
+        )
+        result = link_containment(ctx)
+        assert {(e.src, e.dst) for e in result.edges} == {
+            (f.id, mod.id), (bare.id, target.id),
+        }
+
+    def test_dotted_name_placed_by_name_gets_no_second_parent(self) -> None:
+        """The span fallback serves only what no earlier phase (and no edge
+        already in the graph) placed: a method Phase 1 roots at its class is
+        not also rooted at the file, and neither is a symbol another pass
+        already gave a ``contains`` edge."""
+        f = _sym(
+            "python:app.py:1-50:app.py:file", "app.py", "file",
+            start=1, end=50,
+        )
+        cls = _sym("python:app.py:2-20:User:class", "User", "class", start=2, end=20)
+        method = _sym(
+            "python:app.py:3-5:User.save:method", "User.save", "method",
+            start=3, end=5,
+        )
+        placed = _sym(
+            "python:app.py:30-31:Other.go:method", "Other.go", "method",
+            start=30, end=31,
+        )
+        prior = Edge.create(
+            src="python:elsewhere.py:1-9:Other:class", dst=placed.id,
+            edge_type="contains", line=30, origin="test", origin_run_id="r",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[f, cls, method, placed],
+            edges=[prior],
+        )
+        result = link_containment(ctx)
+        into = {}
+        for e in result.edges:
+            into.setdefault(e.dst, []).append(e.src)
+        assert into[method.id] == [cls.id]
+        assert placed.id not in into
+        assert into[cls.id] == [f.id]
 
     def test_dotted_function_name_contained_by_same_file_class(self) -> None:
         """dispatch:F4 accepted behavior — when a dotted function name DOES name
@@ -1290,6 +1419,78 @@ class TestCanonicalNameContainment:
         assert contains[0].dst == inner_msg.id
         assert contains[0].evidence_type == "canonical_name"
 
+    def test_owner_named_like_the_namespace_is_not_the_owner(self) -> None:
+        """A qualified name's prefix can be a namespace that shares its name
+        with a class (C# ``namespace Demo;`` beside ``class Demo``):
+        ``Demo.DemoMain`` is not a member of class Demo, whose own qualified
+        name is ``Demo.Demo``. The owner's qualified name must be the prefix;
+        the file then contains DemoMain instead."""
+        f = _sym(
+            "csharp:Demo.cs:1-20:Demo.cs:file", "Demo.cs", "file",
+            language="csharp", path="Demo.cs", start=1, end=20,
+        )
+        demo = _sym(
+            "csharp:Demo.cs:2-4:Demo:class", "Demo", "class",
+            language="csharp", path="Demo.cs", start=2, end=4,
+            qualified_name="Demo.Demo",
+        )
+        main = _sym(
+            "csharp:Demo.cs:6-9:DemoMain:class", "DemoMain", "class",
+            language="csharp", path="Demo.cs", start=6, end=9,
+            qualified_name="Demo.DemoMain",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[f, demo, main], edges=[],
+        )
+        result = link_containment(ctx)
+        assert {(e.src, e.dst, e.evidence_type) for e in result.edges} == {
+            (f.id, demo.id, "span_overlap"), (f.id, main.id, "span_overlap"),
+        }
+
+    def test_owner_in_another_file_named_like_the_namespace_is_not_the_owner(
+        self,
+    ) -> None:
+        """A global ``class Demo`` in another file has the qualified name
+        ``Demo``, the same string as the namespace prefix of ``Demo.DemoMain``.
+        A nested declaration is declared inside its owner, so a qualified-name
+        owner must sit in the child's file."""
+        other = _sym(
+            "csharp:a/Demo.cs:1-9:Demo:class", "Demo", "class",
+            language="csharp", path="a/Demo.cs", start=1, end=9,
+            qualified_name="Demo",
+        )
+        main = _sym(
+            "csharp:b/Demo.cs:3-8:DemoMain:class", "DemoMain", "class",
+            language="csharp", path="b/Demo.cs", start=3, end=8,
+            qualified_name="Demo.DemoMain",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[other, main], edges=[],
+        )
+        assert link_containment(ctx).edges == []
+
+    def test_extension_member_outside_its_type_keeps_its_owner(self) -> None:
+        """A Swift type nested through an ``extension`` sits outside the
+        extended type's span, and its qualified name names that type: the
+        owner is found by qualified name, not by span."""
+        rule = _sym(
+            "swift:R.swift:1-3:Rule:struct", "Rule", "struct",
+            language="swift", path="R.swift", start=1, end=3,
+            qualified_name="Rule",
+        )
+        visitor = _sym(
+            "swift:R.swift:6-9:Visitor:class", "Visitor", "class",
+            language="swift", path="R.swift", start=6, end=9,
+            qualified_name="Rule.Visitor",
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[rule, visitor], edges=[],
+        )
+        result = link_containment(ctx)
+        assert [(e.src, e.dst, e.evidence_type) for e in result.edges] == [
+            (rule.id, visitor.id, "canonical_name"),
+        ]
+
     def test_canonical_name_prefers_same_file(self) -> None:
         """When multiple containers share canonical_name, prefer same-file."""
         svc_a = _sym(
@@ -1411,8 +1612,10 @@ class TestCanonicalNameContainment:
         contains = [e for e in result.edges if e.edge_type == "contains"]
         assert len(contains) == 0
 
-    def test_canonical_name_fallback_no_same_file_match(self) -> None:
-        """Falls back to first candidate when no same-file match exists."""
+    def test_canonical_name_owner_in_another_file_is_refused(self) -> None:
+        """An rpc is declared inside its service, so a ``HelloService`` in
+        another file is not its owner, and of two such it used to pick the
+        first. With no owner in the rpc's own file, no edge is emitted."""
         svc_a = _sym(
             "proto:a.proto:1-20:HelloService:interface",
             "HelloService", "interface", language="proto", path="a.proto",
@@ -1438,10 +1641,7 @@ class TestCanonicalNameContainment:
         )
         result = link_containment(ctx)
 
-        contains = [e for e in result.edges if e.edge_type == "contains"]
-        assert len(contains) == 1
-        # Falls back to first candidate (svc_a)
-        assert contains[0].src == svc_a.id
+        assert result.edges == []
 
     def test_canonical_name_dedup_with_existing_edges(self) -> None:
         """canonical_name containment doesn't duplicate existing edges."""

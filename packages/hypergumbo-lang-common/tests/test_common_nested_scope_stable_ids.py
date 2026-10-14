@@ -1,0 +1,219 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Nested same-name scopes: ids fixed in the WI-tusad stable_id scheme bump
+(INV-fabih's sweep; ADR-0035 §1, §6), plus the F1 cousins of this package.
+
+A local function hashed none of the functions enclosing it (Dart, Julia,
+MATLAB, Starlark), a Julia struct/module/variable took the backstop's bare-name
+table key, and an OCaml ``type t`` / ``module C`` or an F# ``let mutable x``
+kept a bare name inside ``module A`` and ``module B``: the twins tied, the
+per-file split pass numbered them by emission order, and deleting the first
+outer scope moved the survivor's id. Each case runs the analyzer directly,
+with repo-relative paths and the backstop's table formula applied as the
+pipeline does; survivors are matched by their own position.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Callable
+
+import pytest
+
+from hypergumbo_core.analyze.base import make_doc_stable_id, populate_kind_stable_ids
+from hypergumbo_lang_common.astro import analyze_astro
+from hypergumbo_lang_common.dart import analyze_dart
+from hypergumbo_lang_common.fsharp import analyze_fsharp
+from hypergumbo_lang_common.hlsl import analyze_hlsl
+from hypergumbo_lang_common.julia import analyze_julia
+from hypergumbo_lang_common.matlab import analyze_matlab
+from hypergumbo_lang_common.meson import analyze_meson
+from hypergumbo_lang_common.ocaml import analyze_ocaml
+from hypergumbo_lang_common.puppet import analyze_puppet
+from hypergumbo_lang_common.purescript import analyze_purescript
+from hypergumbo_lang_common.rst import analyze_rst
+from hypergumbo_lang_common.scheme import analyze_scheme
+from hypergumbo_lang_common.scss import analyze_scss
+from hypergumbo_lang_common.starlark import analyze_starlark
+from hypergumbo_lang_common.svelte import analyze_svelte
+
+
+def _symbols(analyze: Callable, root: Path, rel: str, text: str) -> list:
+    target = root / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text)
+    symbols = [s for s in analyze(root).symbols if s.kind != "file" and s.path.endswith(rel)]
+    for sym in symbols:
+        sym.path = rel
+    populate_kind_stable_ids(symbols)
+    return symbols
+
+
+def _position(sym) -> tuple:
+    return (sym.kind, sym.name, sym.span.start_line, sym.span.start_col)
+
+
+def _check(
+    analyze: Callable, tmp_path: Path, rel: str, earlier: str, rest: str, head: str = "",
+) -> list:
+    """No two symbols share a stable_id, and blanking ``earlier`` (lines keep
+    their numbers) leaves every survivor's id alone."""
+    with_sibling = _symbols(analyze, tmp_path / "with", rel, head + earlier + rest)
+    ids = [s.stable_id for s in with_sibling]
+    assert None not in ids, [s.name for s in with_sibling if s.stable_id is None]
+    assert len(set(ids)) == len(ids), sorted(
+        (s.kind, s.name) for s in with_sibling if ids.count(s.stable_id) > 1)
+    before: dict[tuple, list] = {}
+    for s in with_sibling:
+        before.setdefault(_position(s), []).append(s.stable_id)
+    after = _symbols(analyze, tmp_path / "without", rel,
+                     head + "\n" * earlier.count("\n") + rest)
+    for s in after:
+        assert s.stable_id in before.get(_position(s), []), (s.kind, s.name, s.span.start_line)
+    return after
+
+
+CASES = {
+    "dart": (analyze_dart, "lib/nested.dart",
+             "int a() {\n  int inner() => 1;\n  return inner();\n}\n",
+             "int b() {\n  int inner() => 2;\n  return inner();\n}\n"
+             "class C {\n  int m() {\n    int inner() => 3;\n    return inner();\n  }\n}\n"
+             "mixin M {\n  int n() {\n    int inner() => 4;\n    return inner();\n  }\n}\n"),
+    "fsharp": (analyze_fsharp, "src/Nested.fs",
+               "module A =\n    let mutable x = 1\n\n", "module B =\n    let mutable x = 1\n",
+               "module Nested\n\n"),
+    "julia": (analyze_julia, "src/nested.jl",
+              "module A\nstruct Inner\n    v::Int\nend\nlimit = 1\nmodule Sub\nend\n"
+              "function run()\n    function inner()\n        1\n    end\n    inner()\nend\nend\n",
+              "module B\nstruct Inner\n    v::Int\nend\nlimit = 2\nmodule Sub\nend\n"
+              "function run()\n    function inner()\n        2\n    end\n    inner()\nend\n"
+              "short() = 1\nend\n"),
+    "matlab": (analyze_matlab, "src/nested.m",
+               "function a()\n  function inner()\n  end\nend\n",
+               "function b()\n  function inner()\n  end\nend\n"),
+    "matlab-class": (analyze_matlab, "src/Shape.m",
+                     "    function a(obj)\n      function inner()\n      end\n    end\n",
+                     "    function b(obj)\n      function inner()\n      end\n    end\n  end\nend\n",
+                     "classdef Shape\n  methods\n"),
+    "ocaml": (analyze_ocaml, "src/nested.ml",
+              "module A = struct\n  type t = int\n  module C = struct\n    let v = 1\n  end\nend\n",
+              "module B = struct\n  type t = int\n  module C = struct\n    let v = 2\n  end\nend\n"),
+    "starlark": (analyze_starlark, "build/nested.bzl",
+                 "def a():\n    def inner():\n        return 1\n    return inner()\n\n",
+                 "def b():\n    def inner():\n        return 2\n    return inner()\n"),
+}
+
+
+@pytest.mark.parametrize("lang", sorted(CASES))
+def test_deleting_an_earlier_same_name_scope_moves_no_id(tmp_path: Path, lang: str) -> None:
+    analyze, rel, earlier, rest, *head = CASES[lang]
+    assert _check(analyze, tmp_path, rel, earlier, rest, *head)
+
+
+def test_ocaml_and_fsharp_name_table_kinds_by_their_module(tmp_path: Path) -> None:
+    """The table kinds are named like the bindings beside them (``A.t``,
+    ``A.C``, ``A.x``); a top-level one keeps its bare name."""
+    ocaml = _symbols(analyze_ocaml, tmp_path / "o", "m.ml",
+                     "type top = int\nmodule A = struct\n  type t = int\n  module C = struct end\nend\n")
+    assert sorted((s.kind, s.name) for s in ocaml) == [
+        ("module", "A"), ("module", "A.C"), ("type", "A.t"), ("type", "top")]
+    fsharp = _symbols(analyze_fsharp, tmp_path / "f", "M.fs",
+                      "module M\n\nlet top = 1\nmodule A =\n    let mutable x = 1\n")
+    assert sorted(s.name for s in fsharp if s.kind == "variable") == ["A.x", "top"]
+
+
+def test_scheme_param_count_does_not_count_the_rest_dot(tmp_path: Path) -> None:
+    """``(f a . rest)`` takes two parameters; the grammar spells ``.`` as a
+    symbol, which ``param_count`` used to count as a third."""
+    syms = _symbols(analyze_scheme, tmp_path, "src/m.scm",
+                    "(define (f a . rest) a)\n(define (g a b) a)\n")
+    counts = {s.name: s.meta["param_count"] for s in syms}
+    assert counts == {"f": 2, "g": 2}
+
+
+def test_purescript_bare_type_signatures_are_read(tmp_path: Path) -> None:
+    """``helper :: Int`` is a bare ``type_name``: the function lost its
+    signature, and a class member declared that way emitted nothing."""
+    syms = _symbols(analyze_purescript, tmp_path, "src/M.purs",
+                    "module M where\n\nclass Default a where\n  def :: a\n  size :: Int\n\n"
+                    "helper :: Int\nhelper = 2\n\nr :: { a :: Int }\nr = { a: 1 }\n")
+    sigs = {s.name: s.signature for s in syms if s.kind == "function"}
+    assert sigs == {
+        "M.def": "a", "M.size": "Int", "M.helper": "Int", "M.r": "{ a :: Int }",
+    }
+
+
+# -- INV-punig: one construct under two different parents ---------------------
+
+
+def _parents(
+    open_a: str, open_b: str, child: str, close_a: str = "", close_b: str = "", extra: str = "",
+) -> tuple:
+    """``(earlier, rest)``: ``child`` under ``open_a`` and again under ``open_b``
+    (each closed by its own ``close_*``)."""
+    return open_a + child + close_a, open_b + child + close_b + extra
+
+
+PARENT_CASES = {
+    "astro": (analyze_astro, "src/pages/two.astro",
+              *_parents("<div>\n", "<section>\n", "  <slot name=\"h\" />\n  <Card client:load />\n",
+                        "</div>\n", "</section>\n"),
+              "---\nconst x = 1;\n---\n"),
+    "hlsl": (analyze_hlsl, "src/two.hlsl",
+             *_parents("namespace a {\n", "namespace b {\n",
+                       "float f(float x) {\n  float y = x;\n  return y;\n}\nstruct S { float v; };\n",
+                       "}\n", "}\n")),
+    "meson": (analyze_meson, "sub/meson.build",
+              *_parents("if get_option('a')\n", "if get_option('b')\n",
+                        "  executable('tool', 't.c')\n",
+                        "elif x\n  library('l', 'l.c')\nelse\n  library('l', 'm.c')\nendif\n",
+                        "elif x\n  library('l', 'l.c')\nelse\n  library('l', 'm.c')\nendif\n"),
+              "project('two', 'c')\n"),
+    "puppet": (analyze_puppet, "manifests/two.pp",
+               *_parents("class a {\n", "class b {\n",
+                         "  file { '/tmp/x':\n    ensure => present,\n  }\n"
+                         "  if $x { file { '/y': } } else { file { '/y': } }\n"
+                         "  case $os { 'linux': { file { '/z': } } default: { file { '/z': } } }\n",
+                         "}\n", "}\n")),
+    "rst": (analyze_rst, "docs/two.rst",
+            *_parents("Alpha\n-----\n\n", "Beta\n----\n\n",
+                      "Details\n~~~~~~~\n\n.. _details:\n\n.. note::\n   See it.\n\n"),
+            "=====\nGuide\n=====\n\n"),
+    "scss": (analyze_scss, "src/two.scss",
+             *_parents(".a {\n", ".b {\n",
+                       "  .item { color: red; }\n  @if $x { .y { a: 1; } } @else { .y { a: 1; } }\n"
+                       "  @mixin m { .q { b: 1; } }\n", "}\n", "}\n")),
+    "svelte": (analyze_svelte, "src/Two.svelte",
+               *_parents("<div>\n", "<section>\n",
+                         "  {#each items as i}{#if i}<slot />{/if}{/each}\n"
+                         "  <button on:click={go}>go</button>\n", "</div>\n", "</section>\n"),
+               "<script>\n  let x = 1;\n</script>\n"),
+}
+
+
+@pytest.mark.parametrize("lang", sorted(PARENT_CASES))
+def test_deleting_the_first_of_two_parents_moves_no_id(tmp_path: Path, lang: str) -> None:
+    analyze, rel, earlier, rest, *head = PARENT_CASES[lang]
+    after = _check(analyze, tmp_path, rel, earlier, rest, *head)
+    assert after
+
+
+def test_rst_levels_follow_the_order_adornment_styles_first_appear(tmp_path: Path) -> None:
+    """tree-sitter-rst emits every section as a sibling; the level is the
+    index of the section's adornment style (an overlined ``=`` differs from an
+    underlined one) in first-use order."""
+    syms = _symbols(analyze_rst, tmp_path, "docs/l.rst",
+                    "=====\nTop\n=====\n\nA\n=\n\nB\n-\n\nC\n=\n\nD\n-\n")
+    levels = {s.name: s.meta["level"] for s in syms if s.kind == "section"}
+    assert levels == {"Top": 1, "A": 2, "B": 3, "C": 2, "D": 3}
+    sigs = {s.name: s.signature for s in syms if s.kind == "section"}
+    assert sigs["B"] == "### B"
+
+
+def test_top_level_doc_symbols_hash_no_scope(tmp_path: Path) -> None:
+    """A symbol with no enclosing parent keeps the value it had: the doc
+    formula with an empty scope."""
+    rst = _symbols(analyze_rst, tmp_path / "r", "a.rst", "Title\n=====\n")
+    assert rst[0].stable_id == make_doc_stable_id("rst", "a.rst", "section", "Title", 0, 0)
+    scss = _symbols(analyze_scss, tmp_path / "s", "a.scss", ".top { a: 1; }\n")
+    assert scss[0].stable_id == make_doc_stable_id("scss", "a.scss", "rule_set", ".top", 0, 0)
+    puppet = _symbols(analyze_puppet, tmp_path / "p", "a.pp", "class top {\n}\n")
+    assert puppet[0].stable_id == make_doc_stable_id("puppet", "a.pp", "class", "top", 0, 0)

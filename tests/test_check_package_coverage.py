@@ -58,3 +58,39 @@ def test_rust_analyzer_accepted_as_arg() -> None:
         "`Unknown argument`. Add it to the case alternation (WI-kalub Step 4). "
         "Accept line(s):\n  " + "\n  ".join(accept_lines)
     )
+
+
+def _extract(name: str) -> str:
+    lines = _text().splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.startswith(f"{name}() {{"))
+    end = next(i for i in range(start + 1, len(lines)) if lines[i] == "}")
+    return "\n".join(lines[start:end + 1])
+
+
+def test_a_package_run_that_collected_nothing_is_not_called_a_gap() -> None:
+    """INV-tazur analogue: exit 5 ("no tests ran") is not a coverage gap.
+
+    The real ``report_failure`` is extracted and driven against a log of the
+    shape pytest writes when it collects nothing. It used to print "Coverage
+    gaps for <pkg>:" over an empty list, followed by advice to move tests
+    between packages.
+    """
+    import subprocess
+    import uuid
+
+    pkg = f"inv-tazur-{uuid.uuid4().hex[:8]}"
+    log = Path(f"/tmp/pkg-cov-{pkg}.log")
+    log.write_text("\nno tests ran in 0.42s\n")
+    try:
+        script = (
+            _extract("collected_nothing") + "\n"
+            + _extract("report_failure") + "\n"
+            + f"report_failure {pkg}\n"
+        )
+        out = subprocess.run(
+            ["bash", "-c", script], capture_output=True, text=True, check=True,
+        ).stdout
+    finally:
+        log.unlink()
+    assert "collected 0 tests" in out, out
+    assert "Coverage gaps" not in out, out

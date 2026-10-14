@@ -4,8 +4,10 @@
 WHAT THIS ANSWERS. The full suite costs ~17 wall-clock minutes and ~90 minutes
 of serial work on six cores, and nobody knows how much of that work is
 REDUNDANT. Aggregate coverage says the suite reaches 100%; it says nothing
-about who contributed what. This module builds the inverted index
-(``line -> tests that execute it``) from a context-enabled coverage run and
+about who contributed what. This module builds a per-test coverage index
+from a context-enabled coverage run -- each ``(path, line)`` interned to an
+integer id, and each test mapped to a bitset of the line ids it executes
+(``test -> lines``; no ``line -> tests`` mapping is materialised) -- and
 searches for cheap test subsets that still reach a coverage target.
 
 THE COST MODEL IS THE WHOLE BALL GAME, so it is stated here rather than buried.
@@ -46,15 +48,25 @@ WHY GREEDY, AND WHY IT IS PRINCIPLED RATHER THAN MERELY INTUITIVE. "Lines
 covered by a set of tests" is monotone submodular — adding a test never reduces
 coverage, and a test's marginal gain shrinks as others are chosen. That is the
 condition under which the cost-weighted greedy has a guarantee: within
-``ln(n)`` of optimal for full cover, ``(1 - 1/e)`` for max-coverage-under-budget.
-Set cover is NP-hard, so this is close to the best available.
+``ln(n)`` of optimal for full cover, ``(1 - 1/e)`` for max-coverage-under-budget,
+when each test's cost is fixed. Set cover is NP-hard, so this is close to the
+best available. The group FIXED cost above is not a fixed per-test cost -- a
+test's price drops once its group is charged -- so with non-zero group fixed
+costs neither guarantee is established for this cost model (INV-jupaf).
 
 Submodularity also makes it TRACTABLE. Recomputing all ~22,700 marginal gains
-at each of ~22,700 steps is ~500M set operations. Because gains only ever
-DECREASE, a stale gain is an upper bound, so the lazy-greedy (CELF) variant
-holds a priority queue of stale gains, pops the top, recomputes only that one,
-and accepts it when it still beats the next stale entry. In practice this is
-near-linear.
+at each of ~22,700 steps is ~500M set operations. The lazy-greedy (CELF)
+variant holds a priority queue of stale gain-per-second RATIOS, pops the top,
+recomputes only that one, and accepts it when it still beats the next stale
+entry. In practice this is near-linear. That early accept is exact only while
+a stale ratio is an upper bound, which holds when no group fixed cost is
+involved: gains only DECREASE and per-test cost is constant. GROUPED FIXED
+COSTS BREAK IT. A group's fixed cost is added to a test's cost only while the
+group is uncharged; once a pick charges the group, its other tests get
+cheaper and their true ratios RISE above the queued ones, which are then
+stale LOWER bounds, and nothing re-queues them. The result can be a different,
+costlier pick order than plain cost-weighted greedy that recomputes every
+ratio each step -- reproduced, and tracked as INV-jupaf.
 
 GREEDY IS NOT OPTIMAL, WHICH IS WHY RANDOMISED TRAJECTORIES ARE NOT MERELY A
 ROTATION TRICK. A perturbed run can beat the deterministic one — randomised
@@ -188,7 +200,11 @@ def build_cost_model(costs: Iterable[PhaseDuration]) -> CostModel:
 
 @dataclass
 class CoverageIndex:
-    """``line -> tests`` and ``test -> lines``, as dense bitsets.
+    """``test -> lines`` as dense bitsets, over an interned line-id table.
+
+    ``line_ids`` holds the ``(path, line) -> id`` table and ``lines_of`` each
+    test's bitset. There is no ``line -> tests`` map: per-line questions (e.g.
+    :meth:`unique_lines`) are answered by folding over ``lines_of``.
 
     Lines are interned to consecutive integers so a test's coverage is one
     Python ``int`` used as a bitset: union is ``|``, size is ``bit_count()``,
@@ -361,7 +377,7 @@ def canonical_lines(db_path: Path) -> dict[str, dict[int, int]]:
 def load_index_from_coverage(
     db_path: Path, known_tests: Optional[Iterable[str]] = None,
 ) -> CoverageIndex:
-    """Read a context-enabled coverage database into the inverted index.
+    """Read a context-enabled coverage database into a :class:`CoverageIndex`.
 
     Reads the ``line_bits`` schema directly rather than through
     ``CoverageData.contexts_by_lineno``: that API is per-file and would reopen
@@ -537,7 +553,8 @@ def greedy_trajectory(
 
     ``epsilon`` admits any candidate whose gain-per-second is within
     ``(1 - epsilon)`` of the best, and picks among them uniformly at random.
-    At ``epsilon == 0`` this is deterministic greedy. Near-ties are where the
+    At ``epsilon == 0`` this is deterministic, and it matches plain greedy
+    only when no group fixed cost is involved (INV-jupaf). Near-ties are where the
     free variation lives — dozens of tests with all-but-identical marginal
     gains, whose ordering is arbitrary — so harvesting them costs essentially
     nothing, unlike a temperature that perturbs every pick including the ones
@@ -575,8 +592,10 @@ def greedy_trajectory(
     while heap and covered.bit_count() < goal:
         candidates: list[tuple[float, str, int, float]] = []
         best_ratio: Optional[float] = None
-        # Re-evaluate stale entries until the top is provably current, then
-        # collect every candidate within epsilon of it.
+        # Re-evaluate stale entries until the top is current, then collect
+        # every candidate within epsilon of it. "Current" assumes a stale
+        # ratio is an upper bound, which grouped fixed costs break
+        # (INV-jupaf).
         while heap:
             neg_ratio, test_id = heapq.heappop(heap)
             new, cost = gain_and_cost(test_id, covered)

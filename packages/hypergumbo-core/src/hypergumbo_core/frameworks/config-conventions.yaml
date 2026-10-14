@@ -8,6 +8,7 @@
 # Note: Dependencies are not typically entrypoints, but having concepts
 # enables consistent filtering and future concept-driven features.
 
+provenance: builtin
 id: config-conventions
 language: multi
 

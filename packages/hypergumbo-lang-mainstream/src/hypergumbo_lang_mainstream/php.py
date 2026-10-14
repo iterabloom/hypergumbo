@@ -7,16 +7,28 @@ This analyzer uses tree-sitter-php to parse PHP files and extract:
 - Interface, trait and enum declarations (container symbols, so in-file
   interfaces take part in dispatch instead of surfacing as placeholders)
 - Method declarations (symbols)
-- Properties and class constants (``field``) and global constants
+- Properties and class constants (``field``, whose stable_id is the ADR-0035
+  producer formula, ``make_typed_stable_id`` over the namespace/type chain;
+  WI-tusad: they rode the backstop floor key) and global constants
   (``variable``)
+- The namespace of each declaration, read per declaration
+  (``_php_namespace_resolver``): braced ``namespace A { }`` blocks and
+  repeated ``namespace A;`` statements. It was read once from the first
+  definition, so a second namespace's declarations carried the first one's
+  name in ``qualified_name`` and stable_id and tied with it (INV-fabih
+  sweep). Classes, interfaces, traits and enums mint
+  ``overload_arity.scoped_table_stable_id`` scoped by that namespace (they
+  had the backstop's bare-name table key)
 - A per-file ``kind="file"`` pseudo-node that anchors file-level edges
 - Laravel route definitions (Route::get, Route::post, etc.)
 - Function call relationships (edges)
 - Method call relationships (edges)
 - Static method call relationships (edges)
 - Object instantiation relationships (edges)
-- Import relationships (edges): one ``imports`` edge per ``use`` statement,
-  carrying the full namespace so framework detection can match it
+- Import relationships (edges): one ``imports`` edge per ungrouped ``use``
+  clause that names a qualified path (``use A\\B, C\\D;`` gives two),
+  carrying the full namespace so framework detection can match it; grouped
+  ``use A\\{B, C}`` and a bare ``use Foo;`` emit none
 
 If tree-sitter-php is not installed, the analyzer gracefully degrades:
 it emits a warning and returns a skipped result.
@@ -51,13 +63,14 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
+    record_partial_parse,
     AnalysisResult,
     TreeSitterAnalyzer,
     defer_bare_method_call,
@@ -72,6 +85,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     visibility_from_modifiers,
 )
+from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -139,6 +153,20 @@ def _extract_use_aliases(
     In PHP:
         use Namespace\ClassName; -> ClassName maps to Namespace\ClassName
         use Namespace\ClassName as Alias; -> Alias maps to Namespace\ClassName
+        use Namespace\{A, B as C, Sub\D}; -> A, C and D, each under the prefix
+
+    THE GROUPED FORM (PHP 7.0+) IS ITS OWN SHAPE, and it registered nothing
+    until INV-nuvug. tree-sitter puts the shared prefix on the declaration as a
+    ``namespace_name`` and the clauses one level down, in a
+    ``namespace_use_group``; each clause holds a bare ``name`` (``A``) or a
+    qualified tail (``Sub\D``) RELATIVE to that prefix. A scan of the
+    declaration's direct children for a clause with a ``qualified_name`` found
+    neither, so a call through a grouped import fell to the ``external`` slot
+    while the single-import spelling of the same call resolved. INV-zuvib's
+    shape in rust.py.
+
+    An ungrouped clause still needs a ``qualified_name``: ``use Foo;`` names a
+    global class by itself and registers nothing, as before.
 
     Returns a dict mapping short names to full qualified names.
     """
@@ -148,34 +176,50 @@ def _extract_use_aliases(
         if node.type != "namespace_use_declaration":
             continue
 
-        # Each use declaration can have multiple clauses
+        prefix = ""
+        group = None
         for child in node.children:
-            if child.type == "namespace_use_clause":
-                # Find qualified_name and check for alias
-                path_node = None
-                alias_name = None
-                has_as = False
+            if child.type == "namespace_name":
+                prefix = node_text(child, source)
+            elif child.type == "namespace_use_group":
+                group = child
 
-                for sub in child.children:
-                    if sub.type == "qualified_name":
-                        path_node = sub
-                    elif sub.type == "as":
-                        has_as = True
-                    elif sub.type == "name" and has_as:
-                        # This is the alias after 'as'
-                        alias_name = node_text(sub, source)
-
-                if path_node:
-                    full_path = node_text(path_node, source)
-                    if alias_name:
-                        aliases[alias_name] = full_path
-                    else:
-                        # Use last component of namespace path
-                        short_name = full_path.rsplit("\\", 1)[-1]
-                        if short_name:
-                            aliases[short_name] = full_path
+        clauses = group.children if group is not None else node.children
+        for clause in clauses:
+            if clause.type != "namespace_use_clause":
+                continue
+            path, alias_name = _use_clause_path(clause, source, grouped=group is not None)
+            if path is None:
+                continue
+            full_path = f"{prefix}\\{path}" if prefix else path
+            short_name = alias_name or full_path.rsplit("\\", 1)[-1]
+            aliases[short_name] = full_path
 
     return aliases
+
+
+def _use_clause_path(
+    clause: "tree_sitter.Node", source: bytes, *, grouped: bool,
+) -> tuple[Optional[str], Optional[str]]:
+    """``(path, alias)`` of one ``namespace_use_clause``.
+
+    The path is the ``qualified_name`` child, or, inside a group only, the bare
+    ``name`` before any ``as``. The alias is the ``name`` after ``as``.
+    """
+    path: Optional[str] = None
+    alias_name: Optional[str] = None
+    has_as = False
+    for sub in clause.children:
+        if sub.type == "qualified_name":
+            path = node_text(sub, source)
+        elif sub.type == "as":
+            has_as = True
+        elif sub.type == "name":
+            if has_as:
+                alias_name = node_text(sub, source)
+            elif grouped and path is None:
+                path = node_text(sub, source)
+    return path, alias_name
 
 
 def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -301,6 +345,7 @@ def _php_member_symbol(
     modifiers: list[str],
     exported: bool,
     run: AnalysisRun,
+    stable_id: Optional[str] = None,
 ) -> Symbol:
     """Build a ``field`` / ``variable`` Symbol for a PHP property or constant,
     spanning the individual property/const ``element`` node (so ``$a, $b`` in one
@@ -322,6 +367,7 @@ def _php_member_symbol(
         span=span,
         origin=PASS_ID,
         origin_run_id=run.execution_id,
+        stable_id=stable_id,
         modifiers=modifiers,
         line_span=span.end_line - span.start_line + 1,
         is_exported=exported,
@@ -329,20 +375,47 @@ def _php_member_symbol(
     )
 
 
-def _extract_php_namespace(
-    root: "tree_sitter.Node", source: bytes
+def _php_namespace_name(
+    definition: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
-    """Extract the PHP namespace from the top-level ``namespace_definition``.
-
-    Returns ``None`` for files without a namespace declaration (the global
-    namespace).
-    """
-    for child in root.children:
-        if child.type == "namespace_definition":
-            for sub in child.children:
-                if sub.type in ("namespace_name", "qualified_name"):
-                    return node_text(sub, source)
+    """The name a ``namespace_definition`` declares; None for ``namespace {``
+    (the global namespace)."""
+    for sub in definition.children:
+        if sub.type in ("namespace_name", "qualified_name"):
+            return node_text(sub, source)
     return None
+
+
+def _php_namespace_resolver(
+    root: "tree_sitter.Node", source: bytes
+) -> "Callable[[tree_sitter.Node], Optional[str]]":
+    """A function giving the namespace each node of the file is declared in.
+
+    A file may declare several namespaces: braced (``namespace A { ... }``,
+    whose declarations are its descendants) or statement-form (``namespace
+    A;``, which holds until the next one, its declarations being SIBLINGS at
+    the top level). The namespace used to be read once, from the FIRST
+    definition, so every declaration of a later namespace carried the first
+    one's name in its ``qualified_name`` and stable_id: ``A\\Inner`` and
+    ``B\\Inner`` were both ``A\\Inner``, tied, and deleting the first moved
+    the second's id (INV-fabih sweep). None is the global namespace.
+    """
+    statements = [
+        (child.start_byte, _php_namespace_name(child, source))
+        for child in root.children
+        if child.type == "namespace_definition"
+        and not any(c.type == "compound_statement" for c in child.children)
+    ]
+
+    def namespace_of(node: "tree_sitter.Node") -> Optional[str]:
+        current = node.parent
+        while current is not None:
+            if current.type == "namespace_definition":
+                return _php_namespace_name(current, source)
+            current = current.parent
+        before = [name for start, name in statements if start < node.start_byte]
+        return before[-1] if before else None
+    return namespace_of
 
 
 def _make_php_qualified_name(
@@ -463,19 +536,76 @@ def normalize_php_signature(
     return normalize_signature_php(signature, type_params)
 
 
+# PHP's simple backslash escapes. A single-quoted literal has only two
+# (backslash-quote and backslash-backslash); the grammar emits an
+# ``escape_sequence`` node only for a sequence the literal's quote style really
+# decodes, so a single-quoted backslash-n stays inside one ``string_content``
+# run and is never decoded here.
+_PHP_SIMPLE_ESCAPES: dict[str, str] = {
+    "\\\\": "\\", "\\'": "'", '\\"': '"', "\\$": "$", "\\n": "\n",
+    "\\t": "\t", "\\r": "\r", "\\v": "\v", "\\e": "\x1b", "\\f": "\f",
+}
+
+# A literal's own delimiter tokens; any other child of an ``encapsed_string``
+# (``variable_name``, ``{``, ``member_access_expression``, ...) is interpolation.
+_PHP_LITERAL_DELIMITERS = frozenset({"'", '"'})
+
+
+def _php_escape_value(text: str) -> str | None:
+    """Decode one ``escape_sequence`` node's text, or ``None`` if invalid.
+
+    Covers the simple escapes, octal ``\\101``, hex ``\\x41`` and Unicode
+    ``\\u{42}``. A codepoint past U+10FFFF is a PHP compile error, so it is
+    refused rather than guessed.
+    """
+    simple = _PHP_SIMPLE_ESCAPES.get(text)
+    if simple is not None:
+        return simple
+    try:
+        if text.startswith("\\u{"):
+            return chr(int(text[3:-1], 16))
+        if text.startswith("\\x"):
+            return chr(int(text[2:], 16))
+        return chr(int(text[1:], 8) & 0xFF)
+    except ValueError:
+        return None
+
+
 def _php_string_value(
     string_node: "tree_sitter.Node", source: bytes
 ) -> str | None:
-    """Return the text inside a PHP ``string`` literal node.
+    """Return the value of a PLAIN PHP string literal, else ``None``.
 
-    Prefers the grammar's ``string_content`` child; falls back to stripping
-    the surrounding quotes when the grammar does not expose one (an empty
-    string literal has no content child).
+    The one literal reader for the Laravel route walk (WI-fadip). A
+    single-quoted literal is a ``string`` node and a double-quoted one an
+    ``encapsed_string`` node; both are accepted, which is the whole point:
+    testing only for ``string`` silently dropped every double-quoted route.
+
+    The value is the WHOLE literal: every ``string_content`` run joined with
+    its decoded ``escape_sequence`` nodes, so ``'it\\'s'`` reads ``it's``
+    rather than its first run ``it``. An empty literal returns ``""``.
+
+    ``None`` means "not a plain literal", never "empty": any other node type
+    (a variable, a constant, a call) and any INTERPOLATED double-quoted
+    string (``"/u/{$x}"``, ``"/u/$x"``). Reading an interpolated string as
+    its leading run would emit the wrong value (the route ``/u/``), so the
+    caller must refuse it instead. Laravel's ``"/u/{id}"`` is not
+    interpolation (no ``$``); the grammar keeps it inside ``string_content``.
     """
+    if string_node.type not in ("string", "encapsed_string"):
+        return None
+    parts: list[str] = []
     for child in string_node.children:
         if child.type == "string_content":
-            return node_text(child, source)
-    return node_text(string_node, source).strip("'\"") or None
+            parts.append(node_text(child, source))
+        elif child.type == "escape_sequence":
+            decoded = _php_escape_value(node_text(child, source))
+            if decoded is None:
+                return None
+            parts.append(decoded)
+        elif child.type not in _PHP_LITERAL_DELIMITERS:
+            return None
+    return "".join(parts)
 
 
 def _laravel_match_methods(
@@ -505,8 +635,8 @@ def _laravel_match_methods(
                 if arr_child.type != "array_element_initializer":
                     continue
                 for element in arr_child.children:
-                    if element.type != "string":
-                        continue
+                    # Either quote style; an interpolated or empty verb
+                    # contributes nothing rather than a wrong verb (WI-fadip).
                     value = _php_string_value(element, source)
                     if value:
                         methods.append(value.strip().upper())
@@ -555,28 +685,18 @@ def _extract_controller_action(
                                         if cc.type == "name":
                                             controller = node_text(cc, source)
                                             break
-                                elif elem.type == "encapsed_string":
-                                    # "action" with double-quoted encapsed_string
-                                    for str_child in elem.children:  # pragma: no cover
-                                        if str_child.type == "string_content":
-                                            action = node_text(str_child, source)
-                                            break
-                                elif elem.type == "string":
-                                    # 'action' with single-quoted string
-                                    for str_child in elem.children:
-                                        if str_child.type == "string_content":
-                                            action = node_text(str_child, source)
-                                            break
+                                elif elem.type in ("string", "encapsed_string"):
+                                    # 'action' or "action"; an interpolated
+                                    # action is refused, not truncated.
+                                    action = _php_string_value(elem, source)
                     if controller and action:
                         return f"{controller}@{action}"
 
                 # String syntax: 'Controller@action'
                 elif arg_child.type in ("string", "encapsed_string"):
-                    for str_child in arg_child.children:
-                        if str_child.type == "string_content":
-                            text = node_text(str_child, source)
-                            if "@" in text:
-                                return text
+                    text = _php_string_value(arg_child, source)
+                    if text and "@" in text:
+                        return text
             break
 
         arg_index += 1  # pragma: no cover - loop breaks at arg_index == 1
@@ -650,9 +770,9 @@ def _laravel_collect_string_args(
         ->except('create', 'edit')                 # variadic strings
         ->except(['create', 'edit'])               # array literal
 
-    Non-string arguments (variables, function calls) are silently skipped —
-    we can't statically resolve them and a partial parse is more useful
-    than refusing to apply any restriction.
+    Non-string arguments (variables, function calls, interpolated strings)
+    are silently skipped — we can't statically resolve them and a partial
+    parse is more useful than refusing to apply any restriction.
     """
     args_node = member_call.child_by_field_name("arguments")
     if args_node is None:  # pragma: no cover - defensive
@@ -679,9 +799,11 @@ def _laravel_extract_strings(
     """
     out: set[str] = set()
     if node.type in ("string", "encapsed_string"):
-        for sc in node.children:
-            if sc.type == "string_content":
-                out.add(node_text(sc, source))
+        # The whole literal, one value; an interpolated one is skipped
+        # rather than read as its leading run (WI-fadip).
+        value = _php_string_value(node, source)
+        if value:
+            out.add(value)
         return out
     if node.type == "array_creation_expression":
         for elem in node.children:
@@ -766,8 +888,12 @@ def _extract_laravel_routes(
                 if child.type != "argument":
                     continue
                 if arg_index == arg_offset:
+                    # Either quote style (WI-fadip: a double-quoted path is an
+                    # `encapsed_string`, and testing only `string` dropped every
+                    # such route). An interpolated path reads as None and the
+                    # route is refused below, never truncated to its prefix.
                     for arg_child in child.children:
-                        if arg_child.type == "string":
+                        if arg_child.type in ("string", "encapsed_string"):
                             route_path = _php_string_value(arg_child, source)
                             break
                     break
@@ -940,8 +1066,9 @@ def _extract_symbols(
     ``str(file_path)`` for tests that call this helper directly.
     """
     symbols: list[Symbol] = []
-    # ADR-0032 Phase 4 PR4: extract namespace once for qualified_name population.
-    namespace_name = _extract_php_namespace(tree.root_node, source)
+    # ADR-0032 Phase 4 PR4: the namespace for qualified_name population, per
+    # declaration (a file may declare several; INV-fabih sweep).
+    namespace_of = _php_namespace_resolver(tree.root_node, source)
 
     # INV-kokaj: emit the file pseudo-node as kind="file" with the
     # canonical file-id shape so the orchestrator file-symbol synthesizer
@@ -983,6 +1110,7 @@ def _extract_symbols(
         # Function declarations
         if node.type == "function_definition":
             name = _find_name_in_children(node, source)
+            namespace_name = namespace_of(node)
             if name:
                 span = Span(
                     start_line=node.start_point[0] + 1,
@@ -1026,6 +1154,7 @@ def _extract_symbols(
         # Type-container declarations (class / interface / trait / enum)
         elif node.type in _PHP_CONTAINER_KINDS:
             name = _find_name_in_children(node, source)
+            namespace_name = namespace_of(node)
             if name:
                 span = Span(
                     start_line=node.start_point[0] + 1,
@@ -1048,6 +1177,12 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    # INV-fabih: the table formula scoped by the namespace (a
+                    # file may declare two ``Inner`` in two namespaces).
+                    stable_id=scoped_table_stable_id(
+                        kind=container_kind, lang="php", path=file_name, name=name,
+                        scope=[namespace_name] if namespace_name else [],
+                    ),
                     meta=meta,
                     modifiers=_extract_modifiers_php(node),
                     shape_id=_analyzer.compute_shape_id(node),
@@ -1060,6 +1195,7 @@ def _extract_symbols(
         # Method declarations (inside classes)
         elif node.type == "method_declaration":
             name = _find_name_in_children(node, source)
+            namespace_name = namespace_of(node)
             if name:
                 span = Span(
                     start_line=node.start_point[0] + 1,
@@ -1111,6 +1247,7 @@ def _extract_symbols(
         # so a method-body local (an assignment_expression) can never reach here.
         elif node.type == "property_declaration":
             enclosing = _enclosing_type_name(node, source)
+            namespace_name = namespace_of(node)
             if enclosing is not None:
                 modifiers = _extract_modifiers_php(node)
                 exported = (
@@ -1122,16 +1259,22 @@ def _extract_symbols(
                     pname = _php_property_element_name(el, source)
                     if pname is None:  # pragma: no cover - defensive
                         continue
+                    qualified = _make_php_qualified_name(namespace_name, enclosing, pname)
                     symbols.append(_php_member_symbol(
                         file_path, el, f"{enclosing}.{pname}", "field",
-                        _make_php_qualified_name(namespace_name, enclosing, pname),
-                        modifiers, exported, run,
+                        qualified, modifiers, exported, run,
+                        stable_id=make_typed_stable_id(
+                            "field", "", visibility_from_modifiers(modifiers),
+                            name=pname, qualified_name=qualified,
+                            file_stable_id=file_stable_id,
+                        ),
                     ))
 
         # Constants: a class/interface/trait/enum constant is a ``field``; a
         # top-level (global) constant is a ``variable``.
         elif node.type == "const_declaration":
             enclosing = _enclosing_type_name(node, source)
+            namespace_name = namespace_of(node)
             for el in node.children:
                 if el.type != "const_element":
                     continue
@@ -1139,10 +1282,15 @@ def _extract_symbols(
                 if cname is None:  # pragma: no cover - defensive
                     continue
                 if enclosing is not None:
+                    qualified = _make_php_qualified_name(namespace_name, enclosing, cname)
                     symbols.append(_php_member_symbol(
                         file_path, el, f"{enclosing}.{cname}", "field",
-                        _make_php_qualified_name(namespace_name, enclosing, cname),
-                        [], True, run,
+                        qualified, [], True, run,
+                        stable_id=make_typed_stable_id(
+                            "field", "", visibility_from_modifiers([]),
+                            name=cname, qualified_name=qualified,
+                            file_stable_id=file_stable_id,
+                        ),
                     ))
                 else:
                     symbols.append(_php_member_symbol(
@@ -1497,6 +1645,7 @@ class PHPAnalyzer(TreeSitterAnalyzer):
             try:
                 source = file_path.read_bytes()
                 tree = parser.parse(source)
+                record_partial_parse(run, str(file_path.relative_to(repo_root)), tree)  # WI-bulaz
                 use_aliases = _extract_use_aliases(tree, source)
                 parsed_files.append(_ParsedFile(
                     path=file_path, tree=tree, source=source, use_aliases=use_aliases

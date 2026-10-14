@@ -91,10 +91,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# The cohort ledger (WI-kovoj): a map that is missing, empty or cut off
+# mid-write is FAILED and named, not skipped with a stderr line, and the run
+# states covered-of-given.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from cohort_ledger import CohortLedger, read_json_member
+
 
 def _load_map(path: Path) -> dict[str, Any]:
-    with path.open(encoding="utf-8") as fh:
-        return json.load(fh)
+    doc: dict[str, Any] = read_json_member(path)
+    return doc
 
 
 def _lang_of(symbol_id: str) -> str:
@@ -258,13 +264,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     report: dict[str, Any] = {}
-    for map_path in args.maps:
-        name = map_path.stem
-        try:
-            report[name] = measure(map_path)
-        except Exception as exc:  # pragma: no cover - operator feedback
-            print(f"!! {name}: {exc}", file=sys.stderr)
-            continue
+    ledger = CohortLedger([str(m) for m in args.maps], unit="map",
+                          label=lambda m: Path(m).stem)
+    for member in ledger:
+        with ledger.attempt(member):
+            report[ledger.label(member)] = measure(Path(member))
 
     header = (
         f"{'repo':<12} {'lang':<8} {'A:any':>6} {'B:nonFP':>8} {'C:meth':>7} "
@@ -287,10 +291,13 @@ def main(argv: list[str] | None = None) -> int:
         "\nE (tagged_io_boundaries) is NOT REPORTED: io_boundary meta is stamped "
         "downstream of `survey`, so a survey map cannot carry it. Unmeasured, not zero."
     )
+    print()
+    ledger.report()
     if args.json_out:
-        args.json_out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        args.json_out.write_text(json.dumps(
+            {"cohort": ledger.claim(), "maps": report}, indent=2), encoding="utf-8")
         print(f"\nwrote {args.json_out}")
-    return 0
+    return ledger.exit_code()
 
 
 if __name__ == "__main__":

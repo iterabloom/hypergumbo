@@ -28,6 +28,15 @@ How It Works
 YAML Format
 -----------
 See ``function_summaries/*.yaml`` files and ADR-0017 §4b for the schema.
+
+A file that does not parse, is not a mapping, carries a ``summaries:`` that is
+not a list, or an entry the parser cannot read raises
+:class:`~hypergumbo_core.yaml_catalogs.CatalogueError` naming the file, which
+the CLI reports as exit 2. Every file is checked as it is read -- shipped, the
+user's ``function_summaries.d`` -- so a broken file is never skipped in silence
+and never escapes as an uncaught parser exception. An empty file, or a
+mapping without ``summaries:`` (a provenance header alone), contributes
+nothing and is not an error, matching the taint loaders.
 """
 from __future__ import annotations
 
@@ -36,7 +45,11 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Optional
 
-import yaml
+from ..yaml_catalogs import (
+    CatalogueError,
+    declares_community,
+    read_catalogue_yaml,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +119,19 @@ class FunctionSummary:
     callback: Optional[CallbackFlow] = None
     #: True when this entry came from the USER'S channel
     #: (``$XDG_CONFIG_HOME/hypergumbo/function_summaries.d/``), ADR-0047
-    #: ruling 10. Stamped at LOAD, never read from the YAML, so a file cannot
-    #: claim to be shipped. A user-supplied TERMINATING summary closes a branch
+    #: ruling 10, in a file with no ``provenance: community`` line. Stamped
+    #: at LOAD, never read from the YAML, so a file cannot claim to be
+    #: shipped. A user-supplied TERMINATING summary closes a branch
     #: that is really open and DELETES a real finding, so verify_claims has to
     #: be able to say whose word a clean answer rests on.
     user_supplied: bool = False
+    #: ADR-0061 ruling 2 (WI-tigud): True when this entry came from a file
+    #: declaring ``provenance: community`` -- shipped, or left in the user's
+    #: channel with the line intact (ruling 3). A terminating summary removes
+    #: a finding -- the half an unvouched row may not do -- so the walk never
+    #: lets a community summary close a branch. Stamped at load, never read
+    #: from the YAML.
+    community: bool = False
 
 
 # Conservative default: all params flow to return
@@ -142,14 +163,21 @@ def get_summaries_dir() -> Path:
 
 def load_function_summaries(
     search_dir: Optional[Path] = None,
+    *,
+    include_community: bool = True,
 ) -> dict[str, FunctionSummary]:
     """Load all function summaries from YAML files in a directory.
 
     Returns a dict mapping function name → FunctionSummary.
     Caches results to avoid repeated disk I/O.
+
+    ``include_community=False`` leaves the COMMUNITY files out -- shipped, or
+    in the user's channel still declaring the line -- what
+    ``--no-default-overlays`` asks of every family (ADR-0061 ruling 5,
+    INV-fikoh). The two answers are cached apart.
     """
     search = search_dir or get_summaries_dir()
-    cache_key = str(search)
+    cache_key = f"{search}|community={include_community}"
     if cache_key in _SUMMARY_CACHE:
         return _SUMMARY_CACHE[cache_key]
 
@@ -161,9 +189,11 @@ def load_function_summaries(
     # ADR-0047 ruling 10 (WI-sofov). The user's entries load AFTER the shipped
     # ones so they win on a name collision, and they are stamped
     # ``user_supplied`` at merge rather than read from the file -- a summary
-    # cannot declare itself vouched-for. Only when the DEFAULT directory is
-    # being loaded, so an explicit ``search_dir`` (tests, and any caller asking
-    # about one particular tree) still means exactly that.
+    # cannot declare itself vouched-for (a channel file still declaring
+    # ``provenance: community`` is not theirs; see ``_rank``). Only when the
+    # DEFAULT directory is being loaded, so an explicit ``search_dir`` (tests,
+    # and any caller asking about one particular tree) still means exactly
+    # that.
     paths = sorted(search.glob("*.yaml"))
     user_paths: "list[Path]" = []
     if search_dir is None:
@@ -171,16 +201,42 @@ def load_function_summaries(
         user_paths = user_channel_files("function_summaries")
         paths = [*paths, *user_paths]
 
+    loaded: "list[tuple[Path, dict[str, Any], list[FunctionSummary]]]" = []
     for yaml_path in paths:
-        with open(yaml_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-        if not data or "summaries" not in data:
-            continue
-        for entry in data["summaries"]:
-            summary = _parse_summary(entry)
-            if yaml_path in user_paths:
+        data, summaries = _read_summary_file(yaml_path)
+        if summaries:
+            loaded.append((yaml_path, data, summaries))
+
+    # ADR-0061 ruling 2: a COMMUNITY row only adds. Community files load after
+    # the built-in ones and take a name -- full or short -- only when no
+    # built-in row holds it, so which file happens to sort first cannot decide
+    # whose word a summary is. The user's files still load last and win.
+    #
+    # Ruling 3: the tier is the file's own provenance line, asked FIRST, so a
+    # community file copied into function_summaries.d is still community --
+    # adds only, never closes a branch, dropped by ``include_community=False``
+    # -- and deleting the line is what makes it the user's. Asking the
+    # directory first stamped such a file ``user_supplied``: its terminating
+    # summary closed a branch on nobody's word and survived
+    # --no-default-overlays.
+    def _rank(item: "tuple[Path, dict[str, Any], list[FunctionSummary]]") -> int:
+        if declares_community(item[1]):
+            return 1
+        return 2 if item[0] in user_paths else 0
+
+    ranked = sorted(((_rank(item), item) for item in loaded),
+                    key=lambda pair: pair[0])
+    if not include_community:
+        ranked = [pair for pair in ranked if pair[0] != 1]
+    for rank, (_path, _data, summaries) in ranked:
+        for summary in summaries:
+            if rank == 2:
                 summary = replace(summary, user_supplied=True)
-            result[summary.function] = summary
+            if rank == 1:
+                summary = replace(summary, community=True)
+                result.setdefault(summary.function, summary)
+            else:
+                result[summary.function] = summary
             # Also index by short name (last component)
             if "." in summary.function:
                 short = summary.function.rsplit(".", 1)[-1]
@@ -188,6 +244,64 @@ def load_function_summaries(
 
     _SUMMARY_CACHE[cache_key] = result
     return result
+
+
+_WHAT = "function summary file"
+
+
+def _read_summary_file(
+    path: Path,
+) -> "tuple[dict[str, Any], list[FunctionSummary]]":
+    """``(document, parsed summaries)`` for one file, or a refusal naming it.
+
+    Parsed here, per file, rather than after ranking: a broken entry in a
+    community file ``include_community=False`` will drop is still a broken
+    file, and a refusal that depends on which flag was passed would be a
+    refusal a reader cannot reproduce.
+    """
+    data: dict[str, Any] = read_catalogue_yaml(path, what=_WHAT)
+    entries = data.get("summaries")
+    if entries is None:
+        return data, []
+    if not isinstance(entries, list):
+        raise CatalogueError(
+            f"{_WHAT} {path}: 'summaries:' must be a list, got "
+            f"{type(entries).__name__}."
+        )
+    parsed: list[FunctionSummary] = []
+    for number, entry in enumerate(entries, start=1):
+        if not isinstance(entry, dict):
+            raise CatalogueError(
+                f"{_WHAT} {path}: summary {number} must be a mapping, got "
+                f"{type(entry).__name__}."
+            )
+        try:
+            parsed.append(_parse_summary(entry))
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise CatalogueError(
+                f"{_WHAT} {path}: summary {number} could not be read "
+                f"({type(exc).__name__}: {exc})."
+            ) from exc
+    return data, parsed
+
+
+def split_community_summary_files(
+    paths: "list[Path]",
+) -> "tuple[list[Path], list[Path]]":
+    """``(yours, community)``: summary files split by their provenance line.
+
+    The question the verify-claims disclosure asks of the user's
+    ``function_summaries.d`` (ADR-0061 ruling 3), answered with this family's
+    noun: an unparseable file is refused as a function summary file, not as a
+    taint catalogue. A wrong-shape document answers "yours" and the load
+    refuses it.
+    """
+    yours: list[Path] = []
+    community: list[Path] = []
+    for path in paths:
+        data = read_catalogue_yaml(path, what=_WHAT, mapping=False)
+        (community if declares_community(data) else yours).append(path)
+    return yours, community
 
 
 def clear_summary_cache() -> None:

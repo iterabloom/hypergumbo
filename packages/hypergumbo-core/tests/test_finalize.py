@@ -415,6 +415,7 @@ _SUBSTEPS = [
     "_finalize_demote_superseded_stubs",
     "_finalize_compute_visibility",  # INV-jusot (7b, before commit)
     "_finalize_prune_repro_grammars",  # WI-fonod/WI-givad (7c, before commit)
+    "_finalize_stamp_external_owner_ancestors",  # WI-gabuv (7d, after 7, before commit)
     "_finalize_commit_dicts",
     "_finalize_referential_integrity",
 ]

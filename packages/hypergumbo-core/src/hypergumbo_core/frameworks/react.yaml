@@ -22,6 +22,10 @@
 # symbol, entrypoints.py disambiguates by preferring the more specific
 # framework match (e.g., Solid for render(), React for createBrowserRouter).
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-06-18
 id: react
 language: javascript
 

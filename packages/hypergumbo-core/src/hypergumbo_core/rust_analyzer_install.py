@@ -36,11 +36,15 @@ alone — we never clobber user-managed installs.
 
 Availability check
 ------------------
-:func:`is_rust_analyzer_available` is the single source of truth for
-"can the rust-analyzer backend activate?" — it's called by the
-``--check`` flag, by the ``hypergumbo add-extras --check`` umbrella
-(WI-huham → WI-josif), and by WI-nohah's graceful-degrade fall-through
-logic in the rust-analyzer backend (WI-duzul).
+Two probes, both needed for the SCIP backend to activate:
+:func:`is_rust_analyzer_available` checks that the ``rust-analyzer`` binary on
+PATH answers ``--version``, and :func:`is_rust_analyzer_integration_installed`
+checks that the ``hypergumbo-lang-rust-analyzer`` Python package is importable
+(WI-jinoh). ``--backend rust-analyzer`` exits at parse time unless both pass;
+``install-rust-analyzer --check`` prints each, and the ``add-extras --check``
+row requires both. The binary probe alone is what the backend's own gate
+(``hypergumbo_lang_rust_analyzer.gate``), backend selection and the
+partial-install warnings call.
 """
 from __future__ import annotations
 

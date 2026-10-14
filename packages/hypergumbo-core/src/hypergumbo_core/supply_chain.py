@@ -8,40 +8,105 @@ prioritized) and noise reduction (derived artifacts excluded).
 Tiers
 -----
 - FIRST_PARTY (1): Project's own source code (highest priority)
-- INTERNAL_DEP (2): Org-internal dependency packages (configured
-  internal_package_roots only)
+- INTERNAL_DEP (2): Org-internal dependency packages (workspace-sibling
+  dependency declarations; ``internal_package_roots`` when a caller passes a
+  ``SupplyChainConfig`` — see "Configuration" below)
 - EXTERNAL_DEP (3): Third-party dependencies in readable form
 - DERIVED (4): Build artifacts, transpiled/bundled output (skip analysis)
 
 Classification Algorithm
 ------------------------
-Classification happens at discovery time, before analysis. Signals are
-checked in order; first match wins:
+Classification runs after analysis, over the symbols: ``cli._classify_symbols``
+calls :func:`classify_file` once per file path and stamps every symbol in that
+file. Signals are checked in order; first match wins:
 
-1. Derived artifact detection (tier 4) - path patterns + content heuristics
-2. External dependency detection (tier 3) - node_modules/, vendor/, etc.
+1. Derived artifact detection (tier 4) - ``derived_patterns``, then
+   generated output that discovery's build-output content rules recognise
+   (``_build_output_root``: ``target/`` beside ``Cargo.toml``, ``site/``
+   beside ``mkdocs.yml`` ... -- never a bare ``dist``/``build``/``out``/
+   ``target`` name), then the remaining path patterns (dot-named tool
+   directories, ``__pycache__``) and filename patterns, then a content check
+   for minified output
+2. External dependency detection (tier 3) - root-anchored node_modules/,
+   vendor/, third_party/ (and the third-party/, thirdparty/ spellings),
+   external/, deps/, Pods/, Carthage/, .yarn/cache/, _vendor/
+   (``EXTERNAL_DEP_PATTERNS``); then nested node_modules/, vendor/,
+   bower_components/ and vendoring markers such as vendored Go SDKs anywhere
+   in the path (``EXTERNAL_DEP_DEEP_PATTERNS``); then installed dependency
+   source that discovery's content rules recognise
+   (``_installed_dependency_root`` asks ``discovery.match_content_rule``),
+   which reaches classification only when traced via ``--trace-deps``
+   (ADR-0004) - e.g. a virtualenv's site-packages or a nested ``server/deps/``
 3. Example/demo detection (tier 1, is_example=True) - examples/, demos/,
    samples/, tutorials/ (in-repo → first-party; the role is on is_example)
-4. Workspace package detection:
-   - If file matches a test directory pattern → tier 1 with is_test=True
+4. Documentation detection (tier 1) - in-repo docs; the role is carried by
+   the reason string (INV-naduh)
+5. ``SupplyChainConfig.internal_package_roots`` → tier 2 (the only tier-2
+   producer *within* ``classify_file``; ``cli._classify_symbols``
+   additionally tiers a workspace-sibling *dependency declaration* tier-2 via
+   :func:`collect_workspace_package_names` — INV-nuzas / ADR-0041 §1)
+6. Workspace package detection:
+   - If file is in a test directory, or matches a test file pattern beside
+     its source → tier 1 with is_test=True
    - Otherwise → tier 1 (workspace IS the project)
-5. Configured internal_package_roots → tier 2 (the only tier-2 producer
-   *within* ``classify_file``; ``cli._classify_symbols`` additionally tiers a
-   workspace-sibling *dependency declaration* tier-2 via
-   :func:`collect_workspace_package_names` — INV-nuzas / ADR-0041 D8a)
-6. Test code detection (tier 1 with is_test=True) - tests/, spec/,
-   __tests__/, _test.go, .test.js, etc. Routing tests through tier 2
-   historically made tier 2 a synonym for is_test and drowned out the
-   real internal-dep signal (INV-tisid).
-7. Documentation / notebook (.ipynb) / fuzz-bench detection (tier 1) -
-   in-repo role files; the role is carried by the reason string (INV-naduh).
-8. First-party detection (tier 1) - src/, lib/, app/ or default
+7. Test code detection (tier 1 with is_test=True) - language-specific
+   overrides first, then tests/, spec/, __tests__/, _test.go, .test.js, etc.
+   Routing tests through tier 2 historically made tier 2 a synonym for
+   is_test and drowned out the real internal-dep signal (INV-tisid).
+8. Notebook (.ipynb) and fuzz/bench detection (tier 1) - in-repo role files;
+   the role is carried by the reason string (INV-naduh).
+9. First-party detection (tier 1) - ``first_party_patterns``, then
+   src/, lib/, app/, pkg/, cmd/, internal/, crates/*/src/, packages/*/src/,
+   or default
 
 Per INV-naduh / ADR-0041 §1 the tier names supply-chain DISTANCE only: all
 in-repo files are first-party (distance 0), and tier 2 is reserved for
-org-internal *dependency* packages declared via config. Role files
-(examples, docs, notebooks, fuzz/bench, tests) carry their role on a
-separate axis (is_example / is_test / reason), not by tier.
+org-internal *dependency* packages. Role files (examples, docs, notebooks,
+fuzz/bench, tests) carry their role on a separate axis (is_example / is_test
+/ reason), not by tier.
+
+Configuration
+-------------
+The ``SupplyChainConfig`` arms (``derived_patterns``,
+``internal_package_roots``, ``first_party_patterns``) are honoured in steps
+1, 5 and 9 when a caller passes ``classify_file(config=...)``, but as of
+2026-10 no CLI flag or config key feeds them: both production callers
+(``cli._classify_symbols`` and ``sketch._run_analysis``) pass no ``config``,
+and ``.hypergumbo.toml`` rejects these keys as unknown settings. In a CLI run
+the only tier-2 producer is the workspace-sibling dependency declaration.
+
+Role Flags Beside the Tier
+--------------------------
+:func:`classify_file` stamps two more flags after the tier walk, independent
+of which step matched:
+
+- ``is_generated`` (WI-tizij / WI-pofin) - a path match against
+  ``GENERATED_CODE_PATTERNS`` (OpenAPI models, protobuf stubs, k8s code-gen,
+  go-swagger, openapi-gen TS), else a declaration in the file's leading
+  comment block within the first 4 KiB. The header test is one predicate,
+  ``_has_generated_marker``, shared with the minified-content check in step 1
+  so the flag and tier 4 cannot disagree (INV-bokim / INV-pogob).
+- ``is_config`` (WI-jobuj) - the basename is a package-manager or build
+  manifest in ``CONFIG_FILE_NAMES``; suppressed when ``is_test`` or
+  ``is_example`` is already set, so the three role flags stay exclusive.
+
+Manifest Readers
+----------------
+- :func:`detect_package_roots` reads npm/yarn/pnpm workspaces, Cargo
+  workspace members, Maven modules and Gradle ``include`` lines into the
+  workspace roots that step 6 consults.
+- :class:`DependencyManifest` holds what a language analyzer parsed from
+  go.mod / Maven / Gradle / Python manifests (the flat ``entries``) and from
+  Mix and npm manifests (the per-package-scheme ``scoped`` tables, WI-juzaj).
+  Per ADR-0041 §1 it no longer sets tier (every boundary node is tier 3);
+  ``directness_for(language, module)`` returns ``direct`` / ``transitive`` /
+  ``undeclared`` (or ``None`` when it cannot tell), and
+  ``ir.create_boundary_nodes`` stamps that on the ``directness`` meta key.
+- :func:`collect_first_party_package_names` (INV-vivok) reads the names the
+  repo publishes itself under (Cargo ``[package].name``, the go.mod module
+  path, ``package.json`` ``name``) so ``verify-claims`` stops reporting a
+  repo's self-references by published name as uncatalogued third-party
+  modules.
 
 See §14 of the hypergumbo spec for full details.
 """
@@ -53,7 +118,7 @@ import re
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Container, Iterator, Optional
 
 
 class Tier(IntEnum):
@@ -87,6 +152,18 @@ class DependencyManifest:
     """
 
     entries: dict[str, dict[str, Any]] = field(default_factory=dict)
+    scoped: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
+    """Per-package-scheme tables (WI-juzaj): ``{"hex": {...}, "npm": {...}}``.
+
+    Each maps a *package name* (a Mix dep / mix.lock key, an npm package name)
+    to ``{"direct": bool}``. They are kept apart from the flat ``entries``
+    because those are matched by raw longest-prefix against every legacy
+    language's import path, and a bare npm name (``yaml``, ``redis``) would
+    then stamp an unrelated Python import of the same spelling. A scoped table
+    is consulted only for the languages :data:`LANGUAGE_PACKAGE_SCHEME` routes
+    to it, after the scheme's own name rule maps the boundary's module path to
+    a package name.
+    """
 
     def classify_import(self, import_path: str) -> "Tier":
         """Classify the supply-chain *tier* of an external import path.
@@ -137,23 +214,194 @@ class DependencyManifest:
             return "undeclared"
         return "direct" if self.entries[best_match].get("direct", False) else "transitive"
 
+    def directness_for(self, language: str, module: str) -> Optional[str]:
+        """Directness of a boundary node of ``language`` at ``module``, or None.
+
+        The single dispatch ``ir.create_boundary_nodes`` calls (WI-juzaj):
+
+        * Go / Java / Kotlin / Python match the flat ``entries`` by
+          :meth:`classify_directness` -- but only when some manifest produced
+          flat entries. Without one, "undeclared" would be a claim made from
+          the absence of a file we never read (a Mix-only repo's one Python
+          script would otherwise read as importing phantom dependencies).
+        * Elixir / JavaScript / TypeScript map ``module`` to a package name by
+          their scheme's rule (:func:`hex_module_package`,
+          :func:`npm_specifier_package`) and look it up in ``scoped``.
+          A module that maps to no declared or locked package returns None,
+          NOT "undeclared": those boundary paths also carry unresolved
+          in-repo references (an un-expanded alias, a relative import the
+          analyzer stripped to a bare name, the ``external`` placeholder), so
+          "declared nowhere" cannot be told apart from "not a package".
+        * Every other language: None.
+        """
+        if language in LEGACY_MANIFEST_LANGUAGES:
+            if not self.entries:
+                return None
+            return self.classify_directness(module)
+        scheme = LANGUAGE_PACKAGE_SCHEME.get(language)
+        if scheme is None:
+            return None
+        packages = self.scoped.get(scheme)
+        if not packages:
+            return None
+        package = _SCHEME_RESOLVERS[scheme](module, packages)
+        if package is None:
+            return None
+        return "direct" if packages[package].get("direct", False) else "transitive"
+
     @classmethod
     def merge(cls, manifests: list["DependencyManifest"]) -> "DependencyManifest":
         """Merge multiple manifests into one.
 
-        Later entries override earlier ones for the same module path.
+        Later entries override earlier ones for the same module path in the
+        flat ``entries``. Scoped tables union, and a package any manifest
+        declares direct stays direct (one package.json declaring ``ws`` makes
+        it direct even if another workspace only has it in a lockfile).
         """
         merged: dict[str, dict[str, Any]] = {}
+        scoped: dict[str, dict[str, dict[str, Any]]] = {}
         for m in manifests:
             merged.update(m.entries)
-        return cls(entries=merged)
+            for scheme, packages in m.scoped.items():
+                table = scoped.setdefault(scheme, {})
+                for name, info in packages.items():
+                    direct = bool(info.get("direct", False)) or bool(
+                        table.get(name, {}).get("direct", False)
+                    )
+                    table[name] = {"direct": direct}
+        return cls(entries=merged, scoped=scoped)
+
+
+#: Languages whose boundary paths are matched against the flat ``entries``.
+LEGACY_MANIFEST_LANGUAGES = frozenset({"go", "java", "kotlin", "python"})
+
+#: Language -> package scheme of its scoped manifest table (WI-juzaj).
+LANGUAGE_PACKAGE_SCHEME: dict[str, str] = {
+    "elixir": "hex",
+    "javascript": "npm",
+    "typescript": "npm",
+}
+
+_UNDERSCORE_ACRONYM_RE = re.compile(r"([A-Z]+)([A-Z][a-z])")
+_UNDERSCORE_WORD_RE = re.compile(r"([a-z\d])([A-Z])")
+
+
+def macro_underscore(segment: str) -> str:
+    """Elixir's ``Macro.underscore`` for one module-name segment.
+
+    ``LiveView`` -> ``live_view``, ``HTTPoison`` -> ``htt_poison`` (sic --
+    Elixir's own result, which is why HTTPoison is an exception below),
+    ``NimbleTOTP`` -> ``nimble_totp``, ``JOSE`` -> ``jose``. This is the rule
+    Mix itself uses to turn ``Phoenix.LiveView`` into the app name
+    ``phoenix_live_view``, which is why it is the first-choice mapping.
+    """
+    out = _UNDERSCORE_ACRONYM_RE.sub(r"\1_\2", segment)
+    out = _UNDERSCORE_WORD_RE.sub(r"\1_\2", out)
+    return out.lower()
+
+
+#: Module namespaces whose Hex package is NOT the underscored namespace.
+#: Consulted before the underscore rule at each prefix length, and only
+#: honoured when the named package is actually in the project's manifest, so
+#: an entry here can never introduce a dependency the project does not have.
+HEX_MODULE_PACKAGE_EXCEPTIONS: dict[str, str] = {
+    "Phoenix.Component": "phoenix_live_view",
+    "Phoenix.LiveComponent": "phoenix_live_view",
+    "Phoenix.LiveViewTest": "phoenix_live_view",
+    "Phoenix.PubSub": "phoenix_pubsub",
+    "Phoenix.PubSub.Redis": "phoenix_pubsub_redis",
+    "Ecto.Adapters.SQL": "ecto_sql",
+    "Ecto.Migration": "ecto_sql",
+    "Ecto.Migrator": "ecto_sql",
+    "HTTPoison": "httpoison",
+    "Bcrypt": "bcrypt_elixir",
+    "Argon2": "argon2_elixir",
+    "Pbkdf2": "pbkdf2_elixir",
+    "Stripe": "stripity_stripe",
+    "Cluster": "libcluster",
+    "EQRCode": "eqrcode",
+}
+
+
+def hex_module_package(module: str, packages: Container[str]) -> Optional[str]:
+    """Map an Elixir/Erlang module reference to a Mix package, or None.
+
+    Conservative by construction -- an answer is always a name in
+    ``packages`` (the project's mix.exs deps plus its mix.lock keys), never a
+    synthesised guess:
+
+    * An Erlang atom module (``:telemetry`` arrives as ``telemetry``) matches
+      only a package of exactly that name. Erlang libraries routinely ship
+      modules prefixed by, but not named after, their app (``jose_jwk`` in
+      ``jose``), and prefix-guessing those would misattribute.
+    * An Elixir alias is tried from its longest dotted prefix down: at each
+      length first :data:`HEX_MODULE_PACKAGE_EXCEPTIONS`, then the
+      ``Macro.underscore`` join (``Phoenix.LiveView.JS`` -> try
+      ``phoenix_live_view_js``, then ``phoenix_live_view``). Longest-first
+      matters because ``phoenix`` is also a package.
+    """
+    if module.startswith("Elixir."):
+        # The fully-qualified atom form (``Elixir.Stripe.PaymentIntent``).
+        module = module[len("Elixir."):]
+    if not module or module == "external":
+        return None
+    if module[0].islower():
+        return module if module in packages else None
+    segments = module.split(".")
+    for end in range(len(segments), 0, -1):
+        prefix = ".".join(segments[:end])
+        exception = HEX_MODULE_PACKAGE_EXCEPTIONS.get(prefix)
+        if exception is not None and exception in packages:
+            return exception
+        candidate = "_".join(macro_underscore(seg) for seg in segments[:end])
+        if candidate in packages:
+            return candidate
+    return None
+
+
+def npm_specifier_package(specifier: str) -> Optional[str]:
+    """Map a JS/TS import specifier to its npm package name, or None.
+
+    ``lodash/fp`` -> ``lodash``; ``@scope/name/sub`` -> ``@scope/name``;
+    ``lit@3`` (a Deno ``npm:`` specifier after the analyzer strips the
+    scheme) -> ``lit``. Relative and absolute paths are not packages. The
+    analyzer has already stripped ``node:`` from built-ins, so ``fs`` comes
+    through as a bare name and simply matches no declared package.
+    """
+    if not specifier or specifier.startswith((".", "/")) or specifier == "external":
+        return None
+    parts = specifier.split("/")
+    if specifier.startswith("@"):
+        if len(parts) < 2 or not parts[1]:
+            return None
+        name = f"{parts[0]}/{parts[1]}"
+        at = name.find("@", 1)
+    else:
+        name = parts[0]
+        at = name.find("@")
+    if at > 0:
+        name = name[:at]
+    return name or None
+
+
+def _npm_resolver(module: str, packages: Container[str]) -> Optional[str]:
+    name = npm_specifier_package(module)
+    return name if name is not None and name in packages else None
+
+
+_SCHEME_RESOLVERS: dict[str, Callable[[str, Container[str]], Optional[str]]] = {
+    "hex": hex_module_package,
+    "npm": _npm_resolver,
+}
 
 
 @dataclass
 class SupplyChainConfig:
     """Configuration for supply chain classification.
 
-    Allows customizing tier classification via capsule plan.
+    Allows customizing tier classification when passed as
+    ``classify_file(config=...)``. No production caller constructs one as of
+    2026-10 (see the module docstring's "Configuration" section).
 
     Attributes:
         first_party_patterns: Additional patterns to classify as tier 1
@@ -194,7 +442,8 @@ class FileClassification:
     tier 2 a synonym for is_test (~99% of self-analysis tier-2 entries
     were tests, drowning out actual internal-dep signal). Per INV-naduh /
     ADR-0041 §1, tier 2 is reserved for org-internal *dependency* packages
-    (configured ``internal_package_roots`` only); other in-repo role files
+    (``SupplyChainConfig.internal_package_roots``, when a caller passes a
+    config); other in-repo role files
     — examples, docs, notebooks, fuzz/bench harnesses — are first-party
     (tier 1) with the role carried by the flag/reason, not by tier.
 
@@ -212,12 +461,13 @@ class FileClassification:
     is_generated: bool = False
 
 
-# Path patterns for tier inference (checked as prefixes on relative path)
+# Path patterns for tier inference (checked as prefixes on relative path).
+# Only names no project uses for source. ``dist/`` / ``build/`` / ``out/`` /
+# ``target/`` are NOT here: whether one is generated output is decided by the
+# tool that writes it (discovery.BUILD_OUTPUT_RULES, asked through
+# ``_build_output_root``) -- qemu's root ``target/`` is 653 files of CPU
+# emulation source, and matching it by name made all of it tier 4.
 DERIVED_PATH_PATTERNS = [
-    r"^dist/",
-    r"^build/",
-    r"^out/",
-    r"^target/",
     r"^\.next/",
     r"^\.nuxt/",
     r"^\.output/",
@@ -318,6 +568,17 @@ EXTERNAL_DEP_DEEP_PATTERNS = [
     (r"(?:^|/)vendored/", "vendored assets"),
     (r"(?:^|/)npm_mirror/", "vendored npm mirror"),
     (r"(?:^|/)bower_components/", "bower_components/"),
+    # ADR-0004 §"Installed dependency source" point 3: a COMMITTED vendor tree
+    # below the root (kata-containers ``src/runtime/vendor``, 3,282 files; a
+    # ``web/node_modules`` committed for offline builds) is analysed now that
+    # discovery no longer drops these names wholesale, and it is dependency
+    # code wherever it sits. The root-anchored patterns above keep their
+    # labels; these catch the nested remainder. Cost, stated: a first-party
+    # directory that is literally named ``vendor`` below the root (a
+    # marketplace app's domain module) is tier 3 rather than tier 1 -- still
+    # analysed, which is more than the old name exclusion gave it.
+    (r"(?:^|/)node_modules/", "node_modules/"),
+    (r"(?:^|/)vendor/", "vendor/"),
 ]
 
 FIRST_PARTY_PATTERNS = [
@@ -400,8 +661,8 @@ FUZZ_BENCH_PATTERNS = [
 # Patterns for test code — checked BEFORE first-party patterns.
 # Per INV-tisid, BOTH dedicated test directories AND co-located test
 # files route to tier 1 (FIRST_PARTY) with is_test=True. Tier 2 is
-# reserved for in-repo non-test code (examples, fuzz harnesses,
-# vendored deps); a "test dir → tier 2" rule made tier 2 a synonym
+# reserved for org-internal dependency packages (INV-naduh); a
+# "test dir → tier 2" rule had made tier 2 a synonym
 # for is_test (~99% of self-analysis tier-2 entries were tests).
 TEST_DIR_PATTERNS = [
     r"(?:^|/)tests?/",       # tests/ or test/ at any level
@@ -646,7 +907,7 @@ def classify_file(
         when the basename matches a dependency/build manifest filename
         (``pyproject.toml``, ``package.json``, ``Cargo.toml``, etc.) —
         but NOT when ``is_test`` or ``is_example`` is already True, so
-        the role flags remain mutually exclusive within tier 2.
+        the role flags remain mutually exclusive.
     """
     # Get relative path for pattern matching
     try:
@@ -665,7 +926,7 @@ def classify_file(
     if generated:
         result.is_generated = True
     # WI-jobuj: is_config is mutually exclusive with is_test / is_example
-    # within tier 2 (test and example detection wins on a tie, e.g., a
+    # (test and example detection wins on a tie, e.g., a
     # package.json under examples/ is is_example=True, not is_config).
     if config_filename and not result.is_test and not result.is_example:
         result.is_config = True
@@ -690,7 +951,14 @@ def _classify_file_core(
             if rel.startswith(pattern) or re.match(f"^{re.escape(pattern)}", rel):
                 return FileClassification(Tier.DERIVED, f"config derived_patterns: {pattern}")
 
-    # 1. Check derived patterns first (these should be skipped)
+    # 1. Check derived patterns first (these should be skipped). Generated
+    # output first, by the same content rule that prunes it from discovery,
+    # so the walk and the classifier can never disagree about what is output.
+    output = _build_output_root(rel, repo_root)
+    if output is not None:
+        return FileClassification(
+            Tier.DERIVED, f"in {output[1]} output {output[0]}/",
+        )
     for pattern in DERIVED_PATH_PATTERNS:
         if re.match(pattern, rel):
             return FileClassification(Tier.DERIVED, f"path matches {pattern}")
@@ -714,6 +982,18 @@ def _classify_file_core(
         if re.search(pattern, rel):
             pkg = _extract_package_name(rel, label)
             return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
+
+    # 3c. Installed dependency source traced with --trace-deps where no path
+    # pattern reaches it (a virtualenv's site-packages, a nested Mix
+    # ``server/deps/``). ADR-0004 §"Installed dependency source" point 5:
+    # traced dependency source is tier 3, as dependency source always was.
+    installed = _installed_dependency_root(rel, repo_root)
+    if installed is not None:
+        return FileClassification(
+            Tier.EXTERNAL_DEP,
+            f"in installed dependency source {installed[0]}/",
+            installed[1],
+        )
 
     # 4. Check example/demo patterns (lower priority than workspace packages).
     # INV-naduh / ADR-0041 §1: tier names supply-chain DISTANCE only. In-repo
@@ -748,8 +1028,8 @@ def _classify_file_core(
                     rel_to_pkg = str(path.relative_to(pkg_root)).replace("\\", "/")
                     # INV-tisid: test directories inside workspace packages
                     # are tier 1 with is_test=True. Tier 2 is reserved for
-                    # in-repo non-test code (examples, fuzz harnesses,
-                    # vendored deps). Previously this branch returned
+                    # org-internal dependency packages (INV-naduh).
+                    # Previously this branch returned
                     # INTERNAL_DEP, causing 99% of self-analysis tier-2
                     # entries to be tests rather than actual internal deps.
                     for test_pat in TEST_DIR_PATTERNS:
@@ -794,8 +1074,8 @@ def _classify_file_core(
             )
 
     # 5b. INV-tisid: test directories are tier 1 with is_test=True.
-    # Tier 2 is reserved for in-repo non-test code (examples, fuzz
-    # harnesses, vendored deps); test code is first-party code that
+    # Tier 2 is reserved for org-internal dependency packages
+    # (INV-naduh); test code is first-party code that
     # the project's authors write, not a vendored dependency.
     for pattern in TEST_DIR_PATTERNS:
         if re.search(pattern, rel):
@@ -969,10 +1249,10 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
             content = cargo_toml.read_text()
             # Simple TOML parsing for workspace members
             if "[workspace]" in content:
-                for match in re.finditer(
+                for members_match in re.finditer(
                     r"members\s*=\s*\[(.*?)\]", content, re.DOTALL
                 ):
-                    for member in re.findall(r'"([^"]+)"', match.group(1)):
+                    for member in re.findall(r'"([^"]+)"', members_match.group(1)):
                         if not member or member == ".":
                             continue
                         for path in repo_root.glob(member):
@@ -1060,7 +1340,54 @@ def _extract_package_name(rel_path: str, pattern_label: str) -> Optional[str]:
     return None
 
 
-# INV-nuzas / ADR-0041 D8a — workspace-sibling dependency recognition.
+def _build_output_root(rel: str, repo_root: Path) -> Optional[tuple[str, str]]:
+    """``(root, tool)`` when ``rel`` lies inside a directory discovery's
+    build-output rules claim as generated output (ADR-0004 point 7), else
+    ``None``. Name-gated by ``match_content_rule``, so an ancestor that is no
+    candidate costs one set lookup."""
+    from .discovery import match_content_rule
+
+    parts = rel.split("/")[:-1]
+    for i in range(len(parts)):
+        rule = match_content_rule(repo_root.joinpath(*parts[: i + 1]))
+        if rule is not None and not rule.is_installed_dep:
+            return "/".join(parts[: i + 1]), rule.ecosystem
+    return None
+
+
+def _installed_dependency_root(
+    rel: str, repo_root: Path,
+) -> Optional[tuple[str, Optional[str]]]:
+    """``(root, package)`` when ``rel`` lies inside a directory discovery's
+    content rules recognise as installed dependency source, else ``None``.
+
+    Asks :func:`discovery.match_content_rule` -- the same test that pruned
+    the untraced directories -- for each ancestor directory, so the two can
+    never disagree about what is installed. ``package`` is the name of the
+    package directory ``rel`` falls in, when it is one of the root's listed
+    packages.
+    """
+    from .discovery import installed_packages, match_content_rule
+
+    parts = rel.split("/")[:-1]
+    for i in range(len(parts)):
+        root = repo_root.joinpath(*parts[: i + 1])
+        rule = match_content_rule(root)
+        if rule is None or not rule.is_installed_dep:
+            continue
+        path = repo_root / rel
+        pkg = next(
+            (
+                name for name, p in installed_packages(root, rule).items()
+                if path == p or path.is_relative_to(p)
+            ),
+            None,
+        )
+        return "/".join(parts[: i + 1]), pkg
+    return None
+
+
+# INV-nuzas / ADR-0041 §1 — workspace-sibling dependency recognition.
 #
 # A monorepo sibling that another workspace member declares as a *dependency*
 # is workspace-INTERNAL (tier 2 ``internal_dep``), not a third-party external
@@ -1069,7 +1396,7 @@ def _extract_package_name(rel_path: str, pattern_label: str) -> Optional[str]:
 # below lets it tier a matching declaration tier-2 instead. This parallels the
 # workspace-member *subtraction* in
 # ``hypergumbo_lang_mainstream.py_deps.parse_python_dependencies`` (same
-# ADR-0041 D8a rule, applied there to imported boundary nodes). The two cannot
+# ADR-0041 §1 rule, applied there to imported boundary nodes). The two cannot
 # share code: ``hypergumbo-core`` is the base package and must not import a
 # language-analyzer package, so the small name-collection logic is duplicated.
 _WORKSPACE_NAME_NORMALIZE_RE = re.compile(r"[-_.]+")
@@ -1108,7 +1435,8 @@ def collect_workspace_package_names(repo_root: Path) -> set[str]:
 
     Walks ``repo_root`` for every ``pyproject.toml`` (the root manifest and any
     ``packages/<pkg>/pyproject.toml`` at any depth), skipping
-    ``discovery.DEFAULT_EXCLUDES`` and dot-prefixed directories so a vendored
+    ``discovery.manifest_walk_skip()`` names, content-claimed dependency
+    directories and dot-prefixed directories so a vendored
     ``.venv/site-packages/<pkg>/pyproject.toml`` cannot leak in, and reads each
     package's own distribution name (``[project].name`` /
     ``[tool.poetry].name``).
@@ -1117,14 +1445,44 @@ def collect_workspace_package_names(repo_root: Path) -> set[str]:
     :func:`cli._classify_symbols`: a ``kind='dependency'`` symbol whose
     normalized name is in this set is a workspace-internal dependency
     declaration (tier 2), not a third-party external (tier 3) —
-    INV-nuzas / ADR-0041 D8a. Returns an empty set when no ``pyproject.toml``
+    INV-nuzas / ADR-0041 §1. Returns an empty set when no ``pyproject.toml``
     is present (non-Python repo → all deps stay tier 3, unchanged behavior).
     """
     from .profile import _load_toml
-    from .discovery import DEFAULT_EXCLUDES
-
-    skip = set(DEFAULT_EXCLUDES)
     names: set[str] = set()
+    for entry in _manifest_files(repo_root, {"pyproject.toml"}):
+        try:
+            content = entry.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, IOError):  # pragma: no cover - unreadable file
+            continue
+        data = _load_toml(content)
+        if not isinstance(data, dict):
+            continue
+        own = _own_distribution_name(data)
+        if own:
+            names.add(_normalize_pep503(own))
+    return names
+
+
+def _manifest_files(repo_root: Path, file_names: "Container[str]") -> "Iterator[Path]":
+    """Every file under ``repo_root`` whose name is in ``file_names``.
+
+    Skips ``discovery.manifest_walk_skip()`` names (``DEFAULT_EXCLUDES`` plus
+    ``node_modules`` / ``vendor``), directories a discovery content rule claims
+    (a virtualenv, Mix ``deps/``, ...; see ``discovery.walks_into``) and
+    dot-prefixed directories, so a dependency's manifest cannot leak in.
+
+    DOES NOT DESCEND INTO A DIRECTORY SYMLINK (INV-pivir), which is what
+    ``Path.rglob`` and discovery already do. ``Path.is_dir()`` follows links,
+    so the walk this replaces pushed a link back to its own parent forever:
+    arti's ``maint/rust-maint-common/{maint,common} -> .`` is two self-links
+    per level, an exponential walk, and ``verify-claims`` sat at 100% CPU for
+    30+ minutes before any analysis ran. A symlinked manifest FILE is still
+    read -- reading one file is bounded.
+    """
+    from .discovery import manifest_walk_skip, walks_into
+
+    skip = manifest_walk_skip()
     stack = [repo_root]
     while stack:
         cur = stack.pop()
@@ -1133,22 +1491,11 @@ def collect_workspace_package_names(repo_root: Path) -> set[str]:
         except (PermissionError, OSError):  # pragma: no cover - unreadable dir
             continue
         for entry in entries:
-            if entry.is_file() and entry.name == "pyproject.toml":
-                try:
-                    content = entry.read_text(encoding="utf-8", errors="ignore")
-                except (OSError, IOError):  # pragma: no cover - unreadable file
-                    continue
-                data = _load_toml(content)
-                if not isinstance(data, dict):
-                    continue
-                own = _own_distribution_name(data)
-                if own:
-                    names.add(_normalize_pep503(own))
-            elif entry.is_dir():
-                if entry.name in skip or entry.name.startswith("."):
-                    continue
+            if entry.is_file():
+                if entry.name in file_names:
+                    yield entry
+            elif walks_into(entry, skip):
                 stack.append(entry)
-    return names
 
 
 def _own_cargo_package_name(content: str) -> Optional[str]:
@@ -1248,8 +1595,8 @@ def collect_first_party_package_names(repo_root: Path) -> set[str]:
     Reading the manifest is a fact; the tier is a proxy that fails open.
 
     Scoped to the three manifests that publish a name a callee slot can carry
-    (see :data:`_FIRST_PARTY_MANIFESTS`). Skips ``DEFAULT_EXCLUDES`` and
-    dot-prefixed directories, so a vendored ``node_modules/<dep>/package.json``
+    (see :data:`_FIRST_PARTY_MANIFESTS`). Skips dependency directories (see
+    :func:`_manifest_files`), so a vendored ``node_modules/<dep>/package.json``
     — which names a THIRD-PARTY package — cannot leak in. Returns names in
     their published spelling; the separator fold belongs to the consumer.
 
@@ -1272,31 +1619,13 @@ def collect_first_party_package_names(repo_root: Path) -> set[str]:
     where "this repo publishes it" and "this reference resolves to it" can come
     apart, and a later reader should know that before widening the rule.
     """
-    from .discovery import DEFAULT_EXCLUDES
-
-    skip = set(DEFAULT_EXCLUDES)
     names: set[str] = set()
-    stack = [repo_root]
-    while stack:
-        cur = stack.pop()
+    for entry in _manifest_files(repo_root, _FIRST_PARTY_MANIFESTS):
         try:
-            entries = list(cur.iterdir())
-        except (PermissionError, OSError):  # pragma: no cover - unreadable dir
+            content = entry.read_text(encoding="utf-8", errors="ignore")
+        except OSError:  # pragma: no cover - unreadable file
             continue
-        for entry in entries:
-            if entry.is_file():
-                reader = _FIRST_PARTY_MANIFESTS.get(entry.name)
-                if reader is None:
-                    continue
-                try:
-                    content = entry.read_text(encoding="utf-8", errors="ignore")
-                except OSError:  # pragma: no cover - unreadable file
-                    continue
-                own = reader(content)
-                if own:
-                    names.add(own)
-            elif entry.is_dir():
-                if entry.name in skip or entry.name.startswith("."):
-                    continue
-                stack.append(entry)
+        own = _FIRST_PARTY_MANIFESTS[entry.name](content)
+        if own:
+            names.add(own)
     return names

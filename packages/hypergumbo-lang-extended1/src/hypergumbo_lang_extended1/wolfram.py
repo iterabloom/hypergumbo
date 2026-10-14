@@ -2,10 +2,13 @@
 """Wolfram Language analysis pass using tree-sitter-wolfram.
 
 This analyzer uses tree-sitter to parse Wolfram Language files and extract:
-- Function definitions (SetDelayed :=)
-- Variable assignments (Set =)
-- Function calls
-- Import statements (Get, Needs, Import)
+- Function definitions (``f[x_] := ...``, and ``f[x_] = ...`` too)
+- Variable assignments (Set =), including ones inside a function body, which
+  become file-level variables
+- Function calls, as edges from the FILE node (not the enclosing function),
+  one per callee name per file; a callee found nowhere gets a
+  ``wolfram:builtin:0-0:<name>:function`` id
+- Import statements (calls to Get, Needs, Import)
 
 Wolfram Language (also known as Mathematica) is a symbolic programming language
 used for technical computing, data science, and mathematical modeling.
@@ -32,14 +35,52 @@ Wolfram Language Considerations
 -------------------------------
 - Function definitions use SetDelayed (:=) or Set (=)
 - Pattern matching uses underscores (x_) for arguments
-- Imports use Get["package`"], Needs["package`"], or <<package`
+- Imports use Get["package`"], Needs["package`"], or <<package`; only the
+  three call forms are extracted, not ``<<package```
 - Package names end with backtick (`)
 - Comments use (* ... *)
+
+Known gaps: the left-hand side of a definition (``f[x_] := ...``) is itself a
+call node, so every definition also yields a ``calls`` edge to the function it
+defines; and ``.m`` files are not analyzed (``*.m`` is not in the file
+patterns, and ``find_wolfram_files`` has no caller).
+
+Definitions and identity (INV-kagib, WI-tusad)
+----------------------------------------------
+Every definition is its own ``function`` symbol: ``run[x_Integer] := x`` and
+``run[x_String] := ...`` are two overloads (Wolfram dispatches on the pattern),
+and ``fib[0] = 0`` / ``fib[n_] := ...`` are two rules. Before, a per-file set of
+seen names kept only the first. A variable assigned more than once is still one
+``variable`` symbol (its first assignment). The tree-sitter grammar does not
+parse blank patterns (``x_Integer`` becomes an ``ERROR`` node and ``helper[]``
+is not a call at all, so ``helper[] := 2`` was missed), so a definition is
+recognised from the TEXT of its left-hand side, ``name[args]``, and the
+arguments are split at top-level commas and read as patterns:
+
+* ``x_``, ``x_Integer``, ``x_?NumericQ``: one parameter; what follows the blank
+  (the head, a ``?test``) is its type;
+* ``x__`` / ``x___`` (and ``opts:OptionsPattern[]``): the variadic parameter;
+* ``x_:1`` / ``x_.``: a parameter with a default;
+* anything else (``0``, ``"a"``, ``{a_, b_}``): a literal pattern, whose text is
+  its type.
+
+The parameters go to ``meta["parameters"]`` and the ADR-0035 producer stable_id
+is minted through ``overload_arity.declared_arity_stable_id``: a definition with
+any typed or literal argument takes the typed tier, so ``run[x_Integer]`` and
+``run[x_String]`` (same arity) get distinct ids that do not depend on which is
+written first. Two definitions with the same patterns (a redefinition) tie and
+are ordered by the per-file occurrence pass. ``signature`` is the argument list
+as written (``[x_Integer]``). ``f[x_][y_] := ...`` (a curried definition) is
+read by its first argument group. ``a[[1]] = v`` (a Part assignment) and
+``f[x_] /; c := ...`` (a conditioned left-hand side) are not definitions here.
+A definition inside another definition's right-hand side (a ``Module`` local)
+hashes the enclosing definitions' names too (INV-fabih).
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -48,6 +89,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     find_child_by_type,
+    ancestor_labels,
     iter_tree,
     make_file_id,
     make_symbol_id,
@@ -55,6 +97,9 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -84,46 +129,117 @@ def _make_module_id(module_name: str) -> str:
     return f"wolfram:{module_name}:0-0:module:module"
 
 
-def _extract_wolfram_signature(
-    call_node: "tree_sitter.Node", source: bytes
-) -> Optional[str]:
-    """Extract function signature from a Wolfram function call pattern.
+#: ``name[`` at the start of a definition's left-hand side.
+_DEF_HEAD_RE = re.compile(r"([A-Za-z$][A-Za-z0-9$`]*)\s*\[")
 
-    Wolfram function definitions use pattern matching:
-    f[x_, y_] := body -> [x_, y_]
-    f[x_Integer, y_List] := body -> [x_Integer, y_List]
+#: One blank pattern: ``name`` (optional), 1-3 underscores, a head (optional),
+#: then whatever follows (``?test``, ``:default``, ``.``). A Wolfram symbol
+#: has no underscore (``_`` IS the blank), so names and heads exclude it.
+_BLANK_RE = re.compile(
+    r"([A-Za-z$][A-Za-z0-9$]*)?(_{1,3})([A-Za-z$][A-Za-z0-9$`]*)?(.*)", re.S,
+)
 
-    Returns signature string like "[x_, y_]" or None.
+#: ``name:pattern`` (a named pattern that is not a blank, ``opts:OptionsPattern[]``).
+_NAMED_PATTERN_RE = re.compile(r"([A-Za-z$][A-Za-z0-9$]*):(?!_)(.+)", re.S)
+
+_BRACKETS = {"[": "]", "{": "}", "(": ")"}
+
+
+def _split_top_level(text: str) -> Optional[tuple[list[str], int]]:
+    """Split the text after a ``[`` at top-level commas up to its matching ``]``.
+
+    Returns the argument texts and the index just past the ``]``, or None when
+    the brackets do not balance. Strings are skipped whole.
     """
-    # Find the argument list within the call
-    params: list[str] = []
-
-    # Look for pattern arguments in the call's children
-    in_brackets = False
-    for child in call_node.children:
-        if child.type == "[":
-            in_brackets = True
+    args: list[str] = []
+    depth: list[str] = []
+    current: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == '"':
+            close = text.find('"', i + 1)
+            if close < 0:
+                return None
+            current.append(text[i:close + 1])
+            i = close + 1
             continue
-        if child.type == "]":
-            break
-        if not in_brackets:
+        if ch in _BRACKETS:
+            depth.append(_BRACKETS[ch])
+        elif depth and ch == depth[-1]:
+            depth.pop()
+        elif not depth and ch == "]":
+            arg = "".join(current).strip()
+            if arg or args:
+                args.append(arg)
+            return args, i + 1
+        elif not depth and ch == ",":
+            args.append("".join(current).strip())
+            current = []
+            i += 1
             continue
+        current.append(ch)
+        i += 1
+    return None
 
-        # Skip commas
-        if child.type == ",":  # pragma: no cover - separator
-            continue  # pragma: no cover
 
-        # Collect pattern arguments (pattern, blank, etc.)
-        if child.type in ("pattern", "blank", "blank_sequence", "blank_null_sequence",
-                          "pattern_blank", "pattern_blank_sequence", "pattern_blank_null_sequence",
-                          "symbol"):
-            param_text = node_text(child, source).strip()
-            if param_text:
-                params.append(param_text)
+def _definition_lhs(lhs: str) -> Optional[tuple[str, list[str]]]:
+    """``(name, argument texts)`` when ``lhs`` is ``name[args]`` (or ``name[args][...]``).
 
-    if params:
-        return "[" + ", ".join(params) + "]"
-    return "[]"
+    None for anything else: a bare symbol, a Part assignment ``a[[1]]``, a
+    conditioned ``f[x_] /; c``, unbalanced text.
+    """
+    head = _DEF_HEAD_RE.match(lhs)
+    if head is None or lhs[head.end():].startswith("["):
+        return None
+    split = _split_top_level(lhs[head.end():])
+    if split is None:
+        return None
+    args, used = split
+    rest = lhs[head.end() + used:]
+    while rest.startswith("["):  # curried: f[x_][y_]
+        more = _split_top_level(rest[1:])
+        if more is None:
+            return None
+        rest = rest[1 + more[1]:]
+    if rest.strip():
+        return None
+    return head.group(1), args
+
+
+def _pattern_parameter(arg: str) -> dict[str, Any]:
+    """One ``meta["parameters"]`` entry for a Wolfram argument pattern."""
+    text = " ".join(arg.split())
+    blank = _BLANK_RE.fullmatch(text)
+    if blank is not None:
+        name, blanks, head, rest = blank.groups()
+        default = rest.startswith(":") or rest == "."
+        type_text = (head or "") + ("" if default else rest)
+        return parameter_entry(
+            name or blanks, type_text or None,
+            default=default, variadic=len(blanks) > 1,
+        )
+    named = _NAMED_PATTERN_RE.fullmatch(text)
+    if named is not None:
+        pattern = named.group(2)
+        return parameter_entry(
+            named.group(1), pattern,
+            variadic=pattern.startswith("OptionsPattern"),
+        )
+    return parameter_entry(text, text)
+
+
+def _definition_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The name ``node`` defines when it is a ``name[args] := ...`` /
+    ``name[args] = ...`` definition, else None."""
+    if node.type != "binary":
+        return None
+    op_node = next((c for c in node.children if c.type in (":=", "=")), None)
+    if op_node is None:
+        return None
+    lhs = source[node.start_byte:op_node.start_byte].decode("utf-8", errors="replace")
+    definition = _definition_lhs(lhs.strip())
+    return definition[0] if definition is not None else None
 
 
 def _extract_symbols_from_file(
@@ -141,19 +257,30 @@ def _extract_symbols_from_file(
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     symbols: list[Symbol] = []
-    seen_names: set[str] = set()
+    seen_variables: set[str] = set()
 
     def add_symbol(
         node: "tree_sitter.Node",
         name: str,
         kind: str,
-        meta: dict | None = None,
+        meta: dict[str, Any] | None = None,
         signature: Optional[str] = None,
     ) -> None:
-        """Add a symbol if not already seen."""
-        if not name or name in seen_names:  # pragma: no cover - defensive
-            return  # pragma: no cover
-        seen_names.add(name)
+        """Add one symbol; a variable only on its first assignment."""
+        stable_id: Optional[str] = None
+        if kind == "variable":
+            if name in seen_variables:
+                return
+            seen_variables.add(name)
+        else:
+            # INV-fabih: a definition inside another one's right-hand side
+            # (a ``Module`` local) hashes the enclosing definitions; ``inner``
+            # in ``a[x_] := Module[...]`` and ``b[x_] := ...`` tied.
+            enclosing = ancestor_labels(node, lambda n: _definition_name(n, source))
+            stable_id = declared_arity_stable_id(
+                kind=kind, lang="wolfram", path=file_path, name=name,
+                qualified_name=".".join((*enclosing, name)), arity=declared_arity(meta),
+            )
 
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
@@ -171,6 +298,7 @@ def _extract_symbols_from_file(
         _is_callable = kind == "function"
         sym = Symbol(
             id=sym_id,
+            stable_id=stable_id,
             name=name,
             kind=kind,
             language="wolfram",
@@ -183,61 +311,38 @@ def _extract_symbols_from_file(
                 compute_cyclomatic_complexity(node, "wolfram") if _is_callable else None
             ),
             line_span=(end_line - start_line + 1) if _is_callable else None,
+            meta=meta or None,
         )
-        if meta:  # pragma: no cover - meta rarely used
-            sym.meta = meta  # pragma: no cover
         symbols.append(sym)
 
     for node in iter_tree(tree.root_node):
-        # Look for binary expressions with := or =
-        if node.type == "binary":
-            children = node.children
-            # Pattern: left_side operator right_side
-            # Check for := (SetDelayed) - function definition
-            # Check for = (Set) - assignment
-            op_node = None
-            left_node = None
-            for i, child in enumerate(children):
-                if child.type == ":=":
-                    op_node = child
-                    left_node = children[i - 1] if i > 0 else None
-                    break
-                elif child.type == "=":
-                    op_node = child
-                    left_node = children[i - 1] if i > 0 else None
-                    break
-
-            if op_node and left_node:
-                if op_node.type == ":=":
-                    # SetDelayed - function definition
-                    # Left side is usually a call like f[x_]
-                    if left_node.type == "call":
-                        # Get the function name from the call
-                        func_name_node = find_child_by_type(left_node, "symbol")
-                        if func_name_node:
-                            func_name = node_text(func_name_node, source).strip()
-                            if func_name:
-                                # Extract signature from the call pattern
-                                signature = _extract_wolfram_signature(left_node, source)
-                                add_symbol(node, func_name, "function", signature=signature)
-                    elif left_node.type == "symbol":  # pragma: no cover - simple pattern
-                        # Could be a simple pattern like f := ...
-                        sym_name = node_text(left_node, source).strip()  # pragma: no cover
-                        if sym_name:  # pragma: no cover
-                            add_symbol(node, sym_name, "function")  # pragma: no cover
-                elif op_node.type == "=":
-                    # Set - variable assignment
-                    if left_node.type == "symbol":
-                        var_name = node_text(left_node, source).strip()
-                        if var_name:
-                            add_symbol(node, var_name, "variable")
-                    elif left_node.type == "call":  # pragma: no cover - immediate def
-                        # Could be like f[x_] = ... (immediate definition)
-                        func_name_node = find_child_by_type(left_node, "symbol")  # pragma: no cover
-                        if func_name_node:  # pragma: no cover
-                            func_name = node_text(func_name_node, source).strip()  # pragma: no cover
-                            if func_name:  # pragma: no cover
-                                add_symbol(node, func_name, "function")  # pragma: no cover
+        # A definition or assignment: ``lhs := rhs`` (SetDelayed) or
+        # ``lhs = rhs`` (Set), the first such operator among the children.
+        if node.type != "binary":
+            continue
+        op_node = next(
+            (c for c in node.children if c.type in (":=", "=")), None,
+        )
+        if op_node is None:
+            continue
+        lhs = source[node.start_byte:op_node.start_byte].decode(
+            "utf-8", errors="replace",
+        ).strip()
+        definition = _definition_lhs(lhs)
+        if definition is not None:
+            func_name, args = definition
+            add_symbol(
+                node, func_name, "function",
+                meta={PARAMETERS_KEY: [_pattern_parameter(a) for a in args]},
+                signature="[" + ", ".join(" ".join(a.split()) for a in args) + "]",
+            )
+        elif node.children[0].type == "symbol" and op_node == node.children[1]:
+            name = node_text(node.children[0], source).strip()
+            if op_node.type == "=":
+                add_symbol(node, name, "variable")
+            else:
+                # ``f := ...``: a delayed value, called as ``f``.
+                add_symbol(node, name, "function", meta={PARAMETERS_KEY: []})
 
     return symbols
 
@@ -340,7 +445,7 @@ class WolframAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

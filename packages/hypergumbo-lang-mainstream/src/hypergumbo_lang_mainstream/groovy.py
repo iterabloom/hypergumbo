@@ -7,6 +7,10 @@ This analyzer uses tree-sitter to parse Groovy files and extract:
 - Enum declarations
 - Method declarations (inside classes)
 - Top-level function definitions (def keyword)
+- Identity over the FULL type chain (``_groovy_scope``; INV-fabih): methods
+  hashed their emitted nearest-owner name (``Inner.go``) and types the
+  backstop's bare-name table key, so two nested ``class Inner`` tied; types
+  now mint ``overload_arity.scoped_table_stable_id``
 - Function call relationships
 - Import statements
 
@@ -27,6 +31,19 @@ Uses the TreeSitterAnalyzer base class for two-pass orchestration:
 3. register_symbol: registers each symbol by its qualified name (the NameResolver suffix index handles short-name lookups for cross-file resolution)
 4. extract_edges_from_file: resolves import statements and function/method calls
 
+Call resolution in ``extract_edges_from_file`` adds three guards:
+- Receiver-type inference: typed parameters and ``def x = new T()``
+  assignments populate ``var_types``, so ``x.m()`` is tried as ``T.m``
+  first.
+- AMB-METHOD suppression: when 3+ classes define the called method
+  name (``ListNameResolver`` with ``ambiguity_threshold=3``), no edge
+  is emitted.
+- INV-fahub deferral: a bare (receiver-less) call that resolves only to
+  another class's method on weak suffix evidence is withheld
+  (``defer_bare_method_call``) and emitted as an unresolved edge
+  stamped with the enclosing class, for the inherited-calls linker to
+  recover.
+
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
@@ -42,12 +59,14 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
+from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     defer_bare_method_call,
     find_child_by_type,
     iter_tree,
@@ -231,6 +250,30 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
     return None  # pragma: no cover - defensive
 
 
+#: Groovy type declarations a member or nested type can sit in.
+_GROOVY_TYPE_DECLS = frozenset({
+    "class_declaration", "interface_declaration", "trait_declaration",
+    "enum_declaration",
+})
+
+
+def _groovy_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The types enclosing ``node``, outermost first (INV-fabih).
+
+    What a method's and a nested type's stable_id hash beside its own name:
+    the emitted name keeps the nearest owner (``Inner.go``), which two nested
+    ``class Inner`` in ``A`` and ``B`` share, and types had the backstop's
+    bare-name table key, so the two tied and deleting the first moved the
+    second's ids. Top-level types and their members keep their values.
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type not in _GROOVY_TYPE_DECLS:
+            return None
+        name_node = find_child_by_type(n, "identifier")
+        return node_text(name_node, source) if name_node is not None else None
+    return ancestor_labels(node, label)
+
+
 def _get_enclosing_function_groovy(
     node: "tree_sitter.Node",
     decl_index: SymbolsAt,
@@ -348,9 +391,9 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
     Extracts classes, interfaces, enums, methods, top-level functions,
     import statements, and call edges.
 
-    Overrides ``register_symbol`` to register both short and fully-qualified
-    names for cross-file resolution (e.g., both "doSomething" and
-    "Utils.doSomething").
+    Overrides ``register_symbol`` to register each symbol under its own
+    name only (e.g., "Utils.doSomething" for a method); the
+    ``NameResolver`` suffix index handles short-name lookups.
 
     Overrides ``get_import_aliases`` for Groovy's 'import X as Y' syntax.
     """
@@ -416,6 +459,11 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         meta=meta,
+                        # INV-fabih: the table formula over the enclosing types.
+                        stable_id=scoped_table_stable_id(
+                            kind="class", lang="groovy", path=rel_path,
+                            name=class_name, scope=_groovy_scope(node, source),
+                        ),
                         modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
@@ -445,6 +493,11 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         ),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
+                        # INV-fabih: the table formula over the enclosing types.
+                        stable_id=scoped_table_stable_id(
+                            kind="interface", lang="groovy", path=rel_path,
+                            name=iface_name, scope=_groovy_scope(node, source),
+                        ),
                         modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
@@ -505,6 +558,11 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         ),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
+                        # INV-fabih: the table formula over the enclosing types.
+                        stable_id=scoped_table_stable_id(
+                            kind="enum", lang="groovy", path=rel_path,
+                            name=enum_name, scope=_groovy_scope(node, source),
+                        ),
                         modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
@@ -536,7 +594,8 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     norm_sig = normalize_groovy_signature(signature)
                     stable_id = make_typed_stable_id(
                         "method", norm_sig, visibility_from_modifiers(modifiers),
-                        name=method_name, qualified_name=full_name,
+                        name=method_name,
+                        qualified_name=".".join((*_groovy_scope(node, source), method_name)),
                         file_stable_id=file_stable_id,
                     ) if norm_sig else None
 

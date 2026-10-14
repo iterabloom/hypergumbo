@@ -161,8 +161,7 @@ class TestThePopulationMoved:
 
     def test_the_browser_credential_rows_stayed_put(self) -> None:
         """``document.cookie`` is genuinely credential material, so it keeps
-        ``host_secret`` even though its two row-mates
-        (``document.location`` / ``document.referrer``) are arguably
-        attacker-influenceable input. That is a distinct defect and is filed
-        separately rather than folded in here."""
+        ``host_secret``. The page URL and referrer keep it too and are ALSO
+        attacker input, through ``navigation_read``
+        (``test_navigation_read_boundary.py``)."""
         assert _label_of("javascript", "document", "cookie") == "host_secret"

@@ -35,7 +35,10 @@ Matching strategy
    expressions (``func=make_handler()``) are skipped — only a bare
    (possibly dotted) identifier names a statically-known handler.
 3. Resolve the identifier via ``ctx.find_symbols_by_name`` (last
-   component for dotted names), keep only callable symbol kinds
+   component for dotted names) among PYTHON symbols only -- the
+   identifier is a binding in the registering module's scope, so a
+   same-named Go / JS / Ruby symbol is a name coincidence (WI-gopok) --
+   keep only callable symbol kinds
    (function / method / class — a class registered as a handler is
    instantiated-then-called), and emit a ``dispatches_to`` edge from
    the registration site's enclosing symbol to the handler.
@@ -97,6 +100,12 @@ _NON_HANDLER_VALUES = frozenset({"True", "False", "None", "lambda"})
 # not a dispatch target; a ``class`` is kept because handler classes
 # (``set_defaults(cls=Command)``) are instantiated and run.
 _HANDLER_SYMBOL_KINDS = frozenset({"function", "method", "class"})
+
+# Languages a ``set_defaults(func=X)`` identifier can denote (WI-gopok): X is
+# a name bound in the Python module that registers it, so only a Python
+# symbol (from either Python producer, ``python`` or ``scip_python`` -- both
+# stamp ``language="python"``) can be the handler.
+_HANDLER_LANGUAGES = frozenset({"python"})
 
 # Upper bound on one set_defaults argument span. Real registrations are
 # a few lines; the cap keeps the paren scan linear on pathological
@@ -203,10 +212,13 @@ def argparse_dispatch_linker(ctx: LinkerContext) -> LinkerResult:
             continue
 
         for kwarg, handler_name, line in _find_handler_registrations(source):
-            candidates = ctx.find_symbols_by_name(handler_name)
+            candidates = ctx.find_symbols_by_name(
+                handler_name, languages=_HANDLER_LANGUAGES,
+            )
             if not candidates and "." in handler_name:
                 candidates = ctx.find_symbols_by_name(
                     handler_name.rsplit(".", 1)[-1],
+                    languages=_HANDLER_LANGUAGES,
                 )
             candidates = [
                 s for s in candidates if s.kind in _HANDLER_SYMBOL_KINDS

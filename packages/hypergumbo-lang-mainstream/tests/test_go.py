@@ -8174,9 +8174,9 @@ class TestGoBareMethodMagnetGate:
     ) -> None:
         """A bare ``Process()`` whose short name resolves only to methods on
         OTHER types (ambiguous match) is withheld, not bound — instead an
-        unresolved edge stamped with the caller's enclosing class is emitted
-        so the inherited_calls Site-1 walker can recover a genuine inherited
-        implicit-receiver call.
+        unresolved edge is emitted. (Until WI-bivin it carried the caller's
+        enclosing class for the inherited_calls Site-1 walker; Go has no
+        implicit receiver for that walker to recover.)
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -8222,8 +8222,7 @@ class TestGoBareMethodMagnetGate:
         ]
         assert not resolved_to_process, resolved_to_process
 
-        # Instead: a single unresolved Process edge carrying the enclosing
-        # class for the inherited_calls Site-1 walker.
+        # Instead: a single unresolved Process edge.
         deferred = [
             e for e in call_edges
             if not e.is_resolved
@@ -8232,8 +8231,16 @@ class TestGoBareMethodMagnetGate:
         assert len(deferred) == 1, [
             (e.dst, e.is_resolved) for e in call_edges
         ]
+        # WI-bivin: and WITHOUT ``enclosing_class``. Go has no implicit
+        # receiver -- a promoted method is reached only as ``c.Process()`` --
+        # so a bare ``Process()`` is never a method of the caller's type, and
+        # the stamp only let the inherited_calls Site-1 walker bind it to an
+        # embedded type's method (live, dev 7a645c6c76: a compiling package
+        # with ``func Process()`` got ``Caller.Run -> TypeA.Process`` at 0.9).
+        # A bare name now resolves in the caller's own package, never to a
+        # method (test_go_bare_call_package_scope.py).
         assert deferred[0].meta is not None
-        assert deferred[0].meta.get("enclosing_class") == "Caller"
+        assert "enclosing_class" not in deferred[0].meta
 
     def test_bare_free_function_still_resolves(
         self, tmp_path: Path,

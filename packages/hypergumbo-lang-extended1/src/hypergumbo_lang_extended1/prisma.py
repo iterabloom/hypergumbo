@@ -2,7 +2,9 @@
 """Prisma schema analyzer using tree-sitter.
 
 This module provides static analysis for Prisma schema files (.prisma), extracting
-models, enums, fields, and relationships for database schema visualization.
+models, enums, datasource/generator blocks and relationships for database schema
+visualization. A model's fields are counted (``field_count``), not emitted as
+symbols.
 
 Prisma is an ORM for Node.js and TypeScript that uses a declarative schema file
 to define database models and their relationships.
@@ -12,13 +14,20 @@ Implementation approach:
 - Uses tree-sitter-language-pack for Prisma grammar
 - Extracts models, enums, datasources, and generators
 - Detects field relationships (@relation) for inter-model edges
-- Tracks field types for schema understanding
+- Reads a field's type only to find a ``@relation`` target
 
 Key constructs extracted:
 - model_block: Database models (tables)
 - enum_block: Enumerations
 - key_value_block: Datasource and generator configs
 - model_field with @relation: Foreign key relationships
+
+Symbol kinds: a model is ``kind="class"`` with ``meta["is_model"]``, an enum is
+``kind="enum"``, and a datasource or generator is ``kind="block"`` with the
+construct kept in ``meta["block_type"]``. Each ``@relation`` field yields a
+``references`` edge from its model to the target model, looked up by name in
+the repo-wide registry: a hit is confidence 1.0, a miss goes to
+``prisma:unresolved:<Target>`` at 0.6.
 """
 
 from __future__ import annotations
@@ -223,7 +232,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:
@@ -241,7 +250,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
 
     def _extract_edges_recursive(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
-        global_symbols: dict, run: "AnalysisRun", edges: list[Edge],
+        global_symbols: dict[str, Symbol], run: "AnalysisRun", edges: list[Edge],
     ) -> None:
         """Extract relationship edges from a syntax tree node recursively."""
         if node.type == "model_block":
@@ -266,7 +275,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
     def _process_field_relation(
         self, field_node: "tree_sitter.Node", source_model_id: str,
         path: Path, repo_root: Path,
-        global_symbols: dict, run: "AnalysisRun", edges: list[Edge],
+        global_symbols: dict[str, Symbol], run: "AnalysisRun", edges: list[Edge],
     ) -> None:
         """Process a model field for potential relations."""
         has_relation = False

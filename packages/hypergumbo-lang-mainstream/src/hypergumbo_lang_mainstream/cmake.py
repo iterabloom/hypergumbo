@@ -31,6 +31,35 @@ Why This Design
   earlier in iteration order; unresolved names are treated as external library
   references
 - Build-system-specific: targets, functions, macros are first-class
+
+Function and macro identity (WI-tusad)
+--------------------------------------
+``function(name A B)`` / ``macro(name A B)`` record their named arguments in
+``meta["parameters"]`` and mint the ADR-0035 producer stable_id through
+``overload_arity.scoped_stable_id`` over the file, the name as written, that
+argument count and the blocks enclosing the definition (:func:`_block_label`,
+as for targets below). CMake commands are global, but a project defines one
+conditionally (``if(WIN32) function(helper) ... else() function(helper)``),
+and the two definitions are two identities (INV-punig, scheme v9); a
+top-level definition hashes no chain. Without the count, two definitions of
+one name in a file shared the backstop floor key and were both left null;
+now ``function(run x)`` and a later ``function(run x y)`` hold ids that do not
+depend on each other. Every
+CMake function also accepts extra arguments through ``ARGN``; that is true of
+all of them, so it is not recorded as a variadic entry and does not enter the
+hash.
+
+Target identity (WI-tusad)
+--------------------------
+``add_library`` / ``add_executable`` / ``add_subdirectory`` / ``find_package``
+symbols mint ``overload_arity.scoped_stable_id`` with the blocks enclosing the
+command as the scope chain: each ``body`` is labelled by the command that
+opens it (``if(WIN32)``, ``function(setup)``, ``foreach(...)``; an
+``elseif(APPLE)`` / ``else()`` branch under its ``if``: ``if(WIN32)`` /
+``else()``; :func:`_block_label`). ``add_library(foo ...)`` in two
+branches of an ``if`` is two symbols that the floor key ``(kind, path,
+name)`` nulled. Two ``find_package(X)`` in one block remain a same-scope tie.
+``project`` keeps the backstop's table formula.
 """
 from __future__ import annotations
 
@@ -40,9 +69,15 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree, make_symbol_id, node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, parameter_entry,
+    scoped_stable_id,
+)
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
@@ -92,26 +127,72 @@ def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None  # pragma: no cover
 
 
+def _get_parameter_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The named arguments of ``function(name A B)`` / ``macro(name A B)``: ``[A, B]``."""
+    return _get_arguments(node, source)[1:]
+
+
 def _extract_cmake_signature(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract function/macro signature from function_command or macro_command.
 
     CMake functions are defined as: function(name ARG1 ARG2 ...)
     Returns signature in format: (ARG1, ARG2, ...)
     """
-    params: list[str] = []
-    found_name = False
+    return f"({', '.join(_get_parameter_names(node, source))})"
 
-    for child in node.children:
-        if child.type == "argument_list":
-            for arg in child.children:
-                if arg.type == "argument":
-                    if not found_name:
-                        # First argument is the function name, skip it
-                        found_name = True
-                    else:
-                        params.append(node_text(arg, source))
 
-    return f"({', '.join(params)})"
+def _command_definition_identity(
+    node: "tree_sitter.Node", source: bytes, rel_path: str, kind: str, name: str,
+) -> tuple[Optional[str], dict[str, object]]:
+    """``(stable_id, meta)`` of a ``function()`` / ``macro()`` definition.
+
+    See the module docstring: the named arguments become ``meta["parameters"]``
+    and the ADR-0035 producer formula hashes their count.
+    """
+    meta: dict[str, object] = {
+        PARAMETERS_KEY: [
+            parameter_entry(arg) for arg in _get_parameter_names(node, source)
+        ],
+    }
+    # The definition node (``function_def`` / ``macro_def``) sits in the
+    # blocks that enclose it; a top-level definition has no chain and keeps
+    # the value ``qualified_name=name`` gave it before INV-punig.
+    definition = node.parent if node.parent is not None else node
+    stable_id = scoped_stable_id(
+        kind=kind, lang="cmake", path=rel_path, name=name,
+        scope=ancestor_labels(definition, lambda n: _block_label(n, source)),
+        arity=declared_arity(meta),
+    )
+    return stable_id, meta
+
+
+def _block_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The scope a block opens, its opening command whitespace collapsed.
+
+    A ``body`` is labelled by the command before it (``function(setup)``,
+    ``foreach(...)``, ``elseif(APPLE)``, ``else()``), so each function or loop
+    body and each branch is its own scope in a target's stable_id chain. A
+    whole conditional (``if_condition``) is labelled by its ``if(...)``, and its
+    first branch adds nothing more, so an ``elseif`` / ``else`` branch is
+    ``if(WIN32)`` / ``else()`` (the Makefile chain's shape): the ``else()`` of
+    two different conditionals were one label, and two definitions in them
+    tied (INV-punig). The ``if`` branch keeps the chain it had.
+    """
+    if node.type == "if_condition":
+        return " ".join(node_text(node.children[0], source).split())
+    if node.type != "body" or node.prev_sibling is None or node.prev_sibling.type == "if_command":
+        return None
+    return " ".join(node_text(node.prev_sibling, source).split())
+
+
+def _target_stable_id(
+    node: "tree_sitter.Node", source: bytes, rel_path: str, kind: str, name: str,
+) -> str:
+    """The ADR-0035 stable_id of a target-like command (see the docstring)."""
+    return scoped_stable_id(
+        kind=kind, lang="cmake", path=rel_path, name=name,
+        scope=ancestor_labels(node, lambda n: _block_label(n, source)),
+    )
 
 
 def _process_cmake_tree(
@@ -175,7 +256,7 @@ def _process_cmake_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_target_stable_id(node, source, rel_path, "library", lib_name),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="library",
@@ -202,7 +283,7 @@ def _process_cmake_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_target_stable_id(node, source, rel_path, "executable", exe_name),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="executable",
@@ -263,7 +344,7 @@ def _process_cmake_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_target_stable_id(node, source, rel_path, "subdirectory", subdir),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="subdirectory",
@@ -289,7 +370,7 @@ def _process_cmake_tree(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=_target_stable_id(node, source, rel_path, "package", pkg_name),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="package",
@@ -315,10 +396,13 @@ def _process_cmake_tree(
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         symbol_id = make_symbol_id("cmake", rel_path, start_line, end_line, func_name, "function")
+                        stable_id, meta = _command_definition_identity(
+                            child, source, rel_path, "function", func_name,
+                        )
 
                         sym = Symbol(
                             id=symbol_id,
-                            stable_id=None,
+                            stable_id=stable_id,
                             shape_id=None,
                             # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                             kind="function",
@@ -333,6 +417,7 @@ def _process_cmake_tree(
                             ),
                             origin=PASS_ID,
                             signature=_extract_cmake_signature(child, source),
+                            meta=meta,
                             # INV-loguk: function() bodies carry control flow
                             # (if/elseif/foreach/while); walk the full
                             # function_def subtree (node). LOC from span.
@@ -354,10 +439,13 @@ def _process_cmake_tree(
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         symbol_id = make_symbol_id("cmake", rel_path, start_line, end_line, macro_name, "macro")
+                        stable_id, meta = _command_definition_identity(
+                            child, source, rel_path, "macro", macro_name,
+                        )
 
                         sym = Symbol(
                             id=symbol_id,
-                            stable_id=None,
+                            stable_id=stable_id,
                             shape_id=None,
                             # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                             kind="macro",
@@ -372,6 +460,7 @@ def _process_cmake_tree(
                             ),
                             origin=PASS_ID,
                             signature=_extract_cmake_signature(child, source),
+                            meta=meta,
                             # INV-loguk: macro() bodies carry control flow too;
                             # walk the full macro_def subtree (node). LOC from span.
                             cyclomatic_complexity=compute_cyclomatic_complexity(

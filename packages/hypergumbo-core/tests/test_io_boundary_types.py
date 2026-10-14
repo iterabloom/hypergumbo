@@ -128,6 +128,8 @@ _PRE_REFACTOR_CATALOG_BOUNDARY_TYPES = (
     # WI-fasap: the database twin of net_listen, declared LAST so the
     # first-declared-wins resolution of every existing row is untouched.
     "db_compose",
+    # INV-dadu: declared after db_compose for the same reason.
+    "navigation_read",
 )
 
 

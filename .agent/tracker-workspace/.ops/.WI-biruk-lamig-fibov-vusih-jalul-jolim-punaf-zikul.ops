@@ -1,0 +1,22 @@
+- op: create  # ebf0
+  at: '2026-10-06T23:44:29Z'  # ebf0
+  by: agent  # ebf0
+  actor: jgstern_agent  # ebf0
+  clock: 1  # ebf0
+  nonce: ebf0  # ebf0
+  data:  # ebf0
+    kind: work_item  # ebf0
+    title: "Only python.yaml enumerates stdlib_modules: the ADR-0041 §3 ecosystem stamp and the 'untraced dependency' label are Python-only"  # ebf0
+    status: todo_hard  # ebf0
+    priority: 3  # ebf0
+    parent:  # ebf0
+    tags:  # ebf0
+    - io_boundary  # ebf0
+    - supply_chain  # ebf0
+    - adr_0016  # ebf0
+    isbefore: []  # ebf0
+    duplicate_of: []  # ebf0
+    not_duplicate_of: []  # ebf0
+    pr_ref:  # ebf0
+    description: "Found while closing WI-pogar (PR #1500). io_boundary.module_ecosystem returns None for every catalogue except python (javascript, go, rust, elixir, java, ... carry no stdlib_modules/stdlib_prefixes), so boundary nodes there get no meta.ecosystem and io-boundaries/verify-claims cannot say 'untraced dependency' -- they report the call as 'dependency or runtime module, I/O unknown'. The verdict is still never clean (same population), but the reader cannot tell a --trace-deps/overlay errand from a catalogue errand, and supply_chain_summary.external_dep.ecosystem reads 'unknown' for all JS/Go/Elixir externals. Repro: JS fixture src/index.js 'require(\"llmkit\").run(x)' with node_modules/llmkit -> io-boundaries groups llmkit under 'dependency or runtime module (this language's standard library is not enumerated)'. Fix shape: per-language provenance-cited stdlib enumerations (node builtins, Go std import paths, Rust std/core/alloc, Elixir/Erlang OTP apps), single-sourced like python_stdlib_versions.py."  # ebf0
+    fields: {}  # ebf0

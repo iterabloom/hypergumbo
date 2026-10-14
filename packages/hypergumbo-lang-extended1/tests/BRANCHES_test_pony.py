@@ -131,8 +131,9 @@ actor Counter
     count = count + 1
 """)
         result = analyze_pony(tmp_path)
-        behaviours = [s for s in result.symbols if s.kind in ("behaviour", "be")]
-        assert not result.skipped  # lenient check
+        # WI-rokus: a behaviour is a method symbol flagged is_behaviour.
+        behaviours = [s for s in result.symbols if (s.meta or {}).get("is_behaviour")]
+        assert [(s.kind, s.name) for s in behaviours] == [("method", "Counter.increment")]
 
 
 class TestUseEdges:

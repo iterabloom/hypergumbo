@@ -348,3 +348,47 @@ class TestArgparseDispatchLinkerIntegration:
         )
         result = argparse_dispatch_linker(ctx)
         assert result.edges == []
+
+
+class TestHandlerLookupIsLanguageScoped:
+    """WI-gopok sweep: ``set_defaults(func=X)`` names a Python callable, so the
+    handler lookup is restricted to Python symbols. Before, a same-named
+    function in any language was a candidate."""
+
+    def test_lone_foreign_namesake_is_not_a_handler(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "cli.py"
+        file_path.write_text(_CLI_SOURCE)
+        builder = _make_symbol(file_path, "build_parser", "function", 6, 11)
+        go_twin = Symbol(
+            id="go:cmd/sketch.go:1-5:cmd_sketch:function",
+            name="cmd_sketch", kind="function", language="go",
+            path="cmd/sketch.go",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[builder, go_twin],
+            detected_languages={"python", "go"},
+        )
+        assert argparse_dispatch_linker(ctx).edges == []
+
+    def test_foreign_namesake_does_not_demote(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "cli.py"
+        file_path.write_text(_CLI_SOURCE)
+        builder = _make_symbol(file_path, "build_parser", "function", 6, 11)
+        handler = _make_symbol(file_path, "cmd_sketch", "function", 3, 4)
+        js_twin = Symbol(
+            id="javascript:web/x.js:1-2:cmd_sketch:function",
+            name="cmd_sketch", kind="function", language="javascript",
+            path="web/x.js",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        )
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[builder, js_twin, handler],
+            detected_languages={"python", "javascript"},
+        )
+        edges = argparse_dispatch_linker(ctx).edges
+        assert [e.dst for e in edges] == [handler.id]
+        assert edges[0].confidence == 0.85
+        assert "disambiguation_fallback" not in (edges[0].meta or {})

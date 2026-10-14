@@ -1,0 +1,21 @@
+- op: create  # 4b7c
+  at: '2026-10-03T17:34:04Z'  # 4b7c
+  by: agent  # 4b7c
+  actor: jgstern_agent  # 4b7c
+  clock: 1  # 4b7c
+  nonce: 4b7c  # 4b7c
+  data:  # 4b7c
+    kind: work_item  # 4b7c
+    title: "net_listen's registry definition says 'Bind or accept', contradicting ADR-0049 (accept stays net_recv); it misled both blind workers in the WI-vafad sweep"  # 4b7c
+    status: todo_hard  # 4b7c
+    priority: 3  # 4b7c
+    parent:  # 4b7c
+    tags:  # 4b7c
+    - io_boundary  # 4b7c
+    - docs  # 4b7c
+    isbefore: []  # 4b7c
+    duplicate_of: []  # 4b7c
+    not_duplicate_of: []  # 4b7c
+    pr_ref:  # 4b7c
+    description: "Found by the WI-vafad tranche 3 sweep (docs/audits/0022, candidate T3-A6). The definition MISLED BOTH blind GO workers.\n\nTHE TEXT. io_boundary_types.py:366 (the net_listen IoBoundarySpec description, also rendered into docs/concept-axes.md:514) begins: \"Bind or accept: the call ARRANGES inbound network data to arrive somewhere it does not name, and returns no such data itself.\"\n\nTHE RULING IT CONTRADICTS. ADR-0049's table keeps \"Per-connection accept | accept, net.Listener.Accept, TcpListener.accept | a peer-chosen address / connection | transfer -- stays net_recv\", and its text says \"`accept` is not a member of the family and never was\". The catalogues follow the ADR: c.yaml sys/socket accept (KEPT, \"returns the peer address\"), go.yaml net.Listener.Accept (:332) and syscall Accept/Accept4 (:363) are all net_recv.\n\nEVIDENCE THAT IT MATTERS. The sweep's workers adjudicate from the registry definitions, which are handed to them verbatim, and both GO workers proposed golang.org/x/sys/unix.Accept / Accept4 -> net_listen, citing the definition. The verifier rejected the flag under the ADR. Anyone else who adjudicates or writes a row from the registry text will make the same mistake.\n\nFIX: replace \"Bind or accept\" with wording ADR-0049 supports (bind / listen / register / serve-loop SETUP). Regenerate docs/concept-axes.md, and docs/schema.json if it carries the description. A text-only change; no row moves."  # 4b7c
+    fields: {}  # 4b7c

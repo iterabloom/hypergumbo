@@ -346,47 +346,35 @@ Three follow-ons sharpen the static check incrementally:
 Parameterized invariant that auto-discovers new offenders by
 inspecting actual emitted edges:
 
-> **SUPERSEDED (partition key): the six-field partition key specified
-> in the pseudocode and prose below is superseded by the as-built
-> four-field key `(src.kind, src.language, dst.kind, dst.language)`.**
-> See the "shipped implementation uses a four-field partition key"
-> paragraph below for the rationale (no top-level `Symbol.framework`
-> field today). The six-field key is retained here as the design intent
-> to restore if a `Symbol.framework` registry lands.
-
 ```
 test_edge_type_does_not_encode_endpoint_metadata:
   for each emitted edge in a corpus run:
     assert edge.edge_type is not derivable from
-      (src.kind, src.language, src.framework,
-       dst.kind, dst.language, dst.framework)
+      (src.kind, src.language, dst.kind, dst.language)
     by any pure function.
 ```
 
 The test is implemented as a coverage check: running the analyzers on a
 representative corpus, partition emitted edges by
-`(src.kind, src.language, src.framework, dst.kind, dst.language, dst.framework)`
+`(src.kind, src.language, dst.kind, dst.language)`
 and assert that within each partition, `edge_type` is constant up to a
 short allow-list. Allow-list growth requires a corresponding ADR amendment.
+The key carries no framework field: hypergumbo stores `framework` only in
+`meta.concepts[*].framework`, a list awkward to use as a partition key, and
+the coarser key still catches every leak a finer one would. If a top-level
+`Symbol.framework` registry lands, `src.framework` and `dst.framework` join
+the key.
 
-The shipped implementation lives in
+The implementation lives in
 [`hypergumbo_core.runtime_coherence`](../../packages/hypergumbo-core/src/hypergumbo_core/runtime_coherence.py)
 with a thin CLI at
 [`scripts/check-edge-type-runtime-coherence`](../../scripts/check-edge-type-runtime-coherence)
 and the allow-list at
 [`docs/edge-type-runtime-allowlist.yaml`](../edge-type-runtime-allowlist.yaml)
-(one amendment so far — file-anchor containment variance, recorded below).
-The deployment posture is warn-only — the CLI exits 1 on un-allow-listed
-offenders for human invocation during Phase 2/3 migration, but is
-not (yet) wired into pre-commit / CI; Phase 4's expectation is that
-the offender set goes empty modulo the allow-list. The shipped
-implementation uses a four-field partition key
-`(src.kind, src.language, dst.kind, dst.language)` rather than the six-field
-key the ADR specifies above; hypergumbo doesn't store `framework` as
-a top-level Symbol field today (it lives in `meta.concepts[*].framework`,
-a list awkward to use as a partition key), and a coarser key still
-catches every leak the finer key would. Expand to six fields if a
-top-level `Symbol.framework` registry lands.
+(its amendments are recorded below). The CLI exits 1 on un-allow-listed
+offenders. CI gates the offender count as a shrink-only per-substrate
+ratchet beside the spec-validator counts
+(`packages/hypergumbo-core/tests/test_validation_report_empty.py`, ADR-0033).
 
 **Allow-list amendment — file-anchor containment variance (dispatch:F4,
 2026-06-25).** `file-anchor:F1` mints a `kind="file"` anchor per discovered

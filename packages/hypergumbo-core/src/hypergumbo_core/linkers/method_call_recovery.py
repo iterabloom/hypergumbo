@@ -37,13 +37,22 @@ A single post-analysis pass, language-agnostic. For each caller N:
      identity key (``dst_ref`` with a module path). The producer said where
      the callee lives; a short-name match is less evidence, not more
      (WI-rulik).
+  3y. Refuse when the producer stamped ``meta.receiver == "field_chain"``: the
+     receiver is a member chain (``v.p.m()``), so a class the caller
+     instantiates is not it (WI-sulas).
   3a. Drop any hint that CONTRADICTS a ``receiver_type_hint`` the producer
      stamped on the unresolved edge. The premise of step 1 is that the class
      hint IS the receiver; a producer that named a different type for the
      receiver has already refuted that, and ``audio.getSampleRate()`` in a
      method that separately instantiates ``OfflineTts`` is the measured case
      (WI-nakut). No stamp means no second opinion and nothing changes.
-  4. Disambiguate by line proximity when multiple classes match.
+  3b. Drop any candidate member the repository declares as a builtin
+     non-callable value (``int``, ``str``, ``list`` ...; see
+     ``_declares_non_callable_value`` / ``_NON_CALLABLE_VALUE_TYPES``),
+     since calling one cannot be what the site dispatched to (WI-fihun).
+  4. Disambiguate by line proximity when multiple classes match. Such a
+     tie-broken edge is capped at confidence 0.5 and marked
+     ``meta["disambiguation_fallback"]`` (INV-zuhub).
   5. Skip if the caller already has a direct ``calls`` edge to the
      resolved method (no duplicates).
 
@@ -54,11 +63,11 @@ dangling edge whose dst symbol does not exist in the graph.
 Why a Linker Instead of Per-Analyzer Logic
 ------------------------------------------
 The two input signals (class-hint edge + unresolved-call edge) are
-already emitted by every analyzer that handles chained method calls
-(JS/TS, Java, Kotlin, Python, Go all observed). Doing the recovery once
-in linker space avoids duplicating type-inference logic per language and
-naturally extends to any future analyzer that follows the same
-emit-and-fall-back convention.
+emitted by the analyzers that handle chained method calls (JS/TS, Java,
+Kotlin, Python observed). A hint counts only when it lands on a
+``kind="class"`` symbol, so Go (``struct``) does not participate. Doing
+the recovery once in linker space avoids per-language type inference and
+extends to any analyzer that follows the emit-and-fall-back convention.
 
 Priority
 --------
@@ -200,11 +209,11 @@ def _declares_non_callable_value(member: "Symbol") -> bool:
     ``(self) -> int`` is a signature whose RETURN type is int and whose member is
     perfectly callable. Reading the second as the first would refuse real
     methods, so a parenthesised signature is declined outright rather than
-    parsed. (Reading this field at all is an eighth instance of an existing
-    pattern and is filed as INV-lotoh: its ``free-text`` axis justification
-    claims no consumer branches on the value, which eight shipped sites already
-    contradict. It is also the only place a Python field's declared type is
-    recorded.)
+    parsed. (Reading this field at all is the ninth instance of an existing
+    pattern, filed as INV-lotoh: the field's then-``free-text`` justification
+    claimed no consumer branches on the value, which eight other shipped sites
+    already contradicted; ADR-0058 now grandfathers this site. It is also the
+    only place a Python field's declared type is recorded.)
     """
     signature = (member.signature or "").strip()
     if not signature or "(" in signature:
@@ -349,6 +358,17 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                 # from, not from the call site: ``a.b(c.d())`` puts two calls
                 # on one line and one sibling's claim says nothing about the
                 # other.
+                continue
+            if (ucall.meta or {}).get("receiver") == "field_chain":
+                # THE PRODUCER SAID THE RECEIVER IS A MEMBER CHAIN (WI-sulas).
+                # ``v.p.m()`` is a call on ``v.p``; a class the caller
+                # instantiates is at best ``v``'s type, which is not the
+                # receiver, so this linker's premise is refuted the same way a
+                # contradicting receiver_type_hint refutes it below. Measured on
+                # hummingbird once swift stopped naming the chain head: 46 new
+                # recoveries, ``router.middlewares.add(..)`` into ``Router.add``
+                # among them, and every one sampled wrong. go stamps the same
+                # value for ``resp.Body.Close()``.
                 continue
             declared = _declared_receiver_type(ucall)
             # Find candidate (class_hint_edge, method_symbol) pairs.

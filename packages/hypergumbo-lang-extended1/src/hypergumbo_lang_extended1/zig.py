@@ -2,13 +2,38 @@
 """Zig language analyzer using tree-sitter.
 
 This module provides static analysis for Zig source code, extracting symbols
-(functions, structs, enums, unions, error sets, tests) and edges (imports, calls).
+(functions, methods, structs, enums, unions, error sets, tests, container
+fields and variables) and edges (imports, calls).
 
 Implementation approach:
 - Two-pass analysis: First pass collects all symbols, second pass extracts edges
   with cross-file resolution using the symbol table from pass 1.
 - Uses tree-sitter-zig grammar for parsing
-- Handles Zig-specific constructs like comptime, error sets, test blocks, etc.
+- Handles error sets and test blocks; ``comptime`` has no special handling
+
+Calls: an import alias (``const m = @import("m")``) is passed as a path hint;
+a weak method match is deferred to an unresolved edge carrying
+``enclosing_class`` (``defer_bare_method_call``); a callee found nowhere gets a
+``zig:<caller file>:0-0:<name>:function`` placeholder at 0.6. Builtin calls are
+not filtered. Fields and variables are not registered for call resolution.
+
+Identity (WI-tusad): every symbol is qualified, for hashing, by the full chain
+of containers and functions enclosing it (``A.Inner.run``; the emitted name
+keeps the immediate container only, ``Inner.run``). Functions and methods mint
+the ADR-0035 producer stable_id through ``compute_stable_id`` (parameter count
+and flags from the ``parameters`` node); fields, unions, error sets and tests
+through ``overload_arity.declared_arity_stable_id`` with no arity. Before, none
+of them computed a stable_id and rode the backstop floor key (kind, file,
+name). Structs and enums keep the table formula, over that chain
+(``overload_arity.scoped_table_stable_id``; INV-fabih: two nested ``const
+Inner = struct`` shared one bare-name table key, so deleting the first moved
+the second's id); top-level ones keep their values. Variables (module level
+only) keep the backstop's table formula.
+
+Known gaps: a call's enclosing function is looked up by name through the
+repo-wide resolver, so two files defining a same-named function can have a
+call credited to the other file's; and an ``@import`` bound by a
+``variable_declaration`` emits its import edge twice, once from each branch.
 
 Uses TreeSitterAnalyzer base class for two-pass orchestration.
 The base class handles grammar checking, parser creation, file discovery,
@@ -44,6 +69,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import declared_arity_stable_id, scoped_table_stable_id
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -215,16 +241,30 @@ def _extract_symbols_from_tree(
     symbols: list[Symbol],
     symbol_table: dict[str, Symbol],
     run: "AnalysisRun",
+    analyzer: TreeSitterAnalyzer,
 ) -> None:
     """Extract symbols from an AST using iterative traversal.
 
     This avoids nested function closure issues with loop variables.
+    ``chain`` is every container and function enclosing a node, outermost
+    first: the scope the stable_id hashes (WI-tusad).
     """
-    # Stack: (node, container_name)
-    stack: list[tuple["tree_sitter.Node", Optional[str]]] = [(root_node, None)]
+    file_anchor = analyzer._file_anchor(rel_path)
+
+    def scoped_id(kind: str, name: str, chain: tuple[str, ...]) -> str:
+        return declared_arity_stable_id(
+            kind=kind, lang="zig", path=rel_path, name=name,
+            qualified_name=".".join((*chain, name)), arity=None,
+        )
+
+    # Stack: (node, container_name, chain)
+    stack: list[tuple["tree_sitter.Node", Optional[str], tuple[str, ...]]] = [
+        (root_node, None, ()),
+    ]
 
     while stack:
-        node, container = stack.pop()
+        node, container, chain = stack.pop()
+        child_chain = chain
 
         if node.type == "function_declaration":
             name = _get_function_name(node, source)
@@ -247,6 +287,11 @@ def _extract_symbols_from_tree(
 
                 sym = Symbol(
                     id=make_symbol_id("zig", rel_path, start_line, end_line, qualified_name, kind),
+                    stable_id=analyzer.compute_stable_id(
+                        node, kind, name=name,
+                        qualified_name=".".join((*chain, name)),
+                        file_stable_id=file_anchor,
+                    ),
                     name=qualified_name,
                     kind=kind,
                     language="zig",
@@ -265,6 +310,7 @@ def _extract_symbols_from_tree(
                 )
                 symbols.append(sym)
                 symbol_table[qualified_name] = sym
+                child_chain = (*chain, name)
 
         elif node.type == "variable_declaration":
             # Check if this defines a struct, enum, union, or error set
@@ -295,6 +341,17 @@ def _extract_symbols_from_tree(
                     end_line = node.end_point[0] + 1
                     sym = Symbol(
                         id=make_symbol_id("zig", rel_path, start_line, end_line, var_name, kind),
+                        # INV-fabih: structs and enums keep the table formula,
+                        # over the enclosing chain (two ``const Inner = struct``
+                        # in ``A`` and ``B`` shared one bare-name key).
+                        stable_id=(
+                            scoped_id(kind, var_name, chain)
+                            if kind in ("union", "error_set")
+                            else scoped_table_stable_id(
+                                kind=kind, lang="zig", path=rel_path,
+                                name=var_name, scope=chain,
+                            )
+                        ),
                         name=var_name,
                         kind=kind,
                         language="zig",
@@ -314,7 +371,7 @@ def _extract_symbols_from_tree(
                     # Process nested declarations with updated container
                     if inner_node:
                         for child in reversed(inner_node.children):
-                            stack.append((child, var_name))
+                            stack.append((child, var_name, (*chain, var_name)))
                     continue  # Don't process other children
 
                 # WI-jusus: a module-level const/var that is NOT a type
@@ -362,6 +419,7 @@ def _extract_symbols_from_tree(
                     id=make_symbol_id(
                         "zig", rel_path, start_line, end_line, qualified, "field"
                     ),
+                    stable_id=scoped_id("field", fname, chain),
                     name=qualified,
                     kind="field",
                     language="zig",
@@ -388,6 +446,7 @@ def _extract_symbols_from_tree(
                 end_line = node.end_point[0] + 1
                 sym = Symbol(
                     id=make_symbol_id("zig", rel_path, start_line, end_line, sym_name, "test"),
+                    stable_id=scoped_id("test", sym_name, chain),
                     name=sym_name,
                     kind="test",
                     language="zig",
@@ -405,7 +464,7 @@ def _extract_symbols_from_tree(
 
         # Add children to stack (in reverse to maintain order)
         for child in reversed(node.children):
-            stack.append((child, container))
+            stack.append((child, container, child_chain))
 
 
 def _extract_edges_from_tree(
@@ -616,7 +675,8 @@ class ZigAnalyzer(TreeSitterAnalyzer):
         symbol_table: dict[str, Symbol] = {}
 
         _extract_symbols_from_tree(
-            tree.root_node, source, rel_path, analysis.symbols, symbol_table, run
+            tree.root_node, source, rel_path, analysis.symbols, symbol_table, run,
+            self,
         )
 
         # Populate symbol_by_name for callable symbols
@@ -626,7 +686,7 @@ class ZigAnalyzer(TreeSitterAnalyzer):
 
         return analysis
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Register a symbol for cross-file resolution, skipping data anchors.
 
         WI-jusus: ``field`` and ``variable`` symbols are data anchors, never
@@ -663,7 +723,7 @@ class ZigAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

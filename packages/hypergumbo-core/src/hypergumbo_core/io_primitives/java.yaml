@@ -2,6 +2,7 @@
 # ADR-0016: I/O primitive catalog for Java
 #
 # Maps Java standard library classes/methods to I/O boundary types.
+provenance: builtin
 language: java
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``
@@ -133,8 +134,8 @@ fs_read:
       reason the BufferedReader row gives.
   # Plan C, PR A: Apache Commons IO removed under strict-stdlib rule.
   # First-party calls into Commons IO surface in external_potential
-  # (Plan C, PR C); project-local taint-source catalogs (WI-votan) handle
-  # case-by-case classification.
+  # (Plan C, PR C); an io_primitives overlay of your own (io_primitives.d/)
+  # classifies them case by case.
 
 fs_write:
   - module: java.io.File
@@ -161,8 +162,8 @@ net_send:
   # strict-stdlib rule (Netty, OkHttp / Retrofit, Spring Web /
   # RestTemplate / WebClient, Apache HttpClient 4.x / 5.x, Unirest).
   # First-party calls into these surface in external_potential
-  # (Plan C, PR C); project-local taint-source catalogs (WI-votan)
-  # provide per-project classification when needed.
+  # (Plan C, PR C); an io_primitives overlay of your own (io_primitives.d/)
+  # classifies them per project when needed.
 
 net_recv:
   - module: java.net.ServerSocket
@@ -231,10 +232,6 @@ host_info_read:
     functions: [systemUTC]
   - module: java.lang.Runtime
     methods: [availableProcessors, totalMemory, freeMemory, maxMemory]
-
-ipc_send:
-  - module: java.lang.System
-    attributes: [out, err]
 
 ipc_recv:
   - module: java.lang.System
@@ -312,8 +309,19 @@ db_read:
       Query and issue nothing. db_read is an auto-derived taint
       SOURCE, so each was minting untrusted_input at a call that
       returns a builder. The read is rowed where it happens --
-      TypedQuery.getResultList / getSingleResult, below. find and
-      getReference are KEPT because they do load the entity.
+      TypedQuery.getResultList / getSingleResult, below. find is a
+      TRANSFER: it returns the entity the database holds. getReference is
+      NOT one -- the API's own javadoc: a reference "whose state may be
+      lazily fetched", which "allows the application to create an
+      association to an entity without loading its state from the
+      database" (jakartaee/persistence EntityManager.java, master
+      96ebe4ec) -- so ADR-0049 ruling 1 calls it a deferred crossing. It
+      STAYS db_read, held by ruling 3 (WI-tunog): the read happens at the
+      first access of the instance's state, through the application's own
+      entity accessors, which no catalogue can row, so no executing read
+      is represented and a move to db_compose deletes the in-scope read
+      (`em.getReference(...).getNote()` written to a file) with nothing
+      to relocate it to. Residual: WI-fazif.
   - module: jakarta.persistence.EntityManager
     methods: [find, getReference]
     notes: >-
@@ -322,12 +330,43 @@ db_read:
       Query and issue nothing. db_read is an auto-derived taint
       SOURCE, so each was minting untrusted_input at a call that
       returns a builder. The read is rowed where it happens --
-      TypedQuery.getResultList / getSingleResult, below. find and
-      getReference are KEPT because they do load the entity.
+      TypedQuery.getResultList / getSingleResult, below. find is a
+      TRANSFER: it returns the entity the database holds. getReference is
+      NOT one -- the API's own javadoc: a reference "whose state may be
+      lazily fetched", which "allows the application to create an
+      association to an entity without loading its state from the
+      database" (jakartaee/persistence EntityManager.java, master
+      96ebe4ec) -- so ADR-0049 ruling 1 calls it a deferred crossing. It
+      STAYS db_read, held by ruling 3 (WI-tunog): the read happens at the
+      first access of the instance's state, through the application's own
+      entity accessors, which no catalogue can row, so no executing read
+      is represented and a move to db_compose deletes the in-scope read
+      (`em.getReference(...).getNote()` written to a file) with nothing
+      to relocate it to. Residual: WI-fazif.
   - module: javax.persistence.TypedQuery
     methods: [getSingleResult, getResultList, getResultStream]
+    notes: >-
+      getResultStream is a TRANSFER, not a member of ADR-0049 ruling 4's
+      Lazy row (WI-tunog). The API's javadoc: "Execute a SELECT query and
+      return the query result as a typed Stream", and its default body is
+      `return getResultList().stream();` (jakartaee/persistence
+      TypedQuery.java, master 96ebe4ec). Hibernate's override executes at
+      the call too: 6.6.0 AbstractSelectionQuery.getResultStream ->
+      stream() -> scroll(ScrollMode.FORWARD_ONLY) -> doScroll, which runs
+      the query plan; only the row FETCH is incremental. The stream's
+      content is chosen by the database at this call, so it stays db_read.
   - module: jakarta.persistence.TypedQuery
     methods: [getSingleResult, getResultList, getResultStream]
+    notes: >-
+      getResultStream is a TRANSFER, not a member of ADR-0049 ruling 4's
+      Lazy row (WI-tunog). The API's javadoc: "Execute a SELECT query and
+      return the query result as a typed Stream", and its default body is
+      `return getResultList().stream();` (jakartaee/persistence
+      TypedQuery.java, master 96ebe4ec). Hibernate's override executes at
+      the call too: 6.6.0 AbstractSelectionQuery.getResultStream ->
+      stream() -> scroll(ScrollMode.FORWARD_ONLY) -> doScroll, which runs
+      the query plan; only the row FETCH is incremental. The stream's
+      content is chosen by the database at this call, so it stays db_read.
   # Plan C, PR A: Spring Data, Spring JdbcTemplate, and Hibernate
   # removed under strict-stdlib rule. JDBC + JPA / Jakarta EE persistence
   # interfaces stay (java.sql.* / javax.persistence.* / jakarta.persistence.*).
@@ -354,6 +393,21 @@ db_write:
 # and surface in external_potential (Plan C, PR C) when first-party
 # code uses them.
 logging:
+  - module: java.lang.System
+    attributes: [out, err]
+    notes: "WI-runos: the process's own standard output -- terminal output, logging, not IPC (WI-tolif, WI-dutah). kotlin and scala inherit this row through _CATALOG_PARENTS."
+  - module: java.io.PrintStream
+    methods: [append, format, print, printf, println, write, writeBytes, flush, checkError]
+    requires_target_kind: std_stream
+    notes: >-
+      WI-dorus: a PrintStream method on System.out / System.err -- the java analyzer types that
+      receiver as java.io.PrintStream and stamps io_target_kind std_stream, so these rows apply there
+      and ONLY there. Every other PrintStream (over a ByteArrayOutputStream, a file, a socket, or a
+      parameter whose origin is not visible) stays unclassified, as before the rows existed: there
+      is no abstention (requires_target_kind). The list is PrintStream's whole writing surface as
+      reflected from JDK 25.0.2 (docs/surveys/java-printstream-io-enumeration.md); checkError
+      flushes. close and charset are not rows, and no module_completeness is granted -- a grant
+      would make every unstamped PrintStream an examined negative.
   - module: java.util.logging.Logger
     methods: [log, logp, fine, finer, finest, info, warning, severe, config]
     notes: "java.util.logging (JDK built-in)"

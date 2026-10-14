@@ -1,0 +1,60 @@
+- op: create  # 32f7
+  at: '2026-09-28T07:07:36Z'  # 32f7
+  by: agent  # 32f7
+  actor: jgstern_agent  # 32f7
+  clock: 1  # 32f7
+  nonce: 32f7  # 32f7
+  data:  # 32f7
+    kind: work_item  # 32f7
+    title: "go: a method on a package function's result (slog.New(h).Error, json.NewEncoder(w).Encode) keeps the package slot and is credited to the same-named package function (INV-vusum residual)"  # 32f7
+    status: todo_hard  # 32f7
+    priority: 3  # 32f7
+    parent:  # 32f7
+    tags:  # 32f7
+    - go  # 32f7
+    - io_boundary  # 32f7
+    - analysis_quality  # 32f7
+    isbefore: []  # 32f7
+    duplicate_of: []  # 32f7
+    not_duplicate_of: []  # 32f7
+    pr_ref:  # 32f7
+    description: "FOUND 2026-09-28 while fixing INV-vusum (the typed-receiver half, which puts the receiver's TYPE in Go's module slot and prefers the exactly-named row).\n\nTHE SHAPE LEFT OVER. A method called directly on a package function's result, `pkg.Func(args).Method()`, goes through go.py's chained-call branch, which knows only the inner call's PACKAGE and sets the slot to it. So the method is still credited to a same-named package FUNCTION row by declaration order:\n    slog.New(h).Error(msg)          -> log/slog.Error          (should be log/slog.Logger.Error)\n    json.NewEncoder(w).Encode(v)    -> slot encoding/json      (the type is json.Encoder)\nMeasured on prometheus (scrape/scrape.go scrapeLoop.scrapeAndReport: `slog.New(sl.scrapeFailureLogger).Error(...)`). Every boundary is unchanged by the mislabel today (both rows of each function/method pair carry one boundary), so it is a LABEL defect, as the 17 of 18 INV-vusum pairs were.\n\nWHAT IS NOT KNOWN HERE: the return type of an external package function. _type_from_constructor_call infers `pkg.NewFoo()` -> `pkg.Foo` by the NewXxx convention, which covers json.NewEncoder but not slog.New. library_signatures/go.yaml already holds package_variables types; a return-type table for the stdlib constructors (slog.New, http.NewRequest, bufio.NewReader ...) would be the matching home.\n\nFIRST STEP: route _type_from_constructor_call's `pkg.Foo` into the chained-call branch through _external_package_for_type (the same owner the typed-local branch now builds), then measure what a small return-type table adds on alertmanager / prometheus."  # 32f7
+    fields: {}  # 32f7
+- op: discuss  # c655
+  at: '2026-10-03T22:02:46Z'  # c655
+  by: agent  # c655
+  actor: jgstern_agent  # c655
+  clock: 2  # c655
+  nonce: c655  # c655
+  message: "INTERACTION NOTE from WI-kibah's branch (jgstern-agent/fix/kibah, 4 commits, not merged; the chained-call / method-on-result code was NOT edited there).\n\n1. The call arm's resolved emit now refuses a resolver hit outside the hinted package (_go_in_hinted_package, commit 3fb8b84d20). ListNameResolver falls back to the path-sorted first of ALL candidates when a hard path hint matches none of two or more, so a hinted chained call bound an unrelated repo method: prometheus `time.Now().Add(timeout)` -> test/testutils Collector.Add before, go:time:0-0:Add:unresolved on the branch. That is the hint this item's shape propagates from the inner operand; on the branch such calls stay unresolved under the inner package's slot instead of binding a wrong repo method. Expect a merge interaction in the found branch (`if lookup_result.found:` became `if lookup_result.symbol is not None and _go_in_hinted_package(...)`), and re-measure whatever this item counts after both land.\n2. The inner-operand import test of the chained-call arm (`node_text(inner_operand) in import_aliases`) is still position-blind: a local named like an import would hand its call the import's hint. The branch adds _GoLocalScope / _bound_names(site) (commit 92379e2067); the selector arm's own import test now asks `alias not in _bound_names(node)` (commit 0adbd3fa21) and the chained arm can ask the same.\n3. The call arm's construct for resolved emits is now stamped from the syntax (bare / package-qualified: function; value receiver: method) -- relevant if this item stamps a construct on method-on-result edges."  # c655
+- op: discuss  # 8a0a
+  at: '2026-10-04T01:40:02Z'  # 8a0a
+  by: agent  # 8a0a
+  actor: jgstern_agent  # 8a0a
+  clock: 3  # 8a0a
+  nonce: 8a0a  # 8a0a
+  message: "WORK DONE 2026-10-03 (decontend stage 7), branch jgstern-agent/fix/vinuh, commit 8da3b291eb (local, not pushed; shared with WI-nulig-gipot-samir-movik-latuj-tizin-vagig-lorup). Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/vinuh.md.\n\nMechanism: the chained-call branch now types the receiver with _go_call_result_type (the binding typer's own rule, NewXxx convention then return-type registry, extracted into _go_registry_call_type and shared), and an out-of-module result type fills the slot as a typed local's does. library_signatures/go.yaml: slog.New / slog.Default / slog.With -> slog.Logger. Also: a receiver whose type is known to be outside the module (a call result, a stdlib package variable, a struct field) is no longer looked up in-repo (receiver_type_is_external) -- an internal/http X.Do took http.DefaultClient.Do and an internal/json Enc.Encode took json.NewEncoder(w).Encode.\n\nLive: slog.New(h).Error -> go:log/slog.Logger:0-0:Error (io: logging log/slog.Logger.Error, was log/slog.Error); l := slog.New(h); l.Error -> same (was go:external, unclassified); json.NewEncoder(w).Encode -> go:encoding/json.Encoder:0-0:Encode (= the bound form). Corpus A/B by call site (alertmanager, prometheus, otel-collector; frozen copies, own XDG caches): 0 sites lost; changed 54/97/96; io-boundaries: no classified boundary lost; prometheus scrape.go:1394 (the filed instance) now log/slog.Logger.Error. Targeted smart-test: 13005 passed, 0 failed, changed sources at 100%."  # 8a0a
+- op: update  # ea7f
+  at: '2026-10-04T02:54:24Z'  # ea7f
+  by: agent  # ea7f
+  actor: jgstern_agent  # ea7f
+  clock: 4  # ea7f
+  nonce: ea7f  # ea7f
+  set:  # ea7f
+    status: done  # ea7f
+- op: discuss  # 8219
+  at: '2026-10-04T02:54:24Z'  # 8219
+  by: agent  # 8219
+  actor: jgstern_agent  # 8219
+  clock: 5  # 8219
+  nonce: '8219'  # 8219
+  message: "Merged in PR #1441 (dev b130f1c054).\n\nFixed on the filed instance (branch jgstern-agent/fix/vinuh, 8da3b291eb). go.py's chained-call branch now types its receiver with `_go_call_result_type`, the binding typer's own rule (NewXxx convention, then the return-type registry, now one shared helper), and an out-of-module result type fills the slot as a typed local's does. library_signatures/go.yaml adds slog.New / Default / With -> slog.Logger.\nBehavioral evidence (io-boundaries, production CLI path, fixture with go.mod):\n- `slog.New(h).Error(...)`: logging `log/slog.Error` -> logging `log/slog.Logger.Error`;\n- `l := slog.New(h); l.Error(...)`: unclassified (`go:external`) -> logging `log/slog.Logger.Error`;\n- `json.NewEncoder(w).Encode(v)`: `encoding/json.Encode` -> `encoding/json.Encoder.Encode` (the same primitive as the bound form).\nPrometheus scrape.go:1394 (the measured case) is now on the `log/slog.Logger.Error` edge. Tests: test_go_chained_result_receiver.py.\nSame-mechanism sweep: a receiver whose type is known to be outside the module (a call result, a stdlib package variable, a struct field) is no longer looked up in-repo. `http.DefaultClient.Do(req)` beside an `internal/http` `X.Do` went from an in-repo call (no net_send) to net_send `net/http.Client.Do`.\nCorpus A/B on alertmanager / prometheus / otel-collector: 0 call sites lost, 247 relabelled, all sampled B answers correct, no classified boundary lost.\nNot asserted: renamed stdlib imports (`l \"log/slog\"`) still miss producer rows (0 such imports measured); trees without go.mod keep the old behaviour; the NewXxx-on-a-value misfire is WI-garol."  # 8219
+- op: update  # 9502
+  at: '2026-10-04T02:55:15Z'  # 9502
+  by: agent  # 9502
+  actor: jgstern_agent  # 9502
+  clock: 6  # 9502
+  nonce: '9502'  # 9502
+  set: {}  # 9502
+  add:  # 9502
+    tags: [awaits_bakeoff_validation]  # 9502

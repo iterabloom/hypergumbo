@@ -1,0 +1,24 @@
+- op: create  # 59c2
+  at: '2026-10-11T18:57:49Z'  # 59c2
+  by: agent  # 59c2
+  actor: jgstern_agent  # 59c2
+  clock: 1  # 59c2
+  nonce: 59c2  # 59c2
+  data:  # 59c2
+    kind: invariant  # 59c2
+    title: "http linker: a GET client call never matches a Phoenix live route, though live mounts GET (thc lv_ws_load.js GET /red_carpet -> nothing)"  # 59c2
+    status: violated  # 59c2
+    priority: 3  # 59c2
+    parent:  # 59c2
+    tags:  # 59c2
+    - elixir  # 59c2
+    - routes  # 59c2
+    - http_linker  # 59c2
+    isbefore: []  # 59c2
+    duplicate_of: []  # 59c2
+    not_duplicate_of: []  # 59c2
+    pr_ref:  # 59c2
+    description: "Found while fixing INV-hurun (route markers minted outside router modules).\n\nPhoenix's `live \"/path\", Mod, :action` expands to `Phoenix.Router.get(path, Phoenix.LiveView.Plug, action, router_options)` (phoenix_live_view lib/phoenix_live_view/router.ex:109): a live route answers HTTP GET (the dead render), and `mix phx.routes` lists it under GET. The Elixir analyzer stamps these markers `http_method=\"LIVE\"`, and the http linker buckets routes by exact method (linkers/http.py ~1431 `routes_by_method`), so a GET client never reaches a LIVE route.\n\nRepro (thc, after INV-hurun's fix): load_tests/lv_ws_load.js:195 and :222 are http_client call sites `GET /red_carpet`; the only route with that path is lib/thunderhillcinema_web/router.ex:835 `live \"/red_carpet\", Feed.FeedLive, :index` (marker `LIVE /red_carpet`). `hypergumbo survey ~/special_repos/thc` -> the two call-site nodes have zero edges. (Before INV-hurun's fix they linked to a fake route minted from a test file's `conn |> get(\"/red_carpet\")`.)\n\nInvariant: an HTTP GET client call whose path matches a Phoenix live route links to that route (LIVE implies GET for HTTP matching), without renaming the LIVE marker."  # 59c2
+    fields:  # 59c2
+      statement: "An HTTP GET client call whose path matches a Phoenix live route links to that route."  # 59c2
+      root_cause: "Elixir live route markers carry http_method LIVE and the http linker buckets routes by exact method (linkers/http.py routes_by_method), so GET lookups never see them; Phoenix live expands to Phoenix.Router.get."  # 59c2

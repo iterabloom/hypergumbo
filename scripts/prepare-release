@@ -193,13 +193,13 @@ echo ""
 echo "━━━ Step 2: Bump version ━━━"
 # ─────────────────────────────────────────────────────────────
 
-CURRENT_VERSION=$(grep -E '^version\s*=' packages/hypergumbo-core/pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+CURRENT_VERSION=$(grep -E '^version\s*=' packages/hypergumbo-core/pyproject.toml | head -1 | sed 's/^[^"]*"\([^"]*\)".*/\1/')
 echo "Current main version: $CURRENT_VERSION"
 echo "New main version: $VERSION"
 
 TRACKER_PYPROJECT="packages/hypergumbo-tracker/pyproject.toml"
 if [[ -f "$TRACKER_PYPROJECT" ]]; then
-    TRACKER_CURRENT=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+    TRACKER_CURRENT=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/^[^"]*"\([^"]*\)".*/\1/')
     if [[ -n "$TRACKER_VERSION" ]]; then
         echo "Current tracker version: $TRACKER_CURRENT"
         echo "New tracker version: $TRACKER_VERSION"
@@ -236,7 +236,15 @@ if grep -q "## \[Unreleased\]" CHANGELOG.md; then
         # left v4.0.0 shipping with "Released schema is at: v0.2.2" while
         # schema.py was at 0.4.0).
         SCHEMA_PY="packages/hypergumbo-core/src/hypergumbo_core/schema.py"
-        SCHEMA_VERSION=$(grep -E '^SCHEMA_VERSION\s*=' "$SCHEMA_PY" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+        # The FIRST quoted string on the line: SCHEMA_VERSION carries a long
+        # trailing comment with quoted phrases, and the greedy form this used
+        # to be took the LAST one -- 8.1.0 shipped "Released schema is at:
+        # vdid not say why". A value that is not a version is a hard stop.
+        SCHEMA_VERSION=$(grep -E '^SCHEMA_VERSION\s*=' "$SCHEMA_PY" | head -1 | sed 's/^[^"]*"\([^"]*\)".*/\1/')
+        if ! [[ "$SCHEMA_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo -e "${RED}✗${NC} Could not read SCHEMA_VERSION from $SCHEMA_PY (got: '$SCHEMA_VERSION')."
+            exit 1
+        fi
         sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION] - $TODAY/" CHANGELOG.md
         sed -i "s/^- Released \*\*tool\*\* is at: v[0-9.]*$/- Released **tool** is at: v$VERSION/" CHANGELOG.md
         sed -i "s/^- Released \*\*schema\*\* is at: v[0-9.]*$/- Released **schema** is at: v$SCHEMA_VERSION/" CHANGELOG.md
@@ -246,6 +254,44 @@ if grep -q "## \[Unreleased\]" CHANGELOG.md; then
     fi
 else
     echo -e "${YELLOW}!${NC} CHANGELOG.md has no [Unreleased] section"
+fi
+
+# Version History table and link definitions at the bottom of CHANGELOG.md.
+#
+# Nothing maintained either: the table stopped at 2.1.0 for eighteen releases
+# and the compare links still pointed at Codeberg, the same drift the release
+# notes had before this script gated them. The table row is a writing task, so
+# it is gated the same way: write "| Unreleased | — | <highlights> |" as the
+# first row during the cycle, and this block promotes it; with no row for the
+# version, the release stops. The link definitions are derived, so this block
+# writes them: [Unreleased] moves to compare v$VERSION...HEAD and a
+# [$VERSION] line compares the previous tag to the new one.
+if grep -q "^## Version History" CHANGELOG.md; then
+    if grep -qE "^\| Unreleased[[:space:]]*\|" CHANGELOG.md; then
+        if ! $DRY_RUN; then
+            sed -i -E "s/^\| Unreleased[[:space:]]*\|[^|]*\|/| $VERSION | $TODAY |/" CHANGELOG.md
+            echo -e "${GREEN}✓${NC} Promoted the Version History row: Unreleased → $VERSION"
+        else
+            echo -e "${BLUE}[dry-run]${NC} Would promote the Version History row: Unreleased → $VERSION"
+        fi
+    elif grep -qE "^\| ${VERSION//./\\.}[[:space:]]*\|" CHANGELOG.md; then
+        echo -e "${GREEN}✓${NC} Version History already has a $VERSION row"
+    else
+        echo -e "${RED}✗${NC} CHANGELOG.md's Version History table has no row for $VERSION."
+        echo "  Add '| Unreleased | — | <one-line highlights> |' as its first row,"
+        echo "  then re-run prepare-release."
+        exit 1
+    fi
+    REPO_URL=$(sed -n 's#^\[Unreleased\]: \(.*\)/compare/.*#\1#p' CHANGELOG.md | head -1)
+    PREV_TAG="${PREV_TAG:-$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)}"
+    if [[ -n "$REPO_URL" && -n "$PREV_TAG" ]] && ! grep -q "^\[$VERSION\]:" CHANGELOG.md; then
+        if ! $DRY_RUN; then
+            sed -i "s#^\[Unreleased\]: .*#[Unreleased]: $REPO_URL/compare/v$VERSION...HEAD\n[$VERSION]: $REPO_URL/compare/$PREV_TAG...v$VERSION#" CHANGELOG.md
+            echo -e "${GREEN}✓${NC} Link definitions: [$VERSION] compares $PREV_TAG...v$VERSION"
+        else
+            echo -e "${BLUE}[dry-run]${NC} Would add [$VERSION] ($PREV_TAG...v$VERSION) and move [Unreleased]"
+        fi
+    fi
 fi
 
 # Tracker CHANGELOG (only when --tracker is given)

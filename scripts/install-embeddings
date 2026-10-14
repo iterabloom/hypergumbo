@@ -52,12 +52,21 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Check if embeddings are available
+# The requirement hypergumbo_core.cli.EMBEDDINGS_REQUIREMENT names (pinned
+# equal by test_embeddings_requirement). An importable copy older than it does
+# not count as installed: PYSEC-2026-4164 is fixed in 5.6.0, and "already
+# installed" used to leave a vulnerable 5.2.x in place.
+REQUIREMENT="sentence-transformers~=5.7"
+
 check_embeddings() {
-    if python3 -c "import sentence_transformers" 2>/dev/null; then
-        return 0
-    else
-        return 1
-    fi
+    python3 - "$REQUIREMENT" 2>/dev/null <<'PY'
+import re, sys
+import sentence_transformers as st
+floor = tuple(int(p) for p in sys.argv[1].split("~=")[1].split("."))
+m = re.match(r"(\d+)\.(\d+)", st.__version__)
+ok = m is not None and int(m.group(1)) == floor[0] and (int(m.group(1)), int(m.group(2))) >= floor
+sys.exit(0 if ok else 1)
+PY
 }
 
 if [[ "$CHECK_ONLY" == "true" ]]; then
@@ -66,7 +75,7 @@ if [[ "$CHECK_ONLY" == "true" ]]; then
         python3 -c "import sentence_transformers; print(f'   sentence-transformers {sentence_transformers.__version__}')"
         exit 0
     else
-        echo "❌ Embeddings not installed"
+        echo "❌ Embeddings not installed, or older than $REQUIREMENT"
         echo "   Run: ./scripts/install-embeddings"
         exit 1
     fi
@@ -91,7 +100,7 @@ else
         pip install "hypergumbo-core[embeddings]"
     else
         # Direct install
-        pip install "sentence-transformers~=5.2.2"
+        pip install "$REQUIREMENT"
     fi
 
     echo ""

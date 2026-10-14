@@ -766,3 +766,48 @@ class TestDeclaredNonCallableTargetIsRefused:
         ctx = _ctx([caller, bad_cls, good_cls, bad, good], edges)
         recovered = link_method_call_recovery(ctx).edges
         assert [e.dst for e in recovered] == [good.id]
+
+
+class TestAMemberChainReceiverIsNotTheClassHint:
+    """WI-sulas. A producer stamping ``meta.receiver == "field_chain"`` says the
+    call is ``v.p.m()``: its receiver is ``v.p``, so a class the caller
+    instantiates is not the receiver and this linker's premise fails. Measured
+    on hummingbird once swift stopped naming the chain head:
+    ``router.middlewares.add(..)`` recovered into ``Router.add`` 46 times,
+    every sampled one wrong."""
+
+    @staticmethod
+    def _fixture(receiver: str | None) -> tuple[list[Symbol], list[Edge]]:
+        main = _sym("k:App.kt:5-9:main:function", "main", "function", start=5, end=9)
+        router = _sym("k:Router.kt:1-30:Router:class", "Router", "class",
+                      path="Router.kt", start=1, end=30)
+        router_add = _sym("k:Router.kt:10-20:Router.add:method", "Router.add",
+                          "method", path="Router.kt", start=10, end=20)
+        meta: dict = {"call_construct": "method"}
+        if receiver is not None:
+            meta["receiver"] = receiver
+        call = Edge.create(
+            src=main.id, dst="kotlin:external:0-0:add:unresolved",
+            edge_type="calls", line=7, origin="test",
+            evidence_type="ast_method_unresolved", origin_run_id="test", meta=meta,
+        )
+        edges = [
+            _edge(main.id, router.id, "calls", line=6),
+            _edge(router.id, router_add.id, "contains", line=10),
+            call,
+        ]
+        return [main, router, router_add], edges
+
+    def test_a_field_chain_receiver_recovers_nothing(self) -> None:
+        symbols, edges = self._fixture("field_chain")
+        assert link_method_call_recovery(_ctx(symbols, edges)).edges == []
+
+    def test_control_without_the_stamp_it_recovers(self) -> None:
+        symbols, edges = self._fixture(None)
+        result = link_method_call_recovery(_ctx(symbols, edges))
+        assert [e.dst for e in result.edges] == ["k:Router.kt:10-20:Router.add:method"]
+
+    def test_another_receiver_value_is_unchanged(self) -> None:
+        symbols, edges = self._fixture("external")
+        result = link_method_call_recovery(_ctx(symbols, edges))
+        assert [e.dst for e in result.edges] == ["k:Router.kt:10-20:Router.add:method"]

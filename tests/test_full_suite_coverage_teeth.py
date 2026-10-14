@@ -1,87 +1,122 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """WI-kalub Step 3 + 1c-parity: static guards for full-suite coverage teeth and
-the ci.yml scoped-gate no-data distinction.
+the per-PR scoped-gate no-data distinction -- on the LIVE pipelines.
 
-**Full-suite teeth (Step 3).** `full-suite.yml` runs each package's *whole* test
-suite with `--cov`, but historically only *scraped* the total for the coverage
-badge/last-green marker — the job passed regardless of coverage. So the blocking
-path (per-PR ci.yml + full-suite) enforced 100% only on *changed* files; a
-cross-cutting regression on an *unchanged* file rested entirely on nightly. These
-guards pin that every per-package job now FAILS when its whole-codebase coverage
-is not exactly 100% — reusing the same `[ "$COV" = "100" ]` comparison the
-last-green-marker write already uses (full-suite.yml), so the teeth cannot
-regress a genuinely-100% package. Pre-verified: no current coverage debt
-(WI-kalub option-b investigation; all six packages measured at 100% in isolation).
+**These guards used to read the dormant files** (INV-hokin). The header said
+``covers: .woodpecker/full-suite.yml`` while every assertion read
+``.github/workflows/full-suite.yml`` and ``.github/workflows/ci.yml``. GitHub
+Actions is disabled under Woodpecker CI (the full-suite schedule was commented
+out on 2026-07-23), so the tests pinned files that run nowhere and would have
+stayed green had the live pipelines lost their teeth. They now read
+``.woodpecker/``.
 
-**ci.yml no-data parity (Step 1c twin).** The per-PR scoped coverage gate must
-distinguish coverage.py's "No data to report" (the affected slice didn't exercise
-a changed file — not a regression) from a real <100% failure, matching
-smart-test's gate.
+**Full-suite teeth (Step 3).** The GHA original scraped each package's coverage
+for a badge and only later gained a ``[ "${COV:-0}" = "100" ]`` assert per
+package job. The Woodpecker port has no scrape: its teeth are
+``--cov-fail-under=100`` on ONE pytest over every package's tests and sources,
+which fails the step under the runner's ``set -e``. The guard pins, for every
+Woodpecker step that runs the whole package suite (``packages/*/tests/``):
+
+* the pytest carries ``--cov-fail-under=100`` and no other threshold;
+* its exit status is not swallowed (no ``|| true`` / ``|| :`` / ``|| exit 0``
+  after it, no ``failure: ignore`` on the step);
+* the step is unconditional.
+
+Which sources it measures is pinned by ``test_ci_package_lists.py``.
+
+**What the live teeth do NOT enforce, stated so nobody reads more into them.**
+The union run is not the GHA per-package run: a line covered only by ANOTHER
+package's tests counts towards 100% here, so "tests live in the same package as
+the code they cover" (AGENTS.md) is enforced by no live CI, only by the local
+``check-package-coverage`` (INV-hokin premise audit item 2; partly WI-kahar).
+
+**Per-PR no-data parity (Step 1c twin).** The per-PR scoped coverage gate must
+distinguish coverage.py's "No data to report" (the affected slice didn't
+exercise a changed file -- not a regression) from a real <100% failure,
+matching smart-test's gate. The live per-PR pipeline is
+``.woodpecker/woodpecker.yml``.
 """
 
-# covers: .woodpecker/full-suite.yml, .github/workflows/ci.yml
+# covers: .woodpecker/*.yml
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
+import pytest
+
+# A HARD import (see test_ci_self_claims_gate_scope.py): importorskip could only
+# ever make these guards skip silently.
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-FULL_SUITE = REPO_ROOT / ".github" / "workflows" / "full-suite.yml"
-CI = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+WOODPECKER = REPO_ROOT / ".woodpecker"
+FULL_SUITE = WOODPECKER / "full-suite.yml"
+PER_PR = WOODPECKER / "woodpecker.yml"
 
-# The per-package coverage-scrape line every test job emits.
-_COVERAGE_OUT = 'echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"'
-# The teeth: fail the job unless the package is at exactly 100%.
-_TEETH = re.compile(r'\[ "\$\{COV:-0\}" = "100" \]')
+#: A ``pytest`` invocation with its backslash continuations, whose targets
+#: include the whole package suite.
+_WHOLE_SUITE_PYTEST = re.compile(
+    r"^\s*pytest\b[^\n]*(?:\\\n[^\n]*)*packages/\*/tests/[^\n]*", re.MULTILINE,
+)
+_THRESHOLD = re.compile(r"--cov-fail-under[= ](\S+)")
+#: An or-list after the command that turns its failure into success.
+_SWALLOWED = re.compile(r"\|\|\s*(?:true|:|exit\s+0)\b")
 
 
-def test_full_suite_present() -> None:
-    assert FULL_SUITE.is_file(), f"full-suite.yml not found at {FULL_SUITE}"
+def _whole_suite_steps() -> dict[str, tuple[dict, str]]:
+    """``file:step`` -> (step, matched pytest command) for every Woodpecker
+    step whose commands run ``packages/*/tests/``."""
+    found: dict[str, tuple[dict, str]] = {}
+    for pipeline in sorted(WOODPECKER.glob("*.yml")):
+        for step in yaml.safe_load(pipeline.read_text()).get("steps") or []:
+            for command in step.get("commands") or []:
+                m = _WHOLE_SUITE_PYTEST.search(command)
+                if m:
+                    found[f"{pipeline.name}:{step['name']}"] = (step, m.group(0))
+    return found
 
 
-def test_every_per_package_job_has_coverage_teeth() -> None:
-    """Every per-package `coverage=${COV:-0}` scrape must be paired with a teeth
-    assert that fails the job when coverage != 100%."""
-    text = FULL_SUITE.read_text()
-    n_packages = text.count(_COVERAGE_OUT)
-    assert n_packages >= 6, (
-        f"expected >=6 per-package coverage scrapes in full-suite.yml, found "
-        f"{n_packages}; the teeth guard needs updating if the job layout changed"
+def test_the_full_suite_whole_suite_step_is_found() -> None:
+    """REACH: without this every per-step assertion below is vacuously true."""
+    assert "full-suite.yml:test-all-packages" in _whole_suite_steps()
+
+
+@pytest.mark.parametrize("key", sorted(_whole_suite_steps()))
+def test_whole_suite_pytest_fails_under_100(key: str) -> None:
+    _, command = _whole_suite_steps()[key]
+    thresholds = _THRESHOLD.findall(command)
+    assert thresholds == ["100"], (
+        f"{key}: the whole-suite pytest must carry exactly "
+        f"--cov-fail-under=100, found {thresholds or 'none'}. Without it the "
+        "step passes at any coverage and a cross-cutting regression on an "
+        "unchanged file is caught by nothing scheduled (WI-kalub Step 3)."
     )
-    n_teeth = len(_TEETH.findall(text))
-    assert n_teeth >= n_packages, (
-        f"full-suite.yml has {n_packages} per-package coverage scrapes but only "
-        f"{n_teeth} coverage-teeth asserts. Every per-package job must FAIL when "
-        f'its whole-codebase coverage is not 100% (`[ "${{COV:-0}}" = "100" ]`), '
-        "so a cross-cutting regression on an unchanged file reds full-suite + "
-        "stop-the-line instead of resting only on nightly (WI-kalub Step 3)."
+
+
+@pytest.mark.parametrize("key", sorted(_whole_suite_steps()))
+def test_whole_suite_failure_is_not_swallowed(key: str) -> None:
+    step, command = _whole_suite_steps()[key]
+    assert not _SWALLOWED.search(command), (
+        f"{key}: the whole-suite pytest's exit status is or-ed away: {command!r}"
     )
+    assert step.get("failure") != "ignore", f"{key} is `failure: ignore`"
+    assert not step.get("when"), f"{key} grew a when-clause"
 
 
-def test_teeth_follow_each_scrape() -> None:
-    """Structural: each `coverage=${COV:-0}` scrape is paired with a teeth assert
-    in the same block (within a short window — an explanatory comment may sit
-    between them), so no per-package job is left untoothed."""
-    lines = FULL_SUITE.read_text().splitlines()
-    window = 10
-    for i, ln in enumerate(lines):
-        if _COVERAGE_OUT in ln:
-            following = "\n".join(lines[i + 1:i + 1 + window])
-            assert _TEETH.search(following), (
-                f"the coverage scrape at full-suite.yml:{i + 1} has no coverage-"
-                f"teeth assert within {window} lines after it (WI-kalub Step 3). "
-                f"Lines after it:\n{following}"
-            )
-
-
-def test_ci_scoped_gate_distinguishes_no_data() -> None:
-    """1c parity: ci.yml's per-PR scoped coverage gate must special-case
-    coverage.py's 'No data to report' (exit 1 — slice didn't exercise the file)
-    rather than treating it as a real <100% failure."""
-    text = CI.read_text()
-    assert "No data to report" in text, (
-        "ci.yml's scoped coverage gate does not distinguish coverage.py's 'No data "
-        "to report' (the affected slice didn't exercise a changed file, e.g. "
-        "subprocess-only) from a real <100% failure — it can false-red. Mirror "
-        "smart-test's gate (WI-kalub Step 1c parity)."
+def test_per_pr_scoped_gate_distinguishes_no_data() -> None:
+    """1c parity: the live per-PR scoped coverage gate must special-case
+    coverage.py's 'No data to report' (slice didn't exercise the file) rather
+    than treating it as a real <100% failure."""
+    commands = [
+        c for step in yaml.safe_load(PER_PR.read_text())["steps"]
+        for c in step.get("commands") or []
+        if "coverage report" in c and "--fail-under=100" in c
+    ]
+    assert commands, f"no scoped coverage gate found in {PER_PR.name} (reach)"
+    assert any("No data to report" in c for c in commands), (
+        f"{PER_PR.name}'s scoped coverage gate does not distinguish coverage.py's "
+        "'No data to report' (the affected slice didn't exercise a changed "
+        "file, e.g. subprocess-only) from a real <100% failure -- it can "
+        "false-red. Mirror smart-test's gate (WI-kalub Step 1c parity)."
     )

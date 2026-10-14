@@ -1,0 +1,20 @@
+- op: create  # f77f
+  at: '2026-10-07T06:40:09Z'  # f77f
+  by: agent  # f77f
+  actor: jgstern_agent  # f77f
+  clock: 1  # f77f
+  nonce: f77f  # f77f
+  data:  # f77f
+    kind: work_item  # f77f
+    title: "sketch additional-files walk matches excludes against ABSOLUTE path parts (repo under ~/.cache or */build/* gets no additional files)"  # f77f
+    status: todo_soft  # f77f
+    priority: 3  # f77f
+    parent:  # f77f
+    tags:  # f77f
+    - sketch  # f77f
+    isbefore: []  # f77f
+    duplicate_of: []  # f77f
+    not_duplicate_of: []  # f77f
+    pr_ref:  # f77f
+    description: "sketch._collect_important_files.walk_additional_files (sketch.py ~L3597) filters rglob results with `any(fnmatch(p, pat) for p in item.parts for pat in excludes)` -- item.parts of an rglob result are ABSOLUTE path parts, so DEFAULT_EXCLUDES entries (.cache, build, dist, vendor, ...) match directories ABOVE the repo root. A repo checked out anywhere under a directory with an excluded name (e.g. ~/.cache/..., /srv/build/..., /home/me/vendor/...) gets zero additional-file candidates. Evidence (2026-10-07, while testing WI-vosag): running smart-test with TMPDIR=/home/jgstern_agent/.cache/hg-smarttest-tmp left sketch.py lines 3610-3613 and 3622-3632 (the candidate loop) uncovered -- every tmp_path fixture file was excluded by '.cache' in its absolute parts; with TMPDIR=/home/jgstern_agent/hg-smarttest-tmp the same tests cover them. Fix: match excludes against item.relative_to(repo_root).parts (and audit other `.parts` exclude checks for the same absolute-vs-relative mistake). The `file_index` branch (only via run_behavior_map) is pragma'd and not affected the same way. Also note that tests are sensitive to TMPDIR location because of this."  # f77f
+    fields: {}  # f77f

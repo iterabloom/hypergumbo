@@ -21,7 +21,7 @@ method exist in the behavior map?" — which is the thing a consumer sees.
 
 Why one shared run
 ------------------
-Sixteen full-pipeline invocations is ~30s; one polyglot run is ~2s and the
+Seventeen full-pipeline invocations is ~30s; one polyglot run is ~2s and the
 per-language assertions stay independently xfail-able. The corpus is
 generated into ``tmp_path_factory`` rather than committed under
 ``tests/fixtures/`` for two measured reasons: the pipeline's own test-path
@@ -99,47 +99,28 @@ CASES: dict[str, tuple[str, str]] = {
     "elixir": ("s.ex",
                "defmodule Shape do\n  @callback area() :: integer\nend\n\n"
                "defmodule Square do\n  @behaviour Shape\n  def area, do: 1\nend\n"),
+    "erlang": ("shape.erl", "-module(shape).\n-callback area() -> integer().\n"),
+}
+
+# Languages whose fixture needs a second file, keyed like CASES. Erlang
+# declares ONE module per file (``-module`` names the file's module), so its
+# behaviour and its implementor cannot share one.
+EXTRA_FILES: dict[str, tuple[str, str]] = {
+    "erlang": ("square.erl",
+               "-module(square).\n-behaviour(shape).\n-export([area/0]).\n"
+               "area() -> 1.\n"),
 }
 
 # Measured 2026-07-31, one cause per entry. Each is a strict xfail: fixing a
 # language XPASSes its cell and forces removal of the entry in the same PR.
 #
 # Note how little these share. The item that produced this column named ONE
-# of them. Three of the eight are producer gaps, three are vocabulary gaps in
-# a consumer, one is an unrelated analyzer crash, one is an anchoring choice.
-KNOWN_HOLES: dict[str, str] = {
-    "cpp": (
-        "CONSUMER SEMANTICS — the producer half is now fixed. Pure virtuals ARE "
-        "emitted (`Shape::area`) and containment roots them, but "
-        "type_hierarchy._extends_admits_dispatch asks whether the CHILD is "
-        "abstract, and for a C++ abstract base the abstract one is the PARENT: "
-        "the edge is `extends: Square -> Shape` with Square concrete. The rule "
-        "is correct for interface-extends-interface (Go embedding, C# interface "
-        "inheritance) and wrong for abstract-base inheritance. Widening it "
-        "touches all four NO_VIRTUAL_EXTENDS languages, so it is tracked "
-        "separately rather than bundled here."
-    ),
-    "kotlin": (
-        "ANALYZER CRASH, unrelated to dispatch. The Kotlin analyzer emits ZERO "
-        "type symbols when a file holds 2+ bodied type declarations, "
-        "re-emitting the first method as a top-level function (WI-rufub) — and this "
-        "fixture has exactly that shape. Each construct is correct in "
-        "isolation. Pre-existing (reproduces at 9f0a163833^). This cell cannot "
-        "go green until that is fixed; it is not a dispatch defect."
-    ),
-    "dart": (
-        "PRODUCER (WI-lahub). Both types and both methods are emitted correctly with "
-        "dot-qualified names, but the analyzer emits NO inheritance edge at all "
-        "for `class Square implements Shape` — so type_hierarchy has nothing to "
-        "build its maps from."
-    ),
-    "elixir": (
-        "PRODUCER (WI-vitas). `@callback area() :: integer` produces no symbol at all, so "
-        "the behaviour's required function does not exist, and `@behaviour "
-        "Shape` produces no edge. Elixir behaviours are the language's "
-        "interface mechanism and are wholly unmodelled."
-    ),
-}
+# of them. Three of the eight were producer gaps, three vocabulary gaps in a
+# consumer, one an anchoring choice. The last one, Kotlin's (WI-rufub: a file
+# with two bodied type declarations came out as one ERROR node, the
+# tree-sitter-kotlin 1.1.0 nested one-line-body bug), went green with
+# ``kotlin._close_brace_repair`` in the WI-tusad scheme bump.
+KNOWN_HOLES: dict[str, str] = {}
 
 # Languages deliberately outside this column, with the reason. Declared as
 # DATA so the scope is checkable rather than implied: a gate's "N of N green"
@@ -164,7 +145,7 @@ def polyglot_map(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     make several cells vacuously green.
     """
     root = tmp_path_factory.mktemp("iface-dispatch")
-    for filename, source in CASES.values():
+    for filename, source in [*CASES.values(), *EXTRA_FILES.values()]:
         (root / filename).write_text(source)
     out = root / "bm.json"
     run_behavior_map(
@@ -263,6 +244,10 @@ def test_scope_is_declared_and_disjoint() -> None:
     naming a language the corpus no longer covers (a hole for nothing), and a
     language appearing in both the gated and not-applicable maps.
     """
+    assert set(EXTRA_FILES) <= set(CASES), (
+        f"EXTRA_FILES names languages absent from the corpus: "
+        f"{sorted(set(EXTRA_FILES) - set(CASES))}"
+    )
     assert set(KNOWN_HOLES) <= set(CASES), (
         f"KNOWN_HOLES names languages absent from the corpus: "
         f"{sorted(set(KNOWN_HOLES) - set(CASES))}"

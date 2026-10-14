@@ -1,0 +1,21 @@
+- op: create  # 095f
+  at: '2026-10-01T12:50:36Z'  # 095f
+  by: agent  # 095f
+  actor: jgstern_agent  # 095f
+  clock: 1  # 095f
+  nonce: 095f  # 095f
+  data:  # 095f
+    kind: work_item  # 095f
+    title: "javascript: a function/class EXPRESSION bound to a CommonJS export (exports.k = function(){}, module.exports = class X {}, { k: () => {} }) emits no symbol, so the exported code has no node"  # 095f
+    status: todo_hard  # 095f
+    priority: 3  # 095f
+    parent:  # 095f
+    tags:  # 095f
+    - javascript  # 095f
+    - analysis_quality  # 095f
+    isbefore: []  # 095f
+    duplicate_of: []  # 095f
+    not_duplicate_of: []  # 095f
+    pr_ref:  # 095f
+    description: "FOUND 2026-10-01 by WI-sinol (branch jgstern-agent/fix/sinol); reproduced on origin/dev d0f3f741d3 and on the WI-sinol branch.\n\nTHE DEFECT. The JS/TS analyzer emits NO symbol for a function or class EXPRESSION that is bound directly to a CommonJS export, so the exported code has no node at all: no is_exported verdict, no module_exports edge, nothing for a call to land on.\n\nREPRO (scratch fixture, `hypergumbo survey`, each file required by main.js):\n    e2.js: module.exports = { foo() {}, bar: function () {}, baz: () => 3, qux: function quxImpl() {} };\n    e3.js: module.exports = class Widget { draw() {} };\n    e4.js: module.exports = function makeThing() {};\n    e5.js: exports.inline = function inlineNamed() {};\nObserved symbols: e2 -> only `foo` (method); bar / baz / qux / quxImpl absent. e3 -> only `draw` (kind=method, name WITHOUT the `Widget.` prefix); no Widget class. e4 -> nothing. e5 -> nothing.\nExpected: one symbol per exported function/class expression (named by its own name when it has one, else by the export key), which WI-sinol's CommonJS export scan would then mark is_exported=True.\n\nSCOPE TO CHECK BEFORE FIXING (not measured): corpus volume. sharp's lib/*.js export `module.exports = (Sharp) => {...}` (anonymous arrow, 9 files) -- that arrow is not a named export, so the naming rule needs a decision first.\nRelated: WI-piror (anonymous arrows in return/ternary/template positions -- a different position set), WI-tavag (CommonJS is_exported; addressed on the WI-sinol branch), WI-sinol (module_exports gate)."  # 095f
+    fields: {}  # 095f

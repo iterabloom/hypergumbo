@@ -1,0 +1,22 @@
+- op: create  # b1af
+  at: '2026-09-29T13:25:21Z'  # b1af
+  by: agent  # b1af
+  actor: jgstern_agent  # b1af
+  clock: 1  # b1af
+  nonce: b1af  # b1af
+  data:  # b1af
+    kind: work_item  # b1af
+    title: "JS/TS injection shapes that still reach no shipped sink: innerHTML/outerHTML assignment, insertAdjacentHTML on an untyped receiver, new Function(s), string setTimeout/setInterval"  # b1af
+    status: todo_hard  # b1af
+    priority: 3  # b1af
+    parent:  # b1af
+    tags:  # b1af
+    - taint  # b1af
+    - javascript  # b1af
+    - analysis_quality  # b1af
+    isbefore: []  # b1af
+    duplicate_of: []  # b1af
+    not_duplicate_of: []  # b1af
+    pr_ref:  # b1af
+    description: "RESIDUAL of WI-nokab (PR #1301, ADR-0060), filed on closing it. taint now SHIPS code_execution and dom_injection sinks (taint_sinks/), but four JS/TS injection shapes still reach no sink because the analyzer emits no usable edge for them. Measured on dev bfdead0700 with one function reading document.referrer:\n- el.innerHTML = r / el.outerHTML = r: an ASSIGNMENT to a property -- no edge of any type (the WI-zumoz class). The most common DOM-XSS sink.\n- el.insertAdjacentHTML(\"beforeend\", r): emitted, but as javascript:external:0-0:insertAdjacentHTML (untyped receiver, call_construct=method), so a row would match any project method of that name by short name alone; not rowed.\n- new Function(r)(): no edge.\n- setTimeout(r, 1) / setInterval(r, 1) with a string: no edge (JS_KNOWN_GLOBAL_CALLS holds fetch and eval only); a string and a function argument are one call shape, so an edge would need the argument's type to be a sink.\nEach needs analyzer reach first, then a row in taint_sinks/{code_execution,dom_injection}.yaml. test_shipped_taint_sinks keeps any such row out of the I/O-derived zones."  # b1af
+    fields: {}  # b1af

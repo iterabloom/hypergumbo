@@ -1,0 +1,23 @@
+- op: create  # 53fb
+  at: '2026-10-03T17:33:56Z'  # 53fb
+  by: agent  # 53fb
+  actor: jgstern_agent  # 53fb
+  clock: 1  # 53fb
+  nonce: 53fb  # 53fb
+  data:  # 53fb
+    kind: work_item  # 53fb
+    title: "go raw-fd syscalls (syscall.* and x/sys/unix Read/Write/Pread/Pwrite/Fstat/Open/Openat/Sendto) are rowed one boundary each; c rows the same syscalls call_site_undecidable (INV-vaduk), so a Read on a socket fd can never be net_recv"  # 53fb
+    status: todo_hard  # 53fb
+    priority: 3  # 53fb
+    parent:  # 53fb
+    tags:  # 53fb
+    - catalogue  # 53fb
+    - io_boundary  # 53fb
+    - go  # 53fb
+    - recall  # 53fb
+    isbefore: []  # 53fb
+    duplicate_of: []  # 53fb
+    not_duplicate_of: []  # 53fb
+    pr_ref:  # 53fb
+    description: "Found by the WI-vafad tranche 3 sweep (docs/audits/0022, candidate T3-A5). Both blind GO workers independently returned UNDECIDABLE_BY_ARGUMENT on golang.org/x/sys/unix Read / Write / Fstat / Open / Openat / Sendto; Pread / Pwrite split.\n\nTHE ROWS. go.yaml rows the raw-fd syscalls one boundary each, unconditionally: syscall [Open, Openat, Read, Pread, Readlink, Stat, Lstat, Fstat, Getdents] fs_read (go.yaml:165-166), [Write, Pwrite, ...] fs_write (:252-253), [Connect, Sendto, Sendmsg] net_send (:313-314). The community overlay go-x-sys-and-grpc.yaml:55-92 copies the same shape for golang.org/x/sys/unix. Each of these takes an ARBITRARY fd, which may be a file, a pipe, a socket or stdio.\n\nPARITY. c rows the same syscalls with the INV-vaduk shape: unistd.read / unistd.write carry call_site_undecidable twins across fs_* / ipc_* / net_* (c.yaml, `unistd.read on a socket fd ... exactly one of fs_read/ipc_recv/net_recv is true per call`), and fcntl.open sits under the mode seam (WI-bulub). Go's os.File.Write and bufio.Writer got the writer seam (WI-suhug); the syscall layer never did.\n\nWHY IT MATTERS. It is a RECALL gap, not only a label nit. A syscall.Read / unix.Read on a socket fd is a network receive that these rows can only call fs_read, which mints nothing. An untrusted_input claim over such code reads clean when it should not: the false-all-clear direction. It is relevant to kernel/runtime-style Go (gvisor-like), which is the population the go.yaml comment says these rows exist for.\n\nFIX SHAPE (to be decided at fix time, not here): call_site_undecidable twins with abstains_to = today's answer (nothing that classifies today moves without a stamp), Open/Openat under the mode seam as os.OpenFile is, and a descriptor-family stamp if one can be derived (WI-baran did that for c). Pay ADR-0049 ruling 3."  # 53fb
+    fields: {}  # 53fb

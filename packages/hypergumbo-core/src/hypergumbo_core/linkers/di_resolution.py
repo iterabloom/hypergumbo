@@ -55,6 +55,7 @@ from typing import TYPE_CHECKING, Iterator
 
 from ..discovery import find_non_test_files
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
+from ..taxonomy import extension_suffixes
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -190,14 +191,15 @@ _PATTERNS_BY_EXT: dict[str, list[tuple[re.Pattern[str], float]]] = {
     ".cs": [
         (_CSHARP_DI, 0.90),
     ],
-    ".ts": [
-        (_TS_PROVIDER, 0.90),
-        (_INVERSIFY_BIND, 0.90),
-    ],
-    ".tsx": [
-        (_TS_PROVIDER, 0.90),
-        (_INVERSIFY_BIND, 0.90),
-    ],
+    # Every TypeScript suffix from the shared list (WI-hizon): the private
+    # ``.ts`` / ``.tsx`` pair skipped ``.mts`` / ``.cts``.
+    **{
+        suffix: [
+            (_TS_PROVIDER, 0.90),
+            (_INVERSIFY_BIND, 0.90),
+        ]
+        for suffix in sorted(extension_suffixes("typescript"))
+    },
     ".py": [
         (_PYTHON_BIND, 0.90),
     ],
@@ -366,7 +368,8 @@ def _extract_nestjs_module_bindings(content: str) -> list[DIBinding]:
 def extract_bindings_from_source(root: Path) -> list[DIBinding]:
     """Extract explicit DI bindings from source files in *root*.
 
-    Scans ``.java``, ``.kt``, ``.scala``, ``.cs``, ``.ts``, ``.tsx``, ``.py``
+    Scans ``.java``, ``.kt``, ``.scala``, ``.cs``, every TypeScript suffix
+    (``.ts``, ``.tsx``, ``.mts``, ``.cts``), ``.py``
     files and ``META-INF/services/`` directories.  Also detects NestJS
     ``@Module({providers: [...], controllers: [...]})`` registrations.
 
@@ -415,7 +418,7 @@ def extract_bindings_from_source(root: Path) -> list[DIBinding]:
                 ))
 
         # NestJS @Module registrations (TypeScript only)
-        if ext in (".ts", ".tsx"):
+        if ext in extension_suffixes("typescript"):
             bindings.extend(_extract_nestjs_module_bindings(content))
 
     # SPI files

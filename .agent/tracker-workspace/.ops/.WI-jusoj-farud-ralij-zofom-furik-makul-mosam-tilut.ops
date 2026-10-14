@@ -1,0 +1,23 @@
+- op: create  # 31d0
+  at: '2026-10-05T04:56:08Z'  # 31d0
+  by: agent  # 31d0
+  actor: jgstern_agent  # 31d0
+  clock: 1  # 31d0
+  nonce: 31d0  # 31d0
+  data:  # 31d0
+    kind: work_item  # 31d0
+    title: "s3a walk never examines the source's own line: a sink containing the source reads sink_before_source (withheld from the verdict) and a non-sink consumer on that line is not an escape"  # 31d0
+    status: todo_hard  # 31d0
+    priority: 2  # 31d0
+    parent:  # 31d0
+    tags:  # 31d0
+    - taint  # 31d0
+    - adr_0017  # 31d0
+    - javascript  # 31d0
+    - python  # 31d0
+    isbefore: []  # 31d0
+    duplicate_of: []  # 31d0
+    not_duplicate_of: []  # 31d0
+    pr_ref:  # 31d0
+    description: "FOUND 2026-10-04 by WI-tozar (nested-assignment def/use), reproduced on the stage-8b tree c1dd831558 with NO WI-tozar change applied. FALSE ALL-CLEAR DIRECTION.\n\nDEFECT. The ADR-0017 s3a walk in taint.py treats the source's own line as a starting point and never as a use site, so whatever ELSE that line does with the source's value is invisible. Two consequences, both measured with verify-claims --format json, claims host_secret -> network:\n\n(a) A SINK ON THE SOURCE'S LINE IS CLASSIFIED sink_before_source. `sink_after_source` is `any(sink_line > source_line)`, so a sink that CONTAINS the source as an argument (same line) reads as \"sink precedes source\", and INV-muhij's rule then withholds the row from the verdict. The canonical \"send the token in a request\" pattern is affected in both languages:\n  JS:  const res = await fetch(url, { headers: { Authorization: process.env.API_TOKEN } }); return res.json();\n  Py:  resp = requests.post(url, headers={\"Authorization\": os.environ[\"API_TOKEN\"]}); return resp.json()\n  -> verdict inconclusive (caveat sink_before_source_only), evidence walk_blocked_by=sink_before_source for both rows. NOT violated.\n  Py:  r = sock.sendall(os.environ[\"API_KEY\"].encode()); print(r)  -> confirmed_with_caveats.\n  The trigger is a DEFINITION on the line (res / resp / r) that is used later: with no definition the row reads source_not_tracked and still carries the verdict.\n\n(b) A NON-SINK CONSUMER ON THE SOURCE'S LINE IS NOT AN ESCAPE. The walk seeds on the line's definitions only:\n  JS:  const acc = []; const n = acc.push(process.env.API_KEY); console.log(n); return fetch(url + acc[0]);\n  -> confirmed_with_caveats with NO evidence: the walk followed n, exhausted on console.log, and REMOVED the flow, while the secret went into acc and acc is sent.\n  The use-line half of this question exists (`call_beside_heir`, `no_heir`); the seed line never asks it.\n\nSCOPE OF THE INSTANCES. Checked: the four shapes above (JS + Python). Not checked: other languages, and how many corpus rows carry sink_before_source because of a same-line pair (INV-muhij's census counted 14 rows; whether any were same-line is not recorded there).\n\nWHY IT MATTERS FOR WI-tozar. A nested binding (h(m = src()), acc.push(m = src())) adds exactly such a seed-line definition. WI-tozar therefore defines a nested binding only when its value is CONTAINED (goes to a test or another binding); escaping positions stay uses. Fixing this item would let those positions define too.\n\nFIX DIRECTION (not prescribed, owner: sink_before_source removal NOT YET, do not amend ADR-0052): (a) a same-line sink is not \"before\" the source; it needs its own blocker that KEEPS the row carrying the verdict (the walk cannot adjudicate a same-line flow), so this tightens a withholding gate; (b) treat the seed line as a use line for the escape question (calls at the source line other than the source call chain -> escape unless terminating), which can only turn False into None."  # 31d0
+    fields: {}  # 31d0

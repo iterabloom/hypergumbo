@@ -177,7 +177,7 @@ class TestStructureFallbackIndexBranch:
         from hypergumbo_core.sketch import _format_structure_tree_fallback
 
         idx = FileIndex.from_paths(tmp_path, [
-            tmp_path / "dist" / "bundle.py",   # excluded dir -> skipped
+            tmp_path / "__pycache__" / "bundle.py",   # excluded dir -> skipped
             tmp_path / "test_root.py",         # root test file -> skipped under -x
             tmp_path / "pkg" / "core.py",      # kept
         ])
@@ -190,7 +190,7 @@ class TestStructureFallbackIndexBranch:
         finally:
             set_file_index(before)
         assert "pkg" in out
-        assert "dist" not in out
+        assert "__pycache__" not in out
         assert "test_root.py" not in out
 
 

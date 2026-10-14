@@ -243,6 +243,7 @@ def _extract_setting(
     symbol_id, stable_id = make_doc_symbol_ids(
         "ini", str(rel_path_obj), "setting", key_name,
         span.start_line, span.end_line,
+        (current_section,) if current_section else (),
     )
 
     # Check if value is sensitive

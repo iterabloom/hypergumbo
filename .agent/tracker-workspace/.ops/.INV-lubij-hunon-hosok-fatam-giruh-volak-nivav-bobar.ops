@@ -1,0 +1,25 @@
+- op: create  # 85a2
+  at: '2026-10-11T04:28:10Z'  # 85a2
+  by: agent  # 85a2
+  actor: jgstern_agent  # 85a2
+  clock: 1  # 85a2
+  nonce: 85a2  # 85a2
+  data:  # 85a2
+    kind: invariant  # 85a2
+    title: "js_ts: JSX <Route> markers are hand-built (id kind slot 'route', named after the component), so a non-importing call to the component resolves to the marker"  # 85a2
+    status: violated  # 85a2
+    priority: 3  # 85a2
+    parent:  # 85a2
+    tags:  # 85a2
+    - js_ts  # 85a2
+    - routes  # 85a2
+    - resolution  # 85a2
+    - docstring_audit  # 85a2
+    isbefore: []  # 85a2
+    duplicate_of: []  # 85a2
+    not_duplicate_of: []  # 85a2
+    pr_ref:  # 85a2
+    description: "Repro: app.jsx defines `function Users()` and `<Route path=\"/users\" component={Users} />` (line 13); noimport.js calls `Users()` and `register(Users)` with no import -> both resolve to app.jsx:13-13:Users:route (0.85 / 0.75). Same-file and imported calls resolve to the function. The marker raises two id_roundtrip warnings. Fix: build JSX markers with make_route_symbol.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 85a2
+    fields:  # 85a2
+      statement: "Identifier lookups never resolve to a route marker (WI-zugob); route markers are built by make_route_symbol."  # 85a2
+      root_cause: "The JSX <Route> marker (js_ts.py ~4250-4262) is built by hand with handler_name = component name and kind-slot 'route' (fails id_roundtrip), and global_symbols[sym.name] is last-one-wins."  # 85a2

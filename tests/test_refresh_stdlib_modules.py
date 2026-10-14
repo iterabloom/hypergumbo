@@ -18,6 +18,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "refresh-stdlib-modules"
@@ -110,6 +112,7 @@ def test_python_first_time_insert(tmp_path: Path) -> None:
         "stdlib_provenance:\n"
         "  source_url: https://docs.python.org/3/library/index.html\n"
         f'  version: "{interp_version}"\n'
+        '  supported_versions: "3.10-3.13"\n'
         '  retrieved: "2024-01-01"\n',
         encoding="utf-8",
     )
@@ -144,6 +147,7 @@ def test_python_determinism(tmp_path: Path) -> None:
         "stdlib_provenance:\n"
         "  source_url: https://docs.python.org/3/library/index.html\n"
         f'  version: "{interp_version}"\n'
+        '  supported_versions: "3.10-3.13"\n'
         '  retrieved: "2024-01-01"\n',
         encoding="utf-8",
     )
@@ -185,3 +189,48 @@ def test_main_python_missing_yaml_errors(tmp_path: Path, monkeypatch) -> None:
     )
     rc = mod.main()
     assert rc == 1
+
+
+def _fixture(tmp_path: Path, supported: str | None) -> Path:
+    interp_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    yaml_path = tmp_path / "python.yaml"
+    yaml_path.write_text(
+        "language: python\n"
+        "stdlib_provenance:\n"
+        "  source_url: https://docs.python.org/3/library/index.html\n"
+        f'  version: "{interp_version}"\n'
+        + (f'  supported_versions: "{supported}"\n' if supported else "")
+        + '  retrieved: "2024-01-01"\n',
+        encoding="utf-8",
+    )
+    return yaml_path
+
+
+def test_python_writes_the_union_over_supported_interpreters(
+    tmp_path: Path,
+) -> None:
+    """WI-gisan: the list is the union over every supported Python, not the
+    running interpreter alone. A module present on only SOME of them
+    (distutils: 3.10/3.11; tomllib: 3.11+) is written whichever one runs."""
+    from hypergumbo_core.python_stdlib_versions import (
+        PYTHON_STDLIB_VERSION_WINDOWS,
+    )
+    mod = _load_script_module()
+    yaml_path = _fixture(tmp_path, "3.10-3.13")
+    interp_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    assert mod._refresh_python(yaml_path, interp_version) == 0
+    text = yaml_path.read_text(encoding="utf-8")
+    for name in sorted(PYTHON_STDLIB_VERSION_WINDOWS):
+        assert f"\n  - {name}\n" in text, name
+    assert "\n  - os\n" in text
+
+
+@pytest.mark.parametrize("supported", [None, "3.11-3.12"])
+def test_python_supported_versions_must_match_the_shared_table(
+    tmp_path: Path, supported: str | None, capsys: pytest.CaptureFixture[str],
+) -> None:
+    mod = _load_script_module()
+    yaml_path = _fixture(tmp_path, supported)
+    interp_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    assert mod._refresh_python(yaml_path, interp_version) == 1
+    assert "supported_versions" in capsys.readouterr().err

@@ -1,0 +1,22 @@
+- op: create  # 5d62
+  at: '2026-10-04T21:44:45Z'  # 5d62
+  by: agent  # 5d62
+  actor: jgstern_agent  # 5d62
+  clock: 1  # 5d62
+  nonce: 5d62  # 5d62
+  data:  # 5d62
+    kind: work_item  # 5d62
+    title: "pascal: receiver calls (A.Run(), Self.Get), external FFI routines and class types emit nothing; a typecast in code is an unresolved call -- residual of WI-darik/WI-sigit on sherpa-onnx"  # 5d62
+    status: todo_hard  # 5d62
+    priority: 3  # 5d62
+    parent:  # 5d62
+    tags:  # 5d62
+    - pascal  # 5d62
+    - call_graph  # 5d62
+    - analysis_quality  # 5d62
+    isbefore: []  # 5d62
+    duplicate_of: []  # 5d62
+    not_duplicate_of: []  # 5d62
+    pr_ref:  # 5d62
+    description: "FOUND 2026-10-04 measuring WI-darik / WI-sigit on sherpa-onnx's Pascal API (62 files), branch jgstern-agent/fix/darik. After that branch every procedure, method and nested procedure is a symbol and every call edge is drawn from one (810 call edges, was 163; 0 dangling). What it does NOT read:\n\n1. A call on a receiver: A.Run(), Self.Get, obj.Method(x). _get_call_name takes a bare identifier only, so an exprDot callee emits nothing. Not counted by shape.\n2. A routine declared external (function SherpaOnnxCreateOnlineRecognizer(...): ...; cdecl; external 'lib';) is a declProc with no defProc, so it emits no symbol and every call to it is unresolved. Most of sherpa-onnx.pas's calls into the C API (SherpaOnnx* names in the unresolved list) are this shape. Not counted.\n3. A typecast in code (PAnsiChar(s), AnsiString(x), pcfloat(p)) is syntactically a call and emits an unresolved calls edge (PAnsiChar alone: 133 on sherpa-onnx). Typecasts in DECLARATIONS are now skipped (_in_a_declaration); in code they cannot be told from a call without knowing which names are types -- the class/record/type names Pass 1 does not emit (point 4) would be that list.\n4. type TA = class ... end emits no symbol (nor record / interface types), and a library L; compilation unit emits none (its main block's calls are anchored on the file).\n\nPriority P3: Pascal has one repo in the corpus."  # 5d62
+    fields: {}  # 5d62

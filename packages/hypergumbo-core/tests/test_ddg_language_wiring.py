@@ -78,7 +78,7 @@ from hypergumbo_core.ddg_build import build_repo_ddg, get_ddg_language
 #: that a registration that silently stops happening fails loudly here instead
 #: of shrinking every quantified assertion below to a vacuous pass.
 EXPECTED_DEF_USE_LANGUAGES = frozenset(
-    {"python", "go", "rust", "typescript", "javascript"},
+    {"python", "go", "rust", "typescript", "javascript", "java"},
 )
 
 #: One minimal function per language whose body defines a local and then uses
@@ -94,6 +94,16 @@ EXPECTED_DEF_USE_LANGUAGES = frozenset(
 #: language's statements carry def/use at all — and could fail for a reason
 #: that has nothing to do with what this gate is for.
 DDG_SMOKE_SOURCES: dict[str, tuple[str, str]] = {
+    "java": (
+        "Mod.java",
+        "class Mod {\n"
+        "    int f(int x) {\n"
+        "        int y = x + 1;\n"
+        "        int z = y * 2;\n"
+        "        return z;\n"
+        "    }\n"
+        "}\n",
+    ),
     "python": (
         "mod.py",
         "def f(x):\n"
@@ -149,6 +159,7 @@ def _import_production_def_use_modules() -> None:
     # _build_ddg_for_verify_claims imports. Importing the same modules here
     # mirrors production rather than reaching into the registry directly.
     import hypergumbo_lang_mainstream.go_def_use
+    import hypergumbo_lang_mainstream.java_def_use
     import hypergumbo_lang_mainstream.py_def_use
     import hypergumbo_lang_mainstream.rust_def_use
     import hypergumbo_lang_mainstream.ts_def_use
@@ -274,6 +285,12 @@ def test_language_yields_statement_level_def_use(
 #: A branch per language, used to prove that declaring a type
 #: ``atomic_statement`` did not swallow the language's control flow.
 CONTROL_FLOW_SOURCES: dict[str, str] = {
+    "java":
+        "class C {\n"
+        "    int f(int x) {\n"
+        "        if (x > 0) { return 1; } else { return 2; }\n"
+        "    }\n"
+        "}\n",
     "python":
         "def f(x):\n"
         "    if x > 0:\n"

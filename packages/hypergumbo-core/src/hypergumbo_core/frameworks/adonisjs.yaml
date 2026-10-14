@@ -4,6 +4,10 @@
 # AdonisJS is a full-featured Node.js framework with Laravel-inspired patterns.
 # Supports both file-based routing and decorator-based routing (Girouette).
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-06-18
 id: adonisjs
 language: javascript
 

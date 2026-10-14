@@ -746,8 +746,50 @@ class TestTopLevelBlockTyping:
                 "files": 1, "symbols": 2, "ecosystem": {"stdlib": 2},
             },
             "derived_skipped": {"files": 0, "paths": []},
+            "installed_deps_skipped": {
+                "dirs": 1, "packages": 81,
+                "entries": [{
+                    "path": "deps", "ecosystem": "Mix", "packages": 81,
+                    "traced": [],
+                }],
+            },
+            "generated_output_skipped": {
+                "dirs": 1, "entries": [{"path": "target", "tool": "Cargo build"}],
+            },
         }
         jsonschema.Draft202012Validator(scs).validate(real)
+        # ADR-0004 point 7: the generated-output bucket's shape is pinned too.
+        bad = dict(real, generated_output_skipped={"dirs": 1, "entries": [{"path": "x"}]})
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.Draft202012Validator(scs).validate(bad)
+        # ADR-0004 §"Installed dependency source": the bucket's shape is pinned,
+        # not just its name.
+        real["installed_deps_skipped"] = {"dirs": 1, "packages": 1}
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.Draft202012Validator(scs).validate(real)
+
+    def test_metrics_edge_confidence_validates_and_states_scope(self):
+        """WI-zimor: the edge-confidence distribution block validates against
+        its declared schema (populated and empty), and both confidence
+        summaries say they are over EDGES (nodes carry no confidence)."""
+        from hypergumbo_core.metrics import compute_metrics
+
+        schema = load_schema()
+        props = schema["properties"]["metrics"]["properties"]
+        dist_schema = props["edge_confidence"]
+        populated = compute_metrics(
+            [], [{"confidence": 0.4}, {"confidence": 0.85}, {"confidence": 0.85}],
+        )["edge_confidence"]
+        empty = compute_metrics([], [])["edge_confidence"]
+        validator = jsonschema.Draft202012Validator(dist_schema)
+        validator.validate(populated)
+        validator.validate(empty)
+        # A malformed histogram (non-integer count) is rejected: the schema
+        # pins the shape, not just the key name.
+        with pytest.raises(jsonschema.ValidationError):
+            validator.validate({"histogram": {"0.40": "3"}, "median": 0.4})
+        assert "edge" in props["avg_confidence"]["description"].lower()
+        assert "edge" in dist_schema["description"].lower()
 
     def test_metrics_properties_match_compute_metrics(self):
         """The metrics block's property set equals compute_metrics() output."""
@@ -790,6 +832,8 @@ class TestTopLevelBlockTyping:
                 dataflow=True,
             ),
             limits_hit=["hop_limit"],
+            # WI-mibuj: slice_graph sizes every limit it names.
+            limits_detail={"hop_limit": {"cap": 1, "nodes_omitted": 1}},
             node_depths={"n1": 0},
             node_tiers={"n1": 1},
             admission_stats={"admitted_writer_src": 1},

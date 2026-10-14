@@ -67,10 +67,10 @@ Values that name the relationship the edge expresses between src and dst. Per AD
 - **`depends_on_manifest`** — An importing source file RESOLVED to a manifest-declared dependency (the dependency linker's import->declared-dep bridge; evidence_type=import_to_manifest): a resolution edge from the file to the dependency. Distinct from depends_on (the manifest's own declaration) -- see WI-dinih.
 - **`dispatches_to`** — Caller dispatches to callee via runtime indirection (virtual method, function pointer, DI resolution, etc.).
 - **`event_publishes`** — Producer publishes an event/message that the consumer receives via an async channel (event bus, queue, CRDT, etc.).
-- **`extends`** — Class extends a superclass.
-- **`implements`** — Class implements an interface.
+- **`extends`** — Class extends a superclass, an interface / trait / protocol extends its base type, or a Dart mixin names its `on` superclass constraint.
+- **`implements`** — A type implements an interface / trait / protocol (in Dart, any class's implicit interface), or an Elixir module implements a behaviour.
 - **`imports`** — Module imports another module or symbol.
-- **`includes`** — File or class includes / sources / mixes-in another unit's content (LaTeX \include, RST .. include::, Meson subdir, Ruby `include`/`extend` mixin — WI-hatip).
+- **`includes`** — File or class includes / sources / mixes-in another unit's content (LaTeX \include, RST .. include::, Meson subdir, Ruby `include`/`extend` mixin — WI-hatip, Dart `with` mixin — WI-lahub).
 - **`inherits`** — Class/contract inherits from a parent (used by languages where 'inherits' reads more naturally than 'extends').
 - **`instantiates`** — Constructor or factory creates an instance.
 - **`links`** — Generic linkage relationship.
@@ -146,7 +146,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`enum`** — Enum declaration.
 - **`env_var`** — Environment variable symbol. CANONICAL per audit-findings 0006.
 - **`environment`** — Environment symbol (LaTeX / shell). CANONICAL per audit-findings 0007.
-- **`error_set`** — Zig error-set declaration. Surfaced by WI-nubuv's inline-IfExp / non-string-Constant classifier fixes from the function-local kind union in hypergumbo-lang-extended1/zig.py:259. Zig errors are a first-class language construct sibling to `struct` / `enum` / `union`.
+- **`error_set`** — Zig error-set declaration. Surfaced by WI-nubuv's inline-IfExp / non-string-Constant classifier fixes from the function-local kind union in hypergumbo-lang-extended1/zig.py:332. Zig errors are a first-class language construct sibling to `struct` / `enum` / `union`.
 - **`event`** — Event symbol (DSL / Solidity). CANONICAL per audit-findings 0007.
 - **`executable`** — Executable declaration (CMake `add_executable`, Meson `executable`). CANONICAL per audit-findings 0005.
 - **`export`** — Export declaration (JS / TS / TOML / Rust).
@@ -166,7 +166,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`id_selector`** — CSS id selector symbol. CANONICAL per audit-findings 0007.
 - **`import`** — Top-level wasm-bindgen FFI import declaration. Reclassified DEPRECATE-NO-FOLD → CANONICAL on 2026-05-07 by the indirection-aware re-audit: the original Cluster E sub-case (b) drop verdict in audit-findings 0010 was correct for the css.py / jsonnet.py / astro.py / r_lang.py producers it inventoried, but Wave 6 PR 3 (wasm_import → kind="import" + meta["compilation_target"]="wasm") added wasm_bindgen.py:266 as a new producer for a different purpose — a synthetic boundary node the slicer BFS needs for continuity. The wasm-bindgen `import` is a real top-level construct in its source DSL, not a relabel of the imports Edge.
 - **`index`** — Index symbol (SQL / DSL). CANONICAL per audit-findings 0007.
-- **`inductive`** — Lean ``inductive`` type declaration (``lean.py:247``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``lean.py`` emits via ``add_symbol(..., 'inductive')`` indirection).
+- **`inductive`** — Lean ``inductive`` type declaration (``lean.py:391``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``lean.py`` emits via ``add_symbol(..., 'inductive')`` indirection).
 - **`input`** — Input symbol (Terraform / shader). CANONICAL per audit-findings 0007.
 - **`instance`** — Typeclass / interface instance declaration (Haskell / Lean / PureScript `instance`, Scala 3 `given`).
 - **`interface`** — Interface declaration.
@@ -180,7 +180,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`macro`** — Macro definition (Rust / C / Scheme).
 - **`map`** — Smithy `map` shape — a named key->value associative-type declaration (`map Foo { key: Bar, value: Baz }`). Sibling aggregate shape to `list` / `union` / `enum`; not a `struct` (associative, not fixed named members) and no generic map/dict kind exists to fold to. Producer: `smithy.py` `map_statement` -> `_extract_shape(..., "map", ...)`. Registered per the WI-zipis drain / ADR-0027 verdict (audit-findings 0015).
 - **`media`** — CSS @media symbol. CANONICAL per audit-findings 0007.
-- **`message`** — Protobuf ``message`` declaration (``proto.py:260``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``proto.py`` emits via ``_make_proto_symbol(..., 'message', ...)`` indirection).
+- **`message`** — Protobuf ``message`` declaration (``proto.py:296``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``proto.py`` emits via ``_make_proto_symbol(..., 'message', ...)`` indirection).
 - **`method`** — Method on a class / struct / interface.
 - **`mixin`** — Mixin declaration (Ruby / Sass).
 - **`modifier`** — Solidity / Vyper modifier declaration. A function modifier is a reusable pre/post-condition block applied to contract functions (e.g., `onlyOwner`). Producer: `solidity.py:302` emits `add_symbol(mod_name, "modifier", ...)` for `modifier_definition` AST nodes.
@@ -239,7 +239,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`task`** — Generic task symbol. CANONICAL per audit-findings 0006.
 - **`template`** — Template declaration (C++ / Vue / Handlebars).
 - **`test`** — Test-case symbol. CANONICAL per audit-findings 0006.
-- **`theorem`** — Theorem-prover top-level construct (Lean theorems and lemmas at ``lean.py:222,231``; TLA+ theorems at ``tlaplus.py:207``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; both producers emit via ``add_symbol(..., 'theorem')`` indirection).
+- **`theorem`** — Theorem-prover top-level construct (Lean theorems and lemmas at ``lean.py:355,368``; TLA+ theorems at ``tlaplus.py:286``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; both producers emit via ``add_symbol(..., 'theorem')`` indirection).
 - **`trait`** — Trait declaration (Rust / Scala / Groovy).
 - **`trigger`** — Pipeline / DB trigger symbol. CANONICAL per audit-findings 0006.
 - **`type`** — Type declaration (TypeScript type, Haskell type, etc.).
@@ -263,6 +263,7 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`example`** — Cargo `[[example]]` target kind. Pending cluster-G audit.
 - **`handler`** — Ansible playbook handler. Pending cluster-G audit.
 - **`helper`** — Handlebars block helper (non-builtin). Pending cluster-H audit.
+- **`multimethod`** — Clojure ``defmulti``: a multimethod, the dispatch function whose implementations are the ``defmethod`` forms (kind ``method``). Pending classification: a language construct on its face; the audit decides whether it stays distinct from ``function``.
 - **`operation`** — Anonymous GraphQL operation fallback (graphql.py op_type default when an operation_definition has no operation_type child). Semantically an anonymous query; pending the producer fold to `query` (id-changing, deferred to v6). Registered per id-format:F3.
 - **`pattern_rule`** — Make pattern-rule target. Pending cluster-G audit.
 - **`private`** — WGSL `var<private>` address space. Pending cluster-H audit.
@@ -419,14 +420,18 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`ctypes_stdlib_call`** — Python ctypes FFI call against the stdlib variant (linkers/pyffi.py; `lib_vars[var_name] = "ctypes_stdlib_call"` then for-loop unpack into Edge.create). Distinguishes stdlib-loader scope from the repo-local-loaded `ctypes_call`. At-risk Cluster C peer: fold candidate to `ctypes_call` + `meta['ffi_scope']='stdlib'`. Pending cluster-C audit (see WI-nubuv tracker discussion 2026-05-06).
 - **`import_resolution`** — JS module-resolution pathway via direct import (linkers/js_module.py). Pending cluster-A audit (could promote to AXIS_INFERENCE_PATHWAY canonical).
 - **`ipc_channel_match`** — Electron IPC channel-name matching inference (linkers/ipc.py:546). Emitted in the canonical-`event_publishes` fold for the Electron renderer→main exchange when the publisher's channel name matches the subscriber's pattern. Sibling of `variable_match` (already canonical). At-risk Cluster A: candidate for promotion to AXIS_INFERENCE_PATHWAY or fold to `naming_convention` + `meta['detection_pattern']='ipc_channel'`. Pending cluster-A/C audit.
-- **`qualified_call`** — R qualified function call via `pkg::fn` (hypergumbo-lang-common/r_lang.py:385). Sibling of the canonical `static` inference label; emitted from the inline ternary ``'static' if not path_hint else 'qualified_call'`` that the pre-WI-nubuv classifier silently skipped. At-risk Cluster D call-construct: fold candidate to `static` + `meta['call_construct']='qualified'`. Pending cluster-D audit.
+- **`luajit_ffi_c`** — LuaJIT FFI call through the default C namespace (`ffi.C.<name>(`), matched by name to a C/C++ function (linkers/lua_ffi.py). Sibling of the unresolved-path canonical `luajit_ffi_lookup` and of `luajit_ffi_load`. At-risk Cluster C: fold candidate to `luajit_ffi_lookup` + a meta key naming the namespace. Pending cluster-C audit.
+- **`luajit_ffi_load`** — LuaJIT FFI call through a library handle returned by `ffi.load(...)` (`lib.<name>(`), matched by name to a C/C++ function (linkers/lua_ffi.py). Sibling of `luajit_ffi_c`. At-risk Cluster C: fold candidate to `luajit_ffi_lookup` + a meta key naming the namespace. Pending cluster-C audit.
+- **`napi_addon_api`** — node-addon-api C++ export registration (`exports.Set("name", Napi::Function::New(...))`, `InstanceMethod` / `StaticMethod` / `InstanceAccessor`, plain and template forms) pairing a JS name with its C++ implementation (linkers/napi.py). Sibling of `napi_create_function`. At-risk Cluster C: fold candidate as for its sibling. Pending cluster-C audit.
+- **`napi_create_function`** — N-API C export registration `napi_create_function(env, "jsName", ..., CCallback, ...)` pairing a JS call name with its C callback (linkers/napi.py). Sibling of `napi_addon_api`. At-risk Cluster C: fold candidate to one N-API export pathway + a meta key naming the API layer. Pending cluster-C audit.
+- **`qualified_call`** — R qualified function call via `pkg::fn` (hypergumbo-lang-common/r_lang.py:489). Sibling of the canonical `static` inference label; emitted from the inline ternary ``'static' if not path_hint else 'qualified_call'`` that the pre-WI-nubuv classifier silently skipped. At-risk Cluster D call-construct: fold candidate to `static` + `meta['call_construct']='qualified'`. Pending cluster-D audit.
 - **`topic_match`** — Message-queue topic-name matching inference (linkers/message_queue.py:516). Emitted in the canonical-`event_publishes` fold for MQ publisher→subscriber via topic when the publisher's topic matches the subscriber's pattern. Sibling of `variable_match`. At-risk Cluster A: candidate for promotion or fold to `naming_convention` + `meta['detection_pattern']='mq_topic'`. Pending cluster-A/C audit.
 
 ### Derived confidence — `base_confidence` projection (ADR-0039)
 
 `Edge.create` derives `Edge.confidence` from the edge's `evidence_type` via `derive_confidence(evidence_type, is_resolved)` — detection *reliability*, not ranking prominence (that lives on `rank_score`). Values sit in the analyzer/linker band **0.30–0.95**; 1.0 is a reserved ceiling, since no detection method is certain. See [spec §12](hypergumbo-spec.md#12-confidence-scoring) for the model and [ADR-0039](adr/0039-confidence-separation.md) for the ruling.
 
-**81 of 126 pathways are seeded.** Each base is the edge-weighted modal confidence that pathway's producers historically hardcoded, so the migration off literal `confidence=` sites preserved the dominant cohort and collapsed per-emitter outliers onto one canonical value.
+**81 of 130 pathways are seeded.** Each base is the edge-weighted modal confidence that pathway's producers historically hardcoded, so the migration off literal `confidence=` sites preserved the dominant cohort and collapsed per-emitter outliers onto one canonical value.
 
 | Derived confidence | Pathways |
 |---|---|
@@ -447,11 +452,11 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 | `ast_call_direct` | 0.85 | 0.50 |
 | `macro_expansion` | 0.80 | 0.40 |
 
-**Unseeded (45).** `derive_confidence` returns `None` for these, so the producer keeps whatever literal it emits and `confidence_source` stays `emitter_constant`. That is the honest state, not a gap to paper over: an unseeded pathway has no measured modal cohort to seed from. Seeding one is a producer-side migration (the ADR-0039 ruling-1 shape), not a documentation change.
+**Unseeded (49).** `derive_confidence` returns `None` for these, so the producer keeps whatever literal it emits and `confidence_source` stays `emitter_constant`. That is the honest state, not a gap to paper over: an unseeded pathway has no measured modal cohort to seed from. Seeding one is a producer-side migration (the ADR-0039 ruling-1 shape), not a documentation change.
 
 <details><summary>Unseeded pathways</summary>
 
-`alias_resolution`, `ast_call_inherited`, `ast_call_inherited_field`, `ast_call_inherited_method`, `ast_call_namespace`, `ast_call_static`, `ast_call_this`, `ast_call_this_property`, `ast_cite`, `ast_include`, `ast_includes`, `ast_method_this`, `ast_package`, `ast_perform`, `ast_ref`, `ast_static_call`, `callable_reference`, `cffi_call`, `cffi_stdlib_call`, `cgo_call`, `cmake_target_link`, `constructor_reference`, `ctypes_call`, `ctypes_stdlib_call`, `designated_init_fptr`, `dispatch_table_initializer`, `function_pointer_arg`, `import_resolution`, `interface_dispatch`, `ipc_channel_match`, `jsx_element`, `luajit_ffi_lookup`, `make_prerequisite`, `qualified_call`, `recipe_dependency`, `require_alias_call`, `schema_relation`, `scip_occurrence_ref`, `scip_relationship`, `sql_foreign_key`, `topic_match`, `tree_sitter`, `variable_match`, `verilog_instantiation`, `vhdl_architecture`
+`alias_resolution`, `ast_call_inherited`, `ast_call_inherited_field`, `ast_call_inherited_method`, `ast_call_namespace`, `ast_call_static`, `ast_call_this`, `ast_call_this_property`, `ast_cite`, `ast_include`, `ast_includes`, `ast_method_this`, `ast_package`, `ast_perform`, `ast_ref`, `ast_static_call`, `callable_reference`, `cffi_call`, `cffi_stdlib_call`, `cgo_call`, `cmake_target_link`, `constructor_reference`, `ctypes_call`, `ctypes_stdlib_call`, `designated_init_fptr`, `dispatch_table_initializer`, `function_pointer_arg`, `import_resolution`, `interface_dispatch`, `ipc_channel_match`, `jsx_element`, `luajit_ffi_c`, `luajit_ffi_load`, `luajit_ffi_lookup`, `make_prerequisite`, `napi_addon_api`, `napi_create_function`, `qualified_call`, `recipe_dependency`, `require_alias_call`, `schema_relation`, `scip_occurrence_ref`, `scip_relationship`, `sql_foreign_key`, `topic_match`, `tree_sitter`, `variable_match`, `verilog_instantiation`, `vhdl_architecture`
 
 </details>
 
@@ -477,7 +482,7 @@ in the `total_io_edges` headline (`subprocess` is opaque *and* counted).
 
 Values that name what data crosses the process boundary at this call site, and in which direction. Per ADR-0050 this is the only axis a new catalogue-declarable boundary should occupy.
 
-- **`browser_storage_read`** — Read from browser-local storage. Like fs_read and for the same reason, deliberately NOT in AUTO_SOURCE_LABEL_MAP: sensitivity depends on what is stored, so a project-local catalogue adds its own taint_sources rows for its threat model.
+- **`browser_storage_read`** — Read from browser-local storage. Like fs_read and for the same reason, deliberately NOT in AUTO_SOURCE_LABEL_MAP: sensitivity depends on what is stored, so you add your own taint_sources rows for your threat model (taint_sources.d/).
 - **`browser_storage_write`** — Write to browser-local storage (localStorage and peers). Structurally distinct from the host filesystem -- reachable via XSS, not via local-user FS access (WI-lokuv).
 - **`db_read`** — Read from a database or persistent store -- java.sql.Connection, erlang ets/dets, CoreData NSManagedObjectContext, sqlite3.
 - **`db_write`** — Write to a database or persistent store -- java.sql.Statement, erlang ets/dets, CoreData NSManagedObjectContext.
@@ -487,9 +492,10 @@ Values that name what data crosses the process boundary at this call site, and i
 - **`fs_write`** — Write data to the local filesystem.
 - **`host_info_read`** — Read host DESCRIPTION or user identity -- not a secret (split from env_read by INV-tutar) -- INCLUDING THE CLOCK (WI-pavob). Fires almost universally, so its discriminating power is deliberately low and that was accepted on the record.
 - **`ipc_recv`** — Receive data from another process -- stdin, a pipe read, shared memory read.
-- **`ipc_send`** — Send data to another process -- stdout write, pipe write, shared memory write. See the module docstring's gap 2: the stdout half overlaps `logging`, unsettled.
-- **`logging`** — Emit data to a log sink -- java.util.logging.Logger, go fmt/io print, Prelude.putStrLn, Swift print. THE ONE CANONICAL VALUE NAMING A PURPOSE RATHER THAN A MEDIUM, and it overlaps ipc_send on stdout. First candidate for a per-value audit; see the module docstring, gap 2. No row moves on that note.
-- **`net_recv`** — Receive data from the network. Shadowed by net_listen: a deferred-crossing site blocks a clean net_recv verdict and nothing else (ADR-0049 ruling 2).
+- **`ipc_send`** — Send data to another process over a channel the program set up or addressed -- a pipe, a child's stdin, a local socket, an IPC message channel, a signal. NOT the process's own standard output, which is `logging` (audit-findings 0021).
+- **`logging`** — Write to the process's own standard output or standard error -- the channel whose far side the launcher chose, not the program -- directly (sys.stderr, os.Stdout, System.out, std::cerr) or through a print or logging facility whose default destination it is (print, fmt.Println, java.util.logging.Logger, Prelude.putStrLn). A medium, like every data_crossing value (audit-findings 0021).
+- **`navigation_read`** — Read a value the party that NAVIGATED to this page chose -- the page URL, the referrer, window.name. A link can put anything in them, so it mints untrusted_input (INV-dadu). The URL spellings may also carry a credential and are declared SIMULTANEOUS with env_read, so they mint host_secret as well.
+- **`net_recv`** — Receive data from the network. Shadowed by net_listen: a deferred-crossing site qualifies a clean net_recv verdict and a clean taint verdict over untrusted_input, the label net_recv derives, and nothing else (ADR-0049 ruling 2, INV-fogum).
 - **`net_send`** — Send data to the network. Egress risk is additionally graded by the supply-chain dst_tier rather than by this value alone.
 - **`process_send`** — Send a message to another runtime-managed process or actor -- erlang send, Control.Concurrent. Distinct from ipc_send: the far side is a peer inside the same runtime, not an OS pipe.
 
@@ -511,7 +517,7 @@ The call ARRANGES a crossing it does not itself perform — exactly what the axi
 
 Not a classification but an admission that the call could not be matched. Declarable by no catalogue, and excluded from the `total_io_edges` headline.
 
-- **`external_potential`** — Synthesised by _compute_external_potential for an unmatched first-party call edge: receiver-unresolved speculative noise that MIGHT be I/O. Not a classification, an admission of uncertainty -- hence no direction.
+- **`external_potential`** — Synthesised by _compute_external_potential for an unmatched first-party call into a NAMED external module the catalogue does not classify: it MIGHT be I/O. A receiver-unresolved call names no module and is not included. Not a classification, an admission of uncertainty -- hence no direction.
 
 
 ---
@@ -593,7 +599,7 @@ The callable's parameter-and-return surface, preserved verbatim for a reader. Th
 
 A fact that is real and worth having but is not a signature, so the slot is answering a question the symbol did not ask. Each one names the declared home it belongs in; see the fact-home table below.
 
-- **`value_type`** — The declared type of a symbol that is NOT callable -- a field or a variable: 'int', 'list[Edge]', "'Mapping[str, str]'", "&'static str". 1,911 of 38,573 populated slots (4.95%): 1,886 fields and 25 variables; python 1,817, rust 49, typescript 35, and single digits in java, swift, csharp, go, solidity. Non-conformant: a field has no signature, so the slot is answering a question the field did not ask. The fact is real and worth having -- its home is FileAnalysis.class_field_types, which csharp and cpp populate.
+- **`value_type`** — The declared type of a symbol that is NOT callable -- a field or a variable: 'int', 'list[Edge]', "'Mapping[str, str]'", "&'static str". 1,911 of 38,573 populated slots (4.95%): 1,886 fields and 25 variables; python 1,817, rust 49, typescript 35, and single digits in java, swift, csharp, go, solidity. Non-conformant: a field has no signature, so the slot is answering a question the field did not ask. The fact is real and worth having -- its home is FileAnalysis.class_field_types, which csharp, cpp, go, rust and swift populate.
 
 ### `pending_classification` — per-value audit pending
 
@@ -608,8 +614,8 @@ A consumer needing one of these reads its home. The nine that parse the string i
 
 | Fact | Declared home | Populated by |
 | --- | --- | --- |
-| `return_type` | `FileAnalysis.method_return_types` | go, rust, swift, objc |
-| `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 15 analyzers, including py.py |
-| `value_type` | `FileAnalysis.class_field_types` | csharp, cpp |
+| `return_type` | `FileAnalysis.method_return_types` | go, rust, scala, swift, objc |
+| `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 33 analyzers, including py.py, cpp, elixir and nim |
+| `value_type` | `FileAnalysis.class_field_types` | csharp, cpp, go, rust, swift |
 
 **Closed parser set.** 8 consumers parse the value and are grandfathered by the 2026-09-21 owner ruling; `signature_axis.find_undeclared_value_parsers` fails on any site not among them. Adding one is a decision, and that gate is where it gets made. The count may only go DOWN — it was 9 at declaration and each drop is one language reading its declared home instead.

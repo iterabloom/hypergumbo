@@ -1,0 +1,21 @@
+- op: create  # e7e3
+  at: '2026-10-01T23:04:41Z'  # e7e3
+  by: agent  # e7e3
+  actor: jgstern_agent  # e7e3
+  clock: 1  # e7e3
+  nonce: e7e3  # e7e3
+  data:  # e7e3
+    kind: work_item  # e7e3
+    title: "spec 'metrics' section still defines total_files as the profile-language sum; producer and schema use the node-distinct path count (INV-mozaf)"  # e7e3
+    status: todo_hard  # e7e3
+    priority: 3  # e7e3
+    parent:  # e7e3
+    tags:  # e7e3
+    - docs  # e7e3
+    - spec_drift  # e7e3
+    isbefore: []  # e7e3
+    duplicate_of: []  # e7e3
+    not_duplicate_of: []  # e7e3
+    pr_ref:  # e7e3
+    description: "**Mechanic**: docs/hypergumbo-spec.md section \"metrics — optional counts\" still defines `total_files` the pre-INV-mozaf way: \"**`total_files`** is the canonical 'how many files in this repo?' answer: `sum(profile.languages[L].files)`\", and says that without a profile it \"falls back to `unique_paths_in_analysis` for backward compatibility\". The producer does neither: `metrics.compute_metrics` (packages/hypergumbo-core/src/hypergumbo_core/metrics.py) sets `total_files = unique_paths` (distinct non-`<external>` `node.path` values) unconditionally, and the profile sum rides only in `debug.profile_files_sum`. docs/schema.json already says \"Node-distinct path count (INV-mozaf)\", and spec_validator.py's contract comment says the same. The same spec block's `metrics.debug` bullets describe `unique_paths_in_analysis` as under-counting \"relative to `total_files`\" -- false now that they are the same number.\n\n**Expectation**: the spec's `total_files` paragraph and the `metrics.debug` bullets state the node-distinct-path definition the producer and schema use; the profile-sum and no-profile-fallback sentences are removed.\n\n**Exposure**: a reader of the spec expects `total_files` to match `sum(profile.languages[*].files)` and will find it does not on any repo with files that produce no path-bearing node (INV-mozaf measured 1198 vs 902).\n\n**Found by**: WI-zimor-savus-nalib-roman-zamot-pisoz-kugul-virop while editing the adjacent `avg_confidence` paragraph (worktree ~/hg_wt/zimor, base af8ff42ad0). Docs-only; not changed on that branch (out of scope)."  # e7e3
+    fields: {}  # e7e3

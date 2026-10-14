@@ -1,0 +1,21 @@
+- op: create  # 2400
+  at: '2026-10-04T10:35:44Z'  # 2400
+  by: agent  # 2400
+  actor: jgstern_agent  # 2400
+  clock: 1  # 2400
+  nonce: '2400'  # 2400
+  data:  # 2400
+    kind: work_item  # 2400
+    title: "csharp member-body residuals after WI-binap: object creation / method group in a field initialiser dropped; a call to a local function resolves external; a field-like event emits no symbol"  # 2400
+    status: todo_hard  # 2400
+    priority: 3  # 2400
+    parent:  # 2400
+    tags:  # 2400
+    - csharp  # 2400
+    - call_graph  # 2400
+    isbefore: []  # 2400
+    duplicate_of: []  # 2400
+    not_duplicate_of: []  # 2400
+    pr_ref:  # 2400
+    description: "FOUND 2026-10-04 while working WI-binap (residuals of the C# member-body family, deliberately left out of that branch).\n\nReproduced on analyze_csharp (base 2a98abb55d; unchanged by WI-binap's branch):\n\n1. An object creation or a method-group reference in a FIELD initialiser is dropped: `static readonly object O = new R(1);` emits no instantiates edge (the arm needs an enclosing member and has no type-body fallback, unlike the call arm since INV-bamij). dbec60fb68's commit body records this as \"Not changed\".\n2. A call to a LOCAL FUNCTION resolves to an external placeholder: `void M() { int Loc() => 1; Loc(); }` emits M -> csharp:external:0-0:Loc:unresolved (0.5). local_function_statement emits no symbol; its body's calls are credited to M (correct, the walk passes it), but the call to it is not.\n3. A field-like EVENT (`public event EventHandler E1;`, event_field_declaration) emits no symbol, and raising it (`E1(this, null)`) resolves to csharp:external:0-0:E1:unresolved. (WI-binap emits kind=event only for an event declared with add/remove accessors, whose body holds calls; a field-like event has none, and emitting it adds a NEW call target, which changes resolution and wants its own measurement.)\n\nASK: each is a separate decision -- (1) give object creation / method groups the same type-body fallback as calls (INV-bamij), (2) emit local functions (is_local meta exists on the registry) or resolve a call to one onto its declaring member, (3) emit field-like events as kind=event and measure what the raise sites then resolve to."  # 2400
+    fields: {}  # 2400

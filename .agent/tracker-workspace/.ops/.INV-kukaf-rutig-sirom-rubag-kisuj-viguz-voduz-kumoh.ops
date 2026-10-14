@@ -1,0 +1,23 @@
+- op: create  # 1f19
+  at: '2026-10-11T09:49:23Z'  # 1f19
+  by: agent  # 1f19
+  actor: jgstern_agent  # 1f19
+  clock: 1  # 1f19
+  nonce: 1f19  # 1f19
+  data:  # 1f19
+    kind: invariant  # 1f19
+    title: "sketch: --config-extraction is ignored when the survey precomputes config_info (always HYBRID)"  # 1f19
+    status: violated  # 1f19
+    priority: 3  # 1f19
+    parent:  # 1f19
+    tags:  # 1f19
+    - sketch  # 1f19
+    - cli  # 1f19
+    isbefore: []  # 1f19
+    duplicate_of: []  # 1f19
+    not_duplicate_of: []  # 1f19
+    pr_ref:  # 1f19
+    description: "Repro (dev f6d33da9ef): on a 6-service mixed-config fixture with a fresh XDG_CACHE_HOME, 'hypergumbo sketch <repo> --config-extraction heuristic' prints a Configuration section byte-identical to the hybrid default (sha256 7f29c2e710bc99a8) including the '--- Additional context (semantic) ---' block; '--config-extraction embedding' likewise prints the hybrid section. Distinct from WI-fumap (missing-dependency fallback). Found while gathering live evidence for INV-rikor."  # 1f19
+    fields:  # 1f19
+      statement: "hypergumbo sketch --config-extraction MODE renders the Configuration section in MODE."  # 1f19
+      root_cause: "cli.py run_behavior_map precomputes sketch_precomputed['config_info'] with ConfigExtractionMode.HYBRID unconditionally (~cli.py:12885); sketch.py (~6609) prefers that cached value over its own config_extraction_mode, so the flag never reaches _extract_config_info."  # 1f19

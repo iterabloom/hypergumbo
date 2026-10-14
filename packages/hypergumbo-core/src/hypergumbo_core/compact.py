@@ -15,10 +15,12 @@ between them based on the requested output mode:
   capture a target percentage of total centrality mass. Adapts to
   the codebase's centrality distribution (concentrated codebases
   need fewer items; flat codebases need more).
-- ``select_by_tokens`` — token-budget tier mode. Emits multiple
-  successively-larger views (``DEFAULT_TIERS`` = 4k / 16k / 64k by
-  default; configurable via ``--tier``). ``format_tiered_behavior_map``
-  + ``generate_tier_filename`` materialize the multi-tier output.
+- Token-budget tier mode emits successively-larger views
+  (``DEFAULT_TIERS`` = 4k / 16k / 64k by default; configurable via
+  ``--tier``). ``format_tiered_behavior_map`` + ``generate_tier_filename``
+  materialize them, selecting each tier with ``select_by_connectivity``.
+  ``select_by_tokens``, the earlier centrality-only selector, is kept but has
+  no production caller.
 - ``select_by_connectivity`` — UnionFind / frontier algorithm that
   prefers component-bridging edges, so the included subgraph is
   connected rather than a disjoint top-N. Seeded with
@@ -32,17 +34,60 @@ between them based on the requested output mode:
 
 Pre- and post-selection passes
 ------------------------------
-- Entrypoints are force-included above the confidence threshold (0.7)
-  before budget enforcement, then capped to keep the entry-point
-  bucket from dominating.
+- Seeds: the tiered path force-includes entrypoints at confidence >= 0.7,
+  capped at half the tier's estimated capacity. The compact view's seed order
+  and budgeting are described under "Compact entry point" below.
 - Filters: test / example / external-boundary symbols are dropped
   via ``selection.filters`` (consuming ``EXCLUDED_KINDS`` /
   ``EXCLUDED_FRAMEWORK_ROLES`` via the ``is_excluded_kind`` dual-shape
   predicate, per ADR-0027 Phase 3 Wave 5).
-- Name-deduplication for repeated-symbol cases.
-- Post-selection victim removal enforces the final budget, guarded by
-  ``_VICTIM_REMOVAL_EXCLUDE_DAMPENERS`` so structurally-important
-  symbols aren't dropped by accident.
+- Name-deduplication (``deduplicate_names``) exists only in
+  ``select_by_tokens``, so no production path applies it.
+- Post-selection victim removal enforces a tier's final budget. Edgeless
+  symbols go first, then non-forced ones, then the lowest centrality, where
+  centrality is computed without the selection-time dampeners
+  (``_VICTIM_REMOVAL_EXCLUDE_DAMPENERS``) so those signals do not propagate
+  into post-budget pruning.
+
+Compact entry point
+-------------------
+``format_compact_behavior_map`` builds the ``view: "compact"`` map. Both of its
+selection paths draw seeds from one fixed, budget-independent order
+(entrypoints by confidence, then cross-cutting endpoints by edge count), which
+keeps a smaller ``--max-symbols`` budget's nodes contained in a larger one's:
+
+- Centrality path (``connectivity_aware=False``, the function default;
+  ``--no-connectivity`` on the CLI) narrows the population to ``key_symbols``
+  and drops test-originated edges (``production_edges``, run on the unfiltered
+  symbol list first), so it ranks the same population sketch does and a
+  non-key file node cannot become a seed. Seeds are a prefix of the order under
+  a quota of half the symbol budget; ``select_by_coverage`` fills the rest.
+- Connectivity path (the CLI default) drops external-boundary placeholders,
+  which would manufacture connectivity the code does not have, and calls
+  ``select_by_connectivity`` with ``interleave=True``: seeds alternate with
+  greedy bridge picks against the total budget, so seeds are metered rather
+  than preloaded. Only key symbols may enter as seeds
+  (``seed_eligible=is_key_symbol``); bridge picks stay unfiltered.
+
+Projected-view shape
+--------------------
+The compact view and the tiered view share one projection:
+
+- Top-level blocks in ``_COMPACT_STRIP_KEYS`` (``usage_contexts``,
+  ``sketch_precomputed``) are dropped; ``_TIERED_STRIP_KEYS`` also drops
+  ``analysis_runs`` and ``validation_report``.
+- Each node is the slim ``compact_node`` projection (navigation fields only,
+  no identity hashes, provenance or supply-chain block); compact nodes also
+  carry their selection-time ``centrality``.
+- Edges are the induced subgraph, entrypoints are filtered to retained nodes,
+  and ``features`` are re-projected onto the retained node/edge ids
+  (``_reproject_features``; a feature whose entry nodes were all pruned is
+  dropped). ``features_summary`` (plus ``entrypoints_summary`` in the compact
+  view) reports included/omitted counts for those arrays.
+- Summaries are re-derived from the emitted arrays rather than copied from the
+  full map: ``_recompute_view_metrics`` recomputes ``metrics``, and the tiered
+  path calls ``recompute_view_summary`` to rebuild ``nodes_summary`` after its
+  shrink loop.
 
 Residual summarization
 ----------------------
@@ -50,6 +95,7 @@ Omitted items are summarized with cheap extractive signals:
 - Word frequency on symbol names (bag-of-words)
 - File path pattern analysis
 - Kind distribution (functions, classes, methods)
+- Supply-chain tier distribution (``tiers``, keyed by ``supply_chain_tier``)
 
 Example output (the omitted-residual summary, ``OmittedSummary.to_dict``):
     {
@@ -59,7 +105,7 @@ Example output (the omitted-residual summary, ``OmittedSummary.to_dict``):
       "top_words": [{"word": "test", "count": 42}, {"word": "mock", "count": 30}],
       "top_paths": [{"pattern": "tests/", "count": 55}, {"pattern": "vendor/", "count": 21}],
       "kinds": {"function": 900, "class": 200, "method": 100},
-      "tiers": {"4000": 12, "16000": 40, "64000": 148}
+      "tiers": {"1": 1100, "2": 60, "3": 40}
     }
 
 Why Bag-of-Words
@@ -73,7 +119,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Sequence, Tuple
 
 from .ir import Symbol, Edge, is_external_boundary
 from .ranking import (
@@ -85,6 +131,7 @@ from .selection.filters import (
     EXAMPLE_PATH_PATTERNS,  # re-export for backwards compatibility
     EXCLUDED_KINDS,  # re-export: test_compact.py imports this  # noqa: F401
     is_excluded_kind,
+    is_key_symbol,
     is_test_path as _is_test_path,  # re-export: test_compact.py imports this  # noqa: F401
     is_example_path as _is_example_path,
     key_symbols,
@@ -716,6 +763,7 @@ def select_by_connectivity(
     centrality: Dict[str, float] | None = None,
     interleave: bool = False,
     bridges_per_seed: int = 2,
+    seed_eligible: "Callable[[Symbol], bool] | None" = None,
 ) -> ConnectivityResult:
     """Select symbols to maximize connectivity of the induced subgraph.
 
@@ -749,13 +797,23 @@ def select_by_connectivity(
             final emitted node, a boundary artifact of truncating any stream)
             and 1:3 / 1:4 buy nothing further. Any FIXED ratio preserves
             containment, since the stream stays budget-independent; the ratio is
-            therefore a pure quality knob.
+            therefore a pure quality knob. That tuning was measured with
+            external-boundary placeholders in the population; without them the
+            ratio alone does not prevent stranding, which is what the WI-fadab
+            ANCHOR pick (below) does structurally.
         interleave: When True, alternate seed / greedy-pick instead of
             preloading every seed first, making the emitted list at a smaller
             budget an ordered prefix of the list at a larger one (WI-zulij
             containment). Requires an ordered ``seed_ids``. The default
             preserves the original preload policy for callers that need every
             seed present regardless of budget.
+        seed_eligible: Optional predicate a node must satisfy to be ADMITTED
+            WITHOUT AN EDGE — i.e. as a seed or as the no-seed bootstrap.
+            Greedy bridge picks are never filtered by it: a seed is chosen for
+            what it IS, a bridge for what it CONNECTS, and only the first is a
+            claim about importance (WI-fadab). When no symbol satisfies it, the
+            bootstrap falls back to the whole population so a repo of only
+            non-eligible nodes still yields output. ``None`` admits everything.
 
     Returns:
         ConnectivityResult with selected symbols and induced edges.
@@ -786,6 +844,17 @@ def select_by_connectivity(
         sorted(seed_ids) if isinstance(seed_ids, (set, frozenset))
         else list(seed_ids)
     )
+    # WI-fadab: one gate for every edge-less admission. Filtering the sequence
+    # (not testing inside each loop) keeps the order of the survivors, so the
+    # interleave's budget-independent stream -- and with it containment -- is
+    # untouched: the predicate reads the symbol, never the budget.
+    bootstrap_pool: List[Symbol] = symbols
+    if seed_eligible is not None:
+        seed_seq = [
+            sid for sid in seed_seq
+            if sid in symbol_by_id and seed_eligible(symbol_by_id[sid])
+        ]
+        bootstrap_pool = [s for s in symbols if seed_eligible(s)] or symbols
 
     uf = UnionFind([])
     frontier: set[str] = set()
@@ -813,17 +882,18 @@ def select_by_connectivity(
                 frontier.add(src)
         frontier.discard(node_id)
 
-    def _best_frontier_node() -> str | None:
-        """Argmax over the frontier by (component_growth, edges_added, centrality).
+    def _best_frontier_node(candidates: "set[str] | None" = None) -> str | None:
+        """Argmax over *candidates* (default: the whole frontier) by
+        (component_growth, edges_added, centrality).
 
-        WI-nivuj: the frontier is iterated in SORTED order with a strict ``>``, so
+        WI-nivuj: candidates are iterated in SORTED order with a strict ``>``, so
         a score tie resolves to the lexicographically-smallest id rather than to
         whatever PYTHONHASHSEED put first. Both halves of that pair are
         load-bearing — keep them together.
         """
         best_node = None
         best_score = (-1, -1, -1.0)
-        for node_id in sorted(frontier):
+        for node_id in sorted(frontier if candidates is None else candidates):
             score = _compute_connectivity_score(
                 node_id, selected_ids, uf, outgoing, incoming, centrality
             )
@@ -857,23 +927,44 @@ def select_by_connectivity(
         # frontier to grow from and the stream would emit nothing. The
         # highest-centrality node is budget-independent, so seeding with it costs
         # containment nothing.
-        if not seed_seq and symbols:
-            _admit(max(symbols, key=lambda s: centrality.get(s.id, 0)).id)
+        if not seed_seq and bootstrap_pool:
+            _admit(max(bootstrap_pool, key=lambda s: centrality.get(s.id, 0)).id)
 
         seed_cursor = 0
         while len(selected_ids) < max_additional:
             progressed = False
+            just_seeded: str | None = None
             while seed_cursor < len(seed_seq):
                 sid = seed_seq[seed_cursor]
                 seed_cursor += 1
                 if sid in symbol_by_id and sid not in selected_ids:
                     _admit(sid)
+                    just_seeded = sid
                     progressed = True
                     break
             for _ in range(bridges_per_seed):
                 if len(selected_ids) >= max_additional:
                     break
-                best_node = _best_frontier_node()
+                # WI-fadab ANCHOR: a seed admitted into no existing component
+                # spends the first pick on its own best neighbour. The scorer's
+                # primary key is growth of the LARGEST component, so joining a
+                # singleton seed to its neighbour scores the minimum and loses to
+                # any node touching the main component — the seed is stranded.
+                # The 1:2 ratio (above) was tuned on maps where external-boundary
+                # placeholders were in the population and glued every seed to
+                # the main component through a shared stdlib callee on admission;
+                # with those gone, the self-analysis map stranded every third
+                # emitted node at K=100 (isolated 2% -> 21%). The anchor reads
+                # only stream state, never the budget, so containment holds.
+                best_node = None
+                if just_seeded is not None and uf.component_size(just_seeded) == 1:
+                    best_node = _best_frontier_node(
+                        (outgoing.get(just_seeded, set())
+                         | incoming.get(just_seeded, set())) & frontier
+                    )
+                just_seeded = None
+                if best_node is None:
+                    best_node = _best_frontier_node()
                 if best_node is None:
                     break
                 _admit(best_node)
@@ -887,8 +978,8 @@ def select_by_connectivity(
                 _admit(sid)
 
         # Handle empty seed case: start with highest-centrality node
-        if not selected_ids and symbols:
-            best_sym = max(symbols, key=lambda s: centrality.get(s.id, 0))
+        if not selected_ids and bootstrap_pool:
+            best_sym = max(bootstrap_pool, key=lambda s: centrality.get(s.id, 0))
             _admit(best_sym.id)
             max_additional -= 1
 
@@ -1134,7 +1225,10 @@ def _reproject_features(
     (an entrypoint whose symbol was pruned is dropped; so is a feature whose
     anchor was pruned). The result is the twin of INV-tarol's slice fix:
     feature scope is re-derived from the emitted graph rather than copied
-    wholesale. ``admission_stats`` (not node-keyed) passes through unchanged.
+    wholesale. ``admission_stats`` and ``limits_detail`` (counts, not
+    node-keyed) pass through unchanged: ``limits_detail`` sizes what the
+    BFS limits cut from the full-graph slice, not what this view's budget
+    cut.
     """
     reprojected: List[dict[str, Any]] = []
     for feat in features:
@@ -1256,9 +1350,24 @@ def format_compact_behavior_map(
     # (see the WI-vofud note below on why it keeps the adaptive seed policy),
     # and a file node is frequently the only thing joining two islands, so
     # narrowing it would remove the bridges the mode exists to find.
+    #
+    # WI-fadab: that exemption is for BRIDGES, and it had also been leaving the
+    # connectivity SEEDS unfiltered — the seed list is "the important symbols"
+    # claim, the bridge picks are not. Measured on the self-analysis map at
+    # --max-symbols 10: four pyproject [project.scripts] ``file`` entrypoints led
+    # the output as seeds, and four ``external_symbol`` placeholders followed as
+    # picks. So connectivity mode now (a) drops external-boundary nodes from its
+    # population, as the tiered view does — they have no source, and two callers
+    # of ``time.monotonic`` are not structurally joined by it, so a boundary
+    # "bridge" manufactures connectivity the code does not have — and (b) admits
+    # only key symbols as seeds or as the bootstrap (``seed_eligible`` below),
+    # while greedy bridge picks stay unfiltered. The centrality path needs
+    # neither: ``key_symbols`` already excludes both shapes.
     if not connectivity_aware:
         edges = production_edges(symbols, edges)
         symbols = key_symbols(symbols)
+    else:
+        symbols = [s for s in symbols if not is_external_boundary(s)]
 
     # Extract entrypoint symbol_ids to force-include them, ranked by
     # (-confidence, symbol_id) for a stable, budget-independent order.
@@ -1356,7 +1465,8 @@ def format_compact_behavior_map(
         # prefix of a larger one's (measured 55/120 -> 120/120 budget pairs
         # contained across the eight 2026-07-17 maps, pretix included).
         conn_result = select_by_connectivity(
-            symbols, edges, seed_order, config.max_symbols, interleave=True
+            symbols, edges, seed_order, config.max_symbols, interleave=True,
+            seed_eligible=is_key_symbol,
         )
 
         # Create compact output

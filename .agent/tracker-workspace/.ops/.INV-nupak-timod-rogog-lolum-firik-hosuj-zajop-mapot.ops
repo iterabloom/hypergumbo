@@ -1,0 +1,23 @@
+- op: create  # 407c
+  at: '2026-10-06T05:05:43Z'  # 407c
+  by: agent  # 407c
+  actor: jgstern_agent  # 407c
+  clock: 1  # 407c
+  nonce: 407c  # 407c
+  data:  # 407c
+    kind: invariant  # 407c
+    title: "llvm_ir.py credits an indirect call to the first @name anywhere in the instruction: call void %fp(ptr @g) yields an edge to the global @g"  # 407c
+    status: violated  # 407c
+    priority: 3  # 407c
+    parent:  # 407c
+    tags:  # 407c
+    - analysis_quality  # 407c
+    - call_resolution  # 407c
+    isbefore: []  # 407c
+    duplicate_of: []  # 407c
+    not_duplicate_of: []  # 407c
+    pr_ref:  # 407c
+    description: "Found by the 2026-10-06 docstring audit tail pass; reviewer reproduced: 'call void %fp(ptr @g)' produces ind -> g:variable. An indirect call should yield no resolved edge (or an unresolved one), not an edge to an argument."  # 407c
+    fields:  # 407c
+      statement: "A call edge's dst is the callee, never an argument."  # 407c
+      root_cause: "_get_call_target (~L97) takes the first @name token in the call instruction rather than the callee operand, so for an indirect call through %fp it picks an argument."  # 407c

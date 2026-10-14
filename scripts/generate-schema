@@ -202,7 +202,27 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                                         "`lines`/`percentage` keys the producer "
                                         "(profile.LanguageStats.to_dict) never "
                                         "emits; the real emitted shape is "
-                                        "{files, loc}."
+                                        "{files, loc} plus test_files."
+                                    )
+                                },
+                                "test_files": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "description": (
+                                        "How many of `files` sit on a test or "
+                                        "test-support path (tests/, fixtures/, "
+                                        "*_test.*, ...; selection.filters."
+                                        "is_test_path on the repo-relative "
+                                        "path). `files - test_files` is the "
+                                        "language's non-test footprint: a "
+                                        "language with test_files == files "
+                                        "appears only in tests or fixtures. "
+                                        "`files` itself is not reduced, so "
+                                        "analyzers still run on fixture "
+                                        "files (WI-ritaf). Omitted when not "
+                                        "measured (a profile restored from a "
+                                        "cache that predates the field); "
+                                        "absent is not 0."
                                     )
                                 }
                             }
@@ -296,7 +316,49 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     },
                     "avg_confidence": {
                         "type": "number",
-                        "description": "Mean edge confidence (3 decimal places)"
+                        "description": (
+                            "Mean of edge confidence over edges carrying a "
+                            "confidence value (3 decimal places). EDGES ONLY: "
+                            "nodes carry no confidence. Edge confidence is a "
+                            "few per-evidence-type spikes, so this mean can "
+                            "sit between spikes on a value no edge carries -- "
+                            "read edge_confidence for the shape. 0.0 when no "
+                            "edge carries confidence (edge_confidence."
+                            "histogram is then empty)"
+                        )
+                    },
+                    # WI-zimor: the distribution behind avg_confidence.
+                    "edge_confidence": {
+                        "type": "object",
+                        "description": (
+                            "Distribution of edge confidence over the same "
+                            "edges avg_confidence averages (edges only)"
+                        ),
+                        "properties": {
+                            "histogram": {
+                                "type": "object",
+                                "description": (
+                                    "Edge count per confidence value at 0.01 "
+                                    "resolution, keyed by the value formatted "
+                                    "to two decimals (\"0.85\"), ascending. "
+                                    "Empty when no edge carries confidence"
+                                ),
+                                "additionalProperties": {
+                                    "type": "integer", "minimum": 1
+                                }
+                            },
+                            "median": {
+                                "type": ["number", "null"],
+                                "description": (
+                                    "Lower median of edge confidence (3 "
+                                    "decimal places): always a value some "
+                                    "edge carries. null when no edge carries "
+                                    "confidence"
+                                )
+                            }
+                        },
+                        "required": ["histogram", "median"],
+                        "additionalProperties": False
                     },
                     "languages": {
                         "type": "object",
@@ -334,13 +396,116 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "type": "object",
                 "description": (
                     "Supply-chain classification summary, keyed by tier name "
-                    "(first_party / internal_dep / external_dep) plus "
-                    "derived_skipped. Each tier carries {files, symbols}; "
-                    "external_dep also `ecosystem` and `directness` sub-buckets "
-                    "and derived_skipped a {files, paths} shape. WI-vafid: the "
-                    "producer emits these at the top level, not under a "
+                    "(first_party / internal_dep / external_dep) plus the "
+                    "exclusion-disclosure buckets derived_skipped, "
+                    "installed_deps_skipped and generated_output_skipped. Each "
+                    "tier carries {files, symbols}; "
+                    "external_dep also `ecosystem` and `directness` sub-buckets, "
+                    "derived_skipped a {files, paths} shape, "
+                    "installed_deps_skipped a {dirs, packages, entries} shape "
+                    "and generated_output_skipped a {dirs, entries} shape "
+                    "(ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: "
+                    "the producer emits these at the top level, not under a "
                     "by_tier wrapper."
                 ),
+                "properties": {
+                    "installed_deps_skipped": {
+                        "type": "object",
+                        "description": (
+                            "Installed dependency directories (Mix deps/, "
+                            "node_modules/, a virtualenv, a package-manager "
+                            "vendor/, Pods/) that were not parsed because "
+                            "--trace-deps / the trace_deps config key did not opt "
+                            "into them (ADR-0004 \u00a7\"Installed dependency "
+                            "source\"). dirs and packages total every entry; "
+                            "entries is capped at 10. {dirs: 0, packages: 0, "
+                            "entries: []} when nothing was skipped."
+                        ),
+                        "required": ["dirs", "packages", "entries"],
+                        "properties": {
+                            "dirs": {"type": "integer", "minimum": 0},
+                            "packages": {"type": "integer", "minimum": 0},
+                            "entries": {
+                                "type": "array",
+                                "maxItems": 10,
+                                "items": {
+                                    "type": "object",
+                                    "required": [
+                                        "path", "ecosystem", "packages", "traced",
+                                    ],
+                                    "properties": {
+                                        "path": {
+                                            "type": "string",
+                                            "description": "Repo-relative directory.",
+                                        },
+                                        "ecosystem": {
+                                            "type": "string",
+                                            "description": (
+                                                "Display label of the content rule "
+                                                "that claimed it, e.g. Mix, npm, "
+                                                "Python virtualenv."
+                                            ),
+                                        },
+                                        "packages": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "description": (
+                                                "Packages in the directory left "
+                                                "unanalysed."
+                                            ),
+                                        },
+                                        "traced": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": (
+                                                "Packages analysed under a "
+                                                "per-package --trace-deps."
+                                            ),
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    "generated_output_skipped": {
+                        "type": "object",
+                        "description": (
+                            "Generated-output directories (build, docs-site and "
+                            "coverage output) pruned because the tool that writes "
+                            "them left its evidence -- target/ beside Cargo.toml, "
+                            "site/ beside mkdocs.yml, a package.json entry point "
+                            "into dist/ (ADR-0004 \u00a7\"Installed dependency "
+                            "source\" point 7). entries is capped at 10. {dirs: 0, "
+                            "entries: []} when nothing was pruned."
+                        ),
+                        "required": ["dirs", "entries"],
+                        "properties": {
+                            "dirs": {"type": "integer", "minimum": 0},
+                            "entries": {
+                                "type": "array",
+                                "maxItems": 10,
+                                "items": {
+                                    "type": "object",
+                                    "required": ["path", "tool"],
+                                    "properties": {
+                                        "path": {
+                                            "type": "string",
+                                            "description": "Repo-relative directory.",
+                                        },
+                                        "tool": {
+                                            "type": "string",
+                                            "description": (
+                                                "Label of the rule whose evidence "
+                                                "claimed it, e.g. Cargo build, "
+                                                "MkDocs site, coverage report."
+                                            ),
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
                 "additionalProperties": {
                     "type": "object",
                     "properties": {
@@ -486,6 +651,8 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                                     "non_null": {"type": "integer"},
                                     "none_cohort": {"type": "integer"},
                                     "none_cohort_pct": {"type": "number"},
+                                    "floor_cohort": {"type": "integer"},
+                                    "floor_abstained": {"type": "integer"},
                                     "collision_groups": {"type": "integer"},
                                     "collided_symbols": {"type": "integer"},
                                     "collision_rate_pct": {"type": "number"},
@@ -502,6 +669,11 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                             "population/collision/None-cohort disclosure over "
                             "an all-Symbols denominator; always present so a "
                             "clean non-null rate can never hide a None-cohort. "
+                            "floor_cohort counts ids equal to their recomputed "
+                            "ADR-0035 §1 backstop floor key and floor_abstained "
+                            "the nulls whose floor key is shared in their file, "
+                            "so none_cohort=0 is not read as every id coming "
+                            "from a producer formula. "
                             "Null on bare build_validation_report calls (unit "
                             "tests)."
                         )

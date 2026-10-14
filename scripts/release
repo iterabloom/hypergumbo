@@ -71,7 +71,7 @@ cd "$PROJECT_ROOT"
 
 # Get version from pyproject.toml if not provided
 if [[ -z "$VERSION" ]]; then
-    VERSION=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+    VERSION=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/^[^"]*"\([^"]*\)".*/\1/')
 fi
 
 if [[ -z "$VERSION" ]]; then

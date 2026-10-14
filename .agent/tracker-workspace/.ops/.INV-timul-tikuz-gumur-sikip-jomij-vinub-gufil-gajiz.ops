@@ -22,3 +22,25 @@
     fields:  # 4dfe
       statement: "When one file defines two functions with the same name under mutually exclusive cfg attributes, both symbols are recorded with correct spans but every call edge from one body is attributed to the OTHER symbol. Isolated repro: two rust fn ts() at lines 2-5 and 8-10, the first calling SystemTime::now().elapsed().as_secs() and the second returning 0; all three call edges are emitted with src=rust:src/main.rs:8-10:ts:function. Live instance: loro crates/loro-internal/src/change.rs, where a host_info_read chain is anchored to the wasm_bindgen variant at 300-311 while the SystemTime::now() call is in the non-wasm variant at 288-296."  # 4dfe
       root_cause: "NOT ESTABLISHED. The observable is that the enclosing-symbol lookup resolves by NAME and appears to be last-writer-wins, ignoring the span that distinguishes the twins. Whether the lookup is name-keyed by construction or has a span test that is bypassed has not been read, and the first step says to read the site before assuming the fix. NOT caused by INV-zuvib: the mis-attribution is present on receiver-method edges (elapsed, as_secs) that its change cannot touch."  # 4dfe
+- op: update  # 292d
+  at: '2026-09-29T03:07:55Z'  # 292d
+  by: agent  # 292d
+  actor: jgstern_agent  # 292d
+  clock: 2  # 292d
+  nonce: 292d  # 292d
+  set:  # 292d
+    status: satisfied  # 292d
+- op: discuss  # 8a9a
+  at: '2026-09-29T03:07:55Z'  # 8a9a
+  by: agent  # 8a9a
+  actor: jgstern_agent  # 8a9a
+  clock: 3  # 8a9a
+  nonce: 8a9a  # 8a9a
+  message: "SATISFIED -- DONE AND NEVER CLOSED. Fixed by INV-midag (916bc980b5, 2026-09-24, PR #1180: \"a call is anchored to the function that contains it\", c/rust/ruby/csharp), which replaced the name-keyed enclosing lookup with a position lookup. That is the root cause this item left NOT ESTABLISHED: the lookup was name-keyed by construction (last writer wins), not a bypassed span test.\n\nBEHAVIOURAL EVIDENCE, re-verified 2026-09-28 on dev 51c73cce78:\n- The item's own repro (two cfg-gated fn ts(), calls in the first): all three calls (now, elapsed, as_secs) have src rust:src/main.rs:2-5:ts:function. The same repro on pinned worktrees: 916bc980b5^ -> src 8-8:ts (the defect), 916bc980b5 -> src 2-5:ts. So the move is that commit's.\n- The live instance, loro crates/loro-internal/src/change.rs: the host_info_read std::time::SystemTime.now chain is anchored on 288-295:get_sys_timestamp (the non-wasm variant that makes the call), no longer on 300-311.\n- Variants the repro did not cover: the twins in reverse order (calls in the second) -> correct; two cfg(unix)/cfg(windows) impl methods S.run -> the call is on the unix one (13-13); the C #ifdef/#else analogue the item flagged as unchecked (two int ts(void), calls in the #else one) -> all calls on the right twin (8-10).\nScope: rust and c checked here; INV-midag's own evidence covers the other languages it fixed.\n\nSEEN IN PASSING, NOT THIS ITEM: loro's wasm variant calls its own wasm_bindgen extern `fn now()` (JS Date.now), and the chain names std::time::Instant.now: a bare unresolved `now` matched a catalogue row by name. The boundary (host_info_read) is right for a clock read; the primitive name is wrong. Not filed."  # 8a9a
+- op: discuss  # 0bc1
+  at: '2026-09-29T03:11:08Z'  # 0bc1
+  by: agent  # 0bc1
+  actor: jgstern_agent  # 0bc1
+  clock: 4  # 0bc1
+  nonce: 0bc1  # 0bc1
+  message: "Residual seen in passing now filed as INV-lopus (rust extern-block declarations are not symbols; loro's wasm_bindgen Date.now() is reported as std::time::Instant.now)."  # 0bc1

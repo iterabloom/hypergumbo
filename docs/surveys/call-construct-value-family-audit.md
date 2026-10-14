@@ -2,7 +2,7 @@
 # Survey: `Edge.meta["call_construct"]` — the fold-residue key's own value family
 
 - Date: 2026-09-10
-- Status: 10 CANONICAL (RESOLVED, no migration needed) · 2 DEPRECATE-NO-FOLD (UNRESOLVED) · 1 axiom amendment proposed · 1 silent bug found · 2 adjacent leaks filed
+- Status: 10 CANONICAL (RESOLVED, no migration needed) · 2 DEPRECATE-NO-FOLD (RESOLVED by WI-dapap: neither value is emitted) · axiom amended (WI-dapap) · 1 silent bug found and fixed (WI-dapap) · 2 adjacent leaks filed
 - Trigger: the 72-commit conceptual-audit cadence. Suspect nominated after WI-dosuh (PR #903) added a value to this key and **no consumer read it**.
 - Methodology: [Fundamental Concept Audit playbook](../../.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md), verdict trichotomy per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Audits the *fold-residue key* created by [audit-findings 0012](0012-evidence-type-cluster-d-call-construct.md).
 
@@ -26,8 +26,9 @@ refusing to mechanically check verdicts it has no registry to check them
 against. The verdict block below is kept in `kind: audit_verdicts` form so the
 document can move to `docs/audits/` unchanged once the registry exists.
 
-**Conversion trigger:** when WI-dapap lands the `call_construct` value
-allowlist and registers the axis in `_REGISTRIES`, move this file to
+**Conversion trigger:** the `call_construct` value allowlist has landed
+(`hypergumbo_core.call_constructs.CALL_CONSTRUCT_VALUES`, WI-dapap); the axis is
+NOT yet registered in `_REGISTRIES`. When it is, move this file to
 `docs/audits/<NN>-call-construct-value-family.md`, add its README index row, and
 let the mechanical check run.
 
@@ -222,7 +223,7 @@ verdicts:
   - value: macro
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -n '\"call_construct\": \"macro\"' -- packages/hypergumbo-lang-common/src/hypergumbo_lang_common/erlang.py"
       expect: empty
@@ -230,7 +231,7 @@ verdicts:
   - value: macro_body
     verdict: DEPRECATE-NO-FOLD
     fold_target: null
-    status: UNRESOLVED
+    status: RESOLVED
     diagnostic_test:
       cmd: "git grep -n '\"call_construct\": \"macro_body\"' -- packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py"
       expect: empty
@@ -276,3 +277,10 @@ One value (`unexported`), two consumer reads, unambiguous. No action. Recorded s
 - [x] Silent bug found with file:line (`verify_claims.py:3908`)
 - [x] Three adjacent concepts swept (`receiver`, `resolution_quality`, `visibility`), one null result recorded
 - [x] Findings durable: this document + tracker items
+
+## Resolution (WI-dapap)
+
+- **Action 1:** the axiom in `axis_meta_keys.py` now reads "Source-language construct that produced this call-family edge", and the spec says the same.
+- **Action 2:** `method_starved_modules` translates the construct to the ADR-0059 kind of the row it reaches (`call_constructs.reached_row_kind`) instead of testing the construct string for membership in the kind set. The consequence stated in finding 2 above was overstated: elixir, erlang, haskell, ocaml, dart, csharp and ruby catalogue no method-kind module, so the gate skips them before it reads a construct. The values that reached the test were python `protocol`, javascript `assignment` and rust `macro_body`. For `assignment` it was not inert: on a fixture that registers `ws.onmessage` and calls nothing else on `ws`, `WebSocket` was reported starved and every generic claim fell to `inconclusive` (WI-zohuk).
+- **Action 3:** the denylist is an allowlist (`CALL_CONSTRUCT_VALUES`). The scan behind it now reads keyword and subscript emits as well as dict literals. The old scan read dict literals only, so it could not have seen `assignment`, which is a keyword emit.
+- **Action 4:** erlang's `?LOG_*` edge and rust's macro-body edges carry no `call_construct`. Rust's per-site construct is not stamped because a `method` stamp is not inert (it enters `unknown_receiver_scope`'s denominator); that is WI-pukip.

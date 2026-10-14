@@ -14,6 +14,7 @@
 # the language uses) against a ``consts`` dict, strips a leading host/base
 # placeholder, retains path-segment placeholders, and truncates at the first
 # non-`/`-preceded unresolved placeholder.
+provenance: builtin
 idiom: string_interpolation
 engine: fold_string_interpolation
 languages:

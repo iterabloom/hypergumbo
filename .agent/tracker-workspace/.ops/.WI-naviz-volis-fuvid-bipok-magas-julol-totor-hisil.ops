@@ -1,0 +1,20 @@
+- op: create  # 6fd0
+  at: '2026-10-13T22:41:09Z'  # 6fd0
+  by: agent  # 6fd0
+  actor: jgstern_agent  # 6fd0
+  clock: 1  # 6fd0
+  nonce: 6fd0  # 6fd0
+  data:  # 6fd0
+    kind: work_item  # 6fd0
+    title: "python: qualified_name of a nested class's member keeps only the nearest class (B.go, not A.B.go)"  # 6fd0
+    status: todo_hard  # 6fd0
+    priority: 4  # 6fd0
+    parent:  # 6fd0
+    tags:  # 6fd0
+    - analysis_quality  # 6fd0
+    isbefore: []  # 6fd0
+    duplicate_of: []  # 6fd0
+    not_duplicate_of: []  # 6fd0
+    pr_ref:  # 6fd0
+    description: "FOUND by WI-tusad F3 (analogue sweep for \"qualified_name keeps only the innermost scope\", fixed for C#, TypeScript and Tcl in PR #1571). Python sets qualified_name equal to the emitted name: a method of a nested class is `B.go` with qualified_name `B.go`, not `A.B.go` (PEP 3155 __qualname__), and the nested class `B` has qualified_name `B`. py.py documents this as deliberate (\"v6 is a stable_id-only change; the field's scope-qualification (and its call-resolution effects) is separate work\"); stable_ids already hash the full chain. This item is that separate work: decide whether Python qualified_name follows __qualname__ (and module path), and measure the call-resolution effect first. Probe: scratchpad fixes/f3/qn/probe.py."  # 6fd0
+    fields: {}  # 6fd0

@@ -20,9 +20,9 @@ Keeping this logic in a pure function, separate from the Textual
 - The hotspot-wrapping behaviour (which panes get hotspots, what click
   action name is used, whether IDs resolve) can be unit tested without
   spinning up an ``App``.
-- A future slice can reuse the same transform for the non-modal
-  Description/Activity panes, so hotspot rendering is identical
-  everywhere and only configured in one place.
+- The non-modal Description/Activity panes get hotspots by calling
+  ``render_hotspots`` directly via ``tui._apply_nav_hotspots``; both
+  paths share the same pattern and renderer.
 - Extending the modal — adding per-ID badges, unread markers, etc. —
   happens in one function that has no event-loop entanglements.
 """

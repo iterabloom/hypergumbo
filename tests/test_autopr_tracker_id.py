@@ -33,12 +33,22 @@ The test file exercises three surfaces:
 
 Integration of the helper with the actual merge-success sites (do_pr,
 flush_queue, already-merged recovery) is validated structurally by grep: a
-single point of truth (the helper) is called from all three sites.
+single point of truth (``_autopr_finish_merged``, the only caller of the
+helper) is called from all three sites.
+
+4. **WI-kifuh: the record runs outside auto-pr's own PR_PENDING gate.**
+   ``tracker discuss`` runs the tracker's auto-sync, which waits up to 900 s
+   for ``.git/PR_PENDING`` to clear and then skips the sync. The record used
+   to precede the cleanup that removes the gate, so the discuss child waited
+   on its own parent. ``_autopr_finish_merged`` runs cleanup first, then the
+   record; the real extracted functions are driven against a real git repo
+   and a tracker stub that logs whether the gate exists at call time.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -325,7 +335,9 @@ class TestWiring:
                 "_autopr_state_merged_sha=" in b for b in body[i:i + 8]
             ):
                 window = "\n".join(body[i:i + self._HELPER_CALL_WINDOW])
-                assert "_autopr_append_tracker_discussion" in window, (
+                # WI-kifuh: the record is made through _autopr_finish_merged,
+                # which owns the cleanup-then-record order.
+                assert "_autopr_finish_merged" in window, (
                     f"{func_name} merge-success site does not call helper: {window}"
                 )
                 return
@@ -338,3 +350,236 @@ class TestWiring:
     def test_helper_called_from_flush_queue(self) -> None:
         """The flush_queue merge-success site calls the helper."""
         self._merge_site_calls_helper("flush_queue")
+
+
+# ---------------------------------------------------------------------------
+# WI-kifuh: the --tracker-id write runs OUTSIDE auto-pr's own PR_PENDING gate
+# ---------------------------------------------------------------------------
+#
+# `tracker discuss` runs `_maybe_auto_sync`. With pending ops over the
+# threshold, that waits up to 900 s for `.git/PR_PENDING` to clear, then
+# SKIPS the sync. auto-pr is the process that clears the file, and auto-pr
+# was blocked on the discuss child: observed 2026-09-03 on PR #743, a 15-min
+# stall followed by no sync. The fix (owner-approved option (b)) records the
+# merge only AFTER the post-merge cleanup has removed the gate, on all three
+# merge-success paths, through one function that owns the order.
+#
+# The tests below drive the REAL extracted functions against a real git repo
+# and a tracker stub that records, at the instant it is called, whether
+# PR_PENDING exists and what auto-sync threshold it was handed. Recording the
+# gate's presence is the property itself: `_maybe_auto_sync` waits iff the
+# file exists (tracker cli.py), so "absent when called" is "cannot wait".
+
+
+_TID = "WI-foo-bar-baz-quux-fuzz-fizz-buzz-barn"
+_SHA = "abcdef1234567890"
+
+
+def _git_in(repo: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+
+
+def _build_merged_repo(tmp_path: Path, *, collide: bool = False) -> Path:
+    """A repo where auto-pr sits the instant after its merge has landed.
+
+    feat/x's commit is already on origin/dev (the merge), PR_PENDING holds the
+    PR number as auto-pr writes it, and a one-line vPR queue names feat/x for
+    the flush path. ``collide=True`` dirties a file that differs between
+    feat/x and dev, so the post-merge ``git checkout`` refuses -- the
+    pending-``.ops`` shape that makes cleanup fail part-way.
+    """
+    repo = tmp_path / "work"
+    server = tmp_path / "srv.git"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--bare", "-q", "-b", "dev", str(server)],
+                   check=True, capture_output=True, timeout=30)
+    _git_in(repo, "init", "-q", "-b", "dev")
+    for k, v in (("user.email", "t@example.invalid"), ("user.name", "t"),
+                 ("commit.gpgsign", "false")):
+        _git_in(repo, "config", k, v)
+    (repo / "ops.txt").write_text("A\n")
+    _git_in(repo, "add", "ops.txt")
+    _git_in(repo, "commit", "-qm", "base")
+    _git_in(repo, "remote", "add", "origin", str(server))
+    _git_in(repo, "push", "-q", "origin", "dev")
+    _git_in(repo, "checkout", "-qb", "feat/x")
+    (repo / "ops.txt").write_text("B\n")
+    _git_in(repo, "commit", "-qam", "feature")
+    # The merge: feat/x lands on the server's dev.
+    _git_in(repo, "push", "-q", "origin", "feat/x:dev")
+    if collide:
+        (repo / "ops.txt").write_text("C\n")
+    (repo / ".git" / "PR_PENDING").write_text("123\n")
+    (repo / ".git" / "PR_QUEUE").write_text('{"branch": "feat/x"}\n')
+    return repo
+
+
+def _gate_probe_stub(tmp_path: Path, repo: Path) -> tuple[Path, Path]:
+    """A tracker stub logging ``<held|released> <threshold> <argv>``."""
+    stub = tmp_path / "tracker-probe"
+    log = tmp_path / "tracker-probe.log"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        f'if [ -e "{repo}/.git/PR_PENDING" ]; then g=held; else g=released; fi\n'
+        f'echo "$g ${{TRACKER_AUTO_SYNC_THRESHOLD-unset}} $*" >> "{log}"\n'
+    )
+    stub.chmod(0o755)
+    return stub, log
+
+
+def _run_sourced(repo: Path, stub: Path, body: str) -> subprocess.CompletedProcess[str]:
+    """Source auto-pr inside ``repo`` (so REPO_ROOT is the fixture) and run ``body``.
+
+    cwd is the fixture, never the host checkout: sourcing runs ``load_env``,
+    which would otherwise read the host repository's ``.env``.
+    """
+    env = {k: v for k, v in os.environ.items() if k not in (
+        "FORGEJO_USER", "FORGEJO_TOKEN", "SELFHOSTED_FORGEJO_USER",
+        "SELFHOSTED_FORGEJO_TOKEN", "TRACKER_AUTO_SYNC_THRESHOLD",
+        "HG_GITHUB_TOKEN", "GITHUB_TOKEN",
+    )}
+    env["AUTOPR_SOURCE_ONLY"] = "1"
+    env["AUTOPR_TRACKER_CMD"] = str(stub)
+    script = (
+        f'source "{AUTO_PR_PATH}"\n'
+        f'TRACKER_ID="{_TID}"\n'
+        f"{body}\n"
+        'echo "TAIL-RC=$?"\n'
+    )
+    return subprocess.run(
+        ["bash", "-c", script], cwd=str(repo), capture_output=True, text=True,
+        stdin=subprocess.DEVNULL, env=env, timeout=90,
+    )
+
+
+class TestRecordRunsOutsideGate:
+    """WI-kifuh: the merge is recorded only after PR_PENDING is gone."""
+
+    def test_control_old_order_records_inside_the_gate(self, tmp_path: Path) -> None:
+        """Non-vacuity floor: the fixture's gate is up when the tail starts.
+
+        The pre-fix order (record, then clean up) must be observed as
+        ``held`` by the probe. Without this a ``released`` below could mean
+        the fixture never raised the gate at all.
+        """
+        repo = _build_merged_repo(tmp_path)
+        stub, log = _gate_probe_stub(tmp_path, repo)
+        r = _run_sourced(repo, stub, (
+            'TRACKER_AUTO_SYNC_THRESHOLD=80 "$AUTOPR_TRACKER_CMD" discuss "$TRACKER_ID" x\n'
+            'cleanup_local feat/x dev'
+        ))
+        assert "TAIL-RC=0" in r.stdout, r.stdout + r.stderr
+        assert log.read_text().split()[0] == "held"
+
+    def test_do_pr_tail_records_after_gate_released(self, tmp_path: Path) -> None:
+        """do_pr / already-merged shape: cleanup_local, then the record."""
+        repo = _build_merged_repo(tmp_path)
+        stub, log = _gate_probe_stub(tmp_path, repo)
+        r = _run_sourced(repo, stub, (
+            f'_autopr_finish_merged "$TRACKER_ID" 123 {_SHA} '
+            'cleanup_local feat/x dev'
+        ))
+        assert "TAIL-RC=0" in r.stdout, r.stdout + r.stderr
+        lines = log.read_text().splitlines()
+        assert len(lines) == 1, lines
+        state, threshold, *argv = lines[0].split()
+        # released: _maybe_auto_sync has no file to wait on. unset: the write
+        # was NOT handed a disabled auto-sync -- it can sync normally.
+        assert (state, threshold) == ("released", "unset"), lines[0]
+        assert argv[:2] == ["discuss", _TID]
+        assert "PR #123" in lines[0] and _SHA[:12] in lines[0]
+        assert not (repo / ".git" / "PR_PENDING").exists()
+
+    def test_flush_tail_records_after_gate_released(self, tmp_path: Path) -> None:
+        """flush_queue shape: _autopr_flush_cleanup, then the record."""
+        repo = _build_merged_repo(tmp_path)
+        stub, log = _gate_probe_stub(tmp_path, repo)
+        r = _run_sourced(repo, stub, (
+            f'_autopr_finish_merged "$TRACKER_ID" 123 {_SHA} '
+            '_autopr_flush_cleanup dev'
+        ))
+        assert "TAIL-RC=0" in r.stdout, r.stdout + r.stderr
+        assert log.read_text().split()[:2] == ["released", "unset"]
+        assert not (repo / ".git" / "PR_QUEUE").exists(), "flush cleanup did not run"
+
+    def test_record_still_runs_when_cleanup_fails(self, tmp_path: Path) -> None:
+        """A cleanup whose checkout fails (dirty .ops) must not lose the record.
+
+        cleanup_local removes the gate as its FIRST step, so even a failed
+        checkout leaves the record ungated; the INV-rahib boundary keeps the
+        tail's exit 0.
+        """
+        repo = _build_merged_repo(tmp_path, collide=True)
+        stub, log = _gate_probe_stub(tmp_path, repo)
+        r = _run_sourced(repo, stub, (
+            f'_autopr_finish_merged "$TRACKER_ID" 123 {_SHA} '
+            'cleanup_local feat/x dev'
+        ))
+        assert "TAIL-RC=0" in r.stdout, r.stdout + r.stderr
+        # Reach first: the checkout really refused. (Not the boundary's
+        # "housekeeping failed" line: inside `_autopr_post_merge`'s `if !`,
+        # bash switches `set -e` off for the whole callee, so a failed
+        # checkout does not abort cleanup_local and that line never prints.)
+        assert "would be overwritten by checkout" in r.stderr, (
+            "fixture no longer makes cleanup fail; this test would be vacuous"
+        )
+        assert log.read_text().split()[:2] == ["released", "unset"]
+
+    def test_record_inside_a_held_gate_does_not_wait(self, tmp_path: Path) -> None:
+        """Belt and braces: if the helper is ever reached with the gate up,
+        it records with auto-sync disabled (returns at once) and says so,
+        instead of handing the tracker a 900 s wait on its own caller."""
+        repo = _build_merged_repo(tmp_path)
+        stub, log = _gate_probe_stub(tmp_path, repo)
+        r = _run_sourced(repo, stub, (
+            f'_autopr_append_tracker_discussion "$TRACKER_ID" 123 {_SHA}'
+        ))
+        assert "TAIL-RC=0" in r.stdout, r.stdout + r.stderr
+        assert log.read_text().split()[:2] == ["held", "0"]
+        assert "WI-kifuh" in r.stderr, r.stderr
+
+
+class TestSingleRecordSite:
+    """The order lives in ONE function; every merge site goes through it."""
+
+    @staticmethod
+    def _code_lines() -> list[str]:
+        return [
+            ln for ln in AUTO_PR_PATH.read_text().splitlines()
+            if not ln.lstrip().startswith("#")
+        ]
+
+    def test_helper_is_called_only_from_finish_merged(self) -> None:
+        lines = self._code_lines()
+        calls = [
+            i for i, ln in enumerate(lines)
+            if "_autopr_append_tracker_discussion" in ln
+            and "_autopr_append_tracker_discussion()" not in ln
+        ]
+        assert len(calls) == 1, [lines[i] for i in calls]
+        start = next(i for i, ln in enumerate(lines)
+                     if ln.startswith("_autopr_finish_merged() {"))
+        end = next(i for i in range(start + 1, len(lines)) if lines[i] == "}")
+        assert start < calls[0] < end, "the record is made outside _autopr_finish_merged"
+
+    @pytest.mark.parametrize("func, cleanup", [
+        ("do_pr", "cleanup_local"),
+        ("flush_queue", "_autopr_flush_cleanup"),
+        ("_autopr_handle_already_merged", "cleanup_local"),
+    ])
+    def test_merge_site_uses_finish_merged(self, func: str, cleanup: str) -> None:
+        lines = self._code_lines()
+        start = next(i for i, ln in enumerate(lines) if ln.startswith(f"{func}() {{"))
+        end = next(i for i in range(start + 1, len(lines)) if lines[i] == "}")
+        # Join backslash continuations so a call split over lines reads as one.
+        body = "\n".join(lines[start:end]).replace("\\\n", " ")
+        assert re.search(
+            rf'_autopr_finish_merged\s+"\$TRACKER_ID".*\s{cleanup}\s', body,
+        ), f"{func} does not route its {cleanup} + record through _autopr_finish_merged"
+        # No direct cleanup call left beside it, gated or not.
+        assert not re.search(rf"_autopr_post_merge\s+{cleanup}\s", body), (
+            f"{func} still calls {cleanup} outside _autopr_finish_merged"
+        )

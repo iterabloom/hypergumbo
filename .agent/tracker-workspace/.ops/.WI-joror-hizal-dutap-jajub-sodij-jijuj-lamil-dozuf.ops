@@ -1,0 +1,22 @@
+- op: create  # 9d5c
+  at: '2026-10-05T07:13:25Z'  # 9d5c
+  by: agent  # 9d5c
+  actor: jgstern_agent  # 9d5c
+  clock: 1  # 9d5c
+  nonce: 9d5c  # 9d5c
+  data:  # 9d5c
+    kind: work_item  # 9d5c
+    title: "swift: three construction shapes miss the init -- a generic T<X>(...) emits no edge at all, Outer.Inner(...) is unresolved, and an inherited init lands on the subclass"  # 9d5c
+    status: todo_hard  # 9d5c
+    priority: 3  # 9d5c
+    parent:  # 9d5c
+    tags:  # 9d5c
+    - swift  # 9d5c
+    - call_graph  # 9d5c
+    - analysis_quality  # 9d5c
+    isbefore: []  # 9d5c
+    duplicate_of: []  # 9d5c
+    not_duplicate_of: []  # 9d5c
+    pr_ref:  # 9d5c
+    description: "FOUND 2026-10-04 while working WI-sogof-babod-dotib-nunof-ganir-johuj-japab-fuzak (branch jgstern-agent/fix/sogof, base c6b299a052 + tree-sitter-swift 0.7.4). WI-sogof lands a construction on the init it runs for T(...), T.init(...), self.init, Self.init and super.init. Three construction SHAPES are outside it, each reproduced on analyze_swift:\n\n    struct Box<T> { init(value: T) {} }\n    enum Outer { struct Inner { init(a: Int) {} } }\n    class Base { init(key: Int) {} }\n    class Derived: Base {}\n    func use() {\n        _ = Box<Int>(value: 1)     // line 14\n        _ = Outer.Inner(a: 1)      // line 15\n        _ = Derived(key: 1)        // line 16\n    }\n\n1. A GENERIC construction (Box<Int>(...)) parses as constructor_expression, not call_expression, and the edge pass emits NO edge for it at all (only the receiver-typing walker reads constructor_expression).\n2. A NESTED type constructed through its owner (Outer.Inner(a: 1)) is a navigation call: it becomes swift:external:0-0:Inner:unresolved with receiver_type_hint \"Outer\" and call_construct method, though Outer.Inner and its init are in the project.\n3. An INHERITED designated init: Derived declares no init, so Swift inherits Base.init(key:); the edge lands on the Derived class, not on Base.init.\n\nCounted for shape 1 only (constructor_expression nodes, tree-sitter-swift 0.7.4, includes collection constructors such as [String](...) which name no project type): vapor 26, Kingfisher 25, Alamofire 129. Shapes 2 and 3 not counted. Shape 1 is a missing edge (recall), shapes 2 and 3 are coarse or unresolved landings."  # 9d5c
+    fields: {}  # 9d5c

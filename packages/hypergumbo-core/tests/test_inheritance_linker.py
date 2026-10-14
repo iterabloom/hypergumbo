@@ -755,7 +755,13 @@ class TestInheritanceLinker:
         assert implements_edges[0].src == cls.id
 
     def test_trait_extends_trait(self) -> None:
-        """Trait extending another trait creates implements edge."""
+        """Trait extending another trait creates an EXTENDS edge (WI-kalug).
+
+        Scala spells it ``trait JsonSerializable extends Serializable``: an
+        abstract type cannot *implement* another one, it inherits from it.
+        This test pinned ``implements`` until WI-kalug, which made the edge
+        type follow the SOURCE kind for every inherently-abstract kind.
+        """
         base_trait = Symbol(
             id="sym:Serializable",
             name="Serializable",
@@ -789,7 +795,8 @@ class TestInheritanceLinker:
         assert len(result.edges) == 1
         assert result.edges[0].src == "sym:JsonSerializable"
         assert result.edges[0].dst == "sym:Serializable"
-        assert result.edges[0].edge_type == "implements"
+        assert result.edges[0].edge_type == "extends"
+        assert result.edges[0].evidence_type == "ast_extends"
 
     def test_rust_struct_resolves_to_trait_when_struct_collision_exists(self) -> None:
         """Rust struct's base_class with both a trait and a struct of the same
@@ -1026,6 +1033,89 @@ class TestInheritanceLinker:
         assert edge_map["sym:Logging"] == "implements"
 
 
+def _sym(sid: str, name: str, kind: str, language: str, bases=None) -> Symbol:
+    return Symbol(
+        id=sid, name=name, kind=kind, language=language, path=f"/x.{language}",
+        span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        origin=language, origin_run_id="test-run",
+        meta={"base_classes": bases} if bases else None,
+    )
+
+
+class TestAbstractSourceExtends:
+    """WI-kalug: an inherently-abstract source's bases are ``extends``.
+
+    The resolve loop tries the interface map first and labelled ANY
+    interface/trait/protocol target ``implements`` — regardless of the
+    source. So Java ``interface IChild extends IBase``, PHP ``interface
+    PChild extends PBase``, Swift ``protocol WChild: WBase`` and a TypeScript
+    ``interface Child extends Base`` all came out ``implements``, which no
+    such language means. A CLASS implementing an interface is unchanged.
+    """
+
+    def test_interface_to_interface_is_extends(self) -> None:
+        base = _sym("j:IBase", "IBase", "interface", "java")
+        child = _sym("j:IChild", "IChild", "interface", "java", ["IBase"])
+        result = link_inheritance(LinkerContext(
+            repo_root=Path("/t"), symbols=[base, child], edges=[],
+        ))
+        assert [(e.src, e.dst, e.edge_type, e.evidence_type)
+                for e in result.edges] == [
+            ("j:IChild", "j:IBase", "extends", "ast_extends"),
+        ]
+
+    def test_protocol_to_protocol_is_extends(self) -> None:
+        base = _sym("s:WBase", "WBase", "protocol", "swift")
+        child = _sym("s:WChild", "WChild", "protocol", "swift", ["WBase"])
+        result = link_inheritance(LinkerContext(
+            repo_root=Path("/t"), symbols=[base, child], edges=[],
+        ))
+        assert [(e.dst, e.edge_type) for e in result.edges] == [
+            ("s:WBase", "extends"),
+        ]
+
+    def test_class_to_interface_stays_implements(self) -> None:
+        iface = _sym("j:I", "I", "interface", "java")
+        cls = _sym("j:C", "C", "class", "java", ["I"])
+        result = link_inheritance(LinkerContext(
+            repo_root=Path("/t"), symbols=[iface, cls], edges=[],
+        ))
+        assert [(e.dst, e.edge_type) for e in result.edges] == [
+            ("j:I", "implements"),
+        ]
+
+    def test_analyzer_extends_edge_is_not_doubled(self) -> None:
+        """The js_ts analyzer already emits ``Child -extends-> Base``; the
+        linker re-derives the SAME triple and must skip it, not add an
+        ``implements`` twin."""
+        base = _sym("t:Base", "Base", "interface", "typescript")
+        child = _sym("t:Child", "Child", "interface", "typescript", ["Base"])
+        existing = Edge.create(
+            src="t:Child", dst="t:Base", edge_type="extends", line=1,
+            origin="javascript", origin_run_id="r", evidence_type="ast_extends",
+        )
+        result = link_inheritance(LinkerContext(
+            repo_root=Path("/t"), symbols=[base, child], edges=[existing],
+        ))
+        assert result.edges == []
+
+    def test_analyzer_edge_of_other_label_is_not_doubled(self) -> None:
+        """One relation, one edge. If an analyzer already connected the pair
+        under the OTHER inheritance label, the linker does not add a second
+        edge with its own label beside it — the analyzer's edge stands, as it
+        does for an external base (the name dedup)."""
+        base = _sym("k:KBase", "KBase", "interface", "kotlin")
+        child = _sym("k:KChild", "KChild", "interface", "kotlin", ["KBase"])
+        existing = Edge.create(
+            src="k:KChild", dst="k:KBase", edge_type="implements", line=1,
+            origin="kotlin", origin_run_id="r", evidence_type="ast_implements",
+        )
+        result = link_inheritance(LinkerContext(
+            repo_root=Path("/t"), symbols=[base, child], edges=[existing],
+        ))
+        assert result.edges == []
+
+
 # ---------------------------------------------------------------------------
 # WI-gifar (PR-1 of INV-nilud inherited_calls campaign):
 # Promote _resolve_target_symbol to public resolve_target_symbol so the
@@ -1256,7 +1346,8 @@ class TestExternalBaseFallbackApproachC:
     unresolved-external ``extends`` edges for base classes that resolve to no
     in-tree symbol, uniformly across every OO language, instead of dropping
     them (py.py/js_ts already do this per-analyzer; the chokepoint generalizes
-    it to Kotlin/Ruby/Java/... and to Python dotted bases that py.py defers).
+    it to Kotlin/Ruby/Java/... and to Python dotted bases that py.py defers:
+    since WI-ratid, only those whose root no import binds).
 
     External targets use the ``external`` sentinel module —
     ``{lang}:external:0-0:{name}:unresolved`` with ``dst_ref=None`` (the
@@ -1319,9 +1410,11 @@ class TestExternalBaseFallbackApproachC:
         assert result.edges[0].confidence_source == "evidence_derived"
 
     def test_dotted_external_base_uses_last_segment(self) -> None:
-        """A dotted external base (``argparse.ArgumentParser``) — dropped by
-        py.py and DEFERRED to Approach C — now emits an external edge keyed on
-        the last segment."""
+        """A dotted external base (``argparse.ArgumentParser``) that no analyzer
+        classified emits an external edge keyed on the last segment. (py.py
+        now classifies a dotted base whose root is an import itself, WI-ratid;
+        this is the shape left for a root no import binds, and for languages
+        whose analyzers emit no external edge.)"""
         klass = self._cls("p:MyParser", "MyParser", ["argparse.ArgumentParser"])
         ctx = LinkerContext(repo_root=Path("/"), symbols=[klass], edges=[])
         result = link_inheritance(ctx)
@@ -1486,3 +1579,82 @@ class TestExternalBaseFallbackApproachC:
 
         assert len(result.edges) == 1
         assert result.edges[0].dst == "python:external:0-0:RealExternal:unresolved"
+
+
+class TestAnalyzerClassifiedExternalBase:
+    """WI-ratid: a base an analyzer already classified as EXTERNAL through the
+    file's imports (an unresolved edge carrying an ``ExternalRef``) is not
+    looked up in the tree by name. Before, the chokepoint retried the base's
+    last segment and bound Python's ``unittest.TestCase`` to Django's own
+    ``TestCase`` (same file), closing an inheritance cycle.
+
+    Every fixture holds an in-tree namesake, so the "no edge" assertions are
+    not vacuous: the controls show the same fixture DOES bind it when the
+    analyzer's import-classified edge is absent.
+    """
+
+    @staticmethod
+    def _cls(sym_id: str, name: str, bases: list[str] | None) -> Symbol:
+        return Symbol(
+            id=sym_id, name=name, kind="class", language="python",
+            path="/django/test/testcases.py",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run",
+            meta={"base_classes": bases} if bases else None,
+        )
+
+    @staticmethod
+    def _analyzer_external(src: str, module: str, name: str, ref: bool) -> Edge:
+        return Edge.create(
+            src=src, dst=f"python:{module}:0-0:{name}:unresolved",
+            edge_type="extends", line=1, origin="python", origin_run_id="a-run",
+            evidence_type="ast_extends", is_resolved=False,
+            dst_ref=(
+                ExternalRef(lang="python", module_path=module, name=name)
+                if ref else None
+            ),
+        )
+
+    def _run(self, symbols: list[Symbol], edges: list[Edge]) -> list[Edge]:
+        ctx = LinkerContext(repo_root=Path("/"), symbols=symbols, edges=edges)
+        return link_inheritance(ctx).edges
+
+    def test_dotted_base_classified_external_is_not_bound_in_tree(self) -> None:
+        simple = self._cls("p:SimpleTestCase", "SimpleTestCase", ["unittest.TestCase"])
+        in_tree = self._cls("p:TestCase", "TestCase", ["TransactionTestCase"])
+        edge = self._analyzer_external("p:SimpleTestCase", "unittest", "TestCase", True)
+        out = self._run([simple, in_tree], [edge])
+        assert [e for e in out if e.src == "p:SimpleTestCase"] == []
+
+    def test_bare_base_classified_external_is_not_bound_in_tree(self) -> None:
+        plain = self._cls("p:Plain", "Plain", ["TestCase"])
+        in_tree = self._cls("p:TestCase", "TestCase", None)
+        edge = self._analyzer_external("p:Plain", "unittest", "TestCase", True)
+        assert self._run([plain, in_tree], [edge]) == []
+
+    def test_control_without_analyzer_edge_binds_last_segment(self) -> None:
+        # The retained behaviour for a base no analyzer classified (every
+        # language but Python and JS/TS emits no external edge of its own).
+        simple = self._cls("p:SimpleTestCase", "SimpleTestCase", ["unittest.TestCase"])
+        in_tree = self._cls("p:TestCase", "TestCase", None)
+        out = self._run([simple, in_tree], [])
+        assert [(e.src, e.dst, e.is_resolved) for e in out] == [
+            ("p:SimpleTestCase", "p:TestCase", True),
+        ]
+
+    def test_builtin_sentinel_without_external_ref_does_not_suppress(self) -> None:
+        # Only an IMPORT-classified edge (``dst_ref`` set) is evidence that the
+        # base is not the in-tree class; the bare-builtin sentinel is not.
+        simple = self._cls("p:SimpleTestCase", "SimpleTestCase", ["unittest.TestCase"])
+        in_tree = self._cls("p:TestCase", "TestCase", None)
+        edge = self._analyzer_external("p:SimpleTestCase", "external", "TestCase", False)
+        out = self._run([simple, in_tree], [edge])
+        assert [(e.src, e.dst) for e in out] == [("p:SimpleTestCase", "p:TestCase")]
+
+    def test_other_base_of_the_same_class_still_binds(self) -> None:
+        mixed = self._cls("p:Mixed", "Mixed", ["unittest.TestCase", "mixins.Helper"])
+        in_tree_tc = self._cls("p:TestCase", "TestCase", None)
+        helper = self._cls("p:Helper", "Helper", None)
+        edge = self._analyzer_external("p:Mixed", "unittest", "TestCase", True)
+        out = self._run([mixed, in_tree_tc, helper], [edge])
+        assert [(e.src, e.dst) for e in out] == [("p:Mixed", "p:Helper")]

@@ -2,9 +2,11 @@
 """Infrastructure linker: containment for creating `contains` edges between containers and members.
 
 This linker connects container symbols (classes, interfaces, protocols, structs,
-traits, enums, modules, messages) to their member symbols (methods, getters,
-setters, RPCs, nested messages, and nested containers) based on naming
-conventions, creating `contains` edges. Without these edges, members are
+traits, enums, modules, messages, records, files and the rest of
+``CONTAINER_KINDS``) to their member symbols (methods, getters, setters,
+fields, subscripts, top-level functions and variables, RPCs, nested messages,
+and nested containers) based on naming conventions and span nesting, creating
+`contains` edges. Without these edges, members are
 orphaned in the graph — disconnected from their parent types — which inflates
 orphan rates and hides hierarchical structure from slice traversal.
 
@@ -18,25 +20,43 @@ structurally-certain span_overlap 0.90):
 Extracts the parent name from the symbol's ``name`` field using
 language-specific separators (``.``, ``#``, ``::``).  For example,
 ``User.save`` → parent ``User``.
+When several containers share that name, ``_find_parent`` prefers the one
+in the child's file (disambiguating same-file duplicates by the enclosing
+span, and refusing when none encloses the child), then one in the same
+language; when the child's language is known it never crosses a language
+boundary.
 
-**Phase 1.5 — qualified_name fallback** (confidence=0.95):
+**Phase 1.5 — qualified_name fallback** (confidence=0.95; the owner sits in
+the child's file and its own qualified name, when it has one, is the prefix,
+since a prefix can be a namespace named like a class: C# ``Demo.DemoMain`` is
+not a member of a ``class Demo`` whose qualified name is ``Demo.Demo``, nor of
+a global ``class Demo`` in another file):
 When ``sym.name`` has no separator (e.g., proto RPCs where
 ``name="BidiHello"``), falls back to ``sym.qualified_name`` (the
 ADR-0032 typed sibling field that carries fully-qualified scoped
 identifiers, e.g., ``hello.HelloService.BidiHello``). This handles
 proto service→rpc containment and nested message containment.
-This phase is reachable only for niche-language analyzers (proto,
-capnp, fish, etc.) that emit unqualified ``name`` plus a
-``qualified_name``. Mainstream-analyzer languages (Python, JS/TS,
-Go, Rust, Java, C++, Ruby) leave ``qualified_name=None`` by design
-because ``name`` already encodes the parent, so containment falls
-through to span_overlap when naming convention doesn't match.
+It applies to any symbol with an unqualified ``name`` and a
+separator-bearing ``qualified_name`` — the shape proto, capnp, fish
+and similar analyzers emit. Several mainstream analyzers also populate
+``qualified_name`` (Java and Rust package- or module-qualify it;
+Python sets it to the bare name), but a symbol whose ``name`` already
+has a separator belongs to Phase 1 and Phase 1.5 skips it.
 
 **Phase 2 — Span-based fallback** (confidence=0.9):
-When neither naming convention nor qualified_name produces a parent,
-checks if any container symbol in the same file has a span that fully
-encloses the unqualified symbol.  Prefers the tightest (smallest span)
-enclosing container.
+For every symbol whose ``name`` has no separator, and every dotted name
+that no earlier phase and no edge already in the graph placed, checks if
+any container symbol in the same file has a span that fully encloses it,
+and prefers the tightest (smallest span) enclosing container. Because
+``file`` is a container kind, this is also what roots a file's top-level
+functions, variables and classes at its ``kind="file"`` anchor. In no
+phase is a file a child: its name is a dotted path, and a module spanning
+the whole file encloses it. A dotted name whose prefix is no symbol (a Lean ``A.S`` in ``namespace A``, an F#
+``A.run`` in ``module A``, a dotted Clojure or Agda module, a C++
+out-of-line ``Token::get`` whose class is not emitted) used to get no
+fallback and stayed an orphan; a dotted name Phase 1 placed is not given
+a second parent. For a bare name only an identical parent→child pair
+already emitted is deduplicated.
 
 Naming Conventions by Language
 ------------------------------
@@ -93,10 +113,11 @@ PASS_ID = make_pass_id("containment-linker")
 # members and ``slice`` can expand "this file's symbols". A *dotted* function
 # name (e.g. the JS ``userController.createUser`` route-handler idiom) can still
 # match a same-file container via Phase 1 — that is accepted: the dotted name
-# genuinely qualifies a real container when one exists in the file, and no edge
-# is emitted when none does. The dead-code reachability BFS does NOT traverse
-# ``contains`` (it follows calls/dispatches_to/wraps), so this de-orphaning
-# does not move the dead-code-maybe false-positive rate.
+# genuinely qualifies a real container when one exists in the file; when none
+# does, Phase 2 roots it at the container whose span encloses it (the file).
+# The dead-code reachability BFS does NOT traverse ``contains`` (it follows
+# calls/dispatches_to/wraps), so this de-orphaning does not move the
+# dead-code-maybe false-positive rate.
 CONTAINABLE_KINDS = frozenset(
     # WI-zajaz: ``field`` (class-body attributes, emitted with dotted names like
     # ``Widget.size`` by emission-parity F5) roots at its class exactly like
@@ -162,6 +183,11 @@ CONTAINER_KINDS = frozenset({
     # column (span nesting, one analyzer in isolation) can read green while
     # the pipeline outcome stays broken.
     "protocol",
+    # WI-pidos: `record` (Java 16, and the erlang / fsharp / clojure / agda
+    # record kinds) is a type with members like `class`. Java records were not
+    # emitted at all before WI-pidos, so this set never met one; once they were,
+    # a record's methods (`Launcher.RemoteLaunchCallable.call`) found no owner.
+    "record",
     # INV-hojus: file-kind Symbols are the canonical file representation
     # (orchestrator synthesis + py.py for Python with module-level code,
     # js_module linker for TS, etc.). Including them here lets Phase 2's
@@ -246,8 +272,8 @@ def _find_parent(
             if enclosing:
                 return min(enclosing, key=lambda item: item[0])[1]
             # No same-name container in this file encloses the child → the
-            # name match is to the wrong class; refuse (Phase 2 span_overlap
-            # only serves unqualified names, so this yields no edge here).
+            # name match is to the wrong class; refuse (Phase 2's span_overlap
+            # fallback then roots the child at whatever does enclose it).
             return None
         # No span to disambiguate with: preserve the legacy first-match.
         return same_file[0]
@@ -265,6 +291,15 @@ def _find_parent(
 
     # No language info: fall back to first (backward compat)
     return candidates[0]
+
+
+def _may_be_contained(sym: Symbol) -> bool:
+    """A member or nested container kind, and not a file: a file roots its
+    own tree. Its name is a dotted path (``Demo.cs`` named a parent ``Demo``
+    to Phase 1), and a module spanning the whole file encloses its span."""
+    return sym.kind != "file" and (
+        sym.kind in CONTAINABLE_KINDS or sym.kind in CONTAINER_KINDS
+    )
 
 
 @register_linker(
@@ -320,7 +355,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
 
     for sym in ctx.symbols:
         # Process methods, getters, setters, and nested classes
-        if sym.kind not in CONTAINABLE_KINDS and sym.kind not in CONTAINER_KINDS:
+        if not _may_be_contained(sym):
             continue
 
         # Extract parent name from qualified name (e.g., "User.save" → "User")
@@ -369,7 +404,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
     # sym.qualified_name is fully qualified (e.g., proto RPCs where
     # name="BidiHello" but qualified_name="hello.HelloService.BidiHello").
     for sym in ctx.symbols:
-        if sym.kind not in CONTAINABLE_KINDS and sym.kind not in CONTAINER_KINDS:
+        if not _may_be_contained(sym):
             continue
 
         # Only apply when name has no separator (Phase 1 didn't match)
@@ -384,9 +419,18 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
         if parent_name is None:
             continue
 
+        # A qualified name's prefix may be a NAMESPACE that shares its name
+        # with a class (C# ``namespace Demo;`` beside a ``class Demo``): the
+        # owner must sit in the child's own file (a nested declaration is
+        # declared inside its owner; C#'s partial class re-declares it there)
+        # and its own qualified name, if it has one, must BE the prefix (that
+        # class's is ``Demo.Demo``).
+        owners = {parent_name: [
+            c for c in container_by_name.get(parent_name, ())
+            if c.path == sym.path and c.qualified_name in (None, parent_name)
+        ]}
         parent_sym = _find_parent(
-            parent_name, sym.path, container_by_name, sym.language,
-            child_span=sym.span,
+            parent_name, sym.path, owners, sym.language, child_span=sym.span,
         )
         if parent_sym is None:
             continue
@@ -414,25 +458,29 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
         ))
         existing_contains.add(pair)
 
-    # --- Phase 2: Span-based fallback for unqualified names ---
+    # --- Phase 2: Span-based fallback ---
     # Handles cases where analyzers emit unqualified names (e.g., Ruby
-    # analyzer emits "HTTP" instead of "Postal::HTTP").  For each symbol
-    # that wasn't connected by naming convention, check if any container
+    # analyzer emits "HTTP" instead of "Postal::HTTP"), and dotted names
+    # nothing above placed.  For each such symbol, check if any container
     # in the same file has a span that fully encloses it.
     containers_by_file: dict[str, list[Symbol]] = {}
     for sym in ctx.symbols:
         if sym.kind in CONTAINER_KINDS and sym.span is not None:
             containers_by_file.setdefault(sym.path, []).append(sym)
+    contained = {child for _, child in existing_contains}
 
     for sym in ctx.symbols:
-        if sym.kind not in CONTAINABLE_KINDS and sym.kind not in CONTAINER_KINDS:
+        if not _may_be_contained(sym):
             continue
         if sym.span is None:
             continue
 
-        # Skip if naming convention already found a parent
-        parent_name = _extract_parent_name(sym.name)
-        if parent_name is not None:
+        # A dotted name is served only when nothing placed it: Phase 1 /
+        # Phase 1.5 found no owner (Lean ``A.S`` in ``namespace A``, an F#
+        # ``A.run`` in ``module A``: the namespace or module is no symbol)
+        # and no other pass gave it a ``contains`` edge. A bare name keeps
+        # its fallback unconditionally (only an identical pair is skipped).
+        if _extract_parent_name(sym.name) is not None and sym.id in contained:
             continue
 
         # Find the tightest enclosing container in the same file

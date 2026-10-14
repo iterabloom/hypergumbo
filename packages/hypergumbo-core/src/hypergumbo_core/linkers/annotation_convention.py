@@ -30,6 +30,17 @@ ambiguous (multiple name matches; INV-zuhub).
 
 Language Agnostic
 -----------------
+A minted node's language slot and ``discovery_language`` are the host file's
+language as ``taxonomy.get_language`` classifies it -- the classifier the
+profile / discovery layer uses (ADR-0031: "derived from the file extension") --
+never the tree-sitter GRAMMAR name: ``.tsx``
+is ``typescript`` (a grammar-keyed lookup said ``tsx``, a language no analyzer
+emits) and ``.mts`` / ``.cts`` are ``typescript`` (it said nothing, so the slot
+read ``unknown``) -- WI-pokij. A file the taxonomy does not classify still
+reads ``unknown`` / ``None``. Where a taxonomy name differs from an analyzer's
+tag (``yaml`` vs the ansible analyzer's ``yaml_ansible``) the taxonomy name is
+what the slot carries; no JS/TS extension is such a case.
+
 Works in any language with ``//``, ``#``, ``--``, ``/* */``, ``;``, ``%``,
 or ``!`` style comments. The scanner requires a recognized comment prefix
 before ``@hg:`` or the directive must appear at the start of a line (for
@@ -55,7 +66,8 @@ from typing import TYPE_CHECKING
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..paths import is_test_file
 from ..analyze.base import make_route_symbol
-from ._text_filters import language_from_path, read_source_text
+from ..taxonomy import get_language
+from ._text_filters import read_source_text
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -190,7 +202,7 @@ def link_annotations(
             continue
 
         for pub in pub_sites:
-            pub_lang = language_from_path(Path(pub.file_path)) or "unknown"
+            pub_lang = get_language(Path(pub.file_path)) or "unknown"
             pub_id = (
                 f"{pub_lang}:{pub.file_path}:{pub.line}-{pub.line}"
                 f":{channel}:annotated_publisher"
@@ -213,7 +225,7 @@ def link_annotations(
                     # declaration. discovery_language records the host file's
                     # language; protocol_origin names the family ("annotation").
                     language=None,
-                    discovery_language=language_from_path(Path(pub.file_path)),
+                    discovery_language=get_language(Path(pub.file_path)),
                     protocol_origin="annotation",
                     span=Span(
                         start_line=pub.line, end_line=pub.line,
@@ -230,7 +242,7 @@ def link_annotations(
                 ))
 
             for sub in sub_sites:
-                sub_lang = language_from_path(Path(sub.file_path)) or "unknown"
+                sub_lang = get_language(Path(sub.file_path)) or "unknown"
                 sub_id = (
                     f"{sub_lang}:{sub.file_path}:{sub.line}-{sub.line}"
                     f":{channel}:annotated_subscriber"
@@ -251,7 +263,7 @@ def link_annotations(
                         # ADR-0031 Class B: synthetic stand-in for an annotated
                         # subscriber.
                         language=None,
-                        discovery_language=language_from_path(Path(sub.file_path)),
+                        discovery_language=get_language(Path(sub.file_path)),
                         protocol_origin="annotation",
                         span=Span(
                             start_line=sub.line, end_line=sub.line,
@@ -302,7 +314,7 @@ def link_annotations(
         # an unregistered ``annotated_route`` kind-slot — an id that could not be
         # parsed back into its ADR-0036 slots at all.
         route_sym = make_route_symbol(
-            language=language_from_path(Path(route.file_path)) or "unknown",
+            language=get_language(Path(route.file_path)) or "unknown",
             path=route.file_path,
             span=Span(
                 start_line=route.line, end_line=route.line,
@@ -313,7 +325,7 @@ def link_annotations(
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             protocol_origin="annotation",
-            discovery_language=language_from_path(Path(route.file_path)),
+            discovery_language=get_language(Path(route.file_path)),
             extra_meta={"hg_annotation": "route", "route_spec": route.argument},
         )
         if route_sym.id not in seen_sym_ids:
@@ -346,7 +358,7 @@ def link_annotations(
         # ``confidence <= 0.5`` with the ``disambiguation_fallback`` flag.
         is_fallback = len(target_syms) > 1
 
-        disp_lang = language_from_path(Path(disp.file_path)) or "unknown"
+        disp_lang = get_language(Path(disp.file_path)) or "unknown"
         disp_id = (
             f"{disp_lang}:{disp.file_path}:{disp.line}-{disp.line}"
             f":{target_name}:annotated_dispatcher"
@@ -366,7 +378,7 @@ def link_annotations(
                 # ADR-0031 Class B: synthetic stand-in for an annotated
                 # dispatcher.
                 language=None,
-                discovery_language=language_from_path(Path(disp.file_path)),
+                discovery_language=get_language(Path(disp.file_path)),
                 protocol_origin="annotation",
                 span=Span(
                     start_line=disp.line, end_line=disp.line,

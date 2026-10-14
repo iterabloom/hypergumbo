@@ -21,6 +21,7 @@ import pytest
 
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.linkers.registry import LinkerContext
+from hypergumbo_core.evidence_types import find_evidence_type
 
 
 def _make_js_symbol(
@@ -135,6 +136,8 @@ class TestNAPILinkerCAPI:
         assert edge.edge_type == "calls"
         assert edge.dst == c_func.id
         assert edge.evidence_type == "napi_create_function"
+        # WI-pubin: the emitted pathway is a registered evidence type.
+        assert find_evidence_type(edge.evidence_type) is not None
         assert edge.meta is not None
         assert edge.meta.get("data_direction") == "src_to_dst"
         assert edge.meta.get("access_mode") is None
@@ -280,6 +283,8 @@ class TestNAPILinkerNodeAddonAPI:
 
         assert len(result.edges) == 1
         assert result.edges[0].evidence_type == "napi_addon_api"
+        # WI-pubin: the emitted pathway is a registered evidence type.
+        assert find_evidence_type(result.edges[0].evidence_type) is not None
 
 
     def test_links_static_method(self, tmp_path: Path) -> None:

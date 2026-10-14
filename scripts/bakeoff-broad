@@ -513,7 +513,7 @@ def cmd_init(args):
                 if os.path.isdir(out_dir):
                     completed = len([d for d in os.listdir(out_dir)
                                      if os.path.isdir(os.path.join(out_dir, d))
-                                     and os.listdir(os.path.join(out_dir, d))])
+                                     and _holds_output_files(os.path.join(out_dir, d))])
                 print(f"Resuming existing session: {state.session_id}")
                 print(f"  Workdir: {existing}")
                 print(f"  Pool: {state.pool_path}")
@@ -744,6 +744,21 @@ def cmd_cohort(args):
     return 0
 
 
+
+def _holds_output_files(path: str) -> bool:
+    """True when ``path`` has at least one FILE anywhere below it (WI-zilar).
+
+    A directory is not a result. A run that crashes after ``os.makedirs`` leaves
+    ``iter-NNN/<repo>/`` present and empty, and the batch guard used to check
+    ``os.listdir`` of the cohort directory, which an empty ``iter-001/``
+    satisfies, so a crashed cohort was skipped forever as "already has output".
+    Same helper, same reason, as ``bakeoff-deep``'s.
+    """
+    for _root, _dirs, files in os.walk(path):
+        if files:
+            return True
+    return False
+
 def cmd_run(args):
     """Run hypergumbo on current cohort, or multiple cohorts with --all/--some."""
     workdir = resolve_workdir(args.workdir)
@@ -795,7 +810,7 @@ def cmd_run(args):
                 continue
             # Check if already analysed
             out_dir = os.path.join(workdir, "out", f"cohort-{cohort_num:03d}")
-            if os.path.isdir(out_dir) and os.listdir(out_dir):
+            if os.path.isdir(out_dir) and _holds_output_files(out_dir):
                 print(f"\n[cohort-{cohort_num:03d}] Already has output — skipping.")
                 print(f"  To re-run with code changes, create a NEW session:")
                 print(f"    ./scripts/bakeoff-broad init --pool {pool_path}")

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Layer-3 project-local catalog.
+# hypergumbo's in-repo self-audit catalogue.
 # cmd_add_extras / cmd_remove_extras dispatch to every individual
 # install/uninstall subcommand. The "umbrella" entry-point gets its own
 # label so verify-claims can grant it the union of the individual

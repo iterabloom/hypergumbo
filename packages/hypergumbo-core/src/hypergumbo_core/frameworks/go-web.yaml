@@ -7,6 +7,10 @@
 # Definition-based patterns (v1.0.x): Match base_class for GORM, gRPC, etc.
 # Usage-based patterns (v1.1.x): Match call-based routing via UsageContext
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-06-18
 id: go-web
 language: go
 

@@ -20,8 +20,10 @@ path heuristic marked exported, and Solidity ``external`` functions under
 This module declares the single canonical visibility vocabulary and the
 mapping from each language's native modifier term onto it. The
 ``Symbol.visibility`` field is COMPUTED once (in finalize) from the
-highest-priority available signal — **a language modifier wins over the
-Python name convention, which wins over the default** — and the deciding
+highest-priority available signal — **a language modifier (or the legacy
+``meta['visibility']`` term Apex and Clojure emit, the same language-syntactic
+tier) wins over the Python name convention, which wins over the default** —
+and the deciding
 signal is recorded in ``Symbol.meta['visibility_signal']`` for provenance.
 
 Why language-syntax wins over the path heuristic: a ``_foo`` Python function
@@ -31,7 +33,9 @@ under ``tests/``. The old path heuristic conflated orthogonal concerns
 (publishedness, test-penalty) with visibility; the language's own syntax is
 authoritative for *visibility*.
 
-``is_exported`` becomes a derived alias (``visibility == 'public'``) and
+``is_exported`` is constrained by visibility rather than derived from it:
+finalize forces it False for any non-public level, but public visibility is
+necessary, not sufficient, so it is never set True from visibility alone.
 ``modifiers`` keeps only its non-visibility terms (``static`` / ``native`` /
 ``abstract`` / …) — see the finalize visibility pass.
 """

@@ -548,10 +548,11 @@ class TestOnePredicateWithNoSecondHome:
         ONLY ONE DIRECTION IS ASSERTED, and the asymmetry is the point. The
         tagger may legitimately be BROADER — it carries ``imports`` and the
         FFI family, which the gate documents excluding because an import
-        performs no I/O — and that direction is safe: an edge the tagger tags
-        but the gate ignores can only downgrade ``confirmed`` to
-        ``inconclusive``. The reverse manufactures a false all-clear, so the
-        reverse is what this test forbids.
+        performs no I/O. That direction does not manufacture a false
+        all-clear, which is what this test forbids. It is NOT free, though:
+        an edge the tagger tags becomes a CHAIN, and a chain can turn a claim
+        ``violated``. Tagged imports did exactly that until INV-lagir limited
+        an import to attribute rows (``import glob`` failed a no-fs_read claim).
         """
         import inspect
 

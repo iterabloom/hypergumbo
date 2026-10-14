@@ -1,11 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""User and project configuration files (ADR-0045 rulings 1, 2, 3).
+"""User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ADR-0057 §5 [merge]; ADR-0004 trace_deps; ADR-0061 ruling 4).
 
 WHAT THIS IS FOR, AND WHAT IT DELIBERATELY REFUSES TO HOLD. hypergumbo had no
 user configuration of any kind before this module: every preference was
 expressed per-invocation or through the environment, so a project with
 authored I/O overlays retyped ``--io-primitives`` on every run. This adds two
-tiers of TOML file for preferences like that.
+tiers of TOML file for preferences like that. The project tier's
+``io_primitives`` are catalogue data supplied by the analysed repository, so
+they are kept apart (``LayeredConfig.in_repo_io_primitives``) and load only
+when the operator opts in with ``--in-repo-catalogues`` or a recorded
+``trust-catalogues`` grant (ADR-0061 ruling 4).
 
 It also, and more importantly, refuses to hold one particular kind of setting.
 The SCIP Rust backend indexes by **executing the analysed crate's ``build.rs``
@@ -17,7 +21,10 @@ that portability is the entire point of it, and it is disqualifying here. A
 repository on every machine into running build scripts — the same hazard as
 exporting the environment variable globally (WI-sobig), reached by a nicer
 route. Those settings live in a separate trust store outside this file, and
-this module raises rather than accepting them.
+this module raises rather than accepting them. The other half of ruling 5:
+a ``backends.<name> = true|false`` opt-in for a backend that declares
+``executes_analysed_code=False`` (scip-python) is an ordinary preference,
+accepted in either tier, the project tier replacing the user tier per key.
 
 TWO RULES THAT CURRENTLY FORBID THE SAME KEY, AND ARE STILL TWO RULES.
 :func:`trust_only_settings` (ruling 2) is refused in **every** tier because the
@@ -26,7 +33,9 @@ fact does not belong in config at all. :func:`project_forbidden_settings`
 be able to make a security decision *about itself* — the inversion of
 ADR-0016 §35 / ADR-0017 §370, where project-local overlays deliberately
 outrank built-ins (correct for catalogs, exactly backwards for a gate). Today
-both sets name the same single setting. They are kept separate because
+both are the same registry-derived set (:func:`project_forbidden_settings`
+returns :func:`trust_only_settings`): ``backends.rust_analyzer`` when the SCIP
+Rust package is installed, empty otherwise. They are kept separate because
 collapsing them would silently widen whichever rule outlived the other.
 
 UNKNOWN KEYS RAISE. A silently-dropped setting is how someone spends an
@@ -36,6 +45,14 @@ cost is forward compatibility — an older hypergumbo reading a newer config
 refuses it instead of degrading — and that is the tradeoff ADR-0045 OQ4
 (schema versioning) is open on. Loud is the safer of the two failure modes
 while it stays open.
+
+RESULTS-CACHE KEY. :func:`config_cache_token` digests the WHOLE bytes of
+both tiers into the survey cache key (through :func:`file_digest_token`,
+which ``catalogue_home`` also uses), because neither file is repository
+source that the repo-state hash covers. Whole-file rather than known keys,
+so a key added later cannot be forgotten and a file the loader refuses
+still misses the cache; entries are keyed by label (``user`` /
+``project``), not by absolute path, so moving a home does not churn the key.
 """
 
 from __future__ import annotations
@@ -43,6 +60,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, FrozenSet, Mapping, Optional, Tuple, Union
+
+from .discovery import TraceDeps
 
 # ``tomllib`` is stdlib from Python 3.11. Every package here declares
 # ``requires-python = ">=3.10"``, so a BARE top-level import breaks the declared
@@ -122,8 +141,13 @@ def project_forbidden_settings() -> FrozenSet[str]:
 #: allow-list; see the module docstring on why an unknown key raises.
 #: ``merge.*`` is the ADR-0057 §5 arbitration default (WI-hukuf): a
 #: preference, allowed in both tiers, validated by :func:`_validate_merge`.
+#: ``trace_deps`` is the ADR-0004 §"Installed dependency source" opt-in
+#: (``--trace-deps``): a list of package names or the string ``"all"``. A
+#: preference -- it costs parse time and executes nothing -- so both tiers may
+#: carry it, and the project tier replaces the user tier's value.
 _KNOWN_SETTINGS: Dict[str, Union[type, Tuple[type, ...]]] = {
     "io_primitives": list,
+    "trace_deps": (str, list),
     "merge.prefer": list,
     "merge.corroborated_confidence": (int, float),
     "merge.superseded_stub_rank_factor": (int, float),
@@ -202,7 +226,13 @@ class LayeredConfig:
     precedence order, and reversing here would invert it silently.
     """
 
+    #: The USER tier's ``io_primitives`` paths (``config.toml``).
     io_primitives: "list[Path]" = field(default_factory=list)
+    #: The PROJECT tier's ``io_primitives`` paths (``<repo>/.hypergumbo.toml``).
+    #: Catalogue data inside the analysed repository, so it is kept apart and
+    #: loads only when the operator opts in (ADR-0061 ruling 4, INV-hamin);
+    #: ``cli._resolve_io_overlays`` places it above the user tier when it does.
+    in_repo_io_primitives: "list[Path]" = field(default_factory=list)
     #: ``[merge]`` (ADR-0057 §5, WI-hukuf). Scalar-valued: the project tier
     #: REPLACES the user tier key by key — an order cannot be concatenated.
     merge_prefer: "tuple[str, ...]" = ()
@@ -212,6 +242,9 @@ class LayeredConfig:
     #: ``[backends] <name> = true|false`` for the non-executing opt-in
     #: backends (ADR-0045 ruling 5 / WI-nanom); project replaces user per key.
     backends: "dict[str, bool]" = field(default_factory=dict)
+    #: ``trace_deps`` (ADR-0004 §"Installed dependency source"); the project
+    #: tier replaces the user tier. ``--trace-deps`` outranks both.
+    trace_deps: TraceDeps = field(default_factory=TraceDeps)
 
 
 def user_config_path(
@@ -235,6 +268,61 @@ def user_config_path(
 def project_config_path(repo_root: Path) -> Path:
     """``<repo>/.hypergumbo.toml`` (see :data:`_PROJECT_CONFIG_BASENAME`)."""
     return Path(repo_root) / _PROJECT_CONFIG_BASENAME
+
+
+#: Hashed in place of a file's bytes when it cannot be read, so an unreadable
+#: input still yields a key and not a crash (the run that reads it reports it).
+_UNREADABLE = b"\x00hypergumbo:unreadable-file\x00"
+
+
+def file_digest_token(prefix: str, entries: "list[tuple[str, Path]]") -> str:
+    """``<prefix>-<12 hex>`` over ``(label, sha256(bytes))`` pairs, or ``""``.
+
+    The results-cache key's digest of user files the analysis reads (this
+    module's config tiers, ``catalogue_home``'s analysis-stage channels). The
+    label names the file without its absolute location, so moving a home does
+    not churn the key; the pairs are sorted so listing order cannot either.
+    ``""`` for no files, which leaves the key exactly as it was before any
+    user file existed.
+    """
+    import hashlib
+
+    if not entries:
+        return ""
+    pairs = []
+    for label, path in entries:
+        try:
+            data = path.read_bytes()
+        except OSError:
+            data = _UNREADABLE
+        pairs.append(f"{label}\x00{hashlib.sha256(data).hexdigest()}")
+    digest = hashlib.sha256("\n".join(sorted(pairs)).encode()).hexdigest()
+    return f"{prefix}-{digest[:12]}"
+
+
+def config_cache_token(
+    repo_root: Path, environ: Optional[Mapping[str, str]] = None,
+) -> str:
+    """Results-cache key component for both config tiers' bytes, or ``""``.
+
+    The analysis reads these files (``trace_deps``, the ``[merge]`` arbitration
+    policy, the ``[backends]`` opt-ins), and neither is a source file the repo
+    state hash covers: ``config.toml`` lives outside the repository and
+    ``.hypergumbo.toml`` has no source extension. The WHOLE file is digested
+    rather than the keys known to shape analysis today, so a key added later
+    cannot be forgotten here, and a file the loader refuses moves the key too:
+    the run that reports it at exit 2 is not skipped by a cache hit. The cost
+    is a re-survey after an edit to a command-stage key (``io_primitives``).
+    """
+    entries = [
+        (label, path)
+        for label, path in (
+            ("user", user_config_path(environ=environ)),
+            ("project", project_config_path(repo_root)),
+        )
+        if path.is_file()
+    ]
+    return file_digest_token("cfg", entries)
 
 
 def _flatten(raw: Mapping[str, Any], prefix: str = "") -> Dict[str, Any]:
@@ -325,6 +413,18 @@ def _validate(flat: Mapping[str, Any], path: Path, *, is_project: bool) -> None:
             )
         if setting.startswith(_MERGE_PREFIX):
             _validate_merge(setting, value, path)
+        if setting == "trace_deps":
+            _validate_trace_deps(value, path)
+
+
+def _validate_trace_deps(value: Any, path: Path) -> None:
+    """Package names (strings), or ``"all"`` / ``"none"`` on their own."""
+    if isinstance(value, list) and not all(isinstance(v, str) for v in value):
+        raise ConfigError(f"{path}: 'trace_deps' entries must be package names (strings).")
+    try:
+        TraceDeps.parse(value)
+    except ValueError as exc:
+        raise ConfigError(f"{path}: 'trace_deps' {exc}.") from exc
 
 
 def _paths_from(flat: Mapping[str, Any], config_path: Path) -> "list[Path]":
@@ -361,13 +461,13 @@ def load_layered_config(
     _validate(proj_flat, proj_path, is_project=True)
 
     merged = LayeredConfig(
-        io_primitives=(
-            _paths_from(user_flat, user_path)
-            + _paths_from(proj_flat, proj_path)
-        ),
+        io_primitives=_paths_from(user_flat, user_path),
+        in_repo_io_primitives=_paths_from(proj_flat, proj_path),
     )
     for flat in (user_flat, proj_flat):  # ascending: the project tier wins each key it sets
         _apply_merge_settings(merged, flat)
+        if "trace_deps" in flat:
+            merged.trace_deps = TraceDeps.parse(flat["trace_deps"])
         for setting, value in flat.items():
             if setting.startswith(_BACKENDS_PREFIX):
                 merged.backends[setting[len(_BACKENDS_PREFIX):]] = bool(value)

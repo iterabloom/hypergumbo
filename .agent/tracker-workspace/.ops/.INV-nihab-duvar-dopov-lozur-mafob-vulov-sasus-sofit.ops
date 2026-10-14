@@ -1,0 +1,23 @@
+- op: create  # 3140
+  at: '2026-10-10T19:26:04Z'  # 3140
+  by: agent  # 3140
+  actor: jgstern_agent  # 3140
+  clock: 1  # 3140
+  nonce: '3140'  # 3140
+  data:  # 3140
+    kind: invariant  # 3140
+    title: "Default sketch's gitleaks call: --report-path /dev/stdout makes gitleaks unlink /dev/stdout (succeeds as root, e.g. in a container), and gitleaks reads .gitleaks.toml/.gitleaksignore from the analysed repo (cwd)"  # 3140
+    status: violated  # 3140
+    priority: 3  # 3140
+    parent:  # 3140
+    tags:  # 3140
+    - security  # 3140
+    - io_allowlist  # 3140
+    isbefore: []  # 3140
+    duplicate_of: []  # 3140
+    not_duplicate_of: []  # 3140
+    pr_ref:  # 3140
+    description: "Found while verifying facts for the README trust section (WI-muzan), 2026-10-10, via `strace -f -e trace=%file,%network,execve hypergumbo .` on a tiny repo (gitleaks 8.30.0 installed in ~/.local/bin).\n\n`hypergumbo_core/gitleaks.py` runs `gitleaks stdin --report-format json --report-path /dev/stdout --exit-code 0 --no-banner` through `safety_zones.repo_inspect_scan` with no `cwd=`. Observed in the trace:\n1. gitleaks opens `/dev/stdout` with O_CREAT|O_TRUNC and then calls `unlinkat(AT_FDCWD, \"/dev/stdout\", 0)` and `unlinkat(..., AT_REMOVEDIR)` — EACCES here because /dev is root-owned. Run as root (the default user in most Docker images, which the README trust section suggests for confinement), that unlink can succeed and remove the container's /dev/stdout symlink.\n2. gitleaks stats `.gitleaks.toml` and `.gitleaksignore` in its cwd, which is the user's cwd — normally the analysed repository. So an analysed repository can configure (e.g. allowlist away) the secret-scan findings hypergumbo reports. Scope of influence: the secret-scan section only; it is not code execution.\n\nStatement: hypergumbo's gitleaks invocation deletes nothing and reads no configuration from the analysed repository unless the operator opts in.\n\nFix sketch: read the report from a tmp_artifact file (or `--report-path -` if the pinned gitleaks supports it) instead of /dev/stdout; pass `--config` pointing at a hypergumbo-owned default (or `--no-config` equivalent) and run with `cwd=` a tmp dir; disclose in the runtime-cli-no-subprocess claim text that a repo's gitleaks config is ignored/used."  # 3140
+    fields:  # 3140
+      statement: "hypergumbo's gitleaks invocation deletes nothing and reads no configuration from the analysed repository unless the operator opts in."  # 3140
+      root_cause: "gitleaks.py passes /dev/stdout as gitleaks' report path (gitleaks removes and recreates its report path) and launches gitleaks in the inherited cwd, where gitleaks auto-discovers its config files."  # 3140

@@ -12,6 +12,25 @@ The main entry points are:
 - batch_embed_files(): Batch embed files with caching
 - compute_5w1h_similarity(): Score a file against the 5W1H rubric
 
+Two models back these. ``microsoft/unixcoder-base`` (``_load_embedding_model``)
+serves README description extraction, and ``sketch.py``'s config discovery
+and extraction import ``_load_embedding_model`` and ``NEGATIVE_PATTERNS``
+from here directly. ``nomic-ai/modernbert-embed-base``
+(``_load_modernbert_model``) serves the Additional Files semantic ranking:
+``embed_file_for_semantic_ranking``, ``batch_embed_files`` and the 5W1H
+probe embeddings. Once both models are in the HF cache, loading either one
+sets ``HF_HUB_OFFLINE=1`` for the whole process
+(``_ensure_hf_offline_for_cached_models``, INV-dasig).
+
+The module also hosts the per-repo XDG cache layout under
+``$XDG_CACHE_HOME/hypergumbo/<fingerprint>/`` (``_get_repo_fingerprint``,
+``_get_xdg_cache_base``): the content-hash-keyed embedding cache
+(``_get_cache_dir``) and the analysis-results cache (``_get_results_cache_dir``),
+keyed by repo state hash, resolved opt-in backend set, trace_deps token,
+digests of the analysis-stage user catalogue channels and the config tiers,
+and analyzer identity. ``cli.py`` and ``sketch.py`` import the results-cache
+helpers from here; they have nothing to do with embeddings.
+
 Degradation contract — TWO failure modes, not one
 -------------------------------------------------
 "sentence-transformers is unavailable" means two independent things, and
@@ -20,7 +39,10 @@ conflating them is what made ``hypergumbo .`` exit 1 writing zero bytes
 
 1. **The library is not importable.** ``_has_sentence_transformers()``
    answers this, and only this — it catches ``ImportError`` and nothing
-   else. Every public function here checks it first.
+   else. The three embedding entry points check it first;
+   ``compute_5w1h_similarity`` needs only numpy and reaches the guard
+   only through ``_get_additional_files_probe_embeddings`` when the
+   precomputed probes are missing.
 2. **The library imports but the model WEIGHTS are not on disk** and
    cannot be downloaded (no network, ``HF_HUB_OFFLINE``, a cache miss on
    a machine that has never fetched them). ``_has_sentence_transformers()``
@@ -28,9 +50,10 @@ conflating them is what made ``hypergumbo .`` exit 1 writing zero bytes
    ``_load_st_model_offline_first`` converts that into
    :class:`EmbeddingsUnavailable`.
 
-Callers must handle BOTH. The four public entry points already do: each
+Callers must handle BOTH. The three embedding entry points already do: each
 catches :class:`EmbeddingsUnavailable` and degrades to the same result its
-import-guard branch returns, and :func:`_warn_embeddings_unavailable`
+import-guard branch returns (``compute_5w1h_similarity`` inherits this
+through its probe loader), and :func:`_warn_embeddings_unavailable`
 warns once per process rather than per file. Consumers outside this module
 (see ``sketch.py``) degrade to their heuristic path.
 
@@ -631,44 +654,6 @@ def _decode_probe_embeddings(b64_data: str, num_probes: int) -> "np.ndarray":
     raw = base64.b64decode(b64_data)
     arr = np.frombuffer(raw, dtype=np.float16).reshape(num_probes, 768)
     return arr.astype(np.float32)
-
-
-def _get_repo_languages(repo_root: Path) -> set[str]:
-    """Detect languages in a repo by scanning for common file extensions."""
-    ext_to_lang = {
-        ".py": "python", ".js": "javascript", ".ts": "typescript",
-        ".go": "go", ".rs": "rust", ".java": "java", ".kt": "kotlin",
-        ".scala": "scala", ".rb": "ruby", ".php": "php",
-        ".ex": "elixir", ".exs": "elixir", ".erl": "erlang",
-        ".hs": "haskell", ".swift": "swift", ".cs": "csharp",
-        ".fs": "fsharp", ".c": "c", ".cpp": "cpp", ".cc": "cpp",
-        ".ml": "ocaml", ".clj": "clojure", ".zig": "zig",
-        ".nim": "nim", ".dart": "dart", ".jl": "julia",
-        ".groovy": "groovy",
-        ".tla": "tlaplus",
-    }
-    languages: set[str] = set()
-    try:
-        from hypergumbo_core.discovery import get_file_index
-        file_index = get_file_index()
-        if file_index is not None and file_index.repo_root == repo_root:
-            for item in file_index.all_files():
-                ext = item.suffix.lower()
-                if ext in ext_to_lang:
-                    languages.add(ext_to_lang[ext])
-                    if len(languages) > 10:
-                        break
-        else:
-            for item in repo_root.rglob("*"):
-                if item.is_file():
-                    ext = item.suffix.lower()
-                    if ext in ext_to_lang:
-                        languages.add(ext_to_lang[ext])
-                        if len(languages) > 10:
-                            break
-    except OSError:
-        pass
-    return languages if languages else {"_common"}
 
 
 # Probe patterns for README description extraction
@@ -1552,6 +1537,20 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     before this change is still reachable, and a read command finds a
     two-arm artifact only under the same resolved set (the environment
     variable or the per-repository trust grant, not a one-off flag).
+    The same segment is suffixed ``-deps-all`` / ``-deps-<hash>`` when
+    installed dependency source is traced (``--trace-deps`` or the
+    ``trace_deps`` config key; ``discovery.resolve_trace_deps``), so a traced
+    and an untraced survey of one tree never share an entry. It is then
+    suffixed ``-cat-<hash>`` with a digest of the user catalogue channels the
+    analysis reads (the registry's analysis-stage families: ``frameworks.d``,
+    ``dataflow_patterns.d``, ``library_signatures.d`` —
+    ``catalogue_home.analysis_channel_token``) and ``-cfg-<hash>`` with a
+    digest of ``config.toml`` and ``.hypergumbo.toml``
+    (``user_config.config_cache_token``). Neither is repository source the
+    state hash sees, and without them a cached survey kept answering after a
+    channel file was added, edited or broken — the broken file never read, so
+    never reported. Each suffix is absent when its files are, so a user with
+    no channel files and no config keeps every existing entry's key.
 
     The fourth segment (``<analyzer_identity>``) keys on the analyzer
     surface that produces the cached output — ``__version__`` plus a
@@ -1560,8 +1559,9 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     installs (or RCT arms, or post-lang-upgrade runs) share a cache
     entry and poison each other's results on the same source tree.
 
-    Results are cached per-(repo, state, analyzer) because they depend
-    on the entire repo contents AND on the specific analyzer running.
+    Results are cached per-(repo, state, run configuration, analyzer)
+    because they depend on the entire repo contents, on the user inputs
+    and settings the analysis reads, AND on the specific analyzer running.
 
     Args:
         repo_root: Repository root path.
@@ -1571,12 +1571,26 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     """
     from . import backend_selection
     from .analyzer_identity import compute_analyzer_identity_hash
+    from .catalogue_home import analysis_channel_token
+    from .discovery import resolve_trace_deps
+    from .user_config import config_cache_token
 
     fingerprint = _get_repo_fingerprint(repo_root)
     state_hash = _get_repo_state_hash(repo_root)
     backends = backend_selection.resolved_backend_set(repo_root=repo_root)
     if backends:
         state_hash = f"{state_hash}-{'+'.join(backends)}"
+    # ADR-0004 §"Installed dependency source": which installed dependency
+    # source was traced is run configuration too. Suffixed only when something
+    # is traced, so every untraced entry keeps its key.
+    trace_token = resolve_trace_deps(repo_root).cache_token()
+    # The user files the analysis reads outside the repository's source:
+    # analysis-stage catalogue channels and the two config tiers. Each token
+    # is "" when no such file exists, so those users keep their key.
+    for token in (trace_token, analysis_channel_token(),
+                  config_cache_token(repo_root)):
+        if token:
+            state_hash = f"{state_hash}-{token}"
     analyzer_identity = compute_analyzer_identity_hash()
     cache_base = _get_xdg_cache_base()
     cache_dir = (
@@ -1673,6 +1687,7 @@ def _extract_file_samples(
     """
     import random
     import re
+    import zlib
 
     try:
         content = file_path.read_text(encoding='utf-8', errors='replace')
@@ -1698,9 +1713,11 @@ def _extract_file_samples(
     if len(first_third) <= total_needed:
         return first_third
 
-    # Extract non-overlapping samples with deterministic seeding
-    # Use file path hash for reproducibility (not cryptographic, just for stability)
-    seed = hash(str(file_path)) % (2**32)
+    # Extract non-overlapping samples with deterministic seeding. The seed is
+    # a STABLE digest of the path: ``hash(str)`` is salted per process
+    # (PYTHONHASHSEED), so it picked different windows — and so different
+    # embedding rankings — on every run (WI-vosag analogue).
+    seed = zlib.crc32(str(file_path).encode("utf-8"))
     rng = random.Random(seed)  # noqa: S311 # nosec B311
 
     samples: list[str] = []
@@ -1812,7 +1829,7 @@ def embed_file_for_semantic_ranking(
 ) -> "np.ndarray | None":
     """Embed a file using ModernBERT for semantic ranking.
 
-    Uses 3 random non-overlapping 800-char substrings from first third,
+    Uses 3 random non-overlapping 400-char substrings from first third,
     de-HTMLified and ellipsis-concatenated.
 
     Args:

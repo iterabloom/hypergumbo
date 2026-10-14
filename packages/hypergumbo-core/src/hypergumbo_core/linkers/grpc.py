@@ -43,7 +43,11 @@ How It Works
 ------------
 1. Scan .proto files for service and RPC method definitions
 2. Scan implementation files for gRPC patterns
-3. Create symbols for services, clients, and servers
+3. Create symbols for services, clients, and servers. Each carries the
+   language of the file it came from, so its stable_id is minted here
+   (``overload_arity.pass_minted_stable_id``, scoped by this linker, the
+   framework role and the proto package): the analyzer-side backstop runs
+   before the linkers and would leave it null (INV-fufij)
 4. Create route-marker symbols for each proto RPC method, using the
    real HTTP/2 wire path /<package>.<ServiceName>/<MethodName>. These
    carry ``kind="function"`` + ``meta['framework_role']='route'`` (the
@@ -93,6 +97,9 @@ from typing import Iterator
 from ..discovery import find_files, find_non_test_files
 from ..analyze.base import make_route_symbol
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..overload_arity import pass_minted_stable_id
+from ..paths import to_relative_path
+from ..taxonomy import JS_TS_LANGUAGES, extension_globs, extension_suffixes
 from ._transitive_bases import (
     build_inheritance_edge_index,
     collect_transitive_base_origins,
@@ -218,7 +225,9 @@ TS_CLIENT_PATTERN = re.compile(
 
 def _find_grpc_files(root: Path) -> Iterator[Path]:
     """Find files that might contain gRPC patterns."""
-    patterns = ["**/*.proto", "**/*.py", "**/*.go", "**/*.java", "**/*.ts", "**/*.js"]
+    patterns = [  # JS/TS from the shared list (WI-hizon)
+        "**/*.proto", "**/*.py", "**/*.go", "**/*.java", *extension_globs(*JS_TS_LANGUAGES),
+    ]
     for path in find_non_test_files(root, patterns):
         yield path
 
@@ -721,7 +730,7 @@ def link_grpc(
             all_patterns.extend(_scan_go_file(file_path, content))
         elif file_path.suffix == ".java":
             all_patterns.extend(_scan_java_file(file_path, content))
-        elif file_path.suffix in (".ts", ".js"):
+        elif file_path.suffix.lower() in extension_suffixes(*JS_TS_LANGUAGES):
             all_patterns.extend(_scan_ts_file(file_path, content))
 
     # Create symbols from patterns
@@ -767,8 +776,19 @@ def link_grpc(
         # on the bridge's deterministic-by-id fallback.
         if framework_role == "grpc_service" and pattern.package:
             sym_meta["proto_package"] = pattern.package
+        # INV-fufij: these carry a language, so neither the analyzer-side floor
+        # (it runs before the linkers) nor the Class-B chokepoint (language=None
+        # only) reaches them; the id is minted here, scoped by this linker, the
+        # framework role (a servicer class and its registration are two records
+        # of one service) and the proto package.
+        scope = (framework_role, pattern.package) if pattern.package else (framework_role,)
         symbols.append(Symbol(
             id=symbol_id,
+            stable_id=pass_minted_stable_id(
+                owner=PASS_ID, kind=canonical_kind, lang=pattern.language,
+                path=to_relative_path(pattern.file_path, root),
+                name=pattern.service_name, scope=scope,
+            ),
             name=pattern.service_name,
             kind=canonical_kind,
             language=pattern.language,

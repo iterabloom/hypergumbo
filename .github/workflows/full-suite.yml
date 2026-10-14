@@ -317,6 +317,11 @@ jobs:
             exit 0
           fi
           exit "$rc"
+      - name: Independent I/O allowlist gate (WI-vumum)
+        run: |
+          # Unconditional cron arm of the per-PR io-allowlist-gate. Seconds,
+          # and needs only PyYAML (already installed above).
+          ./scripts/check-io-allowlist
       - name: Self-claim drift gate (WI-vanun)
         run: |
           # SECURITY.md asserted that claim regressions "fail the gate". No
@@ -946,7 +951,7 @@ jobs:
           pip install --upgrade pip
           # hypothesis is needed by tests/test_transcript_pipeline_properties.py;
           # pin matches packages/hypergumbo-tracker/pyproject.toml.
-          pip install pytest pytest-xdist pyyaml 'hypothesis~=6.100'
+          pip install pytest pytest-xdist pytest-cov pyyaml 'hypothesis~=6.100'
       - name: Run top-level tests
         run: |
           if [ -f /sys/fs/cgroup/cpu.max ]; then

@@ -1,0 +1,23 @@
+- op: create  # 5385
+  at: '2026-10-03T17:36:55Z'  # 5385
+  by: agent  # 5385
+  actor: jgstern_agent  # 5385
+  clock: 1  # 5385
+  nonce: '5385'  # 5385
+  data:  # 5385
+    kind: work_item  # 5385
+    title: "objc NSNotificationCenter addObserver (two selectors) is rowed ipc_recv but registers in the in-process center -- the receive half of WI-povom's in-process pub/sub fix"  # 5385
+    status: todo_hard  # 5385
+    priority: 3  # 5385
+    parent:  # 5385
+    tags:  # 5385
+    - catalogue  # 5385
+    - io_boundary  # 5385
+    - objc  # 5385
+    - swift  # 5385
+    isbefore: []  # 5385
+    duplicate_of: []  # 5385
+    not_duplicate_of: []  # 5385
+    pr_ref:  # 5385
+    description: "Prior-tranche flags from WI-vafad (tranche 2, apple sub-tranche, 2026-09-13), never filed, re-verified ACCEPT at dev fe3c32259d (docs/audits/0022, prior-backlog section).\n\nobjc NSNotificationCenter `addObserver:selector:name:object:` and `addObserverForName:object:queue:usingBlock:` are rowed ipc_recv. Registration inserts a closure into the center's IN-PROCESS registrar (swift-corelibs-foundation NotificationCenter.swift:92-102; NSNotification.swift:124). Nothing crosses a process boundary, and the delivered notification was posted by this same process. WI-povom already moved the POST side (post* rows) out of ipc_send on exactly this reasoning: in-process pub/sub is not IPC. The receive side was left behind. The verifier also noticed the swift twin, NotificationCenter.addObserver, rowed the same way, which was not adjudicated here.\n\nCAVEAT that travels with apple rows: the evidence is swift-corelibs-foundation, a reimplementation, and the selector-based `addObserver:selector:name:object:` overload does not exist there (only the block forms). The decisive fact, that the center is in-process, does not depend on the overload. The catalogue already rows the cross-process class, NSDistributedNotificationCenter, separately under ipc_send (audit 0021). Apple's documented contract was NOT read in this sweep; confirm it at developer.apple.com at fix time.\n\nipc_recv derives untrusted_input, so these rows MINT a taint source at a call that observes nothing from outside the process. Removal is the false-positive direction. ADR-0049 ruling 3 still applies."  # 5385
+    fields: {}  # 5385

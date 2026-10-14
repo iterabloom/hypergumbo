@@ -3,18 +3,14 @@
 #
 # Functions whose return values carry the "key_material" taint label.
 # Key material should never be written to persistent storage or sent
-# to untrusted zones.
+# to untrusted zones. Standard-library rows only; third-party key APIs
+# (cryptography, hkdf, ring) are in key_material_community.yaml (ADR-0061).
+provenance: builtin
 description: "Cryptographic key material"
 taint_label: key_material
 
 sources:
   python:
-    - module: cryptography.fernet
-      functions: [Fernet.generate_key]
-      return_tainted: true
-    - module: cryptography.hazmat.primitives.asymmetric
-      methods: [rsa.generate_private_key, ec.generate_private_key, ed25519.Ed25519PrivateKey.generate]
-      return_tainted: true
     - module: os
       functions: [urandom]
       return_tainted: true
@@ -23,15 +19,6 @@ sources:
     - module: crypto
       functions: [subtle.generateKey, subtle.importKey, subtle.deriveKey, subtle.deriveBits]
       return_tainted: true
-
-  rust:
-    - module: hkdf
-      methods: [Hkdf::expand, Hkdf::new]
-      return_tainted: true
-    - module: ring::rand
-      methods: [SystemRandom::fill]
-      return_tainted: true
-      argument_tainted: [0]
 
   go:
     - module: crypto/rand

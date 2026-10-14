@@ -14,7 +14,7 @@ mainstream module. Per INV-loguk ("every function-kind Symbol carries
 non-null ``cyclomatic_complexity`` and ``line_span``, regardless of
 language"), the walker had to move to the one package every analyzer can
 reach. ``symbol_introspection`` re-exports the names defined here, so the
-13 mainstream analyzers that ``from ...symbol_introspection import
+12 mainstream analyzer modules that ``from ...symbol_introspection import
 compute_cyclomatic_complexity`` keep working unchanged.
 
 The walker is deliberately decoupled from any specific grammar: it touches
@@ -23,8 +23,7 @@ so it is exercised in this package with lightweight duck-typed nodes
 (see ``tests/test_cyclomatic.py``) while the per-language node-type names in
 ``BRANCH_NODE_TYPES`` are verified against *real* tree-sitter grammars in
 each analyzer package's own test suite (``test_symbol_introspection.py`` for
-the mainstream + bash/c/cpp set, ``test_solidity.py`` / ``test_wgsl.py`` for
-the relocated-here additions).
+the mainstream set, each owning analyzer's own test module for the rest).
 
 Counting model
 --------------
@@ -41,9 +40,14 @@ Decision points are:
 - Each short-circuit logical operator (``&&`` / ``||`` / ``??`` / language
   word-forms) listed in ``SHORT_CIRCUIT_OPS[language]``, mirroring the
   ``ast.BoolOp`` rule ``py.py`` uses (each ``and``/``or`` opens a new path).
+- For homoiconic languages (Lisp family plus Elixir, ``_HOMOICONIC_SPECS``),
+  whose control flow is ordinary call/list nodes, each control form
+  identified by its head-symbol text
+  (``_compute_homoiconic_cyclomatic_complexity``); the dispatcher checks this
+  table before ``BRANCH_NODE_TYPES``.
 
-Both tables are conservative: a language absent from ``BRANCH_NODE_TYPES``
-yields ``None`` (not an exception), so the dispatcher can be wired into
+Both tables are conservative: a language in neither ``_HOMOICONIC_SPECS`` nor
+``BRANCH_NODE_TYPES`` yields ``None`` (not an exception), so the dispatcher can be wired into
 every callable Symbol emit site without per-call language gating, and a
 language present in ``BRANCH_NODE_TYPES`` but absent from
 ``SHORT_CIRCUIT_OPS`` simply does not count short-circuit operators (e.g.

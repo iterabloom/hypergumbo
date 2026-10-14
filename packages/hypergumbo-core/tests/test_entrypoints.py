@@ -5722,3 +5722,61 @@ class TestSwiftApplicationConcept:
         entrypoints = detect_entrypoints([sym], [])
         ep = [e for e in entrypoints if e.kind == EntrypointKind.MAIN_FUNCTION]
         assert len(ep) == 1
+
+
+class TestPerSymbolDedupKeepsMostConfidentKind:
+    """INV-liraj: one symbol, several entrypoint kinds -> the most confident wins.
+
+    ``detect_entrypoints`` collapses entrypoints that share a ``symbol_id``.
+    It used to keep the FIRST-EMITTED entry, so the outcome depended on the
+    order detectors happened to run in: a Phoenix route marker (kind=function,
+    meta.framework_role=route) also carries the Elixir ``library_export``
+    concept, the concept pass emits that LIBRARY_EXPORT (0.75) before the
+    route-marker pass emits HTTP_ROUTE (0.90), and every Phoenix route
+    vanished from the sketch's HTTP Routes section (thc: 377 routes, 0 shown).
+    """
+
+    def test_route_marker_with_library_export_concept_is_http_route(self) -> None:
+        sym = make_symbol(
+            "GET /users/csrf_refresh",
+            path="lib/app_web/router.ex",
+            kind="function",
+            language="elixir",
+            meta={
+                "framework_role": "route",
+                "route_framework": "phoenix",
+                "http_method": "GET",
+                "route_path": "/users/csrf_refresh",
+                "concepts": [{"concept": "library_export"}],
+            },
+        )
+        eps = detect_entrypoints([sym], [])
+        assert [e.kind for e in eps] == [EntrypointKind.HTTP_ROUTE]
+        assert eps[0].label == "HTTP GET /users/csrf_refresh"
+
+    def test_concept_order_does_not_decide_the_kind(self) -> None:
+        # Same facts, concepts listed in either order: the route (0.95) beats
+        # the library export (0.75) both ways.
+        for concepts in (
+            [{"concept": "library_export"},
+             {"concept": "route", "method": "GET", "path": "/a"}],
+            [{"concept": "route", "method": "GET", "path": "/a"},
+             {"concept": "library_export"}],
+        ):
+            sym = make_symbol("handler", path="app/__init__.py",
+                              meta={"concepts": concepts})
+            eps = detect_entrypoints([sym], [])
+            assert [e.kind for e in eps] == [EntrypointKind.HTTP_ROUTE], concepts
+
+    def test_equal_confidence_keeps_first_emitted(self) -> None:
+        # Ties keep the earlier detector's entry (stable), so a symbol that is
+        # both a controller and a route-concept handler at 0.95 is unchanged.
+        sym = make_symbol(
+            "index",
+            meta={"concepts": [
+                {"concept": "route", "method": "GET", "path": "/i"},
+                {"concept": "controller"},
+            ]},
+        )
+        eps = detect_entrypoints([sym], [])
+        assert [e.kind for e in eps] == [EntrypointKind.HTTP_ROUTE]

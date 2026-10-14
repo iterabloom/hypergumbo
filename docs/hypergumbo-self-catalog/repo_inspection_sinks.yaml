@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Layer-3 project-local catalog — repo_inspection zone sinks (WI-fasuv).
+# hypergumbo's in-repo self-audit catalogue — repo_inspection zone sinks (WI-fasuv).
 #
 # Runtime CLI subcommands DO shell out, and this zone is where that is
 # declared rather than denied. Measured by `strace -f -e trace=execve` on a

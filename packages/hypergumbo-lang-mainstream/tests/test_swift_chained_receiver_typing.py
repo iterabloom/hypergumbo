@@ -166,14 +166,21 @@ class TestAChainedReceiverCarriesItsType:
             "swift:external:0-0:invalidateAndCancel:unresolved"
         )
 
-    def test_a_literal_receiver_names_no_type(self, tmp_path: Path) -> None:
+    def test_a_collection_literal_receiver_names_no_type(self, tmp_path: Path) -> None:
+        """WI-hojib types a SCALAR literal by its default type (``"abc"`` is a
+        String, test_swift_initialiser_shapes); a collection literal is still
+        not a receiver type the catalogue knows."""
         edges = _edges(tmp_path / "lit", STORE + (
             "func go() {\n"
-            "    \"abc\".invalidateAndCancel()\n"
+            "    [\"abc\"].invalidateAndCancel()\n"
+            "    \"abc\".finishTasksAndInvalidate()\n"
             "}\n"
         ))
         assert _call(edges, "invalidateAndCancel").dst == (
             "swift:external:0-0:invalidateAndCancel:unresolved"
+        )
+        assert _call(edges, "finishTasksAndInvalidate").dst == (
+            "swift:String:0-0:finishTasksAndInvalidate:unresolved"
         )
 
     def test_a_chained_initialiser_types_the_local_too(self, tmp_path: Path) -> None:

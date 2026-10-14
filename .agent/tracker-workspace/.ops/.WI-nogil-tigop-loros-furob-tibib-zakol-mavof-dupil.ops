@@ -1,0 +1,21 @@
+- op: create  # 4d7a
+  at: '2026-10-05T05:04:44Z'  # 4d7a
+  by: agent  # 4d7a
+  actor: jgstern_agent  # 4d7a
+  clock: 1  # 4d7a
+  nonce: 4d7a  # 4d7a
+  data:  # 4d7a
+    kind: work_item  # 4d7a
+    title: "c_def_use: a bare declarator (int i;) mentions i without accounting for it, so once a for initializer defines i, unaccounted_names flags it and walks over i escape"  # 4d7a
+    status: todo_hard  # 4d7a
+    priority: 3  # 4d7a
+    parent:  # 4d7a
+    tags:  # 4d7a
+    - adr_0017  # 4d7a
+    - taint  # 4d7a
+    isbefore: []  # 4d7a
+    duplicate_of: []  # 4d7a
+    not_duplicate_of: []  # 4d7a
+    pr_ref:  # 4d7a
+    description: "FOUND 2026-10-04 while fixing WI-losod (branch jgstern-agent/fix/losod). c_def_use treats a bare declarator (`int i;`) as neither a definition nor a use (\"declare without a value the walk could chain\"). Before WI-losod that was invisible because nothing defined `i` in a C89-style loop (`int i; for (i = 0; i < n; i++)`). Now the for initializer defines `i`, so `i` is a tracked name, and cfg.unaccounted_names reports it at the `int i;` statement that mentions it without accounting for it.\n\nEffect: a §3a walk that carries `i` escapes instead of refuting (per variable, so only walks over the loop counter; it never confirms or removes anything). Direction is the safe one; the cost is lost refutation on such walks. Probe: void f(int n) { int i; for (i = 0; i < n; i++) { use(i); } } -> unaccounted {'i'} on the losod branch, {} on the base.\n\nFix shape: a bare declarator DEFINES its name (a new, uninitialised variable: a definition that kills any earlier one and carries no taint), or the statement accounts for it as a declaration. Volume unmeasured."  # 4d7a
+    fields: {}  # 4d7a

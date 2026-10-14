@@ -2,6 +2,7 @@
 # ADR-0016: I/O primitive catalog for Go
 #
 # Maps Go standard library functions to I/O boundary types.
+provenance: builtin
 language: go
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``
@@ -47,13 +48,37 @@ ambiguous_names:
 fs_read:
   - module: os
     functions: [Open, ReadFile, ReadDir, Stat, Lstat, Readlink]
+  - module: os/exec
+    functions: [LookPath]
+    notes: >-
+      INV-dukam: loops over $PATH calling os.Stat / unix.Eaccess on each
+      candidate and returns a string; it creates no process. It was rowed
+      subprocess -- an opaque launch and a taint sink -- beside Command.
+      python rows its spelling of the same operation, shutil.which, here.
+  - module: os
+    functions: [OpenFile]
+    notes: >-
+      WI-ninuz: Go's flag-based open, declared under fs_read AND fs_write so
+      the mode seam owns it (python's builtins.open shape). The flag argument
+      is a bitwise OR of package constants, not a string, so the mode seam
+      reads the flag NAMES (io_boundary._MODE_ARGUMENT_POSITIONS["go"]):
+      O_WRONLY / O_RDWR / O_APPEND / O_CREATE / O_TRUNC write, O_RDONLY alone
+      reads. An unreadable flag (a variable) keeps THIS first-declared row, as
+      an unstamped open() does in python.
   - module: io
     functions: [ReadAll, ReadFull, Copy]
   - module: io/ioutil
     functions: [ReadFile, ReadDir, ReadAll]
     notes: "Deprecated in Go 1.16 but still widely used"
-  - module: filepath
+  - module: path/filepath
     functions: [Walk, WalkDir, Glob]
+    notes: >-
+      WI-mujod: keyed by the IMPORT PATH, which is what the go analyzer
+      stamps in the module slot (ADR-0051). Spelled `filepath` it was
+      reachable only through _module_matches' hint-longer suffix
+      direction, which is refused because a slot carrying MORE leading
+      components than the row names a different owner. A bare `filepath`
+      slot still reaches this row (catalogue-longer direction).
   - module: bufio
     functions: [NewScanner, NewReader]
     boundary_ruling: call_site_undecidable
@@ -142,6 +167,33 @@ fs_read:
 
 fs_write:
   - module: os
+    functions: [OpenFile]
+    notes: "WI-ninuz: the fs_write twin of the fs_read row (see it); selected by a write flag."
+  - module: os.File
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: >-
+      WI-nunab: a write through the handle's OWN method, the idiomatic Go file
+      write, had no row, so a program that opened a file and wrote through it
+      had no sink. The same shape as io.WriteString (WI-suhug): declared under
+      fs_write, logging and ipc_send, and go.py stamps io_target_kind from the
+      RECEIVER's binding (an os.Create / os.OpenFile handle -> host_path; the
+      os.Stdout / os.Stderr package variables -> std_stream; an os.Pipe() end
+      -> pipe). A parameter or a field stamps nothing and abstains to
+      fs_write. Write is in ambiguous_names, so only a TYPED receiver reaches
+      these rows.
+  - module: bufio.Writer
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: >-
+      WI-nunab: the write goes wherever bufio.NewWriter's argument pointed;
+      go.py stamps it through the receiver's bufio.NewWriter binding
+      (WI-vutav's hop, write side). Declared under fs_write, logging, ipc_send
+      and net_send. Flush is not rowed: it moves bytes WriteString already
+      accepted, so a sink there would count one write twice.
+  - module: os
     functions: [Create, CreateTemp, Mkdir, MkdirAll, MkdirTemp, Remove, RemoveAll, Rename, WriteFile, Chmod, Chown, Chtimes, Link, Symlink, Truncate]
   - module: io/ioutil
     functions: [WriteFile, TempFile, TempDir]
@@ -201,6 +253,11 @@ fs_write:
     functions: [Write, Pwrite, Mkdir, Rmdir, Unlink, Rename, Chmod, Fchmod, Chown, Fchown, Truncate, Ftruncate]
 
 net_send:
+  - module: bufio.Writer
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-nunab: the net_send twin of the fs_write row (see it); selected by a `net_stream` stamp."
   - module: net
     functions: [Dial, DialTCP, DialUDP, DialUnix, DialTimeout]
     # WI-bulag / arc T9. class R -- the dial functions take an address that
@@ -243,6 +300,15 @@ net_send:
     methods: [Do, Get, Post, Head]
   - module: net/http.Transport
     methods: [RoundTrip]
+  - module: net/http.RoundTripper
+    methods: [RoundTrip]
+    notes: >-
+      INV-vusum. The interface, whose documented contract is "RoundTrip executes
+      a single HTTP transaction" -- rowed as net.Conn's Read/Write are. A call on
+      an http.RoundTripper parameter used to reach Transport.RoundTrip only
+      because the receiver's slot was the bare package; once the slot names
+      the type, the interface needs its own row or the send is lost (measured:
+      prometheus cmd/promtool/query.go newAPI).
   # gRPC client
   - module: syscall
     functions: [Connect, Sendto, Sendmsg]
@@ -328,7 +394,19 @@ net_listen:
 
 subprocess:
   - module: os/exec
-    functions: [Command, CommandContext, LookPath]
+    functions: [Command, CommandContext]
+    notes: >-
+      LookPath is fs_read (INV-dukam): it launches nothing. Command and
+      CommandContext only BUILD a *Cmd (Start creates the process), and they
+      stay rowed because ADR-0049 ruling 3's finding-level proof FAILS for
+      them (INV-dukam, measured 2026-10-03). Unrowed, the DDG carries their
+      arguments into `cmd` and `cmd.Run()` uses it, so a *Cmd executed in the
+      scope that built it is caught at Run / Start / Output. A *Cmd a factory
+      RETURNS, stores for another method to Start, or hands to a library
+      function that runs it is not: taint is forward-only across calls (runc
+      Container.newParentProcess loses its cmd.Env flow, buildah unshareCmd
+      its $SHELL flow into unshare.ExecRunnable). Remove them once that flow
+      is represented.
   - module: os/exec.Cmd
     methods: [Run, Start]
   - module: os/exec.Cmd
@@ -387,8 +465,16 @@ host_info_read:
     notes: "Constants, not functions, but captured as host_info_read"
 
 ipc_send:
-  - module: os
-    attributes: [Stdout, Stderr]
+  - module: os.File
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-nunab: the ipc_send twin of the fs_write row (see it); selected by a `pipe` stamp."
+  - module: bufio.Writer
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-nunab: the ipc_send twin of the fs_write row (see it); selected by a `pipe` stamp."
   - module: io
     functions: [WriteString]
     boundary_ruling: call_site_undecidable
@@ -401,6 +487,19 @@ ipc_send:
     notes: "WI-suhug: the ipc_send twin of the logging row (see it)."
 
 logging:
+  - module: os
+    attributes: [Stdout, Stderr]
+    notes: "WI-runos: the process's own standard output -- terminal output, logging, not IPC (WI-tolif, WI-dutah). A mention of the stream is the sink, as sys.stderr is in python."
+  - module: os.File
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-nunab: the logging twin of the fs_write row (see it); selected by a `std_stream` stamp."
+  - module: bufio.Writer
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-nunab: the logging twin of the fs_write row (see it); selected by a `std_stream` stamp."
   - module: fmt
     functions: [Print, Println, Printf]
     notes: "Console output — logging, not IPC. Unconditional: these write os.Stdout whatever their arguments say."
@@ -418,8 +517,13 @@ logging:
     functions: [Print, Println, Printf, Fatal, Fatalln, Fatalf, Panic, Panicln, Panicf]
     notes: "Go stdlib log package — writes to stderr by default"
   - module: log/slog
-    functions: [Debug, Info, Warn, Error, Log, NewTextHandler, NewJSONHandler]
-    notes: "Go stdlib structured logging — writes to stderr by default"
+    functions: [Debug, Info, Warn, Error, Log]
+    notes: >-
+      Go stdlib structured logging -- writes to stderr by default. NOT
+      NewTextHandler / NewJSONHandler (WI-ragaz, audit-findings 0021 Step 5):
+      a handler constructor wraps the writer it is given and writes nothing at
+      the call; the write is at the emitter, rowed here. Unrowed, they are
+      disclosed as external_potential (log/slog carries no completeness grant).
   - module: log/slog.Logger
     methods: [Debug, Info, Warn, Error, Log]
     notes: "slog.Logger instance methods"

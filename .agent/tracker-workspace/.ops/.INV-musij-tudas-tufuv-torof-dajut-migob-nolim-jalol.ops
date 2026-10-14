@@ -1,0 +1,23 @@
+- op: create  # 301a
+  at: '2026-10-06T05:03:18Z'  # 301a
+  by: agent  # 301a
+  actor: jgstern_agent  # 301a
+  clock: 1  # 301a
+  nonce: 301a  # 301a
+  data:  # 301a
+    kind: invariant  # 301a
+    title: "zig.py finds a call's enclosing function by name through the repo-wide resolver (resolver.lookup(qualified_name)), so two files defining a same-named function get their calls crossed"  # 301a
+    status: violated  # 301a
+    priority: 2  # 301a
+    parent:  # 301a
+    tags:  # 301a
+    - analysis_quality  # 301a
+    - call_resolution  # 301a
+    isbefore: []  # 301a
+    duplicate_of: []  # 301a
+    not_duplicate_of: []  # 301a
+    pr_ref:  # 301a
+    description: "Found by the 2026-10-06 docstring staleness audit tail pass; reviewer reproduced on the shipped CLI: a.zig and b.zig each define pub fn run(); a.zig's run calls helperA(); survey.json has calls zig:b.zig:3-5:run:function -> zig:a.zig:9-9:helperA:function at line 6 (line 6 is in a.zig). Same family as INV-razus (tlaplus) and the Pony / Pascal / CUDA by-position fixes. zig.py's module docstring now states the gap."  # 301a
+    fields:  # 301a
+      statement: "A call edge's src is the callable whose body contains the call, found by position in the call's own file (the INV-midag rule the base analyzer follows)."  # 301a
+      root_cause: "zig.py ~L466 resolves the enclosing function with resolver.lookup(qualified_name) over the repo-wide resolver. A second mismatch compounds it: ~L255 names any function in a container Container.fn, but the lookup key adds the container prefix only when the function takes self."  # 301a

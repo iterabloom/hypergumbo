@@ -15,7 +15,7 @@ Why this exists. The catalog set grew organically — ``frameworks/`` landed in
 the initial pattern-system work, ``io_primitives/`` landed with ADR-0016, the
 ``dataflow_patterns/`` + ``cfg_nodes/`` + ``taint_*`` + ``function_summaries/``
 family landed across ADR-0015 / ADR-0017, and ADR-0047 added the user-channel
-and community-overlay families. With ten registered directories holding 169
+and community-overlay families. With eleven registered directories holding 180
 YAML files there is no longer a single place to enumerate them. Without a
 registry, new categories drift in and out of documentation, generate-architecture
 counted only ``frameworks/``, and there was no drift-detection equivalent to the
@@ -26,21 +26,38 @@ How it works. ``YAML_CATALOGS`` is the source of truth — one ``CatalogSpec``
 per directory, naming the directory, the loader module that consumes it, the
 governing ADR (optional), and a one-line purpose — plus the ADR-0047 ruling-7
 extensibility fields ``user_channel`` / ``no_channel_reason`` and their
-``channel_scope`` / ``channel_gated`` qualifiers, which declare whether a
-category can be extended from a user's own config directory and, if not, why. ``enumerate_catalogs()`` walks the
+``channel_scope`` / ``channel_gated`` / ``channel_stage`` qualifiers, which
+declare whether a category can be extended from a user's own config directory
+and, if not, why. ``channel_stage`` says whether the survey's analysis reads the
+channel, which is what decides whether the results-cache key must carry it. ``enumerate_catalogs()`` walks the
 package root and pairs each registered spec with its actual ``*.yaml`` file
 count. ``validate_registry()`` returns drift findings — registered directories that
 are absent, on-disk YAML directories not yet registered, ruling-7 declaration
 incoherence, and derived-channel-name mismatches (:func:`_validate_user_channels`)
 — and accepts a ``catalogs=`` override for testing; the companion
 ``scripts/yaml-catalog-index --check`` mode exits non-zero on any finding.
+
+One error type for every family. A catalogue file a user path supplied can be
+unparseable or the wrong shape, and that is the same event whichever loader
+meets it: :class:`CatalogueError` is the base every loader's refusal derives
+from (``TaintCatalogError``, ``IoPrimitiveOverlayError``,
+``DuplicateYamlKeyError``, and the summary, framework, library-signature and
+dataflow loaders raise it directly), and ``cli.main`` maps that one type to
+exit 2 naming the file. Per-family handlers stay where they print a better
+sentence; the chokepoint is what stops a family that forgot from surfacing as
+an "internal error" with exit 1, which ``verify-claims`` reserves for
+``violated``. :func:`read_catalogue_yaml` is the parse-and-shape check the
+loaders share, so the message a reader gets names the file the same way in
+every family.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+import yaml
 
 
 @dataclass(frozen=True)
@@ -82,6 +99,18 @@ class CatalogSpec:
             accepting one changes what the tool will CLAIM rather than only
             what it sees. ``function_summaries`` is the live case: a
             terminating user summary IS a sanitizer declaration.
+        channel_stage: WHEN the channel is read, required exactly when
+            ``user_channel`` is set (``validate_registry`` refuses a channel
+            without one). :data:`CHANNEL_STAGE_ANALYSIS` means the survey's
+            analysis reads it, so its contents shape the cached behavior map
+            and are folded into the results-cache key
+            (``catalogue_home.analysis_channel_token``); without that a cached
+            survey keeps answering after the file changes, or breaks.
+            :data:`CHANNEL_STAGE_COMMAND` means a command reads it on every
+            run over the cached graph (``io-boundaries``, ``verify-claims``),
+            so keying the cache on it would only force a needless re-survey.
+            ``test_results_cache_input_key`` pins the declaration against what
+            a survey actually reads.
     """
 
     directory: str
@@ -92,6 +121,14 @@ class CatalogSpec:
     no_channel_reason: Optional[str]
     channel_scope: Optional[str] = None
     channel_gated: Optional[str] = None
+    channel_stage: Optional[str] = None
+
+
+#: ``CatalogSpec.channel_stage`` values: read by the survey's analysis (and so
+#: part of the results-cache key), or by a command over the cached graph.
+CHANNEL_STAGE_ANALYSIS = "analysis"
+CHANNEL_STAGE_COMMAND = "command"
+_CHANNEL_STAGES = (CHANNEL_STAGE_ANALYSIS, CHANNEL_STAGE_COMMAND)
 
 
 YAML_CATALOGS: tuple[CatalogSpec, ...] = (
@@ -104,6 +141,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         # Conventions, including in-house ones — the user's world.
         user_channel="frameworks.d",
         no_channel_reason=None,
+        channel_stage=CHANNEL_STAGE_ANALYSIS,
     ),
     CatalogSpec(
         directory="dataflow_patterns",
@@ -115,6 +153,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         user_channel="dataflow_patterns.d",
         no_channel_reason=None,
         channel_scope="library_patterns",
+        channel_stage=CHANNEL_STAGE_ANALYSIS,
     ),
     CatalogSpec(
         directory="io_primitives",
@@ -125,6 +164,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         # Libraries and their I/O. The channel already exists.
         user_channel="io_primitives.d",
         no_channel_reason=None,
+        channel_stage=CHANNEL_STAGE_COMMAND,
     ),
     CatalogSpec(
         directory="io_primitives_overlays",
@@ -158,6 +198,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         # The user's trust model. The channel already exists.
         user_channel="taint_sources.d",
         no_channel_reason=None,
+        channel_stage=CHANNEL_STAGE_COMMAND,
     ),
     CatalogSpec(
         directory="taint_sanitizers",
@@ -166,6 +207,22 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         adr="ADR-0017",
         user_channel="taint_sanitizers.d",
         no_channel_reason=None,
+        channel_stage=CHANNEL_STAGE_COMMAND,
+    ),
+    CatalogSpec(
+        directory="taint_sinks",
+        purpose="Built-in taint sinks with NO I/O-boundary counterpart "
+        "(code_execution, dom_injection); every I/O sink is derived from "
+        "io_primitives instead.",
+        loader="hypergumbo_core.taint",
+        adr="ADR-0060",
+        # ADR-0061 ruling 7: the operator's taint model gets ONE persistent
+        # home, for sinks as for sources and sanitizers. The claims file
+        # travels with the repository and a flag lasts one run, so neither
+        # can be that home. (An I/O sink still belongs in io_primitives.d.)
+        user_channel="taint_sinks.d",
+        no_channel_reason=None,
+        channel_stage=CHANNEL_STAGE_COMMAND,
     ),
     CatalogSpec(
         directory="function_summaries",
@@ -179,6 +236,7 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         user_channel="function_summaries.d",
         no_channel_reason=None,
         channel_gated="CAVEAT_USER_SUPPLIED_SANITIZER",
+        channel_stage=CHANNEL_STAGE_COMMAND,
     ),
     CatalogSpec(
         directory="url_folding",
@@ -205,8 +263,69 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         # the shipped catalogue cannot.
         user_channel="library_signatures.d",
         no_channel_reason=None,
+        channel_stage=CHANNEL_STAGE_ANALYSIS,
     ),
 )
+
+
+#: ADR-0061 ruling 3: the tiers a SHIPPED catalogue file declares on its
+#: ``provenance:`` line -- ``builtin`` (standard-library rows hypergumbo
+#: vouches for) or ``community`` (third-party rows it ships without
+#: maintaining). The tier is read from that line, never from the directory a
+#: file sits in; ``test_catalogue_scope_gates.py`` refuses a shipped file that
+#: declares neither, and a built-in file that names a third-party library.
+PROVENANCE_BUILTIN = "builtin"
+PROVENANCE_COMMUNITY = "community"
+
+
+def declares_community(data: object) -> bool:
+    """True when a parsed catalogue file declares ``provenance: community``.
+
+    A community row ADDS and never displaces a built-in one (ADR-0061 ruling
+    2), so the loaders that merge by key ask this of each shipped file.
+    """
+    return isinstance(data, dict) and data.get("provenance") == PROVENANCE_COMMUNITY
+
+
+class CatalogueError(Exception):
+    """A catalogue file could not be parsed or has the wrong shape.
+
+    The message names the file. ``cli.main`` turns any instance into
+    ``Error: <message>`` and exit 2 (inconclusive): a broken catalogue means the
+    command could not do what it was asked, which is never a clean result (0)
+    and never ``violated`` (1).
+    """
+
+
+def read_catalogue_yaml(
+    path: Path,
+    *,
+    what: str = "catalogue file",
+    error: "type[CatalogueError]" = CatalogueError,
+    mapping: bool = True,
+) -> Any:
+    """Parse one catalogue file, refusing it with ``error`` naming ``path``.
+
+    ``what`` is the noun the message uses ("taint catalog", "function summary
+    file"). With ``mapping`` (the default) the document must be a mapping, and
+    an empty file reads as ``{}``; without it the parsed value is returned
+    as-is, for a question (``declares_community``) that has an answer for any
+    shape and leaves the shape to the real load.
+    """
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise error(f"could not parse {what} {path}: {exc}") from exc
+    if not mapping:
+        return data
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise error(
+            f"{what} {path} must be a mapping at top level, got "
+            f"{type(data).__name__}."
+        )
+    return data
 
 
 _PKG_ROOT = Path(__file__).parent
@@ -269,10 +388,22 @@ def _validate_user_channels(
                 f"must be '{d}.d' — the channel name is derived from the "
                 f"directory so the two cannot drift"
             )
+        if spec.user_channel is not None and spec.channel_stage is None:
+            findings.append(
+                f"catalog '{d}' has a user channel but declares no "
+                f"channel_stage; say whether the analysis or a command reads it"
+            )
+        elif (spec.channel_stage is not None
+              and spec.channel_stage not in _CHANNEL_STAGES):
+            findings.append(
+                f"catalog '{d}' declares channel_stage '{spec.channel_stage}'; "
+                f"it must be one of {', '.join(_CHANNEL_STAGES)}"
+            )
         if spec.user_channel is None:
             for field, value in (
                 ("channel_scope", spec.channel_scope),
                 ("channel_gated", spec.channel_gated),
+                ("channel_stage", spec.channel_stage),
             ):
                 if value is not None:
                     findings.append(

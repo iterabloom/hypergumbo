@@ -1,0 +1,81 @@
+- op: create  # 7a76
+  at: '2026-09-29T17:02:56Z'  # 7a76
+  by: agent  # 7a76
+  actor: jgstern_agent  # 7a76
+  clock: 1  # 7a76
+  nonce: 7a76  # 7a76
+  data:  # 7a76
+    kind: work_item  # 7a76
+    title: "Every shipped catalogue file declares provenance: builtin|community, and a gate refuses one that does not (ADR-0061 ruling 3)"  # 7a76
+    status: todo_hard  # 7a76
+    priority: 2  # 7a76
+    parent:  # 7a76
+    tags:  # 7a76
+    - adr_0061  # 7a76
+    - catalogue  # 7a76
+    isbefore: []  # 7a76
+    duplicate_of: []  # 7a76
+    not_duplicate_of: []  # 7a76
+    pr_ref:  # 7a76
+    description: "ADR-0061 ruling 3 (merged #1308). Every shipped catalogue file (every family registered in yaml_catalogs.YAML_CATALOGS) declares `provenance: builtin` or `provenance: community` in its header; a gate (in the style of test_catalogue_scope_gates.py) refuses a shipped file that declares neither, and refuses `builtin` on a file carrying a third-party module. A community file also carries a dated `retrieved:`.\nThis is the PREREQUISITE for the per-family community moves (they need the declaration to exist) and for INV-lamap (the loader reading tier from the declaration instead of the directory).\nAcceptance: the gate runs over every family's shipped files and is shown red by a mutation (drop one declaration; mark a file with a third-party row builtin)."  # 7a76
+    fields: {}  # 7a76
+- op: update  # 4cb6
+  at: '2026-09-29T17:05:33Z'  # 4cb6
+  by: agent  # 4cb6
+  actor: jgstern_agent  # 4cb6
+  clock: 2  # 4cb6
+  nonce: 4cb6  # 4cb6
+  set: {}  # 4cb6
+  add:  # 4cb6
+    isbefore: [WI-dikit-juvaj-mozob-hojig-tidim-masav-mapor-fafuk]  # 4cb6
+- op: update  # 9fe4
+  at: '2026-09-29T17:05:33Z'  # 9fe4
+  by: agent  # 9fe4
+  actor: jgstern_agent  # 9fe4
+  clock: 3  # 9fe4
+  nonce: 9fe4  # 9fe4
+  set: {}  # 9fe4
+  add:  # 9fe4
+    isbefore: [WI-tigud-lavut-tijad-zorod-mifur-vuzum-narah-larap]  # 9fe4
+- op: update  # 502e
+  at: '2026-09-29T17:05:34Z'  # 502e
+  by: agent  # 502e
+  actor: jgstern_agent  # 502e
+  clock: 4  # 502e
+  nonce: 502e  # 502e
+  set: {}  # 502e
+  add:  # 502e
+    isbefore: [WI-hipun-kozut-gavob-duraj-zazah-babos-balin-pahiz]  # 502e
+- op: update  # 29ce
+  at: '2026-09-29T17:05:34Z'  # 29ce
+  by: agent  # 29ce
+  actor: jgstern_agent  # 29ce
+  clock: 5  # 29ce
+  nonce: 29ce  # 29ce
+  set: {}  # 29ce
+  add:  # 29ce
+    isbefore: [INV-lamap-zazas-tuhap-pumat-rifov-gigar-zirit-jifob]  # 29ce
+- op: update  # 279c
+  at: '2026-09-29T20:28:25Z'  # 279c
+  by: agent  # 279c
+  actor: jgstern_agent  # 279c
+  clock: 6  # 279c
+  nonce: 279c  # 279c
+  set: {}  # 279c
+  add:  # 279c
+    isbefore: [WI-hasul-fulas-gorom-rodur-tarig-dogov-tanon-kalon]  # 279c
+- op: update  # 5c91
+  at: '2026-09-30T01:45:24Z'  # 5c91
+  by: agent  # 5c91
+  actor: jgstern_agent  # 5c91
+  clock: 7  # 5c91
+  nonce: 5c91  # 5c91
+  set:  # 5c91
+    status: done  # 5c91
+- op: discuss  # 3334
+  at: '2026-09-30T01:45:24Z'  # 3334
+  by: agent  # 3334
+  actor: jgstern_agent  # 3334
+  clock: 8  # 3334
+  nonce: '3334'  # 3334
+  message: "Done in PR #1317 (merged, dev 95c604b823). All 180 shipped catalogue files across the 11 families declare provenance: builtin (81) or community (99 frameworks + 8 io overlays + 8 new companions; each with retrieved:). The gate in test_catalogue_scope_gates.py draws the ADR-0016 stdlib line (CATALOGUE_SCOPE) for every family: refuses a file declaring neither tier, a community file with no date, a non-builtin cfg_nodes/url_folding file, and a builtin file naming anything outside the line (per-family extractors: module: values exact incl. io module_completeness; qualified names for sanitizers/summaries; key owners + returned types for library_signatures; anchored modules for dataflow library_patterns; a reasoned allowlist of 8 builtin frameworks files).\nAcceptance evidence: on merged dev, test_catalogue_scope_gates.py + test_community_companion_rows.py: 598 passed. Mutations (each red, restored): drop cfg_nodes/c.yaml's line; mark crypto_community.yaml builtin; mark frameworks/flask.yaml builtin -> 3 gate failures + the controls green. The extractor also flags all 8 io overlays when simulated builtin (positive control).\nThird-party rows moved to community companions: taint crypto/key_material/encryption *_community.yaml; function_summaries go_testify_zap, python_django, rust_aes_gcm_serde_json; library_signatures python-django.yaml; dataflow python-pyyaml.yaml. Loaders: a community row only ADDS (function_summaries ranks builtin<community<user and community takes a name only when free; library_signatures/dataflow read companions by language: line + tier).\nZero verdict effect, measured: every merged view dumped from a pinned origin/dev worktree vs this tree is identical, except the short alias 'filter' (now the builtin Array.prototype.filter), which production never reads (taint keeps qualified keys only; 71/71 qualified summaries identical).\nNOT done here: withholding a community row's cleaning effect (WI-dikit, WI-tigud, WI-hipun); the I/O loader still reads the directory (INV-lamap)."  # 3334

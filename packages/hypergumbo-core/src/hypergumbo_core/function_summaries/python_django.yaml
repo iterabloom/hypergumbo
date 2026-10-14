@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017 §4b: Function summaries for Django's ORM (Python).
+#
+# A COMMUNITY companion of python_stdlib.yaml (ADR-0061): these rows describe third-party
+# libraries, ship without being maintained, and only ADD -- a summary here takes
+# a name, full or short, only when no built-in file holds it (see
+# load_function_summaries). python_stdlib.yaml holds the standard-library rows hypergumbo
+# vouches for; the scope and field conventions in its header apply here too.
+#
+# `retrieved` is the date these rows were last edited, the latest date they can
+# have been checked against the libraries they describe.
+provenance: community
+retrieved: 2026-09-02
+summaries:
+  # --- django ORM ---
+  # filter()/exclude() return a QuerySet built from the supplied lookups, so a
+  # tainted lookup value lives on in the returned queryset. Propagates — and
+  # this matters on the cohort, where pretix's largest violated claim is
+  # entirely database-read-to-database-write (WI-vazal).
+  - function: "django.db.models.filter"
+    param_to_return: {0: true, 1: true}
+
+  - function: "django.db.models.exclude"
+    param_to_return: {0: true, 1: true}
+
+  - function: "django.db.models.get"
+    param_to_return: {0: true, 1: true}

@@ -17,7 +17,8 @@ logic.
 Symbols Extracted
 -----------------
 - **Prefixes**: Namespace prefix declarations (PREFIX foaf: <...>)
-- **Queries**: Query definitions with type (SELECT, CONSTRUCT, ASK, DESCRIBE)
+- **Queries**: Query definitions, named by their form (SELECT, CONSTRUCT, ASK,
+  DESCRIBE); a query has no name of its own
 
 Edges Extracted
 ---------------
@@ -232,14 +233,18 @@ def _find_used_prefixes(node: "tree_sitter.Node") -> set[str]:
     return prefixes
 
 
-def _extract_query(
-    node: "tree_sitter.Node", rel_path: str,
-    query_counter: int,
-) -> tuple[Symbol, int]:
-    """Extract a query definition. Returns (symbol, updated_counter)."""
+def _extract_query(node: "tree_sitter.Node", rel_path: str) -> Symbol:
+    """Extract a query definition, named by its form (``SELECT``, ``CONSTRUCT``,
+    ``ASK``, ``DESCRIBE``).
+
+    A SPARQL query has no name. It was named by its ordinal in the file
+    (``query_2``), which put a position into its name and stable_id: deleting
+    an earlier query renamed the later ones and moved their ids (INV-punig's
+    sweep; scheme v9 hashes no ordinal). Two queries of one form in a file are
+    now a same-scope tie, which the per-file split pass orders (ADR-0035 §1).
+    """
     query_type = node.type.replace("_query", "").upper()
-    query_counter += 1
-    query_name = f"query_{query_counter}"
+    query_name = query_type
 
     # Extract variables from SELECT clause
     variables: list[str] = []
@@ -254,8 +259,8 @@ def _extract_query(
     )
 
     # INV-dulah: node.id and canonical stable_id minted together from one arg
-    # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
-    # start_line here (was line-less), disambiguating same-name siblings.
+    # set (make_doc_symbol_ids) so they can never drift. node.id carries the
+    # start_line, so two queries of one form keep distinct node ids.
     symbol_id, stable_id = make_doc_symbol_ids(
         "sparql", rel_path, "query", query_name, span.start_line, span.end_line,
     )
@@ -287,7 +292,7 @@ def _extract_query(
             "pattern_count": pattern_count,
         },
     )
-    return symbol, query_counter
+    return symbol
 
 
 class SPARQLAnalyzer(TreeSitterAnalyzer):
@@ -329,7 +334,6 @@ class SPARQLAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract prefix and query symbols from a SPARQL file."""
         analysis = FileAnalysis()
-        query_counter = 0
 
         for node in iter_tree(tree.root_node):
             if node.type == "prefix_declaration":
@@ -350,16 +354,18 @@ class SPARQLAnalyzer(TreeSitterAnalyzer):
                 if sym:
                     analysis.symbols.append(sym)
             elif node.type in ("select_query", "construct_query", "ask_query", "describe_query"):
-                sym, query_counter = _extract_query(node, rel_path, query_counter)
+                sym = _extract_query(node, rel_path)
                 analysis.symbols.append(sym)
-                analysis.symbol_by_name[sym.name] = sym
+                # Keyed by node id: queries of one form share a name, and Pass 2
+                # finds each by its form and line among these values.
+                analysis.symbol_by_name[sym.id] = sym
 
         return analysis
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

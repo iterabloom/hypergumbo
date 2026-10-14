@@ -49,7 +49,7 @@ than a comment someone has to keep true.
 
 THE SECTIONS, and why headline membership is NOT one of them
 ------------------------------------------------------------
-Four axes partition the twenty values:
+Four axes partition the twenty-one values:
 
 ``data_crossing``     the axiom's canonical section. Data crosses the process
                       boundary at this call site, in a named direction.
@@ -69,9 +69,9 @@ proves it: it is opaque AND curated, so it counts in the headline, while
 are disclosed and excluded. An axis query would have to special-case exactly one value, which is
 the shape ADR-0024's fold-residue discipline says to put on the spec instead.
 
-KNOWN GAPS, stated rather than left for the next reader to rediscover
---------------------------------------------------------------------
-1. ADR-0016's "controlled vocabulary" table documents NINE of these twenty.
+KNOWN GAP, stated rather than left for the next reader to rediscover
+------------------------------------------------------------------
+ADR-0016's "controlled vocabulary" table documents TEN of these twenty-one.
    ``env_write``, ``db_read``, ``db_write``, ``process_send``, ``logging``,
    ``browser_storage_read``, ``browser_storage_write``, ``net_listen``,
    ``db_compose``, ``external_potential`` and ``command_launch`` are absent
@@ -79,14 +79,14 @@ KNOWN GAPS, stated rather than left for the next reader to rediscover
    vocabulary grew and its documentation did not, which is the drift INV-tafig
    describes; the descriptions below are sourced from the shipped catalogue
    rows and the consumer code, not from that table.
-2. ``logging`` is the one ``data_crossing`` value naming a PURPOSE rather than
-   a medium, and it OVERLAPS ``ipc_send`` on stdout -- go's ``fmt.Println`` and
-   haskell's ``Prelude.putStrLn`` are catalogued ``logging`` while
-   ``stdout.write`` is catalogued ``ipc_send``. That is a genuine per-value
-   question and it is NOT settled here. It is recorded as the first candidate
-   for a per-value audit under ADR-0024's family-audit methodology, which is
-   the whole point of having an axiom to audit against. NO ROW MOVES on the
-   strength of this note.
+
+``logging`` AND ``ipc_send`` ARE SPLIT BY MEDIUM (audit-findings 0021, which
+answered the question this docstring used to leave open). ``logging`` is the
+process's own standard output / error -- the channel whose far side the
+launcher chose -- written directly or through a facility whose default
+destination it is; ``ipc_send`` is a channel the program set up. The call-site
+evidence between them is the write target's ``io_target_kind``, mapped by
+``io_boundary._WRITE_TARGET_KIND_BOUNDARY``.
 """
 
 from __future__ import annotations
@@ -128,7 +128,7 @@ class IoBoundarySpec:
     ``external_potential`` is an unmatched call that may be no I/O at all.
 
     ``catalog_declarable`` records whether an ``io_primitives/*.yaml`` may
-    declare the value. ``_parse_catalog`` iterates exactly the declarable
+    declare the value. ``IoBoundaryCatalog._from_dict`` iterates exactly the declarable
     names, so a value with ``False`` here can only ever be stamped by a
     producer, and a value with ``True`` can only ever arrive through a
     catalogue. That is the channel split ``OPAQUE_BOUNDARIES`` versus
@@ -150,7 +150,7 @@ class IoBoundarySpec:
 
 # The declaration ORDER of the catalogue-declarable specs is load-bearing and
 # is preserved from the hand-written ``CATALOG_BOUNDARY_TYPES`` tuple this
-# registry replaces: ``_parse_catalog`` iterates it, and several sites resolve
+# registry replaces: ``IoBoundaryCatalog._from_dict`` iterates it, and several sites resolve
 # a primitive declared under two boundaries by first-declared-wins. A property
 # test pins the order, not merely the membership.
 IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
@@ -196,8 +196,9 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         counts_in_headline=True,
         description=(
             "Receive data from the network. Shadowed by net_listen: a "
-            "deferred-crossing site blocks a clean net_recv verdict and "
-            "nothing else (ADR-0049 ruling 2)."
+            "deferred-crossing site qualifies a clean net_recv verdict and a "
+            "clean taint verdict over untrusted_input, the label net_recv "
+            "derives, and nothing else (ADR-0049 ruling 2, INV-fogum)."
         ),
     ),
     IoBoundarySpec(
@@ -218,9 +219,10 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         catalog_declarable=True,
         counts_in_headline=True,
         description=(
-            "Send data to another process -- stdout write, pipe write, shared "
-            "memory write. See the module docstring's gap 2: the stdout half "
-            "overlaps `logging`, unsettled."
+            "Send data to another process over a channel the program set up "
+            "or addressed -- a pipe, a child's stdin, a local socket, an IPC "
+            "message channel, a signal. NOT the process's own standard output, "
+            "which is `logging` (audit-findings 0021)."
         ),
     ),
     IoBoundarySpec(
@@ -318,11 +320,12 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         catalog_declarable=True,
         counts_in_headline=True,
         description=(
-            "Emit data to a log sink -- java.util.logging.Logger, go fmt/io "
-            "print, Prelude.putStrLn, Swift print. THE ONE CANONICAL VALUE "
-            "NAMING A PURPOSE RATHER THAN A MEDIUM, and it overlaps ipc_send "
-            "on stdout. First candidate for a per-value audit; see the module "
-            "docstring, gap 2. No row moves on that note."
+            "Write to the process's own standard output or standard error -- "
+            "the channel whose far side the launcher chose, not the program -- "
+            "directly (sys.stderr, os.Stdout, System.out, std::cerr) or through "
+            "a print or logging facility whose default destination it is "
+            "(print, fmt.Println, java.util.logging.Logger, Prelude.putStrLn). "
+            "A medium, like every data_crossing value (audit-findings 0021)."
         ),
     ),
     IoBoundarySpec(
@@ -346,8 +349,8 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         description=(
             "Read from browser-local storage. Like fs_read and for the same "
             "reason, deliberately NOT in AUTO_SOURCE_LABEL_MAP: sensitivity "
-            "depends on what is stored, so a project-local catalogue adds its "
-            "own taint_sources rows for its threat model."
+            "depends on what is stored, so you add your own taint_sources "
+            "rows for your threat model (taint_sources.d/)."
         ),
     ),
     # ------------------------------------------------------------------
@@ -390,6 +393,24 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         ),
     ),
     # ------------------------------------------------------------------
+    # AXIS_DATA_CROSSING again, declared after the deferred pair so that
+    # first-declared-wins leaves every existing row's primary boundary alone.
+    # ------------------------------------------------------------------
+    IoBoundarySpec(
+        name="navigation_read",
+        axis=AXIS_DATA_CROSSING,
+        direction=DIRECTION_INBOUND,
+        catalog_declarable=True,
+        counts_in_headline=True,
+        description=(
+            "Read a value the party that NAVIGATED to this page chose -- the "
+            "page URL, the referrer, window.name. A link can put anything in "
+            "them, so it mints untrusted_input (INV-dadu). The URL spellings "
+            "may also carry a credential and are declared SIMULTANEOUS with "
+            "env_read, so they mint host_secret as well."
+        ),
+    ),
+    # ------------------------------------------------------------------
     # AXIS_SPECULATIVE and the producer-stamped half of AXIS_OPACITY.
     # Neither is declarable by any catalogue.
     # ------------------------------------------------------------------
@@ -401,9 +422,10 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         counts_in_headline=False,
         description=(
             "Synthesised by _compute_external_potential for an unmatched "
-            "first-party call edge: receiver-unresolved speculative noise that "
-            "MIGHT be I/O. Not a classification, an admission of uncertainty -- "
-            "hence no direction."
+            "first-party call into a NAMED external module the catalogue does "
+            "not classify: it MIGHT be I/O. A receiver-unresolved call names no "
+            "module and is not included. Not a classification, an admission of "
+            "uncertainty -- hence no direction."
         ),
     ),
     IoBoundarySpec(
@@ -463,7 +485,7 @@ def find_io_boundary(name: str) -> IoBoundarySpec | None:
 def catalog_declarable_names() -> tuple[str, ...]:
     """Return the catalogue-declarable names IN DECLARATION ORDER.
 
-    Order is preserved rather than sorted because ``_parse_catalog`` iterates
+    Order is preserved rather than sorted because ``IoBoundaryCatalog._from_dict`` iterates
     this tuple and several sites resolve a primitive declared under two
     boundaries by first-declared-wins.
     """
@@ -514,7 +536,7 @@ def find_axis_drift(repo_root: Path) -> list[str]:
     THE SHAPES IT STRUCTURALLY CANNOT SEE are the ones this vocabulary's real
     consumers use: a ``frozenset(A + B)`` built from other names (what
     ``KNOWN_IO_BOUNDARIES`` was), a bare tuple (what ``CATALOG_BOUNDARY_TYPES``
-    was), and dicts keyed or valued by boundary. All three live dict consumers
+    was), and dicts keyed or valued by boundary. All four live dict consumers
     -- ``taint.AUTO_SOURCE_LABEL_MAP``,
     ``io_boundary.DEFERRED_CROSSING_SHADOWS``,
     ``io_boundary._READ_TARGET_KIND_BOUNDARY`` and its write-direction twin

@@ -1,0 +1,22 @@
+- op: create  # df26
+  at: '2026-10-01T19:35:12Z'  # df26
+  by: agent  # df26
+  actor: jgstern_agent  # df26
+  clock: 1  # df26
+  nonce: df26  # df26
+  data:  # df26
+    kind: work_item  # df26
+    title: "ADR-0048 F8 does not declare the row-rate estimator: equal allocation equalises the situation rate only (0006 row: pooled 31.5% vs unweighted per-repo mean 37.2%)"  # df26
+    status: todo_hard  # df26
+    priority: 3  # df26
+    parent:  # df26
+    tags:  # df26
+    - docs  # df26
+    - taint  # df26
+    - analysis_quality  # df26
+    isbefore: []  # df26
+    duplicate_of: []  # df26
+    not_duplicate_of: []  # df26
+    pr_ref:  # df26
+    description: "FOUND 2026-10-01 while correcting ADR-0048's 0006 figure (WI-tuhop).\n\nADR-0048 argued that equal allocation (F2) \"removes the estimator choice\": the\npooled rate and the unweighted per-repo mean are the same number by\nconstruction. That holds for the SITUATION rate only. A situation stands for\n`collapsed_flow_count` rows and that count varies, so for the ROW rate F1\nrequires beside it, the two estimators still differ.\n\nMEASURED on 0006's own artifacts (sample-112.json, ledger-final.json,\npass4-summary.json; pass-4 uncontested labels):\n  situation: pooled 38/112 = 33.9%, unweighted per-repo mean 33.9% (equal)\n  row:       pooled 106/336 = 31.5%, unweighted per-repo mean 37.2% (differ)\nControl: the pooled figures reproduce 0006's published headline exactly.\n\nThe ADR's text now says this (branch jgstern-agent/docs/tuhop-adr0048-0006-figure).\nWhat it does NOT do, because it would be a new frame requirement and needs the\nowner: F8 lists unit, allocation, seed, cohort, claim set and rubric, but no\nESTIMATOR for the row rate. Every framed record so far that prints a row rate\nprints the pooled one (0006: 106/336; 0012: rows 30.0%/28.8%) without saying\nso. That is INV-duvup's defect (an undeclared estimator) surviving on the unit\nreported beside the canonical one.\n\nDECISION NEEDED (owner): either (a) F8 / the `## Frame` gate also name the row\nestimator (pooled, presumably), or (b) record that the row rate is pooled by\ndefinition in ADR-0048. Either is a change to ADR-0048's design and to\nscripts/check-measurement-frame for (a); F1 itself is not touched."  # df26
+    fields: {}  # df26

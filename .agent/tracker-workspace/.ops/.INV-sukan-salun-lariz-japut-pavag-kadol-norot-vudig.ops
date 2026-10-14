@@ -21,3 +21,18 @@
     fields:  # de94
       statement: "A source file whose parse tree contains ERROR nodes never yields silently-wrong symbols: every analyzer either recovers to a faithful symbol set or records the degradation (failed_files entry, warning, or a provenance marker on the affected symbols). An analyzer must not emit a well-formed, confidently-wrong result -- wrong kind, wrong name, missing owner -- with no machine-visible signal that the parse degraded."  # de94
       root_cause: "Tree-sitter analyzers traverse whatever tree the grammar returns and dispatch on named node types; ERROR nodes are neither traversed for salvage nor surfaced as degradation. Measured instance: tree_sitter_kotlin 1.1.0 collapses 2+ single-line bodied type declarations into one ERROR node whose only recognizable child is a function_declaration, so analyze_kotlin emits a phantom top-level function and nothing else (WI-rufub). Other tree-sitter analyzers share the traversal pattern; their ERROR-tree behavior is unmeasured."  # de94
+- op: update  # 7731
+  at: '2026-09-29T03:07:56Z'  # 7731
+  by: agent  # 7731
+  actor: jgstern_agent  # 7731
+  clock: 2  # 7731
+  nonce: '7731'  # 7731
+  set:  # 7731
+    status: satisfied  # 7731
+- op: discuss  # e822
+  at: '2026-09-29T03:07:56Z'  # e822
+  by: agent  # e822
+  actor: jgstern_agent  # e822
+  clock: 3  # e822
+  nonce: e822  # e822
+  message: "SATISFIED ON THE FILED INSTANCE; THE GENERAL CLAIM IS NOT ASSERTED. Premise check 2026-09-28 on dev 51c73cce78.\n\nFILED INSTANCE (kotlin, `class A { fun f(): Int = 1 }` / `class B { fun g(): Int = 2 }`): the symbols are still wrong (one top-level function f; no A, B or g) -- the grammar collapse this item describes is unchanged -- but the run now records it: limits.failed_files has {analyzer: kotlin, path: one.kt, reason: \"partial_parse: 1 damaged node(s); analysed from tree-sitter's error recovery, so declarations in or after the damaged region may be missing\"}. The statement allows \"recovers faithfully OR records the degradation (failed_files entry, ...)\", so the instance now meets it. Fixed by WI-bulaz (8a2eb1a0cf, 2026-09-26): record_partial_parse in analyze/base.py, wired into the shared TreeSitterAnalyzer loop and the go, java, js_ts, kotlin, c, objc, csharp, php, ruby and lua loops.\n\nSTALE PARTS OF THIS ITEM: \"nothing controls this one\" (WI-bulaz ships a production-path test, test_partial_parse_disclosure.py); \"real-corpus frequency unmeasured\" (WI-bulaz measured it: crun 74 files, AFNetworking 34, phoenix 114, hummingbird 7, alertmanager 0). The \"has_error alone is not the signal\" caution is answered as a disclosure, never a gate -- a correctly recovered file is also listed, which over-discloses but never silences. No per-symbol provenance marker exists; the disclosure is per file.\n\nRESIDUAL, ALREADY FILED: WI-tikul -- 24 analyzers with their own analyze() loop are not wired (re-enumerated today: matlab latex racket r_lang meson robot svelte rst thrift purescript vue starlark proto scheme puppet scss cmake css dockerfile json_config yaml_ansible make toml_config xml_config). Positive evidence it still bites: starlark, `def f(x:` (broken) then `def g()` -> only the file node, both f and g lost, failed_files empty; the clean control emits f and g. The starlark repro is added to WI-tikul."  # e822

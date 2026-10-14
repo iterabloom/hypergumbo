@@ -1,0 +1,22 @@
+- op: create  # b7aa
+  at: '2026-10-01T12:19:02Z'  # b7aa
+  by: agent  # b7aa
+  actor: jgstern_agent  # b7aa
+  clock: 1  # b7aa
+  nonce: b7aa  # b7aa
+  data:  # b7aa
+    kind: work_item  # b7aa
+    title: "ruby: a constant referenced lexically inside its namespace (Orchestrator inside module TestData) is not resolved to a class declared compactly (class TestData::Orchestrator), so an in-repo call is reported external"  # b7aa
+    status: todo_hard  # b7aa
+    priority: 2  # b7aa
+    parent:  # b7aa
+    tags:  # b7aa
+    - ruby  # b7aa
+    - call_graph  # b7aa
+    - analysis_quality  # b7aa
+    isbefore: []  # b7aa
+    duplicate_of: []  # b7aa
+    not_duplicate_of: []  # b7aa
+    pr_ref:  # b7aa
+    description: "FOUND 2026-10-01 in WI-surar's A/B on chatwoot (record: ~/hypergumbo_lab_notebook/decontend/run_09302026/surar.md).\n\nA call on a constant that Ruby resolves LEXICALLY through the enclosing module is not resolved when the target class was declared in the compact form `class A::B`. It falls to the constant-external fallback and the in-repo call is reported as external:\n\n    # lib/test_data.rb (chatwoot, lines 1-9)\n    module TestData\n      def self.generate\n        Orchestrator.call        # -> ruby:Orchestrator:0-0:call:unresolved, receiver constant_external\n      end\n    end\n    # lib/test_data/orchestrator.rb\n    class TestData::Orchestrator\n      class << self ... def call\n\nReproduced on a 2-file fixture (worktree sources, branch jgstern-agent/fix/surar): `module TestData; def self.generate; Orchestrator.call` with `class TestData::Orchestrator; def self.call` gives TestData.generate -> ruby:Orchestrator:0-0:call:unresolved (constant_external). CONTROL that DOES resolve: `module Outer; class Helper; def self.run` called as `Helper.run` from `Outer::User#go` binds orch.rb Helper.run. So the gap is the compact-declaration key (`TestData::Orchestrator.call`) versus the lexically-unqualified reference (`Orchestrator`), not lexical lookup in general.\n\n_try_receiver_call tries the receiver as written (`Orchestrator`, plus the short name for a scope_resolution receiver) and never the enclosing module chain (`TestData::Orchestrator`). Ruby's constant lookup tries Module.nesting first (TestData::Orchestrator), then ancestors, then top level.\n\nSeen on chatwoot: lib/test_data.rb:3 (Orchestrator.call) and :7 (CleanupService.call). Before WI-surar these sites carried the require path as their slot (test_data/orchestrator), after it the bare constant; neither resolves them, which is this item. FREQUENCY NOT MEASURED beyond those two sites (no instrument yet counts constant_external rows whose constant names a project class under the caller's nesting).\n\nFIX SHAPE (not built): in _try_receiver_call, before the project-owner check, try the caller's enclosing module chain innermost-first (`Outer::Inner::X`, `Outer::X`, `X`), as Module.nesting does -- position-based (the enclosing declarations of the call site), never by name. Mind WI-kazut (the opposite error: Prometheus::Client taken as a project Client)."  # b7aa
+    fields: {}  # b7aa

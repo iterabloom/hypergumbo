@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017: Taint sources — third-party key material ("key_material").
+#
+# A COMMUNITY companion (ADR-0061): these rows describe third-party libraries
+# and ship without being maintained. The standard-library rows for the same
+# label sit in the built-in file named below; the loader reads both, and the
+# tier comes from the provenance line, not the file name.
+#
+# `retrieved` is the date these rows were last edited, the latest date they
+# can have been checked against the libraries they describe.
+# Built-in companion: key_material.yaml.
+provenance: community
+retrieved: 2026-03-25
+description: "Cryptographic key material"
+taint_label: key_material
+
+sources:
+  python:
+    - module: cryptography.fernet
+      functions: [Fernet.generate_key]
+      return_tainted: true
+    - module: cryptography.hazmat.primitives.asymmetric
+      methods: [rsa.generate_private_key, ec.generate_private_key, ed25519.Ed25519PrivateKey.generate]
+      return_tainted: true
+
+  rust:
+    - module: hkdf
+      methods: [Hkdf::expand, Hkdf::new]
+      return_tainted: true
+    - module: ring::rand
+      methods: [SystemRandom::fill]
+      return_tainted: true
+      argument_tainted: [0]

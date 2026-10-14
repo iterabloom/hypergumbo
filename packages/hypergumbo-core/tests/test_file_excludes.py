@@ -12,6 +12,9 @@ def test_excludes_node_modules(tmp_path: Path) -> None:
     root_file = tmp_path / "app.py"
     root_file.write_text("def main(): pass")
 
+    # The manifest beside node_modules is what makes it an npm install rather
+    # than a bare directory (ADR-0004 §"Installed dependency source").
+    (tmp_path / "package.json").write_text("{}")
     # Create a Python file in node_modules (should be excluded)
     node_modules = tmp_path / "node_modules" / "some-package"
     node_modules.mkdir(parents=True)
@@ -94,9 +97,11 @@ def test_excludes_dot_venv(tmp_path: Path) -> None:
 
 
 def test_excludes_dist(tmp_path: Path) -> None:
-    """Should not analyze files in dist directory."""
+    """Should not analyze files in a dist directory its tool declares as output
+    (ADR-0004 point 7: a bare ``dist`` with no evidence is analysed)."""
     root_file = tmp_path / "app.py"
     root_file.write_text("def main(): pass")
+    (tmp_path / "package.json").write_text('{"main": "dist/bundle.js"}')
 
     dist_dir = tmp_path / "dist"
     dist_dir.mkdir()
@@ -113,12 +118,14 @@ def test_excludes_dist(tmp_path: Path) -> None:
 
 
 def test_excludes_build(tmp_path: Path) -> None:
-    """Should not analyze files in build directory."""
+    """Should not analyze files in a build directory its tool wrote
+    (setuptools' ``lib.<platform>`` inside, ``setup.py`` beside)."""
     root_file = tmp_path / "app.py"
     root_file.write_text("def main(): pass")
+    (tmp_path / "setup.py").write_text("")
+    (tmp_path / "build" / "lib.linux-x86_64-3.12").mkdir(parents=True)
 
     build_dir = tmp_path / "build"
-    build_dir.mkdir()
     excluded_file = build_dir / "output.py"
     excluded_file.write_text("def excluded(): pass")
 
@@ -177,6 +184,9 @@ def test_excludes_nested_node_modules(tmp_path: Path) -> None:
     # Nested node_modules (common in monorepos)
     nested = tmp_path / "packages" / "web" / "node_modules" / "react"
     nested.mkdir(parents=True)
+    # The manifest beside node_modules is what makes it an npm install rather
+    # than a bare directory (ADR-0004 §"Installed dependency source").
+    (tmp_path / "packages" / "web" / "package.json").write_text("{}")
     excluded_file = nested / "index.py"
     excluded_file.write_text("def excluded(): pass")
 
@@ -195,6 +205,9 @@ def test_excludes_html_in_node_modules(tmp_path: Path) -> None:
     html_file = tmp_path / "index.html"
     html_file.write_text('<html><script src="app.js"></script></html>')
 
+    # The manifest beside node_modules is what makes it an npm install rather
+    # than a bare directory (ADR-0004 §"Installed dependency source").
+    (tmp_path / "package.json").write_text("{}")
     # Create HTML in node_modules (should be excluded)
     node_modules = tmp_path / "node_modules" / "some-lib"
     node_modules.mkdir(parents=True)

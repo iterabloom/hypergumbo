@@ -1,0 +1,47 @@
+- op: create  # f09a
+  at: '2026-10-03T21:57:15Z'  # f09a
+  by: agent  # f09a
+  actor: jgstern_agent  # f09a
+  clock: 1  # f09a
+  nonce: f09a  # f09a
+  data:  # f09a
+    kind: work_item  # f09a
+    title: "javascript/typescript: an unresolved bare-name call carries no 'bound by no import' marker the catalogue gates can read, so the external placeholder short-name-matches function rows (unbound readFileSync(p) tags fs_read) and a call through a parameter or local value is refused outright (no edge)"  # f09a
+    status: todo_hard  # f09a
+    priority: 3  # f09a
+    parent:  # f09a
+    tags:  # f09a
+    - javascript  # f09a
+    - typescript  # f09a
+    - taint  # f09a
+    - io_boundary  # f09a
+    - analysis_quality  # f09a
+    isbefore: []  # f09a
+    duplicate_of: []  # f09a
+    not_duplicate_of: []  # f09a
+    pr_ref:  # f09a
+    description: "FOUND 2026-10-03 while fixing WI-sofuh / WI-fahod (branch jgstern-agent/fix/sofuh, worktree ~/hg_wt/sofuh).\n\nTHE MISSING MECHANISM. An unresolved bare-name call has no way to say \"this name is bound by no import\", so the two placeholders available to js_ts both cost something:\n\n1. A name NOTHING binds (not declared in any enclosing scope, not imported, no in-repo symbol) now emits `javascript:external:0-0:<name>:unresolved` (python's INV-foluz residual shape, no call_construct). The `external` slot sends it to `gate_named_entry`, which matches FUNCTION-kind catalogue rows by short name. Measured on a fixture: an unimported, undeclared `readFileSync(p)` tags fs_read. In JavaScript that is never right: every function-kind JS row is reached through an import (fs, child_process, dns, os, http...) or a named global the analyzer already writes into the module slot (fetch, eval, process, window, Deno...). `exec`/`spawn`/`fork` are in ambiguous_names; `execSync`, `execFileSync`, `spawnSync`, `execFile`, `readFileSync`, `writeFileSync`, `now`, `lookup` are not.\n2. A call through a PARAMETER or LOCAL VALUE (`function f(exec){exec(c)}`, `const readUByte = eg.readUByte.bind(eg); readUByte()`, `const fetch = (await import('node-fetch')).default; fetch(u)`) is REFUSED -- no edge -- for the same reason python refuses it: the same placeholder would let `function f(exec){exec(c)}` read as child_process.exec. That is silence where a call stands (absent != empty), and the ADR-0017 walk sees an escape site there.\n\nMEASURED, NOT A CLEAN LANGUAGE: on hls.js, nest, Tone.js and dash.js (A/B by call site, 2026-10-03) the residual added 0 io-boundary tags; the local refusal removed 1 (hls.js scripts/check-already-published.js:25, the node-fetch `fetch` above, previously tagged net_send by short-name luck). A clean corpus is not a clean language: the gate path exists.\n\nDIRECTION. One positive marker on the edge that both catalogue gates read and refuse on, so a placeholder can be emitted for BOTH shapes without reaching a row. Candidates: the registered `binding` edge-meta key (today 'explicit_import' / 'dot_import', no consumer) with a value for \"bound in scope / by no import\", threaded into gate_named_entry the way call_construct is; or a per-catalogue declaration that the language has no ambient function rows. NOT call_construct (it must not carry resolution status, INV-tadup). Python's residual and its LEGB refusal are the same two halves (py.py INV-foluz arm) and should take the same marker."  # f09a
+    fields: {}  # f09a
+- op: update  # 4638
+  at: '2026-10-03T21:57:42Z'  # 4638
+  by: agent  # 4638
+  actor: jgstern_agent  # 4638
+  clock: 2  # 4638
+  nonce: '4638'  # 4638
+  set: {}  # 4638
+  add:  # 4638
+    not_duplicate_of: [WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral]  # 4638
+- op: discuss  # 1222
+  at: '2026-10-04T08:38:49Z'  # 1222
+  by: agent  # 1222
+  actor: jgstern_agent  # 1222
+  clock: 3  # 1222
+  nonce: '1222'  # 1222
+  message: "RUBY'S ANSWER, from WI-napaf-kalap-gubah-lopiv-lokap-tavit-pumav-honat (branch jgstern-agent/fix/napaf, 09f38364f8, not integrated): ruby's new receiverless placeholder ruby:external:0-0:<name>:unresolved has the same short-name reach to FUNCTION-kind rows, but in ruby that reach is CORRECT: Kernel methods (system, exec, spawn, open, puts) are ambient on every object and need no require, so an unbound `system(\"ls\")` really is Kernel#system unless the project defines `system` -- and a project definition resolves first (or is withheld by AMB-METHOD), never reaching the placeholder. Pinned both ways through classify_call with a Kernel.system overlay row. So a \"bound by no import\" marker designed here must NOT make ruby's receiverless placeholder refuse catalogue rows: the per-language answer differs (JS: no ambient function rows; ruby: Kernel is ambient; python: builtins, already a separate module slot). Ruby ships no built-in rows today, so this matters only for overlays until a ruby catalogue lands."  # 1222
+- op: discuss  # c5d8
+  at: '2026-10-05T00:14:27Z'  # c5d8
+  by: agent  # c5d8
+  actor: jgstern_agent  # c5d8
+  clock: 4  # c5d8
+  nonce: c5d8  # c5d8
+  message: "BEARS ON THIS ITEM (2026-10-04, branch jgstern-agent/fix/lopus, commit 57d10d835f, not integrated; WI-vidof-rokim-dodog-bunuv-lizav-nidav-zotin-vakoz): the row choice now withholds the short-name (gate) arm from any unresolved stub carrying meta.superseded_by -- a stub that a resolved edge to an in-repo symbol superseded (ADR-0057 §14) -- through io_boundary.short_name_fallback_withheld(dst, meta), asked by classify_call_in_catalog and by taint's _match_propagation_entry. So an `external` / `:unresolved` placeholder from any language reaches a function row by short name ONLY when nothing in the graph bound that call in-repo. This is consistent with the ruby note above (a project definition of `system` resolves first and now also refuses the stub), and it is NOT the \"bound by no import\" marker this item asks for: an unbound placeholder with no superseder still takes the gate exactly as before. The scala analogue of this item's shape is filed as WI-nusol-rohih-zurus-votul-korus-zupoj-zutav-vunor."  # c5d8

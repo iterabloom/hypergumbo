@@ -1,0 +1,21 @@
+- op: create  # b7f2
+  at: '2026-10-07T08:48:07Z'  # b7f2
+  by: agent  # b7f2
+  actor: jgstern_agent  # b7f2
+  clock: 1  # b7f2
+  nonce: b7f2  # b7f2
+  data:  # b7f2
+    kind: work_item  # b7f2
+    title: "Committed tree-sitter-generated parser.c (and other generator output: bison, re2c, protobuf C) should be tier 4 derived, not tier 3 -- self-survey +26% wall since vendor/ is analysed"  # b7f2
+    status: todo_soft  # b7f2
+    priority: 3  # b7f2
+    parent:  # b7f2
+    tags:  # b7f2
+    - supply_chain  # b7f2
+    - discovery  # b7f2
+    isbefore: []  # b7f2
+    duplicate_of: []  # b7f2
+    not_duplicate_of: []  # b7f2
+    pr_ref:  # b7f2
+    description: "Since PR #1504 (WI-bapal), `vendor/` is no longer excluded by name, so committed vendored code is analysed as tier 3 (intended). On hypergumbo's own repo that pulls in the committed tree-sitter grammars under vendor/, including generated parser.c files (~10 MB each); self-survey went 3:54 → 4:55 wall and 2.95 → 3.35 GB peak RSS (+221 symbols, +313 edges, all tier 3). tree-sitter-generated parser.c / scanner tables are machine output: classify them as tier 4 (derived) via GENERATED_CODE_PATTERNS / the derived header check (tree-sitter emits a recognisable header and `#include \"tree_sitter/parser.h\"` + huge static tables) so they're skipped like other generated code. Check analogues: other generators that commit large C/Go tables (bison/yacc *.tab.c, re2c, protobuf .pb.c, ragel). Measure self-survey before/after."  # b7f2
+    fields: {}  # b7f2

@@ -26,3 +26,56 @@
   clock: 2  # 234d
   nonce: 234d  # 234d
   message: "RE-RANK UP, on a measurement that inverts WI-vimon's own sequencing advice.\n\nWI-vimon ranked sink_after_source ABOVE this item on VOLUME (sole blocker at 38.6% of pooled\nguard2 sites vs source_tracked's 9.3%) and said \"sequence accordingly\". That ranking is\ncontradicted on VALUE by the WI-vimon measurement (2026-08-05, dev ff5058b172; write-up at\n~/hypergumbo_lab_notebook/taint-area-08052026/WI-vimon-MEASUREMENT.md).\n\nTHE CANONICAL MOTIVATING FALSE NEGATIVE FOR THIS WHOLE AREA IS BLOCKED BY THIS ITEM, ALONE.\ncaddy cmd/main.go printEnvironment:\n\n    470  for _, v := range os.Environ() {     <- source\n    471      fmt.Println(v)                   <- sink\n\ncaptured at guard2 as:  failset=source_tracked  sink=fmt:Println [471]  source=os:Environ [470]\n\nsink_after_source PASSES there (471 > 470) and sink_call_lines PASSES. source_tracked — the\nrange-clause gap this item names — is the SOLE blocker. It is the example ADR-0017's own guard-1\ncomment (taint.py:2489-2497) and the regression test\ntest_untracked_source_definition_never_licenses_removal (test_taint.py:1842) are both built on.\n\nMeanwhile ALL 15 of caddy's sink_after_source failures were classified by reading each source and\nNONE is a dedup artifact: 7 direction-reversed (the SINK produces the value the SOURCE consumes,\nso the guard is load-bearing), 2 sink-genuinely-first-no-flow, 1 flow-on-a-different-callee,\n2 mutually-exclusive-branches, 3 closure (filed separately, §7b-excluded, and a fix there\nSUPPRESSES). Volume was measuring correct blocks.\n\nDIRECTION HERE IS THE GOOD ONE. source_tracked=False blocks the walk, so the flow survives at\n`approximate` rather than `precise` — caddy currently reports \"9 approximate, 1 precise\". This is\na CONFIDENCE DOWNGRADE, not a false negative; the guard is doing its conservative job. Fixing the\nrange clause moves flows approximate -> precise. It can only suppress where a same-function\nsanitizer is registered (taint.py:2569-2575), which is a much narrower exposure than a fix on\nsink_after_source would carry.\n\nCAVEAT ON THE CEILING, unchanged and still honest: WI-vimon measured this item's ceiling at <=4\nadditional adjudications out of 169 caddy sites, and 3 of those 4 would still be blocked by\nsink_after_source. So the VOLUME is genuinely small. The argument for raising it is that its one\nguaranteed win is the area's documented reference case, and the alternatives ranked above it turn\nout to be either correct-as-is or suppressive."  # 234d
+- op: discuss  # 36b4
+  at: '2026-09-27T04:13:10Z'  # 36b4
+  by: agent  # 36b4
+  actor: jgstern_agent  # 36b4
+  clock: 3  # 36b4
+  nonce: 36b4  # 36b4
+  message: "JAVA INSTANCE, 2026-09-27 (WI-gotun). java_def_use now exists and the same hooks leave java's loop headers unrecorded: the enhanced-for variable (for (String s : xs) -- s is never defined, xs never used) and a classic for's init and update (for (int k = 0; k < n; k++) -- only the condition is recorded). uncovered_semantic_lines reports those lines, so the function forfeits refutation rather than claiming to have seen them, as it does for go's range clause. The fix proposed here (the loop hook recording its header's bindings) would cover both languages in one mapping key."  # 36b4
+- op: update  # a98f
+  at: '2026-10-03T06:42:06Z'  # a98f
+  by: agent  # a98f
+  actor: jgstern_agent  # a98f
+  clock: 4  # a98f
+  nonce: a98f  # a98f
+  set:  # a98f
+    title: "Loop headers and if-initializers are invisible to def/use in all six DDG languages: Go if/for-clause init and range, for-each variables (Python/Rust/TS/Java), classic-for init and update (C/TS/Java)"  # a98f
+- op: discuss  # 3ed3
+  at: '2026-10-03T06:42:07Z'  # 3ed3
+  by: agent  # 3ed3
+  actor: jgstern_agent  # 3ed3
+  clock: 5  # 3ed3
+  nonce: 3ed3  # 3ed3
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). CURRENT, but Go is one case of a defect in all six def/use languages. Title updated.\n- cfg_nodes/go.yaml for_statement has only body_child (gap comment still there); cfg.py:1013's loop handler records only the condition, and only when condition_child is set. Its docstring claims the header holds the \"iterator for for\", which is false in every mapping.\n- Repro (CFG + def/use as ddg_build does it):\n  - Go `if err := do(a); err != nil`: only `err != nil` (err never defined, the do(a) call absent).\n  - Go `for j := 0; j < n; j++`: body only (condition and update missing too).\n  - Go `for _, e := range os.Environ()`: e never defined.\n  - Python `for v in os.environ:`: v never defined, os.environ never used.\n  - Rust `for v in std::env::args()`: v never defined.\n  - TS `for (const v of items)`: v never defined.\n  - C/TS/Java classic for: condition only (init and update missing).\n  - Java enhanced for: loop variable never defined.\n- The Python for-loop variable is probably the highest-volume case (unmeasured).\n- Still cited by taint.py guard comments (~4450, ~5026); the regression test is now test_taint.py:2376 (the discussion's 1842 drifted). ADR-0017 line 688 cites the Go gap; line 974 requires extractor tests to cover loop variables.\n- Side finding, filed today as WI-tozar: a python walrus / JS-TS nested assignment is recorded as a use, never a definition.\n- NOT CHECKED: the caddy approximate->precise case; corpus volume."  # 3ed3
+- op: discuss  # 5e19
+  at: '2026-10-03T21:39:37Z'  # 5e19
+  by: agent  # 5e19
+  actor: jgstern_agent  # 5e19
+  clock: 6  # 5e19
+  nonce: '5e19'  # 5e19
+  message: "Bears on INV-dukam (kanor run 2026-10-03): with exec.Command unrowed in a probe arm, the relocated finding at cmd.Run() could only be confirmed when the use of `cmd` is recorded; the idiomatic `if err := cmd.Run(); err != nil` records no use of cmd (this item), so on containers-storage unshareFn the flow fell from precise to approximate. Together with WI-jahip (a field store kills the receiver's reaching definition) these two gaps decide whether executor relocation can be precise in Go."  # 5e19
+- op: discuss  # a520
+  at: '2026-10-05T09:15:00Z'  # a520
+  by: agent  # a520
+  actor: jgstern_agent  # a520
+  clock: 7  # a520
+  nonce: a520  # a520
+  message: "Fixed on branch jgstern-agent/fix/losod (worktree ~/hg_wt/losod, based on c1dd831558; commits 11a10f98b0, 445768867b, a9e3a869f4, 2c26be3459; not pushed). This is one statement-model fix in the shared CfgBuilder, done together with WI-faful. New cfg_nodes keys: initializer_child (conditional, loop, switch), and update_child, header_child and header_is_node (loop). Header parts become statements that define their bindings before the body. A for-each binding with no node of its own is recorded at the loop node, with CfgStatement.extent_end_byte cut at the body so the coverage gates do not count the body. Child references gain three forms: a/b, a|b and unfielded[:except=..]. Extractors: a go range_clause handler, a java enhanced-for header handler, and rust let_condition/let_chain handlers.\nBehavioral evidence: verify-claims with host_secret -> host_fs/network, base c1dd831558 vs branch. Go if-init sink: structural -> ddg/confirmed. Go if-init source: structural -> ddg/confirmed. Go range over os.Environ() (caddy shape): structural -> ddg/confirmed. Go for-clause: structural -> ddg/confirmed. Python for over os.environ.values(): not_attempted -> ddg/confirmed. Rust for over env::vars(): structural -> ddg/confirmed. TS for-of and classic for: structural -> ddg/confirmed. Java enhanced-for and classic for: not_attempted -> ddg/confirmed. C classic for with getenv: structural -> ddg/confirmed. Controls (Go and Python, source in the header, sink fed a constant) read ddg_mixed/escaped, not confirmed. Corpus, 6 repos, no verdict moved: containers-storage unshareFn's `if err := cmd.Run(); err != nil` now confirms os.Stdin -> Cmd.Run.\nsmart-test, BASE_BRANCH=c1dd831558, 422 affected test files: 12856 passed, with \"All changed source files are at 100% coverage\". Four unrelated failures were deselected: the rust extern-block test after the grammar upgrade, the auto-pr test that BASE_BRANCH leaks into, and two watcher-lifecycle timing tests. The hypothesis flake was also deselected. The caddy repo is not in the corpus, so the reference case was reproduced as a fixture only. Residual binding constructs are filed as WI-nohuv-tujuk-humal-numuh-posip-fonun-butir-kuroz. Full report: ~/hypergumbo_lab_notebook/decontend/run_10032026/losod.md"  # a520
+- op: update  # ea16
+  at: '2026-10-05T11:47:38Z'  # ea16
+  by: agent  # ea16
+  actor: jgstern_agent  # ea16
+  clock: 8  # ea16
+  nonce: ea16  # ea16
+  set:  # ea16
+    status: done  # ea16
+  add:  # ea16
+    tags: [awaits_bakeoff_validation]  # ea16
+- op: discuss  # 10ba
+  at: '2026-10-05T11:47:39Z'  # 10ba
+  by: agent  # 10ba
+  actor: jgstern_agent  # 10ba
+  clock: 9  # 10ba
+  nonce: 10ba  # 10ba
+  message: "Fixed in PR #1469 (stage 9a), together with WI-faful. Loop headers (for-each variable, classic for init/update, Go range clause) and if/switch initializers (incl. Go 'if err := cmd.Run(); err != nil') are now CFG statements that define their bindings before the body, in all six DDG languages. Behavioural evidence (verify-claims fixtures, losod.md): Go if-initializer, Go range over os.Environ(), Go for-clause, Rust for, TS for-of/for, C for: structural -> ddg/confirmed; Python for and Java for-each/for: not_attempted -> ddg/confirmed; controls (header source, constant-fed sink) read escaped. Mutations (drop Go range header, drop body cut-off) revert them. Six-repo A/B: 2 evidence rows moved to ddg/confirmed, no verdict moved (branch run, not re-measured on dev): tagged awaits_bakeoff_validation. Residuals filed: WI-nohuv (except-as, match-case, type switch, select, catch), WI-sozob (switch without default), WI-nogil (C bare declaration)."  # 10ba

@@ -1,0 +1,40 @@
+- op: create  # 9123
+  at: '2026-10-11T04:27:07Z'  # 9123
+  by: agent  # 9123
+  actor: jgstern_agent  # 9123
+  clock: 1  # 9123
+  nonce: '9123'  # 9123
+  data:  # 9123
+    kind: invariant  # 9123
+    title: "sketch: embedding/hybrid config extraction (the CLI default) still depends on string-hash order — WI-vosag fixed only the heuristic path"  # 9123
+    status: violated  # 9123
+    priority: 2  # 9123
+    parent:  # 9123
+    tags:  # 9123
+    - sketch  # 9123
+    - determinism  # 9123
+    - embeddings  # 9123
+    - docstring_audit  # 9123
+    isbefore: []  # 9123
+    duplicate_of: []  # 9123
+    not_duplicate_of: []  # 9123
+    pr_ref:  # 9123
+    description: "Repro: _extract_config_embedding on a 32-manifest fixture under PYTHONHASHSEED 0/1/2 -> three different output digests and file sets. The heuristic path sorts (sketch.py ~1253); the embedding path does not. Same defect class as WI-vosag (PR #1509), whose fix missed this path. Fix: sort every set/frozenset/glob iteration feeding the candidate list; add a seed-varying determinism test that exercises the cap.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 9123
+    fields:  # 9123
+      statement: "The same repository produces the same sketch Configuration section on every run, independent of PYTHONHASHSEED."  # 9123
+      root_cause: "_collect_config_content iterates the frozenset _MONOREPO_MANIFEST_NAMES and an unsorted glob (sketch.py ~1355-1357), and a `discovered` set loop (~1646) adds more hash order; the 15-file cap (~1926, `# pragma: no cover`) keeps the first 15 that yield chunks and the first-pass cross-file dedup (~2062-2070) keeps whichever near-duplicate comes first. The final sort (~2171) only orders survivors."  # 9123
+- op: update  # 21a5
+  at: '2026-10-11T09:49:23Z'  # 21a5
+  by: agent  # 21a5
+  actor: jgstern_agent  # 21a5
+  clock: 2  # 21a5
+  nonce: 21a5  # 21a5
+  set:  # 21a5
+    status: satisfied  # 21a5
+- op: discuss  # d2be
+  at: '2026-10-11T09:49:23Z'  # d2be
+  by: agent  # d2be
+  actor: jgstern_agent  # d2be
+  clock: 3  # d2be
+  nonce: d2be  # d2be
+  message: "Fixed in PR #1534 (merged as 73e0340f35 + f6d33da9ef). Root cause: _collect_config_content iterated the frozenset _MONOREPO_MANIFEST_NAMES and unsorted globs; _collect_config_content_with_discovery iterated the 'discovered' set and unsorted *-pattern globs; _discover_config_files_embedding/_get_repo_languages iterated a set and unsorted rglob fallbacks. The 15-file cap and first-come cross-file dedup turned that order into which files the section shows. Fix: _MONOREPO_MANIFEST_NAMES is a tuple in CONFIG_FILES order; per-kind matches sorted (mirrors the heuristic); every set/glob/rglob in the path sorted. Also: discovery compared unresolved paths against resolved seen_paths, double-listing manifests under a relative root (40 entries for 32 files) - now resolved. Cap pragma removed (exercised by test). Evidence (CLI, fresh XDG_CACHE_HOME per run, 6-service mixed-config fixture, hybrid default): pre-fix 51f5b3755f seeds 0/1/2 -> Configuration sha256 9facdaec0a07ab8e / e0921160e93e9e76 / bc66e0a1663c6824; dev f6d33da9ef seeds 0/1/2 -> 7f29c2e710bc99a8 x3. Filed repro (_extract_config_embedding on 32-manifest fixture, PYTHONHASHSEED 0/1/2): pre-fix 73a70b68541a / 89e9f25a2012 / 6c652c26a909 (three file sets); dev 184036bb508a x3, collect list 53fc80bc57ad x3. Tests: test_config_section_determinism.py (salted subprocess runs of candidate list and embedding output, cap test, order contracts, dedup)."  # d2be

@@ -20,6 +20,18 @@ Key constructs extracted:
 - properties: counted per class and recorded in the class symbol's meta (property_count), not emitted as separate symbols
 - methods: Method definitions within a class
 - function_call: Direct function calls
+
+A function nested in another hashes the enclosing functions' names beside its
+own (INV-fabih); methods and file-level functions keep ``Class.name`` / ``name``.
+
+Pass 1 collects symbols from every file and fills their docstrings with
+``populate_docstrings_from_tree``. The registry built between passes maps the
+bare symbol name (methods too, not ``Class.method``) to its id across
+functions, methods and classes; it is last-writer-wins, so same-named symbols
+in different files or classes collapse to whichever was collected last.
+Pass 2 emits a ``calls`` edge for each ``function_call`` inside a function: a
+registry hit at confidence 1.0, otherwise ``matlab:unresolved:<name>`` at 0.6.
+Calls outside any function are dropped.
 """
 
 import time
@@ -29,7 +41,10 @@ from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult, TreeSitterAnalyzer, ancestor_labels, make_symbol_id,
+    populate_docstrings_from_tree,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -129,6 +144,15 @@ def _extract_symbols_recursive(
             # Determine if this is a method (inside a class) or standalone function
             kind = "method" if class_name else "function"
             qualified_name = f"{class_name}.{name}" if class_name else name
+            # INV-fabih: a nested function hashes the functions enclosing it
+            # (``inner`` nested in ``a`` and in ``b`` tied); a method or a
+            # file-level function has none and keeps its value.
+            enclosing = ancestor_labels(
+                node, lambda n: _get_identifier(n) if n.type == "function_definition" else None,
+            )
+            hashed_name = ".".join(
+                (*((class_name,) if class_name else ()), *enclosing, name),
+            )
 
             sym = Symbol(
                 id=make_symbol_id(
@@ -137,7 +161,7 @@ def _extract_symbols_recursive(
                     qualified_name, kind,
                 ),
                 stable_id=analyzer.compute_stable_id(
-                    node, kind=kind, name=name, qualified_name=qualified_name,
+                    node, kind=kind, name=name, qualified_name=hashed_name,
                     file_stable_id=analyzer._file_anchor(rel_path),
                 ),
                 name=name,

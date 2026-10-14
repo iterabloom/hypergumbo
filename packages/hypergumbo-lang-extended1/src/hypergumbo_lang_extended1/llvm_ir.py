@@ -14,7 +14,24 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 - Pass 1: Parse all files, extract all symbols into global registry
-- Pass 2: Detect calls and resolve against global symbol registry
+- Pass 2: Detect calls and resolve against global symbol registry (it re-walks
+  the file for its calls; the calls Pass 1 collects are not read)
+
+A call edge is emitted only when both ends are in the registry: a call to a
+function the repository does not define is dropped. The caller is the
+enclosing ``define``, taken by name and looked up in the repo-wide registry.
+
+Known gaps: two files defining a same-named function can have one file's calls
+credited to the other's (the caller is found by name, not position); and an
+indirect call (``call void %fp(ptr @g)``) is credited to the first ``@name`` in
+the instruction, here the argument ``@g``.
+
+Identity (WI-tusad): a ``define`` (kind ``function``) and a ``declare`` (kind
+``declaration``) record their typed parameters in ``meta["parameters"]``
+(``...`` as a variadic entry) and mint the ADR-0035 producer id from them with
+``overload_arity.declared_arity_stable_id``. A global ``@name`` is unique in its
+module, so the scope chain is the name itself. Globals are kind ``variable``
+and take the backstop's variable formula.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the LLVM IR-specific
@@ -39,15 +56,19 @@ LLVM IR-Specific Considerations
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.overload_arity import (
+    declared_arity, declared_arity_stable_id, parameter_entry,
+)
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    find_child_by_type,
     iter_tree,
     make_symbol_id,
     node_text,
@@ -124,6 +145,45 @@ def _extract_arguments(header_node: "tree_sitter.Node", source: bytes) -> str:
     return "()"  # pragma: no cover - defensive fallback
 
 
+def _parameters(header_node: "tree_sitter.Node", source: bytes) -> list[dict[str, Any]]:
+    """``meta["parameters"]`` of a ``define`` / ``declare`` header.
+
+    One :func:`~hypergumbo_core.overload_arity.parameter_entry` per argument:
+    its type (``i32``, ``ptr``; parameter attributes such as ``noundef`` are
+    not part of it), its ``%name`` without the sigil (empty in a ``declare``),
+    and ``...`` as a variadic entry.
+    """
+    entries: list[dict[str, Any]] = []
+    for child in iter_tree(header_node):
+        if child.type != "argument_list":
+            continue
+        for arg in child.named_children:
+            type_node = find_child_by_type(arg, "type")
+            if type_node is None:
+                entries.append(parameter_entry("...", None, variadic=True))
+                continue
+            name = ""
+            for part in iter_tree(arg):
+                if part.type == "local_var":
+                    name = node_text(part, source).lstrip("%")
+                    break
+            entries.append(parameter_entry(name, node_text(type_node, source)))
+        break
+    return entries
+
+
+def _callable_stable_id(kind: str, rel_path: str, name: str, meta: dict[str, Any]) -> str:
+    """The ADR-0035 producer id of a ``define`` / ``declare`` (WI-tusad).
+
+    Its typed parameters through ``overload_arity.declared_arity_stable_id``;
+    a global ``@name`` is unique in its module, so the chain is the name.
+    """
+    return declared_arity_stable_id(
+        kind=kind, lang="llvm_ir", path=rel_path, name=name, qualified_name=name,
+        arity=declared_arity(meta),
+    )
+
+
 def _get_return_type(header_node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract return type from function_header."""
     for child in header_node.children:
@@ -160,9 +220,11 @@ def _extract_symbols_from_tree(
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
                     sym_id = make_symbol_id("llvm_ir", rel_path, start_line, end_line, name, "function")
+                    meta = {"parameters": _parameters(header, source)}
 
                     symbol = Symbol(
                         id=sym_id,
+                        stable_id=_callable_stable_id("function", rel_path, name, meta),
                         name=name,
                         kind="function",
                         language="llvm_ir",
@@ -177,6 +239,7 @@ def _extract_symbols_from_tree(
                         origin_run_id=run_id,
                         display_label=f"@{name}",
                         signature=signature,
+                        meta=meta,
                         cyclomatic_complexity=compute_cyclomatic_complexity(node, "llvm_ir"),
                         line_span=end_line - start_line + 1,
                     )
@@ -200,9 +263,11 @@ def _extract_symbols_from_tree(
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
                     sym_id = make_symbol_id("llvm_ir", rel_path, start_line, end_line, name, "declaration")
+                    meta = {"parameters": _parameters(header, source)}
 
                     symbol = Symbol(
                         id=sym_id,
+                        stable_id=_callable_stable_id("declaration", rel_path, name, meta),
                         name=name,
                         kind="declaration",
                         language="llvm_ir",
@@ -217,6 +282,7 @@ def _extract_symbols_from_tree(
                         origin_run_id=run_id,
                         display_label=f"@{name}",
                         signature=signature,
+                        meta=meta,
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[name] = symbol
@@ -340,7 +406,7 @@ class LlvmIrAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

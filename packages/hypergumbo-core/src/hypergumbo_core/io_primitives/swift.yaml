@@ -17,6 +17,7 @@
 # expressions, so module context is often "external".  Only include methods
 # distinctive enough to avoid false positives without module disambiguation.
 # Overly generic names (write, read, run, data) go in ambiguous_names.
+provenance: builtin
 language: swift
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``
@@ -100,7 +101,14 @@ net_recv:
   - module: URLSession
     methods:
       - downloadTask
-    notes: "URLSession download is primarily receive"
+    notes: >-
+      URLSession download is primarily receive. The task is created
+      suspended and crosses nothing until resume(); the file location
+      arrives in the completion handler or at the delegate (Apple's
+      downloadTask(with:) documentation). A deferred crossing by ADR-0049
+      ruling 1 that STAYS net_recv for the reasons the objc NSURLSession
+      row gives (WI-tunog): net_listen is the server-side value, and the
+      arrival is not represented as a source. Residual: WI-mapim.
 
 # ADR-0049: a call that ARRANGES inbound data to arrive in a scope it does
 # not name is disclosed, never minted. The disclosure boundary is in place,
@@ -152,11 +160,16 @@ db_write:
 subprocess:
   - module: Process
     methods:
-      - launchPath
-      - waitUntilExit
-      - terminate
-      - interrupt
-    notes: "Foundation.Process (macOS-only subprocess execution)"
+      - run
+      - launch
+      - launchedProcess
+    notes: >-
+      Foundation.Process. The members that START the child (INV-vamif): run()
+      and its class form Process.run(_:arguments:terminationHandler:) share
+      the name, launch() is the pre-macOS-10.13 spelling, and
+      launchedProcess(launchPath:arguments:) is the class-method launcher. This
+      row used to list launchPath (a property, so never a call site),
+      waitUntilExit, terminate and interrupt, and no launch at all.
 
 env_read:
   - module: ProcessInfo
@@ -207,10 +220,24 @@ logging:
     notes: "Foundation logging function"
 
 ipc_send:
-  - module: NotificationCenter
+  - module: Process
     methods:
-      - post
-    notes: "In-process pub/sub notification posting"
+      - terminate
+      - interrupt
+      - suspend
+      - resume
+    notes: >-
+      INV-babiz: signals a child that is already running (swift-corelibs-foundation
+      terminate is kill(processIdentifier, SIGTERM); interrupt SIGINT; suspend and
+      resume SIGSTOP / SIGCONT). python.yaml's multiprocessing.Process kill/terminate
+      and rust.yaml's Child.kill are rowed here under the dated WI-dupok ruling;
+      these were under subprocess.
+  # NotificationCenter.post is NOT rowed (WI-povom, audit-findings 0021 Step 5):
+  # in-process pub/sub delivers to observers in the SAME process, and ipc_send
+  # is data sent to ANOTHER process. Deleted rather than moved -- no process
+  # boundary is crossed -- and disclosed as external_potential. objc.yaml's
+  # NSNotificationCenter post* rows went the same way; the cross-process center
+  # below stays.
   - module: DistributedNotificationCenter
     methods:
       - postNotificationName
@@ -220,8 +247,10 @@ ipc_recv:
   - module: NotificationCenter
     methods:
       - addObserver
-      - removeObserver
-    notes: "Notification observation"
+    notes: >-
+      Notification observation. NOT removeObserver (WI-rivur, swept with
+      objc.yaml's removeObserver: rows): un-registering receives nothing, and
+      ipc_recv minted an untrusted_input source at the call.
 
 process_send:
   - module: Swift
@@ -262,3 +291,22 @@ ambiguous_names:
   - warning
   - error
   - critical
+
+# ADR-0016 / INV-buzab: a dated, per-module audit that the module's I/O surface
+# is enumerated, so an unrowed call into it is an EXAMINED negative.
+module_completeness:
+  - module: Process
+    completeness: complete
+    retrieved: "2026-09-27"
+    notes: >-
+      INV-babiz / INV-vamif. Methods: run (instance and class), launch,
+      launchedProcess rowed subprocess; terminate, interrupt, suspend, resume
+      rowed ipc_send. waitUntilExit is declared NOT I/O: it blocks until the
+      child exits and returns nothing -- python.yaml's
+      multiprocessing.Process.join, which is disclosed and not rowed (rust's
+      Child.wait is rowed ipc_recv because it RETURNS the status; here the
+      status is read separately, from the terminationStatus property).
+      Everything else on the class is a property (executableURL, launchPath,
+      arguments, environment, standardInput/Output/Error, terminationStatus,
+      isRunning ...), configured before the launch or read after it, and is
+      not a call site.

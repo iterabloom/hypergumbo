@@ -37,3 +37,18 @@
   clock: 3  # 1abb
   nonce: 1abb  # 1abb
   message: "PRODUCER-SIDE CONFIRMATION 2026-09-18 while recording the WI-romuh fixture: rust-analyzer 1.94.0's own `scip` log on aardvark-dns prints \"Duplicate symbol: rust-analyzer cargo aardvark-dns 2.0.0-dev crate/\" — the per-target root-namespace collision this row describes is reported by the producer at emission time, not just observed in our hash. The recording (packages/hypergumbo-lang-rust-analyzer/recorded/aardvark_dns/index.scip) is a committed repro for this row: three Definition occurrences (src/lib.rs, src/main.rs, build.rs) share that moniker. Not started here."  # 1abb
+- op: update  # 9f01
+  at: '2026-10-03T06:42:02Z'  # 9f01
+  by: agent  # 9f01
+  actor: jgstern_agent  # 9f01
+  clock: 4  # 9f01
+  nonce: 9f01  # 9f01
+  set:  # 9f01
+    title: "rust-analyzer SCIP monikers are scoped per crate TARGET, not per package: after the ADR-0057 merge, the SCIP-only crate/ root namespaces of lib, bin and build.rs share one sha256(moniker) stable_id (3 records on aardvark-dns)"  # 9f01
+- op: discuss  # 33dd
+  at: '2026-10-03T06:42:02Z'  # 33dd
+  by: agent  # 33dd
+  actor: jgstern_agent  # 33dd
+  clock: 5  # 33dd
+  nonce: 33dd  # 33dd
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). PARTLY STALE: core claim holds, size and context outdated. Title updated.\n- scip/index.py:407 still sets stable_id=_short_sha256(sym_info.symbol). On the raw SCIP output: 2 colliding groups, 5 records (crate/ in build.rs, src/main.rs, src/lib.rs; main(). in build.rs and src/main.rs).\n- AFTER THE ADR-0057 MERGE (WI-kokiz, PR 1072): the two main records pair with tree-sitter twins and take the tree-sitter stable_id. After the merge + split_within_file_stable_id_collisions, ONE group remains: sha256:fe9021ce48cd040c, the three SCIP-only crate/ namespace records (cross-file, so the within-file splitter returns 0). So \"5 of 756\" is now \"3 records in one group, of 169 after the merge\".\n- MOOT: \"INV-dolud's parity question should be settled first\": INV-dolud is satisfied and ADR-0057 decides merged records keep the incumbent's id. Fix option (a) (path into the hash) now changes only SCIP-only records and alternative values on merged records. WI-talos stays relevant.\n- NOT CHECKED: a full survey with the backend on (runs rust-analyzer)."  # 33dd

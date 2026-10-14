@@ -317,8 +317,12 @@ def _name_and_kind(scip_sym: Any, declared_kind: int = 0) -> "tuple[str, str]":
         # Defensive: parse_scip_symbol already rejects a header with
         # zero descriptors, and the caller filters locals (the other
         # descriptor-less shape) before parsing. Kept as a guard against
-        # a future parser regression.
-        return "", "unknown"
+        # a future parser regression. It RAISES rather than returning a
+        # placeholder kind: the earlier ``("", "unknown")`` was dropped by the
+        # caller's empty-name check, but it was still an unregistered
+        # Symbol.kind in the producer's source, which the producer gates read
+        # once they could follow a tuple return (WI-nakur).
+        raise ValueError(f"SCIP symbol has no descriptors: {scip_sym!r}")
     last = scip_sym.descriptors[-1]
     declared = _SCIP_KIND_MAP.get(declared_kind)
     if declared is not None:
@@ -376,13 +380,12 @@ def scip_index_to_symbols(index: scip_pb2.Index) -> List[Symbol]:
                 continue
             try:
                 parsed = parse_scip_symbol(sym_info.symbol)
+                name, kind = _name_and_kind(parsed, sym_info.kind)
             except ValueError:
                 continue
-            name, kind = _name_and_kind(parsed, sym_info.kind)
             if not name:  # pragma: no cover
-                # Defensive: only reachable if _name_and_kind's empty-
-                # descriptor guard fires, which parse_scip_symbol already
-                # precludes. Kept for robustness against parser changes.
+                # Defensive: a last descriptor whose name is empty (the
+                # parser accepts an empty backtick-quoted name). Unmeasured.
                 continue
             span = _span_from_range(list(occ.range))
             sid = make_symbol_id(

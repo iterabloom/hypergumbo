@@ -1,0 +1,22 @@
+- op: create  # 6992
+  at: '2026-10-03T10:18:51Z'  # 6992
+  by: agent  # 6992
+  actor: jgstern_agent  # 6992
+  clock: 1  # 6992
+  nonce: '6992'  # 6992
+  data:  # 6992
+    kind: work_item  # 6992
+    title: "go: net.Conn.Write / net.Conn.Read are single-rowed (net_send / net_recv) and read no io_target_kind, so a write or read through a Unix-domain connection's OWN method is still a network crossing after WI-potog -- WI-baran's dual-row half, for Go's method form"  # 6992
+    status: todo_hard  # 6992
+    priority: 3  # 6992
+    parent:  # 6992
+    tags:  # 6992
+    - io_boundary  # 6992
+    - taint  # 6992
+    - go  # 6992
+    isbefore: []  # 6992
+    duplicate_of: []  # 6992
+    not_duplicate_of: []  # 6992
+    pr_ref:  # 6992
+    description: "FOUND 2026-10-03 by WI-potog (residual, filed rather than grown into that branch). WI-potog made go.py stamp a Unix-domain connection `pipe` (net.Dial/DialTimeout/Listen with a \"unix*\" literal, net.DialUnix, net.ListenUnix, *net.UnixConn, ln.Accept() over a unix listener), so every DUAL row that reads the stamp -- fmt.Fprint*, io.WriteString, bufio.NewReader/NewScanner, bufio.Reader/Scanner/Writer methods -- now selects ipc_send / ipc_recv. The connection's OWN methods do not: go.yaml rows `net.Conn` methods [Write] (net_send) and [Read] (net_recv) are single-rowed, and go.py stamps no io_target_kind on a net.Conn receiver (_GO_HANDLE_TYPES is {os.File}).\n\nLIVE (fixture, WI-potog branch): c, _ := net.Dial(\"unix\", p); c.Write(b); c.Read(buf) -> [net_send] net.Conn.Write, [net_recv] net.Conn.Read. Same on dev.\n\nSIZE (text census, ~/whole_bunch_of_repos, vendor/third_party excluded, non-test files, a 3000-char window after a same-file `x := net.Dial*(\"unix*\", ..)` / `x := ln.Accept()` over `net.Listen*(\"unix*\")` binding): x.Write( 7 + 1, x.Read( 2 + 1 -- linuxkit (memlogd logread, logwrite, init service logging), runc notify_socket.go, container-libs slirp4netns, docker-cli cli-plugins/socket, moby sandbox_externalkey_unix. The stamp-reading sites in the same census: fmt.Fprint* 3, bufio 2, io.WriteString 1 (WI-potog moves these). A text census, NOT the analyzer's reach: whether each receiver is typed net.Conn (vs net.UnixConn, which has NO row at all) is not checked.\n\nWI-baran's SHAPE, which this would reuse: make net.Conn.Write dual net_send + ipc_send and net.Conn.Read dual net_recv + ipc_recv, boundary_ruling call_site_undecidable, abstains_to = today's net_* (an unstamped connection keeps its row); stamp the receiver through _go_target_kind_from_expression (not the text-only os.File path, which has no accept hop). Open question for the same change: net.UnixConn has no rows (Write/Read/WriteTo/ReadFrom/WriteMsgUnix/ReadMsgUnix), so a DialUnix receiver's own method calls are not boundaries at all today.\n\nALSO NOT DONE, deliberately, by WI-potog: the dial/listen CALL rows themselves (net.Dial, net.DialTimeout, net.DialUnix under net_send; net.Listen*, net.ListenUnix under net_listen) stay single-rowed for a unix network. That is WI-baran's own precedent for C `connect` (\"transmits nothing but the connection itself -- ADR-0049's deferred shape -- and stays single-rowed\"), so it is a separate question for both languages, not part of this item."  # 6992
+    fields: {}  # 6992

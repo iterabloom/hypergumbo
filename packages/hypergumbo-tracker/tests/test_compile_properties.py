@@ -15,6 +15,7 @@ import copy
 import random
 from typing import Any
 
+import pytest
 from hypothesis import HealthCheck, given, settings, assume
 from hypothesis import strategies as st
 
@@ -154,66 +155,84 @@ def op_sequence(draw: st.DrawFn) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+# Every property here runs under these settings, and both relaxations are about
+# the MACHINE, not about compile_ops; neither changes a property or the example
+# count.
+#   * HealthCheck.too_slow is suppressed. The strategy draws in ~10 ms, but under
+#     a full `-n auto` suite one draw took 0.94 s of CPU contention and the health
+#     check failed the 8.1.0 release-check run (86bf3b9a41).
+#   * deadline=None. Hypothesis otherwise times each EXAMPLE against 200 ms; one
+#     example stalled by a descheduled worker exceeds it, the replay runs fast,
+#     and the run fails with a FlakyFailure wrapping DeadlineExceeded
+#     ("Falsified on the first call but did not on a subsequent one", hypothesis
+#     6.151.6) -- a red compile_ops test the code did not cause
+#     (WI-ruhul). TestPropertiesSurviveASlowExample pins it.
+# The properties are MODULE-LEVEL functions so that pin can call the real,
+# decorated property: Hypothesis's differing_executors health check fails a
+# @given METHOD invoked from a second ``self``, in whichever test runs second.
+_LOAD_TOLERANT = settings(
+    max_examples=50,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+
+
+@given(ops=op_sequence())
+@_LOAD_TOLERANT
+def test_idempotency(ops: list[dict[str, Any]]) -> None:
+    """compile(ops) produces the same result on repeated calls."""
+    result1 = compile_ops(ops, "INV-test")
+    result2 = compile_ops(ops, "INV-test")
+
+    assert result1.title == result2.title
+    assert result1.status == result2.status
+    assert result1.priority == result2.priority
+    assert result1.tags == result2.tags
+    assert result1.fields == result2.fields
+    assert result1.locked_fields == result2.locked_fields
+    assert len(result1.discussion) == len(result2.discussion)
+
+@given(ops=op_sequence())
+@_LOAD_TOLERANT
+def test_permutation_invariance(ops: list[dict[str, Any]]) -> None:
+    """compile(shuffle(ops)) == compile(ops).
+
+    Because ops are sorted by Lamport clock, the result should be
+    deterministic regardless of input order.
+    """
+    assume(len(ops) >= 2)
+
+    result1 = compile_ops(ops, "INV-test")
+
+    # Shuffle the ops
+    shuffled = list(ops)
+    random.shuffle(shuffled)
+    result2 = compile_ops(shuffled, "INV-test")
+
+    assert result1.title == result2.title
+    assert result1.status == result2.status
+    assert result1.priority == result2.priority
+    assert sorted(result1.tags) == sorted(result2.tags)
+    assert result1.fields == result2.fields
+    assert result1.locked_fields == result2.locked_fields
+
+@given(ops=op_sequence())
+@_LOAD_TOLERANT
+def test_created_at_always_set(ops: list[dict[str, Any]]) -> None:
+    """compiled item always has created_at from the create op."""
+    result = compile_ops(ops, "INV-test")
+    assert result.created_at != ""
+
+@given(ops=op_sequence())
+@_LOAD_TOLERANT
+def test_updated_at_gte_created_at(ops: list[dict[str, Any]]) -> None:
+    """updated_at is always >= created_at (lexicographic for ISO 8601)."""
+    result = compile_ops(ops, "INV-test")
+    # Both are ISO 8601 strings, so lexicographic comparison works
+    assert result.updated_at >= result.created_at
+
+
 class TestCompileProperties:
-    # HealthCheck.too_slow is suppressed on every property here. The strategy
-    # draws in ~10 ms, but under a full `-n auto` suite one draw took 0.94 s of
-    # CPU contention and the health check failed the 8.1.0 release-check run.
-    # Suppressing it changes no property or example count; it stops the load
-    # on the machine from failing a test of compile_ops.
-    @given(ops=op_sequence())
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-    def test_idempotency(self, ops: list[dict[str, Any]]) -> None:
-        """compile(ops) produces the same result on repeated calls."""
-        result1 = compile_ops(ops, "INV-test")
-        result2 = compile_ops(ops, "INV-test")
-
-        assert result1.title == result2.title
-        assert result1.status == result2.status
-        assert result1.priority == result2.priority
-        assert result1.tags == result2.tags
-        assert result1.fields == result2.fields
-        assert result1.locked_fields == result2.locked_fields
-        assert len(result1.discussion) == len(result2.discussion)
-
-    @given(ops=op_sequence())
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-    def test_permutation_invariance(self, ops: list[dict[str, Any]]) -> None:
-        """compile(shuffle(ops)) == compile(ops).
-
-        Because ops are sorted by Lamport clock, the result should be
-        deterministic regardless of input order.
-        """
-        assume(len(ops) >= 2)
-
-        result1 = compile_ops(ops, "INV-test")
-
-        # Shuffle the ops
-        shuffled = list(ops)
-        random.shuffle(shuffled)
-        result2 = compile_ops(shuffled, "INV-test")
-
-        assert result1.title == result2.title
-        assert result1.status == result2.status
-        assert result1.priority == result2.priority
-        assert sorted(result1.tags) == sorted(result2.tags)
-        assert result1.fields == result2.fields
-        assert result1.locked_fields == result2.locked_fields
-
-    @given(ops=op_sequence())
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-    def test_created_at_always_set(self, ops: list[dict[str, Any]]) -> None:
-        """compiled item always has created_at from the create op."""
-        result = compile_ops(ops, "INV-test")
-        assert result.created_at != ""
-
-    @given(ops=op_sequence())
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-    def test_updated_at_gte_created_at(self, ops: list[dict[str, Any]]) -> None:
-        """updated_at is always >= created_at (lexicographic for ISO 8601)."""
-        result = compile_ops(ops, "INV-test")
-        # Both are ISO 8601 strings, so lexicographic comparison works
-        assert result.updated_at >= result.created_at
-
     def test_duplicate_create_resilience(self) -> None:
         """Two create ops with identical data (cross-branch merge scenario)."""
         data = {
@@ -262,3 +281,48 @@ class TestCompileProperties:
 
         # Both should produce the same final tag set
         assert sorted(result1.tags) == sorted(result2.tags)
+
+
+class TestPropertiesSurviveASlowExample:
+    """A slow example on a loaded machine must not fail a property (WI-ruhul).
+
+    Hypothesis times every example against a per-example ``deadline`` (200 ms
+    by default). A worker descheduled on an oversubscribed box can take longer
+    than that on ONE example; the replay then runs fast, and Hypothesis raises
+    a ``FlakyFailure`` wrapping ``DeadlineExceeded`` -- a red test of ``compile_ops``
+    caused by the machine, not the code. That is the same load-shaped failure
+    86bf3b9a41 closed for the ``too_slow`` health check, on the other timer.
+
+    The model makes the slow example deterministic: ``compile_ops`` sleeps past
+    the default deadline on its first call only, exactly the one-off stall a
+    loaded run produces.
+    """
+
+    @pytest.mark.parametrize(
+        "prop",
+        [
+            "test_idempotency",
+            "test_permutation_invariance",
+            "test_created_at_always_set",
+            "test_updated_at_gte_created_at",
+        ],
+    )
+    def test_one_slow_example_does_not_fail_the_property(
+        self, monkeypatch: pytest.MonkeyPatch, prop: str,
+    ) -> None:
+        import sys
+        import time
+
+        module = sys.modules[__name__]
+        real_compile_ops = module.compile_ops
+        stalled: list[bool] = []
+
+        def first_call_stalls(*args: Any, **kwargs: Any) -> Any:
+            if not stalled:
+                stalled.append(True)
+                time.sleep(0.3)  # past 1.25 x the 200 ms default deadline
+            return real_compile_ops(*args, **kwargs)
+
+        monkeypatch.setattr(module, "compile_ops", first_call_stalls)
+        getattr(module, prop)()
+        assert stalled, "REACH: the stall never ran, so this proved nothing"

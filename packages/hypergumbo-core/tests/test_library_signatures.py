@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.library_signatures import load_library_signatures
+from hypergumbo_core.yaml_catalogs import CatalogueError
 
 
 class TestTheRowsThemselves:
@@ -43,6 +44,18 @@ class TestTheRowsThemselves:
         already qualified."""
         for value in load_library_signatures("java").values():
             assert "." in value, value
+
+    def test_java_keys_carry_the_owners_package(self) -> None:
+        """WI-halin: java asks the registry with the owner path the calling file
+        establishes (`java.net.Socket.getOutputStream`), so a short-owner key
+        (`Socket.getOutputStream`) never matched and raised nothing -- every row
+        shipped that way. The owner is a lowercase package path then a type."""
+        rows = load_library_signatures("java")
+        assert rows["java.net.Socket.getOutputStream"] == "java.io.OutputStream"
+        for key in rows:
+            *package, owner, method = key.split(".")
+            assert package and all(p[:1].islower() for p in package), key
+            assert owner[:1].isupper() and method[:1].islower(), key
 
     def test_objc_selector_keys_survive_yaml(self) -> None:
         """An objc selector carries colons, so `A.sel:with:: T` is ambiguous YAML and
@@ -82,7 +95,9 @@ class TestThroughTheAnalyzers:
             e.dst for e in analyze_go(tmp_path).edges
             if e.edge_type == "calls" and e.dst.endswith(":Accept:unresolved")
         }
-        assert dsts == {"go:net:0-0:Accept:unresolved"}, dsts
+        # INV-vusum: the slot names the receiver's TYPE (net.Listener), the
+        # owner the catalogue's Accept row is keyed on.
+        assert dsts == {"go:net.Listener:0-0:Accept:unresolved"}, dsts
 
     def test_go_types_the_subprocess_producer_INV_muhij_named(
         self, tmp_path: Path,
@@ -104,7 +119,7 @@ class TestThroughTheAnalyzers:
             e.dst for e in analyze_go(tmp_path).edges
             if e.edge_type == "calls" and e.dst.endswith(":Start:unresolved")
         }
-        assert dsts == {"go:os/exec:0-0:Start:unresolved"}, dsts
+        assert dsts == {"go:os/exec.Cmd:0-0:Start:unresolved"}, dsts  # INV-vusum
 
     def test_swift_types_a_chained_library_receiver(self, tmp_path: Path) -> None:
         """The row composes with WI-higob slice 2's chained walker: the row types the
@@ -145,15 +160,18 @@ class TestThroughTheAnalyzers:
 
     def test_java_types_a_receiver_from_a_static_factory(self, tmp_path: Path) -> None:
         """`DriverManager.getConnection` is one of the nine rows WI-lalot measured as
-        INERT in real code."""
+        INERT in real code.
+
+        The local is ``var`` so only the ROW can type it: a declared
+        ``Connection c`` types itself (INV-vugon) and passed with the row inert
+        (WI-halin)."""
         from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "M.java").write_text(
-            "import java.sql.Connection;\n"
             "import java.sql.DriverManager;\n"
             "public class M {\n"
             "  void go(String u, String s) throws Exception {\n"
-            "    Connection c = DriverManager.getConnection(u);\n"
+            "    var c = DriverManager.getConnection(u);\n"
             "    c.prepareStatement(s);\n"
             "  }\n"
             "}\n"
@@ -263,7 +281,7 @@ class TestARowFileThatIsWrongIsREFUSED:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         load_library_signatures.cache_clear()
         try:
-            with pytest.raises(ValueError, match="'signatures' must be a mapping"):
+            with pytest.raises(CatalogueError, match="'signatures' must be a mapping"):
                 load_library_signatures("go")
         finally:
             load_library_signatures.cache_clear()
@@ -275,7 +293,7 @@ class TestARowFileThatIsWrongIsREFUSED:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         load_library_signatures.cache_clear()
         try:
-            with pytest.raises(ValueError, match="non-empty type"):
+            with pytest.raises(CatalogueError, match="non-empty type"):
                 load_library_signatures("go")
         finally:
             load_library_signatures.cache_clear()
@@ -283,7 +301,7 @@ class TestARowFileThatIsWrongIsREFUSED:
 
 #: the stdlib import path behind each package name the shipped go
 #: ``package_variables`` rows use.
-_GO_PATHS = {"http": "net/http", "net": "net"}
+_GO_PATHS = {"http": "net/http", "net": "net", "os": "os"}
 
 
 class TestPackageVariables:
@@ -326,7 +344,70 @@ class TestPackageVariables:
             assert rows["http.DefaultClient"] == "http.Client", "shipped rows must survive"
             (d / "go.yaml").write_text("language: go\npackage_variables:\n  - a list\n")
             load_library_package_variables.cache_clear()
-            with pytest.raises(ValueError, match="'package_variables' must be a mapping"):
+            with pytest.raises(CatalogueError, match="'package_variables' must be a mapping"):
                 load_library_package_variables("go")
         finally:
             load_library_package_variables.cache_clear()
+
+
+class TestAJvmLanguageReadsTheJavaRows:
+    """WI-jubim: kotlin and scala call the JDK directly, so they read java's rows.
+
+    ``Runtime.getRuntime()`` returns a ``java.lang.Runtime`` whichever JVM
+    language calls it. Copying java.yaml's rows into a kotlin.yaml and a
+    scala.yaml would be three files that must agree and can drift; the parent
+    table states the fact once. A child reads the PARENT'S key shape too, which
+    is what makes sharing the rows safe: kotlin and scala name a JDK owner by the
+    same fully-qualified path java does.
+    """
+
+    def test_kotlin_and_scala_carry_the_java_rows(self) -> None:
+        java = load_library_signatures("java")
+        assert java["java.lang.Runtime.getRuntime"] == "java.lang.Runtime"  # reach
+        for lang in ("kotlin", "scala"):
+            rows = load_library_signatures(lang)
+            assert rows["java.lang.Runtime.getRuntime"] == "java.lang.Runtime", lang
+            assert rows["java.lang.Runtime.exec"] == "java.lang.Process", lang
+
+    def test_a_language_with_no_parent_is_unchanged(self) -> None:
+        assert "java.lang.Runtime.getRuntime" not in load_library_signatures("go")
+        assert "java.lang.Runtime.getRuntime" not in load_library_signatures("python")
+
+    def test_the_parents_agree_with_the_io_catalogue_family(self) -> None:
+        """The same inheritance io_primitives declares (kotlin and scala programs
+        call the JDK); a library-signature parent no io parent backs would be a
+        second, unstated family table."""
+        from hypergumbo_core.io_boundary import _CATALOG_PARENTS
+        from hypergumbo_core.library_signatures import ROW_PARENTS
+
+        assert ROW_PARENTS == {"kotlin": "java", "scala": "java"}
+        for child, parent in ROW_PARENTS.items():
+            assert _CATALOG_PARENTS[child] == parent
+
+    def _channel(self, tmp_path: Path, name: str, body: str) -> None:
+        d = tmp_path / "hypergumbo" / "library_signatures.d"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / name).write_text(body)
+
+    def test_a_user_java_row_reaches_the_children_and_a_child_row_wins(
+        self, tmp_path: Path, monkeypatch,
+    ) -> None:
+        self._channel(tmp_path, "java.yaml", (
+            "language: java\nsignatures:\n"
+            "  com.acme.Pool.take: com.acme.Conn\n"
+            "  java.lang.Runtime.getRuntime: com.acme.Runtime\n"))
+        self._channel(tmp_path, "kotlin.yaml", (
+            "language: kotlin\nsignatures:\n"
+            "  java.lang.Runtime.getRuntime: java.lang.Runtime\n"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        load_library_signatures.cache_clear()
+        try:
+            kotlin = load_library_signatures("kotlin")
+            scala = load_library_signatures("scala")
+            assert kotlin["com.acme.Pool.take"] == "com.acme.Conn"
+            assert scala["com.acme.Pool.take"] == "com.acme.Conn"
+            # the child's own row beats the parent's, for the child only
+            assert kotlin["java.lang.Runtime.getRuntime"] == "java.lang.Runtime"
+            assert scala["java.lang.Runtime.getRuntime"] == "com.acme.Runtime"
+        finally:
+            load_library_signatures.cache_clear()

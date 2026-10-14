@@ -608,3 +608,83 @@ class TestLinkerRegistration:
         result = run_linker("orm-linker", ctx)
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "references"
+
+
+class TestModelLookupIsLanguageScoped:
+    """WI-gopok: an ORM accessor in a ``.py`` file names a PYTHON class.
+
+    ``User.objects.filter()`` / ``User.query.get()`` read an attribute of a
+    name bound in the running Python process, so the only class it can denote
+    is a Python one. The ``concept=model`` tag is written by framework YAML for
+    Rails, Phoenix, Laravel, GORM, Spring and others too, so a model lookup
+    keyed by short name alone lets a Python accessor bind a same-named Ruby /
+    Elixir / PHP / Go model -- an edge by name coincidence.
+    """
+
+    @staticmethod
+    def _foreign_model(tmp_path: Path, language: str, ext: str) -> Symbol:
+        path = str(tmp_path / f"app/models/user.{ext}")
+        return Symbol(
+            id=f"{language}:{path}:1-10:User:class",
+            name="User",
+            kind="class",
+            path=path,
+            span=Span(start_line=1, start_col=0, end_line=10, end_col=0),
+            language=language,
+            meta={"concepts": [{"concept": "model", "framework": "rails"}]},
+        )
+
+    @staticmethod
+    def _view(tmp_path: Path) -> Symbol:
+        (tmp_path / "views.py").write_text(dedent("""\
+            def get_users():
+                return User.objects.all()
+        """))
+        return _make_symbol(
+            "get_users", kind="function", path=str(tmp_path / "views.py"),
+            start_line=1, end_line=2,
+        )
+
+    def test_lookup_excludes_non_python_models(self, tmp_path: Path) -> None:
+        ruby_user = self._foreign_model(tmp_path, "ruby", "rb")
+        py_post = _make_symbol(
+            "Post", concepts=[{"concept": "model", "framework": "django"}],
+        )
+        lookup = _build_model_lookup([ruby_user, py_post])
+        assert lookup == {"Post": [py_post]}
+
+    @pytest.mark.parametrize(
+        ("language", "ext"),
+        [("ruby", "rb"), ("elixir", "ex"), ("php", "php"), ("go", "go")],
+    )
+    def test_lone_foreign_model_gets_no_edge(
+        self, tmp_path: Path, language: str, ext: str,
+    ) -> None:
+        foreign = self._foreign_model(tmp_path, language, ext)
+        view = self._view(tmp_path)
+        result = link_orm_queries(root=tmp_path, symbols=[foreign, view])
+        assert result.edges == [], (
+            f"a Python accessor bound a {language} model by name: "
+            f"{[(e.src, e.dst) for e in result.edges]}"
+        )
+
+    def test_foreign_namesake_does_not_demote_python_model(
+        self, tmp_path: Path,
+    ) -> None:
+        """A foreign namesake also inflated the INV-zuhub candidate count,
+        turning a precise single-candidate edge into a 0.5 fallback (and,
+        when the foreign id sorted first, pointing it at the foreign model)."""
+        py_user = _make_symbol(
+            "User", kind="class", path=str(tmp_path / "models.py"),
+            concepts=[{"concept": "model", "framework": "django"}],
+        )
+        ruby_user = self._foreign_model(tmp_path, "ruby", "rb")
+        view = self._view(tmp_path)
+        result = link_orm_queries(
+            root=tmp_path, symbols=[ruby_user, py_user, view],
+        )
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst == py_user.id
+        assert edge.confidence == 0.85
+        assert "disambiguation_fallback" not in (edge.meta or {})

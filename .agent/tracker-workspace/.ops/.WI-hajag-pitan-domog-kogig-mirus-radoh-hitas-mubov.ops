@@ -1,0 +1,22 @@
+- op: create  # af46
+  at: '2026-10-07T07:21:45Z'  # af46
+  by: agent  # af46
+  actor: jgstern_agent  # af46
+  clock: 1  # af46
+  nonce: af46  # af46
+  data:  # af46
+    kind: work_item  # af46
+    title: "Cargo.toml/Cargo.lock are not a DependencyManifest source: Rust boundary nodes never get a directness stamp"  # af46
+    status: todo_hard  # af46
+    priority: 3  # af46
+    parent:  # af46
+    tags:  # af46
+    - manifest  # af46
+    - supply_chain  # af46
+    - rust  # af46
+    isbefore: []  # af46
+    duplicate_of: []  # af46
+    not_duplicate_of: []  # af46
+    pr_ref:  # af46
+    description: "Analogue check for WI-juzaj (Mix + npm DependencyManifest readers). Cargo.toml is read only as TOML dependency symbols for the dependency linker (toml_config.py -> linkers/dependency.py depends_on_manifest edges); it is NOT a DependencyManifest source, so Rust boundary nodes get no directness stamp (ir.create_boundary_nodes -> DependencyManifest.directness_for returns None for language 'rust'). Add a Cargo reader (workspace Cargo.toml [dependencies]/[dev-dependencies]/[build-dependencies]/[target.*.dependencies] direct, hyphen->underscore crate names; Cargo.lock [[package]] names transitive; workspace members subtracted) as a scoped 'cargo' table keyed by crate name, with a resolver mapping a boundary path's first '::' segment to a crate (std/core/alloc/crate/self/super -> none). Would also unblock WI-totob (needs the manifest's dependency names)."  # af46
+    fields: {}  # af46

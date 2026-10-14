@@ -1,0 +1,23 @@
+- op: create  # d514
+  at: '2026-10-03T17:43:02Z'  # d514
+  by: agent  # d514
+  actor: jgstern_agent  # d514
+  clock: 1  # d514
+  nonce: d514  # d514
+  data:  # d514
+    kind: work_item  # d514
+    title: "JPA EntityManager.getReference: association-only uses mint a KIND-MISDECLARED db_read source; ADR-0049 ruling 3 holds the row until state access through the reference is a call site"  # d514
+    status: todo_hard  # d514
+    priority: 3  # d514
+    parent:  # d514
+    tags:  # d514
+    - adr_0049  # d514
+    - java  # d514
+    - taint  # d514
+    - catalogue  # d514
+    isbefore: []  # d514
+    duplicate_of: []  # d514
+    not_duplicate_of: []  # d514
+    pr_ref:  # d514
+    description: "FOUND by WI-tunog (2026-10-03), the ADR-0049 Lazy-row parity sweep.\n\nSTATEMENT. `javax|jakarta.persistence.EntityManager.getReference` is a deferred crossing under ADR-0049 ruling 1 -- the API javadoc (jakartaee/persistence EntityManager.java, master 96ebe4ec): a reference \"whose state may be lazily fetched\"; \"This operation allows the application to create an association to an entity without loading its state from the database\" -- and stays db_read because ruling 3 has no represented crossing to relocate its read to.\n\nTWO SHAPES, MEASURED ON A FIXTURE (WI-tunog, shipped catalogue vs a counterfactual overlay moving getReference to db_compose):\n  * state read in scope: `Order o = em.getReference(Order.class, id); w.write(o.getNote());` -- violated with getReference as the only source; the counterfactual deletes the flow outright (the read happens at the application's own accessor, which no catalogue row can carry). A true finding; the reason the row is held.\n  * association only: `item.setOrder(em.getReference(Order.class, id)); em.persist(item);` -- violated on untrusted-input-no-database with getReference as source. The reference carries only the caller's id: KIND-MISDECLARED in ADR-0046's terms, the same shape as the 28 Django `filter(...).delete()` situations in measurement 0013.\n\nCORPUS SHAPE (a text read of the 29 keycloak production sites spelled em./entityManager.getReference, NOT adjudicated findings and NOT a reachability measurement): 15 association-only (setX(getReference), remove(getReference), query parameter, `.getId()`), 9 return the reference to the caller, 3 read state in scope (RealmAdapter.java:1635 flow.getExecutions(), JpaRealmProvider.java:452 roleEntity.getRealmId(), JPAResourceStore.java:84 resource.getScopes()), 2 not classified from four lines (JpaUserProvider.java:364, :373).\n\nWHAT WOULD LICENSE A MOVE: representing the state access -- a db_read call site at an accessor called on a receiver typed from getReference -- the analogue of WI-fasap's evaluation-site edge. Until then a move deletes the in-scope reads; test_lazy_row_parity.py::TestTheJpaRows pins that.\n\nA 0003-method delta on keycloak is what would price the association shape; not run."  # d514
+    fields: {}  # d514

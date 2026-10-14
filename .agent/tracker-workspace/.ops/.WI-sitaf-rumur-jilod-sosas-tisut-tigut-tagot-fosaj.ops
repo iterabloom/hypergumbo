@@ -1,0 +1,22 @@
+- op: create  # 041e
+  at: '2026-10-05T05:54:56Z'  # 041e
+  by: agent  # 041e
+  actor: jgstern_agent  # 041e
+  clock: 1  # 041e
+  nonce: 041e  # 041e
+  data:  # 041e
+    kind: work_item  # 041e
+    title: "taint return lift: a Go blank identifier (_, err := get()) breaks the result-position seeding, so the lift falls back to seeding err and climbs the error chain (INV-komoj residual)"  # 041e
+    status: todo_hard  # 041e
+    priority: 3  # 041e
+    parent:  # 041e
+    tags:  # 041e
+    - taint  # 041e
+    - analysis_quality  # 041e
+    - adr_0017  # 041e
+    isbefore: []  # 041e
+    duplicate_of: []  # 041e
+    not_duplicate_of: []  # 041e
+    pr_ref:  # 041e
+    description: "FOUND 2026-10-04/05 by INV-komoj (branch jgstern-agent/fix/komoj). The ADR-0017 §3a walk seeds EVERY variable a source call line defines (defs_at). INV-komoj's return lift asks that walk \"does the value reach a return statement\". So `x, err := helper()` followed by `return fmt.Errorf(\"..: %w\", err)` made the function \"return the value\", and the lift climbed every Go error chain above a source. Measured with `err` dropped from the return walk's seeds: runc walk-based lifts 39 -> 26, buildah 85 -> 59.\n\nINV-komoj closes the common case structurally. ddg_build records the identifiers in each result position of a return statement, and the lift records the positions the value occupies. The caller is then seeded only on the variables its call defines at those positions (taint._received_seeds), using the order stmt_defuse keeps.\n\nTHE RESIDUAL is the arity mismatch. Go's def/use extractor drops the blank identifier, so `_, err := get()` defines (\"err\",) against an arity of 2. The seeds then fall back to every variable, so `err` is tainted again and the chain climbs. The same fallback applies when a statement on the call line defines a different number of variables for any other reason.\n\nFix direction: record the left-hand side's positions including blanks. For example, the extractor could emit a placeholder for `_`, or the CFG statement could carry the LHS arity. Then `_received_seeds` can map positions exactly. Not a name rule on `err`.\n\nNot measured: how many corpus lifts take the fallback path."  # 041e
+    fields: {}  # 041e

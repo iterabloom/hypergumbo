@@ -46,14 +46,15 @@ each with a `kind`. These are the kinds the tool can emit:
 
 | `kind` | what it tells you |
 |---|---|
-| `user_supplied_sanitizer` | A sanitizer **the analysed repository declared** (via `extra_catalogs:` or `--taint-sanitizers`) is credited with removing a flow that would otherwise have been reported. The tool cannot check that assertion; it takes the repository's word that the named function neutralises the taint. |
+| `user_supplied_sanitizer` | A sanitizer **that did not ship with hypergumbo** — from `--taint-sanitizers`, the claims file's `extra_catalogs:`, or your `taint_sanitizers.d/` — is credited with removing a flow that would otherwise have been reported. The tool cannot check that assertion; it takes that file's word that the named function neutralises the taint. |
 | `displaced_shipped_entry` | A catalogue entry hypergumbo ships was **replaced** by one the repository supplied, and the replaced entry is the kind that could have produced evidence for *this* claim. |
-| `opaque_boundary` | The claim held everywhere the analysis could see, and control leaves the process at named call sites whose launched program is not in the edge set. |
-| `untyped_receiver` | Named call sites reach a method the catalogue declares **for this boundary** through a receiver whose type could not be determined — e.g. `sock.sendall(payload)` where `sock` is an unannotated parameter. The flow could be neither constructed nor ruled out. |
+| `opaque_boundary` | The claim held everywhere the analysis could see, and at named call sites control passes to something the analysis cannot follow: a **launched program** not in the edge set, or a call to a sink hypergumbo ships for evaluating data as code or writing it into the page as markup (`eval`, `window.eval`, `document.write`, `document.writeln` in JavaScript/TypeScript), whose evaluated code or written markup — a `fetch`, an `<img src>` request — is in no edge. Beside a module the I/O catalog could not classify, the verdict stays `inconclusive` instead. |
+| `untyped_receiver` | Named call sites reach a method the catalogue declares **for this boundary** through a receiver whose type could not be determined — e.g. `sock.sendall(payload)` where `sock` is an unannotated parameter. The flow could be neither constructed nor ruled out. Sites whose method name the catalogue lists in `ambiguous_names` (a known collision with a common non-I/O method: `str.replace`, `dict.get`) are still disclosed, but listed last, named in a clause of their own and carried in `known_collisions` (WI-jiful). |
 | `unknown_receiver_scope` | The scope statement for the whole verdict: a clean result is **closed-world over the receivers the analysis could type**, reported with a count, a denominator and the distinct method names. Unlike the row above it is not boundary-scoped, because matching a method *name* against a catalogue is exactly what an untyped receiver makes meaningless. |
 | `analyzer_method_call_blind` | The verdict rests on a language whose analyzer **cannot see external instance-method calls at all**. Declared, not inferred. |
 | `analyzer_suppressed_methods` | The verdict rests on a language whose analyzer deliberately declines to model some method names, and the catalogue declares some of those names as I/O sinks. |
 | `analyzer_construct_blind` | The verdict rests on a language whose catalogue declares rows that source reaches by a construct which is **not a call**, so the analyzer emits no edge for them at all. Declared and dated, and derived against the shipped catalogue at render time, so the rows named are the ones your catalogue actually carries. **No language declares one as of 2026-09-10** — the only entry there has ever been was javascript's handler assignment (`ws.onmessage = handler`), retired by WI-dosuh when the analyzer learned to emit the registration edge — so this caveat cannot currently appear on any verdict. It is documented because the shape recurs: the next analyzer to meet a catalogued row reached only by a construct it does not model declares it here rather than leaving the verdict silently closed-world. |
+| `unreached_sink_shapes` | The claim's sink zone is `code_execution` or `dom_injection`, and in a language present in the repository some shapes of that zone emit no call edge — `new Function(s)`, a string `setTimeout`, an `innerHTML` assignment. The verdict holds for the sinks the analysis could see and names each shape it could not. (A language with **no** sink in the zone withholds the verdict instead: `inconclusive`.) |
 | `higher_fidelity_available` | A higher-fidelity analyzer for a language in this repository is **installed on this machine and was not used** (e.g. rust-analyzer without `--backend rust-analyzer`). |
 
 ## What a clean verdict does not mean
@@ -69,10 +70,11 @@ follow down to the stdlib call it eventually makes.
 
 If your project's egress goes through a third-party client the tool ships no
 rows for, a claim about the network boundary will be clean because the tool
-never saw the call. Two community overlays now ship in the wheel and load by
-default — `python-http-clients.yaml` and `go-web-frameworks.yaml` — and every
+never saw the call. Eight community overlays ship in the wheel and load by
+default — Python HTTP clients and web/ORM, Go web frameworks and x/sys+gRPC,
+Elixir web and DB, Haskell network and extras, SwiftNIO and logging — and every
 run that uses them says so on stderr, because hypergumbo does **not** vouch for
-those rows (ADR-0047). They make third-party egress *visible*; they never
+those rows (ADR-0061; see [CATALOGUES.md](CATALOGUES.md)). They make third-party egress *visible*; they never
 license a clean verdict, so a call they classify still counts as unexamined and
 no claim is confirmed on their strength. For anything they do not cover, supply
 your own overlay in `$XDG_CONFIG_HOME/hypergumbo/io_primitives.d/` or via
@@ -88,6 +90,15 @@ Every run prints the languages it has no taint-flow catalogue for:
 
 Read it. A repository that is 90% one of those languages produces a clean
 verdict that means almost nothing.
+
+Such a language also **withholds** a clean verdict from every taint claim over
+built-in labels (`untrusted_input`, `host_secret`, …), since any language can
+produce that data. A label **your own source catalogue declares** is scoped
+instead (WI-rusil): a no-catalogue language counts against it only if the
+label is declared there, or code the flow can be in calls into it directly. A
+verdict that set a language aside names it in its details. The scoping trusts
+your catalogue's list of languages: a label declared only in python says the
+flow cannot start anywhere else.
 
 ### A `module_completeness` grant in your overlay turns a gate OFF
 
@@ -107,6 +118,15 @@ classified and a grant declared examined. Every confirmed verdict in the run
 rests on them. It lists only what *this* run's gate passed on, shipped or
 overlay, so it stays short; the full audit list, with dates, is the
 catalogue's `module_completeness` block.
+
+A grant in your overlay for a **dependency whose source was not analysed**
+(installed dependency source is not parsed by default — ADR-0016 §7) still
+confirms: it is your dated vouch. The verdict says so. Its `details` end with
+"Rests on an overlay's module_completeness grant for module(s) whose source this
+analysis did not read (…): the dependency source was not traced", and the
+provenance row lists those modules under `untraced_vouched`. Without such a
+grant, a call into untraced dependency source keeps the verdict `inconclusive`,
+and the reason names it as untraced dependency source.
 
 ### A source outside any walked function is never data-flow adjudicated
 
@@ -128,6 +148,41 @@ rare in Go.
 
 `dataflow_coverage` publishes capability per **language**. This limit is
 per-**flow** and applies to every language equally.
+
+### A partially parsed file is read from the parser's error recovery, and no verdict consults it
+
+When tree-sitter cannot parse part of a file, the analysis carries on from its
+error recovery and lists the file in `limits.failed_files` with a reason
+starting `partial_parse:`. **No verdict reads that list.** A clean verdict does
+not change, gain a caveat or lose its exit code because a file it depends on
+parsed only partly. If your claim rests on particular files, check the list
+yourself.
+
+A caveat was considered (WI-vufur) and has not been added, because no rule we
+measured tells a verdict that could be affected from one that could not:
+
+- **In C and C++ a partial parse is common.** crun: 65 of 127 C files. sherpa-onnx:
+  132 partially parsed files of all languages, even after WI-somod removed the
+  rows that came from the wrong grammar reading a header. A caveat on "any partially parsed file" would sit on almost
+  every verdict there.
+- **Restricting it to the files a taint walk passes through does not narrow it
+  enough.** On crun, the functions reachable from `host_secret` sources span 30
+  of the 66 partially parsed files, and every built-in label on crun and on
+  sherpa-onnx reaches at least one.
+- **The size of the damage does not predict what was lost.** crun's
+  `signals.c` and `mount_flags.c` and AFNetworking's `AFURLSessionManager.m`
+  are wholly inside an error region, and every function and method in them is
+  still extracted. Meanwhile AFNetworking's `AFHTTPSessionManager.h` loses all
+  four of its `@property` declarations, and no error node surrounds them: the
+  parser misread the `@interface` block and recovered the properties as
+  top-level expressions.
+
+What the list is reliable for: which files parsed only partly, and how many
+damaged nodes each has. It is not a measure of what the analysis missed in
+them.
+
+The phoenix partial parses (112) are all generator templates: `.ex` files full
+of `<%= %>` EEx markup, which are not Elixir.
 
 ### `analysis_method` is not a confidence score
 
@@ -171,6 +226,15 @@ condition that guards the sink rather than being one of its arguments.
 
 Precision says nothing about **recall**. A repository with one reported flow
 and forty real ones scores 100%.
+
+Three caveat kinds ride a `violated` verdict rather than a clean one, because
+they qualify a reported finding:
+
+| `kind` | what it tells you |
+|---|---|
+| `choice_shaped_source` | Some evidence rows are rooted at a source whose value the far side *chose* from a constrained set rather than authored, so the finding can only be a selection, never an injected payload. |
+| `withheld_community_sanitizer` | Some reported flows pass through a sanitizer from a **community** catalogue file — third-party rows hypergumbo ships without maintaining (ADR-0061) — which was not credited. Vouched for, it would have cleared them; the evidence rows name it under `withheld_sanitizers`. To vouch for one, copy its file into `$XDG_CONFIG_HOME/hypergumbo/taint_sanitizers.d/` and delete its `provenance: community` line: the flow is then cleared under `user_supplied_sanitizer`. |
+| `withheld_community_summary` | This run's call graph calls function summaries from a **community** file that would *end* a taint branch (e.g. testify's `require.*`), and they were not allowed to: an unmaintained row may not remove a finding. Run-scoped, so it may name a summary no reported flow crossed. To vouch for one, copy its file into `$XDG_CONFIG_HOME/hypergumbo/function_summaries.d/` and delete its `provenance: community` line. |
 
 ## Related
 

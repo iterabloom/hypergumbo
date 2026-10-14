@@ -44,3 +44,33 @@
   clock: 4  # aeb1
   nonce: aeb1  # aeb1
   message: "PARTIAL CURE LANDED (WI-kokiz, the merge pass): every SCIP record that pairs with a tree-sitter record is folded into a merged record whose span is the ITEM span (148 of 169 on the recorded aardvark-dns fixture; multi-line on every multi-line callable). The invariant remains VIOLATED for the 21 SCIP-only leftovers (18 namespaces, 2 type aliases, 1 static — see WI-bamar for why the incumbent has no record to fold them into): their Symbol.span is still the identifier token, because scip/index.py spans from the Definition `range` and the merge has no partner span to take. Closing this row means spanning SCIP-only records from enclosing_range in index.py — which is now safe under ADR-0057 §8 (the merge runs first, so no cross-backend (path, stable_id) group reaches the collision splitter). Not done here: it is a separate importer change with its own measurement (the 21 leftovers' spans before/after)."  # aeb1
+- op: update  # 05d8
+  at: '2026-10-03T06:22:54Z'  # 05d8
+  by: agent  # 05d8
+  actor: jgstern_agent  # 05d8
+  clock: 5  # 05d8
+  nonce: 05d8  # 05d8
+  set:  # 05d8
+    title: "SCIP Symbol.span is the identifier token, not the item (79 of 79 methods single-line on aardvark-dns); the item range is in enclosing_range, and using it makes stable_id parity hold, which the collision splitter would then undo"  # 05d8
+- op: discuss  # 12ac
+  at: '2026-10-03T06:22:55Z'  # 12ac
+  by: agent  # 12ac
+  actor: jgstern_agent  # 12ac
+  clock: 6  # 12ac
+  nonce: 12ac  # 12ac
+  message: "Owner-approved (2026-10-03): removed WI-gojum's isbefore link to this item, and dropped \"-- gated on WI-gojum\" from the title. The gate no longer applies:\n- ADR-0057 §8: split_within_file_stable_id_collisions runs AFTER the merge pass, so the clause \"the splitter would re-mint the SCIP record\" does not arise.\n- ADR-0057 §3 / §Tracker items: the merge pass (WI-kokiz, landed) already gives every MERGED record the item span (enclosing_range). On the recorded aardvark-dns index, all 148 merged records carry the item span after the merge.\n- What remains is independent of WI-gojum (still parked by the owner): the SCIP-only leftovers. On aardvark-dns, 21 records stay SCIP-only, and 5 of them have range != enclosing_range: ThreadHandleMap, DNSBACKEND, AardvarkResult and two inline `mod tests` namespaces. The other 16 are file-level namespaces whose range already equals enclosing_range. The 09-19 note's \"all 21 keep the token span\" overstates this.\n- Cure location (audit 2026-10-03): index.py runs BEFORE the merge, so re-spanning there cannot target only the leftovers. Both SCIP backends declare span_role=SPAN_ROLE_TOKEN (rust-analyzer analyzer.py:187, scip-python analyzer.py:137), and _spans_pair pairs token-inside-item, so re-spanning every SCIP record in index.py would break the declared anchor. The cure belongs AFTER the merge: re-span the unpaired records from enclosing_range carried in meta. Or it comes with an anchor change to ITEM plus a re-measure of the 148 pairs. scip-python fills enclosing_range on only 8 of 24 definitions in its recorded sample, so a re-span from enclosing_range cannot reach every leftover there."  # 12ac
+- op: update  # ca1c
+  at: '2026-10-03T06:42:03Z'  # ca1c
+  by: agent  # ca1c
+  actor: jgstern_agent  # ca1c
+  clock: 7  # ca1c
+  nonce: ca1c  # ca1c
+  set:  # ca1c
+    title: "SCIP Symbol.span is the identifier token, not the item: after the ADR-0057 merge, SCIP-only records keep the token span (5 of 21 leftovers on aardvark-dns); the item range is in enclosing_range"  # ca1c
+- op: discuss  # d28a
+  at: '2026-10-03T06:42:03Z'  # d28a
+  by: agent  # d28a
+  actor: jgstern_agent  # d28a
+  clock: 8  # d28a
+  nonce: d28a  # d28a
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). Title follow-up to the earlier note today: dropped the clause \"which the collision splitter would then undo\". ADR-0057 §8 rules that clause out (the splitter runs after the merge, so the question does not arise). The new title names what is still open: the SCIP-only leftovers. The rest of the correction (5 of 21 leftovers differ; the cure belongs after the merge, not in index.py) is in the earlier note."  # d28a

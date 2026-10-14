@@ -4023,3 +4023,223 @@ class TestModuleNameShorthand:
         # Only the real one matches; the pathless symbol is filtered out.
         assert len(matches) == 1
         assert matches[0].id == real.id
+
+
+class TestLimitsDetail:
+    """A truncated slice carries the shortfall magnitude per limit (WI-mibuj).
+
+    ``limits_hit`` alone says THAT a limit stopped the walk, not HOW MUCH it
+    cost: a reverse slice capped at ``max_files`` looked complete. Each
+    ``limits_detail[limit]`` counts the frontier the limit stopped -- nodes
+    and edges that passed every other filter, were refused by this limit, and
+    are absent from the final slice -- together with the cap value.
+    """
+
+    @staticmethod
+    def _fan_in(n_callers: int) -> tuple[Symbol, List[Symbol], List[Edge]]:
+        target = make_symbol("target", path="core.py")
+        callers = [
+            make_symbol(f"caller{i}", path=f"c{i}.py") for i in range(n_callers)
+        ]
+        return target, callers, [make_edge(c, target) for c in callers]
+
+    def test_file_limit_reports_omitted_callers(self) -> None:
+        """6 callers in 6 files, max_files=3: 2 admitted, 4 omitted."""
+        target, callers, edges = self._fan_in(6)
+        query = SliceQuery(entrypoint="target", reverse=True, max_files=3)
+        result = slice_graph([target] + callers, edges, query)
+
+        admitted = [c for c in callers if c.id in result.node_ids]
+        assert len(admitted) == 2  # reach: the cap really did bite
+        assert result.limits_hit == ["file_limit"]
+        assert result.limits_detail == {
+            "file_limit": {
+                "cap": 3,
+                "nodes_omitted": 4,
+                "edges_omitted": 4,
+                "files_omitted": 4,
+            },
+        }
+        out = result.to_dict()
+        assert out["limits_detail"] == result.limits_detail
+
+    def test_no_limit_hit_means_no_detail_key(self) -> None:
+        """Absent, not empty: an untruncated slice emits no limits_detail."""
+        target, callers, edges = self._fan_in(3)
+        query = SliceQuery(entrypoint="target", reverse=True)
+        result = slice_graph([target] + callers, edges, query)
+
+        assert result.limits_hit == []
+        assert result.limits_detail == {}
+        assert "limits_detail" not in result.to_dict()
+
+    def test_hub_pruned_reports_unreached_callees(self) -> None:
+        """A depth-2 hub with 30 callees pruned: 30 nodes/edges omitted."""
+        entry = make_symbol("entry", path="src/entry.py")
+        bridge = make_symbol("bridge", path="src/bridge.py")
+        hub = make_symbol("hub", path="src/hub.py")
+        callees = [make_symbol(f"leaf_{i}", path=f"src/l{i}.py") for i in range(30)]
+        edges = [make_edge(entry, bridge), make_edge(bridge, hub)]
+        edges += [make_edge(hub, c) for c in callees]
+
+        query = SliceQuery(entrypoint="entry", hub_threshold=20)
+        result = slice_graph([entry, bridge, hub] + callees, edges, query)
+
+        assert hub.id in result.node_ids
+        assert result.limits_hit == ["hub_pruned"]
+        assert result.limits_detail == {
+            "hub_pruned": {
+                "cap": 20,
+                "nodes_not_expanded": 1,
+                "nodes_omitted": 30,
+                "edges_omitted": 30,
+                "files_omitted": 30,
+            },
+        }
+
+    def test_hub_pruned_with_nothing_lost_reports_zero_nodes(self) -> None:
+        """Every pruned callee is reached another way: 0 nodes omitted.
+
+        The flag alone cannot tell this harmless prune from a costly one; the
+        magnitude can. The hub's own edges are still missing from the slice.
+        """
+        entry = make_symbol("entry", path="src/entry.py")
+        bridge = make_symbol("bridge", path="src/bridge.py")
+        hub = make_symbol("hub", path="src/hub.py")
+        callees = [make_symbol(f"leaf_{i}", path=f"src/l{i}.py") for i in range(5)]
+        edges = [make_edge(entry, bridge), make_edge(bridge, hub)]
+        edges += [make_edge(entry, c) for c in callees]
+        edges += [make_edge(hub, c) for c in callees]
+
+        query = SliceQuery(entrypoint="entry", hub_threshold=3)
+        result = slice_graph([entry, bridge, hub] + callees, edges, query)
+
+        assert all(c.id in result.node_ids for c in callees)
+        assert result.limits_detail["hub_pruned"] == {
+            "cap": 3,
+            "nodes_not_expanded": 1,
+            "nodes_omitted": 0,
+            "edges_omitted": 5,
+            "files_omitted": 0,
+        }
+
+    def test_hub_shortfall_applies_the_other_filters(self) -> None:
+        """A pruned edge another filter would refuse is not a hub shortfall.
+
+        Low-confidence edges and test-file callees are refused regardless of
+        the hub; only the 2 real callees count.
+        """
+        entry = make_symbol("entry", path="src/entry.py")
+        bridge = make_symbol("bridge", path="src/bridge.py")
+        hub = make_symbol("hub", path="src/hub.py")
+        real = [make_symbol(f"real_{i}", path=f"src/r{i}.py") for i in range(2)]
+        weak = [make_symbol(f"weak_{i}", path=f"src/w{i}.py") for i in range(2)]
+        tests = [
+            make_symbol(f"test_{i}", path=f"tests/test_{i}.py") for i in range(2)
+        ]
+        edges = [make_edge(entry, bridge), make_edge(bridge, hub)]
+        edges += [make_edge(hub, s) for s in real + tests]
+        edges += [make_edge(hub, s, confidence=0.1) for s in weak]
+
+        query = SliceQuery(
+            entrypoint="entry", hub_threshold=3,
+            min_confidence=0.5, exclude_tests=True,
+        )
+        result = slice_graph(
+            [entry, bridge, hub] + real + weak + tests, edges, query,
+        )
+
+        detail = result.limits_detail["hub_pruned"]
+        assert detail["nodes_omitted"] == 2
+        assert detail["edges_omitted"] == 2
+
+    def test_hop_limit_reports_frontier(self) -> None:
+        """a -> b -> c -> d, max_hops=2: c not expanded, d omitted."""
+        a = make_symbol("a", path="a.py")
+        b = make_symbol("b", path="b.py")
+        c = make_symbol("c", path="c.py")
+        d = make_symbol("d", path="d.py")
+        edges = [make_edge(a, b), make_edge(b, c), make_edge(c, d)]
+
+        query = SliceQuery(entrypoint="a", max_hops=2)
+        result = slice_graph([a, b, c, d], edges, query)
+
+        assert d.id not in result.node_ids
+        assert result.limits_detail == {
+            "hop_limit": {
+                "cap": 2,
+                "nodes_not_expanded": 1,
+                "nodes_omitted": 1,
+                "edges_omitted": 1,
+                "files_omitted": 1,
+            },
+        }
+
+    def test_hop_limit_on_a_leaf_reports_zero(self) -> None:
+        """hop_limit fires on a frontier node with no edges: nothing lost."""
+        a = make_symbol("a", path="a.py")
+        b = make_symbol("b", path="b.py")
+        query = SliceQuery(entrypoint="a", max_hops=1)
+        result = slice_graph([a, b], [make_edge(a, b)], query)
+
+        assert result.limits_hit == ["hop_limit"]
+        assert result.limits_detail["hop_limit"]["nodes_omitted"] == 0
+        assert result.limits_detail["hop_limit"]["edges_omitted"] == 0
+
+    def test_tier_limit_reports_omitted(self) -> None:
+        """Two callees above max_tier are reported as omitted."""
+        a = make_symbol("a", path="a.py")
+        ext = [make_symbol(f"ext_{i}", path=f"vendor/e{i}.py") for i in range(2)]
+        for s in ext:
+            s.supply_chain_tier = 3
+        edges = [make_edge(a, s) for s in ext]
+
+        query = SliceQuery(entrypoint="a", max_tier=1)
+        result = slice_graph([a] + ext, edges, query)
+
+        assert result.limits_detail == {
+            "tier_limit": {
+                "cap": 1,
+                "nodes_omitted": 2,
+                "edges_omitted": 2,
+                "files_omitted": 2,
+            },
+        }
+
+    def test_pass_through_far_end_is_not_counted(self) -> None:
+        """A pass-through node never appears in output, so it is not omitted."""
+        target, callers, edges = self._fan_in(3)
+        pub = make_symbol("pub", path="z_events.py", kind="event_publisher")
+        edges.append(make_edge(pub, target))
+
+        query = SliceQuery(entrypoint="target", reverse=True, max_files=2)
+        result = slice_graph([target, pub] + callers, edges, query)
+
+        detail = result.limits_detail["file_limit"]
+        omitted = [c for c in callers if c.id not in result.node_ids]
+        assert pub.id not in result.node_ids
+        assert detail["nodes_omitted"] == len(omitted)
+        assert detail["edges_omitted"] == len(omitted)
+
+    def test_detail_keys_match_limits_hit(self) -> None:
+        """Every limit in limits_hit has exactly one detail entry."""
+        target, callers, edges = self._fan_in(8)
+        hub = make_symbol("hub", path="hub.py")
+        mid = make_symbol("mid", path="mid.py")
+        leaves = [make_symbol(f"l{i}", path=f"l{i}.py") for i in range(6)]
+        edges += [make_edge(mid, callers[0]), make_edge(hub, mid)]
+        edges += [make_edge(leaf, hub) for leaf in leaves]
+        nodes = [target, hub, mid] + callers + leaves
+
+        for query in (
+            SliceQuery(entrypoint="target", reverse=True, max_files=4),
+            SliceQuery(entrypoint="target", reverse=True, hub_threshold=2),
+            SliceQuery(entrypoint="target", reverse=True, max_hops=1),
+            SliceQuery(
+                entrypoint="target", reverse=True, max_files=5,
+                hub_threshold=2, max_hops=3,
+            ),
+        ):
+            result = slice_graph(nodes, edges, query)
+            assert result.limits_hit  # reach: each query truncates
+            assert set(result.limits_detail) == set(result.limits_hit)

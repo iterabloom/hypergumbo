@@ -15,7 +15,9 @@ same shape:
 2. Per action, propose one or more candidate template files.
 3. Probe the repository filesystem; for each candidate that exists, emit a
    ``references`` edge (``meta["ref_construct"] = "view_render"``) to a
-   deduplicated template symbol.
+   deduplicated template symbol. The symbol carries the template's language
+   and is minted after the analyzer-side stable_id backstop, so it stamps its
+   own stable_id (``overload_arity.pass_minted_stable_id``; INV-fufij).
 
 This module factors steps 2-3 out so framework strategies need only implement
 step 1 and propose candidates. The two named strategy bases below match the
@@ -41,6 +43,7 @@ from pathlib import Path
 from typing import Iterable, Iterator, NamedTuple, Optional, Sequence, Tuple, Union
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..overload_arity import pass_minted_stable_id
 from .registry import LinkerContext, LinkerResult
 
 PASS_ID = make_pass_id("view-template-linker")
@@ -64,7 +67,7 @@ class TemplateCandidate:
 
 @dataclass(frozen=True)
 class TemplateRenderEmission:
-    """A potential renders-edge: one action symbol + ordered candidates.
+    """A potential action-to-template edge: one action symbol + ordered candidates.
 
     Strategies yield emissions; the core filters by filesystem existence and
     emits an edge for every candidate that actually exists. A single action
@@ -102,7 +105,7 @@ class TemplateStrategy(ABC):
 
     @abstractmethod
     def find_emissions(self, ctx: LinkerContext) -> Iterator[TemplateRenderEmission]:
-        """Yield candidate ``renders`` emissions for this strategy's framework."""
+        """Yield candidate template-render emissions for this strategy's framework."""
 
 
 class MethodNameStrategy(TemplateStrategy):
@@ -247,7 +250,7 @@ class ExplicitStringStrategy(TemplateStrategy):
 def link_via_strategies(
     ctx: LinkerContext, strategies: Sequence[TemplateStrategy]
 ) -> LinkerResult:
-    """Run each strategy, probe candidates, emit ``renders`` edges + symbols.
+    """Run each strategy, probe candidates, emit ``references`` edges + symbols.
 
     Args:
         ctx: Linker context (provides ``repo_root`` for the existence probe).
@@ -258,7 +261,7 @@ def link_via_strategies(
             template) pair (the first-yielded emission wins).
 
     Returns:
-        LinkerResult with new ``renders`` edges and ``kind=template`` symbols.
+        LinkerResult with new ``references`` edges and ``kind=template`` symbols.
     """
     # Create the AnalysisRun up front so its execution_id can be stamped onto
     # every synthesised template Symbol (INV-sopon).
@@ -281,9 +284,17 @@ def link_via_strategies(
                 )
                 if template_id not in seen_templates:
                     seen_templates.add(template_id)
+                    # INV-fufij: a template carries a language and is minted
+                    # after the analyzer-side backstop ran, so it stamps its
+                    # own identity (it was null). One per path (seen above).
                     new_symbols.append(
                         Symbol(
                             id=template_id,
+                            stable_id=pass_minted_stable_id(
+                                owner=PASS_ID, kind="template",
+                                lang=candidate.language,
+                                path=str(candidate.path), name=filename,
+                            ),
                             name=filename,
                             kind="template",
                             language=candidate.language,

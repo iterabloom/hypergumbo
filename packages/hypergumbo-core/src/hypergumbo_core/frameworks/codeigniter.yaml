@@ -5,6 +5,10 @@
 # Controllers extend BaseController (CI4) or CI_Controller (CI3).
 # Routes defined in app/Config/Routes.php using $routes->get(), etc.
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-06-18
 id: codeigniter
 language: php
 

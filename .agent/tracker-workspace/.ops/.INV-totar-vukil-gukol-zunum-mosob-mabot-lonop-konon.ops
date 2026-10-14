@@ -1,0 +1,40 @@
+- op: create  # 4820
+  at: '2026-09-29T00:21:34Z'  # 4820
+  by: agent  # 4820
+  actor: jgstern_agent  # 4820
+  clock: 1  # 4820
+  nonce: '4820'  # 4820
+  data:  # 4820
+    kind: invariant  # 4820
+    title: "taint sink matching never receives the call site's io_target_kind: a target-kind-gated sink resolves only to its fallback, so io.WriteString(os.Stderr, secret) is host_fs to taint and logging to io-boundaries"  # 4820
+    status: violated  # 4820
+    priority: 2  # 4820
+    parent:  # 4820
+    tags:  # 4820
+    - taint  # 4820
+    - io_boundary  # 4820
+    - go  # 4820
+    - analysis_quality  # 4820
+    isbefore: []  # 4820
+    duplicate_of: []  # 4820
+    not_duplicate_of: []  # 4820
+    pr_ref:  # 4820
+    description: "FOUND 2026-09-28 by the docstring-staleness audit (a reviewer's code aside), reproduced on dev 7fda36600b.\n\nREPRO (scratchpad sinkgate/): a Go file with only `io.WriteString(os.Stderr, os.Getenv(\"API_KEY\"))`.\n- io-boundaries: env_read os.Getenv; logging io.WriteString (the WI-suhug write-side seam selects the row by the site's io_target_kind std_stream).\n- verify-claims: `host_secret -> prohibited_sink_zone: logging` CONFIRMED (0 flows) -- a false all-clear; `host_secret -> host_fs` VIOLATED (1 flow).\nOne call site, two answers: io-boundaries says the secret is logged, taint says it is written to disk.\n\nROOT CAUSE. Both propagators call `_match_propagation_entry` for SINKS without `io_target_kinds=` (taint.py structural pass ~L3329, DDG pass ~L4476); only the SOURCE calls pass it. So `_needed_write` is None and `_target_kind_admits` admits only the primitive's `abstention_fallback` sink entry (fs_write -> host_fs for io.WriteString, logging for fmt.Fprint*). WI-suhug (done, PR #743) shipped TaintSink.requires_target_kind + abstention_fallback and measured the move in io-boundaries (29 MOVED); the taint half of the seam was never wired, so every stamped Go writer (1,194 stamped sites on that item's six repos) keeps its fallback sink in taint.\n\nFIX SHAPE: pass `io_target_kinds=call_site_target_kinds(edge.get(\"meta\"))` at both sink match sites; add a production-path test (a stamped io.WriteString / fmt.Fprintln to os.Stderr and to a cmd.StdinPipe()) asserting the taint zone equals the io-boundaries boundary. Measure the Go cohort (verdict moves expected on logging / ipc / host_fs claims). Scope: every target-kind-gated sink row (go io.WriteString / fmt.Fprint*, c unistd.write, haskell hPut*)."  # 4820
+    fields:  # 4820
+      statement: "Taint and io-boundaries give one call site one answer: a sink row gated by requires_target_kind is selected by the site's io_target_kind in taint exactly as the boundary tagger selects it. VIOLATED: taint never passes io_target_kinds when matching sinks, so a stamped writer always gets its abstention-fallback sink."  # 4820
+      root_cause: "taint.py structural (~L3329) and DDG (~L4476) sink loops call _match_propagation_entry without io_target_kinds=; _needed_write is None and _target_kind_admits admits only abstention_fallback entries. WI-suhug wired the source side and io-boundaries, not the sink match."  # 4820
+- op: update  # eab4
+  at: '2026-09-29T02:27:03Z'  # eab4
+  by: agent  # eab4
+  actor: jgstern_agent  # eab4
+  clock: 2  # eab4
+  nonce: eab4  # eab4
+  set:  # eab4
+    status: satisfied  # eab4
+- op: discuss  # a4ae
+  at: '2026-09-29T02:27:45Z'  # a4ae
+  by: agent  # a4ae
+  actor: jgstern_agent  # a4ae
+  clock: 3  # a4ae
+  nonce: a4ae  # a4ae
+  message: "SATISFIED by PR #1288 (dev 5a4f40c2fa + 42e0b78d85). Both sink match sites (structural and DDG propagators) now pass io_target_kinds=call_site_target_kinds(meta), as the source sites did.\n\nBEHAVIOURAL EVIDENCE, the item's own repro re-run on merged dev 42e0b78d85 (Go file, one statement io.WriteString(os.Stderr, os.Getenv(\"API_KEY\"))): host_secret -> logging VIOLATED rc 1, 1 flow, sink_primitives [io.WriteString] (was CONFIRMED, 0 flows); host_secret -> host_fs CONFIRMED (was VIOLATED). io-boundaries: logging io.WriteString. Taint and io-boundaries now give this call site one answer.\n\nTESTS: core test_sink_match_reads_the_writer.py drives BOTH propagators with the shipped go catalogue (DDG arm given a real def-use edge so it reaches the sink; red before the fix: every stamp returned the fallback zone). lang-mainstream test_go_taint_sink_follows_the_writer.py: io-boundaries and verify-claims name the same zone for os.Stderr / os.Create / cmd.StdinPipe().\n\nA/B, 13 repos (7 go, 3 c, 3 haskell), ~/hypergumbo_lab_notebook/totar_09282026/RESULT.md: 0 verdicts changed; 5 sink sites moved zone, all read back from source -- 4 correct (beads + 2 podman file writes logging -> host_fs; prometheus http.ResponseWriter host_fs -> network), 1 better but not exact (podman net.DialTimeout(\"unix\") logging -> network; exact is ipc -> filed WI-potog).\n\nSCOPE OF THE CLAIM. The wiring covers every target-kind-gated sink row (go io.WriteString / fmt.Fprint* / os.File.Write* / bufio.Writer.Write*, c/cpp unistd.write + sys/socket send*, haskell hPut*/hPrint). Measured on Go only: the c and haskell cohort had no stamped writer a flow reaches (haproxy 2 send edges stamped pipe, no flow; redis/tmate/shellcheck/xmonad/hadolint 0), so those languages are UNMEASURED on a corpus, not shown clean. Python typing.TextIO.write is gated but python stamps no io_target_kind.\n\nRESIDUALS FILED: WI-jufub (go os.Stdout/os.Stderr and java System.out/err are still ipc_send attribute rows -- WI-dutah's sweep missed them; the repro still reports host_secret -> ipc VIOLATED through the os.Stderr reference), WI-potog (go unix-family sockets stamp net_stream)."  # a4ae

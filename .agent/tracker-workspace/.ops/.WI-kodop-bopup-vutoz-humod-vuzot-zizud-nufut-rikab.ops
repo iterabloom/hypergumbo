@@ -1,0 +1,22 @@
+- op: create  # f5d5
+  at: '2026-10-01T12:50:48Z'  # f5d5
+  by: agent  # f5d5
+  actor: jgstern_agent  # f5d5
+  clock: 1  # f5d5
+  nonce: f5d5  # f5d5
+  data:  # f5d5
+    kind: work_item  # f5d5
+    title: "javascript: the CommonJS export scan reads top-level assignments only -- a guarded (UMD) module.exports, Object.assign(module.exports, ...) and Object.defineProperty(exports, ...) keep a measured is_exported=False"  # f5d5
+    status: todo_hard  # f5d5
+    priority: 3  # f5d5
+    parent:  # f5d5
+    tags:  # f5d5
+    - javascript  # f5d5
+    - analysis_quality  # f5d5
+    - supply_chain  # f5d5
+    isbefore: []  # f5d5
+    duplicate_of: []  # f5d5
+    not_duplicate_of: []  # f5d5
+    pr_ref:  # f5d5
+    description: "FOUND 2026-10-01 by WI-sinol (branch jgstern-agent/fix/sinol), which added the CommonJS half of the JS/TS export scan (`_extract_commonjs_export_names` in js_ts.py, addressing WI-tavag).\n\nTHE GAP. That scan reads TOP-LEVEL assignment statements only. These CommonJS export forms are NOT recognised, so their exports keep the analyzer's measured is_exported=False (a positive \"not exported\" claim, INV-kubup) and get no module_exports edge:\n- a guarded export, e.g. the UMD tail `if (typeof module !== 'undefined') module.exports = X;` or sharp's lib/sharp.js:41 (`module.exports = sharp;` inside a block);\n- `Object.assign(module.exports, { f, g })`;\n- `Object.defineProperty(exports, 'f', { get: ... })` (TypeScript's own CJS emit uses this shape for re-exports);\n- `module.exports = { ...require('./x') }` (spread re-export; binds no local, so likely nothing to mark).\n\nPinned as NOT collected by tests on that branch: `if (x) { module.exports = local; }` (test_js_ts_export_status.py::test_non_export_assignments_mark_nothing). If this item is fixed, that parameter case must flip.\n\nSCOPE TO CHECK (not measured): how many corpus files use each form. Node's cjs-module-lexer is the reference for what Node itself detects as a named export.\nRelated: WI-tavag, WI-sinol."  # f5d5
+    fields: {}  # f5d5

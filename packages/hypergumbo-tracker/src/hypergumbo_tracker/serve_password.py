@@ -14,8 +14,12 @@ side-channels that would reveal which password is real vs duress.
 
 ``RateLimiter`` tracks per-credential failure counts and timestamps. After each
 failure, the next attempt is delayed by ``base_delay * 2^(failures-1)`` seconds
-(exponential backoff). After ``max_failures`` consecutive failures, the credential
-is locked and permanently denied until re-registration via ``htrac setup``.
+(exponential backoff). After ``max_failures`` consecutive failures (0 disables
+lockout), the credential is locked and ``is_allowed()`` returns False. The lock
+is not permanent: state lives in an in-process dict, so a restart clears it,
+and ``record_success()`` resets ``locked`` to False. Nothing outside this
+module constructs a ``PasswordVerifier`` or ``RateLimiter`` yet -- the serve
+auth modules are not wired into ``serve.py`` (WI-hopip).
 
 Why This Design
 ---------------
@@ -25,8 +29,10 @@ Why This Design
   real from duress.
 - Exponential backoff slows automated attacks without permanent lockout for
   occasional typos.
-- Credential lockout after max failures is the final defense — requires physical
-  YubiKey re-registration to unlock.
+- Credential lockout after max failures is intended as the final defense. As
+  implemented it holds only for the life of the process (see above); there is
+  no re-registration path to require, since credential registration has no
+  CLI entry point yet.
 """
 from __future__ import annotations
 

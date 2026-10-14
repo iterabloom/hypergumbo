@@ -4,6 +4,7 @@
 # Erlang's naming conventions encode intent: get_/fetch_/read_ functions
 # retrieve data, set_/put_/write_/store_ functions persist data. These
 # heuristics improve dataflow slice quality for OTP applications.
+provenance: builtin
 language: erlang
 
 assignments:

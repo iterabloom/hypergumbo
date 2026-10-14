@@ -615,3 +615,63 @@ class TestInvZuhubGoCobraFallback:
             assert edge.meta is not None
             assert edge.meta.get("disambiguation_fallback") is True
             assert edge.meta.get("framework_dispatch") == "cobra"
+
+
+class TestHandlerLookupIsLanguageScoped:
+    """WI-gopok sweep: a cobra ``RunE: X`` field names a Go func value, so the
+    handler lookup is restricted to Go symbols. Before, a same-named symbol
+    in any language was a candidate."""
+
+    _SRC = (
+        'package cmd\n\n'
+        'import (\n'
+        '    "github.com/spf13/cobra"\n'
+        ')\n\n'
+        'func init() {\n'
+        '    cmd := &cobra.Command{\n'
+        '        Use: "mycmd",\n'
+        '        RunE: run,\n'
+        '    }\n'
+        '    _ = cmd\n'
+        '}\n'
+    )
+
+    def _init(self, tmp_path: Path) -> Symbol:
+        p = tmp_path / "cmd" / "root.go"
+        p.parent.mkdir(parents=True)
+        p.write_text(self._SRC)
+        return Symbol(
+            id=f"go:{p}:7-13:init:function",
+            name="init", kind="function", language="go", path=str(p),
+            span=Span(start_line=7, end_line=13, start_col=0, end_col=0),
+        )
+
+    @staticmethod
+    def _sym(language: str, path: str) -> Symbol:
+        return Symbol(
+            id=f"{language}:{path}:1-5:run:function",
+            name="run", kind="function", language=language, path=path,
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        )
+
+    def test_lone_foreign_namesake_is_not_a_handler(self, tmp_path: Path) -> None:
+        init_sym = self._init(tmp_path)
+        py_run = self._sym("python", "tools/run.py")
+        ctx = LinkerContext(
+            repo_root=tmp_path, symbols=[init_sym, py_run],
+            detected_languages={"go", "python"},
+        )
+        assert go_cobra_linker(ctx).edges == []
+
+    def test_foreign_namesake_does_not_demote(self, tmp_path: Path) -> None:
+        init_sym = self._init(tmp_path)
+        py_run = self._sym("python", "tools/run.py")
+        go_run = self._sym("go", "cmd/run.go")
+        ctx = LinkerContext(
+            repo_root=tmp_path, symbols=[init_sym, py_run, go_run],
+            detected_languages={"go", "python"},
+        )
+        edges = go_cobra_linker(ctx).edges
+        assert [e.dst for e in edges] == [go_run.id]
+        assert edges[0].confidence == 0.85
+        assert "disambiguation_fallback" not in (edges[0].meta or {})

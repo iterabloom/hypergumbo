@@ -645,3 +645,104 @@ class TestAMethodOnAModuleLevelObject:
     def test_it_does_not_starve_the_module(self, tmp_path) -> None:
         edges = self._edges(tmp_path) + _PY_HEALTHY_EDGES
         assert method_starved_modules(edges, _catalogs("python")) == []
+
+
+class TestAHandlerRegisteredByAssignment:
+    """WI-dapap: the cross-axis membership test, on its filed instance.
+
+    ``ws.onmessage = h`` is emitted (WI-dosuh) as a call edge into the METHOD
+    row ``WebSocket.onmessage`` with ``call_construct="assignment"``, and the
+    classifier matches it (``net_recv``). The gate tested the construct STRING
+    for membership in the module's KIND set, two different axes, so
+    ``"assignment"`` never matched ``{"method"}`` and ``WebSocket`` was reported
+    structurally invisible in the same run that classified a call into it.
+    WI-zohuk measured the effect: all 7 generic claims fell from
+    ``confirmed_with_caveats`` to ``inconclusive`` on this fixture.
+
+    ``sink.write("x")`` is an untyped method call. It is there so the language
+    carries construct evidence WITHOUT the assignment edge, which keeps the
+    abstention out of the picture: the assertion below is about route 1, not
+    about whether JS is checked at all.
+    """
+
+    SOURCE = (
+        "function start(u, sink) {\n"
+        "  const ws = new WebSocket(u);\n"
+        "  ws.onmessage = function (ev) { console.log(ev.data); };\n"
+        "  sink.write(\"x\");\n"
+        "}\n"
+    )
+
+    def _edges(self, tmp_path) -> list[dict]:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(self.SOURCE, encoding="utf-8")
+        return [e.to_dict() for e in analyze_javascript(tmp_path).edges]
+
+    def _assignment_edge(self, edges: list[dict]) -> dict:
+        hits = [e for e in edges if e["dst"].startswith("javascript:WebSocket:0-0:onmessage:")]
+        assert len(hits) == 1
+        return hits[0]
+
+    def test_the_analyzer_really_emits_the_assignment_edge(self, tmp_path) -> None:
+        """REACH, and the edge is the ONLY call into WebSocket, so nothing else
+        can satisfy the module and the assertion below tests route 1."""
+        edges = self._edges(tmp_path)
+        edge = self._assignment_edge(edges)
+        assert edge["meta"]["call_construct"] == "assignment"
+        assert [e for e in edges if e["type"] == "calls"
+                and e["dst"].startswith("javascript:WebSocket:")] == [edge]
+
+    def test_it_classifies(self, tmp_path) -> None:
+        edge = self._assignment_edge(self._edges(tmp_path))
+        prim = classify_call(_catalogs("javascript"), edge["dst"], edge.get("meta"))
+        assert prim is not None and prim.boundary == "net_recv"
+
+    def test_it_does_not_starve_the_module(self, tmp_path) -> None:
+        assert method_starved_modules(self._edges(tmp_path), _catalogs("javascript")) == []
+
+    def test_the_coverage_gate_stays_complete(self, tmp_path) -> None:
+        coverage = compute_boundary_coverage(
+            self._edges(tmp_path), {"javascript"}, _catalogs("javascript"),
+        )
+        assert coverage.complete is True, coverage.reason
+
+
+class TestTheConstructCrosswalkIsNotALoosening:
+    """The crosswalk admits only constructs that reach a kind the module
+    declares. The blind-language signal and an unknown value still starve."""
+
+    _WS = "javascript:WebSocket:0-0:onmessage:unresolved"
+    _SRC = "javascript:app.js:1-5:start:function"
+
+    def _starved(self, construct) -> list[str]:
+        edges = [
+            {"src": self._SRC, "dst": self._WS, "type": "calls",
+             "meta": {"call_construct": construct}},
+            # Construct evidence for the language, into no catalogued module.
+            {"src": self._SRC, "dst": "javascript:app.js:9-9:g:function",
+             "type": "calls", "meta": {"call_construct": "function"}},
+        ]
+        return method_starved_modules(edges, _catalogs("javascript"))
+
+    @pytest.mark.parametrize("construct", ["assignment", "method"])
+    def test_a_construct_reaching_a_method_row_satisfies(self, construct) -> None:
+        assert self._starved(construct) == []
+
+    @pytest.mark.parametrize("construct", ["constructor", "macro_body", "bogus"])
+    def test_a_construct_reaching_no_declared_kind_still_starves(self, construct) -> None:
+        """``onmessage`` is a METHOD row, so route 2 (function-kind names) cannot
+        rescue it either; the only way out is route 1, and these do not reach
+        a method row."""
+        assert self._starved(construct) == ["WebSocket"]
+
+    def test_a_python_protocol_edge_satisfies_the_orm_module(self) -> None:
+        """``for o in qs`` emits ``django.db.models.__iter__`` with construct
+        ``protocol`` (WI-fasap). The dunder row is method-kind, so the edge
+        reaches it; it fell through to route 2 before and failed there too."""
+        edges = [
+            {"src": "python:v.py:1-3:view:function",
+             "dst": "python:django.db.models:0-0:__iter__:unresolved",
+             "type": "calls", "meta": {"call_construct": "protocol"}},
+        ]
+        assert method_starved_modules(edges, _catalogs("python")) == []

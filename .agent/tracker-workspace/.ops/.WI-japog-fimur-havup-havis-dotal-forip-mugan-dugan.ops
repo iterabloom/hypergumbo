@@ -1,0 +1,22 @@
+- op: create  # a8ad
+  at: '2026-10-01T15:33:46Z'  # a8ad
+  by: agent  # a8ad
+  actor: jgstern_agent  # a8ad
+  clock: 1  # a8ad
+  nonce: a8ad  # a8ad
+  data:  # a8ad
+    kind: work_item  # a8ad
+    title: "rust-trait-dispatch-linker links a trait to methods from ANOTHER impl block of the same struct (trait Shape -> Cube::vol from impl Solid for Cube)"  # a8ad
+    status: todo_hard  # a8ad
+    priority: 3  # a8ad
+    parent:  # a8ad
+    tags:  # a8ad
+    - linker  # a8ad
+    - framework_dispatch_linkers  # a8ad
+    - linker_gap  # a8ad
+    isbefore: []  # a8ad
+    duplicate_of: []  # a8ad
+    not_duplicate_of: []  # a8ad
+    pr_ref:  # a8ad
+    description: "`rust-trait-dispatch-linker` attributes a method from ANOTHER impl block to a trait. Fixture (worktree and dev code agree, 2026-10-01, found while working WI-nizug-lavig-duhob-finog-mudus-rizut-zidub-jurit):\n\n    pub trait Shape { fn area(&self) -> i32; }\n    pub trait Solid: Shape { fn vol(&self) -> i32; }\n    pub struct Cube;\n    impl Shape for Cube { fn area(&self) -> i32 { 6 } }\n    impl Solid for Cube { fn vol(&self) -> i32 { 1 } }\n\nemits `dispatches_to trait:Shape -> method:Cube::vol` and `trait:Solid -> method:Cube::area`. `Cube::vol` is defined in `impl Solid for Cube` and is not reachable through `Shape`; `Cube::area` is defined in `impl Shape for Cube`. Mechanism, read from the module docstring: for each `implements` edge the linker emits trait -> every `{Struct}::{method}` in the struct's file, skipping only methods that satisfy THIS trait's requirement set (\"what remains is the inherent methods\"). A method that satisfies a DIFFERENT trait's requirement is neither inherent nor this trait's, but is treated as inherent.\n\nEffect: false reachability (a dead-code false negative): `Cube::vol` reads as reachable whenever `Shape` is. The `type_hierarchy` edges for the same fixture (`Shape::area -> Cube::area`, `Solid::vol -> Cube::vol`) are correct.\n\nCandidate fix: exclude methods that satisfy the requirement set of ANY trait the struct implements, not only the current trait; or use the impl block's span to attribute methods. Not measured on a corpus repo."  # a8ad
+    fields: {}  # a8ad

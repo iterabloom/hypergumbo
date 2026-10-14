@@ -1,0 +1,23 @@
+- op: create  # e469
+  at: '2026-10-04T08:25:52Z'  # e469
+  by: agent  # e469
+  actor: jgstern_agent  # e469
+  clock: 1  # e469
+  nonce: e469  # e469
+  data:  # e469
+    kind: work_item  # e469
+    title: "scala parameterless calls (Runtime.getRuntime.availableProcessors) and kotlin synthetic getters (proc.inputStream) emit no calls edge, so a JDK no-argument read is invisible however its receiver is typed"  # e469
+    status: todo_hard  # e469
+    priority: 2  # e469
+    parent:  # e469
+    tags:  # e469
+    - scala  # e469
+    - kotlin  # e469
+    - io_boundary  # e469
+    - taint  # e469
+    isbefore: []  # e469
+    duplicate_of: []  # e469
+    not_duplicate_of: []  # e469
+    pr_ref:  # e469
+    description: "Found while measuring WI-jubim-kutol-fukij-nabag-ralos-lotat-rumad-fudiv (branch jgstern-agent/fix/jubim), 2026-10-04.\n\nA JDK method invoked WITHOUT a parenthesised argument list emits no calls edge at all in two JVM analyzers, so no receiver typing can reach it:\n\n1. SCALA, a parameterless call. Probe through analyze_scala on worktree jubim:\n     def n(): Int  = Runtime.getRuntime.availableProcessors   -> NO edge for getRuntime, NO edge for availableProcessors\n     def m(): Long = System.currentTimeMillis                  -> NO edge\n     def k(): Long = System.currentTimeMillis()                -> scala:java.lang.System:0-0:currentTimeMillis (control)\n   Corpus: gatling ActorSystem.scala:36 and sbt EvaluateTask.scala:223 (Runtime.getRuntime.availableProcessors) gained nothing from WI-jubim for this reason, while sbt AnalysisUtil.scala:22 (with parens) did. `exec(cmd)` is unaffected because it takes arguments; the loss is the no-argument SOURCES and reads (System.getenv with no parens returns the whole environment map, scala.io.StdIn.readLine, Process.getInputStream written `p.getInputStream`).\n\n2. KOTLIN, a Java getter read as a synthetic property:\n     Runtime.getRuntime().exec(c).inputStream      -> NO getInputStream edge\n     Runtime.getRuntime().exec(c).getInputStream() -> kotlin:java.lang.Process:0-0:getInputStream (control)\n   The io_primitives rows are keyed by the Java method name (getInputStream), and kotlin idiom writes the property.\n\nNOT measured: the corpus count of either shape (no edge exists to count, so it needs a syntactic scan of field_expression / navigation_expression nodes that are not call callees). NOT checked: whether py/js/others share the shape (their property reads are a different mechanism)."  # e469
+    fields: {}  # e469

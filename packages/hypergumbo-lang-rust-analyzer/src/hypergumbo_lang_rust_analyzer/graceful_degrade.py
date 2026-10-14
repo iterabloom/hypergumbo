@@ -3,33 +3,43 @@
 
 When a caller wants "use rust-analyzer if available, otherwise tell me
 to fall through to :mod:`hypergumbo_lang_mainstream.rust`", it should
-call :func:`try_analyze_with_rust_analyzer`. The helper returns
-``(symbols, edges)`` on the happy path and ``None`` on any of the
-three fall-through conditions WI-nohah enumerates:
+call :func:`try_analyze_with_rust_analyzer`. The helper never returns
+``None`` and does not raise for the failure states below: it returns a
+:class:`ScipAttempt`, which is ``ScipAttempt.success(symbols, edges)``
+on the happy path and ``ScipAttempt.failure(silence_code, detail)`` on
+any of four fall-through states (WI-luvud replaced the earlier
+``Optional[(symbols, edges)]`` return, whose ``None`` collapsed them):
 
 1. ``rust-analyzer`` is not resolvable on ``PATH``
-   (:class:`RustAnalyzerNotInstalled` — no install, or an install in a
-   dir we don't scan).
-2. ``rust-analyzer scip`` exits non-zero / times out
-   (:class:`RustAnalyzerInvocationFailed`), or the workspace does not
-   produce an ``index.scip`` file (:class:`RustAnalyzerNoOutput` —
-   typically a ``cargo metadata`` error on a workspace with private
-   deps or an unusual target triple).
-3. The SCIP bytes decode fails
-   (:class:`google.protobuf.message.DecodeError`) — defensive; the
+   (:class:`RustAnalyzerNotInstalled` -- no install, or an install in a
+   dir we don't scan). Silence code ``dependency_unavailable``.
+2. ``rust-analyzer scip`` exits non-zero or times out
+   (:class:`RustAnalyzerInvocationFailed`). Silence code
+   ``pass_crashed``.
+3. ``rust-analyzer`` exits 0 but the workspace does not produce an
+   ``index.scip`` file (:class:`RustAnalyzerNoOutput` -- typically a
+   ``cargo metadata`` error on a workspace with private deps or an
+   unusual target triple). Silence code ``unreported``: not a crash and
+   not a missing dependency (see :class:`ScipAttempt`).
+4. The SCIP bytes decode fails
+   (:class:`google.protobuf.message.DecodeError`) -- defensive; the
    only known way to trip this is a truncated file from a killed
-   ``rust-analyzer`` process, so treat it identically to failure
-   mode 2.
+   ``rust-analyzer`` process. Silence code ``pass_crashed``, the same
+   as state 2.
 
-Returning ``None`` is the contract — the caller (the analyzer-registry
-wrapper in ``analyzer.py``, which is shipped and passes a real ``log``) is
-responsible for the actual fall-through to ``rust.py``. Keeping the
-decision point narrow lets the fall-through logic stay testable without
-mounting a real analyzer registry. Any other :class:`RustAnalyzerError`
-falls to the base handler and degrades with its own message rather than
-escaping.
+Any other :class:`RustAnalyzerError` falls to the base handler, degrades
+with its own message rather than escaping, and also gets
+``pass_crashed`` (:func:`_silence_code_for`). An EMPTY but decodable
+index is a success, not a failure.
 
-Beyond the ``None``/``(symbols, edges)`` contract this module owns the
+The caller (the analyzer-registry wrapper in ``analyzer.py``, which is
+shipped and passes a real ``log``) branches on ``result.failed`` and is
+responsible for the actual fall-through to ``rust.py``, reporting the
+failure as a skip carrying ``result.detail``. Keeping the decision point
+narrow lets the fall-through logic stay testable without mounting a real
+analyzer registry.
+
+Beyond the :class:`ScipAttempt` contract this module owns the
 degrade DIAGNOSTICS (WI-todon), whose whole purpose is that a silent
 fall-through is indistinguishable from a backend that simply did nothing.
 It logs once per ``(exception type, workspace)`` so a repeated failure in
@@ -244,13 +254,15 @@ def try_analyze_with_rust_analyzer(
     log: Optional[Callable[[str], None]] = None,
     run_id: str = "",
 ) -> ScipAttempt:
-    """Run rust-analyzer + SCIP translate on *workspace*, or ``None``.
+    """Run rust-analyzer + SCIP translate on *workspace* as a :class:`ScipAttempt`.
 
-    The return type is intentionally ``None | (symbols, edges)`` rather
-    than raising — the caller wants the decision "was this a real
-    result, or should I fall through?" packaged as a single expression.
-    Every failure mode WI-nohah lists maps to ``None``; only a
-    successful invoke+translate produces a non-None return.
+    The return type is intentionally a :class:`ScipAttempt` rather than
+    raising -- the caller wants the decision "was this a real result, or
+    should I fall through?" packaged as a single value it branches on
+    via ``.failed``. Every failure state (see the module docstring) maps
+    to ``ScipAttempt.failure(silence_code, detail)``; only a successful
+    invoke+translate produces ``ScipAttempt.success(symbols, edges)``,
+    including when the decoded index is empty (WI-luvud).
 
     ``source_reader`` is forwarded to :func:`translate_scip_to_hg` for
     the rust.py stable-id parity pass.

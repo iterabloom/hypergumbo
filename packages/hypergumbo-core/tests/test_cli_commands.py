@@ -1143,6 +1143,14 @@ def test_cmd_slice_with_limits_hit(tmp_path: Path, capsys) -> None:
 
     out, _ = capsys.readouterr()
     assert "limits hit: hop_limit" in out
+    # WI-mibuj: the magnitude is printed with the flag -- b was not expanded,
+    # so c and the b->c edge are missing from the slice.
+    assert (
+        "hop_limit (cap 1): 1 node(s), 1 edge(s), 1 file(s) omitted at the "
+        "frontier; 1 node(s) not expanded" in out
+    )
+    written = json.loads((tmp_path / "slice.json").read_text())
+    assert written["feature"]["limits_detail"]["hop_limit"]["nodes_omitted"] == 1
 
 
 def test_edge_from_dict_defaults(tmp_path: Path) -> None:

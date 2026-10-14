@@ -1,0 +1,29 @@
+- op: create  # 6dd0
+  at: '2026-10-02T01:46:09Z'  # 6dd0
+  by: agent  # 6dd0
+  actor: jgstern_agent  # 6dd0
+  clock: 1  # 6dd0
+  nonce: 6dd0  # 6dd0
+  data:  # 6dd0
+    kind: work_item  # 6dd0
+    title: "dockerfile: ENV A=1 / ENV A=2 emits two env_var Symbols (stable_id None) -- decide the per-variable model WI-nasil chose for bash export, noting ENV is stage-scoped"  # 6dd0
+    status: todo_hard  # 6dd0
+    priority: 3  # 6dd0
+    parent:  # 6dd0
+    tags:  # 6dd0
+    - dockerfile  # 6dd0
+    - analysis_quality  # 6dd0
+    - stable_id  # 6dd0
+    isbefore: []  # 6dd0
+    duplicate_of: []  # 6dd0
+    not_duplicate_of: []  # 6dd0
+    pr_ref:  # 6dd0
+    description: "FOUND 2026-10-01 by the WI-nasil family sweep (LIVE rule 3). Observed on dev c05393f974 with hypergumbo survey on a scratch fixture; not corpus-measured.\n\nWHAT. WI-nasil decided that a bash export Symbol is ONE Symbol per exported variable per file (branch jgstern-agent/fix/nasil). The nearest sibling construct -- a Dockerfile ENV declaration, the other environment-variable declaration an analyzer models -- still emits one env_var Symbol per STATEMENT:\n\n  FROM alpine\n  ENV A=1      -> dockerfile:Dockerfile:2-2:A:env_var   stable_id None\n  ENV A=2      -> dockerfile:Dockerfile:3-3:A:env_var   stable_id None\n\nTwo observations, separable:\n1. MODEL. Same question WI-nasil answered for bash: is a re-declared ENV one variable or two? Dockerfile differs in one respect that may justify a different answer: an ENV is scoped to its build STAGE (a later FROM starts a new stage), so the per-variable identity would be (path, stage, name), not (path, name). Not decided here.\n2. IDENTITY. env_var Symbols carry stable_id None: env_var is not in analyze/base.py _KIND_STABLE_ID_FACTORIES and dockerfile.py sets none. Absent, not empty (LIVE landmine) -- whether that is by design is NOT checked.\n\nFor reference the other per-name precedents: make.py emits one variable Symbol per Makefile variable (first definition); py.py emitted one module-level variable for X = 1 / X = 2 in the same fixture. bash alias and function redefinitions stay one per definition (each is a distinct definition with its own body/value), which is consistent with ADR-0035's occurrence index for conditional redefinition.\n\nNOT CHECKED: ENV's multi-pair form (ENV A=1 B=2) and legacy form (ENV A 1); ARG; docker-compose environment blocks; whether any consumer reads env_var Symbols."  # 6dd0
+    fields: {}  # 6dd0
+- op: discuss  # c157
+  at: '2026-10-02T01:46:26Z'  # c157
+  by: agent  # c157
+  actor: jgstern_agent  # c157
+  clock: 2  # c157
+  nonce: c157  # c157
+  message: "CORRECTION to the description: the py.py precedent was observed on X = 1 at top level and X = 2 inside an if-block, NOT two top-level assignments; whether py.py emits one or two variable Symbols for two TOP-LEVEL assignments of one name was not checked."  # c157

@@ -11,20 +11,30 @@ Every file has both a Tier and a Role:
 - Tier answers "where from?" (first-party, internal dep, external dep, derived)
 - Role answers "what for?" (analyzable, config, documentation, data)
 
-These dimensions compose for analysis decisions:
-- LOC counting: Tiers 1-2, CODE roles (analyzable + config + documentation)
-- Symbol extraction: Tiers 1-2, ANALYZABLE role only
-- Additional Files: Tiers 1-2, CONFIG + DOCUMENTATION roles
+ADR-0004 designs these dimensions to compose for analysis decisions (LOC
+counting over CODE roles, symbol extraction over ANALYZABLE, Additional Files
+over CONFIG + DOCUMENTATION). Only the Additional-Files filter is wired as
+designed (is_additional_file_candidate / additional_file_candidates). Profile
+LOC counting covers every LANGUAGES extension, DATA JSON included. Each
+analyzer's own file discovery decides symbol extraction, not the role, and
+CONFIG languages such as ini have analyzers. is_code, CODE_ROLES and
+is_analyzable have no caller outside this module.
 
 Why This Design
 ---------------
-The previous scattered constants (LANGUAGE_EXTENSIONS, SOURCE_EXTENSIONS,
-CONFIG_FILES_BY_LANG, ADDITIONAL_FILES_EXCLUDES) are unified here into a
-single source of truth. This eliminates duplication and makes the taxonomy
-explicit.
+LANGUAGES is the single source of truth for which extensions belong to
+which language and role: LANGUAGE_EXTENSIONS and SOURCE_EXTENSIONS are derived
+from it here. CONFIG_FILES_BY_LANG and ADDITIONAL_FILES_EXCLUDES still live in
+sketch.py.
 
 Key insight: JSON files are ambiguous by extension alone. We need filename-level
 disambiguation to tell config (package.json) from data (prices_data.json).
+
+LANGUAGES is also the single extension source for DDG specs and
+content-scanning linkers (extension_globs / extension_suffixes /
+grammar_for_path / js_ts_language_for_path), and additional_file_candidates is
+the shared CONFIG/DOC candidate list behind both the file-anchor synthesis and
+the Additional-Files centrality scores.
 
 See docs/adr/0004-file-taxonomy.md for the full design rationale.
 """
@@ -892,3 +902,93 @@ def get_analyzable_extensions() -> dict[str, list[str]]:
 # Pre-computed for efficiency (module-level singletons)
 LANGUAGE_EXTENSIONS = get_language_extensions()
 SOURCE_EXTENSIONS = get_analyzable_extensions()
+
+
+# =============================================================================
+# Extension consumers: one list per language, read from LANGUAGES
+# =============================================================================
+#
+# WI-fovus / WI-hizon / WI-pokij. Every consumer that has to answer "which files
+# are language X" or "what language is this file" -- a DDG spec choosing what
+# to walk, a content-scanning linker choosing what to read, a linker labelling
+# the node it mints -- reads LANGUAGES through these helpers instead of
+# carrying its own literal. The literals drifted: the JS/TS DDG specs walked
+# ``*.js`` / ``*.ts`` only, three linkers missed ``.mjs`` / ``.cjs`` / ``.mts``
+# / ``.cts`` (one missed ``.jsx`` / ``.tsx`` too), and the annotation linker
+# labelled a ``.tsx`` file with the GRAMMAR name ``tsx``, a language no analyzer
+# emits. LANGUAGES is the list the discovery layer classifies files by, so a
+# consumer of these helpers cannot disagree with discovery.
+#
+# Two gates hold it. ``hypergumbo-core``'s
+# ``tests/test_js_ts_extension_single_source.py`` fails when a linker or
+# ``ddg_build`` re-grows a private JS/TS extension literal; ``hypergumbo-lang-
+# mainstream``'s ``tests/test_js_ts_ddg_extension_reach.py`` fails when a DDG
+# spec narrows its language without a declared reason, or when the JS/TS
+# analyzer's own extension list or language tag (``js_ts.find_js_ts_files``,
+# ``_get_language_for_file``) stops agreeing with these helpers. The analyzer
+# keeps its literal deliberately: its file ORDER feeds name resolution, and
+# reordering it is a behaviour change no extension fix should smuggle in.
+
+#: The languages the one JS/TS analyzer (``hypergumbo_lang_mainstream.js_ts``)
+#: tags its symbols with.
+JS_TS_LANGUAGES: tuple[str, ...] = ("javascript", "typescript")
+
+#: Suffixes whose tree-sitter grammar is not named after their language. The
+#: ``typescript`` grammar does not parse JSX; ``.tsx`` needs the ``tsx`` one,
+#: exactly as the JS/TS analyzer's ``_get_parser_for_file`` chooses it. A
+#: grammar name is a PARSER choice, never a language label.
+_GRAMMAR_BY_SUFFIX: dict[str, str] = {".tsx": "tsx"}
+
+
+def extension_globs(*languages: str) -> list[str]:
+    """The ``*.<ext>`` globs LANGUAGES declares for ``languages``, in order.
+
+    Exact-filename entries (``Dockerfile``) are not extension globs and are
+    left out. A compound glob another one already covers is dropped:
+    ``*.d.ts`` matches nothing ``*.ts`` does not, and the rglob fallback in
+    ``discovery.find_files`` does not de-duplicate, so keeping both would yield
+    every declaration file twice.
+
+    Raises:
+        KeyError: a language LANGUAGES does not declare. Returning an empty
+            list instead would make a misspelt language scan nothing, silently.
+    """
+    globs: list[str] = []
+    for language in languages:
+        for pattern in LANGUAGES[language].extensions:
+            if pattern.startswith("*.") and pattern not in globs:
+                globs.append(pattern)
+    return [
+        g for g in globs
+        if g.count(".") == 1 or f"*.{g.rsplit('.', 1)[1]}" not in globs
+    ]
+
+
+def extension_suffixes(*languages: str) -> frozenset[str]:
+    """The lower-case ``Path.suffix`` values of :func:`extension_globs`.
+
+    For an ``ext in (...)`` dispatch on ``file_path.suffix.lower()``.
+    """
+    return frozenset(g[1:].lower() for g in extension_globs(*languages))
+
+
+def js_ts_language_for_path(path: Path) -> str:
+    """The JS/TS analyzer's language tag for ``path``.
+
+    ``typescript`` for a suffix LANGUAGES files under typescript (``.ts``,
+    ``.tsx``, ``.mts``, ``.cts``); ``javascript`` for everything else, which is
+    the analyzer's own else-branch (it reads ``.svelte`` / ``.vue`` script
+    blocks as ``javascript`` too). Only for a file a JS/TS consumer has already
+    chosen to read: it is not a general classifier.
+    """
+    return "typescript" if get_language(path) == "typescript" else "javascript"
+
+
+def grammar_for_path(path: Path, language: str) -> str:
+    """The tree-sitter grammar that parses ``path`` as ``language``.
+
+    ``language`` itself, unless the suffix names a dialect grammar
+    (:data:`_GRAMMAR_BY_SUFFIX`). Use the result to build a parser, never as a
+    language label.
+    """
+    return _GRAMMAR_BY_SUFFIX.get(path.suffix.lower(), language)

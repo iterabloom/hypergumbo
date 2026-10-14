@@ -12,6 +12,7 @@
 # detection matches. The deduplication in entrypoints.py ensures
 # symbols with explicit annotations won't get duplicate entrypoints.
 
+provenance: builtin
 id: naming-conventions
 language: multi
 

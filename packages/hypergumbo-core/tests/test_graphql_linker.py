@@ -491,3 +491,30 @@ class TestDeclarationNamesItsDestinationProducers:
         by_id = {p.id: p for p in get_default_catalog().passes}
         literals = {lit for clause in by_id["graphql-linker"].depends_on for lit in clause}
         assert not literals & {"javascript", "python", "java", "ruby", "go"}
+
+
+class TestJsTsClientLanguageFollowsFileSuffix:
+    """WI-komum: ``_scan_javascript_graphql`` labels a ``.ts``/``.tsx`` client
+    ``typescript`` (it hardcoded ``javascript``), via ``js_ts_language_from_path``."""
+
+    def test_language_by_suffix(self) -> None:
+        code = "const Q = gql`\n  query GetItems { items { id } }\n`;\n"
+        for filename, expected in [
+            ("q.ts", "typescript"),
+            ("q.tsx", "typescript"),
+            ("q.js", "javascript"),
+            ("q.jsx", "javascript"),
+        ]:
+            calls = _scan_javascript_graphql(Path(filename), code)
+            assert [c.operation_name for c in calls] == ["GetItems"]  # reach
+            assert calls[0].language == expected, filename
+
+    def test_ts_client_symbol_end_to_end(self, tmp_path: Path) -> None:
+        (tmp_path / "q.ts").write_text(
+            "const Q = gql`\n  query GetItems { items { id } }\n`;\n"
+        )
+        result = link_graphql(tmp_path, [])
+        clients = [s for s in result.symbols if Path(s.path).name == "q.ts"]
+        assert len(clients) == 1
+        assert clients[0].discovery_language == "typescript"
+        assert clients[0].id.startswith("typescript:q.ts:")

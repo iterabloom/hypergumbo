@@ -26,6 +26,16 @@ Edges Extracted
   (ADR-0023 §6 folded the former `imports_component` type into
   canonical `imports`)
 
+Identity
+--------
+Every symbol mints ``make_doc_symbol_ids`` with the chain of elements and
+control-flow blocks around it (``div/if:x``; the element by its tag name, the
+block by the name its own symbol hashes), so ``{#if x}`` in a ``<div>`` and
+the same block in a ``<section>`` are two identities and deleting the first
+moves nothing (they tied, and the per-file split pass numbered them, before
+INV-punig; ADR-0035 §1, scheme v9). Two identical blocks in one chain are a
+same-scope tie.
+
 Why This Design
 ---------------
 - Svelte uses single-file components with three sections
@@ -45,6 +55,8 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    ancestor_labels,
+    html_element_tag,
     make_doc_symbol_ids,
     make_file_id,
     populate_docstrings_from_tree,
@@ -134,6 +146,37 @@ def _parse_imports(script: str, current_imports: dict[str, str]) -> None:
                             current_imports[name] = import_path
 
 
+#: Control-flow block node types and the name each block takes.
+_BLOCK_TYPES = {"if_statement": "if", "each_statement": "each", "await_statement": "await"}
+
+
+def _block_expression(node: "tree_sitter.Node") -> str:
+    """The expression a control-flow block opens with (``x`` in ``{#if x}``)."""
+    expression = ""
+    for child in node.children:
+        if child.type in ("if_start_expr", "each_start_expr", "await_start_expr"):
+            for expr_child in child.children:
+                if expr_child.type in ("raw_text_expr", "raw_text_each"):
+                    expression = _get_node_text(expr_child).strip()
+                    break
+            break
+    return expression
+
+
+def _scope_label(node: "tree_sitter.Node") -> Optional[str]:
+    """The scope an ancestor opens (see the module docstring): an element its
+    tag name, a control-flow block the name its own symbol hashes."""
+    block_type = _BLOCK_TYPES.get(node.type)
+    if block_type is not None:
+        return f"{block_type}:{_block_expression(node)[:20]}"
+    return html_element_tag(node)
+
+
+def _enclosing_scopes(node: Optional["tree_sitter.Node"]) -> list[str]:
+    """The elements and blocks around ``node``, outermost first."""
+    return ancestor_labels(node, _scope_label) if node is not None else []
+
+
 def _extract_svelte_symbols(
     node: "tree_sitter.Node",
     path: Path,
@@ -154,12 +197,8 @@ def _extract_svelte_symbols(
             if child.type not in ("start_tag", "self_closing_tag"):
                 _extract_svelte_symbols(child, path, repo_root, content, symbols, edges, execution_id, current_imports)
         return  # Already handled children above
-    elif node.type == "if_statement":
-        _extract_control_block(node, path, repo_root, symbols, "if")
-    elif node.type == "each_statement":
-        _extract_control_block(node, path, repo_root, symbols, "each")
-    elif node.type == "await_statement":
-        _extract_control_block(node, path, repo_root, symbols, "await")
+    elif node.type in _BLOCK_TYPES:
+        _extract_control_block(node, path, repo_root, symbols, _BLOCK_TYPES[node.type])
 
     for child in node.children:
         _extract_svelte_symbols(child, path, repo_root, content, symbols, edges, execution_id, current_imports)
@@ -286,7 +325,7 @@ def _process_tag(
         # byte-identical to the old composite (zero-change migration).
         symbol_id, stable_id = make_doc_symbol_ids(
             "svelte", str(rel_path), "slot", slot_name,
-            span.start_line, span.end_line,
+            span.start_line, span.end_line, scope=_enclosing_scopes(node.parent),
         )
 
         symbol = Symbol(
@@ -317,7 +356,7 @@ def _process_tag(
             # byte-identical to the old composite (zero-change migration).
             symbol_id, stable_id = make_doc_symbol_ids(
                 "svelte", str(rel_path), "event", f"{tag_name}:{event}",
-                span.start_line, span.end_line,
+                span.start_line, span.end_line, scope=_enclosing_scopes(node.parent),
             )
 
             symbol = Symbol(
@@ -346,15 +385,7 @@ def _extract_control_block(
     rel_path = path.relative_to(repo_root)
     line = node.start_point[0] + 1
 
-    # Get the expression from the start block
-    expression = ""
-    for child in node.children:
-        if child.type in ("if_start_expr", "each_start_expr", "await_start_expr"):
-            for expr_child in child.children:
-                if expr_child.type in ("raw_text_expr", "raw_text_each"):
-                    expression = _get_node_text(expr_child).strip()
-                    break
-            break
+    expression = _block_expression(node)
 
     span = Span(
         start_line=line,
@@ -367,7 +398,7 @@ def _extract_control_block(
     # byte-identical to the old composite (zero-change migration).
     symbol_id, stable_id = make_doc_symbol_ids(
         "svelte", str(rel_path), "block", f"{block_type}:{expression[:20]}",
-        span.start_line, span.end_line,
+        span.start_line, span.end_line, scope=_enclosing_scopes(node),
     )
 
     # Count nested elements

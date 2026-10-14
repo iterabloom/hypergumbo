@@ -101,7 +101,9 @@ class TestTheDisclosureReachesBothSurfaces:
     def test_the_json_envelope_carries_the_run_derived_key(self) -> None:
         coverage = _coverage(_calls(("struct", "pack")))
         prov = catalog_provenance({}, (), load_bearing=coverage.load_bearing_grants)
-        assert prov["load_bearing_grants"] == [{"language": "python", "modules": ["struct"]}]
+        assert prov["load_bearing_grants"] == [
+            {"language": "python", "modules": ["struct"], "untraced_vouched": []},
+        ]
 
     def test_the_text_disclosure_names_the_modules(self) -> None:
         coverage = _coverage(_calls(("struct", "pack"), ("errno", "errorcode")))

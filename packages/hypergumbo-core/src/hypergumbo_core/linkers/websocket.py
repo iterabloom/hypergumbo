@@ -94,8 +94,9 @@ from typing import Iterator
 from ..analyze.base import make_file_id, make_file_stable_id, make_symbol_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..taxonomy import JS_TS_LANGUAGES, extension_globs
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
-from ._text_filters import language_from_path, read_masked_source
+from ._text_filters import js_ts_language_from_path, language_from_path, read_masked_source
 
 PASS_ID = make_pass_id("websocket-linker")
 
@@ -134,7 +135,7 @@ _IDENTIFIER = r"[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*"
 _EVENT_ARG = rf"(?:['\"]([^'\"]+)['\"]|({_IDENTIFIER}))"
 
 
-def _extract_event_from_match(match: re.Match, literal_group: int, var_group: int) -> tuple[str, str]:
+def _extract_event_from_match(match: re.Match[str], literal_group: int, var_group: int) -> tuple[str, str]:
     """Extract event and event_type from a regex match.
 
     Args:
@@ -293,7 +294,9 @@ DJANGO_CHANNELS_ROUTE = re.compile(
 
 def find_js_ts_files(repo_root: Path) -> Iterator[Path]:
     """Yield all JS/TS files in the repository."""
-    yield from find_non_test_files(repo_root, ["*.js", "*.jsx", "*.ts", "*.tsx", "*.vue", "*.svelte"])
+    yield from find_non_test_files(  # JS/TS from the shared list (WI-hizon)
+        repo_root, [*extension_globs(*JS_TS_LANGUAGES), "*.vue", "*.svelte"],
+    )
 
 
 def find_python_files(repo_root: Path) -> Iterator[Path]:
@@ -366,9 +369,13 @@ def _language_for_file(file_path: str, pattern_type: str) -> str:
     recorded as ``typescript``, not ``javascript``. Falls back to the
     pattern_type-derived language only when the extension is unknown
     (e.g., Django Channels handler in a path without a recognised
-    extension, or a synthetic test path).
+    extension, or a synthetic test path). A JS/TS extension takes the JS/TS
+    analyzer's tag (WI-komum): ``language_from_path`` names the tree-sitter
+    GRAMMAR, ``tsx`` for ``.tsx``, a language no analyzer emits.
     """
     by_ext = language_from_path(Path(file_path))
+    if by_ext in ("javascript", "typescript", "tsx"):
+        return js_ts_language_from_path(Path(file_path))
     if by_ext is not None:
         return by_ext
     if pattern_type in ("fastapi", "django_channels", "starlette"):
@@ -810,22 +817,22 @@ def link_websocket(
     # Synthesized Symbols use the canonical ``make_file_id`` shape, derive
     # ``language`` from the file extension, and stamp ``stable_id`` via
     # ``make_file_stable_id`` to satisfy the INV-piroh schema gate.
-    for file_path, pattern_type in files_with_patterns.items():
-        language = _language_for_file(file_path, pattern_type)
-        file_id = _make_file_id(language, file_path)
+    for ep_path, pattern_type in files_with_patterns.items():
+        language = _language_for_file(ep_path, pattern_type)
+        file_id = _make_file_id(language, ep_path)
         if file_id in existing_ids:
             continue
-        file_name = Path(file_path).name
+        file_name = Path(ep_path).name
         symbols.append(Symbol(
             id=file_id,
             name=file_name,
             kind="file",
             language=language,
-            path=file_path,
+            path=ep_path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            stable_id=make_file_stable_id(language, file_path),
+            stable_id=make_file_stable_id(language, ep_path),
         ))
 
     # Pattern types that use "message" as a synthetic placeholder for

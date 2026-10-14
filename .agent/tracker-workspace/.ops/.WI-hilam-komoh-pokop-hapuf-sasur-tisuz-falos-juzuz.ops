@@ -1,0 +1,23 @@
+- op: create  # 992b
+  at: '2026-10-01T10:41:06Z'  # 992b
+  by: agent  # 992b
+  actor: jgstern_agent  # 992b
+  clock: 1  # 992b
+  nonce: 992b  # 992b
+  data:  # 992b
+    kind: work_item  # 992b
+    title: "csharp + ruby: a static call on a PROJECT class puts the first-party class in the module slot (WI-dason's sibling, unmeasured)"  # 992b
+    status: todo_hard  # 992b
+    priority: 3  # 992b
+    parent:  # 992b
+    tags:  # 992b
+    - csharp  # 992b
+    - ruby  # 992b
+    - analysis_quality  # 992b
+    - io_boundary  # 992b
+    isbefore: []  # 992b
+    duplicate_of: []  # 992b
+    not_duplicate_of: []  # 992b
+    pr_ref:  # 992b
+    description: "FILED 2026-10-01 from WI-dason's sibling sweep (LIVE rule 3). WI-dason put ONE project_classes guard on BOTH of objc's module-slot arms: a class message to a class the repo declares ([Svc alloc]) now carries the class in receiver_type_hint only, never in the module slot (ADR-0051: the slot names an EXTERNAL owner). Swift already behaves this way (INV-kotob).\n\nPROBED, worktree ~/hg_wt/dason, one fixture per language: project class `Svc` deriving from an external base, and a static/class call `Svc.frob()` (`Svc::frob()` in php) from another project class, frob defined nowhere in the repo.\n\n  csharp   csharp:Svc:0-0:Frob:unresolved   receiver_type_hint=None   <- SAME SHAPE\n  ruby     ruby:Svc:0-0:frob:unresolved     receiver_type_hint=Svc    <- SAME SHAPE\n  kotlin   kotlin:external:0-0:frob:unresolved                         clean\n  scala    scala:external:0-0:frob:unresolved                          clean\n  java     java:external:0-0:frob:unresolved                           clean (java.py ~3241 records why no guard is needed)\n  groovy   groovy:external:0-0:frob:unresolved                         clean\n  swift    swift:external:0-0:frob:unresolved   hint=Svc               clean\n  php, dart: the fixture produced NO calls edge at all -- NOT CHECKED, the probe could not reach the site.\n\ncsharp: _csharp_module_slot (csharp.py ~1215) returns a capitalised receiver unless it is a tracked local or a member of the enclosing class; it has no project-type check. ruby: a capitalised constant receiver reaches the slot.\n\nRUBY CAVEAT, the objc category analogue: a REOPENED core class (`class String ... end`) mints a project class symbol named String. A ruby guard must distinguish declared-here from reopened-here, or it strips String/File/Hash from the slot and makes catalogued rows unreachable -- the exact failure objc's category exclusion exists to prevent.\n\nNOT MEASURED on any corpus repository: the counts. Size before fixing. The cost is the same as WI-dason's: a disclosure error in every typed-slot share for these languages, not a false catalogue match."  # 992b
+    fields: {}  # 992b

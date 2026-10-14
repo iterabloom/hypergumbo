@@ -5,6 +5,10 @@
 # Uses signals/slots for event handling, QObject for object model.
 # Widely used in desktop apps (KDE), automotive, embedded systems.
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-06-18
 id: qt
 language: cpp
 

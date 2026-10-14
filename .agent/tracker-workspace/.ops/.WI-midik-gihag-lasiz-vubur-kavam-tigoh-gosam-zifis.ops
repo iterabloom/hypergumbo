@@ -1,0 +1,23 @@
+- op: create  # bfa5
+  at: '2026-10-03T20:17:11Z'  # bfa5
+  by: agent  # bfa5
+  actor: jgstern_agent  # bfa5
+  clock: 1  # bfa5
+  nonce: bfa5  # bfa5
+  data:  # bfa5
+    kind: work_item  # bfa5
+    title: "Non-JS/TS private extension lists in linkers and DDG specs narrower than taxonomy.LANGUAGES (.pyi, .h, .rake, .kts, .sc, .hrl, .hxx, .htm) -- residual of the WI-fovus/WI-hizon sweep, each member unverified"  # bfa5
+    status: todo_hard  # bfa5
+    priority: 3  # bfa5
+    parent:  # bfa5
+    tags:  # bfa5
+    - linker  # bfa5
+    - taxonomy  # bfa5
+    - ddg  # bfa5
+    - structural  # bfa5
+    isbefore: []  # bfa5
+    duplicate_of: []  # bfa5
+    not_duplicate_of: []  # bfa5
+    pr_ref:  # bfa5
+    description: "**Residual of WI-fovus / WI-hizon (branch jgstern-agent/fix/fovus).** That branch moved every JS/TS extension consumer in the linkers and DDG specs onto `taxonomy.extension_globs` / `extension_suffixes` and gated JS/TS. The same private-list mechanism exists for OTHER languages; each list below is narrower than `taxonomy.LANGUAGES` for its language. Enumerated by an AST sweep of `hypergumbo_core/linkers/*.py`, `ddg_build.py` and `hypergumbo_lang_mainstream/*_def_use.py` at the branch head. NOT verified per member: each is a separate question whether the missing extension can carry the pattern the consumer scans for (LIVE rule 3) -- e.g. a `.pyi` stub has no call bodies, so omitting it may be correct.\n\n| missing vs LANGUAGES | consumers |\n|---|---|\n| python `*.pyi` | DDG python spec (declared narrowing, `file_globs=(\"*.py\",)`); linkers argparse_dispatch, database_query, di_resolution, event_sourcing, graphql, graphql_resolver, graphql_sdl, grpc, http, message_queue, orm, subprocess_cli, websocket |\n| c `*.h` | DDG c spec (declared narrowing, `file_globs=(\"*.c\",)`): inline functions in headers are never walked |\n| ruby `*.rake` | http linker; `_text_filters._EXTENSION_TO_LANGUAGE` (masking) |\n| kotlin `*.kts` | di_resolution `_PATTERNS_BY_EXT` |\n| scala `*.sc` | di_resolution; masking map |\n| erlang `*.hrl` | otp linker |\n| cpp `*.hxx` | masking map |\n| html `*.htm` | view_template_django, view_template_spring |\n\nThe two DDG narrowings are pinned by `_DECLARED_NARROWINGS` in `hypergumbo-lang-mainstream/tests/test_js_ts_ddg_extension_reach.py` (shrink-only). The linker lists for these languages are NOT gated; the JS/TS gate in `hypergumbo-core/tests/test_js_ts_extension_single_source.py` is the template to extend.\n\nWhat to do: per row, decide (with a fixture through the consumer) whether the extension belongs; route the consumer through `extension_globs(<language>)` where it does, or record the narrowing with its reason where it does not; then widen the gate to every language."  # bfa5
+    fields: {}  # bfa5

@@ -483,3 +483,247 @@ class TestExtensionlessScripts:
         }
         text = mtp.render_packet(flow, tmp_path)
         assert "none found" in text
+
+
+class TestOverlappingPathSpans:
+    """WI-binod defect 1: a whole-file pseudo-symbol double-attributed sites.
+
+    Measurement 0012's ArkLib :3 and :5 packets listed the same ``open()``
+    sites twice: once under ``revert_nav`` (5-84), where they are, and once
+    under the module-level symbol printed as ``in file (scripts/revert_nav.py
+    1-93)``. Module-level execution never reaches those calls; the widened
+    whole-file span contains them TEXTUALLY, not as a body. In :3 the
+    pseudo-symbol's name ``file`` also collided with a loop variable called
+    ``file`` on line 26, so the header read like a claim about that variable.
+
+    The mechanism is general -- any two path symbols whose spans NEST (a
+    closure and its enclosing function both on the path) -- and the file
+    symbol is its widest instance. Each site is therefore listed ONCE, under
+    the narrowest path symbol whose span contains it.
+    """
+
+    @pytest.fixture()
+    def repo(self, tmp_path: Path) -> Path:
+        (tmp_path / "s").mkdir()
+        (tmp_path / "s/nav.py").write_text(
+            "\n".join([
+                "import sys",                         # 1
+                "",                                   # 2
+                "def revert_nav(d):",                 # 3
+                "    with open(d, 'w') as f:",        # 4
+                "        f.write('x')",               # 5
+                "",                                   # 6
+                "def helper(p):",                     # 7
+                "    with open(p, 'w') as g:",        # 8
+                "        g.write('y')",               # 9
+                "",                                   # 10
+                "LOG = open('log.txt', 'a')",         # 11
+                "revert_nav(sys.argv[1])",            # 12
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _flow(self, path: list[str]) -> dict:
+        return {
+            "flow_id": "A#5", "repo": "R", "claim_id": "c",
+            "analysis_method": "structural", "collapsed_flow_count": 2,
+            "hops": 1,
+            "path": path,
+            "source_symbol": path[0],
+            "source_file": "s/nav.py", "source_lines": [1, 1],
+            "source_primitive": "argv", "source_boundary": "env_read",
+            "sink_symbol": "python:builtins:0-0:open:external_symbol",
+            "sink_name": "open", "sink_module": "builtins",
+            "sink_primitives": ["builtins.open", "file.write"],
+        }
+
+    def _sink_block(self, repo: Path, path: list[str]) -> str:
+        return mtp.render_packet(self._flow(path), repo).split("-- SINK")[1]
+
+    _ARKLIB5 = (
+        "python:s/nav.py:1-1:file:file",
+        "python:s/nav.py:3-5:revert_nav:function",
+    )
+
+    def test_a_site_inside_a_path_function_is_listed_once(self, repo: Path) -> None:
+        """THE REGRESSION, in the ArkLib :5 shape."""
+        block = self._sink_block(repo, list(self._ARKLIB5))
+        assert block.count("with open(d, 'w') as f:") == 1
+        assert block.count("f.write('x')") == 1
+
+    def test_the_site_is_listed_under_the_function_not_the_file(
+        self, repo: Path,
+    ) -> None:
+        block = self._sink_block(repo, list(self._ARKLIB5))
+        under_function = block.split("in revert_nav")[1]
+        assert "with open(d, 'w') as f:" in under_function
+
+    def test_a_module_level_site_is_still_listed(self, repo: Path) -> None:
+        """Non-vacuity floor: de-duplication must not drop the module-level
+        listing itself -- a module-level call is exactly what it is for."""
+        block = self._sink_block(repo, list(self._ARKLIB5))
+        assert "LOG = open('log.txt', 'a')" in block
+
+    def test_a_site_in_a_function_off_the_path_stays_listed(
+        self, repo: Path,
+    ) -> None:
+        """Stated limit, pinned so a change to it is a decision: the builder
+        knows only the PATH's spans, not the file's symbol table, so a site in
+        a function the path does not name stays under the module-level entry.
+        That errs toward showing the adjudicator too much, the direction this
+        builder takes throughout."""
+        block = self._sink_block(repo, list(self._ARKLIB5))
+        assert block.count("with open(p, 'w') as g:") == 1
+
+    def test_the_file_symbol_is_labelled_module_level_not_by_its_name(
+        self, repo: Path,
+    ) -> None:
+        """``in file (...)`` read as a claim about a variable named ``file``."""
+        block = self._sink_block(repo, list(self._ARKLIB5))
+        assert "in file (" not in block
+        assert "at module level (s/nav.py 1-12)" in block
+
+    def test_nested_path_symbols_attribute_to_the_innermost(
+        self, repo: Path,
+    ) -> None:
+        """The same mechanism without a file symbol: an enclosing function and
+        a narrower one both on the path."""
+        block = self._sink_block(repo, [
+            "python:s/nav.py:3-9:outer:function",
+            "python:s/nav.py:7-9:helper:function",
+        ])
+        assert block.count("with open(p, 'w') as g:") == 1
+        assert "with open(p, 'w') as g:" in block.split("in helper")[1]
+        assert "with open(d, 'w') as f:" in block.split("in helper")[0]
+
+    def test_an_empty_search_names_the_widened_file_span(
+        self, repo: Path,
+    ) -> None:
+        """The empty-result scope used the UNWIDENED sentinel and printed
+        ``file s/nav.py 1--1`` as what was searched."""
+        flow = {**self._flow(list(self._ARKLIB5)), "sink_name": "socket",
+                "sink_primitives": []}
+        text = mtp.render_packet(flow, repo)
+        assert "1--1" not in text
+        assert "module level s/nav.py 1-12" in text
+
+    def test_an_unreadable_file_symbol_names_no_range(
+        self, tmp_path: Path,
+    ) -> None:
+        """A file-anchored symbol whose file cannot be read has no line count
+        to widen to; its scope must not print the ``1--1`` sentinel."""
+        flow = self._flow(["python:gone.py:1-1:file:file"])
+        text = mtp.render_packet(flow, tmp_path)
+        assert "module level (gone.py): (unreadable)" in text
+        assert "searched module level gone.py)" in text
+        assert "1--1" not in text
+
+    def test_innermost_span_prefers_the_narrower(self) -> None:
+        spans = [("a.py", 1, 100, "file"), ("a.py", 10, 20, "f")]
+        assert mtp.innermost_span(15, "a.py", spans) == 1
+        assert mtp.innermost_span(50, "a.py", spans) == 0
+
+    def test_innermost_span_ignores_other_files_and_misses(self) -> None:
+        spans = [("a.py", 1, 100, "file"), ("b.py", 10, 20, "f")]
+        assert mtp.innermost_span(15, "a.py", spans) == 0
+        assert mtp.innermost_span(150, "a.py", spans) is None
+
+    def test_innermost_span_first_wins_a_tie(self) -> None:
+        spans = [("a.py", 10, 20, "f"), ("a.py", 10, 20, "g")]
+        assert mtp.innermost_span(15, "a.py", spans) == 0
+
+
+class TestShellParametersBashAssigns:
+    """WI-binod defect 2: BASH_SOURCE was listed as an environment read.
+
+    cert-manager's checkhash.sh:21 (``SCRIPT_DIR="$( cd "$( dirname
+    "${BASH_SOURCE[0]}" )" ...)"``) was listed among the SOURCE sites of an
+    ``environ`` source. bash sets BASH_SOURCE itself; nothing inherits it.
+    hypergumbo stopped emitting it as an env read (INV-nular, PR #541), but the
+    builder kept its own list of non-environment names, so the instrument
+    asserted something the tool under measurement no longer does.
+
+    The cure is ONE home for the fact: the builder reads bash.py's own sets,
+    and these tests enumerate them rather than sample them.
+    """
+
+    _CHECKHASH = (
+        'SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null '
+        '2>&1 && pwd )"'
+    )
+
+    def test_bash_source_is_not_an_environment_read(self) -> None:
+        """THE REGRESSION, on cert-manager's line."""
+        assert mtp.shell_env_sites([self._CHECKHASH]) == []
+
+    def test_a_real_read_on_the_same_line_is_still_a_site(self) -> None:
+        """Non-vacuity floor: the exclusion is per NAME, not per line."""
+        line = 'cp "${BASH_SOURCE[0]}" "$HOME/x"'
+        assert [n for n, _ in mtp.shell_env_sites([line])] == [1]
+
+    def test_every_bash_assigned_name_is_excluded(self) -> None:
+        """Enumerated over bash.py's set, so a name added there is covered
+        here with no second edit -- the property a second list lacked."""
+        from hypergumbo_lang_mainstream import bash
+
+        assert "BASH_SOURCE" in bash._SHELL_STATE_NAMES
+        leaked = [
+            name for name in sorted(bash._SHELL_STATE_NAMES)
+            if mtp.shell_env_sites([f'echo "${{{name}}}"'])
+        ]
+        assert leaked == []
+
+    def test_every_host_description_name_is_not_an_environment_read(
+        self,
+    ) -> None:
+        """bash.py routes these to ``shell.hostinfo`` (INV-tutar), not to
+        ``env.environ``, so an ``environ`` listing that showed them would be
+        the BASH_SOURCE defect again for a different set."""
+        from hypergumbo_lang_mainstream import bash
+
+        assert "HOSTNAME" in bash._HOST_DESCRIPTION_NAMES
+        leaked = [
+            name for name in sorted(bash._HOST_DESCRIPTION_NAMES)
+            if mtp.shell_env_sites([f'echo "${name}"'])
+        ]
+        assert leaked == []
+
+    def test_a_hostinfo_source_lists_host_description_expansions(self) -> None:
+        """The other half of the split. A ``hostinfo`` source names no literal
+        token either, so name matching printed "(none found)" for a
+        ``$HOSTNAME`` read sitting in the span."""
+        lines = ['echo "$HOSTNAME" > h', 'echo "$API_KEY" > k',
+                 'echo "${BASH_SOURCE[0]}"']
+        assert mtp.shell_env_sites(lines, "hostinfo") == [
+            (1, 'echo "$HOSTNAME" > h'),
+        ]
+
+    def test_a_locally_assigned_host_name_is_not_a_hostinfo_read(self) -> None:
+        lines = ["HOSTNAME=box", 'echo "$HOSTNAME"']
+        assert mtp.shell_env_sites(lines, "hostinfo") == []
+
+    def test_the_packet_lists_a_hostinfo_source(self, tmp_path: Path) -> None:
+        (tmp_path / "run.sh").write_text(
+            "\n".join([
+                "#!/bin/bash",                       # 1
+                'echo "$HOSTNAME" > host.txt',       # 2
+            ]) + "\n",
+            encoding="utf-8",
+        )
+        flow = {
+            "flow_id": "H#0", "repo": "r", "claim_id": "c",
+            "analysis_method": "structural", "collapsed_flow_count": 1,
+            "hops": 0,
+            "path": ["bash:run.sh:1-1:file:file"],
+            "source_symbol": "bash:run.sh:1-1:file:file",
+            "source_file": "run.sh", "source_lines": [1, 1],
+            "source_primitive": "hostinfo",
+            "source_boundary": "host_info_read",
+            "sink_symbol": "bash:redirect:0-0:>:external_symbol",
+            "sink_name": ">", "sink_module": "redirect",
+            "sink_primitives": ["redirect.>"],
+        }
+        source_block = mtp.render_packet(flow, tmp_path).split("-- SINK")[0]
+        assert 'echo "$HOSTNAME" > host.txt' in source_block
+        assert "none found" not in source_block

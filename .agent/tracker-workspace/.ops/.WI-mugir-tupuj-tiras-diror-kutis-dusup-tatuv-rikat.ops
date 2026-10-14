@@ -1,0 +1,22 @@
+- op: create  # 116a
+  at: '2026-10-04T08:12:35Z'  # 116a
+  by: agent  # 116a
+  actor: jgstern_agent  # 116a
+  clock: 1  # 116a
+  nonce: 116a  # 116a
+  data:  # 116a
+    kind: work_item  # 116a
+    title: "perl: a method call on an EXPRESSION invocant ($obj->m, shift->m, Pkg->new->get) binds a same-named sub in any package by short name, and emits nothing outside a sub"  # 116a
+    status: todo_hard  # 116a
+    priority: 2  # 116a
+    parent:  # 116a
+    tags:  # 116a
+    - perl  # 116a
+    - call_graph  # 116a
+    - analysis_quality  # 116a
+    isbefore: []  # 116a
+    duplicate_of: []  # 116a
+    not_duplicate_of: []  # 116a
+    pr_ref:  # 116a
+    description: "FOUND 2026-10-04 while fixing WI-mahik-hafah-pupil-kumon-nohoz-jofut-girag-fimok (branch jgstern-agent/fix/mahik). Residual that item's fix deliberately did NOT touch.\n\nperl.py's method_call_expression arm, for an invocant that is an EXPRESSION rather than a package name ($obj->m, shift->m, $self->{x}->m, Pkg->new->m), still resolves m by SHORT NAME through resolver.lookup, receiver-blind: it binds any package's sub called m, and emits nothing when no sub of that name exists. The same arm emits nothing at all for such a call outside any sub (no file-level caller fallback; WI-jadaf-sanun-savis-digov-kiliz-mulis-radid-kirom gave that fallback to the function arm only).\n\nCounts by call site, analyze_perl on origin/dev 385ec63be1, perl files only (frozen copies under ~/hypergumbo_lab_notebook/decontend/run_10032026/mahik/frozen/):\n  scalar invocant inside a sub, an edge emitted (receiver-blind): git 467, postgresql 1059, virtualbox 906\n  scalar invocant inside a sub, no edge: git 105, postgresql 32, virtualbox 174\n  scalar invocant at file top level, no edge (no caller): git 51, postgresql 7931, virtualbox 1132\nNOT measured: how many of the receiver-blind edges land on the wrong package (needs the value's type).\n\nExample: HTTP::Tiny->new->get($u). After WI-mahik the inner ->new emits perl:HTTP::Tiny:0-0:new:unresolved; the outer ->get is still receiver-blind, so an HTTP::Tiny `get` row (network I/O) cannot classify it, and a repo sub named get anywhere captures it.\n\nFIX SHAPE (not built): a declared/constructed type for the invocant (my $ua = LWP::UserAgent->new; $ua->get -> LWP::UserAgent::get), else an unresolved edge with call_construct=method and no module slot, instead of a receiver-blind binding (WI-johib's rule). The top-level fallback should come with or after that, not before: giving 7931 postgresql top-level sites the CURRENT receiver-blind lookup would add mostly wrong edges."  # 116a
+    fields: {}  # 116a

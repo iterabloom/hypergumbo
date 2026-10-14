@@ -1,0 +1,44 @@
+- op: create  # 2df1
+  at: '2026-09-26T22:03:04Z'  # 2df1
+  by: agent  # 2df1
+  actor: jgstern_agent  # 2df1
+  clock: 1  # 2df1
+  nonce: 2df1  # 2df1
+  data:  # 2df1
+    kind: work_item  # 2df1
+    title: "ruby: a call on an external constant receiver binds an in-repo method by short name (Rails.root.join -> HealthServer#root, Postal::Config.dns -> DNSResolver#dns)"  # 2df1
+    status: todo_hard  # 2df1
+    priority: 2  # 2df1
+    parent:  # 2df1
+    tags:  # 2df1
+    - ruby  # 2df1
+    - call_graph  # 2df1
+    - analysis_quality  # 2df1
+    isbefore: []  # 2df1
+    duplicate_of: []  # 2df1
+    not_duplicate_of: []  # 2df1
+    pr_ref:  # 2df1
+    description: "FOUND 2026-09-26 during INV-bamij's ruby batch, and reproduced INSIDE a method, so it predates and is independent of that change:\n\n    class HealthServer; def root; 1; end; end\n    class App\n      def boot\n        Rails.root.join(\"lib\")   # -> calls ruby:m.rb:2-4:HealthServer#root:method  (ast_call, receiver=generic)\n      end\n    end\n\nA call on an EXTERNAL constant receiver (`Rails`, `Postal::Config` when the method is not defined on it) binds to any in-repo method of the same short name. On postal (INV-bamij read-back) `Rails.root.join(...)` bound HealthServer#root and `Postal::Config.dns` bound DNSResolver#dns. The receiver named a type the repository does not declare; a short-name match on a DIFFERENT class is the receiver-blind binding INV-maluk / INV-fahub forbid in other analyzers.\n\nFIX SHAPE (not built): when the receiver is a constant that names no repository class/module (or names one that does not declare the method), emit the unresolved edge with the constant as module slot instead of resolving by short name. Frequency NOT measured."  # 2df1
+    fields: {}  # 2df1
+- op: discuss  # 32e1
+  at: '2026-09-28T09:00:18Z'  # 32e1
+  by: agent  # 32e1
+  actor: jgstern_agent  # 32e1
+  clock: 2  # 32e1
+  nonce: '32e1'  # 32e1
+  message: "RE-VERIFIED 2026-09-28 at dev 5f80a79081. PREMISE HOLDS, THE SCOPE IS WIDER, AND THE FREQUENCY IS NOW MEASURED. Record: scratchpad johib/.\n\n1. REPRO, shipped survey, one file (class HealthServer defines root and read; module Postal, class Config defines only self.other):\n     Rails.root.join(\"lib\")   -> HealthServer#root   (undeclared constant, as filed)\n     Postal::Config.root      -> HealthServer#root   (a DECLARED constant that does not define the method: the row's parenthetical, confirmed)\n     File.read(p)             -> HealthServer#read   (a STDLIB I/O call captured by a same-named project method)\n   All carry receiver=generic.\n\n2. CONSEQUENCE FOR THE RUBY OVERLAY (WI-guhuv), measured. Ruby ships 0 catalogue rows, so this bites once a user supplies one. With --io-primitives rowing File.read as fs_read, a must_not_exist fs_read claim:\n     file with only File.read(p)                            VIOLATED (control)\n     same call in a repo that defines some other #read      INCONCLUSIVE ('calls into 1 module(s) ... could not classify (HealthServer)')\n   The finding is lost and the gate blames a project class. Withholding, not a false clean, but a user's own overlay row is defeated by an unrelated method name.\n\n3. FREQUENCY on postal. Instrument: the shipped survey's calls edges into in-repo METHOD nodes, joined to the source line with a regex for Const(::Const)*.method. The regex and the join are hand-built, not a shipped scan.\n     160 constant-receiver calls land on an in-repo method\n      54 land on a DIFFERENT class than the constant names (34%): 43 through a constant the repo does not declare, 11 through one it declares\n      23 more are chained (Const.x.m), not classified\n   Random sample: Postal::Config.dns -> DNSResolver#dns (x5), ActiveRecord::Base.connection_pool -> Database#connection_pool, Rails.root -> HealthServer#root, User.find -> Message.find, Server.find -> Message.find, Regexp.escape -> Database#escape, SecureRandom.uuid -> Request#uuid, Postal::Config.message_db -> Server#message_db.\n   NOT checked: inheritance. The owner comparison is by last constant segment only, so a method genuinely inherited from a declared base class could be counted wrong; none in the sample is."  # 32e1
+- op: update  # 3012
+  at: '2026-09-28T14:56:42Z'  # 3012
+  by: agent  # 3012
+  actor: jgstern_agent  # 3012
+  clock: 3  # 3012
+  nonce: '3012'  # 3012
+  set:  # 3012
+    status: done  # 3012
+- op: discuss  # abd5
+  at: '2026-09-28T14:56:42Z'  # abd5
+  by: agent  # abd5
+  actor: jgstern_agent  # abd5
+  clock: 4  # abd5
+  nonce: abd5  # abd5
+  message: "DONE in PR #1279 (merged). _try_receiver_call no longer ends with the receiver-blind method_resolver short-name lookup. A project constant that does not declare the method keeps an unresolved edge with receiver_type_hint = the constant, and the inherited-calls linker resolves it through the ancestors (Kid.make -> Base.make; User.authenticate -> HasAuthentication.authenticate via a mixin). A constant the project does not declare falls to the existing constant-external fallback. Found while measuring: the qualified lookup kept a leading '::', so '::Redis::Alfred.delete' (chatwoot, 25 calls) had resolved ONLY through the removed fallback. The prefix is now stripped, with the literal spelling tried second for a class declared as '::Foo::Bar'.\n\nBEHAVIOURAL EVIDENCE, the row's repro on merged dev (scratchpad johib/):\n  Rails.root.join       -> rails:0-0:root   (was HealthServer#root)\n  Postal::Config.root   -> Config:0-0:root, unresolved with receiver_type_hint (was HealthServer#root)\n  File.read(p)          -> file:0-0:read    (was HealthServer#read)\n  HealthServer.new.root -> HealthServer#root (control)\n  With a user overlay rowing File.read: must_not_exist fs_read claim inconclusive (blaming HealthServer) -> VIOLATED.\nTests: test_ruby_constant_receiver.py (8). test_ruby.py::test_receiver_call_resolver_fallback pinned the defect itself (Finder.locate -> Admin::UserFinder#locate) and was re-pinned to the fixed behaviour.\n\nA/B (record ~/hypergumbo_lab_notebook/johib_09282026/RESULT.md; the census is a hand-built instrument):\n  postal    constant-receiver calls bound to a DIFFERENT class: 54 -> 2 (one right via the linker, one wrong: see residual)\n  chatwoot  287 -> 0\n  Same-class bindings lost, checked edge by edge: postal 0, chatwoot 0.\nRESIDUAL, filed separately: the scope_resolution short-name candidate matches any project class with the same LAST segment (Prometheus::Client.registry -> project Client -> HasPrometheusMetrics.registry), because ruby symbol names carry no namespace to compare."  # abd5

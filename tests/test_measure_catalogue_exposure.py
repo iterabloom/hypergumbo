@@ -23,6 +23,15 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from helpers_code_tree import (
+    CHOICE_ENV,
+    FAKE_EXIT,
+    MARKER,
+    REPO_ROOT,
+    fake_tree,
+    own_pythonpath,
+    run_script,
+)
 
 SCRIPT = (
     Path(__file__).resolve().parents[1]
@@ -139,3 +148,67 @@ class TestTheCensusIsCompleteAndRunnable:
         )
         assert "R1" in text and "R2" in text
         assert "c " in text or "\nc" in text
+
+
+class TestTheCodeUnderTestIsChosenNotInherited:
+    """WI-tumog: an explicit PYTHONPATH must never be SILENTLY overridden.
+
+    This script used to insert its own tree's ``hypergumbo-core/src`` at
+    ``sys.path[0]`` unconditionally, so a PYTHONPATH naming another tree was
+    ignored and the census printed the script tree's numbers, exit 0. These
+    tests put a fake ``hypergumbo_core`` on PYTHONPATH -- one that announces
+    itself and exits 97 on import -- and pin the three outcomes that replace
+    the silent one: refuse when the two signals disagree, honour an explicit
+    choice either way, and name the tree that ran before any number.
+    """
+
+    def test_a_foreign_pythonpath_is_refused_not_silently_ignored(
+        self, tmp_path: Path,
+    ) -> None:
+        fake = fake_tree(tmp_path / "fake", ["hypergumbo_core"])
+        proc = run_script(SCRIPT, pythonpath=fake)
+        assert proc.returncode == 2, (proc.returncode, proc.stdout[:400])
+        assert CHOICE_ENV in proc.stderr
+        assert fake in proc.stderr, "the refusal must name the PYTHONPATH tree"
+        assert MARKER not in proc.stderr
+        assert proc.stdout == "", "no census may print before the choice"
+
+    def test_choosing_pythonpath_imports_the_pythonpath_copy(
+        self, tmp_path: Path,
+    ) -> None:
+        fake = fake_tree(tmp_path / "fake", ["hypergumbo_core"])
+        proc = run_script(SCRIPT, pythonpath=fake, choice="pythonpath")
+        assert proc.returncode == FAKE_EXIT, (proc.returncode, proc.stderr[-400:])
+        assert f"{MARKER} hypergumbo_core" in proc.stderr
+
+    def test_choosing_script_runs_this_tree_and_says_so_first(
+        self, tmp_path: Path,
+    ) -> None:
+        fake = fake_tree(tmp_path / "fake", ["hypergumbo_core"])
+        proc = run_script(SCRIPT, pythonpath=fake, choice="script")
+        assert proc.returncode == 0, proc.stderr[-400:]
+        assert MARKER not in proc.stderr
+        first = proc.stdout.splitlines()[0]
+        assert "code under test" in first and str(REPO_ROOT) in first
+        assert "this script's tree" in first
+
+    def test_pythonpath_naming_this_tree_is_not_a_conflict(self) -> None:
+        """The board's own shape: PYTHONPATH pinned to the script's tree."""
+        proc = run_script(SCRIPT, pythonpath=own_pythonpath())
+        assert proc.returncode == 0, proc.stderr[-400:]
+        assert str(REPO_ROOT) in proc.stdout.splitlines()[0]
+
+    def test_the_language_list_comes_from_the_imported_core(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """ONE HOME FOR THE FACT. ``load_catalog`` reads ``_CATALOG_DIR``
+        beside the IMPORTED ``io_boundary``; the language list used to be read
+        from beside the SCRIPT. Under a PYTHONPATH arm those are two trees,
+        and the census would list one tree's languages while loading the
+        other's rows."""
+        from hypergumbo_core import io_boundary
+
+        (tmp_path / "only.yaml").write_text("", encoding="utf-8")
+        monkeypatch.setattr(io_boundary, "_CATALOG_DIR", tmp_path)
+        assert measure_catalogue_exposure.catalogue_dir() == tmp_path
+        assert measure_catalogue_exposure.shipped_languages() == ["only"]

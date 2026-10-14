@@ -23,6 +23,9 @@ Symbol Types
 - method: Object method definitions (greet():: "Hello")
 - field: Object field definitions (name: "value")
 
+Every stable_id hashes the object fields and local bindings enclosing the
+symbol (``_jsonnet_scope_slot``; INV-fabih), empty for the root object's.
+
 Edge Types
 ----------
 - calls: Function/method invocations
@@ -45,7 +48,7 @@ Edge details
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -53,9 +56,12 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
+    find_child_by_type,
     make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import nested_qualified_name
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
@@ -125,6 +131,24 @@ def _is_builtin(name: str) -> bool:
     return base_name in JSONNET_BUILTINS
 
 
+def _jsonnet_scope_slot(node: "tree_sitter.Node", name: str) -> str:
+    """The qualified-name slot a Jsonnet stable_id hashes: the object fields and
+    local bindings enclosing ``node`` (INV-fabih). Every symbol hashed an empty
+    one, so ``inner`` in objects ``a: {...}`` and ``b: {...}`` tied and
+    deleting ``a`` moved ``b.inner``; ``""`` for a symbol of the root object or
+    a top-level local, which keeps its value."""
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type == "field":
+            fieldname = find_child_by_type(n, "fieldname")
+            ident = find_child_by_type(fieldname, "id") if fieldname is not None else None
+        elif n.type == "bind":
+            ident = find_child_by_type(n, "id")
+        else:
+            return None
+        return _get_node_text(ident) if ident is not None else None
+    return nested_qualified_name(ancestor_labels(node, label), name)
+
+
 def _extract_symbols_recursive(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
     analyzer: "JsonnetAnalyzer", file_stable_id: str,
@@ -156,7 +180,9 @@ def _extract_symbols_recursive(
             sym = Symbol(
                 id=make_symbol_id("jsonnet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, kind),
                 stable_id=analyzer.compute_stable_id(
-                    node, kind=kind, name=name, file_stable_id=file_stable_id,
+                    node, kind=kind, name=name,
+                    qualified_name=_jsonnet_scope_slot(node, name),
+                    file_stable_id=file_stable_id,
                 ),
                 name=name,
                 kind=kind,
@@ -208,6 +234,7 @@ def _extract_symbols_recursive(
                 id=make_symbol_id("jsonnet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, field_name, kind),
                 stable_id=analyzer.compute_stable_id(
                     node, kind=kind, name=field_name,
+                    qualified_name=_jsonnet_scope_slot(node, field_name),
                     file_stable_id=file_stable_id,
                 ),
                 name=field_name,
@@ -356,7 +383,7 @@ class JsonnetAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

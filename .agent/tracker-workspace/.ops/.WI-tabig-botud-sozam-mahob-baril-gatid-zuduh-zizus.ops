@@ -21,3 +21,20 @@
     pr_ref:  # 593d
     description: "Filed 2026-09-07 from WI-gulaz's refutation population. pretix rows the FK as `Checkin.position = ForeignKey(..., related_name=\"all_checkins\")` and exposes `OrderPosition.checkins` as a `@property` returning `self.all_checkins(manager='objects')` -- a QuerySet reached through a PROPERTY, not an accessor. WI-gulaz correctly refuses to type `op.checkins` (the class does not own that accessor), and the scan counted the shape: it is the 'accessor NOT owned' cell for OrderPosition (`op.checkins.all()` / `.filter()` / `.order_by()` at pdf.py:732/736, services/checkin.py:1110/1119, ...).\n\nMECHANISM GAP. A property whose body returns a manager/QuerySet-typed expression could be typed by the property-getter return path (WI-gubar's `_build_property_getter_index` already indexes getters for `references` edges): if the getter's single `return` expression is a manager root or a QuerySet-returning chain under the oracle, `<instance>.<property>` carries `django.db.models`. Bounded to a getter with exactly one return of that shape; anything else refuses.\n\nSize first (pretix: count `@property` getters on model classes whose return is an ORM chain) and measure with 0003's method before building."  # 593d
     fields: {}  # 593d
+- op: update  # 81ca
+  at: '2026-10-01T01:19:05Z'  # 81ca
+  by: agent  # 81ca
+  actor: jgstern_agent  # 81ca
+  clock: 2  # 81ca
+  nonce: 81ca  # 81ca
+  set:  # 81ca
+    status: wont_do  # 81ca
+  add:  # 81ca
+    duplicate_of: [WI-valav-jopub-zizup-kofud-komif-sotug-godig-safor]  # 81ca
+- op: discuss  # f8cb
+  at: '2026-10-01T01:19:06Z'  # f8cb
+  by: agent  # f8cb
+  actor: jgstern_agent  # f8cb
+  clock: 3  # f8cb
+  nonce: f8cb  # f8cb
+  message: "Folded into WI-valav-jopub (owner delegated the decision, 2026-09-30): same mechanism -- a Django related manager / QuerySet reached through a @property is invisible to DjangoRelationIndex. WI-valav (P2) carries the measured value and the current premise check; this item's second instance (OrderPosition.checkins and its call sites), its proposed property-getter-return mechanism and its sizing ask were copied onto WI-valav's discussion. Closed wont_do as a duplicate, per the tracker's convention for folds; no work was done here."  # f8cb

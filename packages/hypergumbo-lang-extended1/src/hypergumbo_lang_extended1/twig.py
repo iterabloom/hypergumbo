@@ -24,7 +24,8 @@ Symbols Extracted
 - **Blocks**: Block definitions ({% block name %})
 - **Macros**: Reusable template functions ({% macro name() %})
 - **For loops**: Iteration structures ({% for item in items %})
-- **Conditionals**: If statements ({% if condition %})
+- **Conditionals**: ``{% if a %}`` and ``{% elseif b %}`` (named ``if a`` /
+  ``elseif b``); ``{% else %}`` tests nothing and is not a symbol
 - **Call sites**: each ``{{ func() }}`` output call other than ``include()``
   becomes a symbol of kind ``call_site`` (signature ``{{ func() }}``, meta
   ``arg_count`` and ``call_kind="function"``); no call edge is emitted
@@ -38,6 +39,19 @@ Edges Extracted
   (template name taken from its first argument) is marked
   ``meta.form="function"``
 
+Spans and identity
+------------------
+tree-sitter-twig attaches the whitespace before a directive to its opening
+``{%`` / ``{{`` token, so a directive's node starts where the previous one
+ended; ``_directive_span`` starts every symbol (and the line of every edge)
+at the delimiter itself. Before the WI-tusad scheme bump a macro on line 2
+reported line 1. Each symbol's stable_id (``make_doc_symbol_ids``) hashes the
+chain of ``block`` / ``macro`` / ``for`` / ``if`` directives open around it
+(``_Scopes``: the grammar keeps a directive's body as its siblings, so the walk
+tracks open and end tags itself), so the same ``{{ greet(user) }}`` in two
+blocks is two identities and deleting one moves nothing; two identical ones in
+one scope are a same-scope tie the per-file split pass orders (ADR-0035 §1).
+
 Why This Design
 ---------------
 - Twig is the dominant PHP template engine
@@ -48,6 +62,7 @@ Why This Design
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -86,6 +101,65 @@ def is_twig_tree_sitter_available() -> bool:
 
 
 
+def _directive_span(node: "tree_sitter.Node") -> Span:
+    """The span of a ``{% ... %}`` / ``{{ ... }}`` directive, from its delimiter.
+
+    tree-sitter-twig folds the whitespace BEFORE a directive into its opening
+    ``{%`` / ``{{`` token, so the directive node starts where the previous one
+    ended: a macro on line 2 reported line 1, and every directive opening a
+    line reported the line above. The real start is where the delimiter text
+    begins, on the token's last row (the delimiter holds no newline).
+    """
+    start_row, start_col = node.start_point
+    opener = node.children[0] if node.children else None
+    if opener is not None and opener.text:
+        text = opener.text
+        delimiter = text.lstrip()
+        if len(delimiter) < len(text):
+            start_row = opener.end_point[0]
+            start_col = opener.end_point[1] - len(delimiter)
+    return Span(
+        start_line=start_row + 1,
+        start_col=start_col,
+        end_line=node.end_point[0] + 1,
+        end_col=node.end_point[1],
+    )
+
+
+@dataclass
+class _Scopes:
+    """The open ``block`` / ``macro`` / ``for`` / ``if`` directives, outermost
+    first: the scope chain each symbol's stable_id hashes (WI-tusad).
+
+    The grammar does not nest a directive's body under it (``{% block a %}``,
+    its content and ``{% endblock %}`` are siblings), so the walk keeps the
+    chain itself: an opening tag pushes ``(kind, label)``, its end tag pops
+    back to the nearest open one of that kind (a stray end tag pops nothing).
+    ``elseif`` / ``else`` stay inside the ``if`` / ``for`` they continue.
+    """
+
+    open: list[tuple[str, str]] = field(default_factory=list)
+
+    def chain(self) -> list[str]:
+        """The labels of the open directives, outermost first."""
+        return [label for _, label in self.open]
+
+    def push(self, kind: str, label: str) -> None:
+        """Open a directive of ``kind``."""
+        self.open.append((kind, label))
+
+    def close(self, kind: str) -> None:
+        """Close the innermost open directive of ``kind``."""
+        for index in range(len(self.open) - 1, -1, -1):
+            if self.open[index][0] == kind:
+                del self.open[index:]
+                return
+
+
+#: End tag -> the directive kind it closes.
+_END_TAGS = {"endblock": "block", "endmacro": "macro", "endfor": "for", "endif": "if"}
+
+
 def _create_extends_edges(
     rel_path: str, node: "tree_sitter.Node",
     template_name: str, run_id: str,
@@ -96,7 +170,7 @@ def _create_extends_edges(
     was redundant. Edge src is the using template file id; dst is the
     parent template's dangling id (handled by IR boundary materialization).
     """
-    line = node.start_point[0] + 1
+    line = _directive_span(node).start_line
     edges: list[Edge] = []
 
     if template_name:
@@ -116,22 +190,15 @@ def _create_extends_edges(
 
 
 def _create_block_symbol(
-    rel_path: str, node: "tree_sitter.Node", block_name: str,
+    rel_path: str, node: "tree_sitter.Node", block_name: str, scope: list[str],
 ) -> Symbol:
     """Create a symbol for block definition."""
-    line = node.start_point[0] + 1
-
-    span = Span(
-        start_line=line,
-        start_col=node.start_point[1],
-        end_line=node.end_point[0] + 1,
-        end_col=node.end_point[1],
-    )
+    span = _directive_span(node)
     # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
     # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
     symbol_id, stable_id = make_doc_symbol_ids(
         "twig", str(rel_path), "block", block_name,
-        span.start_line, span.end_line,
+        span.start_line, span.end_line, scope=scope,
     )
 
     return Symbol(
@@ -159,7 +226,7 @@ def _create_include_edges(
     the included template's dangling id (handled by IR boundary
     materialization).
     """
-    line = node.start_point[0] + 1
+    line = _directive_span(node).start_line
     edges: list[Edge] = []
 
     if template_name:
@@ -179,22 +246,15 @@ def _create_include_edges(
 
 
 def _create_macro_symbol(
-    rel_path: str, node: "tree_sitter.Node", macro_name: str,
+    rel_path: str, node: "tree_sitter.Node", macro_name: str, scope: list[str],
 ) -> Symbol:
     """Create a symbol for macro definition."""
-    line = node.start_point[0] + 1
-
-    span = Span(
-        start_line=line,
-        start_col=node.start_point[1],
-        end_line=node.end_point[0] + 1,
-        end_col=node.end_point[1],
-    )
+    span = _directive_span(node)
     # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
     # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
     symbol_id, stable_id = make_doc_symbol_ids(
         "twig", str(rel_path), "macro", macro_name,
-        span.start_line, span.end_line,
+        span.start_line, span.end_line, scope=scope,
     )
 
     return Symbol(
@@ -221,7 +281,7 @@ def _create_include_function_edges(
     was redundant. Edge src is the including template file id; dst is
     the included template's dangling id.
     """
-    line = node.start_point[0] + 1
+    line = _directive_span(node).start_line
     edge = Edge.create(
         src=make_file_id("twig", str(rel_path)),
         dst=f"twig:template:{template_name}",
@@ -238,18 +298,29 @@ def _create_include_function_edges(
 def _extract_tag_statement(
     node: "tree_sitter.Node", parent_node: "tree_sitter.Node",
     rel_path: str, run_id: str,
-    symbols_out: list[Symbol], edges_out: list[Edge],
+    symbols_out: list[Symbol], edges_out: list[Edge], scopes: _Scopes,
 ) -> None:
-    """Extract tag statements like extends, block, include, macro."""
+    """Extract tag statements like extends, block, include, and the end tags.
+
+    A block's name is the FIRST variable after ``block``. Anything after it
+    is the shorthand ``{% block title "Hi" %}`` / ``{% block t page_title %}``,
+    which has no ``endblock`` and so opens no scope (the last argument was
+    read as the name until the WI-tusad scheme bump: ``Hi``, ``page_title``).
+    """
     tag_name = ""
     arg_value = ""
+    block_name = ""
+    arguments = 0
 
     for child in node.children:
-        if child.type == "tag":
+        if child.type in ("tag", "repeat", "conditional"):
             tag_name = _get_node_text(child)
         elif child.type == "variable":
             arg_value = _get_node_text(child)
+            block_name = block_name or arg_value
+            arguments += 1
         elif child.type in ("interpolated_string", "string"):
+            arguments += 1
             text = _get_node_text(child)
             if text.startswith('"') and text.endswith('"'):
                 arg_value = text[1:-1]
@@ -260,16 +331,19 @@ def _extract_tag_statement(
 
     if tag_name == "extends":
         edges_out.extend(_create_extends_edges(rel_path, parent_node, arg_value, run_id))
-    elif tag_name == "block" and arg_value:
-        sym = _create_block_symbol(rel_path, parent_node, arg_value)
-        symbols_out.append(sym)
+    elif tag_name == "block" and block_name:
+        symbols_out.append(_create_block_symbol(rel_path, parent_node, block_name, scopes.chain()))
+        if arguments == 1:
+            scopes.push("block", f"block {block_name}")
     elif tag_name == "include":
         edges_out.extend(_create_include_edges(rel_path, parent_node, arg_value, run_id))
+    elif tag_name in _END_TAGS:
+        scopes.close(_END_TAGS[tag_name])
 
 
 def _extract_macro_statement(
     node: "tree_sitter.Node", parent_node: "tree_sitter.Node",
-    rel_path: str, symbols_out: list[Symbol],
+    rel_path: str, symbols_out: list[Symbol], scopes: _Scopes,
 ) -> None:
     """Extract macro definition from macro_statement node."""
     macro_name = ""
@@ -279,13 +353,14 @@ def _extract_macro_statement(
             macro_name = _get_node_text(child)
 
     if macro_name:
-        sym = _create_macro_symbol(rel_path, parent_node, macro_name)
+        sym = _create_macro_symbol(rel_path, parent_node, macro_name, scopes.chain())
         symbols_out.append(sym)
+        scopes.push("macro", f"macro {macro_name}")
 
 
 def _extract_for_statement(
     node: "tree_sitter.Node", parent_node: "tree_sitter.Node",
-    rel_path: str, symbols_out: list[Symbol],
+    rel_path: str, symbols_out: list[Symbol], scopes: _Scopes,
 ) -> None:
     """Extract for loop statement."""
     loop_var = ""
@@ -298,20 +373,13 @@ def _extract_for_statement(
             else:
                 iterable = _get_node_text(child)
 
-    line = parent_node.start_point[0] + 1
-
     name = f"for {loop_var} in {iterable}" if iterable else f"for {loop_var}"
-    span = Span(
-        start_line=line,
-        start_col=parent_node.start_point[1],
-        end_line=parent_node.end_point[0] + 1,
-        end_col=parent_node.end_point[1],
-    )
+    span = _directive_span(parent_node)
     # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
     # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
     symbol_id, stable_id = make_doc_symbol_ids(
         "twig", str(rel_path), "for_loop", name,
-        span.start_line, span.end_line,
+        span.start_line, span.end_line, scope=scopes.chain(),
     )
 
     symbol = Symbol(
@@ -327,34 +395,36 @@ def _extract_for_statement(
         meta={"loop_variable": loop_var, "iterable": iterable},
     )
     symbols_out.append(symbol)
+    scopes.push("for", name)
 
 
 def _extract_if_statement(
     node: "tree_sitter.Node", parent_node: "tree_sitter.Node",
-    rel_path: str, symbols_out: list[Symbol],
+    rel_path: str, symbols_out: list[Symbol], scopes: _Scopes,
 ) -> None:
-    """Extract if conditional statement."""
+    """Extract a conditional: ``if a`` and ``elseif b`` each yield one, named by
+    their own keyword; only ``if`` opens a scope. ``else`` tests nothing and
+    yields none: it was emitted as a symbol named ``"if "``, and ``elseif b``
+    as ``if b``, indistinguishable from an ``if``."""
     condition = ""
+    keyword = ""
 
     for child in node.children:
-        if child.type == "variable":
+        if child.type == "conditional":
+            keyword = _get_node_text(child)
+        elif child.type == "variable":
             condition = _get_node_text(child)
             break
 
-    line = parent_node.start_point[0] + 1
-
-    name = f"if {condition}"
-    span = Span(
-        start_line=line,
-        start_col=parent_node.start_point[1],
-        end_line=parent_node.end_point[0] + 1,
-        end_col=parent_node.end_point[1],
-    )
+    if keyword == "else":
+        return
+    name = f"{keyword} {condition}"
+    span = _directive_span(parent_node)
     # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
     # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
     symbol_id, stable_id = make_doc_symbol_ids(
         "twig", str(rel_path), "conditional", name,
-        span.start_line, span.end_line,
+        span.start_line, span.end_line, scope=scopes.chain(),
     )
 
     symbol = Symbol(
@@ -370,28 +440,30 @@ def _extract_if_statement(
         meta={"condition": condition},
     )
     symbols_out.append(symbol)
+    if keyword == "if":
+        scopes.push("if", name)
 
 
 def _extract_statement(
     node: "tree_sitter.Node", rel_path: str, run_id: str,
-    symbols_out: list[Symbol], edges_out: list[Edge],
+    symbols_out: list[Symbol], edges_out: list[Edge], scopes: _Scopes,
 ) -> None:
     """Extract statement directives ({% ... %})."""
     for child in node.children:
         if child.type == "tag_statement":
-            _extract_tag_statement(child, node, rel_path, run_id, symbols_out, edges_out)
+            _extract_tag_statement(child, node, rel_path, run_id, symbols_out, edges_out, scopes)
         elif child.type == "macro_statement":
-            _extract_macro_statement(child, node, rel_path, symbols_out)
+            _extract_macro_statement(child, node, rel_path, symbols_out, scopes)
         elif child.type == "for_statement":
-            _extract_for_statement(child, node, rel_path, symbols_out)
+            _extract_for_statement(child, node, rel_path, symbols_out, scopes)
         elif child.type == "if_statement":
-            _extract_if_statement(child, node, rel_path, symbols_out)
+            _extract_if_statement(child, node, rel_path, symbols_out, scopes)
 
 
 def _extract_function_call(
     node: "tree_sitter.Node", parent_node: "tree_sitter.Node",
     rel_path: str, run_id: str,
-    symbols_out: list[Symbol], edges_out: list[Edge],
+    symbols_out: list[Symbol], edges_out: list[Edge], scopes: _Scopes,
 ) -> None:
     """Extract function calls in output directives."""
     func_name = ""
@@ -408,8 +480,6 @@ def _extract_function_call(
     if not func_name:
         return  # pragma: no cover
 
-    line = parent_node.start_point[0] + 1
-
     # Handle include() function calls
     if func_name == "include" and args:
         template_name = args[0].strip("'\"")
@@ -418,17 +488,12 @@ def _extract_function_call(
         ))
         return
 
-    span = Span(
-        start_line=line,
-        start_col=parent_node.start_point[1],
-        end_line=parent_node.end_point[0] + 1,
-        end_col=parent_node.end_point[1],
-    )
+    span = _directive_span(parent_node)
     # Both ids minted together by make_doc_symbol_ids (INV-dulah). node.id is
     # byte-identical to the old f"twig:{path}:{kind}:{line}:{name}" form.
     symbol_id, stable_id = make_doc_symbol_ids(
         "twig", str(rel_path), "function_call", func_name,
-        span.start_line, span.end_line,
+        span.start_line, span.end_line, scope=scopes.chain(),
     )
 
     symbol = Symbol(
@@ -448,26 +513,27 @@ def _extract_function_call(
 
 def _extract_output(
     node: "tree_sitter.Node", rel_path: str, run_id: str,
-    symbols_out: list[Symbol], edges_out: list[Edge],
+    symbols_out: list[Symbol], edges_out: list[Edge], scopes: _Scopes,
 ) -> None:
     """Extract output directives ({{ ... }}) - specifically function calls."""
     for child in node.children:
         if child.type == "function_call":
-            _extract_function_call(child, node, rel_path, run_id, symbols_out, edges_out)
+            _extract_function_call(child, node, rel_path, run_id, symbols_out, edges_out, scopes)
 
 
 def _extract_twig_symbols(
     node: "tree_sitter.Node", rel_path: str, run_id: str,
-    symbols_out: list[Symbol], edges_out: list[Edge],
+    symbols_out: list[Symbol], edges_out: list[Edge], scopes: _Scopes,
 ) -> None:
-    """Extract symbols from a syntax tree node."""
+    """Extract symbols from a syntax tree node, in document order (the order
+    ``scopes`` needs to see opening and end tags)."""
     if node.type == "statement_directive":
-        _extract_statement(node, rel_path, run_id, symbols_out, edges_out)
+        _extract_statement(node, rel_path, run_id, symbols_out, edges_out, scopes)
     elif node.type == "output_directive":
-        _extract_output(node, rel_path, run_id, symbols_out, edges_out)
+        _extract_output(node, rel_path, run_id, symbols_out, edges_out, scopes)
 
     for child in node.children:
-        _extract_twig_symbols(child, rel_path, run_id, symbols_out, edges_out)
+        _extract_twig_symbols(child, rel_path, run_id, symbols_out, edges_out, scopes)
 
 
 class TwigAnalyzer(TreeSitterAnalyzer):
@@ -494,7 +560,7 @@ class TwigAnalyzer(TreeSitterAnalyzer):
         edges: list[Edge] = []
         _extract_twig_symbols(
             tree.root_node, rel_path, run.execution_id,
-            analysis.symbols, edges,
+            analysis.symbols, edges, _Scopes(),
         )
         # Encode edge count so we can retrieve edges later
         # Store edges in import_aliases using JSON-serializable representation
@@ -508,7 +574,7 @@ class TwigAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:
@@ -521,7 +587,7 @@ class TwigAnalyzer(TreeSitterAnalyzer):
         symbols: list[Symbol] = []  # discarded
         _extract_twig_symbols(
             tree.root_node, rel_path, run.execution_id,
-            symbols, edges,
+            symbols, edges, _Scopes(),
         )
         return edges
 

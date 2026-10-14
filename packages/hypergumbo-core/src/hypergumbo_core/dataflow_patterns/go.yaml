@@ -5,6 +5,7 @@
 # for collections). State-mutating operations are method calls on pointer
 # receivers: s.Set(), m.Delete(), q.Add(). Name-based heuristics in
 # library_patterns fill this gap, analogous to Erlang's approach.
+provenance: builtin
 language: go
 
 assignments:

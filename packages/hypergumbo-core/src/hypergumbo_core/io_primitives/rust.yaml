@@ -2,7 +2,10 @@
 # ADR-0016: I/O primitive catalog for Rust
 #
 # Maps std library functions to I/O boundary types. Covers Rust stable std.
-# Third-party crates (tokio, reqwest, etc.) trace through these primitives.
+# Third-party crates (tokio, reqwest, ...) are NOT seen through: hypergumbo
+# analyses your repository, not the crates it depends on, so their I/O needs
+# an overlay (docs/CATALOGUES.md).
+provenance: builtin
 language: rust
 # WI-tukif (Plan C, PR B) audited this catalog against doc.rust-lang.org/std/
 # on 2026-05-24 for Rust 1.78 and recorded that "coverage is complete for the
@@ -221,16 +224,8 @@ fs_read:
       requiring a hint would make them unmatchable in practice.
   - module: std::os::windows::fs::FileExt
     methods: [seek_read]
-  - module: std::env
-    functions: [current_dir]
-  - module: std::path
-    functions: [absolute]
-    notes: >-
-      `std::path::absolute` delegates to `env::current_dir()` for a
-      relative path, which is getcwd(2). Catalogued as fs_read to match
-      the boundary already assigned to `std::env::current_dir` directly
-      above — one fact, one kind. `is_separator` performs no I/O and is
-      absent.
+  # std::env::current_dir and std::path::absolute are host_info_read, below
+  # (INV-zufiz): getcwd(2) returns process state and reads no file.
   # Plan C, PR A: tokio::fs (async filesystem) removed under
   # strict-stdlib rule. tokio is ubiquitous but a third-party crate;
   # first-party calls into it surface in external_potential (Plan C, PR C).
@@ -328,6 +323,18 @@ net_recv:
     notes: "Resolves a host:port string through the system resolver and yields the addresses it chose (ADR-0049). INERT until WI-tuzaf gives trait methods on untyped receivers a resolvable owner; written, not counted as coverage."
   - module: std::net::TcpListener
     methods: [accept, incoming]
+    notes: >-
+      accept is a transfer (it returns the peer's address, ADR-0049 ruling
+      4). incoming is NOT: library/std/src/net/tcp.rs (rustc 1.94.0) builds
+      `Incoming { listener: self }` and nothing else, and the iterator's
+      next() is `self.listener.accept().map(|p| p.0)`, so no connection is
+      accepted until the loop advances. A deferred crossing by ruling 1 that
+      STAYS net_recv, held by ruling 3 (WI-tunog): the reads of the yielded
+      connections are rowed below but never fire in the std accept loop,
+      because `stream.unwrap()` leaves the receiver untyped, so the incoming
+      mint is the only source of a read in its own scope. A move to
+      net_listen deleted that flow with nothing to relocate it to.
+      Residual: WI-fokup (type the yielded connection).
   - module: std::net::TcpStream
     methods: [read, read_to_end, read_to_string]
   - module: std::net::UdpSocket
@@ -359,8 +366,17 @@ subprocess:
       crossing that has not happened yet (the ADR-0049 deferred shape).
       Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
       `os.wait`.
-  - module: std::process
-    functions: [exit, abort]
+  # std::process::exit / abort are NOT rowed (INV-mulul): they end the
+  # CALLING process (abort() is crate::sys::abort_internal(), SIGABRT on this
+  # process; exit() runs rt::cleanup() then sys::os::exit) and launch,
+  # signal or talk to no other process. Rowed here they were a subprocess
+  # SINK and an OPAQUE launch, so `process::exit(code)` with `code` read from
+  # the environment violated host_secret -> subprocess. Process control is no
+  # boundary in this vocabulary: javascript.yaml's `process` grant and
+  # haskell.yaml's System.Exit grant (INV-dozuj) say the same. No completeness
+  # grant for std::process here: it also exports id() (the pid), which this
+  # catalogue holds unrowed by python precedent, and a grant would declare it
+  # not-I/O. So an exit call is an UNCLASSIFIED call into std::process.
 
 env_read:
   - module: std::env
@@ -424,6 +440,23 @@ host_info_read:
       tempfile says "gettempdir rowed under env_read" while the row sits
       under host_info_read — the note predates the INV-tutar split and is
       stale. Recorded here rather than chased.
+  - module: std::env
+    functions: [current_dir]
+    notes: >-
+      INV-zufiz: current_dir() is exactly os_imp::getcwd(), the getcwd(2)
+      syscall, which returns process state and reads no file content. Every
+      other catalogue already rows the working directory here: python
+      os.getcwd / pathlib.Path.cwd, go os.Getwd, c unistd.getcwd,
+      javascript process.cwd, elixir System.cwd -- and so do this module's
+      own current_exe / temp_dir / home_dir above. It was fs_read, the one
+      catalogue out of parity.
+  - module: std::path
+    functions: [absolute]
+    notes: >-
+      Delegates to `env::current_dir()` for a relative path and touches no
+      file, so it carries current_dir's boundary -- one fact, one kind.
+      python's spelling, pathlib.Path.absolute, is host_info_read too.
+      `is_separator` performs no I/O and is absent.
   - module: std::env
     attributes: [consts]
     notes: "std::env::consts::OS, ARCH, etc."

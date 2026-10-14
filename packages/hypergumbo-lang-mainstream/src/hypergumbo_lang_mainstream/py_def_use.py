@@ -2,7 +2,7 @@
 """Python def/use extractor for intraprocedural dataflow analysis (ADR-0017 §1c).
 
 Extracts variable definitions (assignments) and uses (reads) from Python
-tree-sitter AST nodes. This is the first def/use extractor, validating
+tree-sitter AST nodes. It was the first def/use extractor, validating
 the shared CFG infrastructure against hypergumbo's own Python codebase.
 
 How It Works
@@ -10,8 +10,8 @@ How It Works
 For each AST node in a function body, the extractor identifies:
 
 - **Defines**: Variables assigned by the node (left side of ``=``, loop
-  variables, ``with ... as`` aliases, comprehension variables, function
-  parameters, ``del`` targets).
+  variables, ``with ... as`` aliases, comprehension variables, ``del``
+  targets). Function parameters are not defined by this extractor.
 - **Uses**: Variables read by the node (right side of ``=``, function
   call arguments, condition expressions, return values).
 
@@ -224,8 +224,54 @@ def _handle_for_in_clause(node: Any, source: bytes) -> DefUseResult:
     return DefUseResult(defines=defines, uses=uses)
 
 
+def _with_target_names(node: Any, source: bytes) -> list[str]:
+    """Names an ``as`` target binds. A parenthesised or bracketed target is a
+    ``tuple`` / ``list`` node here, not a ``*_pattern``, so it is walked on its
+    own rather than widening :func:`_collect_pattern_names` for assignments."""
+    if node.type in ("tuple", "list", "parenthesized_expression"):
+        names: list[str] = []
+        for child in node.children:
+            if child.is_named:
+                names.extend(_with_target_names(child, source))
+        return names
+    return _collect_pattern_names(node, source)
+
+
+def _handle_with_clause(node: Any, source: bytes) -> DefUseResult:
+    """Handle a with header: ``with open(p) as f, lock:`` (WI-simiv).
+
+    Each ``as`` target is DEFINED by the clause and each value expression is
+    USED. Before this handler the clause fell to the default rule, which reads
+    every identifier as a use, so ``f`` was never defined; and the CFG
+    statement for the clause matched no AST node at all, so the clause was
+    uncovered code that forfeited its function's refutation. Both are needed
+    before a ``with``-written sink can be adjudicated.
+    """
+    defines: list[str] = []
+    uses: list[str] = []
+    for item in node.children:
+        if item.type != "with_item":
+            continue
+        value = item.child_by_field_name("value")
+        if value is None:  # pragma: no cover - grammar always sets it
+            continue
+        if value.type == "as_pattern":
+            target = value.child_by_field_name("alias")
+            expr = next((c for c in value.children if c.is_named), None)
+            if expr is not None and expr is not target:
+                uses.extend(_collect_identifiers(expr, source))
+            if target is not None:
+                for child in target.children:
+                    if child.is_named:
+                        defines.extend(_with_target_names(child, source))
+        else:
+            uses.extend(_collect_identifiers(value, source))
+    return DefUseResult(defines=defines, uses=uses)
+
+
 # Map node types to handler functions
 _HANDLERS: dict[str, Any] = {
+    "with_clause": _handle_with_clause,
     "assignment": _handle_assignment,
     "augmented_assignment": _handle_augmented_assignment,
     "return_statement": _handle_return,

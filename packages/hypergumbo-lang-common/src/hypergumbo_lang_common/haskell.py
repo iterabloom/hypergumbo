@@ -50,6 +50,20 @@ Haskell-Specific Considerations
 - Function application uses whitespace (no parens needed)
 - Only ``return`` is excluded from call edges (monadic lift, not a real call);
   I/O primitives like putStrLn, print, readFile are kept as edges
+
+Identity (WI-tusad)
+-------------------
+A function is one symbol per name (its equations fold into it, see INV-midag
+below), so a module-level name never repeats in a file. Its arity is the number
+of patterns of its first equation (every equation of a Haskell function has the
+same number; a ``bind`` such as ``g = \\x -> x`` has none), recorded as
+``meta["arity"]``: patterns are not parameter names, so there is no
+``meta["parameters"]`` list. Functions, data types and instances mint the
+ADR-0035 producer stable_id through ``overload_arity.declared_arity_stable_id``
+(data types and instances with no arity; an instance's name, ``Shape Int``,
+already carries the type that tells it from another instance of the class).
+Before, all three rode the backstop floor key. Classes keep their table-formula
+ids.
 """
 from __future__ import annotations
 
@@ -71,6 +85,9 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import (
+    ARITY_KEY, declared_arity, declared_arity_stable_id,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -190,6 +207,11 @@ def _extract_module_exports(tree: "tree_sitter.Tree", source: bytes) -> Optional
     return None  # pragma: no cover - every Haskell file has a header
 
 
+#: Kinds minted here with the producer formula (``class`` takes its table
+#: formula downstream).
+_HS_PRODUCER_KINDS = frozenset({"function", "data", "instance"})
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -282,8 +304,21 @@ def _extract_symbols_from_file(
         else:
             is_exported = name in exported_names
 
+        meta: Optional[dict[str, object]] = None
+        stable_id: Optional[str] = None
+        if kind in _HS_PRODUCER_KINDS:
+            if kind == "function":
+                patterns = find_child_by_type(node, "patterns")
+                meta = {ARITY_KEY: patterns.named_child_count if patterns else 0}
+            stable_id = declared_arity_stable_id(
+                kind=kind, lang="haskell", path=file_path, name=name,
+                qualified_name=name, arity=declared_arity(meta),
+            )
+
         symbols.append(Symbol(
             id=sym_id,
+            stable_id=stable_id,
+            meta=meta,
             name=name,
             kind=kind,
             language="haskell",
@@ -1147,7 +1182,7 @@ class HaskellAnalyzer(TreeSitterAnalyzer):
         file_path: Path,
         rel_path: str,
         local_symbols: dict[str, Symbol],
-        global_symbols: dict,
+        global_symbols: dict[str, Symbol],
         run: AnalysisRun,
         import_aliases: dict[str, str],
         resolver: NameResolver,

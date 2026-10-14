@@ -15,9 +15,9 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Parse all .capnp files and extract symbols
-2. Detect import statements and create import edges
-3. Create contains edges from interfaces to their methods
+1. Pass 1: parse all .capnp files and extract symbols
+2. Pass 2: create import edges and interface-to-method ``contains`` edges,
+   both built by one shared helper
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Cap'n Proto-specific
@@ -37,6 +37,20 @@ Cap'n Proto-Specific Considerations
 - Methods have parameters and return types
 - Structs can be nested
 - Uses positional field numbers (@N) like Proto
+
+Identity (WI-tusad)
+-------------------
+Methods and consts are qualified by EVERY enclosing struct and interface
+(``Outer.A.run``; a method used to take its immediate interface alone, a const
+nothing) and mint the ADR-0035 producer stable_id over that chain with
+``overload_arity.declared_arity_stable_id``. Cap'n Proto allows no two members
+of one name in a scope, so no arity is hashed. Before, neither computed a
+stable_id and rode the backstop floor key (kind, file, bare name), which
+``A.run`` / ``B.run`` in two interfaces share, so both were null. Structs,
+interfaces and enums keep the table formula, over the same chain
+(``overload_arity.scoped_table_stable_id``; INV-fabih: ``struct Inner`` in
+``A`` and in ``B`` shared one bare-name table key, so deleting ``A`` moved
+``B.Inner``); top-level ones keep their values.
 """
 from __future__ import annotations
 
@@ -56,6 +70,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import declared_arity_stable_id, scoped_table_stable_id
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -63,6 +78,10 @@ if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = make_pass_id("capnp")
+
+#: The kinds this analyzer mints a producer stable_id for (WI-tusad); structs,
+#: interfaces and enums take the table formula over their scope chain.
+_PRODUCER_KINDS = frozenset({"method", "const"})
 
 
 def find_capnp_files(repo_root: Path) -> Iterator[Path]:
@@ -118,6 +137,20 @@ def _get_struct_prefix(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None  # pragma: no cover - defensive
 
 
+def _scope_chain(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """Every struct and interface enclosing ``node``, outermost first, dotted;
+    ``None`` at file level (WI-tusad)."""
+    parts: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type in ("struct", "interface"):
+            name_node = find_child_by_type(current, "type_identifier")
+            if name_node is not None:
+                parts.append(node_text(name_node, source).strip())
+        current = current.parent
+    return ".".join(reversed(parts)) or None
+
+
 def _get_interface_name_for_method(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Walk up to find the interface containing this method."""
     current = node.parent
@@ -169,8 +202,18 @@ def _extract_symbols_and_edges(
             end_col=end_col,
         )
         sym_id = make_symbol_id("capnp", file_path, start_line, end_line, name, kind)
+        scope = _scope_chain(node, source)
         return Symbol(
             id=sym_id,
+            # Structs, interfaces and enums: the table formula over every
+            # enclosing struct and interface (INV-fabih).
+            stable_id=declared_arity_stable_id(
+                kind=kind, lang="capnp", path=file_path, name=name,
+                qualified_name=qualified_name, arity=None,
+            ) if kind in _PRODUCER_KINDS else scoped_table_stable_id(
+                kind=kind, lang="capnp", path=file_path, name=name,
+                scope=scope.split(".") if scope else (),
+            ),
             name=name,
             qualified_name=qualified_name,
             kind=kind,
@@ -207,7 +250,7 @@ def _extract_symbols_and_edges(
                 method_sig = _extract_method_signature(node, source)
                 method_sym = make_symbol(
                     node, method_name, "method",
-                    prefix=interface_name,
+                    prefix=_scope_chain(node, source),
                     signature=method_sig
                 )
                 symbols.append(method_sym)
@@ -237,7 +280,9 @@ def _extract_symbols_and_edges(
             name_node = find_child_by_type(node, "const_identifier")
             if name_node:
                 const_name = node_text(name_node, source).strip()
-                symbols.append(make_symbol(node, const_name, "const"))
+                symbols.append(make_symbol(
+                    node, const_name, "const", prefix=_scope_chain(node, source),
+                ))
 
         elif node.type == "using_directive":
             # Structure: using_directive > import_using > import_path > string_fragment
@@ -290,7 +335,7 @@ class CapnpAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

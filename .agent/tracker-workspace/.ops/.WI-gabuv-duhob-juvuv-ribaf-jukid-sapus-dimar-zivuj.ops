@@ -1,0 +1,38 @@
+- op: create  # 5583
+  at: '2026-10-03T17:41:49Z'  # 5583
+  by: agent  # 5583
+  actor: jgstern_agent  # 5583
+  clock: 1  # 5583
+  nonce: '5583'  # 5583
+  data:  # 5583
+    kind: work_item  # 5583
+    title: "elixir: calls through an application's use-Ecto.Repo module (Repo.all / Repo.stream / Repo.insert) never reach the Ecto.Repo catalogue rows -- they land in external_potential"  # 5583
+    status: todo_hard  # 5583
+    priority: 2  # 5583
+    parent:  # 5583
+    tags:  # 5583
+    - catalogue  # 5583
+    - io_boundary  # 5583
+    - elixir  # 5583
+    - recall  # 5583
+    isbefore: []  # 5583
+    duplicate_of: []  # 5583
+    not_duplicate_of: []  # 5583
+    pr_ref:  # 5583
+    description: "FOUND by WI-tunog (2026-10-03) while checking ADR-0049's `Ecto.Repo.stream` row.\n\nSTATEMENT. In the idiomatic Phoenix/Ecto form -- an application module that does `use Ecto.Repo, otp_app: ..., adapter: ...` and is called as `Repo.all(q)` / `Repo.stream(q)` / `Repo.insert(cs)` -- no call reaches the `Ecto.Repo` rows in `io_primitives_overlays/elixir-web-and-db.yaml`. The calls arrive as `App.Repo.<fn>` and land in `external_potential`.\n\nREPRO (live, worktree ~/hg_wt/tunog at origin/dev fe3c32259d):\n  lib/export.ex:\n    defmodule App.Repo do\n      use Ecto.Repo, otp_app: :app, adapter: Ecto.Adapters.Postgres\n    end\n    defmodule App.Export do\n      alias App.Repo\n      def export(query, path) do\n        Repo.transaction(fn ->\n          rows = query |> Repo.stream() |> Enum.map(&inspect/1)\n          all = Repo.all(query)\n          File.write!(path <> \".all\", inspect(all))\n          File.write!(path, Enum.join(rows, \"\\n\"))\n        end)\n      end\n    end\n  `hypergumbo io-boundaries <dir> --format json` ->\n    boundaries: {external_potential: {App.Repo.all: 1, App.Repo.stream: 1, App.Repo.transaction: 1, Enum.join: 1, Enum.map: 1}, fs_write: {File.write!: 1}}\n  No db_read and no db_write chain. verify-claims reads inconclusive on every claim (\"could not classify (App.Repo, Enum)\").\n\nSCOPE OF THE GAP, AS FAR AS CHECKED: every function on both `Ecto.Repo` rows (db_read: all, one, get, get_by, exists?, aggregate, stream, preload and the bang forms; db_write: insert ... rollback) has the same owner problem, since all are called through the user's module. Checked on the fixture only for all, stream and transaction. NOT measured on a corpus repository; `use Ecto.Repo` appears in plausible (7 modules), phoenix-framework's installer template and nex-framework.\n\nWHAT ALREADY EXISTS: the elixir analyzer parses `use` directives once (`_behaviour_directives` in hypergumbo_lang_common/elixir.py) and indexes `__using__`, so the fact that `App.Repo` uses `Ecto.Repo` is available at analysis time. Not checked: whether any existing mechanism maps a call's owner through a `use` relationship for catalogue lookup.\n\nWHY IT MATTERS: elixir.yaml's header records that UAT-2026-04-13 BUG-09b (0 boundaries on plausible) was \"answered\" by moving these rows to the default-loaded overlay. On this fixture the rows are present and still unreached, so that answer does not hold for the `use Ecto.Repo` spelling. Not re-measured on plausible."  # 5583
+    fields: {}  # 5583
+- op: update  # 144a
+  at: '2026-10-12T14:12:21Z'  # 144a
+  by: agent  # 144a
+  actor: jgstern_agent  # 144a
+  clock: 2  # 144a
+  nonce: 144a  # 144a
+  set:  # 144a
+    status: done  # 144a
+- op: discuss  # f141
+  at: '2026-10-12T14:12:21Z'  # f141
+  by: agent  # f141
+  actor: jgstern_agent  # f141
+  clock: 3  # f141
+  nonce: f141  # f141
+  message: "Fixed in PR #1553 (merge 5364ca2eed; fix commit 927e6afd40). Root cause: a call on an in-repo type arrives keyed on the in-repo owner (App.Repo) while the catalogue keys the row on the library owner (Ecto.Repo), and nothing mapped one to the other; also USE_IMPLIED_BEHAVIOURS lacked Ecto.Repo, so 'use Ecto.Repo' produced no implements edge. Fix (language-neutral): new hypergumbo_core.owner_ancestry; finalize sub-step 7d stamps meta.external_owner_ancestors on unresolved calls whose owner (typed receiver / module slot / enclosing class of a bare-self call) is an in-repo type that does not declare the member, walking in-repo ancestors over extends/inherits/implements/includes nearest-first; io_boundary.classify_call_in_catalog and taint._match_propagation_entry retry with the owner-as-written then each ancestor before the short-name fallback. Ecto.Repo + HTTPoison.Base added to USE_IMPLIED_BEHAVIOURS (both __using__ declare @behaviour self, verified from deps source). Evidence (dev 5364ca2eed, filed fixture): 'hypergumbo io-boundaries <dir> --format json' -> db_read {Ecto.Repo.all:1, Ecto.Repo.stream:1}, db_write {Ecto.Repo.transaction:1}, external_potential only Enum.join/Enum.map; verify-claims db_read/db_write must_not_exist -> violated rc 1 (was inconclusive rc 2). Same mechanism proven by CLI tests for Python requests.Session subclass, Java FileInputStream subclass, JS net.Socket subclass. Corpus before/after (13 clones): plausible total_io_edges 698->1132 (434 Plausible.*Repo calls external_potential->db_read/db_write, spot-checked: all use Ecto.Repo); django +2 env_read (CommandParser(ArgumentParser).parse_known_args, correct); 11 others unchanged; 0 chains lost. Filed follow-ups: WI-gokun (elixir use-without-behaviour e.g. Tesla; HTTPoison.Base row verbs), WI-tafum (Spring Data rows), WI-fivor (ruby catalogue + ActiveRecord::Base qualifier), WI-basij (JS this.m() emits no edge)."  # f141

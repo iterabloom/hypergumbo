@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017 §4b: Function summaries for the Rust aes-gcm and serde_json crates.
+#
+# A COMMUNITY companion of rust_stdlib.yaml (ADR-0061): these rows describe third-party
+# libraries, ship without being maintained, and only ADD -- a summary here takes
+# a name, full or short, only when no built-in file holds it (see
+# load_function_summaries). rust_stdlib.yaml holds the standard-library rows hypergumbo
+# vouches for; the scope and field conventions in its header apply here too.
+#
+# `retrieved` is the date these rows were last edited, the latest date they can
+# have been checked against the libraries they describe.
+provenance: community
+retrieved: 2026-03-26
+summaries:
+  - function: "aes_gcm::Aes256Gcm::encrypt"
+    param_to_return: {1: true}
+    sanitizes:
+      1:
+        from: plaintext
+        to: ciphertext
+
+  - function: "aes_gcm::Aes256Gcm::decrypt"
+    param_to_return: {1: true}
+
+  - function: "serde_json::to_string"
+    param_to_return: {0: true}
+
+  - function: "serde_json::from_str"
+    param_to_return: {0: true}

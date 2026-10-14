@@ -18,3 +18,49 @@
     pr_ref:  # 56f6
     description: "The html analyzer's `script_src` edge for `<script src=\"/src/main.ts\">` points at a synthetic placeholder node `javascript:/src/main.ts:0-0:ref:script` (kind=external_symbol, tier3/external_dep, language=javascript on a .ts source) instead of resolving the URL onto the EXISTING first-party node `typescript:.../src/main.ts`. The entrypoints surface resolves the same module correctly to the real node — two surfaces disagree. This is the entirety of html-analyzer cross-file linkage and it is a phantom. Fix: have the script_src resolver map the URL path (strip leading slash + package prefix) onto the existing repo file node. Related: INV-vavat (script_src flagged as vestigial once-appearing edge type — distinct producer-side fix). Surfaced via dogfooding; blinded severity 3/5."  # 56f6
     fields: {}  # 56f6
+- op: discuss  # ebcd
+  at: '2026-10-01T00:54:29Z'  # ebcd
+  by: agent  # ebcd
+  actor: jgstern_agent  # ebcd
+  clock: 2  # ebcd
+  nonce: ebcd  # ebcd
+  message: "PREMISE CHECK 2026-09-30 (dev 134a06d505): CURRENT-WITH-UPDATES.\n\nRepro (fixture: index.html with `<script type=\"module\" src=\"/src/main.ts\">` and `<script src=\"./src/util.js\">`; src/main.ts and src/util.js exist; surveyed from /tmp): both script tags give an edge html:index.html:1-1:file:file -> `javascript:/src/main.ts:0-0:ref:external_symbol` / `javascript:./src/util.js:0-0:ref:external_symbol`; each dst node is kind=external_symbol, language=javascript, path=<external>, supply_chain tier 3 external_dep (\"unresolved external reference\"). The real nodes typescript:src/main.ts:1-1:file:file and javascript:src/util.js:1-1:file:file exist in the same output. The entrypoints list carries `script_module` for typescript:src/main.ts:1-1:file:file, so the two-surfaces disagreement holds.\n\nCode: html.py:154 `script_ref_id = f\"javascript:{script_src}:0-0:ref:script\"` -- raw URL, no resolution, language hardcoded.\n\nDrift:\n- Edge type is no longer `script_src`: 730a297975 (2026-06-25, INV-vavat) made it edge_type=references with meta.ref_construct=\"script_src\" (html.py:160-170). Title/description wording \"script_src edge\" should say \"references edge (ref_construct=script_src)\".\n- The dst id's kind slot serializes as `ref:external_symbol` (the analyzer still writes `ref:script`).\n- Wider than the row says: a RELATIVE src (`./src/util.js`) of an existing in-repo file is also unresolved, not only the root-absolute `/src/main.ts` form. The fix needs both: relative -> against the html file's directory; leading \"/\" -> against the web root (the html file's dir / repo root for Vite).\n- The \"phantom\" also mislabels language: a .ts target gets language=javascript (same family as WI-komum's hardcode).\nINV-vavat (cross-ref) is satisfied; nothing supersedes this row."  # ebcd
+- op: update  # fe25
+  at: '2026-10-01T01:35:02Z'  # fe25
+  by: agent  # fe25
+  actor: jgstern_agent  # fe25
+  clock: 3  # fe25
+  nonce: fe25  # fe25
+  set:  # fe25
+    title: "html <script src> references edge (ref_construct=script_src) mints a phantom external_dep JS placeholder instead of resolving to the existing first-party file (relative and root-absolute src)"  # fe25
+    description: "The html analyzer's `<script src>` edge (edge_type=references, meta.ref_construct=\"script_src\", html.py ~154-170) for `<script src=\"/src/main.ts\">` points at a synthetic placeholder node `javascript:/src/main.ts:0-0:ref:external_symbol` (the analyzer writes the raw URL as `javascript:{src}:0-0:ref:script`; the node is kind=external_symbol, path=<external>, tier3/external_dep, language=javascript even on a .ts source) instead of resolving the URL onto the EXISTING first-party node `typescript:src/main.ts:1-1:file:file`. The same happens for a RELATIVE src (`./src/util.js`) of an existing in-repo file: no form of src is resolved. The entrypoints surface resolves the same module correctly to the real node (`script_module` entry) — two surfaces disagree. This is the entirety of html-analyzer cross-file linkage and it is a phantom.\n\nFix: resolve the src onto the existing repo file node — a relative src against the html file's directory; a root-absolute src (leading \"/\") against the web root (the html file's directory / repo root, as Vite does); take the language from the resolved file, not a hardcoded \"javascript\". Keep the external placeholder only for srcs that resolve to no repo file (CDN URLs etc.).\n\nRelated: INV-vavat (satisfied; migrated the edge type from script_src to references+ref_construct); WI-komum (same TypeScript-labelled-javascript family). Surfaced via dogfooding; blinded severity 3/5.\n\nRevised 2026-09-30 from the premise check (see discussion)."  # fe25
+- op: discuss  # 9a81
+  at: '2026-10-01T14:57:28Z'  # 9a81
+  by: agent  # 9a81
+  actor: jgstern_agent  # 9a81
+  clock: 4  # 9a81
+  nonce: 9a81  # 9a81
+  message: "From WI-komum (branch jgstern-agent/fix/komum, not merged): if the script-src fix derives the target's language from its path, use `linkers/_text_filters.js_ts_language_from_path`, NOT `language_from_path`. The latter returns tree-sitter grammar names: `.tsx` -> `tsx` and `.mts`/`.cts` -> None, neither of which the JS/TS analyzer emits (it tags `.ts/.tsx/.mts/.cts` as `typescript`). On the komum branch `js_ts_language_from_path` also maps `.mts`/`.cts` -> typescript (on dev it says javascript for them), and websocket.py `_language_for_file` no longer mints `tsx:` file ids. Taking the language from the RESOLVED node (as the row's fix says) avoids depending on either helper."  # 9a81
+- op: discuss  # 344a
+  at: '2026-10-01T17:08:23Z'  # 344a
+  by: agent  # 344a
+  actor: jgstern_agent  # 344a
+  clock: 5  # 344a
+  nonce: 344a  # 344a
+  message: "WORKED 2026-10-01 (concurrent run; local branch only, not pushed). Branch jgstern-agent/fix/majov, commit 6ae1f6478f \"fix(html): resolve <script src> onto the in-repo JS/TS file node (WI-majov)\" on origin/dev af4e16964b. No status change.\n\nPremise re-verified on af4e16964b by live repro (index.html with `/src/main.ts`, `./src/util.js`, a CDN src): all three dsts were `javascript:<src>:0-0:ref:external_symbol`, tier-3 external_dep, while the real file nodes existed.\n\nChange (html.py only): a src resolves lexically against the HTML file's directory. Relative and root-absolute srcs are handled alike (a leading \"/\" takes the HTML directory as the web root), with the query and fragment dropped and the path percent-decoded. Nothing may escape the repo; URL schemes and `//host` never resolve. When the target is an existing file with a JS/TS-analyzer suffix, the dst is make_file_id(lang, path), with lang from js_ts._get_language_for_file. Otherwise the placeholder stays, its language now taken from the src suffix. The repo-root fallback the row prescribed was measured and NOT shipped: it adds 0 resolutions over the corpus. An ancestor walk adds 2, one of them false (vault /testem.js).\n\nAfter repro: `html:index.html -> typescript:src/main.ts:1-1:file:file` and `-> javascript:src/util.js:1-1:file:file`, both is_resolved=true, kind=file, first_party. The CDN src stays external_symbol. script_module and html_entry entrypoints are unchanged.\n\nCorpus (analyze_html, origin/dev copy vs fix, 273 repos): 0 -> 11,932 of 12,614 edges on existing repo files (46 repos); 682 keep the placeholder. Alamofire full survey before/after: top-50 nodes, entrypoints and validation-violation count are identical. 664 script edges drop because their real targets (jquery.min.js/lunr.min.js) are removed by the existing default tier filter.\n\nTests: 2 production-path tests (run_behavior_map) + 10 analyzer-level tests incl. a suffix-parity test against JstsTreeSitterAnalyzer.file_patterns; 7 red before, all green after. Targeted smart-test: 14639 passed, 0 failed, changed sources 100%. Mutations (repo-root fallback; dropping the suffix filter) turn their controls red.\n\nResiduals filed: WI-babuk (js-module-linker importer-language phantom file node), WI-ripuf (core js_ts_language_from_path .mts/.cts drift), WI-modan (svelte/vue component-import phantoms). Notes added on WI-bufar, INV-movor, WI-sinol."  # 344a
+- op: update  # 0f3a
+  at: '2026-10-02T03:21:03Z'  # 0f3a
+  by: agent  # 0f3a
+  actor: jgstern_agent  # 0f3a
+  clock: 6  # 0f3a
+  nonce: 0f3a  # 0f3a
+  set:  # 0f3a
+    status: done  # 0f3a
+    pr_ref: '#1381'  # 0f3a
+- op: discuss  # 7f11
+  at: '2026-10-02T03:21:04Z'  # 7f11
+  by: agent  # 7f11
+  actor: jgstern_agent  # 7f11
+  clock: 7  # 7f11
+  nonce: 7f11  # 7f11
+  message: "DONE: merged in PR #1381 (commit d4388babcc). html.py resolves a relative or root-absolute <script src> against the HTML file's own directory (query/fragment dropped, percent-decoded, repo-escaping and scheme/`//host` URLs never resolve); an existing JS/TS file the analyzer discovers becomes the edge target `make_file_id(lang, path)` with js_ts's own language; anything else keeps the placeholder. The repo-root fallback the item prescribed was MEASURED and not built (0 extra resolutions over 273 repos; ancestor walk added 2, one wrong). Behavioural evidence: fixture with /src/main.ts, ./src/util.js and a CDN src: edges go to typescript:src/main.ts:1-1:file:file and javascript:src/util.js:1-1:file:file (is_resolved, first-party), CDN stays external; production tests test_wi_majov_*. Corpus: 0 -> 11,932 of 12,614 script-src edges land on repo files (46 repos; mostly generated docs); Alamofire full survey: top-50, entrypoints and 210 validation violations identical; 664 edges into tier-filtered jquery/lunr drop with their files. Not measured end to end: ExoPlayer. Residuals: WI-babuk (P2), WI-modan (P3). Report: run_09302026/majov.md"  # 7f11

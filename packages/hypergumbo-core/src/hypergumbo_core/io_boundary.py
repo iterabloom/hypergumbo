@@ -5,7 +5,7 @@ Provides a per-language catalog of I/O primitive functions/methods, each
 classified by boundary type. The closed set of catalog-declarable boundary
 tags is ``CATALOG_BOUNDARY_TYPES`` below (fs_read/fs_write, net_send/net_recv,
 ipc_recv/ipc_send, env_read/host_info_read/env_write, subprocess,
-db_read/db_write,
+db_read/db_write, navigation_read,
 process_send, logging, browser_storage_read/browser_storage_write,
 ``net_listen`` and ``db_compose``); the synthesized ``external_potential`` and
 disclosed ``command_launch`` complete ``KNOWN_IO_BOUNDARIES``. ``net_listen``
@@ -17,45 +17,122 @@ files in the ``io_primitives/`` directory alongside this module.
 
 Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
 
-- **Overlays.** ``load_overlay_catalog`` merges project-local rows so a
-  repository can declare the I/O of its own third-party dependencies. Overlay
-  rows carry ``status: overlay``; the shipped catalogue stays stdlib-scoped.
+- **Overlays.** ``load_overlay_catalog`` loads a project-local overlay file
+  (which must declare ``status: overlay``) and ``load_catalog`` merges its
+  rows, so a repository can declare the I/O of its own third-party
+  dependencies; the shipped catalogue stays stdlib-scoped. Separately,
+  community overlays SHIPPED in ``io_primitives_overlays/`` load BY DEFAULT
+  (ADR-0047; ``default_overlays``, ``load_catalog(include_defaults=True)``,
+  off via ``--no-default-overlays``) beneath any project-local ones. Their rows
+  are stamped ``IoPrimitive.unvouched``: they can add a detection but never
+  count as examined for a clean verdict, and a shipped default may not declare
+  ``module_completeness`` (``validate_default_overlays``). The stamp follows the
+  FILE's ``provenance: community`` line wherever the file sits (ADR-0061,
+  ``overlay_declares_community``), so a copy seeded into the user's
+  io_primitives.d stays unvouched and its completeness grants are withheld
+  until the line is deleted. An overlay that does not parse, repeats a key, is
+  not a mapping, or carries a boundary section or row of the wrong type is
+  refused as ``IoPrimitiveOverlayError`` (a ``CatalogueError``, exit 2) -- by
+  the load and by the provenance pre-read alike (``_read_overlay_yaml``).
 - **Mode discrimination.** A primitive can be rowed at more than one mode, so
   a write stops classifying as a read, and a single primitive can name more
   than one boundary at once.
 - **Opacity.** ``OPAQUE_BOUNDARIES`` / ``PRODUCER_OPAQUE_BOUNDARIES`` name the
   boundaries whose downstream effect the analysis cannot see (a launched
   program's own I/O), which is what ``command_launch`` discloses rather than
-  resolves. ``HIGH_RISK_PRIMITIVES`` flags the rows worth surfacing first.
+  resolves. ``HIGH_RISK_PRIMITIVES`` is a display-only marker scoped to
+  ``subprocess`` launches.
 - **The boundary map.** ``compute_boundary_map`` assembles the wire artifact
   versioned by ``IO_BOUNDARIES_SCHEMA_VERSION``, with ``compute_leaf_rollups``
   aggregating chains per leaf and ``_compute_external_potential`` synthesizing
-  the opt-in external-potential bucket.
+  the disclosed-only external-potential bucket when node data is supplied (the
+  CLI hides its per-call listing from text output unless
+  ``--show-external-potential``).
+- **Untraced calls are I/O unknown, not no I/O (WI-pogar, ADR-0016 §7).** An
+  ``external_potential`` chain is a call into a named module whose source was
+  not analysed -- installed dependency source is not parsed by default -- and
+  that no row classifies. Each chain carries ``dst_ecosystem``, the ADR-0041
+  §3 stamp already on the boundary node (``module_ecosystem`` is its one
+  predicate, shared with ``cli._make_ecosystem_classifier``), and
+  ``untraced_modules`` groups the modules by it: ``third_party`` is an
+  untraced dependency, ``stdlib`` a runtime module the catalogue has not
+  enumerated, ``unknown`` a language whose standard library is not enumerated
+  (every language but Python today), where hypergumbo cannot tell the two
+  apart and does not guess. No new boundary value: the population already had
+  one, and what it lacked was its cause and a text view that did not hide it
+  under "No I/O boundary calls detected."
+- **One row-choice rule.** ``named_lookup_arm`` is how BOTH ``lookup_with_module``
+  and taint's ``_lookup_named_entry`` decide which row a named call reaches
+  (INV-foda): an exact qualified-name hit first, then the module slot filtering
+  the short-name rows (an empty result is a refusal), then ``gate_named_entry``
+  when there is no usable slot. ``prefer_exact_owner`` narrows the survivors to
+  rows whose module IS the slot, so a receiver call on ``requests.Session`` is
+  not credited to the package function ``requests.get`` (INV-vusum). A c/cpp
+  slot is the file's comma-joined ``#include`` list; ``module_hint_disjuncts``
+  splits it per header (INV-funuf) and, in c/cpp only, maps a C++ C-library
+  header to its C stem through ``_CXX_C_LIBRARY_HEADERS`` (``<cstdio>`` reaches
+  the ``stdio`` rows, WI-hilot). The c/cpp analyzers ask
+  ``declared_by_an_included_header`` through the same rule (WI-rimon), so a
+  call to a primitive an included header declares is not captured by a
+  same-named definition in another file (a platform shim) and stays catalogued.
+- **First-party detection.** ``is_definitionally_first_party`` answers, from
+  each language's resolution rules in ``FIRST_PARTY_MODULE_GRAMMARS`` (Rust's
+  ``crate``/``super``/``self``; relative specifiers in JS/TS, Python, and quoted
+  C/C++/ObjC includes), whether a module
+  reference names this repository, which lets ``verify-claims``' coverage gate
+  stop reporting it as an unexamined dependency. A relative specifier counts
+  only when it lands on source the analysis read: one through ``node_modules``
+  / ``vendor``, or one climbing above the analysed root, stays reported
+  (INV-juvul). An unknown language suppresses nothing.
+- **Row annotations**, each validated at load because each fails silently:
+  ``abstains_to`` names the row an unstamped call falls back to (INV-fatok);
+  ``requires_target_kind`` drops a row unless every collapsed site's
+  ``io_target_kind`` resolves to it, with no fallback (WI-dorus, for
+  ``java.io.PrintStream``); ``boundary_ruling`` records why a primitive carries
+  several boundaries, and ``multi_boundary_reason`` is the one predicate that
+  combines it with mode discrimination and ``simultaneous`` (INV-vaduk). The
+  T9 ``resource_naming`` map feeds ``suppresses_resource_naming_finding``, which
+  lets taint mark a finding resource-naming-only only when the row is
+  classified, naming is not itself the danger, and ``content_args`` is
+  explicitly ``[]``. Every catalogue and overlay is parsed by
+  ``load_yaml_strict``, which raises ``DuplicateYamlKeyError`` instead of
+  PyYAML's silent last-wins (INV-nular), and ``kind_assertion_census`` counts
+  the name-to-boundary assertions a run rests on, how many carry a written
+  rationale, and the community-overlay ones apart.
 
 How It Works
 ------------
-1. ``load_catalog(language, overlay_paths=None)`` reads the YAML for the
-   given language, merges any parent catalog and any project-local overlay,
-   and returns an ``IoBoundaryCatalog`` with a flat list of ``IoPrimitive``
-   entries plus O(1) lookup by qualified name.
+1. ``load_catalog(language, overlay_paths=None, *, include_defaults=True)``
+   reads the YAML for the given language, merges any parent catalog, the
+   shipped default overlays and any project-local overlay, and returns an
+   ``IoBoundaryCatalog`` with a flat list of ``IoPrimitive`` entries plus
+   O(1) lookup by qualified name.
 2. ``classify_call_in_catalog(...)`` is the production matcher: it resolves a
    call edge against the catalog via ``lookup_with_module``, applying
    module-hint filtering, FFI redirection, ``io_mode`` discrimination
    (across every collapsed call site — INV-vukiv), ``io_target_kind``
-   discrimination from the call site's own stamp (so a write that
-   discards, or one whose target is a pipe rather than a file, selects the
-   right row or none), a retry with the module qualifier stripped when the
-   name slot re-states it, and a
-   short-name fallback gated on the destination not being a first-party
-   callable. (``match_edge_to_primitive`` is a bare name-only lookup with no
+   discrimination from the call site's own stamp (so a write whose target
+   is a pipe rather than a file selects the right row or none), the call
+   owner's external ancestors when finalize stamped them (a call on an in-repo
+   type that does not define the member reaches its library parent's row:
+   ``App.Repo.all`` -> ``Ecto.Repo``; ``owner_ancestry``), a retry with
+   the module qualifier stripped when the name slot re-states it, and a
+   short-name fallback that :func:`short_name_fallback_withheld` withholds
+   when the destination is a first-party callable or the unresolved stub was
+   superseded by a resolved in-repo edge. A write that only discards (an
+   in-memory or null-device target) still matches its row here; it is
+   ``tag_io_boundaries`` that declines to tag it, because the catalogue did
+   examine the call. (``match_edge_to_primitive`` is a bare name-only lookup with no
    production caller — it exists for tests and ad-hoc probing. Do not reach
    for it expecting the tagger's behaviour.)
 3. The boundary-tagging pass (ADR-0016 Phase 1b) lives **in this module** —
    ``tag_io_boundaries`` — and uses those matches to stamp ``io_boundary``
    and ``io_primitive`` onto edges in the graph, plus ``io_boundaries``
-   (plural) when one primitive crosses several boundaries at once.
-4. ``compute_boundary_map`` walks the tagged graph back to each reachable
-   caller, producing the chains the ``io-boundaries`` command prints and
+   (plural) when more than one boundary is true of the edge: a primitive
+   that crosses several at once, collapsed call sites that span read and
+   write, or a producer opacity stamp kept beside the catalogue row.
+4. ``compute_boundary_map`` runs the tagger itself, then walks the tagged
+   graph back to each reachable caller, producing the chains the ``io-boundaries`` command prints and
    ``verify-claims`` adjudicates.
 
 Why YAML Catalogs
@@ -68,6 +145,7 @@ add new languages or community-contributed corrections.
 """
 from __future__ import annotations
 
+import posixpath
 import urllib.parse
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
@@ -77,6 +155,7 @@ from typing import TYPE_CHECKING, Any, Final, Iterable, Mapping, Optional, Seque
 import yaml
 
 from .axis_meta_keys import write_meta_key
+from .construction import construction_calls
 from .edge_types import is_grpc_rpc_implementation
 from .io_primitive_kinds import (
     KIND_ATTRIBUTE,
@@ -84,6 +163,7 @@ from .io_primitive_kinds import (
     KIND_METHOD,
     called_on_a_named_owner,
     reached_through_an_instance,
+    read_not_called,
 )
 from .io_boundary_types import (
     all_io_boundary_names,
@@ -92,6 +172,8 @@ from .io_boundary_types import (
     opacity_names,
 )
 from .ir import symbol_name_slot, symbol_path_slot
+from .owner_ancestry import ancestor_retry_hints
+from .yaml_catalogs import CatalogueError
 
 if TYPE_CHECKING:
     from .ir import Edge, ExternalRef
@@ -111,7 +193,11 @@ if TYPE_CHECKING:
 # Top-level envelope keys (post-PR-B):
 #   - schema_version: str (this constant)
 #   - total_io_edges: int
+#   - external_potential_edges / command_launch_edges / net_listen_edges /
+#     db_compose_edges: int  (disclosed-only bucket counts)
 #   - boundaries: dict[str, BoundaryMapEntry.to_dict()]
+#   - untraced_modules: dict[str, list[str]]  (WI-pogar: the modules behind
+#     the ``external_potential`` chains, grouped by ``dst_ecosystem``)
 #   - unsupported_languages: list[str]  (added by ``cmd_io_boundaries``)
 #
 # Bumping rules:
@@ -120,14 +206,14 @@ if TYPE_CHECKING:
 #     (1.0 -> 2.0).
 #   - Changes to ``BoundaryMapEntry.to_dict()`` / ``IoChain.to_dict()``
 #     shape are part of this same contract — they share the version.
-IO_BOUNDARIES_SCHEMA_VERSION: str = "2.3"  # WI-fasap/ADR-0049: db_compose_edges added (the database twin of net_listen). 2.2: WI-nosah/ADR-0049: net_listen_edges added (deferred crossings disclosed, excluded from total_io_edges, shadowing net_recv). 2.1: WI-javoh command_launch_edges added. 2.0: WI-huhit/WI-foduh total_io_edges redefined + external_potential_edges added
+IO_BOUNDARIES_SCHEMA_VERSION: str = "2.4"  # WI-pogar/ADR-0016 §7: untraced_modules added + IoChain.dst_ecosystem (calls into source that was not analysed report I/O unknown). 2.3: WI-fasap/ADR-0049: db_compose_edges added (the database twin of net_listen). 2.2: WI-nosah/ADR-0049: net_listen_edges added (deferred crossings disclosed, excluded from total_io_edges, shadowing net_recv). 2.1: WI-javoh command_launch_edges added. 2.0: WI-huhit/WI-foduh total_io_edges redefined + external_potential_edges added
 
 
 # ---------------------------------------------------------------------------
 # Canonical I/O boundary vocabulary
 # ---------------------------------------------------------------------------
 # ``CATALOG_BOUNDARY_TYPES`` is the closed set of boundary tags that an
-# io-primitives catalog YAML may declare: ``_parse_catalog`` iterates
+# io-primitives catalog YAML may declare: ``IoBoundaryCatalog._from_dict`` iterates
 # exactly these keys, so any other key in a catalog is silently ignored.
 # ``compute_boundary_map`` additionally synthesizes one boundary that no
 # catalog declares — ``external_potential`` — for unmatched first-party
@@ -160,7 +246,7 @@ CATALOG_STATUS_UNSUPPORTED: str = "unsupported"
 
 # DERIVED FROM THE REGISTRY (ADR-0050), not written out here. Each spec
 # declares whether a catalogue may declare it; ``catalog_declarable_names``
-# returns those IN DECLARATION ORDER, because ``_parse_catalog`` iterates this
+# returns those IN DECLARATION ORDER, because ``IoBoundaryCatalog._from_dict`` iterates this
 # tuple and several sites resolve a primitive declared under two boundaries by
 # first-declared-wins. A property test pins the order, not just the membership.
 CATALOG_BOUNDARY_TYPES: tuple[str, ...] = catalog_declarable_names()
@@ -168,7 +254,9 @@ KNOWN_IO_BOUNDARIES: frozenset[str] = all_io_boundary_names()
 
 # Boundaries that are DISCLOSED but EXCLUDED from the ``total_io_edges``
 # headline (the verified/curated I/O surface). ``external_potential`` is
-# receiver-unresolved speculative noise (WI-huhit/WI-foduh); ``command_launch``
+# unclassified calls into NAMED external modules, potential and unverified I/O
+# (WI-huhit/WI-foduh; receiver-unresolved placeholders are skipped, INV-toguh);
+# ``command_launch``
 # is the high-volume, definite-but-uncurated command-mediated launch cohort
 # (WI-javoh). Both are surfaced in their own ``BoundaryMap`` count fields so a
 # consumer sees them without them inflating the headline.
@@ -230,7 +318,7 @@ DEFERRED_CROSSING_SHADOWS: dict[str, str] = {
 # classifications; only one of them licenses "I looked and found nothing".
 #
 # WHY ``subprocess`` IS THE ONLY MEMBER, and this is a closed question rather
-# than an oversight. ``_parse_catalog`` iterates exactly
+# than an oversight. ``IoBoundaryCatalog._from_dict`` iterates exactly
 # ``CATALOG_BOUNDARY_TYPES``, so a catalog can never declare anything outside
 # it; ``external_potential`` and ``command_launch`` are synthesised, never
 # declared, and already excluded from the verified surface by
@@ -251,25 +339,33 @@ OPAQUE_BOUNDARIES: frozenset[str] = opacity_names(catalog_declarable=True)
 # channel (INV-larol). A boundary here is SYNTHESISED BY A PRODUCER rather than
 # declared by a catalogue, so ``declares_opaque_crossing`` can never see it: the
 # bash analyzer stamps ``meta.io_boundary = "command_launch"`` directly on an
-# external-command edge (bash.py, WI-javoh) because there is no bash catalogue
-# to match against and, per ADR-0016's implementation note, there is not going
-# to be one — cataloguing ``curl`` as ``net_send`` would attribute curl's
+# external-command edge (bash.py, WI-javoh) because no catalogue describes
+# external commands: ``io_primitives/bash.yaml`` (INV-vavup) catalogues only
+# the shell's own surface (redirection, environment and host-info expansions)
+# and models no command rows, and per ADR-0016's implementation note it is not
+# going to — cataloguing ``curl`` as ``net_send`` would attribute curl's
 # network activity to the shell script, and no clean invariant separates
 # ``curl`` from ``git``.
 #
 # DISJOINT FROM ``OPAQUE_BOUNDARIES`` BY CONSTRUCTION, and the split is the
 # point rather than an accident of naming. A catalog-declarable boundary is
 # inert unless it is in ``CATALOG_BOUNDARY_TYPES``; a producer-stamped one is
-# inert if it IS, because ``_parse_catalog`` iterates exactly that tuple and
+# inert if it IS, because ``IoBoundaryCatalog._from_dict`` iterates exactly that tuple and
 # the catalogue channel would then be the one carrying it. Each set is
 # reachable through exactly one channel, and a test asserts each direction —
 # collapsing them into a single set makes one half unreachable whichever way it
 # is spelled.
 #
-# WHY THIS WAS NOT LIVE WHEN IT WAS WRITTEN, and what arms it. bash ships no
-# catalogue, so ``_external_call_sites`` drops its edges on ``catalog is None``
-# and the INV-dabov language gate answers first. The hole is held shut by the
-# ABSENCE OF ONE FILE that three places in this tree recommend adding. Measured
+# WHY THIS WAS NOT LIVE WHEN IT WAS WRITTEN, and what keeps it shut now. When
+# this was written bash shipped no catalogue, so ``_external_call_sites``
+# dropped its edges on ``catalog is None`` and the INV-dabov language gate
+# answered first. ``io_primitives/bash.yaml`` now ships (redirection,
+# environment and host-info rows, no command rows), so that guard is gone;
+# command launches stay opaque because verify_claims asks the producer stamp
+# FIRST (``_is_producer_stamped_launch``, asked by ``_opaque_launch_sites``
+# and by ``_adjudicate_external_modules``, which backs
+# ``_uncatalogued_external_modules``), even when a catalogue row would also
+# classify the call. The history that motivated that order, measured
 # on the shipped CLI over a two-line script whose only command is
 # ``curl -o /etc/cron.d/pwned <url>``, claim "never writes to the host
 # filesystem": with no bash.yaml, ``inconclusive`` rc 2; with a six-line
@@ -448,6 +544,9 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     # A launch is a launch; the invariant above admits no "but it is only
     # less" carve-out.
     "builtins.help",
+    # INV-bosus: platform.architecture() runs `file -b <executable>`, and
+    # platform.processor() / platform.platform() run `uname -p`. Same rule.
+    "platform.architecture", "platform.processor", "platform.platform",
     # Go
     "os/exec.Command", "os/exec.CommandContext",
     "os/exec.Cmd.CombinedOutput", "os/exec.Cmd.Output",
@@ -507,11 +606,14 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     "System.Process.Text.readCreateProcessWithExitCode",
     "System.Process.Text.readProcess",
     "System.Process.Text.readProcessWithExitCode",
-    # Swift (Foundation.Process — launchPath is the canonical launch site
-    # tracked by swift.yaml; there is no separate Process.launch entry).
-    "Process.launchPath",
-    # Objective-C (Foundation NSTask)
+    # Swift (Foundation.Process). The calls that start the child (INV-vamif);
+    # this used to be "Process.launchPath", a property swift.yaml rowed as the
+    # launch site, which no call edge could ever reach.
+    "Process.run", "Process.launch", "Process.launchedProcess",
+    # Objective-C (Foundation NSTask), including the class-method launchers.
     "NSTask.launch", "NSTask.launchAndReturnError:",
+    "NSTask.launchedTaskWithLaunchPath:arguments:",
+    "NSTask.launchedTaskWithExecutableURL:arguments:error:terminationHandler:",
 })
 
 
@@ -519,10 +621,10 @@ HIGH_RISK_EXEMPTIONS_SUBPROCESS: frozenset[str] = frozenset({
     # These qualified names appear in io_primitives YAML catalogs with
     # boundary=subprocess (so taint analysis tracks them) but are
     # intentionally NOT high-risk for display purposes: they operate on
-    # an already-launched process (signal, wait, cleanup), terminate the
-    # current process without spawning anything, or perform a PATH
-    # lookup without executing. The WI-sugav Part 2 drift guard
-    # (Tests::TestHighRiskPrimitivesDriftGuard) requires every
+    # an already-launched process (signal, wait, cleanup). (Ending the
+    # CURRENT process -- INV-mulul -- and a PATH lookup -- INV-dukam -- are
+    # not rowed subprocess at all any more.) The WI-sugav Part 2
+    # drift guard (Tests::TestHighRiskPrimitivesDriftGuard) requires every
     # boundary=subprocess catalog entry to land in either
     # HIGH_RISK_PRIMITIVES or this set.
     #
@@ -533,22 +635,21 @@ HIGH_RISK_EXEMPTIONS_SUBPROCESS: frozenset[str] = frozenset({
     # would say `p.wait()` is arbitrary code execution, which it is not.
     # They carry boundary=subprocess so the taint walk still follows them,
     # which is the exact split this set exists to express -- and the same
-    # shape as the Swift/ObjC/Haskell entries below.
+    # shape as the Haskell entries below.
     "subprocess.Popen.communicate", "subprocess.Popen.wait",
     "subprocess.Popen.poll", "subprocess.Popen.terminate",
     "subprocess.Popen.kill", "subprocess.Popen.send_signal",
-    # Go — PATH-lookup helpers (string in, string out; no exec).
-    "os/exec.LookPath", "golang.org/x/sys/execabs.LookPath",
+    # Go os/exec.LookPath / execabs.LookPath: fs_read since INV-dukam (a
+    # PATH search that stats candidates and launches nothing).
     # C / C++ — wait on an already-launched child (does not spawn).
     "sys/wait.wait", "sys/wait.waitpid",
-    # Rust — terminate the current process (no subprocess spawned).
-    "std::process.abort", "std::process.exit",
-    # Elixir — halts the BEAM VM (current-process exit).
-    "System.halt",
-    # Swift Foundation.Process — operate on existing process.
-    "Process.interrupt", "Process.terminate", "Process.waitUntilExit",
-    # Objective-C NSTask — operate on existing process.
-    "NSTask.interrupt", "NSTask.terminate", "NSTask.waitUntilExit",
+    # Rust std::process.exit / abort and Elixir System.halt used to be
+    # exempted here as "terminate the current process". INV-mulul removed
+    # the rows themselves: ending this process launches nothing, so it is
+    # not a subprocess boundary to exempt from anything.
+    # Swift Foundation.Process / Objective-C NSTask: none. Their signal
+    # members are ipc_send and waitUntilExit is not rowed (INV-babiz), so
+    # they are no longer boundary=subprocess entries to exempt.
     # Haskell System.Process — signal / wait / cleanup on existing process.
     "System.Process.cleanupProcess",
     "System.Process.interruptProcessGroupOf",
@@ -694,7 +795,8 @@ class IoPrimitive:
     kind: str  # axis: io-primitive-kind
     notes: str = ""  # axis: free-text — prose caveats for a human reader; no consumer branches on it.
     simultaneous: bool = False
-    #: True when this row came from a SHIPPED COMMUNITY overlay — rows
+    #: True when this row came from a COMMUNITY overlay — a file declaring
+    #: ``provenance: community``, wherever it sits (ADR-0061 ruling 3): rows
     #: hypergumbo distributes and discloses but does NOT vouch for
     #: (ADR-0047). It is deliberately asymmetric in effect: an unvouched row
     #: can still produce a DETECTION (that direction only ever adds findings)
@@ -737,6 +839,22 @@ class IoPrimitive:
     row for, and two rows of one primitive naming different targets would each
     leave the catalogue READING as though a fallback had been chosen while the
     registry order quietly decided it. That is the very defect this removes.
+    """
+    requires_target_kind: Optional[str] = None  # axis: bounded-enum
+    """The ``io_target_kind`` without which this row does NOT apply (WI-dorus).
+
+    One of the target kinds :data:`_READ_TARGET_KIND_BOUNDARY` /
+    :data:`_WRITE_TARGET_KIND_BOUNDARY` key -- ``host_path``, ``std_stream``,
+    ``pipe``, ``net_stream`` -- and it must map to THIS row's boundary in this
+    row's direction (checked at load). ``_narrow_by_target_kind`` keeps the row
+    only when every collapsed site's stamp resolves to it. There is NO
+    abstention: an unstamped call does not fall back to the row, it stays
+    unclassified, which is what it was before the row existed -- the WI-suhug
+    rule ("an unrecoverable origin classifies exactly as before") for a type
+    whose unstamped population has no safe default. ``java.io.PrintStream`` is
+    the case: ``System.out.println`` is a standard-output write, but a
+    PrintStream is also a buffer, a file or a socket, and classifying those as
+    a log would stop them withholding a verdict they cannot support.
     """
     resource_naming_args: Optional[list[int]] = None
     """Argument positions that merely NAME the resource this sink acts on
@@ -838,6 +956,12 @@ class IoBoundaryCatalog:
     # the class of bug the invariant guards against: output identical
     # to a clean codebase, plus false security confidence in taint-flow.
     is_supported: bool = True
+    # WI-guhuv: True when this language ships NO catalogue and every row came
+    # from a project-local overlay. Such a catalogue classifies (is_supported)
+    # but declares no stdlib, cites no provenance and dates no module the user
+    # did not date, so it must never read as a curated catalogue; the CLI says
+    # so on stderr (``cli._warn_overlay_only_catalogs``).
+    overlay_only: bool = False
     # Plan C, PR B / INV-titih: catalog status, named for what is CHECKED.
     # ``"provenance_declared"`` means the catalog cites its stdlib source
     # (``stdlib_provenance.source_url``: https, allowlisted documentation
@@ -877,9 +1001,10 @@ class IoBoundaryCatalog:
     # populate ``stdlib_other:`` sections.
     stdlib_other: frozenset[str] = field(default_factory=frozenset)
     # F3 PR-C: enumerated stdlib module names for this language. Populated
-    # from the authoritative interpreter list (``sys.stdlib_module_names``
-    # for Python; equivalent authoritative sources for other languages).
-    # Used as input to :meth:`is_stdlib_module`.
+    # from the authoritative interpreter list (for Python, the union of
+    # ``sys.stdlib_module_names`` over every supported interpreter, WI-gisan;
+    # equivalent authoritative sources for other languages). Used as input to
+    # :meth:`is_stdlib_module`, which answers RECOGNITION only.
     stdlib_modules: frozenset[str] = field(default_factory=frozenset)
     # F3 PR-C: stdlib module name prefixes — useful for languages where
     # stdlib modules live under a hierarchical namespace (e.g. Go's
@@ -1093,8 +1218,8 @@ class IoBoundaryCatalog:
         self, name: str, module_hint: str | None = None,
         *, call_construct: str | None = None,
         allow_short_name_fallback: bool = True,
-        io_modes: Sequence[str] | None = None,
-        io_target_kinds: Sequence[str] | None = None,
+        io_modes: Sequence[Optional[str]] | None = None,
+        io_target_kinds: Sequence[Optional[str]] | None = None,
     ) -> Optional[IoPrimitive]:
         """Look up a primitive with optional module context for disambiguation.
 
@@ -1130,70 +1255,27 @@ class IoBoundaryCatalog:
         the first-declared row so an unstamped call is classified exactly as it
         was before either existed.
         """
-        # Qualified-name match always wins (exact). It can still be several
-        # rows when the primitive is dual-classified, so the mode decides.
-        qualified_hits = self._qualified_rows(name)
-        if qualified_hits:
+        # INV-foda: the arm order, the slot split and the method-on-a-
+        # disjunction refusal live in :func:`named_lookup_arm`, which taint's
+        # ``_lookup_named_entry`` calls too. What stays here is this
+        # consumer's own narrowing -- the mode and target-kind seams -- and
+        # the INV-sapit refusal below.
+        arm, hits = named_lookup_arm(
+            self._qualified_rows(name), self._by_short.get(name) or [],
+            module_hint, call_construct=call_construct,
+            language=self.language,
+        )
+        if arm != NAMED_ARM_GATE:
+            if not hits:
+                # A refusal, or nothing indexed under the name. After a
+                # mismatched module this is likely NOT an IO primitive (e.g.,
+                # crypto/rand.Read is not net.Conn.Read).
+                return None
+            # A qualified or module-filtered set can still be several rows
+            # when the primitive is dual-classified, so the mode decides.
             return select_by_mode(
-                _narrow_by_target_kind(qualified_hits, io_target_kinds),
-                io_modes,
+                _narrow_by_target_kind(hits, io_target_kinds), io_modes,
             )
-
-        hits = self._by_short.get(name)
-        if not hits:
-            return None
-
-        # If we have module context, filter matches
-        if module_hint and module_hint != "external":
-            candidates = _module_hint_candidates(module_hint)
-            filtered = [
-                p for p in hits
-                if any(_module_matches(p.module, c) for c in candidates)
-            ]
-            # INV-nizom: a DISJUNCTIVE slot is file context, not receiver
-            # evidence, so the F3 construct rule applies to it exactly as it
-            # applies to no hint at all. ``cpp.py`` joins every ``#include`` in
-            # the file into one slot and says so itself — "this call could be
-            # from any of the included headers" — which is an uncertainty set;
-            # ``fut.wait()`` in a unit that includes ``<sys/wait.h>`` was
-            # matching ``sys/wait.wait`` (kind=function) on it.
-            #
-            # ARITY IS THE DISCRIMINATOR, and _module_hint_candidates already
-            # computes it: a language emitting ONE module per slot expands to a
-            # single candidate (``os``, ``fmt``, ``java.io.File``) and never
-            # reaches this branch. That distinction is load-bearing rather than
-            # cosmetic — ``call_construct == "method"`` does NOT mean "instance
-            # method". Go spells ``os.Open(p)`` as a selector expression,
-            # indistinguishable in shape from ``f.Close()``, and stamps both
-            # ``method``; a rule keyed on the construct ALONE was measured on
-            # whisper.cpp and removed 51 matches — the 2 target false positives
-            # and 49 true ones (``os.Open``, ``os.Stat``, ``fmt.Fprintln``,
-            # ``net/http.NewRequest``, ``logging.exception``). A definite module
-            # slot is precisely what disambiguates those, which is why the gate
-            # defers to it and why this refusal must not.
-            #
-            # READ IN THE AXIS'S TERMS (ADR-0059), this drops rows CALLED ON A
-            # NAMED OWNER when the stamp says ``method`` and the slot does not
-            # say which owner the call is on. A ``method`` stamp alone is not
-            # evidence of an instance receiver: Go stamps it on ``os.Open`` and
-            # java on a qualified static. So the arm must not fire on a slot
-            # that DOES name the owner. A single module does, and so does a
-            # disjunction whose every entry spells the same owner in another
-            # package (java's wildcard slot, :func:`slot_names_one_owner`).
-            # Without that exemption, java's statics could not be keyed as the
-            # functions they are: 36 jedis classifications were lost
-            # (INV-zikab step 4).
-            if (call_construct == "method" and len(candidates) > 1
-                    and not slot_names_one_owner(module_hint)):
-                filtered = [p for p in filtered if not called_on_a_named_owner(p.kind)]
-            if filtered:
-                return select_by_mode(
-                    _narrow_by_target_kind(filtered, io_target_kinds),
-                    io_modes,
-                )
-            # No match with module filtering — this is likely NOT an IO
-            # primitive (e.g., crypto/rand.Read is not net.Conn.Read)
-            return None
 
         # INV-sapit: the SHORT-NAME fallback is the only path a first-party callable
         # can reach, and the only one it can be wrong on. The two paths above are safe
@@ -1329,11 +1411,13 @@ class IoBoundaryCatalog:
 
         NOR IS IT A SUFFIX, which is the other half of the safety argument.
         :func:`_module_matches` — the boundary TAGGER's rule — matches trailing
-        components, so ``unix`` finds ``golang.org/x/sys/unix``. The two stay
-        separate on purpose: the tagger is permissive because a missed tag
-        loses a finding, while this gate is strict because a wrong permit
-        manufactures a false all-clear. Unifying them toward the tagger would
-        make a cosmetic module-string respell a security-relevant edit.
+        components when the catalogue row is the longer side, so a bare
+        ``unix`` slot finds the ``golang.org/x/sys/unix`` row (a slot with MORE
+        leading components than the row is a different owner, WI-mujod). The two stay separate on purpose: the tagger is permissive
+        because a missed tag loses a finding, while this gate is strict because
+        a wrong permit manufactures a false all-clear. Unifying them toward the
+        tagger would make a cosmetic module-string respell a security-relevant
+        edit.
 
         An empty ``module_completeness`` therefore means "nothing has
         been enumerated", and every module blocks. That is the correct starting
@@ -1495,12 +1579,21 @@ class IoBoundaryCatalog:
         # module level so verify_claims can validate against the same
         # vocabulary; see CATALOG_BOUNDARY_TYPES / KNOWN_IO_BOUNDARIES).
         for boundary in CATALOG_BOUNDARY_TYPES:
-            entries = data.get(boundary, [])
+            # A section or row of the wrong type is refused, not skipped: a
+            # skipped ``net_send: 5`` in an overlay read as "no net_send rows",
+            # a clean answer the file never gave.
+            entries = data.get(boundary) or []
             if not isinstance(entries, list):
-                continue
+                raise ValueError(
+                    f"{language}: '{boundary}:' must be a list of rows, got "
+                    f"{type(entries).__name__}."
+                )
             for entry in entries:
                 if not isinstance(entry, dict):
-                    continue
+                    raise ValueError(
+                        f"{language}: each '{boundary}:' row must be a "
+                        f"mapping, got {type(entry).__name__}."
+                    )
                 module = entry.get("module", "")
                 notes = entry.get("notes", "")
                 # INV-zumin. Row-level rather than catalogue-level so it sits
@@ -1541,6 +1634,16 @@ class IoBoundaryCatalog:
                             f"reader and the row would read as having chosen "
                             f"a fallback while the registry order decided it."
                         )
+                # WI-dorus. Row-level, validated at load: a kind the analyzers
+                # never stamp, or one that maps to a DIFFERENT boundary in this
+                # row's direction, would make a row that can never match read
+                # as a sink or source that exists.
+                requires_target_kind = entry.get("requires_target_kind")
+                if requires_target_kind is not None:
+                    requires_target_kind = str(requires_target_kind)
+                    _check_required_target_kind(
+                        language, module, boundary, requires_target_kind,
+                    )
                 # WI-bulag / arc T9. Row-level for the same reason
                 # ``boundary_ruling`` and ``abstains_to`` are, and validated at
                 # load for the same reason too: every failure mode is silent,
@@ -1563,6 +1666,7 @@ class IoBoundaryCatalog:
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
                         abstains_to=abstains_to,
+                        requires_target_kind=requires_target_kind,
                         resource_naming_args=_naming.get(func_name, (None, None, False))[0],
                         content_args=_naming.get(func_name, (None, None, False))[1],
                         resource_is_danger=_naming.get(func_name, (None, None, False))[2],
@@ -1577,6 +1681,7 @@ class IoBoundaryCatalog:
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
                         abstains_to=abstains_to,
+                        requires_target_kind=requires_target_kind,
                         resource_naming_args=_naming.get(method_name, (None, None, False))[0],
                         content_args=_naming.get(method_name, (None, None, False))[1],
                         resource_is_danger=_naming.get(method_name, (None, None, False))[2],
@@ -1591,6 +1696,7 @@ class IoBoundaryCatalog:
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
                         abstains_to=abstains_to,
+                        requires_target_kind=requires_target_kind,
                     ))
 
         primitives = _apply_abstention_targets(language, primitives)
@@ -1787,6 +1893,23 @@ def _catalog_path_for(language: str) -> Optional[Path]:
     return None
 
 
+def shipped_catalog_paths(language: str) -> "list[Path]":
+    """The shipped built-in files :func:`load_catalog` reads for ``language``.
+
+    Its own catalogue (directly or by alias) and, where the language inherits
+    one, its parent's -- the same resolution ``load_catalog`` performs, so a
+    verdict naming the files it rested on (ADR-0061 ruling 5) names these.
+    """
+    path = _catalog_path_for(language)
+    if path is None:
+        return []
+    paths = [path]
+    parent = _CATALOG_PARENTS.get(language)
+    if parent and (_CATALOG_DIR / f"{parent}.yaml").exists():
+        paths.append(_CATALOG_DIR / f"{parent}.yaml")
+    return paths
+
+
 def is_language_supported(language: str) -> bool:
     """True if ``language`` has an I/O primitive catalog (directly, via
     alias, or with a parent). Callers use this to distinguish "found
@@ -1795,7 +1918,7 @@ def is_language_supported(language: str) -> bool:
     return load_catalog(language).is_supported
 
 
-class DuplicateYamlKeyError(Exception):
+class DuplicateYamlKeyError(CatalogueError):
     """A catalogue or overlay YAML declared the same mapping key twice.
 
     INV-nular. PyYAML's mapping constructor takes the LAST occurrence of a
@@ -1929,7 +2052,7 @@ def _apply_abstention_targets(
     return primitives
 
 
-class IoPrimitiveOverlayError(Exception):
+class IoPrimitiveOverlayError(CatalogueError):
     """A project-local I/O primitive overlay could not be loaded.
 
     Its own exception type so callers can map it to the "inconclusive" exit
@@ -1937,6 +2060,26 @@ class IoPrimitiveOverlayError(Exception):
     degraded to "no extra primitives" would read exactly like a clean repo,
     which is the failure direction this project spends most of its gates on.
     """
+
+
+def _read_overlay_yaml(path: Path) -> Any:
+    """Parse an overlay FILE, refusing it as :class:`IoPrimitiveOverlayError`.
+
+    The one read every question about an overlay goes through -- the load, and
+    the provenance pre-read :func:`overlay_declares_community` makes BEFORE the
+    load (the ``--no-default-overlays`` split, the community notice). That
+    pre-read used to parse with no handler, so an unparseable overlay escaped
+    as a raw parser exception before the load that would have refused it ran.
+    A repeated key is refused here too, under the same type.
+    """
+    try:
+        return load_yaml_strict(
+            path.read_text(encoding="utf-8"), origin=str(path),
+        )
+    except (yaml.YAMLError, DuplicateYamlKeyError) as exc:
+        raise IoPrimitiveOverlayError(
+            f"I/O primitive overlay {path} is not valid YAML: {exc}",
+        ) from exc
 
 
 def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
@@ -1967,14 +2110,7 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
         raise IoPrimitiveOverlayError(
             f"I/O primitive overlay not found: {path}",
         )
-    try:
-        data = load_yaml_strict(
-            path.read_text(encoding="utf-8"), origin=str(path),
-        ) or {}
-    except yaml.YAMLError as exc:
-        raise IoPrimitiveOverlayError(
-            f"I/O primitive overlay {path} is not valid YAML: {exc}",
-        ) from exc
+    data = _read_overlay_yaml(path) or {}
     if not isinstance(data, dict):
         raise IoPrimitiveOverlayError(
             f"I/O primitive overlay {path} must be a mapping at the top level, "
@@ -1986,7 +2122,7 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
             f"I/O primitive overlay {path} must declare "
             f"status: {_OVERLAY_STATUS!r}, got {status!r}. "
             f"'provenance_declared' is a claim about a language's stdlib "
-            f"citation and is not available to a project-local overlay.",
+            f"citation and is not available to an overlay.",
         )
     # THE SPELLING IS REFUSED; THE DECLARATION IS NOT (owner, 2026-08-15).
     # An overlay describes THIRD-PARTY modules, so a key named ``stdlib_*`` in
@@ -2047,7 +2183,7 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
 _DEFAULT_OVERLAY_DIR = Path(__file__).parent / "io_primitives_overlays"
 
 
-class DefaultOverlayError(Exception):
+class DefaultOverlayError(CatalogueError):
     """A shipped default overlay violates the contract defaults must meet."""
 
 
@@ -2176,7 +2312,10 @@ def load_catalog(
     When a language has a parent catalog (e.g. scala → java), the child
     catalog is loaded first and then merged with the parent so that
     child entries take precedence while parent entries fill in gaps.
-    Returns an empty catalog if no catalog is found.
+    Returns an empty, ``is_supported=False`` catalog if no catalog is found
+    and no overlay declares the language; if a project-local overlay does,
+    its rows are the whole catalogue and it is marked ``overlay_only``
+    (WI-guhuv).
 
     ``include_defaults`` layers the SHIPPED COMMUNITY overlays for this
     language underneath any project-local ones (ADR-0047 rulings 1 and 5).
@@ -2196,10 +2335,12 @@ def load_catalog(
 
     STDLIB MEMBERSHIP IS DELIBERATELY NOT WIDENED. ``load_overlay_catalog``
     drops ``stdlib_modules`` / ``stdlib_prefixes`` from an overlay, so
-    ``is_stdlib_module`` keeps answering about the actual interpreter. A
+    ``is_stdlib_module`` keeps answering about the language runtime (for
+    Python, the union over every supported interpreter; WI-gisan). A
     ``requests`` overlay must not make ``requests`` classify as stdlib — that
-    feeds the dependency classifier and the F3 boundary filter, and relabelling
-    a PyPI package as stdlib is a supply-chain misread, not an I/O one.
+    feeds the ecosystem label and the dependency carve-out (ADR-0041 §3), and
+    relabelling a PyPI package as stdlib is a supply-chain misread, not an I/O
+    one.
     """
     path = _catalog_path_for(language)
     if path is None:
@@ -2209,20 +2350,29 @@ def load_catalog(
         #
         # WI-gofah: and the STATUS says so too. A catalogue that does not exist
         # has no provenance to declare, and the dataclass default said it had.
-        return IoBoundaryCatalog(
+        #
+        # WI-guhuv: this used to RETURN here, before the overlay loop, so a
+        # project-local overlay for such a language was a silent no-op under a
+        # "loaded 1 overlay" banner. ADR-0016 sends everything outside the
+        # stdlib to overlays, and for a language with no shipped catalogue that
+        # was the only remedy there is. The empty catalogue now falls through;
+        # an overlay that declares this language becomes its whole row set
+        # (``overlay_only``), and one that does not leaves it unsupported.
+        catalog = IoBoundaryCatalog(
             language=language,
             is_supported=False,
             status=CATALOG_STATUS_UNSUPPORTED,
         )
-    catalog = IoBoundaryCatalog.from_yaml(path)
+    else:
+        catalog = IoBoundaryCatalog.from_yaml(path)
 
-    # Merge parent catalog if defined (e.g. scala inherits java entries)
-    parent_lang = _CATALOG_PARENTS.get(language)
-    if parent_lang:
-        parent_path = _CATALOG_DIR / f"{parent_lang}.yaml"
-        if parent_path.exists():
-            parent_catalog = IoBoundaryCatalog.from_yaml(parent_path)
-            catalog = catalog.merge(parent_catalog)
+        # Merge parent catalog if defined (e.g. scala inherits java entries)
+        parent_lang = _CATALOG_PARENTS.get(language)
+        if parent_lang:
+            parent_path = _CATALOG_DIR / f"{parent_lang}.yaml"
+            if parent_path.exists():
+                parent_catalog = IoBoundaryCatalog.from_yaml(parent_path)
+                catalog = catalog.merge(parent_catalog)
 
     _default_paths: list[Path] = []
     if include_defaults:
@@ -2233,21 +2383,9 @@ def load_catalog(
     _paths: list[Path] = list(_default_paths)
     _paths.extend(Path(p) for p in overlay_paths or ())
 
-    # A COMMUNITY ROW IS NOT PART OF THE STDLIB ENUMERATION, so a shipped
-    # default must not restate what the catalogue claims about it.
-    # ``status: provenance_declared`` says a language's STDLIB surface was
-    # enumerated against a cited source; ``merge`` is self-over-argument with
-    # the overlay as receiver, so without this python went
-    # provenance_declared -> in_progress the moment defaults loaded, and every
-    # python run would have emitted "io-boundary results may be incomplete"
-    # alongside the true ADR-0047 disclosure. A USER overlay's effect on
-    # status is left exactly as it was — that is a separate question.
-    _base_status = catalog.status
-    _base_provenance = catalog.stdlib_provenance
-
     for overlay_path in _paths:
         overlay = load_overlay_catalog(Path(overlay_path))
-        if overlay.language and overlay.language != catalog.language:
+        if overlay.language and not _is_known_overlay_language(overlay.language):
             # NOT MINE vs NOT REAL — and the distinction is the whole fix
             # (INV-lufib). A claims file declares ONE overlay list and
             # ``cmd_verify_claims`` fans it out over EVERY language in the
@@ -2258,41 +2396,107 @@ def load_catalog(
             # io_primitives_overlays/ (python + go) could never be
             # declared together.
             #
-            # An overlay for ANOTHER SHIPPED language is simply not applicable
-            # to this one — being asked is a question, not an error, and the
-            # answer is "not mine". An overlay for a language no catalogue
-            # knows is a TYPO (``language: pyton``), and skipping that would
-            # leave the author believing their rows applied, which is the
-            # fail-quiet direction this whole loader is built against. So the
-            # refusal is kept exactly where it still discriminates.
-            if not _catalog_path_for(overlay.language):
-                raise IoPrimitiveOverlayError(
-                    f"I/O primitive overlay {overlay_path} declares language "
-                    f"{overlay.language!r}, which has no I/O primitive "
-                    f"catalogue. Applying it would attribute I/O to the wrong "
-                    f"tree, and no run would ever apply it — check the "
-                    f"spelling.",
-                )
+            # An overlay for ANOTHER language is simply not applicable to this
+            # one — being asked is a question, not an error, and the answer is
+            # "not mine". An overlay for a language no ANALYZER knows is a TYPO
+            # (``language: pyton``), and skipping that would leave the author
+            # believing their rows applied, which is the fail-quiet direction
+            # this whole loader is built against. So the refusal is kept
+            # exactly where it still discriminates.
+            #
+            # WI-guhuv: the test used to be "no shipped catalogue", which
+            # called a correct ruby overlay a typo and aborted every run over
+            # a repo holding ruby beside a catalogued language.
+            #
+            # CHECKED BEFORE "NOT MINE", on every overlay, because a load of the
+            # typo'd language itself (the taint arm loads each overlay's own
+            # language) would otherwise match its own name and apply.
+            raise IoPrimitiveOverlayError(
+                f"I/O primitive overlay {overlay_path} declares language "
+                f"{overlay.language!r}, which no hypergumbo analyzer "
+                f"produces. No run would ever apply it — check the "
+                f"spelling.",
+            )
+        if overlay.language and overlay.language != catalog.language:
             continue
         # ``merge`` is self-over-argument, so the overlay is the receiver: a
         # later overlay outranks an earlier one and both outrank the built-in.
-        if overlay_path in _default_paths:
+        #
+        # THE TIER IS THE FILE'S OWN DECLARATION, NOT ITS DIRECTORY (ADR-0061
+        # ruling 3, INV-lamap). ``init-catalogs`` seeds copies of the shipped
+        # overlays into the user's io_primitives.d, and while the stamp keyed
+        # on the shipped directory those copies loaded as the user's own rows
+        # and licensed clean verdicts the originals cannot. A community file
+        # stays community until someone deletes its ``provenance: community``
+        # line, which is the act of vouching. A shipped default is community
+        # by construction (``validate_default_overlays``).
+        community = (
+            overlay_path in _default_paths
+            or overlay_declares_community(Path(overlay_path))
+        )
+        if community:
             # Mark every row so a later consumer can tell a row hypergumbo
-            # vouches for from one it merely ships. Stamped at merge rather
-            # than in the YAML so a file cannot claim to be vouched-for by
-            # omitting a key.
+            # vouches for from one it merely ships, and WITHHOLD the file's
+            # completeness grants: a grant turns an unclassified call into an
+            # examined negative, the removing half ADR-0061 ruling 2 denies an
+            # unvouched row. (A shipped default may not declare one at all.)
             overlay = replace(overlay, primitives=[
                 replace(prim, unvouched=True) for prim in overlay.primitives
-            ])
+            ], module_completeness={})
+        # A COMMUNITY ROW IS NOT PART OF THE STDLIB ENUMERATION, so it must not
+        # restate what the catalogue claims about it. ``status:
+        # provenance_declared`` says a language's STDLIB surface was enumerated
+        # against a cited source; ``merge`` is self-over-argument with the
+        # overlay as receiver, so without this python went provenance_declared
+        # -> in_progress the moment defaults loaded, and every python run
+        # would have emitted "io-boundary results may be incomplete" beside
+        # the true ADR-0047 disclosure. The status kept is the one BEFORE this
+        # file, so a file of yours merged earlier keeps its effect. A USER
+        # overlay's effect on status is left exactly as it was.
+        _status, _provenance = catalog.status, catalog.stdlib_provenance
         catalog = overlay.merge(catalog)
-        if overlay_path in _default_paths:
+        if community:
             catalog = replace(
-                catalog,
-                status=_base_status,
-                stdlib_provenance=_base_provenance,
+                catalog, status=_status, stdlib_provenance=_provenance,
             )
+        if path is None:
+            # ``merge`` builds a fresh catalogue whose ``is_supported`` defaults
+            # to True, which is right: these rows classify. What it cannot
+            # carry is that they are ALL there is (WI-guhuv).
+            catalog = replace(catalog, overlay_only=True)
 
     return catalog
+
+
+def overlay_declares_community(path: Path) -> bool:
+    """Does this overlay FILE declare ``provenance: community`` (ADR-0061)?
+
+    The tier is read from the file's own line, so a community file copied
+    anywhere -- a user's io_primitives.d, a path in config.toml, a command-line
+    flag -- stays community until the line is deleted. The file has already
+    been loaded by :func:`load_overlay_catalog` wherever this is asked during
+    a load, but it is also asked BEFORE one (the ``--no-default-overlays``
+    split, the community notice), so an unparseable file is refused here with
+    the load's own error rather than escaping as a parser exception.
+    """
+    from .yaml_catalogs import declares_community
+
+    return declares_community(_read_overlay_yaml(path))
+
+
+def _is_known_overlay_language(language: str) -> bool:
+    """May an overlay name ``language``? A shipped catalogue or any analyzer.
+
+    The analyzer set is the lightweight ``language`` axis
+    (``catalog.all_known_languages``), so a language hypergumbo can analyse but
+    ships no I/O rows for is a legitimate overlay target (WI-guhuv), while one
+    it cannot produce at all is a typo.
+    """
+    if _catalog_path_for(language):
+        return True
+    from .catalog import all_known_languages
+
+    return language in set(all_known_languages())
 
 
 def in_progress_languages(languages: Iterable[str]) -> list[str]:
@@ -2305,9 +2509,9 @@ def in_progress_languages(languages: Iterable[str]) -> list[str]:
     catalog's zero-match outcome is otherwise indistinguishable from a genuine
     "no I/O in this code". Unsupported languages (no catalog file, even via
     alias) are excluded — :func:`load_catalog` returns a fallback object whose
-    ``status`` defaults to ``"provenance_declared"`` (they carry the separate
-    ``is_supported=False`` signal, INV-javam), so the ``status == "in_progress"``
-    test cleanly drops them. Aliases and parents resolve through
+    ``status`` is :data:`CATALOG_STATUS_UNSUPPORTED` (WI-gofah; they also carry
+    the separate ``is_supported=False`` signal, INV-javam), so the
+    ``status == "in_progress"`` test cleanly drops them. Aliases and parents resolve through
     :func:`load_catalog` (e.g. ``typescript`` reports the ``javascript``
     catalog's status). The result is sorted and de-duplicated.
     """
@@ -2487,7 +2691,7 @@ def resolve_mode_boundary(io_mode: Optional[str]) -> str:
 
 
 def resolve_mode_boundary_across_sites(
-    io_modes: Optional[Sequence[str]],
+    io_modes: Optional[Sequence[Optional[str]]],
 ) -> str:
     """:func:`resolve_mode_boundary`, asked of EVERY collapsed call site.
 
@@ -2522,7 +2726,7 @@ def resolve_mode_boundary_across_sites(
 
 def call_site_modes(
     edge_meta: Optional[Mapping[str, Any]],
-) -> tuple[str, ...]:
+) -> tuple[Optional[str], ...]:
     """Every statically-known open-mode among an edge's collapsed call sites.
 
     ONE READER for a two-shaped fact, so no consumer has to know that
@@ -2532,16 +2736,30 @@ def call_site_modes(
     themselves — a second copy of the plural/singular fallback is exactly the
     shape that leaves one consumer reading the old key forever.
 
+    ``None`` IS A SITE WITH NO MODE (INV-rajak): the collapse records a site
+    that carried no ``io_mode`` as ``None``, and every consumer reads it as
+    :func:`resolve_mode_boundary` reads a single unmoded call. Dropping it let
+    ``open(q, 'w')`` erase the ``fs_read`` of a ``json.load(open(p))`` beside
+    it, and a ``must_not_exist: fs_read`` claim confirmed.
+
     Validated rather than trusted: ``meta`` is an open dict deserialized from
     an artifact that may predate either key or have been hand-edited, so a
     non-list ``_values`` falls back to the singular and a non-string member is
-    dropped rather than carried into ``set()`` arithmetic downstream.
+    read as ``None``, a site whose mode is unknown -- never dropped, because a
+    dropped site is the defect above.
     """
+    return _call_site_values(edge_meta, "io_mode")
+
+
+def _call_site_values(
+    edge_meta: Optional[Mapping[str, Any]], key: str,
+) -> tuple[Optional[str], ...]:
+    """The shared body of :func:`call_site_modes` and :func:`call_site_target_kinds`."""
     meta = edge_meta or {}
-    values = meta.get("io_mode_values")
+    values = meta.get(f"{key}_values")
     if isinstance(values, list):
-        return tuple(v for v in values if isinstance(v, str))
-    single = meta.get("io_mode")
+        return tuple(v if isinstance(v, str) else None for v in values)
+    single = meta.get(key)
     return (single,) if isinstance(single, str) else ()
 
 
@@ -2642,15 +2860,18 @@ _TARGET_MAP_BY_DIRECTION: Final[Mapping[str, Mapping[str, str]]] = {
 
 
 def _boundary_for_target_kind(
-    kind: str, direction: str,
+    kind: Optional[str], direction: str,
 ) -> tuple[bool, Optional[str]]:
     """``(known, boundary)`` for a call in ``direction`` at ``kind``.
 
     ``known=False`` means this vocabulary has no opinion and the caller must
     fall back to the catalogue row -- the only safe default in a direction that
     removes findings. ``known=True, boundary=None`` means the call crosses
-    nothing at all.
+    nothing at all. ``kind=None`` is a collapsed site the analyzer did not
+    stamp (INV-rajak), and the vocabulary has no opinion on it.
     """
+    if kind is None:
+        return False, None
     if kind in _NON_CROSSING_TARGET_KINDS:
         return True, None
     table = _TARGET_MAP_BY_DIRECTION[direction]
@@ -2659,19 +2880,19 @@ def _boundary_for_target_kind(
     return False, None
 
 
-def read_boundary_for_target_kind(kind: str) -> tuple[bool, Optional[str]]:
+def read_boundary_for_target_kind(kind: Optional[str]) -> tuple[bool, Optional[str]]:
     """``(known, boundary)`` for a READ at ``kind``; see :func:`_boundary_for_target_kind`."""
     return _boundary_for_target_kind(kind, "read")
 
 
-def write_boundary_for_target_kind(kind: str) -> tuple[bool, Optional[str]]:
+def write_boundary_for_target_kind(kind: Optional[str]) -> tuple[bool, Optional[str]]:
     """``(known, boundary)`` for a WRITE at ``kind``; see :func:`_boundary_for_target_kind`."""
     return _boundary_for_target_kind(kind, "write")
 
 
 def call_site_target_kinds(
     edge_meta: Optional[Mapping[str, Any]],
-) -> tuple[str, ...]:
+) -> tuple[Optional[str], ...]:
     """Every ``io_target_kind`` among an edge's collapsed call sites.
 
     The ``io_target_kind`` sibling of :func:`call_site_modes`, and it exists for
@@ -2679,16 +2900,31 @@ def call_site_target_kinds(
     ``io_target_kind_values`` the moment two sites disagree, and a consumer that
     only knew the singular spelling would read one site's answer as the
     relationship's. One reader, so no consumer has to know that.
+
+    ``None`` is a site the analyzer did not stamp (INV-rajak), and it is what
+    keeps one ``in_memory`` scanner from reading as the whole edge: no
+    consumer's vocabulary knows ``None``, so each abstains exactly as it does
+    for a single unstamped call.
     """
-    meta = edge_meta or {}
-    values = meta.get("io_target_kind_values")
-    if isinstance(values, list):
-        return tuple(v for v in values if isinstance(v, str))
-    single = meta.get("io_target_kind")
-    return (single,) if isinstance(single, str) else ()
+    return _call_site_values(edge_meta, "io_target_kind")
 
 
-def target_kinds_cross_no_boundary(target_kinds: Sequence[str]) -> bool:
+def call_site_attr_carriers(
+    edge_meta: Optional[Mapping[str, Any]],
+) -> tuple[Optional[str], ...]:
+    """Every ``attr_carrier`` among an attribute edge's collapsed uses (INV-hopib).
+
+    The third reader of this shape, beside :func:`call_site_modes` and
+    :func:`call_site_target_kinds`: a stream used through ``print`` on one line
+    and through ``json.dump`` on the next collapses to one edge carrying
+    ``attr_carrier_values``, and ``None`` there is a use outside any call. A
+    consumer reading only the singular key would take one use's carrier for the
+    whole relationship -- and drop a stream that is still written elsewhere.
+    """
+    return _call_site_values(edge_meta, "attr_carrier")
+
+
+def target_kinds_cross_no_boundary(target_kinds: Sequence[Optional[str]]) -> bool:
     """True when EVERY collapsed call site discards what it is handed.
 
     INV-nular, and the direction needs defending because refusing to classify
@@ -2743,7 +2979,7 @@ def _mode_discriminated_keys(
 
 
 def _narrow_by_mode(
-    hits: Sequence[IoPrimitive], io_modes: Optional[Sequence[str]],
+    hits: Sequence[IoPrimitive], io_modes: Optional[Sequence[Optional[str]]],
 ) -> list[IoPrimitive]:
     """Drop the losing row of every mode-discriminated primitive in ``hits``.
 
@@ -2783,7 +3019,7 @@ _GATING_VALUES_BY_DIRECTION: Final[Mapping[str, frozenset[str]]] = {
 
 
 def resolve_target_kind_across_sites(
-    target_kinds: Optional[Sequence[str]],
+    target_kinds: Optional[Sequence[Optional[str]]],
     *,
     direction: str = "read",
 ) -> Optional[str]:
@@ -2886,6 +3122,42 @@ def _target_kind_gated_directions(
     return gated
 
 
+def _check_required_target_kind(
+    language: str, module: str, boundary: str, kind: str,
+) -> None:
+    """Refuse a ``requires_target_kind`` that could never select its own row."""
+    for direction, values in _GATING_VALUES_BY_DIRECTION.items():
+        if boundary in values:
+            answer = _TARGET_MAP_BY_DIRECTION[direction].get(kind)
+            if answer == boundary:
+                return
+            raise ValueError(
+                f"{language}: {module} row under {boundary!r} declares "
+                f"requires_target_kind={kind!r}, which a {direction} resolves "
+                f"to {answer!r}, not to this row's boundary. Expected a kind "
+                f"from {sorted(k for k, b in _TARGET_MAP_BY_DIRECTION[direction].items() if b == boundary)}."
+            )
+    raise ValueError(
+        f"{language}: {module} row under {boundary!r} declares "
+        f"requires_target_kind={kind!r}, but {boundary!r} is not a read or "
+        f"write boundary a target kind can select."
+    )
+
+
+def _required_kind_holds(
+    row: IoPrimitive, target_kinds: Optional[Sequence[Optional[str]]],
+) -> bool:
+    """Whether every site's stamp resolves to a ``requires_target_kind`` row."""
+    direction = next(
+        d for d, values in _GATING_VALUES_BY_DIRECTION.items()
+        if row.boundary in values
+    )
+    return bool(
+        resolve_target_kind_across_sites(target_kinds, direction=direction)
+        == row.boundary
+    )
+
+
 def _target_kind_discriminated_keys(
     primitives: Iterable[IoPrimitive],
 ) -> frozenset[tuple[str, str, str]]:
@@ -2895,7 +3167,7 @@ def _target_kind_discriminated_keys(
 
 
 def _narrow_by_target_kind(
-    hits: Sequence[IoPrimitive], target_kinds: Optional[Sequence[str]],
+    hits: Sequence[IoPrimitive], target_kinds: Optional[Sequence[Optional[str]]],
 ) -> list[IoPrimitive]:
     """Drop the losing rows of every target-kind-discriminated primitive.
 
@@ -2906,7 +3178,7 @@ def _narrow_by_target_kind(
     mode seam — ``select_by_mode(_narrow_by_target_kind(...))`` still lets a
     mode settle whatever the stream argument did not, whereas two selectors in
     a row would have the first one decide what the second exists to decide. A
-    ``_narrow_by_target_kind`` twin was written first and deleted: nothing could
+    selecting twin (the ``select_`` form) was written first and deleted: nothing could
     call it without breaking that composition, which is WI-famig's defect (a
     mechanism with no live consumer) caught by its own uncovered line.
 
@@ -2921,11 +3193,17 @@ def _narrow_by_target_kind(
     pinned by a test against the shipped catalogues.
 
     THIS ARM IS NOT OPTIONAL. C's ``fgets`` carries no module slot, so it
-    reaches ``lookup_with_module``'s short-name fallback and never touches
-    :func:`_narrow_by_target_kind`. The mode seam learned this the expensive
+    reaches ``lookup_with_module``'s short-name fallback and never touches the
+    two arms that call :func:`select_by_mode`. The mode seam learned this the expensive
     way -- stamping ``io_mode`` for C moved nothing until this same arm was
     narrowed too, because a predicate is inert until every call site passes it.
     """
+    # WI-dorus: a row that requires a stamp is dropped without one -- there is
+    # no abstention to fall back to (``IoPrimitive.requires_target_kind``).
+    hits = [
+        h for h in hits
+        if h.requires_target_kind is None or _required_kind_holds(h, target_kinds)
+    ]
     gated = _target_kind_gated_directions(hits)
     if not gated:
         return list(hits)
@@ -2950,7 +3228,7 @@ def _narrow_by_target_kind(
 def mode_spanned_boundaries(
     catalog: "IoBoundaryCatalog",
     match: IoPrimitive,
-    io_modes: Sequence[str],
+    io_modes: Sequence[Optional[str]],
 ) -> frozenset[str]:
     """Both fs boundaries when ONE edge's collapsed sites span read AND write.
 
@@ -3296,6 +3574,11 @@ class ModeArgument:
 
     position: int
     keyword: Optional[str] = None  # axis: free-text — the target language's own keyword spelling for this argument, compared for equality against a call site's keyword; not enumerable across languages.
+    #: WI-ninuz. For a language whose mode is a bitwise OR of named FLAGS
+    #: rather than a string (Go's ``os.O_WRONLY|os.O_CREATE``): each flag name
+    #: and the mode it implies. The producer reads the names off the argument
+    #: when it is not a string literal; any write flag makes the call ``"w"``.
+    flag_modes: Optional[Mapping[str, str]] = None
 
 
 # Where each language puts the mode argument of each mode-discriminated
@@ -3312,6 +3595,12 @@ class ModeArgument:
 # Languages inheriting a catalogue inherit this table through
 # :func:`mode_argument_for`, exactly as they inherit the rows — a copied ``cpp``
 # entry would be a second home for one fact and would drift on the first edit.
+#: POSIX ``<fcntl.h>`` access and creation flags and the mode each implies.
+_POSIX_OPEN_FLAG_MODES: Mapping[str, str] = {
+    "O_RDONLY": "r", "O_WRONLY": "w", "O_RDWR": "w",
+    "O_APPEND": "w", "O_CREAT": "w", "O_TRUNC": "w",
+}
+
 _MODE_ARGUMENT_POSITIONS: dict[str, dict[str, ModeArgument]] = {
     "python": {
         "open": ModeArgument(position=1, keyword="mode"),
@@ -3325,7 +3614,13 @@ _MODE_ARGUMENT_POSITIONS: dict[str, dict[str, ModeArgument]] = {
         "ZipFile": ModeArgument(position=1, keyword="mode"),
         "FileIO": ModeArgument(position=1, keyword="mode"),
     },
-    "c": {"fopen": ModeArgument(position=1)},
+    # WI-bulub: POSIX ``open(path, flags)`` / ``openat(dirfd, path, flags)``
+    # take Go's shape -- the mode is the NAMES of OR-ed flag macros.
+    "c": {
+        "fopen": ModeArgument(position=1),
+        "open": ModeArgument(position=1, flag_modes=_POSIX_OPEN_FLAG_MODES),
+        "openat": ModeArgument(position=2, flag_modes=_POSIX_OPEN_FLAG_MODES),
+    },
     # WI-nolut (2026-09-06): node's ``fs.open(path, flags[, mode], cb)`` /
     # ``fs.openSync(path, flags)`` / ``fs.promises.open(path, flags)`` put the
     # catalogue's "mode" -- the FLAGS string, 'r' / 'w' / 'a+' / 'wx' -- at
@@ -3336,6 +3631,14 @@ _MODE_ARGUMENT_POSITIONS: dict[str, dict[str, ModeArgument]] = {
     "javascript": {
         "open": ModeArgument(position=1),
         "openSync": ModeArgument(position=1),
+    },
+    # WI-ninuz: ``os.OpenFile(name, flag, perm)``. The flag is package
+    # constants OR-ed together, so the mode is read from their NAMES.
+    "go": {
+        "OpenFile": ModeArgument(position=1, flag_modes={
+            "O_RDONLY": "r", "O_WRONLY": "w", "O_RDWR": "w",
+            "O_APPEND": "w", "O_CREATE": "w", "O_TRUNC": "w",
+        }),
     },
 }
 
@@ -3361,7 +3664,7 @@ def mode_argument_for(language: str, short_name: str) -> Optional[ModeArgument]:
 
 def select_by_mode(
     candidates: Sequence[IoPrimitive],
-    io_modes: Optional[Sequence[str]],
+    io_modes: Optional[Sequence[Optional[str]]],
 ) -> Optional[IoPrimitive]:
     """Pick the row matching ``io_mode`` from a dual-classified candidate set.
 
@@ -3421,6 +3724,68 @@ def match_edge_to_primitive(
 # ---------------------------------------------------------------------------
 
 
+#: The two ADR-0041 §3 ecosystem values :func:`module_ecosystem` returns, and
+#: the bucket :func:`untraced_modules` files a ``None`` under.
+ECOSYSTEM_STDLIB = "stdlib"
+ECOSYSTEM_THIRD_PARTY = "third_party"
+ECOSYSTEM_UNKNOWN = "unknown"
+
+
+def module_ecosystem(catalog: IoBoundaryCatalog, module: str) -> Optional[str]:
+    """``"stdlib"`` / ``"third_party"`` for ``module`` under ``catalog``, or None.
+
+    THE ONE HOME of the ADR-0041 §3 ecosystem predicate. It lived as a closure
+    in ``cli._make_ecosystem_classifier`` (the boundary-node stamp); WI-pogar
+    needed the same answer in ``verify_claims``'s raw-edge walk, and a second
+    copy of "is this a dependency" is how the stamp and the verdict would come
+    to disagree about one module.
+
+    NONE WHEN THE LANGUAGE ENUMERATES NO STANDARD LIBRARY -- every catalogue
+    but Python's today -- because "not in the set" is then indistinguishable
+    from "set unknown", and calling a runtime module a dependency would send a
+    reader to ``--trace-deps`` for code that ships with the interpreter.
+
+    RECOGNITION, NOT EXAMINATION (:meth:`IoBoundaryCatalog.is_stdlib_module`):
+    this labels a call, it never decides whether one was examined.
+    """
+    if not (catalog.stdlib_modules or catalog.stdlib_prefixes):
+        return None
+    if catalog.is_stdlib_module(module):
+        return ECOSYSTEM_STDLIB
+    return ECOSYSTEM_THIRD_PARTY
+
+
+def untraced_modules(chains: Iterable["IoChain"]) -> dict[str, list[str]]:
+    """The modules behind the ``external_potential`` chains, by ecosystem.
+
+    WI-pogar / ADR-0016 §7: a call into source this analysis did not read,
+    that no row classifies, has UNKNOWN I/O. ``external_potential`` is exactly
+    that population (its dst is a synthetic ``external_boundary`` stub), so
+    this reads it rather than defining a second one. A chain under any OTHER
+    boundary is a detection -- a row classified the call -- and is not
+    I/O-unknown, even when the row is a community one into a dependency.
+
+    The module is the dst id's path slot (:func:`ir.symbol_path_slot`), the
+    same slot ``verify_claims``' uncatalogued-module gate names, so the two
+    commands list one call under one spelling. Grouped under
+    ``third_party`` (an untraced dependency), ``stdlib`` (a runtime module the
+    catalogue has not enumerated) and ``unknown`` (no stdlib enumeration for
+    the language: either one). Every key is present, lists sorted.
+    """
+    groups: dict[str, set[str]] = {
+        ECOSYSTEM_THIRD_PARTY: set(), ECOSYSTEM_STDLIB: set(), ECOSYSTEM_UNKNOWN: set(),
+    }
+    for chain in chains:
+        if chain.boundary != "external_potential":
+            continue
+        module = symbol_path_slot(chain.io_edge_dst)
+        if not module:  # pragma: no cover - the bucket requires a named module (F3 Filter 1)
+            continue
+        key = chain.dst_ecosystem if chain.dst_ecosystem in groups else ECOSYSTEM_UNKNOWN
+        groups[key].add(module)
+    return {key: sorted(mods) for key, mods in groups.items()}
+
+
 @dataclass
 class IoChain:
     """A call chain from an entry point to an I/O boundary call.
@@ -3447,6 +3812,15 @@ class IoChain:
             from the (incomplete) catalog does not authoritatively mean
             the dst is third-party — the language's stdlib enumeration
             isn't yet provenance-validated.
+        dst_ecosystem: The dst node's ADR-0041 §3 ``meta.ecosystem`` stamp --
+            ``"stdlib"`` (the language runtime), ``"third_party"`` (a
+            dependency) or ``None`` (not an external dst, or a language whose
+            standard library is not enumerated, so the two cannot be told
+            apart). Copied, never re-derived: ``create_boundary_nodes``
+            stamped it through :func:`module_ecosystem`. On an
+            ``external_potential`` chain ``"third_party"`` is what makes the
+            call an UNTRACED DEPENDENCY -- its source was not analysed, so its
+            I/O is unknown rather than absent (WI-pogar, ADR-0016 §7).
     """
 
     boundary: str  # axis: io-boundary
@@ -3458,6 +3832,7 @@ class IoChain:
     dst_tier_name: Optional[str] = None  # axis: bounded-enum
     dst_external_boundary: bool = False
     dst_classification_unreliable: bool = False
+    dst_ecosystem: Optional[str] = None  # axis: bounded-enum — "stdlib" / "third_party" / None, the ADR-0041 §3 ecosystem vocabulary (see docstring)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dict including high-risk flag."""
@@ -3474,6 +3849,7 @@ class IoChain:
             "dst_classification_unreliable": (
                 self.dst_classification_unreliable
             ),
+            "dst_ecosystem": self.dst_ecosystem,
         }
 
 
@@ -3500,7 +3876,8 @@ class BoundaryMapEntry:
 
         Includes per-primitive counts, per-chain detail, and a
         high-risk flag indicating whether any chain uses a high-risk
-        primitive (destructive fs, subprocess, outbound network).
+        primitive (a display-only marker scoped to subprocess launches;
+        see ``HIGH_RISK_PRIMITIVES``).
 
         Also emits the WI-darad leaf-caller roll-ups (leaf_callers +
         entry_points_per_leaf) so taint-style reasoning can keep the
@@ -3537,15 +3914,17 @@ class BoundaryMap:
             bucket. INV-pubom canonical definition (amended 2026-06-30 per the
             wave-3 ruling, WI-huhit/WI-foduh): ``sum(len(e.chains) for k, e in
             entries.items() if k != "external_potential")``. The prior
-            definition INCLUDED external_potential, which on self-analysis is
-            ~96% receiver-unresolved builtin method calls (append/get/split…) —
-            not real I/O — so a consumer reading the headline as "I/O surface"
-            over-counted ~28x. external_potential is now disclosed separately in
+            definition INCLUDED external_potential, which on self-analysis was
+            then ~96% receiver-unresolved builtin method calls (append/get/split…)
+            — not real I/O — so a consumer reading the headline as "I/O surface"
+            over-counted ~28x. (Those placeholders no longer enter the bucket at
+            all: F3 Filter 1, INV-toguh.) external_potential is now disclosed separately in
             ``external_potential_edges``. The unfiltered serializer
             (``BoundaryMap.to_dict``), the filtered ``cmd_io_boundaries`` JSON
             path, AND the text headline all agree on this real-categories count.
         external_potential_edges: Chain count of the ``external_potential``
-            bucket (receiver-unresolved calls — potential, unverified I/O),
+            bucket (unclassified calls into named external modules — potential,
+            unverified I/O),
             disclosed separately so it does not inflate ``total_io_edges``.
         command_launch_edges: Chain count of the ``command_launch`` bucket
             (WI-javoh) — command-mediated external-program launches (a shell
@@ -3573,6 +3952,15 @@ class BoundaryMap:
     #: Chain count of the ``db_compose`` bucket (WI-fasap) -- the database twin
     #: of ``net_listen``, disclosed for the same reason.
     db_compose_edges: int = 0
+    #: The modules behind the ``external_potential`` chains, grouped by
+    #: ``dst_ecosystem`` (:func:`untraced_modules`; WI-pogar). Each is a module
+    #: this analysis called into without reading its source and without a row
+    #: to classify the call, so its I/O is UNKNOWN -- the ``third_party`` group
+    #: is untraced dependency source (ADR-0016 §7). Every key is always
+    #: present so a consumer never reads a missing one as "nothing untraced".
+    untraced_modules: dict[str, list[str]] = field(
+        default_factory=lambda: untraced_modules(()),
+    )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dict.
@@ -3590,6 +3978,7 @@ class BoundaryMap:
             "command_launch_edges": self.command_launch_edges,
             "net_listen_edges": self.net_listen_edges,
             "db_compose_edges": self.db_compose_edges,
+            "untraced_modules": self.untraced_modules,
             "boundaries": {
                 k: v.to_dict() for k, v in sorted(self.entries.items())
             },
@@ -3691,6 +4080,8 @@ def _compute_external_potential(
     Filters:
     - Only edge types in :data:`_TRACEABLE_EDGE_TYPES` (same set the
       reverse-graph uses).
+    - The dst's module slot must NAME a module: a receiver-unresolved
+      placeholder (``external``) is skipped (F3 Filter 1, INV-toguh).
     - The dst MUST be in ``nodes_by_id`` AND be marked
       ``meta.external_boundary``.
     - The source language MUST have a loaded catalog
@@ -3721,18 +4112,6 @@ def _compute_external_potential(
         if not dst_meta.get("external_boundary"):
             continue
 
-        # F3 Filter 1: unresolved-receiver skip.
-        # Per ADR-0028, ``Edge.is_resolved`` is False for edges whose dst
-        # symbol could not be resolved at analysis time — i.e., a
-        # speculative external target. These dominate the
-        # external_potential bucket on self-analysis (~4,521 chains on
-        # hypergumbo) and report low-signal "we don't know what this is"
-        # rather than "first-party code reaches an audited boundary."
-        # ``getattr`` with a True default keeps legacy edge objects
-        # (and pre-ADR-0028 mock edges) behaving as before.
-        if not getattr(edge, "is_resolved", True):
-            continue
-
         src_parts = edge.src.split(":")
         src_lang = src_parts[0] if src_parts else ""
         catalog = catalogs.get(src_lang)
@@ -3754,21 +4133,35 @@ def _compute_external_potential(
         else:
             module_hint = _extract_module_hint(edge.dst) or ""
             dst_name = dst_node.get("name") or _extract_callee_name(edge.dst)
+
+        # F3 Filter 1: skip a RECEIVER-UNRESOLVED target -- the placeholder
+        # whose module slot names nothing (``python:external:0-0:frob``). Such
+        # a call reports "we don't know what this is", not "first-party code
+        # reaches a named library the catalogue cannot classify", and it is the
+        # largest population (22,503 edges on the self-survey).
+        #
+        # KEYED ON THE MODULE SLOT, NOT ON ``is_resolved`` (INV-toguh). This
+        # filter used to skip ``is_resolved=False``, reading ADR-0028's "the dst
+        # could not be resolved" as "a receiver guess". ADR-0037 ruling 1 made
+        # ``is_resolved`` mean in-repo-ness, so EVERY edge into an external
+        # placeholder is ``is_resolved=False`` by definition and the external
+        # boundary test above admitted only edges this one then dropped: the
+        # bucket was empty on every repository measured (1,851 of 1,851 edges on
+        # full-stack-fastapi-template, 76,015 of 76,015 on the self-survey).
+        if not module_hint or module_hint == "external":
+            continue
         # F3 Filter 3: composition fix. When the dst node's ``name``
         # field already carries the module-qualified form (e.g.
         # ``re.MULTILINE``) and the extracted module_hint is the same
         # module (``re``), the naive prepend produces ``re.re.MULTILINE``.
         # ``ast.ast.Name``, ``os.os.path``, ``datetime.datetime.now`` are
         # the most reader-visible cases. Skip the prepend when the
-        # qualified form is already present.
-        if module_hint and module_hint != "external":
-            prefix = f"{module_hint}."
-            if dst_name.startswith(prefix):
-                primitive = dst_name
-            else:
-                primitive = f"{module_hint}.{dst_name}"
-        else:
+        # qualified form is already present. (Filter 1 has already
+        # guaranteed a named module.)
+        if dst_name.startswith(f"{module_hint}."):
             primitive = dst_name
+        else:
+            primitive = f"{module_hint}.{dst_name}"
 
         # Filter out stdlib non-IO symbols — those aren't catalog gaps.
         if primitive in catalog.stdlib_other:
@@ -3784,7 +4177,7 @@ def _compute_external_potential(
         # still see catalog gaps. ``module_hint`` is the structured
         # source (``edge.dst_ref.module_path`` when available, else the
         # colon-split fallback) computed earlier in this function.
-        if module_hint and catalog.module_io_is_enumerated(module_hint):
+        if catalog.module_io_is_enumerated(module_hint):
             continue
 
         sc = dst_node.get("supply_chain") or {}
@@ -3798,6 +4191,7 @@ def _compute_external_potential(
             dst_tier_name=sc.get("tier_name"),
             dst_external_boundary=True,
             dst_classification_unreliable=(catalog.status == "in_progress"),
+            dst_ecosystem=dst_meta.get("ecosystem"),
         )
         chains.append(chain)
     return chains
@@ -3843,6 +4237,13 @@ def compute_boundary_map(
 
     # Reverse call graph — shared by EP tracing and leaf-caller expansion
     reverse_graph = _build_reverse_graph(edges)
+    # WI-satal: a construction reaches the initializer. py / js_ts / dart land
+    # ``instantiates`` on the CLASS, so an I/O call inside ``__init__`` traced
+    # back to no caller at all and listed no entry point. Needs the nodes to
+    # tell a class and its initializer apart; without them nothing is added.
+    if nodes_by_id:
+        for caller, initializer, _line in construction_calls(nodes_by_id.values(), edges):
+            reverse_graph.setdefault(initializer, set()).add(caller)
 
     # Reverse-trace from IO edges to entrypoints (Phase 1c)
     ep_map: dict[str, set[str]] = {}
@@ -3875,6 +4276,7 @@ def compute_boundary_map(
         dst_tier: Optional[int] = None
         dst_tier_name: Optional[str] = None
         dst_external = False
+        dst_ecosystem: Optional[str] = None
         if nodes_by_id is not None:
             dst_node = nodes_by_id.get(edge.dst)
             if dst_node is not None:
@@ -3883,6 +4285,7 @@ def compute_boundary_map(
                 dst_tier_name = sc.get("tier_name")
                 dst_meta = dst_node.get("meta") or {}
                 dst_external = bool(dst_meta.get("external_boundary"))
+                dst_ecosystem = dst_meta.get("ecosystem")
         # INV-zumin: ONE CHAIN PER SIMULTANEOUSLY-TRUE BOUNDARY. Chains are what
         # a ``must_not_exist`` claim counts, and they were built from the single
         # ``io_boundary`` string — so reaching both declarations in the
@@ -3901,6 +4304,7 @@ def compute_boundary_map(
                 dst_tier=dst_tier,
                 dst_tier_name=dst_tier_name,
                 dst_external_boundary=dst_external,
+                dst_ecosystem=dst_ecosystem,
             ))
 
     # Plan C, PR C: external_potential second pass.  Synthesize chains
@@ -3922,8 +4326,8 @@ def compute_boundary_map(
     # INV-pubom canonical definition (amended 2026-06-30 per the wave-3 ruling,
     # WI-huhit/WI-foduh): ``total_io_edges`` is the REAL/verified I/O surface —
     # the chain count across confirmed boundary categories, EXCLUDING the
-    # ``external_potential`` bucket (receiver-unresolved calls; ~96% builtin
-    # method noise on self-analysis, not real I/O). ``external_potential_edges``
+    # ``external_potential`` bucket (unclassified calls into named external
+    # modules: potential, unverified I/O). ``external_potential_edges``
     # discloses that bucket separately so it no longer inflates the headline.
     # Both the unfiltered (``BoundaryMap.to_dict``) and the filtered
     # (``cmd_io_boundaries``) JSON paths — and the text headline — agree on this
@@ -3953,6 +4357,7 @@ def compute_boundary_map(
         command_launch_edges=disclosed_chain_count(entries, "command_launch"),
         net_listen_edges=disclosed_chain_count(entries, "net_listen"),
         db_compose_edges=disclosed_chain_count(entries, "db_compose"),
+        untraced_modules=untraced_modules(by_boundary.get("external_potential", ())),
     )
 
     return bmap
@@ -4022,14 +4427,243 @@ def compute_leaf_rollups(
 
 # C and C++ spell a header three ways for one module: the catalogue declares
 # the STEM (``stdio``), the source writes the FILENAME (``stdio.h``), and C++
-# adds a third (``<cstdio>``). Only the first two are handled here; the
-# ``cstdio`` convention is deliberately NOT carried, because stripping a
-# leading ``c`` from an arbitrary module slot would maul ``crypto``, ``cmath``
-# and every other module that legitimately starts with one.
+# adds a third (``<cstdio>``). The filename suffix is stripped by rule. The
+# C++ spelling is NOT -- stripping a leading ``c`` from an arbitrary module
+# slot would maul ``crypto``, ``cmark`` and every other module that
+# legitimately starts with one -- so it is carried by the CLOSED table below.
 _HEADER_SUFFIXES = (".hpp", ".hxx", ".hh", ".h")
 
+#: WI-hilot. The C++ standard library's own name for each C library header,
+#: mapped to the C header STEM ``c.yaml`` keys its rows under. A CLOSED list,
+#: which is what the leading-``c`` objection says an open rule cannot be:
+#: ISO C++ [headers] "C++ headers for C library facilities" (cassert ...
+#: cwctype), the five C++17-deprecated / C++20-removed ones toolchains still
+#: ship (ccomplex, ciso646, cstdalign, cstdbool, ctgmath), and C++26's two
+#: C23 additions (cstdbit, cstdckdint, P3370). [support.c.headers] makes
+#: ``<cX>`` declare what ``<X.h>`` declares, in namespace ``std`` (and in
+#: practice the global one too), so ``getenv`` after ``#include <cstdlib>`` IS
+#: ``stdlib.getenv``.
+#:
+#: Before this, a C++ file spelling its C headers the C++ way lost the C half
+#: of its catalogue: the slot ``cstdlib,cstring,sys/socket.h`` named no C row,
+#: and because a non-sentinel slot suppresses the short-name fallback,
+#: ``getenv`` / ``fopen`` / ``printf`` there classified as NOTHING.
+_CXX_C_LIBRARY_HEADERS: Final[Mapping[str, str]] = {
+    "cassert": "assert", "cctype": "ctype", "cerrno": "errno",
+    "cfenv": "fenv", "cfloat": "float", "cinttypes": "inttypes",
+    "climits": "limits", "clocale": "locale", "cmath": "math",
+    "csetjmp": "setjmp", "csignal": "signal", "cstdarg": "stdarg",
+    "cstddef": "stddef", "cstdint": "stdint", "cstdio": "stdio",
+    "cstdlib": "stdlib", "cstring": "string", "ctime": "time",
+    "cuchar": "uchar", "cwchar": "wchar", "cwctype": "wctype",
+    "ccomplex": "complex", "ciso646": "iso646", "cstdalign": "stdalign",
+    "cstdbool": "stdbool", "ctgmath": "tgmath",
+    "cstdbit": "stdbit", "cstdckdint": "stdckdint",
+}
 
-def _module_hint_candidates(module_hint: str) -> list[str]:
+#: The languages whose module slot carries ``#include`` names, the only ones
+#: :data:`_CXX_C_LIBRARY_HEADERS` applies to. SCOPED BY LANGUAGE, NOT BY
+#: SPELLING, because one key is a real module elsewhere: Python's ``cmath``
+#: (complex math) is not its ``math``, and ``math`` is a declared
+#: ``module_completeness`` entry there, so an unscoped table would let the
+#: coverage gate vouch for ``cmath`` on the strength of an audit of ``math``.
+#: ``c`` is included because a header the C analyzer parses can be C++
+#: (a ``.h`` holding C++); a C translation unit cannot include ``<cstdio>``.
+_INCLUDE_SLOT_LANGUAGES: Final = frozenset({"c", "cpp"})
+
+
+def prefer_exact_owner(
+    rows: Sequence[Any], module_hint: str, language: str | None = None,
+) -> list[Any]:
+    """The rows whose module IS what the slot names, else every row (INV-vusum).
+
+    The module filter admits a row whenever ``_module_matches`` relates its
+    module to the slot, and that relation is deliberately loose: a TYPE sits
+    under its package by the component rule, so a slot naming
+    ``requests.Session`` admits both ``requests.Session.get`` and the package
+    function ``requests.get``. Selection then took the FIRST-DECLARED row,
+    which in every such pair is the function. 64 function/method pairs ship
+    (go 17, javascript 14, python 27, rust 6), and a receiver call on each was
+    credited to the package function.
+
+    A NARROWING, NOT A FILTER. When some row's module equals a spelling of the
+    slot exactly, only those rows remain; when none does, every row the module
+    filter kept is returned, so no match that fired before is lost (java's
+    unqualified ``System`` still reaches ``java.lang.System``). Every one of the
+    64 pairs carries one boundary on both rows, so this changes which primitive
+    is REPORTED and never a boundary, zone or verdict.
+
+    One helper for both consumers, ``lookup_with_module`` and taint's
+    ``_lookup_named_entry``, so they cannot disagree about which row a call
+    reaches (INV-motos's shape). Duck-typed: each row exposes ``.module``.
+    """
+    wanted = {
+        normalize_module_separators(c).casefold()
+        for c in _module_hint_candidates(module_hint, language)
+    }
+    exact = [
+        r for r in rows
+        if normalize_module_separators(r.module).casefold() in wanted
+    ]
+    return exact or list(rows)
+
+
+#: The arms of :func:`named_lookup_arm`, in the order it tries them.
+NAMED_ARM_QUALIFIED: Final = "qualified"
+NAMED_ARM_MODULE: Final = "module"
+NAMED_ARM_GATE: Final = "gate"
+
+
+def named_lookup_arm(
+    qualified_rows: Sequence[Any],
+    short_rows: Sequence[Any],
+    module_hint: str | None,
+    *,
+    call_construct: str | None = None,
+    language: str | None = None,
+) -> tuple[str, list[Any]]:
+    """Which arm decides a named catalogue lookup, and the rows it may pick from.
+
+    INV-foda. ONE RULE FOR BOTH CONSUMERS. ``lookup_with_module`` and taint's
+    ``_lookup_named_entry`` answer the same question -- which catalogue row is
+    this call -- and were two copies of this rule that had drifted in five
+    places: the arm ORDER, the disjunctive-slot split (INV-funuf, io only), the
+    method-on-a-disjunction arm (INV-nizom, io only), separator-insensitive
+    qualified names (io only) and the ``<external>`` placeholder (taint only).
+    The largest was the split: c/cpp put the file's ``#include`` list in the
+    slot, taint compared the joined string, and every ``send`` / ``recv`` /
+    ``getenv`` in a file with two includes was an io boundary with NO taint
+    entry -- ``send(fd, getenv("API_KEY"), ...)`` confirmed "no secret reaches
+    the network".
+
+    The arms, in order:
+
+    1. ``qualified`` -- an exact qualified-name hit names the primitive
+       outright, whatever the slot says. Each caller computes these rows,
+       because the two index the catalogue differently.
+    2. ``module`` -- a usable slot filters the short-name rows to those it can
+       name, spelling by spelling (:func:`_module_hint_candidates`). An empty
+       result is a REFUSAL: a present, mismatched module is evidence this is a
+       different symbol (``crypto/rand.Read`` is not ``net.Conn.Read``).
+    3. ``gate`` -- no usable slot (none, or a placeholder in
+       :data:`_UNRESOLVED_MODULE_PLACEHOLDERS_IO`, ADR-0017 §3a): the caller
+       hands the rows to :func:`gate_named_entry` after its own narrowing.
+
+    QUALIFIED FIRST, AND THAT WAS A CHOICE. taint filtered first; the one
+    measured divergence of that kind (pretix ``defusedcsv`` ``csv.writer``) was
+    a real csv write that the qualified arm classified and the filter refused.
+    A refusal is the silent direction: a missed row reads ``confirmed``, a
+    spurious one reads ``violated``.
+
+    ``language`` is the language of the CALL (the catalogue's, for io; the
+    callee's, for taint). It decides only which spellings a slot may take
+    (:func:`module_hint_disjuncts`: C++'s ``<cstdlib>`` is C's ``stdlib``
+    in c/cpp and nowhere else, WI-hilot), so both consumers must pass it or
+    they would disagree about a ``cstdlib`` slot.
+
+    Returns ``(arm, rows)``; ``rows`` is empty only on a refusal or when there
+    was nothing to choose from. Duck-typed: each row exposes ``.module`` and
+    ``.kind``.
+    """
+    if qualified_rows:
+        return NAMED_ARM_QUALIFIED, list(qualified_rows)
+    if not short_rows:
+        return NAMED_ARM_MODULE, []
+    if module_hint and module_hint not in _UNRESOLVED_MODULE_PLACEHOLDERS_IO:
+        candidates = _module_hint_candidates(module_hint, language)
+        filtered = [
+            p for p in short_rows
+            if any(_module_matches(p.module, c) for c in candidates)
+        ]
+        # INV-nizom: a DISJUNCTIVE slot is file context, not receiver
+        # evidence, so the F3 construct rule applies to it exactly as it
+        # applies to no hint at all. ``cpp.py`` joins every ``#include`` in
+        # the file into one slot and says so itself — "this call could be
+        # from any of the included headers" — which is an uncertainty set;
+        # ``fut.wait()`` in a unit that includes ``<sys/wait.h>`` was
+        # matching ``sys/wait.wait`` (kind=function) on it.
+        #
+        # ARITY IS THE DISCRIMINATOR, and _module_hint_candidates already
+        # computes it: a language emitting ONE module per slot expands to a
+        # single candidate (``os``, ``fmt``, ``java.io.File``) and never
+        # reaches this branch. That distinction is load-bearing rather than
+        # cosmetic — ``call_construct == "method"`` does NOT mean "instance
+        # method". Go spells ``os.Open(p)`` as a selector expression,
+        # indistinguishable in shape from ``f.Close()``, and stamps both
+        # ``method``; a rule keyed on the construct ALONE was measured on
+        # whisper.cpp and removed 51 matches — the 2 target false positives
+        # and 49 true ones (``os.Open``, ``os.Stat``, ``fmt.Fprintln``,
+        # ``net/http.NewRequest``, ``logging.exception``). A definite module
+        # slot is precisely what disambiguates those, which is why the gate
+        # defers to it and why this refusal must not.
+        #
+        # READ IN THE AXIS'S TERMS (ADR-0059), this drops rows CALLED ON A
+        # NAMED OWNER when the stamp says ``method`` and the slot does not
+        # say which owner the call is on. A ``method`` stamp alone is not
+        # evidence of an instance receiver: Go stamps it on ``os.Open`` and
+        # java on a qualified static. So the arm must not fire on a slot
+        # that DOES name the owner. A single module does, and so does a
+        # disjunction whose every entry spells the same owner in another
+        # package (java's wildcard slot, :func:`slot_names_one_owner`).
+        # Without that exemption, java's statics could not be keyed as the
+        # functions they are: 36 jedis classifications were lost
+        # (INV-zikab step 4).
+        if (call_construct == "method" and len(candidates) > 1
+                and not slot_names_one_owner(module_hint)):
+            filtered = [p for p in filtered if not called_on_a_named_owner(p.kind)]
+        return NAMED_ARM_MODULE, (
+            prefer_exact_owner(filtered, module_hint, language)
+            if filtered else []
+        )
+    return NAMED_ARM_GATE, list(short_rows)
+
+
+#: Shipped catalogues by language for :func:`declared_by_an_included_header`,
+#: consulted once per resolved cross-file call, so loaded once per process.
+_INCLUDED_HEADER_CATALOGS: dict[str, IoBoundaryCatalog] = {}
+
+
+def declared_by_an_included_header(
+    language: str, callee_name: str, system_includes: Sequence[str],
+) -> bool:
+    """Whether a header this translation unit includes declares ``callee_name``.
+
+    WI-rimon. The C and C++ resolvers bound a free-function call by NAME to any
+    same-named in-repo definition, so a vendored platform shim re-implementing
+    ``sendto`` for another OS captured every ``sendto`` in the repository -- and
+    a resolved call is never classified (taint's resolved-edge gate refuses a
+    first-party symbol matched by name alone, rightly), so the socket I/O
+    vanished: ``sendto(fd, getenv("K"), ...)`` CONFIRMED "no secret reaches the
+    network" on the shipped CLI. On fluent-bit 440 resolved calls went to
+    WAMR's sgx/nuttx shims, mruby's Win32 shim and monkey's mk_core this way.
+
+    C decides this, not a repository-shape heuristic. A translation unit that
+    includes ``<sys/socket.h>`` calls the ``sendto`` that header DECLARES. A
+    same-named definition in another file must match that prototype or the
+    build fails, so it can only be a link-time interposer or a platform
+    replacement of the same contract, and name resolution cannot see which one
+    the build links. Either way the call is the catalogued primitive. (A
+    definition in the CALLING file is visible to it by C scoping and is the
+    caller's business -- the resolvers keep it.)
+
+    "Declares" is asked of the catalogue by the ONE row-choice rule
+    (:func:`named_lookup_arm`, through ``lookup_with_module``) with the include
+    list as the disjunctive module slot, so this cannot disagree with how the
+    unresolved edge the call becomes will be classified.
+    """
+    if not system_includes:
+        return False
+    catalog = _INCLUDED_HEADER_CATALOGS.get(language)
+    if catalog is None:
+        catalog = _INCLUDED_HEADER_CATALOGS[language] = load_catalog(language)
+    return catalog.lookup_with_module(
+        callee_name, ",".join(system_includes), call_construct="function",
+    ) is not None
+
+
+def _module_hint_candidates(
+    module_hint: str, language: str | None = None,
+) -> list[str]:
     """Expand a module slot into the spellings it may legitimately stand for.
 
     INV-funuf. ``cpp.py`` sets an unresolved call's module slot to the
@@ -4078,13 +4712,15 @@ def _module_hint_candidates(module_hint: str) -> list[str]:
             out.append(value)
 
     add(module_hint)
-    for spellings in module_hint_disjuncts(module_hint):
+    for spellings in module_hint_disjuncts(module_hint, language):
         for spelling in spellings:
             add(spelling)
     return out
 
 
-def module_hint_disjuncts(module_hint: str) -> list[list[str]]:
+def module_hint_disjuncts(
+    module_hint: str, language: str | None = None,
+) -> list[list[str]]:
     """The slot's disjuncts, each with the spellings it may legitimately take.
 
     THE SAME EXPANSION AS :func:`_module_hint_candidates`, GROUPED. That function
@@ -4104,6 +4740,12 @@ def module_hint_disjuncts(module_hint: str) -> list[list[str]]:
     ``[["stdio.h", "stdio"]]`` for a single-module slot, so a language emitting
     one module per slot collapses to a single disjunct and the ALL question
     becomes the same question the gate asked before.
+
+    A disjunct's spellings are: itself; its STEM when it ends in a header
+    suffix; and, when ``language`` is c or cpp, the C stem of a C++ C-library
+    header (``["cstdlib", "stdlib"]``, :data:`_CXX_C_LIBRARY_HEADERS`,
+    WI-hilot). The last spelling is the catalogue's key, which is what the
+    coverage gate reports for an unenumerated disjunct.
     """
     groups: list[list[str]] = []
     for raw in module_hint.split(","):
@@ -4115,6 +4757,10 @@ def module_hint_disjuncts(module_hint: str) -> list[list[str]]:
             if part.endswith(suffix):
                 spellings.append(part[: -len(suffix)])
                 break
+        if language in _INCLUDE_SLOT_LANGUAGES:
+            c_stem = _CXX_C_LIBRARY_HEADERS.get(part)
+            if c_stem is not None:
+                spellings.append(c_stem)
         groups.append(spellings)
     return groups
 
@@ -4337,7 +4983,44 @@ FIRST_PARTY_MODULE_GRAMMARS: dict[str, FirstPartyModuleGrammar] = {
 }
 
 
-def is_definitionally_first_party(language: str, module: str) -> bool:
+#: Directory names whose contents are OTHER PEOPLE'S CODE (they are
+#: ``discovery.DEPENDENCY_DIR_NAMES``, pinned by
+#: ``test_first_party_module_grammar.py``). A relative specifier that passes
+#: through one -- ``require('../node_modules/axios')``, ``./vendor/jquery`` --
+#: is a path, but a path to dependency source, so it is not first-party in the
+#: sense the coverage gate cares about (INV-juvul). Installed copies are not
+#: read by default (ADR-0004 §"Installed dependency source"); a COMMITTED
+#: ``vendor/`` is now read, as tier 3, and a call into it is still reported
+#: here -- the withholding direction, a report the reader can dismiss, never a
+#: suppressed one. Build outputs (``dist``, ``build``) are deliberately NOT
+#: here: they are the repository's own source, compiled, and the source itself
+#: was read.
+UNREAD_DEPENDENCY_DIRS: frozenset[str] = frozenset({"node_modules", "vendor"})
+
+
+def _relative_path_reaches_unread_code(module: str, importer: str | None) -> bool:
+    """Does this relative specifier name code the analysis cannot have read?
+
+    Two exact cases. A component that is a dependency directory (whole
+    component: ``vendored`` is not ``vendor``). Or, when the importing file is
+    known, a path that resolves ABOVE the analysed root -- ``../../shared/x``
+    from ``lib/a.js``. With no importer the second question cannot be asked,
+    and it is not guessed.
+    """
+    if any(part in UNREAD_DEPENDENCY_DIRS for part in module.split("/")):
+        return True
+    if importer:
+        resolved = posixpath.normpath(
+            posixpath.join(posixpath.dirname(importer), module),
+        )
+        if resolved == ".." or resolved.startswith("../"):
+            return True
+    return False
+
+
+def is_definitionally_first_party(
+    language: str, module: str, importer: str | None = None,
+) -> bool:
     """Whether ``language``'s own rules make ``module`` a reference into this repo.
 
     FAILS OPEN, and that is the opposite of :mod:`analyzer_disclosure`'s direction
@@ -4351,6 +5034,13 @@ def is_definitionally_first_party(language: str, module: str) -> bool:
     ``module`` is the RAW module slot, not a normalised one — ``../`` must be read as a
     relative specifier before ``/`` is folded into ``.``, which would otherwise spell it
     ``...``.
+
+    A RELATIVE SPECIFIER IS A PATH, NOT A VERDICT (INV-juvul). It names the
+    repository's own code only when the path lands on source this analysis read:
+    one through ``node_modules`` / ``vendor`` lands on installed or vendored
+    third-party code discovery skips, and one climbing above the analysed root
+    (decidable only given ``importer``, the importing file's repo-relative path)
+    lands outside the tree. Both stay reported. That only ever adds a report.
     """
     grammar = FIRST_PARTY_MODULE_GRAMMARS.get(language)
     if grammar is None:
@@ -4360,7 +5050,9 @@ def is_definitionally_first_party(language: str, module: str) -> bool:
         # analysing machine's filesystem — a system header, a vendored checkout
         # outside the repo — which this analysis did not read.
         head = module.split("/", 1)[0]
-        if head in (".", ".."):
+        if head in (".", "..") and not _relative_path_reaches_unread_code(
+            module, importer,
+        ):
             return True
     if grammar.self_reference_components:
         first = normalize_module_separators(module).split(".", 1)[0]
@@ -4405,7 +5097,9 @@ def _extra_component_names_a_type(parent_raw: str, extra_raw: str) -> bool:
     return extra_raw[:1].isupper() != parent_raw[:1].isupper()
 
 
-def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
+def _module_matches(
+    catalog_module: str, edge_module_hint: str, *, hint_is_path: bool = False,
+) -> bool:
     """Check if a catalog entry's module matches the edge's module hint.
 
     Matching is COMPONENT-AWARE, not substring (WI-zazul):
@@ -4421,6 +5115,10 @@ def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
       (unqualified reference — a component SUFFIX, not a prefix)
     - Go: catalog has ``net/http``, edge has ``http`` → match (same reason:
       source spells it ``http.Get`` after importing ``net/http``)
+    - Python: catalog has ``csv``, edge has ``mycsvlib.csv`` → no match
+      (the HINT carries the extra leading components: a different owner)
+    - TS: catalog has ``http``, edge has ``@/services/http`` → no match
+      (koel's own tsconfig path alias, not node's ``http``)
     - Swift: catalog has ``Channel``, edge has ``channel`` → match
     - Swift: catalog has ``ChannelHandlerContext``, edge has ``context`` → match
     - Swift: catalog has ``NonBlockingFileIO``, edge has ``fileIO`` → match
@@ -4459,6 +5157,26 @@ def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     the HINT. The reverse direction is precisely the bug: ``chaos`` ends with
     ``os``. The suffix must also start on a capital, so it names a whole word
     rather than landing mid-token.
+
+    THE SUFFIX ARM HAS ONE DIRECTION FOR A MODULE SLOT (WI-mujod). Dropped
+    qualification means the HINT is the unqualified tail of the ROW's
+    qualified module, so the row is the longer side. The other direction --
+    the hint carries LEADING components the row does not -- is a
+    MORE-qualified owner path, and under ADR-0051's axiom (the slot names an
+    owner path) that is a different owner: ``mycsvlib.csv.writer`` was stdlib
+    ``csv.writer`` (fs_write) and koel's ``@/services/http`` was node's
+    ``http`` (41 net_send edges on koel). Measured when the item was filed,
+    over 44 surveys, that direction decided 89 tagged edges in 6 repos, and the
+    only TRUE ones were go rows spelled UNDER-qualified (``filepath``,
+    ``grpc``, ``unix``) for an analyzer that stamps the full import path;
+    those rows are now keyed by their import path, so arm 1 matches them.
+
+    ``hint_is_path=True`` RESTORES THE DIRECTION, for exactly one caller:
+    taint's resolved-edge gate, which compares a catalogue module against a
+    module DERIVED FROM A FILE PATH
+    (``packages.hypergumbo-core.src.hypergumbo_core.cli``). There the leading
+    components are checkout directories, not owner identity. The module-slot
+    filter (:func:`named_lookup_arm`) never passes it.
 
     Known tradeoff, stated rather than discovered later: an extra component
     spelled like its parent blocks a match even where it is a parallel API
@@ -4525,15 +5243,22 @@ def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     # unqualified class references keep matching — `System` against
     # `java.lang.System`, both capitalised — and INV-januj and INV-hahak both
     # depend on that arm, so breaking it would re-lose java's only ipc_recv
-    # row. Go's `filepath` ← `path/filepath` and `grpc` ←
-    # `google.golang.org/grpc`, which INV-dijor names as true positives at risk
-    # from a naive capitalisation test, are lowercase on both sides and survive.
+    # row. Go's `path/filepath` and `google.golang.org/grpc` rows reached from
+    # a bare `filepath` / `grpc` slot, which INV-dijor names as true positives
+    # at risk from a naive capitalisation test, are lowercase on both sides and
+    # survive.
+    #
+    # AND THE ROW MUST BE THE LONGER SIDE (WI-mujod) unless the hint is a
+    # path-derived module: a slot with MORE leading components than the row
+    # names a different owner (`mycsvlib.csv` is not `csv`). Equal lengths
+    # never reach here -- equal suffixes are equal lists, arm 1.
     #
     # This is EVIDENCE, not the declaration ADR-0051 anticipates: the axiom
     # says the slot names an owner path and that a receiver VARIABLE is the
     # non-conformant notion, and case disagreement is a proxy for that. Arm 2's
     # case-VALUE inference is untouched and remains the residual.
-    if cm_parts[-shared:] == em_parts[-shared:] and all(
+    direction_ok = hint_is_path or len(cm_parts) > len(em_parts)
+    if direction_ok and cm_parts[-shared:] == em_parts[-shared:] and all(
         c[:1].isupper() == e[:1].isupper()
         # strict=True documents the invariant rather than trusting it:
         # ``shared`` is min(len(cm_parts), len(em_parts)) and both slices
@@ -4637,6 +5362,44 @@ def is_first_party_callable_dst(edge_dst: str) -> bool:
     # test it feeds today, and that is exactly why it survived five conversions
     # of this defect class — a wrong parse whose current caller cannot notice.
     return symbol_path_slot(edge_dst).startswith(("/", "\\"))
+
+
+def short_name_fallback_withheld(
+    edge_dst: str, meta: Optional[Mapping[str, Any]],
+) -> bool:
+    """Is this call BOUND to an in-repo symbol, so no row may claim it by short name?
+
+    THE ROW-CHOICE HALF OF "A BOUND CALL IS NOT A LIBRARY CALL", asked by both
+    catalogue consumers (``classify_call_in_catalog`` for io-boundaries, taint's
+    ``_match_propagation_entry``; INV-foda). A ``True`` withholds ONLY the gate
+    arm of :func:`named_lookup_arm` -- the bare-short-name fallback. A qualified
+    name or a module the edge states still decides, exactly as
+    :func:`is_first_party_callable_dst` already arranged for a dst that resolved
+    to a first-party callable.
+
+    TWO WAYS A CALL IS BOUND, ONE ANSWER:
+
+    * the dst IS a first-party callable (:func:`is_first_party_callable_dst`);
+    * the edge is an unresolved stub that a resolved edge to an in-repo symbol
+      SUPERSEDED (``meta.superseded_by``, ADR-0057 §14). The stub is demoted,
+      never deleted, so it stays in the graph beside its resolution -- and its
+      ``external`` slot sent it to the short-name gate as if nothing had bound
+      it. WI-vidof measured the cost on gatling: a subclass's bare ``readInt()``
+      that the inherited-calls linker resolved to the superclass's own
+      ``readInt`` still classified as ``scala.io.StdIn.readInt``, 11 false
+      ``ipc_recv`` edges. A bare call with NO superseder
+      (``import scala.io.StdIn._; readInt()``) is unaffected; ``ambiguous_names``
+      could not have told the two apart.
+
+    WHY THE STAMP AND NOT A RE-DERIVATION. ``superseded_by`` is the producer's
+    own positive statement, written once by finalize and read here; a second
+    same-site match in this module would be the "two homes for one fact" shape
+    INV-foda retired. Its absence asserts nothing (absent != empty): a stub with
+    no superseder keeps today's classification.
+    """
+    if is_first_party_callable_dst(edge_dst):
+        return True
+    return bool((meta or {}).get("superseded_by"))
 
 
 def _extract_module_hint(edge_dst: str) -> str | None:
@@ -4870,15 +5633,29 @@ def classify_call_in_catalog(
     if catalog is None:
         return None, None
     edge_meta = meta or {}
+    fallback_allowed = not short_name_fallback_withheld(dst, edge_meta)
 
-    def _lookup(name: str) -> Optional[IoPrimitive]:
+    def _lookup(
+        name: str, hint: Optional[str] = adjusted_hint, *, fallback: bool = fallback_allowed,
+    ) -> Optional[IoPrimitive]:
         return catalog.lookup_with_module(
-            name, adjusted_hint,
+            name, hint,
             call_construct=edge_meta.get("call_construct"),
             io_modes=call_site_modes(edge_meta),
             io_target_kinds=call_site_target_kinds(edge_meta),
-            allow_short_name_fallback=not is_first_party_callable_dst(dst),
+            allow_short_name_fallback=fallback,
         )
+
+    # WI-gabuv: the call is on an in-repo type that does not define the member,
+    # and finalize named the type's external ancestors (``owner_ancestry``,
+    # whose docstring carries the precedence rules). A row keyed on the owner AS
+    # WRITTEN is tried first, then each ancestor nearest-first, all without the
+    # bare-short-name fallback -- which only then gets its usual turn below. An
+    # edge with no stamp takes exactly the path it took before.
+    for hint in ancestor_retry_hints(adjusted_hint, edge_meta) if callee else ():
+        hit = _lookup(callee, hint, fallback=False)
+        if hit is not None:
+            return hit, catalog
 
     hit = _lookup(callee) if callee else None
     if hit is not None:
@@ -4968,7 +5745,8 @@ def tag_io_boundaries(
         catalogs: Language → IoBoundaryCatalog mapping.
         call_types: Edge types to consider. Default includes calls,
             imports, and FFI edge types (wasm_bridge, ipc_calls, etc.)
-            so boundary tracing crosses language boundaries.
+            so boundary tracing crosses language boundaries. An ``imports``
+            edge is tagged only by an ATTRIBUTE row (INV-lagir).
 
     Returns:
         Number of edges tagged.
@@ -4995,6 +5773,19 @@ def tag_io_boundaries(
             dst_ref=getattr(edge, "dst_ref", None),
         )
         if match is None or matched_catalog is None:
+            continue
+
+        # INV-lagir: AN IMPORT IS NOT A CALL. A Python import's dst is the
+        # imported NAME, so ``import glob`` (``python:glob:0-0:glob``) has the
+        # (module, name) of the FUNCTION row ``glob.glob`` and matched it: a
+        # file whose only content was ``import glob`` failed a
+        # ``must_not_exist`` fs_read claim, and 158 import edges on the
+        # self-survey were tagged (133 of them ``import time``). ``imports``
+        # stays in ``call_types`` for ATTRIBUTE rows only: after ``from os
+        # import environ`` the use ``environ["K"]`` emits no edge, so the
+        # import is the only thing that makes the read visible. A function or
+        # method row has a call site of its own, which carries its chain.
+        if edge.edge_type == "imports" and not read_not_called(match.kind):
             continue
 
         # INV-nular: a call site whose TARGET discards crosses no boundary.

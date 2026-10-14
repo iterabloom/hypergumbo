@@ -1,0 +1,22 @@
+- op: create  # 15bc
+  at: '2026-10-06T00:42:03Z'  # 15bc
+  by: agent  # 15bc
+  actor: jgstern_agent  # 15bc
+  clock: 1  # 15bc
+  nonce: 15bc  # 15bc
+  data:  # 15bc
+    kind: invariant  # 15bc
+    title: "purescript.py emits two function symbols for a function with a type signature: one from the signature node (with signature) and one from the function node (without)"  # 15bc
+    status: violated  # 15bc
+    priority: 2  # 15bc
+    parent:  # 15bc
+    tags:  # 15bc
+    - analysis_quality  # 15bc
+    isbefore: []  # 15bc
+    duplicate_of: []  # 15bc
+    not_duplicate_of: []  # 15bc
+    pr_ref:  # 15bc
+    description: "Found by the 2026-10-05 docstring staleness audit (reviewer reproduced): 'foo :: Int -> Int' then 'foo x = x' yields Main.foo twice, at 3-3 with signature 'Int -> Int' and at 4-4 with None. Fix: merge into one symbol whichever node comes first; remove the no-cover pragma and test both orders."  # 15bc
+    fields:  # 15bc
+      statement: "One declaration produces one symbol."  # 15bc
+      root_cause: "The signature branch (~L274-293) creates a function symbol, and the function branch (~L238-256) creates another; only the signature branch checks for an existing symbol (~L267), and that update path is pragma: no cover, so it never runs in tests."  # 15bc

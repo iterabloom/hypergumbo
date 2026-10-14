@@ -1,0 +1,21 @@
+- op: create  # 7067
+  at: '2026-10-07T03:57:55Z'  # 7067
+  by: agent  # 7067
+  actor: jgstern_agent  # 7067
+  clock: 1  # 7067
+  nonce: '7067'  # 7067
+  data:  # 7067
+    kind: work_item  # 7067
+    title: "entrypoint ranking: routes saturate at rank_score 1.0, so the entrypoint cap and the sketch pick routes by insertion order (thc: Express /scan,/health crowded out by Phoenix routes)"  # 7067
+    status: todo_hard  # 7067
+    priority: 3  # 7067
+    parent:  # 7067
+    tags:  # 7067
+    - entrypoints  # 7067
+    - sketch  # 7067
+    isbefore: []  # 7067
+    duplicate_of: []  # 7067
+    not_duplicate_of: []  # 7067
+    pr_ref:  # 7067
+    description: "Found while fixing INV-liraj. On thc after the fix, 291 of 372 http_route entrypoints tie at rank_score 1.0 (base 0.90/0.95 + connectivity boost, capped at 1.0), so their order is insertion order. Two consequences: (1) the entrypoint cap (495; _diversity_cap gives http_route 198 + overflow) keeps 240 routes and drops the Express service's POST /scan (rank 1.0) and GET /health (0.989) from scanner/server.js, which were the only routes listed before the fix -- a second service's routes are crowded out by an arbitrary tie order; (2) the sketch's HTTP Routes section shows the first 19 routes in router order (17 of 19 are LIVE routes).\n\nProposal to evaluate: a tie-break that spreads the cap/sketch selection across files/frameworks (round-robin by route file) and/or avoids boost saturation for routes. Measure on thc and one multi-service repo."  # 7067
+    fields: {}  # 7067

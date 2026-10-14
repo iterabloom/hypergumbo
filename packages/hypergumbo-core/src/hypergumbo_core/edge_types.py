@@ -94,11 +94,15 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     ),
     EdgeTypeSpec(
         "extends", AXIS_RELATIONSHIP,
-        "Class extends a superclass.",
+        "Class extends a superclass, an interface / trait / protocol "
+        "extends its base type, or a Dart mixin names its `on` superclass "
+        "constraint.",
     ),
     EdgeTypeSpec(
         "implements", AXIS_RELATIONSHIP,
-        "Class implements an interface.",
+        "A type implements an interface / trait / protocol (in Dart, any "
+        "class's implicit interface), or an Elixir module implements a "
+        "behaviour.",
     ),
     EdgeTypeSpec(
         "contains", AXIS_RELATIONSHIP,
@@ -180,7 +184,8 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "includes", AXIS_RELATIONSHIP,
         "File or class includes / sources / mixes-in another unit's "
         "content (LaTeX \\include, RST .. include::, Meson subdir, "
-        "Ruby `include`/`extend` mixin — WI-hatip).",
+        "Ruby `include`/`extend` mixin — WI-hatip, Dart `with` mixin — "
+        "WI-lahub).",
     ),
     EdgeTypeSpec(
         "constrains", AXIS_RELATIONSHIP,
@@ -451,6 +456,9 @@ MIXIN_INCLUDE_EVIDENCE_TYPES: Final[frozenset[str]] = frozenset({
 producers emit it and eight of them mean file inclusion (latex, make, meson,
 puppet, requirements, rst, scss, twig); exactly one, the inheritance linker's
 ``_create_includes_edges``, means the Ruby ``include`` / ``extend`` mixin.
+(Since WI-lahub a second mixin producer exists: the Dart analyzer emits
+``includes`` with ``ast_includes`` for a ``with`` clause. The counts above are
+the measurement this split was made on, not a live census.)
 
 Measured on the Rails app *postal*: 41 ``includes`` edges — 39 ``class ->
 module`` mixins from the inheritance linker, and 2 ``file ->
@@ -706,12 +714,13 @@ def find_axis_drift(
 # the INV-nosoz defect.
 INHERITANCE_EDGE_TYPE_LANGUAGES: Final[dict[str, frozenset[str]]] = {
     "extends": frozenset({
-        "blade", "java", "javascript", "python", "ruby", "twig", "typescript",
+        "blade", "dart", "java", "javascript", "python", "ruby", "twig",
+        "typescript",
     }),
     "inherits": frozenset({"bitbake", "solidity"}),
     "implements": frozenset({
-        "graphql", "haskell", "java", "javascript", "rust", "typescript",
-        "vhdl",
+        "dart", "elixir", "graphql", "haskell", "java", "javascript", "rust",
+        "typescript", "vhdl",
     }),
 }
 

@@ -16,7 +16,10 @@ Key IR Classes
   same cache-key question. It also carries per-pass productivity counters
   (``nodes_emitted`` / ``edges_emitted``) and, for a pass that emitted
   nothing, ``silence_reason`` (``unreported`` when the pass did not say why;
-  empty when it emitted output).
+  empty when it emitted output). Its timing is two fields: ``duration_ms``
+  is WALL time, which overlaps and inflates with contention because passes
+  run in thread pools, and ``cpu_ms`` is the CPU of the thread that ran the
+  pass, i.e. its own cost (``None`` when unmeasured; see ``pass_clock``).
 - **Symbol**: Code elements (functions, classes) with location and identity
   hashes (stable_id, shape_id, fingerprint). The ``quality`` field is
   declared-but-empty — it has no producer (INV-nuzal) and is omitted from
@@ -27,9 +30,10 @@ Key IR Classes
 - **Edge**: Relationships between symbols with confidence, evidence tracking,
   and edge_key for deduplication across passes. ``confidence_source`` names
   what produced the number and ``rank_score`` carries the ranking weight
-  (ADR-0039 rulings 2 and 3); ``corroborated`` marks an edge the ADR-0057
-  merge pass folded from two producers' distinct inference pathways, whose
-  confidence is the declared corroboration level. Edges carry a structured
+  (ADR-0039 rulings 2 and 3); the ``confidence_source`` value
+  ``corroborated`` marks an edge the ADR-0057 merge pass folded from two
+  producers' distinct inference pathways, whose confidence is the declared
+  corroboration level. Edges carry a structured
   ``dst_ref: Optional[ExternalRef]`` sibling alongside the legacy ``dst``
   colon-encoded id; consumers read the callee name through
   ``callee_name_of`` (``meta["callee_name"]``, then ``dst_ref.name``, then
@@ -54,7 +58,13 @@ Helpers
   ``(src, dst, edge_type, line)``. ``deduplicate_edges`` collapses edges
   sharing an ``edge_key`` (line-insensitive) to one per relationship; the
   survivor's ``meta["call_lines"]`` records the union of the collapsed call
-  sites, and a single-site edge carries no such key.
+  sites, and a single-site edge carries no such key. Keys the registry
+  declares per-call-site (``axis_meta_keys.per_call_site_keys``: ``io_mode``,
+  ``io_target_kind``, ``redirect_target``, ...) are folded by
+  ``_absorb_call_site``: the singular key survives only if every site agreed;
+  otherwise it is removed and ``meta["<key>_values"]`` lists the distinct
+  values, with ``None`` standing for a site that carried no value (INV-vukiv,
+  INV-rajak).
 - **Symbol-id parsing**: ``symbol_path_slot`` / ``symbol_name_slot`` are the
   shared parses of ``{lang}:{path}:{span}:{name}:{kind}`` ids, anchored on
   the span so a colon-bearing path slot (``std::fs``, ``dart:io``) parses
@@ -65,15 +75,23 @@ Helpers
   Symbols (with ``stable_id`` / ``display_label``) for dangling edge
   endpoints and returns an id remap; ``apply_external_id_remap`` rewrites
   edges onto the canonical boundary ids, collapsing edges that now coincide
-  while unioning their ``referring_paths`` and ``call_lines``.
+  while unioning their ``referring_paths`` and ``call_lines`` and applying
+  the same per-call-site fold.
+- **Other helpers**: ``callee_name_of``, ``stated_module_of``,
+  ``is_external_boundary``, ``sanitize_id_name_segment``,
+  ``format_legacy_dst``, ``make_pass_id`` / ``compute_pass_version`` /
+  ``compute_config_fingerprint``, and the ``VALID_ACCESS_MODES`` /
+  ``VALID_DATA_DIRECTIONS`` / ``VALID_CONFIDENCE_SOURCES`` vocabularies.
 
 Provenance Fields
 -----------------
 - execution_id: Unique per run (uuid)
 - run_signature: Deterministic hash of (pass_id, version, config_fingerprint,
   toolchain). Serialized as provenance only; not read back to key a cache.
-- repo_fingerprint: Hash of git state. Serialized as provenance only; the
-  analysis cache keys on analyzer_identity, not on this field.
+- repo_fingerprint: Content hash of the analyzed tree (plus HEAD when .git
+  exists). Serialized as provenance only and never read back; the results
+  cache recomputes the same digest (compute_repo_fingerprint, truncated to 16
+  hex) as its state_hash path segment, alongside analyzer_identity.
 - origin_run_signature: *Removed in 6.0.0 (SCHEMA_VERSION 0.10.0 -> 0.11.0,
   WI-gapin); never stamped by any producer.*
 """
@@ -315,9 +333,9 @@ def compute_config_fingerprint(config: Dict[str, Any]) -> str:
 class AnalysisRun:
     """Provenance tracking for an analysis pass execution.
 
-    Tracks which pass ran, when, and what it analyzed. Includes fields
-    for cache keying (run_signature, repo_fingerprint) and runtime info
-    (toolchain).
+    Tracks which pass ran, when, and what it analyzed. Includes
+    provenance fields external tools may use for cache keying
+    (run_signature, repo_fingerprint) and runtime info (toolchain).
 
     Readership note (concept-audit 2026-07-15): ``run_signature``,
     ``repo_fingerprint``, ``config_fingerprint``, and ``pass_version``
@@ -350,7 +368,23 @@ class AnalysisRun:
     failed_files: List[Dict[str, str]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     started_at: str = ""  # axis: free-text — ISO-8601 UTC timestamp; consumers display, never branch on the value.
+    # WALL-clock time of this pass, measured in its worker (WI-nuvam) over the
+    # same span as ``cpu_ms`` wherever the orchestrator stamps it. Passes
+    # run concurrently -- analyzers in one thread pool, linkers in one pool
+    # per priority cohort -- so these figures OVERLAP (they do not sum to the
+    # survey's wall time) and one INFLATES WITH CONTENTION: a worker waiting
+    # on the GIL while a sibling runs is still on the wall clock. It is not
+    # what the pass cost; ``cpu_ms`` is.
     duration_ms: int = 0
+    # CPU time of the thread that ran this pass, in ms (WI-nuvam; see
+    # pass_clock). Waiting on the GIL, I/O or a sleep does not advance it, so
+    # it is the pass's own cost and ``duration_ms - cpu_ms`` is how long it
+    # waited. Excludes child processes and threads the pass starts itself.
+    # ``None`` means NOT MEASURED (serialized null) -- never a 0, which would
+    # read as "cost nothing"; a measured pass is >= 1. Stamped centrally: the
+    # analyzer pool's worker wrapper, the linker chokepoint, and each serial
+    # synthesis pass's own clock.
+    cpu_ms: Optional[int] = None
     # Code-hash of the pass module (via compute_pass_version). Analyzers
     # set it from self.pass_version; linkers are stamped by _stamp_pass_version
     # in run_all_linkers. Distinct from ``version`` (the package version).
@@ -459,6 +493,9 @@ class AnalysisRun:
             "duration_ms": self.duration_ms or (
                 1 if (self.nodes_emitted or self.edges_emitted) else 0
             ),
+            # WI-nuvam: ALWAYS present. null = not measured (the field could
+            # not see); a missing key means the artifact predates the field.
+            "cpu_ms": self.cpu_ms,
             "pass_version": self.pass_version,
             "nodes_emitted": self.nodes_emitted,
             "edges_emitted": self.edges_emitted,
@@ -1211,6 +1248,20 @@ def _edge_call_lines(edge: Edge) -> list[int]:
 _MISSING = object()
 
 
+def _per_site_values(meta: dict[str, Any], key: str) -> Optional[list[object]]:
+    """The values *meta*'s call sites carry for *key*, or ``None`` if none does.
+
+    An edge that is itself a collapse answers with its ``_values`` list, so
+    :func:`apply_external_id_remap` merging two collapsed edges keeps both
+    sides' sites rather than only the kept one's.
+    """
+    values = meta.get(f"{key}_values")
+    if isinstance(values, list):
+        return list(values)
+    single = meta.get(key, _MISSING)
+    return None if single is _MISSING else [single]
+
+
 def _absorb_per_call_site_key(
     meta: dict[str, Any], absorbed_meta: dict[str, Any], key: str,
 ) -> None:
@@ -1230,6 +1281,15 @@ def _absorb_per_call_site_key(
     a "every argument here is a literal" proof is worthless if it was proved
     at a different line.
 
+    AND IT IS RECORDED AS ``None`` IN ``_values`` (INV-rajak). Listing only
+    the values sites HAD lost the unstamped site between the two halves of
+    this rule: an in-memory ``bufio.NewScanner`` beside a parameter scanner
+    left ``io_target_kind_values: ['in_memory']``, every reader saw one
+    unanimous non-crossing site, and the real receive and its taint source
+    vanished. ``None`` is that site, and every reader gives it the meaning a
+    single unstamped call already has. Sites that ALL omit the key write
+    nothing, exactly as before.
+
     ``_values`` is ABSORBING. Once written it is never collapsed back to a
     singular, even if a third site happens to repeat an earlier value — the
     relationship has already been shown to be non-uniform, and un-saying that
@@ -1239,36 +1299,28 @@ def _absorb_per_call_site_key(
     silent cap reads as completeness: a function with more than 50 distinct
     redirect targets keeps the first 50 by sort order. The cap cannot make a
     non-uniform relationship look uniform — the singular key is already gone by
-    then — so what a truncation costs is enumeration, never the warning.
+    then, and ``None`` sorts FIRST so a truncation never drops it — so what a
+    truncation costs is enumeration, never the warning.
     """
-    known = meta.get(f"{key}_values")
-    if isinstance(known, list):
-        values: list[object] = list(known)
-        agreed = False
-    else:
-        values = []
-        kept_val = meta.get(key, _MISSING)
-        if kept_val is not _MISSING:
-            values.append(kept_val)
-        agreed = True
-
-    absorbed_val = absorbed_meta.get(key, _MISSING)
-    if absorbed_val is not _MISSING and absorbed_val not in values:
-        values.append(absorbed_val)
-
-    # Uniform iff nothing was ever dropped AND both sites carried the same
-    # single value. ``_MISSING`` on either side breaks uniformity by itself.
+    kept_sites = _per_site_values(meta, key)
+    absorbed_sites = _per_site_values(absorbed_meta, key)
+    if kept_sites is None and absorbed_sites is None:
+        return
     uniform = (
-        agreed
-        and len(values) == 1
-        and meta.get(key, _MISSING) is not _MISSING
-        and absorbed_val is not _MISSING
+        not isinstance(meta.get(f"{key}_values"), list)
+        and not isinstance(absorbed_meta.get(f"{key}_values"), list)
+        and kept_sites == absorbed_sites
     )
     if uniform:
         return
+    values: list[object] = []
+    for value in (kept_sites or [None]) + (absorbed_sites or [None]):
+        if value not in values:
+            values.append(value)
     meta.pop(key, None)
-    if values:
-        meta[f"{key}_values"] = sorted(values, key=repr)[:_CALL_LINES_CAP]
+    meta[f"{key}_values"] = sorted(
+        values, key=lambda v: (v is not None, repr(v)),
+    )[:_CALL_LINES_CAP]
 
 
 def _absorb_call_site(kept: Edge, absorbed: Edge) -> None:
@@ -1652,14 +1704,12 @@ def _span_token_index(parts: list[str]) -> Optional[int]:
 
     THE ONE SPAN ANCHOR (INV-divuf). The span is the only slot that can be
     located without assuming any OTHER slot is colon-free, which is why every
-    correct parse in this module is anchored on it. It had THREE homes: the
-    loop below was copy-pasted into :func:`symbol_path_slot` and
-    :func:`symbol_name_slot`, and :func:`validate_symbol_id_format` carried a
-    third, WRONG version that took ``parts[-3]`` — so the validator located the
-    span correctly only for ids whose name and path happened to be colon-free,
-    and silently returned "clean" for every Objective-C selector and every Rust
-    qualified callee. A validator that cannot parse the ids it validates is the
-    failure mode this extraction exists to end.
+    correct parse in this module is anchored on it. The loop below was
+    copy-pasted into :func:`symbol_path_slot` and :func:`symbol_name_slot`,
+    and this extraction gives it one home. :func:`validate_symbol_id_format`
+    does NOT use it: it keeps ``parts[-3]`` deliberately (INV-divuf — moving it
+    to span-anchoring was tried and reverted), because on a malformed id the
+    shifted right-anchored slot is the ``colon_in_name_slot`` signal.
 
     Returns ``None`` when no span token is present, which is a real shape
     (``just:examples/screenshot.just:6:build:recipe`` carries a bare line
@@ -1954,8 +2004,11 @@ def create_boundary_nodes(
         edges: All edges (after deduplication).
         dependency_manifest: Optional DependencyManifest from
             supply_chain.py. When provided, boundary nodes for
-            languages with a manifest parser (go, java, kotlin, python)
-            get a ``meta["directness"]`` stamp from the declared deps.
+            languages with a manifest parser (go, java, kotlin, python,
+            elixir, javascript, typescript) get a ``meta["directness"]``
+            stamp from ``DependencyManifest.directness_for`` whenever it
+            can tell; a manifest-resolved package also gets
+            ``ecosystem="third_party"`` when the stdlib catalog is silent.
 
     Returns:
         Tuple ``(boundary_symbols, id_remap)``.
@@ -2073,12 +2126,12 @@ def create_boundary_nodes(
         # undeclared declaration relationship the classifier still knows is
         # re-emitted as the `directness` meta stamp, stamped once here (the
         # single classification chokepoint for boundary nodes).
+        # WI-juzaj: the manifest owns the per-language dispatch (flat entries
+        # for go/java/kotlin/python, scoped Hex/npm tables for elixir/js/ts)
+        # and returns None when it cannot tell -- no stamp then.
         directness: str | None = None
-        if (
-            dependency_manifest is not None
-            and language in ("go", "java", "kotlin", "python")
-        ):
-            directness = dependency_manifest.classify_directness(key_path)
+        if dependency_manifest is not None:
+            directness = dependency_manifest.directness_for(language, key_path)
 
         boundary_meta: dict[str, Any] = {"external_boundary": True}
         if directness is not None:
@@ -2092,10 +2145,19 @@ def create_boundary_nodes(
         # tier-3 external, from the single-source language stdlib catalog.
         # Absent when the language has no enumerated stdlib (classifier
         # returns None) — orthogonal to directness (declaration relationship).
+        ecosystem: str | None = None
         if ecosystem_classifier is not None:
             ecosystem = ecosystem_classifier(language, key_path)
-            if ecosystem is not None:
-                boundary_meta["ecosystem"] = ecosystem
+        # WI-juzaj: a module the project's manifest resolves to a declared or
+        # locked package IS fetched from a package registry -- positive
+        # evidence of ``third_party`` that needs no stdlib enumeration. Only
+        # fills the gap the catalog leaves (languages with no enumerated
+        # stdlib); it never relabels a catalog verdict, and it is not a
+        # second stdlib recognizer (ADR-0041 §3 single-source constraint).
+        if ecosystem is None and directness in ("direct", "transitive"):
+            ecosystem = "third_party"
+        if ecosystem is not None:
+            boundary_meta["ecosystem"] = ecosystem
 
         sym = Symbol(
             id=canonical_id,

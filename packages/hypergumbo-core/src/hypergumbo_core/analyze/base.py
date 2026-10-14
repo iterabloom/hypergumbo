@@ -15,6 +15,16 @@ Shared Components
   file discovery, graceful degradation when a grammar is unavailable, and
   result assembly. Subclasses override the language-specific extraction
   hooks and inherit the orchestration. ~105 analyzer modules subclass it.
+  Per file, Pass 1 parses through the ``parse_source`` hook (an override may
+  rewrite the bytes, length-preserving, for a grammar that lags its
+  language), records a tree that needed error recovery in
+  ``limits.failed_files`` (``record_partial_parse``), and fills any unset
+  ``shape_id`` (``compute_shape_id``) and ``docstring``
+  (``extract_doc_comment``) for symbols the analyzer mapped in
+  ``node_for_symbol``, with ``populate_docstrings_from_tree`` finding the
+  declaration node by position for the rest. Pass 2 runs ADR-0015 dataflow
+  annotation (``annotate_dataflow``) over each file's edges whenever the
+  language has a dataflow config.
   Between the passes ``analyze()`` merges per-file Pass 1 registries into
   repo-wide ones Pass 2 reads for receiver typing: ``class_field_types``
   (class -> field -> type) and ``method_return_types`` (qualified method ->
@@ -77,9 +87,9 @@ Shared helpers
 - **Call-site annotation.** ``emit_module_attribute_refs`` emits
   ``module_attr_ref`` edges for attribute reads on imported modules
   (``process.env.PATH``) that are not themselves callees;
-  ``stamp_io_mode_from_call`` records a literal mode argument
-  (``fopen(p, "w")``) as ``meta["io_mode"]`` on the edges a call produced,
-  and stamps nothing for a non-literal mode; ``constructed_from_callee``
+  ``stamp_io_mode_from_call`` records a literal mode (``fopen(p, "w")``) or
+  a flag expression (``os.O_WRONLY|os.O_CREATE``) as ``meta["io_mode"]`` on
+  a call's edges, and stamps nothing otherwise; ``constructed_from_callee``
   renders an initializer's callee for ``Symbol.meta["constructed_from"]``.
 - **Stable-id constructors.** Beyond the layer above:
   ``make_site_stable_id`` (SITE-axis identity for ``call_site`` stand-ins,
@@ -88,7 +98,14 @@ Shared helpers
   ``make_declaration_stable_id`` (class / struct / enum / trait / protocol
   / contract), and the post-pass ``split_within_file_stable_id_collisions``,
   which re-mints the second and later same-file holders of one
-  ``stable_id`` with an occurrence suffix.
+  ``stable_id`` with an occurrence suffix. Also here: the per-kind
+  ``make_{file,module,dependency,variable,export,project,interface,type}_stable_id``
+  factories behind ``populate_kind_stable_ids``, ``make_doc_stable_id``,
+  ``make_entry_stable_id`` (shader entry points), ``make_protocol_stable_id``
+  (linker stand-ins) and ``make_synthetic_symbol_identity`` (Class-B
+  stand-ins). ``is_table_kind`` tells a producer which of its kinds the
+  backstop's table owns, and ``ancestor_labels`` collects the enclosing
+  scopes a producer hashes into its scope chain.
 
 Why This Design
 ---------------
@@ -111,8 +128,8 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Dict, Iterator, Optional
+from collections.abc import Container, Sequence
+from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional
 
 from ..library_signatures import load_library_signatures
 from ..dataflow import annotate_dataflow, get_dataflow_config
@@ -130,6 +147,7 @@ from ..ir import (
 # cycle; ``analyze.base`` stays the producer-facing surface it has always been.
 from ..ir import sanitize_id_name_segment as sanitize_id_name_segment
 from ..axis_meta_keys import write_meta_key
+from ..call_constructs import require_declared as _require_declared_construct
 from ..symbol_resolution import NameResolver
 from ..pass_silence import DEPENDENCY_UNAVAILABLE
 
@@ -412,10 +430,26 @@ def stamp_io_mode_from_call(
         # ``string_fragment`` where C and python spell it ``string_content``
         # (WI-nolut). Read here, in the one producer, rather than in a copy.
         content = find_child_by_type(args[spec.position], "string_fragment")
-    if content is None:
+    if content is None and spec.flag_modes:
+        # WI-ninuz: a flag expression (Go's ``os.O_WRONLY|os.O_CREATE``). Any
+        # flag that writes makes the call a write; a variable names no flag and
+        # stamps nothing, exactly as a non-literal mode string does.
+        stack, implied = [args[spec.position]], set()
+        while stack:
+            cur = stack.pop()
+            stack.extend(cur.children)
+            if cur.type.endswith("identifier"):
+                flag_mode = spec.flag_modes.get(node_text(cur, source))
+                if flag_mode is not None:
+                    implied.add(flag_mode)
+        if not implied:
+            return
+        mode = "w" if implied - {"r"} else "r"
+    elif content is None:
         # Not a string literal at all — a variable, a macro, a concatenation.
         return
-    mode = node_text(content, source)
+    else:
+        mode = node_text(content, source)
     for edge in edges[first_new:]:
         if edge.meta is None:
             edge.meta = {}
@@ -595,6 +629,78 @@ def make_file_id(lang: str, path: str) -> str:
 
 
 _FILE_ID_SUFFIX = ":1-1:file:file"
+
+
+#: The ``limits.failed_files`` reason prefix for a file tree-sitter parsed only
+#: through error recovery (WI-bulaz). A stable token, so a consumer can select
+#: these without parsing prose.
+PARTIAL_PARSE_REASON = "partial_parse"
+
+
+def record_partial_parse(run: AnalysisRun, path: str, tree: Any) -> int:
+    """Record ``path`` as partially parsed when its tree carries parse errors.
+
+    WI-bulaz. ``tree.root_node.has_error`` is set on every tree whose parse
+    needed error recovery, and nothing read it: the grammar's recovery yields
+    an ABSENCE (declarations inside or after the damaged region go missing), so
+    a file whose parse died looked exactly like a file that declares nothing,
+    and the run exited 0. Measured before this: objc 38 of 387 files after
+    WI-lafom's rewrite, swift 5 each on VernissageServer and Alamofire.
+
+    Recorded through the existing per-file channel (``limits.failed_files``),
+    with a count of damaged nodes, because the file WAS analysed, just not all
+    of it. Returns the count (0 for a clean tree, which records nothing; a
+    recorded tree counts at least 1). Only subtrees that report an error are
+    descended.
+
+    A damaged node is an ERROR node, a MISSING node, or a node that reports
+    ``has_error`` although none of its children does. The last is not a
+    theoretical case: tree-sitter-markdown flags pipe-table cells that way and
+    builds no ERROR node at all, so counting only ERROR/MISSING printed
+    "0 ... node(s)" for a file it had just called broken (crun's crun.1.md).
+    """
+    root = tree.root_node
+    if not root.has_error:
+        return 0
+    count = 0
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        damaged = [c for c in node.children if c.has_error or c.is_missing]
+        if node.type == "ERROR" or node.is_missing or not damaged:
+            count += 1
+        stack.extend(damaged)
+    run.record_failed_file(
+        path,
+        f"{PARTIAL_PARSE_REASON}: {count} damaged node(s); analysed from "
+        f"tree-sitter's error recovery, so declarations in or after the damaged "
+        f"region may be missing",
+    )
+    return count
+
+
+def file_anchor_symbol(lang: str, path: str, pass_id: str, run_id: str) -> Symbol:
+    """The symbol a call outside every function is anchored on (INV-bamij).
+
+    Every call site an analyzer parses must emit a calls edge anchored on SOME
+    symbol (INV-foluz). A call at module level, in a function literal bound to a
+    module-level name, or in a static initialiser has no enclosing function, and
+    nine analyzers dropped it. This is the anchor of last resort: the file node
+    the ``make_file_id`` id already names (the ``imports`` edges' source), which
+    is how python and php anchor module-level code. One definition, so the
+    analyzers that use it cannot disagree about the id, the kind or the span.
+    Built for use as an edge ``src``; it is not emitted as a new symbol.
+    """
+    return Symbol(
+        id=make_file_id(lang, path),
+        name="file",
+        kind="file",
+        language=lang,
+        path=path,
+        span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        origin=pass_id,
+        origin_run_id=run_id,
+    )
 
 
 def _read_file_end_line(repo_root: "Path", rel_path: str) -> int:
@@ -937,7 +1043,9 @@ def make_unresolved_edge(
             ``doFinal`` — from turning into a PHANTOM BARRIER, since the
             sanitizer path matches on the short name and never reads
             ``module_hint``. Omit it only when the call genuinely has no
-            receiver.
+            receiver. Must be a value declared in
+            :mod:`hypergumbo_core.call_constructs`; any other raises
+            ``ValueError``.
     """
     dst_id = f"{lang}:{module_hint}:0-0:{callee_name}:unresolved"
     # ADR-0037 ruling 2: derive dst_ref from the components this helper already holds,
@@ -971,7 +1079,9 @@ def make_unresolved_edge(
     if inherited_field_receiver is not None:
         hint_meta["inherited_field_receiver"] = inherited_field_receiver
     if call_construct is not None:
-        hint_meta["call_construct"] = call_construct
+        # The declared vocabulary (WI-dapap): a value computed at run time is
+        # checked here, where the static emit scan cannot see it.
+        hint_meta["call_construct"] = _require_declared_construct(call_construct)
     return Edge.create(
         src=src_id,
         dst=dst_id,
@@ -1250,7 +1360,7 @@ def assemble_stable_id(
     ``sha256(kind:param_count:arity_flags:decorators:containing_stable_id
              :name:qualified_name:occurrence_index)``
 
-    This is the one place the formula lives; both :meth:`BaseAnalyzer.compute_stable_id`
+    This is the one place the formula lives; both :meth:`TreeSitterAnalyzer.compute_stable_id`
     (the tree-sitter path) and the Python analyzer's ``_compute_stable_id`` (the AST path)
     call it, so they can no longer diverge (the v5 divergence — py.py folded ``body_sig`` and
     omitted ``qualified_name`` — was the WI-gitun / INV-tazaj defect surface).
@@ -1285,7 +1395,7 @@ def symbols_at(symbols: "Sequence[Symbol]", file_path: Optional[str] = None) -> 
     declaration node that contains it, and that node IS the symbol's node, so
     its start position identifies the symbol exactly. A name does not: two
     methods ``parse`` in two classes of one file, an Erlang ``-ifdef``/``-else``
-    pair, an Elixir clause per arity or a C ``#ifdef`` alternative all share one,
+    pair, an Elixir function per arity or a C ``#ifdef`` alternative share one,
     and every name-keyed lookup returned whichever registered last. On a pinned
     26-repo run that anchored 2,014 kotlin and 964 scala call edges to a function
     that does not contain them.
@@ -1306,6 +1416,28 @@ def symbol_declared_by(node: Any, index: SymbolsAt) -> Optional[Symbol]:
     """The symbol whose declaration node is ``node``, or None when it has none
     (a local function the analyzer does not emit, a ``quote``-d def)."""
     return index.get((node.start_point[0] + 1, node.start_point[1]))
+
+
+def enclosing_declared_symbol(
+    node: Any, index: SymbolsAt, node_types: AbstractSet[str],
+) -> Optional[Symbol]:
+    """The nearest ancestor of ``node`` of one of ``node_types`` that HAS a symbol.
+
+    INV-bamij. A call in a type's body but in no function (a Ruby class-body
+    ``include``, a Scala ``object``'s ``val``, a Swift or Kotlin property
+    initialiser, a Swift ``init`` the analyzer emits no symbol for) is anchored
+    on that type rather than dropped or pushed out to the file. Keyed by the
+    declaration's POSITION (:func:`symbol_declared_by`), never its name; an
+    ancestor with no symbol is walked past.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in node_types:
+            sym = symbol_declared_by(current, index)
+            if sym is not None:
+                return sym
+        current = current.parent
+    return None
 
 
 def make_file_stable_id(language: str, path: str) -> str:
@@ -1369,7 +1501,8 @@ def make_export_stable_id(language: str, path: str, name: str) -> str:
 
 
 def make_doc_stable_id(
-    language: str, path: str, kind: str, name: str, start_line: int, end_line: int
+    language: str, path: str, kind: str, name: str, start_line: int, end_line: int,
+    scope: "Sequence[str]" = (),
 ) -> str:
     """Stable identity for documentation / config noise-node Symbols (id-format:F2 4a).
 
@@ -1392,14 +1525,26 @@ def make_doc_stable_id(
     exact. For single-line nodes (e.g. markdown links) pass the same value for
     both ``start_line`` and ``end_line``; the factory hashes the span verbatim
     and does not validate span plausibility.
+
+    **The span left the hash (WI-tusad, stable_id scheme bump).** ADR-0035 §3
+    keeps line numbers out of identity hashes; with the span in it, deleting
+    or inserting any line above a doc node moved its id (the floor gate's
+    delete-an-earlier-sibling check failed for every adopter). The hash is now
+    ``doc:{language}:{path}:{kind}:{scope/.../name}``: ``scope`` is the chain
+    the producer nests the node in (an INI setting's section, a KDL node's
+    parents), and two nodes still identical after it (two anonymous ``code``
+    blocks under one heading) are a same-scope tie the per-file split pass
+    orders. ``start_line`` / ``end_line`` are still accepted (every caller has
+    them, for the node id) but no longer enter the value.
     """
-    return _short_sha256(
-        f"doc:{language}:{path}:{kind}:{name}:{start_line}-{end_line}"
-    )
+    del start_line, end_line  # kept for the callers; no longer hashed (see above)
+    chain = "/".join((*scope, name))
+    return _short_sha256(f"doc:{language}:{path}:{kind}:{chain}")
 
 
 def make_doc_symbol_ids(
-    language: str, path: str, kind: str, name: str, start_line: int, end_line: int
+    language: str, path: str, kind: str, name: str, start_line: int, end_line: int,
+    scope: "Sequence[str]" = (),
 ) -> tuple[str, str]:
     """Mint the ``(node.id, stable_id)`` PAIR for a doc/markup/template Symbol
     together, from one argument set (INV-dulah).
@@ -1453,7 +1598,7 @@ def make_doc_symbol_ids(
     """
     spath = str(path)
     symbol_id = make_symbol_id(language, spath, start_line, end_line, name, kind)
-    stable_id = make_doc_stable_id(language, spath, kind, name, start_line, end_line)
+    stable_id = make_doc_stable_id(language, spath, kind, name, start_line, end_line, scope)
     return symbol_id, stable_id
 
 
@@ -1562,10 +1707,13 @@ def _declaration_kind_stable_id(sym: Symbol) -> str:
 
 
 # Mapping from Symbol.kind to the factory function used by
-# populate_kind_stable_ids. Kinds NOT present here have producers that compute
-# their own stable_id (function, method, route, and Python classes via
-# ``_compute_stable_id``) or are absent from the measured-gap set and remain at
-# None until a future invariant adds them.
+# populate_kind_stable_ids (the table ADR-0014 §5b records). A kind NOT present
+# here falls to the backstop FLOOR (:func:`floor_stable_id_key`, ADR-0035 §1):
+# the same ``{kind}:{language}:{path}:{name}`` shape, but stamped only when the
+# key is unique in its file. A kind earns a row here only when its identity is
+# not the floor shape (``file`` hashes the path alone, ``project`` the name
+# alone) or when same-name members of the kind in one file are same-scope ties
+# that the occurrence pass may order.
 #
 # WI-rihob: the container/declaration kinds (class/struct/enum/trait/protocol/
 # contract) are backstopped here. Despite the earlier assumption that "class
@@ -1588,43 +1736,104 @@ _KIND_STABLE_ID_FACTORIES = {
     "trait": _declaration_kind_stable_id,
     "protocol": _declaration_kind_stable_id,
     "contract": _declaration_kind_stable_id,
-    # META-nomiz: view-template stand-ins (linkers/_view_template_core.py) mint
-    # kind="template" with a language but no stable_id, falling through every other
-    # backstop. They share the generic kind-scoped formula — kind is folded into the
-    # hash, so a "template" node stays distinct from a "file" node at the same path.
+    # META-nomiz: the generic kind-scoped formula for a "template" symbol minted
+    # before the linkers. The view-template linker's own templates are minted
+    # AFTER this backstop runs, so this row never reached them (they shipped null);
+    # they stamp their own id (INV-fufij, overload_arity.pass_minted_stable_id).
     "template": _declaration_kind_stable_id,
 }
+
+
+def floor_stable_id_key(
+    kind: Optional[str],
+    language: Optional[str],
+    path: Optional[str],
+    name: Optional[str],
+) -> Optional[str]:
+    """WI-motiz: the backstop FLOOR key for a symbol, or ``None`` when the floor
+    does not apply (ADR-0035 §1).
+
+    The floor is :func:`make_declaration_stable_id` over ``(kind, language,
+    path, name)``. It applies to a symbol that carries a language and whose
+    kind has no entry in ``_KIND_STABLE_ID_FACTORIES``: a ``language=None``
+    stand-in takes its identity from :func:`make_synthetic_symbol_identity`,
+    and a table kind takes its table formula. A missing ``kind``, ``path`` or
+    ``name`` (a partial record) yields ``None``.
+
+    One definition, two readers: :func:`populate_kind_stable_ids` stamps it,
+    and ``spec_validator.compute_stable_id_stats`` recomputes it from the
+    emitted records to disclose ``floor_cohort`` / ``floor_abstained``. Because
+    the key is a pure function of the node's own fields, a consumer can tell a
+    floor value from a producer value without a provenance field.
+    """
+    if kind is None or language is None or path is None or name is None:
+        return None
+    if kind in _KIND_STABLE_ID_FACTORIES:
+        return None
+    return make_declaration_stable_id(kind, language, path, name)
+
+
+def is_table_kind(kind: str) -> bool:
+    """True when the backstop owns ``kind``'s identity with a table formula.
+
+    A table kind (``file``, ``module``, ``variable``, ``class``, ``template``
+    ...; ``_KIND_STABLE_ID_FACTORIES``) takes its table value from
+    :func:`populate_kind_stable_ids`; every other kind with no producer value
+    falls to the floor. A producer that emits a mix (a GraphQL ``type`` beside
+    an ``input``, a TOML ``project`` beside a ``table``) mints its own formula
+    for the floor kinds and leaves the table kinds to their table formula:
+    replacing a table value would change a value already computed, which
+    ADR-0035 §6 governs.
+    """
+    return kind in _KIND_STABLE_ID_FACTORIES
 
 
 def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
     """INV-sotiv backstop: fill missing ``Symbol.stable_id`` by kind.
 
     Runs at the orchestrator chokepoint (``analyze.all_analyzers`` after
-    path normalisation) and mutates ``symbols`` in place. For every
-    Symbol whose ``stable_id`` is still ``None``, dispatches on
-    ``Symbol.kind`` to a kind-specific factory and stamps the result.
-
+    path normalisation, before the linkers) and mutates ``symbols`` in place.
     Producers that already computed a ``stable_id`` (functions and methods
     via ``make_typed_stable_id``; Python functions/methods/classes via
     py.py's ``_compute_stable_id``; routes via ``make_route_stable_id``; etc.)
     keep priority — this backstop never overrides a non-``None`` value.
 
-    Kinds not in ``_KIND_STABLE_ID_FACTORIES`` are left untouched. The map
-    covers the eight INV-sotiv kinds (file / module / dependency / variable /
-    export / project / interface / type) plus the six WI-rihob container/
-    declaration kinds (class / struct / enum / trait / protocol / contract) —
-    the latter because the tree-sitter producers construct them with a
-    ``shape_id=`` but no ``stable_id=`` (unlike Python, whose ``_compute_stable_id``
-    covers classes at the producer). New kinds that surface with ``None`` need
-    their own factory entry here.
+    **Table kinds.** A ``None`` symbol whose kind is in
+    ``_KIND_STABLE_ID_FACTORIES`` (the eight INV-sotiv kinds, the six WI-rihob
+    container kinds, META-nomiz's ``template``; ADR-0014 §5b) takes its table
+    formula. Two same-name members of one table kind in a file share the key
+    and are split later by :func:`split_within_file_stable_id_collisions`.
+
+    **The floor (WI-motiz, ADR-0035 §1).** Every other ``None`` symbol with a
+    language is a floor candidate, keyed by :func:`floor_stable_id_key`. A
+    candidate is stamped with its floor key iff the key is unique among the
+    file's floor candidates and no other symbol in the file already holds it;
+    otherwise it stays ``None``. The occurrence index must never disambiguate a
+    floor key: the key has no scope chain, arity or decorators, so a floor
+    collision (GDScript ``run`` in inner classes ``A`` / ``B``, both named
+    ``run``; proto ``A.Inner`` / ``B.Inner``, both named ``Inner``, before
+    their producers took the formula) is no same-scope tie,
+    and an emission-order ordinal over it would move an id onto a different
+    symbol when an earlier sibling is deleted. A null means "this run cannot
+    back an identity"; a moved id is a wrong join that no validator can see.
+    Leaving the group ``None`` keeps it out of the split pass by construction
+    (that pass skips ``None``).
     """
+    floor_groups: dict[tuple[str, str], list[Symbol]] = {}
+    held: set[tuple[str, str]] = set()
     for sym in symbols:
-        if sym.stable_id is not None:
-            continue
-        factory = _KIND_STABLE_ID_FACTORIES.get(sym.kind)
-        if factory is None:
-            continue
-        sym.stable_id = factory(sym)
+        if sym.stable_id is None:
+            factory = _KIND_STABLE_ID_FACTORIES.get(sym.kind)
+            if factory is None:
+                key = floor_stable_id_key(sym.kind, sym.language, sym.path, sym.name)
+                if key is not None:
+                    floor_groups.setdefault((sym.path, key), []).append(sym)
+                continue
+            sym.stable_id = factory(sym)
+        held.add((sym.path, sym.stable_id))
+    for file_key, group in floor_groups.items():
+        if len(group) == 1 and file_key not in held:
+            group[0].stable_id = file_key[1]
 
 
 def make_synthetic_symbol_identity(
@@ -2611,6 +2820,68 @@ def iter_tree(root: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
         stack.extend(reversed(node.children))
 
 
+def ancestor_labels(
+    node: "tree_sitter.Node",
+    label_of: Callable[["tree_sitter.Node"], Optional[str]],
+) -> list[str]:
+    """The labels of ``node``'s enclosing scopes, outermost first.
+
+    Walks up the parents of ``node`` (not ``node`` itself) and keeps
+    ``label_of(ancestor)`` wherever it is not ``None``. A producer that hashes
+    a scope chain (ADR-0035 §1) passes a ``label_of`` naming the ancestors
+    that open a scope in its grammar (a CSS ``@media`` query, a LaTeX
+    section's title, a CMake ``function``) and joins the result with the
+    symbol's own name.
+    """
+    labels: list[str] = []
+    current = node.parent
+    while current is not None:
+        label = label_of(current)
+        if label is not None:
+            labels.append(label)
+        current = current.parent
+    labels.reverse()
+    return labels
+
+
+def html_element_tag(node: "tree_sitter.Node") -> Optional[str]:
+    """The tag name an HTML-family ``element`` (or ``template_element``) opens,
+    or ``None`` for any other node.
+
+    The ``label_of`` an element scope chain passes to :func:`ancestor_labels`
+    in the component grammars that share tree-sitter-html's element shape
+    (Vue, Svelte, Astro): a slot or directive inside ``<div>`` and the same one
+    inside ``<section>`` are two identities (ADR-0035 §1, scheme v9).
+    """
+    if node.type not in ("element", "template_element"):
+        return None
+    for child in node.children:
+        if child.type in ("start_tag", "self_closing_tag"):
+            for part in child.children:
+                if part.type == "tag_name":
+                    return node_own_text(part)
+    return None  # pragma: no cover - an element always opens with a tag
+
+
+def block_prelude(node: "tree_sitter.Node", block_type: str = "block") -> Optional[str]:
+    """What precedes a node's own ``block_type`` child, whitespace collapsed,
+    or ``None`` for a node with no such child.
+
+    The ``label_of`` for :func:`ancestor_labels` in grammars that hang every
+    scope's body on one ``block`` node (SCSS, Puppet): a rule set is labelled
+    by its selector list, an at-rule or a conditional by its prelude
+    (``@media print``, ``if $x``, ``@else``). The text is cut where the block
+    starts, not at the first ``{``, so an interpolation in the prelude
+    (``.btn-#{$name}``) stays whole.
+    """
+    for child in node.children:
+        if child.type == block_type:
+            text = node.text or b""
+            prefix = text[: child.start_byte - node.start_byte]
+            return " ".join(prefix.decode("utf-8", errors="replace").split())
+    return None
+
+
 def iter_tree_with_context(
     root: "tree_sitter.Node",
     context_types: set[str],
@@ -2699,6 +2970,7 @@ def symbols_for_path(
 
 def _innermost_callable_at(
     line: int, symbols: "Sequence[Symbol] | None",
+    owner_kinds: "frozenset[str]" = _ATTR_OWNER_KINDS,
 ) -> "Symbol | None":
     """The narrowest callable whose span contains *line*, or None.
 
@@ -2725,13 +2997,18 @@ def _innermost_callable_at(
     load-bearing: a genuinely module-level read (top-of-file ``process.env``)
     belongs to the file, and the caller keeps its existing pseudo-symbol for
     exactly that case. The fix must not invent a callable that is not there.
+
+    ``owner_kinds`` widens the set for a language whose package-level
+    ``var`` initializer is itself an anchor (go, INV-nopoh / WI-labik): there
+    a read in ``var upper = strings.ToUpper`` belongs to ``upper``, as the
+    calls in such an initializer already do.
     """
     if not symbols:
         return None
     best: "Symbol | None" = None
     best_lo = best_hi = 0
     for sym in symbols:
-        if sym.kind not in _ATTR_OWNER_KINDS:
+        if sym.kind not in owner_kinds:
             continue
         span = getattr(sym, "span", None)
         lo = getattr(span, "start_line", None)
@@ -2818,6 +3095,13 @@ def emit_module_attribute_refs(
     skip_context_kinds: tuple[str, ...] = (),
     skip_ancestor_kinds: tuple[str, ...] = (),
     enclosing_symbols: "Sequence[Symbol] | None" = None,
+    carrier_call_kinds: tuple[str, ...] = (),
+    carrier_receiver_fields: tuple[str, ...] = (),
+    carrier_arguments_field: str = "arguments",
+    owner_kinds: "frozenset[str]" = _ATTR_OWNER_KINDS,
+    is_local_value: "Callable[[tree_sitter.Node], bool] | None" = None,
+    carrier_argument_wrapper_kinds: tuple[str, ...] = (),
+    attribute_names: "Container[str] | None" = None,
 ) -> None:
     """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
 
@@ -2916,6 +3200,52 @@ def emit_module_attribute_refs(
             inside an import declaration is an import*) and is closed over
             shapes nobody has enumerated.  See
             :func:`_has_ancestor_of_kind`.
+        carrier_call_kinds: INV-hopib. Call node types whose use of an
+            attribute is recorded on its edge as ``meta["attr_carrier"]`` =
+            ``<callee as spelled>@<call line>``: the attribute is a direct
+            child of the call's ``carrier_arguments_field`` node, or its
+            receiver -- a ``carrier_receiver_fields`` child of the call
+            (java's ``object``), or the object of the member access that is
+            the call's callee (``os.Stdout.Write(b)``). A stream-object row
+            is matched wherever the object is used, so ``io.WriteString(
+            os.Stderr, k)`` made ``os.Stderr`` a taint sink beside the call
+            that writes; the carrier is what lets taint report the write once
+            and lets a surviving stream finding name its call. Empty (the
+            default) stamps nothing, so cpp and rust -- whose stream writes
+            are ``<<`` expressions and ``stdout()`` calls, not attribute
+            uses inside a call -- are unaffected.
+        carrier_receiver_fields: see ``carrier_call_kinds``.
+        carrier_arguments_field: the call's arguments field name.
+        carrier_argument_wrapper_kinds: node types a grammar puts BETWEEN an
+            argument and the arguments node (tree-sitter-kotlin's
+            ``value_argument``); a use inside one is still handed to the call.
+            Empty (the default) changes nothing.
+        attribute_names: when given, only an access whose attribute is one of
+            these is a read. For a language that calls a parameterless method
+            without parentheses (scala's ``System.currentTimeMillis``), an
+            access on the module is not necessarily a FIELD read, and the
+            caller names the fields (WI-rabum). None, the default, keeps every
+            attribute.
+
+    FIELD NAMES MAY NAME A CHILD BY POSITION OR TYPE. Every ``*_field_names`` /
+    ``*_fields`` / ``*_field`` argument goes through :func:`_child_by_fields`,
+    where a name beginning ``@`` selects a NAMED child instead of a field:
+    ``@first``, ``@last``, or ``@<node type>``. tree-sitter-kotlin declares no
+    fields on ``navigation_expression`` or ``call_expression``, so kotlin
+    passes ``@first`` / ``@last`` / ``@value_arguments`` (WI-rabum).
+
+    A BACKTICK-QUOTED attribute names the member it quotes: kotlin writes
+    ``System.`in``` because ``in`` is a keyword there.
+        owner_kinds: the symbol kinds a read may be anchored on (see
+            :func:`_innermost_callable_at`). Defaults to callables.
+        is_local_value: given the base node of an attribute access whose
+            text names an import, True when a LOCAL binding of that name is
+            in scope there instead -- ``func f(os T) { _ = os.Args }`` reads
+            a field of ``os`` the parameter, not the package. Such a read is
+            skipped. The scope is the caller's (go's ``_GoLocalScope``);
+            None, the default, treats every import-named base as the import,
+            the historical behaviour. Not consulted on ``scoped_path``
+            languages, whose ``::`` paths cannot be shadowed by a value.
         scoped_path: When True, switches the helper to a left-recursive
             path-walk model used by languages whose scoped access is
             not a binary ``object`` / ``property`` pair.  Rust's
@@ -2923,10 +3253,10 @@ def emit_module_attribute_refs(
             parse ``std::env::consts::OS`` as a nested chain of
             ``path`` + ``name`` children — the helper walks left via
             the path field to find the leftmost identifier, checks it
-            against the imports map, and emits edges using
-            dot-normalized module paths (``::`` replaced with ``.``)
-            so the resulting edge ID survives downstream ``:``-split
-            parsing.  Catalog matching still works because
+            against the imports map, and emits edges whose module path
+            and qualified name keep the language's own ``::`` separator
+            (INV-rilit; ADR-0036 makes the id's path slot
+            colon-tolerant).  Catalog matching still works because
             ``IoBoundaryCatalog`` registers both ``::`` and ``.``
             forms in its qualified-name index.
     """
@@ -2938,11 +3268,7 @@ def emit_module_attribute_refs(
     for node in iter_tree(root):
         if node.type not in call_node_kinds:
             continue
-        callee = None
-        for fname in call_function_field_names:
-            callee = node.child_by_field_name(fname)
-            if callee is not None:
-                break
+        callee = _child_by_fields(node, call_function_field_names)
         if callee is None:
             continue
         if callee.type in node_kinds:
@@ -2959,20 +3285,16 @@ def emit_module_attribute_refs(
         if skip_ancestor_kinds and _has_ancestor_of_kind(
                 node, skip_ancestor_kinds):
             continue
-        base = None
-        for fname in object_field_names:
-            base = node.child_by_field_name(fname)
-            if base is not None:
-                break
-        prop = None
-        for fname in property_field_names:
-            prop = node.child_by_field_name(fname)
-            if prop is not None:
-                break
+        base = _child_by_fields(node, object_field_names)
+        prop = _child_by_fields(node, property_field_names)
         if base is None or prop is None:
             continue
         base_text = node_text(base, source)
         attr_name = node_text(prop, source)
+        if len(attr_name) > 2 and attr_name[0] == attr_name[-1] == "`":
+            attr_name = attr_name[1:-1]
+        if attribute_names is not None and attr_name not in attribute_names:
+            continue
         if scoped_path:
             # Left-recursive walk: the base may itself be a scoped_identifier
             # (``std::env`` inside ``std::env::consts``).  Walk left via the
@@ -2980,11 +3302,7 @@ def emit_module_attribute_refs(
             # identifier — that's the alias we check against imports.
             leftmost = base
             while leftmost.type in node_kinds:
-                inner = None
-                for fname in object_field_names:
-                    inner = leftmost.child_by_field_name(fname)
-                    if inner is not None:
-                        break
+                inner = _child_by_fields(leftmost, object_field_names)
                 if inner is None:  # pragma: no cover
                     # Grammar variation guard: a node whose type is in
                     # node_kinds but whose ``object_field_names`` resolve
@@ -3019,13 +3337,21 @@ def emit_module_attribute_refs(
         else:
             if base_text not in imports:
                 continue
+            if is_local_value is not None and is_local_value(base):
+                continue
             real_module = imports[base_text]
         # The qualified name joins with the SAME separator the module uses, or
         # the id mixes conventions the way the C++ case above did.
         sep = "::" if scoped_path else "."
         qname = f"{real_module}{sep}{attr_name}"
         line_no = node.start_point[0] + 1
-        owner = _innermost_callable_at(line_no, enclosing_symbols)
+        owner = _innermost_callable_at(line_no, enclosing_symbols, owner_kinds)
+        carrier = _attr_carrier(
+            node, source, node_kinds, object_field_names,
+            call_function_field_names, carrier_call_kinds,
+            carrier_receiver_fields, carrier_arguments_field,
+            carrier_argument_wrapper_kinds,
+        )
         edges_out.append(Edge.create(
             src=(owner.id if owner is not None else caller_symbol.id),
             dst=f"{lang}:{real_module}:0-0:{qname}:attribute",
@@ -3034,7 +3360,93 @@ def emit_module_attribute_refs(
             origin=pass_id,
             origin_run_id=run_id,
             evidence_type="module_attribute_reference",
+            meta={"attr_carrier": carrier} if carrier is not None else None,
         ))
+
+
+def _child_by_fields(
+    node: "tree_sitter.Node", names: tuple[str, ...],
+) -> "tree_sitter.Node | None":
+    """The first child one of ``names`` selects, trying them in order.
+
+    A plain name is a tree-sitter FIELD. A name beginning ``@`` selects a NAMED
+    child instead -- ``@first``, ``@last``, or ``@<node type>`` (the first named
+    child of that type) -- for a grammar that declares no fields on the node
+    (tree-sitter-kotlin's ``navigation_expression`` and ``call_expression``,
+    WI-rabum). One resolver for every field argument of
+    :func:`emit_module_attribute_refs`, so the attribute walk and the carrier
+    walk cannot read a node's parts two different ways.
+    """
+    for name in names:
+        if not name.startswith("@"):
+            child = node.child_by_field_name(name)
+        elif name == "@first":
+            child = node.named_children[0] if node.named_child_count else None
+        elif name == "@last":
+            child = node.named_children[-1] if node.named_child_count else None
+        else:
+            child = next(
+                (c for c in node.named_children if c.type == name[1:]), None)
+        if child is not None:
+            return child
+    return None
+
+
+def _attr_carrier(
+    node: "tree_sitter.Node",
+    source: bytes,
+    node_kinds: tuple[str, ...],
+    object_field_names: tuple[str, ...],
+    call_function_field_names: tuple[str, ...],
+    call_kinds: tuple[str, ...],
+    receiver_fields: tuple[str, ...],
+    arguments_field: str,
+    argument_wrapper_kinds: tuple[str, ...] = (),
+) -> Optional[str]:
+    """``<callee>@<line>`` of the call that USES ``node``, or None (INV-hopib).
+
+    See ``carrier_call_kinds`` on :func:`emit_module_attribute_refs`. Node
+    identity is compared by ``.id``: tree-sitter returns a fresh wrapper per
+    accessor call. An argument wrapper (``argument_wrapper_kinds``) is stepped
+    over before asking whether the use is an argument; the receiver and callee
+    tests are about the node itself and never step.
+    """
+    parent = node.parent
+    if not call_kinds or parent is None:
+        return None
+    holder = parent
+    while holder.type in argument_wrapper_kinds and holder.parent is not None:
+        holder = holder.parent
+    grand = parent.parent
+    call = None
+    holder_parent = holder.parent
+    if holder_parent is not None and holder_parent.type in call_kinds:
+        args = _child_by_fields(holder_parent, (arguments_field,))
+        if args is not None and args.id == holder.id:
+            call = holder_parent
+    if call is None and parent.type in call_kinds:
+        if any(
+            (r := _child_by_fields(parent, (f,))) is not None and r.id == node.id
+            for f in receiver_fields
+        ):
+            call = parent
+    if (
+        call is None
+        and parent.type in node_kinds
+        and grand is not None
+        and grand.type in call_kinds
+        and (o := _child_by_fields(parent, object_field_names)) is not None
+        and o.id == node.id
+        and (c := _child_by_fields(grand, call_function_field_names)) is not None
+        and c.id == parent.id
+    ):
+        call = grand
+    if call is None:
+        return None
+    args = _child_by_fields(call, (arguments_field,))
+    end = args.start_byte if args is not None else call.end_byte
+    callee = source[call.start_byte:end].decode("utf-8", "replace").strip()
+    return f"{callee}@{call.start_point[0] + 1}"
 
 
 def make_file_finder(patterns: list[str]) -> Callable[[Path], Iterator[Path]]:  # pragma: no cover
@@ -4166,6 +4578,7 @@ class TreeSitterAnalyzer:
 
             source, tree = self.parse_source(parser, source)
             rel_path = str(source_file.relative_to(repo_root))
+            record_partial_parse(run, rel_path, tree)
 
             analysis = self.extract_symbols_from_file(
                 tree, source, source_file, rel_path, run

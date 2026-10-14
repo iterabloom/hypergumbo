@@ -4,7 +4,7 @@
 Detects:
 - Package specifications and bodies
 - Function and procedure declarations/implementations
-- Type definitions (records, enums, arrays)
+- Type definitions (records, enums, arrays; all emitted as kind ``type``)
 - Constants and variables
 - With clauses (imports)
 
@@ -16,11 +16,35 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract all symbols from all files
-2. Pass 2: Extract edges (imports + calls) using NameResolver
+2. Pass 2: Extract edges: calls resolved with NameResolver (a
+   ``package X renames Y`` alias is passed as a path hint), and imports to a
+   ``package`` placeholder
+
+A call whose callee the resolver cannot find still gets an edge, built by
+``make_unresolved_edge`` (e.g. ``Ada.Text_IO.Put_Line``). The caller is the
+enclosing ``subprogram_body``, looked up by name in the file's
+``symbol_by_name``; calls outside any subprogram body are dropped.
+
+Known gap: ``symbol_by_name`` (and the repo-wide registry) is keyed by bare
+name, last writer wins, so overloaded subprograms collapse into one symbol
+for both caller attribution and callee resolution.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Ada-specific extraction
 logic.
+
+Functions and procedures record their parameters in ``meta["parameters"]``,
+typed by subtype mark (``_ada_parameters``), and their stable_id hashes them
+(``overload_arity.node_declared_arity_stable_id``, WI-tusad): ``Run`` and
+``Run (X : Integer)`` tied on ``param_count 0``. A function's stable_id also
+hashes its result subtype (``_ada_result_type``; the typed tier over
+``(T1,...)->R``), which is part of Ada's overload profile: ``function F
+return Integer`` and ``function F return Float`` tied on everything else.
+Every stable_id hashes the packages and subprograms enclosing the symbol
+below the library-level unit (``_ada_scope``; INV-fabih): ``procedure Inner``
+nested in two procedures tied. A library-level declaration's chain is empty,
+so the scope moved only nested declarations' ids, and the result type only
+functions'.
 
 Why This Design
 ---------------
@@ -33,7 +57,7 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -41,6 +65,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     find_child_by_type,
     iter_tree,
     make_symbol_id,
@@ -49,6 +74,10 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, nested_qualified_name, node_declared_arity_stable_id,
+    parameter_entry,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -71,9 +100,77 @@ def _extract_formal_part(node: "tree_sitter.Node", source: bytes) -> Optional[st
     return None
 
 
+def _ada_parameters(spec: "tree_sitter.Node", source: bytes) -> list[dict[str, Any]]:
+    """``meta["parameters"]`` of a subprogram spec (WI-tusad).
+
+    One ``parameter_specification`` may name several parameters of one
+    subtype (``Y, Z : in out Float := 1.0``); each is an entry typed by its
+    subtype mark (the mode is not part of Ada's overload profile), defaulted
+    when the specification has ``:=``. No ``formal_part`` is ``[]``.
+    """
+    entries: list[dict[str, Any]] = []
+    formal = find_child_by_type(spec, "formal_part")
+    for param in formal.children if formal is not None else ():
+        if param.type != "parameter_specification":
+            continue
+        mark = param.child_by_field_name("subtype_mark")
+        type_text = " ".join(node_text(mark, source).split()) if mark is not None else None
+        default = any(c.type == ":=" for c in param.children)
+        for child in param.children:
+            if child.type == ":":
+                break
+            if child.type == "identifier":
+                entries.append(parameter_entry(node_text(child, source), type_text, default=default))
+    return entries
+
+
+#: The spec nodes a subprogram symbol is anchored on; its scope is read from
+#: the enclosing ``subprogram_body`` / ``subprogram_declaration``, which is the
+#: subprogram itself and not a scope of it.
+_ADA_SPEC_NODES = frozenset({"function_specification", "procedure_specification"})
+
+
+def _ada_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The packages and subprograms enclosing ``node``, outermost first, minus
+    the library-level package (INV-fabih).
+
+    Every Ada symbol hashed an empty qualified name, so ``procedure Inner``
+    nested in procedures ``A`` and ``B`` (or a type in two nested packages)
+    tied and deleting the first moved the second. The library-level unit (a
+    package directly under ``compilation_unit``) encloses the whole file and
+    is not in the chain, so a library-level declaration keeps its value
+    (``overload_arity.nested_qualified_name`` is ``""`` for it).
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type == "subprogram_body":
+            spec = next((c for c in n.children if c.type in _ADA_SPEC_NODES), None)
+            name_node = find_child_by_type(spec, "identifier") if spec is not None else None
+        elif n.type in ("package_body", "package_declaration") and (
+            n.parent is None or n.parent.type != "compilation_unit"
+        ):
+            name_node = find_child_by_type(n, "identifier")
+        else:
+            return None
+        return node_text(name_node, source) if name_node is not None else None
+    start = node.parent if node.type in _ADA_SPEC_NODES and node.parent is not None else node
+    return ancestor_labels(start, label)
+
+
+def _ada_result_type(spec: "tree_sitter.Node", source: bytes) -> str:
+    """The result subtype of a function spec (``return Integer`` -> ``Integer``),
+    whitespace-normalized: part of Ada's overload profile, so a function's
+    stable_id hashes it (``F return Integer`` / ``F return Float``)."""
+    result = find_child_by_type(spec, "result_profile")
+    if result is None:  # pragma: no cover - a function_specification always has one
+        return ""
+    return " ".join(
+        " ".join(node_text(c, source).split()) for c in result.children if c.type != "return"
+    )
+
+
 def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node", name: str, kind: str,
-                 source: bytes, signature: Optional[str] = None, meta: Optional[dict] = None,
-                 cc_node: "Optional[tree_sitter.Node]" = None) -> Symbol:
+                 source: bytes, signature: Optional[str] = None, meta: Optional[dict[str, Any]] = None,
+                 cc_node: "Optional[tree_sitter.Node]" = None, result_type: str = "") -> Symbol:
     """Create a Symbol with consistent formatting.
 
     INV-loguk: ``cc_node`` is the subtree to compute cyclomatic_complexity +
@@ -100,8 +197,13 @@ def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tre
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        stable_id=analyzer.compute_stable_id(
-            node, kind=kind, name=name,
+        # WI-tusad: the arity (with subtype marks) comes from
+        # meta["parameters"], so the overloads Run / Run (X) stop tying.
+        stable_id=node_declared_arity_stable_id(
+            analyzer, node, kind=kind, name=name, meta=meta,
+            # INV-fabih: nested packages/subprograms; a function's result type.
+            qualified_name=nested_qualified_name(_ada_scope(node, source), name),
+            result_type=result_type,
             # WI-bokab (v7): fold the declaring file's identity so two symbols
             # with the same (kind, name) in different files hash distinctly.
             # ``rel_path`` is the repo-relative path threaded down from
@@ -186,7 +288,12 @@ def _process_function_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str
         signature_parts.append(node_text(result, source))
 
     signature = " ".join(signature_parts) if signature_parts else None
-    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature, cc_node=cc_node)
+    meta = {PARAMETERS_KEY: _ada_parameters(node, source)}
+    return _make_symbol(
+        analyzer, rel_path, run_id, node, func_name, "function", source,
+        signature=signature, meta=meta, cc_node=cc_node,
+        result_type=_ada_result_type(node, source),
+    )
 
 
 def _process_procedure_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node", cc_node: "Optional[tree_sitter.Node]" = None) -> Optional[Symbol]:
@@ -197,7 +304,8 @@ def _process_procedure_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: st
 
     proc_name = node_text(name_node, source)
     signature = _extract_formal_part(node, source)
-    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "procedure", source, signature=signature, cc_node=cc_node)
+    meta = {PARAMETERS_KEY: _ada_parameters(node, source)}
+    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "procedure", source, signature=signature, meta=meta, cc_node=cc_node)
 
 
 def _process_type_declaration(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
@@ -350,7 +458,7 @@ class AdaAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

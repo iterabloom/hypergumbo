@@ -1,0 +1,21 @@
+- op: create  # e5d1
+  at: '2026-10-12T22:48:17Z'  # e5d1
+  by: agent  # e5d1
+  actor: jgstern_agent  # e5d1
+  clock: 1  # e5d1
+  nonce: e5d1  # e5d1
+  data:  # e5d1
+    kind: work_item  # e5d1
+    title: "F# analyzer emits no class types or members (member/static/abstract/override/new/member val/interface impl)"  # e5d1
+    status: todo_hard  # e5d1
+    priority: 3  # e5d1
+    parent:  # e5d1
+    tags:  # e5d1
+    - analysis_quality  # e5d1
+    - schema  # e5d1
+    isbefore: []  # e5d1
+    duplicate_of: []  # e5d1
+    not_duplicate_of: []  # e5d1
+    pr_ref:  # e5d1
+    description: "Found by the WI-tusad B4 batch (2026-10-12). The F# analyzer (packages/hypergumbo-lang-common/src/hypergumbo_lang_common/fsharp.py) emits no symbol for a class type (`type Shape(r: float) = ...`, tree-sitter node `anon_type_defn`) or for any member: `member this.Area = ...` (property), `member this.Scale(k)` and an overload `member this.Scale(k, j)` (methods), `static member`, `abstract member` slots and their `default`/`override` bodies, `member val X = ... with get, set` (auto-property), `new(...) = ...` (additional constructor), members of an `interface IFoo with` implementation, and `with member p.Len = ...` members on records/unions. They are absent from the graph, not null, so calls made inside a member body have no enclosing symbol and are dropped (the enclosing lookup walks only `function_or_value_defn`).\n\nMeasured on a probe file (B4 scratch): `type Shape(r) = member this.Area = r * r; member this.Scale(k: float) = r * k; member _.Scale(k: float, j: float) = ...` -> 0 symbols besides the module.\n\nCousin of INV-kagib (dropped declarations). Why not done in B4: emitting members well needs the class type symbol (kind class / interface), a member name and kind per form (property vs method vs constructor vs abstract slot), parameter parsing for tupled `(k: float, j: float)` arguments (the bundled grammar parses the whole tuple as ONE typed_pattern), the typed-tier producer id so overloads differ, and the enclosing-symbol walk extended to member_defn. Estimated M-L (~200-300 LoC + tests).\n\nInvariant: every declaration the analyzer recognises is emitted as its own symbol; same-name overloads get distinct producer stable_ids that do not move when an earlier overload is deleted. Acceptance: probe above emits Shape (class), Shape.Area, two Shape.Scale methods with distinct non-null ids; deleting the first Scale moves no other id; the gate fixture for fsharp gains a member."  # e5d1
+    fields: {}  # e5d1

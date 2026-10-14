@@ -1,0 +1,38 @@
+- op: create  # 04c7
+  at: '2026-10-11T23:25:39Z'  # 04c7
+  by: agent  # 04c7
+  actor: jgstern_agent  # 04c7
+  clock: 1  # 04c7
+  nonce: 04c7  # 04c7
+  data:  # 04c7
+    kind: invariant  # 04c7
+    title: "A function_summaries.d file declaring provenance: community loads as YOURS: stamped user_supplied, ranked above built-in, kept by --no-default-overlays"  # 04c7
+    status: violated  # 04c7
+    priority: 2  # 04c7
+    parent:  # 04c7
+    tags:  # 04c7
+    - catalogue  # 04c7
+    - adr_0061  # 04c7
+    isbefore: []  # 04c7
+    duplicate_of: []  # 04c7
+    not_duplicate_of: []  # 04c7
+    pr_ref:  # 04c7
+    description: "Found 2026-10-11 by code reading while fixing the taint flag/claims-file analogue (PR #1542); NOT yet reproduced live. function_summaries/__init__.py load_function_summaries: _rank returns 2 for any path in user_channel_files('function_summaries') before asking declares_community, so a channel file still carrying provenance: community is stamped user_supplied=True (never community=True), wins name collisions over built-in rows, and survives include_community=False (only rank-1 files are dropped). ADR-0061 ruling 3 ('a community file copied into your config home stays community') and ruling 2 (a community terminating summary never closes a branch) are violated for this channel. cli._loaded_catalogue_files also lists function_summaries.d files unconditionally. Fix direction: partition channel files by declares_community like taint.split_community_files; community ones rank 1 (adds only, community=True), dropped under --no-default-overlays and disclosed under omitted_community_overlays with family. Related, disclosure-only: a community io_primitives overlay named by --io-primitives is still listed under the text USER-SUPPLIED block and sets user_supplied=true while tiers lists it as community (the taint arm now uses named_community_files)."  # 04c7
+    fields:  # 04c7
+      statement: "A function-summary file's tier is its provenance line wherever it sits: a community file in function_summaries.d only adds, never closes a branch, and --no-default-overlays omits it."  # 04c7
+      root_cause: "load_function_summaries' _rank returns 2 (user) for every function_summaries.d path before consulting declares_community, so the provenance line is never read for channel files."  # 04c7
+- op: update  # 0ecb
+  at: '2026-10-12T00:49:56Z'  # 0ecb
+  by: agent  # 0ecb
+  actor: jgstern_agent  # 0ecb
+  clock: 2  # 0ecb
+  nonce: 0ecb  # 0ecb
+  set:  # 0ecb
+    status: satisfied  # 0ecb
+- op: discuss  # 598f
+  at: '2026-10-12T00:49:56Z'  # 598f
+  by: agent  # 598f
+  actor: jgstern_agent  # 598f
+  clock: 3  # 598f
+  nonce: 598f  # 598f
+  message: "Fixed in PR #1543 (e0abdace0a). Root cause: load_function_summaries' _rank returned 2 (user) for any function_summaries.d path before consulting declares_community. Fix: _rank asks the provenance line first, so a community channel file ranks 1 (adds only, stamped community, dropped by include_community=False); cli lists it in tiers only when loaded and, under --no-default-overlays, in omitted_community_overlays (family function_summaries) with a stderr notice. Part B: a loaded community io overlay named by --io-primitives/claims extra_catalogs goes to named_community_files (family io_primitives), not layers/user_supplied; its grants stay in withheld_completeness_grants and the WITHHELD GRANTS text renders without user input. Evidence (dev e0abdace0a; repo app.py 'key=os.urandom(32); mylib.swallow(key); open(...).write(b\"constant\")', claim taint_flow key_material->host_fs, XDG function_summaries.d/mylib.yaml terminating mylib.swallow): no file -> exit 1 violated; no-provenance copy -> exit 2 inconclusive, caveat user_supplied_sanitizer [mylib.swallow], tiers.yours; community copy -> BEFORE exit 2 inconclusive + user_supplied_sanitizer, AFTER exit 1 violated + withheld_community_summary [mylib.swallow], user_supplied false, tiers.community; community + --no-default-overlays -> BEFORE exit 2 inconclusive + user_supplied_sanitizer, AFTER exit 1 violated, no caveat, omitted_community_overlays [{family function_summaries, origin user_channel}], stderr 'omitted 1 function-summary file(s)'. Part B 'verify-claims repo --claims claims.yaml --io-primitives comm.yaml' -> BEFORE text USER-SUPPLIED io_primitives: comm.yaml [CLI flag], JSON user_supplied true; AFTER NOTE named by flag ... comm.yaml [CLI flag, io_primitives] + NOTE: WITHHELD GRANTS from comm.yaml [CLI flag], JSON user_supplied false, named_community_files [{io_primitives, comm.yaml, cli}], withheld grant kept; claims-file variant identical with [claims-file extra_catalogs]; --no-default-overlays unchanged (omitted NOTE). Tests: test_summary_channel_community_tier.py, test_omitted_overlay_provenance.py."  # 598f

@@ -6,15 +6,21 @@ of compiled item state for fast queries. Key design decisions:
 
 - **One DB per tier:** Three separate .cache.db files, one for each tier.
   This keeps cache invalidation local to the tier that changed.
-- **Write-through:** Every Store mutation immediately upserts the cache row.
-  No lazy rebuild needed after local writes.
-- **Incremental invalidation:** Uses source file mtime/size tracking. If
-  only mtime changed but size grew, tries incremental reparse (appended ops).
-  If size shrank, does full reparse. Unchanged mtime → cache hit.
+- **Write-through:** TrackerSet mutations upsert the cache row
+  (``TrackerSet._cache_upsert_item``). No lazy rebuild needed after local
+  writes.
+- **Invalidation:** ``get_compiled()`` treats any source-mtime change as a
+  miss, and the caller recompiles and upserts. ``invalidate_stale()`` (no
+  production caller as of 2026-10; only tests call it) also tracks size: if
+  the file grew and the appended ops are all discuss-type, it takes the
+  discussion-only path; otherwise it does a full reparse. Unchanged mtime →
+  cache hit.
 - **Corruption recovery:** If the SQLite DB is corrupt or missing, auto-rebuild
   from the underlying Store. No manual intervention needed.
-- **Discussion-only optimization:** When new bytes are only discuss ops,
-  only update discussion/updated_at columns instead of full recompile.
+- **Discussion-only optimization:** When the appended ops are all
+  discuss/discuss_clear/discuss_summarize, the item is still fully
+  recompiled, but only the discussion/updated_at/source_* columns are
+  UPDATEd.
 
 See ADR-0013 for the full design specification.
 """
@@ -392,7 +398,11 @@ class Cache:
     # -------------------------------------------------------------------
 
     def query_blocking(self, blocking_statuses: list[str]) -> int:
-        """Count items with blocking status (for count_todos)."""
+        """Count items with blocking status.
+
+        No production caller as of 2026-10 (only tests call it); the
+        ``count_todos`` paths count over compiled items instead.
+        """
         assert self._conn is not None
         if not blocking_statuses:
             return 0

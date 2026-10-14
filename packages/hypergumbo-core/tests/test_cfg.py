@@ -2489,13 +2489,19 @@ class TestUncoveredCallLines:
     def test_go_if_initializer_call_is_uncovered(self) -> None:
         """The motivating case, and the reason the test is on BYTE EXTENTS.
 
-        ``CfgBuilder._process_conditional`` records only the condition child of
-        an ``if``. For ``if n := sink(v); n > 0`` that is ``n > 0``; the
-        initializer becomes no CfgStatement at all. Both sit on the SAME LINE,
-        so a line-based coverage test reports the call as covered and the gate
-        is vacuous precisely where ``cfg_nodes/go.yaml`` self-documents the gap
-        (700 of caddy's 6,596 ``if`` statements carry a call there).
+        Until WI-losod ``CfgBuilder._process_conditional`` recorded only the
+        condition child of an ``if``. For ``if n := sink(v); n > 0`` that was
+        ``n > 0``; the initializer became no CfgStatement at all. Both sit on
+        the SAME LINE, so a line-based coverage test reports the call as
+        covered and the gate was vacuous precisely where the gap was (700 of
+        caddy's 6,596 ``if`` statements carried a call there).
+
+        go.yaml now records the initializer, so the unrecorded shape is
+        reproduced with a mapping that lacks ``initializer_child``; the real
+        mapping is the control.
         """
+        import dataclasses
+
         tree, src = _parse_go(
             "package main\n"
             "func f() {\n"
@@ -2508,8 +2514,14 @@ class TestUncoveredCallLines:
         )
         body = _get_go_function_body(tree)
         mapping = load_cfg_mapping("go")
+        without_init = dataclasses.replace(mapping, conditionals=[
+            dataclasses.replace(c, initializer_child=None)
+            for c in mapping.conditionals
+        ])
+        cfg = build_function_cfg(body, src, without_init, "go:x.go:2-8:f:function")
+        assert uncovered_semantic_lines(cfg, body, src, without_init) == frozenset({5})
         cfg = build_function_cfg(body, src, mapping, "go:x.go:2-8:f:function")
-        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset({5})
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
 
     def test_fully_covered_function_reports_empty(self) -> None:
         """The negative half: a function with no unmodelled construct forfeits
@@ -2532,14 +2544,21 @@ class TestUncoveredCallLines:
     def test_go_range_clause_binding_is_uncovered(self) -> None:
         """WI-mugop: THE SHAPE THE CALLS-ONLY PREDICATE COULD NOT SEE.
 
-        ``for _, c := range v`` binds ``c`` from ``v`` in a range clause the
-        loop hook never records, and the clause contains NO CALL — so the
-        original predicate returned an empty frozenset for a function whose
-        taint chain the extractor demonstrably had not followed, leaving the
-        §3a walk free to exhaust and refute. This is INV-lupav's live route,
-        not a hypothetical: measured on this exact source, calls-only reports
-        ``frozenset()`` and the widened predicate reports line 4.
+        ``for _, c := range v`` binds ``c`` from ``v`` in a range clause, and
+        the clause contains NO CALL. While the loop hook did not record it
+        (until WI-losod), the original predicate returned an empty frozenset
+        for a function whose taint chain the extractor demonstrably had not
+        followed, leaving the §3a walk free to exhaust and refute; measured on
+        this exact source, calls-only reported ``frozenset()`` and the widened
+        predicate reported line 4.
+
+        go.yaml now records the clause, so the shape is reproduced with a
+        mapping that lacks the ``header_child`` key: the predicate must still
+        see an unrecorded binding that holds no call. The real mapping is the
+        control.
         """
+        import dataclasses
+
         tree, src = _parse_go(
             "package main\n"
             "func f() {\n"
@@ -2551,8 +2570,13 @@ class TestUncoveredCallLines:
         )
         body = _get_go_function_body(tree)
         mapping = load_cfg_mapping("go")
+        without_header = dataclasses.replace(mapping, loops=[
+            dataclasses.replace(lo, header_child=None) for lo in mapping.loops
+        ])
+        cfg = build_function_cfg(body, src, without_header, "go:x.go:2-7:f:function")
+        assert uncovered_semantic_lines(cfg, body, src, without_header) == frozenset({4})
         cfg = build_function_cfg(body, src, mapping, "go:x.go:2-7:f:function")
-        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset({4})
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
 
     def test_a_covered_function_with_literals_still_reports_empty(self) -> None:
         """THE FLOOR, and it is the assertion that makes the class above mean
@@ -2600,19 +2624,34 @@ class TestUncoveredCallLines:
         assert body.is_named and body.child_count > 0
         assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
 
-    def test_undeclared_language_returns_None_not_empty(self) -> None:
+    def test_undeclared_language_returns_None_not_empty(
+        self, tmp_path: Path,
+    ) -> None:
         """``None`` and ``frozenset()`` are DIFFERENT facts and must not fold.
 
         Empty means "checked, nothing uncovered" and permits refutation.
-        ``None`` means "cannot check at all". Java declares no
-        ``call_node_types`` (it has no def/use extractor either), and folding
-        the two would make every unconfigured language look fully covered —
-        failing open, in the direction that deletes findings.
+        ``None`` means "cannot check at all". Folding the two would make every
+        unconfigured language look fully covered — failing open, in the
+        direction that deletes findings.
+
+        Java was the live example (it declared no ``call_node_types``) until
+        WI-gotun wired it, and every shipped mapping now declares the key. So
+        the undeclared mapping is java.yaml with the key removed.
         """
+        import yaml
+
         tree, src = _parse_java(
             "class C { void f() { g(); } }"
         )
-        mapping = load_cfg_mapping("java")
+        from hypergumbo_core import cfg as cfg_module
+
+        shipped = Path(cfg_module.__file__).parent / "cfg_nodes" / "java.yaml"
+        data = yaml.safe_load(shipped.read_text())
+        del data["call_node_types"]
+        (tmp_path / "java.yaml").write_text(yaml.safe_dump(data))
+        clear_cfg_mapping_cache()
+        mapping = load_cfg_mapping("java", search_dir=tmp_path)
+        clear_cfg_mapping_cache()
         assert mapping.call_node_types == []
         body = tree.root_node
         cfg = build_function_cfg(body, src, mapping, "java:C.java:1-1:f:method")

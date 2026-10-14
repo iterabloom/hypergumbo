@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""ADR-0047 rulings 3 and 4 — a findable home for the user's catalogue data,
-created only when the user asks for it.
+"""ADR-0047 rulings 3 and 4: a findable home for the user's catalogue data.
+
+The home is created only when the user asks for it, and read on every run.
 
 WHY THIS MODULE EXISTS. The registry (ADR-0047 ruling 7) already records which
 catalogue families are user-extensible and what each one's overlay directory is
@@ -21,12 +22,36 @@ command. :func:`materialize_catalogue_home` therefore seeds from the shipped
 OVERLAY directory and never from the catalogue directory, and a test pins the
 two sets disjoint rather than trusting this paragraph.
 
-**Explicit, never implicit (ruling 4).** Nothing here is called during
-analysis. ADR-0045's precedent is a human-owned config file the tool may read
+**Explicit, never implicit (ruling 4).** Nothing here WRITES during analysis:
+:func:`materialize_catalogue_home` runs only from ``init-catalogs``. The read
+side (:func:`user_channel_files`, :func:`user_overlay_paths`) is called by the
+loaders during every analysis. ADR-0045's precedent is a human-owned config file the tool may read
 and must not write, and silently creating files in someone's config directory on
 first invocation is the surprise that precedent exists to avoid. Default-on
 loading does not need materialization either: the shipped overlays load from the
 wheel, and this exists so a user can *edit* them.
+
+THE READ SIDE. :func:`user_channel_files` is the one join from a registry
+family to its ``<family>.d/`` listing under the user home: sorted YAML paths,
+lowest precedence first, ``[]`` for a family with no channel or a missing
+directory. :func:`user_overlay_paths` is that call for ``io_primitives``. The
+frameworks, dataflow_patterns, function_summaries, library_signatures and
+taint loaders call it too. ``WIRED_CHANNELS`` lists the channels some loader
+consults today. It is hand-kept, not derived, because the registry cannot
+tell "declared extensible" from "wired", and a test pins its contents. The
+seeded README uses it to tell the user which directories are read and which
+are inert.
+
+THE CACHE KEY READS THE SAME LISTING. :func:`analysis_channel_token` digests
+every file in the channels the registry marks analysis-stage
+(``channel_stage``) into the results-cache key, so a cached survey is not
+reused after one of them changes; command-stage channels stay out of the key.
+
+SEEDING DOES NOT VOUCH (ADR-0061 ruling 3). The loader takes a file's tier
+from its ``provenance:`` line, never from its directory, so a community overlay
+seeded here stays community wherever it sits: its rows can add a detection but
+never count as examined. Deleting that line is how the user vouches for the
+file, and the README says so.
 
 IDEMPOTENCE IS A USABILITY PROPERTY, NOT A TIDINESS ONE. A command that
 overwrites an edited overlay teaches people not to run it a second time, so an
@@ -43,12 +68,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional, Sequence
 
-from .user_config import user_config_path
-from .yaml_catalogs import YAML_CATALOGS
+from .user_config import file_digest_token, user_config_path
+from .yaml_catalogs import CHANNEL_STAGE_ANALYSIS, YAML_CATALOGS
 
 __all__ = [
     "WIRED_CHANNELS",
     "MaterializeResult",
+    "analysis_channel_token",
     "channel_directories",
     "materialize_catalogue_home",
     "repo_catalogue_home",
@@ -81,6 +107,9 @@ WIRED_CHANNELS = frozenset({
     "dataflow_patterns.d",   # WI-sofov, library_patterns section only
     "function_summaries.d",  # WI-sofov, gated by CAVEAT_USER_SUPPLIED_SANITIZER
     "library_signatures.d",  # WI-lalot
+    "taint_sources.d",       # WI-mimap, a user layer below the claims file
+    "taint_sinks.d",         # WI-mimap
+    "taint_sanitizers.d",    # WI-mimap, stamped user_supplied like the others
 })
 
 
@@ -155,9 +184,10 @@ def user_channel_files(
 ) -> "list[Path]":
     """Every YAML in the user's channel for ``family``, sorted, lowest first.
 
-    THE ONE PLACE THAT TURNS A REGISTRY ANSWER INTO A DIRECTORY LISTING. Three
-    loaders need it (io_primitives, frameworks, dataflow_patterns) and a fourth
-    will; writing the join four times is how the four drift apart. The channel
+    THE ONE PLACE THAT TURNS A REGISTRY ANSWER INTO A DIRECTORY LISTING. The
+    frameworks, dataflow_patterns, function_summaries and library_signatures
+    loaders and the taint channels all call it; writing the join once per
+    loader is how the loaders drift apart. The channel
     NAME is the registry's (``<family>.d``), not a string built here, so a
     family whose channel is renamed cannot leave one loader reading the old
     directory.
@@ -174,6 +204,37 @@ def user_channel_files(
     if not directory.is_dir():
         return []
     return sorted(directory.glob("*.yaml"))
+
+
+def analysis_channel_token(
+    environ: "Optional[Mapping[str, str]]" = None,
+    home: "Optional[Path]" = None,
+) -> str:
+    """Results-cache key component for the channels the ANALYSIS reads.
+
+    A cached survey answers ``sketch``, ``routes``, ``verify-claims`` and the
+    rest, so a channel the survey's analysis reads must be part of the cache
+    key or an added, edited or broken file in it is never seen: the cache
+    answers and the loader never runs. Which channels those are is the
+    registry's ``channel_stage`` (:data:`CHANNEL_STAGE_ANALYSIS`), not a list
+    kept here, so a family declared analysis-stage is keyed with no edit in
+    this module. Command-stage channels (``io_primitives.d``, the taint
+    channels, ``function_summaries.d``) are read over the cached graph on every
+    run and stay out, so editing a taint model does not force a re-survey.
+
+    The digest is each file's channel-relative name (``frameworks.d/flask.yaml``
+    -- the loaders select a file by its stem, so a rename matters) and the
+    sha256 of its bytes, in sorted order; the home's absolute location is not
+    part of it. ``""`` when no analysis-stage channel holds a file, so a user
+    who has never written one keeps every existing cache entry's key.
+    """
+    entries = [
+        (f"{spec.user_channel}/{path.name}", path)
+        for spec in YAML_CATALOGS
+        if spec.channel_stage == CHANNEL_STAGE_ANALYSIS
+        for path in user_channel_files(spec.directory, environ, home)
+    ]
+    return file_digest_token("cat", entries)
 
 
 @dataclass(frozen=True)
@@ -218,7 +279,7 @@ def _wired_listing(channels: "Sequence[str]") -> str:
 
 def _inert_listing(channels: "Sequence[str]") -> str:
     inert = [c for c in channels if c not in WIRED_CHANNELS]
-    if not inert:  # pragma: no cover - true only once every channel is wired
+    if not inert:  # every declared channel is wired today (WI-mimap)
         return ""
     lines = "\n".join(f"  {c}/" for c in inert)
     return (
@@ -270,7 +331,10 @@ def _readme_text(channels: Sequence[str]) -> str:
         "were last checked against upstream. Compare them against the shipped\n"
         "overlays to judge staleness. hypergumbo does not vouch for community\n"
         "rows — seeding them here does not change that, it just makes them\n"
-        "yours to edit.\n"
+        "yours to edit. A file keeps its `provenance: community` line, and\n"
+        "while it does its rows can add a detection but never count as\n"
+        "examined, and its module_completeness grants are withheld. Deleting\n"
+        "that line is how you vouch for the file (ADR-0061).\n"
         "\n"
         "Re-running the command never overwrites a file you already have.\n"
     )

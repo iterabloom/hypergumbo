@@ -48,16 +48,25 @@ The ratified frame does **not** pick an estimator. It removes the choice:
 
 > **Sample exactly M situations from each of R qualifying repositories.**
 
-Under equal allocation the pooled rate and the unweighted per-repo mean are
-*the same number by construction*. No repo can dominate, and there is no
-weighting scheme left to argue about. It also disposes of the other half of the
+Under equal allocation the pooled situation rate and the unweighted per-repo
+mean of situation rates are *the same number by construction*. No repo supplies
+more situations than another, and there is no weighting scheme left to argue
+about for the canonical unit. It also disposes of the other half of the
 0005 problem — a repository contributing two records can no longer be reported
 as "0.0% precision", because a repository that cannot supply M is not in the
 cohort at all.
 
 Measurement 0006 is the first application: **M=7 situations x R=16
 repositories = 112 adjudications**, every repository contributing exactly
-seven. Both estimators give 44/112 = 39.3%. The 2.8x span is zero by design.
+seven. Both estimators give 38/112 = 33.9% per situation, the figure that
+survives F7's adversarial pass. The estimator choice has no effect on the
+canonical unit, by design.
+
+**Equal allocation equalises the situation rate only.** A situation stands for
+`collapsed_flow_count` rows, and that count varies, so the two estimators still
+differ on the row rate F1 publishes beside it: 0006's pooled row rate is
+106/336 = 31.5%, and the unweighted mean of its sixteen per-repository row
+rates is 37.2%. On the row unit the estimator choice remains.
 
 ## Decision
 

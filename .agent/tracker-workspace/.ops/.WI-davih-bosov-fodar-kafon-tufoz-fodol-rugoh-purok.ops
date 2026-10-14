@@ -1,0 +1,20 @@
+- op: create  # 0a7d
+  at: '2026-10-01T03:52:36Z'  # 0a7d
+  by: agent  # 0a7d
+  actor: jgstern_agent  # 0a7d
+  clock: 1  # 0a7d
+  nonce: 0a7d  # 0a7d
+  data:  # 0a7d
+    kind: work_item  # 0a7d
+    title: "Core inheritance linker mints an external base edge for a relative-import base the js_ts analyzer deliberately drops as intra-repo"  # 0a7d
+    status: todo_hard  # 0a7d
+    priority: 3  # 0a7d
+    parent:  # 0a7d
+    tags:  # 0a7d
+    - analysis_quality  # 0a7d
+    isbefore: []  # 0a7d
+    duplicate_of: []  # 0a7d
+    not_duplicate_of: []  # 0a7d
+    pr_ref:  # 0a7d
+    description: "Surfaced by WI-kalug-takiz-lumim-falaj-kopuf-tapor-kizof-sajur (2026-09-30).\n\nThe js_ts analyzer and the core inheritance linker disagree on a base imported from a RELATIVE path that resolves to no symbol. js_ts `_extract_inheritance_edges` deliberately DROPS it (\"A base imported from a RELATIVE path is intra-repo ... drop it rather than mislabel it as external\"; pinned by test_relative_import_unresolved_base_not_mislabeled_external, which calls the ANALYZER only). The core linker's WI-jubag Approach-C fallback (`_external_base_edge`, linkers/inheritance.py) then mints exactly that mislabel, because the source has no analyzer unresolved edge (so `src_has_analyzer_external` is False) and the name is not an in-tree symbol name.\n\nREPRO (measured, interface source, on the WI-kalug branch): a.ts = `import { Local } from \"./local\";` + `export interface FromLocal extends Local {}` with no ./local file -> survey emits FromLocal -extends-> typescript:external:0-0:Local:external_symbol, origin inheritance-linker.\nNOT measured: the class source (`class C extends Unextracted` from './types'); it goes through the same code path in both layers, but no survey was run for it.\n\nThe analyzer's decision is not visible to the linker (it is an absence). Cure shape is a positive record of \"dropped as intra-repo\" the linker can read, or a relative-import check in the linker; ABSENT != EMPTY."  # 0a7d
+    fields: {}  # 0a7d

@@ -81,6 +81,81 @@ class TestComputeMetrics:
 
         assert metrics["avg_confidence"] == pytest.approx(0.8, rel=0.01)
 
+    def test_edge_confidence_histogram_exposes_spikes(self) -> None:
+        """WI-zimor: the distribution behind ``avg_confidence`` is published.
+
+        Edge confidence is a handful of per-evidence-type literals, so the
+        mean lands between spikes on a value no edge carries. The histogram
+        (keyed by value at 0.01 resolution, ascending) shows the spikes; the
+        median is a value an edge actually carries.
+        """
+        edges = (
+            [{"id": f"a{i}", "confidence": 0.4} for i in range(3)]
+            + [{"id": f"b{i}", "confidence": 0.85} for i in range(5)]
+            + [{"id": f"c{i}", "confidence": 0.95} for i in range(2)]
+        )
+        metrics = compute_metrics(nodes=[], edges=edges)
+
+        dist = metrics["edge_confidence"]
+        assert dist["histogram"] == {"0.40": 3, "0.85": 5, "0.95": 2}
+        assert list(dist["histogram"]) == ["0.40", "0.85", "0.95"]
+        assert dist["median"] == 0.85
+        # The scalar mean (0.735) is not a value any edge carries -- the
+        # defect the histogram exists to make visible.
+        assert metrics["avg_confidence"] == pytest.approx(0.735)
+        assert f"{metrics['avg_confidence']:.2f}" not in dist["histogram"]
+
+    def test_edge_confidence_median_is_a_carried_value(self) -> None:
+        """WI-zimor: with an even count the median is the LOWER middle value
+        (a value some edge carries), never the midpoint between two spikes."""
+        edges = [
+            {"id": "e1", "confidence": 0.4},
+            {"id": "e2", "confidence": 0.4},
+            {"id": "e3", "confidence": 0.9},
+            {"id": "e4", "confidence": 0.9},
+        ]
+        dist = compute_metrics(nodes=[], edges=edges)["edge_confidence"]
+        assert dist["median"] == 0.4
+
+    def test_edge_confidence_histogram_is_bounded_for_computed_values(
+        self,
+    ) -> None:
+        """WI-zimor: some producers multiply confidences (e.g. 0.85 * lookup *
+        penalty), so raw values are not a closed set. Keys are the value at
+        0.01 resolution, so the histogram has at most 101 keys on [0, 1]."""
+        edges = [
+            {"id": "e1", "confidence": 0.85 * 0.9 * 0.5},  # 0.38250000000000006
+            {"id": "e2", "confidence": 0.3825},
+            {"id": "e3", "confidence": 0.381},
+        ]
+        dist = compute_metrics(nodes=[], edges=edges)["edge_confidence"]
+        assert dist["histogram"] == {"0.38": 3}
+        assert dist["median"] == pytest.approx(0.3825, abs=0.001)
+
+    def test_edge_confidence_counts_only_edges_carrying_confidence(
+        self,
+    ) -> None:
+        """WI-zimor: the histogram covers exactly the edges ``avg_confidence``
+        averages -- edges carrying a ``confidence`` key. Nodes carry no
+        confidence and contribute nothing."""
+        nodes = [{"id": "n1", "language": "python", "confidence": 0.1}]
+        edges = [
+            {"id": "e1"},
+            {"id": "e2", "confidence": 0.8},
+        ]
+        metrics = compute_metrics(nodes=nodes, edges=edges)
+        dist = metrics["edge_confidence"]
+        assert dist["histogram"] == {"0.80": 1}
+        assert dist["median"] == 0.8
+        assert metrics["avg_confidence"] == 0.8
+
+    def test_edge_confidence_empty_says_nothing_was_measured(self) -> None:
+        """WI-zimor: with no confidence-bearing edge there is no median (null,
+        not 0.0) and the histogram is empty, so a reader can tell the
+        ``avg_confidence`` 0.0 placeholder from a measured mean."""
+        dist = compute_metrics(nodes=[], edges=[])["edge_confidence"]
+        assert dist == {"histogram": {}, "median": None}
+
     def test_groups_by_language(self) -> None:
         """Groups node and edge counts by language."""
         nodes = [

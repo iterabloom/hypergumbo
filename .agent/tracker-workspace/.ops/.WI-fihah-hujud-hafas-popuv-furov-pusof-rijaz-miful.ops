@@ -1,0 +1,23 @@
+- op: create  # 51ca
+  at: '2026-10-03T20:18:35Z'  # 51ca
+  by: agent  # 51ca
+  actor: jgstern_agent  # 51ca
+  clock: 1  # 51ca
+  nonce: 51ca  # 51ca
+  data:  # 51ca
+    kind: work_item  # 51ca
+    title: "graphql_resolver mints Query.if:function from an if-statement inside a resolver map (14 on apollo-server: 13 .ts pre-existing, 1 .cjs newly scanned)"  # 51ca
+    status: todo_hard  # 51ca
+    priority: 3  # 51ca
+    parent:  # 51ca
+    tags:  # 51ca
+    - linker  # 51ca
+    - graphql  # 51ca
+    - false_positive  # 51ca
+    - precision  # 51ca
+    isbefore: []  # 51ca
+    duplicate_of: []  # 51ca
+    not_duplicate_of: []  # 51ca
+    pr_ref:  # 51ca
+    description: "**False positive (found while measuring WI-hizon on branch jgstern-agent/fix/fovus).** graphql_resolver's JS scanner mints a resolver symbol named after a control-flow keyword: `if (cond) {` inside a scope it reads as a `Query: { ... }` resolver map becomes `Query.if:function`, with a `references` edge to the `Query` SDL type.\n\nObserved on apollo-server (survey, branch head): 13 `Query.if:function` nodes in `.ts` files before the branch (`packages/integration-testsuite/src/apolloServerTests.ts` lines 2407, 2413, 2439, 2489, 2498, 2513, 2649, 2669, 2823, 3125; `httpServerTests.ts` 2065, 2443, 2647), plus 1 new one the branch exposes by now scanning `.cjs` (`smoke-test/smoke-test.cjs:57`, the line `if (process.env.INCREMENTAL_DELIVERY_TESTS_ENABLED) {`). Not checked: other keywords (`for`, `while`, `switch`, `catch`) and other repos.\n\nFix direction: exclude JS reserved words from the resolver-name capture (and check how the scanner decides it is still inside the resolver map)."  # 51ca
+    fields: {}  # 51ca

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Layer-3 project-local catalog — zone-barrier sanitizers.
+# hypergumbo's in-repo self-audit catalogue — zone-barrier sanitizers.
 #
 # Declares ``hypergumbo_core.safety_zones._safety_zone_barrier`` as a
 # sanitizer for every entry-point taint label. Every wrapper function

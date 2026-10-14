@@ -13,7 +13,27 @@ How It Works
 4. Match imports to dependencies, handling naming conventions:
    - Rust: hyphens in Cargo.toml become underscores in code (my-crate -> my_crate)
    - Python: match root package name for submodule imports (requests.adapters -> requests)
-5. Create depends_on_manifest edges linking importing file to dependency declaration
+5. When several manifests declare the same name (monorepos), pick the one
+   whose directory most tightly encloses the importing file
+   (``_select_nearest_manifest_dep``, WI-timon). If the importer's path is
+   unknown or under no candidate's directory, take the first candidate by
+   id and mark the edge ambiguous.
+6. Create depends_on_manifest edges linking importing file to dependency
+   declaration — confidence 0.9, or 0.5 with
+   ``meta["disambiguation_fallback"] = True`` when step 5 was ambiguous
+
+Requirement diagnostics
+-----------------------
+The ``import_edges`` requirement counts only what step 3 can use --
+third-party Rust/Python imports -- so the partial-requirement warning names
+the manifests this linker actually reads (Cargo.toml, pyproject.toml) and stays
+silent on repos whose imports are in other languages or only in their own code.
+Excluded: Rust toolchain roots (``std``, ``core``, ...), catalogued Python
+stdlib modules, imports the analyzer resolved to an in-repo symbol (a dst such
+as ``python:src/pkg/b.py:1-1:file:file``), and Rust imports of the crate's own
+modules or own package name (see ``_count_import_edges``). Mix, npm, go.mod and
+Gradle/Maven declarations reach boundary nodes through ``DependencyManifest``
+(``supply_chain``), not through this linker (WI-juzaj).
 
 Why This Design
 ---------------
@@ -162,7 +182,8 @@ def link_dependencies(
     Args:
         toml_symbols: Symbols from TOML analyzer (dependencies, packages, etc.)
         code_edges: Edges from code analyzers (imports, calls, etc.)
-        code_symbols: Symbols from code analyzers (reserved for future use)
+        code_symbols: Symbols from code analyzers (maps an import edge's src
+            to its file path for nearest-manifest selection)
 
     Returns:
         DependencyLinkResult with depends_on_manifest edges.
@@ -251,9 +272,95 @@ def _count_toml_dependencies(ctx: LinkerContext) -> int:
     return sum(1 for s in ctx.symbols if s.language == "toml" and s.kind == "dependency")
 
 
+#: Rust crate roots that ship with the toolchain or name the current crate;
+#: no Cargo.toml ever declares them, so they can never be linked.
+_RUST_NON_DEPENDENCY_ROOTS = frozenset({"std", "core", "alloc", "crate", "self", "super"})
+
+#: Rust file stems that name a crate root (``main``/``lib``), a directory
+#: module's body (``mod``) or a build script, never a module of that name.
+_RUST_NON_MODULE_STEMS = frozenset({"main", "lib", "mod", "build"})
+
+
+def _rust_first_party_roots(ctx: LinkerContext) -> set[str]:
+    """Names a Rust ``use`` path can start with and still mean this repo's code.
+
+    Rust import dsts are never resolved to in-repo ids (the analyzer emits
+    ``rust:util::helper:0-0:module:module`` for every ``use``), so unlike
+    Python there is no resolution verdict to read and the name is the only
+    evidence. Two sources, both from symbols the analysis already holds:
+
+    - module names: the stem of every analyzed ``.rs`` file (``src/util.rs``
+      -> ``util``) and the directory of every ``mod.rs`` (``src/net/mod.rs``
+      -> ``net``), which a 2018-edition ``use util::helper`` beside
+      ``mod util;`` names;
+    - the crate's own published name: every Cargo.toml ``[package]`` name,
+      hyphens folded (``my-crate`` -> ``my_crate``), which a ``tests/`` or
+      ``src/bin/`` file imports the library by.
+
+    Over-matching only lowers a diagnostic count; a crate that really depends
+    on a crate sharing a local module's name cannot spell that import with a
+    bare root anyway (rustc rejects the ambiguity unless it is written
+    ``::name``, which yields no root here).
+    """
+    roots: set[str] = set()
+    for s in ctx.symbols:
+        if s.language == "rust" and s.kind == "file" and s.path.endswith(".rs"):
+            parts = s.path[:-3].split("/")
+            if parts[-1] == "mod" and len(parts) > 1:
+                roots.add(parts[-2])
+            elif parts[-1] not in _RUST_NON_MODULE_STEMS:
+                roots.add(parts[-1])
+        elif (s.language == "toml" and s.kind == "package"
+              and s.path.rsplit("/", 1)[-1] == "Cargo.toml"):
+            roots.add(_normalize_crate_name(s.name))
+    return roots
+
+
 def _count_import_edges(ctx: LinkerContext) -> int:
-    """Count available import edges for requirement check."""
-    return sum(1 for e in ctx.edges if e.edge_type == "imports")
+    """Count the third-party import edges this linker could link to a manifest.
+
+    Only Rust and Python imports are read by :func:`link_dependencies`
+    (``_extract_root_package`` returns None for every other language), and a
+    toolchain/stdlib import (``std::``, ``json``) is declared in no manifest.
+    Counting every ``imports`` edge made the partial-requirement warning fire
+    on any repo with imports and no TOML -- e.g. "found 9740 Import edges ...
+    but 0 TOML dependency declarations" on a Phoenix app whose imports are
+    Elixir and JavaScript, whose mix.exs / package.json this linker never
+    reads (WI-juzaj). The stdlib test is the single-source python catalog
+    (ADR-0041 §3).
+
+    First-party imports are not counted either: no manifest declares the repo's
+    own code. An edge whose dst is an in-repo symbol id is first-party by the
+    ADR-0037 definition of resolution -- the same ``dst in symbol ids`` test the
+    finalize boundary step uses, read directly because ``Edge.is_resolved`` is
+    still the producer's advisory default (True) when linkers run. That is how
+    the Python analyzer reports ``from pkg import b``; counting it made a repo
+    whose modules import each other warn about missing pyproject dependencies
+    with no third-party import at all (INV-nuraf). Rust imports never resolve,
+    so their first-party test is by name (:func:`_rust_first_party_roots`).
+    """
+    from ..io_boundary import load_catalog
+
+    python_catalog = load_catalog("python")
+    in_repo_ids = {s.id for s in ctx.symbols}
+    rust_first_party: set[str] | None = None
+    count = 0
+    for e in ctx.edges:
+        if e.edge_type != "imports" or e.dst in in_repo_ids:
+            continue
+        root = _extract_root_package(e.dst)
+        if not root:
+            continue
+        if e.dst.startswith("rust:"):
+            if root in _RUST_NON_DEPENDENCY_ROOTS:
+                continue
+            if rust_first_party is None:
+                rust_first_party = _rust_first_party_roots(ctx)
+            if root not in rust_first_party:
+                count += 1
+        elif not python_catalog.is_stdlib_module(root):
+            count += 1
+    return count
 
 
 DEPENDENCY_REQUIREMENTS = [
@@ -264,7 +371,9 @@ DEPENDENCY_REQUIREMENTS = [
     ),
     LinkerRequirement(
         name="import_edges",
-        description="Import edges from code analyzers",
+        # User-visible in the warning text; see _count_import_edges for what
+        # is excluded (stdlib/toolchain and first-party imports).
+        description="third-party Rust/Python import edges",
         check=_count_import_edges,
     ),
 ]
@@ -275,10 +384,11 @@ DEPENDENCY_REQUIREMENTS = [
     priority=80,  # Run late, after all imports have been collected
     description="Dependency linking (imports to manifest declarations)",
     requirements=DEPENDENCY_REQUIREMENTS,
-    # CNF: dependency linking ties import edges (any language) to manifest
-    # declarations (any package-manager-aware analyzer). Either side alone
-    # provides partial value; together they produce dep edges. Single OR-clause
-    # spanning every language whose imports/manifests this linker consumes.
+    # CNF: the code reads TOML ``kind="dependency"`` symbols (Cargo.toml,
+    # pyproject.toml) and ``imports`` edges whose dst starts with ``rust:`` or
+    # ``python:`` — ``_extract_root_package`` skips every other language. The
+    # OR-clause below is broader than what the code consumes and omits
+    # ``toml``.
     depends_on=[["python", "javascript", "ruby", "java", "go", "rust", "csharp", "kotlin", "scala", "elixir", "php", "swift", "dart"]],
     activation=always_on_unreviewed(),
 )

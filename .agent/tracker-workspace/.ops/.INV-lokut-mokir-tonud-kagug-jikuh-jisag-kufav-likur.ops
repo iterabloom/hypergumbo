@@ -1,0 +1,40 @@
+- op: create  # 20ab
+  at: '2026-10-11T04:28:05Z'  # 20ab
+  by: agent  # 20ab
+  actor: jgstern_agent  # 20ab
+  clock: 1  # 20ab
+  nonce: 20ab  # 20ab
+  data:  # 20ab
+    kind: invariant  # 20ab
+    title: "elixir: Phoenix `resources` emits 7 routes (no PUT), ignores only:/except:, and does not expand the scope alias on the controller"  # 20ab
+    status: violated  # 20ab
+    priority: 2  # 20ab
+    parent:  # 20ab
+    tags:  # 20ab
+    - elixir  # 20ab
+    - phoenix  # 20ab
+    - routes  # 20ab
+    - docstring_audit  # 20ab
+    isbefore: []  # 20ab
+    duplicate_of: []  # 20ab
+    not_duplicate_of: []  # 20ab
+    pr_ref:  # 20ab
+    description: "Repro: router.ex with `scope \"/api\", AppWeb do resources \"/users\", UserController, only: [:index, :show]; resources \"/posts\", PostController, except: [:delete]; get \"/x\", XController, :x end` -> each resources yields all 7 routes, no PUT, controller `UserController` not `AppWeb.UserController`. The missing scope PATH prefix is WI-kibij (separate). thc's 240 http_route entrypoints (INV-liraj outcome) are affected by both.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 20ab
+    fields:  # 20ab
+      statement: "Phoenix route markers match what `mix phx.routes` lists for `resources`: 8 actions including PUT /:id -> :update, filtered by only:/except:, with the controller module qualified by the enclosing scope alias."  # 20ab
+      root_cause: "elixir.py's resources expansion (~1157-1165) hardcodes 7 routes; the third argument is read only when it is an atom (~1100-1103), so keyword options are ignored; the enclosing `scope ..., AppWeb do` alias is not applied to the controller name."  # 20ab
+- op: update  # b7e7
+  at: '2026-10-11T10:42:21Z'  # b7e7
+  by: agent  # b7e7
+  actor: jgstern_agent  # b7e7
+  clock: 2  # b7e7
+  nonce: b7e7  # b7e7
+  set:  # b7e7
+    status: satisfied  # b7e7
+- op: discuss  # 8730
+  at: '2026-10-11T10:42:21Z'  # 8730
+  by: agent  # 8730
+  actor: jgstern_agent  # 8730
+  clock: 3  # 8730
+  nonce: '8730'  # 8730
+  message: "Fixed in PR #1535 (bb37db9216). Root cause: elixir.py hardcoded a 7-route resources table (no PUT update), read the 3rd arg only as an atom (keyword options dropped), and walked calls with iter_tree, which carries no scope context. Fix: _phoenix_resource_routes mirrors Phoenix.Router.Resource (8 actions, update on PATCH+PUT, only:/except:/singleton:/param:, bare or bracketed keyword list; a non-literal option keeps the full set); _iter_router_calls carries the scope alias (positional or alias:, lexically expanded, nested scopes concatenated, alias: false resets) and every get/post/.../live/resources controller is expanded and then prefixed. Evidence: filed repro (scope \"/api\", AppWeb + resources users only:[:index,:show] + posts except:[:delete] + get /x) -> 'hypergumbo routes <repro> --minimal' prints 'Found 10 API route(s)' incl. [PUT] /posts/:id and [PATCH] /posts/:id, users only GET /users and GET /users/:id; survey meta.controller = AppWeb.UserController / AppWeb.PostController / AppWeb.XController (was 15 routes, unqualified). thc: 377 router markers, fully qualified 2 -> 377, all 373 dispatches_to edges land on the named module (targets unchanged). Scope PATH prefix (/api) is still missing: WI-kibij."  # 8730

@@ -1,0 +1,23 @@
+- op: create  # 9c52
+  at: '2026-10-13T13:11:27Z'  # 9c52
+  by: agent  # 9c52
+  actor: jgstern_agent  # 9c52
+  clock: 1  # 9c52
+  nonce: 9c52  # 9c52
+  data:  # 9c52
+    kind: invariant  # 9c52
+    title: "partial-install warning claims no analyzer exists for llvm_ir: the registered-language set is guessed from analyzer names, and 'llvm_ir' splits into 'llvm'/'ir'"  # 9c52
+    status: violated  # 9c52
+    priority: 3  # 9c52
+    parent:  # 9c52
+    tags:  # 9c52
+    - analysis_quality  # 9c52
+    - diagnostics  # 9c52
+    isbefore: []  # 9c52
+    duplicate_of: []  # 9c52
+    not_duplicate_of: []  # 9c52
+    pr_ref:  # 9c52
+    description: "FOUND 2026-10-13 by the WI-tusad B8a agent (out-of-campaign; not fixed). Reproduced on dev b4a783a901.\n\nDEFECT. Every `hypergumbo run` over a tree containing .ll files prints \"Detected N llvm_ir file(s) but no analyzer is available for Llvm_Ir.\" although the llvm_ir analyzer is registered and runs (a 25-file corpus sample emitted 3 function, 3 declaration and 3 variable llvm_ir symbols in the same run; the WI-tusad gate's llvm_ir fixture emits symbols while printing the warning).\n\nROOT CAUSE. partial_install_warnings._get_registered_analyzer_languages maps an analyzer name containing \"_\" by splitting it and keeping only the parts found in LANGUAGE_PACKAGES (the swift_objc heuristic). \"llvm_ir\" splits into \"llvm\" / \"ir\", neither is a key, so the registered set never contains \"llvm_ir\" and check_unanalyzed_files warns. Probe: `python3 -c \"from hypergumbo_core.partial_install_warnings import _get_registered_analyzer_languages as g; print('llvm_ir' in g())\"` -> False.\n\nANALOGUES (not checked one by one): any analyzer whose registered name has an underscore and is itself the language (the registry's `languages` list is the authoritative source; the name heuristic is the defect). Fix direction: build the set from each RegisteredAnalyzer's declared languages instead of guessing from the name."  # 9c52
+    fields:  # 9c52
+      statement: "A partial-install 'no analyzer is available' warning is emitted only for a language no registered analyzer declares."  # 9c52
+      root_cause: "partial_install_warnings._get_registered_analyzer_languages splits underscore names and keeps only parts in LANGUAGE_PACKAGES, so llvm_ir is never in the registered set."  # 9c52

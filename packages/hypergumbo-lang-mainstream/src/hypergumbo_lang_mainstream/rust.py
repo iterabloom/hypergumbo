@@ -7,6 +7,15 @@ This analyzer uses tree-sitter to parse Rust files and extract:
 - Enum declarations (enum)
 - Impl blocks and their methods
 - Trait declarations, including bodyless trait methods (``method`` symbols)
+- Functions declared in ``extern`` blocks (``function`` symbols carrying the
+  foreign binding the source states -- ABI, wasm_bindgen ``js_namespace`` /
+  ``js_name`` / ``module``, ``#[link]`` / ``#[link_name]`` -- in
+  ``meta["ffi_import"]``), so a call to one binds to its declaration instead
+  of reaching an I/O catalogue row by short name (INV-lopus). Only a BARE
+  call (or the module path it is declared under) reaches one: it has no
+  owner, so it is kept out of the method / ``Type::`` fallbacks, and in
+  another file it does not capture a name that file ``use``-binds to a path
+  outside the crate (``use std::fs::write``)
 - Named struct fields and enum variants (``field`` symbols)
 - Module-level ``const`` / ``static`` (``variable`` symbols)
 - Function call relationships
@@ -14,7 +23,8 @@ This analyzer uses tree-sitter to parse Rust files and extract:
 - ``module_attr_ref`` edges for bare path-attribute reads
 - Import relationships (use statements)
 - Axum route handlers (.route("/path", get(handler)))
-- Actix-web route handlers (#[get("/path")], #[post("/path")])
+- Actix-web route attributes (#[get("/path")], #[post("/path")]), recorded in
+  ``meta["annotations"]`` for the framework YAML patterns to match
 
 If tree-sitter with Rust support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -36,6 +46,12 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    reference passed to a spawn function, calls appearing only
    inside macro bodies, ``module_attr_ref`` edges, use edges, and Axum
    usage contexts
+   - A call (or macro-body call) in no function -- a ``static`` / ``const``
+     initialiser, a top-level macro -- is anchored on the file (INV-bamij).
+   - A bare identifier call that the short-name fallback (2) binds in this
+     file prefers the free function the CALLER's own module declares, since
+     the one-symbol-per-name map keeps whichever same-named item came last
+     (INV-lopus: a root ``now()`` bound to ``mod helpers``' ``now``).
    - Local types (strategies 1.8/1.9) come from a file-scoped var-type
      map: parameters, ``let`` annotations, constructor / struct-literal
      initializers, enum-variant destructuring patterns, and
@@ -54,6 +70,15 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      filtered out, except ``Display``/``From``/``Error``/``Default`` on
      error types.
 3. Post-process: Extract decorated_by edges from attribute metadata
+
+Scope in identity (INV-fabih). Every stable_id hashes the inline ``mod``
+blocks and functions enclosing the item (``_rust_hash_scope``): callables and
+members through ``rust_hashed_qualified_name`` (``a::Inner::go`` where they
+hashed ``Inner::go``), structs, enums and traits through
+``overload_arity.scoped_table_stable_id`` (they had the backstop's bare-name
+table key). Two ``struct Inner`` in ``mod a`` and ``mod b`` and their members
+tied, and deleting the first moved the second's ids. Top-level items keep
+their values.
 
 Parity with the SCIP backend
 ----------------------------
@@ -88,6 +113,7 @@ and an enum variant inherits the *enum's* export status (its
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -105,10 +131,12 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     defer_bare_method_call,
     emit_module_attribute_refs,
     find_child_by_type,
     iter_tree,
+    file_anchor_symbol,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
@@ -117,6 +145,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
     visibility_from_modifiers,
 )
+from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import (
     SPAN_ROLE_ITEM,
@@ -810,6 +839,35 @@ def _get_rust_mod_path(
     return list(reversed(mods))
 
 
+def _rust_hash_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The inline ``mod`` blocks and functions enclosing ``node``, outermost
+    first: what a Rust stable_id hashes beside the owner and name (INV-fabih).
+
+    Members hashed ``Owner::name`` and types the backstop's bare-name table
+    key, so two ``struct Inner`` (and their ``impl``) in ``mod a`` and ``mod
+    b`` -- or two ``fn run`` in them, or two helpers nested in two functions
+    -- tied, and deleting the first moved the second's id. The crate-level
+    module is the file itself, which the file anchor identifies, so a
+    top-level item keeps its value. ``rust_scip`` hashes the same chain
+    (WI-zakub parity).
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type not in ("mod_item", "function_item"):
+            return None
+        name_node = _find_child_by_field(n, "name")
+        return node_text(name_node, source) if name_node is not None else None
+    return ancestor_labels(node, label)
+
+
+def rust_hashed_qualified_name(
+    node: "tree_sitter.Node", source: bytes, owner: Optional[str], name: str,
+) -> str:
+    """``scope::owner::name`` over :func:`_rust_hash_scope`: the qualified
+    name a Rust callable or member hashes. Public because ``rust_scip`` must
+    hash exactly this for the same item."""
+    return "::".join((*_rust_hash_scope(node, source), *((owner,) if owner else ()), name))
+
+
 def _make_rust_qualified_name(
     mod_path: list[str], impl_target: Optional[str], name: str
 ) -> str:
@@ -874,6 +932,153 @@ def _get_trait_owner(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     return None
 
 
+def _enclosing_foreign_block(
+    node: "tree_sitter.Node",
+) -> Optional["tree_sitter.Node"]:
+    """The ``extern`` block DIRECTLY declaring ``node``, or ``None`` (INV-lopus).
+
+    A foreign item's parent is the block's ``declaration_list`` and that list's
+    parent is the ``foreign_mod_item``. Only the direct shape counts: a
+    ``function_signature_item`` anywhere else is a trait contract
+    (:func:`_get_trait_owner`), and Rust allows no other nesting inside an
+    ``extern`` block.
+    """
+    parent = node.parent
+    if parent is None or parent.type != "declaration_list":
+        return None
+    block = parent.parent
+    if block is None or block.type != "foreign_mod_item":
+        return None
+    return block
+
+
+#: ``key = value`` inside a ``#[wasm_bindgen(...)]`` / ``#[link(...)]``
+#: attribute, or the whole of ``#[link_name = "..."]``. A value is a string
+#: literal, a bare path, or (``js_namespace`` only) a bracketed list of strings.
+_ATTR_KEY_VALUE = re.compile(
+    r'\b(?P<key>js_namespace|js_name|module|name|link_name)\s*=\s*'
+    r'(?P<value>\[[^\]]*\]|"[^"]*"|[A-Za-z_][A-Za-z0-9_:]*)'
+)
+
+
+def _attr_values(attr_text: str, head: str) -> dict[str, str]:
+    """``key -> value`` for the attribute ``#[head(...)]`` or ``#[head = ...]``.
+
+    A list value (``["window", "document"]``) is joined with ``.``: the JS
+    namespace path it spells. Quotes are stripped. Another attribute returns
+    an empty map.
+    """
+    body = attr_text.strip()[2:-1].strip()  # inside #[ ... ]
+    if not (body == head or body.startswith((f"{head}(", f"{head} ", f"{head}="))):
+        return {}
+    if head != "link_name":  # its key IS its head: ``link_name = "x"``
+        body = body[len(head):]
+    out: dict[str, str] = {}
+    for m in _ATTR_KEY_VALUE.finditer(body):
+        value = m.group("value")
+        if value.startswith("["):
+            value = ".".join(re.findall(r'"([^"]*)"', value))
+        out[m.group("key")] = value.strip('"')
+    return out
+
+
+def _foreign_import_binding(
+    block: "tree_sitter.Node",
+    item: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """What a foreign declaration binds to, as the source states it (INV-lopus).
+
+    Recorded on the symbol as ``meta["ffi_import"]`` so the binding is a FACT on
+    the graph rather than something a consumer re-parses:
+
+    * ``abi`` -- the block's ABI string; ``extern { }`` with none is ``"C"``,
+      which is the Rust reference's default.
+    * ``js_namespace`` / ``foreign_name`` -- ``#[wasm_bindgen(js_namespace = X,
+      js_name = y)]`` on the item: loro's ``now`` is JavaScript's ``Date.now``.
+      A list namespace (``["window", "document"]``) is joined with ``.``.
+    * ``js_module`` -- ``#[wasm_bindgen(module = "m")]`` on the block.
+    * ``link`` -- ``#[link(name = "m")]`` on the block: the native library.
+    * ``foreign_name`` -- ``#[link_name = "cos"]`` on the item.
+
+    Only keys the source states are present (absent is not empty). Nothing here
+    CLASSIFIES the call: a foreign declaration names no catalogued Rust module,
+    and choosing the foreign catalogue from this binding is a separate question.
+    """
+    binding: dict[str, str] = {"abi": "C"}
+    modifier = find_child_by_type(block, "extern_modifier")
+    abi_node = (
+        find_child_by_type(modifier, "string_literal") if modifier else None
+    )
+    content = (
+        find_child_by_type(abi_node, "string_content") if abi_node else None
+    )
+    if content is not None:
+        binding["abi"] = node_text(content, source)
+    for text in _preceding_attribute_texts(block, source):
+        link = _attr_values(text, "link")
+        if "name" in link:
+            binding["link"] = link["name"]
+        wasm = _attr_values(text, "wasm_bindgen")
+        if "module" in wasm:
+            binding["js_module"] = wasm["module"]
+    for text in _preceding_attribute_texts(item, source):
+        wasm = _attr_values(text, "wasm_bindgen")
+        if "js_namespace" in wasm:
+            binding["js_namespace"] = wasm["js_namespace"]
+        if "js_name" in wasm:
+            binding["foreign_name"] = wasm["js_name"]
+        link_name = _attr_values(text, "link_name")
+        if "link_name" in link_name:
+            binding["foreign_name"] = link_name["link_name"]
+    return binding
+
+
+def _preceding_attribute_texts(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """The raw ``#[...]`` texts of the attributes written on ``node``, in order.
+
+    Rust attributes appear as ``attribute_item`` siblings immediately before
+    the declaration they apply to; a comment does not break the chain, any
+    other node does. Shared by :func:`_extract_rust_annotations` (which parses
+    each) and :func:`_foreign_import_binding` (which needs the raw text, since
+    ``#[link_name = "x"]`` and ``js_namespace = ["a", "b"]`` are shapes the
+    simple parser does not model).
+    """
+    if node.parent is None:  # pragma: no cover - defensive
+        return []
+
+    # Find this node's index in parent's children
+    parent = node.parent
+    node_index = -1
+    for i, child in enumerate(parent.children):
+        if child == node:
+            node_index = i
+            break
+
+    if node_index < 0:
+        return []  # pragma: no cover
+
+    texts: list[str] = []
+    # Walk backwards from this node collecting attribute_items
+    # Stop when we hit a non-attribute (another declaration, etc.)
+    for i in range(node_index - 1, -1, -1):
+        sibling = parent.children[i]
+        if sibling.type == "attribute_item":
+            texts.append(node_text(sibling, source))
+        elif sibling.type == "line_comment":
+            # Skip comments, they don't break the attribute chain
+            continue  # pragma: no cover - rare edge case
+        else:
+            # Any other node type breaks the chain
+            break
+
+    # Reverse to maintain source order (we walked backwards)
+    texts.reverse()
+    return texts
+
+
 def _extract_rust_annotations(
     node: "tree_sitter.Node", source: bytes
 ) -> list[dict[str, object]]:
@@ -890,40 +1095,11 @@ def _extract_rust_annotations(
         List of annotation dicts: [{"name": str, "args": list, "kwargs": dict}]
     """
     annotations: list[dict[str, object]] = []
-
-    if node.parent is None:  # pragma: no cover - defensive
-        return annotations
-
-    # Find this node's index in parent's children
-    parent = node.parent
-    node_index = -1
-    for i, child in enumerate(parent.children):
-        if child == node:
-            node_index = i
-            break
-
-    if node_index < 0:
-        return annotations  # pragma: no cover
-
-    # Walk backwards from this node collecting attribute_items
-    # Stop when we hit a non-attribute (another declaration, etc.)
-    for i in range(node_index - 1, -1, -1):
-        sibling = parent.children[i]
-        if sibling.type == "attribute_item":
-            # Parse the attribute: #[name(args)] or #[path::to::name(args)]
-            attr_text = node_text(sibling, source)
-            ann = _parse_rust_attribute(attr_text)
-            if ann:
-                annotations.append(ann)
-        elif sibling.type == "line_comment":
-            # Skip comments, they don't break the attribute chain
-            continue  # pragma: no cover - rare edge case
-        else:
-            # Any other node type breaks the chain
-            break
-
-    # Reverse to maintain source order (we walked backwards)
-    annotations.reverse()
+    for attr_text in _preceding_attribute_texts(node, source):
+        # Parse the attribute: #[name(args)] or #[path::to::name(args)]
+        ann = _parse_rust_attribute(attr_text)
+        if ann:
+            annotations.append(ann)
     return annotations
 
 
@@ -1298,7 +1474,8 @@ def _extract_symbols_from_file(
                 norm_sig = normalize_rust_signature(signature)
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
-                    name=func_name, qualified_name=full_name,
+                    name=func_name,
+                    qualified_name=rust_hashed_qualified_name(node, source, owner, func_name),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
@@ -1367,6 +1544,7 @@ def _extract_symbols_from_file(
 
                 struct_modifiers = _extract_modifiers_rust(node, source)
                 mod_path = _get_rust_mod_path(node, source)
+                type_scope = _rust_hash_scope(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("rust", str(file_path), start_line, end_line, struct_name, "struct"),
                     name=struct_name,
@@ -1381,6 +1559,12 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    # INV-fabih: the table formula over the enclosing mods and
+                    # functions (the backstop's own value at top level).
+                    stable_id=scoped_table_stable_id(
+                        kind="struct", lang="rust", path=file_path,
+                        name=struct_name, scope=type_scope,
+                    ),
                     meta=meta,
                     modifiers=struct_modifiers,
                     line_span=end_line - start_line + 1,
@@ -1431,7 +1615,8 @@ def _extract_symbols_from_file(
                         stable_id=make_typed_stable_id(
                             "field", ftype or "",
                             visibility_from_modifiers(f_modifiers),
-                            name=fname, qualified_name=f_full,
+                            name=fname,
+                            qualified_name="::".join((*type_scope, f_full)),
                             file_stable_id=file_stable_id,
                         ),
                         line_span=f_end - f_start + 1,
@@ -1512,6 +1697,7 @@ def _extract_symbols_from_file(
 
                 enum_modifiers = _extract_modifiers_rust(node, source)
                 mod_path = _get_rust_mod_path(node, source)
+                type_scope = _rust_hash_scope(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("rust", str(file_path), start_line, end_line, enum_name, "enum"),
                     name=enum_name,
@@ -1526,6 +1712,10 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=scoped_table_stable_id(
+                        kind="enum", lang="rust", path=file_path,
+                        name=enum_name, scope=type_scope,
+                    ),
                     meta=meta,
                     modifiers=enum_modifiers,
                     line_span=end_line - start_line + 1,
@@ -1583,7 +1773,8 @@ def _extract_symbols_from_file(
                         stable_id=make_typed_stable_id(
                             "field", "",
                             visibility_from_modifiers(v_modifiers),
-                            name=vname, qualified_name=v_full,
+                            name=vname,
+                            qualified_name="::".join((*type_scope, v_full)),
                             file_stable_id=file_stable_id,
                         ),
                         line_span=v_end - v_start + 1,
@@ -1609,7 +1800,77 @@ def _extract_symbols_from_file(
         elif node.type == "function_signature_item":
             name_node = _find_child_by_field(node, "name")
             trait_owner = _get_trait_owner(node, source)
-            if name_node and trait_owner:
+            foreign_block = _enclosing_foreign_block(node)
+            if name_node and foreign_block is not None:
+                # INV-lopus: a function declared in an ``extern`` block. It had
+                # no symbol, so a call to it stayed unresolved with the
+                # ``external`` slot and the catalogue matched it by SHORT NAME
+                # -- loro's wasm_bindgen ``Date.now`` read as
+                # ``std::time::Instant.now``. A free ``function`` (it has no
+                # owner a receiver could be), with the foreign binding the
+                # source states in ``meta["ffi_import"]``. Identity is computed
+                # as the ``function_item`` branch computes it, so ``rust_scip``
+                # -- which already recomputes a stable id for any unowned
+                # ``function_signature_item`` -- stays byte-identical.
+                f_name = node_text(name_node, source)
+                f_start = node.start_point[0] + 1
+                f_end = node.end_point[0] + 1
+                f_modifiers = _extract_modifiers_rust(node, source)
+                f_signature = _extract_rust_signature(node, source)
+                f_norm_sig = (
+                    normalize_rust_signature(f_signature)
+                    if f_signature is not None
+                    else None
+                )
+                f_meta: dict[str, object] = {
+                    "ffi_import": _foreign_import_binding(
+                        foreign_block, node, source,
+                    ),
+                }
+                f_annotations = _extract_rust_annotations(node, source)
+                if f_annotations:
+                    f_meta["annotations"] = f_annotations
+                f_sym = Symbol(
+                    id=make_symbol_id(
+                        "rust", str(file_path), f_start, f_end, f_name, "function",
+                    ),
+                    name=f_name,
+                    kind="function",
+                    language="rust",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=f_start,
+                        end_line=f_end,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    modifiers=f_modifiers,
+                    signature=f_signature,
+                    stable_id=make_typed_stable_id(
+                        "function", f_norm_sig,
+                        visibility_from_modifiers(f_modifiers),
+                        name=f_name,
+                        qualified_name=rust_hashed_qualified_name(node, source, None, f_name),
+                        file_stable_id=file_stable_id,
+                    ) if f_norm_sig else None,
+                    docstring=extract_preceding_doc_comment(node, source, "rust"),
+                    meta=f_meta,
+                    line_span=f_end - f_start + 1,
+                    is_exported="pub" in f_modifiers,
+                    qualified_name=_make_rust_qualified_name(
+                        _get_rust_mod_path(node, source), None, f_name,
+                    ),
+                )
+                analysis.symbols.append(f_sym)
+                analysis.node_for_symbol[f_sym.id] = node
+                analysis.symbol_by_name[f_name] = f_sym
+                # ``ffi::now()`` names it by its module path: register that
+                # spelling too, so the full-scoped-name strategy binds it.
+                if f_sym.qualified_name and f_sym.qualified_name != f_name:
+                    analysis.symbol_by_name[f_sym.qualified_name] = f_sym
+            elif name_node and trait_owner:
                 sig_name = node_text(name_node, source)
                 sig_full = f"{trait_owner}::{sig_name}"
                 s_start = node.start_point[0] + 1
@@ -1651,7 +1912,10 @@ def _extract_symbols_from_file(
                     stable_id=make_typed_stable_id(
                         "method", s_norm_sig,
                         visibility_from_modifiers(s_modifiers),
-                        name=sig_name, qualified_name=sig_full,
+                        name=sig_name,
+                        qualified_name=rust_hashed_qualified_name(
+                            node, source, trait_owner, sig_name,
+                        ),
                         file_stable_id=file_stable_id,
                     ) if s_norm_sig else None,
                     line_span=s_end - s_start + 1,
@@ -1695,6 +1959,10 @@ def _extract_symbols_from_file(
                     modifiers=trait_modifiers,
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=scoped_table_stable_id(
+                        kind="trait", lang="rust", path=file_path,
+                        name=trait_name, scope=_rust_hash_scope(node, source),
+                    ),
                     meta=meta,
                     line_span=end_line - start_line + 1,
                     is_exported="pub" in trait_modifiers,
@@ -1998,6 +2266,22 @@ def _use_tree_bindings(
     # ``pub use`` puts beside the use-tree -- binds no name.
 
 
+#: Path roots that make a path ABSOLUTE by construction: the standard library
+#: crates (plus a leading ``::``). Only these are split without a ``use`` alias
+#: (INV-duzom). A bare ``Type::method`` is NOT: an unimported ``Command::new``
+#: is a project type as often as not, and splitting it would put ``Command`` in
+#: the module slot, which the component-suffix matcher pairs with
+#: ``std::process::Command`` (INV-kipor's shape). A path through a third-party
+#: crate (``serde_json::from_str``) would be absolute too, but telling a crate
+#: from a local module needs the manifest, which this arm does not have.
+_RUST_ABSOLUTE_PATH_ROOTS: frozenset[str] = frozenset({"std", "core", "alloc"})
+
+#: ``a::b::c`` with plain identifier segments, optionally ``::``-rooted. A
+#: turbofish (``Vec::<u8>::new``) or a qualified-self path
+#: (``<T as Trait>::m``) does not match and keeps its previous treatment.
+_PLAIN_RUST_PATH = re.compile(r"(?:::)?[A-Za-z_]\w*(?:::[A-Za-z_]\w*)+")
+
+
 def _extract_use_aliases(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -2118,6 +2402,7 @@ def _extract_edges_from_file(
     kind_index: dict[str, list[Symbol]] | None = None,
     var_types: dict[str, str] | None = None,
     var_type_paths: dict[str, str] | None = None,
+    file_functions: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2148,10 +2433,15 @@ def _extract_edges_from_file(
             short-name fallback (Strategy 2), bypassing the
             generic-trait-method blocklist for receivers with known
             types.
+        file_functions: Every function / method this file declares (the
+            per-file list, not the one-per-name ``local_symbols``). A bare
+            identifier call prefers the free function its own module declares
+            (INV-lopus).
     """
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("rust", str(file_path))
+    file_anchor = file_anchor_symbol("rust", str(file_path), PASS_ID, run_id)
     _var_types: dict[str, str] = var_types or {}
     _var_type_paths: dict[str, str] = var_type_paths or {}
     # WI-milak / BUG-04: hoisted out of the iter_tree loop so the
@@ -2159,6 +2449,18 @@ def _extract_edges_from_file(
     # (function-definition-does-not-bind-loop-variable). The contents
     # don't change across nodes within a single file.
     _trait_kind_index = kind_index if kind_index is not None else {}
+    # INV-lopus: this file's FREE functions by qualified name, so a bare call
+    # binds to the item its OWN module declares. ``local_symbols`` keeps one
+    # symbol per short name, and the last same-named declaration in the file
+    # wins: with ``extern "C" { fn now(); }`` at the root and ``mod helpers {
+    # pub fn now() }`` below it, a root-level ``now()`` bound to
+    # ``helpers::now`` -- an item Rust does not even put in that scope (a
+    # module's items are visible only inside it, or through a ``use``). Only
+    # a BARE identifier call asks this; a method or path call is untouched.
+    _free_fns_by_qname: dict[str, Symbol] = {
+        s.qualified_name: s for s in (file_functions or ())
+        if s.kind == "function" and s.qualified_name
+    }
 
     for node in iter_tree(tree.root_node):
         # Detect trait implementations: impl Trait for Struct → implements edge
@@ -2278,7 +2580,12 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, local_symbols, span_index)
+            # INV-bamij: a call in no function (a static / const initialiser, a
+            # LazyLock closure, a top-level macro) is anchored on the file.
+            current_function = (
+                _get_enclosing_function(node, source, local_symbols, span_index)
+                or file_anchor
+            )
             if current_function is not None:
                 func_node = _find_child_by_field(node, "function")
                 if func_node:
@@ -2663,8 +2970,28 @@ def _extract_edges_from_file(
 
                         # Strategy 2: Fall back to short name
                         if not resolved:
-                            if callee_name in local_symbols:
-                                callee = local_symbols[callee_name]
+                            _local = local_symbols.get(callee_name)
+                            if (
+                                _local is not None
+                                and inner.type != "identifier"
+                                and _local.meta
+                                and "ffi_import" in _local.meta
+                            ):
+                                # INV-lopus: a foreign declaration is reached
+                                # by its bare name only. ``SystemTime::now()``
+                                # beside an ``extern { fn now(); }`` is not a
+                                # call to it (loro change.rs:288 bound to it
+                                # on the first A/B).
+                                _local = None
+                            if _local is not None:
+                                callee = _local
+                                if inner.type == "identifier":
+                                    callee = _free_fns_by_qname.get(
+                                        _make_rust_qualified_name(
+                                            _get_rust_mod_path(node, source),
+                                            None, callee_name,
+                                        ),
+                                    ) or callee
                                 edges.append(Edge.create(
                                     src=current_function.id,
                                     dst=callee.id,
@@ -2753,6 +3080,24 @@ def _extract_edges_from_file(
                                         separator="::",
                                     )
                                 )
+                                # INV-lopus: a foreign declaration in ANOTHER
+                                # file does not capture a name this file binds
+                                # by ``use`` to a path outside the crate. After
+                                # ``use std::fs::write;``, ``write(p, b)`` is
+                                # std's, whatever ``extern { fn write(); }``
+                                # the repository declares elsewhere -- binding
+                                # it there turned a real fs_write into a call to
+                                # libc's ``write`` declaration.
+                                if (
+                                    _used_bare_resolver
+                                    and _sym is not None
+                                    and _sym.meta
+                                    and "ffi_import" in _sym.meta
+                                    and use_aliases.get(callee_name, "")
+                                    .lstrip(":").split("::", 1)[0]
+                                    not in ("", "crate", "self", "super")
+                                ):
+                                    _defer = True
                                 if (
                                     lookup_result.found
                                     and _sym is not None
@@ -2816,14 +3161,37 @@ def _extract_edges_from_file(
                                     has_explicit_binding = False
                                     if full_scoped_name and "::" in full_scoped_name:
                                         head, _, tail = full_scoped_name.partition("::")
+                                        # INV-duzom: the ABSOLUTE path, then one
+                                        # split on its last ``::``. In call
+                                        # position the last segment is the callee
+                                        # and the rest is the item that owns it (a
+                                        # module, a type, an enum), which is the
+                                        # (module, name) pair the slots carry. The
+                                        # aliased arm used to stop at the alias,
+                                        # so ``fs::File::open`` after ``use
+                                        # std::fs;`` became module ``std::fs`` +
+                                        # name ``File::open``; a path written in
+                                        # full had no alias and kept its whole
+                                        # text in the NAME slot.
+                                        absolute: str | None = None
                                         if head in use_aliases:
-                                            full_head = use_aliases[head]
-                                            module_hint = full_head
-                                            unresolved_name = tail
+                                            absolute = f"{use_aliases[head]}::{tail}"
+                                        elif (
+                                            (head in _RUST_ABSOLUTE_PATH_ROOTS
+                                             or full_scoped_name.startswith("::"))
+                                            and _PLAIN_RUST_PATH.fullmatch(
+                                                full_scoped_name,
+                                            )
+                                        ):
+                                            absolute = full_scoped_name.lstrip(":")
+                                        if absolute is not None:
+                                            mod, _, name = absolute.rpartition("::")
+                                            module_hint = mod
+                                            unresolved_name = name
                                             ext_ref = ExternalRef(
                                                 lang="rust",
-                                                module_path=full_head,
-                                                name=tail,
+                                                module_path=mod,
+                                                name=name,
                                             )
                                             has_explicit_binding = True
                                     elif callee_name in use_aliases:
@@ -3122,7 +3490,12 @@ def _extract_edges_from_file(
         # AST, so call_expression nodes are never created.  We pattern-match
         # token sequences to extract likely calls.
         elif node.type == "macro_invocation":
-            current_function = _get_enclosing_function(node, source, local_symbols, span_index)
+            # INV-bamij: a call in no function (a static / const initialiser, a
+            # LazyLock closure, a top-level macro) is anchored on the file.
+            current_function = (
+                _get_enclosing_function(node, source, local_symbols, span_index)
+                or file_anchor
+            )
             if current_function is not None:
                 tt = None
                 for child in node.children:
@@ -3146,6 +3519,14 @@ def _extract_edges_from_file(
                             if lr.found and lr.symbol is not None:
                                 target = lr.symbol
                         if target is not None:
+                            # NO ``call_construct`` (WI-dapap). ``macro_body``
+                            # named the detector that found the site, not a
+                            # construct. The real construct differs per site
+                            # (``self.m()``, ``Self::f()``, ``f()``), and
+                            # stamping it is not inert: a ``method`` stamp here
+                            # enters ``unknown_receiver_scope``'s denominator,
+                            # while the same call OUTSIDE a macro is stamped
+                            # ``function``. Both are WI-pukip.
                             edges.append(Edge.create(
                                 src=current_function.id,
                                 dst=target.id,
@@ -3154,7 +3535,6 @@ def _extract_edges_from_file(
                                 evidence_type="ast_call",
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
-                                meta={"call_construct": "macro_body"},
                             ))
 
     # WI-vipur: emit module_attr_ref edges for scoped attribute reads
@@ -3507,6 +3887,15 @@ class RustAnalyzer(TreeSitterAnalyzer):
         if cache is None or cache[0] is not global_symbols:
             global_methods: dict[str, list[Symbol]] = {}
             for sym in global_symbols.values():
+                # INV-lopus: a foreign (``extern``-block) declaration is
+                # reached only by its own name, never through a receiver or a
+                # ``Type::`` path -- it has no owner. Pooled here, it became
+                # the one ``now`` in loro and bound every ``Instant::now()``
+                # in the repository to wasm's ``Date.now`` (44 real clock
+                # reads lost on the first A/B). This pool serves exactly the
+                # method / scoped-path fallback, so the declaration stays out.
+                if sym.meta and "ffi_import" in sym.meta:
+                    continue
                 if sym.kind in ("method", "function"):
                     short = sym.name.split("::")[-1] if "::" in sym.name else sym.name
                     global_methods.setdefault(short, []).append(sym)
@@ -3571,6 +3960,7 @@ class RustAnalyzer(TreeSitterAnalyzer):
             kind_index=kind_index,
             var_types=var_types,
             var_type_paths=var_type_paths,
+            file_functions=file_syms,
         )
 
     def extract_usage_contexts_from_file(

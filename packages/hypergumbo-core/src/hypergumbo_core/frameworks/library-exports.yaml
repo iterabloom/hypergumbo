@@ -21,6 +21,7 @@
 # The entrypoint scoring system (confidence * connectivity boost) ensures
 # the most important/connected exports are prioritized for auto-slicing.
 
+provenance: builtin
 id: library-exports
 language: multi
 

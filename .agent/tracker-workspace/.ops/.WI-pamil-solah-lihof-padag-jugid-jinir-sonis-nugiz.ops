@@ -1,0 +1,21 @@
+- op: create  # 9fa0
+  at: '2026-09-27T23:37:40Z'  # 9fa0
+  by: agent  # 9fa0
+  actor: jgstern_agent  # 9fa0
+  clock: 1  # 9fa0
+  nonce: 9fa0  # 9fa0
+  data:  # 9fa0
+    kind: work_item  # 9fa0
+    title: "CI pip-audit: the two 'permanent' ignores (pytest CVE-2025-71176, pip CVE-2026-3219) match nothing in rebuilt audit envs -- drop them once the runner env is measured"  # 9fa0
+    status: todo_hard  # 9fa0
+    priority: 3  # 9fa0
+    parent:  # 9fa0
+    tags:  # 9fa0
+    - security  # 9fa0
+    - ci  # 9fa0
+    isbefore: []  # 9fa0
+    duplicate_of: []  # 9fa0
+    not_duplicate_of: []  # 9fa0
+    pr_ref:  # 9fa0
+    description: "The two CI pip-audit ignores treated as permanent, CVE-2025-71176 (pytest TOCTOU) and CVE-2026-3219 (pip archive confusion), matched nothing in the two audit environments rebuilt on 2026-09-27 for WI-totak (~/hypergumbo_lab_notebook/totak_09272026/{ci,rel}_noign.json). There, an audit with NO ignores exits 0: pytest resolves to 9.0.3 (core[dev] pins pytest~=9.0.2; the syrupy <9 cap that motivated the ignore no longer holds it back) and pip to 26.2.1. Both exit plans in ci.yml's comments are met in those envs.\n\nNOT CHECKED: the self-hosted runner's actual audit env (setup-python toolcache, which can carry packages from other jobs). That is the env the ignores protect, so it is the one to measure.\n\nTo do: drop both ids from the four lists (tests/test_audit_ignore_lists.py keeps them in step) and let the PR's own CI audit job be the measurement; if it fails, the failure names what the runner still carries."  # 9fa0
+    fields: {}  # 9fa0

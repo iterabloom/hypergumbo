@@ -218,9 +218,11 @@ class TestOverlayLoading:
         """THE DISCRIMINATOR, and why the fix above is a skip rather than a
         softening. ``language: pyton`` is a typo, and silently ignoring it
         leaves the author believing their rows applied — the fail-quiet
-        direction this gate exists to avoid. A language that names no shipped
-        catalogue at all cannot be "somebody else's overlay", because there is
-        no run in which it would ever apply.
+        direction this gate exists to avoid. A language no analyzer produces
+        cannot be "somebody else's overlay", because there is no run in which
+        it would ever apply. (A language an analyzer produces but no catalogue
+        ships, such as ruby, is a real overlay target since WI-guhuv; see
+        ``test_io_overlay_uncatalogued_language.py``.)
         """
         overlay = _write(tmp_path, "typo.yaml", """\
             language: pyton
@@ -610,10 +612,19 @@ class TestTheCliContract:
         """The whole point, end to end. Both arms in one test so the BEFORE
         cannot silently rot into a passing zero."""
         repo = self._fixture(tmp_path)
-        example = (
+        shipped = (
             Path(__file__).resolve().parents[1]
             / "src" / "hypergumbo_core" / "io_primitives_overlays"
             / "python-http-clients.yaml"
+        )
+        # A copy the operator VOUCHES for: the shipped file declares
+        # provenance: community, and --no-default-overlays (used below to
+        # keep the BEFORE arm honest) omits every community file, named or
+        # not (ADR-0061 ruling 5, INV-fikoh). Deleting the line is the act of
+        # vouching (ruling 3).
+        example = tmp_path / "python-http-clients.yaml"
+        example.write_text(
+            shipped.read_text().replace("provenance: community\n", ""),
         )
         assert self._net_send(repo, None) == 0, (
             "requests.post produced a net_send chain WITHOUT an overlay — "

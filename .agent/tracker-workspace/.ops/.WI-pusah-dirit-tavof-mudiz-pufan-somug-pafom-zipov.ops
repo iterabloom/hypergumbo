@@ -1,0 +1,22 @@
+- op: create  # dc93
+  at: '2026-10-03T17:33:44Z'  # dc93
+  by: agent  # dc93
+  actor: jgstern_agent  # dc93
+  clock: 1  # dc93
+  nonce: dc93  # dc93
+  data:  # dc93
+    kind: work_item  # dc93
+    title: "go grpc.NewClient (community overlay) is rowed net_send but builds an IDLE ClientConn; the overlay rows no RPC send at all, so it must be relocated to Invoke/NewStream before it is demoted"  # dc93
+    status: todo_hard  # dc93
+    priority: 3  # dc93
+    parent:  # dc93
+    tags:  # dc93
+    - catalogue  # dc93
+    - io_boundary  # dc93
+    - go  # dc93
+    isbefore: []  # dc93
+    duplicate_of: []  # dc93
+    not_duplicate_of: []  # dc93
+    pr_ref:  # dc93
+    description: "Found by the WI-vafad tranche 3 sweep (docs/audits/0022, candidate T3-A3). Both blind GO workers reached it independently, and the verifier verified it in grpc-go source.\n\nTHE ROW. io_primitives_overlays/go-x-sys-and-grpc.yaml:86-89 (community tier) rows `google.golang.org/grpc` [Dial, DialContext, NewClient] under net_send, note \"gRPC client connection\". NewClient builds a ClientConn in IDLE mode and contacts nothing (grpc-go clientconn.go:183-). Dial / DialContext \"call NewClient and then exit idle mode\" (:263-300), so they at least start connecting; the verifier REJECTED their removal on parity with go net.Dial (go.yaml:262) and c connect (net_send). NewClient is the recommended API, and it is a constructor rowed under a transfer boundary: a member of INV-gujoh's family that the 2026-09-08 ctor scan did not reach, because it scanned base catalogues and this row lives in an overlay.\n\nDO NOT SIMPLY REMOVE IT. The overlay rows nothing BUT these three constructors. A gRPC client's actual sends (ClientConn.Invoke, ClientConn.NewStream, and the generated stubs that call them) are unrowed, so deleting NewClient would leave every NewClient-based client's egress represented NOWHERE (the false-all-clear direction; WI-lunav's rule). Fix shape: row the send first, check it is reachable through the go analyzer's receiver typing, then demote NewClient. Pay ADR-0049 ruling 3 per finding.\n\nPriority is low: this is a community-overlay row (unvouched by construction, ADR-0047 ruling 6)."  # dc93
+    fields: {}  # dc93

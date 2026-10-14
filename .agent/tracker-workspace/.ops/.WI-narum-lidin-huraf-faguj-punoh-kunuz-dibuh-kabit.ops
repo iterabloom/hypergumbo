@@ -1,0 +1,71 @@
+- op: create  # a338
+  at: '2026-09-28T02:27:52Z'  # a338
+  by: agent  # a338
+  actor: jgstern_agent  # a338
+  clock: 1  # a338
+  nonce: a338  # a338
+  data:  # a338
+    kind: work_item  # a338
+    title: "test_a_hangup_is_named_too timed out (30s, SIGHUP'd action never exited) in a loaded smart-test run; passes alone in 1.7s"  # a338
+    status: todo_hard  # a338
+    priority: 3  # a338
+    parent:  # a338
+    tags:  # a338
+    - test_infra  # a338
+    - flaky_test  # a338
+    - ci_infrastructure  # a338
+    isbefore: []  # a338
+    duplicate_of: []  # a338
+    not_duplicate_of: []  # a338
+    pr_ref:  # a338
+    description: "FOUND 2026-09-27 during a 287-file targeted smart-test run (8,779 passed, 1 failed) on branch jgstern-agent/fix/haskell-rows-that-cross-nothing, which changes only haskell.yaml and adds one test; nothing auto-pr related was touched.\n\n  tests/test_autopr_signal_termination.py::test_a_hangup_is_named_too\n  subprocess.TimeoutExpired: Command ['bash', .../act.sh] timed out after 30 seconds   (the proc.wait(timeout=30) at test line 149)\n\nRe-run alone immediately after: the file's 8 tests pass in 1.70s. So under a loaded xdist run the SIGHUP'd action script did not exit within 30s, while its normal exit takes well under a second.\n\nNOT DIAGNOSED. The harness waits for READY and for the .git/armed marker before signalling, so \"signalled before the trap was installed\" is ruled out by construction as far as the test's own comment claims; that was not re-verified. 30s is far above any plausible scheduling delay, so a lost or deferred trap (bash defers a trap while waiting on a foreground child) is more likely than slowness, and would be a real defect in the fixture or in _autopr_install_traps' SIGHUP path rather than noise. First step: loop the single test under load (e.g. beside a full smart-test) and capture the script's stderr on timeout."  # a338
+    fields: {}  # a338
+- op: discuss  # c598
+  at: '2026-09-28T02:40:02Z'  # c598
+  by: agent  # c598
+  actor: jgstern_agent  # c598
+  clock: 2  # c598
+  nonce: c598  # c598
+  message: "SECOND INSTANCE, same shape, 2026-09-27 on branch jgstern-agent/fix/erlang-application-lifecycle (a YAML-only change): in a loaded 287-file targeted run (8,775 passed, 2 failed), tests/test_watcher_lifecycle.py::TestLauncherNamesTheOwner::test_owner_pid_comes_from_the_harness_variable failed with 'AssertionError: launcher did not start a watcher', beside a repeat of test_a_hangup_is_named_too. Both files re-run alone immediately after: 38 passed in 5.50s. Two auto-pr process-lifecycle tests that spawn a child and wait on it, both failing only under load, suggests the fixtures' waits (30s proc.wait; the launcher's watcher-start check) assume an unloaded machine, or a shared resource between them. Not diagnosed."  # c598
+- op: discuss  # 97da
+  at: '2026-09-29T18:56:57Z'  # 97da
+  by: agent  # 97da
+  actor: jgstern_agent  # 97da
+  clock: 3  # 97da
+  nonce: 97da  # 97da
+  message: "Recurred 2026-09-29, twice: loaded smart-test runs of 616 and ~2000 test files both failed test_a_hangup_is_named_too at proc.wait(timeout=30); run alone it passes 8/8 in 6 s. Same shape as filed."  # 97da
+- op: discuss  # 99fd
+  at: '2026-09-30T01:46:07Z'  # 99fd
+  by: agent  # 99fd
+  actor: jgstern_agent  # 99fd
+  clock: 4  # 99fd
+  nonce: 99fd  # 99fd
+  message: "Seen again 2026-09-29 on the WI-nopam branch: 3 failed of 23,416 in a 775-file targeted run (2 were real and fixed); test_a_hangup_is_named_too failed under load (subprocess wait timeout=30) and passed alone (8/8). Nothing auto-pr related was touched."  # 99fd
+- op: discuss  # 2271
+  at: '2026-09-30T14:08:46Z'  # 2271
+  by: agent  # 2271
+  actor: jgstern_agent  # 2271
+  clock: 5  # 2271
+  nonce: '2271'  # 2271
+  message: "Seen again 2026-09-30 in the WI-lidof smart-test run (660 files, -n 6, 24m45s): test_a_hangup_is_named_too TimeoutExpired after 30s; 21981 other tests passed. Re-run alone via smart-test: all 8 tests in test_autopr_signal_termination.py pass (exit 0). Same shape as filed: load-only."  # 2271
+- op: discuss  # aef2
+  at: '2026-09-30T15:12:46Z'  # aef2
+  by: agent  # aef2
+  actor: jgstern_agent  # aef2
+  clock: 6  # aef2
+  nonce: aef2  # aef2
+  message: "Again 2026-09-30 in a second loaded run (666 files, 23m10s): test_a_hangup_is_named_too TimeoutExpired 30s, 19208 others passed. 2 of 2 loaded runs today, 0 of 1 alone -- under load it is no longer intermittent here."  # aef2
+- op: discuss  # 98c2
+  at: '2026-09-30T23:23:05Z'  # 98c2
+  by: agent  # 98c2
+  actor: jgstern_agent  # 98c2
+  clock: 7  # 98c2
+  nonce: 98c2  # 98c2
+  message: "Again 2026-09-30, the 3rd and 4th loaded smart-test runs of the day (INV-hopib 804 files; WI-dorus 839 files, 37 min): test_a_hangup_is_named_too TimeoutExpired 30s each time, every other test passing. 4 of 4 loaded runs today, 0 of 1 alone."  # 98c2
+- op: discuss  # 847f
+  at: '2026-10-01T23:46:23Z'  # 847f
+  by: agent  # 847f
+  actor: jgstern_agent  # 847f
+  clock: 8  # 847f
+  nonce: 847f  # 847f
+  message: "CANDIDATE DIAGNOSIS from WI-zimor (2026-10-01): an inherited SIG_IGN for SIGHUP, from launching smart-test under `nohup`. I have not verified it with a passing run under the board.\nObserved: test_a_hangup_is_named_too failed (TimeoutExpired 30s) in BOTH of my 481-file targeted runs. I launched both as `nohup slot run test ... &`, which is the detached pattern LIVE section 6 prescribes. Every other test passed (16,635 and 16,636 passed).\nMechanism: nohup sets SIGHUP to SIG_IGN. That disposition is inherited through slot, smart-test, pytest and subprocess.Popen: Python's restore_signals resets only SIGPIPE/SIGXFZ/SIGXFSZ, not SIGHUP. POSIX: a signal that was ignored on entry to a non-interactive shell cannot be trapped or reset, so act.sh's HUP trap never fires, the child never exits, and proc.wait(timeout=30) expires.\nMinimal repro (this box): nohup bash -c 'bash -c \"trap \\\"echo TRAPPED; exit 129\\\" HUP; kill -HUP \\$\\$; echo NOT-KILLED\"; echo rc=$?' prints NOT-KILLED rc=0. The same command without nohup prints TRAPPED rc=129.\nThis would explain \"fails loaded, passes alone\": the loaded runs are the detached/nohup ones, and the alone re-runs are foreground. It is not about load.\nSuggested fix (not made; out of my scope): in the test's Popen calls (lines 127 and 266), reset the disposition in the child, e.g. preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_DFL). Do not change auto-pr: ignoring SIGHUP under nohup is what the user asked for.\nCheck before closing: run the file under nohup with and without the fix, and confirm it fails without the fix and passes with it."  # 847f

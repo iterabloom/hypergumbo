@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Library signatures for third-party drop-ins of Python standard-library
+# modules.
+#
+# A COMMUNITY companion of python.yaml (ADR-0061), the signature-side twin of
+# the io community overlay python-web-and-orm.yaml, which rows the same
+# drop-ins. These rows describe third-party packages, ship without being
+# vouched for, and only ADD: a row here takes a key only when python.yaml left
+# it free, and the user's library_signatures.d rows still win over both.
+#
+# `retrieved` is the date these rows were last checked against the package's
+# own source.
+provenance: community
+retrieved: 2026-10-03
+language: python
+signatures:
+  # WI-kozaj, the mirror of python.yaml's csv.writer row. SURFACE READ
+  # (raphaelm/defusedcsv, defusedcsv/csv.py): `writer(csvfile, ...)` returns
+  # `_ProxyWriter(csv.writer(...))`, whose writerow / writerows escape each
+  # field and pass it to the stdlib writer.
+  defusedcsv.csv.writer: defusedcsv.csv._ProxyWriter

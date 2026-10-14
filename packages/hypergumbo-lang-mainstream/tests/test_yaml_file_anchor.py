@@ -73,12 +73,20 @@ class TestYamlFileAnchor:
         assert not any(p.endswith("roles/web/tasks/main.yml") for p in paths)
         assert len(files) == 1
 
-    def test_root_yaml_excluded_as_ansible_claimed(self, tmp_path: Path) -> None:
-        # find_ansible_files claims any root-level .yaml/.yml, so this
-        # analyzer skips it (yaml_ansible owns it). Regression guard on the
+    def test_root_playbook_excluded_as_ansible_claimed(self, tmp_path: Path) -> None:
+        # find_ansible_files claims a root-level playbook, so this analyzer
+        # skips it (yaml_ansible owns it). Regression guard on the
         # subtraction.
-        (tmp_path / "top.yaml").write_text("k: v\n")
+        (tmp_path / "site.yaml").write_text("- hosts: all\n")
         assert _file_nodes(analyze_yaml(tmp_path)) == []
+
+    def test_root_non_playbook_yaml_gets_yaml_anchor(self, tmp_path: Path) -> None:
+        # WI-jifog: a root-level YAML that is not a playbook (here the shape
+        # of a .yamllint.yaml) is generic YAML, not Ansible; it gets exactly
+        # one language="yaml" anchor.
+        (tmp_path / ".yamllint.yaml").write_text("extends: default\nrules: {}\n")
+        files = _file_nodes(analyze_yaml(tmp_path))
+        assert [(f.name, f.language) for f in files] == [(".yamllint.yaml", "yaml")]
 
     def test_non_yaml_files_ignored(self, tmp_path: Path) -> None:
         (tmp_path / "conf").mkdir()

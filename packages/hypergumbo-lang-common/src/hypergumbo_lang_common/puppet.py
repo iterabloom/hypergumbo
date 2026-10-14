@@ -29,6 +29,15 @@ Edges Extracted
   (evidence_type ``notify``, meta ref_construct ``puppet_notify`` and
   ``refresh: True``) attributes
 
+Identity
+--------
+Every symbol mints ``make_doc_symbol_ids`` with the scopes enclosing it: a
+class, defined type or node definition by its name, a conditional branch
+(``if $x``, ``elsif``, ``else``, ``unless``, a case option) by its prelude.
+``file { '/tmp/x': }`` in ``class a`` and in ``class b`` are two identities,
+and deleting the first class moves nothing (INV-punig; ADR-0035 §1, scheme
+v9). A top-level declaration hashes no scope and keeps its value.
+
 Why This Design
 ---------------
 - Puppet is widely used for infrastructure management
@@ -42,11 +51,14 @@ from __future__ import annotations
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_doc_symbol_ids, make_file_id, populate_docstrings_from_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult, TreeSitterAnalyzer, ancestor_labels, block_prelude, make_doc_symbol_ids,
+    make_file_id, populate_docstrings_from_tree,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -56,6 +68,32 @@ if TYPE_CHECKING:
 
 
 PASS_ID = make_pass_id("puppet")
+
+#: Definitions that open a NAMED scope, and the child naming each.
+_NAMED_SCOPES = {
+    "class_definition": ("identifier",),
+    "defined_resource_type": ("class_identifier", "identifier"),
+    "node_definition": ("node_name",),
+}
+
+
+def _scope_label(node: "tree_sitter.Node") -> Optional[str]:
+    """The scope an ancestor opens: a class, defined type or node definition
+    by its name (so its parameters and ``inherits`` stay out of the chain); a
+    conditional branch (``if $x``, ``elsif``, ``else``, ``unless``, a case
+    option) by what precedes its block."""
+    name_types = _NAMED_SCOPES.get(node.type)
+    if name_types is not None:
+        for child in node.children:
+            if child.type in name_types:
+                return _get_node_text(child).strip("'\"")
+        return None  # pragma: no cover - a definition always has a name
+    return block_prelude(node)
+
+
+def _scope(node: "tree_sitter.Node") -> list[str]:
+    """The definitions and branches enclosing ``node``, outermost first."""
+    return ancestor_labels(node, _scope_label)
 
 
 
@@ -167,6 +205,7 @@ class _PuppetExtractor:
         # node.id stays byte-identical to the old raw composite.
         symbol_id, stable_id = make_doc_symbol_ids(
             "puppet", rel_path, "class", class_name, span.start_line, span.end_line,
+            _scope(node),
         )
 
         # Register class for edge creation
@@ -222,6 +261,7 @@ class _PuppetExtractor:
         # node.id stays byte-identical to the old raw composite.
         symbol_id, stable_id = make_doc_symbol_ids(
             "puppet", rel_path, "defined_type", type_name, span.start_line, span.end_line,
+            _scope(node),
         )
 
         param_str = ", ".join(params) if params else ""
@@ -299,6 +339,7 @@ class _PuppetExtractor:
         # node.id stays byte-identical to the old raw composite.
         symbol_id, stable_id = make_doc_symbol_ids(
             "puppet", rel_path, "resource", name, span.start_line, span.end_line,
+            _scope(node),
         )
 
         symbol = Symbol(
@@ -385,6 +426,7 @@ class _PuppetExtractor:
         # node.id stays byte-identical to the old raw composite.
         symbol_id, stable_id = make_doc_symbol_ids(
             "puppet", rel_path, "node", node_name, span.start_line, span.end_line,
+            _scope(node),
         )
 
         symbol = Symbol(

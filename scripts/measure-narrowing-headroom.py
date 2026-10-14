@@ -69,10 +69,18 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent
-                      / "packages" / "hypergumbo-core" / "src"))
+# WHICH TREE'S SELECTOR RUNS IS CHOSEN, NEVER INHERITED (WI-tumog). This used
+# to insert this tree's core at sys.path[0] unconditionally, so a PYTHONPATH
+# naming another tree was ignored and an A/B of two selector versions measured
+# this tree twice. ``measure_code_tree`` refuses when the two disagree; the
+# report names the tree it ran first. Appended: the helper shadows nothing.
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.append(str(Path(__file__).resolve().parent))
+import measure_code_tree
 
-from hypergumbo_core.selection_index import open_index, select_tests
+_PIN = measure_code_tree.pin(__file__, "core")
+
+from hypergumbo_core.selection_index import open_index, select_tests  # noqa: E402
 
 ROOT = Path(
     subprocess.run(["git", "rev-parse", "--show-toplevel"],  # noqa: S607
@@ -189,5 +197,6 @@ def report(base: str) -> None:
         print("  narrowing permitted")
 
 
+measure_code_tree.announce(_PIN, "[narrowing]")
 for ref in (sys.argv[1:] or ["origin/dev"]):
     report(ref)

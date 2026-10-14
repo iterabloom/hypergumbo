@@ -154,11 +154,14 @@ class TestOverlayPathsAreAnOrdinaryPreference:
         cfg = load_layered_config(
             repo_root=repo, environ={"XDG_CONFIG_HOME": str(tmp_path / "e")},
         )
-        assert cfg.io_primitives == [repo / "ov.yaml"]
+        assert cfg.in_repo_io_primitives == [repo / "ov.yaml"]
 
-    def test_project_tier_outranks_user_tier(self, tmp_path: Path) -> None:
-        """Ascending precedence, matching _resolve_io_overlays' own contract
-        that a later path wins on qualified-name collision."""
+    def test_the_project_tier_is_kept_apart_from_the_user_tier(
+        self, tmp_path: Path,
+    ) -> None:
+        """ADR-0061 ruling 4 (INV-hamin): the project tier's catalogue paths
+        are IN-REPO data, which loads only on opt-in, so they never merge into
+        the user's list -- the opt-in gate needs them separate to gate them."""
         xdg = tmp_path / "xdg"
         _write(xdg / "hypergumbo" / "config.toml", 'io_primitives = ["u.yaml"]\n')
         repo = tmp_path / "repo"
@@ -166,10 +169,8 @@ class TestOverlayPathsAreAnOrdinaryPreference:
         cfg = load_layered_config(
             repo_root=repo, environ={"XDG_CONFIG_HOME": str(xdg)},
         )
-        assert cfg.io_primitives == [
-            xdg / "hypergumbo" / "u.yaml",
-            repo / "p.yaml",
-        ]
+        assert cfg.io_primitives == [xdg / "hypergumbo" / "u.yaml"]
+        assert cfg.in_repo_io_primitives == [repo / "p.yaml"]
 
 
 class TestFailuresAreLoud:
@@ -231,9 +232,9 @@ class TestTheConfigTierActuallyReachesTheOverlayResolver:
     this one asserts the join.
     """
 
-    def test_config_paths_land_below_claims_and_flag_paths(
-        self, tmp_path: Path,
-    ) -> None:
+    def _resolve(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, opt_in: bool,
+    ) -> "list[Path]":
         import argparse
 
         from hypergumbo_core.cli import _resolve_io_overlays
@@ -245,23 +246,29 @@ class TestTheConfigTierActuallyReachesTheOverlayResolver:
             xdg / "hypergumbo" / "config.toml",
             'io_primitives = ["from_user.yaml"]\n',
         )
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        return _resolve_io_overlays(
+            argparse.Namespace(io_primitives=["from_flag.yaml"],
+                               in_repo_catalogues=opt_in),
+            [Path("from_claims.yaml")],
+            repo_root=repo,
+        )
 
-        import os
+    def test_the_project_tier_is_not_loaded_without_an_opt_in(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """ADR-0061 ruling 4 (INV-hamin): the repository's own catalogue
+        data waits for the operator."""
+        got = self._resolve(tmp_path, monkeypatch, opt_in=False)
+        assert [p.name for p in got] == [
+            "from_user.yaml", "from_claims.yaml", "from_flag.yaml",
+        ]
 
-        prior = os.environ.get("XDG_CONFIG_HOME")
-        os.environ["XDG_CONFIG_HOME"] = str(xdg)
-        try:
-            got = _resolve_io_overlays(
-                argparse.Namespace(io_primitives=["from_flag.yaml"]),
-                [Path("from_claims.yaml")],
-                repo_root=repo,
-            )
-        finally:
-            if prior is None:
-                os.environ.pop("XDG_CONFIG_HOME", None)
-            else:
-                os.environ["XDG_CONFIG_HOME"] = prior
-
+    def test_config_paths_land_below_claims_and_flag_paths(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        got = self._resolve(tmp_path, monkeypatch, opt_in=True)
         # Ascending precedence: user < project < claims < flag.
         assert [p.name for p in got] == [
             "from_user.yaml",

@@ -1,0 +1,39 @@
+- op: create  # a053
+  at: '2026-10-13T05:18:07Z'  # a053
+  by: agent  # a053
+  actor: jgstern_agent  # a053
+  clock: 1  # a053
+  nonce: a053  # a053
+  data:  # a053
+    kind: invariant  # a053
+    title: "Members of nested same-name owners (scala/kotlin/csharp/swift methods, fields, classes) hash the nearest owner only: deleting an earlier outer type moves survivors' stable_ids"  # a053
+    status: violated  # a053
+    priority: 2  # a053
+    parent:  # a053
+    tags:  # a053
+    - schema  # a053
+    - analysis_quality  # a053
+    isbefore: []  # a053
+    duplicate_of: []  # a053
+    not_duplicate_of: []  # a053
+    pr_ref:  # a053
+    description: "FOUND 2026-10-13 by WI-tusad B6 (analogue check), reproduced on dev f5b3e71949.\n\nDEFECT. In Scala, Kotlin, C# and Swift, methods and fields hash a qualified name holding only the NEAREST owner (scala _get_enclosing_type, csharp/kotlin/swift full_name = \"<nearest class>.<member>\"), and class ids come from the backstop table formula (kind, language, path, bare name). So members of two nested same-name owners (class A { class Inner { go } } / class B { class Inner { go } }) tie, and split_within_file_stable_id_collisions numbers them by emission order. Deleting the earlier outer type moves the survivor's id.\n\nREPRO (scratchpad fixes/tusad/b6/nested/probe.py: hypergumbo run with and without class A, A's lines blanked, per-symbol (kind, name, line, col) match): scala method Inner.go + field Inner.v MOVE; kotlin class Inner + method Inner.go + field Inner.v MOVE; csharp class Inner + method Inner.Go + field Inner.f MOVE; swift class Inner + method Inner.go MOVE. java and dart: nothing moves. The B6 member kinds (scala object, csharp property, swift computed property) hash the full chain and do NOT move.\n\nFIX SHAPE: hash the full owner chain (scala _scala_scope_chain; csharp/kotlin/swift type-ancestor helpers) for methods/fields; the class part is the B4 carry item (qualify table-kind names in nested scopes). Changes already-computed ids: belongs in the WI-tusad scheme-bump batch. Top-level-class members keep their values if the chain omits the namespace/package (chain == nearest owner there)."  # a053
+    fields:  # a053
+      statement: "Deleting an earlier same-name sibling scope never moves another symbol's stable_id (ADR-0035 §1)"  # a053
+      root_cause: "method/field producers pass the nearest-owner name as qualified_name; class ids use the name-only table formula; same-name ties are occurrence-split by emission order"  # a053
+- op: update  # c21d
+  at: '2026-10-13T22:37:43Z'  # c21d
+  by: agent  # c21d
+  actor: jgstern_agent  # c21d
+  clock: 2  # c21d
+  nonce: c21d  # c21d
+  set:  # c21d
+    status: satisfied  # c21d
+    pr_ref: '1571'  # c21d
+- op: discuss  # 4602
+  at: '2026-10-13T22:37:45Z'  # 4602
+  by: agent  # 4602
+  actor: jgstern_agent  # 4602
+  clock: 3  # 4602
+  nonce: '4602'  # 4602
+  message: "SATISFIED by PR #1571 (merge 3c9f03a81f, the WI-tusad stable_id scheme bump to hypergumbo-stableid-v9). Root cause: Scala/Kotlin/C#/Swift members passed the nearest-owner emitted name (`Inner.go`) as qualified_name and classes took the backstop's bare-name table key, so A.Inner.go / B.Inner.go tied and the per-file split numbered them by emission order. Fix (F2, in the bump): members hash every enclosing scope that can repeat within a file (_scala_scope incl. block packages, _kotlin_scope, _csharp_scope incl. block namespaces, _swift_scope); nested types mint overload_arity.scoped_table_stable_id; F3 added the C# property under nested same-name namespaces (it hashed the innermost namespace only and tied). Top-level types and their members keep their v8 values. EVIDENCE (behavioural, merged dev): (1) the filed repro re-run unchanged, scratchpad fixes/tusad/b6/nested/probe.py (hypergumbo run with and without class A, A blanked, per-symbol (kind,name,line,col)): scala survivors 4 moved [], kotlin 4 moved [], csharp 5 moved [], swift 4 moved [], java 4 moved [], dart 3 moved [] (filed: scala/kotlin/csharp/swift MOVED). (2) multi-line nested-owner cases via `hypergumbo run --include-docs` on dev 3c9f03a81f (f3/live/live.py): scala 4/4, kotlin 4/4, csharp 5/5, swift 4/4 survivors same id, 0 moved, 0 null; C# nested namespaces with a property 3/3 same. Gate: test_stable_id_floor_gate SCOPE_CASES scala/kotlin/csharp/csharp-namespace/csharp-namespace-nested/swift-nested pass (sibling_deletion_moves [])."  # 4602

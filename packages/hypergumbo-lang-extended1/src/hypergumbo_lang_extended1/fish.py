@@ -26,19 +26,27 @@ Why This Design
 - TreeSitterAnalyzer eliminates ~150 lines of boilerplate
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-language-pack for Fish grammar
+- Identity (ADR-0035 §1, scheme v9; INV-punig): a function, alias or global
+  variable defined inside a function hashes the chain of functions around it
+  (``overload_arity.nested_qualified_name``), as Bash's nested functions do, so
+  ``function inner`` in ``outer_a`` and in ``outer_b`` are two identities and
+  deleting ``outer_a`` moves nothing. Fish makes such a definition global when
+  its outer function runs; the chain says where it is written. A top-level
+  symbol hashes no chain and keeps its value.
 - Fish is a popular shell alternative with many users
 - Enables analysis of Fish configurations for DevOps/automation
 """
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     SymbolsAt,
     TreeSitterAnalyzer,
+    ancestor_labels,
     iter_tree,
     make_symbol_id,
     make_unresolved_edge,
@@ -49,6 +57,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import nested_qualified_name
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -75,10 +84,20 @@ def _find_children_by_type(
     return [child for child in node.children if child.type == child_type]
 
 
+def _enclosing_functions(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The names of the functions whose bodies hold ``node``, outermost first."""
+    def label_of(ancestor: "tree_sitter.Node") -> Optional[str]:
+        if ancestor.type != "function_definition":
+            return None
+        words = _find_children_by_type(ancestor, "word")
+        return node_text(words[0], source) if words else None
+    return ancestor_labels(node, label_of)
+
+
 def _make_symbol(
     analyzer: "FishAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node",
     source: bytes, name: str, kind: str,
-    signature: Optional[str] = None, meta: Optional[dict] = None,
+    signature: Optional[str] = None, meta: Optional[dict[str, Any]] = None,
 ) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
@@ -101,6 +120,10 @@ def _make_symbol(
         origin_run_id=run_id,
         stable_id=analyzer.compute_stable_id(
             node, kind=kind, name=name,
+            # INV-punig (scheme v9): the functions this one is defined in, as
+            # Bash's nested functions hash them; empty at top level, where the
+            # value is unchanged.
+            qualified_name=nested_qualified_name(_enclosing_functions(node, source), name),
             # WI-bokab (v7): fold the declaring file's identity so two symbols
             # with the same (kind, name) in different files hash distinctly.
             # ``rel_path`` is the repo-relative path threaded down from
@@ -228,7 +251,7 @@ class FishAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

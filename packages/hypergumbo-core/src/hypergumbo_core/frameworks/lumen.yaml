@@ -5,6 +5,10 @@
 # Routes: $router->get('/path', handler), $app->get('/path', handler)
 # Shares many patterns with Laravel but lighter weight.
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-06-18
 id: lumen
 language: php
 

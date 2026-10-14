@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Infrastructure linker: resolve non-hierarchy ``x.foo()`` calls via a
-receiver-type-keyed candidate index (extension methods + UFCS free functions).
+"""Infrastructure linker: resolve extension-method and UFCS calls via a receiver-type index.
+
+It resolves non-hierarchy ``x.foo()`` calls through a receiver-type-keyed
+candidate index (extension methods plus UFCS free functions).
 
 Why this exists (INV-vigaf)
 ---------------------------
@@ -36,6 +38,10 @@ Analyzers do NOT resolve these calls themselves. They:
    free functions) — naming the type the callable attaches to; and
 2. emit the call site as an unresolved ``calls`` edge carrying
    ``receiver_type_hint`` (via ``make_unresolved_edge``).
+
+Current producers: Kotlin stamps ``extension_receiver`` and D stamps
+``ufcs_receiver_type``. The other languages listed above are not yet
+stamped by their analyzers, so this linker resolves nothing for them.
 
 This linker owns the receiver-type-keyed search. Resolution is gated to the
 call site's own ``src_lang`` (INV-milud: never cross-resolve across languages),

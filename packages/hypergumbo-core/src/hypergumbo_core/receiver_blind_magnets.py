@@ -16,20 +16,22 @@ analyzer's *bare-identifier* free-call path, but the real funnel is the
 *method-selector* path, which resolves through a separate ungated route — and
 nothing measured the finalized graph, so the gap survived per-analyzer unit
 tests. This module is the single, language-agnostic definition of "a
-receiver-blind magnet edge," shared by three consumers so they can never drift:
-the ``spec_validator`` content-gated check (whole-graph CI gate), the
-per-language fixture-matrix test (``run_analyzer`` output, pre-linker), and the
-real-repro survey harness.
+receiver-blind magnet edge," shared so its consumers can never drift: the
+finalize demotion (``demote_harmful_magnets``, finalize step 6c), the
+``spec_validator`` ``no_harmful_receiver_blind_magnets`` whole-graph check
+(``find_harmful_magnets``), and a Rust analyzer test that runs the raw detector
+on ``run_analyzer`` output.
 
 **How it distinguishes a magnet from a legitimate bind.** A legitimate
 resolution *knows the target type* and stamps it — either a receiver-aware
 ``evidence_type`` (``ast_call_type_inferred`` / ``ast_call_ufcs`` /
 ``ast_call_inherited`` — the Site-1/Site-2 recoveries and typed binds), or a
 ``meta.receiver`` marker (``typed_var`` / ``typed_field`` / ``field_chain`` /
-``external`` / ``stdlib`` for a typed/external receiver, or ``qualified`` for an
-explicitly-scoped/static ``Type::method`` call whose type the call site named),
+``external`` / ``constant_external`` / ``stdlib`` for a typed/external receiver,
+or ``qualified`` for an explicitly-scoped/static ``Type::method`` call whose
+type the call site named),
 or ``meta.resolution_quality`` other than ``"ambiguous"``. So a magnet is
-precisely a **resolved** ``calls`` edge to an
+precisely a **resolved** ``calls`` or ``dispatches_to`` edge to an
 **internal ``method``** that carries only the bare ``ast_call`` /
 ``ast_call_direct`` pathway, **no** receiver marker, is **not a framework route
 registration** (a handler bound by reference is a correct dispatch, not a
@@ -39,9 +41,23 @@ legitimate), and lands at or above ``min_confidence``. Everything the
 resolver understood about the receiver is excluded by construction, so genuine
 inherited-call recoveries (``ast_call_inherited``) and typed binds never trip.
 
+**What happens to a magnet.** Only two cleanly-harmful sub-classes are acted
+on (``_harmful_magnet_reason``): a production caller bound to a method defined
+in a test-support file, and a method whose short name is in
+``_STDLIB_INTERFACE_METHODS`` (PascalCase stdlib interface methods such as
+``Close`` / ``Parse`` / ``Len``, matched case-sensitively so Rust snake_case
+trait methods are not swept). ``demote_harmful_magnets`` runs at finalize,
+before edge resolution, and rewrites each such edge's ``dst`` to
+``{lang}:external:0-0:{method}:unresolved`` with
+``meta.resolution_quality='ambiguous'``. ``find_harmful_magnets`` is its
+non-mutating twin, which the validator runs on the finalized graph, so a
+survivor means a demotion regression. Every other magnet is a
+correct-but-unprovable bind that needs real type resolution (ADR-0012) and is
+kept.
+
 The reader is shape-tolerant (attribute *or* dict key) so the same function runs
-on live ``Symbol``/``Edge`` dataclasses (the validator, the fixture matrix) and
-on deserialized ``survey.json`` node/edge dicts (the survey harness).
+on live ``Symbol``/``Edge`` dataclasses (finalize, the validator) and on
+deserialized ``survey.json`` node/edge dicts.
 """
 from __future__ import annotations
 

@@ -1303,10 +1303,12 @@ class TestDdgTaintReaches:
         extractor never modelled leaves silence, and silence read as
         exhaustion is a confident negative built on no evidence at all.
 
-        Not hypothetical. ``cfg_nodes/go.yaml`` SELF-DOCUMENTS that
-        ``if err := do(); err != nil`` initializers are invisible to def/use,
-        and 700 of caddy's 6,596 ``if`` statements carry a call there. Every
-        one of those definitions arrives here as an empty index lookup.
+        Not hypothetical. ``cfg_nodes/go.yaml`` self-documented, until WI-losod
+        recorded header bindings, that ``if err := do(); err != nil``
+        initializers were invisible to def/use, and 700 of caddy's 6,596
+        ``if`` statements carried a call there. Every one of those definitions
+        arrived here as an empty index lookup; any construct the CFG still
+        does not record arrives the same way.
 
         The bare repro is the whole point: with an EMPTY index — the DDG
         holding nothing whatsoever — the walk must not return the value that
@@ -1840,7 +1842,7 @@ class TestUnrecordedHeirIsNotVouchedForByASibling:
 
     # L1 `cwd := src()`; L2 `a, b := cwd, cwd` — NO CALL; L3 `pkg.Print(a)`.
     # `b`'s own use sits in a construct the extractor never recorded (Go's
-    # range clause, WI-losod), so the DDG holds no entry for it.
+    # range clause was one until WI-losod), so the DDG holds no entry for it.
     _DEFS: ClassVar[dict] = {("f", 1): {"cwd"}}
     _PRINT: ClassVar[FunctionSummary] = FunctionSummary(
         function="pkg.Print", side_effect=True,
@@ -2379,10 +2381,11 @@ class TestPropagateTaintDdg:
         Regression for a verified false negative on caddy. Its
         ``printEnvironment`` binds ``for _, v := range os.Environ()`` and then
         calls ``fmt.Println(v)`` on the next line — an unmistakable flow. The
-        Go CFG mapping's loop hook never names the range clause, so ``v`` has
-        no definition in the DDG at all (WI-losod), and a walk that treats
-        "found no uses" as "there are none" concluded the literal next line was
-        unreachable.
+        Go CFG mapping's loop hook did not name the range clause (until
+        WI-losod), so ``v`` had no definition in the DDG at all, and a walk
+        that treats "found no uses" as "there are none" concluded the literal
+        next line was unreachable. The guard stays for every construct still
+        unrecorded.
 
         Absence of evidence is not evidence of absence: a source whose value
         the DDG never tracked must leave the flow to structural reachability.

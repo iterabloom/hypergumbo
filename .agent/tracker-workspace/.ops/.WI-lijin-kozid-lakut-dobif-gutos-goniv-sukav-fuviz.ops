@@ -1,0 +1,23 @@
+- op: create  # f04b
+  at: '2026-10-03T21:57:43Z'  # f04b
+  by: agent  # f04b
+  actor: jgstern_agent  # f04b
+  clock: 1  # f04b
+  nonce: f04b  # f04b
+  data:  # f04b
+    kind: work_item  # f04b
+    title: "javascript/typescript: new Foo() and the Express middleware chain still resolve an identifier by NAME repo-wide (class_resolver / global_symbols.get), the WI-sofuh mechanism at two sites its branch did not change"  # f04b
+    status: todo_hard  # f04b
+    priority: 3  # f04b
+    parent:  # f04b
+    tags:  # f04b
+    - javascript  # f04b
+    - typescript  # f04b
+    - call_graph  # f04b
+    - analysis_quality  # f04b
+    isbefore: []  # f04b
+    duplicate_of: []  # f04b
+    not_duplicate_of: []  # f04b
+    pr_ref:  # f04b
+    description: "FOUND 2026-10-03 while fixing WI-sofuh (branch jgstern-agent/fix/sofuh). The same mechanism WI-sofuh fixed for bare calls, callback arguments, object-literal values and shorthand properties -- an identifier resolved by NAME repo-wide instead of by the scope it appears in -- still runs at two js_ts sites the branch did not change (scope: measured what it shipped):\n\n1. `new Foo()` (`_extract_edges`, new_expression branch): `class_resolver.lookup(class_name)` over the name-keyed global class registry, no consult of the caller's own file or scopes. A file declaring `class Foo` and constructing it can bind to another file's `Foo`.\n2. The Express middleware chain (`app.post(p, auth, handler)`): `global_symbols.get(arg_name)` -- last-one-wins by name, no scope, no import, no same-file preference.\n\nFIX DIRECTION: route both through the branch's `_ScopeBinder` / `_resolve_value_ref` (a declaration in scope wins by position; a local value names nothing; only an unbound name reaches the name lookups). Measure by call site on a JS corpus repo as WI-sofuh did."  # f04b
+    fields: {}  # f04b

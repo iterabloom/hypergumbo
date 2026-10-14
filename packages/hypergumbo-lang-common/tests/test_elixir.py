@@ -597,8 +597,13 @@ end
         # The alias branch's own confidence, not the retired bare-name path's.
         assert resolver_edges[0].confidence == 0.85
 
-    def test_dot_call_outside_function_ignored(self, tmp_path: Path) -> None:
-        """Module-qualified call at module level (not inside def) is ignored."""
+    def test_dot_call_outside_function_is_anchored_on_the_module(self, tmp_path: Path) -> None:
+        """A module-qualified call at module level is anchored on its module.
+
+        This test used to pin "ignored" (no call edges from module-level
+        code), which is the defect WI-dokib names: 101 of 225 atom call sites
+        on phoenix emitted nothing because they sat in a module body or a
+        ``test`` block rather than in a ``def``."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "top_level.ex").write_text("""
@@ -610,9 +615,11 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        # Should not crash, and no call edges from module-level code
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        assert len(call_edges) == 0
+        assert len(call_edges) == 1, [(e.src, e.dst) for e in call_edges]
+        module = next(s for s in result.symbols if s.name == "TopLevel")
+        assert call_edges[0].src == module.id
+        assert call_edges[0].dst.split(":")[-2] == "info"
 
     def test_dot_call_aliased_module_resolver_uses_expanded_name(
         self, tmp_path: Path,
@@ -1007,7 +1014,8 @@ end
         get_ctx = next((c for c in result.usage_contexts if c.context_name == "get"), None)
         assert get_ctx is not None
         assert get_ctx.kind == "call"
-        assert get_ctx.metadata["route_path"] == "/users"
+        # Phoenix joins the route onto its enclosing scope path
+        assert get_ctx.metadata["route_path"] == "/api/users"
         assert get_ctx.metadata["http_method"] == "GET"
         assert get_ctx.metadata["controller"] == "UserController"
         assert get_ctx.metadata["action"] == "index"
@@ -1097,6 +1105,7 @@ class TestPhoenixRouteSymbols:
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use Phoenix.Router
   get "/users", UserController, :index
   post "/sessions", SessionController, :create
 end
@@ -1125,14 +1134,18 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use Phoenix.Router
   resources "/posts", PostController
 end
 ''')
         result = analyze_elixir(tmp_path)
 
         route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
-        # Phoenix resources creates 7 RESTful routes (same as Rails)
-        assert len(route_symbols) == 7
+        # Phoenix resources creates 8 routes: Rails' seven plus PUT update
+        assert len(route_symbols) == 8
+        assert {s.name for s in route_symbols
+                if s.meta["action"] == "update"} == {
+            "PATCH /posts/:id", "PUT /posts/:id"}
 
         routes_by_action = {s.meta["action"]: s for s in route_symbols}
 
@@ -1221,6 +1234,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use MyAppWeb, :router
   live "/settings", SettingsLive
   live "/users", UserLive.Index, :index
   live "/users/new", UserLive.Index, :new
@@ -1257,6 +1271,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use Phoenix.Router
   live "/users/:id/edit", UserLive.Edit, :edit
 end
 ''')
@@ -1643,12 +1658,12 @@ class TestElixirMultiClauseEdges:
         def handle_call(:get, _from, state), do: {:reply, state, state}
         def handle_call(:put, _from, state), do: {:noreply, state}
 
-    Each clause is a separate symbol. When function X calls handle_call,
-    edges should target ALL clauses, not just the last one.
+    The clauses of one name/arity are ONE function symbol (WI-tusad, the
+    Erlang shape), spanning every clause; a call of it reaches that symbol.
     """
 
     def test_call_to_multi_clause_function_targets_all_clauses(self, tmp_path: Path) -> None:
-        """Call to a function with multiple clauses creates edges to all clauses."""
+        """Three clauses of handle_call/3 are one symbol, and the call reaches it."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "server.ex").write_text('''
@@ -1676,13 +1691,14 @@ end
         handle_call_syms = [s for s in result.symbols if "handle_call" in s.name]
 
         assert dispatch_sym is not None
-        assert len(handle_call_syms) == 3, f"Should find 3 handle_call clauses, got {len(handle_call_syms)}"
+        assert len(handle_call_syms) == 1, f"Should fold 3 handle_call clauses into 1, got {len(handle_call_syms)}"
+        assert (handle_call_syms[0].span.start_line, handle_call_syms[0].span.end_line) == (3, 13)
 
         call_edges = [
             e for e in result.edges
             if e.edge_type == "calls" and e.src == dispatch_sym.id
         ]
-        # Should create edges to ALL 3 handle_call clauses
+        # The folded handle_call/3 is reached
         edge_dsts = {e.dst for e in call_edges}
         for clause_sym in handle_call_syms:
             assert clause_sym.id in edge_dsts, (
@@ -1691,7 +1707,7 @@ end
             )
 
     def test_cross_file_call_to_multi_clause(self, tmp_path: Path) -> None:
-        """Cross-file calls also target all clauses."""
+        """A cross-file call reaches the folded function."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "handler.ex").write_text('''
@@ -1721,7 +1737,7 @@ end
         process_syms = [s for s in result.symbols if "process" in s.name]
 
         assert run_sym is not None
-        assert len(process_syms) == 2
+        assert len(process_syms) == 1
 
         call_edges = [
             e for e in result.edges
@@ -1734,7 +1750,7 @@ end
             )
 
     def test_behaviour_callback_targets_all_clauses(self, tmp_path: Path) -> None:
-        """invokes_callback edges also target all clauses of a callback function."""
+        """The callback edge reaches the folded init/1 (both clauses)."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "server.ex").write_text('''
@@ -1756,7 +1772,7 @@ end
         init_syms = [s for s in result.symbols if "init" in s.name and s.kind == "function"]
 
         assert module_sym is not None
-        assert len(init_syms) == 2, f"Should find 2 init clauses, got {len(init_syms)}"
+        assert len(init_syms) == 1, f"Should fold 2 init clauses into 1, got {len(init_syms)}"
 
         callback_edges = [
             e for e in result.edges
@@ -1782,7 +1798,7 @@ class TestMultiClauseGuardExtraction:
     """
 
     def test_guarded_multi_clause_all_nodes_present(self, tmp_path: Path) -> None:
-        """Multi-clause def with when guards must appear as separate symbol nodes."""
+        """Guarded clauses of one arity fold into one node spanning both."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "naming.ex").write_text('''
@@ -1798,14 +1814,15 @@ end
         result = analyze_elixir(tmp_path)
 
         humanize_syms = [s for s in result.symbols if "humanize" in s.name and s.kind == "function"]
-        assert len(humanize_syms) == 2, (
-            f"Expected 2 humanize clauses, got {len(humanize_syms)}. "
+        assert len(humanize_syms) == 1, (
+            f"Expected 1 humanize function, got {len(humanize_syms)}. "
             f"All symbols: {[s.name for s in result.symbols]}"
         )
 
-        # Both should have the full module-qualified name
+        # The full module-qualified name, spanning both clauses
         for sym in humanize_syms:
             assert sym.name == "Phoenix.Naming.humanize"
+            assert (sym.span.start_line, sym.span.end_line) == (3, 8)
 
     def test_guarded_function_signature_includes_params(self, tmp_path: Path) -> None:
         """Guarded functions should still have correct parameter signatures."""
@@ -1825,9 +1842,9 @@ end
         result = analyze_elixir(tmp_path)
 
         parse_syms = [s for s in result.symbols if "parse" in s.name and s.kind == "function"]
-        assert len(parse_syms) == 2
+        assert len(parse_syms) == 1
 
-        # Each clause should have a signature with the parameter
+        # The folded function's signature (its first clause's) names the parameter
         for sym in parse_syms:
             assert sym.signature is not None, f"Missing signature for clause at line {sym.span.start_line}"
             assert "input" in sym.signature, f"Signature should contain 'input', got: {sym.signature}"
@@ -1847,11 +1864,11 @@ end
         result = analyze_elixir(tmp_path)
 
         format_syms = [s for s in result.symbols if "format" in s.name and s.kind == "function"]
-        assert len(format_syms) == 2
+        assert len(format_syms) == 1
         assert all("private" in s.modifiers for s in format_syms)
 
     def test_guarded_call_edges_target_all_clauses(self, tmp_path: Path) -> None:
-        """Call to a guarded multi-clause function creates edges to all clauses."""
+        """A call of a guarded multi-clause function reaches the folded node."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "converter.ex").write_text('''
@@ -1869,7 +1886,7 @@ end
         convert_syms = [s for s in result.symbols if "convert" in s.name and s.kind == "function"]
         process_sym = next((s for s in result.symbols if "process" in s.name), None)
 
-        assert len(convert_syms) == 2
+        assert len(convert_syms) == 1
         assert process_sym is not None
 
         call_edges = [
@@ -2339,6 +2356,7 @@ class TestPhoenixRouteAliasResolution:
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use MyAppWeb, :router
   alias MyAppWeb.UserController, as: UserCtrl
 
   get "/users", UserCtrl, :index
@@ -2359,6 +2377,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use Phoenix.Router
   alias MyAppWeb.Controllers.UserController
 
   get "/users", UserController, :index
@@ -2379,6 +2398,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use MyAppWeb, :router
   alias MyAppWeb.PostController, as: PC
 
   resources "/posts", PC
@@ -2387,8 +2407,8 @@ end
         result = analyze_elixir(tmp_path)
 
         route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
-        # resources creates 7 RESTful routes
-        assert len(route_symbols) == 7
+        # resources creates 8 routes (update on both PATCH and PUT)
+        assert len(route_symbols) == 8
 
         for route in route_symbols:
             assert route.meta["controller"] == "MyAppWeb.PostController"
@@ -2399,6 +2419,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use Phoenix.Router
   alias MyAppWeb.SessionController, as: SessCtrl
 
   post "/login", SessCtrl, :create
@@ -2418,6 +2439,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use MyAppWeb, :router
   get "/users", UserController, :index
 end
 ''')

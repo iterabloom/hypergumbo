@@ -52,3 +52,10 @@
   clock: 5  # 8b72
   nonce: 8b72  # 8b72
   message: "2026-09-06, taint-label concept audit (~/hypergumbo_lab_notebook/\nconcept-audit-taint-label_09062026.md, Pair 2): the disagreement this thread\nrecorded -- os.wait* / Child.wait(try_wait) minting untrusted_input on an exit\nstatus while call / check_call / system / Run / Command::status mint nothing --\nnow has an item, filed as the WI named in the reply below, sequenced behind\nWI-dozul (T2 of the arc tail) because the rule that decides it (is a far-side\nCHOICE a transfer?) is the rule WI-dozul was ruled on today and its cost is\nmeasured the same way. No row moves here.\n\nThe item: WI-lanos-busoj-lativ-minud-buton-vuviv-jihit-bumip."  # 8b72
+- op: discuss  # a495
+  at: '2026-10-03T15:42:04Z'  # a495
+  by: agent  # a495
+  actor: jgstern_agent  # a495
+  clock: 6  # a495
+  nonce: a495  # a495
+  message: "2026-10-03: the disagreement this thread recorded (os.wait* / Child.wait minting on an exit status while call / system / Run / Command::status mint nothing) is reconciled on WI-lanos-busoj-lativ-minud-buton-vuviv-jihit-bumip, the OMISSION way under WI-dozul's ruling (branch jgstern-agent/fix/lanos, not yet integrated). The CONTENTLESS_LAUNCHES control in test_subprocess_output_mints_a_source.py lost python call / os.system, rust Command.status, go Cmd.Run and c system (c is filed as WI-hifur-hulul-bikur-ridab-fozad-sagiv-dojuh-bogin); check_call, Cmd.Start, spawn, Popen, callProcess, createProcess stay as controls. subprocess.run now mints on its STATUS; its stdout half (this item's disclosed omission) is still not claimed, and the WI-lanos delta found 3 real captured-stdout flows rooted at run that the status row now reports incidentally."  # a495

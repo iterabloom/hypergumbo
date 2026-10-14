@@ -162,3 +162,101 @@ class TestScopeStackLocalShadowing:
 
     def test_empty_stack_lookup_enclosing_none(self):
         assert ScopeStack(frames=[]).lookup_enclosing("h") is None
+
+
+class TestScopeStackValueShadowed:
+    """INV-dulum: which import / builtin meanings are NOT live in this scope.
+
+    The walk is innermost-first, like ``lookup_enclosing``: the NEAREST frame
+    that binds a name decides, and a frame decides "shadowed" only when it binds
+    the name to a VALUE (``value_names``). A name a frame binds only by an
+    import or a ``global`` declaration (in ``local_names`` but not
+    ``value_names``) settles it as LIVE, so a further-out value binding of the
+    same name does not leak inward."""
+
+    def test_caller_value_binding_is_shadowed(self):
+        caller = Scope(
+            owner_id="c", bindings={},
+            local_names=frozenset({"socket"}), value_names=frozenset({"socket"}),
+        )
+        assert ScopeStack(frames=[caller]).value_shadowed() == {"socket"}
+
+    def test_enclosing_value_binding_reaches_inward(self):
+        outer = Scope(
+            owner_id="o", bindings={},
+            local_names=frozenset({"socket"}), value_names=frozenset({"socket"}),
+        )
+        caller = Scope(owner_id="c", bindings={})
+        assert ScopeStack(frames=[outer, caller]).value_shadowed() == {"socket"}
+
+    def test_a_nearer_import_binding_settles_the_name_live(self):
+        outer = Scope(
+            owner_id="o", bindings={},
+            local_names=frozenset({"socket"}), value_names=frozenset({"socket"}),
+        )
+        # caller imports socket (or declares it global): local, not a value.
+        caller = Scope(owner_id="c", bindings={}, local_names=frozenset({"socket"}))
+        assert ScopeStack(frames=[outer, caller]).value_shadowed() == frozenset()
+
+    def test_empty_stack_shadows_nothing(self):
+        assert ScopeStack(frames=[]).value_shadowed() == frozenset()
+
+    def test_result_is_memoized_per_stack(self):
+        caller = Scope(
+            owner_id="c", bindings={},
+            local_names=frozenset({"x"}), value_names=frozenset({"x"}),
+        )
+        stack = ScopeStack(frames=[caller])
+        assert stack.value_shadowed() is stack.value_shadowed()
+
+
+class TestScopeStackEnterSubscope:
+    """WI-safit: a lambda / comprehension extends the caller's frame for its
+    body. It is not a frame of its own because it is not a CALLER -- its calls
+    are attributed to the enclosing function, whose frame ``frames[-1]`` is."""
+
+    def _stack(self):
+        h = _fn("h")
+        outer = Scope(owner_id="o", bindings={"g": NestedDef(_fn("g"))})
+        caller = Scope(
+            owner_id="c", bindings={"h": NestedDef(h)},
+            local_names=frozenset({"a"}), value_names=frozenset({"a"}),
+        )
+        return ScopeStack(frames=[outer, caller]), h
+
+    def test_names_join_the_caller_frame_as_values(self):
+        stack, _ = self._stack()
+        sub = stack.enter_subscope({"len", "g"})
+        assert sub.frames[-1].local_names == {"a", "len", "g"}
+        assert sub.frames[-1].value_names == {"a", "len", "g"}
+        assert "len" in sub.value_shadowed()
+        # An enclosing nested def is shadowed by the subscope's parameter.
+        assert sub.lookup_enclosing("g") is None
+        assert stack.lookup_enclosing("g") is not None
+
+    def test_copy_on_write_leaves_the_original_untouched(self):
+        stack, h = self._stack()
+        before = stack.frames[-1]
+        sub = stack.enter_subscope({"len"})
+        assert stack.frames[-1] is before
+        assert before.local_names == {"a"}
+        assert "len" not in stack.value_shadowed()
+        # Owner and immediate bindings carry over: still the same caller.
+        assert sub.frames[-1].owner_id == "c"
+        assert sub.lookup_immediate("h") is h
+        assert sub.frames[0] is stack.frames[0]
+
+    def test_kill_switch_is_inherited(self):
+        caller = Scope(owner_id="c", bindings={})
+        stack = ScopeStack(frames=[caller], enclosing_lookup_enabled=False)
+        assert stack.enter_subscope({"x"}).enclosing_lookup_enabled is False
+
+    def test_no_new_names_returns_the_same_stack(self):
+        stack, _ = self._stack()
+        assert stack.enter_subscope(set()) is stack
+        assert stack.enter_subscope({"a"}) is stack
+
+    def test_empty_stack_gets_a_frame(self):
+        sub = ScopeStack(frames=[]).enter_subscope({"len"})
+        assert sub.value_shadowed() == {"len"}
+        assert sub.lookup_immediate("len") is None

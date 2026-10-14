@@ -1,0 +1,54 @@
+- op: create  # 3b38
+  at: '2026-10-13T05:18:12Z'  # 3b38
+  by: agent  # 3b38
+  actor: jgstern_agent  # 3b38
+  clock: 1  # 3b38
+  nonce: 3b38  # 3b38
+  data:  # 3b38
+    kind: invariant  # 3b38
+    title: "smart-test: a deleted test file stays in the targeted selection and the run collects 0 items yet reports green coverage"  # 3b38
+    status: violated  # 3b38
+    priority: 2  # 3b38
+    parent:  # 3b38
+    tags:  # 3b38
+    - ci  # 3b38
+    isbefore: []  # 3b38
+    duplicate_of: []  # 3b38
+    not_duplicate_of: []  # 3b38
+    pr_ref:  # 3b38
+    description: "FOUND 2026-10-13 by WI-tusad B6. A commit that DELETES a test file (git rm) leaves that path in smart-test's affected-test selection (.ci/affected-tests.txt listed packages/hypergumbo-lang-extended1/tests/test_zig_floor_stable_id.py after its git rm). The targeted run then collected 0 items (\"6 workers [0 items]\", \"no tests ran in 1.47s\"), exited 5, and printed \"COVERAGE: (all files at 100%)\": the whole 824-file run was silently skipped. Restoring the file made the same selection run 25,923 tests. Expected: deleted paths are dropped from the selection (or the run fails loudly naming them). Not investigated further: where in smart-test the selection is built from the diff."  # 3b38
+    fields:  # 3b38
+      statement: "A targeted smart-test run never silently collects zero tests"  # 3b38
+      root_cause: "not investigated: the selection keeps a git-rm'd test path and pytest collects nothing"  # 3b38
+- op: discuss  # 05c3
+  at: '2026-10-13T07:31:03Z'  # 05c3
+  by: agent  # 05c3
+  actor: jgstern_agent  # 05c3
+  clock: 2  # 05c3
+  nonce: 05c3  # 05c3
+  message: "Owner approved fixing this (2026-10-13), scheduled after WI-tusad B7 and before the WI-tusad final scheme-bump batch, which will move/delete test files. Scope: (a) selection drops paths absent from the working tree; (b) a targeted run that collects 0 tests fails loudly instead of reporting coverage, covering every path to zero, not just deleted files."  # 05c3
+- op: update  # 9e56
+  at: '2026-10-13T07:58:32Z'  # 9e56
+  by: agent  # 9e56
+  actor: jgstern_agent  # 9e56
+  clock: 3  # 9e56
+  nonce: '9e56'  # 9e56
+  set:  # 9e56
+    status: satisfied  # 9e56
+    pr_ref: '#1567'  # 9e56
+    fields:  # 9e56
+      root_cause: "CHANGED_TEST_FILES came from git diff --name-only, which lists deleted paths; pytest -n on a dead path exits 5 silently and the summary printed '(all files at 100%)' for zero tests"  # 9e56
+- op: discuss  # 592a
+  at: '2026-10-13T07:58:32Z'  # 592a
+  by: agent  # 592a
+  actor: jgstern_agent  # 592a
+  clock: 4  # 592a
+  nonce: 592a  # 592a
+  message: "Fixed in PR #1567 (merged as 836260b4dc). Root cause: CHANGED_TEST_FILES was built from `git diff --name-only`, which names a deleted file exactly like an edited one, so a git-rm'd test entered the selection. `pytest -n` given a dead path is not a usage error under xdist (\"N workers [0 items]\", exit 5, not-found message kept in a worker), and summarize_pytest_output had no result-line pattern for \"no tests ran\", so the only verdict printed was \"COVERAGE: (all files at 100%)\". Fix (a): changed test paths are split into on-disk (selected) and deleted (named, not selected); require_selection_on_disk refuses (exit 1) a manifest or run set naming a missing path; the Woodpecker step refuses such a manifest before pytest. Fix (b): run_pytest counts executed tests from a fresh junit report; exit 5/4 or all-skipped prints \"ZERO TESTS EXECUTED\", claims no coverage, exits non-zero. Nothing-to-run stays exit 0 with its own message. Evidence on merged dev, throwaway branch, uncommitted: (1) the filed repro: `git rm packages/hypergumbo-lang-extended1/tests/test_zig_floor_stable_id.py` + edit tests/test_smart_test_foreign_repo.py, `pytest` -> rc=0, \"smart-test: deleted test file(s) in this change, not selected ... test_zig_floor_stable_id.py\", \"4 passed\", manifest SELECTED_TESTS = tests/test_smart_test_foreign_repo.py only (grep -c zig_floor = 0). (2) deletion only: `pytest` -> rc=0, \"smart-test: 0 tests ran - nothing affected, nothing to run: the only test-relevant change deletes test file(s): ...test_zig_floor_stable_id.py\". (3) forced zero-collect: `pytest -k no_such_test_zzz` with one edited test -> rc=5, \"no tests ran\", \"ZERO TESTS EXECUTED: this is NOT a pass (exit 5)\", no coverage section. (4) the item's dead-path-under-xdist shape: `pytest packages/hypergumbo-lang-extended1/tests/test_zig_floor_stable_id_DELETED.py` -> rc=5, same ZERO TESTS EXECUTED block. PR CI ran the new Woodpecker step: 134 selected files, 2258 passed, 2 skipped. Tests: tests/test_smart_test_zero_collect.py (end-to-end in a fixture repo), test_smart_test_coverage_gate.py, test_ci_pytest_selection_gate.py, test_check_package_coverage.py. Analogues filed: INV-zuvij (CI passes all-skipped run), WI-kazig (deleted source module may not select its importers; unverified)."  # 592a
+- op: discuss  # f65b
+  at: '2026-10-14T15:51:29Z'  # f65b
+  by: agent  # f65b
+  actor: jgstern_agent  # f65b
+  clock: 5  # f65b
+  nonce: f65b  # f65b
+  message: "Owner decision 2026-10-14: an all-skipped targeted smart-test run keeps FAILING locally (no pass-with-warning). Rationale: a run that executed zero tests is exactly the false-green this invariant forbids; a missing optional dependency should surface as a failure, not a warning that can be missed. No code change needed; #1567 behaviour stands."  # f65b

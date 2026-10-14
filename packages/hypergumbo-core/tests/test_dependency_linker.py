@@ -752,3 +752,151 @@ def test_rust_bare_crate_import():
     )
 
     assert len(result.edges) == 1
+
+
+def _bare_import(dst: str) -> Edge:
+    return Edge.create(src="f", dst=dst, edge_type="imports", line=1,
+                       origin="test", origin_run_id="test")
+
+
+def test_import_requirement_counts_only_linkable_imports():
+    """WI-juzaj: the import_edges requirement counts only the third-party
+    Rust/Python imports link_dependencies can use, so a repo whose imports are
+    Elixir/JS (or stdlib-only Python) does not trigger a partial-requirement
+    warning about Cargo.toml/pyproject.toml."""
+    from pathlib import Path
+
+    from hypergumbo_core.linkers.dependency import _count_import_edges
+    from hypergumbo_core.linkers.registry import LinkerContext
+
+    edges = [
+        _bare_import("elixir:Phoenix.LiveView:0-0:module:module"),
+        _bare_import("javascript:leaflet:0-0:module:module"),
+        _bare_import("python:json:0-0:module:module"),
+        _bare_import("python:os.path:0-0:module:module"),
+        _bare_import("rust:std::collections::HashMap:0-0:module:module"),
+        _bare_import("rust:crate::util:0-0:module:module"),
+        _bare_import("python:requests.adapters:0-0:module:module"),
+        _bare_import("rust:serde::Serialize:0-0:module:module"),
+        Edge.create(src="f", dst="python:click:0-0:x:unresolved", edge_type="calls",
+                    line=1, origin="test", origin_run_id="test"),
+    ]
+    ctx = LinkerContext(repo_root=Path("."), edges=edges)
+    assert _count_import_edges(ctx) == 2
+
+
+def test_import_requirement_description_names_languages():
+    from hypergumbo_core.linkers.dependency import DEPENDENCY_REQUIREMENTS
+
+    by_name = {r.name: r.description for r in DEPENDENCY_REQUIREMENTS}
+    assert by_name["import_edges"] == "third-party Rust/Python import edges"
+    assert "Cargo.toml" in by_name["toml_dependencies"]
+    assert "pyproject.toml" in by_name["toml_dependencies"]
+
+
+def _code_sym(sym_id: str, kind: str, path: str, language: str,
+              name: str | None = None) -> Symbol:
+    return Symbol(
+        id=sym_id, stable_id=None, shape_id=None, qualified_name=name or path,
+        fingerprint=sym_id, kind=kind, name=name or path, path=path,
+        language=language,
+        span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+        origin=language,
+    )
+
+
+def test_import_requirement_skips_resolved_first_party_python_imports():
+    """INV-nuraf: an import the analyzer resolved to an in-repo symbol is the
+    repo's own code, which no pyproject.toml declares, so it is not counted.
+    The dst ids are the exact shapes the Python analyzer emits for
+    ``from pkg import b`` / ``import pkg.a`` / ``from pkg.b import fb``."""
+    from pathlib import Path
+
+    from hypergumbo_core.linkers.dependency import _count_import_edges
+    from hypergumbo_core.linkers.registry import LinkerContext
+
+    a_file = "python:src/pkg/a.py:1-1:file:file"
+    b_file = "python:src/pkg/b.py:1-1:file:file"
+    b_func = "python:src/pkg/b.py:1-2:fb:function"
+    symbols = [
+        _code_sym(a_file, "file", "src/pkg/a.py", "python"),
+        _code_sym(b_file, "file", "src/pkg/b.py", "python"),
+        _code_sym(b_func, "function", "src/pkg/b.py", "python", "fb"),
+    ]
+    edges = [
+        Edge.create(src=a_file, dst=b_file, edge_type="imports", line=1,
+                    origin="test", origin_run_id="test"),
+        Edge.create(src=b_file, dst=a_file, edge_type="imports", line=1,
+                    origin="test", origin_run_id="test"),
+        Edge.create(src=a_file, dst=b_func, edge_type="imports", line=1,
+                    origin="test", origin_run_id="test"),
+    ]
+    ctx = LinkerContext(repo_root=Path("."), symbols=symbols, edges=edges)
+    assert _count_import_edges(ctx) == 0
+
+    # The third-party control still counts alongside them.
+    edges.append(_bare_import("python:requests:0-0:module:module"))
+    assert _count_import_edges(ctx) == 1
+
+
+def test_import_requirement_skips_first_party_rust_modules_and_own_crate():
+    """INV-nuraf analogue: Rust import dsts are never resolved to in-repo ids,
+    so a crate's own modules (``use util::helper`` beside ``mod util;``,
+    ``use net::tcp`` for ``src/net/mod.rs``) and its own crate name (an
+    integration test's ``use my_crate::x``) are recognised by name instead."""
+    from pathlib import Path
+
+    from hypergumbo_core.linkers.dependency import _count_import_edges
+    from hypergumbo_core.linkers.registry import LinkerContext
+
+    symbols = [
+        _code_sym("rust:src/main.rs:1-1:file:file", "file", "src/main.rs", "rust"),
+        _code_sym("rust:src/lib.rs:1-1:file:file", "file", "src/lib.rs", "rust"),
+        _code_sym("rust:src/util.rs:1-1:file:file", "file", "src/util.rs", "rust"),
+        _code_sym("rust:src/net/mod.rs:1-1:file:file", "file", "src/net/mod.rs",
+                  "rust"),
+        _code_sym("rust:mod.rs:1-1:file:file", "file", "mod.rs", "rust"),
+        _code_sym("toml:Cargo.toml:1-6:my-crate:package", "package", "Cargo.toml",
+                  "toml", "my-crate"),
+        # A pyproject [project] name is a distribution name, not a Rust crate.
+        _code_sym("toml:pyproject.toml:1-5:serde:project", "project",
+                  "pyproject.toml", "toml", "serde"),
+    ]
+    edges = [
+        _bare_import("rust:util::helper:0-0:module:module"),
+        _bare_import("rust:net::tcp::Stream:0-0:module:module"),
+        _bare_import("rust:my_crate::Thing:0-0:module:module"),
+        _bare_import("rust:crate::util:0-0:module:module"),
+        _bare_import("rust:std::fmt:0-0:module:module"),
+        # Still counted. ``main``/``lib``/``mod`` are crate-root
+        # and directory-module file names, not module names.
+        _bare_import("rust:serde::Serialize:0-0:module:module"),
+        _bare_import("rust:main::x:0-0:module:module"),
+        _bare_import("rust:mod::x:0-0:module:module"),
+    ]
+    ctx = LinkerContext(repo_root=Path("."), symbols=symbols, edges=edges)
+    assert _count_import_edges(ctx) == 3
+
+
+def test_import_requirement_unmet_on_first_party_only_python_repo():
+    """INV-nuraf production path: check_linker_requirements (what the
+    partial-requirement warning reads) reports 0 third-party imports for a repo
+    whose only imports are between its own modules."""
+    from pathlib import Path
+
+    from hypergumbo_core.linkers.registry import LinkerContext, check_linker_requirements
+
+    a_file = "python:pkg/a.py:1-1:file:file"
+    b_file = "python:pkg/b.py:1-1:file:file"
+    ctx = LinkerContext(
+        repo_root=Path("."),
+        symbols=[_code_sym(a_file, "file", "pkg/a.py", "python"),
+                 _code_sym(b_file, "file", "pkg/b.py", "python")],
+        edges=[Edge.create(src=a_file, dst=b_file, edge_type="imports", line=1,
+                           origin="test", origin_run_id="test"),
+               Edge.create(src=b_file, dst=a_file, edge_type="imports", line=1,
+                           origin="test", origin_run_id="test")],
+    )
+    diag = {d.linker_name: d for d in check_linker_requirements(ctx)}
+    reqs = {r.name: r.count for r in diag["dependency-linker"].requirements}
+    assert reqs == {"toml_dependencies": 0, "import_edges": 0}

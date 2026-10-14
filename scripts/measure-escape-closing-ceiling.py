@@ -58,14 +58,18 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import contextlib
-import io
 import json
 import pathlib
 import sys
 from typing import Any
 
 import hypergumbo_core.taint as taint_mod
+
+# The cohort ledger (WI-kovoj): a member whose verify-claims run wrote no
+# report is FAILED, not "NO WALKS — excluded", and the run states
+# covered-of-given.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+from cohort_ledger import CohortLedger, run_cli_json
 
 
 class _Tally:
@@ -128,22 +132,11 @@ def _run_arm(repo: str, claims: str, *, ceiling: bool) -> tuple[dict[str, Any], 
     taint_mod._use_site_terminates = counting_terminates
     taint_mod._ddg_taint_reaches = counting_walk
     try:
-        from hypergumbo_core.cli import main
-
-        argv = sys.argv
-        sys.argv = ["hypergumbo", "verify-claims", repo, "--claims", claims,
-                    "--json"]
-        buf = io.StringIO()
-        try:
-            with contextlib.redirect_stdout(buf):
-                with contextlib.suppress(SystemExit):
-                    main()
-        finally:
-            sys.argv = argv
-        raw = buf.getvalue().strip()
-        # The banner precedes the JSON on some paths; take the object only.
-        start = raw.find("{")
-        report = json.loads(raw[start:]) if start >= 0 else {}
+        # Raises MemberAbsent when no report was written (the banner that
+        # precedes the JSON on some paths is skipped), so a run that never
+        # happened cannot read as a repo with no walks.
+        report = run_cli_json(["hypergumbo", "verify-claims", repo,
+                               "--claims", claims, "--json"])
     finally:
         taint_mod._use_site_terminates = real_terminates
         taint_mod._ddg_taint_reaches = real_walk
@@ -199,28 +192,30 @@ def main() -> int:
     args = ap.parse_args()
 
     rows = []
-    for repo in args.repos:
+    ledger = CohortLedger(args.repos)
+    for repo in ledger:
         print(f"\n=== {repo} ===", flush=True)
-        row = _compare(repo, args.claims)
-        rows.append(row)
-        a, b, d = (row["arm_a_control"], row["arm_b_ceiling"], row["delta"])
-        print(f"  instrument control : {row['instrument_control']}")
-        print(f"  _use_site_terminates calls (A/B): "
-              f"{a['terminates_calls']} / {b['terminates_calls']}")
-        print(f"  §3a walks T/F/None (A): {a['walks_3a_true']}/"
-              f"{a['walks_3a_false']}/{a['walks_3a_none']}")
-        print(f"  §3a walks T/F/None (B): {b['walks_3a_true']}/"
-              f"{b['walks_3a_false']}/{b['walks_3a_none']}")
-        print(f"  barrier walks / False (A): {a['barrier_walks']}/"
-              f"{a['barrier_false']}   (B): {b['barrier_walks']}/"
-              f"{b['barrier_false']}")
-        print(f"  FINDINGS violated/sanitized/evidence (A): "
-              f"{a['violated_claims']}/{a['sanitized_flows']}/{a['evidence']}")
-        print(f"  FINDINGS violated/sanitized/evidence (B): "
-              f"{b['violated_claims']}/{b['sanitized_flows']}/{b['evidence']}")
-        print(f"  DELTA findings: violated {d['violated_claims']:+d}  "
-              f"sanitized {d['sanitized_flows']:+d}  "
-              f"evidence {d['evidence']:+d}")
+        with ledger.attempt(repo):
+            row = _compare(repo, args.claims)
+            rows.append(row)
+            a, b, d = (row["arm_a_control"], row["arm_b_ceiling"], row["delta"])
+            print(f"  instrument control : {row['instrument_control']}")
+            print(f"  _use_site_terminates calls (A/B): "
+                  f"{a['terminates_calls']} / {b['terminates_calls']}")
+            print(f"  §3a walks T/F/None (A): {a['walks_3a_true']}/"
+                  f"{a['walks_3a_false']}/{a['walks_3a_none']}")
+            print(f"  §3a walks T/F/None (B): {b['walks_3a_true']}/"
+                  f"{b['walks_3a_false']}/{b['walks_3a_none']}")
+            print(f"  barrier walks / False (A): {a['barrier_walks']}/"
+                  f"{a['barrier_false']}   (B): {b['barrier_walks']}/"
+                  f"{b['barrier_false']}")
+            print(f"  FINDINGS violated/sanitized/evidence (A): "
+                  f"{a['violated_claims']}/{a['sanitized_flows']}/{a['evidence']}")
+            print(f"  FINDINGS violated/sanitized/evidence (B): "
+                  f"{b['violated_claims']}/{b['sanitized_flows']}/{b['evidence']}")
+            print(f"  DELTA findings: violated {d['violated_claims']:+d}  "
+                  f"sanitized {d['sanitized_flows']:+d}  "
+                  f"evidence {d['evidence']:+d}")
 
     live = [r for r in rows if r["instrument_control"].startswith("LIVE")]
     print("\n=== VERDICT ===")
@@ -240,10 +235,13 @@ def main() -> int:
         for r in moved:
             print(f"  {r['repo']}: {r['delta']}")
 
+    print()
+    ledger.report()
     if args.out:
-        pathlib.Path(args.out).write_text(json.dumps(rows, indent=2))
+        pathlib.Path(args.out).write_text(json.dumps(
+            {"cohort": ledger.claim(), "repos": rows}, indent=2))
         print(f"\nWrote {args.out}")
-    return 0 if live else 2
+    return ledger.exit_code(0 if live else 2)
 
 
 if __name__ == "__main__":  # pragma: no cover

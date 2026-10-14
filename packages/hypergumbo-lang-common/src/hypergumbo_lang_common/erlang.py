@@ -6,11 +6,27 @@ This analyzer uses tree-sitter to parse Erlang files and extract:
 - Function definitions (fun_decl)
 - Record definitions (-record)
 - Macro definitions (-define)
-- Behaviour implementations (-behaviour) with callback edges
+- Behaviours as a TYPE relationship (WI-hidit, the shape WI-vitas gave
+  Elixir). ``-callback area() -> integer().`` is a symbol named ``area/0``
+  (kind ``function``, ``modifiers=["abstract"]``, ``meta["optional"]`` when
+  ``-optional_callbacks`` lists it), kept out of call resolution because it
+  has no body. ``-behaviour(X)`` (or ``-behavior``) emits ``implements`` from
+  the module to every in-repo module named X, else to
+  ``erlang:external:0-0:X:unresolved``, and each of X's callbacks
+  ``dispatches_to`` this module's function of the same ``name/arity``. The
+  five OTP behaviours additionally root their callbacks from
+  ``OTP_BEHAVIOUR_CALLBACKS`` (module -> callback ``dispatches_to``), since
+  OTP's own ``-callback`` declarations are not in the tree. The directive
+  also keeps its ``imports`` edge (evidence ``behaviour``)
 - Type declarations (-type). ``-spec`` is NOT extracted — no dispatch
   branch matches a spec node.
 - Function call relationships, including synthetic edges to external
   callees so a remote call still reaches I/O-boundary matching
+- Logger macro calls: in a file that includes a ``logger.hrl`` header, each
+  of the eight OTP ``?LOG_<LEVEL>(...)`` macros becomes a ``calls`` edge from
+  the enclosing function to ``erlang:logger:0-0:<level>:function`` (evidence
+  ``macro_expansion``, an inference, since tree-sitter expands no macros), so
+  logging call sites can match catalogue rows
 - Import statements (-import)
 
 Erlang's multi-clause functions are coalesced: consecutive ``fun_decl``
@@ -18,6 +34,21 @@ clauses for the same name/arity become ONE symbol, with cyclomatic
 complexity summed across the clauses and the line span covering all of
 them. Emitting a symbol per clause would triple-count a idiomatic
 pattern-matched function.
+
+Function and macro identity (WI-tusad). A function's stable_id is the
+ADR-0035 producer formula, minted at construction through
+``overload_arity.declared_arity_stable_id`` from ``name/arity`` and the
+``meta["arity"]`` count, the same inputs ``callback_stable_id`` hashes for a
+``-callback`` (which adds the ``abstract`` decorator, so a callback and a
+same-named function in one module stay apart). The scope chain is the file:
+the compiler binds one module to one file. A ``-define(NAME(A, B), ...)``
+macro records ``A, B`` in ``meta["parameters"]``, so ``?MAX`` and
+``?MAX(X)`` (Erlang allows both) hash apart; a macro without an argument
+list takes the zero-parameter formula. Before this both kinds rode the
+backstop floor, and a same-named pair in one file (``-ifdef``/``-else``
+alternatives) was left null; such a pair is now a same-scope tie the
+per-file occurrence pass orders. A ``-record(name, ...)`` mints the same
+formula over its name with no arity (record names are unique per module).
 
 If tree-sitter with Erlang support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -72,6 +103,16 @@ from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    ARITY_KEY, PARAMETERS_KEY, declared_arity, declared_arity_stable_id,
+    parameter_entry,
+)
+from hypergumbo_core.behaviours import (
+    CALLBACK_MODIFIER,
+    behaviour_implements_edge,
+    callback_dispatch_edge,
+    callback_stable_id,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -99,6 +140,11 @@ OTP_BEHAVIOUR_CALLBACKS: dict[str, list[str]] = {
     ],
     "application": ["start", "stop"],
 }
+
+
+def _is_callback(symbol: Symbol) -> bool:
+    """Is ``symbol`` a ``-callback`` declaration rather than a function?"""
+    return CALLBACK_MODIFIER in symbol.modifiers
 
 
 def find_erlang_files(repo_root: Path) -> Iterator[Path]:
@@ -171,6 +217,101 @@ def _extract_erlang_signature(
     return f"({', '.join(params)})"
 
 
+def _optional_callbacks(root: "tree_sitter.Node", source: bytes) -> set[str]:
+    """``name/arity`` of every callback ``-optional_callbacks([...])`` lists.
+
+    The attribute names callbacks declared elsewhere in the module; it
+    declares none itself, so it marks symbols rather than minting them.
+    """
+    names: set[str] = set()
+    for node in root.children:
+        if node.type != "optional_callbacks_attribute":
+            continue
+        for fa in node.children:
+            atom = find_child_by_type(fa, "atom") if fa.type == "fa" else None
+            arity = find_child_by_type(fa, "arity") if atom is not None else None
+            count = find_child_by_type(arity, "integer") if arity is not None else None
+            if atom is not None and count is not None:
+                names.add(f"{node_text(atom, source)}/{node_text(count, source)}")
+    return names
+
+
+def _callback_symbol(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: str,
+    run_id: str,
+    optional_callbacks: set[str],
+) -> Optional[Symbol]:
+    """The symbol a ``-callback name(Args) -> T.`` declares, or None.
+
+    Named ``name/arity`` like every Erlang function, which is what lets a
+    callback be matched to its implementation exactly. Both spellings parse
+    to the same node -- ``-callback f() -> t().`` and ``-callback(f() -> t()).``
+    -- and a multi-clause spec (``(a()) -> x; (b()) -> y``) is one callback:
+    every clause has the same arity. The signature is the declaration
+    surface after the name, verbatim (ADR-0058).
+
+    The stable_id is minted here (``callback_stable_id``), not left to the
+    backstop floor, where it would collide with a same-named ``area/0``
+    defined in the behaviour module itself and null both.
+    """
+    atom = find_child_by_type(node, "atom")
+    sigs = [c for c in node.children if c.type == "type_sig"]
+    if atom is None or not sigs:  # pragma: no cover - grammar always gives both
+        return None
+    name = node_text(atom, source)
+    arity = _arity_of(sigs[0])
+    full_name = f"{name}/{arity}"
+    start_line = node.start_point[0] + 1
+    end_line = node.end_point[0] + 1
+    meta: dict[str, object] = {"arity": arity, "base_name": name}
+    if full_name in optional_callbacks:
+        meta["optional"] = True
+    return Symbol(
+        id=make_symbol_id(
+            "erlang", file_path, start_line, end_line, full_name, "function",
+        ),
+        stable_id=callback_stable_id("erlang", file_path, full_name, arity),
+        name=full_name,
+        kind="function",
+        language="erlang",
+        path=file_path,
+        span=Span(
+            start_line=start_line,
+            end_line=end_line,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        ),
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        meta=meta,
+        signature=source[sigs[0].start_byte:sigs[-1].end_byte].decode(
+            "utf-8", errors="replace",
+        ),
+        modifiers=[CALLBACK_MODIFIER],
+    )
+
+
+def _macro_meta(
+    macro_lhs: "tree_sitter.Node", source: bytes,
+) -> Optional[dict[str, object]]:
+    """``meta["parameters"]`` of ``-define(NAME(A, B), ...)``; None for ``-define(NAME, ...)``.
+
+    ``NAME()`` gives the empty list. A macro without an argument list has no
+    parameters to record, so it gets no meta (see the module docstring).
+    """
+    var_args = find_child_by_type(macro_lhs, "var_args")
+    if var_args is None:
+        return None
+    return {
+        PARAMETERS_KEY: [
+            parameter_entry(node_text(arg, source))
+            for arg in var_args.children if arg.type == "var"
+        ],
+    }
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -186,11 +327,12 @@ def _extract_symbols_from_file(
     - fun_decl (functions)
     - record_decl (records)
     - pp_define (macros)
-    - behaviour_attribute (behaviours)
+    - callback (behaviour callbacks, ``name/arity`` with ``abstract``)
     - type_alias (types)
     """
     symbols: list[Symbol] = []
     module_name = ""
+    optional_callbacks = _optional_callbacks(tree.root_node, source)
 
     # Track pending function for clause coalescing.  Tree-sitter Erlang
     # emits a separate fun_decl per clause (e.g. fib(0)->0; fib(1)->1;
@@ -223,8 +365,16 @@ def _extract_symbols_from_file(
         cc = 1
         for clause_node in pf["clause_nodes"]:
             cc += compute_cyclomatic_complexity(clause_node, "erlang") - 1
+        meta: dict[str, object] = {
+            ARITY_KEY: pf["arity"], "base_name": pf["func_name"],
+        }
         symbols.append(Symbol(
             id=sym_id,
+            stable_id=declared_arity_stable_id(
+                kind="function", lang="erlang", path=file_path,
+                name=full_name, qualified_name=full_name,
+                arity=declared_arity(meta),
+            ),
             name=full_name,
             kind="function",
             language="erlang",
@@ -232,7 +382,7 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
-            meta={"arity": pf["arity"], "base_name": pf["func_name"]},
+            meta=meta,
             signature=pf["signature"],
             cyclomatic_complexity=cc,
             line_span=pf["end_line"] - pf["start_line"] + 1,
@@ -323,6 +473,10 @@ def _extract_symbols_from_file(
                 sym_id = make_symbol_id("erlang", file_path, start_line, end_line, record_name, "record")
                 symbols.append(Symbol(
                     id=sym_id,
+                    stable_id=declared_arity_stable_id(
+                        kind="record", lang="erlang", path=file_path,
+                        name=record_name, qualified_name=record_name, arity=None,
+                    ),
                     name=record_name,
                     kind="record",
                     language="erlang",
@@ -350,8 +504,14 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     )
                     sym_id = make_symbol_id("erlang", file_path, start_line, end_line, macro_name, "macro")
+                    macro_meta = _macro_meta(macro_lhs, source)
                     symbols.append(Symbol(
                         id=sym_id,
+                        stable_id=declared_arity_stable_id(
+                            kind="macro", lang="erlang", path=file_path,
+                            name=macro_name, qualified_name=macro_name,
+                            arity=declared_arity(macro_meta),
+                        ),
                         name=macro_name,
                         kind="macro",
                         language="erlang",
@@ -359,7 +519,17 @@ def _extract_symbols_from_file(
                         span=span,
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        meta=macro_meta,
                     ))
+
+        # Behaviour callback declaration (WI-hidit)
+        elif node.type == "callback":
+            _flush_pending_func()
+            callback = _callback_symbol(
+                node, source, file_path, run_id, optional_callbacks,
+            )
+            if callback is not None:
+                symbols.append(callback)
 
         # Type alias
         elif node.type == "type_alias":
@@ -498,15 +668,22 @@ def _extract_edges_from_file(
     module_registry: dict[str, str],  # module_name -> file_path
     run_id: str,
     import_aliases: dict[str, str] | None = None,  # func -> module (ADR-0007)
+    module_symbols: dict[str, list[Symbol]] | None = None,
+    callbacks_by_module: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Erlang file.
 
     Detects:
     - Function calls (call nodes with remote or local)
-    - Behaviour implementation (-behaviour)
+    - Behaviour implementation (-behaviour), see
+      ``_extract_behaviour_callback_edges``
     - Import statements (-import)
+
+    A ``-callback`` symbol is left out of every lookup here: it has no body,
+    so it neither encloses a call nor answers one (WI-hidit).
     """
     edges: list[Edge] = []
+    callables = [s for s in file_symbols if not _is_callback(s)]
     file_id = make_file_id("erlang", file_path)
 
     # INV-zihor: whether THIS file can see OTP's ?LOG_* macros. Computed once
@@ -517,14 +694,14 @@ def _extract_edges_from_file(
     # Every function of this file under its name/arity. A list, because
     # -ifdef/-else can define one name/arity twice (see the enclosing lookup).
     functions: dict[str, list[Symbol]] = {}
-    for s in file_symbols:
+    for s in callables:
         if s.kind == "function":
             functions.setdefault(s.name, []).append(s)
 
     # Build local symbol map (name -> symbol)
-    local_symbols = {s.name: s for s in file_symbols}
+    local_symbols = {s.name: s for s in callables}
     # Also map base_name for function lookup
-    for s in file_symbols:
+    for s in callables:
         if s.kind == "function" and s.meta:
             base = s.meta.get("base_name")
             if base:
@@ -595,8 +772,12 @@ def _extract_edges_from_file(
                     # is an inference from a macro name plus an include, and a
                     # consumer telling a seen call from an inferred one reads
                     # exactly this field.
+                    #
+                    # NO ``call_construct``. No call construct was parsed at the
+                    # site, and "it came from a macro" is already stated by
+                    # ``evidence_type`` above; a ``macro`` construct restated
+                    # the pathway on a second axis (WI-dapap).
                     evidence_type="macro_expansion",
-                    meta={"call_construct": "macro"},
                 ))
 
         elif node.type == "call":
@@ -698,9 +879,11 @@ def _extract_edges_from_file(
                             )
                             edges.append(edge)
 
-    # Behaviour callback edges: -behaviour(gen_server) → dispatches_to → init/1, etc.
+    # Behaviour edges: OTP callback rooting (-behaviour(gen_server) →
+    # dispatches_to → init/1) and the type relationship (WI-hidit).
     callback_edges = _extract_behaviour_callback_edges(
-        tree, source, file_symbols, run_id,
+        tree, source, callables, run_id,
+        module_symbols or {}, callbacks_by_module or {},
     )
     edges.extend(callback_edges)
 
@@ -712,16 +895,37 @@ def _extract_behaviour_callback_edges(
     source: bytes,
     file_symbols: list[Symbol],
     run_id: str,
+    module_symbols: dict[str, list[Symbol]],
+    callbacks_by_module: dict[str, list[Symbol]],
 ) -> list[Edge]:
-    """Extract behaviour-callback ``dispatches_to`` edges from OTP declarations.
+    """Extract the edges each ``-behaviour(X)`` implies, once per X.
 
-    When a module declares -behaviour(gen_server), the OTP framework invokes
-    specific callback functions (init, handle_call, handle_cast, ...). Without
-    these edges, callback functions appear as disconnected orphans in the graph.
+    1. OTP CALLBACK ROOTING. For X in ``OTP_BEHAVIOUR_CALLBACKS``
+       (gen_server, supervisor, ...), the OTP framework invokes specific
+       callback functions (init, handle_call, ...), so the module
+       ``dispatches_to`` each one it defines. Without these edges the
+       callbacks are disconnected orphans in the graph.
+    2. THE TYPE RELATIONSHIP (WI-hidit, the Erlang half of WI-vitas):
+       ``implements`` from the module to X -- every in-repo module named X,
+       else ``erlang:external:0-0:X:unresolved`` -- and ``dispatches_to``
+       from each of X's ``-callback`` symbols to this module's function of
+       the SAME ``name/arity``. Erlang names a function by name and arity,
+       so the match is exact: ``area/1`` does not implement ``area/0``.
 
-    For each -behaviour(X) attribute, looks up OTP_BEHAVIOUR_CALLBACKS[X] and
-    creates ``dispatches_to`` edges from the module symbol to each implemented
-    callback function.
+       OTP behaviours get the ``implements`` edge too, to their external
+       target. ``-behaviour(gen_server)`` IS a type relationship to a library
+       module, and stating it is what lets ``owner_ancestry`` read
+       ``gen_server`` as the module's library ancestor -- the same edge
+       Elixir emits for ``use GenServer``. The OTP table roots the callbacks
+       because OTP's ``-callback`` declarations are not in the tree.
+
+       Every in-repo module of that name, not one: Erlang module names are
+       global, so a repository that defines X twice (a test double, a
+       per-platform copy) has two candidate behaviours and the build picks
+       one. A module naming itself is skipped, as in Elixir.
+
+    A file with no ``-module`` (a ``.hrl``) has no module to attribute the
+    directive to and emits nothing.
     """
     edges: list[Edge] = []
 
@@ -735,19 +939,19 @@ def _extract_behaviour_callback_edges(
     if module_sym is None:
         return edges
 
-    # Build lookup: base_name → symbol (for matching callback names).
-    # Deduplicate by symbol ID since file_symbols may contain the same symbol
-    # under both its full name (init/1) and base name (init) keys.
-    seen_ids: set[str] = set()
+    # Build lookups: base_name -> functions (the OTP table names callbacks
+    # without arity) and name/arity -> functions (a -callback's own name).
+    # A list each, because -ifdef/-else can define one name/arity twice.
     func_by_base_name: dict[str, list[Symbol]] = {}
+    func_by_name: dict[str, list[Symbol]] = {}
     for s in file_symbols:
-        if s.kind == "function" and s.meta and s.id not in seen_ids:
-            seen_ids.add(s.id)
+        if s.kind == "function" and s.meta:
+            func_by_name.setdefault(s.name, []).append(s)
             base = s.meta.get("base_name")
             if base:
                 func_by_base_name.setdefault(base, []).append(s)
 
-    # Scan for -behaviour(X) attributes
+    seen: set[str] = set()
     for node in iter_tree(tree.root_node):
         if node.type != "behaviour_attribute":
             continue
@@ -757,15 +961,13 @@ def _extract_behaviour_callback_edges(
             continue
 
         behaviour_name = node_text(atom, source)
-        expected_callbacks = OTP_BEHAVIOUR_CALLBACKS.get(behaviour_name)
-        if not expected_callbacks:
+        if behaviour_name in seen:
             continue
+        seen.add(behaviour_name)
 
-        # Create edges for each implemented callback
-        for callback_name in expected_callbacks:
-            matching = func_by_base_name.get(callback_name, [])
-            for func_sym in matching:
-                edge = Edge.create(
+        for callback_name in OTP_BEHAVIOUR_CALLBACKS.get(behaviour_name, []):
+            for func_sym in func_by_base_name.get(callback_name, []):
+                edges.append(Edge.create(
                     src=module_sym.id,
                     dst=func_sym.id,
                     edge_type="dispatches_to",
@@ -774,8 +976,24 @@ def _extract_behaviour_callback_edges(
                     origin_run_id=run_id,
                     evidence_type="behaviour_callback",
                     meta={"mechanism": "callback"},
-                )
-                edges.append(edge)
+                ))
+
+        if behaviour_name == module_sym.name:
+            continue
+        line = node.start_point[0] + 1
+        targets = module_symbols.get(behaviour_name, [])
+        target_ids: list[Optional[str]] = [t.id for t in targets] or [None]
+        for target_id in target_ids:
+            edges.append(behaviour_implements_edge(
+                src=module_sym.id, lang="erlang", behaviour=behaviour_name,
+                target_id=target_id, line=line, origin=PASS_ID, run_id=run_id,
+            ))
+        for callback in callbacks_by_module.get(behaviour_name, []):
+            for impl in func_by_name.get(callback.name, []):
+                edges.append(callback_dispatch_edge(
+                    callback_id=callback.id, impl_id=impl.id, line=line,
+                    origin=PASS_ID, run_id=run_id,
+                ))
 
     return edges
 
@@ -795,10 +1013,16 @@ class ErlangAnalyzer(TreeSitterAnalyzer):
     # Track module names per file for cross-file resolution
     _module_registry: dict[str, str]  # module_name -> file_path
     _file_module_names: dict[str, str]  # rel_path -> module_name
+    # WI-hidit: behaviour resolution. Filled by ``register_symbol`` (run over
+    # every file before Pass 2), read by Pass 2's behaviour edges.
+    _module_symbols: dict[str, list[Symbol]]  # module_name -> module symbols
+    _callbacks_by_module: dict[str, list[Symbol]]  # module_name -> callbacks
 
     def __init__(self) -> None:
         self._module_registry = {}
         self._file_module_names = {}
+        self._module_symbols = {}
+        self._callbacks_by_module = {}
 
     def extract_symbols_from_file(
         self,
@@ -821,8 +1045,11 @@ class ErlangAnalyzer(TreeSitterAnalyzer):
             self._file_module_names[rel_path] = module_name
             self._module_registry[module_name] = rel_path
 
-        # Build symbol_by_name with base_name mapping for local call resolution
+        # Build symbol_by_name with base_name mapping for local call resolution.
+        # A -callback is not callable, so it is not a name a call resolves to.
         for sym in file_symbols:
+            if _is_callback(sym):
+                continue
             analysis.symbol_by_name[sym.name] = sym
             if sym.kind == "function" and sym.meta:
                 base = sym.meta.get("base_name")
@@ -842,19 +1069,33 @@ class ErlangAnalyzer(TreeSitterAnalyzer):
     def register_symbol(
         self,
         symbol: Symbol,
-        global_symbols: dict,
+        global_symbols: dict[str, Symbol],
     ) -> None:
         """Register symbol with Erlang-specific indexing.
 
         Functions are indexed by full name (name/arity), base name, and
         module-prefixed base name for remote call resolution.
+
+        A ``-callback`` (WI-hidit) is filed under its module in
+        ``_callbacks_by_module`` and NOWHERE in ``global_symbols``: under any
+        of those keys ``shape:area()`` -- an undef error in Erlang -- or a bare
+        ``area()`` would resolve to a function with no body. Modules are also
+        indexed by name for ``-behaviour`` resolution; ``global_symbols``
+        cannot serve, because a function whose base name equals a module's
+        name overwrites the module there.
         """
+        module_name = self._file_module_names.get(symbol.path, "")
+        if _is_callback(symbol):
+            if module_name:
+                self._callbacks_by_module.setdefault(module_name, []).append(symbol)
+            return
+        if symbol.kind == "module":
+            self._module_symbols.setdefault(symbol.name, []).append(symbol)
         global_symbols[symbol.name] = symbol
         if symbol.kind == "function" and symbol.meta:
             base_name = symbol.meta.get("base_name", "")
             if base_name:
                 global_symbols[base_name] = symbol
-                module_name = self._file_module_names.get(symbol.path, "")
                 if module_name:
                     global_symbols[f"{module_name}:{base_name}"] = symbol
 
@@ -865,7 +1106,7 @@ class ErlangAnalyzer(TreeSitterAnalyzer):
         file_path: Path,
         rel_path: str,
         local_symbols: dict[str, Symbol],
-        global_symbols: dict,
+        global_symbols: dict[str, Symbol],
         run: AnalysisRun,
         import_aliases: dict[str, str],
         resolver: NameResolver,
@@ -879,6 +1120,8 @@ class ErlangAnalyzer(TreeSitterAnalyzer):
             tree, source, rel_path, file_symbols,
             resolver, self._module_registry, run.execution_id,
             import_aliases=import_aliases,
+            module_symbols=self._module_symbols,
+            callbacks_by_module=self._callbacks_by_module,
         )
 
     def analyze(
@@ -889,6 +1132,8 @@ class ErlangAnalyzer(TreeSitterAnalyzer):
         """Reset per-run state and delegate to base class."""
         self._module_registry = {}
         self._file_module_names = {}
+        self._module_symbols = {}
+        self._callbacks_by_module = {}
         return super().analyze(repo_root, max_files)
 
 

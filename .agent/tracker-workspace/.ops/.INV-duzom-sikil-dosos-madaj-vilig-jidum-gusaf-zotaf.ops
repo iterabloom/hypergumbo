@@ -39,3 +39,19 @@
   set: {}  # 88fd
   add:  # 88fd
     tags: [post_release_focus]  # 88fd
+- op: update  # 0f3c
+  at: '2026-09-26T19:47:21Z'  # 0f3c
+  by: agent  # 0f3c
+  actor: jgstern_agent  # 0f3c
+  clock: 4  # 0f3c
+  nonce: 0f3c  # 0f3c
+  set:  # 0f3c
+    status: satisfied  # 0f3c
+    pr_ref: '1229'  # 0f3c
+- op: discuss  # 94a0
+  at: '2026-09-26T19:47:22Z'  # 94a0
+  by: agent  # 94a0
+  actor: jgstern_agent  # 94a0
+  clock: 5  # 94a0
+  nonce: 94a0  # 94a0
+  message: "SATISFIED for the filed instance by PR #1229 (merged 300780b5bf). A plain path rooted at std/core/alloc (or ::) is split on its last `::` into owner and name. The aliased arm splits after expanding the alias (fs::File::open after `use std::fs;` had become module std::fs + name File::open).\n\nBEHAVIORAL EVIDENCE, the item's own repro through the production CLI (hypergumbo io-boundaries, fixture ~/hypergumbo_lab_notebook/duzom_09262026/r and packages/hypergumbo-lang-mainstream/tests/test_rust_qualified_call_path.py::test_the_split_reaches_the_boundary_map, red before the fix):\n  before: std::io::stdin() -> no chain; std::fs::File::open(\"/x\") -> no chain; io::stdin() -> ipc_recv\n  after:  std::io::stdin() -> ipc_recv (full_stdin); std::fs::File::open -> fs_read (full_open); io::stdin() unchanged\nEdges: rust:std::io:0-0:stdin, rust:std::fs::File:0-0:open (were rust:external:0-0:std::io::stdin / ...File::open).\nA/B on 4 repos, none lost: netavark 50->55, ripgrep 30->49, diamond-types 86->105, zellij 150->274 I/O chains. The recorded aardvark-dns fixture gained one real stub call (std::io::Error::new at serve.rs:384); pins updated with the reason.\n\nNOT ASSERTED: third-party crate paths (serde_json::from_str with no use) -- filed as WI-totob; a bare Type::method is deliberately not split (INV-kipor hazard)."  # 94a0

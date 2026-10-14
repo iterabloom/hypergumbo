@@ -35,6 +35,20 @@ Proto-Specific Considerations
 - Messages can be nested
 - Imports reference other .proto files (including google/protobuf/)
 - Package declarations scope the canonical names
+
+Identity (WI-tusad)
+-------------------
+A message, enum or rpc is named bare (``Inner``, ``Get``) and qualified by the
+package and EVERY enclosing message or service (``demo.A.B.Inner``,
+``demo.S.Get``; the immediate parent alone used to stand in, so ``A.B.Inner``
+and ``C.B.Inner`` shared ``demo.B.Inner``). Messages and rpc methods mint the
+ADR-0035 producer stable_id over that chain with
+``overload_arity.declared_arity_stable_id`` (no arity: protoc rejects two rpcs
+or two messages of one name in one scope, so the chain alone is unique).
+Before, neither computed a stable_id and rode the backstop floor key
+(kind, file, bare name), which ``A.Inner`` / ``B.Inner`` and ``S.Get`` /
+``T.Get`` share, so both members of each pair were null. Services and enums
+keep the backstop's table formula.
 """
 from __future__ import annotations
 
@@ -56,12 +70,18 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import declared_arity_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("proto")
+
+#: The kinds this analyzer mints a producer stable_id for (WI-tusad). The
+#: others (``interface`` for a service, ``enum``) take the backstop's table
+#: formula.
+_PRODUCER_KINDS = frozenset({"message", "method"})
 
 
 def find_proto_files(repo_root: Path) -> Iterator[Path]:
@@ -168,6 +188,10 @@ def _make_proto_symbol(
     sym_id = make_symbol_id("proto", file_path, start_line, end_line, name, kind)
     return Symbol(
         id=sym_id,
+        stable_id=declared_arity_stable_id(
+            kind=kind, lang="proto", path=file_path, name=name,
+            qualified_name=qualified_name, arity=None,
+        ) if kind in _PRODUCER_KINDS else None,
         name=name,
         qualified_name=qualified_name,
         kind=kind,
@@ -181,19 +205,22 @@ def _make_proto_symbol(
     )
 
 
-def _get_parent_message_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Walk up parents to find enclosing message name for nested messages/enums."""
+def _scope_chain(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The enclosing messages and service of ``node``, outermost first, dotted.
+
+    ``None`` at file level. Every level is kept: the immediate parent alone
+    names ``A.B.Inner`` and ``C.B.Inner`` both ``B.Inner`` (WI-tusad).
+    """
+    parts: list[str] = []
     current = node.parent
-    while current:
-        if current.type == "message_body":
-            # The message_body's parent should be the message
-            msg = current.parent
-            if msg and msg.type == "message":
-                name_node = find_child_by_type(msg, "message_name")
-                if name_node:
-                    return node_text(name_node, source).strip()
+    while current is not None:
+        name_type = {"message": "message_name", "service": "service_name"}.get(current.type)
+        if name_type is not None:
+            name_node = find_child_by_type(current, name_type)
+            if name_node is not None:
+                parts.append(node_text(name_node, source).strip())
         current = current.parent
-    return None  # pragma: no cover - defensive
+    return ".".join(reversed(parts)) or None
 
 
 def _extract_symbols_and_edges(
@@ -232,16 +259,9 @@ def _extract_symbols_and_edges(
                 rpc_name = node_text(rpc_name_node, source).strip()
                 rpc_sig = _extract_rpc_signature(node, source)
 
-                # Find parent service name
-                service_name = None
-                current = node.parent
-                while current:
-                    if current.type == "service":
-                        svc_name_node = find_child_by_type(current, "service_name")
-                        if svc_name_node:
-                            service_name = node_text(svc_name_node, source).strip()
-                        break
-                    current = current.parent  # pragma: no cover - defensive
+                # The parent service names the rpc (an rpc sits directly in
+                # a service body, so the chain is the service).
+                service_name = _scope_chain(node, source)
 
                 rpc_sym = _make_proto_symbol(
                     file_path, run_id, package_name, node, source,
@@ -271,10 +291,9 @@ def _extract_symbols_and_edges(
             message_name_node = find_child_by_type(node, "message_name")
             if message_name_node:
                 message_name = node_text(message_name_node, source).strip()
-                parent_name = _get_parent_message_name(node, source)
                 message_sym = _make_proto_symbol(
                     file_path, run_id, package_name, node, source,
-                    message_name, "message", prefix=parent_name
+                    message_name, "message", prefix=_scope_chain(node, source),
                 )
                 symbols.append(message_sym)
 
@@ -283,10 +302,9 @@ def _extract_symbols_and_edges(
             enum_name_node = find_child_by_type(node, "enum_name")
             if enum_name_node:
                 enum_name = node_text(enum_name_node, source).strip()
-                parent_name = _get_parent_message_name(node, source)
                 enum_sym = _make_proto_symbol(
                     file_path, run_id, package_name, node, source,
-                    enum_name, "enum", prefix=parent_name
+                    enum_name, "enum", prefix=_scope_chain(node, source),
                 )
                 symbols.append(enum_sym)
 

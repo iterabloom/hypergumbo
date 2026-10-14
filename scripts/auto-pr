@@ -836,9 +836,57 @@ _autopr_append_tracker_discussion() {
 	local pr_display="${pr_num:-unknown}"
 	local msg="Merged as PR #${pr_display}, dev SHA ${short_sha}."
 
-	if ! "$tracker_bin" discuss "$tracker_id" "$msg" >/dev/null 2>&1; then
+	# WI-kifuh guard. The only correct caller is _autopr_finish_merged, which
+	# reaches here after cleanup has removed PR_PENDING. If the gate is still
+	# up, this process holds it, and the tracker's auto-sync would wait up to
+	# 900 s for a file only we can remove, then skip the sync anyway. Record
+	# with auto-sync off instead (the pending ops ride the next mutation), and
+	# say so: a gate still up here is a call-order defect, not a state.
+	local -a sync_env=()
+	if [[ -e "$REPO_ROOT/.git/PR_PENDING" ]]; then
+		echo "⚠️  Recording on ${tracker_id} while this run still holds .git/PR_PENDING" >&2
+		echo "   (WI-kifuh call-order defect): tracker auto-sync disabled for this write." >&2
+		sync_env=(TRACKER_AUTO_SYNC_THRESHOLD=0)
+	fi
+
+	echo "📝 Recording the merge on ${tracker_id} (a tracker auto-sync may run now)..."
+	if ! env "${sync_env[@]}" "$tracker_bin" discuss "$tracker_id" "$msg" >/dev/null 2>&1; then
 		echo "⚠️  tracker discuss ${tracker_id} failed — continuing" >&2
 	fi
+	return 0
+}
+
+# ------------------------------------------------------------------
+# WI-kifuh: a merge-success path's tail -- release the gate, THEN record.
+#
+# `tracker discuss` runs the tracker's `_maybe_auto_sync`, which, when pending
+# ops are over its threshold, waits up to 900 s for .git/PR_PENDING to clear
+# before syncing, and SKIPS the sync if it never does. This run is the holder
+# of that file. Every merge path used to record BEFORE its cleanup removed
+# the gate, so the discuss child waited on its own parent: observed
+# 2026-09-03 on PR #743, fifteen silent minutes and then no sync at all.
+#
+# Each gate is right on its own (a sync must not advance the base under a
+# feature PR mid-CI; auto-pr must hold the gate until its post-merge
+# reconcile is done). The defect was making a tracker MUTATION inside our
+# own gate. The cure is the order, and this function is the one place that
+# holds it, so a merge path cannot get it wrong by hand: the cleanup
+# (cleanup_local or _autopr_flush_cleanup, each of which removes PR_PENDING
+# as its FIRST step) runs first, then the record -- ungated, back on the
+# base after its pull, so auto-sync can actually sync.
+#
+# Both steps go through _autopr_post_merge (INV-rahib): the outcome is
+# already decided, and a cleanup that fails part-way (a dirty .ops file
+# refusing the checkout) has still removed the gate and must not lose the
+# record. Usage:
+#   _autopr_finish_merged <tracker_id> <pr_num> <merged_sha> <cleanup_fn> [args...]
+# ------------------------------------------------------------------
+_autopr_finish_merged() {
+	local tracker_id="$1" pr_num="$2" merged_sha="$3"
+	shift 3
+	_autopr_post_merge "$@"
+	_autopr_post_merge _autopr_append_tracker_discussion \
+		"$tracker_id" "$pr_num" "$merged_sha"
 	return 0
 }
 
@@ -915,16 +963,15 @@ _autopr_handle_already_merged() {
 	# housekeeping kills the shell before the `exit 0` is ever reached, which
 	# is how a converged `already_merged` run would have exited 1. ---
 
-	# WI-mokak: append a durable discussion entry to the referenced
-	# tracker item, if one was supplied. This catches the WI-miriz
-	# failure mode where a silent backgrounded success is re-run and
-	# the first run never got to record the merge.
-	_autopr_post_merge _autopr_append_tracker_discussion \
-		"$TRACKER_ID" "$pr_num" "$local_sha"
-
 	# Cleanup mirrors the post-merge path in do_pr but does NOT touch
 	# tracker ops or attempt to amend the (already-merged) commit.
-	_autopr_post_merge cleanup_local "$branch" "$base"
+	# WI-mokak: then append a durable discussion entry to the referenced
+	# tracker item, if one was supplied. This catches the WI-miriz
+	# failure mode where a silent backgrounded success is re-run and
+	# the first run never got to record the merge. WI-kifuh: cleanup
+	# FIRST, so the record runs outside our own PR_PENDING gate.
+	_autopr_post_merge _autopr_finish_merged \
+		"$TRACKER_ID" "$pr_num" "$local_sha" cleanup_local "$branch" "$base"
 	exit 0
 }
 
@@ -1868,14 +1915,13 @@ Individual commits are preserved in the history."
 	# flush run and is still open.  Best-effort warning only.
 	_autopr_post_merge _autopr_warn_orphan_tracker_sync_prs
 
-	# WI-mokak: append durable post-merge discussion entry to the
-	# tracker item, if one was referenced by --tracker-id.
-	_autopr_post_merge _autopr_append_tracker_discussion \
-		"$TRACKER_ID" "$PR_NUM" "$_merged_sha"
-
+	# Cleanup, then (WI-mokak) the durable post-merge discussion entry on
+	# the --tracker-id item. WI-kifuh: in that order, so the record runs
+	# outside our own PR_PENDING gate.
 	echo "---------------------------------------------------"
 	echo "🧹 Cleaning up..."
-	_autopr_post_merge _autopr_flush_cleanup "$base_branch"
+	_autopr_post_merge _autopr_finish_merged \
+		"$TRACKER_ID" "$PR_NUM" "$_merged_sha" _autopr_flush_cleanup "$base_branch"
 
 	echo ""
 	echo "✅ Flushed $count vPR(s) successfully!"
@@ -2675,14 +2721,13 @@ do_pr() {
 	# auto-pr run and is still open.  Best-effort warning only.
 	_autopr_post_merge _autopr_warn_orphan_tracker_sync_prs
 
-	# WI-mokak: append durable post-merge discussion entry to the
-	# tracker item, if one was referenced by --tracker-id.
-	_autopr_post_merge _autopr_append_tracker_discussion \
-		"$TRACKER_ID" "$PR_NUM" "$_merged_sha"
-
+	# Cleanup, then (WI-mokak) the durable post-merge discussion entry on
+	# the --tracker-id item. WI-kifuh: in that order, so the record runs
+	# outside our own PR_PENDING gate.
 	echo "---------------------------------------------------"
 	echo "🧹 Cleaning up local branch..."
-	_autopr_post_merge cleanup_local "$BRANCH" "$BASE_BRANCH"
+	_autopr_post_merge _autopr_finish_merged \
+		"$TRACKER_ID" "$PR_NUM" "$_merged_sha" cleanup_local "$BRANCH" "$BASE_BRANCH"
 	exit 0
 }
 

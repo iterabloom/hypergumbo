@@ -100,8 +100,14 @@ def _both_arms(tmp_path: Path, ext: str, language: str) -> tuple[set[str], set[s
     )
 
 
+# Every extension the analyzer reads (WI-fovus): the DDG specs used to walk
+# ``*.js`` / ``*.ts`` only, so the other six arms stored nothing at all.
 _ARMS = pytest.mark.parametrize(
-    ("ext", "language"), [("js", "javascript"), ("ts", "typescript")],
+    ("ext", "language"), [
+        ("js", "javascript"), ("mjs", "javascript"), ("cjs", "javascript"),
+        ("jsx", "javascript"), ("ts", "typescript"), ("tsx", "typescript"),
+        ("mts", "typescript"), ("cts", "typescript"),
+    ],
 )
 
 

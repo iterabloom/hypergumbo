@@ -511,3 +511,57 @@ const description = 'A test page';
         canonical = re.compile(r"^sha256:[0-9a-f]{16}$")
         for symbol in result.symbols:
             assert canonical.match(symbol.stable_id), symbol.stable_id
+
+
+_PATH_FIXTURE = """---
+import Header from './Header.astro'
+const title = 'Hi'
+---
+<html><body><Header client:load/><slot name="main"/></body></html>
+"""
+
+
+class TestPathRelativeToAnalysisRoot:
+    """WI-pifus: astro paths are relative to the analysis root, like every sibling.
+
+    The analyzer used to rebuild the root from ``file_path.parent`` and then step
+    up once per part of ``rel_path``; the parts include the filename, so it
+    landed one directory above the root and every ``Symbol.path``, id path slot
+    and edge ``src`` carried the root's own name as an extra leading component.
+    """
+
+    @pytest.mark.parametrize("rel", ["Page.astro", "src/pages/Page.astro"])
+    def test_symbol_and_edge_paths_are_root_relative(
+        self, tmp_path: Path, rel: str,
+    ) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        make_astro_file(tmp_path, rel, _PATH_FIXTURE)
+        result = analyze_astro(tmp_path)
+
+        # Reach first: every symbol-minting site (frontmatter variable, client
+        # directive, slot) and both edge-minting sites must have fired, or the
+        # path assertions below are vacuous for the site that did not.
+        assert {s.kind for s in result.symbols} == {"variable", "directive", "slot"}
+        assert len(result.edges) == 2
+
+        for sym in result.symbols:
+            assert sym.path == rel
+            assert sym.id.startswith(f"astro:{rel}:"), sym.id
+            assert (tmp_path / sym.path).is_file()
+        file_id = make_file_id("astro", rel)
+        for edge in result.edges:
+            assert edge.src == file_id
+        component_edges = [e for e in result.edges if "source_path" in (e.meta or {})]
+        assert [e.meta["source_path"] for e in component_edges] == [rel]
+
+    def test_agrees_with_sibling_analyzer_on_same_root(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_common.scss import analyze_scss
+
+        make_astro_file(tmp_path, "src/Page.astro", _PATH_FIXTURE)
+        (tmp_path / "src" / "a.scss").write_text("body { color: red; }\n")
+
+        astro_dirs = {Path(s.path).parent for s in analyze_astro(tmp_path).symbols}
+        scss_dirs = {Path(s.path).parent for s in analyze_scss(tmp_path).symbols}
+        assert scss_dirs == {Path("src")}  # control: the sibling's convention
+        assert astro_dirs == scss_dirs

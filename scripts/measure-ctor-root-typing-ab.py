@@ -49,7 +49,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import io
 import json
 import pathlib
 import sys
@@ -58,6 +57,11 @@ from typing import Any
 
 import hypergumbo_lang_mainstream.py as py_mod
 from hypergumbo_core.io_boundary import load_catalog, tag_io_boundaries
+
+# The cohort ledger (WI-kovoj): a repo path that is not a directory is FAILED,
+# not "0 boundaries", and the run states covered-of-given.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+from cohort_ledger import CohortLedger, require_dir, run_cli_json
 
 
 @contextlib.contextmanager
@@ -126,20 +130,11 @@ def _positive_control(workdir: pathlib.Path) -> dict[str, Any]:
 def _self_claims_arm(claims: str, repo: str, *, ctor_root_typing: bool) -> dict[str, int]:
     """verify-claims through the real CLI, so the taint/sanitizer direction is read
     from production rather than inferred from edge counts."""
-    from hypergumbo_core.cli import main
-
     with _arm(ctor_root_typing):
-        argv = sys.argv
-        sys.argv = ["hypergumbo", "verify-claims", repo, "--claims", claims, "--json"]
-        buf = io.StringIO()
-        try:
-            with contextlib.redirect_stdout(buf):
-                with contextlib.suppress(SystemExit):
-                    main()
-        finally:
-            sys.argv = argv
-    raw = buf.getvalue().strip()
-    report = json.loads(raw) if raw.startswith("{") else {}
+        # Raises MemberAbsent when no report was written: an empty report
+        # would otherwise read as zero violated claims.
+        report = run_cli_json(["hypergumbo", "verify-claims", repo,
+                               "--claims", claims, "--json"])
     violated = sanitized = evidence = inconclusive = 0
     for verdict in report.get("verdicts", []):
         if verdict.get("verdict") == "violated":
@@ -164,29 +159,33 @@ def main_cli() -> int:
     ap.add_argument("--claims", default="docs/hypergumbo.claims.yaml")
     args = ap.parse_args()
 
+    ledger = CohortLedger(args.repos)
     with tempfile.TemporaryDirectory() as td:
         control = _positive_control(pathlib.Path(td))
     print("POSITIVE CONTROL:", json.dumps(control), file=sys.stderr)
     if not control["DETECTS_THE_CHANGE"]:
         print("FAILED POSITIVE CONTROL — this run measured NOTHING. Every zero "
               "below is an uncontrolled null, not evidence.", file=sys.stderr)
-        return 3
+        ledger.report(sys.stderr)
+        return ledger.exit_code(3)
 
     report: dict[str, Any] = {"positive_control": control, "repos": {}}
-    for repo in args.repos:
-        with _arm(False):
-            before = _boundaries(repo)
-        with _arm(True):
-            after = _boundaries(repo)
-        report["repos"][pathlib.Path(repo).name] = {
-            "arm_a_prefix": before,
-            "arm_b_ctor_root": after,
-            "delta": {k: after[k] - before[k] for k in before},
-        }
-        print(f"  {pathlib.Path(repo).name}: boundaries "
-              f"{before['boundaries']} -> {after['boundaries']} "
-              f"(delta {after['boundaries'] - before['boundaries']:+d})",
-              file=sys.stderr)
+    for repo in ledger:
+        with ledger.attempt(repo):
+            require_dir(repo)
+            with _arm(False):
+                before = _boundaries(repo)
+            with _arm(True):
+                after = _boundaries(repo)
+            report["repos"][pathlib.Path(repo).name] = {
+                "arm_a_prefix": before,
+                "arm_b_ctor_root": after,
+                "delta": {k: after[k] - before[k] for k in before},
+            }
+            print(f"  {pathlib.Path(repo).name}: boundaries "
+                  f"{before['boundaries']} -> {after['boundaries']} "
+                  f"(delta {after['boundaries'] - before['boundaries']:+d})",
+                  file=sys.stderr)
 
     if args.self_claims:
         a = _self_claims_arm(args.claims, ".", ctor_root_typing=False)
@@ -199,12 +198,14 @@ def main_cli() -> int:
         print("  self-claims:", json.dumps(report["self_claims"]["delta"]),
               file=sys.stderr)
 
+    report["cohort"] = ledger.claim()
+    ledger.report(sys.stderr)
     text = json.dumps(report, indent=2)
     if args.out:
         pathlib.Path(args.out).write_text(text)
     else:
         print(text)
-    return 0
+    return ledger.exit_code()
 
 
 if __name__ == "__main__":

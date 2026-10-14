@@ -8,6 +8,10 @@
 # matching against starlette.routing) so this YAML can attach concept=route
 # to handler symbols, complementing the route-marker symbols emitted directly.
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-08-19
 id: starlette
 language: python
 

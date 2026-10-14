@@ -187,6 +187,8 @@ def test_excludes_node_modules_from_profile(tmp_path: Path) -> None:
     node_modules = tmp_path / "node_modules" / "some-package"
     node_modules.mkdir(parents=True)
     (node_modules / "index.js").write_text("module.exports = {};\n")
+    # An installed tree, recognised by content (ADR-0004 §"Installed dependency source").
+    (tmp_path / "node_modules" / ".package-lock.json").write_text("{}")
 
     out_path = tmp_path / "out.json"
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
@@ -1790,6 +1792,89 @@ def test_detect_languages_loc_counting(tmp_path: Path) -> None:
     langs = _detect_languages(tmp_path, count_loc=True)
     assert langs["python"].files == 2
     assert langs["python"].loc == 501  # 1 + 500
+
+
+def test_detect_languages_counts_test_files_per_language(tmp_path: Path) -> None:
+    """WI-ritaf: each language carries how many of its ``files`` are test paths.
+
+    A fixture-only language (go under tests/fixtures/) must be visibly
+    test-only, while ``files`` itself is NOT shrunk -- the WI-jadig
+    pre-filter skips an analyzer whose languages read ``files == 0``, so the
+    fixture's analyzer must keep running.
+    """
+    from hypergumbo_core.profile import _detect_languages
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("def main():\n    pass\n")
+    (tmp_path / "src" / "util.py").write_text("X = 1\n")
+    (tmp_path / "tests" / "fixtures" / "go").mkdir(parents=True)
+    (tmp_path / "tests" / "test_app.py").write_text("def test_x():\n    pass\n")
+    (tmp_path / "tests" / "fixtures" / "go" / "main.go").write_text(
+        "package main\nfunc main() {}\n"
+    )
+
+    langs = _detect_languages(tmp_path)
+
+    # Reach first: both languages detected, with the enumerated counts.
+    assert langs["python"].files == 3
+    assert langs["go"].files == 1  # NOT 0: the pre-filter must still fire go
+    # The new positive claim.
+    assert langs["python"].test_files == 1
+    assert langs["go"].test_files == 1
+    assert langs["go"].test_files == langs["go"].files  # test-only language
+
+
+def test_detect_languages_test_files_uses_repo_relative_path(tmp_path: Path) -> None:
+    """A repo that itself lives under a ``tests/`` directory is not all-test.
+
+    Classification must run on the path RELATIVE to the repo root; an
+    absolute path would match the ``tests/`` component of the checkout
+    location and report every file as a test file.
+    """
+    from hypergumbo_core.profile import _detect_languages
+
+    repo = tmp_path / "tests" / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "app.py").write_text("def main():\n    pass\n")
+
+    langs = _detect_languages(repo)
+
+    assert langs["python"].files == 1
+    assert langs["python"].test_files == 0
+
+
+def test_detect_languages_test_files_on_find_files_enumerator(tmp_path: Path) -> None:
+    """The test split also covers languages counted by an analyzer's
+    ``find_files`` (bash: extensionless shebang scripts, INV-hokig)."""
+    from hypergumbo_core.profile import _detect_languages
+
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "scripts" / "deploy").write_text("#!/bin/bash\necho hi\n")
+    (tmp_path / "tests" / "run-fixture").write_text("#!/bin/bash\necho t\n")
+
+    langs = _detect_languages(tmp_path)
+
+    assert langs["bash"].files == 2
+    assert langs["bash"].test_files == 1
+
+
+def test_language_stats_test_files_serialization() -> None:
+    """``test_files`` is emitted when measured and ABSENT when unmeasured.
+
+    A profile restored from a cache written before the field existed has no
+    measurement; reading it as ``0`` would claim "no test files" (absent !=
+    empty), so ``from_dict`` keeps ``None`` and ``to_dict`` omits the key.
+    """
+    from hypergumbo_core.profile import LanguageStats
+
+    measured = LanguageStats(files=4, loc=10, test_files=0)
+    assert measured.to_dict() == {"files": 4, "loc": 10, "test_files": 0}
+    assert LanguageStats.from_dict(measured.to_dict()) == measured
+
+    legacy = LanguageStats.from_dict({"files": 4, "loc": 10})
+    assert legacy.test_files is None
+    assert "test_files" not in legacy.to_dict()
 
 
 def test_detect_profile_count_loc(tmp_path: Path) -> None:
@@ -4909,3 +4994,94 @@ def test_profile_finds_an_analyzer_enumerator_by_language_not_by_pass_name(tmp_p
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
     languages = json.loads(out_path.read_text())["profile"]["languages"]
     assert languages.get("makefile", {}).get("files") == 1, languages
+
+
+def test_all_mode_frameworks_are_sorted(tmp_path: Path) -> None:
+    """``--frameworks all`` emits a stable framework order (WI-vosag analogue).
+
+    The ALL-mode list was ``list(<set>)`` — per-process hash order — so the
+    serialised profile differed between two runs on the same repo.
+    """
+    from hypergumbo_core.profile import detect_profile
+
+    (tmp_path / "app.py").write_text("x = 1\n")
+    (tmp_path / "app.js").write_text("x = 1\n")
+    profile = detect_profile(tmp_path, frameworks="all")
+    assert len(profile.frameworks) > 1
+    assert profile.frameworks == sorted(profile.frameworks)
+
+
+def _write_two_ecosystem_repo(root: Path) -> None:
+    """A repo where hardhat (JS + Solidity) and ktor (Kotlin + Java/Gradle) are
+    each detected by two ecosystem scanners (INV-vapov's filed repro)."""
+    (root / "package.json").write_text(
+        '{"name": "x", "dependencies": {"hardhat": "^2.0.0", "ethers": "^6.0.0"}}'
+    )
+    (root / "hardhat.config.js").write_text("module.exports = {};\n")
+    (root / "build.gradle.kts").write_text(
+        'dependencies { implementation("io.ktor:ktor-server-core:2.3.0") }\n'
+    )
+    (root / "App.kt").write_text("fun main() {}\n")
+    (root / "src").mkdir()
+    (root / "src" / "index.js").write_text("const x = 1;\n")
+
+
+def test_framework_detected_by_two_ecosystems_listed_once(tmp_path: Path) -> None:
+    """INV-vapov: ``_detect_frameworks`` concatenates per-ecosystem results, so a
+    name two scanners both detect (hardhat: JS + Solidity; ktor: Kotlin + Gradle)
+    appeared twice in ``profile.frameworks`` and in survey.json."""
+    from hypergumbo_core.profile import detect_profile
+
+    _write_two_ecosystem_repo(tmp_path)
+    profile = detect_profile(tmp_path)
+    assert profile.frameworks == ["ethers", "hardhat", "ktor"]
+    assert profile.to_dict()["frameworks"] == ["ethers", "hardhat", "ktor"]
+
+
+def test_explicit_frameworks_repeated_on_the_command_line_listed_once(tmp_path: Path) -> None:
+    """INV-vapov analogue: ``--frameworks flask,flask`` echoed both copies into
+    ``frameworks`` and ``requested_frameworks``."""
+    from hypergumbo_core.profile import detect_profile
+
+    (tmp_path / "app.py").write_text("x = 1\n")
+    d = detect_profile(tmp_path, frameworks="flask,celery,flask").to_dict()
+    assert d["frameworks"] == ["celery", "flask"]
+    assert d["requested_frameworks"] == ["celery", "flask"]
+
+
+def test_repo_profile_guarantees_unique_disjoint_framework_lists() -> None:
+    """INV-vapov: RepoProfile is the one place that guarantees each framework is
+    listed once, in sorted order, whatever producer built it (manifest scan,
+    explicit list, refine, cached ``from_dict``). A framework confirmed for prod
+    is not also listed as dev, and ``framework_evidence`` only keys frameworks
+    the profile lists."""
+    from hypergumbo_core.profile import RepoProfile
+
+    profile = RepoProfile.from_dict({
+        "frameworks": ["ktor", "hardhat", "ktor", "hardhat"],
+        "dev_frameworks": ["pytest", "hardhat", "pytest"],
+        "framework_mode": "explicit",
+        "requested_frameworks": ["ktor", "hardhat", "ktor"],
+        "framework_evidence": {"ktor": ["b", "a", "b"], "flask": ["c"]},
+    })
+    assert profile.frameworks == ["hardhat", "ktor"]
+    assert profile.dev_frameworks == ["pytest"]
+    assert profile.requested_frameworks == ["hardhat", "ktor"]
+    assert profile.framework_evidence == {"ktor": ["a", "b"]}
+
+
+def test_refine_frameworks_output_unique_and_evidence_consistent() -> None:
+    """INV-vapov: refine over a duplicated input list yields each framework once,
+    and every ``framework_evidence`` key is a listed (confirmed) framework."""
+    from hypergumbo_core.profile import refine_frameworks
+
+    src_id = "python:src/app.py:1-5:handler:function"
+    profile = _make_profile(["flask", "pytest", "flask", "pytest"])
+    edges = [_make_edge(src=src_id, dst="python:flask:0-0:module:module")]
+    symbols = [_make_symbol(src_id, "src/app.py")]
+
+    result = refine_frameworks(profile, edges, symbols)
+    assert result.frameworks == ["flask"]
+    assert result.dev_frameworks == ["pytest"]
+    assert set(result.framework_evidence) <= set(result.frameworks)
+    assert result.framework_evidence == {"flask": [src_id]}

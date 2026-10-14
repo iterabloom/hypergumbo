@@ -49,6 +49,7 @@ from pathlib import Path
 from ..symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
 from ._text_filters import js_ts_language_from_path, read_source_text
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..taxonomy import JS_TS_LANGUAGES, extension_suffixes
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -71,8 +72,9 @@ _VIEM_FUNCTION_NAME = re.compile(
     r"""functionName\s*:\s*['"](\w+)['"]""",
 )
 
-# File extensions to scan for contract calls
-_TS_JS_EXTENSIONS = frozenset({".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts"})
+# File extensions to scan for contract calls: the shared JS/TS list (WI-hizon;
+# the private copy here lacked ``.cjs`` / ``.cts``).
+_TS_JS_EXTENSIONS = extension_suffixes(*JS_TS_LANGUAGES)
 
 
 def _collect_solidity_functions(

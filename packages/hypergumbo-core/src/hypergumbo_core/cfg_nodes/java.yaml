@@ -5,6 +5,7 @@
 #
 # Child references: "field:name" → child_by_field_name("name"),
 #                   "type:name" → first child with .type == "name"
+provenance: builtin
 language: java
 grammar: tree-sitter-java
 
@@ -22,10 +23,17 @@ loop:
     condition_child: "field:condition"
     body_child: "field:body"
   - node_type: for_statement
+    # `for (int k = 0, j = 0; k < n; k++, j++)`: every `init` and `update`
+    # field is recorded (WI-losod).
+    initializer_child: "field:init"
     condition_child: "field:condition"
+    update_child: "field:update"
     body_child: "field:body"
   - node_type: enhanced_for_statement
     body_child: "field:body"
+    # `for (T v : xs)` binds `v` with no node of its own: recorded at the loop
+    # node, which java_def_use reads as the header only (WI-losod).
+    header_is_node: true
 
 break_statement: [break_statement]
 continue_statement: [continue_statement]
@@ -41,4 +49,51 @@ switch:
   - node_type: switch_expression
     scrutinee_child: "field:condition"
     arms_child: "field:body"
-    arm_type: switch_block_statement_group
+    # `case 1: ...` groups and `case 1 -> ...` rules are two node types. With
+    # only the first named, an arrow-form switch had NO arms, and an empty
+    # fringe left every statement after it unreachable (WI-faful).
+    arm_type: [switch_block_statement_group, switch_rule]
+
+# Node types that ARE a call in this grammar (WI-joluk). Consumed by
+# cfg.uncovered_semantic_lines, which asks whether the CFG's recorded
+# statement extents cover every semantic leaf of a function body. A language
+# that declares none is treated as unknowable and forfeits refutation (and the
+# same-function sanitizer credit) everywhere.
+call_node_types:
+  - method_invocation
+  - object_creation_expression
+  - explicit_constructor_invocation
+
+# Atomic statement node types (WI-gotun): the CFG builder records each as ONE
+# CfgStatement instead of descending to its leaves, so java_def_use's walker is
+# handed the whole statement. Without this key the extractor would be correct
+# and inert, the state rust.yaml and typescript.yaml were in for months.
+#
+# `resource` and `catch_formal_parameter` are listed because they bind a
+# variable (`try (T r = e)`, `catch (E ex)`) and sit inside constructs the
+# builder descends through. Deliberately EXCLUDED because classify() owns them:
+# return_statement, if/while/do/for/enhanced_for, try_statement and
+# switch_expression. Their headers' bindings (the enhanced-for variable, a
+# classic for's init and update) are recorded by the loop hook (WI-losod).
+atomic_statement:
+  - local_variable_declaration
+  - expression_statement
+  - resource
+  - catch_formal_parameter
+  - explicit_constructor_invocation
+  - throw_statement
+  - assert_statement
+  - yield_statement
+
+# Functions nested in a function body (WI-faful): a lambda, or a method of an
+# anonymous or local class, runs when it is called, not where it is written.
+# Its body is built as its own CFG region that MAY run, hung off the statement
+# that holds it, rather than inlined in sequence; the statement stays ONE
+# statement, so `Runnable q = () -> { if (x > 0) go(); };` defines `q`.
+nested_function:
+  - node_type: lambda_expression
+    body_child: "field:body"
+  - node_type: method_declaration
+    body_child: "field:body"
+  - node_type: constructor_declaration
+    body_child: "field:body"

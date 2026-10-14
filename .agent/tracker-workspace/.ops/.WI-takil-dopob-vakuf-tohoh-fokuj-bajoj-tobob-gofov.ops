@@ -1,0 +1,21 @@
+- op: create  # 9a72
+  at: '2026-10-07T05:13:41Z'  # 9a72
+  by: agent  # 9a72
+  actor: jgstern_agent  # 9a72
+  clock: 1  # 9a72
+  nonce: 9a72  # 9a72
+  data:  # 9a72
+    kind: work_item  # 9a72
+    title: "is_test_file misses PascalCase test conventions (FooTest.java, MyApp.Tests/FooTests.cs, androidTest/, FooSpec.scala)"  # 9a72
+    status: todo_soft  # 9a72
+    priority: 3  # 9a72
+    parent:  # 9a72
+    tags:  # 9a72
+    - sketch  # 9a72
+    - test_classification  # 9a72
+    isbefore: []  # 9a72
+    duplicate_of: []  # 9a72
+    not_duplicate_of: []  # 9a72
+    pr_ref:  # 9a72
+    description: "paths.classify_test_file (the shared is_test_file chokepoint, also used by sketch._analyze_test_files to count test files) recognises snake/kebab test names (test_*, *_test.*, *.test.*, *.spec.*) and test directories, but not the PascalCase-suffix conventions of the JVM/.NET/Swift/Scala ecosystems outside a tests/ or src/test/ directory. Live probe (2026-10-07, dev @ e3f091d458):\n  src/com/x/FooTest.java -> False\n  MyApp.Tests/FooTests.cs -> False      (dotted *.Tests / *.UnitTests project dirs are the .NET convention)\n  MyApp.UnitTests/FooTests.cs -> False\n  app/src/androidTest/java/FooTest.kt -> False   (Android instrumentation tests)\n  FooTests/FooTests.swift -> False\n  src/FooSpec.scala -> False\n  (control) src/test/kotlin/FooTest.kt -> True\nEffect: such files count as production in the sketch's \"N non-test + M test\" line and are not deprioritised as test code in ranking/slices; the sketch's test-framework detection (WI-vosag: xunit/nunit/mstest/XCTest/kotlin.test patterns) never sees them, so a .NET repo with tests in MyApp.Tests/ reports no test files and no framework. sketch.TEST_FILE_PATTERNS already lists *Test.java / *Tests.java, so the knowledge exists in a second place that classify_test_file does not use (L53: one classifier). Fix shape: add filename rules for [A-Z]\\w*(Test|Tests|Spec|IT)\\.(java|kt|cs|swift|scala|groovy) (case-sensitive capital T to avoid 'Latest.java'/'Contest.java') and directory rules for *.Tests / *.UnitTests / *.IntegrationTests / androidTest; mind the breadth trade-offs documented on is_test_file (WI-popok KEEP verdict) and measure the ranking/tier delta on a JVM and a .NET repo before merging. Found while fixing WI-vosag."  # 9a72
+    fields: {}  # 9a72

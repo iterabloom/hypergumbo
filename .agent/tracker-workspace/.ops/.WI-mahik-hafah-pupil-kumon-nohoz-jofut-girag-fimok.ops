@@ -1,0 +1,53 @@
+- op: create  # 84db
+  at: '2026-10-01T05:09:46Z'  # 84db
+  by: agent  # 84db
+  actor: jgstern_agent  # 84db
+  clock: 1  # 84db
+  nonce: 84db  # 84db
+  data:  # 84db
+    kind: work_item  # 84db
+    title: "perl: a class-method call (HTTP::Tiny->new, File::Spec->catfile) on a package the repo does not define emits no calls edge, and binds a same-named sub in ANOTHER package when one exists"  # 84db
+    status: todo_hard  # 84db
+    priority: 2  # 84db
+    parent:  # 84db
+    tags:  # 84db
+    - perl  # 84db
+    - call_graph  # 84db
+    - analysis_quality  # 84db
+    isbefore: []  # 84db
+    duplicate_of: []  # 84db
+    not_duplicate_of: []  # 84db
+    pr_ref:  # 84db
+    description: "FOUND 2026-10-01 while sweeping WI-surar's family (constant / namespaced receivers) across sibling languages. Record: WI-surar's report, ~/hypergumbo_lab_notebook/decontend/run_09302026/surar.md.\n\nperl.py's method_call_expression arm (the `->` operator) resolves the method by SHORT NAME through resolver.lookup and emits an edge only when that lookup finds something; otherwise it emits NOTHING. Fixture (scratch, analyze_perl on worktree sources at origin/dev 7a645c6c76):\n\n    use LWP::UserAgent;\n    sub f {\n      my $u = shift;\n      my $r = HTTP::Tiny->new->get($u);   # no edge\n      LWP::Simple::get($u);               # perl:LWP::Simple:0-0:get:unresolved (correct)\n      File::Spec->catfile($u);            # no edge\n    }\n\nTwo defects in one arm:\n  (1) INV-foluz's shape in perl: a class-method call on a package the repo does not define (HTTP::Tiny->new, File::Spec->catfile, LWP::UserAgent->new) emits no calls edge, so no catalogue or overlay row can ever classify it, and the package name the source spells is discarded.\n  (2) WI-johib's shape in perl: when the repo DOES define some sub of the same short name, `Pkg->m` binds it receiver-blind, whatever package declares it. REPRODUCED: 'package Foo; sub catfile {1}' plus 'File::Spec->catfile(\"a\")' in sub f emits calls perl:a.pl:4-6:f:function -> perl:a.pl:2-2:catfile:function (Foo's catfile).\n\nFIX SHAPE (not built): read the invocant; when it is a bareword package name, look up Pkg::m first and otherwise emit make_unresolved_edge with module_hint=Pkg as written (owner path per ADR-0051, the spelling the function-call arm already uses for LWP::Simple::get). A variable invocant ($ua->get) is a separate, harder case (needs a declared/constructed type). NOT measured: frequency on any corpus repo; no corpus repo is NAMED perl/mojo/catalyst/dancer in ~/whole_bunch_of_repos (a name grep, not a file-extension find)."  # 84db
+    fields: {}  # 84db
+- op: discuss  # a0fe
+  at: '2026-10-04T08:25:25Z'  # a0fe
+  by: agent  # a0fe
+  actor: jgstern_agent  # a0fe
+  clock: 2  # a0fe
+  nonce: a0fe  # a0fe
+  message: "WORK DONE 2026-10-04, branch jgstern-agent/fix/mahik (worktree ~/hg_wt/mahik), commit a9ed664683, NOT pushed. No status change.\n\nPremise re-verified on origin/dev 385ec63be1 (both halves reproduced; fixture in the commit's test).\n\nFix (perl.py): a bareword invocant (Pkg, Pkg::, ::Pkg) or __PACKAGE__ is looked up as Pkg::m exactly (main -> bare m). A miss emits perl:<Pkg>:0-0:<m>:unresolved with dst_ref module_path=Pkg, which is the function arm's spelling for LWP::Simple::get (one shared helper now). Both carry call_construct=function (ADR-0059). Class-method calls outside a sub are attributed to the file. Expression invocants are unchanged. Spec line on top-level anchoring corrected.\n\nTests: test_perl_class_method.py. Red on origin/dev: 11 failed, 4 passed. Green, targeted smart-test, 297 files: 9795 passed, 2 xfailed, 0 failed; perl.py at 100% coverage.\n\nBehaviour (verify-claims, overlay fs_read module IO::File functions [new], claim must_not_exist): IO::File->new is confirmed on origin/dev (a false all-clear: the call bound the repo's Local::new) and violated on the branch. Controls: Local->new stays confirmed; Other::File->new gives inconclusive. A mutant that drops the package from the module slot turns Other::File violated, so that control can fail.\n\nMeasured by call site, analyze_perl on frozen perl-file copies (~/hypergumbo_lab_notebook/decontend/run_10032026/mahik/):\n- No edge changed outside a class-method site in any repo.\n- Bindings to ANOTHER package's sub: 173 to 0.\n- Bindings to the invocant's own sub: 48 to 769 (postgresql 399 of them top-level TAP calls).\n- External package sites: 0 to 204.\n- Per repo: git 98 sites, postgresql 441, virtualbox 423, ceph 2, kong 10.\n- Inherited-call losses: 3 sites lost an in-repo binding; all 3 were wrong bindings.\n- Default-config verify-claims on the git/postgresql perl files is unchanged: inconclusive in both arms, because perl has no I/O catalogue.\n\nResiduals filed:\n- WI-mugir-tupuj-tiras-diror-kutis-dusup-tatuv-rikat (P2): expression invocants.\n- WI-jubuk-rufus-tonab-kifiv-madom-pipaf-dofis-putam (P3): no perl inheritance.\n- WI-lomon-hapul-tudub-buvog-pazaz-hibut-latak-zokiz (P3): no perl I/O catalogue.\nNote posted on WI-jadaf."  # a0fe
+- op: update  # b868
+  at: '2026-10-05T00:29:35Z'  # b868
+  by: agent  # b868
+  actor: jgstern_agent  # b868
+  clock: 3  # b868
+  nonce: b868  # b868
+  set:  # b868
+    status: done  # b868
+- op: discuss  # e148
+  at: '2026-10-05T00:29:35Z'  # e148
+  by: agent  # e148
+  actor: jgstern_agent  # e148
+  clock: 4  # e148
+  nonce: e148  # e148
+  message: "Merged in PR #1456 (dev 05fefe416b).\n\nBEHAVIOURAL EVIDENCE: `verify-claims` with an overlay `fs_read: [{module: IO::File, functions: [new]}]` over a repo whose only `new` is `Local::new`, and `my $fh = IO::File->new($p,'r')` inside a sub, claim must_not_exist: `confirmed` on origin/dev 385ec63be1 (a false all-clear), `violated` on the branch. Controls: `Local->new` stays confirmed; `Other::File->new` is inconclusive, and turns violated under a mutant that drops the package. Pinned in test_perl_class_method.py on the production path.\n\nMeasured by call site on the perl files of git/postgresql/virtualbox/ceph/kong: no edge changed outside class-method sites; in-repo bindings to another package 173 -> 0, to the invocant's own sub 48 -> 769, external package sites 0 -> 204.\n\nNOT asserted: that every perl `->` call is owner-resolved. Expression invocants (`$obj->m`, `Pkg->new->get`) stay receiver-blind (WI-mugir). Inherited class methods stay unresolved naming the subclass (WI-jubuk). No built-in perl catalogue exists, so classification needs a user overlay (WI-lomon)."  # e148
+- op: update  # b025
+  at: '2026-10-05T00:30:21Z'  # b025
+  by: agent  # b025
+  actor: jgstern_agent  # b025
+  clock: 5  # b025
+  nonce: b025  # b025
+  set: {}  # b025
+  add:  # b025
+    tags: [awaits_bakeoff_validation]  # b025

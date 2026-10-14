@@ -16,7 +16,7 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-json is available (via language pack or standalone)
+1. Check if the JSON grammar is available (via tree-sitter-language-pack)
 2. If not available, return skipped result (not an error)
 3. Detect JSON file type (package.json, tsconfig, composer, etc.)
 4. Parse and extract type-specific information
@@ -30,6 +30,14 @@ Why This Design
 - tsconfig.json: Extract TypeScript project references
 - composer.json: Extract PHP Composer dependencies
 - Useful for frontend/Node.js and PHP ecosystem analysis
+- Identity (ADR-0035, WI-tusad): ``package`` and ``bin`` symbols mint
+  ``overload_arity.scoped_stable_id`` over their name (a manifest declares
+  one package and unique bin names); a dependency mints
+  ``overload_arity.scoped_table_stable_id`` scoped by its
+  ``meta["dependency_scope"]`` (``dev`` for devDependencies / require-dev),
+  so one package in both groups is two identities (INV-punig, scheme v9), and
+  a production dependency keeps the backstop's table value; export and file
+  symbols keep the backstop's table formulas
 """
 from __future__ import annotations
 
@@ -43,6 +51,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 
 if TYPE_CHECKING:
@@ -204,7 +213,14 @@ def _process_dependencies(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    # The dependency group is the scope (INV-punig, scheme
+                    # v9): ``lodash`` in dependencies and in devDependencies
+                    # are two declarations. A production dependency has no
+                    # dependency_scope and keeps the backstop's table value.
+                    stable_id=scoped_table_stable_id(
+                        kind=kind_value, lang="json", path=rel_path, name=pkg_name,
+                        scope=(meta["dependency_scope"],) if "dependency_scope" in meta else (),
+                    ),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind=kind_value,
@@ -319,7 +335,7 @@ def _process_bin(
 
             sym = Symbol(
                 id=symbol_id,
-                stable_id=None,
+                stable_id=scoped_stable_id(kind="bin", lang="json", path=rel_path, name=pkg_name),
                 shape_id=None,
                 # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                 kind="bin",
@@ -375,7 +391,7 @@ def _process_bin(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=scoped_stable_id(kind="bin", lang="json", path=rel_path, name=bin_name),
                     shape_id=None,
                     # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
                     kind="bin",
@@ -421,7 +437,8 @@ def _process_main_entry(
 
     The "main" field specifies the primary entry point for Node.js modules
     and Electron apps (e.g., ``"main": "./src/main.js"``). This creates a
-    ``main_entry`` symbol and a ``defines_target`` edge to the target file,
+    ``kind="file"`` symbol (``meta["entry_role"] = "main"``) and a
+    ``defines_target`` edge to the target file,
     enabling the build-target linker to connect it to the module's main()
     function or module symbol.
     """
@@ -540,7 +557,7 @@ def _process_exports(
     - Object with subpath keys: {".": "./src/index.js", "./sync": "./src/sync.js"}
     - Object with conditional values: {".": {"import": "./dist/esm.js", "require": "./dist/cjs.js"}}
 
-    Each resolved export path creates an ``export_entry`` symbol and a
+    Each resolved export path creates a ``kind="export"`` symbol and a
     ``defines_target`` edge to the target file.
     """
     if exports_node.type == "string":
@@ -696,7 +713,7 @@ def _process_package_json(
 
         sym = Symbol(
             id=project_id,
-            stable_id=None,
+            stable_id=scoped_stable_id(kind="package", lang="json", path=rel_path, name=pkg_name),
             shape_id=None,
             # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
             kind="package",
@@ -861,7 +878,7 @@ def _process_composer_json(
 
         sym = Symbol(
             id=project_id,
-            stable_id=None,
+            stable_id=scoped_stable_id(kind="package", lang="json", path=rel_path, name=pkg_name),
             shape_id=None,
             # ADR-0032: canonical_name dropped (was redundant with name=); fingerprint stamped by central post-pass.
             kind="package",

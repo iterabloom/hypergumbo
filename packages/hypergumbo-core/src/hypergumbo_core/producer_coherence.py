@@ -23,18 +23,26 @@ shape that Phase 3's per-cluster migration normalizes.
 
 Name arguments are resolved too: function-local bindings (single
 literal, ternary, if/else chain) and dict-subscript lookups
-(``et = MAP[k]``) yield their candidate literals. What still cannot be
-resolved (parameters, loop targets, call results) is skipped silently by
-default, or reported as advisory / strict via ``variable_form_mode``.
-With ``descend_helpers=True`` the walk also follows module-local emission
-helpers, nested closures included, that receive the axis value
-positionally or by keyword; a per-module fixpoint finds helpers that
-forward to other helpers.
+(``et = MAP[k]``) yield their candidate literals. Any value those named
+shapes leave unresolved is then handed to
+:mod:`hypergumbo_core.value_flow`, which follows it back through the
+module -- loops over lists of tuples, a helper's appended or returned
+tuples, dict stores, record-class fields, private-function parameters --
+and answers only when EVERY route was followed (WI-nakur; the shapes that
+hid INV-dahuh's and WI-pubin's unregistered values). What still cannot be
+resolved is skipped silently by default, or reported as advisory / strict
+via ``variable_form_mode``. With ``descend_helpers=True`` the walk also
+follows module-local emission helpers, nested closures included, that
+receive the axis value positionally or by keyword; a per-module fixpoint
+finds helpers that forward to other helpers, and a helper's own forwarding
+site is then reported at its call sites only (see ``_iter_file_sites``).
 
 Besides this gate the module enumerates. ``find_emitted_literal_values``
 (and its ``find_emitted_{symbol_kinds,evidence_types,edge_types}``
 wrappers) maps every emitted value to its sites regardless of registry
-membership, for audits that must assert "no producer emits X".
+membership, for audits that must assert "no producer emits X";
+``scan_file_emits`` is its per-module core, which also lists the sites it
+could not enumerate, for a consumer that must not be silently blind.
 ``unregistered_emitted_values`` narrows that to non-registry values, and
 ``ratchet_diff`` compares them with a committed baseline: a new value is
 a regression, and a baselined value no longer emitted must be removed,
@@ -64,6 +72,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Iterable, Iterator, Literal
 
+from hypergumbo_core.value_flow import resolve_strings
+
 
 FStringMode = Literal["advisory", "expand", "strict"]
 """How the linter treats f-string producer call sites.
@@ -88,9 +98,9 @@ VariableFormMode = Literal["silent", "advisory", "strict"]
 """How the linter treats unresolvable Name / call-result kwargs (ext C).
 
 - ``"silent"`` (default) — current behaviour: a kwarg whose value can't
-  be statically resolved (function parameter, for-loop unpack target,
-  function-call return, dict-subscript lookup, etc.) is silently skipped
-  on the assumption that a runtime-coherence check will catch it later.
+  be statically resolved (see :mod:`hypergumbo_core.value_flow` for what
+  can) is silently skipped on the assumption that a runtime-coherence
+  check will catch it later.
 - ``"advisory"`` — same as silent for gating purposes, but the unresolved
   site is surfaced as an advisory so reviewers can audit producer-side
   hygiene without blocking the commit.
@@ -537,7 +547,41 @@ def _classify_value(
     *,
     fstring_mode: FStringMode = "advisory",
 ) -> tuple[str, str | frozenset[str] | None]:
-    """Classify a keyword argument's value expression.
+    """Classify a keyword argument's value expression (see :func:`_classify_shape`).
+
+    The named shapes below are tried first, then -- for any value they leave
+    unresolved, and for an f-string they cannot expand outside ``advisory``
+    mode -- :mod:`hypergumbo_core.value_flow`, which follows the value back
+    through loops over lists of tuples, helper returns, appended and stored
+    collection elements, parameters and record-class fields (WI-nakur,
+    INV-dahuh, WI-pubin: the values those carried were invisible to every
+    gate built on this function). Its answer is all-or-nothing, so a
+    remaining ``unresolvable`` still means "this walk cannot enumerate it",
+    never "it emits nothing".
+    """
+    category, payload = _classify_shape(
+        value, tree, func_scope, fstring_mode=fstring_mode,
+    )
+    flow_eligible = category == "unresolvable" or (
+        category in ("fstring", "fstring_unexpandable") and fstring_mode != "advisory"
+    )
+    if flow_eligible:
+        flowed = resolve_strings(value, tree)
+        if flowed:
+            if len(flowed) == 1:
+                return ("literal", next(iter(flowed)))
+            return ("literals", flowed)
+    return (category, payload)
+
+
+def _classify_shape(
+    value: ast.expr,
+    tree: ast.Module,
+    func_scope: _FuncScope | None,
+    *,
+    fstring_mode: FStringMode = "advisory",
+) -> tuple[str, str | frozenset[str] | None]:
+    """Classify a keyword argument's value expression by its named shapes.
 
     Returns ``(category, payload)`` where category is one of:
 
@@ -886,6 +930,58 @@ def _iter_helper_producer_call_sites(
     )
 
 
+def _forwards_helper_param(
+    value_node: ast.expr,
+    func_scope: _FuncScope | None,
+    helper_sinks: dict[str, tuple[str, int]],
+) -> bool:
+    """True when *value_node* is the enclosing helper's own sink parameter."""
+    if not isinstance(value_node, ast.Name) or func_scope is None:
+        return False
+    sink = helper_sinks.get(func_scope.name)
+    return sink is not None and sink[0] == value_node.id
+
+
+def _iter_file_sites(
+    path: Path,
+    *,
+    constructor_names: frozenset[str],
+    keyword_arg: str,
+    descend_helpers: bool,
+) -> Iterator[tuple[int, ast.expr, ast.Module, _FuncScope | None, bool]]:
+    """Every producer site in *path*, flagged ``forwarded`` where it is a hop.
+
+    Direct constructor sites first, then (with *descend_helpers*) the WI-zipis
+    helper call sites. A site whose value is the enclosing helper's own sink
+    parameter -- ``def _h(t): Edge.create(edge_type=t)``, or ``_outer``
+    passing its parameter on to ``_h`` -- is a FORWARDING hop. Before
+    :mod:`~hypergumbo_core.value_flow` it was unresolvable and silent; now it
+    resolves to the union of its callers' values, which descent already
+    reports one call site at a time. Callers skip a forwarded site that
+    resolves so a value is reported where it is written, once. A forwarded
+    site that does NOT resolve is kept: descent cannot see a helper that is
+    also passed around as a callback, so it must still read as unresolved.
+    """
+    sites = list(_iter_producer_call_sites(
+        path, constructor_names=constructor_names, keyword_arg=keyword_arg,
+    ))
+    if not descend_helpers:
+        for lineno, value_node, tree, func_scope in sites:
+            yield lineno, value_node, tree, func_scope, False
+        return
+    sites += list(_iter_helper_producer_call_sites(
+        path, constructor_names=constructor_names, keyword_arg=keyword_arg,
+    ))
+    if not sites:
+        return
+    helper_sinks = _discover_helper_sinks(sites[0][2], constructor_names, keyword_arg)
+    for lineno, value_node, tree, func_scope in sites:
+        yield (
+            lineno, value_node, tree, func_scope,
+            _forwards_helper_param(value_node, func_scope, helper_sinks),
+        )
+
+
 def _report_site(
     rel: Path | str,
     lineno: int,
@@ -899,15 +995,20 @@ def _report_site(
     variable_form_mode: VariableFormMode,
     strict: list[str],
     advisory: list[str],
+    forwarded: bool = False,
 ) -> None:
     """Classify one producer site and append to *strict* / *advisory*.
 
     Shared by the direct-constructor loop and the WI-zipis helper-descent
-    loop so both report identically.
+    loop so both report identically. A *forwarded* site (see
+    :func:`_iter_file_sites`) that resolves is skipped: its values are
+    exactly those the helper-descent loop reports at each call site.
     """
     category, payload = _classify_value(
         value_node, tree, func_scope, fstring_mode=fstring_mode,
     )
+    if forwarded and category in ("literal", "literals"):
+        return
     if category == "literal":
         if payload not in registry_names:
             strict.append(
@@ -974,8 +1075,9 @@ def find_producer_coherence_violations(
     - **F-string value** → advisory (default), expanded-and-checked
       (``fstring_mode="expand"``), or strict-if-unexpandable
       (``fstring_mode="strict"``). See :class:`FStringMode`.
-    - **Unresolvable name** (function param, for-loop unpack, dict
-      lookup, function-call return, …) → silent by default. With
+    - **Unresolvable value** (what neither the named shapes nor
+      ``value_flow`` can enumerate: a public function's parameter, an
+      escaping collection, a cross-module call, …) → silent by default. With
       ``variable_form_mode="advisory"`` or ``"strict"``, every
       unresolvable site surfaces as an advisory or strict violation
       respectively (ext C structural backstop).
@@ -1001,10 +1103,15 @@ def find_producer_coherence_violations(
             except ValueError:  # pragma: no cover
                 rel = py_file
 
-            for lineno, value_node, tree, func_scope in _iter_producer_call_sites(
+            # WI-zipis: with descend_helpers, also every call site that routes
+            # a value into a module-local emission helper (positional or
+            # keyword). Opt-in so the established direct-path gate is
+            # unchanged by default.
+            for lineno, value_node, tree, func_scope, forwarded in _iter_file_sites(
                 py_file,
                 constructor_names=constructor_names,
                 keyword_arg=keyword_arg,
+                descend_helpers=descend_helpers,
             ):
                 _report_site(
                     rel, lineno, value_node, tree, func_scope,
@@ -1013,27 +1120,8 @@ def find_producer_coherence_violations(
                     fstring_mode=fstring_mode,
                     variable_form_mode=variable_form_mode,
                     strict=strict, advisory=advisory,
+                    forwarded=forwarded,
                 )
-
-            # WI-zipis: transitive helper-sink descent (positional +
-            # keyword binding through module-local emission helpers). Opt-in
-            # so the established direct-path gate is unchanged by default.
-            if descend_helpers:
-                for lineno, value_node, tree, func_scope in (
-                    _iter_helper_producer_call_sites(
-                        py_file,
-                        constructor_names=constructor_names,
-                        keyword_arg=keyword_arg,
-                    )
-                ):
-                    _report_site(
-                        rel, lineno, value_node, tree, func_scope,
-                        keyword_arg=keyword_arg,
-                        registry_names=registry_names,
-                        fstring_mode=fstring_mode,
-                        variable_form_mode=variable_form_mode,
-                        strict=strict, advisory=advisory,
-                    )
 
     return ProducerCoherenceResult(
         strict_violations=tuple(strict),
@@ -1106,26 +1194,6 @@ def find_edge_type_producer_violations(
     )
 
 
-def _record_emitted(
-    category: str,
-    payload: str | frozenset[str] | None,
-    site: str,
-    emit_sites: dict[str, list[str]],
-) -> None:
-    """Append *site* to *emit_sites* for a classified literal value.
-
-    Shared by the direct and helper-descent enumeration loops.
-    """
-    if category == "literal":
-        assert isinstance(payload, str)
-        emit_sites.setdefault(payload, []).append(site)
-    elif category == "literals":
-        assert isinstance(payload, frozenset)
-        for v in payload:
-            emit_sites.setdefault(v, []).append(site)
-    # fstring (advisory fallback) + unresolvable: no literal value.
-
-
 def find_emitted_literal_values(
     repo_root: Path,
     *,
@@ -1171,8 +1239,15 @@ def find_emitted_literal_values(
     - dict-subscript-target: covered (WI-zigih ext C — ``et = MAP[k]``,
       the ``suffix, et = MAP[k]`` tuple-unpack, and the bare ``MAP[k]``
       kwarg site, for module-level and function-local dict displays; see
-      :func:`_resolve_subscript_values`). Non-literal map values, starred
-      unpack targets, and non-Name subscript bases remain silent skips.
+      :func:`_resolve_subscript_values`).
+    - data flow: covered by :mod:`hypergumbo_core.value_flow` (WI-nakur) —
+      loop targets over collections of tuples, appended / stored / extended
+      collection elements, module-local function returns, parameters of
+      private and nested functions, record-class fields. Its refusals (a
+      collection that escapes into an unknown call, a public function's
+      parameter, cross-module flow, ``self`` attributes, statement-level
+      narrowing such as ``if key in (...)``) remain silent skips; a caller
+      that must see them reads :class:`FileEmits.unresolved`.
 
     Any DEPRECATE-NO-FOLD verdict that ships through one of the
     uncovered shapes will not be flagged by callers using this map; the
@@ -1200,27 +1275,78 @@ def find_emitted_literal_values(
                 rel: Path | str = py_file.relative_to(repo_root)
             except ValueError:  # pragma: no cover
                 rel = py_file
-            site_iters = [_iter_producer_call_sites(
+            emits = scan_file_emits(
                 py_file,
                 constructor_names=constructor_names,
                 keyword_arg=keyword_arg,
-            )]
-            if descend_helpers:
-                site_iters.append(_iter_helper_producer_call_sites(
-                    py_file,
-                    constructor_names=constructor_names,
-                    keyword_arg=keyword_arg,
-                ))
-            for site_iter in site_iters:
-                for lineno, value_node, tree, func_scope in site_iter:
-                    category, payload = _classify_value(
-                        value_node, tree, func_scope, fstring_mode="expand",
-                    )
-                    _record_emitted(
-                        category, payload, f"{rel}:{lineno}", emit_sites,
-                    )
+                descend_helpers=descend_helpers,
+            )
+            for value, linenos in emits.values.items():
+                emit_sites.setdefault(value, []).extend(
+                    f"{rel}:{lineno}" for lineno in linenos
+                )
 
     return {k: tuple(v) for k, v in emit_sites.items()}
+
+
+@dataclass(frozen=True)
+class FileEmits:
+    """What one module's producer sites emit for one axis keyword.
+
+    Attributes:
+        values: ``{value: (lineno, ...)}`` for every site whose value the
+            classifier (named shapes, then :mod:`~hypergumbo_core.value_flow`)
+            enumerated.
+        unresolved: ``(lineno, source)`` for every site it could NOT
+            enumerate. A gate that reads only ``values`` is blind to these by
+            construction; a gate that must not be vacuously green reads both
+            (WI-nakur).
+    """
+
+    values: dict[str, tuple[int, ...]]
+    unresolved: tuple[tuple[int, str], ...]
+
+
+def scan_file_emits(
+    path: Path,
+    *,
+    constructor_names: frozenset[str],
+    keyword_arg: str,
+    descend_helpers: bool = False,
+) -> FileEmits:
+    """Classify every producer site in ONE module (see :class:`FileEmits`).
+
+    The per-file core of :func:`find_emitted_literal_values`, exposed so a
+    consumer that attributes values to a module's OWNER (an analyzer's pass
+    ids, in ``test_depends_on_producer_sets``) uses the same classifier as the
+    registry gates instead of a private literal-only scan.
+    """
+    values: dict[str, list[int]] = {}
+    unresolved: list[tuple[int, str]] = []
+    for lineno, value_node, tree, func_scope, forwarded in _iter_file_sites(
+        path,
+        constructor_names=constructor_names,
+        keyword_arg=keyword_arg,
+        descend_helpers=descend_helpers,
+    ):
+        category, payload = _classify_value(
+            value_node, tree, func_scope, fstring_mode="expand",
+        )
+        if category == "literal":
+            if not forwarded:
+                assert isinstance(payload, str)
+                values.setdefault(payload, []).append(lineno)
+        elif category == "literals":
+            if not forwarded:
+                assert isinstance(payload, frozenset)
+                for value in sorted(payload):
+                    values.setdefault(value, []).append(lineno)
+        else:  # fstring (unexpanded) / unresolvable
+            unresolved.append((lineno, ast.unparse(value_node)))
+    return FileEmits(
+        values={k: tuple(v) for k, v in values.items()},
+        unresolved=tuple(unresolved),
+    )
 
 
 def find_emitted_symbol_kinds(repo_root: Path) -> dict[str, tuple[str, ...]]:
@@ -1317,7 +1443,7 @@ def edge_sites_without_evidence_type(
     ``Edge.evidence_type`` defaults to ``ast_call_direct`` on both the
     dataclass and ``Edge.create``, and ADR-0028 makes that value a claim
     about how the analyzer concluded the edge exists — the most specific
-    pathway in a 126-value vocabulary. A producer that omits the keyword
+    pathway in a 130-value vocabulary. A producer that omits the keyword
     therefore does not abstain: it asserts a direct call site it never saw,
     and `Edge.create` then DERIVES the edge's confidence from that
     fabricated pathway and stamps it ``evidence_derived`` (INV-nudoj).

@@ -252,9 +252,14 @@ arm exists to count.
 precision of 33.0%. Both rows that produced them have since been dealt with
 independently: C's `socket` was removed by WI-dosov, and go's `net.Listen` was
 retagged to `net_listen` by INV-kanuk. Re-running gocryptfs on this tree
-confirms it: `untrusted-input-no-host-fs` is now `inconclusive` where 0006 had
-it `violated`, which is the disclosure boundary's shadow doing exactly what
-ADR-0049 ruling 2 clause 3 specifies.
+gives `untrusted-input-no-host-fs` `inconclusive` where 0006 had it `violated`.
+**Correction (2026-09-25, INV-fogum):** this paragraph first credited that
+`inconclusive` to ADR-0049 ruling 2 clause 3's shadow. It was not the shadow:
+the taint arm did not read the shadow at all until INV-fogum. Re-run at
+gocryptfs 501d5a5, the verdict is withheld by the coverage gate (54 launch
+sites and 61 modules the catalogue cannot classify), with no `deferred_crossing`
+caveat. Since INV-fogum the same verdict also carries that caveat, naming
+`net.Listen`; the verdict value does not change.
 
 **`ledger-final.json` is not final, and that nearly published a wrong table.**
 It carries the blind pass's **44** TPs; 0006's headline **38** is what survives
@@ -262,8 +267,9 @@ pass 4's adversarial refutations, which live in a separate file. The first cut
 of this arm asserted 38 against the file whose name says "final", failed, and
 only then found `pass4-summary.json`. `tmux#3` is one of the seven refuted —
 so it is an FP here and would have been a TP had the assertion not been written.
-Filed as `WI-tuhop`, together with the fact that **ADR-0048 publishes 44/112 =
-39.3% for 0006 while 0006 publishes 38/112 = 33.9%**.
+Filed as `WI-tuhop`, together with the fact that **ADR-0048 published 44/112 =
+39.3% for 0006 while 0006 publishes 38/112 = 33.9%**; ADR-0048 now carries
+38/112.
 
 ## A register correction this arm found
 

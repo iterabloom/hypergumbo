@@ -1,0 +1,45 @@
+- op: create  # 24f7
+  at: '2026-10-07T03:58:12Z'  # 24f7
+  by: agent  # 24f7
+  actor: jgstern_agent  # 24f7
+  clock: 1  # 24f7
+  nonce: 24f7  # 24f7
+  data:  # 24f7
+    kind: invariant  # 24f7
+    title: "elixir: bare get/put calls outside a Phoenix router mint route markers (thc cache modules: 14 false http_route entrypoints such as \"GET /post_\")"  # 24f7
+    status: violated  # 24f7
+    priority: 2  # 24f7
+    parent:  # 24f7
+    tags:  # 24f7
+    - elixir  # 24f7
+    - routes  # 24f7
+    isbefore: []  # 24f7
+    duplicate_of: []  # 24f7
+    not_duplicate_of: []  # 24f7
+    pr_ref:  # 24f7
+    description: "Found while fixing INV-liraj. On thc, lib/thunderhillcinema/cache/ets_cache.ex, cinema_cache.ex and redis_cache.ex (plain GenServer/ETS cache modules, no `use ...Router`) yield route markers such as \"GET /post_\", \"PUT /user_\", \"PUT /feed:location:\" -- the bare `get(key)` / `put(key, data, ttl)` calls (and string-interpolated keys) are read as Phoenix route macros. 14 such markers become http_route entrypoints (rank 0.90) now that route markers are classified correctly. Test files also carry route markers (e.g. 20 in test/thunderhillcinema_web/live/lab_print_opens_as_print_test.exs -- likely Phoenix.ConnTest `get(conn, \"/x\")` / `live(conn, \"/x\")` calls); those are rank-filtered by the test-file penalty but are still false route symbols.\n\nInvariant: a route marker is minted only for a route macro inside a router module (`use Phoenix.Router` / `use <App>Web, :router`), never for a same-named call elsewhere."  # 24f7
+    fields:  # 24f7
+      statement: "A Phoenix route marker is minted only for a route macro inside a router module, never for a same-named call elsewhere."  # 24f7
+      root_cause: "Not yet investigated. Observed: the Elixir analyzer's route detection matches get/put/live call names without checking that the enclosing module is a router."  # 24f7
+- op: discuss  # 79f5
+  at: '2026-10-11T18:25:49Z'  # 79f5
+  by: agent  # 79f5
+  actor: jgstern_agent  # 79f5
+  clock: 2  # 79f5
+  nonce: 79f5  # 79f5
+  message: "Re-measured 2026-10-11 on dev 17a5440feb (after PR #1535/#1536 rewrote the router walk; the defect is unchanged).\n\nRoot cause, now read: `_extract_phoenix_routes` (elixir.py ~1298) walks EVERY call node in EVERY file and mints a route when the callee is get/post/put/patch/delete/head/options/resources/live and the first positional argument is a string literal. There is no check that the enclosing module is a router, and none that the call is not the right side of `|>`.\n\nCorrection to the description: the test-file markers are NOT from `get(conn, \"/x\")` -- that form's first argument is an identifier, so it is skipped. They come from the PIPED form `conn |> get(\"/x\")`, where the conn is supplied by the pipe and the path becomes argument 0. Fixture: `conn |> get(\"/pages\")` and `conn |> put_req_header(...) |> delete(\"/gone\")` yield route symbols GET /pages and DELETE /gone; `post(conn, \"/nothing\", %{})` yields none.\n\nthc counts (survey.json): 738 phoenix route nodes; 377 are router.ex (all real); 361 are false -- 348 in test/ files (106 files per `hypergumbo routes --include-tests`), 13 in lib/thunderhillcinema/cache/{ets,cinema,redis}_cache.ex. None of the false ones is currently among the 240 http_route entrypoints (the size cap), down from the 14 recorded at filing.\n\nConcrete wrong edge: the http-client linker joins load_tests/lv_ws_load.js:195 and :222 (`GET /red_carpet`) to the FAKE route elixir:test/thunderhillcinema_web/live/feed/feed_payload_budget_test.exs:163 (`conn |> get(\"/red_carpet\")`) instead of router.ex:835 `live \"/red_carpet\", Feed.FeedLive, :index`. (Separate question, not investigated: whether a GET client call should match a LIVE route at all.)\n\n`hypergumbo routes` hides the test-file ones by default (--include-tests shows them), but the 13 lib ones are listed by default, and all 361 are graph nodes.\n\nFix direction (both needed): only mint inside a module that `use`s Phoenix.Router (or `use <App>Web, :router`) -- and, if Plug.Router's `get \"/x\" do ... end` is to be kept, Plug.Router -- and never for a pipe right-hand side (`_is_pipe_rhs` already exists at elixir.py ~941)."  # 79f5
+- op: update  # cc45
+  at: '2026-10-11T19:44:02Z'  # cc45
+  by: agent  # cc45
+  actor: jgstern_agent  # cc45
+  clock: 3  # cc45
+  nonce: cc45  # cc45
+  set:  # cc45
+    status: satisfied  # cc45
+- op: discuss  # 9606
+  at: '2026-10-11T19:44:03Z'  # 9606
+  by: agent  # 9606
+  actor: jgstern_agent  # 9606
+  clock: 4  # 9606
+  nonce: '9606'  # 9606
+  message: "Fixed in PR #1539 (merge 4309c9ddc6). Root cause: _extract_phoenix_routes walked every call in every file and minted a route for any get/post/put/patch/delete/head/options/resources/live call whose first positional arg was a string -- no router-module check, no pipe check. Fix: _iter_router_calls yields only calls inside a defmodule whose top-level body runs use Phoenix.Router, use <App>Web, :router, or use Plug.Router (HTTP verbs only for Plug); a nested defmodule starts afresh; a |> right-hand side is never a route macro. Evidence: (1) fixture (router with use AppWeb, :router + test with conn |> get(\"/pages\") and conn |> put_req_header(\"x\",\"y\") |> delete(\"/gone\") + cache with def get(k) and get(\"user_#{id}\")): hypergumbo routes <fixture> --include-tests -> 'Found 3 API route(s)', all lib/app_web/router.ex (GET /pages, DELETE /gone, LIVE /feed). (2) thc: analyze_elixir old (17a5440feb) vs new: 738 {router 377, lib 13, test 348} -> 377 {router 377}; router markers identical (name, line, controller, action: 377 == 377, equal). hypergumbo survey ~/special_repos/thc + hypergumbo routes --include-tests --format json -> 379 routes: router.ex 377, scanner/server.js 2 (JS, unrelated), no test or cache files. (3) lv_ws_load.js:195/:222 GET /red_carpet now links to nothing (only /red_carpet route is LIVE); filed INV-dubap-jufin-zisod-hamos-hariv-janod-topat-nigoj since Phoenix live expands to Phoenix.Router.get."  # 9606

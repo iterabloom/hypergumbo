@@ -19,3 +19,40 @@
     pr_ref:  # 1feb
     description: "FOUND 2026-09-24 while working WI-tisom (~/hypergumbo_lab_notebook/tisom_09242026/).\n\nTHE DEFECT: the C# analyzer emits NO call edge for a call made inside a property accessor: `get { return Helper(); }`, `set { Helper(); }`, and expression-bodied `public int Twice => Helper() * 2;`. In the same fixture, the same call from a method emits `A.Run -> A.Helper`. The property symbols exist (kind=property, spans cover the bodies); nothing is credited to them and nothing is emitted.\n\nMEASURED: on sherpa-onnx, grpc, rabbitmq and microservices-demo, analyze_csharp emits 201 property symbols, 142 of which span more than one line. There are 0 edges from any of them and 1 edge to one.\n\nWHY IT MATTERS: every call made in a C# getter or setter is missing from the call graph. The callee can read as dead, and a slice through the property is empty. WI-tisom stops the noise filter dropping C# properties, but they will carry no call edges until this is fixed.\n\nASKED: credit accessor calls to the property symbol, with the position-keyed enclosing lookup (INV-midag), and add csharp property accessors to the call-anchor gate fixture."  # 1feb
     fields: {}  # 1feb
+- op: update  # 79a9
+  at: '2026-10-03T06:42:04Z'  # 79a9
+  by: agent  # 79a9
+  actor: jgstern_agent  # 79a9
+  clock: 2  # 79a9
+  nonce: 79a9  # 79a9
+  set:  # 79a9
+    title: "csharp credits a call inside a property accessor (get/set/=>) to the enclosing CLASS, not the property; indexer, operator, destructor and event accessors get no symbol at all"  # 79a9
+- op: discuss  # 36ea
+  at: '2026-10-03T06:42:04Z'  # 36ea
+  by: agent  # 36ea
+  actor: jgstern_agent  # 36ea
+  clock: 3  # 36ea
+  nonce: 36ea  # 36ea
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). PARTLY STALE: the title's \"emits no call edge\" stopped being true on 2026-09-26. Title updated.\n- dbec60fb68 (INV-bamij, \"emit external calls, and anchor a field lambda's calls on its class\") sends any call NOT inside a method to the enclosing type, else the file (csharp.py:1450-1454). _get_enclosing_method (csharp.py:1183) recognises only method_declaration and constructor_declaration, so an accessor's calls are emitted but credited to the CLASS.\n- Repro: properties Getter {get{return Helper();}}, Setter {set{_v=Helper();}}, Twice => Helper()*2, AutoInit {get;} = Helper2(). Result: A(class) -> A.Helper 0.85 and A(class) -> A.Helper2 0.85 (the three accessor calls collapse into one class edge), control A.Run -> A.Helper, and zero edges from any kind=property symbol.\n- WIDER FAMILY: indexers (this[int]), operators, destructors and event add/remove accessors produce NO symbol, and their calls also go to the class. Separately, a local-function call (Loc() inside M) resolves to external_symbol Loc.\n- The call-anchor gate fixture (test_call_anchor_gate.py:45) registers C# only through test_csharp_one_leaf_name_in_two_classes; no property case.\n- The 201/0 figures predate dbec60fb68 and need re-measuring. The ask stands: anchor the call on the property, by position."  # 36ea
+- op: discuss  # 5650
+  at: '2026-10-04T10:36:27Z'  # 5650
+  by: agent  # 5650
+  actor: jgstern_agent  # 5650
+  clock: 4  # 5650
+  nonce: '5650'  # 5650
+  message: "WORK DONE 2026-10-04 (stage 8b agent). Branch jgstern-agent/fix/binap (worktree ~/hg_wt/binap, based on stage-8 integration 2a98abb55d, NOT pushed), commit 5940353412. Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/binap.md.\n\nPremise re-verified at 2a98abb55d (live repro, analyze_csharp): every accessor call (get / set / => / initialiser) went to the CLASS; indexer, operator, conversion operator, destructor and event-with-accessors had no symbol; new B() in a getter emitted NO instantiates edge.\n\nFix: one set _CSHARP_MEMBER_BODY_NODES (method, constructor, property, indexer, operator, conversion operator, destructor, event) read by core enclosing_declared_symbol, by POSITION (INV-midag); _get_enclosing_method deleted. New symbols: indexer kind=subscript (Type.this[]), operator / conversion operator / destructor kind=method (Type.operator+, Type.operator int, Type.~Type), event-with-accessors kind=event. A property owns its initialiser; a FIELD initialiser stays on the class (INV-bamij). Call-anchor gate gains test_csharp_member_bodies_are_anchored_on_their_member.\n\nTests: red 12 failed / 17 passed on the base sources, then green; affected run (616 files) 21,389 passed + 1 failed (spec symbol_meta count, fixed in the pony commit), scoped coverage 100%; final targeted run 333 passed.\n\nA/B by call site on the 8 C# corpus repos: 73 call sites moved class -> containing member (54 property, 18 destructor, 1 operator==), +1 instantiates from a getter, 0 lost, containment violations 0 both arms; property-sourced edges 0 -> 55. No event-with-accessors or conversion operator occurs in the corpus (fixture-only).\n\nResiduals filed: WI-sisuv (field-initialiser object creation dropped, local-function call external, field-like event no symbol), WI-kajoh (records emit no symbol), WI-rokir (kotlin accessors, same family). Swift deinit/observers noted on WI-sogof."  # 5650
+- op: update  # 4dbd
+  at: '2026-10-05T04:41:43Z'  # 4dbd
+  by: agent  # 4dbd
+  actor: jgstern_agent  # 4dbd
+  clock: 5  # 4dbd
+  nonce: 4dbd  # 4dbd
+  set:  # 4dbd
+    status: done  # 4dbd
+- op: discuss  # 93bb
+  at: '2026-10-05T04:41:43Z'  # 93bb
+  by: agent  # 93bb
+  actor: jgstern_agent  # 93bb
+  clock: 6  # 93bb
+  nonce: 93bb  # 93bb
+  message: "Merged in PR #1459 (dev ecbb226a0d).\n\nFixed in PR #1459, commit 5940353412. Behavioral evidence: on the item's own repro (getter, setter, `=>` body, auto-property initialiser, indexer, operator, conversion operator, destructor, event add/remove), analyze_csharp emits `A.Getter/A.Setter/A.Twice/A.AutoInit (property) -> A.Helper/Helper2`, `A.this[] (subscript)`, `A.operator+`, `A.operator int`, `A.~A` (method) and `A.Changed (event)` as the sources, and none from the class. `new B()` in a getter now emits `A.Made -instantiates-> B.B`; before, nothing was emitted. Production-path tests: `test_csharp_member_bodies.py` (7) and `test_ruby_csharp_call_anchor.py::test_csharp_member_bodies_are_anchored_on_their_member`. Both were red on 2a98abb55d and green after. A/B on the 8 C# corpus repos: 73 call sites re-anchored from class to member (54 property, 18 destructor, 1 operator==), +1 instantiates, 0 lost, containment violations 0 in both arms, property-sourced edges 0 -> 55. NOT asserted: field-initialiser object creation/method groups, local-function call resolution and field-like events (WI-sisuv); records (WI-kajoh); the Kotlin sibling (WI-rokir)."  # 93bb

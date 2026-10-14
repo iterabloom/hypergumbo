@@ -18,3 +18,18 @@
     pr_ref:  # 37a9
     description: "21 analyzers under packages/*/src repeat one loop: walk `node.parent` upward, and at a\ndeclaration node of a language-specific type set, return `symbol_declared_by(current,\ndecl_index)` (grep `symbol_declared_by(current`). Examples: d_lang `_find_enclosing_function_d`,\nnim `_find_enclosing_proc_nim` (WI-bujar, PR #1201). Each copy differs only in the tuple of\ndeclaration node types and, in a few, an extra stop condition.\n\nCore already owns the rule (`symbols_at` / `symbol_declared_by`, INV-midag); the walk is the\npart every adopter re-types. A core helper `enclosing_declared(node, types, index)` would make\nthe INV-midag gate's \"verified\" a property of one function plus a per-language type tuple.\n\nRefactor only, no behaviour change expected: prove it by an unchanged call-edge set on the\ngate fixtures AND a pinned corpus survey per touched language (diff the edge set, not the count).\nSurfaced during WI-bujar's refactor phase and deliberately left out of that PR (scope).\nCheck first whether some copies carry language-specific stop conditions that a shared helper\nwould have to parameterise; if most do, the refactor may not pay."  # 37a9
     fields: {}  # 37a9
+- op: update  # 0667
+  at: '2026-10-03T07:06:11Z'  # 0667
+  by: agent  # 0667
+  actor: jgstern_agent  # 0667
+  clock: 2  # 0667
+  nonce: '0667'  # 0667
+  set:  # 0667
+    status: wont_do  # 0667
+- op: discuss  # 6e6d
+  at: '2026-10-03T07:06:11Z'  # 6e6d
+  by: agent  # 6e6d
+  actor: jgstern_agent  # 6e6d
+  clock: 3  # 6e6d
+  nonce: 6e6d  # 6e6d
+  message: "Folded into WI-tosum (owner-approved 2026-10-03). Not done as a standalone refactor: by itself it changes no edges and fixes no bug, since the bugs sit in the per-language declaration-type lists, which a pure refactor keeps unchanged. Its value is making INV-midag's gate verify one core function instead of a name pattern, which is WI-tosum's job. The core helper it proposed now exists (analyze/base.py:1419 enclosing_declared_symbol, INV-bamij). Its 21-analyzer list and its edge-set-diff acceptance are carried on WI-tosum."  # 6e6d

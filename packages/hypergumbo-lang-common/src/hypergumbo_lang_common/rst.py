@@ -18,7 +18,11 @@ Every symbol here is minted through ``make_doc_symbol_ids``, which issues
 ``id`` and ``stable_id`` together. That pairing is the INV-dulah contract
 for documentation families: the ``id`` carries the span so two same-named
 sections stay distinct, while the ``stable_id`` survives the section moving
-down the file.
+down the file. The ``stable_id`` hashes the titles of the sections a symbol
+sits in (INV-punig; ADR-0035 §1, scheme v9). tree-sitter-rst emits every
+section as a sibling, so the hierarchy comes from the adornment styles, in
+the order the document first uses them, as reStructuredText defines it
+(``_section_level``); ``meta["level"]`` reports that level.
 
 Symbols Extracted
 -----------------
@@ -48,7 +52,10 @@ from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_doc_symbol_ids, populate_docstrings_from_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult, TreeSitterAnalyzer, make_doc_stable_id, make_doc_symbol_ids,
+    populate_docstrings_from_tree,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -101,6 +108,11 @@ class _RSTExtractor:
         self._files_analyzed = 0
         self._section_counter = 0
         self._directive_counter = 0
+        # Per file: adornment styles in the order the document first uses
+        # them (a style's index is its section level), and the open sections
+        # as (level, title), outermost first.
+        self._styles: list[tuple[str, bool]] = []
+        self._open_sections: list[tuple[int, str]] = []
 
     def analyze(self) -> AnalysisResult:
         """Run the RST analysis."""
@@ -124,8 +136,10 @@ class _RSTExtractor:
                 tree = parser.parse(content)
                 self._section_counter = 0
                 self._directive_counter = 0
+                self._styles = []
+                self._open_sections = []
                 before = len(self._symbols)
-                self._extract_symbols(tree.root_node, path, 0)
+                self._extract_symbols(tree.root_node, path)
                 populate_docstrings_from_tree(tree.root_node, content, self._symbols[before:])
                 self._files_analyzed += 1
             except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
@@ -148,12 +162,10 @@ class _RSTExtractor:
             run=run,
         )
 
-    def _extract_symbols(
-        self, node: "tree_sitter.Node", path: Path, section_level: int
-    ) -> None:
+    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
         """Extract symbols from a syntax tree node."""
         if node.type == "section":
-            self._extract_section(node, path, section_level)
+            self._extract_section(node, path)
         elif node.type == "directive":
             self._extract_directive(node, path)
         elif node.type == "target":
@@ -162,14 +174,39 @@ class _RSTExtractor:
             self._extract_reference(node, path)
         else:
             for child in node.children:
-                self._extract_symbols(child, path, section_level)
+                self._extract_symbols(child, path)
 
-    def _extract_section(
-        self, node: "tree_sitter.Node", path: Path, parent_level: int
-    ) -> None:
+    def _section_level(self, node: "tree_sitter.Node") -> int:
+        """The level of a section, from its adornment style.
+
+        reStructuredText has no fixed heading levels: the first adornment
+        style a document uses (underline character, with or without an
+        overline) is level 1, the next new one level 2, and so on.
+        tree-sitter-rst emits every section as a sibling, so the level
+        cannot come from the tree.
+        """
+        overline = False
+        char = ""
+        seen_title = False
+        for child in node.children:
+            if child.type == "title":
+                seen_title = True
+            elif child.type == "adornment":
+                text = _get_node_text(child).strip()
+                char = text[:1]
+                overline = overline or not seen_title
+        style = (char, overline)
+        if style not in self._styles:
+            self._styles.append(style)
+        return self._styles.index(style) + 1
+
+    def _section_scope(self) -> list[str]:
+        """The titles of the sections open at this point, outermost first."""
+        return [title for _, title in self._open_sections]
+
+    def _extract_section(self, node: "tree_sitter.Node", path: Path) -> None:
         """Extract a section with its title."""
         title_text = ""
-        level = parent_level + 1
 
         for child in node.children:
             if child.type == "title":
@@ -181,8 +218,13 @@ class _RSTExtractor:
         if not title_text:  # pragma: no cover
             # Process children without creating a symbol
             for child in node.children:
-                self._extract_symbols(child, path, level)
+                self._extract_symbols(child, path)
             return
+
+        # A section closes every open section at its level or deeper.
+        level = self._section_level(node)
+        while self._open_sections and self._open_sections[-1][0] >= level:
+            self._open_sections.pop()
 
         self._section_counter += 1
         rel_path = path.relative_to(self.repo_root)
@@ -196,10 +238,21 @@ class _RSTExtractor:
         # INV-dulah: node.id and canonical stable_id minted together from one arg
         # set (make_doc_symbol_ids) so they can never drift. node.id GAINS the
         # start_line here (was line-less), disambiguating same-name siblings.
-        symbol_id, stable_id = make_doc_symbol_ids(
+        symbol_id, _ordinal_stable_id = make_doc_symbol_ids(
             "rst", rel_path, "section",
             f"section_{self._section_counter}", span.start_line, span.end_line,
         )
+        # WI-tusad: the stable_id hashes the title, not the ordinal the node id
+        # carries: an ordinal renumbers every later section when an earlier one
+        # is deleted. INV-punig: it hashes the titles of the sections it sits
+        # in too, so ``Details`` under ``Alpha`` and under ``Beta`` are two
+        # identities. Two same-titled sections in one parent are a same-scope
+        # tie.
+        stable_id = make_doc_stable_id(
+            "rst", str(rel_path), "section", title_text, span.start_line, span.end_line,
+            self._section_scope(),
+        )
+        self._open_sections.append((level, title_text))
 
         symbol = Symbol(
             id=symbol_id,
@@ -217,7 +270,7 @@ class _RSTExtractor:
 
         # Process nested content
         for child in node.children:
-            self._extract_symbols(child, path, level)
+            self._extract_symbols(child, path)
 
     def _extract_directive(self, node: "tree_sitter.Node", path: Path) -> None:
         """Extract a directive."""
@@ -248,9 +301,16 @@ class _RSTExtractor:
 
         # INV-dulah: node.id + canonical stable_id minted together (gains
         # start_line, was line-less).
-        symbol_id, stable_id = make_doc_symbol_ids(
+        symbol_id, _ordinal_stable_id = make_doc_symbol_ids(
             "rst", rel_path, "directive",
             f"directive_{self._directive_counter}", span.start_line, span.end_line,
+        )
+        # WI-tusad: hash the directive and its arguments, not the ordinal;
+        # INV-punig: under the sections it sits in.
+        stable_id = make_doc_stable_id(
+            "rst", str(rel_path), "directive", directive_type,
+            span.start_line, span.end_line,
+            [*self._section_scope(), *((arguments,) if arguments else ())],
         )
 
         # Determine directive category
@@ -351,7 +411,7 @@ class _RSTExtractor:
         # start_line, was line-less).
         symbol_id, stable_id = make_doc_symbol_ids(
             "rst", rel_path, "target", target_name,
-            span.start_line, span.end_line,
+            span.start_line, span.end_line, self._section_scope(),
         )
 
         symbol = Symbol(

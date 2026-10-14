@@ -11,7 +11,7 @@ This analyzer uses tree-sitter-c to parse C files and extract:
 - Dispatch tables from static-array and designated-struct initializers
   (dispatches_to edges), plus a ``references`` edge with
   ``meta.ref_construct="dispatch_table"`` from each function whose body
-  names a dispatch table to that table
+  names a static-array dispatch table to that table
 - stdio global references (stdout/stderr/stdin) as module_attr_ref edges
 
 The analyzer also extracts function signatures (``_extract_c_signature``)
@@ -33,17 +33,38 @@ Call-edge details:
 - **Enclosing function**: found by position (``symbols_at`` /
   ``symbol_declared_by`` on the ``function_definition`` node), not by name,
   so ``#ifdef`` / ``#else`` definitions of one name in one file anchor to the
-  right alternative.
+  right alternative. The dispatch-table body scan uses the same lookup.
+- **Function names at any declarator depth**: ``c_family_declarator``
+  (``hypergumbo_core.analyze.c_family``, shared with cpp.py and cuda.py) walks
+  the whole declarator chain (``char **f()``, ``int (f)(int)``, a function
+  returning a function pointer), so no definition is left without a symbol
+  and its calls unemitted because its name sat under a second
+  ``pointer_declarator`` (WI-saduj).
+- **Block scope in identity** (INV-punig, scheme v9): a ``struct``,
+  ``enum``, ``typedef`` or prototype declared inside a function, and a GNU
+  nested function, hash the functions around it (``_block_scope``), so
+  ``struct inner`` in ``a()`` and in ``b()`` are two identities; a
+  file-scope declaration hashes no chain and keeps its value.
+- **A definition with no honest name** (WI-tikop): one named by a macro
+  tree-sitter cannot expand -- ``TEST_BEGIN(test_x) {..}``, ``PFX(f)(args)``,
+  ``LUALIB_API int (f)(args)`` -- gets no symbol (a name read off the macro
+  would be invented). Every edge drawn from inside it (calls, callback
+  arguments, ``&f``, a dispatch-table use) comes from the nearest enclosing
+  definition that has a symbol, else the file anchor, and carries
+  ``meta["src_stands_in_for"] = "unnamed_definition"``
+  (``hypergumbo_core.analyze.edge_source``). Before, they were left
+  unemitted -- 2,823 call sites on redis -- or, inside a named outer
+  definition, drawn from it with nothing to say so.
 
-If tree-sitter-c is not installed, the analyzer gracefully degrades
-and returns an empty result.
+If tree-sitter-c is not installed, the analyzer warns and returns a
+skipped result.
 
 How It Works
 ------------
 1. Check if tree-sitter and tree-sitter-c are available
-2. If not available, return empty result (not an error, just no C analysis)
-3. Check for C++ files in the repo; if present, skip .h files (the C++
-   analyzer handles them with tree-sitter-cpp to avoid duplicate symbols)
+2. If not available, return a skipped result (not an error, just no C analysis)
+3. Take only the .h files ``header_owner`` gives to C: not an ObjC header,
+   and not any header in a repo holding C++ files (WI-rizas, WI-somod)
 4. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
@@ -51,9 +72,9 @@ How It Works
    designated-initializer function-pointer edges
 6. Declaration dedup: a function prototype (``declaration`` modifier) whose
    name also has a definition is removed, and edges that pointed at the
-   prototype are remapped to the definition. Registration already prefers
-   definitions (.c definition, then .c declaration, then .h declaration),
-   so the remap target is deterministic
+   prototype are remapped to the definition (the last definition of that
+   name in analysis order: headers first, then ``.c`` files). Registration, which drives call resolution, is a
+   separate rule that prefers definitions and ``.c`` files
 
 Why This Design
 ---------------
@@ -61,9 +82,10 @@ Why This Design
 - C support is separate from other languages to keep modules focused
 - Two-pass allows cross-file call resolution
 - Same two-pass registry pattern as the PHP analyzer
-- .h dedup: Both C and C++ analyzers process .h files, creating 2x symbols.
-  On Falco (C/C++ repo), 44/50 .h files were duplicated and C orphan rate
-  was 92.1%. Fix: skip .h in C analyzer when C++ files exist.
+- .h dedup: C, C++ and ObjC all claim .h, and each header must be parsed by
+  exactly one grammar. On Falco (C/C++ repo), 44/50 .h files were duplicated
+  and the C orphan rate was 92.1% (WI-rizas); on AFNetworking the C grammar
+  failed on 29 ObjC headers (WI-somod). ``header_owner`` holds the one rule.
 """
 from __future__ import annotations
 
@@ -75,27 +97,32 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
+    record_partial_parse,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
     iter_tree_with_context,
+    file_anchor_symbol,
     make_file_id,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
     populate_docstrings_from_tree,
     stamp_io_mode_from_call,
-    symbol_declared_by,
     symbols_at,
     SymbolsAt,
 )
+from hypergumbo_core.analyze.c_family import c_family_declarator, c_family_scope_chain
+from hypergumbo_core.analyze.edge_source import anchor_in_definitions, mark_stand_in
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
+from hypergumbo_lang_mainstream.header_owner import headers_owned_by
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
 )
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
+from hypergumbo_core.overload_arity import nested_qualified_name
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -123,35 +150,12 @@ def _remap_edge_ids(
     return result
 
 
-def _has_cpp_files(repo_root: Path) -> bool:
-    """Check if the repository contains C++ files.
-
-    Checks for C++ source extensions (.cpp, .cc, .cxx) and C++-specific
-    header extensions (.hpp, .hxx). When any of these exist, .h files
-    are presumed to be C++ headers and should be processed by the C++
-    analyzer, not the C analyzer.
-    """
-    return any(find_files(repo_root, ["*.cpp", "*.cc", "*.cxx", "*.hpp", "*.hxx"]))
-
-
-def find_c_files(
-    repo_root: Path, *, include_headers: bool = True
-) -> Iterator[Path]:
-    """Yield all C files in the repository.
-
-    When include_headers is True (default), headers (.h) are yielded before
-    source files (.c) so that definitions can replace declarations when
-    building the symbol registry.
-
-    When include_headers is False, only .c files are yielded. This is used
-    when C++ files exist in the repo, since the C++ analyzer already
-    processes .h files with the C++ grammar.
-    """
-    if include_headers:
-        yield from find_files(repo_root, ["*.h", "*.c"])
-    else:
-        yield from find_files(repo_root, ["*.c"])
-
+def find_c_files(repo_root: Path) -> Iterator[Path]:
+    """Yield the C files of the repository: the headers ``header_owner``
+    gives to C, then the ``.c`` sources, so that definitions can replace
+    declarations when building the symbol registry."""
+    yield from headers_owned_by(repo_root, "c")
+    yield from find_files(repo_root, ["*.c"])
 
 
 def _find_identifier_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -163,31 +167,23 @@ def _find_identifier_in_children(node: "tree_sitter.Node", source: bytes) -> Opt
 
 
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Extract function name from function_definition or declaration."""
-    # Look for declarator which contains the function name
-    for child in node.children:
-        if child.type == "function_declarator":
-            # Function declarator contains identifier
-            return _find_identifier_in_children(child, source)
-        elif child.type == "pointer_declarator":
-            # Handle pointer return types: int* func()
-            for subchild in child.children:
-                if subchild.type == "function_declarator":
-                    return _find_identifier_in_children(subchild, source)
-    return None
+    """The name a C ``function_definition`` defines, at any declarator depth."""
+    shape = c_family_declarator(node)
+    if shape.function_declarator is None or shape.name is None:
+        return None
+    if shape.name.type in ("identifier", "type_identifier"):
+        return str(node_text(shape.name, source))
+    return None  # pragma: no cover - only a malformed (ERROR) leaf is neither
 
 
 def _find_function_declarator(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
-    """Find the function_declarator node within a function definition or declaration."""
-    for child in node.children:
-        if child.type == "function_declarator":
-            return child
-        elif child.type == "pointer_declarator":
-            # Pointer return type: int* func()
-            for subchild in child.children:
-                if subchild.type == "function_declarator":
-                    return subchild
-    return None  # pragma: no cover
+    """The function's own ``function_declarator``: for a definition, at any depth
+    (:func:`c_family_declarator`); for a prototype, the first one among the
+    declaration's declarators (``int a, f(int);``), which is the only shape
+    ``_extract_symbols`` emits a prototype for."""
+    if node.type == "declaration":
+        return next((c for c in node.children if c.type == "function_declarator"), None)
+    return c_family_declarator(node).function_declarator
 
 
 def _extract_c_signature(
@@ -226,6 +222,13 @@ def _extract_c_signature(
     # Build signature with parameters
     sig = "(" + ", ".join(param_strs) + ")"
 
+    # A function returning a function pointer: its return type is spelled around
+    # the name (``int (*f(void))(int)``), so no return type is rendered rather
+    # than a false ``int``.
+    shape = c_family_declarator(node)
+    if shape.returns_function:
+        return sig
+
     # Extract return type (before the function_declarator)
     return_type_parts: list[str] = []
     for child in node.children:
@@ -236,12 +239,8 @@ def _extract_c_signature(
             return_type_parts.append(node_text(child, source))
 
     if return_type_parts:
-        return_type = " ".join(return_type_parts)
-        # Add pointer indicator if function_declarator is wrapped in pointer_declarator
-        for child in node.children:
-            if child.type == "pointer_declarator":
-                return_type += "*"
-                break
+        # One ``*`` per pointer level: ``char **f()`` returns ``char**``.
+        return_type = " ".join(return_type_parts) + "*" * shape.pointer_depth
         if return_type and return_type != "void":
             sig += f" {return_type}"
 
@@ -261,6 +260,22 @@ def _get_c_parser() -> Optional["tree_sitter.Parser"]:
     parser.language = tree_sitter.Language(lang_ptr)
     return parser
 
+
+
+def _block_scope(node: "tree_sitter.Node", source: bytes, name: str) -> str:
+    """The qualified-name slot of a C declaration: the functions it is
+    declared inside (a block-scope ``struct``, ``enum``, ``typedef`` or
+    prototype; a GNU nested function), ``""`` at file scope.
+
+    C scopes a tag or typedef declared in a block to that block, so ``struct
+    inner`` in ``a()`` and in ``b()`` are two declarations (INV-punig, scheme
+    v9); a tag declared inside another ``struct`` is file-scope in C (C11
+    6.2.1), so struct nesting is no part of the chain. A file-scope
+    declaration hashes ``""``, as it did before.
+    """
+    return nested_qualified_name(
+        c_family_scope_chain(node, source, types=False, functions=True), name,
+    )
 
 
 def _extract_symbols(
@@ -319,6 +334,7 @@ def _extract_symbols(
                     ),
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="function", name=name,
+                        qualified_name=_block_scope(node, source, name),
                         file_stable_id=file_stable_id,
                     ),
                 )
@@ -360,6 +376,7 @@ def _extract_symbols(
                             ),
                             stable_id=_analyzer.compute_stable_id(
                                 node, kind="function", name=name,
+                                qualified_name=_block_scope(node, source, name),
                                 file_stable_id=file_stable_id,
                             ),
                         )
@@ -390,6 +407,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="struct", name=name,
+                        qualified_name=_block_scope(node, source, name),
                         file_stable_id=file_stable_id,
                     ),
                 )
@@ -420,6 +438,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="enum", name=name,
+                        qualified_name=_block_scope(node, source, name),
                         file_stable_id=file_stable_id,
                     ),
                 )
@@ -452,6 +471,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=_analyzer.compute_stable_id(
                         node, kind="typedef", name=name,
+                        qualified_name=_block_scope(node, source, name),
                         file_stable_id=file_stable_id,
                     ),
                 )
@@ -462,11 +482,16 @@ def _extract_symbols(
     return symbols
 
 
+#: The declaration a C call is drawn from.
+_C_DEFINITIONS = frozenset({"function_definition"})
+
+
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     decl_index: SymbolsAt,
-) -> Optional[Symbol]:
-    """The function definition that contains ``node``.
+    file_anchor: Symbol,
+) -> tuple[Optional[Symbol], bool]:
+    """The symbol an edge at ``node`` is drawn from, and whether it stands in.
 
     Keyed by the declaration's POSITION, not its name (INV-midag). The name
     lookup had two defects. Across files, it was fixed by preferring the
@@ -475,15 +500,41 @@ def _get_enclosing_function(
     twice (tmux's compat/closefrom.c), and ``local_symbols`` keeps one of them,
     so 35 of 11,011 c call edges on a 26-repo run were anchored to the other
     alternative. The ``function_definition`` node IS the symbol's node.
+
+    The innermost definition decides (``anchor_in_definitions``). Outside every
+    definition: ``file_anchor``. Inside a definition with no symbol -- its name comes from a macro
+    tree-sitter cannot expand, ``TEST_BEGIN(test_x) {..}`` or ``PFX(f)(args)``
+    -- the nearest enclosing definition that has one, else the file anchor,
+    with ``True`` so the caller marks the edges as standing in (WI-tikop).
+    Before, those calls were left unemitted (redis: 2,823 call sites) or, inside
+    a named outer definition, drawn from it with nothing to say so.
     """
-    current = node.parent
-    while current is not None:
-        if current.type == "function_definition":
-            sym = symbol_declared_by(current, decl_index)
-            if sym is not None:
-                return sym
-        current = current.parent
-    return None  # pragma: no cover - defensive
+    return anchor_in_definitions(
+        node, decl_index, _C_DEFINITIONS, top_level=file_anchor, fallback=file_anchor,
+    )
+
+
+def c_family_is_not_a_call(node: "tree_sitter.Node") -> bool:
+    """Is this ``call_expression`` syntax that does not call anything?
+
+    INV-bamij. Two shapes tree-sitter parses as calls and that reach the file
+    anchor once file-scope calls are emitted: a GNU attribute argument
+    (``__attribute__ ((format (printf, 2, 3)))``, under an
+    ``attribute_specifier``) and a preprocessor predicate
+    (``#if __has_attribute(x)``, in a ``preproc_if`` / ``preproc_elif``
+    condition). Measured on crun, where they were two of the six new file-scope
+    edges. Shared by the cpp analyzer, whose grammar gives the same shapes.
+    """
+    current = node
+    while current.parent is not None:
+        parent = current.parent
+        if parent.type == "attribute_specifier":
+            return True
+        if parent.type in ("preproc_if", "preproc_elif"):
+            if parent.child_by_field_name("condition") == current:
+                return True
+        current = parent
+    return False
 
 
 _C_AMBIGUOUS_CACHE: frozenset[str] | None = None
@@ -522,10 +573,10 @@ def _extract_edges(
     Uses global symbol registry to resolve cross-file references.
     Identifies the enclosing function by position through
     ``symbols_at(file_symbols)`` (this file's declarations only), so it stays
-    correct when multiple files define functions with the same name.
-    ``local_symbols`` is consulted only to look up the function symbol when
-    linking lookup functions to dispatch tables (and, when ``file_symbols``
-    is omitted, to rebuild this file's declaration list).
+    correct when multiple files, or two ``#ifdef`` alternatives in one file,
+    define functions with the same name; the function that uses a dispatch
+    table is found the same way. ``local_symbols`` is consulted only when
+    ``file_symbols`` is omitted, to rebuild this file's declaration list.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     if resolver is None:  # pragma: no cover - defensive
@@ -543,6 +594,11 @@ def _extract_edges(
 
     edges: list[Edge] = []
     _caller_path = str(file_path)
+    # INV-bamij: the anchor of last resort for a call in no function (a C++ or
+    # GNU-extension global initialiser, a macro expansion at file scope).
+    file_anchor = file_anchor_symbol("c", str(file_path), PASS_ID, run.execution_id)
+    # Declared once: the call arm assigns a Symbol, the reference arm an Optional.
+    current_function: Optional[Symbol]
 
     # WI-lajus: pre-collect system ``#include`` headers so the unresolved-call
     # emit path can attribute a bare call to the file's include set. C has no
@@ -582,23 +638,45 @@ def _extract_edges(
                 if _hdr and _hdr not in system_includes:
                     system_includes.append(_hdr)
     _include_hint = ",".join(system_includes) if system_includes else None
+    # Imported here, as ``_c_ambiguous_names`` imports the catalogue loader.
+    from hypergumbo_core.io_boundary import declared_by_an_included_header
 
     for node in iter_tree(tree.root_node):
         # Function calls: func_name(...)
         if node.type == "call_expression":
-            current_function = _get_enclosing_function(node, decl_index)
+            # INV-bamij: the file anchor is for a call in no function at all,
+            # or one standing in for a definition the analyzer could not name
+            # (WI-tikop); never for syntax that calls nothing.
+            current_function, _stands_in = _get_enclosing_function(
+                node, decl_index, file_anchor,
+            )
+            if current_function is file_anchor and c_family_is_not_a_call(node):
+                current_function = None
             # INV-kaduh. Recorded before the branch and applied after it, so
             # every edge this ONE call produces carries the mode — rather than
             # at each Edge.create inside, which is the shape that drifts.
             _edges_before_call = len(edges)
-            if current_function:
+            if current_function is not None:
                 # Get the function being called
                 func_node = node.child_by_field_name("function")
                 callee_name = None
                 if func_node and func_node.type == "identifier":
                     callee_name = node_text(func_node, source)
                     lookup_result = resolver.lookup(callee_name, caller_path=_caller_path)
-                    if lookup_result.found and lookup_result.symbol is not None:
+                    if (
+                        lookup_result.found
+                        and lookup_result.symbol is not None
+                        # WI-rimon: a definition in ANOTHER file does not
+                        # capture a call whose declaring header this file
+                        # includes -- it is an interposer or a platform shim
+                        # of that same contract, and the call is the libc one.
+                        and not (
+                            lookup_result.symbol.path != _caller_path
+                            and declared_by_an_included_header(
+                                "c", callee_name, system_includes,
+                            )
+                        )
+                    ):
                         edge = Edge.create(
                             src=current_function.id,
                             dst=lookup_result.symbol.id,
@@ -677,6 +755,8 @@ def _extract_edges(
                 for _edge in edges[_edges_before_call:]:
                     _edge.meta = dict(_edge.meta or {})
                     _edge.meta["io_target_kind"] = _kind
+            if _stands_in and current_function is not None:
+                mark_stand_in(edges, _edges_before_call, current_function.id)
 
         # Explicit function pointer: &process
         elif node.type == "pointer_expression":
@@ -687,7 +767,12 @@ def _extract_edges(
                 )
                 if ident:
                     ref_name = node_text(ident, source)
-                    current_function = _get_enclosing_function(node, decl_index)
+                    # A file-scope ``&f`` emits nothing; one in a definition the
+                    # analyzer could not name is stood in for, as a call is.
+                    current_function, _stands_in = anchor_in_definitions(
+                        node, decl_index, _C_DEFINITIONS,
+                        top_level=None, fallback=file_anchor,
+                    )
                     if current_function:
                         lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                         if (
@@ -706,6 +791,8 @@ def _extract_edges(
                                 origin_run_id=run.execution_id,
                                 evidence_type="function_pointer",
                             ))
+                            if _stands_in:
+                                mark_stand_in(edges, len(edges) - 1, current_function.id)
 
     # Dispatch table detection: function pointers in static array initializers.
     # Pattern: static struct Foo table[] = { { "name", func_ptr }, ... };
@@ -839,27 +926,21 @@ def _extract_edges(
     # lookup functions (e.g., get_builtin) to the dispatch table variable,
     # completing the chain from the caller through to the dispatched targets.
     if dispatch_tables:
-        str_path = str(file_path)
         for node in iter_tree(tree.root_node):
             if node.type != "function_definition":
                 continue
-            func_name = _get_function_name(node, source)
-            if func_name is None:
-                continue  # pragma: no cover - defensive (malformed AST)
-            # Resolve the function symbol from local or global tables
-            func_sym = None
-            if local_symbols and func_name in local_symbols:
-                func_sym = local_symbols[func_name]
-            elif func_name in global_symbols:  # pragma: no cover - fallback
-                gs = global_symbols[func_name]
-                if gs.path == str_path:
-                    func_sym = gs
-            if func_sym is None:
-                continue  # pragma: no cover - defensive
             # Scan function body for dispatch table variable references
             body = node.child_by_field_name("body")
             if body is None:
                 continue  # pragma: no cover - defensive
+            # The referring function, by the definition's POSITION (INV-midag):
+            # by name, of two ``#ifdef`` alternatives the reference in the first
+            # was attributed to the second (WI-saduj). A definition with no
+            # symbol is stood in for, as a call in it is (WI-tikop).
+            func_sym, _stands_in = _get_enclosing_function(body, decl_index, file_anchor)
+            if func_sym is None:  # pragma: no cover - the fallback is the file anchor
+                continue
+            _edges_before_scan = len(edges)
             seen_tables: set[str] = set()
             for inner in iter_tree(body):
                 if inner.type != "identifier":
@@ -881,6 +962,8 @@ def _extract_edges(
                         evidence_type="dispatch_table_reference",
                         meta={"ref_construct": "dispatch_table"},
                     ))
+            if _stands_in:
+                mark_stand_in(edges, _edges_before_scan, func_sym.id)
 
     return edges
 
@@ -957,6 +1040,13 @@ _C_STD_STREAMS: frozenset[str] = frozenset({"stdin", "stdout", "stderr"})
 #: here would assert a filesystem read over a socket.
 _C_PATH_STREAM_PRODUCERS: tuple[str, ...] = ("fopen", "freopen")
 
+#: Calls that produce a ``FILE *`` over a PIPE TO A CHILD PROCESS (WI-kanor).
+#: ``popen`` returns a handle the child fills, and a read through it returns
+#: bytes the far side chose (ADR-0049 ruling 1), so the read -- not the launch --
+#: is where the crossing is represented. ``pipe`` reads as ``ipc_recv``, the kind
+#: go's ``cmd.StdoutPipe()`` already takes (WI-suhug).
+_C_PIPE_STREAM_PRODUCERS: tuple[str, ...] = ("popen",)
+
 
 def _c_declarator_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """The identifier a (possibly pointer/array) declarator declares."""
@@ -995,6 +1085,8 @@ def _c_classify_stream_text(text: str) -> Optional[str]:
     head = stripped.split("(", 1)[0].strip()
     if head in _C_PATH_STREAM_PRODUCERS and "(" in stripped:
         return "host_path"
+    if head in _C_PIPE_STREAM_PRODUCERS and "(" in stripped:
+        return "pipe"
     return None
 
 
@@ -1053,9 +1145,10 @@ def _c_stream_target_kind(
 ) -> Optional[str]:
     """``io_target_kind`` for a stdio read call, or None to stay silent.
 
-    Returns None for everything not provable -- a parameter, a ``popen`` pipe,
-    a value from a function this file does not bind. INV-zumin's ruling is that
-    a call site gets ONE answer or NONE, and an unstamped edge classifies
+    Returns None for everything not provable -- a parameter, a value from a
+    function this file does not bind. A ``popen`` pipe is provable (``pipe``).
+    INV-zumin's ruling is that a call site gets ONE answer or NONE, and an
+    unstamped edge classifies
     exactly as it did before this existed
     (``read_boundary_for_target_kind`` answers ``known=False``).
     """
@@ -1358,8 +1451,8 @@ class CAnalyzer(TreeSitterAnalyzer):
 
     Uses tree-sitter-c to parse C files and extract functions, structs, enums,
     typedefs, and call edges. Overrides ``analyze`` to use
-    custom file discovery that skips .h files when C++ files exist (avoids
-    duplicates with the C++ analyzer). Overrides ``register_symbol`` to prefer
+    custom file discovery that takes only the .h files ``header_owner``
+    gives to C (avoids duplicates with the C++ and ObjC analyzers). Overrides ``register_symbol`` to prefer
     definitions in .c files over declarations in .h files.
     """
 
@@ -1445,8 +1538,8 @@ class CAnalyzer(TreeSitterAnalyzer):
     ) -> AnalysisResult:
         """Run analysis with custom file discovery for .h dedup.
 
-        Overrides the base ``analyze`` to use ``find_c_files`` which skips .h
-        files when C++ files exist in the repo.
+        Overrides the base ``analyze`` to use ``find_c_files``, which takes
+        only the headers ``header_owner`` gives to C.
         """
         import time as _time
         import warnings as _warnings
@@ -1471,9 +1564,7 @@ class CAnalyzer(TreeSitterAnalyzer):
 
         parser = self._create_parser()
 
-        # Custom file discovery: skip .h when C++ files exist
-        include_headers = not _has_cpp_files(repo_root)
-        source_files = find_c_files(repo_root, include_headers=include_headers)
+        source_files = find_c_files(repo_root)
 
         file_analyses: dict[Path, tuple[FileAnalysis, dict[str, str]]] = {}
         files_analyzed = 0
@@ -1495,6 +1586,7 @@ class CAnalyzer(TreeSitterAnalyzer):
 
             tree = parser.parse(source)
             rel_path = str(source_file.relative_to(repo_root))
+            record_partial_parse(run, rel_path, tree)  # WI-bulaz
             analysis = self.extract_symbols_from_file(
                 tree, source, source_file, rel_path, run,
             )
@@ -1589,7 +1681,7 @@ def is_c_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("c", capture_symbols_as="c")
+@register_analyzer("c", capture_symbols_as="c", find_files=find_c_files)
 def analyze_c(repo_root: Path) -> AnalysisResult:
     """Analyze all C files in a repository.
 

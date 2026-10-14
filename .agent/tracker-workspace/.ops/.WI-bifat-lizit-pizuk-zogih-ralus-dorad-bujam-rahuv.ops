@@ -1,0 +1,20 @@
+- op: create  # bcaf
+  at: '2026-10-04T10:35:49Z'  # bcaf
+  by: agent  # bcaf
+  actor: jgstern_agent  # bcaf
+  clock: 1  # bcaf
+  nonce: bcaf  # bcaf
+  data:  # bcaf
+    kind: work_item  # bcaf
+    title: "pony: a member call on a call result (f().g()) loses its receiver and resolves as a bare call on the enclosing type"  # bcaf
+    status: todo_hard  # bcaf
+    priority: 3  # bcaf
+    parent:  # bcaf
+    tags:  # bcaf
+    - call_graph  # bcaf
+    isbefore: []  # bcaf
+    duplicate_of: []  # bcaf
+    not_duplicate_of: []  # bcaf
+    pr_ref:  # bcaf
+    description: "FOUND 2026-10-04 while working WI-rokus (branch jgstern-agent/fix/binap, commit 829ef03b24).\n\nTHE DEFECT: a pony member call whose receiver is itself a CALL (`f().g()`, `Churner(c, n).tick(0)`, `Methods.client().register_capability()`) loses its receiver: _get_member_expression_name collects only identifier children and nested member_expressions, so the callee name is the bare `g`. It is then resolved as a bare call on the enclosing type: `{current_type}.g`.\n\nOBSERVED on ponyc (44f94baea5), tools/pony-lsp/language_server.pony:308:\n\n    | Methods.client().register_capability() =>\n\n    after WI-rokus: LanguageServer.handle_response -> LanguageServer.register_capability (the enclosing actor's own behaviour; WRONG -- the receiver is Methods.client()'s result)\n    before WI-rokus: unresolved (the behaviour was not a symbol), so the false binding was latent and surfaced when behaviours became symbols.\n\n    test/rt-systematic/cycle-collection-order-signature/main.pony:28 `Churner(collector, n).tick(0)` in Main.create: before WI-rokus it bound to ANOTHER program's Main.tick (test/full-program-tests/stdin-no-input-dispose); since WI-rokus the own-type fallback is file-local, so it is unresolved -- the receiver is still dropped.\n\nASK: keep the receiver call in the callee spelling (or mark the call as having a receiver) so the own-type fallback applies only to a genuinely bare call. Measure by call site on ponyc (the shallow clone at ~/hypergumbo_lab_notebook/decontend/run_10032026/binap/corpus/ponyc).\n\nNOT MEASURED: how many call sites have a call-expression receiver."  # bcaf
+    fields: {}  # bcaf

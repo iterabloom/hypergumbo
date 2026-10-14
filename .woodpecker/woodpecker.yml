@@ -151,8 +151,8 @@ steps:
       - scripts/check-mypy-ratchet --mode=strict
 
   # ── pip-audit (dependency CVEs) ────────────────────────────────────────────
-  # The long --ignore-vuln list is a verbatim carry-over; the rationale comments
-  # live in ci.yml and pyproject. Kept as-is so the audit surface is identical.
+  # The --ignore-vuln list is identical to ci.yml's and release.yml's (pinned
+  # by tests/test_audit_ignore_lists.py); the per-CVE rationale lives in ci.yml.
   - name: audit
     image: python:3.11-bookworm
     depends_on: []
@@ -160,22 +160,10 @@ steps:
       - path: *code_paths
     commands:
       - pip install --upgrade pip wheel setuptools
-      - pip install pip-audit "requests~=2.33.0" "pygments~=2.20.0" "urllib3>=2.7.0" "idna>=3.15" "msgpack>=1.2.1" "click>=8.3.3"
+      - pip install pip-audit "requests~=2.33.0" "pygments~=2.20.0" "urllib3>=2.8.0" "idna>=3.15" "msgpack>=1.2.1" "click>=8.3.3"
       - >
         pip-audit --skip-editable
         --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219
-        --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212
-        --ignore-vuln PYSEC-2025-213 --ignore-vuln PYSEC-2025-214
-        --ignore-vuln PYSEC-2025-215 --ignore-vuln PYSEC-2025-216
-        --ignore-vuln PYSEC-2025-217 --ignore-vuln PYSEC-2025-218
-        --ignore-vuln PYSEC-2025-189 --ignore-vuln PYSEC-2025-190
-        --ignore-vuln PYSEC-2025-191 --ignore-vuln PYSEC-2025-192
-        --ignore-vuln PYSEC-2025-193 --ignore-vuln PYSEC-2025-194
-        --ignore-vuln PYSEC-2025-195 --ignore-vuln PYSEC-2025-196
-        --ignore-vuln PYSEC-2025-197 --ignore-vuln PYSEC-2025-210
-        --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277
-        --ignore-vuln CVE-2025-3000 --ignore-vuln CVE-2026-4372
-        --ignore-vuln PYSEC-2026-2289 --ignore-vuln PYSEC-2026-2290
 
   # ── generated-artifact drift gates ─────────────────────────────────────────
   - name: verify-generated
@@ -303,6 +291,28 @@ steps:
           fi
         done
       - echo "✅ All commits have DCO sign-off (54a041c171 grandfathered)"
+
+  # ── independent I/O-primitive allowlist (WI-vumum) ─────────────────────────
+  # Every risky call site in packages/*/src (fs write/delete, process launch,
+  # network, server, eval/exec, unsafe deserialize, native load, dynamic
+  # import) must be on docs/hypergumbo.io-allowlist.yaml; a new unlisted site
+  # or a stale entry fails. Pure stdlib AST + PyYAML, ~2 s, so unlike the
+  # self-claims gate it can afford to run per-PR on every source change. It
+  # deliberately imports nothing from hypergumbo: it is the check that does
+  # not share the self-proof's blind spots, so it must not share its install.
+  - name: io-allowlist
+    image: python:3.11-bookworm
+    depends_on: []
+    when:
+      - path:
+          include:
+            - "packages/*/src/**"
+            - "docs/hypergumbo.io-allowlist.yaml"
+            - "scripts/check-io-allowlist"
+    commands:
+      - pip install --upgrade pip
+      - pip install "pyyaml>=6"
+      - scripts/check-io-allowlist
 
   # ── tracker data validation (only when tracker files changed) ──────────────
   - name: tracker-validate
@@ -550,12 +560,35 @@ steps:
           WORKERS=$(nproc)
         fi
 
+        # INV-tazur: every selected path must exist in this commit. A manifest
+        # naming a deleted test (smart-test once kept `git rm`'d tests in its
+        # selection) hands pytest -n a dead path, and under xdist that is not a
+        # usage error: "N workers [0 items]", exit 5, and the "not found" message
+        # stays in a worker. Name the paths and stop, before pytest runs.
+        MISSING_SELECTED=""
+        for t in $SELECTED_TESTS; do
+          [ -e "$t" ] || MISSING_SELECTED="$MISSING_SELECTED $t"
+        done
+        if [ -n "$MISSING_SELECTED" ]; then
+          echo "❌ the manifest selects test path(s) that do not exist in this commit:"
+          for t in $MISSING_SELECTED; do echo "     $t"; done
+          echo "   pytest -n would collect 0 tests from them (exit 5, no message)."
+          echo "   Regenerate: ./scripts/smart-test --manifest && git add .ci/affected-tests.txt"
+          exit 1
+        fi
+
         echo "=== pytest ($(echo "$SELECTED_TESTS" | wc -w) selected files, -n $WORKERS) ==="
         # `|| TEST_EXIT=$?` rather than a bare call: `set -e` is active, so a
         # bare failing pytest aborts the block before the coverage gate and the
         # explicit `exit $TEST_EXIT` below. Final exit code is unchanged.
         TEST_EXIT=0
         pytest --rootdir=. -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS || TEST_EXIT=$?
+        # INV-tazur: exit 5 is "collected nothing". It already fails the step;
+        # say so in words, because pytest's own line ("no tests ran") reads like
+        # a skip rather than a failure of the selection.
+        if [ "$TEST_EXIT" -eq 5 ]; then
+          echo "❌ ZERO TESTS EXECUTED: the manifest selected $(echo "$SELECTED_TESTS" | wc -w) file(s) and pytest collected none (exit 5). This is not a pass."
+        fi
 
         # 100% coverage gate for changed source files only.
         if [ $TEST_EXIT -eq 0 ] && [ -n "$COVERABLE" ]; then

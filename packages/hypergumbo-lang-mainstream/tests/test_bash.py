@@ -475,6 +475,8 @@ class TestBashShebangHandling:
         node_modules = tmp_path / "node_modules"
         node_modules.mkdir()
         (node_modules / "some-bin").write_text("#!/bin/bash\necho excluded")
+        # An installed tree, recognised by content (ADR-0004 §"Installed dependency source").
+        (node_modules / ".package-lock.json").write_text("{}")
 
         files = list(find_bash_files(tmp_path))
 

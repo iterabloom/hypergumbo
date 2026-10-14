@@ -1,0 +1,24 @@
+- op: create  # b39b
+  at: '2026-10-03T06:33:12Z'  # b39b
+  by: agent  # b39b
+  actor: jgstern_agent  # b39b
+  clock: 1  # b39b
+  nonce: b39b  # b39b
+  data:  # b39b
+    kind: work_item  # b39b
+    title: "def/use records a nested assignment as a use, never a definition: python walrus (named_expression) and JS/TS assignment inside a condition, argument or right-hand side"  # b39b
+    status: todo_hard  # b39b
+    priority: 3  # b39b
+    parent:  # b39b
+    tags:  # b39b
+    - adr_0017  # b39b
+    - taint  # b39b
+    - python  # b39b
+    - javascript  # b39b
+    - typescript  # b39b
+    isbefore: []  # b39b
+    duplicate_of: []  # b39b
+    not_duplicate_of: []  # b39b
+    pr_ref:  # b39b
+    description: "FOUND 2026-10-03 by the WI-losod premise audit; reproduced at dev 3abedae588.\n\nDEFECT. A binding made by an assignment NESTED inside another expression is recorded as a USE and never as a DEFINITION by the def/use extractors for Python and JavaScript/TypeScript. Java and C get it right.\n\nREPRO (CFG built + def/use populated exactly as ddg_build does: cfg.build_function_cfg + cfg.populate_def_use_for_cfg after dataflow_scope.ensure_def_use_extractors_registered()):\n- Python `if (m := g(n)) > 0:` gives def=[] use=[m, n]. Same for `while (k := g(n)):`, `y = (z := g(n)) + 1` (defines y only) and `h(w := g(n))`. The repo has no handler for tree-sitter `named_expression` (grep finds none).\n- JS/TS `if ((m = g(n)) > 0)`, `y = (m = g(n)) + 1;` and `h(m = g(n));` all record m as a use only. A top-level `m = g(n);` does define m.\n- Controls: Java `while ((line = r.readLine()) != null)` and `if ((x = g()) > 0)` define line/x. C `if ((x = g(n)) > 0)` and `while ((x = g(n)))` define x.\n- Go has no assignment expressions (its if-initializer gap is WI-losod). Rust assignment yields (). Neither is affected.\n\nVERDICT EFFECT (verify-claims, host_secret -> network, `sock = socket.socket()`):\n- `t = os.environ[\"API_KEY\"]; if t: sock.sendall(t.encode())` gives violated, evidence analysis_method=ddg, walk_verdict=confirmed (precise).\n- `if (t := os.environ[\"API_KEY\"]): sock.sendall(t.encode())` gives violated, ddg_mixed, walk_verdict=not_attempted (approximate).\nSo the gap costs precision (the precise walk is lost and the flow falls back to the structural path). It did not produce a false clean in these fixtures. A SANITIZER applied through a nested assignment would be invisible to the walk; that case is not tested.\n\nIDIOMS AFFECTED: Python 3.8+ walrus in conditions and comprehensions; JS `while ((m = re.exec(s)) !== null)`, the standard regex-iteration loop.\n\nFIX DIRECTION. Teach the Python extractor `named_expression` (define the `name` field, use the `value`). Teach the TS/JS extractor that an `assignment_expression` / `augmented_assignment_expression` anywhere inside a statement defines its left side, not only at statement top level. Comprehension scoping: a walrus in a comprehension binds in the ENCLOSING function (PEP 572), unlike the comprehension variable.\n\nACCEPTANCE. The probe statements above define m/k/z/w. The walrus verify-claims fixture reads ddg / confirmed like the plain-assignment control.\n\nRELATED: WI-losod (loop headers and if-initializers invisible to def/use), WI-faful (CfgBuilder decomposes declarations holding control flow). ADR-0017 is the def/use contract."  # b39b
+    fields: {}  # b39b

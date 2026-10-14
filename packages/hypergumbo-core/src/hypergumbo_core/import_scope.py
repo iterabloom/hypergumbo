@@ -15,12 +15,20 @@ different shapes per language, and incomplete in different ways per
 language. The WI-mafik audit (2026-05-12) confirmed 7 of 7 non-Python
 analyzers have at least one gap in this layer.
 
-This module provides the shared abstraction. Each analyzer's
-language-specific import-detection code populates an ``ImportScope``
-by calling the ``add_*`` methods; the analyzer's call-site emit code
-queries ``resolve(local_name)`` to obtain the canonical form. The
-canonical form is then used to construct an ``ExternalRef`` for the
-emitted ``Edge.dst_ref``.
+This module provides a shared abstraction for that layer. The intended
+use: an analyzer's language-specific import-detection code populates an
+``ImportScope`` by calling the ``add_*`` methods; its call-site emit
+code queries ``resolve(local_name)`` to obtain the canonical form, which
+then constructs an ``ExternalRef`` for the emitted ``Edge.dst_ref``.
+
+## Current status: not adopted
+
+No analyzer imports or constructs ``ImportScope``, and none ever has;
+its only user is ``tests/test_import_scope.py``. The ``ExternalRef`` /
+``Edge.dst_ref`` IR it was built to feed did land, but each analyzer
+that sets ``dst_ref`` builds it inline from its own import bookkeeping
+(py.py still builds the two dicts described below). Whether to adopt
+this class or retire it is an open decision on WI-tihup.
 
 ## Why this isn't a YAML
 
@@ -35,8 +43,8 @@ uniform.
 
 ## Mapping to py.py's pre-existing ``_extract_imports``
 
-Python's ``_extract_imports`` at ``py.py:1812`` already builds two
-dicts of exactly the shape backing this class:
+Python's ``_extract_imports`` (in ``hypergumbo_lang_mainstream/py.py``)
+builds two dicts of exactly the shape backing this class:
 
 - ``symbol_imports: dict[str, tuple[str, str]]`` — ``local_name ->
   (module, original_name)`` for ``from X import Y [as Z]``. Equivalent
@@ -44,11 +52,14 @@ dicts of exactly the shape backing this class:
 - ``module_imports: dict[str, str]`` — ``local_alias -> module_name``
   for ``import X [as Y]``. Equivalent to ``add_aliased_module()``.
 
-PR1 of WI-tihup adopts ``ImportScope`` in py.py as the worked
-example; PR2 extends to the 7 non-Python analyzers. See
+The plan was for PR1 of WI-tihup to adopt ``ImportScope`` in py.py as
+the worked example and PR2 to extend it to the 7 non-Python analyzers.
+PR1 shipped the class and py.py's inline ``dst_ref`` construction
+without replacing those dicts, and PR2's retrofit never used it (see
+"Current status" above). See
 ``docs/adr/0023-edge-type-relationship-not-endpoints.md`` and
 ``docs/adr/0028-evidence-type-inference-pathway-only.md`` for the
-sibling-field pattern this work follows.
+sibling-field pattern the ``Edge.dst_ref`` work follows.
 """
 from __future__ import annotations
 

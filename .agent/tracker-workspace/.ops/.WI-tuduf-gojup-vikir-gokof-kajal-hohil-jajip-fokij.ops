@@ -57,3 +57,10 @@
     tags: [dogfood]  # b250
   remove:  # b250
     tags: [dogfooding]  # b250
+- op: discuss  # 96c6
+  at: '2026-10-02T01:45:14Z'  # 96c6
+  by: agent  # 96c6
+  actor: jgstern_agent  # 96c6
+  clock: 6  # 96c6
+  nonce: 96c6  # 96c6
+  message: "OBSERVATION 2026-10-01 (WI-nasil A/B, not diagnosed). analyze_bash on ~/whole_bunch_of_repos/fluent-bit (410 .sh files, 185 MB) did not finish within a 300 s wall-clock alarm in either arm (CPU-bound: 5:00 CPU at the alarm) (dev c05393f974 baseline and the WI-nasil branch); a first unbounded baseline run reached 26 CPU-minutes on that one repo before I killed it. The repo's largest scripts are NOT the cause by themselves: lib/c-ares-1.34.6/config/ltmain.sh (333 KB) analysed alone takes 0.9 s. Every other one of 29 measured repos took 0.1-8.7 s (git: 1292 bash files in 6.9-8.7 s). So the cost is a repo-level interaction (candidates, unverified: the _RepoBashIndex source graph / transitive closure, or a pathological file other than ltmain.sh). This is a per-repo blow-up, a different shape from this row's 631 ms/file."  # 96c6

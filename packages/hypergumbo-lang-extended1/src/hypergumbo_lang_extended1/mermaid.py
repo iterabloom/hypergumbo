@@ -26,6 +26,15 @@ Why This Design
 - Mermaid is widely used in documentation (GitHub, GitLab render it natively)
 - Diagram types reveal project documentation patterns
 - Node extraction helps index documented architecture
+
+Identity (ADR-0035, WI-tusad): every symbol mints
+``overload_arity.scoped_stable_id`` (a ``class`` keeps the backstop's
+table formula); a participant, state or node is scoped by the diagram
+declared above it (``sequenceDiagram``,
+``flowchart``), so ``Alice`` in a sequence diagram and in a flowchart of one
+file are two symbols that the floor key ``(kind, path, name)`` nulled. Two
+diagrams of one type in a file, or a node named twice in one diagram (one
+Mermaid node, referenced twice), are same-scope ties.
 """
 from __future__ import annotations
 
@@ -37,6 +46,8 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import scoped_stable_id
+from hypergumbo_core.paths import to_relative_path
 
 PASS_ID = make_pass_id("mermaid")
 
@@ -85,13 +96,19 @@ def analyze_mermaid(
         except OSError:  # pragma: no cover
             continue
         path_str = str(mmd_file)
+        rel_path = to_relative_path(mmd_file, repo_root)
+        diagram: tuple[str, ...] = ()
 
         for line_num, line in enumerate(content.splitlines(), 1):
             m = _DIAGRAM_TYPE_RE.match(line)
             if m:
                 name = m.group(1)
+                diagram = (name,)
                 symbols.append(Symbol(
                     id=_make_symbol_id(path_str, line_num, name, "diagram"),
+                    stable_id=scoped_stable_id(
+                        kind="diagram", lang="mermaid", path=rel_path, name=name,
+                    ),
                     name=name,
                     kind="diagram",
                     language="mermaid",
@@ -108,6 +125,9 @@ def analyze_mermaid(
                 name = m.group(1)
                 symbols.append(Symbol(
                     id=_make_symbol_id(path_str, line_num, name, "participant"),
+                    stable_id=scoped_stable_id(
+                        kind="participant", lang="mermaid", path=rel_path, name=name, scope=diagram,
+                    ),
                     name=name,
                     kind="participant",
                     language="mermaid",
@@ -140,6 +160,9 @@ def analyze_mermaid(
                 name = m.group(2)
                 symbols.append(Symbol(
                     id=_make_symbol_id(path_str, line_num, name, "state"),
+                    stable_id=scoped_stable_id(
+                        kind="state", lang="mermaid", path=rel_path, name=name, scope=diagram,
+                    ),
                     name=name,
                     kind="state",
                     language="mermaid",
@@ -159,6 +182,9 @@ def analyze_mermaid(
                                 "classDef", "class", "subgraph", "direction"}:
                     symbols.append(Symbol(
                         id=_make_symbol_id(path_str, line_num, name, "node"),
+                        stable_id=scoped_stable_id(
+                            kind="node", lang="mermaid", path=rel_path, name=name, scope=diagram,
+                        ),
                         name=name,
                         kind="node",
                         language="mermaid",

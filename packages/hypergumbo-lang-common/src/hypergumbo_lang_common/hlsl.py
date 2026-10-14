@@ -31,6 +31,17 @@ and result assembly. This module provides only the HLSL-specific extraction logi
    (confidence 0.85 * resolver confidence) or to an
    'hlsl:external:<name>:function' target at 0.70 confidence.
 
+A function records its parameters, types included, in ``meta["parameters"]``
+(``c_family_parameters``) and its stable_id hashes them
+(``overload_arity.node_declared_arity_stable_id``, WI-tusad): the list sits
+under the declarator, where ``compute_stable_id`` never looked, so the
+overloads ``f(float)`` / ``f(float2)`` tied on ``param_count 0``. Every symbol
+also hashes the namespaces, structs and functions it is declared in
+(``c_family_scope_chain(functions=True)`` through
+``overload_arity.nested_qualified_name``, empty at top level; INV-punig): ``f``
+in ``namespace a`` and in ``namespace b``, or a local ``x`` in two functions,
+are two identities.
+
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
@@ -42,7 +53,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -56,8 +67,12 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
 )
+from hypergumbo_core.analyze.c_family import c_family_parameters, c_family_scope_chain
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, nested_qualified_name, node_declared_arity_stable_id,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
@@ -119,7 +134,7 @@ def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
 def _make_symbol(analyzer: "TreeSitterAnalyzer", rel_path: str, run_id: str,
                  source: bytes, node: "tree_sitter.Node",
                  name: str, kind: str,
-                 signature: Optional[str] = None, meta: Optional[dict] = None) -> Symbol:
+                 signature: Optional[str] = None, meta: Optional[dict[str, Any]] = None) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
@@ -144,9 +159,17 @@ def _make_symbol(analyzer: "TreeSitterAnalyzer", rel_path: str, run_id: str,
         # tree-sitter producer passes no enclosing-scope containing, so the
         # anchor lands in the containing slot. ``rel_path`` is repo-relative
         # (the base ``analyze()`` loop derives it via relative_to(repo_root)).
-        stable_id=analyzer.compute_stable_id(
-            node, kind=kind, name=name,
+        # WI-tusad: the arity comes from meta["parameters"] (the declarator's
+        # list, which compute_stable_id never finds), so f(float) / f(float2)
+        # stop tying. INV-punig: the namespaces, structs and functions around
+        # the declaration (a local variable is emitted too), empty at top
+        # level, where the value is unchanged.
+        stable_id=node_declared_arity_stable_id(
+            analyzer, node, kind=kind, name=name, meta=meta,
             file_stable_id=analyzer._file_anchor(rel_path),
+            qualified_name=nested_qualified_name(
+                c_family_scope_chain(node, source, functions=True), name,
+            ),
         ),
         signature=signature,
         meta=meta,
@@ -184,8 +207,13 @@ def _extract_hlsl_symbols(
                 continue  # pragma: no cover
             func_name = node_text(name_node, source)
             signature = _extract_function_signature(func_decl, source)
+            param_list = find_child_by_type(func_decl, "parameter_list")
+            meta = (
+                {PARAMETERS_KEY: c_family_parameters(param_list, source)}
+                if param_list is not None else None
+            )
             sym = _make_symbol(analyzer, rel_path, run_id, source, node, func_name, "function",
-                               signature=signature)
+                               signature=signature, meta=meta)
             symbols.append(sym)
             local_symbols[func_name] = sym
             node_for_symbol[sym.id] = node
@@ -258,7 +286,7 @@ class HlslAnalyzer(TreeSitterAnalyzer):
     file_patterns: ClassVar[list[str]] = ["*.hlsl", "*.hlsli", "*.fx"]
     language_pack_name = "hlsl"
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Only register function symbols for cross-file call resolution."""
         if symbol.kind == "function":
             global_symbols[symbol.name] = symbol
@@ -286,7 +314,7 @@ class HlslAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

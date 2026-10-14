@@ -12,14 +12,40 @@ How It Works
 3. When a pattern matches, the symbol is enriched with a "concept" (route, model, etc.)
 4. Linkers use concepts to understand symbol semantics without framework knowledge
 
+Also provides:
+
+- Nine language-convention pattern files (``_CONVENTION_PATTERN_IDS``:
+  main-functions, test-frameworks, library-exports, naming-conventions, ...)
+  that ``enrich_symbols`` applies on every repo regardless of framework
+  detection.
+- A user-channel override: a ``frameworks/`` file in the user channel whose
+  stem matches a framework id (or its alias) replaces the shipped YAML whole
+  rather than merging into it (ADR-0047 ruling 10, ``load_framework_patterns``).
+- Route-marker hygiene at enrichment: on a symbol that already carries a
+  route marker, a redundant path-less ``route`` concept is dropped and its
+  framework lifted onto ``route_framework`` (``_dedup_route_marker_concepts``,
+  INV-vokak), and on any route-family marker a ``library_export`` match is
+  dropped (``_drop_library_export_on_route_marker``, INV-liraj).
+- Pipeline passes run outside ``enrich_symbols``:
+  ``resolve_deferred_symbol_refs`` (resolves UsageContext handler references
+  against the full symbol table once every analyzer has run),
+  ``strip_test_file_only_concepts`` (drops ``is_test_file: false`` concepts
+  from symbols supply-chain classification marked as test code),
+  ``materialize_route_symbols`` and ``expand_class_based_view_routes`` (see
+  below).
+
 Pattern Types
 -------------
-**Definition-based (v0.8.x):** Match against symbol definition metadata.
+**Definition-based (v1.0.x+):** Match against symbol definition metadata.
 
 - Decorator patterns: Match function/method decorators (e.g., @app.get)
-- Base class patterns: Match class inheritance (e.g., BaseModel)
+- Base class patterns: Match class inheritance (e.g., BaseModel), or a
+  method's parent class bases (parent_base_class + method_name)
 - Annotation patterns: Match Java annotations (e.g., @RequestMapping)
 - Parameter type patterns: Match function parameter types (e.g., Depends)
+- Further fields: symbol_name, symbol_kind, language, framework_role,
+  meta_match, modifiers/modifiers_exclude and symbol_path (plus an
+  is_test_file policy flag)
 
 **Usage-based (v1.1.x):** Match against UsageContext records for call-based
 frameworks where routing is done via function calls rather than decorators.
@@ -32,10 +58,16 @@ Relationship to Route Symbols
 -----------------------------
 Enrichment adds ``concept: route`` to *handler* symbols (e.g., a Django view
 function gets tagged as a route handler). This is complementary to — not a
-replacement for — the route-marker symbols that language analyzers create.
-Route symbols are first-class IR entities representing the route itself, consumed
-by the ``route_handler`` linker to create ``dispatches_to`` edges. Both outputs are
-derived from the same UsageContext extraction pass in each analyzer.
+replacement for — route-marker symbols. Route symbols are first-class IR
+entities representing the route itself, consumed by the ``route_handler``
+linker to create ``dispatches_to`` edges. Language analyzers create route
+markers directly for routing DSLs (Go, JS/TS, Django urls.py, Rails, Phoenix).
+For handlers enriched with ``concept: route`` that have no marker (decorator
+and annotation frameworks such as JAX-RS, Spring, ASP.NET, FastAPI),
+``materialize_route_symbols`` creates the marker.
+``expand_class_based_view_routes`` splits a Django CBV ``ANY`` route into one
+route per declared HTTP method. Handler enrichment comes from definition
+metadata or from UsageContext records, depending on the pattern.
 
 Why This Design
 ---------------
@@ -62,8 +94,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import yaml
-
 from hypergumbo_core.name_matcher import NameMatcher
 
 if TYPE_CHECKING:
@@ -72,6 +102,7 @@ if TYPE_CHECKING:
 # Import UsageContext at runtime since it's used by matches_usage and extract_usage_value
 from .axis_meta_keys import filter_meta_key, write_meta_key
 from .ir import UsageContext
+from .yaml_catalogs import CatalogueError, read_catalogue_yaml
 
 # Note for YAML authors: if your framework's canonical usage is manifest-declared
 # but never imported in app code (Rails-style autoload-by-convention), also add
@@ -753,8 +784,8 @@ def extract_usage_value(ctx: "UsageContext", expr: str) -> str | None:
             elif transform == "last":
                 # Assumes previous was split, take last element.
                 # Re-parse to find delimiter from previous split.
-                # (We're always inside the " | " branch from line 520,
-                # so parts is guaranteed to exist.)
+                # (We're always inside the enclosing ``" | " in expr``
+                # branch, so parts is guaranteed to exist.)
                 for prev in reversed(parts[:parts.index(transform)]):
                     if prev.strip().startswith("split:"):
                         delim = prev.strip()[6:]
@@ -1002,10 +1033,17 @@ def load_framework_patterns(framework_id: str) -> FrameworkPatternDef | None:
         _PATTERN_CACHE[cache_key] = None
         return None
 
-    with open(yaml_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-
-    pattern_def = FrameworkPatternDef.from_dict(data)
+    # A broken file -- the user's or shipped -- is refused naming it
+    # (CatalogueError -> exit 2), never a raw parser or AttributeError that
+    # surfaces as an internal error with exit 1.
+    data = read_catalogue_yaml(yaml_path, what="framework pattern file")
+    try:
+        pattern_def = FrameworkPatternDef.from_dict(data)
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise CatalogueError(
+            f"framework pattern file {yaml_path} could not be read "
+            f"({type(exc).__name__}: {exc})."
+        ) from exc
     _PATTERN_CACHE[cache_key] = pattern_def
     return pattern_def
 
@@ -1459,6 +1497,37 @@ def _dedup_route_marker_concepts(
     return kept
 
 
+#: ADR-0027 route-family marker roles: synthetic declaration symbols an
+#: analyzer mints for a route registration (``get "/x", C, :a``), a mounted
+#: sub-router, or an included route table. They are named after the route
+#: ("GET /users"), not after anything a consumer could import.
+_ROUTE_FAMILY_ROLES = frozenset({"route", "route_mount", "route_include"})
+
+
+def _drop_library_export_on_route_marker(
+    meta: dict[str, Any], matches: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """INV-liraj: a route-family marker is never a library export.
+
+    The definition-based ``library_export`` patterns in library-exports.yaml
+    key on symbol kind + a name/modifier convention, and a route marker is
+    ``kind="function"``, so it matches them by accident: the Elixir pattern
+    takes every non-``defp`` function (the marker has no ``private``
+    modifier), the Go pattern every uppercase-initial name ("GET /users").
+    ``library_export`` means "externally importable public API"; nothing can
+    import a route registration. Left in place the concept leaked into
+    ``meta.concepts`` and, through first-emitted-wins dedup, displaced the
+    marker's HTTP_ROUTE entrypoint (thc: 377 Phoenix routes filed as library
+    exports). Dropped here — the one point every definition-based match
+    passes through — rather than per-language in the YAML, because the YAML
+    matcher has no ``framework_role`` exclusion and every current and future
+    language's export convention would need its own.
+    """
+    if meta.get("framework_role") not in _ROUTE_FAMILY_ROLES:
+        return matches
+    return [c for c in matches if c.get("concept") != "library_export"]
+
+
 def enrich_symbols(
     symbols: list[Symbol],
     detected_frameworks: set[str],
@@ -1466,11 +1535,14 @@ def enrich_symbols(
 ) -> list[Symbol]:
     """Enrich symbols with framework concept metadata.
 
-    Four-phase enrichment (v1.3.x):
-    1. Language conventions: Match main() functions and other language-level patterns
-    2. Definition-based: Match against decorators, base classes, annotations
-    3. Parent path inheritance: Combine paths from parent concepts (prefix_from_parent)
-    4. Usage-based: Match against UsageContext records for call-based frameworks
+    Enrichment phases (the language-convention YAMLs in
+    ``_CONVENTION_PATTERN_IDS`` are always loaded and merged into the
+    detected frameworks' patterns before phase 1, not run as a phase):
+    1. Definition-based: Match against decorators, base classes, annotations
+    1.5. APIRouter prefix composition: Prepend ``router_prefix`` to route paths
+    2. Parent path inheritance: Combine paths from parent concepts (prefix_from_parent)
+    2b. JAX-RS subresource locator path chaining
+    3. Usage-based: Match against UsageContext records for call-based frameworks
 
     Args:
         symbols: Symbols to enrich
@@ -1521,7 +1593,7 @@ def enrich_symbols(
                 symbol_by_name[simple_name] = s
     class_lookup = _build_class_symbol_lookup(symbols)
 
-    # Collect patterns that use prefix_from_parent (for phase 3)
+    # Collect patterns that use prefix_from_parent (for phase 2)
     patterns_with_prefix: list[tuple[Pattern, str]] = []  # (pattern, framework_id)
     for pattern_def in pattern_defs:
         for pattern in pattern_def.patterns:
@@ -1545,9 +1617,14 @@ def enrich_symbols(
             # bash's ``shell_script``, go's ``middleware``) lost that fact
             # the moment any framework pattern matched it. Both facts are
             # independently true; the union is the sound fold.
+            # INV-liraj: and a route marker is not importable API, so the
+            # accidental library_export match is dropped too.
             write_meta_key(
                 symbol.meta, "concepts",
-                _dedup_route_marker_concepts(symbol.meta, matches),
+                _drop_library_export_on_route_marker(
+                    symbol.meta,
+                    _dedup_route_marker_concepts(symbol.meta, matches),
+                ),
             )
 
     # Phase 1.5: APIRouter prefix composition
@@ -2040,7 +2117,7 @@ def expand_class_based_view_routes(
     """Expand CBV routes into one route per declared HTTP method.
 
     WI-lojoh: when a Django ``re_path``/``path``/``url`` registers a view via
-    ``Cls.as_view()``, the analyzer emits a single ``kind='route'`` symbol
+    ``Cls.as_view()``, the analyzer emits a single route marker (``meta.framework_role='route'``)
     with ``http_method='ANY'`` and ``meta.view_name`` set to the class name.
     This pass looks up the view class's child methods (named ``get``, ``post``,
     ``put``, ``patch``, ``delete``, ``head``, ``options``, ``trace``) by

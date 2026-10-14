@@ -57,6 +57,11 @@ headline.
 | **precision** | **33.9%** | **31.5%** |
 | UNADJUDICABLE | 0 | 0 |
 
+> **What a row counts.** Each row is one (source call site, sink call site)
+> pair included by call-graph reachability, not a claim that a value flowed,
+> so the row rate is a rate over reachability pairs. See
+> [What a row counts](README.md#what-a-row-counts).
+
 Including the one contested refutation (see below): 37/112 = 33.0%.
 
 Cohort: 16 repositories, 10 languages — cert-manager, cilium, jaeger, beads,

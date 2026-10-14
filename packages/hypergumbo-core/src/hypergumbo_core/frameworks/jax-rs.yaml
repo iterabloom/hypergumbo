@@ -7,6 +7,7 @@
 # Note: JAX-RS HTTP method annotations (@GET, @POST, etc.) don't contain
 # the path - that's in @Path. The path extraction uses kwargs.value from @Path.
 
+provenance: builtin
 id: jax-rs
 language: java
 

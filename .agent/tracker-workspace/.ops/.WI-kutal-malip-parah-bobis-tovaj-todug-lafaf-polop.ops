@@ -33,3 +33,69 @@
   clock: 3  # e269
   nonce: e269  # e269
   message: "A FURTHER INSTANCE, WITH ITS COST IN A SECOND MEASUREMENT, observed 2026-09-09 while landing WI-sihoh (Phase 6 PR 5, measurement 0021).\n\nTHE SITE. `CartPosition.update_listed_price_and_voucher` (pretix src/pretix/base/models/orders.py:3246) calls `self.save(update_fields=[...])` at 3277. `CartPosition` defines NO `save` override -- checked at source -- so that call reaches Django's own `Model.save`. The reported flow path instead runs `[update_listed_price_and_voucher, PrintLog.save]`: `PrintLog` is an unrelated model declared in the SAME FILE (orders.py:3571) whose `save` was claimed by short name. Exactly this item's mechanism.\n\n`PrintLog` is one of the three classes this item's 2026-09-07 entry already named as a candidate binding for `Order.delete`, so the class is not new to the thread; the CALLER is.\n\nA DISCREPANCY WORTH CHECKING WHEN THIS ITEM'S GATE IS WORKED, reported rather than resolved. The 2026-09-07 census over all pretix `self.save()`/`self.delete()` sites found 27 correct, 8 unresolved, and 2 claimed by an unrelated same-file class (`CustomerSSOClient.save` -> `Customer`, `Order.delete` -> one of `OrderFee`/`PrintLog`/`QuestionAnswer`). `CartPosition.update_listed_price_and_voucher` -> `PrintLog.save` is not obviously among those 2. Either the census undercounted, or the tree moved between 946ad85633 and 8127dc8245. I did not chase it; whoever runs the directed dst-blast-radius probe this item gates on should, because a census that undercounts its own population would size the fix wrong.\n\nCOST ON THIS MEASUREMENT. It is the single judgement call in 0021's adjudication of 16 situations. Under measurement 0001's rubric as written -- \"a real value flow exists from the source's value to the NAMED sink\", and the named sink is the generic `django.db.models.save` -- it is a TRUE POSITIVE with a defective evidence path, because the value genuinely does flow (`first()` -> `bundle.designated_price` -> `self.listed_price` -> `self.save()`). Under a stricter reading requiring the path to be correct end to end it is a FALSE POSITIVE, and 0021 reads 50.0% instead of 56.3%. The ship bar was met either way, so this item did not decide that PR -- but it did make one of sixteen findings unreadable without a source check.\n\nNOT the same as the 0016 instance this thread already records (`ReauthView.post` -> `StopStaffSession.get`), which was an unambiguous false positive: there the genuine write was on a loop variable that stays untyped, so the finding had no true counterpart at all. Here the genuine write is real. The two instances bracket the item's cost range.\n\nNo status change proposed; the item's gate (a directed dst-blast-radius probe before implementing) is untouched and still the right first step."  # e269
+- op: discuss  # d377
+  at: '2026-10-03T06:42:10Z'  # d377
+  by: agent  # d377
+  actor: jgstern_agent  # d377
+  clock: 4  # d377
+  nonce: d377  # d377
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). CURRENT, worse than filed; the PRESCRIBED FIX conflicts with a standing rule.\n- Case-2a is still callee_symbol = local_symbols.get(attr_name) (py.py:8301-8303); the bare-name write symbol_by_name[item.name] = method_symbol is py.py:3342 (the item cites ~3525 and ~2453).\n- STRONGER REPRO: Order.finish calls self.save() and Order DEFINES save, yet it resolves to Fee.save (True, 0.85): last write wins, so a class's OWN method is replaced. Direct.go (no save of its own) also resolves self.save() to Fee.save.\n- FIX CORRECTION: resolving through caller_symbol.name.split('.')[0] is a name-based lookup, against the INV-mozas/INV-midag rule (an enclosing symbol is found by POSITION, never by name), and breaks for nested classes and same-named classes in one file. py.py already records method_to_enclosing_class_id[method_symbol.id] = symbol.id (WI-supat, ~3355); key Case-2a on that.\n- CROSS-ITEM: this bug is why INV-guviv's July stdlib-base gate is bypassed for same-file ancestors. A self.method() inherited call is resolved here before the linker's gated Site-1 runs. Fixing this makes the gate effective there.\n- PRIORITY: worth raising (two measurements show cost, and it defeats INV-guviv's gate). Proposal only; priority goes through the owner.\n- NOT CHECKED: the dst-blast-radius probe the item gates on; the pretix census discrepancy in the second discussion entry."  # d377
+- op: discuss  # 4cd9
+  at: '2026-10-03T17:37:53Z'  # 4cd9
+  by: agent  # 4cd9
+  actor: jgstern_agent  # 4cd9
+  clock: 5  # 4cd9
+  nonce: 4cd9  # 4cd9
+  message: "IMPLEMENTED on local branch jgstern-agent/fix/kutal (base b7417402dc; not pushed, not merged): commits 2258c16112, 7419c6e16c, 6fc02d8d7f (62d650affd on the same branch is INV-guviv's Site-3 gate). Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/kutal.md.\n\nWHAT. py.py Case 2a no longer reads symbol_by_name. It reads FileAnalysis.methods_by_class_id: the def AND class statements of the OWN body of the class that `self` denotes, the later one in source order winning (runtime class-dict semantics). The class is found by POSITION, not name (_self_receiver_class_id): the innermost function frame binding `self`, if that frame is a non-@staticmethod method, via the WI-supat method_to_enclosing_class_id map. A closure reads its method's self; a module function, a staticmethod, or a nested def with its own self param denote no class -> unresolved (INV-fahub). The premise audit's prescribed fix (caller_symbol.name.split('.')[0]) was NOT used. A miss goes to the unresolved edge with the Site-1 hint, so same-file inherited methods are now resolved by the inherited_calls MRO walk (where INV-guviv's builtin-base gate is). Also: both Django ORM instance-write re-key sites share one refusal, _django_lineage_overrides (class or project base defines the method). Case 2a's bare-name bind had supplied that refusal for a same-file inherited override. The shared refusal also stops a pre-existing double count for a CROSS-file override (django: 18 user.save() sites with AbstractBaseUser.save in-tree).\n\nEVIDENCE. 15 new tests in test_py_self_method_class_scoped.py (11 red before the fix, for the expected reasons). One boundary test that pinned the old behaviour was updated (test_samefile_namesake_no_longer_shadows_case2a). Board smart-test, affected selection: 5791 passed, 2 xfailed, scoped coverage 100% on both changed sources, mypy ratchet clean. The item's named instances on pretix (3473fa7) were re-checked by call site:\n- ReauthView.post:170 now goes to ReauthView.get (was StopStaffSession.get, measurement 0016's FP).\n- CartPosition.update_listed_price_and_voucher:3277 now goes to CartPosition.save (was PrintLog.save). In this checkout CartPosition DOES define save at orders.py:3212, contrary to the 09-09 note.\n- Order.gracefully_delete:388 is now the django ORM delete (was PrintLog.delete).\n- CustomerSSOClient.check_client_secret's setter closure no longer binds Customer.save.\n\nCORPUS A/B by call site (each arm on its own pristine source snapshot and its own XDG cache):\n- django: 539 sites retargeted (536 from an unrelated class's method, to the caller's own method or a true ancestor's) and 138 wrong binds removed. COST: 2098 sites whose old same-file ANCESTOR target was right are now unresolved. Every one fails C3 because of a pre-existing inheritance cycle (unittest.TestCase bound to Django's own TestCase), filed as WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin (P2). Also 24 sites lost where the class is assigned at runtime in setUp (self.CtxSyncHandler = CtxSyncHandler).\n- pretix: 349 retargeted from an unrelated class's method, 110 wrong binds removed. 102 sites read as lost are still resolved by the linker on another line of the same caller (filed: WI-sodor-muhif-bagit-vivos-kinap-nabig-gapim-hotav).\n- feast: 16 retargeted, all from an unrelated class's method.\nI read the random samples; every retarget I read was correct.\n\nNOT DONE / RESIDUALS:\n- The bare-name method write in symbol_by_name still exists. It still mis-binds bare calls such as open(...) -> ContentFile.open (django 56 sites, pretix 28): WI-barip-tidod-zivap-janan-jivaj-gohim-loriz-novol.\n- Methods under if/try in a class body are emitted as kind function: WI-modum-sanop-nohol-bihon-sikun-ritaj-fuzul-vilij.\n- Closures get no Site-1 hint and no oracle class: WI-mosof-zokuf-bafid-motir-mopaf-papaf-gozat-jilub.\n- The item asked for a directed dst-blast-radius probe before implementing; the call-site A/B above stands in its place."  # 4cd9
+- op: discuss  # 7f14
+  at: '2026-10-03T17:39:36Z'  # 7f14
+  by: agent  # 7f14
+  actor: jgstern_agent  # 7f14
+  clock: 6  # 7f14
+  nonce: 7f14  # 7f14
+  message: "CORRECTION to the previous entry: the new test file test_py_self_method_class_scoped.py holds 18 tests, not 15 (11 red on the first board run; the Django pair, the nested-class pair and the module-level test were added later, each confirmed red before its fix)."  # 7f14
+- op: discuss  # 0449
+  at: '2026-10-03T17:39:52Z'  # 0449
+  by: agent  # 0449
+  actor: jgstern_agent  # 0449
+  clock: 7  # 0449
+  nonce: '0449'  # 0449
+  message: "PRECISION on the correction above: of the 7 tests added after the first red run, 3 were red by probe against the code just before their change (inherited-override not re-keyed; self.<Nested>() resolution; file without functions). The other 3 named in the report (plain-model ORM write, inherited override via linker, source-order nested class vs method) were controls, green when added. The 7th is the module-level test counted among the 3 reds. Report: run_10032026/kutal.md."  # 0449
+- op: discuss  # cc56
+  at: '2026-10-03T17:39:59Z'  # cc56
+  by: agent  # cc56
+  actor: jgstern_agent  # cc56
+  clock: 8  # cc56
+  nonce: cc56  # cc56
+  message: "FINAL COUNT (supersedes the two notes above): 18 tests = 12 in the first board run (11 red, 1 green control) + 6 added later. Of those 6: 3 red by probe before their change (inherited override not re-keyed; self.<Nested>(); file without functions) and 3 green controls when added (plain-model ORM write; inherited override via linker; source-order nested class vs method)."  # cc56
+- op: discuss  # a8fa
+  at: '2026-10-03T21:17:01Z'  # a8fa
+  by: agent  # a8fa
+  actor: jgstern_agent  # a8fa
+  clock: 9  # a8fa
+  nonce: a8fa  # a8fa
+  message: "From WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin (branch jgstern-agent/fix/ratid, on top of fix/kutal): the django cost recorded here is recovered. A/B b7417402dc vs kutal+ratid (ff18f6ceee), recomputing this item's population with this item's own classify rule over its own artifacts (2098): 1673 resolve again at the same call site to the same ancestor method (inherited-calls-linker); 425 have the same (caller, target) pair resolved on another line of the same caller -- the one-edge-per-pair limit of WI-sodor-muhif-bagit-vivos-kinap-nabig-gapim-hotav; 0 remain unresolved; every caller's C3 linearization succeeds. kutal + ratid together change no site back to arm A's state and add 0 losses beyond kutal's own diff. Details: ~/hypergumbo_lab_notebook/decontend/run_10032026/ratid.md."  # a8fa
+- op: update  # f906
+  at: '2026-10-04T01:26:41Z'  # f906
+  by: agent  # f906
+  actor: jgstern_agent  # f906
+  clock: 10  # f906
+  nonce: f906  # f906
+  set:  # f906
+    status: done  # f906
+- op: discuss  # 0f3f
+  at: '2026-10-04T01:26:42Z'  # 0f3f
+  by: agent  # 0f3f
+  actor: jgstern_agent  # 0f3f
+  clock: 11  # 0f3f
+  nonce: 0f3f  # 0f3f
+  message: "Merged in PR #1438 (dev 81caa3999d). Integrated together: WI-kutal + WI-ratid (which restores the 2098 django edges kutal alone would have lost) + INV-dulum/WI-safit.\n\nFixed in PR #1438 (2258c16112, 7419c6e16c, 6fc02d8d7f). py.py Case 2a resolves `self.<x>()` only through the OWN-body table (defs and nested classes, source-order last wins) of the class `self` denotes. That class is found by POSITION: the innermost frame binding `self`, a non-static method, and its lexical class from `method_to_enclosing_class_id`. Never by bare name. A miss goes to the Site-1 hint and the inherited_calls MRO walk.\n\nBehavioural evidence:\n- Production `analyze_python` on the item's fixture now gives `Order.finish -> Order.save` (was `Fee.save`) and `Direct.go -> unresolved` with `enclosing_class=Direct` (was `Fee.save`).\n- pretix call-site diff: `ReauthView.post:170 -> ReauthView.get` (was `StopStaffSession.get`), `CartPosition.update_listed_price_and_voucher:3277 -> CartPosition.save` (was `PrintLog.save`), `Order.gracefully_delete:388 -> django.db.models delete` (was `PrintLog.delete`).\n- Tests: test_py_self_method_class_scoped.py (18).\n\nCloses the filed row only. The general claim \"no Python call resolves through the bare-name table\" is NOT asserted: Case 1 bare calls still do (WI-barip-tidod-zivap-janan-jivaj-gohim-loriz-novol).\n\nCorpus cost: django loses 2098 correct same-file inherited edges to the pre-existing inheritance cycle WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin. On pretix and feast, 0 correct edges were lost.\n\nPer AGENTS.md this carries a quantitative bakeoff claim, so tag `awaits_bakeoff_validation`."  # 0f3f
+- op: update  # aa89
+  at: '2026-10-04T01:27:30Z'  # aa89
+  by: agent  # aa89
+  actor: jgstern_agent  # aa89
+  clock: 12  # aa89
+  nonce: aa89  # aa89
+  set: {}  # aa89
+  add:  # aa89
+    tags: [awaits_bakeoff_validation]  # aa89

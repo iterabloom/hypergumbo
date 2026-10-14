@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Library signatures for XCTest (Swift).
+#
+# A COMMUNITY companion of swift.yaml (ADR-0061). swift.yaml's built-in line is
+# the Swift standard library plus the Apple frameworks that ship with the OS
+# (test_catalogue_scope_gates.py's CATALOGUE_SCOPE["swift"]); XCTest ships with
+# the toolchain, not the OS, so it is not drawn inside that line. These rows
+# only ADD: a row here takes a key only when swift.yaml left it free, and the
+# user's library_signatures.d rows still win over both.
+#
+# KEY SHAPE: as swift.yaml -- `<Owner>.<func>`, both sides bare. swift.py
+# reaches an `<Owner>` that is a BASE class of the caller through its
+# base-class walk (WI-hojib): `let exp = expectation(description:)` inside a
+# subclass of XCTestCase is the inherited `XCTestCase.expectation`.
+#
+# `retrieved` is the date these rows were last checked against XCTest's API.
+provenance: community
+retrieved: 2026-10-04
+language: swift
+signatures:
+  XCTestCase.expectation: XCTestExpectation

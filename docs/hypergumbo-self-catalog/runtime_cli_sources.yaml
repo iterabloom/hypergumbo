@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Layer-3 project-local catalog — see docs/hypergumbo-self-catalog/README.md
-# for the layer-1/2/3 firewall convention.
+# hypergumbo's in-repo self-audit catalogue — see docs/hypergumbo-self-catalog/README.md
+# for why these rows never move into the built-in catalogues.
 #
 # Declares hypergumbo's runtime CLI subcommand handlers as synthetic taint
 # sources with start_at: callee. Each runtime cmd_* function is the seed

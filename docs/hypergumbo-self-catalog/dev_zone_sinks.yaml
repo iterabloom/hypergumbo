@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Layer-3 project-local catalog — dev-zone sinks.
+# hypergumbo's in-repo self-audit catalogue — dev-zone sinks.
 #
 # Declares the dev-zone functions that runtime CLI subcommands must not
 # transitively reach. These are tracker / agent-supervisor / sync

@@ -3,8 +3,9 @@
 
 Merges three Store instances into a single read surface with tier-annotated
 CompiledItems, write routing to the correct tier, tier movement operations
-(promote/demote/stealth/unstealth), scope-aware count_todos, and self-healing
-reconciliation for cross-tier duplicates. Also provides human-authority
+(promote/demote/stealth/unstealth), scope-aware count_todos, and cross-tier
+duplicate reconciliation (``reconcile()``, which no CLI or hook path calls; the
+``tracker reconcile-reset`` subcommand calls only ``reconcile_reset()``). Also provides human-authority
 message moderation / edit-mode windows (edit_mode_on/off/status, delete_msg,
 undelete_msg, edit_msg_text; WI-zonur), field freeze/drift and lock/unlock,
 the hash_todos circuit-breaker fingerprint, the ops_mtime_signature change
@@ -19,6 +20,10 @@ Design rationale:
 - Each tier has its own Store instance; all three share a single config
   loaded once from the canonical tracker directory.
 - Merged reads annotate each CompiledItem with .tier so consumers know provenance.
+- Merged reads (list_items / ready) record their sorted ID order as the ``:N``
+  positional-alias stash, persisted to cache_dir/last_list when a cache_dir is
+  given; _resolve_id resolves ``:N`` against that merged list before prefix
+  resolution.
 - Write routing defaults to workspace; callers can specify tier explicitly.
 - Tier movement appends an audit op and physically moves the ops file.
 - Reconciliation merges all tiers' ops into a winning tier and deletes the

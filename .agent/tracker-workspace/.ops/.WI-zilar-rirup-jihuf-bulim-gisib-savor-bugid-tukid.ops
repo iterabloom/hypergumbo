@@ -28,3 +28,19 @@
   set: {}  # 8231
   add:  # 8231
     tags: [post_release_focus]  # 8231
+- op: update  # e04b
+  at: '2026-09-26T18:03:34Z'  # e04b
+  by: agent  # e04b
+  actor: jgstern_agent  # e04b
+  clock: 3  # e04b
+  nonce: e04b  # e04b
+  set:  # e04b
+    status: done  # e04b
+    pr_ref: '1227'  # e04b
+- op: discuss  # 3bfc
+  at: '2026-09-26T18:03:35Z'  # 3bfc
+  by: agent  # 3bfc
+  actor: jgstern_agent  # 3bfc
+  clock: 4  # 3bfc
+  nonce: 3bfc  # 3bfc
+  message: "DONE in PR #1227 (merged 62a70cd1b3).\n\nTHE ITEM'S FIX DIRECTION WAS WRONG ABOUT ONE THING, and it matters: it said the batch path's check (\"os.path.isdir(out_dir) and os.listdir(out_dir)\") was the right predicate. It is not. That out_dir is the COHORT directory, and a crashed run leaves an empty iter-001/ inside it, so listdir is non-empty and `run --all` skipped a crashed cohort forever as \"Already has output\". bakeoff-broad's batch guard and both scripts' `init --resume` \"completed\" counters used the same spelling. All four now use _holds_output_files (at least one FILE anywhere below). The single-cohort path prints \"<dir> holds no output files (a crashed or interrupted run); running again as a new iteration\" and runs iter-002; the empty iter-001 is kept as the record of the crash.\n\nBEHAVIORAL EVIDENCE, production path through cmd_run (tests/test_bakeoff_deep_integration.py::TestAnEmptyIterationIsNotAResult): a run whose _run_cohort_repos raises FileNotFoundError after creating <iter>/repo-a (the WI-havit shape) leaves iter-001 with zero files; the next `run` no longer prints \"Skipping: hypergumbo code unchanged\" and writes iter-002/repo-a/hg.json; `run --all` re-runs the cohort into iter-001. Both were red before the fix. Control: a run with real output is still skipped by `run` and `run --all` (the stub is called once across three invocations). bakeoff-broad's guard is pinned through the shared predicate (tests/test_bakeoff_empty_iteration.py); its batch loop runs analysis inline and was not driven end to end."  # 3bfc

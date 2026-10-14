@@ -196,8 +196,8 @@ class TestTheCatalogueStillMatches:
         # fix verified on one language is not verified on another. ``cout`` is
         # declared under module ``std`` with no separator at all, which is the
         # case where the fold must be a NO-OP rather than a rescue.
-        ("cpp:std:0-0:std::cout:attribute", "ipc_send"),
-        ("cpp:std:0-0:std.cout:attribute", "ipc_send"),
+        ("cpp:std:0-0:std::cout:attribute", "logging"),
+        ("cpp:std:0-0:std.cout:attribute", "logging"),
     ])
     def test_both_spellings_classify_identically(
         self, dst: str, expected: str,

@@ -255,3 +255,48 @@ CocoaLumberjack**. Present in both arms, so not caused by this change and only
 visible because of it. It means every published objc typed-share figure — 0025's
 and 0026's included, and this record's own — is inflated by that much, and fixing
 it will make those numbers FALL as a correction rather than a regression.
+
+**Re-measured after the fix (WI-dason).** Both module-slot arms now refuse a
+class the repository declares (it rides in `receiver_type_hint`), a type keyword
+(`__auto_type`, `instancetype`) is no declared class, and a nullability
+qualifier the grammar misreads as a type (`nonnull`) is skipped for the class
+after it. Same instrument (`analyze_objc`, unresolved `calls` edges whose module
+slot is not the `external` sentinel; first-party = the emit site's own
+`project_classes`), origin/dev `1f2cfda568` against the fix:
+
+    repo              typed slots before   after   first-party   keyword
+    AFNetworking                 1243       1062     181 -> 0      0 -> 0
+    CocoaLumberjack              1371        973     309 -> 0     89 -> 0
+    fmdb                          474        404      70 -> 0      0 -> 0
+    Mantle                        212        189      23 -> 0      0 -> 0
+    four-repo total              3300       2628     583 -> 0     89 -> 0
+    ReactiveObjC                  426        211     215 -> 0      0 -> 0
+    SDWebImage                   2110       1484     621 -> 0      0 -> 0
+    ResearchKit                  8956       6853    2081 -> 0     22 -> 0
+    seven-repo total            14792      11176    3500 -> 0    111 -> 0
+
+The "before" four-repo row reproduces the figures above exactly. Every objc
+typed-share number published before this change, 0025's and 0026's included,
+is inflated by the first-party and keyword columns; the fall is the
+correction. The site count (38,293) and the unresolved count are identical in
+both arms: no edge appears or disappears at the analyzer, only its slot.
+`nonnull` had been reaching the slot 13 times (SDWebImage 11, ResearchKit 2);
+those sites now carry the class after it (`NSString`, `NSDictionary`).
+
+Through the full survey pipeline the resolved-edge set moves by six edges, all
+`inherited-calls-linker`, all on ResearchKit, each read against source: 4
+gained, correct (`[ORKChoiceQuestionResult answerClass]`, `[ORKAgeAnswerFormat
+minimumAgeSentinelValue]` and its maximum twin, now looked up on the class the
+message names), and 2 lost, both previously WRONG (`[ORKTextAnswerFormat new]`
+inside ORKOrderedTask had bound `ORKOrderedTask.new`; `[ORKTouchGestureRecognizer
+new]` had bound `ORKRecorder.new` -- Site 1 walking the caller's class). A
+message to the caller's OWN class (186 sites) keeps the Site-1 route; routing it
+to Site 2 instead lost 12 correct resolutions, because Site 2's same-name
+guard refuses objc classes with more than one class symbol. Unresolved objc
+`calls` edges in the survey fall by 536 (ResearchKit 436), because the survey
+keeps one edge per (src, dst) and distinct fake-module dsts now share the
+`external` one. Every merged edge ends at an external placeholder, so no
+project symbol is reached or lost through them; the merged sites no longer
+have edges of their own. The `io_boundary` / `io_primitive` edge-meta counts
+are identical in both arms on all seven repositories. NOT run: `verify-claims` /
+taint on any of these repositories.

@@ -13,7 +13,15 @@ Racing is expected to be rare, so the file grows slowly; no rotation.
 The point is forensic: a future incident gives us timestamps, stat
 snapshots, and process identity to correlate against writer logs.
 
-Two-function interface to keep the dependency out of ``store.py``:
+A second event, ``compile_suppressed``, records each file a compile path
+(``_compile_all``, ``item_ops``, ``_compile_all_cached``) skips on ``OSError``
+so the rest of the tier keeps compiling. A transient read error appears both
+as ``read_retry`` records and as one ``compile_suppressed`` record, and other
+``OSError`` subclasses appear only as the latter. The default log lives at
+``$XDG_CACHE_HOME/hypergumbo/tracker/<sha256(abs tracker root)[:12]>/race_log.jsonl``
+(``~/.cache`` when ``XDG_CACHE_HOME`` is unset).
+
+A small function interface keeps the dependency out of ``store.py``:
 
     configure_race_log(path)
         Set the log destination. Called once at ``TrackerSet`` init.
@@ -21,6 +29,14 @@ Two-function interface to keep the dependency out of ``store.py``:
     log_read_race(filepath, attempt, max_attempts, exc, *, final)
         Append one JSONL record. Swallows every error — the logger
         must never crash the caller.
+    log_compile_suppression(filepath, exc)
+        Append a ``compile_suppressed`` record when a compile path
+        skips a file on ``OSError``. Swallows every error.
+    get_race_log_path()
+        The configured destination, or ``None`` when disabled.
+    compute_default_race_log_path(tracker_root)
+        The default per-tracker-root destination ``TrackerSet``
+        passes to ``configure_race_log``.
 """
 from __future__ import annotations
 

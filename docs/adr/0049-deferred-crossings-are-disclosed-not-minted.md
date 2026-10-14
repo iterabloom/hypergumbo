@@ -132,7 +132,7 @@ readings). Under Ruling 1 they separate cleanly:
 | Per-connection accept | `accept`, `net.Listener.Accept`, `TcpListener.accept` | **a peer-chosen address / connection** | **transfer — stays `net_recv`** | — |
 | Route-registration DSL | `Phoenix.Router.{get,post,…}`, `addEventListener`, `process.on` | nothing; declarative | deferred crossing | 23 |
 | **Handle constructor** | `sqlite3.connect`, `Connection.prepareStatement`, `bufio.NewReader`, `Socket.getInputStream`, `sys.stdin` | **a handle, not data** | deferred crossing | 28 |
-| **Lazy / unexecuted** | Django's QuerySet combinators, `Ecto.Repo.stream`, `TypedQuery.getResultStream`, `EntityManager.getReference`, `TcpListener.incoming` | **a query or iterator that has run nothing** | deferred crossing | 29 |
+| **Lazy / unexecuted** | Django's QuerySet combinators, `Ecto.Repo.stream`, `sqlite3.Connection.iterdump`, `EntityManager.getReference`, `TcpListener.incoming` | **a query or iterator that has run nothing** | deferred crossing | 29 |
 | **Callback-delivered** | `ftplib.FTP.retrbinary`, `dets.traverse`, `ets.foldl` | **nothing; the data goes to a function you passed** | deferred crossing | 8 |
 
 **The last three rows were added after the census** (`WI-hazop`) and the
@@ -156,7 +156,11 @@ rows moved with the launch retag, leaving javascript's `createServer`/`Deno`
 rows and elixir's `Phoenix.Router` rows as the only members still declared
 `net_recv`; and **`ets:foldl` is a transfer, not `Callback-delivered`** — it
 returns the accumulator to its caller, unlike `ftplib.retrbinary`, which
-returns a status. They are not new law — each fails Ruling 1
+returns a status. Likewise **`TypedQuery.getResultStream` is a transfer, not
+`Lazy`**: the API's default body is `getResultList().stream()` and Hibernate's
+override runs the query plan at the call, so the SELECT executes there and only
+the row fetch is incremental; the register's Lazy count of 29 includes its two
+rows (javax, jakarta). They are not new law — each fails Ruling 1
 identically to the first two — but the original four-shape table implied
 "server launch" was the centre of gravity and it is not: **Lazy and Handle are
 the two largest shapes, and Setup + Blocking serve loop together are under
@@ -229,10 +233,14 @@ still classified and therefore still counts as examined (INV-buzab).
 Go's connection-SETUP family — `net.Listen{,TCP,UDP,Unix,Packet}` and
 `{syscall,unix}.{Socket,Bind,Listen}` — against a run-level represented-crossing
 proof: eight `net_recv` chains on an idiomatic accept loop became seven
-`net_listen` plus one, with nothing dropped. Measurement 0010 observes the
-consequence on a real repository: gocryptfs's `untrusted-input-no-host-fs`
-verdict moved from `violated` (measurement 0006, rooted at `net.Listen`) to
-`inconclusive`, which is clause 3's shadow doing what it was built to do.
+`net_listen` plus one, with nothing dropped. On gocryptfs,
+`untrusted-input-no-host-fs` moved from `violated` (measurement 0006, rooted at
+`net.Listen`) to `inconclusive`. That `inconclusive` is the coverage gate, not
+clause 3's shadow (measurement 0010's correction): until INV-fogum the taint
+arm never read the shadow. Clause 3 now reaches taint verdicts too: a deferred
+crossing that shadows boundary B qualifies every clean taint verdict whose
+source label B derives through `AUTO_SOURCE_LABEL_MAP`, one caveat per
+shadowed boundary.
 
 **The LAUNCH rows have now moved too, in four languages of six.**
 `TestServerLaunchStaysAReceive` is `TestServerLaunchIsADeferredCrossing`; it
@@ -285,10 +293,62 @@ honest wrinkle: the Django rows ship in the community overlay, whose rows are
 `unvouched` under ADR-0047, so on the shipped tree a Django program's
 boundary claims are `inconclusive` before clause 3 is consulted; the table is
 run on a vouched copy, the population (a user's own overlay) for which the
-shadow is the first line rather than the second. The other Lazy members of the
-family (`TypedQuery.getResultStream`, `EntityManager.getReference`,
-`sqlite3.Connection.iterdump`, the `NSURLSession` task rows) did NOT move: the
-Django licence does not transfer, and each needs its own ruling-3 proof.
+shadow is the first line rather than the second.
+
+**The Lazy members outside Django were each tried against ruling 3 on their
+own evidence, and none moved (WI-tunog).** `EntityManager.getReference`,
+`sqlite3.Connection.iterdump` and `TcpListener.incoming` are deferred by ruling
+1, but where the read happens in the scope that made the call, nothing other
+than the row represents it: a reference's state is fetched at the
+application's own entity accessor, the dump generator is iterated in place, and
+the connections `incoming` yields are untyped after `unwrap()`. On a fixture
+for each, the same program with the row moved to the disclosure boundary lost
+its flow outright; that is the WI-lunav repeat this ruling forbids, and
+`test_lazy_row_parity.py` pins it: a change that represents the read turns
+the pin red, which is the signal to measure the move, not a licence for it.
+`WI-fazif` (getReference) and `WI-fokup` (incoming) file the representation
+each lacks; iterdump's would be an evaluation site like WI-fasap's and is not
+filed. The `NSURLSession` / `URLSession` task rows are deferred twice (created
+suspended, the response delivered to a completion handler) and are held for a
+different reason: no disclosure value fits a client request, since
+`net_listen` is the server side (`WI-mapim`). `Ecto.Repo.stream` is held
+because its enumeration runs in `Enum` / `Stream`, which no row can carry. `TypedQuery.getResultStream` was never a member (Ruling 4).
+
+**The process family has its far end, in four languages (WI-kanor).** A
+launch that returns a HANDLE -- `subprocess.Popen`, `os.popen`, `popen(3)`,
+`ProcessBuilder.start` / `Runtime.exec`, `exec.Cmd.StdoutPipe` -- fails
+ruling 1 like `net.Listen` does, so its row stays launch-only; the child's
+bytes are represented at the READ through the handle, which is a transfer.
+Python rows `subprocess.Popen.communicate` under `ipc_recv` (simultaneous with
+its launch row: it returns the child's output) and the reads of
+`os._wrap_close`, the type a library-signature row gives `os.popen`'s result.
+C's stdio reads and java's reader/stream reads select their existing `ipc_recv`
+twins through the `pipe` target kind when the stream came from `popen` or from
+`getInputStream()` / `getErrorStream()` on a provable `Process` -- the kind go's
+`bufio` readers over `StdoutPipe()` already took. Not reached: python
+`p.stdout.read()` (an attribute of a typed receiver is untyped), go
+`io.ReadAll` over a pipe (a fixed `fs_read` row with no stream stamp). Rust
+rows its far end (`ChildStdout.read`, `Child.wait_with_output`), but an
+idiomatic `Command::new(..).spawn().unwrap()` chain leaves the child untyped,
+so those rows were not reached on the one fixture tried.
+
+**Builder constructors are the outbound twin, and their proof fails today
+(INV-dukam).** `exec.Command` / `exec.CommandContext` build a `*Cmd` and launch
+nothing; `Cmd.Run` / `Start` / `Output` cross. Unrowed in a probe arm, the
+represented crossing holds where the `*Cmd` is executed in the scope that
+built it -- the DDG carries the argv into `cmd` and the executor uses `cmd`,
+and the same-scope flow reads `violated` at `Cmd.Run`, ddg-confirmed. Over five
+Go repositories no verdict moved and 15 flows went away, 12 of them a
+command's own output paired with the constructor that ran before it (false
+positives the move rightly removes); one is buildah wiring `os.Stdin` into
+`cmd.Stdin`. The last two are why the rows stay: a `*Cmd` that a factory
+returns or stores for another method to start (runc's
+`Container.newParentProcess`, an environment value written into `cmd.Env`),
+or that a library function executes (buildah's `unshareCmd`, `$SHELL` handed
+to `unshare.ExecRunnable`), never reaches a `Run` the forward-only taint walk
+can see. The rows stay until that return / heap flow is represented; rust's
+`Command::new` and java's `ProcessBuilder.command` are the same shape and were
+not measured.
 
 ## Open work — sequencing and the evidence bar
 

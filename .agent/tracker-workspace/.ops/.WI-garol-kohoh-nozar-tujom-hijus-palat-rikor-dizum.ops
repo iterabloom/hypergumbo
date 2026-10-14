@@ -1,0 +1,22 @@
+- op: create  # 51d1
+  at: '2026-10-04T01:40:54Z'  # 51d1
+  by: agent  # 51d1
+  actor: jgstern_agent  # 51d1
+  clock: 1  # 51d1
+  nonce: 51d1  # 51d1
+  data:  # 51d1
+    kind: work_item  # 51d1
+    title: "go: the NewXxx constructor convention types a METHOD call on a value (q := e.NewQuery()) as e.Query and beats the declared return type, so q.Rows() binds to Query.Rows while e.NewQuery().Rows() binds to Result.Rows"  # 51d1
+    status: todo_hard  # 51d1
+    priority: 3  # 51d1
+    parent:  # 51d1
+    tags:  # 51d1
+    - go  # 51d1
+    - call_graph  # 51d1
+    - analysis_quality  # 51d1
+    isbefore: []  # 51d1
+    duplicate_of: []  # 51d1
+    not_duplicate_of: []  # 51d1
+    pr_ref:  # 51d1
+    description: "FOUND 2026-10-03 while fixing WI-vinuh-tizad-lovum-bikir-fuzid-lovun-januz-nupig (branch jgstern-agent/fix/vinuh).\n\ngo.py's NewXxx constructor convention (_type_from_constructor_call) types `x.NewFoo()` as `x.Foo` whenever the operand is a bare identifier, without asking whether `x` is an imported PACKAGE or a local VALUE. Its docstring says \"Only a BARE identifier operand can be a package name\", and that is the whole check. In the binding typer the convention runs BEFORE the return-type registry, so a method whose DECLARED result differs from its name loses to the guess.\n\nLive repro (dev 604c91e3f2 and the vinuh branch alike; the binding typer is unchanged there, only refactored):\n    type Engine struct{}; type Result struct{}; type Query struct{}\n    func (e *Engine) NewQuery() *Result\n    func (r *Result) Rows() {}; func (q *Query) Rows() {}\n    func Use(e *Engine)      { q := e.NewQuery(); q.Rows() }   -> Query.Rows   (WRONG, typed_receiver)\n    func UseChain(e *Engine) { e.NewQuery().Rows() }           -> Result.Rows  (right, chained_return_type via WI-vadin)\nThe two spellings of one call disagree, and the binding form is a confident wrong edge.\n\nFIX SHAPE (not done): the convention applies to a package-qualified callee only when the operand is in import_aliases (the binding typer would need the file's aliases), or the registry's declared answer goes first for a typed receiver. NOT MEASURED: corpus frequency (a method named NewXxx returning a type other than Xxx)."  # 51d1
+    fields: {}  # 51d1

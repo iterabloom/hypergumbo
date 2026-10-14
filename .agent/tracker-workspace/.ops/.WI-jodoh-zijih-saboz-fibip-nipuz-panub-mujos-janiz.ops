@@ -1,0 +1,20 @@
+- op: create  # 6c04
+  at: '2026-10-01T17:45:13Z'  # 6c04
+  by: agent  # 6c04
+  actor: jgstern_agent  # 6c04
+  clock: 1  # 6c04
+  nonce: 6c04  # 6c04
+  data:  # 6c04
+    kind: work_item  # 6c04
+    title: "php: Laravel route with an empty path literal (Route::get('', ...)) is dropped; Laravel registers it as '/'"  # 6c04
+    status: todo_hard  # 6c04
+    priority: 3  # 6c04
+    parent:  # 6c04
+    tags:  # 6c04
+    - route  # 6c04
+    isbefore: []  # 6c04
+    duplicate_of: []  # 6c04
+    not_duplicate_of: []  # 6c04
+    pr_ref:  # 6c04
+    description: "php.py `_extract_laravel_routes` refuses a route whose path literal is empty (`if not route_path: continue`), so `Route::get('', [HomeController::class, 'index'])` emits neither a UsageContext nor a route marker. Laravel trims slashes from a URI, so '' registers the same route as '/'. The idiom is common inside a prefix group (`Route::prefix('admin')->group(function () { Route::get('', ...); })`).\n\nLive repro (2026-10-01, ~/hg_wt/fadip with WI-fadip's fix): analyze_php on `Route::get('', [HomeController::class, 'index']);` emits 0 contexts and 0 route markers.\n\nSince WI-fadip, `_php_string_value` returns \"\" for an empty literal and None only for a non-literal or interpolated string, so the fix is to test `route_path is None` (refuse) separately from `route_path == \"\"` (normalize to \"/\"). This is ABSENT != EMPTY (LIVE section 5): the empty literal is a positive value, not an absent one.\n\nNot measured: frequency on a corpus.\nFound while fixing WI-fadip-tojup-fonug-hokoz-bomin-jarib-javik-vibud (not a quote-style defect, so filed separately)."  # 6c04
+    fields: {}  # 6c04

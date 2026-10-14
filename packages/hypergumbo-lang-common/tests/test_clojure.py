@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.symbol_kinds import find_symbol_kind
 from hypergumbo_lang_common import clojure as clojure_module
 from hypergumbo_lang_common.clojure import analyze_clojure
 
@@ -250,6 +251,9 @@ class TestClojureAnalyzer:
 
         multi = next(s for s in result.symbols if s.name == "area")
         assert multi.kind == "multimethod"
+        # WI-lijaz: the value is registered (it surfaced once value_flow read
+        # the tuple _is_def_form returns).
+        assert find_symbol_kind(multi.kind) is not None
 
     def test_handles_empty_file(self, tmp_path: Path) -> None:
         """Handle empty Clojure file gracefully."""

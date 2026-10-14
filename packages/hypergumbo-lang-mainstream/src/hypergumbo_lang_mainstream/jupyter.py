@@ -14,7 +14,21 @@ How It Works
    and help (?) commands while preserving line count for accurate spans
 5. Concatenate cells with blank-line separators (preserving line offsets)
 6. Parse concatenated source with ast.parse
-7. Walk AST to extract symbols and call edges (same logic as py.py)
+7. Walk AST to extract symbols and call edges: functions (nested ones
+   included) and classes; a method is emitted once, by its class, as
+   ``Class.method``, and also answers to its bare name for ``obj.method()``
+
+Identity (WI-tusad)
+-------------------
+A function's ``stable_id`` is the Python producer's formula,
+``py.python_callable_stable_id``: the normalized signature, decorators and
+name-convention visibility, anchored on the notebook file, with the enclosing
+classes and functions in the qualified name (``A.predict``,
+``outer.helper``). So ``run(x)`` and its redefinition ``run(x, y)`` in a later
+cell hold two ids, and deleting an earlier cell moves no other function's id.
+A redefinition with the SAME signature in the same scope is a same-scope tie,
+which the run's split pass numbers (ADR-0035 §1). A class takes the Python
+class formula (``py._compute_stable_id``) over the same chain.
 
 Why This Design
 ---------------
@@ -46,16 +60,20 @@ import warnings
 from pathlib import Path
 from typing import Iterator
 
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, make_file_stable_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.paths import normalize_path
 # INV-loguk: notebook code cells are Python, so reuse py.py's language-agnostic
 # Python-AST complexity walkers (the tree-sitter `compute_cyclomatic_complexity`
 # dispatcher operates on tree-sitter nodes, not `ast.AST`). Same package.
 from hypergumbo_lang_mainstream.py import (
     _compute_cyclomatic_complexity,
     _compute_line_span,
+    _compute_stable_id,
+    _python_visibility_modifiers,
+    python_callable_stable_id,
 )
 
 PASS_ID = make_pass_id("jupyter")
@@ -204,34 +222,71 @@ def _analyze_notebook_file(
     symbols: list[Symbol] = []
     symbol_by_name: dict[str, Symbol] = {}
     nb_path_str = str(nb_path)
+    try:
+        rel_path = str(nb_path.relative_to(repo_root))
+    except ValueError:  # pragma: no cover - find_files yields paths under the root
+        rel_path = nb_path_str
+    file_stable_id = make_file_stable_id("jupyter", normalize_path(rel_path))
+    parents: dict[int, ast.AST] = {
+        id(child): parent
+        for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)
+    }
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) or isinstance(node, ast.AsyncFunctionDef):
-            # Only top-level and class-level functions
-            name = node.name
-            end_line = node.end_lineno or node.lineno
-            span = Span(
+    def scope_chain(node: ast.AST) -> list[str]:
+        """Enclosing class and function names, outermost first (py.py's
+        ``_enclosing_scope_chain``)."""
+        chain: list[str] = []
+        current = parents.get(id(node))
+        while current is not None:
+            if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                chain.append(current.name)
+            current = parents.get(id(current))
+        return chain[::-1]
+
+    def function_symbol(
+        node: ast.FunctionDef | ast.AsyncFunctionDef, name: str,
+    ) -> Symbol:
+        end_line = node.end_lineno or node.lineno
+        return Symbol(
+            id=_make_symbol_id(nb_path_str, node.lineno, end_line, name, "function"),
+            name=name,
+            kind="function",
+            language="jupyter",
+            path=nb_path_str,
+            span=Span(
                 start_line=node.lineno,
                 end_line=end_line,
                 start_col=node.col_offset,
                 end_col=node.end_col_offset or 0,
-            )
-            sym_id = _make_symbol_id(nb_path_str, node.lineno, end_line, name, "function")
-            symbol = Symbol(
-                id=sym_id,
-                name=name,
-                kind="function",
-                language="jupyter",
-                path=nb_path_str,
-                span=span,
-                origin=PASS_ID,
-                origin_run_id="",
-                # INV-loguk: Python-AST CC/LOC over the function node.
-                cyclomatic_complexity=_compute_cyclomatic_complexity(node),
-                line_span=_compute_line_span(node),
-            )
+            ),
+            origin=PASS_ID,
+            origin_run_id="",
+            # WI-tusad: the Python producer's formula, on the notebook file.
+            stable_id=python_callable_stable_id(
+                node, "function", file_stable_id,
+                _python_visibility_modifiers(node.name),
+                name=node.name,
+                qualified_name=".".join(scope_chain(node) + [node.name]),
+            ),
+            # INV-loguk: Python-AST CC/LOC over the function node.
+            cyclomatic_complexity=_compute_cyclomatic_complexity(node),
+            line_span=_compute_line_span(node),
+        )
+
+    # A method is emitted by its class (as ``Class.m``); the walk reaching
+    # its ``def`` later only registers it under the bare name, which is what
+    # ``obj.m()`` resolves through.
+    methods: dict[int, Symbol] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            method = methods.get(id(node))
+            if method is not None:
+                symbol_by_name[node.name] = method
+                continue
+            # Top-level functions and nested ones; a method is its class's.
+            symbol = function_symbol(node, node.name)
             symbols.append(symbol)
-            symbol_by_name[name] = symbol
+            symbol_by_name[node.name] = symbol
 
         elif isinstance(node, ast.ClassDef):
             class_name = node.name
@@ -252,6 +307,11 @@ def _analyze_notebook_file(
                 span=span,
                 origin=PASS_ID,
                 origin_run_id="",
+                # The Python producer's class formula, on the notebook file.
+                stable_id=_compute_stable_id(
+                    node, containing_stable_id=file_stable_id, name=class_name,
+                    qualified_name=".".join(scope_chain(node) + [class_name]),
+                ),
             )
             symbols.append(class_symbol)
             symbol_by_name[class_name] = class_symbol
@@ -260,31 +320,10 @@ def _analyze_notebook_file(
             for item in node.body:
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     method_name = f"{class_name}.{item.name}"
-                    m_end = item.end_lineno or item.lineno
-                    m_span = Span(
-                        start_line=item.lineno,
-                        end_line=m_end,
-                        start_col=item.col_offset,
-                        end_col=item.end_col_offset or 0,
-                    )
-                    m_id = _make_symbol_id(
-                        nb_path_str, item.lineno, m_end, method_name, "function"
-                    )
-                    method_symbol = Symbol(
-                        id=m_id,
-                        name=method_name,
-                        kind="function",
-                        language="jupyter",
-                        path=nb_path_str,
-                        span=m_span,
-                        origin=PASS_ID,
-                        origin_run_id="",
-                        # INV-loguk: Python-AST CC/LOC over the method node.
-                        cyclomatic_complexity=_compute_cyclomatic_complexity(item),
-                        line_span=_compute_line_span(item),
-                    )
+                    method_symbol = function_symbol(item, method_name)
                     symbols.append(method_symbol)
                     symbol_by_name[method_name] = method_symbol
+                    methods[id(item)] = method_symbol
 
     # Extract call edges
     edges: list[Edge] = []

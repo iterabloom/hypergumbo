@@ -18,9 +18,12 @@ behind helper hooks exposed by the per-language packages
 (e.g. ``hypergumbo_lang_mainstream.rust_scip``). Keeping the translator
 in core lets a single upgrade reach every SCIP-backed analyzer.
 
-WI-mafut (this module) is Phase 1 of a multi-phase rollout; the current
-surface is the ``parse_scip_symbol`` descriptor parser, which later
-phases build on to emit Symbols/Edges from SCIP Documents/Occurrences.
+WI-mafut Phase 1 (``descriptor.py``: ``parse_scip_symbol``) and Phase 2
+Slices B-D (``index.py`` -> Symbols, ``edges.py`` -> relationship Edges,
+``calls.py`` -> Occurrence call/reference Edges) are implemented and
+consumed by hypergumbo-lang-rust-analyzer and hypergumbo-lang-scip-python.
+The package root re-exports only the descriptor API; import the
+translators from their submodules.
 """
 from .descriptor import (
     DescriptorKind,

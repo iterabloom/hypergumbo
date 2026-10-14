@@ -18,3 +18,10 @@
     pr_ref:  # ee00
     description: "Flip _ID_ROUNDTRIP_ADVISORY in packages/hypergumbo-core/src/hypergumbo_core/spec_validator.py from 'warning' to 'error' (the kind-slot registry-membership, kind-slot==Symbol.kind, and non-empty-name sub-checks of _check_id_roundtrip), and ratchet the schema-coverage-corpus VALIDATION_BASELINES in tests/test_validation_report_empty.py back down (currently +11 advisory id_format on external_symbol boundary nodes). GATED on the id-changing (T1) folds that drain the backlog to zero: WI-pubiv (external_symbol kind-slot -> external_symbol + meta.reference_syntax), WI-kugaj (route/event role -> function + meta.framework_role), and the tsconfig id kind-slot fold (audit-findings 0005, json_config.py:759 tsconfig->file). All three are id-changing and ride the v6 stable_id bump. This item is the 'gating tracker item' forward-referenced by CHANGELOG.md (Unreleased), the ADR-0036 amendment (2026-06-13), and the spec_validator.py module comment. Span start<=end already lands at error. Landed by PR #227 (id-format:F3)."  # ee00
     fields: {}  # ee00
+- op: discuss  # 4882
+  at: '2026-10-01T03:00:31Z'  # 4882
+  by: agent  # 4882
+  actor: jgstern_agent  # 4882
+  clock: 2  # 4882
+  nonce: '4882'  # 4882
+  message: "From WI-fubom (ADR sweep, 2026-09-30): the trigger this item waits on may have fired. ADR-0036's \"Why advisory\" bullet names three blockers; one is \"the ~1,645 external_symbol kind-slot disagreements (WI-pubiv)\", and WI-pubiv is now `done` (ADR-0037 Implementation status: create_boundary_nodes mints boundary ids with an external_symbol kind slot, so the final graph carries no :unresolved slot). The other two (WI-kugaj route/event cohort, the tsconfig node) were not checked. _check_id_roundtrip still emits _ID_ROUNDTRIP_ADVISORY on all three advisory sub-checks (spec_validator.py). WI-fubom did not edit ADR-0036; its Enforcement banner over the intended design was judged a pending-design note, not retracted text."  # 4882

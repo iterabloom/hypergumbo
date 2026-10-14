@@ -1,0 +1,22 @@
+- op: create  # ba39
+  at: '2026-10-12T11:20:23Z'  # ba39
+  by: agent  # ba39
+  actor: jgstern_agent  # ba39
+  clock: 1  # ba39
+  nonce: ba39  # ba39
+  data:  # ba39
+    kind: work_item  # ba39
+    title: "js: this.method() inside a class method emits no call edge (no stub with enclosing_class), so Site-1 inherited calls are invisible"  # ba39
+    status: todo_hard  # ba39
+    priority: 2  # ba39
+    parent:  # ba39
+    tags:  # ba39
+    - analysis_quality  # ba39
+    - javascript  # ba39
+    - recall  # ba39
+    isbefore: []  # ba39
+    duplicate_of: []  # ba39
+    not_duplicate_of: []  # ba39
+    pr_ref:  # ba39
+    description: "FOUND while fixing WI-gabuv (fixture for owner_ancestry).\n\nSTATEMENT. In a JavaScript class method, `this.write('hi')` emits NO call edge at all. Fixture (2026-10-12, dev b89cc2e5a2):\n  const net = require('net');\n  class Conn extends net.Socket { hello() { this.write('hi'); } }\n  function main() { const c = new Conn(); c.connect(80); }\n  module.exports = { main };\n`hypergumbo survey` emits `calls main -> javascript:external:0-0:connect` (receiver_type_hint Conn) but nothing from `Conn.hello` -- no resolved edge, no unresolved stub with `enclosing_class`. So the Site-1 (`this.method()`) shape that inherited_calls and owner_ancestry both consume never reaches them for JS here; `this.write` on a net.Socket subclass is a net_send that is invisible. Not checked: TypeScript, `this.m()` where m IS an in-repo method of an in-repo base, or whether the drop is specific to methods whose name collides with something.\n\nFIX DIRECTION. Find where js_ts handles a `member_expression` call whose object is `this` and make it emit the unresolved stub with `enclosing_class` (make_unresolved_edge) when no in-repo method resolves, as the Python and Java analyzers do."  # ba39
+    fields: {}  # ba39

@@ -1,0 +1,20 @@
+- op: create  # 04b2
+  at: '2026-10-06T08:25:24Z'  # 04b2
+  by: agent  # 04b2
+  actor: jgstern_agent  # 04b2
+  clock: 1  # 04b2
+  nonce: 04b2  # 04b2
+  data:  # 04b2
+    kind: work_item  # 04b2
+    title: "find_files ignores the caller's excludes whenever a FileIndex is installed for the same repo_root (its docstring claimed a fallback to rglob when excludes differ)"  # 04b2
+    status: todo_soft  # 04b2
+    priority: 4  # 04b2
+    parent:  # 04b2
+    tags:  # 04b2
+    - discovery  # 04b2
+    isbefore: []  # 04b2
+    duplicate_of: []  # 04b2
+    not_duplicate_of: []  # 04b2
+    pr_ref:  # 04b2
+    description: "Found 2026-10-06 while fixing discovery.py docstrings (code-read only, not reproduced). discovery.find_files fast path checks only index.repo_root == repo_root and serves index.match_pattern, so a caller passing excludes stricter than the index's (FileIndex.build(..., excludes=combined_excludes) in cli.py ~:12175) gets them silently dropped. Callers that pass custom excludes: sketch.py ~:2683 (extra_excludes branch is pragma no-cover), sketch.py ~:4948 (DEFAULT_EXCLUDES), profile.py ~:939. Decide: compare excludes and fall back to rglob when they differ (what the old docstring said), or filter index results by the caller's excludes. Needs a repro first: a stricter-exclude call under an installed index."  # 04b2
+    fields: {}  # 04b2

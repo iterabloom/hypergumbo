@@ -27,11 +27,23 @@ that fires only where the pre-rewrite resolver emitted no edge — so no existin
 edge is ever re-targeted, and no external/unresolved edge's ``is_resolved`` /
 ``dst`` / ``dst_ref`` is touched (the taint-safety guarantee: every new edge
 points at a real in-repo nested function, never a fabricated placeholder).
+
+The same frames answer a second question (INV-dulum / WI-safit): which IMPORT
+and BUILTIN meanings are not live at a site. ``imports`` / ``module_imports``
+are file-scoped maps, so a parameter named ``socket`` used to satisfy ``socket
+in module_imports``. :meth:`ScopeStack.value_shadowed` walks the same chain
+innermost-first and reports the names whose nearest binding is a VALUE
+(:attr:`Scope.value_names`) rather than an import. A lambda or comprehension
+body extends the caller's frame (:meth:`ScopeStack.enter_subscope`) instead of
+contributing nothing, so a lambda parameter shadows like any other binding.
+One scope model serves both questions; a second one is the drift this file was
+built to end.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Collection
+from dataclasses import dataclass, field, replace
 from typing import Union
 
 from hypergumbo_core.ir import Symbol
@@ -110,6 +122,18 @@ class Scope:
     # def. ``def``/``class`` names are NOT included (they are the NestedDef
     # bindings the lookup resolves to directly).
     local_names: frozenset[str] = frozenset()
+    # INV-dulum: the names this frame binds to a VALUE -- param, assignment /
+    # for / with / walrus target, ``def`` / ``class`` / ``except ... as`` --
+    # EXCLUDING any name the frame also binds by an ``import`` (and names it
+    # only declares ``global``). NOT a subset relation to ``local_names`` and
+    # NOT interchangeable with it: ``local_names`` folds imports in with
+    # assignments, which is right for def-shadowing (a local ``import socket``
+    # does hide an outer ``def socket``) and WRONG for import liveness (that
+    # same local import binds ``socket`` TO THE MODULE). Merging the two sets
+    # turns the INV-dulum false positive into a false negative on the ordinary
+    # lazy-import idiom. Empty by default: the module frame leaves it empty,
+    # so module-scope resolution is unchanged.
+    value_names: frozenset[str] = frozenset()
 
 
 @dataclass(slots=True)
@@ -127,6 +151,12 @@ class ScopeStack:
     # to the pre-rewrite single-level resolution. A bisection aid + proven
     # zero-delta fallback.
     enclosing_lookup_enabled: bool = True
+    # Memo for :meth:`value_shadowed`. The stack is read-only once built (a
+    # derived stack is a NEW object, see :meth:`enter_subscope`), and the
+    # per-node walker asks once per AST node, so the answer is computed once.
+    _value_shadowed: frozenset[str] | None = field(
+        default=None, init=False, repr=False, compare=False,
+    )
 
     def immediate(self) -> dict[str, Binding]:
         """The caller's own frame bindings (``{}`` if the stack is empty)."""
@@ -175,3 +205,69 @@ class ScopeStack:
             if name in frame.local_names:
                 return None
         return None
+
+    def value_shadowed(self) -> frozenset[str]:
+        """Names whose NEAREST binding in the chain is a VALUE (INV-dulum).
+
+        An import map or the builtins table names what a bare name means only
+        where nothing nearer rebinds it. Walking innermost-first, the first
+        frame that binds a name decides: in that frame's ``value_names`` ->
+        shadowed; bound there only by an import or a ``global`` declaration
+        (in ``local_names``, not ``value_names``) -> live, so a further-out
+        parameter of the same name does not leak inward (``def outer(socket):
+        def inner(): import socket``). Memoized per stack.
+        """
+        if self._value_shadowed is None:
+            shadowed: set[str] = set()
+            settled: set[str] = set()
+            for frame in reversed(self.frames):
+                shadowed |= frame.value_names - settled
+                settled |= frame.local_names | frame.value_names
+            self._value_shadowed = frozenset(shadowed)
+        return self._value_shadowed
+
+    def enter_subscope(self, names: Collection[str]) -> ScopeStack:
+        """The stack for the BODY of a lambda / comprehension binding *names*
+        (WI-safit).
+
+        Python gives a lambda its own scope, but here it is not a frame of its
+        own: it contributes no Symbol, its calls are attributed to the
+        enclosing caller, and ``frames[-1]`` IS the caller's frame by contract
+        (``_caller_locals`` and the immediate lookups read it). So the
+        subscope's names extend a COPY of the caller frame, as locals and as
+        values -- every consumer of the LEGB chain then sees them, which is
+        what a lambda parameter shadowing ``len`` needed. Copy-on-write: the
+        original stack and its frames are untouched, and the result is a new
+        stack with its own memo.
+
+        The caller frame's ``bindings`` are deliberately NOT pruned. The
+        immediate lookup ignores local shadowing for EVERY binding form (a
+        parameter named like a nested def is the same pre-existing gap), and
+        dropping the def here alone would hand the name to the file-scoped
+        ``local_symbols`` lookup next in line -- a different wrong answer, not
+        a right one. ``lookup_enclosing`` does honor the new names, through
+        ``local_names``.
+
+        Only the BODY takes the derived stack: defaults and a comprehension's
+        first iterable run in the enclosing scope before the subscope exists.
+        """
+        if not self.frames:
+            new = frozenset(names)
+            return ScopeStack(
+                frames=[Scope(
+                    owner_id="", bindings={}, local_names=new, value_names=new,
+                )],
+                enclosing_lookup_enabled=self.enclosing_lookup_enabled,
+            )
+        top = self.frames[-1]
+        if not set(names) - (top.local_names & top.value_names):
+            return self
+        derived = replace(
+            top,
+            local_names=top.local_names | frozenset(names),
+            value_names=top.value_names | frozenset(names),
+        )
+        return ScopeStack(
+            frames=[*self.frames[:-1], derived],
+            enclosing_lookup_enabled=self.enclosing_lookup_enabled,
+        )

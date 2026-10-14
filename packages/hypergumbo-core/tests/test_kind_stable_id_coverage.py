@@ -418,3 +418,219 @@ class TestContainerKindEndToEnd:
                 f"kind={n['kind']} name={n['name']!r} has stable_id=None — "
                 f"WI-rihob container backstop missed it"
             )
+
+
+class TestFloorWithAbstention:
+    """WI-motiz: the backstop's floor for kinds outside the factory table.
+
+    A Symbol whose producer computed no ``stable_id``, whose kind has no entry
+    in ``_KIND_STABLE_ID_FACTORIES`` and which carries a language takes the
+    FLOOR key ``make_declaration_stable_id(kind, language, path, name)`` iff
+    that key is unique among the file's floor candidates (and no other symbol
+    in the file already holds it); otherwise it stays ``None`` (ADR-0035 §1).
+
+    Why abstain instead of letting the occurrence pass split the group: the
+    floor key has no scope chain and no structural inputs, so two candidates
+    sharing it are not a same-scope tie. Splitting them hands out ids by
+    emission order, and deleting an earlier sibling then moves its id onto a
+    DIFFERENT symbol (an Elixir clause per arity, proto ``A.Inner`` /
+    ``B.Inner``). A null is the honest "cannot tell"; a moved id is a wrong
+    join. The two-run tests below pin exactly that: mutate
+    ``populate_kind_stable_ids`` to stamp every floor group (leaving the split
+    to the occurrence pass) and they go red.
+    """
+
+    @staticmethod
+    def _sym(kind: str = "function", name: str = "greet", path: str = "a.ex",
+             language: str | None = "elixir", line: int = 1,
+             stable_id: str | None = None) -> Symbol:
+        return Symbol(
+            id=f"{language}:{path}:{line}-{line}:{name}:{kind}",
+            name=name,
+            kind=kind,
+            language=language,
+            path=path,
+            span=Span(start_line=line, end_line=line, start_col=0, end_col=10),
+            stable_id=stable_id,
+        )
+
+    @staticmethod
+    def _run(symbols: list[Symbol]) -> None:
+        """The two identity passes a survey runs, in pipeline order."""
+        from hypergumbo_core.analyze.base import (
+            populate_kind_stable_ids,
+            split_within_file_stable_id_collisions,
+        )
+        populate_kind_stable_ids(symbols)
+        split_within_file_stable_id_collisions(symbols)
+
+    def test_unique_floor_candidate_takes_the_floor_key(self) -> None:
+        """Positive case: an erlang ``greet/1`` (name carries arity) is exact."""
+        from hypergumbo_core.analyze.base import (
+            make_declaration_stable_id,
+            populate_kind_stable_ids,
+        )
+        sym = self._sym(name="greet/1", path="a.erl", language="erlang")
+        populate_kind_stable_ids([sym])
+        assert sym.stable_id == make_declaration_stable_id(
+            "function", "erlang", "a.erl", "greet/1")
+
+    def test_floor_key_helper_names_the_eligible_population(self) -> None:
+        """``floor_stable_id_key`` is the one definition the backstop and the
+        validator share: None for a factory-table kind and for language=None."""
+        from hypergumbo_core.analyze.base import (
+            make_declaration_stable_id,
+            floor_stable_id_key,
+        )
+        assert floor_stable_id_key("function", "erlang", "a.erl", "f/0") == (
+            make_declaration_stable_id("function", "erlang", "a.erl", "f/0"))
+        assert floor_stable_id_key("class", "typescript", "a.ts", "W") is None
+        assert floor_stable_id_key("function", None, "a.erl", "f/0") is None
+        assert floor_stable_id_key(None, "erlang", "a.erl", "f/0") is None
+
+    def test_every_registered_kind_is_filled_when_its_floor_key_is_unique(self) -> None:
+        """Registry-wide: one symbol per registered kind (plus a kind the
+        registry has never heard of) in one file -- kind is in the key, so every
+        key is unique and every symbol gets a canonical value."""
+        from hypergumbo_core.analyze.base import populate_kind_stable_ids
+        from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
+        from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+        kinds = sorted(all_symbol_kind_names()) + ["frobnicator"]
+        # Reach: the registry carries the kinds this row was filed on.
+        assert {"function", "method", "property", "package", "message",
+                "alias"} <= set(kinds)
+        syms = [self._sym(kind=k, line=i + 1) for i, k in enumerate(kinds)]
+        populate_kind_stable_ids(syms)
+        missing = [s.kind for s in syms if s.stable_id is None]
+        assert not missing, f"kinds left at stable_id=None: {missing}"
+        assert all(_CANONICAL_STABLE_ID_PATTERN.match(s.stable_id) for s in syms)
+
+    def test_a_null_exists_only_for_an_ambiguous_floor_group(self) -> None:
+        """Registry-wide property, restated for abstention: for every kind, a
+        same-name pair in one file plus a unique third symbol. After the
+        identity passes, every null is a floor candidate whose (path, floor
+        key) group has more than one member -- and every such member is null.
+        Factory-table kinds are untouched by abstention (they keep their
+        table key and the occurrence pass splits them, as before)."""
+        from hypergumbo_core.analyze.base import (
+            _KIND_STABLE_ID_FACTORIES,
+            floor_stable_id_key,
+        )
+        from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+        kinds = sorted(all_symbol_kind_names()) + ["frobnicator"]
+        syms: list[Symbol] = []
+        for k in kinds:
+            syms.append(self._sym(kind=k, name="dup", line=1))
+            syms.append(self._sym(kind=k, name="dup", line=2))
+            syms.append(self._sym(kind=k, name="solo", line=3))
+        self._run(syms)
+
+        groups: dict[tuple[str, str], int] = {}
+        for s in syms:
+            key = floor_stable_id_key(s.kind, s.language, s.path, s.name)
+            if key is not None:
+                groups[(s.path, key)] = groups.get((s.path, key), 0) + 1
+        for s in syms:
+            key = floor_stable_id_key(s.kind, s.language, s.path, s.name)
+            ambiguous = key is not None and groups[(s.path, key)] > 1
+            if s.stable_id is None:
+                assert ambiguous, f"{s.kind}/{s.name} null without an ambiguous group"
+            if ambiguous:
+                assert s.stable_id is None, f"{s.kind}/{s.name} filled despite ambiguity"
+        # Reach: both arms are exercised.
+        floor_kinds = [k for k in kinds if k not in _KIND_STABLE_ID_FACTORIES]
+        assert floor_kinds and "function" in floor_kinds
+        assert sum(1 for s in syms if s.stable_id is None) == 2 * len(floor_kinds)
+        table_dups = [s for s in syms if s.kind == "class" and s.name == "dup"]
+        assert all(s.stable_id is not None for s in table_dups)
+        assert table_dups[0].stable_id != table_dups[1].stable_id
+
+    def test_same_name_elixir_clauses_abstain_and_reach_no_ordinal(self) -> None:
+        """Reach: the elixir clause-per-arity shape (three ``Demo.greet``
+        nodes) yields nulls, not occurrence ordinals; the split pass re-mints
+        nothing; the unique ``Demo.main`` is filled."""
+        from hypergumbo_core.analyze.base import (
+            populate_kind_stable_ids,
+            split_within_file_stable_id_collisions,
+        )
+        greets = [self._sym(name="Demo.greet", line=n) for n in (2, 3, 4)]
+        main = self._sym(name="Demo.main", line=5)
+        syms = greets + [main]
+        populate_kind_stable_ids(syms)
+        assert [g.stable_id for g in greets] == [None, None, None]
+        assert main.stable_id is not None
+        assert split_within_file_stable_id_collisions(syms) == 0
+
+    def test_floor_key_already_held_in_the_file_abstains(self) -> None:
+        """A key some other symbol in the file already holds is not unique in
+        the file: the candidate abstains rather than leave the tie to the
+        occurrence pass."""
+        from hypergumbo_core.analyze.base import (
+            make_declaration_stable_id,
+            populate_kind_stable_ids,
+        )
+        key = make_declaration_stable_id("field", "graphql", "s.js", "User.email")
+        holder = self._sym(kind="field", name="User.email", path="s.js",
+                           language="graphql", line=1, stable_id=key)
+        candidate = self._sym(kind="field", name="User.email", path="s.js",
+                              language="graphql", line=2)
+        elsewhere = self._sym(kind="field", name="User.email", path="t.js",
+                              language="graphql", line=2)
+        populate_kind_stable_ids([holder, candidate, elsewhere])
+        assert holder.stable_id == key
+        assert candidate.stable_id is None
+        assert elsewhere.stable_id is not None  # another file: unique there
+
+    def test_producer_value_is_never_overridden(self) -> None:
+        from hypergumbo_core.analyze.base import populate_kind_stable_ids
+        sym = self._sym(stable_id="sha256:0123456789abcdef")
+        populate_kind_stable_ids([sym])
+        assert sym.stable_id == "sha256:0123456789abcdef"
+
+    def test_language_none_stand_in_is_left_to_its_own_chokepoint(self) -> None:
+        """A ``language=None`` Symbol is a Class-B / external stand-in whose
+        identity belongs to ``make_synthetic_symbol_identity``."""
+        from hypergumbo_core.analyze.base import populate_kind_stable_ids
+        stand_in = self._sym(language=None)
+        populate_kind_stable_ids([stand_in])
+        assert stand_in.stable_id is None
+
+    def test_floor_ids_do_not_depend_on_emission_order(self) -> None:
+        """Same symbols, reversed emission order: identical ids per symbol."""
+        def ids(order: list[int]) -> dict[str, str | None]:
+            syms = [self._sym(name=n, line=i + 1) for i, n in enumerate(
+                ["Demo.greet", "Demo.greet", "Demo.main", "Demo.run"])]
+            ordered = [syms[i] for i in order]
+            self._run(ordered)
+            return {s.id: s.stable_id for s in syms}
+        assert ids([0, 1, 2, 3]) == ids([3, 2, 1, 0])
+
+    def test_two_runs_deleting_an_earlier_clause_never_moves_an_id(self) -> None:
+        """Two runs with one edit between them: delete the FIRST of three
+        same-name clauses. Every survivor's id is unchanged or null, and never
+        the id another symbol held in the first run. (Under an occurrence split
+        of floor keys the second clause inherits the deleted clause's id.)"""
+        def build(with_first: bool) -> dict[int, Symbol]:
+            lines = ([2] if with_first else []) + [3, 4]
+            syms = {n: self._sym(name="Demo.greet", line=n) for n in lines}
+            syms[5] = self._sym(name="Demo.main", line=5)
+            return syms
+
+        before = build(with_first=True)
+        self._run(list(before.values()))
+        after = build(with_first=False)
+        self._run(list(after.values()))
+
+        deleted_old = before[2].stable_id
+        for line, sym in after.items():
+            old = before[line].stable_id
+            assert sym.stable_id in (old, None), (line, old, sym.stable_id)
+            others_old = {s.stable_id for n, s in before.items() if n != line}
+            assert sym.stable_id is None or sym.stable_id not in others_old
+            if deleted_old is not None:
+                assert sym.stable_id != deleted_old
+        # Reach: the unique sibling is filled in both runs.
+        assert after[5].stable_id is not None
+        assert after[5].stable_id == before[5].stable_id

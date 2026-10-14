@@ -9,7 +9,16 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extracts frontmatter imports, variables, component refs, slots, directives
-2. Pass 2: (No separate edge pass -- edges created during symbol extraction)
+2. Pass 2: Re-runs the same per-file extractor and keeps only its edges. The
+   base class hands Pass 2 no Pass-1 state to carry edges in, so each file is
+   extracted twice; both runs see the same tree and mint the same edges.
+
+Every ``Symbol.path``, id path slot and edge ``src`` uses the ``rel_path`` the
+base class computes against the analysis root, unchanged -- the same path every
+sibling analyzer stamps for the same tree, so path-keyed joins (file anchors,
+per-path centrality) line up. The extractor never re-derives a root from the
+absolute file path: that reconstruction was off by one and prefixed every astro
+path with the root directory's own name (WI-pifus).
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Astro-specific
@@ -17,17 +26,33 @@ extraction logic.
 
 Symbols Extracted
 -----------------
-- **Components**: Imported components used in template (capitalized tags)
-- **Imports**: Import statements from frontmatter
-- **Variables**: Variables defined in frontmatter
-- **Slots**: Slot elements in template
-- **Client directives**: Hydration directives (client:load, etc.)
+- **Variables** (``variable``): const/let/var declarations in frontmatter
+- **Slots** (``slot``): Slot elements in template
+- **Client directives** (``directive``): Hydration directives
+  (client:load, etc.) on component tags
 
 Edges Extracted
 ---------------
-- **imports**: Links component usage to import paths
-  (ADR-0023 §6 folded the former `imports_component` type into
-  canonical `imports`)
+- **imports** (frontmatter): one per default import of a ``.astro`` path,
+  from the file id to a dangling ``astro:{import_path}:1-1:file:file`` id,
+  with ``import_name`` / ``import_path`` in meta. The former per-import
+  Symbol is no longer emitted (audit-findings 0010, WI-kunag).
+- **imports** (component use): one per capitalized template tag, from the
+  file id to the raw import path (or a dangling
+  ``astro:component:{tag}:0-0:{tag}:component`` id when no import names
+  it), with ``component_name``, ``client_directive`` and ``attributes`` in
+  meta. This replaces the former per-reference ``component_ref`` Symbol
+  (audit-findings 0011). ADR-0023 §6 folded the former
+  `imports_component` type into canonical `imports`.
+
+Identity
+--------
+Every symbol mints ``make_doc_symbol_ids``. A frontmatter variable is
+file-level; a slot and a client directive hash the tag names of the elements
+around their own element (``div``, ``main/section`` ...), so ``<slot name="h">``
+in a ``<div>`` and in a ``<section>`` are two identities and deleting the first
+moves nothing (INV-punig; ADR-0035 §1, scheme v9). Two identical slots in one
+element chain are a same-scope tie.
 
 Why This Design
 ---------------
@@ -50,6 +75,8 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
+    html_element_tag,
     make_doc_symbol_ids,
     make_file_id,
 )
@@ -108,15 +135,19 @@ class _AstroFileExtractor:
     instance is created for each file.
     """
 
-    def __init__(self, repo_root: Path, run_id: str) -> None:
-        self.repo_root = repo_root
+    def __init__(self, rel_path: str, run_id: str) -> None:
+        # WI-pifus: the path is the one the base class computed against the
+        # analysis root (``source_file.relative_to(repo_root)``), taken as
+        # given. Re-deriving a root from the absolute path is how this
+        # analyzer once landed one directory too high.
+        self.rel_path = rel_path
         self._symbols: list[Symbol] = []
         self._edges: list[Edge] = []
         self._execution_id = run_id
         self._current_imports: dict[str, str] = {}  # component name -> import path
 
     def extract(
-        self, tree: "tree_sitter.Tree", path: Path, content: bytes
+        self, tree: "tree_sitter.Tree", content: bytes
     ) -> tuple[list[Symbol], list[Edge]]:
         """Extract symbols and edges from a single Astro file."""
         self._current_imports = {}
@@ -124,40 +155,40 @@ class _AstroFileExtractor:
         self._edges = []
 
         # First pass: extract frontmatter imports
-        self._extract_frontmatter_pass(tree.root_node, path, content)
+        self._extract_frontmatter_pass(tree.root_node, content)
 
         # Second pass: extract template content
-        self._extract_template_pass(tree.root_node, path)
+        self._extract_template_pass(tree.root_node)
 
         return self._symbols, self._edges
 
     def _extract_frontmatter_pass(
-        self, node: "tree_sitter.Node", path: Path, content: bytes
+        self, node: "tree_sitter.Node", content: bytes
     ) -> None:
         """First pass: extract frontmatter content to populate imports."""
         if node.type == "frontmatter":
-            self._extract_frontmatter(node, path, content)
+            self._extract_frontmatter(node, content)
 
         for child in node.children:
-            self._extract_frontmatter_pass(child, path, content)
+            self._extract_frontmatter_pass(child, content)
 
     def _extract_template_pass(
-        self, node: "tree_sitter.Node", path: Path
+        self, node: "tree_sitter.Node"
     ) -> None:
         """Second pass: extract template content."""
         if node.type == "element":
-            self._process_element(node, path)
+            self._process_element(node)
             # Recurse into element children but skip already-processed tags
             for child in node.children:
                 if child.type not in ("start_tag", "self_closing_tag"):
-                    self._extract_template_pass(child, path)
+                    self._extract_template_pass(child)
             return
 
         for child in node.children:
-            self._extract_template_pass(child, path)
+            self._extract_template_pass(child)
 
     def _extract_frontmatter(
-        self, node: "tree_sitter.Node", path: Path, content: bytes
+        self, node: "tree_sitter.Node", content: bytes
     ) -> None:
         """Extract imports and variables from frontmatter."""
         # Find frontmatter_js_block
@@ -165,14 +196,14 @@ class _AstroFileExtractor:
             if child.type == "frontmatter_js_block":
                 js_content = _get_node_text(child)
                 base_line = child.start_point[0] + 1
-                self._parse_frontmatter_js(js_content, path, base_line)
+                self._parse_frontmatter_js(js_content, base_line)
                 break
 
     def _parse_frontmatter_js(
-        self, js_content: str, path: Path, base_line: int
+        self, js_content: str, base_line: int
     ) -> None:
         """Parse JavaScript content in frontmatter."""
-        rel_path = path.relative_to(self.repo_root)
+        rel_path = self.rel_path
 
         # Extract imports
         import_pattern = re.compile(
@@ -261,17 +292,17 @@ class _AstroFileExtractor:
                 )
                 self._symbols.append(symbol)
 
-    def _process_element(self, node: "tree_sitter.Node", path: Path) -> None:
+    def _process_element(self, node: "tree_sitter.Node") -> None:
         """Process an element node."""
         for child in node.children:
             if child.type == "start_tag":
-                self._process_tag(child, path)
+                self._process_tag(child)
                 break
             elif child.type == "self_closing_tag":
-                self._process_tag(child, path)
+                self._process_tag(child)
                 break
 
-    def _process_tag(self, node: "tree_sitter.Node", path: Path) -> None:
+    def _process_tag(self, node: "tree_sitter.Node") -> None:
         """Process a tag node (start_tag or self_closing_tag)."""
         tag_name = ""
         client_directive = ""
@@ -296,8 +327,12 @@ class _AstroFileExtractor:
         if not tag_name:
             return  # pragma: no cover
 
-        rel_path = path.relative_to(self.repo_root)
+        rel_path = self.rel_path
         line = node.start_point[0] + 1
+        # The elements this tag sits inside: the scope chain of its directive
+        # and slot (INV-punig, scheme v9).
+        element = node.parent
+        enclosing = ancestor_labels(element, html_element_tag) if element is not None else []
 
         # Check if this is a component reference (capitalized)
         if tag_name[0].isupper():
@@ -350,7 +385,7 @@ class _AstroFileExtractor:
                 directive_id, directive_stable_id = make_doc_symbol_ids(
                     "astro", str(rel_path), "directive",
                     f"{tag_name}:{client_directive}",
-                    directive_span.start_line, directive_span.end_line,
+                    directive_span.start_line, directive_span.end_line, scope=enclosing,
                 )
 
                 directive_symbol = Symbol(
@@ -397,7 +432,7 @@ class _AstroFileExtractor:
             # by make_doc_symbol_ids, so they can never drift.
             symbol_id, stable_id = make_doc_symbol_ids(
                 "astro", str(rel_path), "slot", slot_name,
-                span.start_line, span.end_line,
+                span.start_line, span.end_line, scope=enclosing,
             )
 
             symbol = Symbol(
@@ -423,10 +458,6 @@ class AstroAnalyzer(TreeSitterAnalyzer):
     language_pack_name = "astro"
     create_file_symbols = False
 
-    # Stash repo_root and run_id for the per-file extractor
-    _repo_root: Path | None = None
-    _run_id: str = ""
-
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str, run: "AnalysisRun",
@@ -434,23 +465,15 @@ class AstroAnalyzer(TreeSitterAnalyzer):
         """Extract symbols from an Astro file.
 
         Uses _AstroFileExtractor to handle the stateful frontmatter/template
-        two-pass extraction per file. Edges (canonical `imports`) are also
-        created during this pass.
+        two-pass extraction per file. The extractor also mints the edges
+        (canonical `imports`); this pass discards them and
+        ``extract_edges_from_file`` re-runs the extractor to return them.
         """
         analysis = FileAnalysis()
 
-        # Determine repo_root from file_path and rel_path
-        repo_root = file_path.parent
-        rel_parts = Path(rel_path).parts
-        for _ in rel_parts:
-            repo_root = repo_root.parent
-
-        extractor = _AstroFileExtractor(repo_root, run.execution_id)
-        symbols, edges = extractor.extract(tree, file_path, source)
+        extractor = _AstroFileExtractor(rel_path, run.execution_id)
+        symbols, _ = extractor.extract(tree, source)
         analysis.symbols = symbols
-        # Store edges in import_aliases dict using a special key
-        # so they can be recovered in extract_edges_from_file
-        analysis._astro_edges = edges  # type: ignore[attr-defined]
         for sym in symbols:
             analysis.symbol_by_name[sym.name] = sym
         return analysis
@@ -458,21 +481,17 @@ class AstroAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:
-        """Return edges already extracted during symbol pass."""
-        # Edges were already created during extract_symbols_from_file
-        # We need to re-extract them since the base class doesn't pass
-        # them through. Re-run the extraction.
-        repo_root = file_path.parent
-        rel_parts = Path(rel_path).parts
-        for _ in rel_parts:
-            repo_root = repo_root.parent
+        """Re-run the per-file extractor and return its edges.
 
-        extractor = _AstroFileExtractor(repo_root, run.execution_id)
-        _, edges = extractor.extract(tree, file_path, source)
+        The base class carries no Pass-1 edges into Pass 2, so the extraction
+        ``extract_symbols_from_file`` already did is repeated here.
+        """
+        extractor = _AstroFileExtractor(rel_path, run.execution_id)
+        _, edges = extractor.extract(tree, source)
         return edges
 
 

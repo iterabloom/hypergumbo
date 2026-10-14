@@ -1,0 +1,38 @@
+- op: create  # c2dc
+  at: '2026-10-12T17:11:21Z'  # c2dc
+  by: agent  # c2dc
+  actor: jgstern_agent  # c2dc
+  clock: 1  # c2dc
+  nonce: c2dc  # c2dc
+  data:  # c2dc
+    kind: invariant  # c2dc
+    title: "ocaml/agda/lean/wolfram analyzers drop the second same-name callable in a file (nested modules, namespaces, records, overloads)"  # c2dc
+    status: violated  # c2dc
+    priority: 2  # c2dc
+    parent:  # c2dc
+    tags:  # c2dc
+    - analysis_quality  # c2dc
+    - schema  # c2dc
+    isbefore: []  # c2dc
+    duplicate_of: []  # c2dc
+    not_duplicate_of: []  # c2dc
+    pr_ref:  # c2dc
+    description: "Found by the WI-tusad B1 delete-an-earlier-sibling harness (packages/hypergumbo-core/tests/test_stable_id_floor_gate.py, 2026-10-12, dev f300785189 + B1 branch). Four analyzers emit only ONE symbol when a file declares two same-name callables/members in different scopes or as overloads; the second is silently absent from the graph (not null, absent), so its calls and identity are lost.\n\nMeasured (probe files written to a temp dir, full pipeline, kinds/names from the behavior map):\n- ocaml: `module A = struct let run x = x end` + `module B = struct let run x y = x + y end` -> one `function run` (A's, line 2); B's run missing. Also `let run x = x` / `let run x y = ...` at top level -> one node.\n- agda: `run` declared in `module A where` and `module B where` -> one `function run`; two records each with `field fst` -> one `field fst`.\n- lean: `def run` in `namespace A` and `namespace B` -> one `function run` (line 2).\n- wolfram: `run[x_Integer] := x` and `run[x_String] := ...` -> one `function run` (line 1); a later `helper[] := 2` was also absent in the fixture.\n\nInvariant: every declaration the analyzer recognises is emitted as its own symbol; same-name declarations in different scopes (or overloads) are not merged or dropped. Likely mechanism (NOT verified): a name-keyed dict of symbols per file (last/first registration wins). The WI-tusad migration for these languages (B4 in the campaign plan) needs this fixed first, since a producer id cannot be given to a symbol that is not emitted; the gate lists all four in sibling_deletion_moves with \"no counterpart before the deletion\"."  # c2dc
+    fields:  # c2dc
+      statement: "Every declaration an analyzer recognises is emitted as its own symbol; same-name declarations in different scopes or overloads are neither merged nor dropped."  # c2dc
+      root_cause: "Not verified. Likely a per-file name-keyed symbol table in each of the four analyzers where one registration wins."  # c2dc
+- op: update  # 85e5
+  at: '2026-10-13T00:01:47Z'  # 85e5
+  by: agent  # 85e5
+  actor: jgstern_agent  # 85e5
+  clock: 2  # 85e5
+  nonce: '85e5'  # 85e5
+  set:  # 85e5
+    status: satisfied  # 85e5
+- op: discuss  # 4fae
+  at: '2026-10-13T00:01:48Z'  # 4fae
+  by: agent  # 4fae
+  actor: jgstern_agent  # 4fae
+  clock: 3  # 4fae
+  nonce: 4fae  # 4fae
+  message: "Fixed in PR #1562 (merge 907d2f25d3). Root cause: confirmed — each of the four analyzers kept a per-file set of seen names (ocaml/agda/lean add_symbol seen_names; wolfram the same), so the first symbol of a name won and later same-name declarations were silently dropped. Fix: removed the name dedup; every declaration is emitted with its scope chain (ocaml/agda/lean nested module/namespace -> name A.run; agda fields Pair.fst, constructors bare with the data type in the chain; wolfram each definition, read from the LHS text since the grammar cannot parse blank patterns, with pattern heads/literals as typed discriminants) and a producer stable_id via declared_arity_stable_id. Evidence (dev 907d2f25d3): hypergumbo run on a probe dir with the filed shapes -> ocaml A.run line 2 sha256:43ec7113f8566247, B.run line 5 sha256:15011675e44f9104, top-level run line 7 sha256:c45f49d274e452c5 and run line 8 sha256:a26c9ab9038603be (shadowing redefinition, both present); agda A.run line 8 sha256:a8969a68da401f61, B.run line 12 sha256:eb69603d7f35d3a8, Pair.fst line 17 sha256:94885299e9900c2e, Box.fst line 21 sha256:d6145edf70580a84; lean A.run line 2 sha256:68b24d8009296b4e, B.run line 5 sha256:9e21dab89bcf529c; wolfram run line 1 sha256:26b9a3f3c8a9cadc, run line 2 sha256:5a80b719da5cac5a, helper line 3 sha256:5b7e9b62abb5f79d (helper[] was also missing before). Each checked per symbol, all non-null and distinct. Caveat seen while probing: tree-sitter-agda mis-parses a data type with a single constructor (ERROR node swallows the next module), unrelated to this fix; type/module table kinds keep bare names and are told apart by the occurrence split (qualifying them is a scheme-bump change)."  # 4fae

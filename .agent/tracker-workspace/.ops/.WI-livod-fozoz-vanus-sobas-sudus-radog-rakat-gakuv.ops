@@ -1,0 +1,21 @@
+- op: create  # 5cd8
+  at: '2026-10-03T10:55:56Z'  # 5cd8
+  by: agent  # 5cd8
+  actor: jgstern_agent  # 5cd8
+  clock: 1  # 5cd8
+  nonce: 5cd8  # 5cd8
+  data:  # 5cd8
+    kind: work_item  # 5cd8
+    title: "Process-termination rows still rowed as a crossing: swift fatalError/preconditionFailure/assertionFailure under process_send (an ipc sink), erlang exit/1 sharing exit/2's process_send row (residual of INV-mulul)"  # 5cd8
+    status: todo_hard  # 5cd8
+    priority: 3  # 5cd8
+    parent:  # 5cd8
+    tags:  # 5cd8
+    - catalogue  # 5cd8
+    - taint  # 5cd8
+    isbefore: []  # 5cd8
+    duplicate_of: []  # 5cd8
+    not_duplicate_of: []  # 5cd8
+    pr_ref:  # 5cd8
+    description: "Residual of INV-mulul (process exit is not a subprocess), listed there and filed here so it is not lost. INV-mulul removed rust std::process exit/abort and elixir System.halt from subprocess. Two same-family rows remain, each needing its own decision rather than a mechanical deletion:\n\n1. swift.yaml process_send: Swift [fatalError, preconditionFailure, assertionFailure], note \"Swift process termination/assertion functions\". process_send = \"send a message to another runtime-managed process or actor\" and derives an ipc taint SINK, so a value passed as the message is a flow into the ipc zone. None sends anything to another process: they trap THIS process. But fatalError(message) prints \"Fatal error: <message>\" to stderr (and precondition/assertion failures do in debug builds), so the right home may be `logging` (haskell's System.Exit.die precedent, INV-dozuj) rather than no row. Needs the swift stdlib behaviour read per function and per build configuration.\n2. erlang.yaml process_send row for module erlang includes `exit`. erlang:exit/2 sends an exit SIGNAL to another process (process_send is right); erlang:exit/1 raises in the calling process (no crossing). The catalogue matches on name, not arity, so both are rowed. `exit` is already in erlang's ambiguous_names. Decide whether arity can be distinguished at the call site, or disclose the over-match.\n\nNot checked: kotlin exitProcess, scala sys.exit, objc exit()/abort(), c stdlib exit/abort/_exit -- grep found no rows for them on 2026-10-03, i.e. they already follow the \"no boundary\" ruling."  # 5cd8
+    fields: {}  # 5cd8

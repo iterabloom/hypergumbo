@@ -1273,3 +1273,137 @@ class TestWiGadusEdgeCases:
             f"gui_scripts and a non-list console_scripts must both be "
             f"ignored; got {names!r}"
         )
+
+
+class TestCommandLookupIsLanguageScoped:
+    """WI-gopok: the subcommand join resolves only to PYTHON handlers.
+
+    The executable is matched solely against names read from Python packaging
+    metadata (``[project.scripts]`` / ``console_scripts`` name a Python
+    callable; ``[project.name]`` names the Python distribution), and every
+    subcommand->handler key this linker models is a Python dispatch
+    convention: a Click/Typer command function, an argparse
+    ``set_defaults(func=...)`` handler, a ``fire.Fire(Class)`` public method.
+    A Go cobra / Ruby Thor / Rust clap ``concept=command`` symbol that happens
+    to share the subcommand string is a name coincidence, not that
+    executable's handler.
+    """
+
+    @staticmethod
+    def _project(tmp_path: Path) -> None:
+        (tmp_path / "pyproject.toml").write_text(
+            "[project]\nname = \"myapp\"\n"
+            "[project.scripts]\nmyapp = \"myapp.cli:main\"\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\nsubprocess.run([\"myapp\", \"serve\"])\n"
+        )
+
+    @staticmethod
+    def _command(language: str, path: str, framework: str) -> Symbol:
+        return Symbol(
+            id=f"{language}:{path}:10-20:serve:function",
+            name="serve",
+            kind="function",
+            language=language,
+            path=path,
+            span=Span(10, 20, 0, 0),
+            meta={"concepts": [{"concept": "command", "framework": framework}]},
+        )
+
+    @pytest.mark.parametrize(
+        ("language", "path", "framework"),
+        [
+            ("go", "cmd/serve.go", "cobra"),
+            ("ruby", "lib/cli.rb", "thor"),
+            ("rust", "src/main.rs", "clap"),
+            ("javascript", "bin/cli.js", "commander"),
+        ],
+    )
+    def test_foreign_command_namesake_is_not_joined(
+        self, tmp_path: Path, language: str, path: str, framework: str,
+    ) -> None:
+        self._project(tmp_path)
+        foreign = self._command(language, path, framework)
+        result = link_subprocess(tmp_path, [foreign], all_symbols=[foreign])
+        assert [e for e in result.edges if e.edge_type == "subprocess_calls"] == []
+
+    def test_foreign_namesake_does_not_demote_python_command(
+        self, tmp_path: Path,
+    ) -> None:
+        self._project(tmp_path)
+        go_cmd = self._command("go", "cmd/serve.go", "cobra")
+        py_cmd = self._command("python", "src/myapp/cli.py", "click")
+        result = link_subprocess(
+            tmp_path, [go_cmd, py_cmd], all_symbols=[go_cmd, py_cmd],
+        )
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert len(edges) == 1
+        assert edges[0].dst == py_cmd.id
+        assert edges[0].confidence == 0.85
+        assert "disambiguation_fallback" not in (edges[0].meta or {})
+
+    def test_requirement_count_ignores_foreign_commands(
+        self, tmp_path: Path,
+    ) -> None:
+        """The requirement diagnostic counts what the linker can JOIN, so a
+        repo whose only ``concept=command`` symbols are Go / Ruby reports zero
+        command sources rather than a source the join would refuse."""
+        from hypergumbo_core.linkers.subprocess_cli import (
+            _count_cli_command_symbols,
+        )
+        go_cmd = self._command("go", "cmd/serve.go", "cobra")
+        py_cmd = self._command("python", "src/myapp/cli.py", "click")
+        assert _count_cli_command_symbols(
+            LinkerContext(repo_root=tmp_path, symbols=[go_cmd]),
+        ) == 0
+        assert _count_cli_command_symbols(
+            LinkerContext(repo_root=tmp_path, symbols=[go_cmd, py_cmd]),
+        ) == 1
+
+    def test_argparse_name_fallback_skips_foreign_namesake(
+        self, tmp_path: Path,
+    ) -> None:
+        """The argparse handler name falls back from same-file to a name-only
+        match (an imported handler); that fallback must stay in Python."""
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "from .commands import cmd_serve\n"
+            "def main():\n"
+            "    parser = argparse.ArgumentParser()\n"
+            "    sub = parser.add_subparsers()\n"
+            "    p = sub.add_parser('serve')\n"
+            "    p.set_defaults(func=cmd_serve)\n"
+        )
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "test_cli.py").write_text(
+            "import subprocess\nsubprocess.run(['myapp', 'serve'])\n"
+        )
+        py_handler = Symbol(
+            id="python:myapp/commands.py:1-2:cmd_serve:function",
+            name="cmd_serve", kind="function", language="python",
+            path="myapp/commands.py", span=Span(1, 2, 0, 0),
+        )
+        js_namesake = Symbol(
+            id="javascript:web/cmd.js:1-2:cmd_serve:function",
+            name="cmd_serve", kind="function", language="javascript",
+            path="web/cmd.js", span=Span(1, 2, 0, 0),
+        )
+        # Reach: the Python handler alone is joined (control).
+        alone = link_subprocess(tmp_path, [], all_symbols=[py_handler])
+        assert [e.dst for e in alone.edges] == [py_handler.id]
+        # The JS namesake alone must not be joined.
+        js_only = link_subprocess(tmp_path, [], all_symbols=[js_namesake])
+        assert js_only.edges == []
+        # And beside the Python handler it must not demote the edge.
+        both = link_subprocess(
+            tmp_path, [], all_symbols=[js_namesake, py_handler],
+        )
+        assert [e.dst for e in both.edges] == [py_handler.id]
+        assert both.edges[0].confidence == 0.85

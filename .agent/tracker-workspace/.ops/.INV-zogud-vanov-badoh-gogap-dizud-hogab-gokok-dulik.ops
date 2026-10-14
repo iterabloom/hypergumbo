@@ -66,3 +66,10 @@
   clock: 7  # 52e8
   nonce: '52e8'  # 52e8
   message: "OWNER RULING 2026-08-06, cross-filed from the carrier WI-nazos: the exit condition for this deferral is RATIFIED as pure human judgment with no criteria — \"straightened out means the human has good vibes. thats it. the human will tell you when its straightened out. nothing further.\" The carrier's long-standing open question (what does straightened out mean) is therefore CLOSED, not outstanding. No gate, no threshold, no checkable list, and no decision package is to be built for this. Do not ask again; do not self-assess readiness; do not resolve WI-nazos on a session's own judgment. The owner discharges it."  # 52e8
+- op: discuss  # d000
+  at: '2026-09-29T14:49:55Z'  # d000
+  by: agent  # d000
+  actor: jgstern_agent  # d000
+  clock: 8  # d000
+  nonce: d000  # d000
+  message: "PROGRESS 2026-09-29 (agent, owner away; still VIOLATED): whole-tree strict ratchet 666 -> 515, baseline lowered in each PR. #1303 tracker TUI types (-35: BINDINGS as ClassVar[list[BindingType]], generic args, callback/None types; two left on purpose -- action_back sync-overrides an async method, and one guard mypy reads as unreachable, changing either changes behaviour). #1304 WI-hokag renames (-10). #1305 lang-extended1/lang-common registry and meta dict types (-106; six analyzers keep dict[str, Any] for global_symbols because they store lists / a __multi__ table / guard with isinstance, and the stricter type would be false about them). Largest remaining: type-arg in cli.py (33), arg-type 105 overall, sketch.py 39."  # d000

@@ -33,8 +33,11 @@ junit test list and the index disagree about how a test is spelled, every
 comparison below is meaningless while still producing confident-looking
 numbers, so the rate is reported and a caller can refuse to draw conclusions.
 
-WHAT PHASE 2 ADDED HERE. Shadow mode only ever REPORTED a selection, so nothing
-it produced had to be runnable. ``selectable_test_files`` is the conversion that
+WHAT PHASE 2 ADDED HERE, AND WHERE IT LIVES NOW. Shadow mode only ever REPORTED
+a selection, so nothing it produced had to be runnable. Phase 2 added
+``selectable_test_files`` to this module; Phase 3 moved it to
+:mod:`hypergumbo_core.selection_index`, and this module no longer defines or
+imports it. It is the conversion that
 makes a selection safe to hand to pytest, and it exists because the index is
 persistent, out-of-repo, and remembers test files that have since been renamed
 or deleted — a path pytest treats as a collection ERROR rather than a skip. An

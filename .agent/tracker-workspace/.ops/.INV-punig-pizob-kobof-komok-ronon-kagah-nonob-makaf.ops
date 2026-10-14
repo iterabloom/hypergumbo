@@ -1,0 +1,47 @@
+- op: create  # f95e
+  at: '2026-10-13T22:38:23Z'  # f95e
+  by: agent  # f95e
+  actor: jgstern_agent  # f95e
+  clock: 1  # f95e
+  nonce: f95e  # f95e
+  data:  # f95e
+    kind: invariant  # f95e
+    title: "Nested same-name scopes still move stable_ids in markdown, rst, scss, puppet, svelte, apex and fish: scheme v9's 'every repeatable enclosing scope is hashed' contract is not met"  # f95e
+    status: violated  # f95e
+    priority: 2  # f95e
+    parent:  # f95e
+    tags:  # f95e
+    - schema  # f95e
+    - analysis_quality  # f95e
+    isbefore:  # f95e
+    - WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral  # f95e
+    duplicate_of: []  # f95e
+    not_duplicate_of: []  # f95e
+    pr_ref:  # f95e
+    description: "FOUND 2026-10-13 by WI-tusad F3, post-merge live check of the scheme-v9 bump (PR #1571, dev 3c9f03a81f). The v9 contract written into the spec, ADR-0035 §6 and the CHANGELOG says every enclosing scope that can repeat within one file is in the hash. It is not, for these producers:\n\nREPRO (scratchpad fixes/f3/live/docprobe.py and sweep2.py: `hypergumbo run --include-docs`, a same-name construct under two different parents, the FIRST parent blanked so lines keep their numbers, survivors matched by (kind, name, line, col)):\n- markdown: `# Alpha / ## Details / ```python` then `# Beta / ## Details / ```python` -> Beta's `## Details` section and its code block MOVE. markdown.py calls make_doc_stable_id with no scope (sections, code blocks, links), so every same-title heading and every same-language code block in a file ties at file scope.\n- rst: `Alpha / Details` then `Beta / Details` (sub-sections) -> Beta's Details MOVES (rst hashes the title, no parent section).\n- scss: `.a { .item {} }` then `.b { .item {} }` -> `.item` under .b MOVES (no enclosing-rule chain).\n- puppet: `class a { file { '/tmp/x': } }` then `class b { file { '/tmp/x': } }` -> b's resource MOVES (no class/define scope).\n- svelte: `<div>{#if x}..{/if}</div>` then `<section>{#if x}..{/if}</section>` -> the second `#if` block MOVES (no element chain; vue got one in F1, svelte did not).\n- apex: `class A { class Inner { go } }` / `class B { class Inner { go } }` inside a top-level class -> Inner and Inner.go MOVE (INV-fabih's shape; apex was outside F2's sweep).\n- fish: `function outer_a; function inner` / `function outer_b; function inner` -> inner MOVES (no enclosing-function chain).\n- mermaid: node `n1` in subgraph A and in subgraph B -> the second MOVES. By Mermaid semantics a node id is global per diagram (one node, declared twice), so this may be a duplicate emission rather than a scope gap: decide.\nClean on the same harness: pony, robot, astro, ruby, python, objc, hack, graphql, sql, haxe, verilog, elixir nested modules, go, haskell where, hcl, toml, latex, lua tables, twig/vue (F1), and every F2 sweep language. NOT CHECKED: sparql, asciidoc/org (no analyzer checked), properties/requirements/gitignore (flat), blade, handlebars nesting beyond B8a's fixture.\n\nFIX SHAPE: pass the enclosing chain as make_doc_stable_id(scope=...) / make_doc_symbol_ids(scope=...) (markdown/rst heading stack, scss rule-selector chain, puppet class/define, svelte element+block chain), apex enclosing types (scoped_table_stable_id + member chain), fish enclosing functions (overload_arity.nested_qualified_name). Add gate SCOPE_CASES for each (red first).\n\nSCHEME: value-changing (these producers already compute ids). v9 is merged to dev but unreleased. The owner must decide: amend v9 before release (consumers of releases still see one v8 -> v9 bump; dev artifacts produced since 3c9f03a81f would change under the same label) or bump to v10. Blocks closing WI-tusad, whose acceptance (3) is \"deleting an earlier same-name sibling moves no other id\"."  # f95e
+    fields:  # f95e
+      statement: "Deleting an earlier same-name sibling or enclosing scope never moves another symbol's stable_id (ADR-0035 §1, scheme v9 contract)"  # f95e
+      root_cause: "doc/template producers call make_doc_stable_id / make_doc_symbol_ids with no scope; apex and fish hash no enclosing type/function chain"  # f95e
+- op: discuss  # e625
+  at: '2026-10-13T23:00:27Z'  # e625
+  by: agent  # e625
+  actor: jgstern_agent  # e625
+  clock: 2  # e625
+  nonce: e625  # e625
+  message: "Docs now state this gap (PR #1575, merge 5d7fb73fb2): spec v8 -> v9 entry + field contract, ADR-0035 §5 status, CHANGELOG Summary and Changed. Owner decision pending: amend v9 before release vs v10."  # e625
+- op: update  # a767
+  at: '2026-10-14T06:56:30Z'  # a767
+  by: agent  # a767
+  actor: jgstern_agent  # a767
+  clock: 3  # a767
+  nonce: a767  # a767
+  set:  # a767
+    status: satisfied  # a767
+    pr_ref: '1576'  # a767
+- op: discuss  # d7a0
+  at: '2026-10-14T06:57:23Z'  # d7a0
+  by: agent  # d7a0
+  actor: jgstern_agent  # d7a0
+  clock: 4  # d7a0
+  nonce: d7a0  # d7a0
+  message: "SATISFIED. Fixed in PR #1576 (merge 1997a56d0d), folded into scheme v9 (unreleased; no v10). Follow-up PR #1577 (merge 4d5a8ec889: Perl block packages, SPARQL query ordinals) and docs PR #1578 (e315bcb5b9).\nROOT CAUSE: the doc/template producers minted make_doc_stable_id / make_doc_symbol_ids with no scope (markdown, rst, scss, puppet, svelte), apex hashed no enclosing type, fish no enclosing function; the gate passed because two-parent fixtures existed for some languages only.\nFIX: every listed producer hashes the full parent chain through the shared helpers (ancestor_labels + make_doc_stable_id(scope=), scoped_stable_id, scoped_table_stable_id, nested_qualified_name / nested_member_qualified_name; new base.html_element_tag and base.block_prelude labels, c_family_scope_chain(functions=, types=)). Markdown: section nesting; rst: hierarchy from adornment order (meta.level now real); scss/puppet: rules, classes, branches; svelte/astro: element + block chain; apex: type chain; fish: function chain. Ten more producers found by the new fixtures and fixed: astro, blade, C block scopes, CMake functions, gnuplot blocks, HLSL namespaces/functions, JSON + Cargo dependency groups, TOML 3-part table names, Meson branches, asm local labels; else-without-if labels (CMake, Meson, gnuplot); Maven groupId. Mermaid verdict: a node id in two subgraphs is ONE Mermaid node (documented same-scope tie, not a two-parent case); the same id in two diagrams keeps its id.\nGUARD: test_stable_id_floor_gate.test_every_language_has_a_two_parent_fixture_or_is_flat (SiblingCase.nested: one text under two parents; FLAT_LANGUAGES with reasons, stale-checked) + test_every_registered_language_has_a_fixture. Red on dev 5d7fb73fb2 (17 languages MISSING, 18 deletion regressions), green on the PR.\nEVIDENCE (merged dev 1997a56d0d, `hypergumbo run --include-docs`, first parent blanked, survivors matched by (kind,name,line,col)): this item's own repro (f3/live/docprobe.py + sweep2.py): markdown 3/3, rst 2/2, scss 3/3, puppet 2/2, svelte 2/2, apex 4/4, fish 2/2 same, 0 moved/null; mermaid subgraph 1 moved (one node, accepted tie), mermaid two diagrams 3/3 same; perl block packages 2/2 same on 4d5a8ec889 (sweep2 TOTAL 40 same, 1 moved = the mermaid tie; docprobe 19/19). All 96 two-parent / else / maven gate fixtures through the CLI: 365/365 same, 0 moved, 0 null, 0 unmatched. Corpus on 4d5a8ec889 (code 24,670 / config 5,903 / extra 1,322 nodes): floor_cohort 0, floor_abstained 0, none 0, collisions 0, checkout-location 0 differing positions."  # d7a0

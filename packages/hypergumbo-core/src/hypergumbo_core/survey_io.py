@@ -20,6 +20,21 @@ caller rolling its own suffix check. Prior to WI-mokim only
 ``_find_hg_json``/``_open_hg_json`` helpers), and feeding a ``.gz``
 behavior map into any other consumer dumped gzip bytes into
 ``json.loads`` and exploded.
+
+Two layers sit on that read path. :func:`load_behavior_map` stays permissive
+(it returns whatever JSON the file holds, for auxiliary artifacts too).
+:func:`load_substrate` is the strict ``--input`` validator: it raises
+:class:`SubstrateError` (which ``cli.main`` turns into ``rc=2``) on malformed
+or empty JSON, a non-object root, a missing ``nodes`` key, or a ``view`` that
+is present and differs from ``expected_view``; it only WARNS to stderr on an
+absent or mismatched ``schema_version`` (and on a legacy survey filename),
+and lets a missing path's ``FileNotFoundError`` propagate.
+
+The module also owns the ADR-0042 survey filename registry:
+``CANONICAL_SURVEY_FILENAME`` (``survey.json``), the read-time aliases in
+``LEGACY_SURVEY_FILENAMES``, and ``SURVEY_FILENAMES`` (canonical first) as
+the search order for :func:`find_survey_in_dir`, which checks each name plain
+then ``.gz``. :func:`find_behavior_map` is the older single-basename lookup.
 """
 
 from __future__ import annotations

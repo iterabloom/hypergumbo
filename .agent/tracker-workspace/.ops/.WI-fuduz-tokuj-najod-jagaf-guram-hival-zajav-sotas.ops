@@ -1,0 +1,28 @@
+- op: create  # bdbe
+  at: '2026-10-01T23:56:02Z'  # bdbe
+  by: agent  # bdbe
+  actor: jgstern_agent  # bdbe
+  clock: 1  # bdbe
+  nonce: bdbe  # bdbe
+  data:  # bdbe
+    kind: work_item  # bdbe
+    title: "pub/sub name resolution stops at the file: imported constants, Class.ATTR constants and function-local constants stay unresolved"  # bdbe
+    status: todo_hard  # bdbe
+    priority: 3  # bdbe
+    parent:  # bdbe
+    tags:  # bdbe
+    - protocol_linkers  # bdbe
+    - analysis_quality  # bdbe
+    isbefore: []  # bdbe
+    duplicate_of: []  # bdbe
+    not_duplicate_of: []  # bdbe
+    pr_ref:  # bdbe
+    description: "**Gap left by WI-misod-toruv-gimip-botuj-kadup-ludon-damib-buguk.** The shared `linkers/_name_args.py` `ConstantResolver` resolves a pub/sub topic / channel / event identifier only to a SAME-FILE, MODULE-SCOPE string constant. Three common shapes stay `unresolved` (value None, `variable_match` identifier join at 0.65):\n\n1. an imported constant: `from settings import ORDERS_TOPIC` / `import { OPEN_CHANNEL } from './channels'`;\n2. a class or object attribute: `Topics.ORDERS`, `config.topic`, `EVENTS.USER_CREATED`, Java `KafkaTopics.ORDERS`;\n3. a function-local constant (`const CH = 'x'` inside a function).\n\nFor (1) an imported constant used by a publisher and a LITERAL used by its subscriber still miss each other: the identifier join cannot reach a string, by design. A cure would follow the import to the defining file's module constants (the import graph is available after analysis) and resolve `Class.ATTR` against same-repo class-level string constants, keeping the \"any other binding leaves it unresolved\" rule.\n\n**Measure first:** WI-misod's A/B gives per-repo counts of `unresolved` sites (see its discussion note); how many of those are shapes 1-3 vs genuinely dynamic values (env lookups, parameters) is NOT measured."  # bdbe
+    fields: {}  # bdbe
+- op: discuss  # 072d
+  at: '2026-10-02T00:47:16Z'  # 072d
+  by: agent  # 072d
+  actor: jgstern_agent  # 072d
+  clock: 2  # 072d
+  nonce: 072d  # 072d
+  message: "Measured sizing (WI-misod A/B after arm, 23 corpus repos under 200 MB, 2026-10-01; file ~/hypergumbo_lab_notebook/decontend/run_09302026/misod/unresolved_shapes.txt): unresolved sites by identifier shape -- event-sourcing 981 (544 dotted, 352 bare lower/camel, 85 bare UPPER), IPC 36 (10 dotted, 23 lower/camel, 3 UPPER), message-queue 193 (43 dotted, 150 lower/camel, 0 UPPER). Only 21 sites resolved as same-file constants (all 21 hand-checked correct). Bare UPPER names (88) are the likeliest imported constants (shape 1 of this item); many dotted ES sites are NOT string stand-ins at all (vscode `part.onWillDispose`, `Event.filter` -- event objects), and many lower/camel MQ sites are a separate false positive (WI-darom-rujil-kasal-fazod-damag-sipin-rohak-rugol: Svelte/RxJS `.subscribe(param => ...)`). Not measured: how many of the 88 UPPER names an import-following resolver would actually resolve."  # 072d

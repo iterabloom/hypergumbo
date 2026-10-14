@@ -1,0 +1,22 @@
+- op: create  # d345
+  at: '2026-10-03T10:34:09Z'  # d345
+  by: agent  # d345
+  actor: jgstern_agent  # d345
+  clock: 1  # d345
+  nonce: d345  # d345
+  data:  # d345
+    kind: work_item  # d345
+    title: "Exit status still mints nothing in c/cpp (system, wait, waitpid), the JVM (Process.waitFor/exitValue), scala (ProcessBuilder.!), swift/objc (terminationStatus), python asyncio/os.popen.close/os.spawn*(P_WAIT): WI-lanos's residual"  # d345
+    status: todo_hard  # d345
+    priority: 3  # d345
+    parent:  # d345
+    tags:  # d345
+    - taint  # d345
+    - catalogue  # d345
+    - io_boundary  # d345
+    isbefore: []  # d345
+    duplicate_of: []  # d345
+    not_duplicate_of: []  # d345
+    pr_ref:  # d345
+    description: "RESIDUAL OF WI-lanos-busoj-lativ-minud-buton-vuviv-jihit-bumip (branch jgstern-agent/fix/lanos, 2026-10-03). WI-lanos rowed the exit-status-returning calls in python / rust / go / haskell as ipc_recv (decided under WI-dozul's owner ruling: a value the far side CHOSE from a constrained set is a transfer, ADR-0049 ruling 1) and extended the choice_shaped_source caveat to them. The SAME value still gets the other verdict in the catalogues and shapes below. Enumerated from the production loader at the branch tip (load_catalog per language), not grepped:\n\nROWED, LAUNCH-ONLY, RETURN THE STATUS (mint nothing today):\n  c    stdlib.system, sys/wait.wait, sys/wait.waitpid    (subprocess only)\n  cpp  stdlib.system, sys/wait.wait, sys/wait.waitpid    (subprocess only; same rows as c)\n  haskell overlay (provenance: community, haskell-network.yaml) System.Process.Typed.runProcess -> ExitCode (subprocess only)\n\nNOT ROWED AT ALL:\n  java / kotlin   java.lang.Process.waitFor() -> int, exitValue() -> int\n  scala           scala.sys.process.ProcessBuilder.! / !< -> Int; Process.exitValue\n  swift / objc    Process / NSTask terminationStatus (a PROPERTY read; both catalogues declare waitUntilExit not I/O and note the status is read separately)\n  python          asyncio.subprocess.Process.wait / returncode; os.popen(...).close() (returns the status on a file object)\n\nARGUMENT-DEPENDENT (needs the argument, like subprocess.run's stdout half):\n  python os.spawn*: returns the exit code under P_WAIT and a pid under P_NOWAIT.\n\nSIBLING FOUND ON THE WAY (not exit status, INV-lozat class): the same community overlay rows System.Process.Typed.readProcess (returns (ExitCode, stdout, stderr)) under subprocess only, while boot-library System.Process.readProcess mints.\n\nSTALE PROSE LEFT IN CATALOGUES WI-lanos did not edit: erlang.yaml, javascript.yaml and scala.yaml carry INV-lozat's copied note \"a status is not the child's message\" on their content-returning launch rows; WI-lanos rewrote it in python/rust/go/haskell only.\n\nWHY NOT IN WI-lanos: the item named python/rust/go/haskell/elixir parity, and c has no def/use extractor, so every c finding is structural (measurement 0019: 5 of 5 c DNS findings were co-location pairings). Rowing c's status calls should carry its own marginal delta. Same method as WI-lanos (one fixture per call shape through the production CLI, both arms; the PLAN.md / arm.sh in ~/hypergumbo_lab_notebook/decontend/run_10032026/lanos/)."  # d345
+    fields: {}  # d345

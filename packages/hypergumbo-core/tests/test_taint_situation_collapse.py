@@ -39,13 +39,17 @@ and ``sink_zone`` are the situation itself.
 
 WHY COLLAPSING BEFORE THE CONSUMER'S FILTERS IS SAFE. Every filter in
 ``verify_taint_claim`` — the label/zone ``constrained`` filter, the
-``sanitized`` filter, and ``_source_scope``'s production exclusion (which reads
+``sanitized`` filter, the ``resource_naming_only`` and ``trusted_sink``
+exclusions (in the key since WI-gajir; before it a group took both from its
+first member), and ``_source_scope``'s production exclusion (which reads
 ``source_symbol`` and nothing else) — tests a field that is IN the grouping
 key. So each filter's verdict is constant across a group, and no group can be
 half-included. That is asserted below rather than asserted-by-inspection.
 """
 
 from __future__ import annotations
+
+import pytest
 
 from hypergumbo_core.taint import (
     TaintFlowFinding,
@@ -443,6 +447,95 @@ class TestTheVerdictIsPreserved:
         verdict = verify_taint_claim(claim, out)
         assert verdict.evidence_count == 1
         assert sum(verdict.excluded_flows.values()) == 1
+
+
+class TestEveryConsumerFilterIsInTheKey:
+    """WI-gajir: a group may not be half-excluded by ANY consumer filter.
+
+    ``verify_taint_claim`` excludes a finding on two per-SINK flags as well as
+    on ``sanitized``: ``resource_naming_only`` (WI-bulag) and ``trusted_sink``
+    (WI-lukoz). Both arrived after the key was written and neither was added
+    to it, so a group took both flags from ``grp[0]`` alone. Measured on the
+    shipped CLI before the fix: ``net.Dial("tcp", a)`` then
+    ``fmt.Fprintln(con, os.Getenv("API_KEY"))`` confirmed "no secret reaches
+    the network" with 0 flows, because net.Dial's resource-naming flow was
+    the representative and the content flow went out with it.
+
+    Each case runs both member orders: the representative is whichever member
+    came first, so one order hides the content flow (the false all-clear) and
+    the other counts the excluded member as evidence. Collapsed and raw must
+    give the same verdict and the same evidence count.
+    """
+
+    _CLAIM = Claim(
+        id="TF-1", text="no untrusted_input to host_fs",
+        constraint_taint_flow=TaintFlowConstraint(
+            source_taint="untrusted_input",
+            prohibited_sink_zone="host_fs",
+        ),
+    )
+
+    @staticmethod
+    def _pair(flag: str) -> list[TaintFlowFinding]:
+        excluded = _make_finding(
+            sink_primitive="fflush", sink_module="stdio",
+            sink_symbol="c:stdio:0-0:fflush:unresolved", **{flag: True},
+        )
+        return [excluded, _make_finding()]
+
+    @pytest.mark.parametrize("flag", ["resource_naming_only", "trusted_sink"])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_a_flagged_and_an_unflagged_sink_do_not_merge(
+        self, flag: str, reverse: bool,
+    ) -> None:
+        raw = self._pair(flag)
+        if reverse:
+            raw.reverse()
+        out = collapse_unadjudicated_flows(raw)
+        assert len(out) == 2
+        assert {getattr(f, flag) for f in out} == {True, False}
+        (kept,) = [f for f in out if not getattr(f, flag)]
+        assert kept.sink_primitives == ("os.remove",)
+
+    @pytest.mark.parametrize("flag", ["resource_naming_only", "trusted_sink"])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_the_content_flow_still_carries_the_verdict(
+        self, flag: str, reverse: bool,
+    ) -> None:
+        raw = self._pair(flag)
+        if reverse:
+            raw.reverse()
+        collapsed = verify_taint_claim(
+            self._CLAIM, collapse_unadjudicated_flows(raw),
+        )
+        assert collapsed.verdict == "violated"
+        assert collapsed.evidence_count == 1
+        assert collapsed.evidence[0]["sink_primitives"] == ["os.remove"]
+        direct = verify_taint_claim(self._CLAIM, raw)
+        assert (collapsed.verdict, collapsed.evidence_count) == (
+            direct.verdict, direct.evidence_count,
+        )
+
+    @pytest.mark.parametrize("flag", ["resource_naming_only", "trusted_sink"])
+    def test_a_group_of_flagged_sinks_is_still_one_excluded_row(
+        self, flag: str,
+    ) -> None:
+        """The control: when EVERY member carries the flag, the group is still
+        one row, still excluded, and still disclosed once."""
+        out = collapse_unadjudicated_flows([
+            _make_finding(**{flag: True}),
+            _make_finding(sink_primitive="rmtree", sink_module="shutil",
+                          sink_symbol="py:shutil:0-0:rmtree:unresolved",
+                          **{flag: True}),
+        ])
+        assert len(out) == 1
+        assert out[0].collapsed_flow_count == 2
+        verdict = verify_taint_claim(self._CLAIM, out)
+        assert verdict.verdict != "violated"
+        counted = (verdict.resource_naming_flows
+                   if flag == "resource_naming_only"
+                   else verdict.trusted_sink_flows)
+        assert counted == 1
 
 
 class TestEveryReaderOfTheWitnessScalarMoved:

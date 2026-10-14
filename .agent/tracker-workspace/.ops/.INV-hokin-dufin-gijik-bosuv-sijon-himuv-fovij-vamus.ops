@@ -1,0 +1,75 @@
+- op: create  # 1700
+  at: '2026-10-01T01:25:15Z'  # 1700
+  by: agent  # 1700
+  actor: jgstern_agent  # 1700
+  clock: 1  # 1700
+  nonce: '1700'  # 1700
+  data:  # 1700
+    kind: invariant  # 1700
+    title: "WI-ratuv's test-only-reachability gate has never run in the live CI: it exists only in the GitHub full-suite workflow (schedule disabled 07-23), not in .woodpecker/full-suite.yml"  # 1700
+    status: violated  # 1700
+    priority: 2  # 1700
+    parent:  # 1700
+    tags:  # 1700
+    - ci_infrastructure  # 1700
+    - testing  # 1700
+    isbefore: []  # 1700
+    duplicate_of: []  # 1700
+    not_duplicate_of: []  # 1700
+    pr_ref:  # 1700
+    description: "FOUND 2026-09-30 while tracing WI-mifag's blocker (owner asked to verify no item tracks it).\n\nTHE FACT. WI-ratuv's test-only-reachability ratchet is defined in exactly one CI file, and that file does not run:\n- The step \"Test-only-reachability ratchet (WI-ratuv)\" exists only in .github/workflows/full-suite.yml (~:299-316). It was added there by 89f3c7f457 on 2026-09-02.\n- That workflow's schedule was commented out on 2026-07-23 (c35d88e371, \"disable scheduled full-suite/nightly runs during forge migration\"); its only remaining trigger is workflow_dispatch. GitHub Actions is disabled (recorded on WI-bavak).\n- The live cron is .woodpecker/full-suite.yml (created 897a207870, 2026-07-24). It ports the two sibling self-tree gates -- self-tree-validation (WI-jigup) and self-claims-gate (WI-vanun) -- but has NO test-only-reachability step. Neither .woodpecker/nightly.yml nor .woodpecker/woodpecker.yml references scripts/check-test-only-reachability.\n- No test pins the gate's presence in the live CI (contrast tests/test_ci_self_claims_gate_scope.py, which pins the self-claims arm).\nSo since the day it merged, no scheduled or per-PR CI run has executed the gate WI-ratuv was closed on. The baseline .ci/test-only-reachability-baseline.json has not changed since 89f3c7f457. NOT CHECKED: whether anyone ran the GitHub workflow by manual dispatch since 09-02.\n\nTHIS IS A REPEAT OF A KNOWN SHAPE. The self-claims gate was lost the same way (the comment above .woodpecker/full-suite.yml's self-claims-gate step: it \"had been running on NOTHING since cutover\", \"the original port dropped the step\"). That instance was fixed by porting the step and pinning it with a test; the class -- a gate added to, or left only in, the dormant GitHub workflows -- was not closed.\n\nFIX SHAPE.\n1. Port the step into .woodpecker/full-suite.yml's self-tree-validation step, which already builds /tmp/self-tree.json: `python scripts/check-test-only-reachability --map /tmp/self-tree.json` (copy the GHA step's exit-code handling: exit 2 = infrastructure -> warn, continue).\n2. Pin it like the self-claims arm: a test that the live Woodpecker full-suite invokes the script.\n3. Before trusting the gate, run it once against a current self-map: the baseline is four weeks old and was never exercised by CI, so the first run may fail on drift that accumulated unseen. Adjudicate that drift; do NOT just rewrite the baseline (WI-ratuv's own ruling: a rubber-stamped ratchet is worse than none).\n4. Structural follow-up (the class): diff every step of .github/workflows/{full-suite,nightly}.yml against .woodpecker/ and list any other gate that exists only in a dormant file. Only full-suite.yml was compared here (its three self-tree gates: two ported, this one not); nightly.yml was NOT compared.\n\nWI-ratuv is not reopened by this row: its gate logic is not in question, only where it runs. This row blocks the receiver-typing map item and WI-mifag, which both extend a gate that currently runs nowhere."  # 1700
+    fields:  # 1700
+      statement: "Every CI gate that a closed tracker item relies on runs in the live CI configuration (.woodpecker/), and a test pins its presence there."  # 1700
+      root_cause: "WI-ratuv (89f3c7f457, 2026-09-02) added its ratchet step only to .github/workflows/full-suite.yml, whose schedule was disabled on 2026-07-23 (c35d88e371) for the forge migration; the live Woodpecker full-suite (897a207870, 2026-07-24) ports the sibling self-tree-validation and self-claims gates but not this one, and no test pins it."  # 1700
+- op: update  # 5ce1
+  at: '2026-10-01T01:26:00Z'  # 5ce1
+  by: agent  # 5ce1
+  actor: jgstern_agent  # 5ce1
+  clock: 2  # 5ce1
+  nonce: 5ce1  # 5ce1
+  set: {}  # 5ce1
+  add:  # 5ce1
+    isbefore: [WI-losig-domon-janak-rumop-rubas-rapas-vinuj-zohih]  # 5ce1
+- op: discuss  # 2d6f
+  at: '2026-10-01T01:37:40Z'  # 2d6f
+  by: agent  # 2d6f
+  actor: jgstern_agent  # 2d6f
+  clock: 3  # 2d6f
+  nonce: 2d6f  # 2d6f
+  message: "SCOPE CLARIFICATION 2026-09-30 (owner asked): this row does NOT ask for a per-PR gate. WI-ratuv was deliberately kept out of per-PR CI because building the map takes ~13m40s (script header; owner-approved design, PR #717) and was meant to ride the twice-daily scheduled full-suite. That decision stands. The defect is only WHICH scheduled job it was wired into: the GitHub copy (schedule off since 07-23) instead of the live Woodpecker copy. The fix adds one step to .woodpecker/full-suite.yml's self-tree-validation step, which already builds /tmp/self-tree.json, so the added cost on the cron is seconds. The \"test pinning it\" is a cheap unit test that reads the Woodpecker YAML and asserts the step is present (like tests/test_ci_self_claims_gate_scope.py), not a test that runs the gate."  # 2d6f
+- op: discuss  # 9971
+  at: '2026-10-03T06:41:59Z'  # 9971
+  by: agent  # 9971
+  actor: jgstern_agent  # 9971
+  clock: 4  # 9971
+  nonce: '9971'  # 9971
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). CURRENT; the class is wider than the named gate. Full step-by-step diff of .github/workflows/full-suite.yml vs .woodpecker/full-suite.yml:\n1. The test-only-reachability ratchet (this item): only in the GHA file (now :299-318); no .woodpecker/ step and no test pins it. The GHA `::warning::` syntax needs a plain echo when ported.\n2. PER-PACKAGE COVERAGE IN ISOLATION (not in this item): GHA runs each package's tests alone with --cov on that package's src at 100%. Woodpecker test-all-packages (:103-113) runs all packages in one pass with all --cov paths, so a line covered only by ANOTHER package's tests counts. Per-PR woodpecker.yml (:516-554) and nightly use the same union, so no live CI enforces AGENTS.md's \"tests live in the same package as the code they cover\"; only local check-package-coverage does. It has bitten before: WI-tubuv (core 99% in isolation), WI-dojuh (cli.py uncovered in core isolation). Partly tracked by WI-kahar (todo_soft P4).\n3. MIS-PINNED TEETH TEST: tests/test_full_suite_coverage_teeth.py:22 says `# covers: .woodpecker/full-suite.yml`, but every assertion reads FULL_SUITE = .github/workflows/full-suite.yml (:29). It pins the dormant file, the same class as this item.\nGHA-only items that are NOT gates: SHA-already-tested/docs-only skips, *-retry jobs, aggregate stop-the-line, coverage badge, last-green-sha marker, full-suite/aggregate status (nothing reads it). Nightly: no gate missing. Recommendation: widen the statement to \"a gate that exists only in .github/ runs nowhere\" and track 2 and 3 here or as siblings (not done; owner/agent choice)."  # 9971
+- op: discuss  # 94be
+  at: '2026-10-03T07:52:21Z'  # 94be
+  by: agent  # 94be
+  actor: jgstern_agent  # 94be
+  clock: 5  # 94be
+  nonce: 94be  # 94be
+  message: "FROM WI-kabaf (2026-10-03, branch jgstern-agent/fix/kabaf, 1f4c88c755, not pushed). Bears on this row's class sweep, which compared full-suite and nightly but not the per-PR pair. One per-PR data point: WI-kabaf's defect (manifest counted by grep -c \"^packages/\") existed ONLY in the dormant .github/workflows/ci.yml; the live .woodpecker/woodpecker.yml pytest step counts the SELECTED_TESTS section correctly. I did not diff ci.yml against woodpecker.yml step by step, so this is NOT a statement that the per-PR pair has no gate missing from .woodpecker/. Possible merge contact: the kabaf branch adds tests/test_ci_github_manifest_count.py, which parametrizes over every .woodpecker/*.yml and fails if a line counts a manifest with a prefix-keyed grep -c; it edits no .woodpecker/ file."  # 94be
+- op: discuss  # 9165
+  at: '2026-10-03T08:07:28Z'  # 9165
+  by: agent  # 9165
+  actor: jgstern_agent  # 9165
+  clock: 6  # 9165
+  nonce: '9165'  # 9165
+  message: "WORK DONE 2026-10-03 (concurrent run, branch jgstern-agent/fix/hokin, LOCAL, not pushed): cfd14717a0 (port + tests), 71f327c4bc (baseline re-freeze, owner to ratify; separable).\n\n1. PORT. .woodpecker/full-suite.yml self-tree-validation now runs `python scripts/check-test-only-reachability --map /tmp/self-tree.json` after the map build, scheduled-only (not per-PR). Exit 2 warns and passes. Both self-map ratchets run regardless of the other's result (rc captured under set -e) and the step fails if either failed, so neither masks the other. Step name unchanged.\n2. PIN. tests/test_check_test_only_reachability_ci_wiring.py runs the step's own commands under /bin/sh -e with a stub python (reach, unconditional, exit 1 reds, exit 2 passes with a warning, no masking, failed map build stops the step). Mutations: gate line deleted -> 7 red; rc not captured -> 2 red; final exit deleted -> 4 red; all nonzero treated as infra -> 2 red.\n3. TEETH TEST (premise audit item 3). tests/test_full_suite_coverage_teeth.py now reads .woodpecker/: --cov-fail-under=100 on every packages/*/tests/ pytest step (full-suite + nightly), not swallowed, no failure: ignore / when; per-PR no-data branch in woodpecker.yml. Mutations red; the OLD file stayed 4/4 green under the same mutations (vacuous, as the audit said). Same mis-pin fixed in tests/test_workflow_cli_invocation.py (scanned .github only; its pattern could not match a YAML `- cmd` item).\n4. FIRST LIVE-EQUIVALENT RUN (local, via the board, map of this worktree at 62602239c6, 5m05s, 280 MB): exit 1, 21 new keys + 3 drained. Adjudicated per key in 71f327c4bc's message: 6 called from scripts/ (gate scope, filed WI-modip-barab-himus-gaduj-gojip-hizuj-lutor-sihit), 3 test hooks / test-run gates, 4 declaration-table queries, 8 UNWIRED (filed WI-mifup-gumim-jokop-litup-pogud-govaj-pinag-bonut). After re-freeze: exit 0. Code mutation (new paths.py function called only by a new test, fresh map): exit 1 naming exactly that key.\n5. CLASS (fix shape step 4): premise audit already diffed full-suite and nightly; the per-package isolation gap (audit item 2) filed as WI-sagar-tafan-gogon-gajul-rafif-matub-fifar-mizul. Swept tests that pin dormant .github files: test_check_mypy_ratchet_blocking.py reads only ci.yml, but the live Woodpecker mypy step is pinned separately by test_smart_test_mypy_gate.py (strict + not failure: ignore), so it is redundant, not a live gap. Not filed. Seen, not fixed: woodpecker.yml:570 comment still says the mypy step is failure: ignore; :128-133 say it was removed.\n\nNOT CHECKED: a real Woodpecker firing (no cron here; the /bin/sh -e model is the test's claim about the runner). The local map was built on Python 3.12 with every package importable; CI builds on 3.11 with core+mainstream+common+extended1+tracker installed. Whether the two maps give the same cohort was NOT measured, so the cron's first firing may still differ from the local exit 0. Run ci-debug cron-status after the first firing that includes this."  # 9165
+- op: update  # 736d
+  at: '2026-10-03T09:41:12Z'  # 736d
+  by: agent  # 736d
+  actor: jgstern_agent  # 736d
+  clock: 7  # 736d
+  nonce: 736d  # 736d
+  set:  # 736d
+    status: pending_validation  # 736d
+- op: discuss  # b6a7
+  at: '2026-10-03T09:41:12Z'  # b6a7
+  by: agent  # b6a7
+  actor: jgstern_agent  # b6a7
+  clock: 8  # b6a7
+  nonce: b6a7  # b6a7
+  message: "Wired in PR #1408. Status pending_validation, not satisfied: the scheduled full-suite has not fired on it yet. Satisfy after `ci-debug cron-status` shows self-tree-validation green with the ratchet running.\n\nINV-hokin: the WI-ratuv test-only-reachability ratchet now runs in the live scheduled pipeline, `.woodpecker/full-suite.yml` step `self-tree-validation`, on the map that step builds. It is not per-PR, per the owner's ruling.\n\nBehavioral evidence:\n- `tests/test_check_test_only_reachability_ci_wiring.py` runs the step's commands under `/bin/sh -e`. The step goes red on gate exit 1 and passes with a warning on exit 2. The two self-map ratchets cannot hide each other. Four YAML mutations each turned it red.\n- Run locally through the board against a current self-map, `scripts/check-test-only-reachability` exits 0 with the adjudicated baseline. A code mutation (a production function called only by a test) gives exit 1 naming exactly that key.\n- The mis-pinned teeth test (premise audit item 3) and `test_workflow_cli_invocation.py` now read `.woodpecker/`. The old versions stayed green under the same mutations that turn the new ones red.\n\nWhat this closure does not assert:\n- That the general statement holds for every gate. The full-suite and nightly diff was done by the premise audit, and per-package isolation is WI-sagar.\n- That the cron's first firing is green. CI's Python version and install set differ from the local run; check with `ci-debug cron-status`.\n\nResiduals filed: WI-mifup (8 unwired functions), WI-modip (scripts/ callers count as test-only), WI-sagar (no live per-package isolation).\n\n\nOWNER RATIFIED (2026-10-03) the baseline re-freeze in commit a2261d0770 (+21/-3, adjudicated in its commit message): 13 keys not dead (6 scripts/-only callers, 3 intended test callers, 4 test-only lookups; the gate blind spot is WI-modip), 8 truly unwired keys tracked on WI-mifup."  # b6a7

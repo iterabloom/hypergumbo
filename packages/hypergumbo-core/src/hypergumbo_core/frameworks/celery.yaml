@@ -7,6 +7,10 @@
 # Celery is a distributed task queue commonly used with Django/Flask
 # for background task processing, scheduled jobs, and async workflows.
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-06-18
 id: celery
 language: python
 

@@ -22,10 +22,10 @@ detector matches ``one proquint followed by one or more hyphen-separated
 proquints`` (i.e. ≥2 syllables total), which is the minimum that cannot
 be confused with a plain English word fragment.
 
-The regex is built once at TUI startup (or on config reload) and used
-lazily: the TUI scans only the currently-visible lines, not the full
-corpus, so this module returns match objects with positional info the
-caller can turn into hotspot spans.
+The regex is compiled once at TUI construction and applied to each
+rendered Description/Activity pane's full text (it is also reused by
+``clusters.id_pattern_for``); this module returns match objects with
+positional info the caller can turn into hotspot spans.
 
 Consumers:
 

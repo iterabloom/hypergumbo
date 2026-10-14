@@ -7,11 +7,11 @@ cross-reference relationships.
 
 How It Works
 ------------
-Uses TreeSitterAnalyzer base class for two-pass orchestration.
-The base class handles grammar checking, parser creation,
-and result assembly. This module overrides file discovery for
-LaTeX-specific patterns (.tex, .sty, .cls) and provides the
-LaTeX-specific extraction logic.
+Overrides ``analyze()`` with its own two-pass loop and builds the
+``AnalysisResult`` itself. It uses the TreeSitterAnalyzer base only for
+``_check_grammar_available()`` and ``_create_parser()``; file discovery
+(``_find_source_files()``, for .tex/.sty/.cls) is overridden here, and
+the module provides the LaTeX-specific extraction logic.
 
 Pass 1 (Symbol Extraction):
 - Sections: \section{}, \subsection{}, \chapter{}, etc.
@@ -20,8 +20,10 @@ Pass 1 (Symbol Extraction):
 - Custom environments: \newenvironment{} definitions
 
 Pass 2 (Edge Extraction):
-- Reference edges: \ref{}, \cite{}, \autoref{}, etc.
-- Include edges: \input{}, \include{}, \usepackage{}
+- Reference edges (``references``, meta ref_type label/citation):
+  \ref{}, \cite{}, \autoref{}, etc.
+- Include edges (``includes``): \input{}, \include{}
+- Package edges (``imports``): \usepackage{}
 
 LaTeX-Specific Considerations
 -----------------------------
@@ -30,15 +32,23 @@ LaTeX documents are structured differently from programming languages:
 - Cross-references use labels and refs
 - Packages extend functionality
 - Custom commands/environments define reusable constructs
+
+Identity (ADR-0035, WI-tusad): every symbol mints
+``overload_arity.scoped_stable_id``. A section or label is scoped by the
+titles of the sections enclosing it (the grammar nests ``\subsection`` in its
+``\section``), so ``\subsection{Setup}`` under ``Intro`` and under ``Usage``
+are two symbols that the floor key ``(kind, path, name)`` nulled. Command and
+environment definitions are global and take no scope.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, AbstractSet, Any, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     iter_tree,
     make_symbol_id,
     populate_docstrings_from_tree,
@@ -46,6 +56,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
@@ -72,7 +83,7 @@ def _find_child(
 
 
 def _find_all_descendants(
-    node: "tree_sitter.Node", target_types: set[str],
+    node: "tree_sitter.Node", target_types: AbstractSet[str],
 ) -> list["tree_sitter.Node"]:
     """Find all descendant nodes of given types."""
     results = []
@@ -98,6 +109,20 @@ def _get_curly_group_text(node: "tree_sitter.Node", source_bytes: bytes) -> str:
     return ""  # pragma: no cover
 
 
+_SECTION_TYPES = frozenset({
+    "chapter", "section", "subsection", "subsubsection",
+    "paragraph", "subparagraph",
+})
+
+
+def _section_chain(node: "tree_sitter.Node", source_bytes: bytes) -> list[str]:
+    """Titles of the sections enclosing ``node``, outermost first."""
+    return ancestor_labels(
+        node,
+        lambda n: _get_curly_group_text(n, source_bytes) if n.type in _SECTION_TYPES else None,
+    )
+
+
 def _extract_symbols_from_file(
     rel_path: str, source_bytes: bytes, tree: "tree_sitter.Tree", run: "AnalysisRun"
 ) -> list[Symbol]:
@@ -107,10 +132,7 @@ def _extract_symbols_from_file(
     root = tree.root_node
 
     # Section-like structures
-    section_types = {
-        "chapter", "section", "subsection", "subsubsection",
-        "paragraph", "subparagraph"
-    }
+    section_types = _SECTION_TYPES
 
     for node in _find_all_descendants(root, section_types):
         # Get section title from curly group
@@ -121,6 +143,10 @@ def _extract_symbols_from_file(
             symbols.append(
                 Symbol(
                     id=make_symbol_id("latex", rel_path, start_line, end_line, title, "section"),
+                    stable_id=scoped_stable_id(
+                        kind="section", lang="latex", path=rel_path, name=title,
+                        scope=_section_chain(node, source_bytes),
+                    ),
                     name=title,
                     kind="section",
                     language="latex",
@@ -154,6 +180,10 @@ def _extract_symbols_from_file(
             symbols.append(
                 Symbol(
                     id=make_symbol_id("latex", rel_path, start_line, end_line, label_name, "label"),
+                    stable_id=scoped_stable_id(
+                        kind="label", lang="latex", path=rel_path, name=label_name,
+                        scope=_section_chain(node, source_bytes),
+                    ),
                     name=label_name,
                     kind="label",
                     language="latex",
@@ -185,6 +215,9 @@ def _extract_symbols_from_file(
             symbols.append(
                 Symbol(
                     id=make_symbol_id("latex", rel_path, start_line, end_line, cmd_name, "command"),
+                    stable_id=scoped_stable_id(
+                        kind="command", lang="latex", path=rel_path, name=cmd_name,
+                    ),
                     name=cmd_name,
                     kind="command",
                     language="latex",
@@ -216,6 +249,9 @@ def _extract_symbols_from_file(
             symbols.append(
                 Symbol(
                     id=make_symbol_id("latex", rel_path, start_line, end_line, env_name, "environment"),
+                    stable_id=scoped_stable_id(
+                        kind="environment", lang="latex", path=rel_path, name=env_name,
+                    ),
                     name=env_name,
                     kind="environment",
                     language="latex",
@@ -394,7 +430,7 @@ class LatexAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(  # pragma: no cover
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Any],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

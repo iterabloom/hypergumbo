@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **338** Python modules (140 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 96 core, 4 CLI, 36 tracker)
-- **48937** symbols (functions, classes, methods)
-- **193199** edges by type:
-  - calls: 110788
-  - contains: 44875
-  - imports: 15492
-  - instantiates: 11721
-  - references: 7122
-  - module_attr_ref: 1667
-  - other: 1534
+- **358** Python modules (147 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 107 core, 4 CLI, 37 tracker)
+- **54950** symbols (functions, classes, methods)
+- **219198** edges by type:
+  - calls: 124241
+  - contains: 51183
+  - imports: 18489
+  - instantiates: 12420
+  - references: 9229
+  - module_attr_ref: 2003
+  - other: 1633
 
 ## Package Architecture
 
@@ -36,7 +36,7 @@ depend on core but not on each other, and the tracker is fully independent.
                 /       |       |        \
                v        v       v         v
   lang-mainstream  lang-common  lang-extended1  lang-rust-analyzer  lang-scip-python
-  (47 analyzers)  (38 analyzers)  (41 analyzers)   (5 SCIP backend)   (4 SCIP backend)
+  (51 analyzers)  (39 analyzers)  (41 analyzers)   (5 SCIP backend)   (4 SCIP backend)
                    \      |      |       /
                     v     v      v      v
                        hypergumbo-core
@@ -50,9 +50,9 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 62 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
-| **hypergumbo-lang-mainstream** | 47 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
-| **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 63 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-lang-mainstream** | 51 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
+| **hypergumbo-lang-common** | 39 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
 | **hypergumbo-lang-rust-analyzer** | SCIP-backed Rust analyzer (alternative to the tree-sitter Rust analyzer in `lang-mainstream`; activates with `--backend rust-analyzer`) |
 | **hypergumbo-lang-scip-python** | SCIP-backed Python analyzer (pyright via scip-python, beside the ast Python analyzer in `lang-mainstream`; executes nothing; activates with `--backend scip-python` or `[backends] scip_python = true`) |
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 48937 Symbols + 193199 Edges + UsageContexts           │
+│  Output: 54950 Symbols + 219198 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -104,7 +104,7 @@ Source Files
 │  Tier 2 edge recovery (ADR-3bbb — Protocol / Bridge /       │
 │  Framework / Infrastructure). Match via meta.concepts and       │
 │  symbol metadata across files and language boundaries.          │
-│  62 linkers: P11 / B10 / F32 / I9 (HTTP, JNI, gRPC, React, ...) │
+│  63 linkers: P11 / B11 / F32 / I9 (HTTP, JNI, gRPC, React, ...) │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,21 +279,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9873.4 | ir.py |
-| `len` | external_symbol | 7585.0 | <external> |
-| `write_text` | external_symbol | 6658.0 | <external> |
-| `Span` | class | 6507.5 | ir.py |
-| `LinkerContext` | class | 3544.1 | registry.py |
-| `get` | external_symbol | 3072.0 | <external> |
-| `load_catalog` | function | 2672.7 | io_boundary.py |
-| `Edge.create` | method | 2365.4 | ir.py |
-| `next` | external_symbol | 2145.0 | <external> |
-| `str` | external_symbol | 2125.0 | <external> |
-| `Path` | external_symbol | 2058.0 | <external> |
-| `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `TrackerApp` | class | 1946.9 | tui.py |
-| `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1654.0 | <external> |
+| `Symbol` | class | 10258.3 | ir.py |
+| `len` | external_symbol | 7922.0 | <external> |
+| `write_text` | external_symbol | 7107.0 | <external> |
+| `Span` | class | 6678.4 | ir.py |
+| `LinkerContext` | class | 3710.1 | registry.py |
+| `get` | external_symbol | 3462.0 | <external> |
+| `load_catalog` | function | 3312.5 | io_boundary.py |
+| `Edge.create` | method | 2478.2 | ir.py |
+| `str` | external_symbol | 2372.0 | <external> |
+| `Path` | external_symbol | 2341.0 | <external> |
+| `next` | external_symbol | 2230.0 | <external> |
+| `load_framework_patterns` | function | 2107.0 | framework_patterns.py |
+| `TrackerApp` | class | 1969.8 | tui.py |
+| `append` | external_symbol | 1848.0 | <external> |
+| `main` | function | 1781.4 | cli.py |
 
 ## Pattern System
 
@@ -361,20 +361,21 @@ patterns:
 
 ## YAML Catalogs (auto)
 
-The `hypergumbo-core` package ships 169 YAML catalog files across 10 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+The `hypergumbo-core` package ships 182 YAML catalog files across 11 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
 | Directory | Files | User channel | ADR | Loader | Purpose |
 |---|---:|---|---|---|---|
 | `frameworks/` | 107 | `frameworks.d` | ADR-3aaa | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
-| `dataflow_patterns/` | 20 | `dataflow_patterns.d` (`library_patterns` only) | ADR-0015 | `hypergumbo_core.dataflow` | Per-language dataflow access-mode classification rules. |
+| `dataflow_patterns/` | 21 | `dataflow_patterns.d` (`library_patterns` only) | ADR-0015 | `hypergumbo_core.dataflow` | Per-language dataflow access-mode classification rules. |
 | `io_primitives/` | 15 | `io_primitives.d` | ADR-0016 | `hypergumbo_core.io_boundary` | Per-language I/O primitive catalog (filesystem, network, subprocess, env, IPC, browser storage). |
 | `io_primitives_overlays/` | 8 | internal | ADR-0047 | `hypergumbo_core.io_boundary` | Community I/O primitive overlays that ship in the wheel and load by default, disclosed as unvouched (ADR-0047). |
-| `cfg_nodes/` | 5 | internal | ADR-0017 | `hypergumbo_core.cfg` | Per-language tree-sitter node mappings for the CFG builder. |
-| `taint_sources/` | 2 | `taint_sources.d` | ADR-0017 | `hypergumbo_core.taint` | Trust-zone source declarations for taint-flow analysis. |
-| `taint_sanitizers/` | 1 | `taint_sanitizers.d` | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
-| `function_summaries/` | 4 | `function_summaries.d` (gated) | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
+| `cfg_nodes/` | 6 | internal | ADR-0017 | `hypergumbo_core.cfg` | Per-language tree-sitter node mappings for the CFG builder. |
+| `taint_sources/` | 4 | `taint_sources.d` | ADR-0017 | `hypergumbo_core.taint` | Trust-zone source declarations for taint-flow analysis. |
+| `taint_sanitizers/` | 2 | `taint_sanitizers.d` | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
+| `taint_sinks/` | 2 | `taint_sinks.d` | ADR-0060 | `hypergumbo_core.taint` | Built-in taint sinks with NO I/O-boundary counterpart (code_execution, dom_injection); every I/O sink is derived from io_primitives instead. |
+| `function_summaries/` | 7 | `function_summaries.d` (gated) | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
 | `url_folding/` | 2 | internal | — | `hypergumbo_core.url_folding` | Per-idiom URL-folding declarations (string interpolation, array join, ...) wiring active route-detector languages to engine functions in hypergumbo_core.url_folding. |
-| `library_signatures/` | 5 | `library_signatures.d` | ADR-0006 | `hypergumbo_core.library_signatures` | Per-language library signatures: the type a producing function returns, so a receiver bound to a LIBRARY call can be typed at all. |
+| `library_signatures/` | 8 | `library_signatures.d` | ADR-0006 | `hypergumbo_core.library_signatures` | Per-language library signatures: the type a producing function returns, so a receiver bound to a LIBRARY call can be typed at all. |
 
 **User channel** (ADR-0047 ruling 7) names where a user's own rows for that family live, under `$XDG_CONFIG_HOME/hypergumbo/` — or `internal` when the family describes the *language's* world rather than the *user's* and takes no user input. The fields are required on `CatalogSpec`, so a new family cannot land without answering.
 
@@ -483,6 +484,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-fallback-coherence` | Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites. |
 | `check-forge-text-egress` | Pre-commit / CI lint: every forge-egress site must DECLARE how its |
 | `check-id-construction` | Pre-commit / CI lint: a node or edge id is minted, never hand-spelled |
+| `check-io-allowlist` | CI gate: every risky I/O call site in ``packages/*/src`` is on a reviewed allowlist. |
 | `check-io-boundary-drift` | Pre-commit lint: ``*BOUNDAR*`` sets in the tree must be subsets of the |
 | `check-measurement-frame` | Every measurement record must declare the frame it was produced under. |
 | `check-meta-write-discipline` | Pre-commit / CI lint: a multi-writer meta slot must declare its write |
@@ -505,6 +507,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `dead-code-prospector-run.py` | Lightweight one-shot dead-code-maybe prospecting run. |
 | `deleak-ledger` | Delete-only de-leaker for the dogfood issue ledger (agent_notes). |
 | `finetune-transcript-model` | G-Vendi-guided data selection and finetuning for the local transcript model. |
+| `generate-catalogues-doc` | Generate ``docs/CATALOGUES.md`` from the catalogue registry (ADR-0061 ruling 6). |
 | `generate-concept-axes` | Generate ``docs/concept-axes.md`` — a human-readable by-axis view |
 | `generate-concepts` | Generate docs/CONCEPTS.md — the concept-vocabulary registry. |
 | `generate-security-md` | Regenerate the audited-IO-surface section of SECURITY.md. |
@@ -539,6 +542,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure-symbol-id-colon-conformance.py` | Count symbol ids whose colon layout makes two parsers disagree (INV-fokik / WI-ribuz). |
 | `measure-taint-arm-census.py` | Census of PRODUCTION ``_ddg_taint_reaches`` calls, by arm, gate and verdict. |
 | `measure-taint-precision.py` | Of the taint flows hypergumbo reports as violations, how many are real? |
+| `measure_code_tree.py` | (no description) |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
 | `regenerate-backend-agreement-table` | Regenerate ``docs/audits/0019-backend-agreement-rust-aardvark-dns.md``. |
@@ -596,22 +600,26 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.backend_selection`**: Precedence resolution for per-backend opt-in decisions (ADR-0045 ru...
 - **`hypergumbo_core.backend_trust`**: Per-repository backend trust grants (ADR-0045 rulings 5-8).
 - **`hypergumbo_core.behavior_map_io`**: Deprecation shim: ``behavior_map_io`` was renamed to ``survey_io`` ...
+- **`hypergumbo_core.behaviours`**: A BEAM behaviour's shared shape: callback identity and the two edge...
 - **`hypergumbo_core.block_hash`**: AST-block hashing: the change unit for coverage-directed test selec...
 - **`hypergumbo_core.build_grammars`**: Build tree-sitter grammars from source for languages not available ...
+- **`hypergumbo_core.call_constructs`**: The declared vocabulary of ``Edge.meta["call_construct"]``, and wha...
 - **`hypergumbo_core.catalog`**: Catalog of available analysis passes (registry-derived).
-- **`hypergumbo_core.catalogue_home`**: ADR-0047 rulings 3 and 4 — a findable home for the user's catalogue...
+- **`hypergumbo_core.catalogue_home`**: ADR-0047 rulings 3 and 4: a findable home for the user's catalogue ...
 - **`hypergumbo_core.catalogue_inventory`**: WI-vafit — the inventory a USER needs of what this installation knows.
+- **`hypergumbo_core.catalogues_doc`**: Render ``docs/CATALOGUES.md``: the one user-facing page about catal...
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
 - **`hypergumbo_core.check_id_construction`**: Static enforcement of ADR-0034's id-construction discipline (WI-vod...
 - **`hypergumbo_core.check_recorded_producer_input`**: Static enforcement of ADR-0057 §12: cross-backend tests run on RECO...
 - **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
 - **`hypergumbo_core.confidence`**: Evidence -> confidence derivation (the ADR-0039 detection-reliabili...
+- **`hypergumbo_core.construction`**: A construction reaches the code that runs on construction (INV-rolo...
 - **`hypergumbo_core.coverage_census`**: Per-test coverage census and test-trajectory search.
 - **`hypergumbo_core.dataflow`**: YAML-driven dataflow classification for edges (ADR-0015).
 - **`hypergumbo_core.dataflow_scope`**: Published data-flow coverage scope for taint output — INV-karud cla...
 - **`hypergumbo_core.datamodels`**: Data model detection for code analysis.
 - **`hypergumbo_core.ddg_build`**: Repo-level DDG construction: walk a repo, build a CFG per function,...
-- **`hypergumbo_core.discovery`**: File discovery with exclude patterns, locale handling, and extensio...
+- **`hypergumbo_core.discovery`**: File discovery: excludes, installed-dependency detection, locales, ...
 - **`hypergumbo_core.edge_types`**: Canonical registry of edge types in hypergumbo's behavior map.
 - **`hypergumbo_core.entrypoints`**: Entrypoint detection for code analysis using YAML-driven pattern ma...
 - **`hypergumbo_core.evidence_types`**: Canonical registry of Edge.evidence_type values in hypergumbo's beh...
@@ -621,33 +629,39 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-3aaa).
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
 - **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
+- **`hypergumbo_core.in_repo_catalogues`**: In-repo catalogue data: the operator's opt-in, and what git says ab...
 - **`hypergumbo_core.io_boundary`**: I/O boundary analysis — catalogue, matching, tagging and map (ADR-0...
 - **`hypergumbo_core.io_boundary_types`**: Canonical registry of I/O-boundary values — the io-boundary axis (A...
 - **`hypergumbo_core.io_primitive_kinds`**: Canonical registry of I/O-primitive kinds — the io-primitive-kind a...
 - **`hypergumbo_core.ir`**: Internal Representation (IR) for code analysis.
-- **`hypergumbo_core.library_signatures`**: DRAFT for WI-lalot — the library-signature catalogue: what a librar...
+- **`hypergumbo_core.library_signatures`**: The library-signature catalogue: what a library producer RETURNS.
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
 - **`hypergumbo_core.member_names`**: Single home for the owner/member separator vocabulary in ``Symbol.n...
+- **`hypergumbo_core.meta_key_coherence`**: Producer-side registry gate for ``Edge.meta`` keys (WI-lijaz).
 - **`hypergumbo_core.meta_write_discipline`**: INV-hazov: static enforcement of ``MetaKeySpec.write_discipline``.
 - **`hypergumbo_core.metrics`**: Metrics computation for behavior map output.
 - **`hypergumbo_core.module_key_axis`**: The module-key axis: what may occupy a module slot (ADR-0051).
 - **`hypergumbo_core.multi_value_field_axis`**: Multi-value field axis declaration linter (WI-busij).
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
 - **`hypergumbo_core.noise_filter`**: Default-view noise predicate for the survey pipeline (Phase D).
+- **`hypergumbo_core.overload_arity`**: Choose among same-named callables by the call's argument count.
+- **`hypergumbo_core.owner_ancestry`**: A call on an in-repo type it does not define reaches the type's LIB...
 - **`hypergumbo_core.partial_install_warnings`**: Runtime warnings for partial installations (ADR-0010 Item 8).
+- **`hypergumbo_core.pass_clock`**: Per-pass cost clock: a pass's wall time AND its own-thread CPU time.
 - **`hypergumbo_core.pass_metadata`**: Per-pass metadata lookup for the finalize stage (run-lifecycle:F1 /...
 - **`hypergumbo_core.pass_silence`**: Canonical pass-silence-reason axis (INV-bikaj / INV-hujog, arc T6).
 - **`hypergumbo_core.paths`**: Centralized path handling utilities for hypergumbo.
 - **`hypergumbo_core.producer_coherence`**: Producer-side axis-coherence linter for Edge / Symbol constructors.
 - **`hypergumbo_core.profile`**: Repo profile detection - language and framework heuristics.
 - **`hypergumbo_core.protocol_origins`**: Canonical registry of ``Symbol.protocol_origin`` values (ADR-0031).
+- **`hypergumbo_core.python_stdlib_versions`**: Which top-level modules are Python standard library on SOME supported
 - **`hypergumbo_core.qualified_name_axis`**: Per-language separator policy for ``Symbol.qualified_name`` (ADR-00...
 - **`hypergumbo_core.ranking`**: Symbol and file ranking utilities for hypergumbo output.
 - **`hypergumbo_core.receiver_blind_magnets`**: INV-fahub receiver-blind method-magnet detector (language-agnostic).
 - **`hypergumbo_core.repo_fingerprint`**: Repository fingerprint: spec-defined hash of analyzed code state.
 - **`hypergumbo_core.repo_tier_offer`**: ADR-0047 ruling 9 — the developer-audience offer, and the decision ...
-- **`hypergumbo_core.routes`**: Canonical route accessor — one place to answer "is this symbol a ro...
+- **`hypergumbo_core.routes`**: Canonical route accessor: decides route-ness and extracts path, met...
 - **`hypergumbo_core.runtime_coherence`**: Runtime corpus-based coherence check for the ADR-0023 edge-type axis.
 - **`hypergumbo_core.rust_analyzer_install`**: Installer + availability helpers for the ``rust-analyzer`` binary (...
 - **`hypergumbo_core.safety_zones`**: Hypergumbo's internal write wrappers — declare each write's safety ...
@@ -677,8 +691,9 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.taxonomy`**: File taxonomy classification (ADR-0004).
 - **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
 - **`hypergumbo_core.test_only_reachability`**: WI-ratuv: a production function whose only callers live in test mod...
-- **`hypergumbo_core.user_config`**: User and project configuration files (ADR-0045 rulings 1, 2, 3).
+- **`hypergumbo_core.user_config`**: User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ...
 - **`hypergumbo_core.validation_ratchet`**: Shrink-only ratchet comparison for validation-report violation matr...
+- **`hypergumbo_core.value_flow`**: Static string-value flow inside one module, for the registry gates.
 - **`hypergumbo_core.verify_claims`**: Security claim verification against I/O boundary and taint-flow ana...
 - **`hypergumbo_core.visibility`**: Canonical visibility axis (INV-jusot).
 - **`hypergumbo_core.yaml_catalogs`**: Canonical registry of YAML catalog directories shipped under hyperg...
@@ -687,11 +702,14 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 - **`hypergumbo_core.analyze.all_analyzers`**: Analyzer orchestration + the stable analyzer-dispatch import points.
 - **`hypergumbo_core.analyze.base`**: Base classes and utilities for language analyzers.
+- **`hypergumbo_core.analyze.c_family`**: The C-family declarator walk: where a C, C++ or CUDA definition nam...
 - **`hypergumbo_core.analyze.cyclomatic`**: Grammar-agnostic McCabe cyclomatic-complexity walker + decision-poi...
+- **`hypergumbo_core.analyze.edge_source`**: Where an edge comes FROM: the src of every edge is an emitted symbo...
 - **`hypergumbo_core.analyze.merge_producers`**: The merge pass: two producers' records for one declaration become one
 - **`hypergumbo_core.analyze.registry`**: Analyzer registry for decorator-based dynamic dispatch.
 - **`hypergumbo_lang_mainstream.bash`**: Bash/shell script analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.c`**: C analysis pass using tree-sitter-c.
+- **`hypergumbo_lang_mainstream.c_def_use`**: C def/use extractor for intraprocedural dataflow (ADR-0017 §1c, WI-...
 - **`hypergumbo_lang_mainstream.cmake`**: CMake analysis pass using tree-sitter-cmake.
 - **`hypergumbo_lang_mainstream.cpp`**: C++ analysis pass using tree-sitter-cpp.
 - **`hypergumbo_lang_mainstream.csharp`**: C# analysis pass using tree-sitter-c-sharp.
@@ -701,9 +719,11 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_mainstream.go`**: Go analysis pass using tree-sitter-go.
 - **`hypergumbo_lang_mainstream.go_def_use`**: Go def/use extractor for intraprocedural dataflow analysis (ADR-001...
 - **`hypergumbo_lang_mainstream.groovy`**: Groovy analysis pass using tree-sitter-groovy.
+- **`hypergumbo_lang_mainstream.header_owner`**: Which of the C, C++ and ObjC analyzers owns a ``.h`` file (WI-somod).
 - **`hypergumbo_lang_mainstream.html`**: HTML script tag analysis pass.
 - **`hypergumbo_lang_mainstream.ini`**: INI configuration file analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.java`**: Java analysis pass using tree-sitter-java.
+- **`hypergumbo_lang_mainstream.java_def_use`**: Java def/use extractor for intraprocedural dataflow (ADR-0017 §1c, ...
 - **`hypergumbo_lang_mainstream.js_ts`**: JavaScript/TypeScript/Svelte/Vue analysis pass using tree-sitter.
 - **`hypergumbo_lang_mainstream.json_config`**: JSON configuration analysis pass using tree-sitter-json.
 - **`hypergumbo_lang_mainstream.jupyter`**: Jupyter notebook (.ipynb) analyzer.
@@ -714,6 +734,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_mainstream.make`**: Makefile analysis pass using tree-sitter-make.
 - **`hypergumbo_lang_mainstream.manifest_targets`**: Build-target extraction from language-specific manifest files.
 - **`hypergumbo_lang_mainstream.markdown`**: Markdown documentation analyzer using tree-sitter.
+- **`hypergumbo_lang_mainstream.npm_deps`**: npm dependency manifest parsing (``package.json`` + lockfiles).
 - **`hypergumbo_lang_mainstream.objc`**: Objective-C analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.perl`**: Perl analysis pass using tree-sitter.
 - **`hypergumbo_lang_mainstream.php`**: PHP analysis pass using tree-sitter-php.
@@ -742,7 +763,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_common.commonlisp`**: Common Lisp analysis pass using tree-sitter.
 - **`hypergumbo_lang_common.cuda`**: CUDA analysis pass using tree-sitter-cuda.
 - **`hypergumbo_lang_common.dart`**: Dart/Flutter analysis pass using tree-sitter.
-- **`hypergumbo_lang_common.elixir`**: Elixir analysis pass using tree-sitter-elixir.
+- **`hypergumbo_lang_common.elixir`**: Elixir analysis pass using the tree-sitter-language-pack Elixir gra...
 - **`hypergumbo_lang_common.elm`**: Elm analysis pass using tree-sitter.
 - **`hypergumbo_lang_common.erlang`**: Erlang analysis pass using tree-sitter.
 - **`hypergumbo_lang_common.fortran`**: Fortran analysis pass using tree-sitter-fortran.
@@ -758,6 +779,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_common.latex`**: LaTeX analyzer using tree-sitter.
 - **`hypergumbo_lang_common.matlab`**: MATLAB language analyzer using tree-sitter.
 - **`hypergumbo_lang_common.meson`**: Meson build system analyzer using tree-sitter.
+- **`hypergumbo_lang_common.mix_deps`**: Mix dependency manifest parsing (``mix.exs`` + ``mix.lock``).
 - **`hypergumbo_lang_common.nix`**: Nix expression analysis pass using tree-sitter-nix.
 - **`hypergumbo_lang_common.ocaml`**: OCaml analysis pass using tree-sitter-ocaml.
 - **`hypergumbo_lang_common.proto`**: Protocol Buffers (Proto) analysis pass using tree-sitter.
@@ -832,6 +854,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.airflow_framework_dispatch`**: Framework linker: Airflow class-based plugin framework dispatch (WI...
 - **`hypergumbo_core.linkers.annotation_convention`**: Protocol linker: annotation convention for developer-provided pub/s...
 - **`hypergumbo_core.linkers.argparse_dispatch`**: Framework linker: Python argparse subcommand dispatch.
+- **`hypergumbo_core.linkers.beam_behaviour`**: Bridge linker: an Elixir ``@behaviour :mod`` reaches the in-repo Er...
 - **`hypergumbo_core.linkers.build_target`**: Infrastructure linker: build target for connecting manifest entries...
 - **`hypergumbo_core.linkers.caddy_module_dispatch`**: Framework linker: Caddy module-registry dispatch (RegisterModule → ...
 - **`hypergumbo_core.linkers.cgo`**: Bridge linker: Cgo for connecting Go C function calls to C/C++ impl...
@@ -870,7 +893,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.phoenix_ipc`**: Framework linker: Phoenix Channels IPC for detecting Elixir IPC pat...
 - **`hypergumbo_core.linkers.pyffi`**: Bridge linker: Python FFI, joining ctypes/cffi calls to C/C++ and P...
 - **`hypergumbo_core.linkers.react_component`**: Framework linker: React component for detecting JSX composition edges.
-- **`hypergumbo_core.linkers.receiver_type_dispatch`**: Infrastructure linker: resolve non-hierarchy ``x.foo()`` calls via a
+- **`hypergumbo_core.linkers.receiver_type_dispatch`**: Infrastructure linker: resolve extension-method and UFCS calls via ...
 - **`hypergumbo_core.linkers.route_handler`**: Framework linker: route-handler for connecting routes to their hand...
 - **`hypergumbo_core.linkers.router_routes`**: Framework linker: router → route registrations containment.
 - **`hypergumbo_core.linkers.ruby_ffi`**: Bridge linker: Ruby FFI gem calls and C-extension registrations to ...
@@ -916,6 +939,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_tracker.nav_history`**: Browser-style navigation history for the tracker TUI's item-nav modal.
 - **`hypergumbo_tracker.preview`**: Inline SVG preview for TUI discussion threads (ADR-0020 Part 2).
 - **`hypergumbo_tracker.preview_pipeline`**: SVG→PNG→ANSI rendering pipeline with graceful degradation (ADR-0020).
+- **`hypergumbo_tracker.priority_trend`**: Mean priority of the open items, day by day, replayed from the op l...
 - **`hypergumbo_tracker.protected_config`**: Host-level protected tracker config: the only location an agent can...
 - **`hypergumbo_tracker.race_log`**: Forensic log for transient I/O races on tracker ``.ops`` files.
 - **`hypergumbo_tracker.screenshot_save`**: Screenshot save and auto-create tracker item (ADR-0020, WI-rujoz).
@@ -941,8 +965,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: d1aac58fa380
-  commit_count: 7605
-  hypergumbo: 8.0.0
+  commit: b0c9ee187200
+  commit_count: 8301
+  hypergumbo: 8.1.0
   python: 3.12.3
 -->

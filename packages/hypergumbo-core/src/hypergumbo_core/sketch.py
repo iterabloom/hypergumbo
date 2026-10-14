@@ -7,27 +7,48 @@ is token-budgeted to fill the available context.
 
 How It Works
 ------------
-``generate_sketch`` emits up to 13 sections in priority order. Each
-section is gated on (a) data availability and (b) remaining token
-budget. Section budget allocation follows ADR-0005 (Entry Points
+``generate_sketch`` emits up to 13 sections in priority order. The
+base sections (1-6) are built unconditionally and joined first; if
+they alone reach the budget (and no ``require_sections`` is set),
+the truncated base is returned. Sections 7-9 and 11-13 are each
+gated on data availability and remaining budget (``_section_ok``). Key Symbols is not budget-gated: it renders
+at least ``MIN_KEY_SYMBOLS`` (5) entries whenever analysis yields
+symbols. A final ``truncate_to_tokens`` pass then trims the whole
+sketch. Section budget allocation follows ADR-0005 (Entry Points
 ~33% of remaining; Data Models ~20%; Source Files Content ~75% of
 what remains after the structural sections; etc.).
 
 Sections in emission order:
 1.  Header — repo name, plus the README-derived elevator pitch when
     one is available (always)
-2.  Overview — language breakdown and LOC estimate
-3.  Structure — top-level directory tree
-4.  Frameworks — detected build systems / web frameworks /
-    test frameworks
+2.  Overview — language breakdown and LOC estimate, plus the
+    installed-dependency-source disclosure line when deps were skipped and
+    the generated-output disclosure line when generated output was pruned
+3.  Structure — tree of paths to important files across up to 10 root
+    dirs (top-level listing when there are none)
+4.  Frameworks — the profile's detected frameworks plus its dev/test-only
+    frameworks (annotated ``(dev)``), in one alphabetical list
 5.  Tests — test framework + estimated coverage breakdown
-6.  Configuration — config-file callouts (``CONFIG_FILES_BY_LANG``).
-    Environment variables and dotenv keys are NOT extracted
+6.  Configuration — config-file callouts (``CONFIG_FILES_BY_LANG``),
+    extracted per ``config_extraction_mode``: heuristic (known-field
+    patterns), embedding (semantic line selection, plus embedding
+    discovery of config files outside ``CONFIG_FILES_BY_LANG`` via
+    ``_discover_config_files_embedding``), or hybrid (heuristic, then
+    embedding for the leftover budget). The ``sketch`` CLI defaults to
+    ``--config-extraction hybrid``; embedding modes fall back to
+    heuristic when sentence-transformers is unavailable.
+    Heuristic mode extracts no environment variables or dotenv keys;
+    embedding/hybrid (the CLI default) can surface ENV /
+    ``environment:`` lines from Dockerfile and docker-compose files.
 7.  Entry Points — CLI commands, HTTP routes, IPC handlers,
-    cron / scheduler entries
+    cron / scheduler entries, grouped by kind; one entry budget is
+    shared across the groups (``_share_entry_budget``) so a repo with
+    hundreds of routes and exports cannot flood the sketch
 8.  Data Models — dataclasses, ORM entities, schema definitions,
     with the four-strategy detection from ``datamodels.py``
-9.  Source Files — centrality-ranked file list with stats
+9.  Source Files — file paths (with module docstring when known),
+    ordered by ``rank_files`` density score when analysis ran, then
+    "... and N more files"
 10. Key Symbols — top symbols by dampened centrality
 11. Additional Files — always emitted when the budget allows;
     ``--with-source`` shrinks its budget to 5% rather than gating it
@@ -35,19 +56,41 @@ Sections in emission order:
     (only when ``with_source=True``)
 13. Additional Files Content — full source for additional files
 
+Data source
+-----------
+``generate_sketch`` is a thin wrapper around ``_generate_sketch_impl``, which
+holds the section logic. When a behavior map is available (``cached_results``
+from ``--input``, or a warm survey.json in the results cache), the wrapper
+installs a synthetic ``FileIndex`` built from the map's node paths for the
+duration of the call. Test counting, language detection, source-file
+discovery and the Structure tree then summarize the map's files instead of
+re-walking the working tree. Given no ``cached_results``,
+``_generate_sketch_impl`` auto-discovers the cached survey.json. On a cold
+cache it runs ``run_behavior_map`` and loads the fresh map. A
+``CatalogueError`` propagates; other discovery errors fall back to direct
+profile detection and analysis. Profile, symbols and edges come from the map,
+and its ``sketch_precomputed`` block, when present, supplies the README
+description, config info and additional-file centrality scores.
+
 Behavioral flags
 ----------------
 - ``with_source`` — include sections 12-13 (full file content).
 - ``require_sections`` — force-include the named sections even when
   the token budget is exhausted, and skip final truncation. It does not
   raise; it overrides the budget gate (WI-nakam).
-- ``stats_out`` — emit per-section size statistics for sketch
-  tuning experiments.
-- ``language_proportional`` — switch from global ranking to
-  per-language proportional selection (avoids one language
-  dominating the sketch on polyglot repos).
-- ``--no-sketch-fan-out`` (CLI) — skip producing per-handler
-  fan-out sketch files alongside the main sketch.
+- ``stats_out`` — a ``SketchStats`` to fill with representativeness
+  mass (per-section in-degree and confidence sums plus ``has_*`` flags,
+  against repo totals) for the "How Representative Is This Sketch?"
+  table.
+- ``config_extraction_mode`` — heuristic / embedding / hybrid config
+  extraction for section 6 (function default heuristic).
+- ``language_proportional`` (default True) — language-stratified
+  Phase-1 Key Symbols selection (avoids one language dominating on
+  polyglot repos).
+- ``--no-sketch-fan-out`` (``survey`` CLI, not ``sketch``) — skip the
+  ``<stem>.{4k,16k,64k}.json`` sketch-tier preview files written next
+  to ``--out`` (equivalent to ``--budgets none``). Per-handler slice
+  output is suppressed separately by ``--no-handler-slices``.
 
 Token budgeting uses a simple heuristic (~4 chars per token) which is
 accurate enough for approximate sizing. There is no exact-tokenizer
@@ -57,11 +100,13 @@ Centrality dampening
 --------------------
 Symbol ranking flows through ``compute_dampened_centrality``, which
 applies the pinned ``_CANONICAL_DAMPENERS`` stage stack — seven stages:
-tier, noise, utility, common_method, trivial_sink, generated, file_kind.
+tier, noise, utility, common_method, trivial_sink, generated, file_kind
+(Key Symbols skips file_kind, a no-op there since kind='file' symbols
+are pre-filtered).
 (The sibling-impl group weighting was removed by WI-karad.) The stack
-order is invariant — its pinning
-tests live alongside this module and catch internal-reorder
-regressions a tuple-identity check would miss.
+order is invariant — ``_CANONICAL_DAMPENERS`` is defined in
+``ranking.py`` and pinned by
+``tests/test_ranking.py::test_canonical_dampener_order_pinned``.
 
 Why Progressive Expansion
 -------------------------
@@ -79,7 +124,11 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional
 if TYPE_CHECKING:
     from .discovery import FileIndex
 
-from .discovery import find_files, DEFAULT_EXCLUDES
+from .discovery import (
+    DEFAULT_EXCLUDES, DEPENDENCY_DIR_NAMES, find_files,
+    format_generated_output_disclosure, format_installed_deps_disclosure,
+    match_content_rule, under_content_rule_dir,
+)
 from .profile import detect_profile, RepoProfile
 from .ir import Symbol, Edge, is_external_boundary
 from .paths import names_no_source_file
@@ -108,6 +157,7 @@ from .selection.token_budget import (
     truncate_to_tokens,
 )
 from .taxonomy import SOURCE_EXTENSIONS, is_additional_file_candidate
+from .yaml_catalogs import CatalogueError
 from dataclasses import dataclass
 
 
@@ -849,17 +899,25 @@ CONFIG_FILES_BY_LANG: dict[str, list[str]] = {
 }
 
 # Flatten for backwards compatibility
-CONFIG_FILES = list({
+# Ordered dedup in declaration order. ``list({...})`` was per-process
+# str-hash order, so the Configuration section's root manifests (and, under
+# its line cap, WHICH of them were shown) changed between runs (WI-vosag).
+CONFIG_FILES = list(dict.fromkeys(
     f for files in CONFIG_FILES_BY_LANG.values() for f in files
-})
+))
 
 # Subdirectories to check for config files (monorepo support)
 CONFIG_SUBDIRS = ["", "server", "client", "backend", "frontend", "src", "app", "api"]
 
 # Exact-name manifest files for monorepo discovery (depth 1-2 glob).
-# Derived from CONFIG_FILES_BY_LANG, excluding glob patterns like *.csproj.
-_MONOREPO_MANIFEST_NAMES: frozenset[str] = frozenset(
-    f for files in CONFIG_FILES_BY_LANG.values() for f in files if "*" not in f
+# Derived from CONFIG_FILES, excluding glob patterns like *.csproj. A tuple in
+# declaration order, NOT a frozenset: _collect_config_content iterates it to
+# build the embedding candidate list, and the 15-file cap and first-come
+# cross-file dedup downstream turn that order into WHICH files the
+# Configuration section shows, so set (str-hash) order made it vary with
+# PYTHONHASHSEED (INV-rikor).
+_MONOREPO_MANIFEST_NAMES: tuple[str, ...] = tuple(
+    f for f in CONFIG_FILES if "*" not in f
 )
 
 # Key dependencies to highlight (db drivers, frameworks, etc.)
@@ -1000,7 +1058,8 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             for dep_type in ["dependencies", "devDependencies"]:
                 if dep_type in data and isinstance(data[dep_type], dict):
                     deps = data[dep_type]
-                    for dep_name in INTERESTING_DEPS:
+                    # sorted: INTERESTING_DEPS is a frozenset (WI-vosag)
+                    for dep_name in sorted(INTERESTING_DEPS):
                         if dep_name in deps:
                             info.append(f"{dep_name}: {deps[dep_name]}")
 
@@ -1033,7 +1092,7 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
                 "labstack/echo", "gofiber/fiber", "lib/pq", "go-sql-driver/mysql",
                 "jackc/pgx", "go-redis/redis", "mongodb/mongo-go-driver",
             }
-            for dep in interesting_go:
+            for dep in sorted(interesting_go):  # a set: fix the order
                 if dep in content:
                     extracted.append(dep.split("/")[-1])
 
@@ -1170,7 +1229,7 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
 
             # Key gems
             interesting_gems = {"rails", "sinatra", "puma", "devise", "sidekiq", "redis", "pg", "mysql2"}
-            for gem in interesting_gems:
+            for gem in sorted(interesting_gems):  # a set: fix the order
                 if re.search(rf"gem\s+['\"]({gem})['\"]", content):
                     extracted.append(gem)
 
@@ -1215,7 +1274,9 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
     # Mirrors _collect_config_content's glob so heuristic (and HYBRID-fallback)
     # config_info reports every sub-package's identity on a monorepo (WI-lirub).
     # Matches are sorted and grouped by manifest kind for deterministic output.
-    _manifest_exclude = _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES)
+    _manifest_exclude = (
+        _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES) | DEPENDENCY_DIR_NAMES
+    )
     for manifest_name, extractor in _extractors.items():
         matches: list[Path] = []
         for pattern in (f"*/{manifest_name}", f"*/*/{manifest_name}"):
@@ -1229,6 +1290,8 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             rel = match.relative_to(repo_root)
             if any(p.startswith(".") or p in _manifest_exclude for p in rel.parts[:-1]):
                 continue
+            if under_content_rule_dir(repo_root, rel.parts[:-1]):
+                continue
             prefix = f"{rel.parent.as_posix()}/"
             lines.extend(extractor(match, prefix))
             seen_manifest_paths.add(resolved)
@@ -1237,7 +1300,9 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
     # package dirs (depth 1-2). A dual-licensed monorepo — e.g. an AGPL root plus
     # an MPL sub-package — must report every distinct license rather than
     # collapsing to the first file found (WI-gojuz).
-    _license_exclude = _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES)
+    _license_exclude = (
+        _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES) | DEPENDENCY_DIR_NAMES
+    )
     license_paths: list[Path] = []
     seen_license_paths: set[Path] = set()
     for license_name in LICENSE_FILES:
@@ -1246,16 +1311,16 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             license_paths.append(root_license)
             seen_license_paths.add(root_license.resolve())
         for pattern in (f"*/{license_name}", f"*/*/{license_name}"):
-            for match in repo_root.glob(pattern):
+            for match in sorted(repo_root.glob(pattern)):
                 if not match.is_file():
                     continue  # pragma: no cover
                 resolved = match.resolve()
                 if resolved in seen_license_paths:
                     continue  # pragma: no cover
+                lic_dirs = match.relative_to(repo_root).parts[:-1]
                 if any(
-                    p.startswith(".") or p in _license_exclude
-                    for p in match.relative_to(repo_root).parts[:-1]
-                ):
+                    p.startswith(".") or p in _license_exclude for p in lic_dirs
+                ) or under_content_rule_dir(repo_root, lic_dirs):
                     continue
                 license_paths.append(match)
                 seen_license_paths.add(resolved)
@@ -1314,26 +1379,36 @@ def _collect_config_content(
 
     # Monorepo discovery: scan depth 1-2 for manifest files.
     # Catches packages/core/pyproject.toml, services/api/package.json, etc.
-    _exclude_dirs = _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES)
+    # Manifest kinds go in declaration order and each kind's matches are
+    # sorted (glob yields filesystem order), mirroring
+    # _extract_config_heuristic: this list's order decides which files survive
+    # _extract_config_embedding's file cap and cross-file dedup (INV-rikor).
+    _exclude_dirs = (
+        _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES) | DEPENDENCY_DIR_NAMES
+    )
     for manifest_name in _MONOREPO_MANIFEST_NAMES:
+        matches: list[Path] = []
         for pattern in (f"*/{manifest_name}", f"*/*/{manifest_name}"):
-            for match in repo_root.glob(pattern):
-                if not match.is_file():
-                    continue  # pragma: no cover
-                resolved = match.resolve()
-                if resolved in seen_paths:
-                    continue
-                # Skip hidden dirs and excluded dirs
-                rel = match.relative_to(repo_root)
-                parts = rel.parts[:-1]  # directory components only
-                if any(p.startswith(".") or p in _exclude_dirs for p in parts):
-                    continue
-                try:
-                    content = match.read_text(encoding="utf-8", errors="replace")
-                    config_content.append((str(rel), content))
-                    seen_paths.add(resolved)
-                except OSError:  # pragma: no cover
-                    pass  # pragma: no cover
+            matches.extend(repo_root.glob(pattern))
+        for match in sorted(matches):
+            if not match.is_file():
+                continue  # pragma: no cover
+            resolved = match.resolve()
+            if resolved in seen_paths:
+                continue
+            # Skip hidden dirs and excluded dirs
+            rel = match.relative_to(repo_root)
+            parts = rel.parts[:-1]  # directory components only
+            if any(p.startswith(".") or p in _exclude_dirs for p in parts):
+                continue
+            if under_content_rule_dir(repo_root, parts):
+                continue
+            try:
+                content = match.read_text(encoding="utf-8", errors="replace")
+                config_content.append((str(rel), content))
+                seen_paths.add(resolved)
+            except OSError:  # pragma: no cover
+                pass  # pragma: no cover
 
     return config_content, seen_paths
 
@@ -1364,7 +1439,9 @@ def _get_repo_languages(repo_root: Path) -> set[str]:
                     if len(languages) > 10:  # pragma: no cover - early exit
                         break
         else:  # pragma: no cover - only without global FileIndex
-            for item in repo_root.rglob("*"):
+            # sorted: the >10 early exit makes WHICH languages are detected
+            # depend on visit order, and rglob yields filesystem order
+            for item in sorted(repo_root.rglob("*")):
                 if item.is_file():
                     ext = item.suffix.lower()
                     if ext in ext_to_lang:
@@ -1431,9 +1508,10 @@ def _discover_config_files_embedding(
     if not relevant_configs:  # pragma: no cover
         relevant_configs = set(CONFIG_FILES)
 
-    # Get base names (strip glob patterns)
+    # Get base names (strip glob patterns). sorted: relevant_configs is a set,
+    # and every order-dependent step below must not see str-hash order.
     known_names = []
-    for name in relevant_configs:
+    for name in sorted(relevant_configs):
         if "*" in name:  # pragma: no cover - glob patterns
             # For patterns like "*.csproj", use the extension as semantic hint
             known_names.append(name.replace("*", "config"))
@@ -1448,15 +1526,21 @@ def _discover_config_files_embedding(
         if file_index is not None and file_index.repo_root == repo_root:
             all_items = file_index.all_files()
         else:
-            all_items = [f for f in repo_root.rglob("*") if f.is_file()]
+            # sorted like FileIndex.all_files(): candidate order feeds the
+            # max_candidates truncation's tie-break
+            all_items = sorted(f for f in repo_root.rglob("*") if f.is_file())
         for item in all_items:
             # Skip hidden directories and common non-config paths
             parts = item.relative_to(repo_root).parts
             if any(p.startswith(".") and p not in {".ruby-version"} for p in parts[:-1]):
                 continue  # pragma: no cover - hidden dir filtering
             if any(p in {"node_modules", "vendor", "venv", ".venv", "__pycache__",
-                        "dist", "build", "target", "_build", "deps"} for p in parts):
+                        "deps"} for p in parts):
                 continue  # pragma: no cover - common non-config dirs
+            # Generated output by its tool's evidence, never by a bare
+            # ``build``/``dist``/``target`` name (ADR-0004 point 7).
+            if under_content_rule_dir(repo_root, parts[:-1]):
+                continue  # pragma: no cover - the index already pruned these
 
             # Check parent directory size (skip if too large)
             parent = item.parent
@@ -1587,7 +1671,7 @@ def _collect_config_content_with_discovery(
             for subdir in CONFIG_SUBDIRS:
                 search_dir = repo_root / subdir if subdir else repo_root
                 if search_dir.exists():
-                    for match in search_dir.glob(config_name):
+                    for match in sorted(search_dir.glob(config_name)):
                         resolved = match.resolve()
                         if match.is_file() and resolved not in seen_paths:
                             try:
@@ -1601,11 +1685,16 @@ def _collect_config_content_with_discovery(
     if not use_discovery:
         return config_content  # pragma: no cover - discovery disabled
 
-    # Discover additional config files using embeddings
+    # Discover additional config files using embeddings. sorted: a set, and
+    # appended order decides which files survive the downstream file cap
+    # (INV-rikor). seen_paths holds RESOLVED paths, so compare resolved — the
+    # unresolved path never matched under a relative or symlinked repo_root,
+    # and a manifest already collected was appended a second time.
     discovered = _discover_config_files_embedding(repo_root)
 
-    for path in discovered:  # pragma: no cover - discovery integration
-        if path in seen_paths:
+    for path in sorted(discovered):  # pragma: no cover - discovery integration
+        resolved = path.resolve()
+        if resolved in seen_paths:
             continue
         try:
             rel_path = path.relative_to(repo_root)
@@ -1613,7 +1702,7 @@ def _collect_config_content_with_discovery(
                 continue
             content = path.read_text(encoding="utf-8", errors="replace")
             config_content.append((str(rel_path), content))
-            seen_paths.add(path)
+            seen_paths.add(resolved)
         except OSError:
             pass
 
@@ -1884,7 +1973,7 @@ def _extract_config_embedding(
     total_files = min(len(config_content), max_config_files)
 
     for source, content in config_content:
-        if processed_files >= max_config_files:  # pragma: no cover
+        if processed_files >= max_config_files:
             break
 
         # Skip files in excluded directories or with excluded filenames
@@ -2312,7 +2401,7 @@ def _extract_config_info(
 
     Supports three extraction modes:
     - HEURISTIC: Fast pattern-based extraction of known fields (default)
-    - EMBEDDING: Semantic selection using UnixCoder + question centroid
+    - EMBEDDING: Semantic selection using UnixCoder + top-k mean probe similarity
     - HYBRID: Heuristics first, then embeddings for remaining budget
 
     For long config files (e.g., package.json with hundreds of deps), only
@@ -2621,6 +2710,118 @@ class _TestAnalysis:
             self.frameworks = set()
 
 
+# How many test files framework detection reads. Each read is capped at
+# 5 000 chars, so this bounds detection at ~1 MB of I/O on any repo.
+_TEST_FRAMEWORK_SAMPLE_BUDGET = 200
+
+
+def _sample_test_files_for_frameworks(
+    test_files: List[Path],
+    repo_root: Path,
+    budget: int = _TEST_FRAMEWORK_SAMPLE_BUDGET,
+) -> List[Path]:
+    """Pick a bounded, representative, order-independent set of test files.
+
+    Why stratify: frameworks cluster by language and by sub-project. A repo
+    whose tests are 2 700 ExUnit scripts plus five vitest files under
+    ``extension/`` needs one of those five read, and a first-N sample of any
+    order is dominated by the majority. Files are grouped by
+    ``(suffix, top-level directory)``; the budget is dealt round-robin across
+    the strata (sorted), so every stratum gets a file before any gets a
+    second, and up to ``budget`` strata are covered. Within a stratum the
+    picks are spread evenly over its sorted paths rather than taken from the
+    front, so one alphabetical corner does not stand for the whole directory.
+
+    Why sort everything: the result must be a function of the SET of paths
+    only — never of walk order, which is what made WI-vosag's Tests line
+    differ between two runs on identical files.
+
+    Args:
+        test_files: Test file paths (any order, no duplicates).
+        repo_root: Root the paths are relative to (for the stratum key).
+        budget: Maximum number of files to return.
+
+    Returns:
+        The sample, sorted by stratum then path.
+    """
+    strata: dict[tuple[str, str], List[Path]] = {}
+    for path in test_files:
+        try:
+            parts = path.relative_to(repo_root).parts
+        except ValueError:  # pragma: no cover - callers pass in-repo paths
+            parts = path.parts
+        top = parts[0] if len(parts) > 1 else ""
+        strata.setdefault((path.suffix.lower(), top), []).append(path)
+
+    keys = sorted(strata)
+    members = {k: sorted(strata[k], key=str) for k in keys}
+
+    # Round-robin quota: one more file per stratum per round until the budget
+    # or every stratum is exhausted.
+    quota = dict.fromkeys(keys, 0)
+    remaining = budget
+    progressed = True
+    while remaining > 0 and progressed:
+        progressed = False
+        for k in keys:
+            if remaining == 0:
+                break
+            if quota[k] < len(members[k]):
+                quota[k] += 1
+                remaining -= 1
+                progressed = True
+
+    sample: List[Path] = []
+    for k in keys:
+        n, q = len(members[k]), quota[k]
+        sample.extend(members[k][(i * n) // q] for i in range(q))
+    return sample
+
+
+# Repo-root runner configuration that names a test framework on its own:
+# (filename glob, framework, regex the content must match or None). These
+# cover runners used through injected globals — jest's ``test()``, rspec's
+# ``describe`` — whose test files import nothing a content pattern can see.
+# ``test/test_helper.exs`` is ExUnit's mandatory bootstrap; its
+# ``ExUnit.start`` often sits past the 5 000-char head the sample reads.
+# Root only, deliberately: a nested config is found through its own test
+# files by the stratified sample, and a recursive search would bypass the
+# map-scoped FileIndex (INV-jumim).
+_TEST_FRAMEWORK_MARKERS: list[tuple[str, str, Optional[str]]] = [
+    ("test/test_helper.exs", "ExUnit", r"\bExUnit\.start\b"),
+    ("vitest.config.*", "vitest", None),
+    ("vitest.workspace.*", "vitest", None),
+    ("jest.config.*", "jest", None),
+    ("pytest.ini", "pytest", None),
+    ("conftest.py", "pytest", None),
+    ("pyproject.toml", "pytest", r"(?m)^\[tool\.pytest[.\]]"),
+    ("setup.cfg", "pytest", r"(?m)^\[tool:pytest\]"),
+    ("tox.ini", "pytest", r"(?m)^\[pytest\]"),
+    (".rspec", "rspec", None),
+]
+
+
+def _detect_test_frameworks_from_markers(repo_root: Path) -> set[str]:
+    """Frameworks named by repo-root runner config (see the table above)."""
+    import re
+
+    found: set[str] = set()
+    for glob, framework, required in _TEST_FRAMEWORK_MARKERS:
+        for path in sorted(repo_root.glob(glob)):
+            if not path.is_file():  # pragma: no cover - a dir named like config
+                continue
+            if required is not None:
+                try:
+                    text = path.read_text(encoding="utf-8", errors="replace")
+                except OSError:  # pragma: no cover
+                    continue
+                if not re.search(required, text):
+                    continue
+            found.add(framework)
+            break
+    return found
+
+
 def _analyze_test_files(
     repo_root: Path,
     extra_excludes: Optional[List[str]] = None,
@@ -2631,8 +2832,22 @@ def _analyze_test_files(
     count LOC and detect test frameworks.  Per-language LOC is computed
     separately by ``profile._detect_languages(count_loc=True)``.
 
-    After the walk it samples up to 20 test files and scans their first
-    5 000 chars for test-framework import patterns.
+    Framework detection (WI-vosag) has two deterministic sources, unioned:
+
+    * a STRATIFIED sample of the test files
+      (:func:`_sample_test_files_for_frameworks`), whose first 5 000 chars
+      are matched against ``TEST_FRAMEWORK_PATTERNS``;
+    * repo-root runner config (:data:`_TEST_FRAMEWORK_MARKERS`) — the only
+      evidence for runners used through globals (jest, rspec), whose test
+      files import nothing.
+
+    It used to read the FIRST 20 test files in walk order, and the walk order
+    came from ``list(<set of globs>)`` — per-process string-hash order. On a
+    repo with 2 717 ExUnit files and a handful of vitest files, whether any
+    vitest file landed in those 20 changed from run to run, so the Tests line
+    named vitest on one run and nothing on the next; ExUnit was never named
+    because no pattern existed for it. The globs are now sorted, and the
+    sample no longer depends on walk order at all.
 
     Args:
         repo_root: Repository root path.
@@ -2654,7 +2869,9 @@ def _analyze_test_files(
     for pattern_list in LANGUAGE_EXTENSIONS.values():
         all_patterns.update(pattern_list)
     all_patterns.add("*.bats")  # Bash Automated Testing System (test-only)
-    patterns = list(all_patterns)
+    # Sorted (WI-vosag): ``list(<set>)`` is per-process str-hash order, and
+    # find_files yields pattern by pattern, so the walk order varied by run.
+    patterns = sorted(all_patterns)
 
     test_loc = 0
     test_file_paths: list[Path] = []
@@ -2687,25 +2904,29 @@ def _analyze_test_files(
             frameworks=set(),
         )
 
-    # Detect frameworks from a sample of test files
-    frameworks_found: set[str] = set()
-    sample_size = min(20, test_files)
-    for test_file in test_file_paths[:sample_size]:
+    # Detect frameworks: root runner config, then a stratified sample.
+    frameworks_found = _detect_test_frameworks_from_markers(repo_root)
+    sample = _sample_test_files_for_frameworks(test_file_paths, repo_root)
+    for test_file in sample:
         try:
             content = test_file.read_text(encoding="utf-8", errors="replace")[:5000]
-            suffix = test_file.suffix
-            for pattern, framework, extensions in TEST_FRAMEWORK_PATTERNS:
-                if extensions is not None and suffix not in extensions:
-                    continue
-                if re.search(pattern, content):
-                    frameworks_found.add(framework)
         except OSError:  # pragma: no cover
             continue
+        suffix = test_file.suffix
+        for pattern, framework, extensions in TEST_FRAMEWORK_PATTERNS:
+            if framework in frameworks_found:
+                continue  # presence is all we report; skip the regex
+            if extensions is not None and suffix not in extensions:
+                continue
+            if re.search(pattern, content):
+                frameworks_found.add(framework)
 
     # Build summary string
     file_word = "file" if test_files == 1 else "files"
     if frameworks_found:
-        framework_str = ", ".join(sorted(frameworks_found))
+        # Case-insensitive so proper names (ExUnit, XCTest) interleave with
+        # the lowercase ones instead of all sorting first.
+        framework_str = ", ".join(sorted(frameworks_found, key=str.lower))
         summary = f"{test_files} test {file_word} · {framework_str}"
     else:
         summary = f"{test_files} test {file_word}"
@@ -2894,6 +3115,10 @@ def _count_dir_items(
     for name, is_dir in children:
         if any(fnmatch(name, p) for p in name_excludes):
             continue
+        # Installed dependency source / content-conditioned build output is
+        # not the project's structure (ADR-0004 §"Installed dependency source").
+        if is_dir and match_content_rule(dir_path / name) is not None:
+            continue
         if exclude_tests:
             rel_path = str((dir_path / name).relative_to(repo_root))
             if _is_test_path(rel_path):
@@ -2981,7 +3206,7 @@ def _format_structure_tree_fallback(
             if not d.is_dir():
                 continue
             excluded = any(fnmatch(d.name, pattern) for pattern in name_excludes)
-            if not excluded:
+            if not excluded and match_content_rule(d) is None:
                 dirs.append(d.name)
         # Also get root-level files (source and config/doc files)
         for f in repo_root.iterdir():
@@ -3463,8 +3688,9 @@ def _collect_important_files(
 def _format_frameworks(profile: RepoProfile, exclude_tests: bool = False) -> str:
     """Format detected frameworks.
 
-    Production frameworks are listed first, followed by dev/test-only
-    frameworks annotated with ``(dev)``.
+    Production and dev/test-only frameworks share one alphabetical list, the
+    dev-only ones annotated with ``(dev)``. Each name appears once because
+    ``RepoProfile`` keeps both lists unique and disjoint (INV-vapov).
     """
     dev_fws: list[str] = getattr(profile, "dev_frameworks", [])
     all_frameworks = list(profile.frameworks) + list(dev_fws)
@@ -4383,6 +4609,12 @@ def _select_additional_files(
         if not is_additional_file_candidate(filepath):
             return True
 
+        # Installed dependency source / content-conditioned build output
+        # (ADR-0004): no longer name-excluded, so the rglob fallback below
+        # must ask the content rules.
+        if under_content_rule_dir(repo_root, rel_path.parts[:-1]):
+            return True
+
         for pattern in all_excludes:
             if fnmatch(filename, pattern):
                 return True
@@ -4766,6 +4998,7 @@ TEST_FILE_PATTERNS = [
 # false positives when fixture data or YAML catalogs contain literal syntax
 # from another language (e.g., Rust ``#[test]`` in a Python test file).
 # Patterns whose syntax is unambiguous across languages use None (match any file).
+_C_FAMILY_SUFFIXES = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx")
 TEST_FRAMEWORK_PATTERNS: list[tuple[str, str, tuple[str, ...] | None]] = [
     # Python
     (r"import pytest|from pytest", "pytest", None),
@@ -4776,16 +5009,62 @@ TEST_FRAMEWORK_PATTERNS: list[tuple[str, str, tuple[str, ...] | None]] = [
     (r"from ['\"]vitest['\"]|import.*vitest", "vitest", None),
     (r"from ['\"]mocha['\"]|require\(['\"]mocha['\"]", "mocha", None),
     (r"import.*@testing-library", "testing-library", None),
-    # Go (built-in testing package)
-    (r'import.*"testing"', "go test", None),
+    (r"from ['\"]node:test['\"]|require\(['\"]node:test['\"]\)", "node:test", None),
+    (r"from ['\"]@playwright/test['\"]", "playwright", None),
+    # Go (built-in testing package). Grouped ``import ( ... )`` blocks span
+    # lines, which ``import.*"testing"`` never matched (WI-vosag).
+    (r'\bimport\s*(?:\([^)]*)?"testing"', "go test", (".go",)),
     # Ruby
     (r"require ['\"]rspec['\"]|RSpec\.describe", "rspec", None),
     (r"require ['\"]minitest['\"]", "minitest", None),
+    # Rails tests load minitest through ``require "test_helper"`` and name
+    # only the base class.
+    (
+        r"\b(?:ActiveSupport::TestCase|ActionDispatch::IntegrationTest|Minitest::Test)\b",
+        "minitest",
+        (".rb",),
+    ),
     # Rust — short attribute syntax appears as fixture data in other languages
-    (r"#\[cfg\(test\)\]|#\[test\]", "cargo test", (".rs",)),
+    (r"#\[cfg\(test\)\]|#\[(?:tokio::)?test[\](]", "cargo test", (".rs",)),
     # Java
     (r"import org\.junit", "junit", None),
     (r"import org\.testng", "testng", None),
+    # Kotlin
+    (r"(?m)^\s*import\s+kotlin\.test\b", "kotlin.test", (".kt", ".kts")),
+    # Elixir — ExUnit is the only runner. Test scripts usually ``use`` an
+    # app-defined case template (``MyAppWeb.ConnCase``/``MyApp.DataCase``),
+    # itself ``use ExUnit.CaseTemplate``, rather than ``ExUnit.Case``.
+    (r"\bExUnit\.(?:start|Case|CaseTemplate)\b", "ExUnit", (".ex", ".exs")),
+    (r"(?m)^\s*use\s+[A-Z][\w.]*Case\b", "ExUnit", (".exs",)),
+    # Swift
+    (r"(?m)^\s*(?:@testable\s+)?import\s+XCTest\b", "XCTest", (".swift",)),
+    (r"(?m)^\s*import\s+Testing\b", "swift-testing", (".swift",)),
+    # C#
+    (r"(?m)^\s*using\s+Xunit\b", "xunit", (".cs",)),
+    (r"(?m)^\s*using\s+NUnit\.Framework\b", "nunit", (".cs",)),
+    (
+        r"(?m)^\s*using\s+Microsoft\.VisualStudio\.TestTools\.UnitTesting\b",
+        "mstest",
+        (".cs",),
+    ),
+    # PHP
+    (r"PHPUnit\\Framework\\", "phpunit", (".php",)),
+    # C / C++
+    (r'#include\s*[<"]gtest/', "googletest", _C_FAMILY_SUFFIXES),
+    (r'#include\s*[<"](?:catch2/|catch\.hpp)', "catch2", _C_FAMILY_SUFFIXES),
+    # Dart
+    (r"package:test/test\.dart", "dart test", (".dart",)),
+    (r"package:flutter_test/", "flutter_test", (".dart",)),
+    # Scala
+    (r"\borg\.scalatest\b", "scalatest", (".scala", ".sc")),
+    (r"\bmunit\.(?:FunSuite|ScalaCheckSuite|CatsEffectSuite)\b", "munit", (".scala", ".sc")),
+    # Haskell
+    (r"(?m)^import\s+(?:qualified\s+)?Test\.Hspec\b", "hspec", (".hs", ".lhs")),
+    (r"(?m)^import\s+(?:qualified\s+)?Test\.Tasty\b", "tasty", (".hs", ".lhs")),
+    # Clojure
+    (r"\bclojure\.test\b", "clojure.test", (".clj", ".cljs", ".cljc")),
+    # Julia
+    (r"(?m)^\s*using\s+Test\b", "julia Test", (".jl",)),
 ]
 
 
@@ -5351,6 +5630,49 @@ _ENTRYPOINT_GROUPS: list[tuple[str, set[str]]] = [
 ]
 
 
+def _share_entry_budget(sizes: list[int], total: int) -> list[int]:
+    """Split one entry budget across display groups (water-filling).
+
+    Groups no larger than their fair share are shown whole; whatever they
+    leave is split evenly among the larger groups, leftover slots going to
+    the earlier (higher-priority) groups. Every non-empty group keeps at
+    least one entry even when ``total`` is smaller than the group count, so
+    no kind of entrypoint silently disappears from the section.
+    """
+    quotas = [0] * len(sizes)
+    open_groups = [i for i, n in enumerate(sizes) if n > 0]
+    budget = total
+    while open_groups and budget > 0:
+        share = max(1, budget // len(open_groups))
+        small = [i for i in open_groups if sizes[i] <= share]
+        if not small:
+            base, extra = divmod(budget, len(open_groups))
+            for rank, i in enumerate(open_groups):
+                quotas[i] = base + (1 if rank < extra else 0)
+            break
+        for i in small:
+            quotas[i] = sizes[i]
+            budget -= sizes[i]
+        open_groups = [i for i in open_groups if i not in small]
+    return [max(q, 1) if n > 0 else 0 for q, n in zip(quotas, sizes, strict=True)]
+
+
+def _route_handler_hint(sym: Symbol) -> str:
+    """Name what serves a route marker, from the marker's own meta.
+
+    Controller-style routers (Phoenix, Rails) record ``controller`` and
+    ``action``; other producers record the handler as ``handler_ref`` (or
+    Go's ``handler_name``). Empty when the marker names no handler.
+    """
+    meta = sym.meta or {}
+    controller = meta.get("controller")
+    action = meta.get("action")
+    if controller and action:
+        return f"{controller}.{action}"
+    return str(controller or meta.get("handler_ref")
+               or meta.get("handler_name") or "")
+
+
 def _format_entrypoints(
     entrypoints: list[Entrypoint],
     symbols: list[Symbol],
@@ -5364,8 +5686,16 @@ def _format_entrypoints(
     Controllers, etc.). Groups with zero entries are omitted. Test functions
     are excluded entirely — the Tests section already covers them.
 
-    Within each group, entries are sorted by confidence (highest first) and
-    capped at max_entries per group.
+    Within each group, entries are sorted by rank_score (highest first).
+    ``max_entries`` is ONE budget shared by all groups (see
+    :func:`_share_entry_budget`), not a per-group cap: per group, a repo with
+    hundreds of routes and hundreds of library exports printed max_entries of
+    each and the section swallowed most of the sketch (thc: 22.7k of 31.7k
+    chars once its Phoenix routes were classified, INV-liraj).
+
+    A route marker (``meta.framework_role == "route"``) is named after its
+    route, so its label would only repeat the name; its line names the
+    handler instead (:func:`_route_handler_hint`).
     """
     if not entrypoints:
         return ""
@@ -5401,35 +5731,42 @@ def _format_entrypoints(
 
     lines = [_section_header("Entry Points", exclude_tests), ""]
 
-    repo_root_str = str(repo_root)
-    for group_name, _kinds in _ENTRYPOINT_GROUPS:
-        eps = grouped.get(group_name)
-        if not eps:
-            continue
+    present = [(name, grouped[name]) for name, _k in _ENTRYPOINT_GROUPS
+               if grouped.get(name)]
+    quotas = _share_entry_budget([len(eps) for _n, eps in present], max_entries)
 
+    repo_root_str = str(repo_root)
+    for (group_name, eps), quota in zip(present, quotas, strict=True):
         lines.append(f"### {group_name}")
         lines.append("")
 
-        shown = eps[:max_entries]
-        for ep in shown:
+        for ep in eps[:quota]:
             sym = symbol_by_id.get(ep.symbol_id)
             if sym:
+                if (sym.meta or {}).get("framework_role") == "route":
+                    handler = _route_handler_hint(sym)
+                    head = f"- `{sym.name}`" + (f" → `{handler}`" if handler else "")
+                else:
+                    head = f"- `{sym.name}` ({ep.label})"
                 # WI-kipod: prefer the captured docstring (what the entry
                 # point does) over the path (where it lives). The path is
                 # recoverable via `explain` / the Source Files section, but
                 # the human-written intent was previously never surfaced.
                 if sym.docstring:
-                    lines.append(f"- `{sym.name}` ({ep.label}) — {sym.docstring}")
+                    lines.append(f"{head} — {sym.docstring}")
                 else:
                     rel_path = sym.path
                     if rel_path.startswith(repo_root_str):
                         rel_path = rel_path[len(repo_root_str) + 1:]
-                    lines.append(f"- `{sym.name}` ({ep.label}) — `{rel_path}`")
+                    lines.append(f"{head} — `{rel_path}`")
             else:
                 lines.append(f"- `{ep.symbol_id}` ({ep.label})")
 
-        if len(eps) > max_entries:
-            lines.append(f"- ... and {len(eps) - max_entries} more")
+        if len(eps) > quota:
+            more = f"- ... and {len(eps) - quota} more"
+            if group_name == "HTTP Routes":
+                more += " (`hypergumbo routes` lists all)"
+            lines.append(more)
 
         lines.append("")
 
@@ -5750,7 +6087,7 @@ def _format_symbols(
     if not key_symbols:
         return ""
 
-    # Compute centrality + canonical 8-stage dampener stack via the
+    # Compute centrality + canonical 7-stage dampener stack via the
     # shared helper (WI-tahum). file_kind is excluded because
     # KEY_SYMBOL_KINDS already filters out kind="file" symbols, making
     # apply_file_kind_weights a no-op for this surface.
@@ -6091,7 +6428,7 @@ def _generate_sketch_impl(
 
     Args:
         repo_root: Path to the repository root.
-        max_tokens: Target tokens for output. Defaults to 4000 if None.
+        max_tokens: Target tokens for output. Defaults to 8000 if None.
         exclude_tests: If True, skip analyzing test files for faster performance.
             When using cached_results, filters test symbols/edges at load time.
         first_party_priority: If True (default), boost first-party symbols in
@@ -6100,7 +6437,7 @@ def _generate_sketch_impl(
             Useful for excluding project-specific files (e.g., "*.json", "vendor").
         config_extraction_mode: Mode for extracting config file metadata.
             - HEURISTIC (default): Fast pattern-based extraction
-            - EMBEDDING: Semantic selection using UnixCoder + question centroid
+            - EMBEDDING: Semantic selection using UnixCoder + top-k mean probe similarity
             - HYBRID: Heuristics first, then embeddings for remaining budget
         verbose: If True, print progress messages to stderr.
         max_config_files: Maximum config files to process (embedding mode).
@@ -6196,6 +6533,12 @@ def _generate_sketch_impl(
                     import json
                     _log(f"Using freshly generated results: {fresh_path}")
                     cached_results = json.loads(fresh_path.read_text())
+        except CatalogueError:
+            # NOT a cache-discovery error: the analysis met a catalogue file
+            # that does not parse (a user's frameworks.d, say). Swallowed, the
+            # sketch was built from no analysis at all and exited 0; the CLI
+            # reports the file with exit 2 instead.
+            raise
         except Exception:  # pragma: no cover - cache discovery errors shouldn't block sketch
             pass
 
@@ -6252,6 +6595,18 @@ def _generate_sketch_impl(
             f"# {repo_name}\n\n{_section_header('Overview', exclude_tests)}\n"
             f"{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, test_analysis=test_analysis)}"
         )
+    # ADR-0004 §"Installed dependency source": say what was not analysed, in
+    # the section that states what was. Absent when nothing was skipped.
+    _scs = (cached_results or {}).get("supply_chain_summary") or {}
+    deps_line = format_installed_deps_disclosure(_scs.get("installed_deps_skipped"))
+    if deps_line:
+        header = f"{header}\n\n{deps_line}"
+    # ADR-0004 point 7: and the generated output pruned by its tool's evidence.
+    output_line = format_generated_output_disclosure(
+        _scs.get("generated_output_skipped"),
+    )
+    if output_line:
+        header = f"{header}\n\n{output_line}"
     sections.append(header)
 
     # Section 2: Structure (using tree format from the start)
@@ -6653,7 +7008,7 @@ def _generate_sketch_impl(
         signatures = {s.id: s.signature for s in symbols if s.signature}
 
         # Track selected symbols for stats
-        selected_key_symbols: list[Symbol] = [] if stats_out is not None else None  # type: ignore
+        selected_key_symbols: list[Symbol] = [] if stats_out is not None else None  # type: ignore[assignment]
 
         symbols_section = _format_symbols(
             symbols,

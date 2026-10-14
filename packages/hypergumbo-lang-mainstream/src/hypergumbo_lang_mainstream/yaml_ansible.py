@@ -10,11 +10,41 @@ Constructs detected:
 - Tasks (- name: X, module: params)
 - Handlers (handlers: section)
 - Variables (vars: section)
-- Include/import references (include_tasks, import_tasks, include_role)
+- Include/import references (include_tasks, import_tasks, include_role,
+  import_role)
+
+File discovery (``find_ansible_files``) is evidence-gated (WI-jifog).
+``.yml``/``.yaml`` has no Ansible-specific extension, and directory names
+such as ``tasks/`` or ``vars/`` are common outside Ansible, so the path
+only nominates a candidate; the claim needs Ansible evidence: the file is
+itself a playbook, or its tree is rooted by an ``ansible.cfg``, a playbook
+or a role entry point. Before this, any root-level YAML (a
+``.yamllint.yaml``) and any YAML under an Ansible-named directory was
+tagged ``language="ansible"``. Unclaimed YAML falls to the generic
+``yaml`` file-anchor analyzer, which subtracts this set.
+
+Each discovered Ansible file also gets a ``kind="file"`` symbol, which
+is the ``src`` of its include/import edges.
 
 Single-pass per file: symbols and reference edges (includes,
 imports) are extracted together (see ``AnsibleAnalyzer`` class
 docstring for rationale).
+
+After all files are extracted, ``AnsibleAnalyzer.analyze`` rewrites
+each ``imports`` edge's raw target to a file symbol id.
+``_resolve_ansible_path`` handles literal paths (basename match,
+preferring the source's directory; ``name=role`` ->
+``roles/<role>/tasks/main.yml``). A Jinja-templated path fans out via
+``_jinja_fanout_candidates`` to one edge per matching file at
+``_JINJA_FANOUT_CONFIDENCE`` (0.30); an unresolvable target keeps its
+raw string and drops to confidence 0.50.
+
+Identity (ADR-0035, WI-tusad): playbooks, tasks and handlers mint
+``overload_arity.scoped_stable_id`` over their ``name``, a task or handler
+scoped by the play it sits in. Two plays that each run a task named
+``Install`` hold two symbols, which the floor key ``(kind, path, name)``
+nulled. Two same-named tasks in one play remain a same-scope tie. Variables
+keep the backstop's ``variable`` table formula.
 """
 
 from __future__ import annotations
@@ -24,8 +54,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
+import yaml
+
 from hypergumbo_core.discovery import is_excluded
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.overload_arity import scoped_stable_id
+from hypergumbo_core.paths import to_relative_path
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -44,20 +78,94 @@ if TYPE_CHECKING:
 PASS_ID = make_pass_id("yaml_ansible")
 
 
+# Directory names that NOMINATE a YAML file as an Ansible candidate. A name
+# match is not evidence on its own: ``tasks/``, ``vars/`` and ``roles/`` are
+# ordinary directory names in non-Ansible projects (WI-jifog).
+_ANSIBLE_DIRS = frozenset({
+    "roles", "tasks", "handlers", "playbooks", "vars", "defaults",
+    "group_vars", "host_vars",
+})
+_YAML_EXTENSIONS = (".yml", ".yaml")
+# Keys only a play (an item of a playbook) carries: ``hosts`` targets the
+# play; ``import_playbook`` is the playbook-level include.
+_PLAY_KEYS = frozenset({"hosts", "import_playbook", "ansible.builtin.import_playbook"})
+# A role's entry point is ``<role>/tasks/main.yml`` (or ``.yaml``).
+_ROLE_ENTRY_NAMES = frozenset({"main.yml", "main.yaml"})
+# Files above this size are not parsed for their shape: a playbook or a
+# role's task list is small, and composing a multi-megabyte data file just
+# to learn it is not a playbook is wasted work on large repos.
+_MAX_SHAPE_BYTES = 1_048_576
+_YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+@dataclass(frozen=True)
+class _TopShape:
+    """Top-level shape of a YAML file's first document.
+
+    ``is_task_list``: a non-empty sequence whose every item is a mapping
+    (the shape of a playbook, a task file and a handler file).
+    ``is_play_list``: a task list in which some item carries a play key.
+    """
+
+    is_play_list: bool = False
+    is_task_list: bool = False
+
+
+_NO_SHAPE = _TopShape()
+
+
+def _top_level_shape(path: Path) -> _TopShape:
+    """Classify the top level of ``path``'s first YAML document.
+
+    Uses ``yaml.compose_all`` (node graph, no object construction), so
+    Ansible's ``!vault`` and other application tags do not raise, and only
+    the first document is parsed. An unreadable, oversized, empty or
+    malformed file has no shape.
+    """
+    try:
+        if path.stat().st_size > _MAX_SHAPE_BYTES:
+            return _NO_SHAPE
+        with path.open("rb") as fh:
+            doc = next(iter(yaml.compose_all(fh, Loader=_YAML_LOADER)), None)
+    except (OSError, UnicodeError, yaml.YAMLError):
+        return _NO_SHAPE
+    if not isinstance(doc, yaml.SequenceNode) or not doc.value:
+        return _NO_SHAPE
+    if not all(isinstance(item, yaml.MappingNode) for item in doc.value):
+        return _NO_SHAPE
+    is_play = any(
+        isinstance(key, yaml.ScalarNode) and key.value in _PLAY_KEYS
+        for item in doc.value
+        for key, _value in item.value
+    )
+    return _TopShape(is_play_list=is_play, is_task_list=True)
+
+
 def find_ansible_files(root: Path) -> list[Path]:
     """Find Ansible YAML files in a directory tree.
 
-    Identifies files by:
-    - .yml or .yaml extension
-    - Located in roles/, tasks/, handlers/, playbooks/ directories
-    - Or any .yml/.yaml file in the root
+    Two path arms NOMINATE a ``.yml``/``.yaml`` file as a candidate. Path
+    alone is never enough (WI-jifog: ``.yamllint.yaml`` and a plain
+    ``web/vars/app.yaml`` were both tagged ``language=ansible``):
+
+    - playbook arm: the file is at the repository root, or directly in a
+      directory that has an Ansible-named subdirectory (``contrib/ansible/
+      site.yml`` beside ``contrib/ansible/tasks/``). Claimed iff it is
+      itself a playbook (``_TopShape.is_play_list``).
+    - directory arm: a repo-relative directory component is an Ansible
+      directory name (``_ANSIBLE_DIRS``). Claimed iff it is a playbook or
+      it lies under an *Ansible tree root*.
+
+    Ansible vars/defaults/group_vars files are plain mappings, so their own
+    content cannot identify them; the tree root supplies the evidence. A
+    tree root is the directory holding an ``ansible.cfg`` or a playbook-arm
+    playbook, or the path prefix before the first Ansible directory name of
+    a directory-arm playbook or of a role entry point (``tasks/main.yml``
+    holding a task list). Roots are scoped: an ``ansible.cfg`` under
+    ``deploy/`` does not make ``app/vars/x.yaml`` Ansible. Only
+    repo-relative components count, so a checkout that happens to live
+    under ``.../vars/`` is not affected.
     """
-    ansible_files: list[Path] = []
-    yaml_extensions = (".yml", ".yaml")
-
-    # Ansible-specific directories
-    ansible_dirs = ("roles", "tasks", "handlers", "playbooks", "vars", "defaults", "group_vars", "host_vars")
-
     # Use the global FileIndex if available to avoid a redundant walk.
     from hypergumbo_core.discovery import get_file_index
     file_index = get_file_index()
@@ -69,17 +177,55 @@ def find_ansible_files(root: Path) -> list[Path]:
             if p.is_file() and not is_excluded(p, root)
         ]
 
+    tree_roots: set[tuple[str, ...]] = set()
+    nominated: list[tuple[Path, tuple[str, ...], int]] = []
+    loose: dict[tuple[str, ...], list[Path]] = {}
     for path in all_files:
-        if path.suffix in yaml_extensions:
-            # Check if in ansible-related directory or root
-            is_ansible = (
-                any(d in path.parts for d in ansible_dirs)
-                or path.parent == root
-            )
-            if is_ansible:
-                ansible_files.append(path)
+        dir_parts = path.relative_to(root).parts[:-1]
+        if path.name == "ansible.cfg":
+            tree_roots.add(dir_parts)
+            continue
+        if path.suffix not in _YAML_EXTENSIONS:
+            continue
+        first = next(
+            (i for i, part in enumerate(dir_parts) if part in _ANSIBLE_DIRS), None,
+        )
+        if first is None:
+            loose.setdefault(dir_parts, []).append(path)
+        else:
+            nominated.append((path, dir_parts, first))
 
-    return ansible_files
+    claimed: set[Path] = set()
+    # Playbook arm: a YAML file at the repo root, or BESIDE an Ansible
+    # directory (``contrib/ansible/site.yml`` next to ``contrib/ansible/
+    # tasks/``), is claimed iff it is a playbook, and then roots its tree.
+    beside_dirs: set[tuple[str, ...]] = {()}
+    beside_dirs.update(dir_parts[:first] for _path, dir_parts, first in nominated)
+    for dir_parts in beside_dirs:
+        for path in loose.get(dir_parts, ()):
+            if _top_level_shape(path).is_play_list:
+                claimed.add(path)
+                tree_roots.add(dir_parts)
+
+    # Directory arm: a playbook or a role entry point roots the tree at the
+    # prefix before its first Ansible directory name.
+    shaped: list[tuple[Path, tuple[str, ...], _TopShape]] = []
+    for path, dir_parts, first in nominated:
+        shape = _top_level_shape(path)
+        if shape.is_play_list or (
+            shape.is_task_list
+            and path.name in _ROLE_ENTRY_NAMES
+            and dir_parts[-1] == "tasks"
+        ):
+            tree_roots.add(dir_parts[:first])
+        shaped.append((path, dir_parts, shape))
+    for path, dir_parts, shape in shaped:
+        if shape.is_play_list or any(
+            dir_parts[:len(r)] == r for r in tree_roots
+        ):
+            claimed.add(path)
+
+    return [path for path in all_files if path in claimed]
 
 
 def _find_all_children_by_type(
@@ -179,11 +325,14 @@ def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
+    repo_root: Path,
 ) -> tuple[list[Symbol], list[Edge]]:
     """Extract symbols and edges from a single Ansible file."""
     symbols: list[Symbol] = []
     edges: list[Edge] = []
     rel_path = str(file_path)
+    # stable_ids hash the repo-relative path (ids are location-independent).
+    id_path = to_relative_path(file_path, repo_root)
     file_id = make_file_id("ansible", rel_path)
 
     try:
@@ -230,6 +379,9 @@ def _extract_symbols_from_file(
                     symbol_id = make_symbol_id("ansible", rel_path, line, end_line, value, "playbook")
                     symbols.append(Symbol(
                         id=symbol_id,
+                        stable_id=scoped_stable_id(
+                            kind="playbook", lang="ansible", path=id_path, name=value,
+                        ),
                         name=value,
                         kind="playbook",
                         language="ansible",
@@ -246,6 +398,10 @@ def _extract_symbols_from_file(
                     symbol_id = make_symbol_id("ansible", rel_path, line, end_line, value, kind)
                     symbols.append(Symbol(
                         id=symbol_id,
+                        stable_id=scoped_stable_id(
+                            kind=kind, lang="ansible", path=id_path, name=value,
+                            scope=(current_play_name,) if current_play_name else (),
+                        ),
                         name=value,
                         kind=kind,
                         language="ansible",
@@ -521,7 +677,7 @@ class AnsibleAnalyzer(TreeSitterAnalyzer):
             if max_files is not None and len(all_symbols) >= max_files:
                 break  # pragma: no cover
 
-            symbols, edges = _extract_symbols_from_file(ansible_file, parser, run)
+            symbols, edges = _extract_symbols_from_file(ansible_file, parser, run, repo_root)
             all_symbols.extend(symbols)
             all_edges.extend(edges)
 

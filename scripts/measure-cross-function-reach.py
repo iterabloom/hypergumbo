@@ -44,9 +44,18 @@ rests on: ``_reconstruct_path`` is called once immediately before the single
 finding constructed and then cleared.
 """
 from __future__ import annotations
-import argparse, collections, contextlib, io, json, sys
+import argparse
+import collections
+import json
+import sys
+from pathlib import Path
 from typing import Any
 import hypergumbo_core.taint as taint_mod
+
+# The cohort ledger (WI-kovoj): a member whose verify-claims run wrote no
+# report is FAILED, not "EXCLUDED — 0 rows", and the run states covered-of-given.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from cohort_ledger import CohortLedger, run_cli_json
 
 
 def _run(repo: str, claims: str) -> dict:
@@ -92,19 +101,10 @@ def _run(repo: str, claims: str) -> dict:
     taint_mod._reconstruct_path = path
     taint_mod.TaintFlowFinding = make
     try:
-        from hypergumbo_core.cli import main
-        argv = sys.argv
-        sys.argv = ["hypergumbo", "verify-claims", repo, "--claims", claims, "--json"]
-        buf = io.StringIO()
-        try:
-            with contextlib.redirect_stdout(buf):
-                with contextlib.suppress(SystemExit):
-                    main()
-        finally:
-            sys.argv = argv
-        raw = buf.getvalue()
-        i = raw.find("{")
-        st["report"] = json.loads(raw[i:]) if i >= 0 else {}
+        # Raises MemberAbsent when no report was written, so a run that never
+        # happened cannot read as a repo with zero cross_function rows.
+        st["report"] = run_cli_json(
+            ["hypergumbo", "verify-claims", repo, "--claims", claims, "--json"])
     finally:
         taint_mod.propagate_taint_ddg = real_prop
         taint_mod._reconstruct_path = real_path
@@ -148,35 +148,37 @@ ap.add_argument("--json", dest="out")
 args = ap.parse_args()
 
 out = []
-for repo in args.repos:
-    name = repo.rstrip("/").split("/")[-1]
+ledger = CohortLedger(args.repos, label=lambda r: r.rstrip("/").split("/")[-1])
+for repo in ledger:
+    name = ledger.label(repo)
     print(f"\n=== {name} ===", flush=True)
-    res = _run(repo, args.claims)
-    rows = res["rows"]
-    if not rows:
-        print(f"  EXCLUDED — 0 cross_function rows "
-              f"({res['findings_made']} findings, blocked={res['blocked_by']})")
-        out.append({"repo": name, "control": "EXCLUDED", **res})
-        continue
-    hop = collections.Counter(r["hops"] for r in rows)
-    sink_ok = sum(1 for r in rows if r["sink_in_ddg"])
-    all_ok = sum(1 for r in rows if r["all_in_ddg"])
-    seed_ok = sum(1 for r in rows if r["seed_in_ddg"])
-    n = len(rows)
-    print(f"  cross_function FINDINGS : {n}   (analyzed symbols {res['analyzed_symbols']})")
-    print(f"  cross_function EVIDENCE ROWS (post-collapse, 0007's unit): "
-          f"{res['evidence_cross_function']}")
-    print(f"  hop distribution    : "
-          + ", ".join(f"{h}:{c}" for h, c in sorted(hop.items())))
-    print(f"  seed_in_ddg         : {seed_ok}/{n} ({seed_ok/n*100:.1f}%)")
-    print(f"  sink_in_ddg         : {sink_ok}/{n} ({sink_ok/n*100:.1f}%)   <- necessary")
-    print(f"  all_in_ddg          : {all_ok}/{n} ({all_ok/n*100:.1f}%)   <- whole chain")
-    one_hop = sum(1 for r in rows if r["hops"] == 1 and r["sink_in_ddg"])
-    print(f"  1-hop AND sink_in_ddg: {one_hop}/{n} ({one_hop/n*100:.1f}%)  <- single-hop ceiling")
-    out.append({"repo": name, "control": "LIVE", "n": n,
-                "hops": dict(hop), "seed_in_ddg": seed_ok,
-                "sink_in_ddg": sink_ok, "all_in_ddg": all_ok,
-                "one_hop_sink_ddg": one_hop, **res})
+    with ledger.attempt(repo):
+        res = _run(repo, args.claims)
+        rows = res["rows"]
+        if not rows:
+            print(f"  EXCLUDED — 0 cross_function rows "
+                  f"({res['findings_made']} findings, blocked={res['blocked_by']})")
+            out.append({"repo": name, "control": "EXCLUDED", **res})
+            continue
+        hop = collections.Counter(r["hops"] for r in rows)
+        sink_ok = sum(1 for r in rows if r["sink_in_ddg"])
+        all_ok = sum(1 for r in rows if r["all_in_ddg"])
+        seed_ok = sum(1 for r in rows if r["seed_in_ddg"])
+        n = len(rows)
+        print(f"  cross_function FINDINGS : {n}   (analyzed symbols {res['analyzed_symbols']})")
+        print(f"  cross_function EVIDENCE ROWS (post-collapse, 0007's unit): "
+              f"{res['evidence_cross_function']}")
+        print("  hop distribution    : "
+              + ", ".join(f"{h}:{c}" for h, c in sorted(hop.items())))
+        print(f"  seed_in_ddg         : {seed_ok}/{n} ({seed_ok/n*100:.1f}%)")
+        print(f"  sink_in_ddg         : {sink_ok}/{n} ({sink_ok/n*100:.1f}%)   <- necessary")
+        print(f"  all_in_ddg          : {all_ok}/{n} ({all_ok/n*100:.1f}%)   <- whole chain")
+        one_hop = sum(1 for r in rows if r["hops"] == 1 and r["sink_in_ddg"])
+        print(f"  1-hop AND sink_in_ddg: {one_hop}/{n} ({one_hop/n*100:.1f}%)  <- single-hop ceiling")
+        out.append({"repo": name, "control": "LIVE", "n": n,
+                    "hops": dict(hop), "seed_in_ddg": seed_ok,
+                    "sink_in_ddg": sink_ok, "all_in_ddg": all_ok,
+                    "one_hop_sink_ddg": one_hop, **res})
 
 live = [r for r in out if r["control"] == "LIVE"]
 if live:
@@ -191,7 +193,10 @@ if live:
           f"{sum(r['all_in_ddg'] for r in live):>9}")
 print(f"\nexcluded (0 cross_function rows): "
       f"{[r['repo'] for r in out if r['control']=='EXCLUDED'] or 'none'}")
+print()
+ledger.report()
 if args.out:
-    import pathlib
-    pathlib.Path(args.out).write_text(json.dumps(out, indent=1))
+    Path(args.out).write_text(json.dumps(
+        {"cohort": ledger.claim(), "repos": out}, indent=1))
     print(f"detail: {args.out}")
+raise SystemExit(ledger.exit_code())

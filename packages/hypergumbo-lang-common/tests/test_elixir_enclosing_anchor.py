@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""INV-mozas: an Elixir call edge is anchored to the def clause that CONTAINS it.
+"""INV-mozas: an Elixir call edge is anchored to the function that CONTAINS it.
 
-Elixir emits one symbol per ``def`` clause, and the symbol name carries no
-arity, so ``get_timeout/0`` and ``get_timeout/2`` -- and two modules in one
-file that each define ``init`` -- share a short name. The enclosing-function
-lookup used to key on that short name, which resolves to the clause that
+Elixir emits one symbol per function (name/arity; its clauses folded in since
+WI-tusad), and the symbol name carries no arity, so ``get_timeout/0`` and
+``get_timeout/2`` -- and two modules in one file that each define ``init`` --
+share a short name. The enclosing-function
+lookup used to key on that short name, which resolves to the symbol that
 registered last. On phoenix and plausible that mis-anchored 22-27% of calls.
 
 The property checked everywhere below is the item's statement: the edge's
@@ -44,7 +45,7 @@ def _src_contains_line(by_id, edge) -> bool:
     return src.span.start_line <= edge.line <= src.span.end_line
 
 
-def test_a_call_is_anchored_to_the_clause_that_contains_it(tmp_path: Path) -> None:
+def test_a_call_is_anchored_to_the_function_that_contains_it(tmp_path: Path) -> None:
     by_id, calls = _analyze(tmp_path, OVERLOADED)
     env = [e for e in calls if ":get_env:" in e.dst]
     assert len(env) == 1  # reach

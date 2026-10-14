@@ -1,0 +1,22 @@
+- op: create  # 5c68
+  at: '2026-10-04T08:38:42Z'  # 5c68
+  by: agent  # 5c68
+  actor: jgstern_agent  # 5c68
+  clock: 1  # 5c68
+  nonce: 5c68  # 5c68
+  data:  # 5c68
+    kind: work_item  # 5c68
+    title: "cpp: a member call on an explicit receiver (impl_->Generate(..)) binds by short name to a same-file method of whatever class registered last -- 959 of 990 self-call sites on sherpa-onnx are pimpl forwards"  # 5c68
+    status: todo_hard  # 5c68
+    priority: 2  # 5c68
+    parent:  # 5c68
+    tags:  # 5c68
+    - cpp  # 5c68
+    - call_graph  # 5c68
+    - analysis_quality  # 5c68
+    isbefore: []  # 5c68
+    duplicate_of: []  # 5c68
+    not_duplicate_of: []  # 5c68
+    pr_ref:  # 5c68
+    description: "FOUND 2026-10-04 measuring WI-hilum on sherpa-onnx d7526c8 (branch jgstern-agent/fix/hilum).\n\nA cpp member call on an explicit receiver other than `this` (`impl_->Generate(text, sid)`, `model_.Forward(x)`) is resolved with no receiver type: the local path takes `local_symbols[short_name]`, which is whichever same-file method of ANY class registered last under that short name. The INV-fahub cross-class defer (`defer_bare_method_call`) runs only on the global-resolver path, so this local path is ungated.\n\nThe pimpl idiom makes it a false SELF-call: `GeneratedAudio OfflineTts::Generate(...) const { return impl_->Generate(...); }` binds `impl_->Generate` to `OfflineTts::Generate` -- the caller's own class, often the caller itself.\n\nMEASURED (sherpa-onnx, calls edges by call site, frozen source copy): 990 sites have src == dst; 959 of them have the callee spelled after `->` or `.` on the source line (regex over the call line; not hand-verified one by one -- a sample of 12 was read and every one was a pimpl/impl_ forward or a member call on another object).\n\nNOT done by WI-hilum, deliberately: its overload choice does NOT re-choose an explicit-receiver call, because choosing by arity inside the wrongly picked class turned 13 such sites from a wrong edge into a false self-call (measured before the guard was added). The fix belongs here: either type the receiver (field types are in `class_field_types` for `this->a->b()` chains already; a bare field `impl_` / a local is not walked), or withhold the bind (unresolved with enclosing_class / receiver hints) when the receiver is untyped, as INV-fahub's gate does on the global path."  # 5c68
+    fields: {}  # 5c68

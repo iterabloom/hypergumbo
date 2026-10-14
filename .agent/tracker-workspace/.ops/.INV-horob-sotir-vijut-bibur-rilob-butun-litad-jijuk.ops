@@ -1,0 +1,38 @@
+- op: create  # 94b3
+  at: '2026-10-12T01:20:55Z'  # 94b3
+  by: agent  # 94b3
+  actor: jgstern_agent  # 94b3
+  clock: 1  # 94b3
+  nonce: 94b3  # 94b3
+  data:  # 94b3
+    kind: invariant  # 94b3
+    title: "results cache ignores the user's analysis-stage catalogue channels: a changed or broken frameworks.d file is not seen by a cached sketch"  # 94b3
+    status: violated  # 94b3
+    priority: 3  # 94b3
+    parent:  # 94b3
+    tags:  # 94b3
+    - catalogue  # 94b3
+    - cache  # 94b3
+    isbefore: []  # 94b3
+    duplicate_of: []  # 94b3
+    not_duplicate_of: []  # 94b3
+    pr_ref:  # 94b3
+    description: "Found 2026-10-11 while fixing INV-nuram (broken catalogue files -> exit 2). The analysis-results cache is keyed by repo state hash, opt-in backend set, trace_deps token and analyzer identity (sketch_embeddings._get_results_cache_dir), but NOT by the content of the user's analysis-stage catalogue channels ($XDG_CONFIG_HOME/hypergumbo/frameworks.d, library_signatures.d, dataflow_patterns.d). A command that reuses a cached survey therefore never sees a channel file that was added, changed or broken after the survey was cached.\n\nRepro (live, dev + INV-nuram branch): tmp repo with app.py using flask and requirements.txt 'flask'; XDG_CACHE_HOME=$T/cache XDG_CONFIG_HOME=$T/xdg. (1) 'hypergumbo survey .' -> rc 0 (cached). (2) write 'key: [unclosed' to $T/xdg/hypergumbo/frameworks.d/flask.yaml. (3) 'hypergumbo sketch .' -> rc 0, no error (cached survey reused, broken file never read). (4) 'hypergumbo survey .' -> rc 2 'Error: could not parse framework pattern file .../frameworks.d/flask.yaml'. The same staleness applies to a SOUND edit: an in-house framework definition added to frameworks.d after a cached survey does not affect sketch/verify-claims auto-discovery until something else invalidates the cache.\n\nFix direction: fold a digest of the user channel files the analysis reads (frameworks.d, library_signatures.d, dataflow_patterns.d; in-repo tier too if opted in) into the results-cache key, the way trace_deps is folded in."  # 94b3
+    fields:  # 94b3
+      statement: "A cached analysis result is reused only when the user catalogue channel files the analysis reads are unchanged since it was cached."  # 94b3
+      root_cause: "_get_results_cache_dir keys the cache on repo state, backend set, trace_deps and analyzer identity, not on the user's frameworks.d / library_signatures.d / dataflow_patterns.d contents."  # 94b3
+- op: update  # 6e6d
+  at: '2026-10-12T06:45:44Z'  # 6e6d
+  by: agent  # 6e6d
+  actor: jgstern_agent  # 6e6d
+  clock: 2  # 6e6d
+  nonce: 6e6d  # 6e6d
+  set:  # 6e6d
+    status: satisfied  # 6e6d
+- op: discuss  # 19e8
+  at: '2026-10-12T06:45:44Z'  # 19e8
+  by: agent  # 19e8
+  actor: jgstern_agent  # 19e8
+  clock: 3  # 19e8
+  nonce: '19e8'  # 19e8
+  message: "Fixed in 3989655c22 (fix(cache): the results-cache key carries the user files the analysis reads). Root cause: _get_results_cache_dir keyed on repo state, backends, trace_deps and analyzer identity only, so analysis-stage user channels (frameworks.d, library_signatures.d, dataflow_patterns.d) and config.toml / .hypergumbo.toml were never re-read once a survey was cached. Fix: CatalogSpec.channel_stage (analysis|command) is required for every family with a user channel; analysis-stage channel files and both config tiers are digested into -cat-<hash> / -cfg-<hash> suffixes, each absent when its files are. Live evidence on dev 3989655c22 (fresh XDG_CONFIG_HOME/XDG_CACHE_HOME, Flask fixture): (0) no channel files: sketch exit 0, key 4c2813d0f3ca2b76; (1) valid frameworks.d/flask.yaml: exit 0, new key 4c2813d0f3ca2b76-cat-5fd39d5f79a7; (2) same file broken: exit 2, 'Error: could not parse framework pattern file .../frameworks.d/flask.yaml: while parsing a flow sequence' (before the fix this was a cache hit at exit 0); (3) file restored: exit 0, reuses -cat-5fd39d5f79a7, no new dir; (4) file removed: exit 0, reuses the bare 4c2813d0f3ca2b76 key, so users with no channel files keep their existing key; (5) broken config.toml: exit 2, 'not valid TOML — Expected ]'; (6) config removed: exit 0. Production-path test: packages/hypergumbo-core/tests/test_results_cache_input_key.py."  # 19e8

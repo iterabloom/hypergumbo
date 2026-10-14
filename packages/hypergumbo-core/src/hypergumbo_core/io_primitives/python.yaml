@@ -17,11 +17,14 @@
 # The stdlib scope itself is deliberate and stays (ADR-0016 §27: "a curated
 # list of stdlib functions, not an unbounded set of library APIs") — owning
 # every third-party API surface is the maintenance burden that ADR declined.
-# Supply third-party primitives through a PROJECT-LOCAL OVERLAY instead:
+# Supply third-party primitives through an OVERLAY of your own instead: a
+# file in $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/, or for one run
 #     hypergumbo io-boundaries . --io-primitives my-overlay.yaml
-# or `extra_catalogs: io_primitives:` in a claims file. Worked example:
-# hypergumbo_core/io_primitives_overlays/python-http-clients.yaml, which
-# ships in the wheel and loads by default (ADR-0047).
+# or `extra_catalogs: io_primitives:` in a claims file. Worked examples:
+# the community overlays (python-http-clients.yaml, ...), which ship in the
+# wheel, load by default, and are copied into io_primitives.d/ by
+# `hypergumbo init-catalogs` (docs/CATALOGUES.md).
+provenance: builtin
 language: python
 
 # Plan C, PR B: this is the worked-example catalog — Python's stdlib
@@ -31,21 +34,26 @@ language: python
 # documentation host (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in
 # io_boundary.py).
 #
-# F3 PR-C: ``stdlib_modules`` (below) is populated from
-# ``sys.stdlib_module_names`` of the version pinned here. The
-# operator script ``scripts/refresh-stdlib-modules python --version
-# X.Y`` regenerates it deterministically; the closed-world
-# ``completeness:`` flags inside ``stdlib_modules`` are hand-curated
-# and not touched by the script.
+# F3 PR-C / WI-gisan: ``stdlib_modules`` (below) is the UNION over every
+# supported interpreter (``supported_versions``): ``sys.stdlib_module_names``
+# of the base ``version`` pinned here, plus every module that is standard
+# library on only SOME supported Pythons (distutils on 3.10/3.11, tomllib on
+# 3.11+), from hypergumbo_core/python_stdlib_versions.py. The operator script
+# ``scripts/refresh-stdlib-modules python --version X.Y`` regenerates it
+# deterministically and refuses a ``supported_versions`` that disagrees with
+# that table. The list answers RECOGNITION only (the ecosystem label,
+# ADR-0041 §3); no verdict gate reads it (INV-buzab).
 status: provenance_declared
 stdlib_provenance:
   source_url: https://docs.python.org/3.12/library/index.html
   version: "3.12"
-  retrieved: "2026-05-14"
+  supported_versions: "3.10-3.13"
+  retrieved: "2026-10-03"
   notes: |
     Python stdlib I/O primitives derived from docs.python.org's
     library index for Python 3.12, cross-checked against
-    ``sys.stdlib_module_names``. Non-IO stdlib symbols are not yet
+    ``sys.stdlib_module_names``. The stdlib_modules list covers
+    3.10-3.13 (see supported_versions). Non-IO stdlib symbols are not yet
     enumerated in stdlib_other — populated incrementally as needed
     by the PR C external_potential filter.
 
@@ -177,6 +185,14 @@ ambiguous_names:
   - credits       # builtins.credits vs any local credits()
   - license       # builtins.license vs any local license() or attribute
   - help          # builtins.help vs any local help() / .help() (CLI frameworks)
+  # ADR-0060 / WI-nokab: the shipped code_execution sinks (taint_sinks/) are
+  # builtins by construction, like the six above; no io_primitives row names
+  # them. A bare eval/exec/compile carries `builtins` in the module slot and
+  # still matches; a hint-less `model.eval()` (torch), `cursor.exec()` or
+  # `pattern.compile()` must not be read as evaluating code.
+  - eval          # builtins.eval vs model.eval() / any .eval()
+  - exec          # builtins.exec vs any .exec() (Qt dialogs, DB cursors)
+  - compile       # builtins.compile vs re.compile / any .compile()
 
 fs_read:
   # ---------------------------------------------------------------
@@ -434,9 +450,27 @@ fs_write:
     notes: "json.dump writes to a file object; json.dumps returns a string (not I/O)"
   - module: pickle
     functions: [dump]
-  - module: csv
-    functions: [writer]
-    notes: "csv.writer wraps a file object for writing"
+  - module: _csv.Writer
+    methods: [writerow, writerows]
+    notes: >-
+      WI-kozaj. The object csv.writer(f) returns; the row data goes INTO the
+      caller-opened f here (the json.dump precedent). Reached through the
+      library_signatures row csv.writer -> _csv.Writer. csv.writer itself
+      carried this fs_write row until then, the INV-gujoh shape: the factory
+      builds the writer and writes nothing, so the flow was credited one call
+      early and the FILE argument was the tainted one, not the row. Removed
+      under ADR-0049 Ruling 3 with this executor row as the represented
+      crossing; the csv slot's completeness entry keeps the factory call
+      examined.
+  - module: csv.DictWriter
+    methods: [writerow, writerows, writeheader]
+    notes: >-
+      WI-kozaj. Writes INTO a file object the caller opened (the json.dump
+      precedent): writerow / writerows carry the row data, writeheader the
+      field names. Called on an instance, so methods (ADR-0059). The instance
+      is typed by the PascalCase construction itself, so no signature row is
+      needed. DictReader / reader read a caller-opened object and stay
+      unrowed (tomllib's rule).
   - module: file
     methods: [write, writelines]
     notes: |
@@ -498,8 +532,23 @@ db_read:
       ambiguous with socket.socket.connect, disambiguated by the sqlite3
       module hint).
   - module: sqlite3.Connection
-    methods: [iterdump, backup]
-    notes: "Whole-database export / online backup (read path)"
+    methods: [iterdump]
+    notes: >-
+      Whole-database export. backup moved to db_write (WI-rivur). iterdump
+      is LAZY: it returns a generator and no SQL runs at the call.
+      Modules/_sqlite/connection.c returns the result of calling
+      sqlite3.dump._iterdump, which is a generator function on 3.10 through
+      3.13 (Lib/sqlite3/dump.py: its first statement, cursor(), runs at the
+      first next()). ADR-0049 ruling 1 therefore calls it a deferred
+      crossing. It STAYS db_read, held by ruling 3 (WI-tunog): the read
+      happens where the generator is iterated, and the analyzer emits no
+      evaluation site for a non-Django iterable (WI-fasap's __iter__ edge is
+      django.db.models only), so nothing would carry the read after a move.
+      The iteration is in the calling scope in every corpus use read
+      (5 of 5: ceph, nova), which is measurement 0010's READ-IN-SCOPE case:
+      the mint is already in the scope of the read. Moving the row to
+      db_compose turned `for line in con.iterdump(): f.write(line)` from
+      violated into confirmed_with_caveats with no flow left.
   - module: sqlite3.Cursor
     methods: [fetchone, fetchmany, fetchall]
     notes: |
@@ -536,6 +585,13 @@ db_write:
   # ---------------------------------------------------------------
   - module: sqlite3.Connection
     methods: [rollback]
+  - module: sqlite3.Connection
+    methods: [backup]
+    notes: >-
+      WI-rivur. Online backup: reads THIS database and WRITES it into the
+      target connection, returning None. It was db_read, which minted an
+      untrusted_input source at a call that hands its caller nothing
+      (ADR-0049 ruling 1); the crossing it performs is the write.
   - module: sqlite3.Connection
     methods: [execute, executemany, executescript, commit]
     notes: |
@@ -577,6 +633,21 @@ net_send:
       urllib.request's surface was enumerated (module_completeness, WI-bakik),
       because an unrowed call into an unenumerated module withholds every clean
       verdict.
+  - module: urllib.request.OpenerDirector
+    methods: [open, error]
+    notes: >-
+      WI-dibit. `opener.open(url, data)` performs the request: it is the send
+      `urlopen` performs (urlopen ends in `opener.open(url, data,
+      timeout)`), on an opener the program built with `build_opener(...)` or
+      `OpenerDirector()` + `add_handler`. net_send and not net_recv for
+      urlopen's reason: the response is a consequence of the send, and the
+      returned object is read later. `error(proto, *args)` runs the
+      error-handler chain, and the default chain re-sends:
+      HTTPRedirectHandler.http_error_302 calls `self.parent.open(new)`, an
+      auth handler retries with credentials; a call that hits no re-sending
+      handler raises instead, which the row over-approximates. Reached from
+      `build_opener()` through the library_signatures row
+      `urllib.request.build_opener: urllib.request.OpenerDirector`.
   - module: smtplib.SMTP
     methods: [sendmail, send_message]
   - module: xmlrpc.client.ServerProxy
@@ -690,6 +761,12 @@ ipc_send:
     methods: [put, put_nowait]
   - module: multiprocessing.Pipe
     methods: [send, send_bytes]
+  - module: os._wrap_close
+    methods: [write, writelines]
+    notes: >-
+      WI-kanor. The object os.popen(cmd, "w") returns (library_signatures row
+      os.popen -> os._wrap_close); a write through it goes to the CHILD's
+      stdin. The read twin is under ipc_recv.
   - module: multiprocessing.Process
     methods: [kill, terminate]
     notes: "2026-09-06 WI-dupok: signals the child (os.kill's row is the module-level form); start() is the launch and sits under subprocess."
@@ -792,7 +869,14 @@ logging:
     methods: [print_help, print_usage, error]
     notes: "error prints usage to stderr then raises SystemExit."
   - module: logging
-    functions: [debug, info, warning, error, critical, exception, log, basicConfig, StreamHandler]
+    functions: [debug, info, warning, error, critical, exception, log]
+    notes: >-
+      WI-ragaz (audit-findings 0021 Step 5). basicConfig and StreamHandler were
+      rowed here and write nothing at the call: they construct or configure the
+      facility, and the write happens at a later emitter call -- rowed in this
+      entry, so the crossing stays represented (ADR-0049 ruling 3; erlang.yaml's
+      io_lib deletion is the precedent). They are now examined negatives under
+      the `logging` completeness grant, which says so.
   - module: base64
     functions: [main]
     notes: "The python -m base64 entry point; opens files and writes stdout. The survey probe's catch."
@@ -868,22 +952,61 @@ ipc_recv:
     methods: [get, get_nowait]
   - module: multiprocessing.Pipe
     methods: [recv, recv_bytes]
+  - module: subprocess.Popen
+    methods: [communicate]
+    simultaneous: true
+    notes: >-
+      WI-kanor / ADR-0049 ruling 1: `out, err = p.communicate()` returns the
+      CHILD'S stdout and stderr, chosen by a program hypergumbo cannot see, so
+      the call is a transfer as well as the launch-side wait it is rowed as
+      under subprocess. `simultaneous` for the reason the check_output row
+      gives. WI-jabus kept this launch-only because the capture depends on
+      `stdout=PIPE`, an argument on the CONSTRUCTOR; without a PIPE the call
+      returns `(None, None)`, so a flow from it carries nothing a program can
+      act on, and the run() objection (rowing it would mint at every call,
+      most of which capture nothing) does not transfer: `run`'s result is read
+      for its returncode, while communicate's tuple IS the output.
+  - module: os._wrap_close
+    methods: [read, readline, readlines, close]
+    notes: >-
+      WI-kanor. os.popen(cmd) returns an os._wrap_close over the child's
+      stdout (library_signatures row os.popen -> os._wrap_close), so a read
+      through it returns bytes the CHILD chose (ADR-0049 ruling 1) -- the
+      crossing the launch row cannot carry, because the launch returns a
+      handle. close() waits for the child and returns its exit status, which
+      is os.waitpid; os.wait / os.waitpid are rowed here ("Reaping a child
+      collects its exit status"). Iterating the object (`for line in f:`) is
+      no call and is not reached.
 
 subprocess:
-  - module: subprocess.Popen
-    methods: [communicate, wait, poll, terminate, kill, send_signal]
+  - module: platform
+    functions: [architecture, processor, platform]
+    simultaneous: true
     notes: >-
-      WI-jabus. LAUNCH-ONLY, on `run`'s precedent and NOT on check_output's.
-      Whether `communicate()` transfers the child's bytes back depends on
-      `stdout=PIPE`, an argument the catalogue cannot read -- and here that
-      argument is on the CONSTRUCTOR, one hop further away than `run`'s own
-      `capture_output=`. The shipped treatment for exactly that is a
-      launch-only row with the omission DISCLOSED rather than silent, which is
-      what this is. It deliberately does NOT mint untrusted_input: ADR-0049
-      ruling 1 mints only where the far side chose the value, and
-      check_output / getoutput / getstatusoutput already carry that for the
-      case where the capture is unconditional. WI-bimik's premise that
-      subprocess output mints nothing is STALE and recorded so on that item.
+      INV-bosus. architecture() runs `file -b <executable>` (executable
+      defaults to sys.executable and is the caller's argument otherwise);
+      processor() and platform() run `uname -p` on every platform except win32
+      and OpenVMS. Simultaneous with the host_info_read row: the launch is how
+      the description is read.
+  - module: subprocess.Popen
+    methods: [communicate]
+    simultaneous: true
+    notes: >-
+      WI-kanor: also ipc_recv (see that row) -- it returns the child's output.
+      Still a subprocess row: a launch-side call on an opaque child, and the
+      `input=` it sends is a subprocess sink.
+  - module: subprocess.Popen
+    methods: [wait, poll, terminate, kill, send_signal]
+    notes: >-
+      WI-jabus. LAUNCH-ONLY: wait / poll return the exit status (python rows
+      Popen.wait here and os.wait under ipc_recv -- two answers for one reap,
+      recorded rather than reconciled), terminate / kill / send_signal return
+      nothing. `communicate` returns the child's OUTPUT and is rowed above and
+      under ipc_recv. `subprocess.run` stays launch-only for a reason that does
+      NOT transfer to communicate: its CompletedProcess carries the child's
+      bytes only when the caller passed `capture_output=` / `stdout=PIPE`, and
+      a run() result is read for its returncode at most call sites, so rowing
+      it would mint a source at calls that capture nothing.
   - module: multiprocessing.Process
     methods: [start]
     notes: "2026-09-06 WI-dupok: forks or spawns the child (Popen in the spawn context); the launch site of every multiprocessing worker."
@@ -1040,7 +1163,7 @@ host_info_read:
   - module: grp
     functions: [getgrgid, getgrnam, getgrall]
   - module: platform
-    functions: [platform, architecture, libc_ver, mac_ver, freedesktop_os_release]
+    functions: [libc_ver, mac_ver, freedesktop_os_release]
   - module: shutil
     functions: [get_terminal_size]
   - module: tempfile
@@ -1048,7 +1171,19 @@ host_info_read:
   - module: sys
     attributes: [executable, path, platform, version]
   - module: platform
-    functions: [system, node, release, version, machine, processor, python_version]
+    functions: [system, node, release, version, machine, python_version]
+  # INV-bosus: split out of the two rows above and declared `simultaneous` here
+  # AND under subprocess. Each reads the host description and also launches a
+  # program to do it (measured on CPython 3.12 / Linux by wrapping
+  # subprocess.check_output): architecture() runs `file -b <sys.executable>`
+  # (_syscmd_file); processor() runs `uname -p` (_Processor.from_subprocess, the
+  # fallback for every platform but win32 and OpenVMS); platform() runs it
+  # through uname().processor. One call, both boundaries, no argument that
+  # decides between them. The other platform functions spawn nothing.
+  - module: platform
+    functions: [architecture, processor, platform]
+    simultaneous: true
+    notes: "Reads the host description and launches file(1) / uname(1) to do it; see the subprocess row."
   - module: locale
     functions: [getlocale, getdefaultlocale, getpreferredencoding]
   # 2026-09-08 WI-dozul. The LOCAL half of socket's lookup surface, rowed
@@ -1178,12 +1313,15 @@ stdlib_modules:
   - argparse
   - array
   - ast
+  - asynchat
   - asyncio
+  - asyncore
   - atexit
   - audioop
   - base64
   - bdb
   - binascii
+  - binhex
   - bisect
   - builtins
   - bz2
@@ -1216,6 +1354,7 @@ stdlib_modules:
   - decimal
   - difflib
   - dis
+  - distutils
   - doctest
   - email
   - encodings
@@ -1247,6 +1386,7 @@ stdlib_modules:
   - idlelib
   - imaplib
   - imghdr
+  - imp
   - importlib
   - inspect
   - io
@@ -1320,6 +1460,7 @@ stdlib_modules:
   - shutil
   - signal
   - site
+  - smtpd
   - smtplib
   - sndhdr
   - socket
@@ -1432,8 +1573,7 @@ stdlib_modules:
 #
 # SPELLED ``module_completeness`` since 2026-08-15. The old
 # ``stdlib_module_completeness:`` is still READ from shipped catalogues so
-# no curated file breaks, but it is not accepted in a project-local
-# overlay: an overlay describes THIRD-PARTY modules, so a ``stdlib_*`` key
+# no curated file breaks, but it is not accepted in an overlay: an overlay describes THIRD-PARTY modules, so a ``stdlib_*`` key
 # there asserts something about a stdlib it is not describing. The concept
 # was never stdlib-specific — only its authors were.
 #
@@ -1499,6 +1639,16 @@ module_completeness:
   - module: datetime.datetime
     completeness: complete
     retrieved: "2026-08-15"
+  - module: datetime.date
+    completeness: complete
+    retrieved: "2026-10-14"
+    notes: >-
+      today() is the one clock read and has its own row above; the other
+      classmethods (fromtimestamp, fromordinal, fromisoformat,
+      fromisocalendar) and the instance methods convert a supplied value.
+      Undeclared, the first call into any of them (the tracker's
+      fromisoformat) made datetime.date unclassifiable and withheld every
+      self-claim verdict, as date.today() had (INV-fugus).
   - module: hashlib
     completeness: complete
     retrieved: "2026-08-15"
@@ -1554,8 +1704,9 @@ module_completeness:
       parse_keqv_list, request_host, noheaders, ftperrors. urlretrieve also
       writes a local file; it carries its net_send row, not a second one.
       This entry covers the urllib.request SLOT only. An instance's methods
-      live at their own slots (urllib.request.OpenerDirector.open sends and
-      carries no row yet), which this entry does not reach or claim.
+      live at their own slots: urllib.request.OpenerDirector carries its own
+      entry below (WI-dibit), and every other class's instance methods are
+      neither reached nor claimed by this one.
   - module: difflib
     completeness: complete
     retrieved: "2026-08-15"
@@ -1574,7 +1725,16 @@ module_completeness:
   - module: csv
     completeness: complete
     retrieved: "2026-08-15"
-    notes: reader/writer wrap objects the caller opened; csv opens nothing.
+    notes: >-
+      reader/writer wrap objects the caller opened; csv opens nothing.
+      WI-kozaj enumerated the public surface (python 3.12): writer builds a
+      _csv.Writer and writes nothing (the write is rowed at that type's
+      writerow / writerows); reader, DictReader (reads of a caller-opened object),
+      Sniffer, Dialect, excel / excel_tab / unix_dialect, register_dialect /
+      unregister_dialect / get_dialect / list_dialects, field_size_limit and
+      Error do no I/O, and the DictWriter constructor stores its arguments.
+      This entry covers the csv SLOT only: the write surfaces live at their
+      own slots (_csv.Writer and csv.DictWriter, rowed fs_write).
   - module: gc
     completeness: complete
     retrieved: "2026-08-15"
@@ -1775,15 +1935,35 @@ module_completeness:
       WI-gihif. add_header / add_data / get_full_url mutate an object;
       `urlopen` is what crosses, and it is rowed under net_send at the
       urllib.request slot, which this entry does not reach or claim to.
+  - module: urllib.request.OpenerDirector
+    completeness: complete
+    retrieved: "2026-10-03"
+    notes: >-
+      WI-dibit. The four public methods (python 3.12, introspected: `[n for n
+      in dir(OpenerDirector) if not n.startswith('_')]`). ROWED net_send: open
+      (the request), error (the handler chain, which re-sends on a redirect or
+      an auth retry). NO I/O ON CALL: add_handler (registers a handler on the
+      object), close (a `pass` kept for backwards
+      compatibility, as is BaseHandler.close). `addheaders` is an attribute and is never a call. The
+      constructor is covered by the urllib.request slot's own entry above.
   - module: subprocess.Popen
     completeness: complete
     retrieved: "2026-09-14"
     notes: >-
       The launch surface is rowed above (the constructor is the launch, and
-      the opaque-boundary caveat names it); communicate/wait/poll/terminate/
-      kill/send_signal are rowed launch-only there too. stdin/stdout/stderr are
-      ATTRIBUTES holding file objects -- a read through one is a call on that
-      object, classified where that object's own class is declared, not here.
+      the opaque-boundary caveat names it); wait/poll/terminate/kill/
+      send_signal are rowed launch-only there too, and communicate is rowed
+      both launch and ipc_recv (it returns the child's output, WI-kanor).
+      stdin/stdout/stderr are ATTRIBUTES holding file objects -- a read through
+      one is a call on that object, classified where that object's own class
+      is declared, not here.
+  - module: os._wrap_close
+    completeness: complete
+    retrieved: "2026-10-03"
+    notes: >-
+      WI-kanor. The object os.popen returns: read/readline/readlines/close are
+      rowed ipc_recv and write/writelines ipc_send. The remainder is fileno,
+      the context-manager pair and iteration -- no crossing of their own.
   - module: tarfile.TarFile
     completeness: complete
     retrieved: "2026-09-14"
@@ -1835,7 +2015,7 @@ module_completeness:
     completeness: complete
     retrieved: "2026-08-15"
     notes: >-
-      Module-level emitters, basicConfig, and the file/stream handler constructors rowed; getLogger/Formatter are pure. Logger METHOD calls ride the untyped-receiver residual, disclosed there.
+      Module-level emitters rowed logging; the FileHandler constructor rowed fs_write (it opens the log file). getLogger, Formatter, basicConfig and StreamHandler are declared NOT I/O: each constructs or configures the facility and writes nothing at the call (WI-ragaz, audit-findings 0021). DISCLOSED RESIDUAL: basicConfig(filename=...) constructs a FileHandler and so opens the file -- 13 of 477 basicConfig calls in the 2026-10-03 corpus pass filename= lexically -- and a name-matched row cannot see the keyword; the log written there is `logging` by audit-findings 0021's configured-destination rule. Logger METHOD calls ride the untyped-receiver residual, disclosed there.
   - module: importlib
     completeness: complete
     retrieved: "2026-08-15"
@@ -1892,7 +2072,7 @@ module_completeness:
     completeness: complete
     retrieved: "2026-08-15"
     notes: >-
-      execute family, commit, rollback, iterdump, backup all rowed; cursor/close are handle management.
+      execute family, commit, rollback, iterdump rowed; backup rowed db_write (it writes the target database, WI-rivur); cursor/close are handle management.
   - module: gzip
     completeness: complete
     retrieved: "2026-08-15"
@@ -1937,7 +2117,10 @@ module_completeness:
     completeness: complete
     retrieved: "2026-08-15"
     notes: >-
-      Host-identification surface rowed under env_read.
+      Host-identification surface rowed under host_info_read (it was env_read
+      until the INV-tutar split). INV-bosus, 2026-09-28: architecture,
+      processor and platform are ALSO rowed subprocess, simultaneously,
+      because each launches file(1) or uname(1).
   - module: secrets
     completeness: complete
     retrieved: "2026-08-15"

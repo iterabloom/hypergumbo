@@ -22,18 +22,27 @@ Matching strategy
    pointer form ``&cobra.Command{``) — this is the idiom used by every
    cobra-based CLI. Only files that also import
    ``github.com/spf13/cobra`` are considered.
-2. Inside the struct body, capture lines of the form
-   ``FieldName: identifier`` where ``FieldName`` is one of the handler
-   fields above and ``identifier`` is a Go identifier (optionally
+2. In each such file, capture occurrences of the form
+   ``FieldName: identifier`` anywhere in the file (the match does not
+   check that it sits inside the ``cobra.Command{...}`` braces), where
+   ``FieldName`` is one of the handler fields above and ``identifier``
+   is a Go identifier (optionally
    package-qualified like ``pkg.runCmd``). Lines whose value starts
    with ``func`` are ignored — those are inline function literals,
    already reachable via containment.
 3. For each captured ``(field, identifier)`` pair, resolve
-   ``identifier`` to a Symbol via ``ctx.find_symbols_by_name`` and emit
+   ``identifier`` to a GO Symbol via ``ctx.find_symbols_by_name`` (the
+   field holds a Go func value, so a same-named Python / JS symbol is a
+   name coincidence, WI-gopok) and emit
    a ``dispatches_to`` edge from the enclosing function to the handler.
    When the cobra.Command literal is at package level (inside a
    ``var … = &cobra.Command{…}`` declaration), the linker falls back
    to the enclosing variable symbol as the edge source.
+4. A resolved handler gets confidence 0.85. When the name resolves to
+   more than one symbol (a cross-package short-name collision, INV-zuhub),
+   every candidate gets an edge at confidence 0.5 with
+   ``meta["disambiguation_fallback"] = True`` (see ``is_fallback`` in
+   ``go_cobra_linker``).
 
 Why regex and not tree-sitter
 -----------------------------
@@ -44,7 +53,7 @@ composite-literal syntax, which is overkill for a five-line regex with
 existing sibling linkers (``otp.py``, ``http.py``,
 ``database_query.py``) establishing the convention. The regex is
 intentionally conservative: it skips function literals and does not
-attempt to track brace nesting beyond the line-local match.
+track brace nesting at all.
 
 Why ``dispatches_to`` edges
 ---------------------------
@@ -85,6 +94,10 @@ _HANDLER_FIELDS = (
     "PersistentPostRun",
     "PersistentPostRunE",
 )
+
+# Languages a cobra handler field can denote (WI-gopok): ``RunE: runCmd``
+# assigns a Go func value, so only a Go symbol can be the handler.
+_HANDLER_LANGUAGES = frozenset({"go"})
 
 # Anchor: match both ``cobra.Command{`` and ``&cobra.Command{``.
 # Used only to decide whether a file is a cobra client; the handler
@@ -210,10 +223,13 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
             # Resolve handler. Try the bare name first; if the
             # analyzer records receiver-qualified method names
             # (``Type.Method``), strip the package prefix and retry.
-            candidates = ctx.find_symbols_by_name(handler_name)
+            candidates = ctx.find_symbols_by_name(
+                handler_name, languages=_HANDLER_LANGUAGES,
+            )
             if not candidates and "." in handler_name:
                 candidates = ctx.find_symbols_by_name(
                     handler_name.split(".", 1)[-1],
+                    languages=_HANDLER_LANGUAGES,
                 )
             if not candidates:
                 continue

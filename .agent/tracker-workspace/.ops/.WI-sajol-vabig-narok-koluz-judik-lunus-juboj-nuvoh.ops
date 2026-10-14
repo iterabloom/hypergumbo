@@ -1,0 +1,21 @@
+- op: create  # 286a
+  at: '2026-10-04T06:09:33Z'  # 286a
+  by: agent  # 286a
+  actor: jgstern_agent  # 286a
+  clock: 1  # 286a
+  nonce: 286a  # 286a
+  data:  # 286a
+    kind: work_item  # 286a
+    title: "swift: a closure capture-list item with an initialiser ([s = m] in) declares a name the binding pass never records, so it falls through to the enclosing same-named binding"  # 286a
+    status: todo_hard  # 286a
+    priority: 3  # 286a
+    parent:  # 286a
+    tags:  # 286a
+    - swift  # 286a
+    - analysis_quality  # 286a
+    isbefore: []  # 286a
+    duplicate_of: []  # 286a
+    not_duplicate_of: []  # 286a
+    pr_ref:  # 286a
+    description: "FILED 2026-10-04 from WI-silos-mufon-mular-gavik-hihip-mibuj-mihov-julim (branch jgstern-agent/fix/silos).\n\nA closure CAPTURE LIST item with an initialiser, `{ [s = m] in s.x() }`, declares `s` inside the closure (type: m's). The binding pass records nothing for `capture_list_item`, so `s` falls through to the enclosing `s`. Live repro on origin/dev 385ec63be1 (and on the WI-silos branch, which does not touch capture lists):\n  func go(s: URLSession, m: FileManager) { run { [s = m] in s.zap3() } }\n  -> swift:URLSession:0-0:zap3:unresolved (should be FileManager, or at least not URLSession).\nFix shape: in the binding pass, a `capture_list_item` with `=` binds its simple_identifier into the lambda_literal's scope, typed by `_swift_receiver_expr_type` of the RHS (None when untyped, which still shadows). A bare `[weak self]` / `[unowned x]` item re-binds the same name to the same object and needs no entry.\nNot sized on the corpus."  # 286a
+    fields: {}  # 286a

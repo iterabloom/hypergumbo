@@ -7,6 +7,27 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-14
+
+### Added
+
+- **`tracker priority-trend` plots the open items' mean priority, one point per day**, as an SVG scatterplot (`--out`; `--since`/`--until` set the window; `--json` or `--csv` prints the series instead). Each day is replayed from the items' op logs as of the end of that UTC day; hovering a point shows its date, mean and open-item count. On this repository's tracker (2,663 items) it runs in 0.9 s, and its last point matches the live state. New `Store.item_ops()` returns an item's raw op log.
+
+### Changed
+
+- **The TUI type-checks under mypy strict, with two deliberate exceptions.** Its screens, preferences, widgets and callbacks carry their real types, clearing 35 of 37 strict errors. The two left (`action_back` overriding Textual's async method, and one guard mypy reads as unreachable) would change behaviour if fixed. No behaviour changes.
+
+### Fixed
+
+- **Tracker tests no longer flake under load.** Modal unit tests wait for the dismiss callback instead of reading the result after one `pilot.pause()`, which a starved worker could pass before the result arrived. The four `compile_ops` Hypothesis properties run with `deadline=None`.
+
+### Documentation
+
+- **Module docstrings corrected in six modules** (`store`, `serve_password`, `serve_webauthn`, `stop_hook`, `nav_history` and the package `__init__`). Among the false claims removed: `htrac setup` registers credentials, the web server wires authentication, and the login lockout is permanent (it is in-process).
+- **Module docstrings corrected in nine more** (`cache`, `id_matching`, `item_nav_render`, `preview`, `preview_pipeline`, `screenshot_save`, `serve_auth_config`, `serve_duress`, `serve_sessions`); the seven no production code calls (all but `id_matching` and `item_nav_render`) are now described as unwired.
+- **Module docstrings corrected or extended in two more** (`trackerset`, `tui`). `trackerset` no longer calls cross-tier reconciliation self-healing (`reconcile()` is called by no CLI or hook path) and documents the `:N` alias stash; `tui` documents its background reload, clickable item IDs, the Deps column and the unread rules, and no longer claims a filter indicator in the wide layout.
+- **ADR-0020 no longer claims inline screenshot previews ship.** Its status now reads partially implemented: screenshot annotation works in the TUI, discussion threads show only a placeholder line, and the preview renderer exists as library code the TUI never calls. The 0.2.0 entry for the inline SVG preview says the same.
+
 ## [0.9.0] - 2026-09-25
 
 ### Added
@@ -195,7 +216,7 @@ The tracker's auto-sync gained a GitHub write path (dormant dual-mode), now live
 #### TUI screenshot annotation mode (ADR-0020)
 
 - **Annotation overlay**: Press `S` to capture a screenshot, then annotate with rectangles (`R` + drag), arrows (`A` + drag), and numbered text labels (`L` + click). Arrow key nudge (±1 cell) mitigates SSH mouse coordinate drift. Annotations injected as SVG elements; label text XML-sanitized.
-- **Inline SVG preview**: Discussion entries referencing `.svg` files show placeholders. SVG→PNG→ANSI pipeline via optional `cairosvg` + `chafa` with graceful degradation.
+- **Inline SVG preview**: Discussion entries referencing `.svg` files show placeholders. An SVG→PNG→ANSI pipeline via optional `cairosvg` + `chafa` was added as library code only; the TUI never calls it (see ADR-0020 *Implementation status*).
 - **Label UX redesign**: Replaced raw keystroke capture with Textual `Input` widget for full editing support. Numbered markers provide visual feedback before text entry.
 
 #### htrac serve and web frontend (ADR-0019 Part A)

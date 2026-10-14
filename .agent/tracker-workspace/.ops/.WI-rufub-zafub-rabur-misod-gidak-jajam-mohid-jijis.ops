@@ -37,3 +37,19 @@
   clock: 3  # 32db
   nonce: 32db  # 32db
   message: "RE-SCOPED and demoted P1 -> P3; root cause corrected from analyzer-traversal\nbug to grammar parse failure plus undisclosed degradation.\n\nHOW: adversarial premise-check (2026-08-01) during the full-corpus leverage\nreview, then re-verified by hand before this update. Probe (production\ngrammar tree_sitter_kotlin 1.1.0):\n  - filed two-one-liner fixture: parse tree = single ERROR node, zero\n    class_declaration children; analyze_kotlin -> [('f','function')] --\n    symptom reproduces byte-identically.\n  - same three-type content MULTILINE: has_error=False, all 6 symbols correct\n    (2 classes + 1 interface, methods owner-qualified).\n  - single one-liner: has_error=True yet correct output (grammar recovery\n    succeeds at multiplicity 1) -- matches the filing's own \"has_error is a\n    red herring\" observation, now explained by recovery capacity, not by\n    tree correctness.\nThe filing's \"tree-sitter produces the correct tree\" was checked against a\nnon-production grammar (fwcd node vocabulary 'type_identifier'; production\ntree_sitter_kotlin 1.1.0 uses 'identifier'). Instrument mismatch -- L10/L50\nspecies: the measurement, not the code, carried the error.\n\nCONSEQUENCES:\n  - kotlin.py:822 dispatch needs NO fix; do not touch it for this item.\n  - WI-jubag is NOT blocked on this item (type symbols exist for normally\n    formatted Kotlin).\n  - The interface-dispatch parity gate's kotlin fixture uses the failing\n    one-liner style and its hole text cites the refuted premise -- reformat\n    and re-measure (fix path 3 in the description).\n  - The structural gap (silent wrong output from ERROR-collapsed trees,\n    cross-language) is filed as\n    INV-sukan-salun-lariz-japut-pavag-kadol-norot-vudig.\n\nDemotion rationale: population = one-liner-style files only; analyzer correct\nfor realistic formatting; nothing downstream is blocked. P1 evidence was an\nartifact of the fixture style."  # 32db
+- op: update  # 2281
+  at: '2026-10-13T22:37:59Z'  # 2281
+  by: agent  # 2281
+  actor: jgstern_agent  # 2281
+  clock: 4  # 2281
+  nonce: '2281'  # 2281
+  set:  # 2281
+    status: done  # 2281
+    pr_ref: '1571'  # 2281
+- op: discuss  # 91e6
+  at: '2026-10-13T22:38:00Z'  # 91e6
+  by: agent  # 91e6
+  actor: jgstern_agent  # 91e6
+  clock: 5  # 91e6
+  nonce: '91e6'  # 91e6
+  message: "DONE by PR #1571 (merge 3c9f03a81f; the fix is WI-tusad F2's kotlin._close_brace_repair). Root cause (as corrected 2026-08-01): tree-sitter-kotlin 1.1.0 turns a body whose last member shares the line of its closing `}` into one ERROR node when nested, or when a second such declaration follows. Fix: kotlin._parse_kotlin re-parses on a same-length repair (';' replaces the blank before such a `}` in code only: comments, strings, raw strings, char literals and ${} templates skipped) and keeps the tree with fewer error sites, at all three parse sites (symbols, edges, dataflow). Corpus: 0 of 2,470 ~/whole_bunch_of_repos .kt files adopt the repaired tree (realistically formatted Kotlin is untouched). EVIDENCE: the filed minimal repro through the CLI on merged dev 3c9f03a81f: `class A { fun f(): Int = 1 }\\nclass B { fun g(): Int = 2 }` -> hypergumbo run emits [class A, class B, method A.f, method B.g] with contains edges (filed: [('f','function')], both classes missing). test_interface_dispatch_parity[kotlin], a strict xfail citing this item, XPASSED and its KNOWN_HOLES entry was removed in the same PR (fix path 3). Fix path 1 (grammar bump) not taken; the cross-language silence (INV-sukan) is unchanged."  # 91e6

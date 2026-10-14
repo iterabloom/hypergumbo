@@ -9,9 +9,13 @@
 # Woodpecker has no in-file concurrency guard — if you ever add a push trigger,
 # ALSO cap agent parallelism / add a repo concurrency setting to replace it.
 #
-# Whole-codebase --cov-fail-under=100 across all six packages in one step is
-# equivalent to the GHA per-package 100% jobs (a 100% union ⟺ every package at
-# 100%) and far more compact. Plus the WI-jigup self-tree-validation ratchet and
+# Whole-codebase --cov-fail-under=100 across every package in one step: every
+# package's sources at 100% under ALL packages' tests. That is NOT the GHA
+# per-package jobs, which ran each package's tests ALONE: here a line covered
+# only by another package's tests counts, so per-package isolation is enforced
+# by no live CI, only by local check-package-coverage (INV-hokin audit; WI-kahar).
+# tests/test_full_suite_coverage_teeth.py pins the teeth. Plus the self-map
+# ratchets (WI-jigup self-tree-validation, WI-ratuv test-only-reachability) and
 # the top-level `pytest tests/` suite (forge/governance + agent-infra).
 #
 # Dropped vs the GHA original (all Codeberg/Forgejo artifacts):
@@ -91,7 +95,7 @@ steps:
       # container/interpreter interaction and INV-libib's per-leg logs are
       # the next prerequisite. Independent of the experiment, the two
       # whole-suite pipelines should not silently differ in install set.
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]" -e packages/hypergumbo
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python -e "packages/hypergumbo-tracker[dev,tui]" -e packages/hypergumbo
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
       - |
         if [ -f /sys/fs/cgroup/cpu.max ]; then
@@ -106,16 +110,30 @@ steps:
           --cov=packages/hypergumbo-lang-common/src \
           --cov=packages/hypergumbo-lang-extended1/src \
           --cov=packages/hypergumbo-lang-rust-analyzer/src \
+          --cov=packages/hypergumbo-lang-scip-python/src \
           --cov=packages/hypergumbo-tracker/src \
           --cov-report=term-missing --cov-fail-under=100 \
           --cov-config=.coveragerc.no-embeddings \
           packages/*/tests/
 
-  # ── WI-jigup self-tree-validation ratchet (full-suite-only) ────────────────
-  # Runs the full analysis on hypergumbo's OWN tree and ratchets its
-  # per-(validator_class, severity) violation matrix shrink-only vs the baseline.
+  # ── self-map ratchets: WI-jigup self-tree-validation + WI-ratuv ───────────
+  # Builds ONE behaviour map of hypergumbo's OWN tree and runs both ratchets
+  # that read it (full-suite-only; neither is per-PR, by design):
+  #  • WI-jigup: the per-(validator_class, severity) violation matrix,
+  #    shrink-only vs .ci/self-tree-validation-baselines.json.
+  #  • WI-ratuv: a production FUNCTION whose only callers are test modules,
+  #    shrink-only vs .ci/test-only-reachability-baseline.json. Exit 2 (no
+  #    baseline, or a map with no nodes/edges) is infrastructure, not a
+  #    regression: it warns and does not fail (the script's own contract).
+  # The WI-ratuv gate lived ONLY in .github/workflows/full-suite.yml, whose
+  # schedule was off since 07-23, so from 09-02 it ran nowhere (INV-hokin).
+  # It runs HERE because /tmp does not cross Woodpecker steps and the map costs
+  # minutes. Both gates run whatever the other returns -- under `set -e` a bare
+  # red first gate would end the step before the second reported -- and the
+  # step fails if either failed. tests/test_check_test_only_reachability_ci_wiring.py
+  # executes these commands with a stub `python` to pin all of that.
   # Invoked via `python -m hypergumbo_core` (the bare `hypergumbo` console script
-  # lives in the meta-package CI doesn't install), mirroring the GHA job.
+  # lives in the meta-package this step doesn't install).
   - name: self-tree-validation
     image: python:3.11-bookworm
     depends_on: [build-grammars]
@@ -124,7 +142,17 @@ steps:
       - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
       - python -m hypergumbo_core run . --out /tmp/self-tree.json
-      - python scripts/check-self-tree-validation /tmp/self-tree.json .ci/self-tree-validation-baselines.json
+      - |
+        stv=0
+        python scripts/check-self-tree-validation /tmp/self-tree.json .ci/self-tree-validation-baselines.json || stv=$?
+        tor=0
+        python scripts/check-test-only-reachability --map /tmp/self-tree.json || tor=$?
+        if [ "$tor" = "2" ]; then
+          echo "WARNING: test-only-reachability skipped (exit 2: infrastructure, not a regression)"
+          tor=0
+        fi
+        echo "self-tree-validation exit=$stv  test-only-reachability exit=$tor"
+        if [ "$stv" != "0" ] || [ "$tor" != "0" ]; then exit 1; fi
 
   # ── WI-vanun / WI-ninoz self-claim drift gate — THE ONLY ARM ───────────────
   # Ported from .github/workflows/full-suite.yml, where it had been running on
@@ -157,6 +185,17 @@ steps:
       - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
       - PYTHON=python scripts/check-self-claims
+
+  # ── WI-vumum independent I/O allowlist — cron arm ──────────────────────────
+  # The per-PR arm (woodpecker.yml `io-allowlist`) is path-filtered; this arm is
+  # unconditional so a site that slipped in through a path the filter missed
+  # still fails within one cron cadence. ~2 s, no hypergumbo install by design.
+  - name: io-allowlist
+    image: python:3.11-bookworm
+    depends_on: []
+    commands:
+      - pip install --upgrade pip && pip install "pyyaml>=6"
+      - scripts/check-io-allowlist
 
   # ── top-level forge/governance + agent-infra suite (no package coverage) ───
   - name: test-agent-infra
@@ -192,7 +231,12 @@ steps:
       #           the same venv: with mypy present the ratchet returns 1 and
       #           reports REGRESSION, which is what that test is there to see.
       - pip install --upgrade pip
-      - pip install pytest pytest-xdist pyyaml 'hypothesis~=6.100' rich 'mypy~=2.1.0'
+      #   pytest-cov — test_smart_test_zero_collect runs scripts/smart-test in a
+      #           fixture repo, and smart-test always passes --cov. Without
+      #           the plugin pytest rejects the arguments (exit 4) before
+      #           collecting anything, so all five tests failed here while
+      #           passing on every machine that has pytest-cov.
+      - pip install pytest pytest-xdist pytest-cov pyyaml 'hypothesis~=6.100' rich 'mypy~=2.1.0'
       - |
         if [ -f /sys/fs/cgroup/cpu.max ]; then
           read quota period < /sys/fs/cgroup/cpu.max

@@ -16,6 +16,10 @@
 # site type matching) and Phase 3 (synthetic dispatches_to edges) can be
 # implemented later if developers want to see WHO triggers each callback.
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-04-11
 id: go-encoding-callbacks
 language: multi
 

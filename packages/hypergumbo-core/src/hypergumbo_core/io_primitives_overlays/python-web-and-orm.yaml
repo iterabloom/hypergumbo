@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# COMMUNITY I/O primitive overlay — Python web frameworks, Django ORM and ujson.
+# COMMUNITY I/O primitive overlay — Python web frameworks, Django ORM and file
+# storage, and the ujson / defusedcsv stdlib drop-ins.
 #
 # THIS FILE SHIPS IN THE WHEEL AND IS LOADED BY DEFAULT, and every run that
 # loads it says so on stderr (ADR-0047 rulings 1, 5 and 6).
@@ -60,6 +61,60 @@ fs_write:
       mirrors the catalogued json.dump file-write. orjson is deliberately NOT
       listed beside it -- its API is dumps/loads only, with no dump, so it has
       no file-write surface to catalogue and adding it would match nothing.
+  - module: defusedcsv.csv._ProxyWriter
+    methods: [writerow, writerows]
+    notes: >-
+      Drop-in for stdlib csv that escapes a leading = + - @ | % against CSV
+      injection (pretix). SURFACE READ, NOT ASSUMED (raphaelm/defusedcsv,
+      defusedcsv/csv.py): the package's top level holds only `version`;
+      defusedcsv.csv re-exports stdlib csv and defines its own `writer`, which
+      returns `_ProxyWriter(csv.writer(f))` (writerow / writerows escape each
+      field and pass it on), and `DictWriter`, a subclass of csv.DictWriter.
+      These rows MIRROR the stdlib csv rows module for module (_csv.Writer,
+      csv.DictWriter), so the drop-in and its stdlib twin cannot disagree
+      about one write. WI-kozaj moved the write off the factory: `writer`
+      carried an fs_write row (WI-nibav) exactly as stdlib csv.writer did, and
+      both moved to the object the factory returns, reached through the
+      community library_signatures row defusedcsv.csv.writer ->
+      defusedcsv.csv._ProxyWriter (python-stdlib-dropins.yaml). WI-nibav's
+      point stands: a defusedcsv call is identified by ITS OWN row, never by
+      _module_matches' component-suffix arm, which WI-mujod has since refused
+      in that direction (a slot with MORE leading components than the row
+      names a different owner), so these rows are the only thing that
+      classifies defusedcsv's writes.
+  - module: defusedcsv.csv.DictWriter
+    methods: [writerow, writerows, writeheader]
+    notes: >-
+      WI-kozaj, the mirror of stdlib csv.DictWriter. defusedcsv's DictWriter
+      subclasses csv.DictWriter and swaps in its escaping writer, so the write
+      surface is the inherited writerow / writerows / writeheader.
+  # WI-nibav. django.core.files.storage.default_storage: a LazyObject over
+  # storages['default'], which is FileSystemStorage unless the project's
+  # STORAGES setting names another backend (then these calls may cross the
+  # network instead; the row describes Django's default). SURFACE READ from
+  # django's core/files/storage/{base,filesystem}.py: save -> _save
+  # (os.open + write, file_move_safe), delete -> os.remove / os.rmdir, open ->
+  # File(open(path, mode)), dual like builtins.open with the mode in the same
+  # seat and default 'rb'. Rowed `functions:` per ADR-0059: the calls are made
+  # on the named global itself (`default_storage.save(...)` is valid as
+  # written). NOT rowed, because they touch no file: url (urljoin of base_url),
+  # path (safe_join), generate_filename / get_valid_name /
+  # get_alternative_name (string work). Instances of FileSystemStorage and
+  # `storages[alias]` lookups are not rowed here.
+  - module: django.core.files.storage.default_storage
+    functions: [save, delete, open]
+    notes: "open is dual-classified: fs_write under a write mode, fs_read otherwise (see fs_read)."
+
+fs_read:
+  - module: django.core.files.storage.default_storage
+    functions: [open, exists, listdir, size, get_accessed_time,
+                get_created_time, get_modified_time, is_name_available,
+                get_available_name]
+    notes: >-
+      WI-nibav; see the fs_write row. open with the default 'rb' reads;
+      exists is os.path.lexists, listdir os.scandir, size os.path.getsize, the
+      get_*_time trio os.path.get{a,c,m}time; is_name_available and
+      get_available_name call exists.
 
 net_listen:
   # ADR-0049 LAUNCH rows (measurement 0010), moved with python's stdlib launch

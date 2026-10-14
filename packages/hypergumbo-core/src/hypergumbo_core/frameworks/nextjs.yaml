@@ -7,6 +7,10 @@
 # File-based patterns (v1.1.x): Match exports in pages/ and app/ directories
 # Next.js uses file system as the router - pages/about.js → /about
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-06-18
 id: nextjs
 language: javascript
 

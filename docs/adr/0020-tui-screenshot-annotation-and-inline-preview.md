@@ -2,7 +2,32 @@
 # ADR-0020: TUI Screenshot Annotation and Inline Preview
 
 Date: 2026-03-30
-Status: Implemented — shipped in hypergumbo-tracker v0.2.0 (2026-04-04). Annotation mode (`S` to capture; `R`/`A`/`L` for rectangles, arrows, numbered labels; arrow-key nudge for SSH mouse drift) and inline preview live at `screenshot_save.py`, `annotations.py`, `svg_injection.py`, `svg_detection.py`, `preview.py`, `preview_pipeline.py`, `hotspot_markup.py`
+Status: Accepted — partially implemented. Part 1 (screenshot annotation) shipped in hypergumbo-tracker v0.2.0 (2026-04-04), with the deviations listed under *Implementation status*; Part 2 (inline preview) not wired: the TUI shows a one-line placeholder per referenced SVG and never renders a preview
+
+## Implementation status
+
+Recorded 2026-10-11 from the code (`packages/hypergumbo-tracker/src/hypergumbo_tracker/`), by tracing which functions have a production caller.
+
+**Part 1 — annotation: live in the TUI (`tui.py`).**
+
+- `S` (`action_capture_screenshot`) exports the screen with Textual's `export_screenshot()` and writes it to `.agent/screenshots/<item-id-prefix>-<YYYYMMDD-HHMMSS>.svg` (the first three dash-separated parts of the selected item's ID, or `screen`; falls back to `$TMPDIR/<uid>-htrac-screenshots/` on `PermissionError`). It does not create a tracker item.
+- `AnnotationScreen` replays the frozen screen strips under a canvas: `R` + drag (rectangle), `A` + drag (arrow), `L` + click (numbered marker, then text via an `Input` widget), `U` undo, arrow keys nudge by one cell, Enter confirms, Escape discards.
+- On confirm, `_on_annotation_result` reads the cell geometry from the exported SVG (regex over its line rects and single-character `textLength`), builds `<rect>` / `<line>` (with a `<polygon>` arrowhead marker) / `<text>` elements inside `<g class="annotations">`, XML-escapes label text with `annotations.sanitize_label_text`, and inserts the group before `</svg>`.
+- The annotation dataclasses in `annotations.py` are used; their `to_dict` / `annotation_from_dict` serialization is not.
+
+Deviations from the Part 1 decision below: the annotated SVG **overwrites** the original file (the original is not preserved alongside it), and annotations are **not** stored as JSON (no sidecar, no `<metadata>` element) — the agent can recover them only from the injected SVG elements.
+
+**Part 2 — inline preview: not wired.** The discussion renderer in `tui.py` calls only `preview.extract_svg_paths` (matches `.agent/screenshots/…svg` or absolute `…svg` paths) and `preview.format_preview_placeholder`, appending `[screenshot: <name>]` for a file that exists and `[screenshot: <name> — file not found]` for one that does not. There is no rasterization, no Chafa call, no expand keypress, no cache in use, and no "preview unavailable" notice; `cairosvg` is not a declared dependency of the tracker package.
+
+**Library code with no production caller** (only tests import it):
+
+- `preview.render_svg_preview`, its in-memory cache and `clear_cache`, and `preview.format_unavailable_notice`.
+- `preview_pipeline.py` — a second SVG → PNG → ANSI renderer (`render_svg_preview`, `PreviewCache`, `collapsed_placeholder`).
+- `svg_detection.py` — a second SVG-path detector whose rules differ from `preview.extract_svg_paths` (it accepts relative paths such as `docs/x.svg`, which the TUI's detector rejects).
+- `svg_injection.py` — a second annotation-to-SVG transform using fixed Rich export constants; the TUI's own injection in `_on_annotation_result` is the one that runs.
+- `screenshot_save.py` — saves to `.agent/tracker-workspace/screenshots/` and can auto-create a `needs_human_review` item; the TUI uses neither.
+
+Whether to wire the Part 2 pipeline or remove the unused modules is open.
 
 ## Context
 
@@ -46,7 +71,7 @@ The agent (AI) does not need the rasterized preview — it can read the SVG file
 4. After each annotation gesture (drag, label placement), the annotation is rendered as a **Textual overlay** on the frozen screen — the bounding box or label appears as styled characters. The user can **adjust with arrow keys** if mouse coordinates drifted (common over SSH). **Enter** confirms the annotation; **Escape** discards it.
 5. On confirm, the annotation coordinates — captured in Textual's cell coordinate system — are mapped to SVG coordinates.
 6. Vector elements (`<rect>`, `<text>`, `<line>`, `<polygon>`) are injected into the original SVG as a new `<g class="annotations">` group.
-7. The annotated SVG is saved. The original is preserved alongside it.
+7. The annotated SVG is saved. The original is preserved alongside it. *(As built, the annotated SVG overwrites the original; see Implementation status.)*
 
 **Mouse support requirement:** Annotation mode requires a terminal with mouse event support (MouseDown, MouseMove, MouseUp). Over SSH, mouse passthrough depends on the terminal emulator and SSH client — Royal TSX and most modern terminals support it, but some do not (notably `screen`/`tmux` sessions with mouse passthrough disabled). If the terminal does not pass mouse events, annotation mode is unavailable — this is a known limitation accepted for v1. The user can still take keypress-triggered screenshots without annotations; a keyboard-driven annotation fallback is not planned. The confirm step with arrow-key adjustment (step 4) mitigates coordinate drift, which is common when mouse events are forwarded over SSH.
 
@@ -92,11 +117,13 @@ class LabelAnnotation:
 Annotation = RectAnnotation | ArrowAnnotation | LabelAnnotation
 ```
 
-Annotations are serialized as tagged JSON (`{"kind": "rect", "cell_x1": 5, ...}`) and stored alongside the SVG — either as a JSON sidecar or embedded in the SVG as a `<metadata>` element — so they can be parsed programmatically by the agent.
+Annotations are serialized as tagged JSON (`{"kind": "rect", "cell_x1": 5, ...}`) and stored alongside the SVG — either as a JSON sidecar or embedded in the SVG as a `<metadata>` element — so they can be parsed programmatically by the agent. *(Not built: no sidecar or `<metadata>` is written; see Implementation status.)*
 
 **Sanitization:** Annotation label text is XML-escaped before injection into SVG `<text>` elements. Characters `<`, `>`, `&`, `"`, `'` are replaced with their XML entity equivalents (`&lt;`, `&gt;`, `&amp;`, `&quot;`, `&apos;`). This prevents malformed SVGs from label text containing markup-significant characters.
 
 ### Part 2: Inline preview in discussion threads
+
+> Not implemented in the TUI beyond path detection and a placeholder line; see *Implementation status*.
 
 **SVG references in discussion messages** are detected and rendered as approximate inline previews in the TUI.
 

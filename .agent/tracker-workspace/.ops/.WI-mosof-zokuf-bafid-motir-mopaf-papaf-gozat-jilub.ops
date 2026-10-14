@@ -1,0 +1,22 @@
+- op: create  # 1c49
+  at: '2026-10-03T17:06:19Z'  # 1c49
+  by: agent  # 1c49
+  actor: jgstern_agent  # 1c49
+  clock: 1  # 1c49
+  nonce: 1c49  # 1c49
+  data:  # 1c49
+    kind: work_item  # 1c49
+    title: "a closure inside a method gets no Site-1 enclosing_class hint and no Django-oracle enclosing class, so its inherited self.m() / self.save() is never resolved or typed"  # 1c49
+    status: todo_hard  # 1c49
+    priority: 3  # 1c49
+    parent:  # 1c49
+    tags:  # 1c49
+    - analysis_quality  # 1c49
+    - python  # 1c49
+    - dispatch  # 1c49
+    isbefore: []  # 1c49
+    duplicate_of: []  # 1c49
+    not_duplicate_of: []  # 1c49
+    pr_ref:  # 1c49
+    description: "A closure inside a method that reads the method's `self` (`def run(self): def cb(): self.helper()`) gets NO enclosing-class context beyond WI-kutal's own-body lookup:\n- the Site-1 `enclosing_class` hint is stamped only when `caller_symbol.kind == \"method\"`, so an INHERITED `self.m()` in a closure is never handed to the inherited_calls MRO walk;\n- the Django receiver oracle takes its enclosing class from `method_to_enclosing_class_id.get(caller_symbol.id)`, which is None for a closure, so `self.save()` in a closure on a model is neither typed as the ORM write nor refused.\n\nWI-kutal-malip-parah-bobis-tovaj-todug-lafaf-polop already finds the class `self` denotes by position for a closure (`_self_receiver_class_id`: innermost frame binding `self`, owner a non-static method) and uses it for the OWN-body lookup; the hint and the oracle could take the same answer. Before WI-kutal these closure calls bound by bare name (right only when no other class in the file had the name).\n\nMEASURED (WI-kutal call-site diff, base vs fix): closure/non-method callers whose old bare-name target was lost: django 13, pretix 6 (mixed with the if-block-method family and genuinely under-determined `self`, e.g. `as_view.view`'s `self = cls(**initkwargs)`). Small; filed so it is not lost."  # 1c49
+    fields: {}  # 1c49

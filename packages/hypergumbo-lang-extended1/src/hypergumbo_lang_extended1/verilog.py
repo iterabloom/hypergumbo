@@ -4,7 +4,7 @@
 This analyzer uses tree-sitter to parse Verilog/SystemVerilog files and extract:
 - Module definitions
 - Interface definitions (SystemVerilog)
-- Module instantiations
+- Module instantiations, as ``instantiates`` edges (not symbols)
 
 If tree-sitter-verilog is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -14,6 +14,13 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract all module/interface definitions
 2. Pass 2: Resolve module instantiations and create edges
+
+An instantiation's source is the enclosing ``module_declaration``, found by
+position; one outside any module (e.g. inside an interface) is dropped. The
+target type is looked up case-insensitively, preferring ``kind="module"``: a
+unique match gets confidence 0.90, several candidates 0.50 with
+``disambiguation_fallback``, and no match ``verilog:external:<type>:module`` at
+0.70.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Verilog-specific extraction
@@ -30,7 +37,7 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -202,7 +209,7 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
 
         return analysis
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Any]) -> None:
         """Register Verilog symbols multi-value, case-insensitive (WI-sofaf).
 
         Pre-fix (INV-paroh): a single-value ``dict[str, Symbol]`` keyed on
@@ -223,7 +230,7 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Any],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

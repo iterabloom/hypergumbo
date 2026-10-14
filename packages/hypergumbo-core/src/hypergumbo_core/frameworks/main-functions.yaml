@@ -21,6 +21,7 @@
 # - main() is sometimes not the "interesting" entry point
 # - Framework routes/handlers are often more relevant
 
+provenance: builtin
 id: main-functions
 language: multi
 

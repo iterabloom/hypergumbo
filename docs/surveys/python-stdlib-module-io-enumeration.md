@@ -104,7 +104,7 @@ to be re-run before anything is added to the list, not to be trusted alone.
 | `json` | 153 | `load`/`dump` take file objects; encoding is pure |
 | `time` | 128 | clock reads and `sleep` — no boundary in this vocabulary |
 | `collections`, `collections.Counter` | 90 | pure data structures |
-| `datetime`, `datetime.datetime` | 85 | pure; `now()` reads the clock, not a boundary |
+| `datetime`, `datetime.datetime`, `datetime.date` | 85 | pure; `now()` / `today()` read the clock, not a boundary (`datetime.date` added 2026-10-14) |
 | `hashlib` | 57 | pure digests; `file_digest` takes an object |
 | `typing.Any` | 43 | the sentinel only — the `typing` *module* is refused |
 | `stat` | 30 | constants and `S_IS*` predicates; `os.stat` does the I/O |
@@ -278,9 +278,11 @@ classes, 18 functions), then each hit read by hand. A class is judged by its
 
 **What the grant does not cover.** Matching is exact. This covers the
 `urllib.request` slot, which is where module functions and constructors are
-called. An instance's methods live at their own slots:
-`urllib.request.OpenerDirector.open` sends and carries NO row. That slot is not
-declared complete, and this entry does not claim it.
+called. An instance's methods live at their own slots, and this entry does not
+claim them. `urllib.request.OpenerDirector` has its own: `open` and `error`
+are rowed net_send and the class is declared complete (WI-dibit), and
+`build_opener()`'s result reaches it through the library_signatures row
+`urllib.request.build_opener: urllib.request.OpenerDirector`.
 
 **Measured.** `scripts/check-self-claims --minimal` with `Request` deleted and
 the module declared: 18 claims unchanged (`confirmed_with_caveats`). A

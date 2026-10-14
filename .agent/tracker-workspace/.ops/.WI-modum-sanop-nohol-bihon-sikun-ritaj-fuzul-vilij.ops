@@ -1,0 +1,21 @@
+- op: create  # e7c7
+  at: '2026-10-03T17:06:14Z'  # e7c7
+  by: agent  # e7c7
+  actor: jgstern_agent  # e7c7
+  clock: 1  # e7c7
+  nonce: e7c7  # e7c7
+  data:  # e7c7
+    kind: work_item  # e7c7
+    title: "py.py emits a def under an if/try/with in a CLASS BODY as a kind=function with no class link, so it is not a method of the class (Django RelatedManager.remove under 'if rel.field.null:')"  # e7c7
+    status: todo_hard  # e7c7
+    priority: 3  # e7c7
+    parent:  # e7c7
+    tags:  # e7c7
+    - analysis_quality  # e7c7
+    - python  # e7c7
+    isbefore: []  # e7c7
+    duplicate_of: []  # e7c7
+    not_duplicate_of: []  # e7c7
+    pr_ref:  # e7c7
+    description: "A `def` nested under an `if` / `try` / `with` / `for` statement in a CLASS BODY is a method of that class at runtime, but py.py only treats DIRECT children of `ClassDef.body` as methods. Such a def is emitted as kind `function`, named by the enclosing-FUNCTION chain (the class is skipped), with no method -> class link (`method_to_enclosing_class_id`).\n\nREPRO (dev b7417402dc and branch jgstern-agent/fix/kutal): `class C:` / `if sys.version_info >= (3, 8):` / `def go(self): self.helper()` -> symbols `function go` (x2 for the if/else pair); the call is unresolved with no enclosing_class hint. Corpus: Django's `create_reverse_many_to_one_manager.RelatedManager` defines `remove`/`clear`/`_clear` under `if rel.field.null:` -> symbol `create_reverse_many_to_one_manager.remove:function`.\n\nCONSEQUENCES: the method's `self.m()` calls cannot be resolved through the class (WI-kutal's class-scoped Case 2a returns nothing because the owner is not a method), no Site-1 hint is stamped, the symbol's kind is wrong for every consumer that keys on `method` (e.g. the `is_exported` rule for methods), and `self.remove()` from a sibling method misses it.\n\nNOT MEASURED: population size (count defs whose nearest enclosing scope-forming ancestor is a ClassDef through only non-scope statements)."  # e7c7
+    fields: {}  # e7c7

@@ -35,9 +35,19 @@ violation totals. As Phase 2/3 reduce the offender set the per-substrate
 baselines ratchet down — Phase 4's expectation is that the offender set
 goes empty modulo the allow-list.
 
-Allow-list: ``docs/edge-type-runtime-allowlist.yaml``. Each entry
+Allow-list: ``docs/edge-type-runtime-allowlist.yaml``, read only when passed
+with ``--allowlist`` (the CLI defaults to none). Each entry
 permits multiple ``edge_type`` values within a single partition.
 ADR-0023 §3 mandates that allow-list growth requires an ADR amendment.
+
+CLI: :func:`main` takes a behavior-map JSON path and an optional
+``--allowlist``, prints the report from ``format_report`` (un-allow-listed
+offender partitions, the allow-listed count, edges scanned), and returns
+0 when no un-allow-listed offender remains, 1 when one does, and 2 when the
+behavior map cannot be read or is not valid JSON. The documented entry point
+is ``scripts/check-edge-type-runtime-coherence``; ``python -m
+hypergumbo_core.runtime_coherence`` runs the same check through the
+``__main__`` guard instead of exiting 0 having done nothing (WI-burol).
 """
 
 from __future__ import annotations
@@ -350,3 +360,10 @@ def main(argv: list[str] | None = None) -> int:
     ))
 
     return 1 if remaining else 0
+
+
+# `python -m hypergumbo_core.runtime_coherence` runs the check instead of
+# exiting 0 having done nothing (WI-burol). scripts/check-edge-type-runtime-coherence
+# remains the documented entry point.
+if __name__ == "__main__":  # pragma: no cover - subprocess-only (tests/test_module_main_guard.py)
+    sys.exit(main())

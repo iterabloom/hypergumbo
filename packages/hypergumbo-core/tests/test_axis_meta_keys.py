@@ -16,6 +16,7 @@ filed as a follow-on).
 
 from __future__ import annotations
 
+import ast
 import dataclasses
 from pathlib import Path
 
@@ -35,6 +36,7 @@ from hypergumbo_core.axis_meta_keys import (
     is_access_mode_not_applicable,
     meta_keys_on_axis,
 )
+from hypergumbo_core.call_constructs import all_call_construct_values
 from hypergumbo_core.edge_types import all_edge_type_names
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -369,18 +371,71 @@ def test_call_construct_scope_covers_instantiates_deliberately():
     assert "instantiates" in spec.applicable_edge_types
 
 
-# --- INV-tadup: the folded values must not creep back ---
+# --- WI-dapap: the call_construct vocabulary is an ALLOWLIST ---
+#
+# Was a DENYLIST of four ejected values (INV-tadup). A denylist cannot stop a
+# value it has never seen: ``assignment`` shipped with no review of whether it
+# belonged on this axis. And the old walk read only DICT LITERALS, so it could
+# not have seen ``assignment`` even had it been denied -- that value is emitted
+# as a ``call_construct=`` KEYWORD. The walk below reads every literal shape.
 
-def _call_construct_emit_sites(values: set[str]) -> list[str]:
-    """AST-walk every shipped module for ``call_construct`` emits in *values*.
 
-    An AST walk, not a grep: a regex over source also matches its own
-    docstrings, and the comments the INV-tadup fold left behind name every
-    one of the folded values.
+def _literal_values(node: ast.expr) -> list[str] | None:
+    """String literals ``node`` can evaluate to, or None if it is not literal.
+
+    A conditional of literals (``"method" if m else None``) is literal; a
+    ``None`` branch is "stamp nothing" and contributes no value.
     """
-    import ast
+    if isinstance(node, ast.Constant):
+        return [node.value] if isinstance(node.value, str) else []
+    if isinstance(node, ast.IfExp):
+        body = _literal_values(node.body)
+        orelse = _literal_values(node.orelse)
+        if body is None or orelse is None:
+            return None
+        return body + orelse
+    return None
 
-    offenders: list[str] = []
+
+def _call_construct_value_nodes(tree: ast.AST) -> list[tuple[int, ast.expr]]:
+    """Every expression assigned to ``call_construct`` in one module, in the
+    three shapes a producer uses: ``{"call_construct": v}``,
+    ``f(call_construct=v)`` and ``meta["call_construct"] = v``."""
+    found: list[tuple[int, ast.expr]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            # ``strict=True`` is safe: a dict literal's keys/values are always
+            # parallel — ``{**expansion}`` yields a ``None`` key, not a short list.
+            for key, value in zip(node.keys, node.values, strict=True):
+                if isinstance(key, ast.Constant) and key.value == "call_construct":
+                    found.append((node.lineno, value))
+        elif isinstance(node, ast.Call):
+            found.extend(
+                (node.lineno, kw.value) for kw in node.keywords
+                if kw.arg == "call_construct"
+            )
+        elif isinstance(node, ast.Assign):
+            found.extend(
+                (node.lineno, node.value) for target in node.targets
+                if isinstance(target, ast.Subscript)
+                and isinstance(target.slice, ast.Constant)
+                and target.slice.value == "call_construct"
+            )
+    return found
+
+
+def _call_construct_literal_emits_in(tree: ast.AST, label: str) -> dict[str, list[str]]:
+    """``{value: [site, ...]}`` for every LITERAL ``call_construct`` value."""
+    out: dict[str, list[str]] = {}
+    for lineno, value in _call_construct_value_nodes(tree):
+        for literal in _literal_values(value) or []:
+            out.setdefault(literal, []).append(f"{label}:{lineno}")
+    return out
+
+
+def _call_construct_literal_emits() -> dict[str, list[str]]:
+    """The same, over every shipped module (tests excluded)."""
+    out: dict[str, list[str]] = {}
     packages = REPO_ROOT / "packages"
     for path in sorted(packages.rglob("*.py")):
         if "/tests/" in str(path) or "__pycache__" in str(path):
@@ -389,25 +444,58 @@ def _call_construct_emit_sites(values: set[str]) -> list[str]:
             tree = ast.parse(path.read_text())
         except SyntaxError:  # pragma: no cover - source in the tree parses
             continue
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Dict):
-                continue
-            # ``strict=True`` is safe: a dict literal's keys/values are always
-            # parallel — ``{**expansion}`` yields a ``None`` key, not a short list.
-            for key, value in zip(node.keys, node.values, strict=True):
-                if (
-                    isinstance(key, ast.Constant)
-                    and key.value == "call_construct"
-                    and isinstance(value, ast.Constant)
-                    and value.value in values
-                ):
-                    offenders.append(
-                        f"{path.relative_to(packages)}:{node.lineno} "
-                        f"call_construct={value.value!r}"
-                    )
-    return offenders
+        label = str(path.relative_to(packages))
+        for value, sites in _call_construct_literal_emits_in(tree, label).items():
+            out.setdefault(value, []).extend(sites)
+    return out
 
 
+def test_every_emitted_call_construct_value_is_declared() -> None:
+    """A producer may stamp only a value ``call_constructs`` declares.
+
+    WHAT THIS DOES NOT SEE: a value computed by a helper and passed through a
+    variable (java's ``_java_call_construct``, cpp's member-call test,
+    scip-python's ``_external_ref``). Those that flow through
+    ``make_unresolved_edge`` are checked at run time by ``require_declared``;
+    scip-python's, which sets ``Edge.meta`` directly, is checked by neither.
+    """
+    undeclared = {
+        value: sites for value, sites in _call_construct_literal_emits().items()
+        if value not in all_call_construct_values()
+    }
+    assert undeclared == {}, undeclared
+
+
+def test_every_declared_call_construct_value_has_a_producer() -> None:
+    """A declared value nothing emits is dead vocabulary. Delete it, or the
+    allowlist starts to describe a field that no longer exists."""
+    emitted = set(_call_construct_literal_emits())
+    assert all_call_construct_values() - emitted == set()
+
+
+@pytest.mark.parametrize("source, expected", [
+    ('e = {"call_construct": "bogus"}', {"bogus"}),
+    ('f(call_construct="bogus")', {"bogus"}),
+    ('meta["call_construct"] = "bogus"', {"bogus"}),
+    ('f(call_construct="bogus" if x else None)', {"bogus"}),
+    ('f(call_construct=helper())', set()),
+])
+def test_the_emit_scan_reads_every_producer_shape(source, expected) -> None:
+    """POSITIVE CONTROL, one per shape. A scan that silently misses a shape is
+    the defect this section replaces: the old walk read dict literals only,
+    and ``assignment`` is a keyword. The last case pins what the scan does NOT
+    claim to read."""
+    assert set(_call_construct_literal_emits_in(ast.parse(source), "x")) == expected
+
+
+def test_the_live_scan_reaches_the_keyword_shape() -> None:
+    """REACH on the real tree: ``assignment`` exists only as a keyword emit."""
+    sites = _call_construct_literal_emits()["assignment"]
+    assert any("js_ts.py" in s for s in sites)
+
+
+#: Values ejected from this key, each because it named a different axis.
+#: They must never be declared again; each entry records why.
 _FOLDED_CALL_CONSTRUCTS = {
     # RESOLUTION STATUS — same AST shape as their unsuffixed siblings; the
     # suffix only marked whether the resolver found the callee, which is
@@ -421,22 +509,16 @@ _FOLDED_CALL_CONSTRUCTS = {
     # ``evidence_type="interface_dispatch"`` — one value stated twice on two
     # different axes.
     "interface_dispatch",
+    # The same: erlang's ?LOG_* edge carries ``evidence_type="macro_expansion"``
+    # and no call construct was parsed at the site (WI-dapap).
+    "macro",
+    # The DETECTOR that found the call (rust's macro token-tree scan), not a
+    # construct; the real construct varies per site (WI-dapap).
+    "macro_body",
 }
 
 
-def test_no_producer_emits_a_folded_call_construct_value() -> None:
-    """INV-tadup: pin the refuted design so a producer cannot silently
-    reintroduce a value that names a different axis than the field does."""
-    offenders = _call_construct_emit_sites(_FOLDED_CALL_CONSTRUCTS)
-    assert offenders == [], "\n".join(offenders)
-
-
-def test_the_folded_value_guard_can_actually_fire() -> None:
-    """POSITIVE CONTROL for the guard above.
-
-    A guard that cannot be shown to fire is indistinguishable from one whose
-    walk matches nothing — a passing assertion over an empty search is not
-    evidence. Pointed at ``method``, a value the tree emits at dozens of
-    sites, the same walk must return a non-empty list.
-    """
-    assert _call_construct_emit_sites({"method"}) != []
+def test_no_folded_value_is_declared() -> None:
+    """INV-tadup, kept as a record: the allowlist must not readmit an ejected
+    value. Emitting one is already caught above, because it is undeclared."""
+    assert _FOLDED_CALL_CONSTRUCTS & all_call_construct_values() == set()

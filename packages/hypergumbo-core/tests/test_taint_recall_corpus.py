@@ -50,6 +50,7 @@ verdicts. Symbol-id path slots are repo-relative, so the tmp prefix never
 reaches the classifier.
 """
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -212,27 +213,18 @@ def test_python_source_without_any_sink_confirms(
     assert verdict["evidence_count"] == 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Source-side propagation is unimplemented: the BFS seeds at the "
-        "source's caller and walks forward only, so a caller that invokes the "
-        "source and the sink as siblings is never connected. reverse_adj is "
-        "built in propagate_taint_structural and never read. Remove this "
-        "marker when source-side propagation lands (WI-sirod)."
-    ),
-)
 def test_python_sibling_calls_under_one_caller_are_connected(
     tmp_path: Path, capsys,
 ) -> None:
-    """A real flow the forward-only walk cannot see, recorded as a ratchet hole.
+    """A real flow the forward-only walk could not see, now followed.
 
     ``handle`` calls the source and then calls the writer; the tainted value
-    genuinely reaches the filesystem. Because neither callee calls the other,
-    the forward walk from the source's caller never reaches the sink's caller.
-    An imperative ``pytest.xfail()`` here could never XPASS and would silently
-    disable the very signal this test exists to carry (L19), so the marker is
-    declarative and strict.
+    genuinely reaches the filesystem. Neither callee calls the other, so the
+    forward walk from the source's caller (``obtain``) never reached the
+    sink's caller. ``obtain`` RETURNS the received bytes, and since INV-komoj
+    a source a function returns is lifted into its callers' call sites, so
+    ``handle`` is a source caller and the walk from it reaches ``persist``.
+    This was a strict xfail naming WI-sirod until that landed.
     """
     src = tmp_path / "src"
     src.mkdir()
@@ -526,28 +518,25 @@ _UNRELATED_PYTHON = (
     "    return target\n"
 )
 
-#: A Java file that exists ONLY to put a data-flow-INCAPABLE language in the
-#: scope table. It deliberately makes no contribution to any verdict — measured,
-#: not assumed: run standalone against the claim above it produces a
-#: ``confirmed`` verdict with ZERO evidence rows, because nothing resolves
-#: ``server.accept()`` to the catalogued ``java.net.ServerSocket.accept``.
+#: A C++ file that exists ONLY to put a data-flow-INCAPABLE language in the
+#: scope table. It reads no source, so it contributes no flow to any claim.
 #:
-#: That is exactly what these tests need. JavaScript held this role until
-#: WI-nonad wired it, and the scope tests would otherwise have had no incapable
-#: language left to distinguish FROM — which is the difference between a gate
-#: and a green tick. Java is the durable choice because it has a cfg mapping and
-#: lacks the other three prerequisites, so ``blockers`` is a strict subset.
-_JAVA_INCAPABLE = (
-    "import java.io.File;\n"
-    "import java.net.ServerSocket;\n"
+#: That is exactly what these tests need: a test that distinguishes capable
+#: from incapable is vacuous once every language in its fixture is capable.
+#: JavaScript held this role until WI-nonad wired it, then Java until WI-gotun
+#: did, then C until WI-himob did. C++ is the replacement: it serves the C
+#: catalogue (through ``_CATALOG_PARENTS``) and has no part of the data-flow
+#: machinery -- ``cfg_nodes/c.yaml`` is deliberately not aliased to it, because
+#: its grammar adds try/catch, range-for and lambdas nobody has mapped. The
+#: PARTIAL case Java used to exercise (some blockers, not all) is pinned at unit
+#: level in ``test_dataflow_scope.py``.
+_CPP_INCAPABLE = (
+    "#include <stdio.h>\n"
+    "#include <stdlib.h>\n"
     "\n"
-    "public class Leak {\n"
-    "    public static void leak() throws Exception {\n"
-    "        ServerSocket server = new ServerSocket(8080);\n"
-    "        server.accept();\n"
-    "        File out = new File(\"/tmp/out.txt\");\n"
-    "        out.createNewFile();\n"
-    "    }\n"
+    "void touch() {\n"
+    "    FILE *f = fopen(\"/tmp/out.txt\", \"w\");\n"
+    "    fputs(\"constant\", f);\n"
     "}\n"
 )
 
@@ -673,21 +662,19 @@ def test_published_scope_distinguishes_capable_from_incapable(
     one repo come out on opposite sides, so a table that hardcoded either
     answer fails.
 
-    THE INCAPABLE EXEMPLAR IS JAVA, not JavaScript. JavaScript held that role
-    until WI-nonad wired it, and the swap is deliberate rather than cosmetic: a
-    test that distinguishes capable from incapable is vacuous the moment every
-    language in its fixture is capable, and flipping the JavaScript assertion
-    to ``True`` without adding a replacement would have left exactly that.
-    Java is a better long-term exemplar anyway — it has a cfg mapping but no
-    ``atomic_statement`` and no extractor, so it exercises the PARTIAL case
-    where blockers are a strict subset rather than everything.
+    THE INCAPABLE EXEMPLAR IS C++. JavaScript held that role until WI-nonad
+    wired it, then Java until WI-gotun did, then C until WI-himob did, and each
+    swap is deliberate rather than cosmetic: a test that distinguishes capable
+    from incapable is vacuous the moment every language in its fixture is
+    capable, and flipping an assertion to ``True`` without adding a replacement
+    would have left exactly that. See ``_CPP_INCAPABLE`` for why C++.
     """
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "leak.js").write_text(_JS_LEAK, encoding="utf-8")
     (tmp_path / "src" / "util.py").write_text(
         _UNRELATED_PYTHON, encoding="utf-8",
     )
-    (tmp_path / "src" / "Leak.java").write_text(_JAVA_INCAPABLE, encoding="utf-8")
+    (tmp_path / "src" / "leak.cpp").write_text(_CPP_INCAPABLE, encoding="utf-8")
 
     scope = _run(tmp_path, capsys)["envelope"]["dataflow_coverage"]
     by_lang = {row["language"]: row for row in scope["languages"]}
@@ -698,17 +685,16 @@ def test_published_scope_distinguishes_capable_from_incapable(
     # is what stops the wiring from silently regressing.
     assert by_lang["javascript"]["dataflow_capable"] is True
     assert by_lang["javascript"]["blockers"] == []
-    assert by_lang["java"]["dataflow_capable"] is False
+    assert by_lang["cpp"]["dataflow_capable"] is False
     # The blockers are the actionable half — "not covered" without saying
     # which of the four independent prerequisites is missing is a status, not
-    # a scope.
-    assert "def_use_extractor" in by_lang["java"]["blockers"]
-    # Java HAS a cfg mapping, so this is the partial case: the missing pieces
-    # are named and the present one is not slandered.
-    assert "cfg_mapping" not in by_lang["java"]["blockers"]
+    # a scope. C++ lacks all four.
+    assert set(by_lang["cpp"]["blockers"]) == {
+        "cfg_mapping", "atomic_statement", "def_use_extractor", "ddg_spec",
+    }
     # The catalog the uncovered language would have served is the disclosure
-    # that matters: 69 Java sinks are unreachable by data flow.
-    assert by_lang["java"]["catalog_sinks"] > 50
+    # that matters.
+    assert by_lang["cpp"]["catalog_sinks"] > 0
 
     # The a2 fact, machine-readable rather than prose (R16). Re-pointed
     # 2026-09-02 when WI-kabif granted §3a removal authority: no flow's
@@ -729,7 +715,7 @@ def test_published_scope_reaches_the_text_view(tmp_path: Path, capsys) -> None:
     renderer, so a text reader of a violated claim never learned flows had
     been set aside. This is the same disclosure on the same surface, pinned.
 
-    Carries the Java file for the same reason the test above does: the
+    Carries the C++ file for the same reason the test above does: the
     ``def_use_extractor`` assertion is about a BLOCKER string reaching the text
     renderer, and a repo whose languages are all capable has no blockers to
     render — the assertion would fail, and "fixing" it by deleting the line
@@ -737,13 +723,14 @@ def test_published_scope_reaches_the_text_view(tmp_path: Path, capsys) -> None:
     """
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "leak.js").write_text(_JS_LEAK, encoding="utf-8")
-    (tmp_path / "src" / "Leak.java").write_text(_JAVA_INCAPABLE, encoding="utf-8")
+    (tmp_path / "src" / "leak.cpp").write_text(_CPP_INCAPABLE, encoding="utf-8")
 
     out = _run_text(tmp_path, capsys)
 
     assert "Data-flow coverage" in out
     assert "javascript" in out
-    assert "java" in out
+    # Rows are padded to the longest language name, hence \s+.
+    assert re.search(r"\n  cpp\s+sources \d+, sinks \d+ .*wired: NO", out)
     assert "def_use_extractor" in out
     assert "call-graph reachability" in out
 

@@ -1,0 +1,22 @@
+- op: create  # 0a27
+  at: '2026-10-04T08:38:54Z'  # 0a27
+  by: agent  # 0a27
+  actor: jgstern_agent  # 0a27
+  clock: 1  # 0a27
+  nonce: 0a27  # 0a27
+  data:  # 0a27
+    kind: work_item  # 0a27
+    title: "cpp: same-arity overloads stay an ambiguous record after WI-hilum (424 sites on sherpa-onnx); cheap argument shapes (object vs pointer, literal kinds) are unread, and the this->a->b() field-chain path takes no arity choice"  # 0a27
+    status: todo_hard  # 0a27
+    priority: 3  # 0a27
+    parent:  # 0a27
+    tags:  # 0a27
+    - cpp  # 0a27
+    - call_graph  # 0a27
+    - analysis_quality  # 0a27
+    isbefore: []  # 0a27
+    duplicate_of: []  # 0a27
+    not_duplicate_of: []  # 0a27
+    pr_ref:  # 0a27
+    description: "FOUND 2026-10-04 measuring WI-hilum on sherpa-onnx d7526c8 (branch jgstern-agent/fix/hilum).\n\nAfter WI-hilum, a cpp call whose same-named definitions are narrowed by arity to SEVERAL is an honest ambiguous record (meta.resolution_quality=\"ambiguous\", confidence scaled 1/sqrt(N)) rather than a confident pick: 424 call sites on sherpa-onnx. Some are separable by argument SHAPES the call site states cheaply, which WI-hilum does not read:\n- the template overload `InitKeywords(Manager *mgr)` vs `InitKeywords(std::istream &is)` called with a local `std::istringstream is` (an object, not a pointer) -- visible once WI-rugin names member templates with their class;\n- `GetSessionOptions(int32_t num_threads, const std::string &provider)` vs `GetSessionOptions(const OnlineModelConfig &, const std::string &)` called with `(config.num_threads, config.provider)`.\nOthers are not separable at all by the call (sherpa-onnx `ReadFile(AAssetManager *mgr, ..)` vs `ReadFile(NativeResourceManager *mgr, ..)` are #if platform alternatives with different pointer types; both stay ambiguous, correctly).\n\nAlso not wired: the field-chain path (`this->a->b()` with a resolved receiver type) still takes the name's pick without the arity choice.\n\nCheap shapes that could exclude (each needs its own false-exclusion audit, as nim's `_NimTypes.incompatible` got): a literal string/number vs a class-typed or pointer parameter, `nullptr`/`&x`/`this` vs a non-pointer class parameter, a local declared as an object vs a pointer parameter (arrays decay -- not an object; typedef'd pointers -- unknown). Not measured: how many of the 424 any of these would split."  # 0a27
+    fields: {}  # 0a27

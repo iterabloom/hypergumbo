@@ -13,8 +13,8 @@ Path classification uses pattern matching on file paths to identify:
   Python, JavaScript/TypeScript, Go, Rust, Java/Kotlin, Swift, etc.
 - Example code: Matches common example/demo directory conventions
 
-Symbol-kind filtering uses two parallel sets and a dual-shape
-predicate, reflecting the ADR-0027 Phase-4b axis split between
+Symbol-kind filtering uses two parallel sets and one predicate,
+reflecting the ADR-0027 Phase-4b axis split between
 ``Symbol.kind`` (the language-construct axis) and
 ``Symbol.meta["framework_role"]`` (the framework-dispatch axis):
 
@@ -25,19 +25,33 @@ predicate, reflecting the ADR-0027 Phase-4b axis split between
   canonical ``method`` / ``function`` symbols that should be
   suppressed (e.g., framework-dispatched event subscribers folded out
   of the old ``kind="event_subscriber"`` shape by Wave 5 of ADR-0027).
-- ``is_excluded_kind(symbol)``: the public predicate consumers should
-  call. Matches either ``symbol.kind in EXCLUDED_KINDS`` or
-  ``symbol.meta.get("framework_role") in EXCLUDED_FRAMEWORK_ROLES``,
-  so it handles pre-fold and post-fold producer shapes uniformly.
+- ``is_excluded_kind(kind, meta)``: the public predicate consumers
+  should call. True when ``kind in EXCLUDED_KINDS``, or when ``kind`` is
+  ``function`` / ``method`` and ``meta.get("framework_role")`` is in
+  ``EXCLUDED_FRAMEWORK_ROLES``. Only the post-fold shape of a framework
+  role is matched: ADR-0027 Phase 4b removed the legacy literals (such as
+  ``event_subscriber``) from ``EXCLUDED_KINDS``, so a symbol still emitted
+  as ``kind="event_subscriber"`` is not excluded.
+
+Key-symbol selection is the population policy sketch ranks over and compact
+applies (its centrality path filters to it; its connectivity path takes seeds
+only from it). ``KEY_SYMBOL_KINDS`` is an allowlist of declaration kinds across
+languages; ``is_key_symbol`` requires a kind in it, a non-test path, no
+``test_`` substring in the name, and ``supply_chain_tier != 4``;
+``key_symbols`` filters a list by it; and ``production_edges`` drops edges
+whose source symbol is in a test file (edges into a test file are kept). The
+allowlist is deliberately not the complement of the ``EXCLUDED_KINDS``
+denylist: ``variable`` is in both.
 
 Why This Design
 ---------------
 Centralizing these filters ensures consistent behavior across all
 output modes. Previously, compact.py and ranking.py had duplicate
 implementations of is_test_path with different pattern sets. The
-dual-shape predicate lets producers migrate from ad-hoc
-``kind="<framework-role>"`` to canonical kind + ``meta`` without
-forcing every consumer to switch in the same release.
+predicate lets consumers exclude framework-role symbols, which producers
+now emit as a canonical kind plus ``meta["framework_role"]``, without
+widening ``EXCLUDED_KINDS`` to ``method`` (which would drop every real
+method).
 """
 
 from __future__ import annotations

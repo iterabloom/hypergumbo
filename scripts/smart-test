@@ -21,6 +21,17 @@
 # OUTPUT: By default, shows only a compact summary (test result + coverage gaps).
 # Full pytest output is saved to .ci/pytest-output.log for debugging.
 #
+# ZERO IS NEVER A PASS (INV-tazur). Two outcomes look alike and are opposites:
+#   - Nothing affected: no selector picked a test, so pytest is never invoked.
+#     It prints "0 tests ran - nothing affected, nothing to run: <reason>" and
+#     exits 0. A change that only deletes test files is this case, and says so.
+#   - A non-empty selection that executed nothing: pytest exit 5 or 4, every
+#     test deselected, or every test skipped. It prints "ZERO TESTS EXECUTED",
+#     claims no coverage, and exits non-zero (5 when pytest itself said 0).
+# The selection only ever names paths that exist: deleted test files are named
+# and left out, and require_selection_on_disk refuses (exit 1) a manifest or run
+# set that names a missing path rather than handing it to pytest.
+#
 # Usage:
 #   ./scripts/smart-test              # Run affected tests, show compact summary
 #   ./scripts/smart-test --full       # Run all tests
@@ -349,6 +360,59 @@ log() {
     fi
 }
 
+# INV-tazur: A CHANGED PATH IS NOT NECESSARILY A PATH THAT EXISTS. `git diff
+# --name-only` names a deleted file exactly as it names an edited one, so any
+# selector that turns "changed" into "run" has to ask the working tree first.
+# The one that did not was CHANGED_TEST_FILES: a `git rm`'d test went into the
+# selection, `pytest -n` got a dead path, and under xdist that is not a usage
+# error but "N workers [0 items]", exit 5, with the "not found" message lost in
+# a worker. The summary then printed "(all files at 100%)" for a run that had
+# measured nothing, and an 824-file selection was skipped looking green.
+# These two filters read paths on stdin, one per line, relative to REPO_ROOT.
+paths_on_disk() {
+    local p
+    while IFS= read -r p; do
+        if [[ -n "$p" && -e "$p" ]]; then echo "$p"; fi
+    done
+    return 0
+}
+
+paths_not_on_disk() {
+    local p
+    while IFS= read -r p; do
+        if [[ -n "$p" && ! -e "$p" ]]; then echo "$p"; fi
+    done
+    return 0
+}
+
+# INV-tazur backstop: a selection is a list of things pytest can run, and a
+# path that is not on disk is not one. The selectors are responsible for that
+# (CHANGED_TEST_FILES asks the tree; the helpers enumerate the tree), so if
+# this fires a selector is wrong, and the honest response is to stop and name
+# the path. Filtering here instead would hide exactly the defect it detects.
+# Self-contained (no helper calls) so tests can extract and drive it alone.
+require_selection_on_disk() {
+    local label="$1"
+    local selection="$2"
+    local missing="" p
+    while IFS= read -r p; do
+        if [[ -n "$p" && ! -e "$p" ]]; then missing+="$p"$'\n'; fi
+    done <<< "$selection"
+    if [[ -n "$missing" ]]; then
+        {
+            echo "ERROR: smart-test selected test path(s) that do not exist in the"
+            echo "       working tree, for $label:"
+            printf '%s' "$missing" | sed 's/^/         /'
+            echo "       pytest would collect nothing from them (under -n, exit 5 with"
+            echo "       no message), so this is refused rather than run. A selector"
+            echo "       produced a deleted or misspelled path; fix the selector or"
+            echo "       the map that names it (INV-tazur)."
+        } >&2
+        exit 1
+    fi
+    return 0
+}
+
 # WI-morud follow-up: write a self-contained diagnostic bundle when the
 # slice path falls back to full-suite. Captures the data we lose on the
 # happy path (slice command line, exit code, duration, stdout summary,
@@ -475,6 +539,44 @@ build_affected_cov_paths() {
     echo "${cov_paths[*]}"
 }
 
+# INV-tazur: HOW MANY TESTS ACTUALLY EXECUTED. pytest's exit code alone cannot
+# answer it: everything-skipped exits 0, and a dead path under -n exits 5 with
+# no message. The junit report is the record of what ran, written on every run
+# (run_pytest deletes the previous one first, so a stale report cannot answer
+# for this run). A testcase counts unless it was skipped; an xfail is reported
+# as a skip there but did execute, so it counts. Errors count: a collection
+# error is a failure with its own verdict, not an empty run.
+# With no readable report, fall back to the counts on pytest's result line, and
+# print "unknown" when neither says -- the caller then trusts the exit code
+# rather than inventing a zero.
+# `python3 -c`, not a heredoc: a heredoc inside $() is the WI-ginuj trap noted
+# at disclose_full_suite_scope.
+count_executed_tests() {
+    local junit="$1"
+    local logfile="$2"
+    local n="" line=""
+    local py='
+import sys
+import xml.etree.ElementTree as ET
+n = 0
+for case in ET.parse(sys.argv[1]).iter("testcase"):
+    skip = case.find("skipped")
+    if skip is None or skip.get("type") == "pytest.xfail":
+        n += 1
+print(n)
+'
+    if [[ -s "$junit" ]]; then
+        n=$(python3 -c "$py" "$junit" 2>/dev/null || true)
+    fi
+    if [[ -z "$n" && -f "$logfile" ]]; then
+        line=$(grep -E "(passed|failed|error|skipped|deselected|no tests ran).* in [0-9.]+s" "$logfile" | tail -1 || true)
+        if [[ -n "$line" ]]; then
+            n=$(echo "$line" | grep -oE "[0-9]+ (passed|failed|xfailed|xpassed|errors?)" | awk '{s += $1} END {print s + 0}' || true)
+        fi
+    fi
+    echo "${n:-unknown}"
+}
+
 # Summarize pytest output to show only what matters:
 # - Test result (passed/failed count)
 # - Failed tests with tracebacks
@@ -483,6 +585,9 @@ build_affected_cov_paths() {
 summarize_pytest_output() {
     local logfile="$1"
     local exit_code="$2"
+    # ${3:-}: the INV-vilag harness drives this function with two arguments
+    # under `set -u`.
+    local zero_run="${3:-false}"
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -492,7 +597,10 @@ summarize_pytest_output() {
     # exotic color source) can never abort smart-test under `set -e + pipefail` —
     # the exit code must reflect the tests, not a summary formatting mismatch.
     local result_line
-    result_line=$(grep -E "^=+ .*(passed|failed|error).* =+$" "$logfile" | tail -1 || true)
+    # "no tests ran", "skipped" and "deselected" are result lines too, and the
+    # ones that matter most: leaving them out printed NO result line for an
+    # empty run, so the only verdict on screen was the coverage section.
+    result_line=$(grep -E "^=+ .*(passed|failed|error|skipped|deselected|no tests ran).* =+$" "$logfile" | tail -1 || true)
     if [[ -n "$result_line" ]]; then
         if [[ "$exit_code" -eq 0 ]]; then
             echo "✅ $result_line"
@@ -511,7 +619,34 @@ summarize_pytest_output() {
         echo ""
         # Show short tracebacks for failures
         # Extract from "FAILURES" section to next "=" line
-        sed -n '/^=* FAILURES =*/,/^=.*=$/p' "$logfile" | head -100
+        # `|| true`: under pipefail, `head` closing the pipe after 100 lines
+        # gave sed a SIGPIPE, and set -e turned a run with long tracebacks
+        # into exit 141 before the rest of this summary was printed.
+        sed -n '/^=* FAILURES =*/,/^=.*=$/p' "$logfile" | head -100 || true
+    fi
+
+    # INV-tazur: an empty run measured nothing, so it gets no coverage section.
+    # "(all files at 100%)" below means "no measured file has a gap", which is
+    # vacuously true of a run that measured no file -- that line, printed over
+    # zero tests, is what made INV-tazur's skipped 824-file run read green.
+    if [[ "$zero_run" == "true" ]]; then
+        echo ""
+        echo "❌ ZERO TESTS EXECUTED: this is NOT a pass (exit $exit_code)."
+        echo "   The selection was non-empty, but pytest ran no test: every path was"
+        echo "   missing, collected nothing, or was deselected or skipped."
+        local pytest_errors
+        pytest_errors=$(grep -E "^ERROR: |^E +.*not found" "$logfile" | head -5 || true)
+        if [[ -n "$pytest_errors" ]]; then
+            echo "   pytest said:"
+            echo "$pytest_errors" | sed 's/^/     /'
+        fi
+        echo "   Coverage was NOT measured, so no coverage claim is made."
+        echo "   (A change with nothing to test never reaches pytest: smart-test prints"
+        echo "   \"0 tests ran - nothing affected\" and exits 0. This is not that case.)"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "Full output: $logfile"
+        echo ""
+        return 0
     fi
 
     # Show coverage gaps (files with missing lines)
@@ -646,6 +781,9 @@ run_pytest() {
         # computed the scoped coverage verdict over a run whose erroring modules
         # never imported, and smart-test exited 0 printing "✅ … N passed, 3 errors".
         local exit_code=0
+        # INV-tazur: the junit report is how the verdict below counts what ran,
+        # so the previous run's report must not survive to answer for this one.
+        rm -f "$JUNIT_XML"
         env -u FORCE_COLOR -u COLORTERM pytest $test_targets "${COV_PATHS[@]}" --junit-xml="$JUNIT_XML" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || exit_code=$?
         # Corrective re-derivation: these may only ESCALATE to failure, never
         # de-escalate to success. An affirmative-green clause (`N passed` && !
@@ -658,7 +796,23 @@ run_pytest() {
         elif grep -qE "^FAILED " "$PYTEST_LOG"; then
             exit_code=1
         fi
-        summarize_pytest_output "$PYTEST_LOG" "$exit_code"
+        # INV-tazur: A RUN THAT EXECUTED NOTHING IS NOT A PASS, whatever the
+        # cause. Every caller reaches here with a non-empty selection: the
+        # legitimate nothing-to-run case exits before pytest, in its own words.
+        # So exit 5 (nothing collected, everything deselected, or a dead path
+        # under -n), exit 4 (a dead path without -n) and an exit 0 in which
+        # every test skipped all mean the same thing, and they get one verdict:
+        # non-zero, said in words, and no coverage section. Like the clauses
+        # above this only ESCALATES; a real non-zero status is kept as it is.
+        local executed zero_run=false
+        executed=$(count_executed_tests "$JUNIT_XML" "$PYTEST_LOG")
+        if [[ $exit_code -eq 5 ]] || [[ "$executed" == "0" ]]; then
+            zero_run=true
+            if [[ $exit_code -eq 0 ]]; then
+                exit_code=5
+            fi
+        fi
+        summarize_pytest_output "$PYTEST_LOG" "$exit_code" "$zero_run"
 
         # Ingest test timings into leaderboard (non-fatal)
         if [[ -f "$JUNIT_XML" ]]; then
@@ -1015,7 +1169,17 @@ fi
 # fallback only fires when NOTHING else was selected.  A change that edits a
 # root test AND touches any mapped source would otherwise have the source's
 # tests selected and the edited test silently dropped.
-CHANGED_TEST_FILES=$(echo "$CHANGED_FILES" | grep -E '^(packages/.*/tests/(test_|BRANCHES_test_)|tests/test_).*\.py$' || echo "")
+#
+# INV-tazur: "edited" means "still on disk". A deleted test file is a change
+# with nothing left to run, so it is split off here, at the selector, and named
+# in the output rather than passed to pytest (see paths_on_disk).
+CHANGED_TEST_PATHS=$(echo "$CHANGED_FILES" | grep -E '^(packages/.*/tests/(test_|BRANCHES_test_)|tests/test_).*\.py$' || echo "")
+CHANGED_TEST_FILES=$(echo "$CHANGED_TEST_PATHS" | paths_on_disk)
+DELETED_TEST_FILES=$(echo "$CHANGED_TEST_PATHS" | paths_not_on_disk)
+if [[ -n "$DELETED_TEST_FILES" ]]; then
+    echo "smart-test: deleted test file(s) in this change, not selected (nothing left to run):"
+    echo "$DELETED_TEST_FILES" | sed 's/^/  /'
+fi
 if [[ -n "$CHANGED_TEST_FILES" ]]; then
     AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CHANGED_TEST_FILES" | sed '/^$/d' | sort -u)
 fi
@@ -1301,6 +1465,14 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
             # old "no Python source files changed" printed even when source
             # HAD changed (INV-lizor), which made the blindness read as a
             # legitimate skip.
+            # INV-tazur: a change whose only test-relevant edit DELETES test
+            # files lands here too, and it is the same legitimate nothing-to-run
+            # success -- but "docs/config only" would misdescribe it, so it gets
+            # its own words, naming what was removed.
+            NOTHING_TO_RUN_REASON="no test-relevant files changed (docs/config only)"
+            if [[ -n "$DELETED_TEST_FILES" ]]; then
+                NOTHING_TO_RUN_REASON="the only test-relevant change deletes test file(s): $(echo "$DELETED_TEST_FILES" | tr '\n' ' ' | sed 's/ $//')"
+            fi
             log "No test-relevant files changed - writing empty targeted manifest"
             mkdir -p "$MANIFEST_DIR"
             {
@@ -1308,7 +1480,7 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
                 echo "# Generated by smart-test at $(date -Iseconds)"
                 echo "# Mode: targeted"
                 echo "# Baseline: $BASELINE"
-                echo "# Reason: no test-relevant files changed (docs/config only)"
+                echo "# Reason: $NOTHING_TO_RUN_REASON"
                 echo "# Changed files: $(echo "$CHANGED_FILES" | wc -l)"
                 echo "# Changed source files: 0"
                 echo "# Selected tests: 0"
@@ -1348,7 +1520,7 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
                 exit $_full_rc
             fi
 
-            echo "smart-test: 0 tests ran - no test-relevant files changed (docs/config only)"
+            echo "smart-test: 0 tests ran - nothing affected, nothing to run: $NOTHING_TO_RUN_REASON"
             exit 0
         fi
     else
@@ -1510,6 +1682,9 @@ fi
 # reintroduce the coupling silently and pass every existing test.
 MANIFEST_TESTS="$AFFECTED_TESTS"
 MANIFEST_TEST_COUNT=$(echo "$MANIFEST_TESTS" | wc -l)
+# INV-tazur: CI runs this list verbatim, so a dead path here reddens (or, in a
+# less careful consumer, empties) the merge gate. Refuse before it is written.
+require_selection_on_disk "the manifest (.ci/affected-tests.txt)" "$MANIFEST_TESTS"
 
 # ── Coverage-directed selection, PHASE 2: UNION (WI-kuliv) ───────────────────
 # BELOW THE SEAM ON PURPOSE. This widens the LOCAL run only; the manifest above
@@ -1588,6 +1763,10 @@ if [[ "$SELECT_NARROW" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
         AFFECTED_TESTS=$(echo "$NARROWED" | sed '/^$/d' | sort -u)
     fi
 fi
+
+# INV-tazur: the union and the narrowing above may change the local run set;
+# hold it to the same rule as the manifest before pytest sees it.
+require_selection_on_disk "the local run set" "$AFFECTED_TESTS"
 
 # Count affected tests
 TEST_COUNT=$(echo "$AFFECTED_TESTS" | wc -l)

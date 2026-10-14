@@ -11,7 +11,11 @@ skipped result.
 
 Node types handled:
 - function_definition: Both 'function name()' and 'name()' styles
-- declaration_command with 'export': Exported variables
+- declaration_command with 'export': Exported variables -- ONE ``export``
+  Symbol per variable per file, at the first statement that exports it,
+  for every literal operand (``export A=1 B=2``, bare ``export X``);
+  ``export -f`` / ``export -n`` export no variable (WI-nasil, see
+  ``_exported_variable_names``)
 - command with 'alias': Alias definitions
 - command with 'source' or '.': Source/import statements
 - command: Function calls (when command_name matches a known function)
@@ -27,20 +31,24 @@ Uses the TreeSitterAnalyzer base class for two-pass orchestration:
 2. register_symbol: registers function and file symbols for cross-file resolution (the file pseudo-node, per INV-kokaj, so top-level calls outside any function can be attributed to it)
 3. extract_edges_from_file: resolves source/dot imports and function calls
 4. _find_source_files: overridden for shebang-based file discovery
+5. parse_source: overridden to blank an appended binary payload
+   (``shell_text``, WI-fisoh) while preserving byte length
 
 The edge pass also emits I/O and environment edges:
 
 - **Environment reads**: each ``$VAR`` / ``${VAR}`` expansion of a name that
   is not assigned in the file (or in a file joined to it by ``source``) and
   is not bash-maintained shell state becomes a ``module_attr_ref`` edge with
-  ``meta.env_var``, from the enclosing function or the file node. Host
-  description names (``OSTYPE``) target a host-info node instead of the
-  environment node.
+  ``meta.env_var``, from the enclosing function or the file node. A name
+  the file assigns but also reads with a default operator (``${VAR:-x}``)
+  still counts as unassigned (INV-sihom). Host description names
+  (``OSTYPE``) target a host-info node instead of the environment node.
 - **Redirects**: each ``file_redirect`` with a modelled operator (``>``,
   ``>>``, ...) becomes an unresolved ``calls`` edge carrying
   ``io_primitive`` (``redirect.<op>``), ``io_mode``, ``io_target_kind``
   (``host_path``, ``std_stream``, ``null_device`` or ``unresolved``) and,
-  when the file parsed cleanly, ``redirect_origin_names``: the
+  for a write operator in a file that parsed cleanly,
+  ``redirect_origin_names``: the
   environment-derived names that can reach what the shell writes there.
 - **External programs**: a command that is not a defined function, not
   resolved by the resolver, and not in ``SHELL_BUILTINS`` becomes one
@@ -55,13 +63,23 @@ no names.
 
 Why override _find_source_files: Bash scripts can have no extension but
 a shebang line (#!/bin/bash), requiring special detection beyond glob patterns.
+
+Alias identity (WI-tusad): an ``alias`` mints
+``overload_arity.scoped_stable_id`` with the functions enclosing it as the
+scope chain, so the same alias defined in two functions is two symbols (the
+floor key ``(kind, path, name)`` nulled both). A function nested in another
+hashes the same chain in ``compute_stable_id``'s qualified-name slot
+(``overload_arity.nested_qualified_name``: ``outer_a/run``), so ``run`` inside
+``outer_a`` and ``run`` inside ``outer_b`` no longer tie and deleting
+``outer_a`` no longer renumbers the other (the stable_id scheme bump); a
+top-level function hashes an empty qualified name, as it always did.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files, is_excluded
 from hypergumbo_core.ir import (
@@ -77,6 +95,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -84,6 +103,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import nested_qualified_name, scoped_stable_id
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
 )
@@ -140,6 +160,52 @@ def _is_bash_shebang(first_line: str) -> bool:
     return any(p in shebang for p in bash_patterns)
 
 
+#: Every byte to a space except the newline, so a blanked region keeps its
+#: line count and every span below it still points at the real file.
+_BLANK_BUT_NEWLINES: Final[bytes] = bytes(
+    0x0A if b == 0x0A else 0x20 for b in range(256)
+)
+
+
+def shell_text(data: bytes) -> bytes:
+    """The script a shell would run: ``data`` with any BINARY PAYLOAD blanked.
+
+    WI-fisoh. A self-executing archive is a short shell prefix with a binary
+    appended -- coursier's launcher and ``java -jar "$0"`` stubs are a ZIP
+    after one or two lines of ``sh``, and makeself installers append a tarball.
+    The shebang makes the file a bash file, tree-sitter parses the payload as
+    commands, and ``command_launch`` then reported control-character blobs and
+    an EMPTY STRING as launched programs (sbt: 7 of 52 primitives). The
+    prefix is real shell (``exec java -jar "$0"`` is a real launch), so the
+    file is not skipped whole as js_ts skips a NUL-bearing ``.ts``; the payload
+    is.
+
+    THE CUT IS THE START OF THE LINE HOLDING THE FIRST NUL. The ZIP local
+    header ``PK\\x03\\x04`` precedes its first NUL on that line, so cutting at
+    the NUL itself would leave ``PK\\x03\\x04`` to be parsed as a command.
+
+    BYTE LENGTH IS PRESERVED (``TreeSitterAnalyzer.parse_source`` rule 1):
+    the payload becomes spaces with its newlines kept. A file with no NUL is
+    returned unchanged, so no ordinary script moves.
+    """
+    nul = data.find(b"\x00")
+    if nul < 0:
+        return data
+    start = data.rfind(b"\n", 0, nul) + 1
+    return data[:start] + data[start:].translate(_BLANK_BUT_NEWLINES)
+
+
+def _plausible_command_name(name: str) -> bool:
+    """A launched program's name is non-empty and printable (WI-fisoh).
+
+    The second line of defence behind :func:`shell_text`: whatever the parse
+    hands over, a primitive named ``''`` or ``'\\x1e\\x0ez4'`` is not a program
+    anyone can act on, and an empty name matches anything on short-name
+    lookup.
+    """
+    return bool(name) and name.isprintable() and not any(c.isspace() for c in name)
+
+
 def find_bash_files(root: Path) -> list[Path]:
     """Find all Bash/shell script files in a directory tree, excluding vendor dirs.
 
@@ -184,6 +250,15 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> str | Non
     return None  # pragma: no cover
 
 
+def _enclosing_function_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The functions ``node`` is defined inside, outermost first: the scope
+    chain of a nested function or alias (WI-tusad)."""
+    return ancestor_labels(
+        node, lambda n: _extract_function_name(n, source)
+        if n.type == "function_definition" else None,
+    )
+
+
 def _extract_alias_info(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract alias name from alias command.
 
@@ -209,6 +284,61 @@ def _extract_alias_info(node: "tree_sitter.Node", source: bytes) -> str | None:
                 return text  # pragma: no cover - unusual alias format
 
     return None  # pragma: no cover
+
+
+def _exported_variable_names(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[str]:
+    """The variables one ``export`` statement marks for export (WI-nasil).
+
+    ``node`` is a ``declaration_command``; any keyword other than ``export``
+    yields ``[]``. ``declare -x`` / ``typeset -x`` / ``local -x`` also export,
+    but inside a function they make the variable function-LOCAL, which a
+    file-scoped ``(path, name)`` export identity cannot represent, so they are
+    left out deliberately (WI-luzit); ``readonly`` does not export at all.
+
+    Every OPERAND is read, not only the first: ``export A=1 B=2`` exports
+    both, and a bare ``export X`` marks a variable assigned elsewhere. An
+    operand whose name is not a literal (``export "$V"=1``,
+    ``export $(cat .env)``) parses as a concatenation or substitution, not a
+    ``variable_name``, and contributes nothing: the name is not known.
+
+    OPTIONS, read the way bash reads them -- only up to ``--`` or the first
+    operand, so ``export X=1 -n`` still exports X (bash rejects the ``-n``
+    operand as an invalid identifier; verified on GNU bash 5.2.21):
+
+    - ``-f`` exports FUNCTIONS; its operands are not variables -> ``[]``.
+    - ``-n`` REMOVES the export attribute -> ``[]``.
+    - ``-p`` prints the exported set and is otherwise inert: alone it names
+      nothing, and with operands bash still exports them.
+    """
+    if find_child_by_type(node, "export") is None:
+        return []
+    names: list[str] = []
+    options_open = True
+    for child in node.children:
+        if child.type == "word":
+            text = node_text(child, source)
+            if options_open and text == "--":
+                options_open = False
+            elif (options_open and text.startswith("-")
+                  and ("f" in text or "n" in text)):
+                return []
+            continue
+        if child.type == "variable_assignment":
+            name_node = find_child_by_type(child, "variable_name")
+        elif child.type == "variable_name":
+            name_node = child
+        else:
+            # ``export`` itself before the first operand; a dynamic operand
+            # (concatenation / substitution) after it.
+            if child.type != "export":
+                options_open = False
+            continue
+        options_open = False
+        if name_node is not None:
+            names.append(node_text(name_node, source))
+    return names
 
 
 # INV-nular. Variables BASH ITSELF assigns, from the shell manual's "Shell
@@ -425,7 +555,7 @@ class _RepoBashIndex:
         trees: dict[str, tuple["tree_sitter.Tree", bytes]] = {}
         for path in files:
             try:
-                data = path.read_bytes()
+                data = shell_text(path.read_bytes())  # WI-fisoh
                 rel = str(path.relative_to(self.root))
             except (OSError, ValueError):  # pragma: no cover - defensive
                 continue
@@ -844,6 +974,18 @@ class BashAnalyzer(TreeSitterAnalyzer):
         """Yield bash source files, including extensionless shebang scripts."""
         yield from find_bash_files(repo_root)
 
+    def parse_source(
+        self, parser: "tree_sitter.Parser", source: bytes,
+    ) -> "tuple[bytes, tree_sitter.Tree]":
+        """Parse the script a shell would run, not an appended binary (WI-fisoh).
+
+        :func:`shell_text` keeps byte length, so both of the base class's rules
+        for this hook hold: every span still points at the real file, and the
+        returned tree is the tree of the returned bytes.
+        """
+        text = shell_text(source)
+        return text, parser.parse(text)
+
     def extract_symbols_from_file(
         self,
         tree: "tree_sitter.Tree",
@@ -855,7 +997,8 @@ class BashAnalyzer(TreeSitterAnalyzer):
         """Extract symbols from a single Bash file.
 
         Detects function definitions (both 'function name()' and 'name()' styles),
-        exported variables (export VAR=value), and alias definitions.
+        exported variables (one Symbol per variable the file exports, however
+        many statements export it -- WI-nasil), and alias definitions.
         """
         analysis = FileAnalysis()
 
@@ -896,6 +1039,9 @@ class BashAnalyzer(TreeSitterAnalyzer):
         )
         analysis.symbols.append(module_symbol)
 
+        # Names this file already has an export Symbol for (WI-nasil).
+        exported_names: set[str] = set()
+
         for node in iter_tree(tree.root_node):
             if node.type == "function_definition":
                 func_name = _extract_function_name(node, source)
@@ -933,6 +1079,9 @@ class BashAnalyzer(TreeSitterAnalyzer):
                         ),
                         stable_id=self.compute_stable_id(
                             node, kind="function", name=func_name,
+                            qualified_name=nested_qualified_name(
+                                _enclosing_function_names(node, source), func_name,
+                            ),
                             file_stable_id=file_anchor,
                         ),
                     )
@@ -941,33 +1090,39 @@ class BashAnalyzer(TreeSitterAnalyzer):
                     analysis.symbol_by_name[func_name] = symbol
 
             elif node.type == "declaration_command":
-                export_node = find_child_by_type(node, "export")
-                if export_node:
-                    var_node = find_child_by_type(node, "variable_assignment")
-                    if var_node:
-                        name_node = find_child_by_type(var_node, "variable_name")
-                        if name_node:
-                            var_name = node_text(name_node, source)
-                            start_line = node.start_point[0] + 1
-                            symbol_id = make_symbol_id("bash", rel_path, start_line, start_line, var_name, "export")
+                # WI-nasil: ONE export Symbol per exported VARIABLE per file,
+                # at the first statement that exports it. Exporting is an
+                # attribute of the variable: `export X=2` after `export X=1`
+                # re-assigns it and a bare `export X` re-sets the attribute;
+                # neither makes a second exported variable -- and the
+                # kind's identity factory (`make_export_stable_id`) is
+                # `(language, path, name)`. One Symbol per STATEMENT gave a
+                # re-exported name several same-(path, name, kind) nodes that
+                # only the `:occ:<n>` re-hash told apart.
+                for var_name in _exported_variable_names(node, source):
+                    if var_name in exported_names:
+                        continue
+                    exported_names.add(var_name)
+                    start_line = node.start_point[0] + 1
+                    symbol_id = make_symbol_id("bash", rel_path, start_line, start_line, var_name, "export")
 
-                            symbol = Symbol(
-                                id=symbol_id,
-                                name=var_name,
-                                kind="export",
-                                language="bash",
-                                path=rel_path,
-                                span=Span(
-                                    start_line=start_line,
-                                    end_line=start_line,
-                                    start_col=node.start_point[1],
-                                    end_col=node.end_point[1],
-                                ),
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            )
-                            analysis.symbols.append(symbol)
-                            analysis.node_for_symbol[symbol.id] = node
+                    symbol = Symbol(
+                        id=symbol_id,
+                        name=var_name,
+                        kind="export",
+                        language="bash",
+                        path=rel_path,
+                        span=Span(
+                            start_line=start_line,
+                            end_line=start_line,
+                            start_col=node.start_point[1],
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    )
+                    analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
 
             elif node.type == "command":
                 cmd_name_node = find_child_by_type(node, "command_name")
@@ -984,6 +1139,11 @@ class BashAnalyzer(TreeSitterAnalyzer):
 
                                 symbol = Symbol(
                                     id=symbol_id,
+                                    stable_id=scoped_stable_id(
+                                        kind="alias", lang="bash", path=rel_path,
+                                        name=alias_name,
+                                        scope=_enclosing_function_names(node, source),
+                                    ),
                                     name=alias_name,
                                     kind="alias",
                                     language="bash",
@@ -1288,7 +1448,11 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                             origin_run_id=run.execution_id,
                                             meta={"call_locality": "cross_file"},
                                         ))
-                                    elif cmd_name not in SHELL_BUILTINS:
+                                    elif (
+                                        cmd_name not in SHELL_BUILTINS
+                                        # WI-fisoh: never a blob or ''.
+                                        and _plausible_command_name(cmd_name)
+                                    ):
                                         # WI-javoh: an EXTERNAL PROGRAM launch —
                                         # neither a defined shell function nor a
                                         # resolver-resolved symbol nor a builtin.

@@ -1,0 +1,38 @@
+- op: create  # fbf7
+  at: '2026-10-12T07:15:53Z'  # fbf7
+  by: agent  # fbf7
+  actor: jgstern_agent  # fbf7
+  clock: 1  # fbf7
+  nonce: fbf7  # fbf7
+  data:  # fbf7
+    kind: invariant  # fbf7
+    title: "discovery excludes every directory named site/ at any depth (mkdocs output rule), silently dropping app source: 28 Elixir files on plausible"  # fbf7
+    status: violated  # fbf7
+    priority: 2  # fbf7
+    parent:  # fbf7
+    tags:  # fbf7
+    - discovery  # fbf7
+    - analyzer  # fbf7
+    isbefore: []  # fbf7
+    duplicate_of: []  # fbf7
+    not_duplicate_of: []  # fbf7
+    pr_ref:  # fbf7
+    description: "**Discovery drops every source directory named `site/`, at any depth.** `DEFAULT_EXCLUDES` in packages/hypergumbo-core/src/hypergumbo_core/discovery.py lists the bare name `\"site\"` (comment: \"mkdocs\"), and it matches a path segment anywhere, so application source in `lib/<app>/site/` is never analysed.\n\nFound while measuring the Elixir web-module-dispatcher fix (WI-nunar) on plausible: 4 of 28 `use PlausibleWeb, :live_component` modules got no edge because their files were never discovered. `find ~/whole_bunch_of_repos/plausible -path '*/site/*' \\( -name '*.ex' -o -name '*.exs' \\)` -> 28 Elixir source files, none of which `find_elixir_files` yields (checked: `find_elixir_files(plausible)` contains no `toggle_live.ex`, `people.ex`). Dirs: lib/plausible/site, extra/lib/plausible/site, lib/plausible_web/{components,controllers,views,templates}/site, test/plausible/site, ...\n\nmkdocs writes `site/` at the project ROOT (its `site_dir` default). Fix direction (not designed): anchor the exclusion to the repo root (or require an mkdocs.yml sibling), as was done for Hugo's `public/` (removed in v0.5.1 for the same class of false positive). Check the other bare names in the list (`out`, `coverage`, ...) for the same root-vs-anywhere confusion."  # fbf7
+    fields:  # fbf7
+      statement: "A build-output exclusion removes only the directory the tool writes, never a same-named source directory elsewhere in the tree"  # fbf7
+      root_cause: "DEFAULT_EXCLUDES matches the bare segment 'site' at any depth, but mkdocs writes site/ only at the project root"  # fbf7
+- op: update  # dc4f
+  at: '2026-10-12T10:58:42Z'  # dc4f
+  by: agent  # dc4f
+  actor: jgstern_agent  # dc4f
+  clock: 2  # dc4f
+  nonce: dc4f  # dc4f
+  set:  # dc4f
+    status: satisfied  # dc4f
+- op: discuss  # 337f
+  at: '2026-10-12T10:58:42Z'  # 337f
+  by: agent  # 337f
+  actor: jgstern_agent  # 337f
+  clock: 3  # 337f
+  nonce: 337f  # 337f
+  message: "Fixed in PR #1550 (b89cc2e5a2). Root cause: generated-output directories (dist/build/_build/out/target/site/_site and the coverage-report names) were bare DEFAULT_EXCLUDES names matched as a path segment at any depth, so any same-named SOURCE directory was pruned silently (the same category error as Hugo's public/, removed in v0.5.1). Fix (owner direction: fix the condition, not the symptom): those names left DEFAULT_EXCLUDES; discovery.BUILD_OUTPUT_RULES now claims a directory only on its producing tool's evidence -- manifest beside it (Cargo.toml/pom.xml/build.sbt->target, mix.exs/rebar.config/conf.py->_build, mkdocs.yml+site_dir->site, Jekyll _config.yml->_site, Gradle->build, ...), declared output (package.json entry points, tsconfig outDir, action.yml runs.main), or a marker the tool writes into it (CMakeCache.txt, CACHEDIR.TAG, coverage report files, self-ignoring .gitignore); committed output is still output; untracked-in-git is only supporting evidence for dist/build/out beside a bare package.json. A name with no evidence is analysed. Pruned output is disclosed (stderr, sketch, supply_chain_summary.generated_output_skipped). supply_chain tier 4, the derived_skipped scan, ddg_build's walk and sketch's config filter ask the same rules. ADR-0004 point 7 amended. Corpus (273 repos): 354 dirs pruned before, 25 after; 329 (5,224 files, 2,796 source) now analysed. Evidence: find ~/whole_bunch_of_repos/plausible -path '*/site/*' (-name '*.ex' -o -name '*.exs') -> 28 files; find_elixir_files(plausible) restricted to */site/ -> 28 (was 0), toggle_live.ex and people.ex present -> True True. hypergumbo survey zoxide -> stderr 'Generated output not analysed: target/ (Cargo build). Recognised by the tool that writes each (ADR-0004).' Production-path test: test_generated_output.py::TestSourceDirectoriesWithOutputNames::test_plausible_site_modules_are_analysed and TestDisclosure::test_survey_prints_and_records_it."  # 337f

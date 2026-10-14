@@ -4,10 +4,19 @@
 This analyzer uses tree-sitter to parse Kotlin files and extract:
 - Function declarations (fun)
 - Class declarations (class, data class)
-- Object declarations (object)
+- Object declarations (object), whose stable_id is the ADR-0035 producer
+  formula (``make_typed_stable_id`` over the package/class chain; WI-tusad:
+  they rode the backstop floor key). Methods, fields and enum entries hash
+  the FULL class/object/function chain (``_kotlin_scope``: ``A.Inner.go``,
+  where they hashed the emitted nearest-owner name ``Inner.go``), and classes
+  and interfaces mint ``overload_arity.scoped_table_stable_id`` over it
+  (INV-fabih: two nested ``class Inner`` shared one bare-name table key, so
+  deleting the first outer class moved the second's ids). Top-level types and
+  their members keep their values.
 - Interface declarations (interface)
 - Method declarations (inside classes/objects)
-- Annotations on classes, methods, and objects (meta.decorators), which
+- Annotations on classes, functions, methods, objects, and properties
+  (meta.decorators), which
   also become ``decorated_by`` edges (``_extract_annotation_edges``)
 - Property declarations: a ``field`` Symbol for a class/object/interface
   or enum-body property, a ``variable`` Symbol for a top-level one
@@ -19,7 +28,8 @@ This analyzer uses tree-sitter to parse Kotlin files and extract:
 - Import statements
 
 If tree-sitter with Kotlin support is not installed, the analyzer
-gracefully degrades and returns an empty result.
+gracefully degrades: it emits a ``UserWarning`` and returns a skipped
+result (``skip_reason_code=DEPENDENCY_UNAVAILABLE``).
 
 How It Works
 ------------
@@ -51,7 +61,77 @@ alongside it. This is what lets a catalogued method-kind I/O primitive be
 reached through a typed receiver — see ADR-0051 for why the module slot
 must name the static owner path and never the variable. Function-scoped
 ``var_types`` shadowing keeps a rebound name from leaking its old type
-across scopes.
+across scopes — for declared and constructor bindings; a binding from a
+resolved call's return type is written file-wide, outside that scoping.
+
+Library return types (WI-jubim). A receiver that is the VALUE a library
+call returns -- ``Runtime.getRuntime().exec(c)``, or ``val r =
+Runtime.getRuntime()`` then ``r.exec(c)`` -- is typed by
+``_library_call_type``, which folds a call chain over the library-signature
+rows: java.yaml's, which kotlin reads through
+``library_signatures.ROW_PARENTS``. The chain's root is a typed local, a type
+named by the file's import or java.lang, an inline JDK path, or a
+constructor; each row's fully-qualified answer is the owner of the next link,
+and the first link no row answers ends the walk untyped. A local bound to
+such a chain takes the row's answer ahead of the chain-root constructor.
+
+Other receiver shapes. An untyped receiver spelled as a TYPE
+(``System.getenv(k)``, ``Files.readAllBytes(p)``) is a static call whose
+module slot is the owner that ``jvm_implicit_imports.static_owner_module``
+names (the file's import, or java.lang minus ``KOTLIN_SHADOWED_JAVA_LANG``;
+a project type keeps the placeholder). A navigation-chain receiver goes
+through ``_emit_navigation_receiver_call``: ``this.field.m()`` uses the
+field's type, an inline fully-qualified path under
+``_KOTLIN_INLINE_QUALIFIED_ROOTS`` names its owner via
+``inline_qualified_owner``, and a chain ending in a project type resolves on
+that type. ``super.m()`` resolves through the enclosing class's
+``base_classes`` (``_emit_super_call``); an external base leaves an
+unresolved edge whose ``receiver_type_hint`` names it.
+
+The process's own standard streams (WI-rabum). ``System.err.println(k)`` is
+a call on the ``java.io.PrintStream`` the field declares, emitted with that
+type in the module slot and ``io_target_kind: std_stream``, which java.yaml's
+PrintStream rows require (``requires_target_kind``). ``System.out`` /
+``.err`` / ``.in`` read as values become ``module_attr_ref`` edges through the
+shared ``emit_module_attribute_refs``, matching ``java.lang.System``'s
+attribute rows (logging; ipc_recv) and naming the call that uses the stream
+(``attr_carrier``). The call half follows java's WI-dorus rule
+through ``jvm_implicit_imports``: a bare ``System`` counts only when no import,
+project type or local renames it. The value-read half checks only imports and
+project types, because it runs after the walk, when no scope is open to ask
+about locals.
+
+Explicit imports outrank the resolver (WI-tipoh). When the file's import of
+a name contradicts the symbol the name-keyed resolver returns,
+``_kt_import_target`` rebinds the call to the project symbol at the imported
+path; when the project has none, the call falls through to an unresolved
+edge.
+
+Call sources and the ambiguity guard. A call that sits in no function (a
+top-level ``val`` initialiser or lambda, a ``by lazy`` block, a class or
+object body) is drawn from the enclosing class, object or companion
+declaration (``_TYPE_BODY_NODES``) and, failing that, from the file anchor
+symbol. A bare ``helper()`` call whose name 3 or more project methods share
+is dropped with no edge (the AMB-METHOD guard,
+``ListNameResolver(..., ambiguity_threshold=3)``). The guard runs before the
+same-file lookup, so a same-file function of that name is dropped too.
+
+Extension functions (WI-fuhav / WI-lodij). ``fun Receiver.name()`` records
+``meta.extension_receiver``. A call ``recv.name()`` on a receiver of that
+type is emitted UNRESOLVED with ``receiver_type_hint``; the shared
+``receiver_type_dispatch`` linker emits the resolved ``ast_call_extension``
+edge.
+
+Grammar repair (WI-tusad; WI-rufub). tree-sitter-kotlin 1.1.0 turns a body
+whose last member shares the line of its closing brace into one ERROR node
+when it is nested (``class Inner { fun go() = 1 }`` inside a class) or when a
+second such declaration follows (``interface Shape { fun area(): Int }`` then
+``class Square : Shape { ... }``), which dropped the declarations around it. ``_parse_kotlin`` retries such a parse on a same-length copy
+with a ``;`` before that brace (``_close_brace_repair``) and keeps whichever
+tree has fewer errors; positions are unchanged, so node text still comes from
+the original bytes. Measured: 0 of 2,470 corpus ``.kt`` files change (the 32
+that fail to parse fail for other reasons); the shape is legal Kotlin that the
+corpus happens not to write outside test strings.
 
 Population of ``is_exported`` follows Kotlin's default-public rule: a
 declaration is exported unless its modifier list contains ``private``,
@@ -64,11 +144,13 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Iterator, Optional
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
@@ -76,10 +158,15 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     SymbolsAt,
     TreeSitterAnalyzer,
+    ancestor_labels,
     populate_docstrings_from_tree,
     find_child_by_type,
     iter_tree,
+    file_anchor_symbol,
+    emit_module_attribute_refs,
+    enclosing_declared_symbol,
     make_file_id,
+    record_partial_parse,
     make_file_stable_id,
     make_symbol_id,
     make_typed_stable_id,
@@ -92,8 +179,15 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
+    JAVA_LANG_SYSTEM_FIELDS,
     KOTLIN_SHADOWED_JAVA_LANG,
+    PRINT_STREAM_TYPE,
+    STD_STREAM_TARGET_KIND,
+    bare_system_is_java_lang,
     imported_elsewhere,
+    inline_qualified_owner,
+    is_std_output_receiver,
+    java_lang_system_aliases,
     kotlin_import_path,
     static_owner_module,
 )
@@ -107,6 +201,9 @@ if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("kotlin")
+
+#: INV-bamij: declarations whose BODY anchors a call that sits in no function.
+_TYPE_BODY_NODES: frozenset[str] = frozenset({"class_declaration", "object_declaration", "companion_object"})
 
 
 def find_kotlin_files(repo_root: Path) -> Iterator[Path]:
@@ -422,6 +519,149 @@ def _make_kotlin_qualified_name(
     return sep.join(parts)
 
 
+#: Declarations whose name opens a scope a Kotlin member is nested in (an
+#: anonymous ``object : T { }`` literal names none and is not listed).
+_KOTLIN_SCOPE_NODES: Final = frozenset({
+    "class_declaration", "object_declaration", "function_declaration",
+})
+
+
+def _kotlin_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The names of the classes, objects and functions enclosing ``node``,
+    outermost first (INV-fabih).
+
+    What a member's and a nested type's stable_id hash beside its own name.
+    The emitted name keeps the nearest owner (``Inner.go``), which two nested
+    ``class Inner`` in ``A`` and ``B`` share; the package is single per file,
+    so the file anchor already identifies it and it is left out (a member of
+    a top-level class keeps the value it had).
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type not in _KOTLIN_SCOPE_NODES:
+            return None
+        name_node = _find_child_by_field(n, "name")
+        return node_text(name_node, source) if name_node is not None else None
+    return ancestor_labels(node, label)
+
+
+def _close_brace_repair(source: bytes) -> bytes:
+    """``source`` with the blank before each same-line closing ``}`` turned
+    into ``;``: same length, same line and column for every byte.
+
+    tree-sitter-kotlin 1.1.0 cannot parse a NESTED body whose last member
+    ends on the line of its closing brace (``class A {`` / ``class Inner {
+    fun go(): Int = 1 }`` / ``}``, ``companion object { val x = 1 }``, an
+    ``object { ... }`` literal in a function): the whole enclosing
+    declaration became an ERROR node, and the analyzer emitted only the
+    stray ``function go`` it found inside, dropping ``A``, ``Inner`` and
+    everything after. A ``;`` before the brace is a legal statement/member
+    separator and the grammar accepts it. Only a ``}`` in code (not in a
+    comment, string, character literal or ``${}`` template) that follows
+    other code on its line, not an opening ``{``, and a blank is rewritten.
+    """
+    out = bytearray(source)
+    n = len(source)
+    i = 0
+    # [mode, brace depth, is a ${...} template]; mode is code, str or raw.
+    stack: list[list[Any]] = [["code", 0, False]]
+    line_has_code = False
+    last_code = 0
+    while i < n:
+        c = source[i]
+        top = stack[-1]
+        if top[0] != "code":
+            if top[0] == "str" and c == 0x5C:  # backslash escape
+                i += 2
+                continue
+            if top[0] == "str" and c == 0x22:
+                stack.pop()
+                i += 1
+                continue
+            if top[0] == "raw" and source.startswith(b'"""', i):
+                while i < n and source[i] == 0x22:  # a run of quotes closes at its end
+                    i += 1
+                stack.pop()
+                continue
+            if source.startswith(b"${", i):
+                stack.append(["code", 0, True])
+                i += 2
+                continue
+            line_has_code = line_has_code and c != 0x0A
+            i += 1
+            continue
+        if c == 0x0A:
+            line_has_code = False
+        elif source.startswith(b"//", i):
+            end = source.find(b"\n", i)
+            i = n if end < 0 else end
+            continue
+        elif source.startswith(b"/*", i):
+            depth, i = 1, i + 2
+            while i < n and depth:
+                step = source[i:i + 2]
+                depth += 1 if step == b"/*" else -1 if step == b"*/" else 0
+                i += 2 if step in (b"/*", b"*/") else 1
+            continue
+        elif c == 0x22:
+            raw = source.startswith(b'"""', i)
+            stack.append(["raw" if raw else "str", 0, False])
+            i += 3 if raw else 1
+            line_has_code, last_code = True, c
+            continue
+        elif c == 0x27:  # a character literal: skip it whole
+            close = source.find(b"'", i + (3 if source[i + 1:i + 2] == b"\\" else 2))
+            i = n if close < 0 else close + 1
+            line_has_code, last_code = True, c
+            continue
+        elif c == 0x7B:
+            top[1] += 1
+        elif c == 0x7D:
+            if top[2] and top[1] == 0:  # the end of a ${...} template
+                stack.pop()
+                i += 1
+                continue
+            top[1] -= 1
+            if (not top[2] and line_has_code and last_code != 0x7B
+                    and source[i - 1] in (0x20, 0x09)):
+                out[i - 1] = 0x3B
+        if c not in (0x0A, 0x20, 0x09, 0x0D):
+            line_has_code, last_code = True, c
+        i += 1
+    return bytes(out)
+
+
+def _error_count(tree: "tree_sitter.Tree") -> int:
+    """The error sites in ``tree``: ERROR and MISSING nodes, and nodes flagged
+    ``has_error`` with no child that is (the grammar can flag a body whose
+    error node it does not expose). Descends only where errors are."""
+    count = 0
+    stack = [tree.root_node]
+    while stack:
+        node = stack.pop()
+        if not node.has_error:
+            continue
+        children = node.children
+        if node.is_error or node.is_missing or not any(c.has_error for c in children):
+            count += 1
+        stack.extend(children)
+    return count
+
+
+def _parse_kotlin(parser: "tree_sitter.Parser", source: bytes) -> "tree_sitter.Tree":
+    """Parse ``source``, retrying through :func:`_close_brace_repair` when the
+    grammar reports an error; the repaired tree is kept only when it has fewer
+    errors. Positions match ``source`` either way (the repair keeps every
+    byte's offset, line and column), so node text is still read from the
+    original bytes. Every parse of a Kotlin file goes through here, so the
+    symbol, edge and dataflow passes see the same tree.
+    """
+    tree = parser.parse(source)
+    if not tree.root_node.has_error:
+        return tree
+    repaired = parser.parse(_close_brace_repair(source))
+    return repaired if _error_count(repaired) < _error_count(tree) else tree
+
+
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
@@ -633,8 +873,9 @@ class FileAnalysis:
     - Constructor calls: val obj = MyClass() -> obj has type MyClass
     - Function parameters: fun process(client: Client) -> client has type Client
 
-    Type inference does NOT track types from function returns (val obj = getMyClass()).
-    WI-nasuf: it DOES bind a DECLARED type (``val c: Connection = make()``), a bare or
+    - Function returns (val obj = getMyClass()), when the call resolves to a
+      project function whose declared return type is a project class
+    WI-nasuf: it also binds a DECLARED type (``val c: Connection = make()``), a bare or
     dotted constructor (``java.io.File(p)``), and a chained construction
     (``File(p).writeText(s)``); an instance-method call nothing resolves emits an
     unresolved edge whose module slot is the receiver's type qualified through the
@@ -739,6 +980,32 @@ def _kt_project_type_key(type_name: str) -> str:
     if "." in type_name and type_name[:1].isupper():
         return type_name.rsplit(".", 1)[-1]
     return type_name
+
+
+#: The roots a fully-qualified inline call is taken at its word for
+#: (INV-dupol): the JDK and the Kotlin standard library, the packages
+#: kotlin.yaml's rows describe. scala's twin is ``scala._INLINE_QUALIFIED_ROOTS``.
+_KOTLIN_INLINE_QUALIFIED_ROOTS: Final = frozenset({"java", "javax", "kotlin"})
+
+
+def _kt_inline_path(node: "tree_sitter.Node", source: bytes) -> str | None:
+    """The dotted text of a receiver built only of identifiers, else ``None``.
+
+    ``java.nio.file.Files`` parses as nested ``navigation_expression`` nodes
+    with an identifier at every level. A call, an index, ``this`` or a literal
+    anywhere in the chain means the receiver is a value, not a path.
+    """
+    if node.type == "identifier":
+        return node_text(node, source)
+    if node.type != "navigation_expression":
+        return None
+    named = [c for c in node.children if c.is_named]
+    # The grammar's navigation_expression is one receiver and one suffix; this
+    # guards a variant that nests anything else there.
+    if len(named) != 2 or named[1].type != "identifier":  # pragma: no cover - grammar guard
+        return None
+    head = _kt_inline_path(named[0], source)
+    return None if head is None else f"{head}.{node_text(named[1], source)}"
 
 
 def _kt_receiver_module(type_name: str, imports: dict[str, str]) -> str | None:
@@ -889,6 +1156,8 @@ def _extract_symbols_from_file(
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
     file_stable_id: str = "",
+    *,
+    rel_path: str,
 ) -> FileAnalysis:
     """Extract symbols from a single Kotlin file.
 
@@ -900,13 +1169,20 @@ def _extract_symbols_from_file(
     ``make_typed_stable_id`` call's ``file_stable_id=`` slot so same-name
     functions/methods in different files hash distinctly. Defaults to ``""``
     (the no-op fold) for legacy/test callers that don't supply it.
+
+    ``rel_path`` is that repo-relative path, for the identity inputs that take
+    a path rather than the anchor: a top-level ``val``'s
+    ``make_variable_stable_id``. It hashed ``str(file_path)`` until the
+    WI-tusad scheme bump, so the same file had another id in every checkout.
     """
     try:
         source = file_path.read_bytes()
-        tree = parser.parse(source)
+        tree = _parse_kotlin(parser, source)
     except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
         run.record_failed_file(str(file_path), f"{type(e).__name__}: {e}")
         return FileAnalysis()
+    # WI-bulaz: a parse that needed error recovery is recorded, not silent.
+    record_partial_parse(run, str(file_path), tree)
 
     analysis = FileAnalysis()
     analysis.imports = _extract_imports(tree, source)
@@ -939,9 +1215,12 @@ def _extract_symbols_from_file(
 
                 # Typed stable_id (ADR-0014 §3)
                 norm_sig = normalize_kotlin_signature(signature)
+                # INV-fabih: the full class/object/function chain, not the
+                # nearest owner (``full_name``) two nested owners share.
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
-                    name=func_name, qualified_name=full_name,
+                    name=func_name,
+                    qualified_name=".".join((*_kotlin_scope(node, source), func_name)),
                     file_stable_id=file_stable_id,
                 ) if norm_sig else None
 
@@ -1045,6 +1324,12 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    # INV-fabih: the table formula over the enclosing scopes
+                    # (the backstop's own value for a top-level type).
+                    stable_id=scoped_table_stable_id(
+                        kind=kind, lang="kotlin", path=rel_path, name=type_name,
+                        scope=_kotlin_scope(node, source),
+                    ),
                     meta=meta,
                     modifiers=class_modifiers,
                     shape_id=_analyzer.compute_shape_id(node),
@@ -1081,6 +1366,7 @@ def _extract_symbols_from_file(
                 # `value_arguments` after the identifier and is otherwise the
                 # same shape.
                 enum_body = find_child_by_type(node, "enum_class_body")
+                enum_chain = ".".join((*_kotlin_scope(node, source), type_name))
                 for entry in enum_body.children if enum_body else ():
                     if entry.type != "enum_entry":
                         continue
@@ -1117,7 +1403,7 @@ def _extract_symbols_from_file(
                         stable_id=make_typed_stable_id(
                             "field", "",
                             visibility_from_modifiers(class_modifiers),
-                            name=e_name, qualified_name=e_full,
+                            name=e_name, qualified_name=f"{enum_chain}.{e_name}",
                             file_stable_id=file_stable_id,
                         ),
                         line_span=e_end - e_start + 1,
@@ -1149,6 +1435,9 @@ def _extract_symbols_from_file(
 
                 obj_modifiers = _extract_modifiers(node)
                 cls_ancestors = _get_kotlin_class_ancestors(node, source)
+                obj_qualified = _make_kotlin_qualified_name(
+                    package_name, cls_ancestors, object_name,
+                )
                 symbol = Symbol(
                     id=make_symbol_id("kotlin", str(file_path), start_line, end_line, object_name, "object"),
                     name=object_name,
@@ -1165,13 +1454,20 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     modifiers=obj_modifiers,
                     meta=obj_meta,
+                    # WI-tusad: the ADR-0035 producer formula over the full
+                    # package/class chain (it rode the backstop floor key).
+                    stable_id=make_typed_stable_id(
+                        "object", "", visibility_from_modifiers(obj_modifiers),
+                        name=object_name, qualified_name=obj_qualified,
+                        file_stable_id=file_stable_id,
+                    ),
                     shape_id=_analyzer.compute_shape_id(node),
                     line_span=end_line - start_line + 1,
                     is_exported=not any(
                         m in obj_modifiers
                         for m in ("private", "internal", "protected")
                     ),
-                    qualified_name=_make_kotlin_qualified_name(package_name, cls_ancestors, object_name),
+                    qualified_name=obj_qualified,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[object_name] = symbol
@@ -1217,13 +1513,14 @@ def _extract_symbols_from_file(
                     stable_id = make_typed_stable_id(
                         "field", prop_type or "",
                         visibility_from_modifiers(prop_modifiers),
-                        name=prop_name, qualified_name=full_name,
+                        name=prop_name,
+                        qualified_name=".".join((*_kotlin_scope(node, source), prop_name)),
                         file_stable_id=file_stable_id,
                     )
                 else:
                     full_name = prop_name
                     stable_id = make_variable_stable_id(
-                        "kotlin", str(file_path), prop_name
+                        "kotlin", normalize_path(rel_path), prop_name
                     )
 
                 symbol = Symbol(
@@ -1327,18 +1624,23 @@ def _extract_edges_from_file(
         extension_index = {}
     # Every declaration of this file, by position (INV-midag). ``local_symbols``
     # keeps ONE symbol per name, so it cannot tell two ``parse`` methods apart.
-    decl_index = symbols_at(
+    decl_symbols = (
         file_symbols if file_symbols is not None
         else list({s.id: s for s in local_symbols.values()}.values()))
+    decl_index = symbols_at(decl_symbols)
     try:
         source = file_path.read_bytes()
-        tree = parser.parse(source)
+        tree = _parse_kotlin(parser, source)
     except (OSError, IOError):
         return []
 
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("kotlin", str(file_path))
+    file_anchor = file_anchor_symbol("kotlin", str(file_path), PASS_ID, run.execution_id)
+    # Declared once: the call arm assigns a Symbol (narrowed), the reference
+    # arms an Optional.
+    current_function: Optional[Symbol]
 
     # Track variable types from constructor calls: val x = ClassName()
     var_types: dict[str, str] = {}
@@ -1373,6 +1675,197 @@ def _extract_edges_from_file(
         s.name: s for s in global_symbols.values()
         if s.kind in ("class", "object", "interface")
     }
+
+    def _is_project_receiver(name: str) -> bool:
+        """Whether a receiver spelled as a TYPE names a PROJECT type here.
+
+        WI-tipoh: an explicit import of a path OUTSIDE the project outranks a
+        same-named project type. An import of a project path keeps the
+        placeholder the Tier-2 linkers resolve from (WI-kilap).
+        """
+        return name in class_symbols and (
+            name not in imports
+            or not imported_elsewhere(class_symbols[name].qualified_name, imports[name])
+            or _kt_names_project_path(imports[name], project_by_qualified)
+        )
+
+    def _bare_system_here() -> bool:
+        """Whether a bare ``System`` is java.lang's at this point of the walk."""
+        return bare_system_is_java_lang(
+            imports, is_project_type=_is_project_receiver("System"),
+            is_local="System" in var_types,
+        )
+
+    #: java.yaml's rows, read through ``ROW_PARENTS`` (WI-jubim): kotlin has
+    #: no row file of its own and calls the JDK directly.
+    library_returns = load_library_signatures("kotlin")
+
+    def _library_call_type(call: "tree_sitter.Node") -> str | None:
+        """What a call CHAIN returns, per the library-signature rows, or ``None``.
+
+        WI-jubim, java's ``_call_return_type`` in kotlin's tree:
+        ``Runtime.getRuntime().exec(c)`` calls ``exec`` on the VALUE
+        ``getRuntime`` returns, and only a row says what that is. The chain is
+        rooted at a receiver whose type the file establishes -- a typed local,
+        a type the call is made on (its import or java.lang), an inline JDK
+        path, or a constructor -- and each link's answer, a fully-qualified
+        type, is the owner the next link is looked up on. The first link no
+        row answers ends the walk with ``None``, so a project method in the
+        chain (which has no row) never lets a later link be guessed.
+        """
+        links: list[str] = []
+        node = call
+        while node.type == "call_expression":
+            callee = node.children[0]
+            if callee.type != "navigation_expression":
+                break
+            named = [c for c in callee.children if c.is_named]
+            # The grammar's navigation_expression is one receiver and one
+            # suffix (``_kt_inline_path`` guards the same shape).
+            if len(named) != 2 or named[1].type != "identifier":  # pragma: no cover - grammar guard
+                return None
+            links.append(node_text(named[1], source))
+            node = named[0]
+        if not links:
+            return None
+        owner: str | None
+        if node.type == "identifier":
+            name = node_text(node, source)
+            owner = (
+                _kt_receiver_module(var_types[name], imports) if name in var_types
+                else static_owner_module(
+                    name, imports, shadowed=KOTLIN_SHADOWED_JAVA_LANG,
+                    is_project_type=_is_project_receiver(name),
+                )
+            )
+        elif node.type == "navigation_expression":
+            path = _kt_inline_path(node, source)
+            owner = None if path is None else inline_qualified_owner(
+                path, links[-1], set(var_types) | set(imports),
+                roots=_KOTLIN_INLINE_QUALIFIED_ROOTS,
+            )
+        elif node.type == "call_expression":
+            created = next(
+                (c for c in node.children if c.type == "identifier"), None)
+            created_type = None if created is None else _kt_constructor_type(created, source)
+            owner = None if created_type is None else _kt_receiver_module(created_type, imports)
+        else:
+            owner = None
+        for link in reversed(links):
+            if owner is None:
+                return None
+            owner = library_returns.get(f"{owner}.{link}")
+        return owner
+
+    def _emit_navigation_receiver_call(
+        receiver: "tree_sitter.Node", method_name: str, line: int,
+        *, this_property: str | None,
+    ) -> None:
+        """INV-dupol: one edge for a call whose receiver is a navigation chain.
+
+        In java's spelling of the same shapes: ``this.field.m()`` names the
+        field's declared type, a fully-qualified inline path names its owner,
+        a chain ending in a project type resolves on that type, and anything
+        else keeps the ``external`` placeholder so the untyped-receiver
+        disclosure names the call. A chain through ANOTHER object's field
+        (``h.file.m()``) stays a placeholder: ``var_types`` is file-wide and
+        keyed by bare name, so typing it from there could put the wrong type
+        in the slot (INV-kotob).
+        """
+        assert current_function is not None  # narrowed by the call arm
+        recv_type = var_types.get(this_property) if this_property else None
+        if recv_type is not None:
+            module = _kt_receiver_module(recv_type, imports)
+            edges.append(make_unresolved_edge(
+                "kotlin", current_function.id, method_name, line, PASS_ID,
+                run.execution_id, module_hint=module or "external",
+                receiver_type_hint=_kt_project_type_key(recv_type),
+                call_construct="method",
+            ))
+            return
+        # WI-rabum, java's WI-dorus: ``System.err.println(k)`` is a call on the
+        # PrintStream the field declares, writing the process's own stream --
+        # what java.yaml's ``requires_target_kind: std_stream`` rows wait for.
+        if is_std_output_receiver(
+            node_text(receiver, source),
+            bare_system_is_java_lang=_bare_system_here(),
+        ):
+            stdio_call = make_unresolved_edge(
+                "kotlin", current_function.id, method_name, line, PASS_ID,
+                run.execution_id, module_hint=PRINT_STREAM_TYPE,
+                receiver_type_hint=PRINT_STREAM_TYPE, call_construct="method",
+            )
+            stdio_call.meta = {
+                **(stdio_call.meta or {}), "io_target_kind": STD_STREAM_TARGET_KIND,
+            }
+            edges.append(stdio_call)
+            return
+        path = _kt_inline_path(receiver, source)
+        if path is not None:
+            owner = inline_qualified_owner(
+                path, method_name, set(var_types) | set(imports),
+                roots=_KOTLIN_INLINE_QUALIFIED_ROOTS,
+            )
+            if owner is not None:
+                edges.append(make_unresolved_edge(
+                    "kotlin", current_function.id, method_name, line, PASS_ID,
+                    run.execution_id, module_hint=owner, call_construct="method",
+                ))
+                return
+            leaf = path.rsplit(".", 1)[-1]
+            if leaf in class_symbols:
+                found = resolver.lookup(f"{leaf}.{method_name}", caller_path=_caller_path)
+                if found.found and found.symbol is not None:
+                    edges.append(Edge.create(
+                        src=current_function.id, dst=found.symbol.id,
+                        edge_type="calls", line=line,
+                        confidence=0.95 * found.confidence,
+                        origin=PASS_ID, origin_run_id=run.execution_id,
+                        evidence_type="ast_call_static",
+                    ))
+                    return
+        edges.append(make_unresolved_edge(
+            "kotlin", current_function.id, method_name, line, PASS_ID,
+            run.execution_id, call_construct="method",
+        ))
+
+    def _emit_super_call(call: "tree_sitter.Node", method_name: str) -> None:
+        """INV-dupol: ``super.m()`` calls the BASE's ``m``.
+
+        Resolved through the enclosing class's ``base_classes`` (the
+        delegation specifiers the symbol pass already records). A base the
+        project does not define keeps an unresolved edge whose receiver type
+        names it, with the module its import (or java.lang) gives.
+        """
+        assert current_function is not None  # narrowed by the call arm
+        line = call.start_point[0] + 1
+        owner = _get_enclosing_class(call, source)
+        owner_sym = class_symbols.get(owner) if owner else None
+        bases = list((owner_sym.meta or {}).get("base_classes", [])) if owner_sym else []
+        for base in bases:
+            found = resolver.lookup(f"{base}.{method_name}", caller_path=_caller_path)
+            if found.found and found.symbol is not None:
+                edges.append(Edge.create(
+                    src=current_function.id, dst=found.symbol.id,
+                    edge_type="calls", line=line,
+                    confidence=0.90 * found.confidence,
+                    origin=PASS_ID, origin_run_id=run.execution_id,
+                    evidence_type="ast_call_this",
+                ))
+                return
+        base = bases[0] if bases else None
+        module = (
+            static_owner_module(
+                base, imports, shadowed=KOTLIN_SHADOWED_JAVA_LANG,
+                is_project_type=base in class_symbols,
+            )
+            if base else None
+        )
+        edges.append(make_unresolved_edge(
+            "kotlin", current_function.id, method_name, line, PASS_ID,
+            run.execution_id, module_hint=module or "external",
+            receiver_type_hint=base, call_construct="method",
+        ))
 
     for node in iter_tree(tree.root_node):
         _close_scopes_before(node)
@@ -1423,7 +1916,13 @@ def _extract_edges_from_file(
                 if declared is not None:
                     _bind_local_type(node_text(var_name_node, source), declared)
             if var_decl and call_expr and var_name_node:
-                _ctor_type: str | None = _kt_chain_root_constructor(call_expr, source)
+                # WI-jubim: a row's answer for the whole chain
+                # (``val r = Runtime.getRuntime()``) first; it is a stated
+                # return type, where the chain root is a builder heuristic.
+                _ctor_type: str | None = (
+                    _library_call_type(call_expr)
+                    or _kt_chain_root_constructor(call_expr, source)
+                )
                 if _ctor_type:
                     _bind_local_type(node_text(var_name_node, source), _ctor_type)
 
@@ -1437,9 +1936,15 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, decl_index)
-            if current_function is None:  # pragma: no cover
-                continue
+            # INV-bamij: a call in no function (a top-level ``val``'s lambda or
+            # initialiser, a ``by lazy`` block) is anchored on the file. The
+            # ``continue`` this replaced was marked unreachable and was not:
+            # INV-bamij's sweep fixture reached it on every top-level line.
+            current_function = (
+                _get_enclosing_function(node, source, decl_index)
+                or enclosing_declared_symbol(node, decl_index, _TYPE_BODY_NODES)
+                or file_anchor
+            )
 
             # Check for navigation_expression (Object.method() or instance.method())
             nav_node = find_child_by_type(node, "navigation_expression")
@@ -1448,26 +1953,27 @@ def _extract_edges_from_file(
                 # - Object.method(): identifier . identifier
                 # - this.method(): this_expression . identifier
                 # - instance.method(): identifier . identifier
-                receiver_node = None
-                method_node = None
-
-                for child in nav_node.children:
-                    if child.type == "this_expression":
-                        receiver_node = child
-                    elif child.type == "navigation_expression":
-                        # Nested: this.property.method() — inner nav is
-                        # this.property, outer identifier is method
-                        receiver_node = child
-                    elif child.type == "call_expression":
-                        # WI-nasuf: a CHAINED receiver -- ``File(p).writeText(s)``.
-                        # The receiver IS a construction (or a call); the
-                        # emit below types it from the constructor callee.
-                        receiver_node = child
-                    elif child.type == "identifier":
-                        if receiver_node is None:
-                            receiver_node = child
-                        else:
-                            method_node = child
+                #
+                # INV-dupol: the receiver is the FIRST named child, WHATEVER its
+                # node type, and the method is the last. The loop this replaced
+                # kept a receiver only when it was ``this``, a navigation
+                # expression, a call or an identifier, so for ``"x".trim()``,
+                # ``(f).readText()``, ``fs[0].readText()`` and ``super.go()``
+                # it took the METHOD identifier as the receiver, found no method
+                # and emitted nothing. A call with no edge is invisible to
+                # io-boundaries and to the coverage gate. The chained receiver
+                # (``File(p).writeText(s)``, WI-nasuf) and a nested
+                # ``this.property`` are first children like any other.
+                named_children = [c for c in nav_node.children if c.is_named]
+                receiver_node = (
+                    named_children[0] if len(named_children) >= 2 else None
+                )
+                method_node = (
+                    named_children[-1]
+                    if len(named_children) >= 2
+                    and named_children[-1].type == "identifier"
+                    else None
+                )
 
                 if receiver_node and method_node:
                     method_name = node_text(method_node, source)
@@ -1531,6 +2037,30 @@ def _extract_edges_from_file(
                                         ),
                                     ))
                                     edge_added = True
+                        # INV-dupol: every other navigation receiver emitted
+                        # NOTHING, because the unresolved-edge fallback below
+                        # lives in the branch a navigation receiver never
+                        # enters. That included ``java.nio.file.Files
+                        # .readAllBytes(p)`` written inline, whose must_not_exist
+                        # fs_read claim was confirmed.
+                        if not edge_added:
+                            _emit_navigation_receiver_call(
+                                receiver_node, method_name,
+                                node.start_point[0] + 1,
+                                this_property=(
+                                    node_text(prop_node, source)
+                                    if this_node and prop_node else None
+                                ),
+                            )
+                            edge_added = True
+
+                    # INV-dupol: ``super.m()`` is the base's ``m``, never the
+                    # override that makes the call. Resolved through the
+                    # enclosing class's declared bases; an external base keeps
+                    # an unresolved edge naming it.
+                    elif receiver_node.type == "super_expression":
+                        _emit_super_call(node, method_name)
+                        edge_added = True
 
                     # For non-this cases, get receiver name from identifier node
                     else:
@@ -1545,6 +2075,10 @@ def _extract_edges_from_file(
                             ) or find_child_by_type(receiver_node, "navigation_expression")
                             if _inner_callee is not None:
                                 chained_type = _kt_constructor_type(_inner_callee, source)
+                            # WI-jubim: ``Runtime.getRuntime().exec(c)`` -- the
+                            # receiver is what a library call returns.
+                            if chained_type is None:
+                                chained_type = _library_call_type(receiver_node)
 
                         resolved_nav_sym = None
 
@@ -1741,18 +2275,7 @@ def _extract_edges_from_file(
                                     # project type. An import of a project path
                                     # keeps the placeholder the Tier-2 linkers
                                     # resolve from (WI-kilap).
-                                    is_project_type=(
-                                        receiver_name in class_symbols
-                                        and (
-                                            receiver_name not in imports
-                                            or not imported_elsewhere(
-                                                class_symbols[receiver_name].qualified_name,
-                                                imports[receiver_name],
-                                            )
-                                            or _kt_names_project_path(
-                                                imports[receiver_name], project_by_qualified)
-                                        )
-                                    ),
+                                    is_project_type=_is_project_receiver(receiver_name),
                                 )
                             )
                             edges.append(make_unresolved_edge(
@@ -1926,6 +2449,32 @@ def _extract_edges_from_file(
                             evidence_type="callable_reference",
                         ))
 
+    # WI-rabum: ``System.out`` / ``.err`` / ``.in`` READ as values, through the
+    # shared emitter java uses (WI-lozug). java.yaml's ``java.lang.System``
+    # attribute rows (logging; ipc_recv) reach kotlin through _CATALOG_PARENTS
+    # and had no edge to match. tree-sitter-kotlin declares no fields, so the
+    # parts are named by position (``@first`` / ``@last``) and an argument sits
+    # in a ``value_argument`` wrapper. A local ``System`` is not considered
+    # here: the walk is over, and no scope is open to ask.
+    emit_module_attribute_refs(
+        tree.root_node, source,
+        java_lang_system_aliases(bare_system_is_java_lang=bare_system_is_java_lang(
+            imports, is_project_type=_is_project_receiver("System"), is_local=False,
+        )),
+        file_anchor, "kotlin", edges,
+        node_kinds=("navigation_expression",),
+        object_field_names=("@first",),
+        property_field_names=("@last",),
+        pass_id=PASS_ID,
+        run_id=run.execution_id,
+        call_node_kinds=("call_expression",),
+        call_function_field_names=("@first",),
+        carrier_call_kinds=("call_expression",),
+        carrier_arguments_field="@value_arguments",
+        carrier_argument_wrapper_kinds=("value_argument",),
+        attribute_names=JAVA_LANG_SYSTEM_FIELDS,
+        enclosing_symbols=decl_symbols,
+    )
     return edges
 
 
@@ -2007,9 +2556,10 @@ def _extract_inheritance_edges(
 ) -> list[Edge]:
     """Extract extends/implements edges from class inheritance (META-001).
 
-    For each class with base_classes metadata, creates:
+    For each class or interface with base_classes metadata, creates:
     - extends edges to base classes
-    - implements edges to interfaces
+    - implements edges from a class to an interface
+    - extends edges from an interface to its base interface (WI-kalug)
 
     When multiple classes or interfaces share the same name (common in repos with
     test stubs), uses import-aware disambiguation via ``_resolve_base_class_kotlin()``
@@ -2045,7 +2595,9 @@ def _extract_inheritance_edges(
                 base_name, sym, interface_by_name, sym_file_imports
             )
             if iface_sym is not None and iface_sym.id != sym.id:
-                edge_type = "implements"
+                # An interface EXTENDS its base interface; only a class
+                # implements one (WI-kalug, matching the core linker).
+                edge_type = "extends" if sym.kind == "interface" else "implements"
                 base_sym = iface_sym
             else:
                 class_sym = _resolve_base_class_kotlin(
@@ -2219,7 +2771,9 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
             # location-dependent — the regression the WI-bokab smoke test guards.
             rel_path = str(kt_file.relative_to(repo_root))
             file_stable_id = make_file_stable_id("kotlin", normalize_path(rel_path))
-            analysis = _extract_symbols_from_file(kt_file, parser, run, file_stable_id)
+            analysis = _extract_symbols_from_file(
+                kt_file, parser, run, file_stable_id, rel_path=rel_path,
+            )
             if analysis.symbols:
                 file_analyses[kt_file] = analysis
             else:
@@ -2291,7 +2845,7 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             try:
                 _kt_source = kt_file.read_bytes()
-                _kt_tree = parser.parse(_kt_source)
+                _kt_tree = _parse_kotlin(parser, _kt_source)
                 _kt_df = _get_dataflow_config("kotlin")
                 if _kt_df is not None:
                     edges = _annotate_dataflow(edges, _kt_tree, _kt_source, _kt_df)

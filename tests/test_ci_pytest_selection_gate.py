@@ -69,6 +69,8 @@ def _sandbox(
     prev_sha_resolvable: bool = True,
     committed_manifest: str | None = None,
     committed_readable: bool = True,
+    pytest_rc: int = 0,
+    absent_tests: tuple[str, ...] = (),
 ) -> tuple[Path, Path]:
     """A fake repo + a REPLACED PATH holding only the stubs we intend (L49).
 
@@ -82,6 +84,10 @@ def _sandbox(
     the file sitting on disk. It defaults to the on-disk body (the ordinary
     case, where nothing rewrote it). `committed_readable=False` makes that read
     FAIL instead, the way it would for a manifest untracked at HEAD.
+    Every test the manifest selects is created in the fake repo, as it exists
+    in a real checkout, except those named in `absent_tests` (INV-tazur: the
+    step refuses a selection naming a path the commit does not contain).
+    `pytest_rc` is the stub pytest's exit status.
     """
     repo = tmp_path / "repo"
     (repo / ".ci").mkdir(parents=True)
@@ -90,6 +96,14 @@ def _sandbox(
     committed_blob.write_text(
         manifest_body if committed_manifest is None else committed_manifest
     )
+    for body in (manifest_body, committed_manifest or ""):
+        if "# === SELECTED_TESTS ===" not in body:
+            continue
+        for rel in body.split("# === SELECTED_TESTS ===", 1)[1].splitlines():
+            rel = rel.strip()
+            if rel and not rel.startswith("#") and rel not in absent_tests:
+                (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+                (repo / rel).touch()
 
     bindir = tmp_path / "bin"
     bindir.mkdir()
@@ -136,7 +150,7 @@ def _sandbox(
     (bindir / "pytest").write_text(textwrap.dedent(f"""\
         #!/usr/bin/env bash
         echo "$@" > {str(marker)!r}
-        exit 0
+        exit {pytest_rc}
     """))
     for tool in ("git", "pytest"):
         (bindir / tool).chmod(0o755)
@@ -439,3 +453,70 @@ def test_an_unreadable_committed_blob_falls_back_and_says_so(tmp_path: Path) -> 
     assert "working-tree" in result.stdout, (
         f"the fallback is not declared:\n{result.stdout}"
     )
+
+
+def test_the_selection_count_reads_root_level_tests(tmp_path: Path) -> None:
+    """WI-kabaf control: the LIVE per-PR count is a section count, not a prefix.
+
+    `.github/workflows/ci.yml` counted the manifest with `grep -c "^packages/"`,
+    which reads 0 for root-level `tests/...` selections (pinned in
+    tests/test_ci_workflow_manifest_count.py). That file is dormant; this is the
+    gate that runs per PR, and its announced count must equal what it hands
+    pytest for exactly that shape -- two root-level tests, no package tests.
+    """
+    manifest = (
+        "# === CHANGED_SOURCE_FILES ===\n"
+        "# === SELECTED_TESTS ===\n"
+        "tests/test_something.py\n"
+        "tests/test_something_else.py\n"
+    )
+    repo, marker = _sandbox(
+        tmp_path,
+        manifest_body=manifest,
+        changed_files=["tests/test_something.py"],
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+
+    assert marker.exists(), f"pytest never ran:\n{result.stdout}\n{result.stderr}"
+    assert "=== pytest (2 selected files," in result.stdout, result.stdout
+
+
+def test_a_selected_path_missing_from_the_commit_stops_the_step(
+    tmp_path: Path,
+) -> None:
+    """INV-tazur, CI half: a manifest naming a deleted test must not reach pytest.
+
+    Under `pytest -n` a dead path collects nothing and exits 5 with no message;
+    the step has to name the path and fail before that happens.
+    """
+    manifest = (
+        "# === CHANGED_SOURCE_FILES ===\n"
+        "# === SELECTED_TESTS ===\n"
+        "tests/test_something.py\n"
+        "tests/test_deleted.py\n"
+    )
+    repo, marker = _sandbox(
+        tmp_path,
+        manifest_body=manifest,
+        changed_files=["tests/test_something.py", "tests/test_deleted.py"],
+        absent_tests=("tests/test_deleted.py",),
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert not marker.exists(), "pytest ran on a selection naming a dead path"
+    assert "tests/test_deleted.py" in result.stdout, result.stdout
+    assert "do not exist" in result.stdout, result.stdout
+
+
+def test_a_zero_collect_pytest_exit_fails_in_words(tmp_path: Path) -> None:
+    """pytest exit 5 fails the step, and the step says why."""
+    repo, marker = _sandbox(
+        tmp_path,
+        manifest_body=MANIFEST_TEST_ONLY,
+        changed_files=["tests/test_something.py"],
+        pytest_rc=5,
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+    assert marker.exists(), result.stdout + result.stderr
+    assert result.returncode == 5, result.stdout + result.stderr
+    assert "ZERO TESTS EXECUTED" in result.stdout, result.stdout

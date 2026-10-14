@@ -1,0 +1,21 @@
+- op: create  # 39ce
+  at: '2026-10-04T10:34:40Z'  # 39ce
+  by: agent  # 39ce
+  actor: jgstern_agent  # 39ce
+  clock: 1  # 39ce
+  nonce: 39ce  # 39ce
+  data:  # 39ce
+    kind: work_item  # 39ce
+    title: "kotlin credits a call inside a property accessor (get()/set()) to the enclosing CLASS, not the property (C# sibling: WI-binap)"  # 39ce
+    status: todo_hard  # 39ce
+    priority: 3  # 39ce
+    parent:  # 39ce
+    tags:  # 39ce
+    - kotlin  # 39ce
+    - call_graph  # 39ce
+    isbefore: []  # 39ce
+    duplicate_of: []  # 39ce
+    not_duplicate_of: []  # 39ce
+    pr_ref:  # 39ce
+    description: "FOUND 2026-10-04 while working WI-binap (the C# half of the same family: a declaration kind missing from an analyzer's enclosing-callable set).\n\nTHE DEFECT: kotlin credits a call inside a property accessor to the enclosing CLASS. Reproduced on the production path (analyze_kotlin, tree jgstern-agent/fix/binap, base 2a98abb55d):\n\n    class A {\n        val twice: Int\n            get() = helper() * 2          // line 3\n        var setter: Int = 0\n            set(value) { field = helper() }   // line 5\n        val init1: Int = helper2()        // line 6\n        fun run() { helper() }\n        fun helper(): Int = 1\n        fun helper2(): Int = 2\n    }\n\n    symbols: A.twice / A.setter / A.init1 are kind=field (spans 2-3, 4-5, 6)\n    calls:   A(class) -> A.helper  line 3   <- should be A.twice\n             A(class) -> A.helper  line 5   <- should be A.setter\n             A(class) -> A.helper2 line 6   (initialiser: class anchoring is INV-bamij's deliberate choice for kotlin)\n             A.run -> A.helper     line 7   (control)\n\nMECHANISM: kotlin.py's enclosing lookup recognises function declarations, then falls back to _TYPE_BODY_NODES (INV-bamij); property_declaration (whose getter/setter children hold the bodies) is not in the callable set, though the property symbol exists and spans the accessor.\n\nASK: credit an accessor body's calls to the property symbol, by position (core enclosing_declared_symbol), as C# does after WI-binap and Swift already does for computed properties (A.twice -> A.helper). Decide explicitly whether a property INITIALISER stays on the class (kotlin, INV-bamij) or moves to the property (C# after WI-binap credits a C# property initialiser to the property, while a C# FIELD initialiser stays on the class). Measure by call site on the kotlin corpus repos.\n\nNOT MEASURED: corpus counts (only the fixture above was run)."  # 39ce
+    fields: {}  # 39ce

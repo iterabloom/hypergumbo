@@ -13,6 +13,11 @@ Test strategy:
 - Pilot tests (async): mount the app at specific terminal sizes, verify
   widget visibility, row rendering, and key bindings. Uses wait helpers
   to handle coverage-tracing slowdowns in Textual's event loop.
+- Modal unit tests wait on CONDITIONS, never on tick counts:
+  ``_wait_for_modal`` for a laid-out dialog, ``_wait_for_dismissal`` for the
+  dismiss callback having run. ``Pilot.pause`` judges "idle" from CPU time,
+  which a loaded run starves (WI-ruhul); ``TestWaitForDismissalHelper`` pins
+  this with a one-tick ``pause`` model.
 - _filtered_items tests: verify filter matching against title, status,
   tags, kind, and edge cases (empty filter, no matches)
 - Dynamic resize tests: compact↔standard↔too-small transitions with
@@ -23,6 +28,7 @@ Test strategy:
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -2590,19 +2596,22 @@ class TestFilterStatus:
 class _ModalTestApp(App):
     """Minimal app for testing modal screens in isolation.
 
-    Pushes the given screen on mount and captures the result in ``_result``.
+    Pushes the given screen on mount and captures the result in ``_result``,
+    then sets ``_dismissed`` -- the event ``_wait_for_dismissal`` waits on.
     """
 
     def __init__(self, screen: Any, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._screen = screen
         self._result: Any = "NOT_SET"
+        self._dismissed = asyncio.Event()
 
     def on_mount(self) -> None:
         self.push_screen(self._screen, callback=self._capture)
 
     def _capture(self, result: Any) -> None:
         self._result = result
+        self._dismissed.set()
 
 
 async def _wait_for_modal(
@@ -2658,6 +2667,40 @@ async def _wait_for_modal(
     )
 
 
+async def _wait_for_dismissal(app: Any, timeout: float = 30.0) -> Any:
+    """Wait until the modal's dismiss callback has RUN, and return its result.
+
+    THE RESULT IS SEVERAL QUEUE HOPS AWAY FROM THE INPUT (WI-ruhul). A click
+    is MouseDown/MouseUp/Click on the screen, forwarded to the Button, which
+    posts ``Button.Pressed``; that bubbles to the screen's handler, which calls
+    ``dismiss``; ``dismiss`` hands the callback to ``app.call_next``. Every
+    hop is a message on some pump's queue. The old shape -- one
+    ``pilot.pause()`` and then read ``app._result`` -- bet that a pause covers
+    all of them. It does not, under load: ``pause`` ends in Textual's
+    ``wait_for_idle``, which calls the process idle when its CPU time stops
+    advancing against wall-clock time, and a worker descheduled on a loaded
+    box looks exactly like an idle one. The read then sees the ``'NOT_SET'``
+    sentinel, which is the 2026-08-20 cron failure of
+    ``TestLockScreenUnit::test_cancel_returns_none`` (``assert 'NOT_SET' is
+    None``) that ``_wait_for_modal``'s layout fix did not cover.
+
+    So this waits on the CONDITION, not on a tick count: ``_capture`` sets
+    ``app._dismissed``, and this awaits it. The timeout is generous because it
+    only bounds a real defect (a modal nothing dismisses); on exhaustion it
+    raises naming the wait, never returning as though it had succeeded -- the
+    same rule ``_wait_for_modal`` follows.
+    """
+    try:
+        await asyncio.wait_for(app._dismissed.wait(), timeout)
+    except asyncio.TimeoutError:
+        raise AssertionError(
+            f"modal was never dismissed within {timeout}s (its result callback "
+            f"did not run); screen={type(app.screen).__name__}, "
+            f"result={app._result!r}."
+        ) from None
+    return app._result
+
+
 class TestDiscussScreenUnit:
     """Test DiscussScreen modal in isolation."""
 
@@ -2669,7 +2712,7 @@ class TestDiscussScreenUnit:
             app.screen.query_one("#discuss-input").value = "Hello there"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result == "Hello there"
 
     async def test_cancel_returns_none(self) -> None:
@@ -2678,7 +2721,7 @@ class TestDiscussScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#cancel")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_escape_returns_none(self) -> None:
@@ -2687,7 +2730,7 @@ class TestDiscussScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.press("escape")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_empty_submit_returns_none(self) -> None:
@@ -2696,7 +2739,7 @@ class TestDiscussScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
 
@@ -2709,7 +2752,7 @@ class TestConfirmScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#yes")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is True
 
     async def test_no_returns_false(self) -> None:
@@ -2718,7 +2761,7 @@ class TestConfirmScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#no")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is False
 
     async def test_escape_returns_false(self) -> None:
@@ -2727,7 +2770,7 @@ class TestConfirmScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.press("escape")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is False
 
 
@@ -2775,7 +2818,7 @@ class TestTierMoveScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#cancel")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_escape_returns_none(self) -> None:
@@ -2784,7 +2827,7 @@ class TestTierMoveScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.press("escape")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_submit_no_select_returns_none(self) -> None:
@@ -2793,7 +2836,7 @@ class TestTierMoveScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_submit_with_selection(self) -> None:
@@ -2802,7 +2845,7 @@ class TestTierMoveScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result == "demote"
 
 
@@ -2817,7 +2860,7 @@ class TestNewItemScreenUnit:
             app.screen.query_one("#title-input").value = "New Test Item"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["title"] == "New Test Item"
             assert app._result["kind"] == "invariant"
@@ -2829,7 +2872,7 @@ class TestNewItemScreenUnit:
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_cancel_returns_none(self) -> None:
@@ -2838,7 +2881,7 @@ class TestNewItemScreenUnit:
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#cancel")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_invalid_priority_defaults_to_2(self) -> None:
@@ -2850,7 +2893,7 @@ class TestNewItemScreenUnit:
             app.screen.query_one("#priority-input").value = "not-a-number"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["priority"] == 2
 
@@ -2860,7 +2903,7 @@ class TestNewItemScreenUnit:
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.press("escape")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_with_description(self) -> None:
@@ -2872,7 +2915,7 @@ class TestNewItemScreenUnit:
             app.screen.query_one("#desc-input").value = "A description"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["description"] == "A description"
 
@@ -2901,7 +2944,7 @@ class TestEditItemScreenUnit:
             app.screen.query_one("#title-input").value = "Changed Title"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["set_fields"]["title"] == "Changed Title"
 
@@ -2916,7 +2959,7 @@ class TestEditItemScreenUnit:
             sel.value = "in_progress"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["set_fields"]["status"] == "in_progress"
 
@@ -3002,7 +3045,7 @@ class TestEditItemScreenUnit:
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_cancel_returns_none(self) -> None:
@@ -3012,7 +3055,7 @@ class TestEditItemScreenUnit:
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#cancel")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_tag_add(self) -> None:
@@ -3024,7 +3067,7 @@ class TestEditItemScreenUnit:
             app.screen.query_one("#tags-input").value = "quality, new_tag"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert "new_tag" in app._result["add_fields"]["tags"]
 
@@ -3037,7 +3080,7 @@ class TestEditItemScreenUnit:
             app.screen.query_one("#tags-input").value = ""
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert "quality" in app._result["remove_fields"]["tags"]
 
@@ -3050,7 +3093,7 @@ class TestEditItemScreenUnit:
             app.screen.query_one("#priority-input").value = "5"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["set_fields"]["priority"] == 5
 
@@ -3063,7 +3106,7 @@ class TestEditItemScreenUnit:
             app.screen.query_one("#priority-input").value = "abc"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_escape_returns_none(self) -> None:
@@ -3073,7 +3116,7 @@ class TestEditItemScreenUnit:
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.press("escape")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_desc_change(self) -> None:
@@ -3085,7 +3128,7 @@ class TestEditItemScreenUnit:
             app.screen.query_one("#desc-input").value = "New description"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["set_fields"]["description"] == "New description"
 
@@ -3101,7 +3144,7 @@ class TestParentScreenUnit:
             app.screen.query_one("#parent-input").value = "NEW-PARENT"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result == "NEW-PARENT"
 
     async def test_submit_empty_clears_parent(self) -> None:
@@ -3112,7 +3155,7 @@ class TestParentScreenUnit:
             app.screen.query_one("#parent-input").value = ""
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result == ""
 
     async def test_cancel_returns_none(self) -> None:
@@ -3121,7 +3164,7 @@ class TestParentScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#cancel")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_escape_returns_none(self) -> None:
@@ -3130,7 +3173,7 @@ class TestParentScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.press("escape")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
 
@@ -3145,7 +3188,7 @@ class TestBeforeScreenUnit:
             app.screen.query_one("#add-input").value = "NEW-1, NEW-2"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["add"] == ["NEW-1", "NEW-2"]
 
@@ -3157,7 +3200,7 @@ class TestBeforeScreenUnit:
             app.screen.query_one("#remove-input").value = "EXISTING-1"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["remove"] == ["EXISTING-1"]
 
@@ -3167,7 +3210,7 @@ class TestBeforeScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_cancel_returns_none(self) -> None:
@@ -3176,7 +3219,7 @@ class TestBeforeScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#cancel")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_escape_returns_none(self) -> None:
@@ -3185,7 +3228,7 @@ class TestBeforeScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.press("escape")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
 
@@ -3223,6 +3266,70 @@ class TestWaitForModalHelper:
             assert app.screen.query_one("#modal-dialog").size.width > 0
 
 
+async def _one_event_loop_tick(self: Any, delay: float | None = None) -> None:
+    """A ``Pilot.pause`` that yields exactly once: the loaded-run model.
+
+    ``Pilot.pause`` ends in ``wait_for_idle``, which calls the process idle
+    when its CPU time stops advancing while wall-clock time does. A worker
+    the OS has descheduled on an oversubscribed box looks exactly like that,
+    so under load ``pause`` can return after a single event-loop iteration.
+    Patching it to one ``sleep(0)`` makes that worst case deterministic.
+    """
+    import asyncio
+
+    await asyncio.sleep(0)
+
+
+class TestWaitForDismissalHelper:
+    """A modal test must wait for the RESULT, not for a tick count (WI-ruhul).
+
+    Under the one-tick model the old ``click; pause(); assert app._result``
+    shape reads the ``'NOT_SET'`` sentinel: a click travels Click -> Button ->
+    Pressed (bubbling to the screen) -> ``dismiss`` -> ``app.call_next``,
+    several queue hops after the read. ``_wait_for_dismissal`` waits on the
+    callback itself, so the hop count and the machine's load stop mattering.
+    """
+
+    async def test_the_one_tick_model_reaches_the_hazard(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """REACH: under the model, one pause after a click is not enough.
+
+        Without this the test below could pass on a model that never starves
+        anything, and it would prove nothing about loaded runs.
+        """
+        import textual.pilot
+
+        app = _ModalTestApp(LockScreen("ID-1", set()))
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            monkeypatch.setattr(textual.pilot.Pilot, "pause", _one_event_loop_tick)
+            await pilot.click("#cancel")
+            await pilot.pause()
+            assert app._result == "NOT_SET"
+            assert await _wait_for_dismissal(app) is None
+
+    @pytest.mark.parametrize("button", ["#cancel", "#submit"])
+    async def test_it_returns_the_result_under_the_one_tick_model(
+        self, monkeypatch: pytest.MonkeyPatch, button: str,
+    ) -> None:
+        import textual.pilot
+
+        app = _ModalTestApp(LockScreen("ID-1", set()))
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            monkeypatch.setattr(textual.pilot.Pilot, "pause", _one_event_loop_tick)
+            await pilot.click(button)
+            assert await _wait_for_dismissal(app) is None
+
+    async def test_it_raises_when_nothing_dismisses_the_modal(self) -> None:
+        app = _ModalTestApp(LockScreen("ID-1", set()))
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            with pytest.raises(AssertionError, match="was never dismissed"):
+                await _wait_for_dismissal(app, timeout=0.2)
+
+
 class TestLockScreenUnit:
     """Test LockScreen modal in isolation."""
 
@@ -3234,7 +3341,7 @@ class TestLockScreenUnit:
             app.screen.query_one("#lock-input").value = "status, priority"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert set(app._result["lock"]) == {"status", "priority"}
 
@@ -3246,7 +3353,7 @@ class TestLockScreenUnit:
             app.screen.query_one("#unlock-input").value = "status"
             await pilot.pause()
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["unlock"] == ["status"]
 
@@ -3256,7 +3363,7 @@ class TestLockScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#submit")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_cancel_returns_none(self) -> None:
@@ -3265,7 +3372,7 @@ class TestLockScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.click("#cancel")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
     async def test_escape_returns_none(self) -> None:
@@ -3274,7 +3381,7 @@ class TestLockScreenUnit:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             await pilot.press("escape")
-            await pilot.pause()
+            await _wait_for_dismissal(app)
             assert app._result is None
 
 

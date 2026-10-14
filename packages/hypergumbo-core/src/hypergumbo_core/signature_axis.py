@@ -55,11 +55,13 @@ judgment" carveout permits, already used by :mod:`qualified_name_axis` and
 
 THE FACTS INSIDE HAVE HOMES, AND THIS IS THE ACTIONABLE HALF. A return type
 lives in ``FileAnalysis.method_return_types`` -- the language-neutral registry
-that go, rust, swift and objc populate in Pass 1 and that the base analyzer
-aggregates across files into ``_method_return_type_registry`` -- or in the
+that go, rust, scala and swift populate in Pass 1 and that the base analyzer
+aggregates across files into ``_method_return_type_registry`` (objc keeps a
+same-shaped registry on its own ``FileAnalysis``) -- or in the
 registered ``return_type`` / ``inferred_return_type`` meta keys, which java,
 luau, apex and (since WI-ribak) python populate. A field's declared type lives
-in ``FileAnalysis.class_field_types`` (csharp, cpp). Parameters live in the
+in ``FileAnalysis.class_field_types`` (csharp, cpp, go, rust, swift).
+Parameters live in the
 ``parameters`` / ``params`` meta keys. When this axis was declared Python read
 its return types by parsing the display string instead, while ``py.py`` cited
 the home in a comment::
@@ -213,7 +215,8 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
             "solidity. Non-conformant: a field has no signature, so the "
             "slot is answering a question the field did not ask. The fact "
             "is real and worth having -- its home is "
-            "FileAnalysis.class_field_types, which csharp and cpp populate."
+            "FileAnalysis.class_field_types, which csharp, cpp, go, rust "
+            "and swift populate."
         ),
         emission_sites=(
             CitedSite(
@@ -221,7 +224,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
                     "packages/hypergumbo-core/src/hypergumbo_core/"
                     "linkers/method_call_recovery.py"
                 ),
-                line=198,
+                line=207,
                 anchor="HOLDS BOTH A VALUE TYPE AND A CALL SIGNATURE",
                 note=(
                     "The consumer that found the conflation, and the reason "
@@ -247,45 +250,52 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
 FACT_HOMES: Final[dict[str, FactHome]] = {
     "return_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=285,
+        line=303,
         anchor="method_return_types: dict[str, str]",
         home="FileAnalysis.method_return_types",
-        populated_by=("go", "rust", "swift", "objc"),
+        populated_by=("go", "rust", "scala", "swift", "objc"),
         note=(
             "INV-dihos / WI-kuroj. Aggregated across files by the base "
             "analyzer into _method_return_type_registry, with library rows "
             "joined AFTER the analysed ones so a declaration in the "
             "repository always beats a catalogue guess (WI-lalot). The "
             "registered meta keys return_type / inferred_return_type "
-            "(axis_meta_keys.py:1082, :1085) are the per-Symbol half, "
+            "(the axis_meta_keys.py specs of those two names) are the per-Symbol half, "
             "populated by java, luau and apex; inferred_return_type's own "
             "description names Python as an intended producer."
         ),
     ),
     "parameter_arity": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/axis_meta_keys.py",
-        line=1073,
+        line=1182,
         anchor='MetaKeySpec("parameters"',
         home='Symbol.meta["parameters"] / Symbol.meta["params"]',
-        populated_by=("15 analyzers, including py.py",),
+        populated_by=("33 analyzers, including py.py, cpp, elixir and nim",),
         note=(
             "A structured list has a length; a rendered string has to be "
             "re-parsed to get one, and the two consumers that count "
             "parameters do exactly that. 'params' is the name-only short "
             "form for analyzers that do not extract types. This is the "
-            "best-supplied of the three homes -- 15 analyzers populate it "
-            "(apex, fennel, fortran, hack, janet, jsonnet, luau, odin, "
-            "pony, puppet, py, scala, scss, thrift, zig), so unlike the "
-            "return-type and field-type registries, PYTHON ALREADY WRITES "
-            "HERE. The arity parsers are csharp and jackson_dispatch."
+            "best-supplied of the three homes -- 33 analyzers populate it "
+            "(apex, clojure, cmake, commonlisp, cpp, cuda, elixir, elm, erlang "
+            "macros, fennel, fortran, fsharp, glsl, gnuplot, hack, janet, "
+            "jsonnet, julia, lean, luau, nim, ocaml, odin, pony, puppet, py, "
+            "r, scala, scss, thrift, tlaplus, wolfram, zig), "
+            "so unlike the return-type and field-type registries, PYTHON "
+            "ALREADY WRITES HERE. The arity parsers are csharp and "
+            "jackson_dispatch. The consumer that reads the HOME is "
+            "hypergumbo_core.overload_arity (cpp, elixir and nim overload "
+            "selection, WI-hilum / WI-rodiz / WI-bivab), whose "
+            "parameter_entry fixes the shape: name, type, default, and "
+            "variadic when true."
         ),
     ),
     "value_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=247,
+        line=265,
         anchor="class_field_types: dict[str, dict[str, str]]",
         home="FileAnalysis.class_field_types",
-        populated_by=("csharp", "cpp"),
+        populated_by=("csharp", "cpp", "go", "rust", "swift"),
         note=(
             "Aggregated into _field_type_registry beside the return-type "
             "one, first writer wins. This is the home for the 1,911 slots "
@@ -312,7 +322,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/csharp.py"
         ),
-        line=445,
+        line=556,
         anchor="_extract_csharp_return_type_name(resolved_sym.signature)",
         fact="return_type",
         note="Resolves a class from the parsed return type.",
@@ -322,7 +332,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/csharp.py"
         ),
-        line=1651,
+        line=1971,
         anchor="_count_signature_params(c.signature) == arg_count",
         fact="parameter_arity",
         note="Overload selection by counting rendered parameters.",
@@ -332,7 +342,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=1661,
+        line=2195,
         anchor="resolved_nav_sym.signature",
         fact="return_type",
         note="Navigation-target return type.",
@@ -342,7 +352,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=1837,
+        line=2360,
         anchor="resolved_simple_sym.signature",
         fact="return_type",
         note="Simple-name receiver return type.",
@@ -352,14 +362,14 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/js_ts.py"
         ),
-        line=5427,
+        line=6140,
         anchor="callee.signature",
         fact="return_type",
         note="Chained-call receiver typing.",
     ),
     LegacyValueParser(
         path="packages/hypergumbo-lang-common/src/hypergumbo_lang_common/dart.py",
-        line=817,
+        line=891,
         anchor="resolved_sym.signature",
         fact="return_type",
         note="Chained-call receiver typing.",
@@ -385,7 +395,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-core/src/hypergumbo_core/"
             "linkers/method_call_recovery.py"
         ),
-        line=209,
+        line=218,
         anchor='signature = (member.signature or "").strip()',
         fact="value_type",
         note=(
@@ -472,8 +482,8 @@ class _ParseSiteVisitor(ast.NodeVisitor):
     TWO STATED LIMITS, neither papered over:
 
     * A value bound to a LOCAL is beyond reach -- ``sig = sym.signature``
-      then ``sig.split('->')`` is caught at the first line (a read handed to
-      nothing is still flagged only if it flows into a call), and a parser's
+      then ``sig.split('->')`` is NOT caught (the assignment is not a call
+      handoff, and the later call's receiver is a bare local), and a parser's
       own body operating on its parameter is not an attribute read at all.
       The gate catches the HANDOFF, which is what the citations record.
     * A keyword argument named ``signature`` is treated as a carry, so a

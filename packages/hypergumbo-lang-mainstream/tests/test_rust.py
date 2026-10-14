@@ -5482,9 +5482,16 @@ impl Server {
         assert len(handle_edges) >= 1, (
             f"Should detect Self::handle inside select!, got: {call_edges}"
         )
-        # Check evidence type
-        macro_edges = [e for e in handle_edges if (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "macro_body")]
+        # Check evidence type. The macro-body edge carries NO call_construct
+        # (WI-dapap): ``macro_body`` named the detector, not a construct.
+        macro_edges = [
+            e for e in handle_edges
+            if e.evidence_type == "ast_call" and "call_construct" not in (e.meta or {})
+        ]
         assert len(macro_edges) >= 1
+        assert all(
+            (e.meta or {}).get("call_construct") != "macro_body" for e in result.edges
+        )
 
     def test_select_simple_function_call(self, tmp_path: Path) -> None:
         """Simple function call inside tokio::select! should be detected."""

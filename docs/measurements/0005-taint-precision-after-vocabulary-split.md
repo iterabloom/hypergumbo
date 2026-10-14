@@ -36,6 +36,11 @@ cohort. Not a sample.
 | **situation** (post-collapse record) | 8 | 29 | 0 | 37 | **21.6%** |
 | **row** (source→sink pair) | 17 | 153 | 0 | 170 | **10.0%** |
 
+> **What a row counts.** Each row is one (source call site, sink call site)
+> pair included by call-graph reachability, not a claim that a value flowed,
+> so the row rate is a rate over reachability pairs. See
+> [What a row counts](README.md#what-a-row-counts).
+
 Per-situation precision is **2.16×** per-row precision, the third population in
 a row where the two units differ by roughly that factor (`0004`: 2.9×). The two
 units are not comparable to each other, and neither is comparable to `0001`'s

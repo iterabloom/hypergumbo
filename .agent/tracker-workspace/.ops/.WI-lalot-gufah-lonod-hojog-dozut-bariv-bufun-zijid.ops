@@ -86,3 +86,10 @@
   clock: 10  # c1d9
   nonce: c1d9  # c1d9
   message: "INSTANCE FROM WI-kilap (PR #1160, 2026-09-23): after kotlin/scala learned to name a static call's owner, 'Runtime.getRuntime().exec(c)' is the remaining failure in WI-kilap's filed repro. getRuntime carries java.lang.Runtime, but exec's receiver is the returned value, whose type nothing propagates, so the subprocess sink (java.lang.Runtime.exec, method-kind) is unreachable in both languages. Fixture: ~/hypergumbo_lab_notebook/suril_09072026/fxkt, fxsc."  # c1d9
+- op: discuss  # 6243
+  at: '2026-10-01T09:48:01Z'  # 6243
+  by: agent  # 6243
+  actor: jgstern_agent  # 6243
+  clock: 11  # 6243
+  nonce: '6243'  # 6243
+  message: "FINDING 2026-10-01 (WI-halin, branch jgstern-agent/fix/halin, not yet merged): every row of library_signatures/java.yaml was keyed by the SHORT owner (Socket.getOutputStream, Files.newOutputStream, DriverManager.getConnection) while java.py asks the registry with the owner path the calling file establishes (java.net.Socket.getOutputStream). No java row ever matched on the production path. Repro on dev 8cfcab7b07: import java.net.Socket; void w(Socket s, byte[] b) { var o = s.getOutputStream(); o.write(b); } -> java:external:0-0:write. The java test in test_library_signatures (DriverManager.getConnection) passed vacuously: its local was DECLARED Connection, which types itself (INV-vugon). The WI-halin branch re-keys the rows to fq owners, pins the key shape in a test, and changes that test to var. The other languages' row files were not re-audited (their tests carry both arms per this module's docstring; only java's did not)."  # 6243

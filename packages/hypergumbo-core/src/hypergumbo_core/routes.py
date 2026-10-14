@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Canonical route accessor — one place to answer "is this symbol a route?"
-and to extract its normalized ``{path, method, framework, protocol}``.
+"""Canonical route accessor: decides route-ness and extracts path, method, framework, protocol.
 
 WI-tosul / target-D. Route-ness is surfaced two ways at the analyzer /
 enrichment layer:
@@ -23,10 +22,20 @@ one chokepoint; those linker sites now delegate here.
 
 **Precedence is marker-first.** The ADR-0027 route marker is the producer-side
 authoritative signal; the concept entry is the manifest-gated upstream
-projection (decision-register 2026-07-05). **Normalization:** the ``'WS'``
-sentinel that older producers smuggled into ``http_method`` is lifted out into
-a dedicated ``protocol`` field (``'http'`` | ``'websocket'``); a caller that
-needs the historical raw method reconstructs it from ``protocol``.
+projection (decision-register 2026-07-05). **Normalization:** the
+transport sentinels that older producers smuggled into ``http_method``
+(``'WS'``, ``'LIVE'``, ``'RPC'``) are lifted out into a dedicated ``protocol``
+field (``'http'`` | ``'websocket'`` | ``'liveview'`` | ``'grpc'``), and a
+producer-persisted ``meta['route_protocol']`` wins over that derivation. A
+caller that needs the legacy token rebuilds it with ``method_token``.
+
+The module also owns two neighbouring chokepoints. ``method_matches`` (with
+``WILDCARD_HTTP_METHODS``) decides whether a route's verb field covers a
+requested verb, and it handles an absent verb (matches all), a wildcard
+(``ANY`` / ``ALL`` / ``*``) and a comma-joined list. On the producer side,
+``transport_meta`` splits a transport sentinel out of the verb field into
+``route_protocol``. On the consumer side, ``method_token`` and
+``protocol_method_token`` map it back to the legacy token.
 """
 
 from __future__ import annotations

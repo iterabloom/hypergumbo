@@ -280,9 +280,10 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             "end\n"
         ),
         expected_targets=(
-            ("json", "parse"),
-            ("set", "new"),
-            ("json", "generate"),
+            # WI-surar: the slot is the receiver constant as written.
+            ("JSON", "parse"),
+            ("Set", "new"),
+            ("JSON", "generate"),
         ),
     ),
     PolyglotFixture(

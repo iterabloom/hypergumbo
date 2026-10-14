@@ -3,7 +3,8 @@
 
 This analyzer uses tree-sitter to parse GDScript files and extract:
 - Function definitions (_ready, _process, custom methods)
-- Variable declarations (class members)
+- Variable declarations: every ``var`` statement, so class members and
+  function locals alike
 - Signal declarations
 - Class names and inner classes
 - Function calls
@@ -17,6 +18,26 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, variables, signals, and classes
 2. Pass 2: Extract preload/load import edges and function call edges
+
+Identity (WI-tusad): a function or signal is qualified by the inner classes
+(and, for a lambda-held ``func``, the functions) enclosing it, ``A.run``, and
+mints the ADR-0035 producer stable_id over that chain: functions through
+``compute_stable_id`` (parameter count and flags from the ``parameters`` node),
+signals through ``overload_arity.declared_arity_stable_id`` with no arity.
+Before, neither computed a stable_id and rode the backstop floor key (kind,
+file, bare name), which ``run`` in inner classes ``A`` and ``B`` share, so both
+were null. Variables and inner classes keep the table formula, over the same
+chain (``overload_arity.scoped_table_stable_id``; INV-fabih: ``class Inner``
+and its ``var`` in inner classes ``A`` and ``B`` shared one bare-name table
+key, so deleting ``A`` moved them); top-level ones keep their values. Names
+stay bare.
+
+For a call edge the caller is the enclosing ``function_definition``, found by
+its position rather than its name, so same-named functions in two inner
+classes are kept apart. Calls with no enclosing function (e.g. in a
+class-level ``var`` initializer) are dropped, as are the logging builtins
+``print``, ``push_error``, ``push_warning`` and ``printerr``. A callee the
+resolver cannot find still gets an edge, via ``make_unresolved_edge``.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the GDScript-specific
@@ -48,6 +69,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     SymbolsAt,
     TreeSitterAnalyzer,
+    ancestor_labels,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -61,6 +83,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import declared_arity_stable_id, scoped_table_stable_id
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -140,6 +163,21 @@ def _get_enclosing_function_gdscript(
     return None  # pragma: no cover - no enclosing function found
 
 
+def _gd_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Every inner class and function enclosing ``node``, outermost first."""
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type not in ("class_definition", "function_definition"):
+            return None
+        name_node = find_child_by_type(n, "name")
+        return node_text(name_node, source).strip() if name_node is not None else None
+    return ancestor_labels(node, label)
+
+
+def _scope_chain(node: "tree_sitter.Node", source: bytes, name: str) -> str:
+    """``name`` qualified by :func:`_gd_scope` (``A.run``; WI-tusad)."""
+    return ".".join((*_gd_scope(node, source), name))
+
+
 def _make_gd_symbol(
     node: "tree_sitter.Node",
     name: str,
@@ -148,6 +186,7 @@ def _make_gd_symbol(
     run_id: str,
     signature: Optional[str] = None,
     complexity: bool = False,
+    stable_id: Optional[str] = None,
 ) -> Symbol:
     """Create a Symbol from a tree-sitter node.
 
@@ -170,6 +209,7 @@ def _make_gd_symbol(
     sym_id = make_symbol_id("gdscript", file_path, start_line, end_line, name, kind)
     return Symbol(
         id=sym_id,
+        stable_id=stable_id,
         name=name,
         kind=kind,
         language="gdscript",
@@ -210,7 +250,15 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                 if name_node:
                     func_name = node_text(name_node, source).strip()
                     sig = _extract_function_signature(node, source)
-                    sym = _make_gd_symbol(node, func_name, "function", rel_path, run.execution_id, signature=sig, complexity=True)
+                    stable_id = self.compute_stable_id(
+                        node, "function", name=func_name,
+                        qualified_name=_scope_chain(node, source, func_name),
+                        file_stable_id=self._file_anchor(rel_path),
+                    )
+                    sym = _make_gd_symbol(
+                        node, func_name, "function", rel_path, run.execution_id,
+                        signature=sig, complexity=True, stable_id=stable_id,
+                    )
                     analysis.symbols.append(sym)
                     analysis.symbol_by_name[func_name] = sym
 
@@ -218,13 +266,27 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                 name_node = find_child_by_type(node, "name")
                 if name_node:
                     var_name = node_text(name_node, source).strip()
-                    analysis.symbols.append(_make_gd_symbol(node, var_name, "variable", rel_path, run.execution_id))
+                    analysis.symbols.append(_make_gd_symbol(
+                        node, var_name, "variable", rel_path, run.execution_id,
+                        stable_id=scoped_table_stable_id(
+                            kind="variable", lang="gdscript", path=rel_path,
+                            name=var_name, scope=_gd_scope(node, source),
+                        ),
+                    ))
 
             elif node.type == "signal_statement":
                 name_node = find_child_by_type(node, "name")
                 if name_node:
                     signal_name = node_text(name_node, source).strip()
-                    analysis.symbols.append(_make_gd_symbol(node, signal_name, "signal", rel_path, run.execution_id))
+                    analysis.symbols.append(_make_gd_symbol(
+                        node, signal_name, "signal", rel_path, run.execution_id,
+                        stable_id=declared_arity_stable_id(
+                            kind="signal", lang="gdscript", path=rel_path,
+                            name=signal_name,
+                            qualified_name=_scope_chain(node, source, signal_name),
+                            arity=None,
+                        ),
+                    ))
 
             elif node.type == "class_name_statement":
                 name_node = find_child_by_type(node, "name")
@@ -236,14 +298,20 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                 name_node = find_child_by_type(node, "name")
                 if name_node:
                     class_name = node_text(name_node, source).strip()
-                    analysis.symbols.append(_make_gd_symbol(node, class_name, "class", rel_path, run.execution_id))
+                    analysis.symbols.append(_make_gd_symbol(
+                        node, class_name, "class", rel_path, run.execution_id,
+                        stable_id=scoped_table_stable_id(
+                            kind="class", lang="gdscript", path=rel_path,
+                            name=class_name, scope=_gd_scope(node, source),
+                        ),
+                    ))
 
         return analysis
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

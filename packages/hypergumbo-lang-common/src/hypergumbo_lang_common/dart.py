@@ -13,6 +13,8 @@ This analyzer uses tree-sitter to parse Dart files and extract:
 - Top-level variable declarations (module constants/state; WI-jusus)
 - Import and export statements
 - Function call relationships
+- Inheritance edges from the ``extends`` / ``implements`` / ``with`` / mixin
+  ``on`` clauses of classes, mixins and enums (WI-lahub)
 
 If tree-sitter with Dart support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -20,8 +22,23 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract classes, functions, methods, constructors, getters, setters, enums, mixins, extensions, fields, top-level variables
+1. Pass 1: Extract classes, functions, methods, constructors, getters, setters, enums, mixins, extensions, fields, top-level variables;
+   record each type's heritage clauses
 2. Pass 2: Detect calls, imports, and instantiations using NameResolver
+3. post_process: resolve the heritage clauses over every class and mixin of the
+   run into ``extends`` / ``implements`` / ``includes`` edges. The analyzer
+   labels these itself rather than leaving them to the shared inheritance
+   linker: Dart has no interface kind, so only the clause separates
+   ``extends`` from ``implements`` (see the "Inheritance" block below).
+
+Identity (WI-tusad): functions and methods hash their normalized signature
+(``make_typed_stable_id``). Constructors, getters, setters, mixins and
+extensions record no signature; they take the same formula with an empty one,
+over the owner-qualified name (``Mod.Mod.named``). Before, they computed none
+and rode the backstop floor key (kind, file, name). A function declared by a
+bare ``function_signature`` (top level, or local to another function's body)
+hashes its full scope chain (``_dart_scope``; INV-fabih), so a local function
+in two functions no longer ties; the top-level ones keep their values.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Dart-specific
@@ -59,8 +76,9 @@ AST Structure Notes
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
@@ -68,6 +86,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     defer_bare_method_call,
     find_child_by_type,
     iter_tree,
@@ -78,20 +97,30 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     make_variable_stable_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
     visibility_from_modifiers,
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
+from hypergumbo_core.symbol_indexes import SymbolByName
 from hypergumbo_core.symbol_resolution import ListNameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
-    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.ir import AnalysisRun, UsageContext
     from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = make_pass_id("dart")
+
+#: Kinds that record no signature yet mint the producer stable_id over their
+#: owner-qualified name (WI-tusad). Classes and enums take the backstop's
+#: table formula.
+_UNSIGNED_PRODUCER_KINDS = frozenset({
+    "constructor", "getter", "setter", "mixin", "extension",
+})
 
 
 def find_dart_files(repo_root: Path) -> Iterator[Path]:
@@ -216,6 +245,32 @@ def _find_enclosing_class(
     return None
 
 
+def _dart_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """The classes, mixins, extensions and functions enclosing ``node``,
+    outermost first (INV-fabih).
+
+    A local function (``int inner() => 1;`` in a function body) was emitted
+    under its bare name (``C.inner`` inside a method of ``C``), so two local
+    ``inner`` in ``a`` and ``b`` tied and deleting the first moved the second.
+    tree-sitter-dart puts a function's body BESIDE its signature, so an
+    enclosing function is read off the ``function_body`` ancestor's preceding
+    signature. A top-level function or a method of a top-level class keeps
+    its value: there the chain is its owner-qualified name.
+    """
+    def label(n: "tree_sitter.Node") -> Optional[str]:
+        if n.type in ("class_definition", "mixin_declaration", "extension_declaration"):
+            name_node = find_child_by_type(n, "identifier")
+        elif n.type == "function_body" and n.prev_named_sibling is not None:
+            sig = n.prev_named_sibling
+            if sig.type == "method_signature":
+                sig = next((c for c in sig.named_children), sig)
+            name_node = find_child_by_type(sig, "identifier")
+        else:
+            return None
+        return node_text(name_node, source) if name_node is not None else None
+    return ancestor_labels(node, label)
+
+
 # WI-jusus (emission-parity): value-declaration list nodes and the contexts that
 # make them fields vs top-level variables. In tree-sitter-dart a value declaration
 # is an ``initialized_identifier_list`` (var/typed) or ``static_final_declaration_list``
@@ -335,8 +390,12 @@ def _extract_symbols_from_file(
         signature: Optional[str] = None,
         complexity: bool = False,
         def_node: Optional["tree_sitter.Node"] = None,
+        scope_node: Optional["tree_sitter.Node"] = None,
     ) -> Symbol:
         """Create a Symbol with given span.
+
+        ``scope_node``, when given, is the declaration whose full scope chain
+        (:func:`_dart_scope`) the stable_id hashes instead of ``prefix.name``.
 
         ``complexity=True`` (callable kinds) populates cyclomatic_complexity
         (walked from ``def_node`` — the function_body when present, else the
@@ -354,6 +413,11 @@ def _extract_symbols_from_file(
         # Dart visibility: underscore-prefixed names are library-private
         modifiers = ["private"] if name.startswith("_") else []
 
+        hashed_name = (
+            ".".join((*_dart_scope(scope_node, source), name))
+            if scope_node is not None else full_name
+        )
+
         # Typed stable_id (ADR-0014 §3)
         stable_id = None
         if signature:
@@ -361,9 +425,19 @@ def _extract_symbols_from_file(
             if norm_sig:
                 stable_id = make_typed_stable_id(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
-                    name=name, qualified_name=full_name,
+                    name=name, qualified_name=hashed_name,
                     file_stable_id=file_stable_id,
                 )
+        if stable_id is None and kind in _UNSIGNED_PRODUCER_KINDS:
+            # WI-tusad: constructors, getters, setters, mixins and extensions
+            # carry no signature here and rode the backstop floor key. Dart
+            # has no overloading (a named constructor is its own name), so the
+            # owner-qualified name is the whole discriminant.
+            stable_id = make_typed_stable_id(
+                kind, "", visibility_from_modifiers(modifiers),
+                name=name, qualified_name=full_name,
+                file_stable_id=file_stable_id,
+            )
 
         return Symbol(
             id=sym_id,
@@ -483,7 +557,7 @@ def _extract_symbols_from_file(
                 body = _find_next_sibling_by_type(node, "function_body")
                 start_line, end_line, start_col, end_col = _get_combined_span(node, body)
                 sig = _extract_dart_signature(node, source)
-                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "function" if not class_name else "method", class_name, signature=sig, complexity=True, def_node=(body if body is not None else node)))
+                symbols.append(make_symbol(start_line, end_line, start_col, end_col, name, "function" if not class_name else "method", class_name, signature=sig, complexity=True, def_node=(body if body is not None else node), scope_node=node))
             continue
 
         # Constructor signature at top level of class body (rare but possible)
@@ -1071,6 +1145,217 @@ def _extract_edges_from_file(
     return edges
 
 
+# ---------------------------------------------------------------------------
+# Inheritance (WI-lahub)
+# ---------------------------------------------------------------------------
+#
+# Dart spells four type-to-type relations, each in its own clause:
+#
+#   class C extends B with M1, M2 implements I, J { }   (also enum: with/implements)
+#   mixin M on B, B2 implements I { }
+#
+# The analyzer emits these edges itself instead of handing a base list to the
+# shared ``inheritance`` linker, because only the CLAUSE separates
+# ``extends`` from ``implements`` in Dart: the language has no ``interface``
+# kind (every class declares an implicit interface, and ``abstract class`` is
+# what an interface is written as), so the linker's label — keyed on whether
+# the TARGET is an interface/trait/protocol — would print every Dart
+# ``implements`` as ``extends``. Its maps also index no ``mixin`` kind, so a
+# ``with`` clause would vanish there.
+#
+# Clause -> label:
+#   extends    -> ``extends``     (ast_extends)
+#   implements -> ``implements``  (ast_implements), whatever the source kind:
+#                 Dart writes it ``implements`` from a class, an enum and a
+#                 mixin alike, and none of those is an abstract-by-kind source
+#   with       -> ``includes``    (ast_includes) — a mixin application, the
+#                 relation Ruby's ``include`` already carries in this graph
+#   on         -> ``extends``     (ast_extends) — a mixin's superclass
+#                 constraint: ``super`` inside the mixin IS that type, and the
+#                 mixin's members override its members
+#
+# ``extension E on T`` is NOT inheritance (static extension members), and a
+# type-parameter bound (``class G<T extends Num>``) names no base; neither is
+# read. A base is resolved over every class and mixin of the run: the
+# candidate in the same file, else the only candidate, else the first by id
+# flagged as an INV-zuhub fallback (confidence 0.5 +
+# ``meta["disambiguation_fallback"]``) — the cascade
+# ``inheritance.resolve_target_symbol`` applies. A base with no in-tree
+# candidate and no in-tree symbol of that name keeps its relationship as an
+# unresolved edge to the ``external`` sentinel module
+# (``dart:external:0-0:<Name>:unresolved``), the shape that linker's WI-jubag
+# Approach C mints for every other OO language; an in-tree name of another
+# kind (a function, a typedef the analyzer does not emit as a type) is
+# dropped rather than turned into a false external.
+
+#: Declaration node -> the kind Pass 1 emits for it.
+_DART_HERITAGE_DECLS: dict[str, str] = {
+    "class_definition": "class",
+    "mixin_declaration": "mixin",
+    "enum_declaration": "enum",
+}
+
+#: Kinds a Dart heritage clause can name (a ``mixin class`` is kind class).
+_DART_SUPERTYPE_KINDS = frozenset({"class", "mixin"})
+
+#: Edge label -> evidence type.
+_DART_HERITAGE_EVIDENCE: dict[str, str] = {
+    "extends": "ast_extends",
+    "implements": "ast_implements",
+    "includes": "ast_includes",
+}
+
+#: Tokens that may continue a mixin's ``on`` clause.
+_DART_TYPE_LIST_TOKENS = frozenset({"type_identifier", ".", ",", "type_arguments"})
+
+
+@dataclass(frozen=True)
+class _HeritageRef:
+    """One base named in one heritage clause of one declared type."""
+
+    src: Symbol
+    base: str  # the type's own name: ``p.Mx<T>`` -> ``Mx``
+    edge_type: str
+    line: int
+
+
+def _dart_type_list(
+    nodes: Iterable["tree_sitter.Node"], source: bytes,
+) -> list[tuple[str, int]]:
+    """``(name, line)`` per comma-separated type in a heritage clause.
+
+    The grammar lays a clause out flat — ``implements p . Other
+    type_arguments , Shape`` — so a qualified type is consecutive
+    ``type_identifier`` tokens joined by ``.``; its LAST one is the type.
+    Type arguments are a nested node and name no base.
+    """
+    groups: list[list["tree_sitter.Node"]] = [[]]
+    for node in nodes:
+        if node.type == ",":
+            groups.append([])
+        elif node.type == "type_identifier":
+            groups[-1].append(node)
+    return [
+        (node_text(group[-1], source), group[0].start_point[0] + 1)
+        for group in groups
+        if group
+    ]
+
+
+def _dart_mixin_on_clause(decl: "tree_sitter.Node") -> list["tree_sitter.Node"]:
+    """The tokens of a mixin's ``on`` clause (the grammar does not wrap it)."""
+    tokens: list["tree_sitter.Node"] = []
+    in_clause = False
+    for child in decl.children:
+        if child.type == "on":
+            in_clause = True
+        elif in_clause and child.type in _DART_TYPE_LIST_TOKENS:
+            tokens.append(child)
+        elif in_clause:
+            break
+    return tokens
+
+
+def _dart_heritage_clauses(
+    decl: "tree_sitter.Node", source: bytes,
+) -> list[tuple[str, str, int]]:
+    """``(edge_type, base, line)`` for every base a type declaration names."""
+    out: list[tuple[str, str, int]] = []
+
+    def add(edge_type: str, nodes: Iterable["tree_sitter.Node"]) -> None:
+        out.extend((edge_type, n, ln) for n, ln in _dart_type_list(nodes, source))
+
+    for child in decl.children:
+        if child.type == "superclass":
+            add("extends", child.children)
+            mixins = find_child_by_type(child, "mixins")
+            if mixins is not None:
+                add("includes", mixins.children)
+        elif child.type == "mixins":
+            add("includes", child.children)
+        elif child.type == "interfaces":
+            add("implements", child.children)
+    if decl.type == "mixin_declaration":
+        add("extends", _dart_mixin_on_clause(decl))
+    return out
+
+
+def _collect_heritage(
+    tree: "tree_sitter.Tree", source: bytes, symbols: list[Symbol],
+) -> list[_HeritageRef]:
+    """Pass-1 record of every heritage clause, keyed to its declared symbol.
+
+    The declaration is matched to its symbol by POSITION (``symbols_at``):
+    Pass 1 spans a class/mixin/enum from its declaration node's start.
+    """
+    index = symbols_at(symbols)
+    refs: list[_HeritageRef] = []
+    for node in iter_tree(tree.root_node):
+        kind = _DART_HERITAGE_DECLS.get(node.type)
+        if kind is None:
+            continue
+        sym = symbol_declared_by(node, index)
+        if sym is None or sym.kind != kind:
+            # ``class A = B with M;`` (a mixin application class) gets no
+            # symbol from Pass 1, so there is no source to hang its edges on.
+            continue
+        refs.extend(
+            _HeritageRef(sym, base, edge_type, line)
+            for edge_type, base, line in _dart_heritage_clauses(node, source)
+        )
+    return refs
+
+
+def _pick_supertype(
+    ref: _HeritageRef, candidates: list[Symbol],
+) -> tuple[Optional[Symbol], bool]:
+    """``(target, is_fallback)``: same file, else the only one, else first by id."""
+    others = [c for c in candidates if c.id != ref.src.id]
+    if not others:
+        return None, False
+    if len(others) == 1:
+        return others[0], False
+    same_file = [c for c in others if c.path == ref.src.path]
+    if len(same_file) == 1:
+        return same_file[0], False
+    return min(others, key=lambda c: c.id), True
+
+
+def _heritage_edges(
+    refs: list[_HeritageRef], symbols: list[Symbol], run: "AnalysisRun",
+) -> list[Edge]:
+    """Resolve the run's heritage records into inheritance edges."""
+    supertypes = SymbolByName()
+    for sym in symbols:
+        if sym.kind in _DART_SUPERTYPE_KINDS:
+            supertypes.add(sym)
+    intree_names = {s.name for s in symbols}
+
+    edges: list[Edge] = []
+    for ref in refs:
+        target, is_fallback = _pick_supertype(ref, supertypes.lookup(ref.base))
+        if target is not None:
+            dst = target.id
+        elif ref.base in intree_names:
+            continue  # an in-tree name: not a supertype, and not an external
+        else:
+            dst = f"dart:external:0-0:{ref.base}:unresolved"
+        edges.append(Edge.create(
+            src=ref.src.id,
+            dst=dst,
+            edge_type=ref.edge_type,
+            line=ref.line,
+            confidence=0.5 if is_fallback else 0.95,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type=_DART_HERITAGE_EVIDENCE[ref.edge_type],
+            is_resolved=target is not None,
+            meta={"disambiguation_fallback": True} if is_fallback else None,
+        ))
+    return edges
+
+
+
 class DartAnalyzer(TreeSitterAnalyzer):
     """Dart language analyzer using tree-sitter-language-pack."""
 
@@ -1079,17 +1364,47 @@ class DartAnalyzer(TreeSitterAnalyzer):
     language_pack_name = "dart"
     create_file_symbols = True
 
+    #: WI-lahub: heritage clauses recorded in Pass 1, resolved in
+    #: ``post_process`` once every file's classes and mixins exist. A list only
+    #: while ``analyze()`` runs (None outside it), so a run never replays the
+    #: previous one's records. Per-run instance state, like the base class's
+    #: ``_field_type_registry``: one analyzer instance serves one run at a time.
+    _heritage_refs: Optional[list[_HeritageRef]] = None
+
+    def analyze(
+        self, repo_root: Path, max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """The base two-pass run, bracketed by the heritage-record lifetime."""
+        self._heritage_refs = []
+        try:
+            return super().analyze(repo_root, max_files)
+        finally:
+            self._heritage_refs = None
+
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str, run: "AnalysisRun",
     ) -> FileAnalysis:
-        """Extract symbols from a Dart file."""
+        """Extract symbols from a Dart file, recording its heritage clauses."""
         analysis = FileAnalysis()
         symbols = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
         analysis.symbols = symbols
         for sym in symbols:
             analysis.symbol_by_name[sym.name] = sym
+        if self._heritage_refs is not None:
+            self._heritage_refs.extend(_collect_heritage(tree, source, symbols))
         return analysis
+
+    def post_process(
+        self,
+        symbols: list[Symbol],
+        edges: list[Edge],
+        usage_contexts: list["UsageContext"],
+        run: "AnalysisRun",
+    ) -> tuple[list[Symbol], list[Edge], list["UsageContext"]]:
+        """Resolve the run's heritage clauses into inheritance edges."""
+        edges = edges + _heritage_edges(self._heritage_refs or [], symbols, run)
+        return symbols, edges, usage_contexts
 
     def get_import_aliases(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -1097,7 +1412,7 @@ class DartAnalyzer(TreeSitterAnalyzer):
         """Extract import hints for disambiguation."""
         return _extract_import_hints(tree, source)
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Keep field/variable symbols OUT of the call-resolution registry (WI-jusus).
 
         A ``field``/``variable`` is a data anchor, never a call or instantiation
@@ -1116,7 +1431,7 @@ class DartAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

@@ -2,10 +2,11 @@
 """Canonical registry of ``Symbol.meta`` and ``Edge.meta`` key names.
 
 Per WI-runod Wave 9 and the four-part axis-declaration template in
-[ADR-0024](../../docs/adr/0024-axis-declaration-template.md), every
-*meta key* used by producers / consumers across the codebase is
-declared once here with its axis (``symbol_meta``, ``edge_meta``, or
-``entrypoint_meta``) and a short description of what the key encodes.
+[ADR-0024](../../../../docs/adr/0024-axis-declaration-template.md), a
+*meta key* is declared once here with its axis (``symbol_meta``,
+``edge_meta``, or ``entrypoint_meta``) and a short description of what the
+key encodes. Which writes are CHECKED against this registry, and which are
+not yet, is stated under "Coverage scope" below.
 
 This module is the structural sibling of
 :mod:`hypergumbo_core.symbol_kinds` and
@@ -57,11 +58,38 @@ Three structural problems the registry solves, mirroring the
    no canonical place to look — the answer is scattered across
    ~25 linker files.
 3. **Promotion gating per
-   [ADR-0024 §"Fold-residue discipline"](../../docs/adr/0024-axis-declaration-template.md#fold-residue-discipline).**
+   [ADR-0024 §"Fold-residue discipline"](../../../../docs/adr/0024-axis-declaration-template.md#fold-residue-discipline).**
    When a meta key recurs (≥3 distinct values OR ≥2 producer
    modules), the rule is to consider promoting it to a sibling typed
    field on the parent dataclass. The registry is what lets us
    notice when the threshold is met.
+
+Per-key declarations beyond the axis
+------------------------------------
+
+Each ``MetaKeySpec`` also carries three optional contracts:
+
+- **Write discipline (INV-hazov).** ``write_discipline`` declares how many
+  writers may reach the key: ``single_writer``, ``merge_union``,
+  ``producer_primary``, ``refines``, or the default ``unaudited``
+  (``WRITE_DISCIPLINES``). :func:`write_meta_key` applies it — it raises on a
+  conflicting second ``single_writer`` value, unions ``merge_union`` values,
+  and keeps the first ``producer_primary`` value — and
+  :func:`filter_meta_key` is the one sanctioned way to narrow a
+  ``merge_union`` key. Asserting disciplines owe a ``discipline_note``.
+- **Per-call-site keys (INV-vukiv).** ``per_call_site=True`` marks a key whose
+  value varies by call site. When ``ir.deduplicate_edges`` or
+  ``ir.apply_external_id_remap`` collapses sites that disagree, the singular key is dropped and a derived ``<key>_values``
+  companion holds the distinct values; those companions are generated into
+  ``META_KEYS`` by ``_per_call_site_values_specs`` rather than hand-listed
+  (see :func:`per_call_site_keys`).
+- **Edge-type applicability (ADR-0038 ruling 2).** ``applicable_edge_types``
+  / ``na_edge_types`` say where a ``None`` value means missing data versus
+  "does not arise". ``access_mode`` carries the complete matrix
+  (:func:`access_mode_applicable_edge_types`,
+  :func:`access_mode_na_edge_types`); ``call_construct``, ``callee_name``
+  and ``call_arg_shape`` are scoped to :func:`call_family_edge_types`
+  (``calls`` / ``instantiates``).
 
 Drift detection
 ---------------
@@ -70,22 +98,38 @@ The set-literal AST walker in
 :mod:`hypergumbo_core.axis_drift` is the wrong shape for meta keys —
 meta keys are accessed via ``meta["..."]`` *subscripts* and
 ``meta.get("...")`` *method calls*, not declared as set literals
-named ``*KEY*``. The subscript-access linter that was a follow-on work
-item at registry-establishment time has since shipped as
-:mod:`hypergumbo_core.meta_write_discipline` (driven by
-``scripts/check-meta-write-discipline``), and :func:`write_meta_key`
-enforces the same rule at runtime: an unregistered key raises. The
-registry remains the canonical vocabulary for documentation, ADR
-cross-references, and the audit / fold trail.
+named ``*KEY*``. :mod:`hypergumbo_core.meta_write_discipline` (driven by
+``scripts/check-meta-write-discipline``) is a subscript-WRITE linter for
+``write_discipline`` arity. :mod:`hypergumbo_core.meta_key_coherence` is the
+registration gate for WRITES (see "Coverage scope"). Neither inspects
+``meta.get("...")`` READS, so a consumer's mistyped key -- problem 1 above
+from the reading side -- is still not caught statically.
+:func:`write_meta_key` raises on an unregistered key at runtime, for writes
+routed through it. The registry remains the canonical vocabulary for
+documentation, ADR cross-references, and the audit / fold trail.
 
 Coverage scope
 --------------
 
-Registry seeded with every meta key empirically observed in producer
-code across packages/hypergumbo-core/src and the language-analyzer
-packages. New keys added by future producer migrations should be
-registered here in the same PR — the property test in
-``tests/test_axis_meta_keys.py`` is the structural enforcement.
+Checked (WI-lijaz): the ``Edge.meta key`` axis of the shrink-only ratchet in
+``scripts/check-producer-axis-coherence`` (and
+``test_producer_coherence.py::test_live_tree_producer_axis_ratchet``), fed by
+:func:`hypergumbo_core.meta_key_coherence.unregistered_edge_meta_keys`:
+
+- every key passed to ``Edge(...)`` / ``Edge.create(meta=...)`` must be
+  registered on ``edge_meta``;
+- every key written to any ``.meta`` after construction must be registered on
+  some axis (the receiver's type is not known statically).
+
+Its baseline holds one key, ``route_path``, written on openapi edges while
+registered on ``symbol_meta``: a key cannot be declared on two axes.
+
+Not checked: keys passed to ``Symbol(...)`` / ``Symbol.create(meta=...)``
+(by the same enumeration on 2026-10-03: 206 keys, 137 of them unregistered
+and 31 registered only on ``edge_meta``), keys passed to an ``Entrypoint``
+constructor, the axis of a post-hoc write, and reads. The writes the gate
+cannot enumerate are pinned by equality in
+``tests/test_meta_key_coherence.py``.
 """
 
 from __future__ import annotations
@@ -303,9 +347,17 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "the edge, not how it was matched). Fold residue per "
                 "audit-findings 0014 §'detection_pattern partition'."),
     MetaKeySpec("call_construct", AXIS_EDGE_META,
-                "Source-language call construct collapsed under "
-                "``ast_call`` apex (e.g. 'method', 'function', "
-                "'pipe', 'application'). Fold residue per "
+                "Source-language construct that produced this call-family "
+                "edge (e.g. 'method', 'function', 'pipe', 'application'). "
+                "Not only calls: 'constructor' and 'assignment' (a handler "
+                "registration, ``ws.onmessage = h``) are constructs that "
+                "produce a call-family edge without being call syntax. It "
+                "names an observed construct, never the inference pathway "
+                "(``evidence_type``), the detector that found the site, or a "
+                "resolution status. The values are DECLARED: "
+                "``call_constructs.CALL_CONSTRUCT_VALUES`` is the allowlist, "
+                "and each value states the io-primitive kind (ADR-0059) of the "
+                "row it reaches. Fold residue per "
                 "audit-findings 0012 / WI-nibis Wave 4. Scoped to the CALL "
                 "FAMILY -- ``calls`` and ``instantiates`` -- declared on "
                 "``applicable_edge_types`` below rather than asserted in this "
@@ -477,8 +529,8 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "and was being smuggled through ``call_construct``, which is "
                 "the syntactic-construct axis. INV-mumov added 'accessor_name' "
                 "(Python/Django: the module slot was filled from a relation- "
-                "accessor NAME this project's models declare, with NOTHING "
-                "known about the root) for the same reason — it was shipping "
+                "accessor NAME or manager-returning property NAME (WI-valav) the project's models "
+                "declare, with NOTHING known about the root) for the same reason — it was shipping "
                 "as 'type_inferred', indistinguishable from a receiver typed "
                 "off a resolved class, and the difference is load-bearing: "
                 "``verify_claims.accessor_name_receiver_sites`` reads it back "
@@ -595,7 +647,48 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "`bufio.NewScanner` edge is never a bash redirect, so no "
                     "edge can receive both. The note previously read 'sole "
                     "writer: bash.py' and anticipated exactly this second "
-                    "writer; it went stale when one arrived."
+                    "writer; it went stale when one arrived. A THIRD, WI-punar: "
+                    "js_ts.py's _stamp_listener_event_crossing stamps "
+                    "'in_memory' on event-listener call edges "
+                    "(`process.on('uncaughtException', h)`) whose event "
+                    "carries nothing from outside the process -- javascript "
+                    "edges, so disjoint from both. And java.py: on stream READ "
+                    "edges from the receiver's binding (WI-tusav), and "
+                    "'std_stream' on a PrintStream method call whose receiver "
+                    "is System.out / System.err (WI-dorus) -- java edges, and "
+                    "no edge is both a read and a write. kotlin.py and "
+                    "scala.py stamp the same 'std_stream' on the same "
+                    "PrintStream calls in their own languages (WI-rabum, the "
+                    "rule shared through jvm_implicit_imports) -- kotlin and "
+                    "scala edges, disjoint from every writer above."
+                )),
+    MetaKeySpec("attr_carrier", AXIS_EDGE_META,
+                "On a `module_attr_ref` edge: the CALL at whose argument, "
+                "keyword or receiver position the attribute was used, as "
+                "`<callee as spelled>@<call line>` -- `print@7` for "
+                "`print(k, file=sys.stderr)`, `io.WriteString@12` for "
+                "`io.WriteString(os.Stderr, k)`, `System.out.println@4` for "
+                "the receiver form. Absent for a use outside any call "
+                "(`out = sys.stderr`). INV-hopib: a stream-object row's sink "
+                "was matched wherever the object was used, so one write was "
+                "two findings and one of them named a sink with no arguments "
+                "and no receiver. taint drops the stream's sink site when "
+                "every use is carried by a call that is itself a matched sink "
+                "in the same zone (`_subsume_sink_sites`), and a surviving "
+                "stream finding names its carriers (`sink_carriers`). PER CALL "
+                "SITE: one function writes `sys.stderr` through `print` on one "
+                "line and `json.dump` on the next, and only the first is a "
+                "sink; a collapsed edge's `attr_carrier_values` keeps both, "
+                "with `None` for an uncarried use.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "TWO writers over DISJOINT edges, the io_target_kind "
+                    "shape: py.py's module-attribute pass stamps python "
+                    "edges, and base.emit_module_attribute_refs stamps the "
+                    "tree-sitter languages that pass it carrier node kinds "
+                    "(go, java, javascript, kotlin, scala). No edge is "
+                    "emitted by both."
                 )),
     MetaKeySpec("redirect_target", AXIS_EDGE_META,
                 "The path (or `<unresolved>`) a shell redirection writes to "
@@ -785,8 +878,9 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "with it the contract that ``confidence <= 0.5`` on "
                 "the same edge — see INV-zuhub. Consumers filter the "
                 "fallback population from the precision-resolved one "
-                "by checking this flag. Currently set by "
-                "``linkers/inheritance.py``; per-linker conformance "
+                "by checking this flag. Set by several linkers "
+                "(inheritance, dependency, the FFI bridges, "
+                "framework-dispatch linkers, ...); per-linker conformance "
                 "for the four remaining edge-type families "
                 "(calls / dispatches_to / references / module_exports) "
                 "tracked under INV-zuhub items 1-3."),
@@ -971,7 +1065,11 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Symbols by ``ir.create_boundary_nodes`` from the "
                 "single-source language stdlib catalog "
                 "(``io_boundary.IoBoundaryCatalog.is_stdlib_module``); "
-                "absent when the language has no enumerated stdlib. A "
+                "where that catalog is silent, 'third_party' is also "
+                "stamped when the project's manifest resolves the module "
+                "to a declared or locked package (``directness`` direct/"
+                "transitive -- registry-fetched by definition, WI-juzaj). "
+                "Absent otherwise. A "
                 "SEPARATE axis from supply-chain ``tier`` (distance), "
                 "``directness`` (declaration relationship), and — "
                 "crucially — from ``package_ecosystem`` (which names the "
@@ -988,7 +1086,9 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "falls into). Stamped once at classification time on "
                 "boundary/dependency Symbols by "
                 "``ir.create_boundary_nodes`` via "
-                "``DependencyManifest.classify_directness``. A SEPARATE "
+                "``DependencyManifest.directness_for`` (go.mod, Gradle/"
+                "Maven, pyproject.toml, mix.exs/mix.lock, package.json + "
+                "lockfiles); absent when the manifest cannot tell. A SEPARATE "
                 "axis from supply-chain ``tier`` (distance) and from "
                 "the ``ecosystem`` provenance axis (stdlib vs "
                 "third_party, ADR-0041 §3)."),
@@ -1070,6 +1170,15 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "annotations on a Symbol. Distinct from "
                 "``decorators`` (Python-style) where the syntax "
                 "carries different semantics."),
+    MetaKeySpec("ffi_import", AXIS_SYMBOL_META,
+                "INV-lopus: on a function DECLARED in a foreign (``extern``) "
+                "block, what it binds to as the source states it -- a map "
+                "with ``abi`` (the block's ABI string, ``C`` when unwritten) "
+                "and, only when written, ``js_namespace`` / ``js_module`` / "
+                "``foreign_name`` (wasm_bindgen ``js_namespace`` / ``module`` "
+                "/ ``js_name``, or ``#[link_name]``) and ``link`` "
+                "(``#[link(name)]``). Emitted by the Rust analyzer. Records "
+                "the binding; it does not classify the call."),
     MetaKeySpec("parameters", AXIS_SYMBOL_META,
                 "Structured parameter list on function / method "
                 "Symbols (name + type + default). Used by "
@@ -1099,15 +1208,6 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "WGSL, 'thread_local' in C++). Distinct from "
                 "``visibility`` (which is access control) and "
                 "``static`` (which is binding-time)."),
-    MetaKeySpec("import_path", AXIS_SYMBOL_META,
-                "Source-language import path on Symbols whose "
-                "primary identifier doesn't match (e.g. "
-                "``from foo.bar import baz`` makes ``baz``'s "
-                "import_path ``foo.bar.baz``)."),
-    MetaKeySpec("symbol_roles", AXIS_SYMBOL_META,
-                "SCIP-style symbol-role bitset for Symbols sourced "
-                "from SCIP indexes (definition / reference / "
-                "import / etc.)."),
     MetaKeySpec("scip_kind", AXIS_SYMBOL_META,
                 "SCIP-native kind label on Symbols sourced from "
                 "SCIP indexes. Kept alongside the canonical "
@@ -1183,13 +1283,36 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "connection."),
     MetaKeySpec("topic", AXIS_EDGE_META,
                 "Message-queue / pub-sub topic (or channel) an event_publishes "
-                "edge with meta['channel_kind']='queue' targets — the literal "
-                "topic string, or "
-                "the variable's identifier name when the topic is dynamic (see "
-                "``topic_type``)."),
+                "edge with meta['channel_kind']='queue' targets — the topic "
+                "STRING: written as a literal, or the value of a same-file "
+                "string constant the call site names. ``None`` when the site "
+                "names an identifier that could not be resolved (WI-misod); the "
+                "identifier is then on ``topic_identifier``, never here."),
     MetaKeySpec("topic_type", AXIS_EDGE_META,
-                "Whether the message-queue ``topic`` was a string 'literal' or "
-                "a 'variable' reference resolved to its identifier name."),
+                "How the message-queue ``topic`` is known (``_name_args`` "
+                "kinds): 'literal' (a string at the site), 'constant' (an "
+                "identifier resolved to a same-file string constant) or "
+                "'unresolved' (an identifier whose value is not known). On a "
+                "symbol it describes the SITE; on an edge it describes the JOIN "
+                "('literal' only when both ends are literal; 'unresolved' when "
+                "the ends were joined on an equal identifier)."),
+    MetaKeySpec("topic_identifier", AXIS_EDGE_META,
+                "The identifier a message-queue site wrote in place of a topic "
+                "string (``None`` when it wrote a literal); on an edge, the "
+                "identifier an identifier-join compared (``None`` for a value "
+                "join). WI-misod: kept apart from ``topic`` so an identifier is "
+                "never read as the topic."),
+    MetaKeySpec("channel_identifier", AXIS_EDGE_META,
+                "IPC-linker analogue of ``topic_identifier``: the identifier an "
+                "Electron IPC site wrote in place of a channel string, or the "
+                "identifier an identifier-join compared. ``channel`` then holds "
+                "the channel VALUE or ``None`` (WI-misod)."),
+    MetaKeySpec("event_identifier", AXIS_EDGE_META,
+                "Event-sourcing-linker analogue of ``topic_identifier``: the "
+                "identifier a publish / subscribe site wrote in place of an "
+                "event-name string, or the identifier an identifier-join "
+                "compared. ``event_name`` then holds the event VALUE, or "
+                "``None`` when the identifier could not be resolved (WI-misod)."),
     MetaKeySpec("queue_type", AXIS_EDGE_META,
                 "Message-queue family/pattern that produced a publish/subscribe "
                 "edge, from the message_queue linker's queue classification."),
@@ -1232,10 +1355,337 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "low rank is a stated fact rather than an unexplained number. "
                 "Present only on a superseded edge; confidence is untouched "
                 "and the edge is never deleted."),
+    MetaKeySpec("external_owner_ancestors", AXIS_EDGE_META,
+                "WI-gabuv: on an unresolved ``calls`` edge whose owner is an "
+                "in-repo type that does not define the member (typed receiver, "
+                "module slot, or enclosing class of a bare/self call), the "
+                "names of that type's EXTERNAL ancestors, nearest first "
+                "(``[\"Ecto.Repo\"]`` for ``App.Repo.all`` under ``use "
+                "Ecto.Repo``). Stamped by finalize sub-step 7d "
+                "(``owner_ancestry``); read by the io-boundary and taint "
+                "catalogue matchers, which retry the lookup with each ancestor "
+                "as the module. Absent when nothing qualifies."),
     MetaKeySpec("superseded_by_origin", AXIS_EDGE_META,
                 "ADR-0057 §14: the origin (pass ids) of the superseding edge "
                 "named in ``superseded_by`` — which producer saw the site as "
                 "first-party. Present only beside ``superseded_by``."),
+    # ------------------------------------------------------------------
+    # WI-lijaz: keys that producers wrote while the registry did not know
+    # them. Found by the meta-key gate (``meta_key_coherence``), which reads
+    # every ``Edge(...)`` / ``Edge.create(meta=...)`` and every post-hoc
+    # ``.meta`` write; the 2026-08-27 survey count (35 keys on 42 surveys) is
+    # a subset of what it enumerates. Registered AS EMITTED: no producer was
+    # changed, and none of these has had the ADR-0024 fold-residue checks
+    # (endpoint-property, axis-leakage, recurrence) applied -- several are
+    # obvious candidates (the ``scip_*`` symbols repeat the endpoints;
+    # ``call_type`` and ``method`` each carry unrelated meanings from
+    # different producers, said below). Each is ``unaudited`` until audited.
+    # ------------------------------------------------------------------
+    # -- the unresolved-call helper and the Python receiver-inference sites
+    MetaKeySpec("enclosing_class", AXIS_EDGE_META,
+                "Short name of the class that lexically owns an unresolved "
+                "call site (Site 1: a bare / ``self`` / ``this`` call; Site 3 "
+                "beside ``inherited_field_receiver``). Written by "
+                "``analyze.base.make_unresolved_edge`` for every language that "
+                "passes it, and by py.py's Site-3 branch; read by the "
+                "``inherited_calls`` linker to walk the ancestor chain and by "
+                "py.py's Django-ORM instance check."),
+    MetaKeySpec("enclosing_class_id", AXIS_EDGE_META,
+                "Symbol id of the class that lexically owns the call site, "
+                "stamped by py.py beside ``enclosing_class`` when the id is "
+                "known (WI-supat D3) so ``inherited_calls`` can start the "
+                "ancestor walk from exactly that class and skip its "
+                "same-short-name ambiguity guard."),
+    MetaKeySpec("inherited_field_receiver", AXIS_EDGE_META,
+                "Name of the field a ``self.<field>.<method>()`` call goes "
+                "through, when the field is not the class's own and so is "
+                "believed inherited (Site 3). Written by "
+                "``analyze.base.make_unresolved_edge`` and py.py; read by "
+                "``inherited_calls``, which resolves the field's type on an "
+                "ancestor."),
+    MetaKeySpec("receiver_type_id", AXIS_EDGE_META,
+                "Symbol id of the inferred receiver type of an unresolved "
+                "method call, stamped by py.py beside ``receiver_type_hint`` "
+                "only when the inference is trustworthy (a file-unique type "
+                "name not shadowed by an import, WI-supat D3); read by "
+                "``inherited_calls``."),
+    MetaKeySpec("binding", AXIS_EDGE_META,
+                "How a bare-name call's target module was bound, on an "
+                "unresolved call edge: 'explicit_import' (elixir, an ``import`` "
+                "directive) or 'dot_import' (go, ``import . \"pkg\"``)."),
+    MetaKeySpec("visibility", AXIS_EDGE_META,
+                "On an unresolved Go method-call edge: 'unexported', stamped "
+                "when a lowercase method on an unknown receiver was left "
+                "unresolved because resolving it by name would cross package "
+                "boundaries. Unrelated to the typed ``Symbol.visibility``."),
+    MetaKeySpec("file", AXIS_EDGE_META,
+                "COBOL ``PERFORM`` / ``CALL`` edge: the repo-relative path of "
+                "the calling file. Assigned wholesale over the edge's meta, "
+                "which also discards what ``make_unresolved_edge`` stamped on "
+                "the unresolved branch."),
+    MetaKeySpec("call_type", AXIS_EDGE_META,
+                "Three producers, three meanings (an ADR-0024 axis-leakage "
+                "candidate): subprocess_cli -- 'literal' or 'variable', how the "
+                "command line was written; otp -- 'call' or 'cast', the "
+                "GenServer message kind; cobol -- 'perform' or 'call', the "
+                "COBOL statement."),
+    # -- SCIP index edges (scip/calls.py, scip/edges.py)
+    MetaKeySpec("scip_src_symbol", AXIS_EDGE_META,
+                "The raw SCIP symbol string of the edge's source (the "
+                "enclosing definition), before ``resolve_symbol`` mapped it to "
+                "a hypergumbo id. Kept for index round-trip fidelity."),
+    MetaKeySpec("scip_dst_symbol", AXIS_EDGE_META,
+                "The raw SCIP symbol string of the edge's target (the "
+                "referenced symbol or the relationship's other end), before "
+                "``resolve_symbol`` mapped it."),
+    MetaKeySpec("scip_relationship_flag", AXIS_EDGE_META,
+                "Which SCIP ``Relationship`` boolean produced a relationship "
+                "edge ('is_implementation', 'is_reference', "
+                "'is_type_definition', 'is_definition'); several flags fold "
+                "onto one edge type, so this keeps the one that named it."),
+    MetaKeySpec("symbol_roles", AXIS_EDGE_META,
+                "The SCIP occurrence ``symbol_roles`` bitset (definition / "
+                "import / write / read ...) of the reference a scip/calls.py "
+                "edge was built from. Written on EDGES only; it was registered "
+                "on symbol_meta, which no producer wrote (WI-lijaz)."),
+    # -- dispatch linkers
+    MetaKeySpec("argparse_kwarg", AXIS_EDGE_META,
+                "The keyword through which an argparse ``set_defaults(<kw>="
+                "<handler>)`` registered the handler (e.g. 'func')."),
+    MetaKeySpec("cobra_field", AXIS_EDGE_META,
+                "The cobra ``Command`` field the handler was assigned to "
+                "(e.g. 'Run', 'RunE', 'PreRunE')."),
+    MetaKeySpec("delegate_method", AXIS_EDGE_META,
+                "Short name of the memberlist ``Delegate`` interface method a "
+                "go_memberlist dispatch edge targets."),
+    MetaKeySpec("model_name", AXIS_EDGE_META,
+                "ORM linker: the model class name an accessor expression "
+                "referred to."),
+    MetaKeySpec("accessor", AXIS_EDGE_META,
+                "ORM linker: the accessor through which the model was reached "
+                "('objects' for Django, 'query' for Flask-SQLAlchemy)."),
+    MetaKeySpec("target", AXIS_EDGE_META,
+                "otp linker: the GenServer target as written at the call "
+                "(a module name, ``__MODULE__`` or a registered name)."),
+    MetaKeySpec("executable", AXIS_EDGE_META,
+                "subprocess_cli: the program a subprocess call runs."),
+    MetaKeySpec("subcommand", AXIS_EDGE_META,
+                "subprocess_cli: the first argument after the executable, when "
+                "the call names one."),
+    MetaKeySpec("is_python_m", AXIS_EDGE_META,
+                "subprocess_cli: True when the command is ``python -m "
+                "<module>``."),
+    # -- route -> handler (route_handler.py copies the route's handler
+    #    reference onto the edge, minus its 'type')
+    MetaKeySpec("controller_action", AXIS_EDGE_META,
+                "Route->handler edge: the Rails ``controller#action`` or "
+                "Laravel ``Controller@action`` string the route named."),
+    MetaKeySpec("controller", AXIS_EDGE_META,
+                "Route->handler edge (Phoenix): the controller module the "
+                "route named."),
+    MetaKeySpec("action", AXIS_EDGE_META,
+                "Route->handler edge (Phoenix): the controller action the "
+                "route named."),
+    MetaKeySpec("live", AXIS_EDGE_META,
+                "Route->handler edge (Phoenix): 'true' when the route is a "
+                "LiveView route."),
+    MetaKeySpec("handler_ref", AXIS_EDGE_META,
+                "Route->handler edge (Express and similar): the short handler "
+                "reference the route named (e.g. 'userController.list')."),
+    MetaKeySpec("handler_id", AXIS_EDGE_META,
+                "Route->handler edge: the handler's full symbol id, when the "
+                "route named one directly instead of a short reference."),
+    MetaKeySpec("view_name", AXIS_EDGE_META,
+                "Route->handler edge (Django): the view the URL pattern named."),
+    MetaKeySpec("role", AXIS_EDGE_META,
+                "React Router route edge: 'loader' or 'action', which data "
+                "function of the route the edge reaches."),
+    MetaKeySpec("loader_ref", AXIS_EDGE_META,
+                "React Router route edge with role 'loader': the loader "
+                "function's name as the route declared it."),
+    MetaKeySpec("action_ref", AXIS_EDGE_META,
+                "React Router route edge with role 'action': the action "
+                "function's name as the route declared it."),
+    # -- protocol linkers
+    MetaKeySpec("url_type", AXIS_EDGE_META,
+                "HTTP client->route edge: 'literal' or 'variable', how the "
+                "client's URL was written (a string literal, or a variable "
+                "the linker folded)."),
+    MetaKeySpec("operation_type", AXIS_EDGE_META,
+                "GraphQL client edge: the operation type ('query', "
+                "'mutation', 'subscription'), or None when the document did "
+                "not say."),
+    MetaKeySpec("operation_name", AXIS_EDGE_META,
+                "GraphQL client edge: the operation's declared name, or None "
+                "for an anonymous operation."),
+    MetaKeySpec("root_field", AXIS_EDGE_META,
+                "GraphQL client edge to a schema field: the first root field "
+                "of the operation's selection set, which the edge joined on."),
+    MetaKeySpec("type_name", AXIS_EDGE_META,
+                "GraphQL resolver edge: the schema type the resolver serves."),
+    MetaKeySpec("field_name", AXIS_EDGE_META,
+                "GraphQL resolver edge: the schema field the resolver serves."),
+    MetaKeySpec("openapi_path", AXIS_EDGE_META,
+                "OpenAPI operation->route edge: the operation's path template "
+                "as the spec wrote it."),
+    MetaKeySpec("method", AXIS_EDGE_META,
+                "Two producers, two meanings (an ADR-0024 axis-leakage "
+                "candidate): openapi -- the operation's HTTP method; ipc -- "
+                "the method name an Electron ``contextBridge`` exposed API "
+                "was called through."),
+    MetaKeySpec("operation_id", AXIS_EDGE_META,
+                "OpenAPI operation->route edge joined by ``operationId``: the "
+                "operationId."),
+    MetaKeySpec("route_name", AXIS_EDGE_META,
+                "OpenAPI operation->route edge joined by ``operationId``: the "
+                "route symbol's name it matched."),
+    MetaKeySpec("namespace", AXIS_EDGE_META,
+                "ipc ``contextBridge`` edge: the namespace the API was exposed "
+                "under (``contextBridge.exposeInMainWorld(<namespace>, ...)``)."),
+    MetaKeySpec("function", AXIS_EDGE_META,
+                "ipc ``contextBridge`` edge: the exposed function's name, for "
+                "an API exposed as a bare function."),
+    MetaKeySpec("channel_type", AXIS_EDGE_META,
+                "ipc event_publishes edge: what the sender/receiver join "
+                "compared (``_name_args`` join kind: 'literal', 'constant', "
+                "'variable' or 'unresolved')."),
+    MetaKeySpec("event", AXIS_EDGE_META,
+                "Event name a websocket or Phoenix Channels event_publishes "
+                "edge carries."),
+    MetaKeySpec("event_type", AXIS_EDGE_META,
+                "websocket event_publishes edge: 'literal' or 'variable', how "
+                "the event name was written at the two ends."),
+    MetaKeySpec("event_name", AXIS_EDGE_META,
+                "event_sourcing event_publishes edge: the event VALUE the "
+                "publisher and subscriber were joined on, or None when only "
+                "identifiers were compared (then see ``event_identifier``)."),
+    MetaKeySpec("publisher_framework", AXIS_EDGE_META,
+                "event_sourcing event_publishes edge: the framework pattern that matched the "
+                "publish site."),
+    MetaKeySpec("subscriber_framework", AXIS_EDGE_META,
+                "event_sourcing event_publishes edge: the framework pattern that matched the "
+                "subscribe site."),
+    MetaKeySpec("publisher_event_type", AXIS_EDGE_META,
+                "event_sourcing event_publishes edge: how the publish site's event name is "
+                "known (``_name_args`` kind: 'literal', 'constant', "
+                "'unresolved', 'variable')."),
+    MetaKeySpec("subscriber_event_type", AXIS_EDGE_META,
+                "event_sourcing event_publishes edge: the same, for the subscribe site."),
+    # -- component / template / include edges from analyzers
+    MetaKeySpec("import_path", AXIS_EDGE_META,
+                "Component ``imports`` edge (astro / svelte / vue): the import "
+                "path the component tag resolved to, '' when the tag was not "
+                "imported; read by the vue_component linker. Written on EDGES "
+                "only; it was registered on symbol_meta, which no producer "
+                "wrote (WI-lijaz)."),
+    MetaKeySpec("import_name", AXIS_EDGE_META,
+                "Astro frontmatter ``imports`` edge: the default-import name "
+                "bound to the ``.astro`` component."),
+    MetaKeySpec("component_name", AXIS_EDGE_META,
+                "Component ``imports`` edge (astro / svelte / vue): the tag "
+                "name used at the reference site."),
+    MetaKeySpec("source_path", AXIS_EDGE_META,
+                "Component ``imports`` edge (astro / svelte / vue): the "
+                "repo-relative path of the file containing the reference."),
+    MetaKeySpec("client_directive", AXIS_EDGE_META,
+                "Astro component edge: the ``client:*`` hydration directive on "
+                "the tag, '' when none."),
+    MetaKeySpec("attributes", AXIS_EDGE_META,
+                "Astro component edge: the attribute names on the component "
+                "tag."),
+    MetaKeySpec("events", AXIS_EDGE_META,
+                "Svelte component edge: the event names the tag listens to "
+                "(``on:<event>``)."),
+    MetaKeySpec("directives", AXIS_EDGE_META,
+                "Vue component edge: the directive names on the component tag "
+                "(``v-if``, ``v-on:<event>``, ``v-bind:<prop>``, ...)."),
+    MetaKeySpec("has_slot_attr", AXIS_EDGE_META,
+                "Svelte / Vue component edge: True when the tag carries a "
+                "slot attribute."),
+    MetaKeySpec("template", AXIS_EDGE_META,
+                "Blade / Twig extends or includes edge: the template name as "
+                "written."),
+    MetaKeySpec("form", AXIS_EDGE_META,
+                "Twig includes edge: 'function' when the include was the "
+                "``include()`` function rather than the ``{% include %}`` tag."),
+    MetaKeySpec("class_name", AXIS_EDGE_META,
+                "Puppet includes edge: the included class's name."),
+    MetaKeySpec("mixin_name", AXIS_EDGE_META,
+                "SCSS includes edge: the ``@include``d mixin's name."),
+    MetaKeySpec("include_file", AXIS_EDGE_META,
+                "Makefile includes edge: the included file as written."),
+    MetaKeySpec("sourced_path", AXIS_EDGE_META,
+                "Bash sources edge: the path given to ``source`` / ``.`` as "
+                "written (the dst id carries only its basename)."),
+    MetaKeySpec("reference_path", AXIS_EDGE_META,
+                "tsconfig references edge: the ``path`` of the project "
+                "reference as written."),
+    MetaKeySpec("package", AXIS_EDGE_META,
+                "R imports edge: the package name ``library`` / ``require`` "
+                "loaded."),
+    MetaKeySpec("import_form", AXIS_EDGE_META,
+                "R imports edge: the function that loaded the package "
+                "('library' or 'require')."),
+    MetaKeySpec("target_path", AXIS_EDGE_META,
+                "defines_target edge (manifest_targets, toml_config): the file "
+                "path of the build target's entry point; read by the "
+                "build_target linker, which resolves the target by path."),
+    MetaKeySpec("target_function", AXIS_EDGE_META,
+                "defines_target edge: the entry-point function's name, when the "
+                "manifest names one; read by the build_target linker."),
+    MetaKeySpec("field", AXIS_EDGE_META,
+                "C dispatches_to edge from a designated initializer: the "
+                "struct field the function pointer was assigned to "
+                "(``.read = my_read`` gives 'read')."),
+    MetaKeySpec("ref_type", AXIS_EDGE_META,
+                "LaTeX references edge: 'label' (``\\ref``) or 'citation' "
+                "(``\\cite``)."),
+    MetaKeySpec("include_type", AXIS_EDGE_META,
+                "LaTeX includes edge: the tree-sitter node type of the include "
+                "command ('text_include' or 'latex_include')."),
+    MetaKeySpec("import_type", AXIS_EDGE_META,
+                "LaTeX imports edge: 'package' (``\\usepackage``)."),
+    # -- Symbol.meta keys found by the gate's post-hoc arm. The gate does not
+    #    scan Symbol construction (a separate backlog); these are the keys a
+    #    post-hoc ``sym.meta[...] = ...`` / ``sym.meta = {...}`` wrote.
+    MetaKeySpec("build_constraint", AXIS_SYMBOL_META,
+                "Go: the file's build constraint (``//go:build ...``), stamped "
+                "on every symbol of the file (WI-potun)."),
+    MetaKeySpec("field_type_ids", AXIS_SYMBOL_META,
+                "Python class symbol: ``{field: type symbol id}`` for the "
+                "fields whose type inference is trustworthy, beside "
+                "``fields`` (WI-supat D3); read by ``inherited_calls`` Site 3."),
+    MetaKeySpec("is_constructor", AXIS_SYMBOL_META,
+                "Agda: True on a data constructor's symbol."),
+    MetaKeySpec("is_postulate", AXIS_SYMBOL_META,
+                "Agda: True on a symbol declared in a ``postulate`` block."),
+    MetaKeySpec("is_lemma", AXIS_SYMBOL_META,
+                "Lean: True on a ``lemma`` declaration."),
+    MetaKeySpec("is_abbrev", AXIS_SYMBOL_META,
+                "Lean: True on an ``abbrev`` declaration."),
+    MetaKeySpec("is_behaviour", AXIS_SYMBOL_META,
+                "Pony: True on a behaviour (``be``), an actor's asynchronous "
+                "message handler, emitted as kind=method (WI-rokus)."),
+    MetaKeySpec("src_stands_in_for", AXIS_EDGE_META,
+                "The edge's ``src`` is NOT the caller: the call sits in a "
+                "declaration the analyzer emits no symbol for, so it is drawn "
+                "from the nearest enclosing record that has one (an outer "
+                "definition, or the file anchor). One value: "
+                "'unnamed_definition' -- a C / C++ / CUDA definition whose "
+                "name comes from a macro tree-sitter cannot expand "
+                "(``TEST_BEGIN(x) {..}``, ``PFX(x)(args)``, an export-macro "
+                "class misparse; WI-tikop). ABSENT means the src IS the "
+                "declaration that contains the call. Written by "
+                "``analyze.edge_source.mark_stand_in``. Per call site: one "
+                "edge can collapse a stand-in site with a real file-scope "
+                "call to the same callee.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: hypergumbo_core.analyze.edge_source."
+                    "mark_stand_in, called by the c, cpp and cuda analyzers "
+                    "over the edges one call site produced."
+                )),
 )
 
 
@@ -1262,7 +1712,10 @@ def _per_call_site_values_specs() -> tuple[MetaKeySpec, ...]:
             f"``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` "
             f"ONLY when the sites disagreed, in which case the singular "
             f"``{spec.name}`` is removed — its presence would state one "
-            f"site's value of the whole relationship (INV-vukiv). Absence of "
+            f"site's value of the whole relationship (INV-vukiv). A site "
+            f"that carried no ``{spec.name}`` is listed as ``null``, sorted "
+            f"first and never capped away, so one site's value cannot read "
+            f"as every site's (INV-rajak). Absence of "
             f"this key therefore means every collapsed site agreed, exactly "
             f"as absence of ``call_lines`` means there was one site.",
             write_discipline=DISCIPLINE_SINGLE_WRITER,
@@ -1331,8 +1784,8 @@ def access_mode_applicable_edge_types() -> frozenset[str]:
     """ADR-0038 ruling 2: edge types where ``access_mode`` APPLIES.
 
     A ``None`` value on one of these edges means missing data (fix the
-    emitter), not "not applicable". The applicable half of INV-tibob's
-    17-type census.
+    emitter), not "not applicable". The applicable half of the access_mode
+    census (INV-tibob's 17 types, completed to all 25 by WI-pusuv).
     """
     return _ACCESS_MODE_APPLICABLE_EDGE_TYPES
 
@@ -1369,11 +1822,10 @@ def is_access_mode_not_applicable(edge_type: str) -> bool:
     """ADR-0038 ruling 2: is ``access_mode`` Declared-N/A for *edge_type*?
 
     The dataflow annotate passes call this to skip stamping ``access_mode`` on
-    N/A edge types. Edge types OUTSIDE the 17-type census (the uncensused
-    canonical types, incl. the ``data_flows_to`` dataflow-direction relationship
-    — crypto write→read flows fold here after the ADR-0023 ``crypto_flow`` prune)
-    are UNCLASSIFIED and return ``False`` — their stamping behavior is untouched
-    by this pass, pending the polyglot-census follow-up (WI-pusuv).
+    N/A edge types. The census is complete (WI-pusuv): every canonical edge
+    type is applicable XOR N/A, so ``data_flows_to`` and the other residual
+    relationship types now return ``True``. A name outside the registry
+    returns ``False``.
     """
     return edge_type in _ACCESS_MODE_NA_EDGE_TYPES
 

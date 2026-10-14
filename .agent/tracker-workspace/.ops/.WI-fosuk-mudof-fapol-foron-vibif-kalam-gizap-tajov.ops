@@ -1,0 +1,21 @@
+- op: create  # a0d4
+  at: '2026-10-01T21:37:42Z'  # a0d4
+  by: agent  # a0d4
+  actor: jgstern_agent  # a0d4
+  clock: 1  # a0d4
+  nonce: a0d4  # a0d4
+  data:  # a0d4
+    kind: work_item  # a0d4
+    title: "rust-analyzer recorded/ fixture crate is not test-classified, so profile.languages reports rust as 14 non-test files on this repo"  # a0d4
+    status: todo_hard  # a0d4
+    priority: 3  # a0d4
+    parent:  # a0d4
+    tags:  # a0d4
+    - dogfood  # a0d4
+    - test_classification  # a0d4
+    isbefore: []  # a0d4
+    duplicate_of: []  # a0d4
+    not_duplicate_of: []  # a0d4
+    pr_ref:  # a0d4
+    description: "**Defect (residual of WI-ritaf).** `packages/hypergumbo-lang-rust-analyzer/recorded/aardvark_dns/crate/` is a recorded fixture crate (a copy of aardvark-dns consumed by `packages/hypergumbo-lang-rust-analyzer/tests/test_recorded_fixtures.py` and the recorded rust-analyzer replay), but neither `selection.filters.is_test_path` nor `paths.is_test_file` classifies `recorded/` as test or test-support. \n\n**Evidence.** With WI-ritaf's `profile.languages[L].test_files` (branch jgstern-agent/feat/ritaf-language-test-files), a self-profile of this repo (origin/dev af8ff42ad0 + that branch) reports `rust: files=19 test_files=5`; the 14 non-test rust files are all under `packages/hypergumbo-lang-rust-analyzer/recorded/aardvark_dns/crate/`. So rust still reads as a production language of hypergumbo (which has no first-party Rust), while the other fixture-only languages now read `test_files == files`.\n\n**Consequence.** The composition summary WI-ritaf fixed still overstates the stack by one language on this repo; the same path also feeds ranking/slice test filtering via the shared predicate.\n\n**Constraint.** `is_test_path` / `is_test_file` are shared chokepoints (ranking, slice, linker filtering, sketch). Adding `recorded/` there changes every consumer; it may be better scoped as a repo-specific exclusion or a narrower fixture-directory rule. Measure the blast radius before changing the predicate. Not measured: whether any corpus repo uses a `recorded/` directory for production code."  # a0d4
+    fields: {}  # a0d4

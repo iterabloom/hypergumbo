@@ -260,7 +260,7 @@ class FennelAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:
@@ -273,7 +273,7 @@ class FennelAnalyzer(TreeSitterAnalyzer):
 
     def _extract_edges_recursive(
         self, node: "tree_sitter.Node", rel_path: str, run_id: str,
-        global_symbols: dict, edges: list[Edge],
+        global_symbols: dict[str, Symbol], edges: list[Edge],
     ) -> None:
         """Recursively extract call edges from list expressions."""
         if node.type == "list":

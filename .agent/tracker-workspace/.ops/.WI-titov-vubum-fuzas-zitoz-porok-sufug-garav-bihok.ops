@@ -1,0 +1,21 @@
+- op: create  # 030a
+  at: '2026-09-28T00:58:21Z'  # 030a
+  by: agent  # 030a
+  actor: jgstern_agent  # 030a
+  clock: 1  # 030a
+  nonce: 030a  # 030a
+  data:  # 030a
+    kind: work_item  # 030a
+    title: "objc analyzer records #import but not #include as an imports edge (in .m/.mm always; in ObjC headers since WI-somod)"  # 030a
+    status: todo_hard  # 030a
+    priority: 3  # 030a
+    parent:  # 030a
+    tags:  # 030a
+    - objc  # 030a
+    - analysis_quality  # 030a
+    isbefore: []  # 030a
+    duplicate_of: []  # 030a
+    not_duplicate_of: []  # 030a
+    pr_ref:  # 030a
+    description: "The ObjC analyzer emits an imports edge only for #import, never for #include (objc.py, the preproc_include arm: \"Check if it's #import (not #include)\"). The restriction dates from the analyzer's first commit (d8252de120) with no reason recorded.\n\nFound by WI-somod. Before it, the C or C++ grammar also parsed every ObjC header and recorded its #include lines, so the gap was hidden for headers. Now each ObjC header is parsed by the ObjC grammar only, and its #include lines produce no import edge: whisper.cpp's coreml headers lost 4 (<stdint.h>, <os/log.h>). In .m / .mm files the gap has always been there: every #include in ObjC source produces no import edge.\n\nTo measure before changing: the import-edge delta on the ObjC corpus (AFNetworking, CocoaLumberjack, SDWebImage, fmdb, GPUImage, ResearchKit) and on mixed repos (whisper.cpp, sherpa-onnx), and whether any consumer (module linker, supply-chain tiers) keys on objc import edges."  # 030a
+    fields: {}  # 030a

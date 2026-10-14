@@ -22,8 +22,8 @@ Enclosure resolution:
   Document's Definition Occurrences and keep every one whose EXTENT
   fully contains O's span (start ≤ O.start and end ≥ O.end on both
   the line and column axes). We then pick the *innermost* — smallest
-  span area, measured as ``(end_line - start_line, end_col)`` on a
-  lexicographic comparison — and break ties by document order so the
+  span area, measured as ``(end_line - start_line, end_col - start_col)``
+  on a lexicographic comparison — and break ties by document order so the
   result is deterministic without depending on the protobuf parser's
   iteration stability for equal keys.
 
@@ -80,8 +80,12 @@ Edge shape:
   ADR-0057 §7): a reference whose target the producer declares callable
   (``SymbolInformation.kind`` in Function, Method, StaticMethod,
   TraitMethod, AbstractMethod, ProtocolMethod, PureVirtualMethod,
-  Constructor) is ``calls``; every other reference — and every reference
-  to a target whose kind the emitter left unset — is ``references``.
+  Constructor) is ``calls``; a reference to a target with any other
+  declared kind is ``references``. When the emitter left the target's
+  kind unset (scip-python 0.6.6 declares ``kind == 0`` on every symbol),
+  the SCIP descriptor decides instead (``_descriptor_says_callable``,
+  WI-nanom): a target whose leaf descriptor is METHOD (``name().``) is
+  ``calls``, any other is ``references``. A declared kind always wins.
   Until WI-zapuk every occurrence edge was ``references`` "so a
   downstream specialization pass can refine to calls / writes_to /
   imports when it has target-kind context"; no such pass existed, and

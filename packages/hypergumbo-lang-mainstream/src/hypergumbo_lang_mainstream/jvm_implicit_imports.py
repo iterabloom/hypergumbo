@@ -13,7 +13,7 @@ same run as controls. On sbt, 76 of the untyped-receiver disclosure sites were
 real ``Files.x`` / ``System.x`` / ``Instant.now`` calls, and that disclosure
 was their only signal.
 
-TWO SOURCES OF AN OWNER, and nothing else:
+TWO SOURCES OF AN OWNER FOR A SIMPLE NAME, and nothing else:
 
 * the file's own IMPORT of that simple name (``import java.nio.file.Files``),
   which each analyzer already parses; and
@@ -28,6 +28,13 @@ disjunction for them, but for scala that is not free: an unenumerated disjunct
 withholds every verdict under INV-zimud's ALL-gate. That is a separate change
 with its own measurement.
 
+A DOTTED PATH WRITTEN AT THE CALL SITE IS A THIRD SOURCE.
+``java.nio.file.Files.readAllBytes(p)`` states its owner inline, the same fact
+an import states at the top of the file. :func:`inline_qualified_owner` takes it
+only when the path's root is one of the language's standard roots and not a
+name the file binds, and only while the path still spells a package-then-type
+(a lowercase segment after a capitalised one is a value, not a module).
+
 EACH LANGUAGE SHADOWS SOME java.lang NAMES WITH ITS OWN. kotlin's default
 imports include ``kotlin.*``, whose ``String``, ``Long``, ``Iterable``, ...
 win over java.lang's; scala imports ``scala._`` after ``java.lang._``, so
@@ -37,7 +44,7 @@ language passes the names it shadows. None of them is a catalogued I/O owner
 today; the exclusion keeps the slot true, not a match count.
 
 A PROJECT TYPE IS NEVER AN OWNER HERE, imported or not, as in java
-(``_receiver_type_module``: "a project class is left alone: it is not a
+(``java._qualify_receiver_type``: "a project class is left alone: it is not a
 module"). The Tier-2 linkers resolve a call on a project type from the
 placeholder. Measured the first time this shipped without the rule: detekt's
 ``Issue.Entity(...)`` on an imported project class took the import path as its
@@ -58,15 +65,27 @@ FILE paths, so it never matched. An exact name match also returns before any
 hint is read. So ``import scala.sys.process.Process`` followed by
 ``Process(cmd)`` bound to spark's unrelated test ``case class Process``, and to
 scala3's sbt-build ``object Process``. It was a false call edge, and the launch
-never reached the catalogue. :func:`imported_elsewhere` is the check both
-check kotlin applies to a symbol the resolver hands back. The symbol stays only
+never reached the catalogue. :func:`imported_elsewhere` is the check
+kotlin applies to a symbol the resolver hands back. The symbol stays only
 when its qualified name IS the import, or lies under it (``Issue.Entity`` under
 ``dev.acme.api.Issue``). A symbol with no qualified name is kept. That is the
 old behaviour, and nothing can be decided without the name. scala applies a
 looser rule of its own (see ``scala._import_names_elsewhere``).
+
+THE PROCESS'S OWN STANDARD STREAMS ARE THE SECOND THING THE THREE SHARE
+(WI-rabum). ``System.out`` / ``System.err`` are ``java.io.PrintStream`` fields,
+and java.yaml rows both the fields (``attributes: [out, err]``, logging) and
+PrintStream's writers, the latter only where the call is stamped
+``io_target_kind: std_stream``. java typed and stamped them (WI-dorus); kotlin
+and scala inherited the rows through ``_CATALOG_PARENTS`` and emitted neither
+record. The spellings, the type, the stamp, the shadow rule
+(:func:`bare_system_is_java_lang`) and the attribute map the shared
+``emit_module_attribute_refs`` is handed (:func:`java_lang_system_aliases`)
+live here, so the three analyzers cannot drift apart on them.
 """
 from __future__ import annotations
 
+from collections.abc import Container
 from typing import Final
 
 #: The package JLS 7.3 imports into every compilation unit.
@@ -187,3 +206,120 @@ def kotlin_import_path(imported: str) -> str:
     """A kotlin import path as the imported member's qualified name spells it:
     the default companion's ``Companion`` segment dropped."""
     return ".".join(part for part in imported.split(".") if part != "Companion")
+
+
+def inline_qualified_owner(
+    path: str, callee_name: str, bound: Container[str], *, roots: Container[str],
+) -> str | None:
+    """The module slot a fully-qualified inline call states, or ``None``.
+
+    ``java.nio.file.Files.readAllBytes(p)`` with no import states its owner at
+    the use site, the same fact ``import java.nio.file.Files`` states at the top
+    of the file. First written for scala (INV-vokut) and shared with kotlin
+    (INV-dupol), where the same inline form emitted no edge at all.
+
+    Taken only when the path's ROOT is one of the language's standard ``roots``
+    and the file does not bind that name itself: ``cfg.inner.Target.go()`` is a
+    chain on a local value, and naming it as a module would hand the coverage
+    gate a module that does not exist. A third-party path keeps the placeholder
+    too; no shipped row could match it.
+
+    A path whose segments go lowercase again after a capitalised one names a
+    value (``scala.Console.err``, ``java.lang.System.out``), not a module, and
+    keeps the placeholder.
+
+    A capitalised callee on an all-lowercase path is a companion apply or a
+    constructor, ``scala.sys.process.Process(cmd)``, and gets the slot the
+    imported form gets: the path including the callee.
+    """
+    segments = path.split(".")
+    if segments[0] not in roots or segments[0] in bound:
+        return None
+    # Packages are lowercase and objects / types capitalised, so a lowercase
+    # segment AFTER a capitalised one is a member of an object, a value.
+    # Nested types stay (``java.util.Map.Entry``).
+    first_type = next((i for i, s in enumerate(segments) if s[:1].isupper()), len(segments))
+    if not all(s[:1].isupper() for s in segments[first_type:]):
+        return None
+    if callee_name[:1].isupper() and all(s[:1].islower() for s in segments):
+        return f"{path}.{callee_name}"
+    return path
+
+
+# ---------------------------------------------------------------------------
+# The process's own standard streams (WI-dorus in java; WI-rabum for kotlin
+# and scala). ONE HOME for the three JVM analyzers, so the spelling that types
+# a ``System.out`` receiver cannot differ between them.
+# ---------------------------------------------------------------------------
+
+#: ``java.lang.System``, which java.yaml's ``attributes: [in]`` (ipc_recv) and
+#: ``attributes: [out, err]`` (logging) rows key on.
+JAVA_LANG_SYSTEM: Final[str] = f"{IMPLICIT_IMPORT_PACKAGE}.System"
+
+#: The FIELDS of ``java.lang.System`` (JDK 17: ``in``, ``out``, ``err``; every
+#: other member is a method). scala calls a parameterless method without
+#: parentheses, so ``System.currentTimeMillis`` parses as the same access as
+#: ``System.out``; only these names are attribute reads.
+JAVA_LANG_SYSTEM_FIELDS: Final[frozenset[str]] = frozenset({"in", "out", "err"})
+
+#: The type ``System.out`` and ``System.err`` declare.
+PRINT_STREAM_TYPE: Final[str] = "java.io.PrintStream"
+
+#: The ``io_target_kind`` a write to the process's own stdout / stderr carries:
+#: java.yaml's PrintStream rows apply only where it is stamped
+#: (``requires_target_kind: std_stream``).
+STD_STREAM_TARGET_KIND: Final[str] = "std_stream"
+
+#: The receiver spellings that are ``System.out`` / ``System.err``, bare and
+#: fully qualified.
+STD_OUTPUT_RECEIVERS: Final[frozenset[str]] = frozenset({
+    "System.out", "System.err",
+    f"{JAVA_LANG_SYSTEM}.out", f"{JAVA_LANG_SYSTEM}.err",
+})
+
+
+def bare_system_is_java_lang(
+    imports: dict[str, str],
+    *,
+    is_project_type: bool,
+    is_local: bool,
+) -> bool:
+    """Whether a bare ``System`` in this scope is ``java.lang.System``.
+
+    Not when a local or a project type is named ``System``, or the file imports
+    some other ``System``: the same three shadows java's WI-dorus check names.
+    ``System`` is in no language's shadow list, so ``shadowed`` is empty here.
+    """
+    return not is_local and static_owner_module(
+        "System", imports, shadowed=frozenset(), is_project_type=is_project_type,
+    ) == JAVA_LANG_SYSTEM
+
+
+def is_std_output_receiver(receiver_text: str, *, bare_system_is_java_lang: bool) -> bool:
+    """Whether a call's receiver, as spelled, is the process's ``System.out`` /
+    ``System.err``.
+
+    The bare spelling counts only when ``System`` is java.lang's in that scope
+    (:func:`bare_system_is_java_lang`). The fully-qualified one names it outright.
+    Whitespace inside the spelling (a chain split over lines) is ignored.
+    """
+    spelled = "".join(receiver_text.split())
+    if spelled not in STD_OUTPUT_RECEIVERS:
+        return False
+    return bare_system_is_java_lang or spelled.startswith(f"{JAVA_LANG_SYSTEM}.")
+
+
+def java_lang_system_aliases(*, bare_system_is_java_lang: bool) -> dict[str, str]:
+    """The ``imports`` map kotlin and scala hand ``emit_module_attribute_refs``.
+
+    WI-rabum. ONLY ``java.lang.System``: its three fields are the only JVM
+    attributes any catalogue rows, and an access on any other imported name
+    would put modules with no rows in front of the uncatalogued-module gate --
+    an unmeasured change java's broader map (every import) was not asked to make
+    here. The fully-qualified spelling always maps; the bare one only where
+    ``System`` is java.lang's.
+    """
+    aliases = {JAVA_LANG_SYSTEM: JAVA_LANG_SYSTEM}
+    if bare_system_is_java_lang:
+        aliases["System"] = JAVA_LANG_SYSTEM
+    return aliases

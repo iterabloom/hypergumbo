@@ -7,9 +7,11 @@ This analyzer uses tree-sitter to parse Common Lisp files and extract:
 - Method definitions (defmethod)
 - Macro definitions (defmacro)
 - Class definitions (defclass)
-- Variable definitions (defvar, defparameter, defconstant)
+- Structure definitions (defstruct)
+- Variable (defvar, defparameter) and constant (defconstant) definitions
 - Generic function definitions (defgeneric)
 - Function call relationships
+- Import edges from `use-package` forms (file -> package)
 
 If tree-sitter with Common Lisp support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -43,6 +45,29 @@ Common Lisp-Specific Considerations
 - defvar, defparameter, defconstant create special variables
 - *earmuffs* convention for special variables (e.g., *config*)
 - +plus-signs+ convention for constants (e.g., +pi+)
+
+Callable identity (WI-tusad)
+----------------------------
+``defun``, ``defmacro``, ``defmethod`` and ``defgeneric`` (either spelling:
+the ``defun`` node lowercase forms parse to, or the plain list an uppercase
+``DEFUN`` parses to) mint the ADR-0035 producer stable_id at construction
+through ``overload_arity.declared_arity_stable_id``, instead of riding the
+backstop floor, where the methods of one generic function share a name and
+null each other. Inputs:
+
+- the scope chain ``package::name``, the package being the file's latest
+  ``(in-package ...)`` (the bare name before any);
+- the lambda list, written to ``meta["parameters"]``: required parameters,
+  ``&optional`` and ``&key`` ones as ``default`` entries, ``&rest``/``&body``
+  as the variadic entry; ``&aux`` variables are locals and end the list, and
+  ``&whole``/``&environment`` (macro-only) take no argument;
+- for a ``defmethod``, each required parameter's specializer (``(s circle)``
+  -> ``circle``, ``(n (eql 3))`` -> ``(eql 3)``) as the parameter's type, so
+  the typed tier hashes ``(circle)`` vs ``(square)``: the methods of one
+  generic told apart by what they specialize on, and an unspecialized
+  parameter spelled ``_``;
+- method qualifiers (``:before``/``:after``/``:around``) in the decorators
+  slot, since an ``:around`` and a primary method may share specializers.
 """
 from __future__ import annotations
 
@@ -63,6 +88,9 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -208,6 +236,114 @@ def _is_def_list(inner: list["tree_sitter.Node"], source: bytes) -> tuple[str, s
     return None
 
 
+#: Lambda-list keywords that switch the kind of the parameters after them.
+_OPTIONAL_KEYWORDS: frozenset[str] = frozenset({"&optional", "&key"})
+_REST_KEYWORDS: frozenset[str] = frozenset({"&rest", "&body"})
+#: Macro lambda-list keywords whose one variable is not an argument.
+_SKIP_NEXT_KEYWORDS: frozenset[str] = frozenset({"&whole", "&environment"})
+
+
+def _collapse(text: str) -> str:
+    """Lowercased ``text`` with runs of whitespace collapsed to one space."""
+    return " ".join(text.lower().split())
+
+
+def _lambda_list_parameters(
+    lambda_list: "tree_sitter.Node", source: bytes, *, specialized: bool,
+) -> list[dict[str, object]]:
+    """``meta["parameters"]`` of an ordinary, macro or specialized lambda list.
+
+    See the module docstring for how each section maps to an entry.
+    ``specialized`` (a ``defmethod``) reads a required ``(var specializer)``
+    as a parameter typed by the specializer; elsewhere such a list is a
+    destructuring pattern, one parameter named by its text.
+    """
+    entries: list[dict[str, object]] = []
+    section = "required"
+    skip_next = False
+    for child in lambda_list.children:
+        if child.type in ("(", ")"):
+            continue
+        text = _collapse(node_text(child, source))
+        if child.type == "sym_lit" and text.startswith("&"):
+            if text == "&aux":
+                break
+            if text in _OPTIONAL_KEYWORDS:
+                section = "optional"
+            elif text in _REST_KEYWORDS:
+                section = "rest"
+            skip_next = text in _SKIP_NEXT_KEYWORDS
+            continue
+        if skip_next:
+            skip_next = False
+            continue
+        type_: Optional[str] = None
+        name = text
+        if child.type == "list_lit":
+            parts = [c for c in child.children if c.type not in ("(", ")")]
+            if parts and (section != "required" or specialized):
+                name = _collapse(node_text(parts[0], source))
+                if section == "required" and len(parts) > 1:
+                    type_ = _collapse(node_text(parts[1], source))
+        entries.append(parameter_entry(
+            name, type_,
+            default=section == "optional", variadic=section == "rest",
+        ))
+    return entries
+
+
+def _callable_identity(
+    kind: str,
+    name: str,
+    after_name: "list[tree_sitter.Node]",
+    source: bytes,
+    file_path: str,
+    package: str,
+) -> tuple[str, Optional[dict[str, object]]]:
+    """``(stable_id, meta)`` of a callable def form; see the module docstring.
+
+    ``after_name`` is the form's nodes after the name: method qualifiers,
+    then the lambda list. With no lambda list the arity is unknown (no meta)
+    and the zero-parameter formula applies.
+    """
+    qualifiers: list[str] = []
+    meta: Optional[dict[str, object]] = None
+    for node in after_name:
+        if node.type == "list_lit":
+            meta = {PARAMETERS_KEY: _lambda_list_parameters(
+                node, source, specialized=kind == "method",
+            )}
+            break
+        qualifiers.append(_collapse(node_text(node, source)))
+    stable_id = declared_arity_stable_id(
+        kind=kind, lang="commonlisp", path=file_path, name=name,
+        qualified_name=f"{package}::{name}" if package else name,
+        arity=declared_arity(meta), decorators=",".join(sorted(qualifiers)),
+    )
+    return stable_id, meta
+
+
+def _defun_after_name(node: "tree_sitter.Node") -> "list[tree_sitter.Node]":
+    """The ``defun_header`` children after the defined name (qualifiers, lambda list)."""
+    header = find_child_by_type(node, "defun_header")
+    if header is None:  # pragma: no cover - _extract_defun_info checked it
+        return []
+    rest = [c for c in header.children if c.type != "defun_keyword"]
+    return rest[1:]
+
+
+def _in_package_name(
+    inner: "list[tree_sitter.Node]", source: bytes,
+) -> Optional[str]:
+    """``foo`` for ``(in-package :foo)`` / ``#:foo`` / ``"FOO"`` / ``foo``, else None."""
+    if len(inner) < 2 or inner[0].type != "sym_lit":
+        return None
+    if _get_sym_lit_text(inner[0], source) != "in-package":
+        return None
+    # ``#:foo`` parses as a ``#`` token and a ``:foo`` keyword: read the last.
+    return node_text(inner[-1], source).lower().lstrip("#:").strip('"') or None
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -227,6 +363,7 @@ def _extract_symbols_from_file(
     - defvar, defparameter, defconstant (variables)
     """
     symbols: list[Symbol] = []
+    package = ""
 
     for node in iter_tree(tree.root_node):
         # Handle defun-style nodes (defun, defmacro, defmethod, defgeneric)
@@ -234,6 +371,10 @@ def _extract_symbols_from_file(
             info = _extract_defun_info(node, source)
             if info:
                 name, kind, signature = info
+                stable_id, meta = _callable_identity(
+                    kind, name, _defun_after_name(node), source, file_path,
+                    package,
+                )
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 span = Span(
@@ -247,6 +388,7 @@ def _extract_symbols_from_file(
                 # defmethod/defgeneric, so the kind is always callable here.
                 symbols.append(Symbol(
                     id=sym_id,
+                    stable_id=stable_id,
                     name=name,
                     kind=kind,
                     language="commonlisp",
@@ -255,6 +397,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=signature,
+                    meta=meta,
                     cyclomatic_complexity=compute_cyclomatic_complexity(
                         node, "commonlisp",
                     ),
@@ -267,9 +410,16 @@ def _extract_symbols_from_file(
             children = node.children
             inner = [c for c in children if c.type not in ("(", ")")]
 
+            package = _in_package_name(inner, source) or package
             def_info = _is_def_list(inner, source)
             if def_info:
                 kind, name, signature = def_info
+                stable_id = None
+                meta = None
+                if kind in _COMMONLISP_CALLABLE_KINDS:
+                    stable_id, meta = _callable_identity(
+                        kind, name, inner[2:], source, file_path, package,
+                    )
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 span = Span(
@@ -284,6 +434,7 @@ def _extract_symbols_from_file(
                 is_callable = kind in _COMMONLISP_CALLABLE_KINDS
                 symbols.append(Symbol(
                     id=sym_id,
+                    stable_id=stable_id,
                     name=name,
                     kind=kind,
                     language="commonlisp",
@@ -292,6 +443,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=signature,
+                    meta=meta,
                     cyclomatic_complexity=(
                         compute_cyclomatic_complexity(node, "commonlisp")
                         if is_callable else None
@@ -447,7 +599,7 @@ class CommonLispAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

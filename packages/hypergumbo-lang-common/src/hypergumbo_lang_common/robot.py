@@ -49,7 +49,7 @@ from __future__ import annotations
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import Any, TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
@@ -246,7 +246,7 @@ class _RobotExtractor:
             span.start_line, span.end_line,
         )
 
-        meta: dict = {"arguments": arguments}
+        meta: dict[str, Any] = {"arguments": arguments}
         if documentation:
             meta["documentation"] = documentation
         if tags:
@@ -317,7 +317,7 @@ class _RobotExtractor:
             span.start_line, span.end_line,
         )
 
-        meta: dict = {"test_dialect": "robot"}
+        meta: dict[str, Any] = {"test_dialect": "robot"}
         if documentation:
             meta["documentation"] = documentation
         if tags:

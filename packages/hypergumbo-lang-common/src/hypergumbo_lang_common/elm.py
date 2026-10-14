@@ -39,6 +39,16 @@ Elm-Specific Considerations
 - Type aliases provide named record types
 - Ports enable JavaScript interop
 - All functions are pure; side effects through Cmd messages
+
+Identity (WI-tusad)
+-------------------
+Elm has no overloading and every top-level name is unique in a module, so the
+name alone separates functions. Each function records its parameter patterns
+in ``meta["parameters"]`` (one entry per pattern after the name, written as
+the pattern's text; the empty list for a value) and, like ports, mints the
+ADR-0035 producer stable_id through ``overload_arity.declared_arity_stable_id``
+instead of riding the backstop floor key. Modules and types keep their
+table-formula ids.
 """
 from __future__ import annotations
 
@@ -58,6 +68,9 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+)
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
 if TYPE_CHECKING:
@@ -100,6 +113,16 @@ def _extract_elm_signature(
             params.append(node_text(child, source))
 
     return f"({', '.join(params)})"
+
+
+def _elm_parameters(
+    decl_left: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, object]]:
+    """``meta["parameters"]``: each named pattern after the function's name."""
+    return [
+        parameter_entry(node_text(child, source))
+        for child in decl_left.named_children[1:]
+    ]
 
 
 def _extract_symbols_from_file(
@@ -164,8 +187,17 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     )
                     sym_id = make_symbol_id("elm", file_path, start_line, end_line, func_name, "function")
+                    meta: dict[str, object] = {
+                        PARAMETERS_KEY: _elm_parameters(decl_left, source),
+                    }
                     symbols.append(Symbol(
                         id=sym_id,
+                        stable_id=declared_arity_stable_id(
+                            kind="function", lang="elm", path=file_path,
+                            name=func_name, qualified_name=func_name,
+                            arity=declared_arity(meta),
+                        ),
+                        meta=meta,
                         name=func_name,
                         kind="function",
                         language="elm",
@@ -244,6 +276,10 @@ def _extract_symbols_from_file(
                 sym_id = make_symbol_id("elm", file_path, start_line, end_line, port_name, "port")
                 symbols.append(Symbol(
                     id=sym_id,
+                    stable_id=declared_arity_stable_id(
+                        kind="port", lang="elm", path=file_path,
+                        name=port_name, qualified_name=port_name, arity=None,
+                    ),
                     name=port_name,
                     kind="port",
                     language="elm",
@@ -426,7 +462,7 @@ class ElmAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

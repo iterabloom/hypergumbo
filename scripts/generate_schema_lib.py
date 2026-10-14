@@ -904,7 +904,33 @@ def _analysis_run_spec() -> ClassSpec:
                 "format": "date-time",
                 "description": "UTC timestamp when the pass started",
             },
-            "duration_ms": {"description": "Wall-clock duration in milliseconds"},
+            "duration_ms": {
+                "description": (
+                    "Wall-clock duration in milliseconds, measured in the "
+                    "pass's worker over the same call as cpu_ms (the "
+                    "orchestrator's reading replaces a pass body's own "
+                    "timer). Passes run concurrently (analyzers in "
+                    "one thread pool, linkers in one pool per priority "
+                    "cohort), so durations OVERLAP -- they do not sum to the "
+                    "survey's wall time -- and one INFLATES WITH CONTENTION "
+                    "(a worker waiting on the GIL is still on the wall "
+                    "clock). It is not the pass's cost; cpu_ms is (WI-nuvam)"
+                ),
+            },
+            "cpu_ms": {
+                "description": (
+                    "CPU time, in milliseconds, of the thread that ran this "
+                    "pass (WI-nuvam): the pass's own cost. Waiting on the "
+                    "GIL, I/O or a sleep does not advance it, so "
+                    "duration_ms - cpu_ms is how long the pass waited. "
+                    "Excludes CPU spent in child processes and in threads "
+                    "the pass starts itself (for the external-indexer "
+                    "backends it is a lower bound). Rounded up; a measured "
+                    "pass is >= 1. null = NOT MEASURED, distinct from any "
+                    "number; an absent key means the artifact predates the "
+                    "field"
+                ),
+            },
             "pass_version": {
                 "description": (
                     "Code-hash of the pass module (compute_pass_version); "
@@ -1223,6 +1249,15 @@ def _feature_sample():
         edge_ids={"e1"},
         query=_slice_query_sample(),
         limits_hit=["hop_limit"],
+        limits_detail={
+            "hop_limit": {
+                "cap": 2,
+                "nodes_omitted": 1,
+                "edges_omitted": 1,
+                "files_omitted": 1,
+                "nodes_not_expanded": 1,
+            },
+        },
         node_depths={"n1": 0},
         node_tiers={"n1": 1},
         admission_stats={"admitted_writer_src": 1},
@@ -1245,6 +1280,15 @@ def _feature_spec() -> ClassSpec:
             "edge_ids": {"description": "Sorted IDs of all edges in the slice"},
             "query": {"description": "Query that produced this slice"},
             "limits_hit": {"description": "Limits reached during traversal (e.g. hop_limit)"},
+            "limits_detail": {
+                "description": (
+                    "Per limit in limits_hit (same keys), when any was hit: cap "
+                    "(the query value), nodes_omitted / edges_omitted / "
+                    "files_omitted (the frontier the limit kept out of the "
+                    "final slice -- a lower bound, nothing beyond it was "
+                    "walked), and nodes_not_expanded for hop_limit / hub_pruned"
+                ),
+            },
             "node_depths": {"description": "Node ID → BFS depth, when recorded"},
             "node_tiers": {"description": "Node ID → supply chain tier, when recorded"},
             "admission_stats": {
@@ -1261,7 +1305,7 @@ def _feature_spec() -> ClassSpec:
                 "description": "Human-readable feature name (the query entrypoint)",
             },
         },
-        conditional={"node_depths", "node_tiers", "admission_stats"},
+        conditional={"node_depths", "node_tiers", "admission_stats", "limits_detail"},
         sample_factory=_feature_sample,
     )
 

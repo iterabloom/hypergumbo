@@ -30,3 +30,18 @@
   set: {}  # 9f0a
   add:  # 9f0a
     tags: [post_release_focus]  # 9f0a
+- op: update  # fd60
+  at: '2026-09-27T04:00:17Z'  # fd60
+  by: agent  # fd60
+  actor: jgstern_agent  # fd60
+  clock: 3  # fd60
+  nonce: fd60  # fd60
+  set:  # fd60
+    status: done  # fd60
+- op: discuss  # adec
+  at: '2026-09-27T04:00:18Z'  # adec
+  by: agent  # adec
+  actor: jgstern_agent  # adec
+  clock: 4  # adec
+  nonce: adec  # adec
+  message: "CLOSED on the filed row: steps 1 (count it) and 2 (carry it). PR #1243. Step 3 (a verify-claims caveat) is filed as WI-vufur with the measured reason it is not a blanket caveat.\n\nWHAT SHIPPED. record_partial_parse(run, path, tree) in analyze/base.py. A tree with root_node.has_error gets a limits.failed_files row, reason \"partial_parse: N damaged node(s); analysed from tree-sitter's error recovery, so declarations in or after the damaged region may be missing\". It is carried through the existing per-file channel, so there is no new dataclass field and no schema change. It is wired into the shared TreeSitterAnalyzer loop, which covers every analyzer that delegates to it (rust, swift, cpp, elixir, erlang, scala, nim, markdown and others), and into the go, java, js_ts, kotlin, c, objc, csharp, php, ruby and lua loops. objc records AFTER WI-lafom's rewrite retry, so only damage the retry could not repair is reported.\n\nTHE OBSERVABLE, per the row's calibration note. It is a count, not the boolean. A damaged node is an ERROR node, a MISSING node (so the has_error-with-zero-ERROR case the row names is counted, not hidden), or a node flagged has_error with no flagged child. The last kind is real: tree-sitter-markdown flags pipe-table cells that way with no ERROR node anywhere, and crun.1.md printed \"0 ERROR/MISSING node(s)\" before it was added.\n\nTHE FORTRAN TRAP. It does not bite, because this is a disclosure and never a gate: nothing is dropped on has_error, and the reason says the file was analysed from error recovery, which is literally true when a grammar lags the language. Any future gate keyed on these rows still needs the per-grammar calibration the row asks for (see WI-vufur).\n\nBEHAVIOURAL EVIDENCE.\n- Production path: packages/hypergumbo-lang-mainstream/tests/test_partial_parse_disclosure.py runs `hypergumbo survey` on one broken and one clean file for each of rust, go, java, javascript, kotlin, c, cpp, objc, csharp, php, ruby, lua, swift and scala (14 languages). The broken file is in limits.failed_files with the partial_parse reason and the clean one is not.\n- Mutation check: removing each of the six newest wirings (c, objc, csharp, php, ruby, lua) fails exactly that language's case, 6 of 6.\n- Real repos, `hypergumbo survey` at the PR head (~/hypergumbo_lab_notebook/bulaz_09262026/RESULT.md): crun 74 files (57 .c, 16 .h, 1 .md); AFNetworking 34; phoenix 114 (112 elixir); koel 12; hummingbird 7; alertmanager 0. Before this, none on any repo.\n\nRESIDUALS FILED.\n- WI-tikul: 26 analyzers with their own analyze() loop are not wired (matlab, purescript, racket, scheme, r_lang, starlark, svelte, vue, and the config/markup analyzers). It notes that r_lang and json_config assign run.failed_files wholesale.\n- WI-somod: every .h is parsed by both the C and the ObjC analyzer, so about half the .h rows are cross-dialect noise (AFNetworking: C 29 vs objc 2).\n- WI-vufur: a caveat only where it discriminates. In C-family and Elixir a partial parse is the norm (crun C 65/127; phoenix 112/291). It is blocked by WI-somod."  # adec

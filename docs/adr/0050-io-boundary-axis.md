@@ -86,11 +86,11 @@ description.
 
 ### 2. Sections
 
-Four axes partition the twenty values.
+Four axes partition the twenty-one values.
 
 | Axis | Meaning | Values |
 |---|---|---|
-| `data_crossing` | The canonical section. Data crosses the process boundary at this call site, in a named direction. | `fs_read`, `fs_write`, `net_send`, `net_recv`, `ipc_recv`, `ipc_send`, `env_read`, `env_write`, `host_info_read`, `db_read`, `db_write`, `process_send`, `logging`, `browser_storage_read`, `browser_storage_write` |
+| `data_crossing` | The canonical section. Data crosses the process boundary at this call site, in a named direction. | `fs_read`, `fs_write`, `net_send`, `net_recv`, `ipc_recv`, `ipc_send`, `env_read`, `env_write`, `host_info_read`, `db_read`, `db_write`, `process_send`, `logging`, `browser_storage_read`, `browser_storage_write`, `navigation_read` |
 | `opacity` | Control left this process. The classification is correct and the analysis cannot see past it, so it does not license "I looked and found nothing." | `subprocess`, `command_launch` |
 | `deferred_crossing` | The call *arranges* a crossing it does not itself perform (ADR-0049). | `net_listen`, `db_compose` |
 | `speculative` | Synthesised uncertainty; declarable by no catalogue. | `external_potential` |
@@ -168,14 +168,17 @@ Widening the shared walker to reach dict keys, dict values and bare tuples
 would serve all four axes and is filed separately (it changes machinery three
 other registries depend on, so it does not belong in this PR).
 
-### Open question
+### `logging` and `ipc_send`
 
-`logging` is the one `data_crossing` value naming a **purpose** rather than a
-medium, and it overlaps `ipc_send` on stdout: go's `fmt.Println` and haskell's
-`Prelude.putStrLn` are catalogued `logging` while `stdout.write` is catalogued
-`ipc_send`. 46 rows across 12 catalogues are involved. This ADR does **not**
-settle it and moves no row — it records `logging` as the first candidate for a
-per-value audit under ADR-0024's family-audit methodology, whose output would
-file as `docs/audits/<NN>-logging-family.md`. Having somewhere to ask the
-question is the point of the axis; answering it here would be exactly the
-undisciplined move the axis exists to prevent.
+`logging` names a **medium**, like every other `data_crossing` value: data
+written to the process's own standard output or standard error — the channel
+whose far side the launcher chose, not the program — directly, or through a
+print or logging facility whose destination by default is one of those
+streams. `ipc_send` is data sent to another process over a channel the program
+itself set up or addressed: a pipe, a child's stdin, a local socket, an IPC
+message channel, a signal. The call-site evidence that separates them is the
+write target's `io_target_kind` (`std_stream` / `pipe`), which
+`_WRITE_TARGET_KIND_BOUNDARY` maps to exactly these two values. Standard
+*input* stays `ipc_recv`: it is launcher-chosen data, the `untrusted_input`
+source. The per-row verdicts, the measurement and the adjacent membership
+defects are [audit-findings 0021](../audits/0021-logging-family.md).

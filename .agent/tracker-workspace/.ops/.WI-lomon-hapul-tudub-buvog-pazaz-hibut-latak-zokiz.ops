@@ -1,0 +1,21 @@
+- op: create  # 8603
+  at: '2026-10-04T08:15:32Z'  # 8603
+  by: agent  # 8603
+  actor: jgstern_agent  # 8603
+  clock: 1  # 8603
+  nonce: '8603'  # 8603
+  data:  # 8603
+    kind: work_item  # 8603
+    title: "perl ships no I/O catalogue: every perl must_not_exist claim is inconclusive, and a perl class-method call that now names its package (IO::File->new, File::Temp->new, IO::Socket::INET->new) is classified only by a user overlay"  # 8603
+    status: todo_hard  # 8603
+    priority: 3  # 8603
+    parent:  # 8603
+    tags:  # 8603
+    - perl  # 8603
+    - io_boundary  # 8603
+    isbefore: []  # 8603
+    duplicate_of: []  # 8603
+    not_duplicate_of: []  # 8603
+    pr_ref:  # 8603
+    description: "FOUND 2026-10-04 while fixing WI-mahik-hafah-pupil-kumon-nohoz-jofut-girag-fimok (branch jgstern-agent/fix/mahik).\n\nThere is no perl I/O catalogue: packages/hypergumbo-core/src/hypergumbo_core/io_primitives/ has no perl.yaml and io_primitives_overlays/ has no perl overlay (checked by grep 2026-10-04). verify-claims therefore reports every perl must_not_exist claim inconclusive (\"language(s) perl made calls but have no I/O catalog\"): measured on the perl files of git and postgresql, fs_read / net_send / subprocess all inconclusive, on origin/dev and on the WI-mahik branch alike.\n\nWI-mahik makes perl class-method calls carry their package (IO::File->new -> perl:IO::File:0-0:new:unresolved, call_construct=function; IO::Socket::INET->new, File::Temp->new, DBI->connect likewise), and the function arm already does for Pkg::f(). A user overlay with module: IO::File, functions: [new] now classifies the call (verify-claims violated, pinned in test_perl_class_method.py). Without a built-in catalogue only users who write an overlay get that.\n\nCandidate built-in rows seen in the corpus (core / dual-life modules): IO::File->new / open (fs_read/fs_write by mode), File::Temp->new (fs_write), IO::Socket::INET->new / IO::Socket::UNIX->new (net), DBI->connect (db). The builtins open / read / write / print are in perl.py's _PERL_BUILTINS skip set and emit NO edge, so a catalogue cannot see them until the analyzer emits something for them (system / exec / backticks: NOT checked). Instance-receiver rows ($fh->print, $sock->send, $ua->get) need the typed receiver that WI-mugir-tupuj-tiras-diror-kutis-dusup-tatuv-rikat asks for."  # 8603
+    fields: {}  # 8603

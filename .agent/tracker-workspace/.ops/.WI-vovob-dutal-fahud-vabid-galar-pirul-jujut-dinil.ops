@@ -19,3 +19,10 @@
     pr_ref:  # 4d46
     description: "**Defect.** On event-publish edges, `meta.channel` duplicates `meta.topic` exactly — two keys carrying the same string.\n\n**Evidence.** The producer writes both channel and topic onto event_publishes edges, and the two values are identical on every such edge: channel != topic on 0 of 103 (identical 103/103).\n\n**Contract.** Two distinct metadata keys should carry distinct information; one of the redundant keys should be dropped.\n\n**Consequence.** A consumer reading message-publish metadata sees two keys that always agree, with no documented reason for both; a consumer that branches on a perceived difference between them will never see one and may assume the redundancy is meaningful."  # 4d46
     fields: {}  # 4d46
+- op: discuss  # 18b7
+  at: '2026-10-02T00:34:53Z'  # 18b7
+  by: agent  # 18b7
+  actor: jgstern_agent  # 18b7
+  clock: 2  # 18b7
+  nonce: 18b7  # 18b7
+  message: "Bearing from WI-misod-toruv-gimip-botuj-kadup-ludon-damib-buguk (branch jgstern-agent/fix/misod, local, not merged): message_queue.py now builds edges from a shared join (linkers/_name_args.py pair_by_name). On a VALUE join meta.channel and meta.topic are still the same string (the resolved topic), so this row's duplication is unchanged for those edges. On an IDENTIFIER join (either end's topic unresolved) meta.topic is None and NO channel key is written; the identifier is on meta.topic_identifier. So after misod lands, channel == topic holds on every edge that has a channel, and the 103/103 count will shift only by the identifier-joined edges that lose channel. misod did not fold or drop either key (not its scope)."  # 18b7

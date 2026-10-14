@@ -391,6 +391,9 @@ class TestTheSyntheticNodeCarriesTheHostFileLanguage:
         ("scripts/deploy.jsx", "javascript"),
         ("scripts/deploy.ts", "typescript"),
         ("scripts/deploy.tsx", "typescript"),
+        # WI-komum: solidity_abi globs ``.mts`` (``_TS_JS_EXTENSIONS``); the
+        # analyzer tags it ``typescript``, and the helper used to say javascript.
+        ("scripts/deploy.mts", "typescript"),
     ])
     def test_id_slot_and_discovery_language_follow_the_file(
         self, tmp_path: Path, filename: str, expected: str,

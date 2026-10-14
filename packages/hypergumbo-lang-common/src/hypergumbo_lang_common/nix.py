@@ -26,6 +26,19 @@ and result assembly. This module provides only the Nix-specific extraction logic
    applications (callee resolved via NameResolver, falling back to
    nix:external:<name>:function)
 
+Identity (WI-tusad): every symbol mints the ADR-0035 producer stable_id with
+``overload_arity.declared_arity_stable_id`` (no arity: Nix has no overloading,
+and an attribute set binds a path once), qualified by its attribute-path chain:
+the full attrpath of each enclosing binding, then its own (``a.run``,
+``b.run``), a ``let``-bound name marked ``let:x`` so it never ties with a
+same-name attribute, and everything inside a file-level function under the
+file's stem (the name that function is emitted with). The emitted ``name``
+stays the first attrpath identifier. Before, nothing computed a stable_id and
+every symbol rode the backstop floor key (kind, file, name), which ``run`` in
+two attribute sets shares, so both were null. Two anonymous attribute sets in
+one list binding the same name still tie (the per-file split pass numbers
+them).
+
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
@@ -54,6 +67,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import declared_arity_stable_id
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -95,6 +109,31 @@ def _get_attrpath_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
                 if grandchild.type == "identifier":
                     return node_text(grandchild, source)
     return None  # pragma: no cover
+
+
+def _attr_chain(node: "tree_sitter.Node", source: bytes, stem: str) -> str:
+    """The attribute-path chain naming ``node`` for its stable_id (WI-tusad).
+
+    Each ``binding`` from ``node`` up contributes its full attrpath (``a.b``),
+    marked ``let:`` when a ``let`` binds it; a file-level function contributes
+    the file's stem. Outermost first, dotted.
+    """
+    parts: list[str] = []
+    current: Optional["tree_sitter.Node"] = node
+    while current is not None:
+        if current.type == "binding":
+            path = next(c for c in current.children if c.type == "attrpath")
+            label = node_text(path, source)
+            owner = current.parent.parent if current.parent is not None else None
+            if owner is not None and owner.type == "let_expression":
+                label = f"let:{label}"
+            parts.append(label)
+        elif current.type == "function_expression" and (
+            current.parent is not None and current.parent.type == "source_code"
+        ):
+            parts.append(stem)
+        current = current.parent
+    return ".".join(reversed(parts))
 
 
 def _is_function_body(node: "tree_sitter.Node") -> bool:
@@ -312,6 +351,13 @@ def _extract_nix_symbols(
     """
     symbols: list[Symbol] = []
     symbol_registry: dict[str, Symbol] = {}
+    stem = Path(rel_path).stem
+
+    def scoped_id(kind: str, name: str, node: "tree_sitter.Node") -> str:
+        return declared_arity_stable_id(
+            kind=kind, lang="nix", path=rel_path, name=name,
+            qualified_name=_attr_chain(node, source, stem), arity=None,
+        )
 
     for node in iter_tree(root):
         # Process bindings
@@ -353,7 +399,7 @@ def _extract_nix_symbols(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=scoped_id(kind, name, node),
                     shape_id=None,
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind=kind,
@@ -386,12 +432,12 @@ def _extract_nix_symbols(
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
             # Use file basename as function name for top-level functions
-            name = Path(rel_path).stem
+            name = stem
             symbol_id = make_symbol_id("nix", rel_path, start_line, end_line, name, "function")
 
             sym = Symbol(
                 id=symbol_id,
-                stable_id=None,
+                stable_id=scoped_id("function", name, node),
                 shape_id=None,
                 fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                 kind="function",
@@ -513,7 +559,7 @@ class NixAnalyzer(TreeSitterAnalyzer):
 
         return analysis
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Only register function symbols for cross-file call resolution."""
         if symbol.kind == "function":
             global_symbols[symbol.name] = symbol
@@ -521,7 +567,7 @@ class NixAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

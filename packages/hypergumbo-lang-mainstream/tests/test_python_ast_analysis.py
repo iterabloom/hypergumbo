@@ -473,8 +473,9 @@ def test_run_workspace_sibling_import_is_first_party_not_external(
 # slice adds the unresolved-external fallback (mirroring the landed JS/TS A2
 # change, WI-dutov) for from-imported and builtin bases, with an in-tree guard
 # that keeps a not-yet-extracted in-tree base from leaking as a workspace-
-# prefixed phantom (INV-nuzas). Dotted/qualified bases (``argparse.X``) are
-# deferred to the Approach-C core-linker chokepoint.
+# prefixed phantom (INV-nuzas). A dotted base whose root is an import
+# (``argparse.X``) is module-qualified by py.py too (WI-ratid); a dotted base
+# whose root no import binds is deferred to the Approach-C core-linker chokepoint.
 # ---------------------------------------------------------------------------
 
 
@@ -614,12 +615,14 @@ def test_run_extends_aliased_external_base_uses_original_name(
     assert ext[0]["dst"] == "python:enum:0-0:Enum:external_symbol", ext[0]
 
 
-def test_run_extends_dotted_qualified_base_emitted_by_chokepoint(tmp_path: Path) -> None:
-    """WI-jubag Approach C: a dotted/qualified base
-    (``class C(argparse.RawDescriptionHelpFormatter)``) — which py.py DEFERS
-    (naming its module needs module_imports) — is now recovered by the core
-    inheritance-linker chokepoint as an unresolved-external ``extends`` edge on
-    the last segment, instead of being dropped."""
+def test_run_extends_dotted_imported_base_is_module_qualified(tmp_path: Path) -> None:
+    """A dotted base whose root is an import (``import argparse; class
+    C(argparse.RawDescriptionHelpFormatter)``) is classified by py.py itself
+    through the import (WI-ratid): a module-qualified unresolved ``extends``
+    edge, the same shape a from-imported external base gets. It used to be
+    deferred to the core-linker chokepoint, which named only the last segment
+    (``python:external:0-0:RawDescriptionHelpFormatter``) -- and bound that
+    segment to any in-repo class of the same name."""
     (tmp_path / "m.py").write_text(
         "import argparse\n"
         "class C(argparse.RawDescriptionHelpFormatter):\n    pass\n"
@@ -634,9 +637,32 @@ def test_run_extends_dotted_qualified_base_emitted_by_chokepoint(tmp_path: Path)
     ]
     assert len(ext) == 1, [e for e in data["edges"] if e["type"] == "extends"]
     assert ext[0]["dst"] == (
-        "python:external:0-0:RawDescriptionHelpFormatter:external_symbol"
+        "python:argparse:0-0:RawDescriptionHelpFormatter:external_symbol"
     ), ext[0]
     assert ext[0]["confidence"] == 0.95, ext[0]
+
+
+def test_run_extends_dotted_unimported_root_emitted_by_chokepoint(
+    tmp_path: Path,
+) -> None:
+    """WI-jubag Approach C: a dotted base whose root NO import binds (here a
+    module-level variable standing in for a namespace) is still deferred by
+    py.py and recovered by the core inheritance-linker chokepoint as an
+    unresolved-external ``extends`` edge on the last segment."""
+    (tmp_path / "m.py").write_text(
+        "vendor = object()\n"
+        "class C(vendor.Widget):\n    pass\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+
+    ext = [
+        e for e in data["edges"]
+        if e["type"] == "extends" and not e["is_resolved"]
+    ]
+    assert len(ext) == 1, [e for e in data["edges"] if e["type"] == "extends"]
+    assert ext[0]["dst"] == "python:external:0-0:Widget:external_symbol", ext[0]
 
 
 def test_run_extends_self_referential_base_emits_no_edge(tmp_path: Path) -> None:
@@ -5875,10 +5901,11 @@ class TestUnresolvedEdgeEmission:
         # Find call edges
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
 
-        # Should have an unresolved edge to Client.create
+        # Should have an unresolved edge to Client.create, with the imported
+        # class in the MODULE slot (WI-sugom / WI-torin, ADR-0051).
         unresolved = [
             e for e in call_edges
-            if ":external_symbol" in e["dst"] and "Client.create" in e["dst"]
+            if e["dst"] == "python:external_lib.Client:0-0:create:external_symbol"
         ]
         assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
 
@@ -9033,3 +9060,26 @@ def test_run_module_attr_ref_unshadowed_alias_still_retargets(
         "an unshadowed in-tree module alias must still retarget to the real "
         "CONFIG variable — the shadow set must not over-approximate"
     )
+
+
+def test_run_stdlib_removed_after_3_10_is_stamped_ecosystem_stdlib(
+    tmp_path: Path,
+) -> None:
+    """WI-gisan: the stdlib line is the union over every supported Python.
+    ``distutils`` ships with the 3.10/3.11 runtime (removed in 3.12, PEP 632),
+    so a call into it is ``ecosystem=stdlib``, not the ``third_party`` a
+    3.12-only list stamped. Still an external / tier-3 boundary node."""
+    (tmp_path / "setup.py").write_text(
+        "from distutils.spawn import spawn\n"
+        "spawn(['true'])\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+    nodes = [
+        n for n in data["nodes"]
+        if n["kind"] == "external_symbol" and "distutils" in n["id"]
+    ]
+    assert nodes, "distutils boundary node missing"
+    assert {(n.get("meta") or {}).get("ecosystem") for n in nodes} == {"stdlib"}
+    assert {n["supply_chain"]["tier_name"] for n in nodes} == {"external_dep"}

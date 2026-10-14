@@ -34,7 +34,9 @@ Each claim in ``claims`` specifies:
   - ``taint_flow``: Sub-object with taint-flow verification parameters
     - ``source_taint``: Taint label that must not reach the sink zone
     - ``prohibited_sink_zone``: Zone where tainted data must not arrive
-    - ``allowed_sanitizers``: List of sanitizer qualified names (optional)
+    - ``allowed_sanitizers``: List of sanitizer qualified names (optional).
+      Parsed and validated, but no verdict consults it yet: a flow counts as
+      sanitized only through the taint catalogue's sanitizers.
 
 Verdict Types
 -------------
@@ -56,13 +58,13 @@ Verdict Types
 For taint-flow claims the adjudication travels with the verdict rather than
 being asserted by this module. Structural analysis produces ``approximate``
 confidence; the ADR-0017 §3a data-dependence walk produces ``precise`` where it
-confirms a dependence and ``approximate`` where it ran without confirming one
-(the ``analysis_method`` field records the separate ``ddg`` / ``ddg_mixed`` /
-``structural`` axis). A verdict's ``analysis_methods`` breakdown and each evidence
-row's ``confidence`` / ``analysis_method`` report what actually happened. This
-module previously hardcoded the literal ``approximate`` into every violated
-verdict, which made a ``precise`` finding indistinguishable from a structural
-one at the only surface a user reads.
+confirms a dependence and ``approximate`` everywhere else, including where it
+never ran (the ``analysis_method`` field records the separate ``ddg`` /
+``ddg_mixed`` / ``structural`` axis). A verdict's ``analysis_methods``
+breakdown and each evidence row's ``confidence`` / ``analysis_method``
+report what actually happened. This module previously hardcoded the literal
+``approximate`` into every violated verdict, which made a ``precise`` finding
+indistinguishable from a structural one at the only surface a user reads.
 
 Load-time validation
 ---------------------
@@ -84,17 +86,20 @@ Caveats
 Any verdict may carry a structured ``caveats`` list, built through one shared
 constructor so the text and JSON renderers disclose identically. On a clean
 verdict a non-empty list makes it ``confirmed_with_caveats``;
-``CAVEAT_CHOICE_SHAPED_SOURCE`` rides a ``violated`` verdict, and caveats
+``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_WITHHELD_COMMUNITY_SANITIZER`` and
+``CAVEAT_WITHHELD_COMMUNITY_SUMMARY`` ride a ``violated`` verdict, and caveats
 raised on a clean path survive a coverage downgrade to ``inconclusive``
-(``_require_coverage_to_confirm``). Twelve ``CAVEAT_*`` constants exist, plus
+(``_require_coverage_to_confirm``). Fifteen ``CAVEAT_*`` constants exist, plus
 one unconstanted kind (``deferred_crossing``). The four longest-standing:
 
 - ``CAVEAT_USER_SUPPLIED_SANITIZER`` — the clean answer depends on a
-  sanitizer, or a function summary, supplied by the analysed repository
+  sanitizer, or a function summary, that did not ship with hypergumbo
   rather than the shipped catalogue. A shipped-catalogue sanitizer earns
   plain ``confirmed``.
 - ``CAVEAT_OPAQUE_BOUNDARY`` — named launch sites whose *launched program*
-  cannot be resolved. The callee is catalogued and resolved; what is opaque
+  cannot be resolved, and named calls to a shipped non-I/O sink (``eval``,
+  ``document.write``) whose evaluated code or written markup cannot be
+  followed (INV-dudal). The callee is catalogued and resolved; what is opaque
   is what it goes on to run. This qualifies the verdict only when opacity is the *sole*
   remaining blocker; beside an uncatalogued module the verdict stays
   ``inconclusive``, because the reader could not tell which gap produced
@@ -108,13 +113,19 @@ one unconstanted kind (``deferred_crossing``). The four longest-standing:
   make coverage incomplete: it qualifies a verdict that is otherwise clean.
   Both arms consume it: the boundary arm and, since INV-nuhun, the taint arm
   (``_ARM_TAINT``, ``untyped_receiver_sink_zones``), which discloses the sink
-  receivers it could not type.
+  receivers it could not type. Sites whose method name is a known collision
+  (the catalogue's ``ambiguous_names``, e.g. ``.replace()``) are still
+  disclosed, but listed last in a clause of their own and carried in the
+  caveat's ``known_collisions`` field
+  (``BoundaryCoverage.untyped_receiver_collisions``, WI-jiful).
 
-The remaining eight — ``CAVEAT_ACCESSOR_NAME_RECEIVER``,
+The remaining eleven — ``CAVEAT_ACCESSOR_NAME_RECEIVER``,
 ``CAVEAT_UNKNOWN_RECEIVER_SCOPE``, ``CAVEAT_ANALYZER_METHOD_CALL_BLIND``,
 ``CAVEAT_ANALYZER_SUPPRESSED_METHODS``, ``CAVEAT_ANALYZER_CONSTRUCT_BLIND``,
-``CAVEAT_SINK_BEFORE_SOURCE_ONLY``, ``CAVEAT_HIGHER_FIDELITY_AVAILABLE`` and
-``CAVEAT_CHOICE_SHAPED_SOURCE`` — are each documented at their own
+``CAVEAT_SINK_BEFORE_SOURCE_ONLY``, ``CAVEAT_HIGHER_FIDELITY_AVAILABLE``,
+``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_UNREACHED_SINK_SHAPES``,
+``CAVEAT_WITHHELD_COMMUNITY_SANITIZER`` and
+``CAVEAT_WITHHELD_COMMUNITY_SUMMARY`` — are each documented at their own
 definition.
 
 A verdict may carry more than one kind at once.
@@ -129,15 +140,23 @@ How It Works
    has no I/O catalogue (uncatalogued languages); a supported language that
    produced zero call edges (blind languages); an external module whose
    method rows no emitted call could have matched
-   (``method_starved_modules``); a launch of an external program
-   (``_opaque_launch_sites``, marked ``qualifying_only`` when it is the sole
-   blocker); and calls into modules no catalogue row classifies
-   (``_uncatalogued_external_modules``). Every result, complete or not, also
-   carries the qualifying disclosures the caveats above are built from
-   (untyped / accessor-name receivers, deferred crossings, analyzer
-   blindness declarations, load-bearing grants, unused higher-fidelity
-   backends) plus ``analysis_fidelity``: language -> the pass IDs behind its
-   call edges, ``unattributed`` for an edge with no origin.
+   (``method_starved_modules``); opaque sites, which are launches of an
+   external program (``_opaque_launch_sites``) and calls to a shipped non-I/O
+   sink such as ``eval`` (INV-dudal), fed through one gate as
+   ``opaque = launches + sorted(evaluations)`` and marked ``qualifying_only``
+   when they are the sole blocker; and calls into modules no catalogue row
+   classifies (``_uncatalogued_external_modules``). When some of those
+   unclassified modules are third-party dependency source,
+   ``_untraced_dependency_clause`` appends to the withheld reason that N of
+   them are untraced dependency source whose I/O is unknown, not absent
+   (WI-pogar). Every result, complete or not, also carries the qualifying
+   disclosures the caveats above are built from (untyped / accessor-name
+   receivers, deferred crossings, analyzer blindness declarations,
+   load-bearing grants, unused higher-fidelity backends),
+   ``untraced_vouched_grants`` (the load-bearing grants an overlay made and
+   the built-in catalogue does not), plus ``analysis_fidelity``: language ->
+   the pass IDs behind its call edges, ``unattributed`` for an edge with no
+   origin.
 3. ``verify_claim(claim, boundary_map, coverage)`` checks one boundary claim
    and ``verify_taint_claim(claim, findings, ...)`` one taint-flow claim, each
    returning a ``ClaimVerdict``; both thin wrappers stamp
@@ -145,30 +164,76 @@ How It Works
    production-sourced flows by default: flows sourced in test, mock,
    fixture, benchmark, test-support or migration code are left out of
    ``evidence_count`` and counted per rule in ``excluded_flows`` (restored by
-   ``include_non_production``). Two further exclusions are disclosed the
-   same way: ``sanitized_flows`` (a sanitizer lies on every route) and
+   ``include_non_production``). Three further exclusions are disclosed the
+   same way: ``sanitized_flows`` (a sanitizer lies on every route),
    ``resource_naming_flows`` (the tainted value only names the resource of a
-   sink whose catalogue row takes no content argument).
-4. ``verify_claims(claims, boundary_map, findings, ...)`` checks all, then
-   passes every verdict through ``_require_coverage_to_confirm``, the
+   sink whose catalogue row takes no content argument), and
+   ``trusted_sink_flows`` (the project declared the sink ``trust_level:
+   trusted``). A flow whose ``walk_blocked_by_values`` is exactly
+   ``("sink_before_source",)`` cannot carry a ``violated`` verdict alone:
+   when every surviving flow is of that shape they are reported as
+   ``evidence`` and the verdict is ``confirmed_with_caveats`` with
+   ``CAVEAT_SINK_BEFORE_SOURCE_ONLY`` (INV-muhij).
+4. ``verify_claims(claims, boundary_map, taint_findings, ...)`` checks all,
+   then passes every verdict through ``_require_coverage_to_confirm``, the
    backstop that applies to every constraint kind: given a ``blind_reason``,
    a confirming verdict becomes ``inconclusive`` (caveats kept), or
    ``confirmed_with_caveats`` with an opaque-boundary caveat when named
-   opaque launch sites are the only blocker. ``violated`` is never touched.
+   opaque sites (program launches, or calls to a shipped non-I/O sink such
+   as ``eval``) are the only blocker. Before the gate runs,
+   ``_withhold_for_tainted_evaluation`` withdraws the opaque qualification
+   for a taint claim whose own label reaches such an evaluation site, so
+   that verdict stays ``inconclusive``. ``violated`` is never touched.
+   For a taint claim whose source label only a project catalogue declares,
+   ``blind_by_source_taint`` substitutes a per-label ``ScopedBlindness``
+   that ignores no-catalogue languages the label cannot start in (WI-rusil).
+   Straight after the gate, a taint claim over one of ``taint_sinks/``'s
+   non-boundary zones (ADR-0060) passes through ``_apply_sink_zone_gap``:
+   a present language with no sink in the zone withholds a clean verdict, and
+   declared unreached shapes qualify it with ``CAVEAT_UNREACHED_SINK_SHAPES``
+   (INV-pivam). Then ``_disclose_scoped_blindness`` names the set-aside
+   languages in ``details``. Last, ``_disclose_untraced_vouch`` appends to a confirming
+   verdict's ``details`` the modules that only an overlay's
+   ``module_completeness`` grant vouched for, whose source was not traced;
+   the category and exit code stay the same (WI-pogar, ADR-0016 §7).
 5. ``catalog_provenance`` records which catalogues the verdicts were computed
    against, keeping command-line catalogues apart from the claims file's
    ``extra_catalogs`` (the analysed repository supplying its own grading
    criteria); the CLI puts it in the ``--json`` envelope, and
    ``render_catalog_provenance_text`` renders the same disclosure for text
-   output (nothing when only the shipped catalogue was used). It changes no
-   verdict.
+   output. With only the shipped catalogue it still renders the run-level
+   notes (the ``kind_adjudication`` census, shipped community overlays,
+   load-bearing completeness grants, each row carrying ``untraced_vouched``,
+   the overlay-only subset); the user-supplied block appears only
+   when a user catalogue was used. ``tiers`` lists every loaded catalogue file
+   (``LoadedCatalogueFile``), not only the flag's and the claims file's, under
+   ``CATALOGUE_TIERS`` (``builtin`` / ``community`` / ``yours`` / ``in_repo``;
+   ``catalogue_tiers``, ADR-0061 ruling 5): a ``provenance: community`` line
+   wins, other shipped files are builtin, and the rest are placed by whether
+   they sit inside the analysed repository (a file inside it also carries its
+   git state). ``user_supplied`` is also true when a ``yours`` / ``in_repo``
+   file came from the config tiers or a channel directory, and a
+   ``module_completeness`` grant in a community file is listed under
+   ``withheld_completeness_grants`` whatever path loaded it -- CLI flag,
+   claims file, config tier or channel directory -- because the load
+   withholds it on every one (INV-lamap); the text names withheld grants
+   whether or not anything was user-supplied. Only files the run LOADED are
+   described: an overlay ``--no-default-overlays`` omitted is listed under
+   ``omitted_community_overlays`` (and a text NOTE), never as user-supplied
+   input or a withheld grant (INV-dozav); a community taint or
+   function-summary file it omitted is listed there too, with its
+   ``family``. A taint file or I/O overlay a flag or claims file named that
+   declares ``provenance: community`` loaded as a community row, so it is
+   listed under ``named_community_files`` (and a text NOTE), never in
+   ``layers`` or the user-supplied block, and it does not set
+   ``user_supplied``. It changes no verdict.
 """
 from __future__ import annotations
 
 from collections.abc import (
     Iterable, Iterator, Mapping, Sequence, Set as AbstractSet,
 )
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -178,6 +243,7 @@ if TYPE_CHECKING:
 import yaml
 
 from .axis_meta_keys import call_family_edge_types
+from .call_constructs import reached_row_kind
 from .edge_types import is_grpc_rpc_implementation
 from .io_primitive_kinds import (
     called_on_a_named_owner,
@@ -341,7 +407,17 @@ from .paths import classify_test_file, is_migration_file
 # sink can only have been told WHICH resource to act on is now disclosed here
 # instead of counted as evidence; it remains a TRUE POSITIVE on the correctness
 # axis and is excluded on USEFULNESS, structurally and per sink.
-VERIFY_CLAIMS_SCHEMA_VERSION = "2.4"
+# 2.5 adds the per-verdict ``trusted_sink_flows`` count (WI-lukoz), on 2.4's
+# reasoning: an added key, and the flows it counts are no longer in
+# ``evidence_count``. ``trust_level: trusted`` on a project sink used to be
+# documented and inert; it now excludes that sink's flows and discloses them.
+# 2.6 adds the per-evidence-row ``sink_carriers`` (INV-hopib): the calls a
+# stream-object sink was written through. And a stream written ONLY through
+# calls that are themselves sinks in the same zone is no longer a row of its
+# own beside them -- ``print(k, file=sys.stderr)`` is one row, not two -- so
+# ``evidence_count`` and the ``details`` count can fall with no verdict moving,
+# which is the carve-out's "changed the meaning of an existing key".
+VERIFY_CLAIMS_SCHEMA_VERSION = "2.6"
 
 #: Verdict values that ASSERT THE CLAIM HOLDS. The one predicate for "did this
 #: claim pass", consumed by the coverage gate, the CLI's exit code and the CLI's
@@ -405,6 +481,15 @@ CAVEAT_USER_SUPPLIED_SANITIZER = "user_supplied_sanitizer"
 #: anything implying full coverage, because "I saw every call" is not "I saw
 #: every I/O" — INV-vavup measured bash redirection writes emitting no edge at
 #: all.
+#:
+#: SECOND KIND OF SITE, SAME CAVEAT (INV-dudal). A call that is EXACTLY a
+#: shipped non-I/O taint sink (ADR-0060: ``eval``, ``window.eval``,
+#: ``document.write``, ``document.writeln``) in a module no grant enumerates is
+#: an opaque site too: the call is examined, and what the evaluated code or the
+#: written markup goes on to do -- a ``fetch``, an ``<img src>`` request -- is
+#: in no edge. It used to be counted as a module "the I/O catalog could not
+#: classify" and withheld every clean verdict; it now qualifies one, under the
+#: same sole-blocker rule as a launch. The detail sentence names each kind.
 CAVEAT_OPAQUE_BOUNDARY = "opaque_boundary"
 
 #: Caveat kind: a catalogue entry the tool ships was REPLACED by one the
@@ -713,6 +798,97 @@ CHOICE_SHAPED_SOURCE_NAMES: frozenset[str] = frozenset({
 #: question is injection is reading a stronger fact than the label states.
 CAVEAT_CHOICE_SHAPED_SOURCE = "choice_shaped_source"
 
+#: Caveat kind: the claim's sink zone has shapes the analysis cannot reach in a
+#: language present in the repo, so a clean verdict holds only for the sinks it
+#: could see (INV-pivam). The zones are ADR-0060's non-boundary ones; the shapes
+#: are the ``unreached:`` entries of their shipped files (``new Function(s)``,
+#: a string ``setTimeout``, an ``innerHTML`` assignment). Measured before this
+#: existed: a JS ``new Function(process.env.X)()`` against "host_secret must
+#: not reach code_execution" read ``confirmed`` rc 0 with ``caveats: []``.
+CAVEAT_UNREACHED_SINK_SHAPES = "unreached_sink_shapes"
+
+#: Caveat kind: a reported flow crosses a sanitizer from a COMMUNITY catalogue
+#: file, which was not credited (ADR-0061 ruling 2, WI-dikit). A community row
+#: may add a finding but never remove one, and a sanitizer only removes, so the
+#: flow is reported -- and the verdict names the withheld sanitizers, because
+#: the finding rests on withholding them and the operator can vouch for one
+#: (copy its file into taint_sanitizers.d and delete the provenance line).
+#: Rides the VIOLATED path, like the choice-shaped caveat: it qualifies a
+#: reported finding, not a clean verdict. Measured before this existed: the
+#: shipped ``Fernet.encrypt`` sanitizer turned a plaintext -> host_fs claim
+#: into plain ``confirmed`` with ``sanitized_flows: 1`` and no caveat.
+CAVEAT_WITHHELD_COMMUNITY_SANITIZER = "withheld_community_sanitizer"
+
+#: Caveat kind: this run's call graph calls function summaries from a
+#: COMMUNITY file that would TERMINATE a taint branch, and the walk did not let
+#: them (ADR-0061 ruling 2, WI-tigud). Terminating removes a finding, which an
+#: unvouched row may not do, so a flow they would have closed may be among the
+#: reported ones. RUN-SCOPED like the user-summary credit -- a withheld
+#: termination changes which branches the walk follows, not one finding -- so
+#: it rides every violated taint verdict of the run and may over-name.
+CAVEAT_WITHHELD_COMMUNITY_SUMMARY = "withheld_community_summary"
+
+
+@dataclass(frozen=True)
+class SinkZoneGap:
+    """What one taint claim's sink zone cannot see, per language (INV-pivam).
+
+    Built by ``cmd_verify_claims`` for claims over a zone ``taint_sinks/``
+    ships (ADR-0060), over the languages present in the repo that a flow of
+    the claim can be in.
+
+    ``uncovered_languages``: present languages with NO sink in the zone, so a
+    flow into it there cannot be found at all -- the verdict is withheld, as
+    it is for a language with no taint catalogue (INV-potu), one zone at a
+    time. ``unreached_shapes``: for present languages that do have sinks in
+    the zone, the shapes of it no call edge reaches -- a clean verdict is
+    qualified with :data:`CAVEAT_UNREACHED_SINK_SHAPES` naming them.
+    """
+
+    zone: str
+    uncovered_languages: tuple[str, ...]
+    unreached_shapes: tuple[tuple[str, tuple[str, ...]], ...]
+
+
+def _apply_sink_zone_gap(verdict: ClaimVerdict, gap: SinkZoneGap) -> ClaimVerdict:
+    """Withhold or qualify a clean verdict by what its sink zone cannot see.
+
+    A ``violated`` or ``inconclusive`` verdict is untouched: a found flow is
+    trustworthy whatever else the zone misses, and a withheld verdict is
+    already the stronger statement. A language with no sink in the zone
+    dominates an unreached shape, for the reason blindness dominates a caveat
+    in :func:`_require_coverage_to_confirm`.
+    """
+    if verdict.verdict not in CONFIRMING_VERDICTS:
+        return verdict
+    if gap.uncovered_languages:
+        langs = ", ".join(gap.uncovered_languages)
+        return _require_coverage_to_confirm(verdict, (
+            f"language(s) {langs} ha{'s' if len(gap.uncovered_languages) == 1 else 've'} "
+            f"no sink in the '{gap.zone}' zone, so a flow into it there could "
+            f"not be seen"
+        ))
+    if not gap.unreached_shapes:
+        return verdict
+    entries = sorted(
+        f"{lang}: {shape}" for lang, shapes in gap.unreached_shapes for shape in shapes
+    )
+    return replace(
+        verdict,
+        verdict="confirmed_with_caveats",
+        caveats=_merge_caveat(verdict.caveats, {
+            "kind": CAVEAT_UNREACHED_SINK_SHAPES,
+            "zone": gap.zone,
+            "entries": entries,
+            "detail": (
+                f"No flow reaches a '{gap.zone}' sink the analysis can see. "
+                f"These shapes belong to the zone but no call edge reaches "
+                f"them, so a flow through one would not be found: "
+                f"{'; '.join(entries)}."
+            ),
+        }),
+    )
+
 
 def is_choice_shaped_source(primitive: str) -> bool:
     """Whether a source primitive's value was CHOSEN rather than authored.
@@ -758,6 +934,13 @@ def _merge_caveat(
     for i, cav in enumerate(existing):
         if cav.get("kind") != new.get("kind"):
             continue
+        # A deferred-crossing caveat is PER BOUNDARY (INV-fogum): one taint
+        # label can be derived from two shadowed boundaries (``net_recv`` and
+        # ``db_read`` both give ``untrusted_input``), and folding them would
+        # keep the first boundary's name over the second's sites.
+        if (new.get("kind") == "deferred_crossing"
+                and cav.get("boundary") != new.get("boundary")):
+            continue
         merged_entries = sorted(
             set(cav.get("entries") or []) | set(new.get("entries") or [])
         )
@@ -778,30 +961,83 @@ def _merge_caveat(
             rebuilt = _untyped_receiver_caveat(
                 cav.get("boundary", ""), merged_entries,
                 arm=cav.get("arm", _ARM_BOUNDARY),
+                collisions=(
+                    set(cav.get("known_collisions") or ())
+                    | set(new.get("known_collisions") or ())
+                ),
+            )
+        elif new.get("kind") == "deferred_crossing":
+            rebuilt = _deferred_crossing_caveat(
+                cav.get("boundary", ""), merged_entries,
+                arm=cav.get("arm", _ARM_BOUNDARY),
             )
         return [*existing[:i], rebuilt, *existing[i + 1:]]
     return [*existing, new]
 
 
 def _opaque_boundary_caveat(sites: list[str]) -> dict[str, Any]:
-    """The one place the opaque-launch caveat is built, for both claim kinds.
+    """The one place the opaque-site caveat is built, for both claim kinds.
 
     Boundary claims and taint claims reach this from different code paths, and
     two spellings of one disclosure would drift the first time either was
     edited — the failure this module has paid for repeatedly (L53). A parity
     test asserts both paths produce the same ``kind`` and the same site list.
+
+    TWO KINDS OF SITE, ONE KIND OF CAVEAT (INV-dudal). A launch hands control to
+    a program; a shipped non-I/O sink (``eval``, ``document.write``) hands data
+    to the engine as code or markup. Both are examined calls whose continuation
+    is invisible, so they share the kind and the entry list; the sentence names
+    each for what it is, and a launch-only list reads exactly as it always did.
     """
-    shown = ", ".join(sites)
+    evaluated = _evaluation_site_names()
+    evaluations = [s for s in sites if s in evaluated]
+    launches = [s for s in sites if s not in evaluated]
+    parts: list[str] = []
+    if launches:
+        parts.append(
+            f"Control leaves this process at {len(launches)} call site(s) — "
+            f"{', '.join(launches)} — and hypergumbo cannot see inside a "
+            f"launched program, so what those programs do is not covered by "
+            f"this verdict."
+        )
+    if evaluations:
+        parts.append(
+            f"Data is evaluated as code or written into the page as markup at "
+            f"{len(evaluations)} call site(s) — {', '.join(evaluations)} — and "
+            f"hypergumbo cannot see what that code or markup goes on to do, so "
+            f"it is not covered by this verdict."
+        )
     return {
         "kind": CAVEAT_OPAQUE_BOUNDARY,
         "entries": list(sites),
-        "detail": (
-            f"The claim holds everywhere the analysis could see. Control "
-            f"leaves this process at {len(sites)} call site(s) — {shown} — "
-            f"and hypergumbo cannot see inside a launched program, so what "
-            f"those programs do is not covered by this verdict."
+        "detail": " ".join(
+            ["The claim holds everywhere the analysis could see.", *parts],
         ),
     }
+
+
+def _opaque_sites_reason(launches: list[str], evaluations: list[str]) -> str:
+    """The coverage reason's opening clause for named opaque sites (INV-dudal).
+
+    No trailing conclusion: the caller appends "so whether this I/O happens
+    there was never examined", and ``verify_claim`` appends its own. A
+    launch-only list renders exactly the sentence it always did.
+    """
+    parts: list[str] = []
+    if launches:
+        parts.append(
+            f"launches an external program at {len(launches)} call site(s) "
+            f"({_render_capped_names(launches)}) and cannot see what the "
+            f"launched program does"
+        )
+    if evaluations:
+        parts.append(
+            f"evaluates data as code or writes it into the page as markup at "
+            f"{len(evaluations)} call site(s) "
+            f"({_render_capped_names(evaluations)}) and cannot see what that "
+            f"code or markup goes on to do"
+        )
+    return "the analysis " + "; and it ".join(parts)
 
 
 #: How many call sites to spell out in the untyped-receiver caveat before the
@@ -848,6 +1084,18 @@ _UNTYPED_CONSEQUENCE = {
 }
 
 
+#: How the deferred-crossing sentence ends, per verdict arm. Under a taint
+#: claim no ``net_recv`` RESULT was asked for, so the boundary arm's ending would
+#: describe a verdict the reader does not have (INV-fogum).
+_DEFERRED_CONSEQUENCE = {
+    _ARM_BOUNDARY: "a clean {boundary} result does not cover it.",
+    _ARM_TAINT: (
+        "no taint flow can start from data arriving there, so a clean taint "
+        "verdict over what {boundary} would supply does not cover it."
+    ),
+}
+
+
 def _deferred_crossing_caveat(
     boundary: str, sites: list[str], *, arm: str = _ARM_BOUNDARY,
 ) -> dict[str, Any]:
@@ -884,14 +1132,15 @@ def _deferred_crossing_caveat(
             f"launch, registration or subscription, or a query composed here "
             f"and evaluated elsewhere. The data reaches a handler or a later "
             f"evaluation, not this call's return value, so this analysis "
-            f"cannot examine what arrives; a clean {boundary} result does not "
-            f"cover it."
+            f"cannot examine what arrives; "
+            f"{_DEFERRED_CONSEQUENCE[arm].format(boundary=boundary)}"
         ),
     }
 
 
 def _untyped_receiver_caveat(
     boundary: str, sites: list[str], *, arm: str = _ARM_BOUNDARY,
+    collisions: AbstractSet[str] = frozenset(),
 ) -> dict[str, Any]:
     """The one place the untyped-receiver disclosure is built.
 
@@ -905,9 +1154,24 @@ def _untyped_receiver_caveat(
     THE SENTENCE SAYS WHAT IS UNKNOWN AND WHAT IS NOT. The receiver's TYPE is
     the unknown; the call site is known exactly, which is why the entries are
     checkable locations rather than a count.
+
+    KNOWN COLLISIONS LAST (WI-jiful). ``collisions`` is the subset of ``sites``
+    whose method name the catalogue lists in ``ambiguous_names`` -- the
+    short-name collision set the row choice itself consults
+    (:func:`untyped_receiver_known_collisions`). On hypergumbo's own tree 63 of
+    119 sites were ``.replace()``, mostly ``str.replace``, burying the 19
+    ``mkdir`` and 12 ``write_text`` a reader can act on. They are still
+    DISCLOSED (``pathlib.Path.replace`` is a real sink an untyped receiver could
+    be), and ``entries`` is unchanged; they are listed after the others, named
+    in a clause of their own, and carried in ``known_collisions`` so a merge
+    re-renders the same sentence. With no collision the caveat is byte-identical
+    to what it was.
     """
+    marked = sorted(s for s in sites if s in collisions)
+    marked_set = set(marked)
+    plain = [s for s in sites if s not in marked_set]
     if len(sites) <= _MAX_REPORTED_UNTYPED_SITES:
-        where = ", ".join(sites)
+        where = ", ".join(plain + marked)
     else:
         # AT SCALE THE SITES ARE NOT THE FACT; THE METHOD NAMES ARE. Measured on
         # poetry: 306 fs_read sites are 16 distinct names (``read`` 95,
@@ -920,7 +1184,10 @@ def _untyped_receiver_caveat(
         # surface; this only bounds the sentence a human reads, the same trade
         # ``_MAX_REPORTED_UNCATALOGUED_MODULES`` and ``_MAX_EVIDENCE_ROWS``
         # already make.
-        names = sorted({_site_method(s) for s in sites})
+        colliding_names = sorted({_site_method(s) for s in marked})
+        names = sorted(
+            {_site_method(s) for s in plain} - set(colliding_names),
+        ) + colliding_names
         more = len(names) - _MAX_REPORTED_UNTYPED_SITES
         suffix = f" (+{more} more)" if more > 0 else ""
         shown = ", ".join(names[:_MAX_REPORTED_UNTYPED_SITES])
@@ -928,7 +1195,15 @@ def _untyped_receiver_caveat(
             f"{len(names)} distinct method(s): {shown}{suffix}; "
             f"the full site list is in this caveat's `entries`"
         )
-    return {
+    collision_clause = ""
+    if marked:
+        collision_names = ", ".join(sorted({_site_method(s) for s in marked}))
+        collision_clause = (
+            f" {len(marked)} of them call a name the catalogue lists as a "
+            f"known short-name collision with a common non-I/O method "
+            f"({collision_names}); they are listed last."
+        )
+    caveat: dict[str, Any] = {
         "kind": CAVEAT_UNTYPED_RECEIVER,
         # CARRIED, NOT RE-DERIVED. ``_merge_caveat`` re-renders a widened entry
         # list so the prose cannot quote a stale count, and it can only do that
@@ -945,9 +1220,14 @@ def _untyped_receiver_caveat(
             f"{len(sites)} call site(s) — {where} — a method the {boundary} "
             f"{_UNTYPED_SCOPE_NOUN[arm]} declares is called on a receiver "
             f"whose type could not be determined, "
-            f"{_UNTYPED_CONSEQUENCE[arm]}."
+            f"{_UNTYPED_CONSEQUENCE[arm]}.{collision_clause}"
         ),
     }
+    if marked:
+        # CARRIED, NOT RE-DERIVED, like ``boundary`` and ``arm``: the merge
+        # re-renders from the caveat alone and has no catalogue to ask.
+        caveat["known_collisions"] = marked
+    return caveat
 
 
 def _accessor_name_receiver_caveat(
@@ -1259,7 +1539,7 @@ class ClaimVerdict:
             io_primitives boundary their source came from (WI-vazal). Empty
             when there are no flows. The taint label alone cannot express
             this: ``AUTO_SOURCE_LABEL_MAP`` collapses ``net_recv``,
-            ``ipc_recv`` and ``db_read`` into the single label
+            ``ipc_recv``, ``db_read`` and ``navigation_read`` into the single label
             ``untrusted_input``, so "a request body reached the database" and
             "a row read from the database reached the database" were
             indistinguishable — and on an ORM-backed application the second
@@ -1315,6 +1595,14 @@ class ClaimVerdict:
     excluded, because the walk carries no argument identity and the flow might
     have reached the content.
     """
+    trusted_sink_flows: int = 0
+    """Flows excluded because their sink was DECLARED trusted (WI-lukoz).
+
+    A project sink catalogue's ``trust_level: trusted`` says the sink is safe
+    in context. Like :attr:`resource_naming_flows`, these flows leave
+    ``evidence_count`` and are counted here and named in ``details``, so a
+    clean verdict says what it set aside and on whose word.
+    """
     sanitized_flows: int = 0
     caveats: list[dict[str, Any]] = field(default_factory=list)
     #: Language -> the pass IDs that produced the call edges this verdict rests
@@ -1336,6 +1624,7 @@ class ClaimVerdict:
             "analysis_methods": self.analysis_methods,
             "sanitized_flows": self.sanitized_flows,
             "resource_naming_flows": self.resource_naming_flows,
+            "trusted_sink_flows": self.trusted_sink_flows,
             "caveats": self.caveats,
             "analysis_fidelity": self.analysis_fidelity,
         }
@@ -1376,8 +1665,10 @@ class BoundaryCoverage:
     complete: bool
     reason: str = ""
     #: Qualified primitive names where control leaves the process
-    #: (``subprocess.run``, ``os.execv``). Populated only when opacity is what
-    #: made coverage incomplete; empty otherwise.
+    #: (``subprocess.run``, ``os.execv``), followed by the shipped non-I/O sink
+    #: calls whose evaluated code or written markup the analysis cannot follow
+    #: (``eval``, ``document.write`` -- INV-dudal). Populated only when opacity
+    #: is what made coverage incomplete; empty otherwise.
     opaque_sites: list[str] = field(default_factory=list)
     #: True when those launch sites are the SOLE remaining blocker — every
     #: other coverage check passed. This is the difference between a
@@ -1401,6 +1692,11 @@ class BoundaryCoverage:
     #: forgetting to apply it; see :func:`untyped_receiver_sites` for why the
     #: unscoped version of this signal was measured and refused.
     untyped_receiver_sites: dict[str, list[str]] = field(default_factory=dict)
+    #: The untyped-receiver call sites (labels, across every boundary and both
+    #: arms) whose method name the catalogue lists in ``ambiguous_names``
+    #: (WI-jiful). Read by the caveat to list those sites last and name them,
+    #: never to drop one. Populated on EVERY coverage result, like its sibling.
+    untyped_receiver_collisions: frozenset[str] = frozenset()
     #: SHADOWED boundary -> the deferred-crossing call sites that put it in
     #: shadow (ADR-0049 ruling 2 clause 3). Populated on EVERY coverage result,
     #: like :attr:`untyped_receiver_sites` and for the same reason.
@@ -1498,6 +1794,13 @@ class BoundaryCoverage:
     #: Not the whole grant list, which is 121 modules for python and would be
     #: the always-there disclosure a reader discounts.
     load_bearing_grants: dict[str, list[str]] = field(default_factory=dict)
+    #: Language -> the subset of :attr:`load_bearing_grants` that an OVERLAY
+    #: granted and the built-in catalogue does not (WI-pogar,
+    #: :func:`untraced_vouched_grants`): modules whose source this analysis did
+    #: not read, vouched for by someone's dated grant rather than by a trace.
+    #: The grant stands (owner decision, ADR-0016 §7); every confirming verdict
+    #: it supports says so in ``details``.
+    untraced_vouched_grants: dict[str, list[str]] = field(default_factory=dict)
     #: Language -> pass IDs behind its call edges (WI-lagod). Carried here for
     #: the reason every field on this object is: one computation site the
     #: verdict paths share, so a caller cannot forget it.
@@ -1885,6 +2188,84 @@ def _parse_taint_flow(
     )
 
 
+#: ADR-0061 ruling 5: the tiers ``catalog_provenance["tiers"]`` groups every
+#: loaded catalogue file under, always all four.
+CATALOGUE_TIERS: tuple[str, ...] = ("builtin", "community", "yours", "in_repo")
+
+
+@dataclass(frozen=True)
+class LoadedCatalogueFile:
+    """One catalogue file a verify-claims run read, before it is given a tier.
+
+    ``shipped`` says the file came from the installed package, where the tier
+    is its ``provenance:`` line alone. ``stage`` is ``"verify"`` for a file the
+    verify step reads itself, and ``"analysis"`` for a file in one of the
+    user's channels that the ANALYSIS reads while building the graph
+    (frameworks.d, dataflow_patterns.d, library_signatures.d) -- listed because
+    the operator placed it there, and marked because a graph served from cache
+    was built by an earlier run.
+    """
+
+    family: str  # axis: free-text — a YAML_CATALOGS directory name, displayed and never branched on.
+    path: Path
+    shipped: bool
+    stage: str = "verify"  # axis: bounded-enum
+
+
+def catalogue_tiers(
+    files: "Iterable[LoadedCatalogueFile]", repo_root: "Optional[Path]",
+) -> dict[str, list[dict[str, str]]]:
+    """Group loaded catalogue files by tier (ADR-0061 rulings 3-5).
+
+    The tier is the file's own ``provenance:`` line where it says
+    ``community``. Otherwise a shipped file is ``builtin``, and a file the
+    operator or the repository supplied is named by LOCATION: ``in_repo`` when
+    it lives inside the analysed repository, ``yours`` when it does not. A file
+    inside the repository -- whatever its tier -- carries its git state
+    (``committed`` / ``modified`` / ``untracked``), which is what hypergumbo
+    can check about who wrote it.
+
+    Describing must not fail a run it only reports on, so a file that cannot
+    be re-read here is listed by its location alone (the real load already
+    succeeded or already failed loudly).
+    """
+    from .in_repo_catalogues import git_state, is_inside
+    from .yaml_catalogs import declares_community
+
+    out: dict[str, list[dict[str, str]]] = {tier: [] for tier in CATALOGUE_TIERS}
+    seen: set[tuple[str, str]] = set()
+    for item in files:
+        key = (item.family, str(Path(item.path).resolve()))
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            data = yaml.safe_load(Path(item.path).read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):  # pragma: no cover - see docstring
+            data = None
+        entry = {"family": item.family, "path": str(item.path)}
+        if item.stage != "verify":
+            entry["stage"] = item.stage
+        community = declares_community(data)
+        if community:
+            entry["retrieved"] = str(data.get("retrieved", ""))
+        inside = (
+            not item.shipped and repo_root is not None
+            and is_inside(repo_root, item.path)
+        )
+        if inside:
+            assert repo_root is not None
+            entry["git_state"] = git_state(repo_root, item.path)
+        if community:
+            tier = "community"
+        elif item.shipped:
+            tier = "builtin"
+        else:
+            tier = "in_repo" if inside else "yours"
+        out[tier].append(entry)
+    return out
+
+
 #: The catalogue layers a verdict can rest on, in ASCENDING precedence within
 #: each kind. Fixed and always emitted so a consumer never has to read a
 #: missing key as "none" — the same convention ``dataflow_coverage`` follows.
@@ -1902,6 +2283,14 @@ def catalog_provenance(
     load_bearing: "Optional[Mapping[str, Sequence[str]]]" = None,
     catalog_languages: "Optional[Iterable[str]]" = None,
     include_default_overlays: bool = True,
+    *,
+    tier_files: "Sequence[LoadedCatalogueFile]" = (),
+    repo_root: "Optional[Path]" = None,
+    io_overlay_origins: "Sequence[tuple[Path, str]]" = (),
+    untraced_vouched: "Optional[Mapping[str, Sequence[str]]]" = None,
+    omitted_overlays: "Sequence[tuple[Path, str]]" = (),
+    named_community: "Sequence[tuple[Path, str, str]]" = (),
+    omitted_taint: "Sequence[tuple[Path, str, str]]" = (),
 ) -> dict[str, Any]:
     """Record which catalogues a verdict was computed against (INV-zosun).
 
@@ -1958,16 +2347,56 @@ def catalog_provenance(
     whole of ``telnetlib``, and those are not comparable claims. So the grants
     are enumerated separately, by MODULE.
 
+    EVERY LOADED FILE, BY TIER (ADR-0061 ruling 5, INV-gumom). ``layers``
+    names only what came from the command line and the claims file, so a
+    verdict resting on ``config.toml``, the user's ``<family>.d/`` channels or
+    a repository's own ``.hypergumbo.toml`` named none of them. ``tiers`` lists
+    every file in ``tier_files`` under ``builtin`` / ``community`` / ``yours``
+    / ``in_repo`` (:func:`catalogue_tiers`), and ``io_overlay_origins`` -- each
+    I/O overlay path with where it came from -- lets the completeness grants of
+    the config-tier and channel files be named like the flag's. A grant in a
+    COMMUNITY file is withheld at load (INV-lamap), whatever path loaded it,
+    so it is listed under ``withheld_completeness_grants`` instead -- for the
+    CLI flag and the claims file exactly as for the config tiers and channel
+    directories.
+
+    ONLY LOADED FILES ARE DESCRIBED (INV-dozav). ``--no-default-overlays``
+    drops every community overlay before the load, one named by flag or
+    claims file included, so ``layers`` and ``io_overlay_origins`` must hold
+    the files that survived; ``omitted_overlays`` -- each dropped path with
+    its origin -- is listed under ``omitted_community_overlays``. None of an
+    omitted file's rows or grants was used, so it is not user-supplied input
+    and its grant is not "withheld": the run never read it.
+
+    A NAMED FILE'S TIER IS ITS LINE TOO (ADR-0061 ruling 3). A taint file or
+    I/O overlay a flag or the claims file named that declares ``provenance:
+    community`` loads as a community row: it only adds, its sanitizers are
+    withheld and so are its completeness grants. So the caller leaves it out
+    of ``layers`` -- which hold the user-supplied input a verdict rests on --
+    and passes it as ``named_community`` (``(path, origin, family)``), listed
+    under ``named_community_files`` (an overlay's grants still go to
+    ``withheld_completeness_grants``); ``tiers`` lists it under
+    ``community``. Under ``--no-default-overlays`` the caller passes a taint
+    file, with any community file in the user's ``taint_*.d`` channels and
+    ``function_summaries.d``, as ``omitted_taint`` instead, listed under
+    ``omitted_community_overlays`` with its ``family`` (an omitted overlay
+    arrives as ``omitted_overlays``).
+
     Returns:
         ``{"user_supplied": bool, "layers": {kind: {"cli": [...],
         "claims_file": [...]}}, "completeness_grants": [...],
+        "withheld_completeness_grants": [...], "omitted_community_overlays":
+        [{"path", "origin"[, "family"]}], "named_community_files":
+        [{"family", "path", "origin"}], "tiers": {tier: [...]},
         "kind_adjudication": {...}}`` — paths as strings, exactly as the user
         wrote them, so a reader can find the file; one grant record per overlay
         that vouched for at least one module; and
         :func:`~.io_boundary.kind_assertion_census` over ``catalog_languages``,
         which is how much of what the rows ASSERT has been argued for in
         writing. Every key is always present, so a consumer never reads a
-        missing one as zero.
+        missing one as zero. ``user_supplied`` is true when any file came from
+        the operator or the repository -- the flag, the claims file, the
+        config tiers or a channel directory.
     """
     from .io_boundary import default_overlays, kind_assertion_census
 
@@ -1980,10 +2409,33 @@ def catalog_provenance(
         any_user = any_user or bool(cli_list) or bool(claims_list)
         out[kind] = {"cli": cli_list, "claims_file": claims_list}
     io_cli, io_claims = layers.get("io_primitives", ((), ()))
-    grants = [
-        *_completeness_grants(io_cli, "cli"),
-        *_completeness_grants(io_claims, "claims_file"),
+    # INV-kobam: ONE partition for every origin. ``load_catalog`` withholds a
+    # community file's grants whatever path loaded it, so the disclosure asks
+    # the same question of the flag's and the claims file's files as of the
+    # config tiers' -- skipping it for those two listed a withheld grant as an
+    # applied one. The flag and claims-file paths are read from ``layers``
+    # (which every caller supplies) and skipped in ``io_overlay_origins`` only
+    # so they are not listed twice.
+    #
+    # A community overlay a flag or claims file named is not in ``layers``
+    # (ADR-0061 ruling 3: it is a community row, passed as
+    # ``named_community``), but its grants are still withheld ones to list.
+    sources: list[tuple[Path, str]] = [
+        *((Path(p), "cli") for p in io_cli),
+        *((Path(p), "claims_file") for p in io_claims),
+        *((Path(p), origin) for p, origin, family in named_community
+          if family == "io_primitives"),
+        *((Path(p), origin) for p, origin in io_overlay_origins
+          if origin not in ("cli", "claims_file")),
     ]
+    grants: list[dict[str, Any]] = []
+    withheld: list[dict[str, Any]] = []
+    for path, origin in sources:
+        applied, held = _partition_completeness_grants(path, origin)
+        grants.extend(applied)
+        withheld.extend(held)
+    tiers = catalogue_tiers(tier_files, repo_root)
+    any_user = any_user or bool(tiers["yours"]) or bool(tiers["in_repo"])
     # THE THIRD STATE (ADR-0047). ``user_supplied`` is a boolean and this is a
     # value neither of its settings describes: hypergumbo SHIPPED these rows
     # and does not vouch for them. Collapsing it into "shipped, therefore
@@ -2006,8 +2458,14 @@ def catalog_provenance(
     # gate declared examined negatives because a grant said so. Empty when the
     # caller has no coverage to hand (older callers) and when nothing was
     # load-bearing, so the key is always present and a consumer can rely on it.
+    # WI-pogar: each row also names the modules only an OVERLAY vouched for
+    # (``BoundaryCoverage.untraced_vouched_grants``) -- source this analysis
+    # did not read, confirmed on a grant rather than a trace. Always present,
+    # empty when every grant was the built-in catalogue's.
+    _untraced = untraced_vouched or {}
     bearing = [
-        {"language": lang, "modules": sorted(mods)}
+        {"language": lang, "modules": sorted(mods),
+         "untraced_vouched": sorted(_untraced.get(lang, ()))}
         for lang, mods in sorted((load_bearing or {}).items()) if mods
     ]
     # INV-nular. The three keys above answer "whose rows were these?"; this one
@@ -2026,10 +2484,42 @@ def catalog_provenance(
         "user_supplied": any_user,
         "layers": out,
         "completeness_grants": grants,
+        "withheld_completeness_grants": withheld,
+        "omitted_community_overlays": [
+            {"path": str(p), "origin": origin} for p, origin in omitted_overlays
+        ] + [
+            {"path": str(p), "origin": origin, "family": family}
+            for p, origin, family in omitted_taint
+        ],
+        "named_community_files": [
+            {"family": family, "path": str(p), "origin": origin}
+            for p, origin, family in named_community
+        ],
+        "tiers": tiers,
         "shipped_default": shipped,
         "load_bearing_grants": bearing,
         "kind_adjudication": census,
     }
+
+
+def _partition_completeness_grants(
+    path: Path, origin: str,
+) -> "tuple[list[dict[str, Any]], list[dict[str, Any]]]":
+    """``(applied, withheld)`` grant records for one overlay file.
+
+    A file declaring ``provenance: community`` has its grants withheld at load
+    for every origin (ADR-0061 ruling 2, INV-lamap), so its records go in the
+    second list; the tier is the file's own line, never where it came from.
+    The declaration is read only when the file vouches for something, and only
+    after :func:`_completeness_grants` re-read it successfully, so the read
+    cannot raise on a file the describe step had to skip.
+    """
+    from .io_boundary import overlay_declares_community
+
+    records = _completeness_grants([path], origin)
+    if records and overlay_declares_community(path):
+        return [], records
+    return records, []
 
 
 def _completeness_grants(
@@ -2190,10 +2680,81 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
         )
         for row in bearing:
             lines.append(f"    {row['language']}: {', '.join(row['modules'])}")
+        untraced_rows = [r for r in bearing if r.get("untraced_vouched")]
+        for row in untraced_rows:
+            # WI-pogar / ADR-0016 §7: the grant stands, and says what it is.
+            lines.append(
+                f"  Of these, an overlay -- not the built-in catalogue -- "
+                f"vouched for {row['language']}: "
+                f"{', '.join(row['untraced_vouched'])}; their source was not "
+                f"analysed (untraced dependency).",
+            )
         lines.append(
             "  A wrong entry here is a false all-clear; the audits are dated in "
             "the catalogue's module_completeness block.",
         )
+    # INV-dozav: BEFORE the user-supplied early return, because a run whose
+    # only user input was omitted has none left -- and the omission is still
+    # worth a line on the page, not only on stderr.
+    omitted = provenance.get("omitted_community_overlays") or []
+    if omitted:
+        lines.append("")
+        lines.append(
+            f"NOTE: {len(omitted)} catalogue file(s) omitted by "
+            f"--no-default-overlays (they declare provenance: community);",
+        )
+        lines.append(
+            "  none of their rows or completeness grants was used:",
+        )
+        for entry in omitted:
+            lines.append(
+                f"    {entry.get('path')}  [{_grant_origin_label(entry)}]",
+            )
+    # ADR-0061 ruling 3: a community taint file a flag or claims file named
+    # is a COMMUNITY row, not user-supplied input -- so it is named here, in
+    # the same words as the JSON's ``named_community_files``, and never in the
+    # user-supplied block below.
+    named_community = provenance.get("named_community_files") or []
+    if named_community:
+        lines.append("")
+        lines.append(
+            f"NOTE: {len(named_community)} catalogue file(s) named by flag or "
+            f"claims file declare provenance: community,",
+        )
+        lines.append(
+            "  so they loaded as COMMUNITY rows: they only add -- a sanitizer "
+            "never clears a flow, a",
+        )
+        lines.append(
+            "  completeness grant never applies (ADR-0061). Delete the line to "
+            "vouch for a file:",
+        )
+        for entry in named_community:
+            lines.append(
+                f"    {entry.get('path')}  [{_grant_origin_label(entry)}]",
+            )
+    # INV-kobam's withheld grants, BEFORE the user-supplied early return: the
+    # file that carries one declares provenance: community, so it is not user
+    # input (ADR-0061 ruling 3) and a run with nothing else of the user's
+    # would otherwise list the grant in JSON and never on the page.
+    withheld = provenance.get("withheld_completeness_grants") or []
+    if withheld:
+        lines.append("")
+        lines.append(
+            "NOTE: WITHHELD GRANTS — these files declare provenance: community, "
+            "so their completeness",
+        )
+        lines.append(
+            "  grants did not apply (ADR-0061); delete the line to vouch for "
+            "a file:",
+        )
+        for grant in withheld:
+            label = _grant_origin_label(grant)
+            lines.append(
+                f"    {grant.get('language')}: "
+                f"{', '.join(grant.get('modules') or ())}",
+            )
+            lines.append(f"      from {grant.get('path')}  [{label}]")
     if not provenance.get("user_supplied"):
         return lines
     lines += [
@@ -2201,11 +2762,24 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
         "NOTE: these verdicts were computed against USER-SUPPLIED catalogue "
         "input.",
     ]
+    named: set[str] = set()
     for kind, layer in sorted(provenance.get("layers", {}).items()):
         for origin, label in (("cli", "CLI flag"),
                               ("claims_file", "claims-file extra_catalogs")):
             for path in layer.get(origin, []):
+                named.add(str(path))
                 lines.append(f"  {kind}: {path}  [{label}]")
+    # ADR-0061 ruling 5 (INV-gumom): the files no flag or claims file named --
+    # config.toml, the user's channels, the repository's own .hypergumbo.toml.
+    tiers = provenance.get("tiers") or {}
+    for entry in tiers.get("yours") or []:
+        if entry["path"] not in named:
+            lines.append(f"  {entry['family']}: {entry['path']}  [yours]")
+    for entry in tiers.get("in_repo") or []:
+        lines.append(
+            f"  {entry['family']}: {entry['path']}  "
+            f"[in-repo, {entry.get('git_state', 'untracked')}]"
+        )
     lines.append(
         "  A verdict is only as truthful as the catalogue behind it: a row "
         "with the wrong",
@@ -2238,10 +2812,7 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
             "(closed-world):",
         )
         for grant in grants:
-            label = (
-                "CLI flag" if grant.get("origin") == "cli"
-                else "claims-file extra_catalogs"
-            )
+            label = _grant_origin_label(grant)
             modules = ", ".join(grant.get("modules") or ())
             lines.append(
                 f"    {grant.get('language')}: {modules}",
@@ -2250,6 +2821,33 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
                 f"      from {grant.get('path')}  [{label}]",
             )
     return lines
+
+
+#: How the text rendering names where a completeness grant came from.
+_GRANT_ORIGIN_LABELS: dict[str, str] = {
+    "cli": "CLI flag",
+    "claims_file": "claims-file extra_catalogs",
+    "user_channel": "your io_primitives.d",
+    "config": "your config.toml",
+    "in_repo_config": "the repository's .hypergumbo.toml, opted in",
+}
+
+
+def _grant_origin_label(grant: "Mapping[str, Any]") -> str:
+    """The text rendering's name for a grant record's origin, else the raw one.
+
+    Shared by the applied, the withheld, the omitted and the named-community
+    blocks so all four say where a file came from in the same words. A record
+    carrying a ``family`` (a taint file) names it too, and its channel is that
+    family's ``.d`` directory, not io_primitives.d.
+    """
+    origin = str(grant.get("origin"))
+    family = grant.get("family")
+    if family is None:
+        return _GRANT_ORIGIN_LABELS.get(origin, origin)
+    if origin == "user_channel":
+        return f"your {family}.d"
+    return f"{_GRANT_ORIGIN_LABELS.get(origin, origin)}, {family}"
 
 
 def validate_taint_flow_vocabulary(
@@ -3328,7 +3926,7 @@ def _uncatalogued_external_modules(
     doing ``Net::HTTP.new(...).post(path, "key=#{ENV['API_KEY']}")``: both the
     ``net_send`` and ``fs_write`` claims return ``confirmed`` rc 0, with an empty
     ``unsupported_taint_languages`` and no disclosure of any kind — and the
-    analyzer is not blind, it emits ``calls -> ruby:http:0-0:new:external_symbol``.
+    analyzer is not blind, it emits ``calls -> ruby:Net::HTTP:0-0:new:external_symbol``.
     Tracked separately; naming it here rather than asserting it away is the
     point, because a gate that mis-states its own scope is the shape of defect
     this function exists to correct.
@@ -3341,7 +3939,7 @@ def _uncatalogued_external_modules(
     # function's residual depends on. Adding a seventh home is how the drift
     # WI-ribuz files gets one entry longer. Imported inside the function because
     # ``taint`` is heavy and only this one path needs it.
-    unknown, _vouched = _adjudicate_external_modules(
+    unknown, _vouched, _evaluations, _untraced = _adjudicate_external_modules(
         raw_edges, catalogs, first_party_packages,
     )
     return sorted(unknown)
@@ -3360,30 +3958,86 @@ def load_bearing_grants(
     load-bearing and is not listed; a call a row classified was examined by the
     row and is not listed either.
     """
-    _unknown, vouched = _adjudicate_external_modules(
+    _unknown, vouched, _evaluations, _untraced = _adjudicate_external_modules(
         raw_edges, catalogs, first_party_packages,
     )
     return {lang: sorted(mods) for lang, mods in sorted(vouched.items()) if mods}
+
+
+def untraced_vouched_grants(
+    load_bearing: Mapping[str, Sequence[str]],
+) -> dict[str, list[str]]:
+    """The load-bearing grants an OVERLAY made, not the built-in catalogue.
+
+    WI-pogar / ADR-0016 §7. Every load-bearing grant vouches for a module whose
+    source this analysis did not read -- the gate only ever adjudicates calls
+    into external stubs. A grant in the built-in catalogue is hypergumbo's own
+    dated audit of a RUNTIME module (that catalogue is stdlib-scoped by
+    policy); a grant only an overlay makes is someone's vouch for code that was
+    never traced -- typically a dependency, since "overlays are where
+    third-party modules go" (ADR-0016 Context). The owner decision: such a
+    grant may still confirm, and the verdict must say the source behind it was
+    not traced. This is the set that sentence names.
+
+    Asked of the built-in catalogue ALONE (``include_defaults=False``): a
+    community overlay may not declare ``module_completeness`` at all, and a
+    user overlay is precisely what is being separated out.
+    """
+    from .io_boundary import load_catalog
+
+    out: dict[str, list[str]] = {}
+    for lang, modules in sorted(load_bearing.items()):
+        builtin = load_catalog(lang, include_defaults=False)
+        vouched = sorted(
+            m for m in modules if not builtin.module_io_is_enumerated(m)
+        )
+        if vouched:
+            out[lang] = vouched
+    return out
 
 
 def _adjudicate_external_modules(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
     first_party_packages: frozenset[str] = frozenset(),
-) -> tuple[set[str], dict[str, set[str]]]:
-    """``(unknown, vouched)`` over one walk of the external call sites.
+) -> tuple[set[str], dict[str, set[str]], set[str], set[str]]:
+    """``(unknown, vouched, evaluations, untraced)`` over one walk of the external call sites.
+
+    ``untraced`` (WI-pogar) is the subset of ``unknown`` that
+    :func:`io_boundary.module_ecosystem` calls ``third_party`` under the call's
+    own catalogue: UNTRACED DEPENDENCY SOURCE, whose I/O is unknown because it
+    was never read (ADR-0016 §7). It only ever changes wording -- every member
+    is already in ``unknown`` and already withholds the verdict -- and it is
+    empty for a language that enumerates no standard library, where a
+    dependency and a runtime module cannot be told apart.
 
     Extracted from :func:`_uncatalogued_external_modules` when WI-lavut needed
     the complementary set: two walks sharing ``classify_call`` but not the
     iteration is INV-motos's shape (two callers, one predicate, different
     populations), so the split point is inside the loop, not beside it.
+
+    ``evaluations`` (INV-dudal) is the third population of the same walk: call
+    sites that are EXACTLY a shipped non-I/O taint sink (``eval``,
+    ``document.write``) in a module no grant enumerates. They are examined --
+    the catalogue says what they are -- and opaque: what the evaluated code or
+    written markup goes on to do is not in the edge set. They come back as site
+    names for the opaque-site channel, never as modules.
     """
-    from .taint import _module_from_symbol_path
+    from .io_boundary import ECOSYSTEM_THIRD_PARTY, module_ecosystem
+    from .taint import _module_from_symbol_path, shipped_non_boundary_sink_sites
 
     analyzed = _analyzed_modules(raw_edges)
     examined_reads = _classified_scoped_reads(raw_edges, catalogs)
+    sink_sites = shipped_non_boundary_sink_sites()
     unknown: set[str] = set()
     vouched: dict[str, set[str]] = {}
+    evaluations: set[str] = set()
+    untraced: set[str] = set()
+
+    def _unknown(name: str, catalog: IoBoundaryCatalog) -> None:
+        unknown.add(name)
+        if module_ecosystem(catalog, name) == ECOSYSTEM_THIRD_PARTY:
+            untraced.add(name)
     for edge, dst, catalog in _external_call_sites(raw_edges, catalogs):
         module = _module_from_symbol_path(dst)
         if not module:
@@ -3480,7 +4134,7 @@ def _adjudicate_external_modules(
         # AND THE UNKNOWN IS REPORTED PER DISJUNCT, not as the joined string.
         # ``string,sys/socket.h,ws2tcpip.h`` names nothing a reader can act on;
         # ``sys/socket`` does.
-        disjuncts = module_hint_disjuncts(module)
+        disjuncts = module_hint_disjuncts(module, catalog.language)
         unenumerated = [
             spellings for spellings in disjuncts
             if not any(
@@ -3501,7 +4155,35 @@ def _adjudicate_external_modules(
             continue
         if len(disjuncts) > 1:
             for spellings in unenumerated:
-                unknown.add(spellings[-1])
+                _unknown(spellings[-1], catalog)
+            continue
+        # (3) A SHIPPED NON-I/O SINK IS AN EXAMINED CALL, AND AN OPAQUE ONE
+        # (INV-dudal). ``taint_sinks/`` (ADR-0060) rows ``eval``,
+        # ``window.eval``, ``document.write`` and ``document.writeln``, and by
+        # that ADR's own rule no I/O row ever names them -- so step (1) can
+        # never match them and each call made ``eval`` / ``window`` /
+        # ``document`` a module "the I/O catalog could not classify", which
+        # withheld every clean verdict in any repo that calls one.
+        #
+        # NOT AN EXAMINED NEGATIVE. The call crosses no boundary of its own,
+        # but it hands data to the engine as CODE or MARKUP, and what that does
+        # -- a ``fetch`` inside the evaluated string, an ``<img src>`` the
+        # parser requests -- is in no edge. That is a launch's shape: we know
+        # exactly what the call is and cannot see what it starts. So it is
+        # reported the way a launch is, as a NAMED OPAQUE SITE, which
+        # qualifies a clean verdict and never makes one plain.
+        #
+        # EXACT, PER CALL. The (language, module slot, name) must be a shipped
+        # BUILT-IN row; the module is not marked examined (``document.
+        # getElementById`` still withholds, INV-zubuh: row presence is not
+        # enumeration). AFTER the enumeration test, so a module a grant
+        # already covers keeps its grant's answer -- Python's ``builtins.eval``
+        # is enumerated (INV-bofab) and is unchanged by this step. BEFORE the
+        # first-party tests, because an exact row hit is stronger evidence than
+        # a stem collision with a file named ``document.js``.
+        evaluation = _non_boundary_sink_site(edge, dst, sink_sites)
+        if evaluation is not None:
+            evaluations.add(evaluation)
             continue
         # AN UNRESOLVED FIRST-PARTY CALLEE IS NOT A CATALOG GAP. Its source was
         # read, so whatever I/O it performs was examined on its own edges — it
@@ -3525,7 +4207,12 @@ def _adjudicate_external_modules(
         # Measured 2026-08-24: 5 of bellman's 23 reported modules and 6 of
         # express's 17 are exactly this, and because ``qualifying_only`` is
         # ``not unknown``, those alone withheld every claim on both repos.
-        if is_definitionally_first_party(dst.split(":", 1)[0], module):
+        # The importing file goes with it, so a relative path that climbs out
+        # of the analysed root is not taken for the repo's own (INV-juvul).
+        if is_definitionally_first_party(
+            dst.split(":", 1)[0], module,
+            importer=symbol_path_slot(edge.get("src", "")),
+        ):
             continue
         # A MODULE THIS REPOSITORY PUBLISHES UNDER ITS OWN NAME IS NOT A
         # CATALOGUE GAP EITHER (INV-vivok). Asked last of the three because it
@@ -3536,8 +4223,56 @@ def _adjudicate_external_modules(
         # behaving exactly as before.
         if _is_first_party_package(module, first_party_packages):
             continue
-        unknown.add(module)
-    return unknown, vouched
+        _unknown(module, catalog)
+    return unknown, vouched, evaluations, untraced
+
+
+def _non_boundary_sink_site(
+    edge: dict[str, Any],
+    dst: str,
+    sink_sites: Mapping[str, AbstractSet[tuple[str, str]]],
+) -> str | None:
+    """The site name if this CALL is exactly a shipped non-I/O sink, else None.
+
+    Read off ``dst_ref`` first and the id slots second, for the reason
+    :func:`_launch_site_name` gives. A CALL only: an attribute read of
+    ``document.write`` passes the function as a value and evaluates nothing at
+    that site, so it stays with the module question (and its slot spells the
+    name ``document.write`` anyway, which no row matches).
+    """
+    if edge.get("type") not in call_family_edge_types():
+        return None
+    rows = sink_sites.get(dst.split(":", 1)[0])
+    if not rows:
+        return None
+    ref = _edge_dst_ref(edge)
+    if ref is not None:
+        module, name = ref.module_path, ref.name
+    else:
+        module, name = symbol_path_slot(dst), symbol_name_slot(dst)
+    if (module, name) not in rows:
+        return None
+    return _join_site_name(module, name)
+
+
+def _evaluation_site_names() -> frozenset[str]:
+    """Every site name :func:`_non_boundary_sink_site` can return.
+
+    The opaque-site channel carries launches and evaluations in ONE list,
+    because both are total opacity and every consumer of that list (both claim
+    arms, the scoped taint blindness, the caveat merge) already handles it; a
+    second list would be a second plumbing to keep in step. The sentence is
+    the only thing that differs, and this is how the renderer tells them apart.
+    A bash ``eval`` launch spelled the same way is evaluated code too, so the
+    one collision the names allow describes it correctly.
+    """
+    from .taint import shipped_non_boundary_sink_sites
+
+    return frozenset(
+        _join_site_name(module, name)
+        for rows in shipped_non_boundary_sink_sites().values()
+        for module, name in rows
+    )
 
 
 def untyped_receiver_sites(
@@ -3593,6 +4328,34 @@ def untyped_receiver_sites(
         }:
             grouped.setdefault(boundary, set()).add(site)
     return {b: sorted(sites) for b, sites in sorted(grouped.items())}
+
+
+def untyped_receiver_known_collisions(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> frozenset[str]:
+    """The untyped-receiver call sites whose method name is a KNOWN COLLISION.
+
+    WI-jiful. "Known" is the catalogue's own ``ambiguous_names`` -- the
+    hand-maintained list of short names that collide with common non-I/O
+    methods (``str.replace``, ``dict.get``). It is the SAME set the row choice
+    consults: io-boundaries hands ``catalog.ambiguous_names`` to
+    :func:`io_boundary.gate_named_entry`, and taint carries the same per-language
+    set onto its catalogue (WI-razol). Asked of the catalogue the site's own
+    language loaded, through the ONE walk both arms share
+    (:func:`_untyped_receiver_call_sites`), so the marked set is always a subset
+    of the sites either arm discloses.
+
+    Labels, not names: ``write`` can be a collision in one language's catalogue
+    and not in another's, and a site label belongs to exactly one language.
+    """
+    return frozenset(
+        site
+        for _lang, name, site, catalog in _untyped_receiver_call_sites(
+            raw_edges, catalogs,
+        )
+        if name in catalog.ambiguous_names
+    )
 
 
 def _untyped_receiver_call_sites(
@@ -3779,6 +4542,16 @@ def unknown_receiver_scope(
     polyglot repo cannot dilute the ratio with calls nothing could have
     adjudicated anyway. A resolved in-repo callee counts in the denominator and
     not the numerator, which is correct — resolving it IS typing its receiver.
+
+    ONLY AS COMMENSURABLE AS THE PRODUCERS' STAMP (WI-fuvaj). A call with no
+    receiver that a producer stamps ``method`` fills the denominator and can
+    never reach the numerator, which UNDERSTATES the untyped share. Go stamped
+    every package-qualified call (``fmt.Println``) that way until INV-tanom; on
+    alertmanager that printed 18.5% where the share over receiver calls is
+    about 31%. Java stamped every static (``Files.readAllBytes``,
+    ``System.getenv``) the same way until WI-fuvaj; on cassandra that counted
+    187,625 method call sites where 162,199 have a receiver (42.0% untyped
+    printed, 48.6% over receiver calls). Other producers are not audited here.
     """
     from .taint import _module_from_symbol_path
 
@@ -3953,11 +4726,12 @@ def method_starved_modules(
 
     So the question here is a PROXY. Did the analyzer emit, for a module that
     has instance-method rows, the calls those rows describe? A module counts as
-    examined when some call edge into it carries a construct among the kinds
-    the module declares (route 1), or names one of its function-kind rows
-    (route 2). The blind-Kotlin case fails both: before WI-nasuf, a repo
-    reached ``java.io.File`` only through its constructor, so the analysis did
-    not look.
+    examined when some call edge into it carries a construct that reaches a
+    kind the module declares (route 1, through the declared crosswalk
+    :func:`hypergumbo_core.call_constructs.reached_row_kind`), or names one of
+    its function-kind rows (route 2). The blind-Kotlin case fails both: before
+    WI-nasuf, a repo reached ``java.io.File`` only through its constructor, so
+    the analysis did not look.
 
     The proxy is loose in one direction, stated so it is not mistaken for more.
     One method-stamped edge satisfies route 1 for the WHOLE module, even an
@@ -4018,6 +4792,10 @@ def method_starved_modules(
     # blindness — and reporting it as blindness would downgrade every JS/TS repo
     # on earth, which is the blanket-downgrade failure mode this check is built
     # to avoid. ``None`` (could not check) is not ``empty`` (checked, found none).
+    # That measurement predates WI-nasuf and WI-dosuh: js_ts now stamps
+    # ``method`` on its untyped-receiver placeholders and ``assignment`` on a
+    # handler registration, so a JS repo that emits either is checked, not
+    # abstained on. The abstention is per language and per run.
     languages_with_construct_evidence: set[str] = {
         edge.get("src", "").split(":", 1)[0]
         for edge in raw_edges
@@ -4041,7 +4819,7 @@ def method_starved_modules(
         if not module or module not in modules:
             continue
         called.add(module)
-        # SATISFIED WHEN THE CONSTRUCT MATCHES ANY KIND THE MODULE DECLARES.
+        # SATISFIED WHEN THE CONSTRUCT REACHES A KIND THE MODULE DECLARES.
         #
         # Was `== "method"`, which asked a different question than the docstring
         # above states. A function-construct call into a module that declares
@@ -4049,13 +4827,22 @@ def method_starved_modules(
         # analysis DID look — whether it then matched a specific NAME is the
         # uncatalogued-module gate's job, one rung further down, not this one's.
         #
+        # THE CONSTRUCT IS TRANSLATED, NOT COMPARED (WI-dapap). ``call_construct``
+        # and ``IoPrimitive.kind`` are two axes, and testing the first for
+        # membership in the second's value set worked only where the tokens
+        # coincide. ``ws.onmessage = h`` (construct ``assignment``) reaches the
+        # METHOD row ``WebSocket.onmessage`` and classifies ``net_recv``, yet the
+        # raw test reported ``WebSocket`` starved in the same run (WI-zohuk).
+        # ``reached_row_kind`` is the declared crosswalk; an undeclared construct
+        # and ``constructor`` map to None and satisfy nothing here.
+        #
         # THE ORIGINAL SIGNAL IS UNCHANGED for the population it was built on: a
         # module declaring ONLY methods still cannot be satisfied by a
         # function-construct call, because "function" is not among its kinds.
         # That is the blind-Kotlin case (java.io.File, java.net.Socket) and the
         # INV-nular miskinding case, and both still starve.
-        construct = (edge.get("meta") or {}).get("call_construct")
-        if construct and construct in module_kinds[language].get(module, set()):
+        reached = reached_row_kind((edge.get("meta") or {}).get("call_construct"))
+        if reached is not None and reached in module_kinds[language].get(module, set()):
             satisfied.add(module)
             continue
         # SECOND ROUTE: THE CALLED NAME MATCHES A FUNCTION-KIND PRIMITIVE.
@@ -4112,6 +4899,9 @@ def compute_boundary_coverage(
         frozenset(first_party_packages or ()),
     )
     coverage.untyped_receiver_sites = untyped_receiver_sites(raw_edges, catalogs)
+    coverage.untyped_receiver_collisions = untyped_receiver_known_collisions(
+        raw_edges, catalogs,
+    )
     coverage.accessor_name_receiver_sites = accessor_name_receiver_sites(
         raw_edges, catalogs,
     )
@@ -4153,6 +4943,9 @@ def compute_boundary_coverage(
     }
     coverage.load_bearing_grants = load_bearing_grants(
         raw_edges, catalogs, frozenset(first_party_packages or ()),
+    )
+    coverage.untraced_vouched_grants = untraced_vouched_grants(
+        coverage.load_bearing_grants,
     )
     coverage.suppressed_sink_methods = {
         lang: sorted(hidden)
@@ -4380,15 +5173,23 @@ def _call_production_coverage(
     # launch is categorical — no amount of cataloguing makes the launched
     # program visible. Reporting the fixable blocker first would send a reader
     # on an errand that cannot succeed, then move the goalpost on them.
-    opaque = _opaque_launch_sites(raw_edges, catalogs)
-    unknown = _uncatalogued_external_modules(
+    launches = _opaque_launch_sites(raw_edges, catalogs)
+    # ONE WALK for both answers the gate needs from it (INV-dudal): the modules
+    # no grant examined, and the shipped non-I/O sink sites that are examined
+    # but opaque. ``_uncatalogued_external_modules`` is the same walk keeping
+    # only the first.
+    unknown_set, _vouched, evaluations, untraced = _adjudicate_external_modules(
         raw_edges, catalogs, first_party_packages,
     )
+    unknown = sorted(unknown_set)
+    untraced_clause = _untraced_dependency_clause(untraced, catalogs)
+    # Launches first, then evaluations: one channel, because both are total
+    # opacity and every consumer of ``opaque_sites`` already handles it.
+    opaque = launches + sorted(evaluations)
     if opaque:
-        # NOT ranked: these are launch SITES (commands and paths), not
+        # NOT ranked: these are SITES (commands, paths, ``eval``), not
         # modules, so `is_stdlib_module` has nothing to say about them and
         # asking would invent an order rather than reveal one.
-        shown = _render_capped_names(opaque)
         # DELIBERATELY NOT the "could not classify" wording used below: the
         # catalogue classified these exactly right, and blaming a missing row
         # would send the reader to add one that already exists. State the
@@ -4416,16 +5217,15 @@ def _call_production_coverage(
                 f"; and it makes calls into {len(unknown)} module(s) that the "
                 f"I/O catalog could not classify "
                 f"({_render_capped_names(_rank_modules_for_disclosure(unknown, catalogs))})"
-                f", which is what withholds the qualified verdict the launches "
-                f"alone would have earned"
+                f", which is what withholds the qualified verdict the "
+                f"{'launches' if not evaluations else 'sites above'} "
+                f"alone would have earned{untraced_clause}"
             )
         return BoundaryCoverage(
             complete=False,
             reason=(
-                f"the analysis launches an external program at "
-                f"{len(opaque)} call site(s) ({shown}) and cannot see "
-                f"what the launched program does, so whether this I/O happens "
-                f"there was never examined{withheld_by}"
+                f"{_opaque_sites_reason(launches, sorted(evaluations))}, so "
+                f"whether this I/O happens there was never examined{withheld_by}"
             ),
             opaque_sites=opaque,
             # ``not unknown`` is the whole qualification test: every check
@@ -4455,10 +5255,34 @@ def _call_production_coverage(
                 f"the analysis makes calls into {len(unknown)} module(s) that "
                 f"the I/O catalog could not classify ({shown}), so "
                 f"whether those calls perform this I/O was never examined"
+                f"{untraced_clause}"
             ),
         )
 
     return BoundaryCoverage(complete=True)
+
+
+def _untraced_dependency_clause(
+    untraced: "AbstractSet[str]", catalogs: dict[str, IoBoundaryCatalog],
+) -> str:
+    """``; N of them are untraced dependency source (...)`` or ``""`` (WI-pogar).
+
+    APPENDED, never substituted: the "could not classify" sentence stays true
+    and stays first, because it names the errand that works for every module
+    (catalogue the call). This adds the CAUSE for the ones that are installed
+    dependency source -- the analysis never read them, which ADR-0016 §7
+    rules is "I/O unknown, never clean" -- so a reader knows ``--trace-deps``
+    or an overlay is the remedy rather than a missing stdlib row. Empty when no
+    member is known to be a dependency, so a repo with none reads as before.
+    """
+    if not untraced:
+        return ""
+    names = _render_capped_names(_rank_modules_for_disclosure(untraced, catalogs))
+    return (
+        f"; {len(untraced)} of them are untraced dependency source ({names}): "
+        f"the analysis did not read their code, so their I/O is unknown, not "
+        f"absent (ADR-0016 §7)"
+    )
 
 
 def _default_coverage(boundary_map: BoundaryMap) -> BoundaryCoverage:
@@ -4475,7 +5299,7 @@ def _default_coverage(boundary_map: BoundaryMap) -> BoundaryCoverage:
     # confirmed I/O (total_io_edges, real categories) AND the external_potential
     # bucket. The WI-huhit/WI-foduh headline redefine excludes external_potential
     # from total_io_edges, but external_potential>0 still means the analysis ran
-    # and found (receiver-unresolved) calls, so it is NOT an unanalyzed input;
+    # and found (unclassified external) calls, so it is NOT an unanalyzed input;
     # this gate keeps the original "any boundary signal" semantics.
     if (
         boundary_map.total_io_edges == 0
@@ -4590,7 +5414,10 @@ def _verify_claim_uncredited(
         if untyped:
             out = _merge_caveat(
                 out,
-                _untyped_receiver_caveat(claim.constraint_boundary, untyped),
+                _untyped_receiver_caveat(
+                    claim.constraint_boundary, untyped,
+                    collisions=coverage.untyped_receiver_collisions,
+                ),
             )
         if accessor_named:
             # IMMEDIATELY AFTER ITS COMPLEMENT. A site moves from that list to
@@ -4828,6 +5655,12 @@ def _render_flow(v: "TaintFlowFinding") -> str:
     # path = [source, ...intermediate..., sink]; hops are the interior nodes.
     if len(v.path) > 2:
         row += f" via {len(v.path) - 2} hop(s)"
+    # INV-komoj: the read is not in ``source_symbol``'s body; say where it is.
+    if v.source_returned_by:
+        row += (
+            f", the value returned to it by {len(v.source_returned_by)} "
+            "function(s)"
+        )
     return row
 
 
@@ -4900,7 +5733,18 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
         # from two callers is two pairs under one name — the reason three
         # independent refuters read `collapsed_flow_count` as unreconcilable.
         "sink_call_sites": [list(site) for site in v.sink_call_sites],
+        # INV-hopib: a stream-object sink names the calls it was written
+        # through, so the record can be checked against its own line.
+        "sink_carriers": list(v.sink_carriers),
         "collapsed_flow_count": v.collapsed_flow_count,
+        # ADR-0061 ruling 2 (WI-dikit): community sanitizers this route crosses
+        # that were NOT credited -- vouched for, they would have cleared it.
+        "withheld_sanitizers": list(v.withheld_sanitizers),
+        # INV-komoj: the functions whose RETURN carried the value to
+        # ``source_symbol``. Non-empty means the read is not in
+        # ``source_symbol``'s own body, so a reader checking the row against
+        # the code must look in these.
+        "source_returned_by": list(v.source_returned_by),
     }
 
 
@@ -5021,7 +5865,7 @@ def _sanitizer_attribution(findings: list["TaintFlowFinding"]) -> str:
         # than by a claim about a sanitizer nobody named.
         return ""
     shown = ", ".join(
-        f"{name} (project-local)" if name in repo_supplied else name
+        f"{name} (user-supplied)" if name in repo_supplied else name
         for name in named
     )
     # "via X" WHEN ONE CANDIDATE, "one of" WHEN SEVERAL, because the barrier
@@ -5111,6 +5955,7 @@ def verify_taint_claim(
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
     coverage: Optional[BoundaryCoverage] = None,
     credited_user_summaries: "AbstractSet[str] | None" = None,
+    withheld_community_summaries: "Sequence[str]" = (),
 ) -> ClaimVerdict:
     """Verify a taint claim and stamp the fidelity behind the answer.
 
@@ -5124,6 +5969,7 @@ def verify_taint_claim(
         displaced_sources=displaced_sources,
         coverage=coverage,
         credited_user_summaries=credited_user_summaries,
+        withheld_community_summaries=withheld_community_summaries,
     )
     if coverage is not None:
         verdict.analysis_fidelity = dict(coverage.analysis_fidelity)
@@ -5139,6 +5985,7 @@ def _verify_taint_claim_uncredited(
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
     coverage: Optional[BoundaryCoverage] = None,
     credited_user_summaries: "AbstractSet[str] | None" = None,
+    withheld_community_summaries: "Sequence[str]" = (),
 ) -> ClaimVerdict:
     """Verify a single taint-flow claim against propagation findings.
 
@@ -5155,7 +6002,9 @@ def _verify_taint_claim_uncredited(
             ``excluded_flows`` bucket instead. Set True to restore the previous
             behavior of treating every source as in scope.
         coverage: Boundary-analysis coverage, read ONLY on the clean path and
-            ONLY for its untyped-receiver disclosures (INV-nuhun). This
+            ONLY for disclosures: the untyped-receiver sites (INV-nuhun), the
+            deferred crossings whose shadowed boundary derives this claim's
+            source label (INV-fogum), and the run-wide blindness signals. This
             parameter is why the docstring on :func:`verify_claims` no longer
             says taint claims are unaffected by coverage: they were, and the
             consequence was that one invocation disclosed ``sendall`` on a
@@ -5217,6 +6066,14 @@ def _verify_taint_claim_uncredited(
     # same way. The owner's 2026-08-27 constraint binds exactly here.
     resource_naming_flows = sum(1 for f in matching if f.resource_naming_only)
     matching = [f for f in matching if not f.resource_naming_only]
+
+    # WI-lukoz: a sink the PROJECT declared ``trust_level: trusted``. The same
+    # exclude-and-disclose shape, on the project's word rather than the
+    # catalogue's: the flow is real, and the count and the sentence say it was
+    # set aside and why. Asked of the finding, never of the zone, so one
+    # trusted sink does not clear its whole zone.
+    trusted_sink_flows = sum(1 for f in matching if f.trusted_sink)
+    matching = [f for f in matching if not f.trusted_sink]
 
     # WI-bifob: production is the default scope, and what the default leaves
     # out is DISCLOSED rather than dropped. A test that opens a listener is not
@@ -5310,6 +6167,13 @@ def _verify_taint_claim_uncredited(
         # that flows reached the sink and were set aside. The wording says what
         # was excluded AND why it is not a clean bill of health -- naming a
         # resource is still a real flow, it is simply not the useful finding.
+        trusted_sink_clause = ""
+        if trusted_sink_flows:
+            trusted_sink_clause = (
+                f" {trusted_sink_flows} flow(s) reach that zone through a sink "
+                f"the project's catalogue declares trusted (trust_level: "
+                f"trusted); they are excluded on that declaration, not absent."
+            )
         resource_naming_clause = ""
         if resource_naming_flows:
             resource_naming_clause = (
@@ -5403,11 +6267,13 @@ def _verify_taint_claim_uncredited(
                 "kind": CAVEAT_USER_SUPPLIED_SANITIZER,
                 "entries": sorted(repo_supplied),
                 "detail": (
-                    f"A sanitizer supplied by the analysed repository is "
+                    f"A sanitizer that did not ship with hypergumbo -- from "
+                    f"a --taint-sanitizers flag, the claims file's "
+                    f"extra_catalogs:, or your taint_sanitizers.d/ -- is "
                     f"credited with removing {sanitized_flows} flow(s) that "
                     f"would otherwise have been reported: {shown}. The tool "
                     f"cannot check that the named function neutralises the "
-                    f"taint; it takes the repository's word for it."
+                    f"taint; it takes that file's word for it."
                 ),
             })
         # INV-nuhun. LAST, and only on this path. A ``violated`` verdict never
@@ -5420,12 +6286,28 @@ def _verify_taint_claim_uncredited(
         # unrelated dict ``.get``, catalogued as a ``database`` sink, cannot
         # touch a ``network`` verdict.
         if coverage is not None:
+            # INV-fogum. ADR-0049 clause 3 for this arm: a deferred crossing
+            # that shadows boundary B qualifies every clean verdict B would have
+            # fed, and B feeds this claim when it DERIVES the claim's source
+            # label. FIRST among the coverage caveats, as in the boundary arm,
+            # because it is the categorical one. Scoped by the label, the taint
+            # arm's own key, so a listener never reaches a host_secret claim.
+            from .taint import AUTO_SOURCE_LABEL_MAP
+
+            for shadowed, sites in sorted(
+                coverage.deferred_crossing_sites.items(),
+            ):
+                if AUTO_SOURCE_LABEL_MAP.get(shadowed) == tf.source_taint:
+                    caveats = _merge_caveat(caveats, _deferred_crossing_caveat(
+                        shadowed, sites, arm=_ARM_TAINT,
+                    ))
             zone_sites = coverage.untyped_receiver_zones.get(
                 tf.prohibited_sink_zone,
             ) or []
             if zone_sites:
                 caveats = _merge_caveat(caveats, _untyped_receiver_caveat(
                     tf.prohibited_sink_zone, zone_sites, arm=_ARM_TAINT,
+                    collisions=coverage.untyped_receiver_collisions,
                 ))
             # The UNSCOPED half, unchanged from the boundary arm and reusing its
             # already-computed numbers rather than recounting. Reuse is the
@@ -5512,11 +6394,13 @@ def _verify_taint_claim_uncredited(
             details=(
                 f"No unsanitized {tf.source_taint} data reaches "
                 f"{tf.prohibited_sink_zone} zone."
-                f"{sanitized_clause}{resource_naming_clause}{excluded_clause}{deferred_clause}"
+                f"{sanitized_clause}{resource_naming_clause}{trusted_sink_clause}"
+                f"{excluded_clause}{deferred_clause}"
             ),
             excluded_flows=excluded_flows,
             sanitized_flows=sanitized_flows,
             resource_naming_flows=resource_naming_flows,
+            trusted_sink_flows=trusted_sink_flows,
             caveats=caveats,
         )
 
@@ -5641,6 +6525,42 @@ def _verify_taint_claim_uncredited(
         if is_choice_shaped_source(v.source_primitive)
     })
     violated_caveats: list[dict[str, Any]] = []
+    _withheld = sorted({
+        name for v in violations for name in v.withheld_sanitizers
+    })
+    if _withheld:
+        _withheld_flows = sum(1 for v in violations if v.withheld_sanitizers)
+        violated_caveats.append({
+            "kind": CAVEAT_WITHHELD_COMMUNITY_SANITIZER,
+            "entries": _withheld,
+            "detail": (
+                f"{_withheld_flows} of these flow(s) pass through a sanitizer "
+                f"from a COMMUNITY catalogue file, which hypergumbo ships "
+                f"without maintaining and does not credit (ADR-0061): "
+                f"{', '.join(_withheld)}. Vouched for, it would have cleared "
+                f"them. To vouch for one, copy its file into "
+                f"$XDG_CONFIG_HOME/hypergumbo/taint_sanitizers.d/ and delete "
+                f"its `provenance: community` line; the verdict will then "
+                f"carry the user-supplied-sanitizer caveat instead."
+            ),
+        })
+    if withheld_community_summaries:
+        violated_caveats.append({
+            "kind": CAVEAT_WITHHELD_COMMUNITY_SUMMARY,
+            "entries": sorted(withheld_community_summaries),
+            "detail": (
+                f"This run calls function summaries from a COMMUNITY "
+                f"catalogue file that would end a taint branch -- "
+                f"{', '.join(sorted(withheld_community_summaries))} -- and "
+                f"hypergumbo does not let an unmaintained row remove a "
+                f"finding (ADR-0061), so the walk kept those branches open. "
+                f"Run-scoped: it names every such summary the run's call "
+                f"graph reaches, which may include one no reported flow "
+                f"crossed. To vouch for one, copy its file into "
+                f"$XDG_CONFIG_HOME/hypergumbo/function_summaries.d/ and delete "
+                f"its `provenance: community` line."
+            ),
+        })
     if _choice_sources:
         violated_caveats.append({
             "kind": CAVEAT_CHOICE_SHAPED_SOURCE,
@@ -5684,6 +6604,7 @@ def _verify_taint_claim_uncredited(
         analysis_methods=analysis_methods,
         sanitized_flows=sanitized_flows,
         resource_naming_flows=resource_naming_flows,
+        trusted_sink_flows=trusted_sink_flows,
         caveats=violated_caveats,
     )
 
@@ -5735,29 +6656,27 @@ def _require_coverage_to_confirm(
     # exactly that case — it declares a zone-barrier sanitizer AND shells out
     # to git. Overwriting would be the one-slot last-writer-wins class
     # (INV-virat) reappearing inside the caveat list itself.
+    #
+    # ``replace``, NEVER A FIELD-BY-FIELD REBUILD (WI-simiv). Both branches used
+    # to construct a new verdict and name the fields to carry, and each rebuild
+    # forgot some: the withheld branch dropped sanitized_flows, excluded_flows,
+    # resource_naming_flows, flow_origins, analysis_methods and
+    # analysis_fidelity, and the qualified one analysis_fidelity. So a
+    # downgraded verdict said "1 flow(s) ... pass through a sanitizer" in
+    # ``details`` and ``"sanitized_flows": 0`` beside it. The gate changes the
+    # verdict, the details and the caveats; everything else is carried by
+    # construction, including a field added later.
     if opaque_sites:
-        return ClaimVerdict(
-            claim_id=verdict.claim_id,
-            claim_text=verdict.claim_text,
+        return replace(
+            verdict,
             verdict="confirmed_with_caveats",
-            evidence=verdict.evidence,
-            evidence_count=verdict.evidence_count,
-            details=verdict.details,
-            excluded_flows=verdict.excluded_flows,
-            flow_origins=verdict.flow_origins,
-            analysis_methods=verdict.analysis_methods,
-            sanitized_flows=verdict.sanitized_flows,
-            resource_naming_flows=verdict.resource_naming_flows,
             caveats=_merge_caveat(
                 verdict.caveats, _opaque_boundary_caveat(opaque_sites),
             ),
         )
-    return ClaimVerdict(
-        claim_id=verdict.claim_id,
-        claim_text=verdict.claim_text,
+    return replace(
+        verdict,
         verdict="inconclusive",
-        evidence=verdict.evidence,
-        evidence_count=verdict.evidence_count,
         # CARRY THE CAVEATS. This construction dropped them, so every caveat the
         # confirmed path had raised vanished the moment coverage downgraded the
         # verdict — the structured disclosure disappeared for exactly the verdicts
@@ -5774,6 +6693,90 @@ def _require_coverage_to_confirm(
     )
 
 
+def _withhold_for_tainted_evaluation(
+    label: str,
+    findings: Sequence[Any],
+    reason: str,
+    opaque: list[str],
+) -> tuple[str, list[str] | None]:
+    """A taint claim may not be QUALIFIED past an evaluation site its own data reaches.
+
+    INV-dudal. An opaque evaluation site (``eval``, ``document.write``) may
+    qualify a clean verdict because, in general, what the evaluated code or the
+    written markup does is merely unseen. That stops being "merely" when the
+    analysis has FOUND an unsanitized flow of this claim's label INTO the site:
+    ``location.hash -> document.write`` under "untrusted input is never
+    evaluated as code" is a DOM-XSS shape, and the markup's ``<script>`` is the
+    very thing the claim forbids -- the flow is just filed under the
+    ``dom_injection`` zone, not the claim's. Qualifying that verdict would put a
+    caveat where a refusal belongs, so the qualification is withdrawn and the
+    verdict stays ``inconclusive``, naming the sites.
+
+    EVERY unsanitized flow of the label counts, including one a claim would
+    exclude as non-production (WI-bifob): this only ever withholds, and a
+    narrower population would be a reason to qualify that nobody checked.
+
+    Matched by SITE NAME against the opaque list's evaluation entries, so a
+    second ``document.write`` the flow does not reach is withheld too -- the
+    withholding direction. Launch sites are deliberately not consulted: their
+    qualification is ADR-0016 §4's, unchanged here.
+
+    Returns the ``(reason, opaque)`` pair for :func:`_require_coverage_to_confirm`;
+    ``opaque`` is ``None`` when the qualification is withdrawn.
+    """
+    evaluations = set(opaque) & _evaluation_site_names()
+    if not evaluations:
+        return reason, opaque
+    reached = sorted({
+        _join_site_name(f.sink_module, f.sink_primitive)
+        for f in findings
+        if f.taint_label == label and not f.sanitized
+    } & evaluations)
+    if not reached:
+        return reason, opaque
+    return (
+        f"{reason}; and {label} data reaches {len(reached)} of those "
+        f"site(s) ({_render_capped_names(reached)}), so what the analysis "
+        f"cannot see there is this claim's own data being evaluated",
+        None,
+    )
+
+
+@dataclass(frozen=True)
+class ScopedBlindness:
+    """The taint blindness verdict for one source label, scoped (WI-rusil).
+
+    Built by ``cmd_verify_claims`` only for a label a PROJECT catalogue
+    declares in specific languages (a built-in label can start in any language,
+    so it keeps the repo-wide answer). ``not_counted`` lists the no-catalogue
+    languages the scoping set aside, so the verdict can say so: this narrows a
+    safety gate, and a narrowing nobody can see is how a gate goes vacuous.
+    """
+
+    reason: Optional[str]
+    opaque_sites: list[str]
+    not_counted: list[str]
+    origin_languages: list[str]
+
+
+def _disclose_scoped_blindness(
+    verdict: ClaimVerdict, label: str, scoped: ScopedBlindness,
+) -> ClaimVerdict:
+    """Append which no-catalogue languages were not counted, and why."""
+    if not scoped.not_counted:
+        return verdict
+    return replace(verdict, details=(
+        f"{verdict.details} Language(s) with no taint catalogue "
+        f"({', '.join(scoped.not_counted)}) were not counted against this "
+        f"claim: its source label '{label}' is declared only in "
+        f"{', '.join(scoped.origin_languages) or 'no language'}, so a flow it "
+        f"forbids cannot START there, and no call edge enters them from code a "
+        f"flow can be in (WI-rusil). A flow that crosses into them "
+        f"does so through a subprocess launch or a network or IPC call, which "
+        f"the sink zones of those names judge."
+    ))
+
+
 def verify_claims(
     claims: list[Claim],
     boundary_map: BoundaryMap,
@@ -5785,6 +6788,9 @@ def verify_claims(
     displaced_sinks: Mapping[str, Sequence[Any]] | None = None,
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
     credited_user_summaries: "AbstractSet[str] | None" = None,
+    withheld_community_summaries: "Sequence[str]" = (),
+    blind_by_source_taint: Mapping[str, ScopedBlindness] | None = None,
+    sink_zone_gaps: Mapping[tuple[str, str], SinkZoneGap] | None = None,
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -5807,12 +6813,24 @@ def verify_claims(
             flows against taint claims (WI-bifob). Default False; excluded
             flows are disclosed per-verdict in ``excluded_flows``. Boundary
             claims are unaffected.
+        blind_by_source_taint: Per source label, a claim-scoped replacement
+            for ``blind_reason`` / ``blind_opaque_sites`` (WI-rusil). A taint
+            claim whose label is absent uses the repo-wide pair.
+        sink_zone_gaps: Per ``(source_taint, prohibited_sink_zone)``, what the
+            claim's sink zone cannot see in the languages present (INV-pivam);
+            applied after the coverage gate by :func:`_apply_sink_zone_gap`.
 
     Returns:
         List of ClaimVerdict objects, one per claim.
     """
     verdicts: list[ClaimVerdict] = []
     for claim in claims:
+        reason, opaque = blind_reason, blind_opaque_sites
+        scoped: ScopedBlindness | None = None
+        if claim.constraint_taint_flow is not None and blind_by_source_taint:
+            scoped = blind_by_source_taint.get(claim.constraint_taint_flow.source_taint)
+            if scoped is not None:
+                reason, opaque = scoped.reason, scoped.opaque_sites
         if claim.constraint_taint_flow is not None:
             verdict = verify_taint_claim(
                 claim, taint_findings or [],
@@ -5821,6 +6839,7 @@ def verify_claims(
                 displaced_sources=displaced_sources,
                 coverage=coverage,
                 credited_user_summaries=credited_user_summaries,
+                withheld_community_summaries=withheld_community_summaries,
             )
         else:
             verdict = verify_claim(claim, boundary_map, coverage=coverage)
@@ -5828,9 +6847,56 @@ def verify_claims(
         # _require_coverage_to_confirm. Applied here rather than at each
         # branch so a constraint kind added later cannot ship unable to
         # distinguish "looked and found nothing" from "did not look".
-        verdicts.append(
-            _require_coverage_to_confirm(
-                verdict, blind_reason, blind_opaque_sites,
-            ),
-        )
+        if claim.constraint_taint_flow is not None and reason and opaque:
+            reason, opaque = _withhold_for_tainted_evaluation(
+                claim.constraint_taint_flow.source_taint, taint_findings or [],
+                reason, opaque,
+            )
+        verdict = _require_coverage_to_confirm(verdict, reason, opaque)
+        tf = claim.constraint_taint_flow
+        if tf is not None and sink_zone_gaps:
+            gap = sink_zone_gaps.get((tf.source_taint, tf.prohibited_sink_zone))
+            if gap is not None:
+                verdict = _apply_sink_zone_gap(verdict, gap)
+        if scoped is not None and claim.constraint_taint_flow is not None:
+            verdict = _disclose_scoped_blindness(
+                verdict, claim.constraint_taint_flow.source_taint, scoped,
+            )
+        if coverage is not None:
+            verdict = _disclose_untraced_vouch(verdict, coverage)
+        verdicts.append(verdict)
     return verdicts
+
+
+def _disclose_untraced_vouch(
+    verdict: ClaimVerdict, coverage: BoundaryCoverage,
+) -> ClaimVerdict:
+    """Say that a clean verdict rests on a grant for code nobody traced.
+
+    WI-pogar, owner decision recorded in ADR-0016 §7: a ``module_completeness``
+    grant an operator loaded from an overlay is a deliberate, dated vouch, so
+    it may still turn a call into untraced dependency source into an examined
+    negative -- refusing it would leave no way to confirm anything for a repo
+    with dependencies, the case the 2026-08-15 ruling permitted the key for.
+    What it may not do is leave the verdict reading as though the dependency
+    had been analysed. So the verdict category and exit code are unchanged and
+    ``details`` names the modules.
+
+    Applied AFTER the coverage gate, in the one loop both arms leave through,
+    and only to a CONFIRMING verdict: a violated or withheld one does not rest
+    on the grant.
+    """
+    if verdict.verdict not in CONFIRMING_VERDICTS:
+        return verdict
+    if not coverage.untraced_vouched_grants:
+        return verdict
+    named = "; ".join(
+        f"{lang}: {', '.join(mods)}"
+        for lang, mods in sorted(coverage.untraced_vouched_grants.items())
+    )
+    return replace(verdict, details=(
+        f"{verdict.details} Rests on an overlay's module_completeness grant "
+        f"for module(s) whose source this analysis did not read ({named}): "
+        f"the dependency source was not traced -- the grant, not a trace, "
+        f"vouches for their I/O (ADR-0016 §7)."
+    ))

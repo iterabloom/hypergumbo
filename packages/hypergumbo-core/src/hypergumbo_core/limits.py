@@ -6,6 +6,8 @@ Tracks known limitations and failures during analysis:
 - Languages detected but not analyzed (no analyzer available)
 - Whole passes that crashed or were skipped (§17 fail-open)
 - Files truncated or skipped due to size
+- Files whose symbols/edges were dropped by the supply-chain tier filter
+  (tier_filtered_files)
 - Supply chain classification failures and ambiguous tier assignments
 - Fundamental limitations of static analysis (dynamic imports, eval, etc.)
 Plus scalar honesty signals: partial_results_reason, max_tier_applied,
@@ -223,7 +225,11 @@ class Limits:
         )
         merged = Limits(
             failed_files=self.failed_files + other.failed_files,
-            skipped_languages=list(set(self.skipped_languages + other.skipped_languages)),
+            # Ordered dedup (first-seen wins): ``list(set(...))`` serialised
+            # this list in per-process str-hash order (WI-vosag analogue).
+            skipped_languages=list(
+                dict.fromkeys(self.skipped_languages + other.skipped_languages)
+            ),
             skipped_passes=self.skipped_passes + other.skipped_passes,
             truncated_files=self.truncated_files + other.truncated_files,
             partial_results_reason=self.partial_results_reason or other.partial_results_reason,

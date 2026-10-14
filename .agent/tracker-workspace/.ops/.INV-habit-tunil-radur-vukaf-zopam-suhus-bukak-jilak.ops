@@ -1,0 +1,24 @@
+- op: create  # bf78
+  at: '2026-10-11T04:30:13Z'  # bf78
+  by: agent  # bf78
+  actor: jgstern_agent  # bf78
+  clock: 1  # bf78
+  nonce: bf78  # bf78
+  data:  # bf78
+    kind: invariant  # bf78
+    title: "latex: analyze() is overridden wholesale, so runs lack pass_version and failed_files, and \\ref edges point at raw label strings from a non-canonical file id"  # bf78
+    status: violated  # bf78
+    priority: 3  # bf78
+    parent:  # bf78
+    tags:  # bf78
+    - latex  # bf78
+    - analyzer  # bf78
+    - docstring_audit  # bf78
+    isbefore: []  # bf78
+    duplicate_of: []  # bf78
+    not_duplicate_of: []  # bf78
+    pr_ref:  # bf78
+    description: "Repro: run pass_version == ''; a file with a parse error is not in failed_files; \\ref{sec:intro} edge a.tex:file -> sec:intro.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # bf78
+    fields:  # bf78
+      statement: "The LaTeX analyzer produces the same run bookkeeping as TreeSitterAnalyzer analyzers and canonical edge endpoints."  # bf78
+      root_cause: "latex.py ~412 replaces analyze() with its own loop, skipping the base loop's pass_version stamping, record_partial_parse and warnings; the labels set (~463) is never read, \\ref dst is the raw label (`sec:intro`) and src is `{rel_path}:file` instead of make_file_id."  # bf78

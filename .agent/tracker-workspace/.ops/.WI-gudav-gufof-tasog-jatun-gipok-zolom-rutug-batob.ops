@@ -1,0 +1,21 @@
+- op: create  # 6c5a
+  at: '2026-10-04T08:39:46Z'  # 6c5a
+  by: agent  # 6c5a
+  actor: jgstern_agent  # 6c5a
+  clock: 1  # 6c5a
+  nonce: 6c5a  # 6c5a
+  data:  # 6c5a
+    kind: work_item  # 6c5a
+    title: "nim: WI-bivab's first-argument type check reads only proc-local declared types -- field chains, inferred locals and module-level vars are unread, and the second argument never; 26 of 64 nitter types.add* binds remain"  # 6c5a
+    status: todo_hard  # 6c5a
+    priority: 3  # 6c5a
+    parent:  # 6c5a
+    tags:  # 6c5a
+    - analysis_quality  # 6c5a
+    - false_positive  # 6c5a
+    isbefore: []  # 6c5a
+    duplicate_of: []  # 6c5a
+    not_duplicate_of: []  # 6c5a
+    pr_ref:  # 6c5a
+    description: "FOUND 2026-10-04 measuring WI-bivab on nitter 8114eef (branch jgstern-agent/fix/hilum).\n\nWI-bivab's first-argument check reads only DECLARED, PROC-LOCAL types: a proc parameter, `result` (the declared return type) and a `var`/`let`/`const` written with a type before the call. Of the 64 nitter calls that bound `types.add*(timeline: var seq[Tweets]; tweet: Tweet)` on dev, 38 are now left to the library; 26 still bind:\n- 19 field chains (`result.thread.content.add tweet`, `tweet.reply.add name`): the receiver's type is a FIELD's declared type, which the check does not walk;\n- 4 locals whose type is inferred from the initializer (`var replacements = newSeq[ReplaceSlice]()` twice, `var url = decoded(..)`, `var path = req.params.getOrDefault(..)`);\n- 1 MODULE-level typed variable (`sessionPool: seq[Session]` in auth.nim): only proc-local declarations are read;\n- 2 where the receiver type MATCHES and the SECOND argument decides: `result.add(thread)` with `result: seq[Tweets]` and `thread: Tweets` (system add, not `add*(.., tweet: Tweet)`), and the self-call inside `add*` itself (`timeline.add @[tweet]`).\n\nSoundness caveat to carry with any extension: Nim `converter`s make implicit conversions the check assumes impossible; WI-losaf records that converters are not extracted at all, so a repository converter can make an exclusion wrong today. Not measured: how many repositories declare converters on types the check reasons about."  # 6c5a
+    fields: {}  # 6c5a

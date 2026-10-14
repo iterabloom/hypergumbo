@@ -4,6 +4,7 @@
 # Also covers TypeScript via the shared js_ts.py analyzer — TypeScript's
 # tree-sitter grammar extends JavaScript's with the same assignment and
 # call node types.
+provenance: builtin
 language: javascript
 
 assignments:

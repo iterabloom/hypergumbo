@@ -13,10 +13,15 @@ Example use case:
 This allows code navigation tools to show "this interface method is implemented by..."
 """
 
+import json
+from typing import Any
+
 import pytest
 
+from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers.type_hierarchy import (
+    _extends_admits_dispatch,
     link_type_hierarchy,
     build_inheritance_maps,
     close_parent_to_children_transitively,
@@ -1445,6 +1450,164 @@ class TestPerLanguageConcreteExtendsDispatch:
         assert dispatches[0].dst == child_method.id
 
 
+class TestAbstractParentAdmitsDispatch:
+    """WI-nizug: the deny-list gate admits an `extends` hop whose PARENT is abstract.
+
+    ``_extends_admits_dispatch`` used to ask only whether the CHILD is
+    abstract. That is the right question for interface-extends-interface,
+    where both endpoints are abstract, and the wrong one for an abstract-base
+    hierarchy: ``class Square : public Shape`` (C++) or ``class Square : Shape``
+    (C#) is ``extends: Square -> Shape`` with ``Square`` concrete, so no
+    ``dispatches_to`` could ever be emitted however correct the producer was.
+    A concrete child of an abstract parent exists to fill in that parent's
+    abstract members, which callers reach through the parent's static type.
+    """
+
+    @staticmethod
+    def _type(
+        lang: str, name: str, kind: str, mods: list[str],
+    ) -> tuple[Symbol, Symbol]:
+        path = f"/app/{name}.{lang}"
+        sep = "::" if lang in ("cpp", "rust") else "."
+        cls = Symbol(
+            id=f"{lang}:{path}:1-50:{name}:{kind}",
+            name=name, kind=kind, language=lang, path=path,
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=1),
+            origin=f"{lang}-v1", origin_run_id="test", modifiers=mods,
+        )
+        method = Symbol(
+            id=f"{lang}:{path}:10-15:{name}{sep}area:method",
+            name=f"{name}{sep}area", kind="method", language=lang, path=path,
+            span=Span(start_line=10, end_line=15, start_col=0, end_col=1),
+            origin=f"{lang}-v1", origin_run_id="test",
+        )
+        return cls, method
+
+    def _dispatches(
+        self, lang: str, parent_kind: str, parent_mods: list[str],
+    ) -> tuple[list[Edge], Symbol, Symbol]:
+        child_kind = "class" if lang in ("cpp", "csharp") else "struct"
+        parent, parent_m = self._type(lang, "Shape", parent_kind, parent_mods)
+        child, child_m = self._type(lang, "Square", child_kind, [])
+        edge = Edge.create(
+            src=child.id, dst=parent.id, edge_type="extends", line=1,
+            origin="inheritance-linker", evidence_type="ast_extends",
+            origin_run_id="test",
+        )
+        ctx = LinkerContext(
+            repo_root="/app", symbols=[parent, parent_m, child, child_m],
+            edges=[edge],
+        )
+        result = link_type_hierarchy(ctx)
+        return (
+            [e for e in result.edges if e.edge_type == "dispatches_to"],
+            parent_m, child_m,
+        )
+
+    @pytest.mark.parametrize(("lang", "parent_kind", "parent_mods"), [
+        ("cpp", "class", ["abstract"]),
+        ("csharp", "class", ["abstract"]),
+        # Go and Rust have no abstract classes; their abstract parent is the
+        # inherently-abstract kind. No analyzer labels such a hop `extends`
+        # today (struct -> interface is `implements`), so these pin the gate,
+        # not a measured producer shape.
+        ("go", "interface", []),
+        ("rust", "trait", []),
+    ])
+    def test_abstract_parent_admits_dispatch(
+        self, lang: str, parent_kind: str, parent_mods: list[str],
+    ) -> None:
+        """Every deny-list language admits a hop into an abstract parent."""
+        edges, parent_m, child_m = self._dispatches(lang, parent_kind, parent_mods)
+        assert [(e.src, e.dst) for e in edges] == [(parent_m.id, child_m.id)]
+
+    @pytest.mark.parametrize(("lang", "parent_kind"), [
+        ("cpp", "class"), ("csharp", "class"), ("go", "struct"), ("rust", "struct"),
+    ])
+    def test_concrete_parent_still_denied(self, lang: str, parent_kind: str) -> None:
+        """Control: the same fixture with a concrete parent emits nothing."""
+        edges, _, _ = self._dispatches(lang, parent_kind, [])
+        assert edges == []
+
+    def test_predicate_reads_parent(self) -> None:
+        """The predicate itself: child concrete, parent abstract -> admit."""
+        assert _extends_admits_dispatch(
+            "cpp", "class", [], parent_kind="class", parent_modifiers=["abstract"],
+        )
+        assert _extends_admits_dispatch(
+            "csharp", "class", (), parent_kind="interface",
+        )
+        assert not _extends_admits_dispatch(
+            "cpp", "class", [], parent_kind="class", parent_modifiers=[],
+        )
+        # No parent known (an unresolved external base) -> child test alone.
+        assert not _extends_admits_dispatch("cpp", "class", [])
+        assert _extends_admits_dispatch("cpp", "interface", [])
+
+    def test_unresolved_external_parent_still_denied(self) -> None:
+        """A parent with no in-tree symbol cannot be shown abstract.
+
+        The inheritance linker mints ``{lang}:external:0-0:Name:unresolved``
+        targets for external bases; with no symbol to read, the gate keeps
+        the deny-list verdict rather than guessing.
+        """
+        child, child_m = self._type("cpp", "Square", "class", [])
+        edge = Edge.create(
+            src=child.id, dst="cpp:external:0-0:Shape:unresolved",
+            edge_type="extends", line=1, origin="inheritance-linker",
+            evidence_type="ast_extends", origin_run_id="test",
+        )
+        assert build_inheritance_maps([child, child_m], [edge]) == ({}, {})
+
+
+class TestAbstractBaseDispatchEndToEnd:
+    """WI-nizug production path: real analyzers, full pipeline, real gate.
+
+    The unit tests above hand the linker a hand-built edge. These run the
+    C++ and C# analyzers and the inheritance linker, so they also pin that
+    the producers mark the base abstract and label the hop ``extends``.
+    """
+
+    @staticmethod
+    def _dispatch_names(tmp_path: Any, filename: str, source: str) -> set[tuple[str, str]]:
+        (tmp_path / filename).write_text(source)
+        out = tmp_path / "bm.json"
+        run_behavior_map(
+            repo_root=tmp_path, out_path=out,
+            include_sketch_precomputed=False, progress=False,
+        )
+        bm = json.loads(out.read_text())
+        names = {n["id"]: n["name"] for n in bm["nodes"]}
+        return {
+            (names[e["src"]], names[e["dst"]])
+            for e in bm["edges"]
+            if e["type"] == "dispatches_to" and e["src"] in names and e["dst"] in names
+        }
+
+    def test_cpp_abstract_base(self, tmp_path: Any) -> None:
+        pairs = self._dispatch_names(
+            tmp_path, "s.cpp",
+            "class Shape { public: virtual int area() = 0; };\n"
+            "class Square : public Shape { public: int area() override { return 1; } };\n"
+            "class Plain { public: int f() { return 0; } };\n"
+            "class PlainKid : public Plain { public: int f() { return 1; } };\n",
+        )
+        assert ("Shape::area", "Square::area") in pairs
+        # Control: concrete-extends-concrete stays under the deny-list.
+        assert ("Plain::f", "PlainKid::f") not in pairs
+
+    def test_csharp_abstract_base(self, tmp_path: Any) -> None:
+        pairs = self._dispatch_names(
+            tmp_path, "S.cs",
+            "abstract class Shape { public abstract int Area(); }\n"
+            "class Square : Shape { public override int Area() { return 1; } }\n"
+            "class Base2 { public int F() { return 0; } }\n"
+            "class Kid2 : Base2 { public new int F() { return 1; } }\n",
+        )
+        assert ("Shape.Area", "Square.Area") in pairs
+        assert ("Base2.F", "Kid2.F") not in pairs
+
+
 class TestCloseParentToChildrenTransitively:
     """Unit tests for the WI-firuj transitive-closure helper."""
 
@@ -1659,11 +1822,12 @@ class TestSkipLevelDispatch:
         """Carve-out narrowness regression: Go struct-extends-struct chain
         (3 hops, kind='struct' throughout) must NOT produce dispatches_to.
 
-        The interface carve-out at _extends_admits_dispatch fires only when
-        child_kind == 'interface'. A struct chain in Go remains under the
+        The carve-out at _extends_admits_dispatch fires only when the child
+        or the parent of a hop is an abstract type (WI-nizug added the
+        parent). A struct chain in Go has neither and remains under the
         WI-sukav A1 deny-list: struct embedding is composition, not virtual
         dispatch. This test pairs with test_go_interface_embedding_skip_level
-        — same chain topology, different child kind, opposite expected
+        — same chain topology, different kinds, opposite expected
         behavior — so any future broadening of the carve-out (e.g. adding
         'struct' to the override set) trips this regression.
         """
@@ -1709,7 +1873,7 @@ class TestSkipLevelDispatch:
         dispatch_dsts = {e.dst for e in result.edges if e.src == a_foo.id}
         assert c_foo.id not in dispatch_dsts, (
             f"Go struct-extends-struct chain must remain suppressed under "
-            f"WI-sukav A1; carve-out fires only for child_kind=='interface'. "
+            f"WI-sukav A1; carve-out fires only for an abstract endpoint. "
             f"Got A.Foo dispatches={dispatch_dsts}"
         )
 
@@ -1991,8 +2155,15 @@ class TestDerivedFromNamesInheritancePath:
         ]
 
     def test_names_only_edges_the_dispatch_gate_admitted(self) -> None:
-        """A Go concrete ``extends`` is filtered from the maps, so it can never
-        appear in a chain; the admitted ``implements`` path is the one named."""
+        """A Go concrete ``extends`` (struct embeds struct) is filtered from the
+        maps, so it can never appear in a chain; the admitted ``implements``
+        path is the one named, and the denied hop is not traversed.
+
+        WI-nizug: this fixture used to put the denied ``extends`` on the SAME
+        pair as the ``implements`` (``Dog -> Speaker``). A hop into an abstract
+        parent is now admitted in every language, so the denied edge has to
+        join two concrete structs to stay denied.
+        """
         iface = Symbol(
             id="go:/a/i.go:1-5:Speaker:interface", name="Speaker", kind="interface",
             language="go", path="/a/i.go", span=Span(1, 5, 0, 1),
@@ -2001,6 +2172,16 @@ class TestDerivedFromNamesInheritancePath:
         speak = Symbol(
             id="go:/a/i.go:2-3:Speaker.Speak:method", name="Speaker.Speak", kind="method",
             language="go", path="/a/i.go", span=Span(2, 3, 0, 1),
+            origin="go", origin_run_id="t",
+        )
+        animal = Symbol(
+            id="go:/a/a.go:1-9:Animal:struct", name="Animal", kind="struct",
+            language="go", path="/a/a.go", span=Span(1, 9, 0, 1),
+            origin="go", origin_run_id="t",
+        )
+        animal_speak = Symbol(
+            id="go:/a/a.go:2-4:Animal.Speak:method", name="Animal.Speak", kind="method",
+            language="go", path="/a/a.go", span=Span(2, 4, 0, 1),
             origin="go", origin_run_id="t",
         )
         dog = Symbol(
@@ -2013,10 +2194,14 @@ class TestDerivedFromNamesInheritancePath:
             language="go", path="/a/d.go", span=Span(2, 4, 0, 1),
             origin="go", origin_run_id="t",
         )
-        concrete = Edge.create(src=dog.id, dst=iface.id, edge_type="extends", line=1, origin="go", origin_run_id="t")
-        impl = Edge.create(src=dog.id, dst=iface.id, edge_type="implements", line=2, origin="go", origin_run_id="t")
+        concrete = Edge.create(src=dog.id, dst=animal.id, edge_type="extends", line=1, origin="go", origin_run_id="t")
+        impl = Edge.create(src=animal.id, dst=iface.id, edge_type="implements", line=2, origin="go", origin_run_id="t")
         ctx = LinkerContext(
-            repo_root="/a", symbols=[iface, speak, dog, dog_speak], edges=[concrete, impl],
+            repo_root="/a",
+            symbols=[iface, speak, animal, animal_speak, dog, dog_speak],
+            edges=[concrete, impl],
         )
         (edge,) = link_type_hierarchy(ctx).edges
-        assert edge.derived_from == [speak.id, dog_speak.id, impl.id]
+        assert (edge.src, edge.dst) == (speak.id, animal_speak.id)
+        assert edge.derived_from == [speak.id, animal_speak.id, impl.id]
+        assert concrete.id not in edge.derived_from

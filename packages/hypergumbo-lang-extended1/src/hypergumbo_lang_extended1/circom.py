@@ -47,6 +47,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import declared_arity_stable_id
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
@@ -74,6 +75,7 @@ def is_circom_tree_sitter_available() -> bool:
 
 
 def _extract_symbols_from_file(
+    analyzer: TreeSitterAnalyzer,
     tree: "tree_sitter.Tree",
     source: bytes,
     file_path: str,
@@ -85,8 +87,32 @@ def _extract_symbols_from_file(
     - class: template definitions (Circom's primary abstraction)
     - function: function definitions (pure computations)
     - variable: main component, signal declarations, component declarations
+
+    A function's ``stable_id`` is ``analyzer.compute_stable_id`` (WI-tusad):
+    its ``parameter_list`` is a direct child, so the ADR-0035 untyped tier
+    reads the parameter count from it. Circom functions are file-level and
+    their names are unique, so the chain is the name. A template is
+    ``compute_stable_id`` over its parameter count too; a signal and the main
+    component ``declared_arity_stable_id`` with no arity, a signal scoped by
+    its template (``T/in``), so the same signal name in two templates of one
+    file holds two ids.
     """
     symbols: list[Symbol] = []
+
+    def variable_id(name: str, owner: Optional[str]) -> str:
+        return declared_arity_stable_id(
+            kind="variable", lang="circom", path=file_path, name=name,
+            qualified_name=f"{owner}/{name}" if owner else name, arity=None,
+        )
+
+    def template_of(node: "tree_sitter.Node") -> Optional[str]:
+        current = node.parent
+        while current is not None:
+            if current.type == "template_definition":
+                owner = find_child_by_type(current, "identifier")
+                return node_text(owner, source).strip() if owner else None
+            current = current.parent
+        return None  # pragma: no cover - signals are declared in templates
 
     for node in iter_tree(tree.root_node):
         if node.type == "template_definition":
@@ -110,6 +136,10 @@ def _extract_symbols_from_file(
 
             sym = Symbol(
                 id=make_symbol_id("circom", file_path, span.start_line, span.end_line, name, "class"),
+                stable_id=analyzer.compute_stable_id(
+                    node, "class", name=name, qualified_name=name,
+                    file_stable_id=analyzer._file_anchor(file_path),
+                ),
                 name=name,
                 kind="class",
                 language="circom",
@@ -141,6 +171,10 @@ def _extract_symbols_from_file(
 
             sym = Symbol(
                 id=make_symbol_id("circom", file_path, span.start_line, span.end_line, name, "function"),
+                stable_id=analyzer.compute_stable_id(
+                    node, "function", name=name, qualified_name=name,
+                    file_stable_id=analyzer._file_anchor(file_path),
+                ),
                 name=name,
                 kind="function",
                 language="circom",
@@ -163,6 +197,7 @@ def _extract_symbols_from_file(
             )
             sym = Symbol(
                 id=make_symbol_id("circom", file_path, span.start_line, span.end_line, "main", "variable"),
+                stable_id=variable_id("main", None),
                 name="main",
                 kind="variable",
                 language="circom",
@@ -194,6 +229,7 @@ def _extract_symbols_from_file(
 
             sym = Symbol(
                 id=make_symbol_id("circom", file_path, span.start_line, span.end_line, name, "variable"),
+                stable_id=variable_id(name, template_of(node)),
                 name=name,
                 kind="variable",
                 language="circom",
@@ -201,7 +237,7 @@ def _extract_symbols_from_file(
                 span=span,
                 origin=PASS_ID,
                 origin_run_id=run_id,
-                modifiers=modifiers if modifiers else None,
+                modifiers=modifiers,
             )
             symbols.append(sym)
 
@@ -429,7 +465,7 @@ class CircomTreeSitterAnalyzer(TreeSitterAnalyzer):
         run: "AnalysisRun",
     ) -> FileAnalysis:
         """Extract symbols from a single Circom file."""
-        symbols = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        symbols = _extract_symbols_from_file(self, tree, source, rel_path, run.execution_id)
         return FileAnalysis(symbols=symbols)
 
     def extract_edges_from_file(
@@ -439,7 +475,7 @@ class CircomTreeSitterAnalyzer(TreeSitterAnalyzer):
         file_path: Path,
         rel_path: str,
         local_symbols: dict,
-        global_symbols: dict,
+        global_symbols: dict[str, Symbol],
         run: "AnalysisRun",
         import_aliases: dict,
         resolver: "NameResolver",

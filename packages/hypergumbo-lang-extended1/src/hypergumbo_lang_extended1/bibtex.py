@@ -7,9 +7,9 @@ management and citation analysis.
 
 How It Works
 ------------
-Uses TreeSitterAnalyzer base class for single-pass orchestration:
-1. Pass 1: Extract bibliography entries with their fields
-2. Categorizes entries by type (article, book, inproceedings, etc.)
+Uses the TreeSitterAnalyzer base class. Pass 1 extracts each bibliography
+entry as ``kind="entry"``, with its type (article, book, inproceedings, etc.)
+in ``meta["entry_type"]``; Pass 2 adds nothing, since no edge is extracted.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the BibTeX-specific extraction
@@ -23,8 +23,8 @@ Why This Design
 ---------------
 - BibTeX is the standard for academic references
 - Entry types reveal document types being cited
-- Fields like author, year, journal provide metadata
-- Citation keys enable cross-reference analysis
+- ``meta`` carries author, year, title and the field count
+- Citation keys are recorded; no citation edges are extracted
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
+    make_doc_stable_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -119,7 +120,9 @@ def _extract_entry(
 
     return Symbol(
         id=symbol_id,
-        stable_id=symbol_id,
+        # WI-tusad: the node id (it carries the line) was the stable_id; the
+        # citation key is unique in a .bib file, so the doc formula over it is.
+        stable_id=make_doc_stable_id("bibtex", str(rel_path), "entry", citation_key, line, line),
         name=citation_key,
         kind="entry",
         language="bibtex",

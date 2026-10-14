@@ -29,3 +29,18 @@
   set: {}  # de65
   add:  # de65
     tags: [post_release_focus]  # de65
+- op: update  # 0b1e
+  at: '2026-09-26T19:47:22Z'  # 0b1e
+  by: agent  # 0b1e
+  actor: jgstern_agent  # 0b1e
+  clock: 3  # 0b1e
+  nonce: 0b1e  # 0b1e
+  set:  # 0b1e
+    status: wont_do  # 0b1e
+- op: discuss  # 1a89
+  at: '2026-09-26T19:47:22Z'  # 1a89
+  by: agent  # 1a89
+  actor: jgstern_agent  # 1a89
+  clock: 4  # 1a89
+  nonce: 1a89  # 1a89
+  message: "CLOSED wont_do: THE FILED DEFECT DOES NOT EXIST ON THE PRODUCTION PATH. Re-measured 2026-09-26 on dev (fixture ~/hypergumbo_lab_notebook/bojud_09262026/r/A.java: System.out.println(x) and System.err.printf(..)):\n  hypergumbo io-boundaries -> total_io_edges 2, ipc_send chains java.lang.System.out (A.f) and java.lang.System.err (A.g)\nThe catalogued attribute rows ARE reached, by the module_attr_ref edges the java analyzer emits for the field reads (java:System:0-0:System.out). So \"System.out never reaches its catalogued ipc_send row\" and \"a clean ipc_send verdict over a program that writes to stdout is granted\" are both false: the chain exists and a must_not_exist ipc_send claim sees it.\n\nWHAT IS TRUE, and narrower: the println CALL edge's module slot is `external`, so each such call counts as an untyped-receiver site in the unknown_receiver_scope caveat. Filed as WI-dorus. Not relitigated here: whether stdout writes are ipc_send (java.yaml) or logging (WI-dutah's C ruling); the two catalogues disagree and that is a catalogue question."  # 1a89

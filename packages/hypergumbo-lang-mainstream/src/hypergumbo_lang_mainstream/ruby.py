@@ -12,7 +12,8 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
   ``_filter`` spellings, the model lifecycle callbacks, the transaction
   callbacks (``after_commit``, ``after_create_commit``, ...) and
   ``validate``. Block-style callbacks are picked up too.
-- ActiveRecord association edges (has_many, belongs_to, has_one)
+- ActiveRecord association ``references`` edges (has_many, belongs_to,
+  has_one, has_and_belongs_to_many; ``meta["ref_construct"] = "association"``)
 - Ruby delegate macro edges (delegate :method, to: :association)
 - Rails / Sinatra route symbols, including namespaces, resources and
   member/collection blocks (``_extract_rails_routes``)
@@ -35,7 +36,23 @@ How It Works
 3. Multi-pass analysis — Ruby overrides ``analyze()`` because it needs
    more than the standard two passes:
    - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
+   - Pass 2: Detect calls and resolve against global symbol registry.
+     A call in no method is anchored on the class or module whose body
+     holds it (``_SCOPE_BODY_NODES``), else on the file (INV-bamij).
+     In ``_try_receiver_call``, a constant receiver the project declares
+     but whose class lacks the method yields an unresolved edge carrying
+     ``receiver_type_hint`` (``enclosing_class`` for ``.new`` ->
+     ``#initialize``) so the ``inherited_calls`` linker can walk its
+     ancestors. A constant the project does not declare (``JSON.parse``)
+     yields an unresolved ``calls`` edge with
+     ``meta["receiver"] = "constant_external"`` and an ``ExternalRef`` whose
+     module is the constant as written, less a root ``::`` (``Net::HTTP``,
+     the owner path ADR-0051 asks for; WI-surar). A receiverless call
+     (``puts "x"``, ``has_many :posts``) to a name no project symbol
+     carries yields ``ruby:external:0-0:<name>:unresolved`` (WI-napaf,
+     python's INV-foluz residual shape); a bare ``identifier`` stays
+     unrecorded, since without a local-variable scope walk it cannot be
+     told from a variable read.
    - Passes 2b / 2c / 2d and 3, plus a post-pass inheritance sweep
 4. Detect method calls and require statements
 5. Track variable types from constructor/factory calls (``var = Class.new``)
@@ -48,7 +65,7 @@ Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-ruby package for grammar
-- Two-pass allows cross-file call resolution
+- Multi-pass allows cross-file call resolution
 - Same pattern as Go/Rust/Elixir/Java/PHP/C analyzers for consistency
 
 Population of ``is_exported`` follows Ruby's default-public rule: top-level
@@ -72,11 +89,14 @@ from hypergumbo_core.ir import (
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
+    record_partial_parse,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
+    file_anchor_symbol,
+    enclosing_declared_symbol,
     make_file_id,
     make_route_symbol,
     make_symbol_id,
@@ -98,6 +118,10 @@ if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("ruby")
+
+#: INV-bamij: scopes whose BODY anchors a call in no method (class-body
+#: ``include``, a Rails ``has_many``).
+_SCOPE_BODY_NODES: frozenset[str] = frozenset({"class", "module", "singleton_class"})
 
 # HTTP methods for Rails/Sinatra route detection (used by UsageContext extraction)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "match"}
@@ -1330,9 +1354,11 @@ def _extract_rails_callbacks(
         before_save { normalize_name }
 
     Named-method callbacks create edges from the class to the named method
-    (confidence 0.90, evidence ``rails_callback``). Block-style callbacks
+    (``meta["framework_dispatch"] = "rails_callback"``). Block-style callbacks
     extract method calls from the block body and create edges for each
-    (confidence 0.85, evidence ``rails_block_callback``).
+    (``meta["framework_dispatch"] = "rails_block_callback"``). Both forms emit
+    ``dispatches_to`` with evidence ``ast_call_direct`` and
+    ``meta["mechanism"] = "callback"``.
 
     Also handles legacy Rails 3 API: before_filter, after_filter, around_filter.
     """
@@ -1502,12 +1528,13 @@ def _extract_activerecord_associations(
         has_one :profile
         has_many :messages, class_name: "ChatMessage"
 
-    These create ``association`` edges from the declaring model class to the
-    target model class. The target class is inferred from the association name
+    These create ``references`` edges (``meta["ref_construct"] =
+    "association"``) from the declaring model class to the target model class. The target class is inferred from the association name
     by singularizing and converting to PascalCase, or from an explicit
     ``class_name:`` option.
 
-    Returns edges with type ``association`` from class symbol to target class.
+    Returns ``references`` edges from class symbol to target class
+    (unresolved when the target model is not in the analyzed files).
     """
     edges: list[Edge] = []
 
@@ -2207,7 +2234,6 @@ def _try_receiver_call(
     edges: list[Edge],
     run_id: str,
     method_resolver: ListNameResolver | None = None,
-    require_hints: dict[str, str] | None = None,
 ) -> bool:
     """Try to resolve a receiver-qualified method call.
 
@@ -2217,7 +2243,7 @@ def _try_receiver_call(
 
     Special case: ActiveJob/Sidekiq enqueue methods (perform_later, perform_async,
     perform_in, perform_at) are redirected to the job class's ``perform`` instance
-    method and emit ``enqueues`` edges instead of ``calls``.
+    method and emit ``event_publishes`` edges instead of ``calls``.
 
     Returns True if an edge was created, False to fall through to bare name lookup.
     """
@@ -2346,11 +2372,19 @@ def _try_receiver_call(
         # WI-rijij / WI-mafik: ``Set.new(...)`` where the receiver is
         # external (e.g. ``require "set"``). Fall through to the
         # constant-external fallback so the call gets attributed to
-        # the require source module (``set``, ``json``, ...).
+        # the receiver constant (``Set``, ``JSON``, ...).
 
     # Build list of candidate class names to try
-    # For scope_resolution: try full name first, then short name as fallback
-    candidates = [receiver_class]
+    # For scope_resolution: try full name first, then short name as fallback.
+    # WI-johib: the root-namespace prefix is stripped here too, as the ``new``
+    # path above does -- ``::Redis::Alfred.delete`` is keyed
+    # ``Redis::Alfred.delete``. The receiver-blind short-name fallback this
+    # function used to end with had been resolving that shape by accident.
+    # A class DECLARED with the prefix (``class ::Foo::Bar``) keeps it in its
+    # symbol names, so the literal spelling is still tried second.
+    candidates = [receiver_class.lstrip(":")]
+    if receiver_class != candidates[0]:
+        candidates.append(receiver_class)
     if receiver_node.type == "scope_resolution" and short_name and short_name != receiver_class:
         candidates.append(short_name)
 
@@ -2373,52 +2407,68 @@ def _try_receiver_call(
                     ))
                     return True
 
-    # Try method resolver (with ambiguity guard) or fall back to name resolver.
-    # Don't pass receiver_class as path_hint to method_resolver — it's a class
-    # name, not a file path. The ambiguity_threshold guards against 3+ candidates.
-    if method_resolver is not None:
-        lookup_result = method_resolver.lookup(method_name)
-    else:  # pragma: no cover
-        lookup_result = resolver.lookup(method_name, path_hint=receiver_class)
-    if lookup_result.found and lookup_result.symbol is not None:
-        callee = lookup_result.symbol
-        if callee.id != current_method.id:
-            edges.append(Edge.create(
-                src=current_method.id,
-                dst=callee.id,
-                edge_type="calls",
-                line=line,
-                evidence_type="ast_call",
-                confidence=0.75 * lookup_result.confidence,
-                origin=PASS_ID,
-                origin_run_id=run_id,
-                meta={"call_construct": "method", "receiver": "generic"},
-            ))
-            return True
+    # WI-johib: the receiver NAMES its owner, so the method is that owner's or
+    # an ancestor's, never whichever class happens to declare a method of the
+    # same short name. The resolver lookup this replaced was receiver-blind:
+    # ``Rails.root`` bound ``HealthServer#root``, ``File.read(p)`` bound a
+    # project's own ``#read`` (defeating a user's overlay row for it), and on
+    # postal 54 of 160 constant-receiver calls into in-repo methods landed on a
+    # DIFFERENT class. A project constant that does not declare the method
+    # keeps an unresolved edge whose receiver type names it, and the
+    # inherited-calls linker walks its ancestors (``Kid.make`` -> ``Base.make``).
+    # A constant the project does not declare falls through to the
+    # constant-external fallback below.
+    project_owners = [
+        candidate for candidate in candidates
+        if candidate in global_symbols
+        or any(
+            key.startswith(f"{candidate}#") or key.startswith(f"{candidate}.")
+            for key in global_symbols
+        )
+    ]
+    if project_owners:
+        owner = project_owners[0]
+        edges.append(make_unresolved_edge(
+            lang="ruby",
+            src_id=current_method.id,
+            callee_name=method_name,
+            line=line,
+            pass_id=PASS_ID,
+            run_id=run_id,
+            module_hint=owner,
+            receiver_type_hint=owner,
+            call_construct="method",
+        ))
+        return True
 
     # WI-rijij / WI-mafik: constant-receiver call (``JSON.parse``,
-    # ``Set.new``) that didn't resolve to a project symbol. Attribute
-    # the call to the source module via require_hints (or, failing
-    # that, the lowercased constant name as a heuristic) so cross-
-    # language linkers and io-boundary catalogs can match the call
-    # against ruby stdlib / gem primitives. Strip a leading ``::`` so
-    # ``::JSON`` and ``JSON`` route to the same module.
-    if require_hints is None:  # pragma: no cover - defensive default
-        require_hints = {}
+    # ``Set.new``) that didn't resolve to a project symbol. It gets an
+    # unresolved edge whose module slot names the receiver constant, so
+    # io-boundary catalogues and user overlays can match the call against
+    # ruby stdlib / gem primitives.
+    #
+    # WI-surar: the slot is the constant AS WRITTEN, less a root ``::`` --
+    # ``Net::HTTP``, ``File``, ``JSON``. ADR-0051 says the slot names the
+    # OWNER PATH of the called symbol, and in ruby that is the constant the
+    # call is made on. This used to cut a namespaced constant to its last
+    # segment, look that up in the file's require hints, and otherwise
+    # lowercase it, so ``Net::HTTP.get`` emitted ``http``: neither the owner
+    # nor the require path. An overlay row spelled as ruby writes it
+    # (``module: Net::HTTP``) could not match, because a component-suffix
+    # match must agree in case (INV-dijor), and the dropped namespace was the
+    # only thing telling ``Net::HTTP`` from ``Faraday::HTTP``.
+    #
+    # THE REQUIRE HINT IS DELIBERATELY NOT CONSULTED HERE. It maps a require
+    # path's PascalCased basename to that path (``require 'set'`` gives
+    # ``Set -> set``): evidence of which file was loaded, keyed on one
+    # segment, so it names a file rather than the owner and would re-drop the
+    # namespace (``Foo::Client`` would take ``require 'bar/client'``). It
+    # still serves bare-call disambiguation and base-class resolution. The
+    # matcher folds ``::`` and ``/`` alike and compares case-insensitively on
+    # equal paths, so ``Net::HTTP`` still matches a ``net/http`` row, and
+    # ``Set``/``JSON`` still match ``set``/``json``.
     if receiver_node.type in ("constant", "scope_resolution"):
-        bare_class = receiver_class.lstrip(":")
-        if "::" in bare_class:  # pragma: no cover - inline-namespace receivers
-            bare_class = bare_class.rsplit("::", 1)[-1]
-        module_hint = require_hints.get(bare_class)
-        if module_hint is None:
-            short = short_name.lstrip(":") if short_name else None
-            if short and "::" in short:  # pragma: no cover - inline-namespace receivers
-                short = short.rsplit("::", 1)[-1]
-            if short:
-                module_hint = require_hints.get(short)
-        if module_hint is None:
-            # Heuristic: ``JSON`` → ``json``, ``Set`` → ``set``.
-            module_hint = bare_class.lower()
+        module_hint = receiver_class.lstrip(":")
         edges.append(Edge.create(
             src=current_method.id,
             dst=f"ruby:{module_hint}:0-0:{method_name}:unresolved",
@@ -2448,11 +2498,11 @@ def _try_job_enqueue(
     edges: list[Edge],
     run_id: str,
 ) -> bool:
-    """Create an enqueues edge from current method to a job's perform method.
+    """Create an event_publishes edge from current method to a job's perform method.
 
     When SomeJob.perform_later(args) is called, the actual work is done by
     SomeJob#perform at runtime. This function resolves the job class and creates
-    an ``enqueues`` edge to its ``perform`` instance method.
+    an ``event_publishes`` edge to its ``perform`` instance method.
 
     Falls back to an unresolved edge targeting the job class symbol if
     the ``perform`` method is not found (e.g., job defined in a gem).
@@ -2598,6 +2648,8 @@ def _extract_edges_from_file(
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("ruby", str(file_path))
+    # The anchor of last resort for a call in no method, class or module.
+    file_anchor = file_anchor_symbol("ruby", str(file_path), PASS_ID, run_id)
     var_types = _extract_ruby_var_types(tree, source)
     _mc = method_candidates or {}
 
@@ -2687,7 +2739,16 @@ def _extract_edges_from_file(
 
                 # Handle regular method calls
                 else:
-                    current_method = _get_enclosing_method(node, source, decl_index)
+                    # INV-bamij: a call in no method is anchored on the class
+                    # or module whose body holds it, else on the FILE, as
+                    # python and php anchor module-level code. It used to be
+                    # dropped, and top-level code is the norm in Ruby scripts,
+                    # Rakefiles and config/*.rb.
+                    current_method = (
+                        _get_enclosing_method(node, source, decl_index)
+                        or enclosing_declared_symbol(node, decl_index, _SCOPE_BODY_NODES)
+                        or file_anchor
+                    )
                     if current_method is not None:
                         # Try receiver-qualified resolution first
                         receiver_node = node.child_by_field_name("receiver")
@@ -2696,7 +2757,6 @@ def _extract_edges_from_file(
                             current_method, global_symbols, resolver,
                             node.start_point[0] + 1, edges, run_id,
                             method_resolver=method_resolver,
-                            require_hints=require_hints,
                         ):
                             pass  # Resolved via receiver
                         elif receiver_node is not None:
@@ -2772,6 +2832,47 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "method"},
+                                ))
+                            elif method_node.type in ("identifier", "constant"):
+                                # WI-napaf: a receiverless call to a name no
+                                # project symbol carries -- ``puts``, ``raise``,
+                                # ``system``, ``include``, every Rails class-body
+                                # DSL (``has_many``, ``validates``,
+                                # ``before_action``) -- emitted NOTHING, so the
+                                # method read as calling nothing and the ADR-0017
+                                # walk saw an escape where a call stood. It is
+                                # INV-foluz's shape (python's residual arm) and
+                                # WI-fahod's (javascript), and takes their
+                                # ``external`` placeholder: the owner is genuinely
+                                # unknown (Kernel, or an ancestor a gem supplies).
+                                #
+                                # NO LOCAL-BINDING REFUSAL, unlike python's LEGB
+                                # check: ruby's syntax already made the choice. A
+                                # receiverless ``call`` node has arguments,
+                                # parentheses or a block, and that form is a send
+                                # to ``self`` even when a local of the name is in
+                                # scope (``x = 1; x(2)`` raises NoMethodError).
+                                # The ambiguous form, a bare ``identifier``, is
+                                # the arm below and is unchanged.
+                                #
+                                # THE CATALOGUE REACH IS WANTED HERE (WI-javaf's
+                                # hazard does not transfer): ``external`` lets a
+                                # FUNCTION-kind row match by short name, and the
+                                # Kernel methods (``system``, ``exec``, ``open``)
+                                # are ambient in ruby, needing no require. A
+                                # project method SHADOWING one never gets here --
+                                # it resolved above, or the AMB-METHOD guard
+                                # withheld it as the project's own name.
+                                #
+                                # ``super(...)`` is excluded by node type: it is
+                                # the keyword, not a method named ``super``.
+                                edges.append(make_unresolved_edge(
+                                    lang="ruby",
+                                    src_id=current_method.id,
+                                    callee_name=callee_name,
+                                    line=node.start_point[0] + 1,
+                                    pass_id=PASS_ID,
+                                    run_id=run_id,
                                 ))
 
         # Detect bare method calls (identifier nodes that are method names)
@@ -3113,6 +3214,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 continue
             tree = parser.parse(source)
             rel_path = str(rb_file.relative_to(repo_root))
+            record_partial_parse(run, rel_path, tree)  # WI-bulaz
             analysis = _extract_symbols_from_file(
                 tree, source, rel_path, run.execution_id,
             )

@@ -3,8 +3,10 @@
 #
 # Maps Erlang/OTP stdlib modules and functions to I/O boundary types.
 # Erlang uses module:function/arity syntax; we list by module and function.
-# Third-party libraries (cowboy, ranch, etc.) call these primitives
-# transitively, so covering stdlib + OTP is sufficient.
+# Third-party libraries (cowboy, ranch, ...) are NOT seen through: hypergumbo
+# analyses your repository, not its dependencies, so their I/O needs an
+# overlay (docs/CATALOGUES.md). The elixir community overlay rows some.
+provenance: builtin
 language: erlang
 # WI-tukif (Plan C, PR B): catalog audited against erlang.org/doc/man/
 # 2026-05-24 for OTP 26. Strict-stdlib coverage: file/filelib/prim_file
@@ -208,12 +210,16 @@ net_listen:
       and ssl:recv returns the bytes; both stay net_recv.
 
 db_read:
+  # NOT ets:info / mnesia:table_info (WI-rivur). They return a table's SHAPE
+  # -- size, memory, type, owner -- computed by the runtime, not rows anybody
+  # stored, and db_read minted untrusted_input from that number. Deleted:
+  # nothing crosses, so nothing is relocated. elixir inherits this.
   - module: ets
-    functions: [lookup, lookup_element, match, match_object, select, select_reverse, first, next, last, prev, foldl, foldr, tab2list, info, member]
+    functions: [lookup, lookup_element, match, match_object, select, select_reverse, first, next, last, prev, foldl, foldr, tab2list, member]
   - module: dets
     functions: [lookup, match, match_object, select, first, next, foldl, foldr, traverse, open_file]
   - module: mnesia
-    functions: [read, match_object, select, first, next, last, prev, all_keys, table_info, dirty_read, dirty_match_object, dirty_select, dirty_first, dirty_next, dirty_last, dirty_prev, dirty_all_keys]
+    functions: [read, match_object, select, first, next, last, prev, all_keys, dirty_read, dirty_match_object, dirty_select, dirty_first, dirty_next, dirty_last, dirty_prev, dirty_all_keys]
 
 db_write:
   - module: ets
@@ -239,6 +245,19 @@ process_send:
     functions: [notify, sync_notify, call, start, start_link, start_monitor, stop, add_handler, add_sup_handler, delete_handler]
   - module: supervisor
     functions: [start_link, start_child, restart_child, delete_child, terminate_child, which_children, count_children]
+  - module: application
+    functions: [load, start, stop, ensure_started, ensure_all_started]
+    notes: >-
+      INV-butiv. Each is a request to the application controller process, read
+      in OTP's kernel source: load -> application_controller:load_application ->
+      call({load_application, App}); start is ensure_loaded (that load) then
+      start_application -> call(...); ensure_started is start;
+      ensure_all_started starts each dependency the same way; stop ->
+      stop_application -> call(...). The class gen_server:call has above. The
+      .app resource file is read inside the controller, not at the call site,
+      so no fs_read row. They were rowed env_write beside set_env/unset_env --
+      the WI-jupaf module sweep -- which made starting an application a write to
+      the environment.
   - module: proc_lib
     functions: [spawn, spawn_link, spawn_opt, start, start_link, init_ack, hibernate]
   - module: rpc
@@ -342,7 +361,8 @@ env_write:
     functions: [putenv, unsetenv]
     notes: "WI-jupaf: `cmd` removed here too — see the env_read note above."
   - module: application
-    functions: [set_env, unset_env, load, start, stop, ensure_started, ensure_all_started]
+    functions: [set_env, unset_env]
+    notes: "INV-butiv: load/start/stop/ensure_started/ensure_all_started were swept in here with the two config writers and MOVED to process_send; see the note there."
 
 ipc_recv:
   - module: os

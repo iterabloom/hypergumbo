@@ -3,16 +3,10 @@
 
 - Status: **Accepted**
 
-> Amended in place 3x — see amendments (2026-06-11 x2, 2026-06-17); the assert-empty gate is now a shrink-only multi-substrate fixture ratchet.
-
 - Date: 2026-05-31
 - Supersedes: —
 - Superseded by: —
 - Related: ADR-0024 (Axis Declaration Template — the static-AST validator whose runtime counterpart this ADR introduces), ADR-0027 (Symbol.kind axis), ADR-0028 (Edge.evidence_type axis), ADR-0031 (Symbol.language reshape — its "Enforcement" §explicitly defers the runtime drift gate to this ADR), ADR-0032 (canonical_name / fingerprint reshape — same deferral); tracker items INV-sugat (super-META "no spec-vs-data validator stage exists in the pipeline" — closed by this ADR), INV-luhur (META: AnalysisRun + behavior-map meta-layer writers have no validator), INV-fabov (META: command-line and configuration values silently accepted without validation), INV-numat (META: vocabulary fields mix axes); WI-rolol (structural-fix trial whose sub-tasks A and B fold into this ADR's Phase 3 implementation per the campaign plan).
-
-> **Amendment (2026-06-11):** Cross-field coherence invariant (a) — `Edge.dst_ref ↔ Edge.dst` per the `make_unresolved_edge` docstring — is re-anchored by ADR-0037 ruling 2 (2026-06-10 design interview, ADRs 0035–0042, PR #4181): `dst_ref` becomes unconditionally derived at edge finalization, so the invariant's enforcement point moves from producer stamping to the single finalization verdict, joined by ADR-0037's new FK predicate (`is_resolved=True ⇒ dst ∈ nodes`). The invariant survives; only its producer-side anchor is retired.
-
-> **Amendment (2026-06-11) — CI gate realization (validator:F1 / G1, WI-kafar + WI-himoj):** the "Default failure behavior" §3 and "Phase 3" descriptions below specify the gate `tests/test_validation_report_empty.py` as one that "runs the self-analysis corpus and fails when `validation_report.violations` is non-empty." As realized, the gate differs on two points, both forced by ground truth. (1) The corpus is not at zero violations — the validator surfaces real, currently-open defects — so an assert-empty gate is permanently red; the gate is therefore a **shrink-only per-substrate ratchet** against committed baselines (a count may shrink, never grow). (2) A default-substrate-only gate lets flag-gated writer paths escape (WI-himoj), so the gate runs a **four-substrate matrix** (default / `--frameworks all` / `--include-docs` / `--max-tier 4`) against the multi-language `schema-coverage-corpus` fixture tree (chosen over self-analysis for per-PR speed and broader writer-path coverage; the heavy self-analysis variant is future work for full-suite). The gate additionally co-ratchets the ADR-0023 §3 `runtime_coherence` offender count per substrate. The land-then-fix posture and "CI gate is the only failure surface" decision are unchanged.
 
 ## Context
 
@@ -59,7 +53,7 @@ Four validation classes, each responsible for one structural concern. They land 
    - **`bounded-enum`**: values must be in the small fixed list documented in the dataclass docstring.
    - **`free-text`**: no value check; the justification was the gate at source-write time.
 2. **Writer-contract** — for each `(producer-class, axis-tagged field)` pair, verify that records from that producer populate the field. This generalizes the four sub-patterns in INV-luhur's description (schema-declares-no-writer; default-only initializer; same-name-two-definitions; writer-writes-constant) into a check class. Each pass declares which fields it populates; the validator checks records emitted by that pass against its declaration.
-3. **Cross-field coherence** — for documented field-pair invariants, verify that emitted records honor them. Initial invariants: (a) `Edge.dst_ref ↔ Edge.dst` coherence per `make_unresolved_edge` docstring; (b) `Symbol.language is None ↔ Symbol.protocol_origin is not None` for synthetic stand-ins (per ADR-0031 Class B); (c) `Symbol.display_label` populated on synthetic stand-ins only, not on real-source declarations (per ADR-0032). New invariants are added by appending to a declared list.
+3. **Cross-field coherence** — for documented field-pair invariants, verify that emitted records honor them. Initial invariants: (a) `Edge.dst_ref ↔ Edge.dst` coherence — derived from the single edge-finalization verdict (ADR-0037 ruling 2) rather than producer stamping, and joined by ADR-0037's FK predicate (`is_resolved=True ⇒ dst ∈ nodes`); (b) `Symbol.language is None ↔ Symbol.protocol_origin is not None` for synthetic stand-ins (per ADR-0031 Class B); (c) `Symbol.display_label` populated on synthetic stand-ins only, not on real-source declarations (per ADR-0032). New invariants are added by appending to a declared list.
 4. **Verdict-enum completeness** — for verdict-emitting code paths, verify that an `inconclusive` (or equivalent) branch exists for missing-data / malformed-input / broken-binary cases. The first instance is `ClaimVerdict` in `verify_claims.py`, which today falls through to `"confirmed"` for "no constraint matched" (INV-bitig P0). Generalized as a class because any future verdict-emitting subcommand has the same risk shape.
 
 ### Output format
@@ -84,7 +78,7 @@ The `validation_report` section in the behavior-map artifact is a JSON object:
 ```json
 {
   "validation_report": {
-    "schema_version": "0.1",  // (stale example — current schema_version is 0.3 per the 2026-06-17 amendment; see below)
+    "schema_version": "0.3",
     "violations": [
       {
         "severity": "error",
@@ -107,7 +101,7 @@ The `validation_report` section in the behavior-map artifact is a JSON object:
 }
 ```
 
-**Amendment (2026-06-17, validator:F2 — WI-moriz disclosure + FK predicate).** Two additions ride `validation_report` schema_version `0.3`:
+**Disclosure manifest and FK predicate (validator:F2, WI-moriz).** `validation_report` schema_version `0.3` carries two further pieces:
 
 1. **`wired_checks` manifest.** A `violations_by_class` count of `0` is ambiguous between "clean on this dimension" and "no wired predicate covers this dimension" — the counter alone cannot distinguish them (WI-moriz's false-all-clear). The report now carries a `wired_checks` array — one `{check, validator_class, description}` entry per `_check_*` predicate wired into `validate_ir` — so a `0` reads as "0 instances of *these named checks*", and a defect class *absent* from the manifest is, by absence, not yet validated. A white-box drift test pins the manifest to the live wired set: a check can never be wired without being disclosed (nor disclosed without being wired), so the false-all-clear is structurally un-reproducible.
 
@@ -119,9 +113,9 @@ The validator does **not** fail the `hypergumbo run` command by default. Violati
 
 1. Written into the artifact's `validation_report` section.
 2. Summarized to stderr (`"[warn] N axis-conformance violations; see validation_report in <artifact>"`).
-3. CI-gated by a separate test (`tests/test_validation_report_empty.py`) that runs the self-analysis corpus and fails when `validation_report.violations` is non-empty. *(As realized this is a shrink-only multi-substrate fixture-corpus ratchet, not an assert-empty self-analysis gate — see the 2026-06-11 CI-gate-realization amendment above.)*
+3. CI-gated by `packages/hypergumbo-core/tests/test_validation_report_empty.py` (validator:F1 / G1, WI-kafar + WI-himoj), a **shrink-only per-substrate ratchet** against committed baselines: a substrate's violation count may shrink, never grow. The corpus is not at zero violations — the validator surfaces real, open defects — so an assert-empty gate would be permanently red. The gate runs a **four-substrate matrix** (default / `--frameworks all` / `--include-docs` / `--max-tier 4`), because a default-only gate lets flag-gated writer paths escape (WI-himoj), against the multi-language `schema-coverage-corpus` fixture tree (chosen over self-analysis for per-PR speed and broader writer-path coverage). It co-ratchets the ADR-0023 §3 `runtime_coherence` offender count per substrate, and asserts a liveness floor so an empty corpus cannot pass vacuously.
 
-The split between "always emit; never fail run" and "CI gate fails when non-empty" gives the validator a soft introduction: users see violations as informational warnings, the CI catches new violations as regressions, and the self-analysis dogfooding workflow becomes the engine that drives the violation count to zero.
+The split between "always emit; never fail run" and "CI gate fails on growth" gives the validator a soft introduction: users see violations as informational warnings, the CI catches new violations as regressions, and the self-analysis dogfooding workflow drives the counts toward zero.
 
 ### Severity convention
 
@@ -142,7 +136,7 @@ For `bounded-enum` and `identity` categories, `None` legality follows the field'
 Implementation is staged across the phases of the campaign captured in the lab-notebook plan file:
 
 - **Phase 0 (this ADR + scaffolding)** — Land this ADR + the stub `spec_validator.py` module (returns `[]`) + the pipeline wire-up + the smoke test. No validator class is turned on; the artifact gains an empty `validation_report` section.
-- **Phase 3 (validator classes turn on, one per PR)** — Land the four validator classes in dedicated PRs. After each, the self-analysis run's `validation_report` shows real violation counts; the CI gate `test_validation_report_empty.py` fails until each class's violations are reduced to zero through downstream cleanup. *(Realized as a shrink-only per-substrate ratchet — counts shrink toward zero, they do not gate at exactly zero; see the 2026-06-11 CI-gate-realization amendment above.)*
+- **Phase 3 (validator classes turn on, one per PR)** — Land the four validator classes in dedicated PRs. After each, the `validation_report` shows real violation counts, and the ratchet gate's baselines record them; downstream cleanup shrinks them toward zero.
 - **Phase 5 (ID-format validator class)** — A fifth validator class for ID-format conformance, codifying the lab-notebook ID-construction discipline as mechanical enforcement (per ADR-0034).
 - **Phase 6 (cleanup tail)** — Per-emitter fixes driven by the validator's report until the self-analysis corpus is clean.
 

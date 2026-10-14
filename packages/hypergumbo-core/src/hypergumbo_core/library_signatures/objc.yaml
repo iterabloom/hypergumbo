@@ -12,6 +12,7 @@
 # KEY SHAPE: `<Class>.<selector>`; the selector is the FULL objc selector with its
 # colons, because that is what the analyzer's registry is keyed by. Values are class
 # names.
+provenance: builtin
 language: objc
 module_completeness: partial
 signatures:

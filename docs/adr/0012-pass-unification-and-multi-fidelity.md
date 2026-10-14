@@ -1,33 +1,31 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0012: Pass Unification and Multi-Fidelity Architecture
 
-Status: Partially superseded by ADR-0057 — §Step 3, the multi-fidelity coexistence granularity (record → attribute; 2026-09-18). Step 1 implemented (analyzer registration unified); Step 2 remains a design target. Counts corrected 2026-08-19: the Context section's linker count is as-of-filing (24) and the two-tier and reference sections no longer restate a total — they had drifted to 45 linkers / 24 linkers / 104 analyzers against a live registry of 61 and 118, contradicting the spec and ARCHITECTURE.md, both of which said 61.
-
-> Amended in place — see docs/adr/README.md "ADR lifecycle" (status-line convention + Context/References reconciliation note).
+Status: Partially superseded by ADR-0057 — §Step 3, the multi-fidelity coexistence granularity (record → attribute). Step 1 implemented (analyzer registration unified); Step 2 remains a design target.
 
 ## Context
 
-The analysis pipeline currently has two coexisting analyzer registration systems and a two-tier execution model. Understanding how we got here — and where the architecture should go — requires tracing the history.
+The analysis pipeline had two coexisting analyzer registration systems, and has a two-tier execution model. Understanding how we got here — and where the architecture should go — requires tracing the history.
 
 ### The two analyzer registries
 
-> Note (post-Step-1 reality): The dead-code framing below describes the *pre-Step-1* state. After Step 1 the roles inverted — `analyze/registry.py` is the canonical active registry and `analyze/all_analyzers.py` is a facade delegating to it. See the **References** section for the current authoritative description; do not ingest the "vestigial dead code" claim below as current.
+On January 5, 2026 (commit `9f74a49`), a single refactoring commit created two analyzer registration systems at once:
 
-On January 5, 2026 (commit `9f74a49`), a single refactoring commit created both systems simultaneously:
-
-1. **`analyze/all_analyzers.py`** — An `AnalyzerSpec` NamedTuple-based system with lazy loading via `importlib.import_module()` at call time. Entry-points-based plugin discovery was added during the monorepo migration (ADR-0010). This system was wired into `cli.py` immediately and has been the active dispatch mechanism ever since.
+1. **`analyze/all_analyzers.py`** — An `AnalyzerSpec` NamedTuple-based system with lazy loading via `importlib.import_module()` at call time. Entry-points-based plugin discovery was added during the monorepo migration (ADR-0010). This system was wired into `cli.py` immediately and was the dispatch mechanism until Step 1 below.
 
 2. **`analyze/registry.py`** — A decorator-based `@register_analyzer` system modeled on class-based registration with priority ordering and dependency metadata (`requires_symbols`). The commit message described this as "decorator-based registration (future use)." Every public function except the decorator itself was marked `pragma: no cover` from day one.
 
-Only one analyzer (Go) ever adopted the decorator. Go is also registered via `AnalyzerSpec` in its package's entry-points, which is what actually gets called. The `@register_analyzer` decorator on Go populates a dict that nothing reads.
+Before Step 1, only one analyzer (Go) adopted the decorator. Go was also registered via `AnalyzerSpec` in its package's entry-points, which is what actually got called, so the decorator populated a dict that nothing read.
 
 The following day (January 6), `linkers/registry.py` was created, its commit message explicitly stating it was "mirroring the pattern used in `analyze/registry.py`." The linker registry was wired into `cli.py` the same day and had all linkers migrated within 48 hours. It was actively used by 24 linkers at the time of this ADR's filing; the catalogue has since grown — `docs/LINKERS.md` publishes the current count, and `tests/test_generate_architecture_linker_inventory.py` plus `packages/hypergumbo-core/tests/test_spec_linker_count.py` keep it honest.
+
+Step 1 has shipped: `analyze/registry.py` is the canonical analyzer registry, filled by `@register_analyzer`, and `all_analyzers.py` delegates analyzer discovery to it while keeping the orchestrator (`run_all_analyzers`).
 
 ### The two-tier execution model
 
 The analysis pipeline in `run_behavior_map()` runs in two tiers:
 
-**Tier 1 — Language analyzers (independent producers):** 100+ analyzer functions, each taking `repo_root` and returning `AnalysisResult` (symbols + edges). They run independently and do not see each other's output. Dispatched via `all_analyzers.py`.
+**Tier 1 — Language analyzers (independent producers):** 100+ analyzer functions, each taking `repo_root` and returning `AnalysisResult` (symbols + edges). They run independently and do not see each other's output. Registered in `analyze/registry.py` and run by `all_analyzers.py::run_all_analyzers`.
 
 **Tier 2 — Linkers and enrichment (context-dependent refiners):** After all analyzers complete, the orchestrator collects the unified symbol graph and runs: deferred symbol resolution, framework pattern enrichment, the linker suite (registered via `linkers/registry.py`; count published in [`docs/LINKERS.md`](../LINKERS.md)) across four subcategories — Protocol / Bridge / Framework / Infrastructure per [ADR-3bbb](3bbb-linker-subcategory-restoration.md) — and entrypoint detection. These passes receive the accumulated state and produce new edges or metadata.
 
@@ -126,7 +124,7 @@ Tier 1 analyzers receive an empty IR and populate it. Tier 2 refiners receive th
 
 ## Relationship to Other ADRs
 
-- **ADR-0010** (Modular Packages): Introduced the `AnalyzerSpec` + entry-points system during the monorepo migration. Its bootstrap safety section previously referenced `analyze/registry.py` as the dispatch system; this has been corrected to reference `all_analyzers.py`.
+- **ADR-0010** (Modular Packages): Introduced the `AnalyzerSpec` + entry-points system during the monorepo migration. Its bootstrap-safety section names `all_analyzers.py` as the analyzer dispatch point.
 - **ADR-3aaa** (YAML-driven Framework Patterns): Framework enrichment is a Tier 2 refiner that would become a pass under the unified interface.
 - **ADR-0006** (Variable Type Inference): AST-based type inference is a precursor to multi-fidelity; the current heuristics would be refined (not replaced) by language server passes.
 - **ADR-0057** (Multi-Backend Coexistence at the Attribute): supersedes §Step 3 — two passes' records for one declaration merge into one, with per-attribute provenance and a single configured arbitration default.

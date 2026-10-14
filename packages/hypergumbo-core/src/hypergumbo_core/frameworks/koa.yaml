@@ -7,6 +7,10 @@
 # Koa is minimalist; most routing uses koa-router or @koa/router.
 # The decorator patterns here match against extracted call metadata.
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-06-18
 id: koa
 language: javascript
 

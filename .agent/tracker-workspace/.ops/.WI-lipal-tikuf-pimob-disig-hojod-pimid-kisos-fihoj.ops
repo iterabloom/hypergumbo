@@ -1,0 +1,22 @@
+- op: create  # 4053
+  at: '2026-10-01T01:29:49Z'  # 4053
+  by: agent  # 4053
+  actor: jgstern_agent  # 4053
+  clock: 1  # 4053
+  nonce: '4053'  # 4053
+  data:  # 4053
+    kind: work_item  # 4053
+    title: "pyproject [project.scripts]: the console-script target survives as a phantom external_symbol node (pkg.cli:main) beside the real in-repo function the build-target linker resolved"  # 4053
+    status: todo_hard  # 4053
+    priority: 3  # 4053
+    parent:  # 4053
+    tags:  # 4053
+    - python  # 4053
+    - analysis_quality  # 4053
+    - linker_gap  # 4053
+    isbefore: []  # 4053
+    duplicate_of: []  # 4053
+    not_duplicate_of: []  # 4053
+    pr_ref:  # 4053
+    description: "FOUND 2026-09-30 by the WI-fadab premise check (dry run group F), on the self-map; reproduced on a fixture at dev b16e3e9271.\n\nTHE DEFECT. A pyproject `[project.scripts]` console-script leaves a PHANTOM external node for its in-repo target, beside the real one.\n\nREPRO (scratch fixture: pyproject.toml with `[project.scripts] pkgcli = \"pkg.cli:main\"`, pkg/cli.py defining main; `hypergumbo survey`):\n    defines_target  toml:pyproject.toml:5-5:pkgcli:file -> python:pkg.cli:0-0:main:external_symbol\n    calls           toml:pyproject.toml:5-5:pkgcli:file -> python:pkg/cli.py:1-2:main:function\n  -> TWO nodes for one function: the real `python:pkg/cli.py:1-2:main:function` and `python:pkg.cli:0-0:main:external_symbol`.\n\nBY DESIGN, UP TO A POINT. toml_config.py emits `defines_target` to a dotted placeholder on purpose; linkers/build_target.py resolves it and adds the `calls` edge to the real main() (WI-simak / WI-mital; verify_claims.is_synthetic_build_target_call documents the calls edge). What is NOT by design: once the linker has resolved the target in-repo, the placeholder survives as an external_symbol node, carrying a workspace-module name (`pkg.cli`) -- the INV-nuzas \"phantom workspace-external\" shape. INV-nuzas closed with a carve-out for statically-invisible nodes; this target is statically resolved, so it is not in the carve-out. WI-tanot's remaining Cat E is the bash console-script entry, not this.\n\nWHY IT MATTERS. On this repository the console-script targets (e.g. hypergumbo_tracker.cli:main) appear as `<external>` external_symbol nodes; the WI-fadab check found 4 of 10 nodes in a default `compact --max-symbols 10` output were external_symbol nodes of this kind. Any consumer counting externals or third-party dependencies over-counts by one per script.\n\nFIX DIRECTION (not decided): when build_target resolves a defines_target placeholder to an in-repo symbol, re-point the defines_target edge at the resolved node and drop the placeholder (an ADR-0057-style supersession of the stub), or have toml_config resolve in-repo targets directly when the module path exists. Check the shared `manifest` extractor and xml_config's `<mainClass>` defines_target for the same residue.\nRelated: INV-nuzas (closed family), WI-tanot (Cat E: bash), WI-simak / WI-mital (the linker), WI-fadab (where it surfaced)."  # 4053
+    fields: {}  # 4053

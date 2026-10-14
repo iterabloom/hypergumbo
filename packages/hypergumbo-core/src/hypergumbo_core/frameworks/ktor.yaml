@@ -4,6 +4,10 @@
 # Ktor is a Kotlin web framework using DSL-based routing.
 # Routes are defined using routing { }, get { }, post { }, etc.
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-06-18
 id: ktor
 language: kotlin
 

@@ -1,0 +1,37 @@
+- op: create  # 1d77
+  at: '2026-10-01T15:26:02Z'  # 1d77
+  by: agent  # 1d77
+  actor: jgstern_agent  # 1d77
+  clock: 1  # 1d77
+  nonce: 1d77  # 1d77
+  data:  # 1d77
+    kind: work_item  # 1d77
+    title: "elixir: defprotocol/defimpl unmodelled -- protocol and impl functions emitted as bare 'size' or under the wrong module, no type relationship (WI-fisug's title claimed defimpl; its code never had it)"  # 1d77
+    status: todo_hard  # 1d77
+    priority: 2  # 1d77
+    parent:  # 1d77
+    tags:  # 1d77
+    - elixir  # 1d77
+    - analyzer  # 1d77
+    - linker_gap  # 1d77
+    isbefore: []  # 1d77
+    duplicate_of: []  # 1d77
+    not_duplicate_of: []  # 1d77
+    pr_ref:  # 1d77
+    description: "**Elixir protocols (`defprotocol` / `defimpl`) are unmodelled, and their functions are mis-named.** WI-fisug-vamij-sulij-zubiz-goboh-kivik-gazuv-lovat is `done` with the title \"detect @behaviour and defimpl protocol implementation edges\", but its closure note covers only `@behaviour` and the table, and `elixir.py` contains no `defimpl` / `defprotocol` handling (grep, dev @ 4dfb1d645a). Repro (elixir analyzer, 2026-10-01):\n\n    defprotocol Size do\n      def size(data)\n    end\n    defimpl Size, for: Map do\n      def size(map), do: map_size(map)\n    end\n    defmodule Outer do\n      defimpl Size, for: Outer do\n        def size(_), do: 0\n      end\n    end\n\nEmitted: `function size` TWICE with no module (the protocol's bodyless declaration and the Map impl), and `function Outer.size` (the nested impl attributed to `Outer`, whose real module is `Size.Outer`). No module symbol for `Size` or for either impl module, no type relationship, no protocol-function -> impl `dispatches_to`.\n\nCounts (grep, 2026-10-01): `defimpl` plausible 20, livebook 17, phoenix 10, nex-framework 6; `defprotocol` files plausible 1, livebook 4, phoenix 1, nex-framework 1.\n\nFix direction: `defprotocol P` -> module symbol P with its `def` heads as declaration symbols (same marking WI-vitas gives `@callback`: kind function, `modifiers=[\"abstract\"]`, out of call resolution); `defimpl P, for: T` -> module `P.T` owning its defs, `implements` P, and P.f -> P.T.f `dispatches_to`. Bare-name and mis-owner symbols are an identity defect independent of the edges."  # 1d77
+    fields: {}  # 1d77
+- op: update  # f45e
+  at: '2026-10-12T16:41:09Z'  # f45e
+  by: agent  # f45e
+  actor: jgstern_agent  # f45e
+  clock: 2  # f45e
+  nonce: f45e  # f45e
+  set:  # f45e
+    status: done  # f45e
+- op: discuss  # 29e5
+  at: '2026-10-12T16:41:09Z'  # 29e5
+  by: agent  # 29e5
+  actor: jgstern_agent  # 29e5
+  clock: 3  # 29e5
+  nonce: '29e5'  # 29e5
+  message: "Fixed in PR #1556 (merge 9f400e64fc). Root cause: elixir.py only knew defmodule as a module definer, so defs under defprotocol/defimpl took the nearest defmodule (or none) as owner. Fix: defmodule/defprotocol/defimpl share _enclosing_module_names; defprotocol P -> module P with abstract callback-shaped heads (meta arity, callback_stable_id, qualified call targets); defimpl P, for: T -> absolute module P.T (for: [A,B] one per target, no for:/__MODULE__ -> enclosing module, P/T alias-expanded incl. nested-module auto-aliases; unreadable impls own nothing). Edges via _behaviour_edges/hypergumbo_core.behaviours: implements P.T->P (or external unresolved), protocol fn -> impl dispatches_to by name+arity; impls of non-repo protocols rooted by module->public fn dispatches_to. Gaps: @derive not modelled (generated impl, no source); calls in a multi-target impl anchor on one target's copy. Evidence: hypergumbo run on the filed repro (dev 9f400e64fc) -> modules Outer, Size, Size.Map, Size.Outer; functions Size.size [abstract], Size.Map.size, Size.Outer.size, all stable_ids non-null, no bare size; edges implements Size.Map->Size, Size.Outer->Size, dispatches_to Size.size->Size.Map.size, Size.size->Size.Outer.size. Corpus (analyzer level, before->after): bare protocol/impl fns plausible 23->0, livebook 335->0, phoenix 15->0, nex 4->0; impl public fns with no in-edge plausible 21->0, livebook 284->0, phoenix 15->0, nex 24->0; implements edges plausible 135->159, livebook 131->148, phoenix 95->103, nex 14->20."  # 29e5

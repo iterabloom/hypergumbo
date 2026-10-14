@@ -22,9 +22,9 @@ margin on the day this field was introduced (>=10 distinct protocol
 values across 8+ producer linker modules per the ADR-0031 audit). The
 registry is the runtime accessor that catalog-derived consumers like
 the ``# axis: protocol-origin`` declaration check at
-``hypergumbo_core.multi_value_field_axis`` and the future axis-conformance
-validator class at ``hypergumbo_core.spec_validator`` (ADR-0033 Phase 3
-PR1) both call into.
+``hypergumbo_core.multi_value_field_axis`` and the axis-conformance
+validator class (``_check_axis_conformance`` in
+``hypergumbo_core.spec_validator``, ADR-0033 Phase 3 PR1) both call into.
 
 Compared to the catalog-derived ``language`` axis (which is computed
 from ``@register_analyzer`` / ``@register_linker`` declarations on the

@@ -11,6 +11,12 @@ catches hardcoded ``frozenset({...})`` sets at module level whose
 values escape the registry; L3 catches literal-string emit sites that
 introduce new values without registering them.
 
+A fourth ratchet axis, ``Edge.meta key`` (WI-lijaz), applies the same
+shrink-only baseline to meta KEYS: every key a producer writes to
+``Edge.meta`` (at construction, on the ``edge_meta`` axis) or to any
+``.meta`` after the fact (on some axis) must be registered in
+``axis_meta_keys``. See ``hypergumbo_core.meta_key_coherence``.
+
 Behavior per axis:
 
 - **Strict violations** (literal value not in registry) → exit 1.
@@ -20,7 +26,7 @@ Behavior per axis:
   here, the per-cluster producer migration normalizes them later.
 
 Exit codes:
-    0 — no strict violations across all three sibling axes.
+    0 — no new leak and no stale baseline entry on any axis.
     1 — at least one axis has strict violations; fix before committing.
     2 — could not import a registry (likely a packaging /
         editable-install problem; do not block commits on this).
@@ -40,6 +46,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
 
 try:
+    from hypergumbo_core.meta_key_coherence import unregistered_edge_meta_keys
     from hypergumbo_core.producer_coherence import (
         edge_sites_without_evidence_type,
         ratchet_diff,
@@ -61,6 +68,10 @@ _AXES = (
     ("Edge.evidence_type", unregistered_evidence_types),
     ("Symbol.kind", unregistered_symbol_kinds),
     ("Edge.edge_type", unregistered_edge_types),
+    # WI-lijaz: meta KEYS, not values. A key at an Edge construction site must
+    # be registered on the edge_meta axis; a key written post-hoc to any
+    # .meta, on some axis (hypergumbo_core.meta_key_coherence).
+    ("Edge.meta key", unregistered_edge_meta_keys),
 )
 
 
@@ -115,7 +126,8 @@ def main() -> int:
         print(
             "\nProducer-side axis coherence ratchet failed.\n"
             "NEW value: register it (ADR-0023 / ADR-0027 / ADR-0028) or fold\n"
-            "the producer to a registered value. STALE baseline entry: delete\n"
+            "the producer to a registered value; a NEW meta key: register it in\n"
+            "axis_meta_keys.py on the axis it is written to. STALE baseline entry: delete\n"
             f"it from {_BASELINE_PATH.name} (the ratchet only shrinks).",
             file=sys.stderr,
         )

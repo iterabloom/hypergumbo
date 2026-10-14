@@ -21,12 +21,27 @@ How It Works
 4. ``scan_library_patterns()`` matches regex patterns from the
    ``library_patterns`` YAML section against source text, returning
    structured DataflowSite objects for library-specific read/write sites.
+5. ``get_dataflow_config()`` appends two more channels of ``library_patterns``
+   rows after the built-in ones, and reads nothing else from either. First
+   come shipped companion files that name the language on their ``language:``
+   line and declare ``provenance: community`` (ADR-0061, e.g.
+   ``python-pyyaml.yaml``). Then come the user's
+   ``dataflow_patterns/<language>.yaml`` files (ADR-0047 ruling 10), so a user
+   row can only add a match the shipped rows missed. A malformed user file
+   raises ``CatalogueError`` (exit 2); it is not skipped.
+6. Both annotators skip the edge types that ADR-0038 ruling 2 declares N/A for
+   ``access_mode`` (``is_access_mode_not_applicable``), such as
+   ``instantiates`` and the structural types.
 
 Two-Tier Model (ADR-0015 §5)
 -----------------------------
-- **Tier 1 (automatic):** Intra-language edges annotated via AST node lookup.
-  One integration point in ``analyze/base.py`` covers all 104 tree-sitter
-  analyzers automatically.
+- **Tier 1 (automatic):** Intra-language edges annotated via AST node lookup,
+  only for a language that has a ``dataflow_patterns/<language>.yaml``
+  (``get_dataflow_config`` returns None otherwise). The ``TreeSitterAnalyzer``
+  hook in ``analyze/base.py`` applies it to every analyzer built on that base.
+  Analyzers that run their own edge pass (C, C#, Go, Java, JS/TS, Kotlin, Lua,
+  PHP, Ruby) call ``annotate_dataflow`` directly, and ``py.py`` calls
+  ``annotate_dataflow_ast``.
 - **Tier 2 (explicit):** Cross-language linker edges annotated by the linker
   itself via ``Edge.create(access_mode=..., channel=...)``. These are skipped
   by ``annotate_dataflow()`` to avoid double-counting.
@@ -220,11 +235,44 @@ def get_dataflow_config(language: str) -> Optional[DataflowConfig]:
     yaml_path = _DATAFLOW_DIR / f"{language}.yaml"
     if yaml_path.is_file():
         config = load_dataflow_config(yaml_path)
+        config = _with_community_library_patterns(language, config)
         _config_cache[language] = _with_user_library_patterns(language, config)
     else:
         _config_cache[language] = None
 
     return _config_cache[language]
+
+
+def _with_community_library_patterns(
+    language: str, config: DataflowConfig,
+) -> DataflowConfig:
+    """Append the shipped COMMUNITY ``library_patterns`` rows for ``language``.
+
+    ADR-0061: a file has one tier, and ``<language>.yaml`` is built-in, so it
+    may name only the standard library. A row anchored on a third-party module
+    (``\\byaml\\.dump\\(``) lives in a companion file that names its language on
+    its ``language:`` line and declares ``provenance: community``. Only its
+    ``library_patterns`` are read, by the same reasoning that scopes the user
+    channel below: the grammar rows belong to the language.
+
+    Appended after the built-in rows and before the user's. Both consumers
+    resolve a line that several rows match by mode priority, not by row order,
+    so where the rows sit changes nothing about what they classify.
+    """
+    from .yaml_catalogs import declares_community
+
+    extra: "List[Dict[str, Any]]" = []
+    for path in sorted(_DATAFLOW_DIR.glob("*.yaml")):
+        if path.stem == language:
+            continue
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if data.get("language") != language or not declares_community(data):
+            continue
+        extra.extend(data.get("library_patterns") or [])
+    if not extra:
+        return config
+    return replace(config,
+                   library_patterns=[*config.library_patterns, *extra])
 
 
 def _with_user_library_patterns(
@@ -253,18 +301,25 @@ def _with_user_library_patterns(
     silence it.
     """
     from .catalogue_home import user_channel_files
+    from .yaml_catalogs import CatalogueError, read_catalogue_yaml
 
     extra: "List[Dict[str, Any]]" = []
     for path in user_channel_files("dataflow_patterns"):
         if path.stem != language:
             continue
-        try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        except (OSError, yaml.YAMLError):  # pragma: no cover - unreadable file
-            continue
-        rows = data.get("library_patterns")
-        if isinstance(rows, list):
-            extra.extend(rows)
+        # Refused, not skipped: a file that does not parse, is not a mapping,
+        # or whose ``library_patterns`` is not a list of rows was read as "no
+        # extra rows" in silence, a narrower recognition the user never asked
+        # for. CatalogueError names the file and the CLI exits 2.
+        data = read_catalogue_yaml(path, what="dataflow pattern file")
+        rows = data.get("library_patterns") or []
+        if not isinstance(rows, list) or not all(
+                isinstance(row, dict) for row in rows):
+            raise CatalogueError(
+                f"dataflow pattern file {path}: 'library_patterns:' must be a "
+                f"list of mappings."
+            )
+        extra.extend(rows)
     if not extra:
         return config
     return replace(config,

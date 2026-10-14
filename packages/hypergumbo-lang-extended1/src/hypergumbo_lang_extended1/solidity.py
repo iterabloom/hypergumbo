@@ -9,7 +9,8 @@ This analyzer uses tree-sitter to parse Solidity smart contract files and extrac
 - Constructor definitions
 - Modifier definitions
 - Event definitions
-- State variables + struct members (kind="field"; WI-jusus)
+- State variables + struct members (kind="field"; WI-jusus); a member of a
+  struct declared in a contract hashes the contract too (INV-fabih)
 - File-level constants (kind="variable"; WI-jusus)
 - Function call relationships
 - Import relationships
@@ -30,6 +31,13 @@ The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Solidity-specific
 extraction logic.
 
+Both passes take the REPO-RELATIVE path. It is an identity input (the file
+anchor folded into every callable and field stable_id, a file-level
+constant's ``make_variable_stable_id``); the absolute path these passes took
+until the WI-tusad scheme bump made every Solidity id differ between two
+checkouts of the same repository. A ``library``, which is no backstop table
+kind, mints ``overload_arity.scoped_stable_id``; it rode the floor key.
+
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
@@ -44,6 +52,8 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.overload_arity import scoped_stable_id
+from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -72,8 +82,11 @@ PASS_ID = make_pass_id("solidity")
 
 # WI-vibad: callable kinds that mint their own typed stable_id at the producer
 # (rather than via the WI-rihob name-scoped backstop, which would collide on
-# overloads). Container kinds (contract / interface / library) are NOT here —
-# they get their stable_id from the backstop.
+# overloads). Container kinds (contract / interface / library) are NOT here.
+# ``contract`` and ``interface`` are backstop table kinds and take their table
+# value; ``library`` is not, so with no producer value it rode the WI-motiz
+# floor key (WI-tusad): it mints ``overload_arity.scoped_stable_id`` instead
+# (a library cannot nest, so its scope is empty).
 _CALLABLE_STABLE_ID_KINDS: frozenset[str] = frozenset(
     {"function", "method", "constructor", "modifier", "event"}
 )
@@ -317,10 +330,15 @@ def _extract_symbols_from_tree(
         # collides on overloads (two ``Token.mint(...)`` bind to one id). They
         # must carry the typed producer stable_id — the signature keeps overloads
         # distinct — exactly as the field path (``add_value_symbol``) already
-        # does. Container kinds (contract / interface / library) leave
-        # ``stable_id=None`` here and receive it from the backstop.
+        # does. ``contract`` / ``interface`` leave ``stable_id=None`` here and
+        # receive their table value from the backstop; ``library``, no table
+        # kind, mints its producer id here (it rode the floor).
         callable_stable_id: Optional[str] = None
-        if kind in _CALLABLE_STABLE_ID_KINDS:
+        if kind == "library":
+            callable_stable_id = scoped_stable_id(
+                kind=kind, lang="solidity", path=file_path, name=name,
+            )
+        elif kind in _CALLABLE_STABLE_ID_KINDS:
             # _extract_solidity_signature always returns a "(...)" string, so
             # the fallback is a real signature, never empty.
             norm_sig = signature or _extract_solidity_signature(node, source)
@@ -370,7 +388,7 @@ def _extract_symbols_from_tree(
 
     # WI-jusus (emission-parity): file-identity anchor so same-named state
     # variables / constants in different files hash to distinct stable_ids.
-    file_stable_id = make_file_stable_id("solidity", file_path)
+    file_stable_id = make_file_stable_id("solidity", normalize_path(file_path))
 
     def add_value_symbol(
         node: "tree_sitter.Node",
@@ -380,8 +398,12 @@ def _extract_symbols_from_tree(
         vtype: Optional[str],
         modifiers: list[str],
         is_exported: bool,
+        hashed_name: Optional[str] = None,
     ) -> None:
         """Append a field/variable Symbol (WI-jusus).
+
+        ``hashed_name`` is the qualified name a field hashes when it is not
+        ``full_name`` (a struct member's: the contract too, INV-fabih).
 
         Deliberately NOT registered in ``symbol_by_name`` (nor, via
         ``SolidityAnalyzer.register_symbol``, in the global registry): a state
@@ -396,11 +418,11 @@ def _extract_symbols_from_tree(
             stable_id = make_typed_stable_id(
                 "field", vtype or "",
                 visibility_from_modifiers(modifiers),
-                name=name, qualified_name=full_name,
+                name=name, qualified_name=hashed_name or full_name,
                 file_stable_id=file_stable_id,
             )
         else:
-            stable_id = make_variable_stable_id("solidity", file_path, name)
+            stable_id = make_variable_stable_id("solidity", normalize_path(file_path), name)
         analysis.symbols.append(Symbol(
             id=make_symbol_id(
                 "solidity", file_path, start_line, end_line, full_name, kind
@@ -509,7 +531,14 @@ def _extract_symbols_from_tree(
                 owner = _get_enclosing_struct(node, source) or ""
                 vtype = _solidity_value_type(node, source)
                 full_name = f"{owner}.{name}" if owner else name
-                add_value_symbol(node, name, "field", full_name, vtype, [], True)
+                # INV-fabih: a struct declared in a contract hashes the contract
+                # too; ``struct Inner`` in contracts ``A`` and ``B`` shared
+                # ``Inner.v`` and deleting ``A`` moved ``B``'s field id.
+                contract = _get_enclosing_contract(node, source)
+                add_value_symbol(
+                    node, name, "field", full_name, vtype, [], True,
+                    hashed_name=f"{contract}.{full_name}" if contract else None,
+                )
 
         # File-level constant -> variable (contract-level constants parse as
         # state_variable_declaration and are handled above as fields).
@@ -849,7 +878,7 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
         super().__init__()
         self._file_symbols: dict[str, list[Symbol]] = {}
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Keep field/variable symbols OUT of the call-resolution registry (WI-jusus).
 
         A state variable / struct member / file-level constant is a data anchor,
@@ -871,24 +900,28 @@ class SolidityAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single Solidity file."""
         analysis = FileAnalysis()
+        # The REPO-RELATIVE path: it is an identity input (the file anchor,
+        # a constant's make_variable_stable_id). Passing str(file_path) made
+        # every Solidity stable_id depend on where the repo was checked out
+        # (WI-tusad scheme bump).
         _extract_symbols_from_tree(
-            tree, source, str(file_path), run.execution_id, analysis,
+            tree, source, rel_path, run.execution_id, analysis,
         )
         # Store full symbol list for position-based lookup in Pass 2
-        self._file_symbols[str(file_path)] = list(analysis.symbols)
+        self._file_symbols[rel_path] = list(analysis.symbols)
         return analysis
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:
         """Extract call and import edges from a single Solidity file."""
-        all_local = self._file_symbols.get(str(file_path))
+        all_local = self._file_symbols.get(rel_path)
         edges, _aliases = _extract_edges_from_tree(
-            tree, source, str(file_path),
+            tree, source, rel_path,
             local_symbols, global_symbols,
             run.execution_id, resolver,
             all_local_symbols=all_local,

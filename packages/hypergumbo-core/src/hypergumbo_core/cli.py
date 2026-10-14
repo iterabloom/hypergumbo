@@ -22,6 +22,8 @@ The CLI uses argparse with subcommands for different operations:
   ``uninstall-embeddings``, ``add-extras`` / ``remove-extras``,
   ``init-catalogs`` (scaffold the user catalogue channels, ADR-0047),
   ``trust-backend`` (record a per-repo backend opt-in, ADR-0045),
+  ``trust-catalogues`` (record a per-repo opt-in to the repository's own
+  catalogue data, ADR-0061),
   ``backend-agreement`` (measure two backends' agreement from an
   artifact's provenance slot, ADR-0057 §5).
 
@@ -34,57 +36,108 @@ common case (`hypergumbo .`) as simple as possible.
 The `survey` command (``run_survey``) builds the unified behavior map in
 this order:
 
+0. **Indexing** (ADR-0004): one ``FileIndex`` walk shared by profile
+   detection, the analyzers and the linkers. Installed dependency source
+   (Mix ``deps/``, ``node_modules/``, virtualenv ``site-packages``,
+   package-manager ``vendor/``, ``Pods/``) is skipped unless ``--trace-deps``
+   (sketch/survey/slice) or the ``trace_deps`` config key opts back in. The
+   skip is disclosed on stderr and in
+   ``supply_chain_summary.installed_deps_skipped``; generated output
+   recognised by the tool that writes it (``target/`` beside ``Cargo.toml``,
+   ``site/`` beside ``mkdocs.yml``, ...) is always skipped and disclosed the
+   same way, in ``generated_output_skipped``. ``main`` installs the
+   per-command ``--trace-deps`` override (``set_trace_deps_override``) and
+   clears it on every exit path.
 1. **Analyzers** run independently across 100+ languages
-   (``run_all_analyzers``).
+   (``run_all_analyzers``). Cross-file usage-context references are then
+   resolved (``resolve_deferred_symbol_refs``) and every id and path is made
+   repo-relative (``_relativize_ir_paths``).
 2. **Producer merge** (ADR-0057 §3, ``merge_producer_records``): when two
    producers analyzed the same declarations (tree-sitter ``rust`` and the
    SCIP ``rust_analyzer`` arm), their records fold into one symbol per
    declaration. A producer with no merge declaration is refused, not passed
    through.
-3. **Linkers** run after all analyzers complete, to recover edges the
+3. **Framework enrichment** (ADR-3aaa): ``refine_frameworks`` checks
+   manifest-detected frameworks against import edges, ``enrich_symbols``
+   attaches YAML-pattern concepts (route, model, ...), and
+   ``materialize_route_symbols`` / ``expand_class_based_view_routes`` mint
+   route-marker symbols for the route linkers to connect.
+4. **Linkers** run after all analyzers complete, to recover edges the
    per-file analyzers could not see (``run_all_linkers``). Per ADR-3bbb they
    span four subcategories — Protocol, Bridge, Framework and Infrastructure —
    and only Bridge is language-pair; plenty of registered linkers
    (``argparse_dispatch``, ``django_orm_dispatch``, ...) recover edges
-   *within* one language.
-4. **Tier filtering** drops supply-chain tier 4 (derived) symbols unless
+   *within* one language. Afterwards synthetic identities are reconciled
+   (``dedup_logical_synthetic_identities`` and siblings), duplicate edges and
+   self-loops are dropped (``deduplicate_edges``), and structural
+   fingerprints are stamped (``stamp_symbol_fingerprints``).
+5. **Supply-chain classification** (``_classify_symbols``) sets each
+   symbol's tier; route-bearing tier-4 symbols are then promoted to tier 1.
+6. **Tier filtering** drops supply-chain tier 4 (derived) symbols unless
    ``--max-tier`` says otherwise, then **noise filtering** drops non-code
    node kinds (docs, config, CSS structure; ``is_noise_symbol``) and their
    edges unless ``--include-docs``.
-5. **Boundary synthesis** (``create_boundary_nodes``) runs after both
+7. **Boundary synthesis** (``create_boundary_nodes``) runs after both
    filters, collapsing dangling external references into boundary symbols
-   and remapping the edges that pointed at them.
-6. ``finalize()`` is the single pre-serialization reconcile point
-   (ADR-0043 §6): it runs once the node and edge set is final.
-7. **Side outputs**: budget-tier files (``--budgets``), per-handler forward
-   slices in ``<stem>.slices/`` next to the map (``_emit_handler_slices``),
+   and remapping the edges that pointed at them. Symbols are then ranked
+   (``rank_symbols``), which fixes the output node order.
+8. ``finalize()`` is the single pre-serialization reconcile point
+   (ADR-0043 §6): it runs once the node and edge set is final. Metrics,
+   entrypoints and ``supply_chain_summary`` are added to the map after it.
+9. **Side outputs**: budget-tier files (``--budgets``), per-handler forward
+   slices in ``<stem>.slices/`` next to the map (``_emit_handler_slices``,
+   which also indexes each slice in the map's ``features`` array),
    and a ``sketch_precomputed`` block embedded in the map so a later
-   ``sketch`` can skip recomputing its inputs.
+   ``sketch`` can skip recomputing its inputs. ``--compact`` then replaces
+   the main output with its compact projection.
+10. **Stderr summaries**: validator violations, silent / skipped /
+    unaccounted passes, and falsified pass dependencies (``emit_*`` calls
+    just before the write).
 
 After a survey, ``cmd_run`` evicts stale cache entries
 (``_maybe_evict_cache``, never the entry just written) before reporting the
 cache footprint.
 
 ``--backend {tree-sitter,rust-analyzer,scip-python}`` is a global flag.
-``main`` accepts it in any position relative to the subcommand, strips it
-from argv, and resolves it at parse time (``_apply_backend_choice``). A
+``main`` accepts it in any position relative to the subcommand, in both the
+``--backend X`` and ``--backend=X`` forms, strips it from argv
+(``_strip_backend_flag``, which rejects a missing or unknown value with exit
+2, since argparse never sees the stripped flag), and resolves it at parse
+time (``_apply_backend_choice``). A
 backend whose integration package or binary is missing exits with an error
 right there instead of silently falling back to tree-sitter; the resolved
 choice reaches the analyzer registry's backend gate through its environment
 variable.
+
+``verify-claims`` is orchestrated here as well (``cmd_verify_claims`` and its
+helpers). I/O overlays stack in ascending precedence: the user's
+``io_primitives.d/``, then config (user, then project), then opted-in in-repo
+config overlays, then the claims file's ``extra_catalogs``, then
+``--io-primitives``. ``--no-default-overlays`` drops the community-provenance
+files (ADR-0061). Taint claims run per language over the DDG-backed or
+structural propagator. A taint-blindness check (a language with no catalogue,
+or a catalogued language that emitted no call edges) supplies the reason the
+verdict layer uses to report a would-be ``confirmed`` as ``inconclusive``. The
+exit code is 0 when everything is confirmed, 1 when any claim is violated, 2
+when any is inconclusive and none violated, and 3 when any is
+``confirmed_with_caveats`` and none of the above.
 
 Why This Design
 ---------------
 - Subcommand dispatch keeps each operation isolated and testable
 - Default sketch mode optimizes for the common "quick overview" use case
 - run_survey() is separate from cmd_run() for testability
-- Read commands (slice, sketch, search, ...) work from a persisted survey:
-  they reload it via ``survey_io.load_substrate`` and rehydrate it with
-  ``Symbol.from_dict`` / ``Edge.from_dict`` (``_edge_from_dict`` is a thin
-  wrapper), and ``_get_or_run_analysis`` runs a survey first on a cache miss.
-  The ``--minimal`` flag (``_add_minimal_argument``) on those commands skips
-  that auto-survey's side outputs (budget tiers, handler slices,
-  ``sketch_precomputed``); it has no effect when a cached survey is reused
+- Read commands (slice, search, explain, ...) work from a persisted survey:
+  they reload it via ``survey_io.load_substrate`` and, where they need IR
+  objects, rehydrate it with ``Symbol.from_dict`` / ``Edge.from_dict``
+  (``_edge_from_dict`` is a thin wrapper), and ``_get_or_run_analysis`` runs
+  a survey first on a cache miss. ``sketch`` is the exception: the CLI reads a
+  survey only with ``--input``; otherwise ``sketch.py`` finds the cached
+  survey itself and runs a survey only on a cache miss. The ``--minimal``
+  flag (``_add_minimal_argument``) on the ``_get_or_run_analysis`` commands
+  skips that auto-survey's side outputs
+  (budget tiers, handler slices, ``sketch_precomputed``); it has no effect
+  when a cached survey is reused.
 """
 import argparse
 import gc
@@ -96,6 +149,7 @@ import resource
 import shutil
 import subprocess  # nosec B404 - subprocess needed for pip commands
 import sys
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -127,12 +181,17 @@ from .analyze.base import (
     widen_route_stable_ids,
 )
 from .axis_meta_keys import call_family_edge_types
+# INV-rolok / WI-satal: the construction pairs every walk reads. The old
+# private name stays importable for the dead-code tests that pin it.
+from .construction import construction_calls
+from .construction import initializer_hops as _construction_initializer_edges
 from .survey_io import (
     CANONICAL_SURVEY_FILENAME,
     SubstrateError,
     find_survey_in_dir,
     load_substrate,
 )
+from .yaml_catalogs import CatalogueError
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 # ADR-0043 §6: finalize() is the single pre-serialization reconcile point. _relativize_ir_paths
 # lives there now (finalize sub-step 1 owns it); re-exported here for the Phase B call below
@@ -140,6 +199,7 @@ from .catalog import get_default_catalog, is_available, suggest_passes_for_langu
 from .finalize import FinalizeContext, _relativize_ir_paths, finalize
 from .linkers.registry import LinkerContext, run_all_linkers
 from .pass_metadata import build_pass_metadata
+from .pass_clock import PassClock
 from .safety_zones import (
     cache_mkdir,
     cache_rename,
@@ -175,6 +235,7 @@ import hypergumbo_core.linkers.message_queue as _message_queue_linker  # noqa: F
 import hypergumbo_core.linkers.napi as _napi_linker  # noqa: F401
 import hypergumbo_core.linkers.openapi as _openapi_linker  # noqa: F401
 import hypergumbo_core.linkers.otp as _otp_linker  # noqa: F401
+import hypergumbo_core.linkers.beam_behaviour as _beam_behaviour_linker  # noqa: F401
 import hypergumbo_core.linkers.phoenix_ipc as _phoenix_ipc_linker  # noqa: F401
 import hypergumbo_core.linkers.route_handler as _route_handler_linker  # noqa: F401
 import hypergumbo_core.linkers.subprocess_cli as _subprocess_linker  # noqa: F401
@@ -243,6 +304,7 @@ from .selection.filters import is_excluded_kind
 from .limits import Limits
 from .supply_chain import (
     DERIVED_PATH_PATTERNS,
+    FileClassification,
     _normalize_pep503,
     classify_file,
     collect_first_party_package_names,
@@ -280,6 +342,7 @@ from .repo_tier_offer import maybe_offer_repo_tier_examples
 from .catalogue_home import (
     materialize_catalogue_home,
     user_catalogue_home,
+    user_channel_files,
     user_overlay_paths,
 )
 from .user_config import LayeredConfig
@@ -303,6 +366,8 @@ from .partial_install_warnings import check_partial_install_warnings
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .cfg import DdgEdge
     from .dataflow_scope import LanguageDataflowScope, SanitizerScope
+    from .ddg_build import ReturnStatement
+    from .discovery import TraceDeps
     from .io_boundary import IoChain
     from .taint import TaintSanitizer, TaintSink, TaintSource
 
@@ -1593,7 +1658,36 @@ def _warn_in_progress_catalogs(languages: Iterable[str]) -> List[str]:
     return warned
 
 
-def _warn_default_overlays(languages: Iterable[str]) -> List[str]:
+def _warn_overlay_only_catalogs(catalogs: Mapping[str, Any]) -> List[str]:
+    """WI-guhuv: say when a language's ONLY I/O rows are the user's overlay.
+
+    A language with no shipped catalogue now takes its project-local overlay
+    rows, which classify its calls. What they cannot do is stand for the
+    language's stdlib: they cite no provenance and date no module the user did
+    not date, so a call they do not name stays unclassified and withholds a
+    clean verdict. Said on stderr beside the in-progress notice so that an
+    overlay-only language never reads as a catalogued one.
+
+    Returns the warned languages (for testability), once each even when an
+    alias keys the same catalogue twice.
+    """
+    warned = sorted({
+        cat.language for cat in catalogs.values()
+        if getattr(cat, "overlay_only", False)
+    })
+    for lang in warned:
+        print(
+            f"⚠  {lang!r} ships no I/O primitive catalogue: its I/O is "
+            f"classified only by the overlay rows loaded above, "
+            f"and a call they do not name is unclassified.",
+            file=sys.stderr,
+        )
+    return warned
+
+
+def _warn_default_overlays(
+    languages: Iterable[str], *, offer_remedies: bool = True,
+) -> List[str]:
     """ADR-0047 ruling 6: say LOUDLY that unvouched rows were loaded.
 
     The owner's ruling that admits these rows is CONDITIONAL — hypergumbo may
@@ -1625,11 +1719,17 @@ def _warn_default_overlays(languages: Iterable[str]) -> List[str]:
         named = ", ".join(
             f"{o.path.name} (retrieved {o.retrieved})" for o in overlays
         )
+        # ``offer_remedies=False`` where the command honours neither remedy
+        # (``slice --io-boundary`` loads the shipped catalogue as it is), so
+        # the notice does not tell a reader to do something with no effect.
+        remedy = (
+            " Override them in $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/, "
+            "or omit them with --no-default-overlays."
+            if offer_remedies else ""
+        )
         print(
             f"⚠  {lang!r}: loaded community I/O rows hypergumbo does "
-            f"not vouch for — {named}. Override them in "
-            f"$XDG_CONFIG_HOME/hypergumbo/io_primitives.d/, or omit them "
-            f"with --no-default-overlays.",
+            f"not vouch for — {named}.{remedy}",
             file=sys.stderr,
         )
     return warned
@@ -1639,9 +1739,9 @@ def _rehydrate_io_boundary_edges(raw_edges: list) -> list:
     """Rebuild lightweight edge objects for the consumer-time io-boundary
     classification, preserving ``is_resolved`` + ``dst_ref`` (WI-kumol).
 
-    ``compute_boundary_map`` reads ``edge.is_resolved`` (io_boundary.py:1174 —
-    the ADR-0028 F3-Filter-1 unresolved-receiver skip in
-    ``_compute_external_potential``) and ``edge.dst_ref`` (the WI-tihup
+    ``compute_boundary_map`` reads ``edge.is_resolved`` (the ADR-0028 receiver
+    gate in classification; ``_compute_external_potential``'s F3 Filter 1 no
+    longer reads it, INV-toguh) and ``edge.dst_ref`` (the WI-tihup
     structured external-target lookup). Both CLI commands that load a *persisted*
     behavior_map — ``io-boundaries`` and ``verify-claims`` — must reconstruct
     these from the serialized edge dict. The earlier 4-field facade dropped
@@ -1696,7 +1796,8 @@ def _apply_io_boundary_filter(
 
     # WI-najil: same in_progress-catalog disclosure as io-boundaries/verify-claims.
     _warn_in_progress_catalogs({n.language for n in nodes if n.language})
-    _warn_default_overlays({n.language for n in nodes if n.language})
+    _warn_default_overlays({n.language for n in nodes if n.language},
+                           offer_remedies=False)
 
     catalogs: Dict[str, Any] = {}
     for node in nodes:
@@ -2109,6 +2210,18 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"  modules: {len(feature_dict.get('modules', {}))}")
     if result.limits_hit:
         print(f"  limits hit: {', '.join(result.limits_hit)}")
+        # WI-mibuj: the flag alone hides how much the limit cost; print the
+        # frontier it stopped (a lower bound -- see slice._limits_detail).
+        for limit, counts in result.limits_detail.items():
+            line = (
+                f"    {limit} (cap {counts['cap']}): "
+                f"{counts['nodes_omitted']} node(s), "
+                f"{counts['edges_omitted']} edge(s), "
+                f"{counts['files_omitted']} file(s) omitted at the frontier"
+            )
+            if "nodes_not_expanded" in counts:
+                line += f"; {counts['nodes_not_expanded']} node(s) not expanded"
+            print(line)
 
     # Output summary (always at the end)
     cached_set = {input_path} if was_cached else set()
@@ -3348,6 +3461,53 @@ def cmd_uninstall_gitleaks(args: argparse.Namespace) -> int:
     return 0 if success else 1
 
 
+BACKEND_CHOICES: tuple[str, ...] = ("tree-sitter", "rust-analyzer", "scip-python")
+"""The values ``--backend`` accepts: the root parser's ``choices=`` and the
+pre-scan's validation read this one tuple, so they cannot drift apart."""
+
+
+def _strip_backend_flag(
+    argv: list[str], parser: argparse.ArgumentParser,
+) -> tuple[list[str], str | None]:
+    """Remove ``--backend X`` / ``--backend=X`` from argv, wherever it sits.
+
+    ``--backend`` is registered on the root parser only, so argparse rejects
+    it after the subcommand. ``main`` strips it here instead, which means
+    argparse never sees the flag and none of its checks run. This function
+    therefore enforces them itself, with argparse's wording, through
+    ``parser.error`` (exit 2):
+
+    * a missing value (``--backend`` as the last token, or followed by
+      another option) is "expected one argument";
+    * a value outside ``BACKEND_CHOICES`` is "invalid choice".
+
+    Every token is examined, the last one included: the ``=`` form carries
+    its own value. The scan stops at ``--``, after which argparse reads
+    every token as a positional. Returns the remaining argv and the choice,
+    or the argv unchanged and ``None`` when the flag is absent.
+    """
+    for idx, token in enumerate(argv):
+        if token == "--":
+            break
+        if token == "--backend":
+            value = argv[idx + 1] if idx + 1 < len(argv) else None
+            if value is None or value.startswith("-"):
+                parser.error("argument --backend: expected one argument")
+            rest = argv[:idx] + argv[idx + 2:]
+        elif token.startswith("--backend="):
+            value = token.split("=", 1)[1]
+            rest = argv[:idx] + argv[idx + 1:]
+        else:
+            continue
+        if value not in BACKEND_CHOICES:
+            parser.error(
+                f"argument --backend: invalid choice: {value!r} (choose from "
+                f"{', '.join(BACKEND_CHOICES)})"
+            )
+        return rest, value
+    return argv, None
+
+
 def _apply_backend_choice(choice: str) -> None:
     """Resolve ``--backend <choice>`` and record it for the backend gate.
 
@@ -3372,7 +3532,8 @@ def _apply_backend_choice(choice: str) -> None:
       Never write a config-sourced decision here: it would shadow the
       environment it is supposed to lose to.
 
-    An unrecognised choice writes nothing and is left for argparse to reject.
+    An unrecognised choice writes nothing. ``main`` never passes one: its
+    pre-scan (``_strip_backend_flag``) rejects it with exit 2 first.
     """
     decision = resolve_rust_analyzer_optin(flag_choice=choice, environ={})
     if decision is True:
@@ -3604,6 +3765,41 @@ def cmd_trust_backend(args: argparse.Namespace) -> int:
         print(
             "  Indexing this repository will run its build scripts (build.rs) "
             "and proc macros as you.",
+        )
+    return 0
+
+
+def cmd_trust_catalogues(args: argparse.Namespace) -> int:
+    """Record, revoke, or show the per-repository in-repo catalogue grant.
+
+    ADR-0061 ruling 4: catalogue data inside the analysed repository (the
+    catalogue keys of its ``.hypergumbo.toml``) loads only when the operator
+    opts in. This is the per-repository opt-in, keyed by the resolved path and
+    kept under ``$XDG_STATE_HOME`` like backend trust; ``--in-repo-catalogues``
+    is the per-run one. A refusal is recorded too, so the run stops asking.
+    """
+    from .in_repo_catalogues import (
+        grant_store_root,
+        read_in_repo_decision,
+        record_in_repo_decision,
+    )
+
+    repo_root = Path(args.path).resolve()
+    if args.show:
+        decision = read_in_repo_decision(repo_root)
+        state = {None: "no decision recorded", True: "GRANTED",
+                 False: "DECLINED"}[decision]
+        print(f"in-repo catalogues: {state} for {repo_root}")
+        return 0
+    granted = not args.revoke
+    record_in_repo_decision(repo_root, granted)
+    verb = "Granted" if granted else "Declined"
+    print(f"{verb} in-repo catalogue data for {repo_root}")
+    print(f"  recorded in {grant_store_root()}")
+    if granted:
+        print(
+            "  Its .hypergumbo.toml catalogue keys now load on every run; each "
+            "file is reported in the verdict with its git state.",
         )
     return 0
 
@@ -4680,6 +4876,31 @@ def _cache_clear_repo(
     return 0
 
 
+#: The one sentence-transformers requirement. The ``embeddings`` extras of
+#: hypergumbo-core and hypergumbo, ``scripts/install-embeddings`` and the I/O
+#: allowlist repeat it, and test_embeddings_requirement holds them to this
+#: string. The floor is 5.7 because PYSEC-2026-4164 (local model loading
+#: bypasses ``trust_remote_code``) is fixed in 5.6.0, and 5.7.0 is the release
+#: the embedding models were verified on.
+EMBEDDINGS_REQUIREMENT = "sentence-transformers~=5.7"
+
+
+def _embeddings_version_ok(version: str) -> bool:
+    """Does an installed sentence-transformers ``version`` meet the requirement?
+
+    ``~=5.7`` means 5.x at 5.7 or later. Only the leading release numbers are
+    read (``5.7.0rc1`` is 5.7), and a version that does not parse fails.
+    """
+    import re
+
+    floor = tuple(int(p) for p in EMBEDDINGS_REQUIREMENT.split("~=")[1].split("."))
+    parts = re.match(r"(\d+)\.(\d+)", version)
+    if parts is None:
+        return False
+    major, minor = int(parts.group(1)), int(parts.group(2))
+    return major == floor[0] and (major, minor) >= floor
+
+
 def _is_embeddings_available() -> bool:
     """Check if sentence-transformers is available."""
     try:
@@ -4710,22 +4931,30 @@ def cmd_install_embeddings(args: argparse.Namespace) -> int:
 
     Note: This pulls in PyTorch (~2GB download).
     """
+    available = _is_embeddings_available()
+    version = _get_embeddings_version() if available else ""
+    current = available and _embeddings_version_ok(version)
+
     if args.check:
-        available = _is_embeddings_available()
-        symbol = "\u2713" if available else "\u2717"
+        symbol = "\u2713" if current else "\u2717"
         status = "installed" if available else "not installed"
         print(f"embeddings: {symbol} {status}")
         if available:
-            print(f"  sentence-transformers {_get_embeddings_version()}")
-        else:
+            print(f"  sentence-transformers {version}")
+        if not current:
+            if available:
+                print(f"  older than the required {EMBEDDINGS_REQUIREMENT}")
             print("\nRun 'hypergumbo install-embeddings' to install.")
             return 1
         return 0
 
-    if _is_embeddings_available():
+    if current:
         if not args.quiet:
-            print(f"Embeddings already installed (sentence-transformers {_get_embeddings_version()})")
+            print(f"Embeddings already installed (sentence-transformers {version})")
         return 0
+    if available and not args.quiet:
+        print(f"sentence-transformers {version} is older than the required "
+              f"{EMBEDDINGS_REQUIREMENT}; upgrading.")
 
     if not args.quiet:
         print("Installing embedding dependencies...")
@@ -4734,7 +4963,7 @@ def cmd_install_embeddings(args: argparse.Namespace) -> int:
 
     # Install via pip subprocess
     try:
-        cmd = [sys.executable, "-m", "pip", "install", "sentence-transformers~=5.2.2"]
+        cmd = [sys.executable, "-m", "pip", "install", EMBEDDINGS_REQUIREMENT]
         if args.quiet:
             cmd.append("-q")
         result = subprocess.run(cmd, check=False)  # noqa: S603 # nosec B603
@@ -5298,7 +5527,7 @@ def _resolve_io_overlays(
     claims_paths: "list[Path] | None" = None,
     repo_root: "Path | None" = None,
 ) -> "list[Path]":
-    """Project-local I/O primitive overlay paths, in ASCENDING precedence.
+    """The I/O primitive overlay paths beyond the shipped ones, ASCENDING precedence.
 
     INV-fotav. Mirrors the taint arm's layering (INV-hukug) rather than
     inventing a second rule: claims-file ``extra_catalogs: io_primitives:``
@@ -5321,12 +5550,283 @@ def _resolve_io_overlays(
     (analysis from a cached map with no repository in hand) and not a
     defensive branch.
     """
-    paths: "list[Path]" = list(user_overlay_paths())
+    return [p for p, _ in _resolve_io_overlay_origins(args, claims_paths, repo_root)]
+
+
+def _resolve_io_overlay_origins(
+    args: argparse.Namespace,
+    claims_paths: "list[Path] | None" = None,
+    repo_root: "Path | None" = None,
+) -> "list[tuple[Path, str]]":
+    """:func:`_resolve_io_overlays`, with each path's origin beside it.
+
+    The origin -- ``user_channel`` / ``config`` / ``in_repo_config`` /
+    ``claims_file`` / ``cli`` -- is what lets a verdict name whose file each
+    completeness grant came from (ADR-0061 ruling 5), which the flat list
+    cannot say once the layers are concatenated.
+    """
+    return _resolve_io_overlay_layers(args, claims_paths, repo_root)[0]
+
+
+def _resolve_io_overlay_layers(
+    args: argparse.Namespace,
+    claims_paths: "list[Path] | None" = None,
+    repo_root: "Path | None" = None,
+) -> "tuple[list[tuple[Path, str]], list[tuple[Path, str]]]":
+    """``(loaded, omitted)``: :func:`_resolve_io_overlay_origins` and what it dropped.
+
+    ``omitted`` is every overlay ``--no-default-overlays`` removed (empty
+    without the flag), with its origin. A report on the run needs both halves
+    (INV-dozav): describing the loaded files from the RAW flag and claims-file
+    lists named a file the run never read as user-supplied input with a
+    withheld grant, while stderr said it had been omitted.
+    """
+    out: "list[tuple[Path, str]]" = [
+        (p, "user_channel") for p in user_overlay_paths()
+    ]
     if repo_root is not None:
-        paths += _load_config_or_exit(repo_root).io_primitives
-    paths += list(claims_paths or [])
-    paths += [Path(p) for p in (getattr(args, "io_primitives", None) or [])]
-    return paths
+        config = _load_config_or_exit(repo_root)
+        out += [(p, "config") for p in config.io_primitives]
+        out += [(p, "in_repo_config") for p in _opted_in_repo_overlays(
+            args, repo_root, config.in_repo_io_primitives,
+        )]
+    out += [(Path(p), "claims_file") for p in claims_paths or []]
+    out += [
+        (Path(p), "cli") for p in (getattr(args, "io_primitives", None) or [])
+    ]
+    if getattr(args, "no_default_overlays", False):
+        return _split_community_overlays(out)
+    return out, []
+
+
+def _split_community_overlays(
+    origins: "list[tuple[Path, str]]",
+) -> "tuple[list[tuple[Path, str]], list[tuple[Path, str]]]":
+    """``(kept, omitted)``: drop overlays declaring ``provenance: community``, and say which.
+
+    ``--no-default-overlays`` omits COMMUNITY rows (ADR-0061 ruling 5,
+    INV-fikoh), and the tier is the file's own line (ruling 3), so a community
+    copy in io_primitives.d -- the ones ``init-catalogs`` seeds -- goes with
+    the shipped originals, and so does one named by flag or claims file. A
+    path that does not exist is kept for the real load to refuse.
+    """
+    kept, omitted = _partition_community_overlays(origins)
+    _notice_omitted_community([p for p, _ in omitted], "overlay(s)")
+    return kept, omitted
+
+
+def _partition_community_overlays(
+    origins: "Sequence[tuple[Path, str]]",
+) -> "tuple[list[tuple[Path, str]], list[tuple[Path, str]]]":
+    """``(yours, community)``: overlays split by their own provenance line.
+
+    The one question both halves of ADR-0061 ruling 3 ask of an I/O overlay:
+    ``--no-default-overlays`` drops the community half before the load
+    (:func:`_split_community_overlays`), and verify-claims' report lists a
+    loaded community file a flag or claims file named as a community row,
+    not user-supplied input. A path that does not exist is "yours", for the
+    real load to refuse.
+    """
+    from .io_boundary import overlay_declares_community
+
+    yours: "list[tuple[Path, str]]" = []
+    community: "list[tuple[Path, str]]" = []
+    for path, origin in origins:
+        if path.is_file() and overlay_declares_community(path):
+            community.append((path, origin))
+        else:
+            yours.append((path, origin))
+    return yours, community
+
+
+def _notice_omitted_community(paths: "Sequence[Path]", noun: str) -> None:
+    """The one stderr line ``--no-default-overlays`` prints per family it trims."""
+    if paths:
+        print(
+            f"--no-default-overlays: omitted {len(paths)} {noun} that "
+            f"declare provenance: community: "
+            f"{', '.join(str(p) for p in paths)}.",
+            file=sys.stderr,
+        )
+
+
+def _split_named_taint_files(
+    named: "Mapping[str, tuple[Sequence[Path], Sequence[Path]]]",
+    include_community: bool,
+) -> "tuple[dict[str, tuple[list[Path], list[Path]]], list[tuple[Path, str, str]], list[tuple[Path, str, str]]]":
+    """``(yours, community, omitted)`` for the taint files flags and claims file named.
+
+    ADR-0061 ruling 3: the tier is the file's own line, whatever named it, and
+    the loader (:func:`~.taint.load_full_taint_catalog`) puts a
+    ``provenance: community`` file in the community layer however it arrived.
+    This is the same partition for the report, so the report cannot describe a
+    file differently from how it loaded:
+
+    - ``yours`` -- ``{family: (cli, claims_file)}``, each path as the operator
+      wrote it, minus community files (a directory stays while it holds any
+      file of theirs). These are the user-supplied layers a verdict rests on.
+    - ``community`` -- ``(path, origin, family)`` for each community file
+      that loaded: it added sources and sinks, and its sanitizers were
+      withheld. Empty under ``--no-default-overlays``.
+    - ``omitted`` -- the same records for each community file
+      ``--no-default-overlays`` dropped: named, and never read. The user's
+      ``taint_*.d`` channels and ``function_summaries.d`` are included here
+      (origin ``user_channel``), since the flag drops theirs too -- the
+      summary loader reads the same line (ADR-0061 ruling 3); a loaded
+      community channel file is already in ``tiers.community`` and needs no
+      second listing.
+
+    Paths are the ones the load already resolved successfully, so the
+    resolution here cannot raise.
+    """
+    from .taint import _resolve_catalog_paths, split_community_files
+
+    yours: "dict[str, tuple[list[Path], list[Path]]]" = {}
+    community: "list[tuple[Path, str, str]]" = []
+    for family, origins in named.items():
+        kept: "list[list[Path]]" = []
+        for origin, paths in zip(("cli", "claims_file"), origins, strict=True):
+            mine_raw: "list[Path]" = []
+            for raw in paths:
+                mine, theirs = split_community_files(
+                    _resolve_catalog_paths([Path(raw)]))
+                if mine or not theirs:
+                    mine_raw.append(Path(raw))
+                community += [(p, origin, family) for p in theirs]
+            kept.append(mine_raw)
+        yours[family] = (kept[0], kept[1])
+    if include_community:
+        return yours, community, []
+    omitted = [
+        (p, "user_channel", family) for family in named
+        for p in split_community_files(user_channel_files(family))[1]
+    ] + community
+    _notice_omitted_community(
+        [p for p, _, _ in omitted], "taint catalogue file(s)")
+    from .function_summaries import split_community_summary_files
+
+    summaries = [
+        (p, "user_channel", "function_summaries") for p in
+        split_community_summary_files(user_channel_files("function_summaries"))[1]
+    ]
+    _notice_omitted_community(
+        [p for p, _, _ in summaries], "function-summary file(s)")
+    return yours, [], omitted + summaries
+
+
+def _loaded_catalogue_files(
+    languages: "Iterable[str]",
+    io_overlays: "Sequence[Path]",
+    *,
+    include_default_overlays: bool,
+    taint_paths: "Optional[Mapping[str, Sequence[Path]]]",
+) -> "list[Any]":
+    """Every catalogue file a verify-claims run read, for ADR-0061 ruling 5.
+
+    The I/O catalogue each language loaded (and its parent), the shipped
+    community defaults unless omitted (``include_default_overlays=False`` also
+    drops the shipped community taint and summary files, as the run does),
+    and every overlay path. When the taint
+    catalogue loaded (``taint_paths`` is not ``None``): the shipped taint and
+    function-summary files, the files the flags and claims file named (a
+    directory stands for its YAML files), the user's taint channels and the
+    user's function_summaries.d -- a community one of these only when
+    community rows loaded, since its tier is its own line whatever named it.
+    Then the user's analysis-stage channels (frameworks.d, dataflow_patterns.d,
+    library_signatures.d), marked ``stage="analysis"``.
+
+    NOT LISTED: the shipped files of the analysis-stage families (frameworks,
+    dataflow_patterns, library_signatures, cfg_nodes, url_folding). They shape
+    the graph the verdict reads, and which of them the analysis consulted is
+    not recorded in the graph.
+    """
+    from .function_summaries import (
+        get_summaries_dir,
+        split_community_summary_files,
+    )
+    from .io_boundary import default_overlays, shipped_catalog_paths
+    from .taint import (
+        _TAINT_SANITIZERS_DIR,
+        _TAINT_SINKS_DIR,
+        _TAINT_SOURCES_DIR,
+        _declares_community_file,
+        _resolve_catalog_paths,
+    )
+    from .verify_claims import LoadedCatalogueFile as F
+
+    files: "list[Any]" = []
+    for lang in sorted(set(languages)):
+        files += [F("io_primitives", p, True) for p in shipped_catalog_paths(lang)]
+        if include_default_overlays:
+            files += [F("io_primitives_overlays", o.path, True)
+                      for o in default_overlays(lang)]
+    files += [F("io_primitives", Path(p), False) for p in io_overlays
+              if Path(p).is_file()]
+    if taint_paths is not None:
+        for family, directory in (
+            ("taint_sources", _TAINT_SOURCES_DIR),
+            ("taint_sinks", _TAINT_SINKS_DIR),
+            ("taint_sanitizers", _TAINT_SANITIZERS_DIR),
+        ):
+            files += [F(family, p, True) for p in sorted(directory.glob("*.yaml"))
+                      if include_default_overlays
+                      or not _declares_community_file(p)]
+        shipped_summaries = sorted(get_summaries_dir().glob("*.yaml"))
+        files += [F("function_summaries", p, True) for p in (
+            shipped_summaries if include_default_overlays
+            else split_community_summary_files(shipped_summaries)[0])]
+        for family, paths in taint_paths.items():
+            # WI-mimap: the operator's taint channel for this family. Like the
+            # shipped files, a community file -- whatever named it -- is
+            # listed only when the run loaded it (ADR-0061 ruling 3).
+            files += [F(family, p, False)
+                      for p in [*_resolve_catalog_paths(list(paths)),
+                                *user_channel_files(family)]
+                      if include_default_overlays
+                      or not _declares_community_file(p)]
+        user_summaries = user_channel_files("function_summaries")
+        files += [F("function_summaries", p, False) for p in (
+            user_summaries if include_default_overlays
+            else split_community_summary_files(user_summaries)[0])]
+    for family in ("frameworks", "dataflow_patterns", "library_signatures"):
+        files += [F(family, p, False, "analysis")
+                  for p in user_channel_files(family)]
+    return files
+
+
+def _opted_in_repo_overlays(
+    args: argparse.Namespace, repo_root: Path, in_repo: "list[Path]",
+) -> "list[Path]":
+    """The project tier's overlays, if the operator opted in; else none.
+
+    ADR-0061 ruling 4 (INV-hamin). ``<repo>/.hypergumbo.toml`` is catalogue
+    data the analysed repository supplies, and a repository that ships an
+    overlay granting completeness to its own egress module can turn a real
+    exfiltration into a clean verdict. So its paths load only on
+    ``--in-repo-catalogues`` or a recorded grant (``trust-catalogues``). With
+    neither, the run says once what it did not load and how to opt in; after
+    a recorded decline it stays quiet (ADR-0045 ruling 8).
+    """
+    from .in_repo_catalogues import read_in_repo_decision
+
+    if not in_repo:
+        return []
+    if getattr(args, "in_repo_catalogues", False):
+        return list(in_repo)
+    decision = read_in_repo_decision(repo_root)
+    if decision:
+        return list(in_repo)
+    if decision is None:
+        print(
+            f"NOTE: {repo_root / '.hypergumbo.toml'} names in-repo catalogue "
+            f"data that was NOT loaded: {', '.join(str(p) for p in in_repo)}. "
+            f"Catalogue data inside the analysed repository loads only when "
+            f"you opt in (ADR-0061): --in-repo-catalogues for this run, or "
+            f"`hypergumbo trust-catalogues {repo_root}` for this repository "
+            f"(add --revoke to record a refusal and silence this note).",
+            file=sys.stderr,
+        )
+    return []
 
 
 def _disclose_io_overlays(paths: "list[Path]") -> None:
@@ -5338,12 +5838,70 @@ def _disclose_io_overlays(paths: "list[Path]") -> None:
     """
     if paths:
         print(
-            f"Loaded {len(paths)} project-local I/O primitive overlay(s): "
+            f"Loaded {len(paths)} I/O primitive overlay(s) beyond the "
+            f"shipped catalogues: "
             f"{', '.join(str(p) for p in paths)}. Overlay entries override "
             f"built-in catalog entries on qualified-name match; later paths "
             f"override earlier ones.",
             file=sys.stderr,
         )
+    _warn_community_overlays(paths)
+
+
+def _warn_community_overlays(paths: "Iterable[Path]") -> "list[Path]":
+    """Name each loaded overlay that declares ``provenance: community``.
+
+    ADR-0061 ruling 3 (INV-lamap): the tier is the file's own line, so a
+    community file loaded from the user's io_primitives.d -- where
+    ``init-catalogs`` seeds copies of the shipped overlays -- is still
+    community: its rows add detections but never count as examined, and its
+    ``module_completeness`` grants are withheld. The run says so, names the
+    withheld modules, and says how to vouch: delete the line.
+
+    Returns the community paths named (for testability).
+    """
+    from .io_boundary import (
+        load_overlay_catalog,
+        load_yaml_strict,
+        overlay_declares_community,
+    )
+
+    named: "list[Path]" = []
+    described: "list[str]" = []
+    withheld_lines: "list[str]" = []
+    for path in paths:
+        path = Path(path)
+        # A missing or malformed file is the REAL load's to report, loudly and
+        # with its own exit code; this notice only describes a file that loads.
+        if not path.is_file():
+            continue
+        if not overlay_declares_community(path):
+            continue
+        named.append(path)
+        retrieved = (load_yaml_strict(
+            path.read_text(encoding="utf-8"), origin=str(path),
+        ) or {}).get("retrieved", "undated")
+        described.append(f"{path} (retrieved {retrieved})")
+        withheld = sorted(load_overlay_catalog(path).module_completeness)
+        if withheld:
+            withheld_lines.append(
+                f"   {path.name}: module_completeness grant(s) for "
+                f"{', '.join(withheld)} are withheld."
+            )
+    if named:
+        # ONE line for the set, not one per file: init-catalogs seeds a file
+        # per community overlay, and eight warnings on every run is how a
+        # notice stops being read.
+        print(
+            f"⚠  {len(named)} I/O overlay(s) declare provenance: community: "
+            f"{', '.join(described)}. Their rows can add a detection but never "
+            f"count as examined. To vouch for a file, delete its "
+            f"`provenance: community` line.",
+            file=sys.stderr,
+        )
+        for line in withheld_lines:
+            print(line, file=sys.stderr)
+    return named
 
 
 def cmd_io_boundaries(args: argparse.Namespace) -> int:
@@ -5354,7 +5912,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     ``subprocess``, ``env_read``, ``host_info_read``, ``env_write``,
     ``ipc_send``, ``ipc_recv``, ``browser_storage_write``,
     ``browser_storage_read``, ``db_read``, ``db_write``, ``process_send``,
-    ``logging``. ``env_read`` is an ambient CONFIGURATION read (environment
+    ``logging``, ``navigation_read``. ``env_read`` is a CONFIGURATION read (environment
     variables, system properties, argv) and ``host_info_read`` is a host
     DESCRIPTION read (``runtime.GOOS``, ``os.uname``, ``navigator.platform``,
     ``pwd.getpwnam``); they were one boundary until INV-tutar, and the split
@@ -5436,6 +5994,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             # groovy→java in io_boundary._CATALOG_ALIASES).
             if catalog.language != lang:
                 catalogs[catalog.language] = catalog
+    _warn_overlay_only_catalogs(catalogs)
 
     # Extract entrypoint IDs for reverse-trace
     entrypoint_ids = {
@@ -5486,6 +6045,26 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             reverse_graph_for_filter = _build_reverse_graph(edges)
         return reverse_graph_for_filter
 
+    def _is_test_chain(chain: Any) -> bool:
+        src_node = nodes_by_id.get(chain.io_edge_src)
+        if src_node:
+            return _is_test_node(src_node.get("path", ""), src_node.get("meta"))
+        return False
+
+    # WI-pogar / ADR-0016 §7: the calls whose I/O is UNKNOWN because their
+    # source was not analysed. Taken from the UNFILTERED bucket on purpose --
+    # ``--boundary net_send`` asks about network sends, and an untraced call
+    # may be one, so the disclosure must not vanish with the bucket it lives
+    # in. Only the test filter applies: a test's untraced call is not a
+    # production one, the same rule every chain here follows.
+    untraced_chains = [
+        c for c in (
+            bmap.entries["external_potential"].chains
+            if "external_potential" in bmap.entries else []
+        )
+        if not (exclude_tests and _is_test_chain(c))
+    ]
+
     filtered_entries: Dict[str, BoundaryMapEntry] = {}
     for btype, entry in bmap.entries.items():
         if boundary_filter and btype != boundary_filter:
@@ -5499,11 +6078,6 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
 
         # Filter out chains where the source symbol is in a test file
         if exclude_tests:
-            def _is_test_chain(chain: Any) -> bool:
-                src_node = nodes_by_id.get(chain.io_edge_src)
-                if src_node:
-                    return _is_test_node(src_node.get("path", ""), src_node.get("meta"))
-                return False
             chains = [c for c in chains if not _is_test_chain(c)]
 
         if not chains and (primitive_filter or exclude_tests):
@@ -5533,6 +6107,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
                 IO_BOUNDARIES_SCHEMA_VERSION,
                 _DISCLOSED_ONLY_BOUNDARIES,
                 disclosed_chain_count,
+                untraced_modules,
             )
 
             # INV-pubom (amended, WI-huhit/WI-foduh): total_io_edges is the
@@ -5563,6 +6138,9 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
                     filtered_entries, "net_listen"),
                 "db_compose_edges": disclosed_chain_count(
                     filtered_entries, "db_compose"),
+                # WI-pogar: from ``untraced_chains``, not ``filtered_entries``
+                # -- see where that list is built.
+                "untraced_modules": untraced_modules(untraced_chains),
                 "boundaries": {
                     k: v.to_dict() for k, v in sorted(filtered_entries.items())
                 },
@@ -5583,31 +6161,92 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # targeting the bucket with `--boundary external_potential`.
     show_ep = getattr(args, "show_external_potential", False)
     ep_targeted = (boundary_filter == "external_potential")
-    ep_suppressed_count = 0
     display_entries = filtered_entries
     if not show_ep and not ep_targeted and "external_potential" in filtered_entries:
-        ep_suppressed_count = len(
-            filtered_entries["external_potential"].chains,
-        )
         display_entries = {
             k: v for k, v in filtered_entries.items()
             if k != "external_potential"
         }
 
-    if getattr(args, "by_file", False):
+    if not display_entries and untraced_chains:
+        # WI-pogar: "No I/O boundary calls detected." over a call whose source
+        # was never read is the "no I/O" ADR-0016 §7 forbids. Say what is true:
+        # nothing was CLASSIFIED, and the disclosure below says what is unknown.
+        print("No classified I/O boundary calls detected.")
+    elif getattr(args, "by_file", False):
         _print_io_boundaries_by_file(display_entries, nodes_by_id, repo_root)
     else:
         _print_io_boundaries_by_type(display_entries, nodes_by_id, bmap, repo_root)
-    if ep_suppressed_count:
-        print(
-            f"  external_potential: {ep_suppressed_count} chain(s) "
-            f"suppressed and excluded from the headline total (unverified "
-            f"receiver-unresolved calls; pass --show-external-potential to "
-            f"include them, or use --boundary external_potential).",
+    if untraced_chains:
+        _print_untraced_disclosure(
+            untraced_chains,
+            bucket_shown="external_potential" in display_entries,
         )
     _print_unsupported_languages_notice(unsupported_languages)
 
     return 0
+
+
+#: How the untraced disclosure names each ``untraced_modules`` group.
+_UNTRACED_GROUP_LABELS: tuple[tuple[str, str], ...] = (
+    ("third_party", "untraced dependency"),
+    ("unknown", "dependency or runtime module (this language's standard "
+                "library is not enumerated)"),
+    ("stdlib", "standard-library module the catalogue has not enumerated"),
+)
+
+
+def _print_untraced_disclosure(
+    untraced_chains: list[Any], *, bucket_shown: bool,
+) -> None:
+    """Say that calls into unanalysed source have UNKNOWN I/O (WI-pogar).
+
+    ADR-0016 §7: installed dependency source is not parsed by default, so a
+    chain into it stops at a boundary stub, and the absence of a chain there is
+    not the absence of I/O. These calls are the ``external_potential`` bucket;
+    this replaced a one-line note that called them "unclassified calls into
+    named external modules" and printed under "No I/O boundary calls detected."
+    -- accurate about the bucket, silent about what it means.
+
+    Modules are grouped by the ``dst_ecosystem`` stamp so a dependency (the
+    ``--trace-deps`` / overlay errand) is not confused with a runtime module
+    the catalogue has not enumerated (a catalogue errand); where the language
+    enumerates no standard library hypergumbo says it cannot tell. Printed
+    whenever the population is non-empty, whatever ``--boundary`` or
+    ``--primitive`` asked about.
+    """
+    from .io_boundary import (
+        ECOSYSTEM_THIRD_PARTY,
+        ECOSYSTEM_UNKNOWN,
+        untraced_modules,
+    )
+    from .verify_claims import _render_capped_names
+
+    groups = untraced_modules(untraced_chains)
+    n_modules = sum(len(mods) for mods in groups.values())
+    print(
+        f"  I/O unknown: {len(untraced_chains)} call(s) into {n_modules} "
+        f"module(s) whose source was not analysed and that no catalogue row "
+        f"classifies (the external_potential bucket, excluded from the "
+        f"headline total) -- untraced, NOT evidence of no I/O.",
+    )
+    for key, label in _UNTRACED_GROUP_LABELS:
+        if groups[key]:
+            print(f"    {label}: {_render_capped_names(groups[key])}")
+    hint = (
+        "" if bucket_shown else
+        " Pass --show-external-potential to list the call sites (or use "
+        "--boundary external_potential)."
+    )
+    dependency_note = (
+        " Installed dependency source is not traced by default (ADR-0016 "
+        "§7); set trace_deps = [\"<pkg>\", ...] (or \"all\") in the "
+        "configuration to trace it, or classify these calls with an "
+        "--io-primitives overlay."
+        if groups[ECOSYSTEM_THIRD_PARTY] or groups[ECOSYSTEM_UNKNOWN] else ""
+    )
+    if hint or dependency_note:
+        print(f"  {(dependency_note + hint).strip()}")
 
 
 def _print_unsupported_languages_notice(
@@ -5741,6 +6380,14 @@ def _print_io_boundaries_by_type(
                         f"  [tier-{chain.dst_tier} {chain.dst_tier_name}]"
                     )
                     break
+            # WI-pogar: an unclassified call into dependency source that was
+            # not analysed -- its I/O is unknown, not absent (ADR-0016 §7).
+            if any(
+                c.boundary == "external_potential"
+                and c.dst_ecosystem == "third_party"
+                for c in chains_by_prim[prim]
+            ):
+                prim_tier_tag += "  [untraced dependency]"
             print(f"    {prim} ({count}){risk_flag}{prim_tier_tag}")
             for chain in chains_by_prim[prim]:
                 caller = _format_io_caller(chain.io_edge_src, nodes_by_id, repo_root)
@@ -5829,6 +6476,7 @@ def _print_io_boundaries_by_file(
 def _build_ddg_for_verify_claims(
     repo_root: Path,
     candidate_languages: Optional[Sequence[str]] = None,
+    analyzer_nodes: Optional[Sequence[dict[str, Any]]] = None,
 ) -> tuple[
     list["DdgEdge"],
     set[str],
@@ -5836,6 +6484,7 @@ def _build_ddg_for_verify_claims(
     dict[str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]],
     set[str],
     dict[str, frozenset[str]],
+    dict[str, list["ReturnStatement"]],
 ]:
     """Build aggregated DDG edges + symbol set + receiver hints for taint analysis.
 
@@ -5862,11 +6511,20 @@ def _build_ddg_for_verify_claims(
     line inherited a tainted one, and when a line defines two the walk needs
     to know. The CFG already carries it.
 
-    Returns ``([], set(), {}, {})`` if tree-sitter isn't available — the
-    caller falls back to the structural pass in that case.
+    The seventh is each function's own return statements (INV-komoj),
+    which both propagators read to follow a returned source into its callers.
+    It is filled with or without DDG edges, so a repository whose functions
+    define nothing still gets it on the structural arm.
+
+    Returns ``([], set(), {}, {}, set(), {}, {})`` if tree-sitter isn't
+    available — the caller falls back to the structural pass in that case.
     """
     from .dataflow_scope import ensure_def_use_extractors_registered
-    from .ddg_build import build_repo_ddg, registered_ddg_languages
+    from .ddg_build import (
+        analyzer_symbol_index,
+        build_repo_ddg,
+        registered_ddg_languages,
+    )
 
     # Registration is an import side effect, so a def/use module nobody imports
     # registers nothing and its language is skipped by build_repo_ddg — which
@@ -5884,7 +6542,7 @@ def _build_ddg_for_verify_claims(
         # The fail-closed default lives at the point of USE (a function absent
         # from the set only qualifies because it was checked and covered), not
         # here, where the whole analysis is absent rather than incomplete.
-        return [], set(), {}, {}, set(), {}
+        return [], set(), {}, {}, set(), {}, {}
 
     available = registered_ddg_languages()
     if candidate_languages is None:
@@ -5892,7 +6550,11 @@ def _build_ddg_for_verify_claims(
     else:
         languages = tuple(sorted(set(candidate_languages) & available))
 
-    result = build_repo_ddg(repo_root, languages)
+    # WI-mufag: the survey's own callable symbols, so a callable the analyzer
+    # names after its binding is walked under exactly that id.
+    result = build_repo_ddg(
+        repo_root, languages, analyzer_symbol_index(analyzer_nodes or []),
+    )
     return (
         result.ddg_edges,
         result.ddg_symbols,
@@ -5900,6 +6562,7 @@ def _build_ddg_for_verify_claims(
         result.stmt_defuse,
         result.forfeit_refutation,
         result.unaccounted_names,
+        result.return_spans,
     )
 
 
@@ -5968,6 +6631,127 @@ def _census_languages(
     return languages
 
 
+def _taint_census_edges(
+    raw_edges: list[dict[str, Any]], include_non_production: bool,
+) -> list[dict[str, Any]]:
+    """The edges the taint blindness checks count: production-sourced ones
+    unless ``include_non_production`` (INV-dabuf; see the comment in
+    :func:`_taint_blind_reason`)."""
+    from .verify_claims import SOURCE_SCOPE_PRODUCTION, symbol_source_scope
+
+    return [
+        edge for edge in raw_edges
+        if include_non_production
+        or symbol_source_scope(edge.get("src", "")) == SOURCE_SCOPE_PRODUCTION
+    ]
+
+
+def _uncatalogued_code_languages(
+    unsupported_taint_languages: list[str],
+    census_edges: list[dict[str, Any]],
+) -> list[str]:
+    """Languages with no taint catalogue that make calls in ``census_edges``,
+    sorted. The build-target linker's synthetic calls do not count (WI-mital)."""
+    from .verify_claims import is_synthetic_build_target_call
+
+    languages_with_calls = {
+        edge.get("src", "").split(":", 1)[0]
+        for edge in census_edges
+        if edge.get("type") == "calls" and ":" in edge.get("src", "")
+        and not is_synthetic_build_target_call(edge)
+    }
+    return sorted(set(unsupported_taint_languages) & languages_with_calls)
+
+
+def _sink_zone_gaps(
+    claims: list[Any],
+    taint_catalog: Any,
+    present_languages: AbstractSet[str],
+    flow_languages_by_label: Mapping[str, AbstractSet[str]],
+) -> dict[tuple[str, str], Any]:
+    """What each taint claim's sink zone cannot see, per language (INV-pivam).
+
+    Only ADR-0060's zones are judged this way. An I/O-derived zone's sinks come
+    from the same catalogue whose presence the no-catalogue gate already checks
+    per language; a non-boundary zone can be empty for a language whose
+    catalogue is otherwise full (Go has no ``code_execution`` sink), which that
+    gate cannot see.
+
+    ``present_languages`` are the taint-supported languages with production
+    source in the repo (the census that decides support), narrowed to the
+    languages a flow of the claim can be in when its label is project-declared
+    (WI-rusil). Presence is by source file, not by call edge: a JS file whose
+    only injection is ``new Function(s)`` emits no call edge at all, which is
+    the case this gate exists for. A language with no taint catalogue is the
+    blindness gate's to report.
+    """
+    from .taint import shipped_non_boundary_sink_zones
+    from .verify_claims import SinkZoneGap
+
+    zones = shipped_non_boundary_sink_zones()
+    gaps: dict[tuple[str, str], Any] = {}
+    for claim in claims:
+        tf = claim.constraint_taint_flow
+        if tf is None or tf.prohibited_sink_zone not in zones:
+            continue
+        key = (tf.source_taint, tf.prohibited_sink_zone)
+        if key in gaps:
+            continue
+        present = set(present_languages)
+        if tf.source_taint in flow_languages_by_label:
+            present &= set(flow_languages_by_label[tf.source_taint])
+        zone = tf.prohibited_sink_zone
+        uncovered = sorted(
+            lang for lang in present
+            if not any(s.zone == zone for s in taint_catalog.sinks_for_language(lang))
+        )
+        unreached = tuple(sorted(
+            (lang, shapes) for lang, shapes in zones[zone].items()
+            if lang in present and lang not in uncovered
+        ))
+        if uncovered or unreached:
+            gaps[key] = SinkZoneGap(
+                zone=zone, uncovered_languages=tuple(uncovered),
+                unreached_shapes=unreached,
+            )
+    return gaps
+
+
+def _languages_a_flow_can_be_in(
+    origins: AbstractSet[str], census_edges: list[dict[str, Any]],
+) -> frozenset[str]:
+    """The languages a flow starting in ``origins`` can continue in, in-process.
+
+    WI-rusil's rule is about where a flow STARTS, and a flow that leaves its
+    language through a subprocess launch or a network call is judged by those
+    sink zones. But some languages call each other DIRECTLY (java and kotlin on
+    one JVM, a C extension under python), and a flow continues through such a
+    call with no crossing to judge. So every language a present call edge
+    enters from a language already in the set is added, to a fixed point.
+
+    Edges are used only to ADD a language, never to remove one: the absence of
+    a cross-language edge is not trusted as evidence (that is the fail-open
+    reachability form WI-rusil rejects), and its only effect here is that a
+    language is left out which a recall gap hid.
+    """
+    languages = set(origins)
+    cross: dict[str, set[str]] = {}
+    for edge in census_edges:
+        if edge.get("type") != "calls":
+            continue
+        src_lang = edge.get("src", "").split(":", 1)[0]
+        dst_lang = edge.get("dst", "").split(":", 1)[0]
+        if src_lang and dst_lang and src_lang != dst_lang:
+            cross.setdefault(src_lang, set()).add(dst_lang)
+    frontier = list(languages)
+    while frontier:
+        for reached in cross.get(frontier.pop(), ()):
+            if reached not in languages:
+                languages.add(reached)
+                frontier.append(reached)
+    return frozenset(languages)
+
+
 def _taint_blind_reason(
     has_taint_claims: bool,
     unsupported_taint_languages: list[str],
@@ -5976,8 +6760,14 @@ def _taint_blind_reason(
     catalogs: dict[str, Any],
     include_non_production: bool = False,
     first_party_packages: Optional[set[str]] = None,
+    source_languages: Optional[AbstractSet[str]] = None,
 ) -> tuple[str | None, list[str]]:
     """Why a taint claim cannot be confirmed, and any opaque launch sites.
+
+    ``source_languages`` (WI-rusil) scopes BOTH checks to the languages a
+    flow of the claim can be in (see :func:`_languages_a_flow_can_be_in`);
+    ``None`` counts every language, which is the answer for every built-in
+    label.
 
     Returns ``(reason, opaque_sites)``. ``reason`` is ``None`` when the
     analysis could look. ``opaque_sites`` is non-empty ONLY when named launch
@@ -6026,12 +6816,7 @@ def _taint_blind_reason(
     ``test_language_with_a_token_call_edge_still_falsely_confirms`` so the
     gap is visible in the suite instead of living in a comment.
     """
-    from .verify_claims import (
-        SOURCE_SCOPE_PRODUCTION,
-        compute_boundary_coverage,
-        is_synthetic_build_target_call,
-        symbol_source_scope,
-    )
+    from .verify_claims import compute_boundary_coverage
 
     if not has_taint_claims:
         return None, []
@@ -6077,11 +6862,22 @@ def _taint_blind_reason(
     # went on blocking anyway, because the second check still saw the fixture's
     # edges. That is INV-motos exactly — sharing a predicate is not enough when
     # the callers run it over different populations.
-    scoped_edges = [
-        edge for edge in raw_edges
-        if include_non_production
-        or symbol_source_scope(edge.get("src", "")) == SOURCE_SCOPE_PRODUCTION
-    ]
+    scoped_edges = _taint_census_edges(raw_edges, include_non_production)
+    # WI-rusil: SCOPED ON THE EDGE LIST, for the reason given below for the
+    # production filter -- both checks must walk one population. A language
+    # the claim's flows cannot be in drops out of the census AND of the
+    # coverage check together.
+    if source_languages is not None:
+        scoped_edges = [
+            edge for edge in scoped_edges
+            if edge.get("src", "").split(":", 1)[0] in source_languages
+        ]
+        # The supported-language set is scoped WITH the edges (INV-rorur):
+        # left whole, every supported language outside the scope has no edge
+        # in the scoped list and reads as "produced no call edges".
+        taint_supported_languages = (
+            set(taint_supported_languages) & set(source_languages)
+        )
     # WI-mital: the build-target linker mints a ``calls`` edge from a Cargo
     # ``[[bin]]`` symbol (language slot ``toml``) to the ``main()`` it names, so
     # a manifest appears to make calls and blocks every claim over a Rust binary
@@ -6091,13 +6887,7 @@ def _taint_blind_reason(
     # only the I/O gate left mini-redis still reporting ``toml`` THROUGH THIS
     # CENSUS. A rule applied in one place and not the other is how this function
     # comes to give two different answers.
-    languages_with_calls = {
-        edge.get("src", "").split(":", 1)[0]
-        for edge in scoped_edges
-        if edge.get("type") == "calls" and ":" in edge.get("src", "")
-        and not is_synthetic_build_target_call(edge)
-    }
-    blind = sorted(set(unsupported_taint_languages) & languages_with_calls)
+    blind = _uncatalogued_code_languages(unsupported_taint_languages, scoped_edges)
     if blind:
         langs = ", ".join(blind)
         return (
@@ -6124,6 +6914,47 @@ def _taint_blind_reason(
     return None, []
 
 
+def _verify_claims_boundary_vocabulary_help() -> str:
+    """The ``boundary:`` vocabulary block of ``verify-claims --help``, DERIVED.
+
+    ONE CLOSED SET, ONE HOME (WI-jizil). The help tells a claim author which
+    ``constraint.boundary`` values are legal and promises that any other value
+    fails with exit 2. ``load_claims`` keeps that promise against
+    ``KNOWN_IO_BOUNDARIES``, which is ``all_io_boundary_names()`` over the
+    io-boundary registry (ADR-0050). The help used to carry a hand-written copy
+    of the same set, and each value the registry gained was missing from it --
+    ``command_launch`` and ``net_listen`` (fixed by hand in PR #776), then
+    ``navigation_read`` (INV-dadu): the validator accepted it, the help did
+    not list it. An author adding a boundary edits the registry and has no
+    reason to suspect prose in cli.py restates it, so a copy drifts by default.
+
+    Built from the registry when the parser is constructed, so the help and the
+    validator cannot name different sets. Sorted, the order the validator's
+    "unknown boundary" error prints. Only the enumeration is derived; the
+    meaning of each value lives with the registry (``docs/concept-axes.md``
+    is generated from it), and the help points there instead of restating it.
+    """
+    import textwrap
+
+    from .io_boundary_types import all_io_boundary_names
+
+    names = textwrap.fill(
+        ", ".join(sorted(all_io_boundary_names())),
+        width=78,
+        initial_indent="  ",
+        subsequent_indent="  ",
+        break_on_hyphens=False,
+        break_long_words=False,
+    )
+    return (
+        "Boundary values -- `boundary:` must be one of:\n"
+        f"{names}\n"
+        "This list is generated from the io-boundary registry (ADR-0050), the\n"
+        "set the validator checks; docs/concept-axes.md gives each value's\n"
+        "meaning.\n"
+    )
+
+
 def cmd_verify_claims(args: argparse.Namespace) -> int:
     """Verify security claims against I/O boundary map and taint flow.
 
@@ -6138,7 +6969,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     ``ciphertext``, ``derived_key``. The source and sink catalogs are derived
     automatically from ``io_primitives/*.yaml`` (every write-side primitive is
     a sink at ``trust_level=untrusted``; ``env_read``, ``host_info_read``,
-    ``net_recv``, and ``ipc_recv`` primitives are sources). ``host_description``
+    ``net_recv``, ``ipc_recv``, ``db_read``, ``navigation_read`` are sources). ``host_description``
     is NOT a weaker ``host_secret``: it is a different fact, and a claim naming
     one does not match flows carrying the other (INV-tutar). YAML files under ``taint_sources/`` and
     ``taint_sanitizers/`` contribute cryptographic labels and sanitizer
@@ -6155,7 +6986,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     ``(module, name, kind)`` triple matches an auto-derived or built-in
     source/sink replace it; user sanitizers concatenate.  This is the
     supported extension point for declaring project-specific trust zones,
-    raising ``trust_level`` on a sink that is safe in context, or adding
+    declaring a sink ``trust_level: trusted`` when it is safe in context (its
+    flows are excluded and disclosed per verdict in ``trusted_sink_flows``,
+    WI-lukoz), or adding
     a domain-specific taint source label.
     """
     repo_root = Path(args.path).resolve()
@@ -6174,6 +7007,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     from .verify_claims import (
         VERIFY_CLAIMS_SCHEMA_VERSION,
         ClaimsFileError,
+        ScopedBlindness,
         compute_boundary_coverage,
         load_claims,
         untyped_receiver_sink_zones,
@@ -6269,9 +7103,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # the same layering the taint arm uses (INV-hukug).
     from .verify_claims import load_extra_catalog_paths as _load_extras
     _, _, _, _claims_io_overlays = _load_extras(claims_path)
-    io_overlays = _resolve_io_overlays(
+    io_overlay_origins, omitted_io_overlays = _resolve_io_overlay_layers(
         args, _claims_io_overlays, repo_root=repo_root,
     )
+    io_overlays = [p for p, _ in io_overlay_origins]
     _disclose_io_overlays(io_overlays)
 
     # Walks ``census_nodes``, not the raw map: under a declared artifact
@@ -6309,6 +7144,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             catalogs[lang] = catalog
             if catalog.language != lang:
                 catalogs[catalog.language] = catalog
+    _warn_overlay_only_catalogs(catalogs)
 
     # Extract entrypoint IDs for reverse-trace
     vc_entrypoint_ids = {
@@ -6336,6 +7172,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
     credited_user_summaries: set[str] = set()
+    # WI-tigud: the community TERMINATING summaries this run's call graph
+    # calls -- the walk does not let them close a branch, and the violated
+    # verdicts say so. Run-scoped, like ``credited_user_summaries``.
+    withheld_summaries: list[str] = []
     # WI-kabif. Flows the §3a walk REFUTED and removed, collected across every
     # language for the same reason ``credited_user_summaries`` is: the removal
     # count is a property of the RUN, and a per-language split would imply a
@@ -6375,7 +7215,6 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     ddg_forfeited_count = 0
 
     from .taint import (
-        TaintCatalogError,
         load_full_taint_catalog,
         propagate_taint_structural,
     )
@@ -6398,6 +7237,17 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         cli_sources or cli_sinks or cli_sanitizers
         or claims_sources or claims_sinks or claims_sanitizers
     )
+    # ADR-0061 ruling 3: what the report says about each named taint file is
+    # what the load did with it. Filled once the load succeeds; until then
+    # (and on a run with no taint catalogue) the named files are the layers.
+    taint_named: "dict[str, tuple[list[Path], list[Path]]]" = {
+        "taint_sources": (cli_sources, claims_sources),
+        "taint_sinks": (cli_sinks, claims_sinks),
+        "taint_sanitizers": (cli_sanitizers, claims_sanitizers),
+    }
+    taint_layers = taint_named
+    named_community_taint: "list[tuple[Path, str, str]]" = []
+    omitted_taint: "list[tuple[Path, str, str]]" = []
 
     # INV-nufob: resolve+validate the taint catalog whenever taint flags are
     # present, even with no taint_flow claim to consume them. Previously this
@@ -6419,14 +7269,39 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # catalogue extend the auto-derived taint sinks, so a
                 # third-party primitive is declared once rather than twice.
                 io_overlay_paths=io_overlays,
+                # INV-fikoh: and the flag that omits the community rows from
+                # the boundary lookup omits them here too.
+                include_community=not getattr(
+                    args, "no_default_overlays", False),
+                # ADR-0061 ruling 7 (WI-mimap): the operator's persistent
+                # taint model, a user layer below the claims file.
+                channel_source_paths=user_channel_files("taint_sources"),
+                channel_sink_paths=user_channel_files("taint_sinks"),
+                channel_sanitizer_paths=user_channel_files("taint_sanitizers"),
             )
-        except (FileNotFoundError, TaintCatalogError) as exc:
+            if has_taint_claims:
+                # Read with the rest of the taint model, so a broken
+                # function_summaries.d file is refused here, beside a broken
+                # taint file, rather than wherever the walk first asks for a
+                # summary -- or not at all, when no language has both a
+                # source and a sink. Cached: the walk's own call is free.
+                from .function_summaries import load_function_summaries
+                load_function_summaries(include_community=not getattr(
+                    args, "no_default_overlays", False))
+        except (FileNotFoundError, CatalogueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 2
+        taint_layers, named_community_taint, omitted_taint = (
+            _split_named_taint_files(
+                taint_named,
+                include_community=not getattr(
+                    args, "no_default_overlays", False),
+            )
+        )
 
         if any_taint_flags:
             print(
-                "Loaded project-local taint catalog: "
+                "Loaded taint catalogues named by flag or claims file: "
                 f"{len(cli_sources) + len(claims_sources)} source path(s), "
                 f"{len(cli_sinks) + len(claims_sinks)} sink path(s), "
                 f"{len(cli_sanitizers) + len(claims_sanitizers)} sanitizer "
@@ -6435,6 +7310,15 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 "on (module, name, kind) match.",
                 file=sys.stderr,
             )
+            if named_community_taint:
+                print(
+                    f"{len(named_community_taint)} of those taint catalogue "
+                    f"file(s) declare provenance: community, so they loaded "
+                    f"as community rows: they only add, and their sanitizers "
+                    f"never clear a flow (ADR-0061): "
+                    f"{', '.join(str(p) for p, _, _ in named_community_taint)}.",
+                    file=sys.stderr,
+                )
 
         if any_taint_flags and not has_taint_claims:
             # INV-nufob: flags present but no taint_flow claim to consume them.
@@ -6554,12 +7438,28 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             # languages that have a registered DDG spec.
             (
                 ddg_edges, ddg_symbols, hints_by_caller, stmt_defuse,
-                ddg_forfeits, ddg_unaccounted,
+                ddg_forfeits, ddg_unaccounted, ddg_returns,
             ) = _build_ddg_for_verify_claims(
-                repo_root, sorted(per_lang_sinks),
+                repo_root, sorted(per_lang_sinks), behavior_map.get("nodes", []),
             )
             ddg_walkable_count = len(ddg_symbols)
             ddg_forfeited_count = len(ddg_forfeits)
+            # WI-satal: ``Runner(cmd)`` runs ``Runner.__init__``, but py /
+            # js_ts / dart land the construction edge on the CLASS, where the
+            # walk stops. A caller-to-initializer call edge per construction,
+            # handed to the propagation passes only (no emitted edge changes).
+            # A secret passed to a constructor that launches a program was a
+            # clean verdict before this.
+            construction_edges: list[dict[str, Any]] = [
+                {
+                    "src": caller, "dst": initializer, "type": "calls",
+                    "line": line, "is_resolved": True,
+                    "meta": {"call_construct": "constructor"},
+                }
+                for caller, initializer, line in construction_calls(
+                    behavior_map.get("nodes", []), raw_edges,
+                )
+            ]
             taint_findings = []
             for lang in sorted(per_lang_sinks):
                 lang_prefix = f"{lang}:"
@@ -6567,6 +7467,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                     e for e in raw_edges
                     if e.get("src", "").startswith(lang_prefix)
                     or e.get("dst", "").startswith(lang_prefix)
+                ] + [
+                    e for e in construction_edges
+                    if e["src"].startswith(lang_prefix)
                 ]
                 lang_sources = per_lang_sources.get(lang, [])
                 lang_sinks = per_lang_sinks[lang]
@@ -6646,13 +7549,31 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         # precision the mechanism does not have.
                         credited_user_summaries=credited_user_summaries,
                         refuted_flows=refuted_flows,
+                        include_community=not getattr(
+                            args, "no_default_overlays", False),
+                        # INV-komoj: a source a helper RETURNS is lifted into
+                        # the helper's callers.
+                        return_spans=ddg_returns,
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(
                         lang_edges, lang_sources, lang_sinks, lang_sans,
                         ambiguous_names=lang_ambiguous,
                         language=lang,
+                        # INV-komoj, on this arm too: the filed python helper
+                        # defines nothing, so a repository made of such
+                        # functions has no DDG edge and lands HERE.
+                        return_spans=ddg_returns,
+                        include_community=not getattr(
+                            args, "no_default_overlays", False),
                     ))
+            from .function_summaries import load_function_summaries
+            from .taint import withheld_community_summaries
+            withheld_summaries = withheld_community_summaries(
+                raw_edges,
+                load_function_summaries(include_community=not getattr(
+                    args, "no_default_overlays", False)),
+            )
 
         # INV-karud (a3), PUBLISHED SCOPE. Per-flow ``analysis_method`` says
         # how one flow was adjudicated; it cannot say what the analysis was
@@ -6694,6 +7615,48 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         ),
         first_party_packages=first_party_packages,
     )
+    # WI-rusil: scope the no-catalogue check by each claim's DECLARED sources.
+    # Only a label a project catalogue declares in specific languages narrows;
+    # a built-in label can start in any language and keeps the answer above.
+    blind_by_source_taint: dict[str, ScopedBlindness] = {}
+    flow_languages_by_label: dict[str, frozenset[str]] = {}
+    if has_taint_claims and taint_catalog is not None:
+        from .taint import load_builtin_taint_catalog, source_origin_languages
+
+        _include_np = getattr(args, "include_non_production_sources", False)
+        _builtin_labels = load_builtin_taint_catalog().all_source_labels()
+        _census_edges = _taint_census_edges(raw_edges, _include_np)
+        _census = _uncatalogued_code_languages(
+            unsupported_taint_languages, _census_edges,
+        )
+        for _claim in claims:
+            _tf = _claim.constraint_taint_flow
+            if _tf is None or _tf.source_taint in blind_by_source_taint:
+                continue
+            _origins = source_origin_languages(
+                taint_catalog, _builtin_labels, _tf.source_taint,
+            )
+            if _origins is None:
+                continue
+            _flow_langs = _languages_a_flow_can_be_in(_origins, _census_edges)
+            flow_languages_by_label[_tf.source_taint] = _flow_langs
+            _reason, _opaque = _taint_blind_reason(
+                has_taint_claims, unsupported_taint_languages,
+                raw_edges, set(per_lang_sinks), catalogs,
+                include_non_production=_include_np,
+                first_party_packages=first_party_packages,
+                source_languages=_flow_langs,
+            )
+            blind_by_source_taint[_tf.source_taint] = ScopedBlindness(
+                reason=_reason, opaque_sites=_opaque,
+                not_counted=[lang for lang in _census if lang not in _flow_langs],
+                origin_languages=sorted(_origins),
+            )
+    sink_zone_gaps: dict[tuple[str, str], Any] = {}
+    if has_taint_claims and taint_catalog is not None:
+        sink_zone_gaps = _sink_zone_gaps(
+            claims, taint_catalog, set(per_lang_sinks), flow_languages_by_label,
+        )
     # INV-nuhun: the taint arm's half of INV-fibis's disclosure. Stamped HERE
     # rather than inside ``compute_boundary_coverage`` because this is the first
     # point that holds BOTH the call edges and the taint SINK catalogue — the
@@ -6719,6 +7682,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # reader to mentally downgrade 'confirmed' — which no CI gate does.
         blind_reason=_blind_reason,
         blind_opaque_sites=_blind_opaque,
+        blind_by_source_taint=blind_by_source_taint,
+        sink_zone_gaps=sink_zone_gaps,
         # INV-faput: the SHIPPED catalogue rows a repo-supplied row replaced.
         # Read off the catalogue here because this is the last point that
         # still knows — the displaced rows are gone from every structure the
@@ -6730,6 +7695,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # branch this run. Empty unless they wrote one, so an installation with
         # no user summaries produces byte-identical verdicts to before.
         credited_user_summaries=credited_user_summaries,
+        # WI-tigud: community terminating summaries the walk did not credit.
+        withheld_community_summaries=withheld_summaries,
     )
 
     # INV-zosun: assemble the catalogue provenance BEFORE either renderer, so
@@ -6738,26 +7705,60 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # passed on the command line comes from whoever ran the tool, while one
     # reached through `extra_catalogs:` travels with the repository, and a
     # claims file living inside the analysed tree means the repo is supplying
-    # its own criteria. `_resolve_io_overlays` concatenates the two, so the
-    # unmerged lists are read here rather than recovered from the merged one.
+    # its own criteria. Both are read from the LOADED origins, each path
+    # tagged with its layer, never from the raw flag and claims-file lists:
+    # those still hold a file --no-default-overlays omitted, which the report
+    # then named as user-supplied input with a withheld grant (INV-dozav). The
+    # omitted files are passed on separately and reported as omitted.
+    #
+    # ADR-0061 ruling 3, the io_primitives arm: a loaded overlay a flag or the
+    # claims file named that declares provenance: community is a COMMUNITY
+    # row (its grants withheld, its rows unvouched), so it is reported beside
+    # the named community taint files, never in the user-supplied layers.
     from .verify_claims import catalog_provenance, render_catalog_provenance_text
+    _named_io, _named_io_community = _partition_community_overlays(
+        [(p, origin) for p, origin in io_overlay_origins
+         if origin in ("cli", "claims_file")])
     _provenance = catalog_provenance({
         "io_primitives": (
-            [Path(p) for p in (getattr(args, "io_primitives", None) or [])],
-            _claims_io_overlays,
+            [p for p, origin in _named_io if origin == "cli"],
+            [p for p, origin in _named_io if origin == "claims_file"],
         ),
-        "taint_sources": (cli_sources, claims_sources),
-        "taint_sinks": (cli_sinks, claims_sinks),
-        "taint_sanitizers": (cli_sanitizers, claims_sanitizers),
+        # ADR-0061 ruling 3: the operator's own taint files only. A named
+        # file declaring provenance: community loaded as a community row (or
+        # was omitted), and is reported as one below, never as user input.
+        **taint_layers,
     }, () if getattr(args, "no_default_overlays", False) else languages,
        load_bearing=coverage.load_bearing_grants,
+       untraced_vouched=coverage.untraced_vouched_grants,  # WI-pogar
        # INV-nular. `languages` UNCONDITIONALLY, unlike the argument above:
        # --no-default-overlays suppresses the COMMUNITY layer, not the shipped
        # catalogue, so the run still rests on base rows and still owes the
        # count. The flag is passed on separately so the community line is
        # dropped rather than reported as zero-from-a-layer-that-was-loaded.
        catalog_languages=languages,
-       include_default_overlays=not getattr(args, "no_default_overlays", False))
+       include_default_overlays=not getattr(args, "no_default_overlays", False),
+       # ADR-0061 ruling 5 (INV-gumom): every file the run read, by tier.
+       tier_files=_loaded_catalogue_files(
+           languages,
+           io_overlays,
+           include_default_overlays=not getattr(
+               args, "no_default_overlays", False),
+           taint_paths=(
+               {"taint_sources": [*claims_sources, *cli_sources],
+                "taint_sinks": [*claims_sinks, *cli_sinks],
+                "taint_sanitizers": [*claims_sanitizers, *cli_sanitizers]}
+               if taint_catalog is not None else None
+           ),
+       ),
+       repo_root=repo_root,
+       io_overlay_origins=io_overlay_origins,
+       omitted_overlays=omitted_io_overlays,
+       named_community=[
+           *((p, origin, "io_primitives") for p, origin in _named_io_community),
+           *named_community_taint,
+       ],
+       omitted_taint=omitted_taint)
 
     # Output
     if _read_view_wants_json(args):
@@ -8114,77 +9115,6 @@ _REACHABILITY_EDGE_TYPES: Final[frozenset[str]] = call_family_edge_types() | fro
 )
 
 
-def _construction_initializer_edges(
-    nodes: list[dict[str, Any]], edges: list[dict[str, Any]],
-) -> list[tuple[str, str]]:
-    """Extra BFS hops: a CONSTRUCTED class reaches its own initializer.
-
-    INV-kahig settled which edge TYPES carry reachability and left open which
-    NODE the edge lands on. ruby resolves ``Klass.new`` to ``Klass#initialize``
-    and csharp/java land on a ``constructor`` symbol, so for them the walk
-    already enters the initializer. py / js_ts / dart land on the CLASS, and
-    every edge leaving a class node (``contains`` / ``extends`` /
-    ``decorated_by``) is correctly non-traversable -- so the walk arrives and
-    stops, and the initializer plus everything it calls reads as dead
-    (INV-rolok). Measured at tip: of 11,428 ``instantiates`` edges in this
-    repo's self-analysis, 9,217 land on a ``class`` and ZERO on a callable.
-
-    THE LICENCE IS THE CONJUNCTION. ``contains`` alone confers nothing --
-    making it traversable would make every method of every instantiated class
-    unconditionally reachable and destroy this command's precision wholesale.
-    The hop is minted only where (the class is the dst of a construction edge)
-    AND (the member is its initializer, per
-    :func:`symbol_kinds.is_initializer`). Either half alone mints nothing.
-
-    WHY HERE AND NOT IN THE EMITTED GRAPH. Re-pointing the ``instantiates``
-    dst at the initializer is WI-fagit's shape for csharp and was the obvious
-    move, but ``linkers/method_call_recovery`` keys its class hint on
-    ``e.dst in class_ids`` -- so re-pointing python's dst would silently drop
-    python from the linker that produced 89 edges on this repo. Minting the
-    hops as real edges instead perturbs ``detect_entrypoints``, which reads the
-    edge set: measured on pretix, it cost 5 route seeds (seed_count
-    1174 -> 1173). Augmenting THIS graph, after entrypoint detection has
-    already run, changes no emitted edge and no other consumer. The precedent
-    is ``is_grpc_rpc_implementation``: the edges are correct as they stand,
-    and only this walk's reading of them changes.
-
-    Returns a sorted list so an A/B over the result is stable.
-    """
-    # Imported locally, matching this module's idiom for symbol_kinds.
-    from .symbol_kinds import is_initializer
-
-    by_id = {n["id"]: n for n in nodes}
-    constructed: set[str] = set()
-    for edge in edges:
-        if edge.get("type") != "instantiates":
-            continue
-        target = by_id.get(edge.get("dst", ""))
-        # An unresolved/external dst has no node behind it (2,211 of this
-        # repo's construction edges); a dst that is ALREADY a callable is the
-        # ruby/csharp shape and needs no hop.
-        if target is not None and target.get("kind") == "class":
-            constructed.add(target["id"])
-    if not constructed:
-        return []
-    hops: set[tuple[str, str]] = set()
-    for edge in edges:
-        if edge.get("type") != "contains":
-            continue
-        owner = edge.get("src", "")
-        if owner not in constructed:
-            continue
-        member = by_id.get(edge.get("dst", ""))
-        if member is None:
-            continue
-        if is_initializer(
-            member.get("kind", ""),
-            member.get("name", ""),
-            member.get("language", "") or "",
-        ):
-            hops.add((owner, member["id"]))
-    return sorted(hops)
-
-
 def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     """Find potentially dead code: production callables unreachable from seeds.
 
@@ -8863,6 +9793,41 @@ def _nonneg_int_arg(label: str):
     return _parse
 
 
+def _trace_deps_arg(raw: str) -> "TraceDeps":
+    """argparse ``type=`` for ``--trace-deps``: ``all``, ``none`` or ``a,b``."""
+    from .discovery import TraceDeps
+
+    try:
+        return TraceDeps.parse(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"--trace-deps {exc}") from exc
+
+
+def _add_trace_deps_argument(parser: argparse.ArgumentParser) -> None:
+    """``--trace-deps`` on every command that can run an analysis.
+
+    ADR-0004 §"Installed dependency source": installed dependency source
+    (Mix ``deps/``, ``node_modules/``, a virtualenv, a package-manager
+    ``vendor/``, ``Pods/``) is not parsed by default. The flag outranks the
+    ``trace_deps`` configuration key for this one command; read commands find
+    a traced survey through that key, not through a one-off flag, exactly as
+    with an opt-in backend.
+    """
+    parser.add_argument(
+        "--trace-deps",
+        type=_trace_deps_arg,
+        default=None,
+        dest="trace_deps",
+        metavar="PKG,...|all",
+        help="Also analyse installed dependency source (Mix deps/, "
+             "node_modules/, virtualenv site-packages, package-manager "
+             "vendor/, Pods/), which is skipped by default: a comma-"
+             "separated list of package names, 'all', or 'none' to "
+             "override the trace_deps config key. Traced files are "
+             "classified tier 3.",
+    )
+
+
 def _unit_interval_arg(label: str):
     """argparse ``type=`` factory: require a float in the inclusive range [0.0, 1.0].
 
@@ -9004,7 +9969,7 @@ For help on ALL commands:   hypergumbo --help --all"""
     )
     p.add_argument(
         "--backend",
-        choices=["tree-sitter", "rust-analyzer", "scip-python"],
+        choices=list(BACKEND_CHOICES),
         default=None,
         help=(
             "Select an opt-in analysis backend for this run. 'rust-analyzer' "
@@ -9085,6 +10050,7 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         metavar="PATTERN",
         help="Additional exclude pattern (can be repeated, e.g. -e '*.json' -e 'vendor')",
     )
+    _add_trace_deps_argument(p_sketch)
     p_sketch.add_argument(
         "--config-extraction",
         choices=["heuristic", "embedding", "hybrid"],
@@ -9337,6 +10303,7 @@ Cache location:
         metavar="PATTERN",
         help="Additional exclude pattern (can be repeated, e.g. -e '*.json' -e 'vendor')",
     )
+    _add_trace_deps_argument(p_run)
     p_run.add_argument(
         "--frameworks",
         type=str,
@@ -9442,6 +10409,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_slice)
+    _add_trace_deps_argument(p_slice)
     p_slice.add_argument(
         "--entry",
         default="auto",
@@ -9892,6 +10860,25 @@ The output begins with passes suggested for your current directory."""
         "--show", action="store_true", help="Print the recorded decision and exit",
     )
     p_trust.set_defaults(func=cmd_trust_backend)
+
+    # hypergumbo trust-catalogues (ADR-0061 ruling 4)
+    p_trust_cat = sub.add_parser(
+        "trust-catalogues",
+        help=(
+            "Record a per-repository decision to load (or refuse) the "
+            "catalogue data a repository's own .hypergumbo.toml names"
+        ),
+    )
+    p_trust_cat.add_argument(
+        "path", nargs="?", default=".", help="Repository root (default: .)",
+    )
+    p_trust_cat.add_argument(
+        "--revoke", action="store_true", help="Record a refusal instead of a grant",
+    )
+    p_trust_cat.add_argument(
+        "--show", action="store_true", help="Print the recorded decision and exit",
+    )
+    p_trust_cat.set_defaults(func=cmd_trust_catalogues)
 
     # hypergumbo backend-agreement (ADR-0057 §5)
     p_agree = sub.add_parser(
@@ -10527,8 +11514,20 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
             "Do not load the community I/O overlays that ship with "
             "hypergumbo. They are third-party rows hypergumbo distributes "
             "and discloses but does not vouch for (ADR-0047); this omits "
-            "them, leaving only the stdlib-scoped built-in catalog plus any "
-            "overlay you supply."
+            "them, and any overlay declaring provenance: community, leaving "
+            "only the stdlib-scoped built-in catalog plus the overlays you "
+            "vouch for."
+        ),
+    )
+    p_io.add_argument(
+        "--in-repo-catalogues",
+        action="store_true",
+        help=(
+            "Load the catalogue data this repository's own .hypergumbo.toml "
+            "names (its io_primitives overlays) for this run. Catalogue data "
+            "inside the analysed repository is off unless you opt in "
+            "(ADR-0061); `hypergumbo trust-catalogues PATH` opts in for one "
+            "repository instead of one run."
         ),
     )
     p_io.add_argument(
@@ -10537,13 +11536,14 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         default=None,
         metavar="PATH",
         help=(
-            "Project-local I/O primitive overlay YAML. Repeatable; a later "
+            "An I/O primitive overlay YAML for this run. Repeatable; a later "
             "path outranks an earlier one, and all outrank the built-in "
             "catalog on qualified-name match. The built-in catalog stays "
             "stdlib-scoped by design (ADR-0016), so third-party libraries "
-            "(requests, httpx, ...) are declared here. See "
-            "hypergumbo_core/io_primitives_overlays/ for the shipped community "
-            "overlays, which are loaded by default. (INV-fotav)"
+            "(requests, httpx, ...) are declared in an overlay. For a "
+            "persistent one use $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ "
+            "(`hypergumbo init-catalogs` seeds the community overlays there); "
+            "see docs/CATALOGUES.md. (INV-fotav)"
         ),
     )
     _add_minimal_argument(p_io)
@@ -10648,21 +11648,21 @@ Claims file format (YAML):
       text: No network sends      # required: human-readable description
       constraint:                 # one of two constraint shapes:
         # (a) boundary constraint (ADR-0016):
-        boundary: net_send        #   one of: browser_storage_read/write,
-        must_not_exist: true      #   command_launch, db_read, db_write,
-        # max_chains: 5           #   env_read, env_write, external_potential,
-                                  #   fs_read, fs_write, host_info_read,
-                                  #   ipc_recv, ipc_send, logging, net_listen,
-                                  #   db_compose, net_recv, net_send,
-                                  #   process_send, subprocess
+        boundary: net_send        #   a value from the list below
+        must_not_exist: true
+        # max_chains: 5
         # (b) taint-flow constraint (ADR-0017):
         # taint_flow:
         #   source_taint: untrusted_input
         #   prohibited_sink_zone: host_fs
         #   allowed_sanitizers: []
 
-A top-level `extra_catalogs:` key may declare project-local taint catalogs
-(see --taint-sources/--taint-sinks/--taint-sanitizers; WI-votan).
+""" + _verify_claims_boundary_vocabulary_help() + """
+A top-level `extra_catalogs:` key may name extra catalogue files --
+`io_primitives`, `sources`, `sinks`, `sanitizers` (see --io-primitives and
+--taint-sources/--taint-sinks/--taint-sanitizers; WI-votan). Your persistent
+taint model belongs in $XDG_CONFIG_HOME/hypergumbo/taint_sources.d/,
+taint_sinks.d/ and taint_sanitizers.d/; see docs/CATALOGUES.md.
 
 The claims file is validated up front: a malformed YAML, an unexpected
 shape, an unknown field name, or a boundary value outside the vocabulary
@@ -10675,11 +11675,12 @@ inconclusive, or the claims file failed validation; 3 = at least one
 Exit 3 means every claim held, but at least one held on something you have to
 see for yourself. FOUR things raise it, in two families.
 
-The claim rested on the ANALYSED REPOSITORY's own word:
-  - a sanitizer it declared through `extra_catalogs:` or `--taint-sanitizers`
-    was credited with removing a flow the tool would otherwise have reported
-    (INV-pojib);
-  - a row it supplied DISPLACED a shipped catalogue row that could have
+The claim rested on catalogue data that did not ship with hypergumbo -- a
+`--taint-*` flag, the claims file's `extra_catalogs:`, or your own channel
+directories:
+  - a sanitizer from there was credited with removing a flow the tool would
+    otherwise have reported (INV-pojib);
+  - a row from there DISPLACED a shipped catalogue row that could have
     produced evidence for this very claim (INV-faput).
 
 Or the analysis looked and could not adjudicate what it saw:
@@ -10731,10 +11732,23 @@ what I could not check" -- and decide per repository whether that is acceptable.
         "--no-default-overlays",
         action="store_true",
         help=(
-            "Do not load the community I/O overlays that ship with "
-            "hypergumbo (ADR-0047). They are third-party rows hypergumbo "
-            "distributes and discloses but does not vouch for; a verdict "
-            "reached with them is disclosed as such."
+            "Do not load community catalogue rows: the community I/O "
+            "overlays that ship with hypergumbo, any overlay declaring "
+            "provenance: community, and the community taint and "
+            "function-summary files (ADR-0061). They are third-party rows "
+            "hypergumbo distributes and discloses but does not vouch for; a "
+            "verdict reached with them is disclosed as such."
+        ),
+    )
+    p_vc.add_argument(
+        "--in-repo-catalogues",
+        action="store_true",
+        help=(
+            "Load the catalogue data this repository's own .hypergumbo.toml "
+            "names (its io_primitives overlays) for this run. Catalogue data "
+            "inside the analysed repository is off unless you opt in "
+            "(ADR-0061); `hypergumbo trust-catalogues PATH` opts in for one "
+            "repository instead of one run."
         ),
     )
     p_vc.add_argument(
@@ -10743,13 +11757,14 @@ what I could not check" -- and decide per repository whether that is acceptable.
         default=None,
         metavar="PATH",
         help=(
-            "Project-local I/O primitive overlay YAML. Repeatable; a later "
+            "An I/O primitive overlay YAML for this run. Repeatable; a later "
             "path outranks an earlier one, and all outrank the built-in "
             "catalog on qualified-name match. The built-in catalog stays "
             "stdlib-scoped by design (ADR-0016), so third-party libraries "
-            "(requests, httpx, ...) are declared here. See "
-            "hypergumbo_core/io_primitives_overlays/ for the shipped community "
-            "overlays, which are loaded by default. (INV-fotav)"
+            "(requests, httpx, ...) are declared in an overlay. For a "
+            "persistent one use $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ "
+            "(`hypergumbo init-catalogs` seeds the community overlays there); "
+            "see docs/CATALOGUES.md. (INV-fotav)"
         ),
     )
     p_vc.add_argument(
@@ -10758,7 +11773,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         default=None,
         metavar="PATH",
         help=(
-            "Project-local taint source YAML file or directory. "
+            "A taint source YAML file or directory for this run. "
             "Repeatable. Entries whose (module, name, kind) matches an "
             "auto-derived or built-in source are overridden. (WI-votan)"
         ),
@@ -10769,7 +11784,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         default=None,
         metavar="PATH",
         help=(
-            "Project-local taint sink YAML file or directory. "
+            "A taint sink YAML file or directory for this run. "
             "Repeatable. Entries whose (module, name, kind) matches an "
             "auto-derived or built-in sink are overridden. (WI-votan)"
         ),
@@ -10780,7 +11795,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         default=None,
         metavar="PATH",
         help=(
-            "Project-local taint sanitizer YAML file or directory. "
+            "A taint sanitizer YAML file or directory for this run. "
             "Repeatable. User sanitizers concatenate onto the built-in "
             "list. (WI-votan)"
         ),
@@ -10850,7 +11865,10 @@ def _classify_symbols(
     """Apply supply chain classification to symbols in-place.
 
     Classifies each symbol's file path and updates supply_chain_tier
-    and supply_chain_reason fields.  Symbols that already have a tier
+    and supply_chain_reason fields.  The classification is computed once
+    per PATH and shared by every symbol in that file (WI-fojot): it reads
+    the whole file, so per-symbol calls re-read a file once per symbol
+    (40x the bytes on nestjs, 319 s of CPU on flink).  Symbols that already have a tier
     set by a linker (e.g. npm_package with tier=3) are not reclassified
     — the linker's tier takes precedence.
 
@@ -10858,7 +11876,7 @@ def _classify_symbols(
     classified as tier 3 (EXTERNAL_DEP) since they represent references
     to external packages, not first-party code — EXCEPT a declaration
     naming an in-repo workspace sibling, which is workspace-internal
-    (tier 2 INTERNAL_DEP) per INV-nuzas / ADR-0041 D8a. Workspace-sibling
+    (tier 2 INTERNAL_DEP) per INV-nuzas / ADR-0041 §1. Workspace-sibling
     recognition uses ``collect_workspace_package_names`` (Python pyproject
     distribution names); Cargo/npm workspace-sibling analogues are a
     documented cross-language follow-up and still fall through to tier 3.
@@ -10871,7 +11889,8 @@ def _classify_symbols(
     declared this field but no producer ever wrote to it.
     """
     seen_failures: set[str] = set()
-    # INV-nuzas / ADR-0041 D8a: recognize in-repo workspace-sibling package
+    classification_by_path: dict[str, FileClassification] = {}
+    # INV-nuzas / ADR-0041 §1: recognize in-repo workspace-sibling package
     # names so a sibling declared as a dependency is tiered workspace-internal
     # (tier 2), not external (tier 3). Empty set on a non-Python repo → the
     # dependency branch below is unchanged (all deps tier 3).
@@ -10903,8 +11922,15 @@ def _classify_symbols(
                 symbol.supply_chain_tier = 3
                 symbol.supply_chain_reason = "dependency declaration (external)"
             continue
-        file_path = repo_root / symbol.path
-        classification = classify_file(file_path, repo_root, package_roots)
+        # WI-fojot: classify_file is a function of the PATH (it stats and
+        # reads the whole file), so it runs once per path, not once per
+        # symbol: a file with N symbols was read N times.
+        classification = classification_by_path.get(symbol.path)
+        if classification is None:
+            classification = classify_file(
+                repo_root / symbol.path, repo_root, package_roots,
+            )
+            classification_by_path[symbol.path] = classification
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
         symbol.is_test_file = classification.is_test
@@ -10947,22 +11973,19 @@ def _make_ecosystem_classifier() -> Callable[[str, str], Optional[str]]:
     enumerated stdlib, so an unmatched module is never mislabelled
     ``third_party`` on a language whose stdlib set we don't know. Catalogs are
     loaded lazily and cached per language.
+
+    The predicate itself is :func:`io_boundary.module_ecosystem` (WI-pogar):
+    ``verify_claims`` asks the same question of raw edges, and one home keeps
+    the node stamp and the verdict's "untraced dependency" wording from
+    disagreeing about a module.
     """
-    from .io_boundary import load_catalog
+    from .io_boundary import load_catalog, module_ecosystem
     cache: Dict[str, Any] = {}
 
     def classify(language: str, module: str) -> Optional[str]:
         if language not in cache:
-            cat = load_catalog(language)
-            # Usable only when the catalog enumerates the stdlib; otherwise
-            # "not in set" is indistinguishable from "stdlib set unknown".
-            cache[language] = (
-                cat if (cat.stdlib_modules or cat.stdlib_prefixes) else None
-            )
-        cat = cache[language]
-        if cat is None:
-            return None
-        return "stdlib" if cat.is_stdlib_module(module) else "third_party"
+            cache[language] = load_catalog(language)
+        return module_ecosystem(cache[language], module)
 
     return classify
 
@@ -10971,13 +11994,10 @@ def _make_ecosystem_classifier() -> Callable[[str, str], Optional[str]]:
 # build/cache artifact dirs that discovery gitignore-excludes BEFORE the tier-4
 # derived classifier runs, so they never surface in derived_skipped without the
 # dedicated scan below (WI-jafoz). Kept in sync with the directory-name half of
-# each DERIVED_PATH_PATTERNS entry.
+# each DERIVED_PATH_PATTERNS entry. Generated output recognised by its tool
+# (``dist``/``build``/``out``/``target`` ...) is found by content instead.
 _DERIVED_DIR_NAMES = frozenset(
     {
-        "dist",
-        "build",
-        "out",
-        "target",
         ".next",
         ".nuxt",
         ".output",
@@ -11002,22 +12022,31 @@ def _find_derived_skipped(repo_root: Path) -> list[str]:
     dependency/VCS excludes so we neither descend into huge dep trees nor
     misattribute a dependency's *own* build output as the project's.
 
+    Generated output recognised by its tool (discovery's build-output
+    content rules -- ``target/`` beside ``Cargo.toml``, ...) is a derived root
+    too, found by the same ``match_content_rule`` that pruned it.
+
     Returns sorted repo-relative POSIX paths of every file beneath a derived
     directory.
     """
     import re
 
-    from .discovery import DEFAULT_EXCLUDES
+    from .discovery import manifest_walk_skip, match_content_rule
 
     derived_res = [re.compile(p) for p in DERIVED_PATH_PATTERNS]
     # Prune dep/VCS/cache dirs (so we don't walk or misattribute them) but keep
     # the derived dirs themselves so the walk can reach and record them.
-    prune = {d for d in DEFAULT_EXCLUDES if d not in _DERIVED_DIR_NAMES}
+    # Dependency directories (``node_modules``/``vendor`` by name, installed
+    # dependency source and content-conditioned build output by content) are
+    # pruned too: their build output is a dependency's, not the project's.
+    prune = {d for d in manifest_walk_skip() if d not in _DERIVED_DIR_NAMES}
     skipped: list[str] = []
     for dirpath, dirnames, _filenames in os.walk(repo_root):
         rel = os.path.relpath(dirpath, repo_root)
         rel_norm = "" if rel == "." else rel.replace(os.sep, "/") + "/"
-        if rel_norm and any(r.search(rel_norm) for r in derived_res):
+        rule = match_content_rule(Path(dirpath)) if rel_norm else None
+        is_output = rule is not None and not rule.is_installed_dep
+        if is_output or (rel_norm and any(r.search(rel_norm) for r in derived_res)):
             # Derived root: record every file beneath it, then stop the outer
             # walk from descending (the nested walk already covered it).
             for sub_dp, _sub_dn, sub_files in os.walk(dirpath):
@@ -11025,16 +12054,36 @@ def _find_derived_skipped(repo_root: Path) -> list[str]:
                 skipped.extend(sub_rel + "/" + f for f in sub_files)
             dirnames[:] = []
             continue
-        dirnames[:] = [d for d in dirnames if d not in prune]
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in prune and not _is_installed_dir(Path(dirpath) / d)
+        ]
     return sorted(skipped)
 
 
+def _is_installed_dir(path: Path) -> bool:
+    """Installed dependency source (a content rule with packages). Its own
+    build output is a dependency's, so the derived scan never enters it."""
+    from .discovery import match_content_rule
+
+    rule = match_content_rule(path)
+    return rule is not None and rule.is_installed_dep
+
+
 def _compute_supply_chain_summary(
-    symbols: list[Symbol], derived_paths: list[str]
+    symbols: list[Symbol],
+    derived_paths: list[str],
+    installed_deps_skipped: Optional[Dict[str, Any]] = None,
+    generated_output_skipped: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Compute supply chain summary from classified symbols.
 
-    Returns a dict with counts per tier plus derived_skipped info. Tier-3
+    Returns a dict with counts per tier plus the three exclusion-disclosure
+    buckets: ``derived_skipped``, ``installed_deps_skipped`` (ADR-0004
+    §"Installed dependency source" -- ``discovery.installed_deps_summary``'s
+    ``{dirs, packages, entries}``, empty when nothing was skipped) and
+    ``generated_output_skipped`` (point 7 --
+    ``discovery.generated_output_summary``'s ``{dirs, entries}``). Tier-3
     (external_dep) carries two sub-buckets counting its symbols by ``meta``
     provenance stamps: ``ecosystem`` (ADR-0041 §3: stdlib / third_party / unknown)
     and ``directness`` (ADR-0041 §2: direct / transitive / undeclared / unknown).
@@ -11084,6 +12133,12 @@ def _compute_supply_chain_summary(
     summary["derived_skipped"] = {
         "files": len(tier_files[4]) + len(derived_paths),
         "paths": derived_paths[:10],
+    }
+    summary["installed_deps_skipped"] = installed_deps_skipped or {
+        "dirs": 0, "packages": 0, "entries": [],
+    }
+    summary["generated_output_skipped"] = generated_output_skipped or {
+        "dirs": 0, "entries": [],
     }
 
     return summary
@@ -11422,12 +12477,18 @@ def _releases_file_index(fn: _SurveyFn) -> _SurveyFn:
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        from hypergumbo_core.discovery import set_file_index
+        from hypergumbo_core.discovery import (
+            TraceDeps, set_active_trace_deps, set_file_index,
+        )
 
         try:
             return fn(*args, **kwargs)
         finally:
             set_file_index(None)
+            # The --trace-deps policy the walk applied is scoped to the same
+            # run as the index it shaped (ADR-0004 §"Installed dependency
+            # source").
+            set_active_trace_deps(TraceDeps(), None)
 
     return cast(_SurveyFn, wrapper)
 
@@ -11542,7 +12603,10 @@ def run_survey(
     # This replaces 80+ redundant rglob() calls across analyzers,
     # profile detection, and linkers — ~75% of uncached runtime.
     from hypergumbo_core.discovery import (
-        DEFAULT_EXCLUDES, FileIndex, set_file_index, set_max_file_bytes,
+        DEFAULT_EXCLUDES, FileIndex, format_generated_output_disclosure,
+        format_installed_deps_disclosure, generated_output_summary,
+        installed_deps_summary, resolve_trace_deps, set_active_trace_deps,
+        set_file_index, set_max_file_bytes,
     )
     # ADR-0057 §5 (WI-hukuf): the arbitration policy is a preference in the
     # ADR-0045 config tiers. Resolved BEFORE any analysis so a bad `[merge]`
@@ -11554,8 +12618,28 @@ def run_survey(
     combined_excludes = list(DEFAULT_EXCLUDES)
     if extra_excludes:
         combined_excludes.extend(extra_excludes)
+    # ADR-0004 §"Installed dependency source": installed dependency source is
+    # pruned by the walk unless --trace-deps / the trace_deps config key opts
+    # into it; what was skipped is disclosed (stderr here, the sketch, and
+    # supply_chain_summary.installed_deps_skipped).
+    trace_deps = resolve_trace_deps(repo_root)
+    set_active_trace_deps(trace_deps, repo_root)
     file_index = FileIndex.build(repo_root, excludes=combined_excludes)
     set_file_index(file_index)
+    installed_deps_skipped = installed_deps_summary(
+        file_index.installed_dep_roots, repo_root, trace_deps,
+    )
+    _deps_disclosure = format_installed_deps_disclosure(installed_deps_skipped)
+    if _deps_disclosure:
+        print(_deps_disclosure, file=sys.stderr)
+    # ADR-0004 point 7: generated output is always pruned, so a wrong
+    # exclusion would otherwise be invisible -- name what was pruned and why.
+    generated_output_skipped = generated_output_summary(
+        file_index.generated_output_roots, repo_root,
+    )
+    _output_disclosure = format_generated_output_disclosure(generated_output_skipped)
+    if _output_disclosure:
+        print(_output_disclosure, file=sys.stderr)
 
     # Detect repo profile (languages, frameworks) with LOC counting.
     # Analyzers will read the same files shortly, so OS cache is warm.
@@ -11664,11 +12748,16 @@ def run_survey(
             {"pass_id": "route-materializer"}
         ),
     )
+    # WI-nuvam: these two serial post-passes were never timed at all, so their
+    # duration_ms was only ever the INV-gizik 1 ms floor. Each now carries its
+    # measured wall time and its own-thread CPU time (pass_clock).
+    _route_mat_clock = PassClock()
     materialized_routes = materialize_route_symbols(
         all_symbols, origin_run_id=_route_mat_run.execution_id
     )
     if materialized_routes:
         all_symbols.extend(materialized_routes)
+        _route_mat_clock.read().stamp(_route_mat_run)
         _route_mat_run.nodes_emitted = len(materialized_routes)
         analysis_runs.append(_route_mat_run.to_dict())
 
@@ -11682,6 +12771,7 @@ def run_survey(
             {"pass_id": "django-cbv-method-expander"}
         ),
     )
+    _cbv_clock = PassClock()
     cbv_expanded, cbv_removed_ids = expand_class_based_view_routes(
         all_symbols, origin_run_id=_cbv_run.execution_id
     )
@@ -11689,6 +12779,7 @@ def run_survey(
         all_symbols = [s for s in all_symbols if s.id not in cbv_removed_ids]
     if cbv_expanded:
         all_symbols.extend(cbv_expanded)
+        _cbv_clock.read().stamp(_cbv_run)
         _cbv_run.nodes_emitted = len(cbv_expanded)
         analysis_runs.append(_cbv_run.to_dict())
 
@@ -11912,7 +13003,7 @@ def run_survey(
             {"pass_id": "boundary_external_symbol_synthesis"}
         ),
     )
-    _boundary_t0 = time.perf_counter()
+    _boundary_clock = PassClock()
     boundary, id_remap = create_boundary_nodes(
         all_symbols, all_edges, dependency_manifest=dependency_manifest,
         origin_run_id=_boundary_run.execution_id,
@@ -11922,8 +13013,8 @@ def run_survey(
         all_symbols.extend(boundary)
         # INV-gizik: stamp this synthesis pass's duration + node count (it emits
         # external_symbol placeholder Symbols; edge changes are remaps, not new
-        # edges, so edges_emitted stays 0).
-        _boundary_run.duration_ms = int((time.perf_counter() - _boundary_t0) * 1000)
+        # edges, so edges_emitted stays 0). WI-nuvam: plus its own CPU time.
+        _boundary_clock.read().stamp(_boundary_run)
         _boundary_run.nodes_emitted = len(boundary)
         analysis_runs.append(_boundary_run.to_dict())
     if id_remap:
@@ -12020,7 +13111,9 @@ def run_survey(
     # sees them, so we recover them with a direct scan to keep derived_skipped
     # an honest "what did we ignore" view rather than a silent {files:0}.
     behavior_map["supply_chain_summary"] = _compute_supply_chain_summary(
-        all_symbols, derived_paths=_find_derived_skipped(repo_root)
+        all_symbols, derived_paths=_find_derived_skipped(repo_root),
+        installed_deps_skipped=installed_deps_skipped,
+        generated_output_skipped=generated_output_skipped,
     )
 
     # Pre-extract sketch data (config, readme)
@@ -12382,15 +13475,9 @@ def main(argv=None) -> int:
     # clear error here rather than at first-engagement so the user's
     # mental model ("--backend rust-analyzer ran, so the SCIP backend
     # ran") is corrected immediately at parse time.
-    for idx in range(len(argv) - 1):
-        if argv[idx] == "--backend":
-            _apply_backend_choice(argv[idx + 1])
-            argv = argv[:idx] + argv[idx + 2:]
-            break
-        if argv[idx].startswith("--backend="):
-            _apply_backend_choice(argv[idx].split("=", 1)[1])
-            argv = argv[:idx] + argv[idx + 1:]
-            break
+    argv, backend_choice = _strip_backend_flag(argv, parser)
+    if backend_choice is not None:
+        _apply_backend_choice(backend_choice)
 
     # WI-balij (UAT UX-03): if the first positional doesn't name a known
     # subcommand AND clearly isn't a path (no path separators, no leading
@@ -12463,6 +13550,11 @@ def main(argv=None) -> int:
         parser.print_help()  # pragma: no cover
         return 1  # pragma: no cover
 
+    # ADR-0004 §"Installed dependency source": --trace-deps holds for this one
+    # command (``discovery.resolve_trace_deps`` reads it for the analysis AND
+    # the results-cache key) and is cleared on every exit path below.
+    from .discovery import set_trace_deps_override
+    set_trace_deps_override(getattr(args, "trace_deps", None))
     try:
         result = args.func(args)
         # ADR-0047 ruling 9 (WI-putat). Asked AFTER the command has produced
@@ -12479,6 +13571,16 @@ def main(argv=None) -> int:
         # 120 exit instead of being caught here (INV-vopuh, the `| head` UX).
         sys.stdout.flush()
         return result
+    except CatalogueError as exc:
+        # A catalogue file -- a taint file, an I/O overlay, a function summary
+        # or framework file from a user's channel -- did not parse or had the
+        # wrong shape. Same chokepoint posture as SubstrateError below: exit 2
+        # with the loader's message, which names the file. Without it a family
+        # whose command did not catch its own error surfaced through the
+        # safety net as an "internal error" with exit 1 -- the code
+        # verify-claims uses for ``violated``.
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
     except SubstrateError as exc:
         # A --input substrate failed the strict load (INV-sozop / WI-jukah /
         # INV-gapib): convert the typed failure to a clean rc=2 + message for
@@ -12516,4 +13618,28 @@ def main(argv=None) -> int:
             file=sys.stderr,
         )
         return 1
+    finally:
+        set_trace_deps_override(None)
 
+
+
+def _refuse_module_form() -> int:
+    """Answer ``python -m hypergumbo_core.cli`` with exit 2, not a silent 0.
+
+    WI-burol: without a ``__main__`` block this spelling imported the module,
+    ran no command and exited 0 with empty output, which a JSON-consuming
+    driver reads as "no findings". The module entry point is
+    ``python -m hypergumbo_core`` (``__main__.py``); keeping it the ONLY one,
+    this spelling refuses and names it instead of becoming a second alias.
+    """
+    print(
+        "hypergumbo: `python -m hypergumbo_core.cli` runs no command. "
+        "Use `python -m hypergumbo_core <command> ...` "
+        "(or the `hypergumbo` console script).",
+        file=sys.stderr,
+    )
+    return 2
+
+
+if __name__ == "__main__":  # pragma: no cover - subprocess-only (test_cli_module_form.py)
+    sys.exit(_refuse_module_form())

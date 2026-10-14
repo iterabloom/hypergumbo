@@ -73,3 +73,30 @@ public class Release
     assert {a[3] for a in anchors} >= {11, 19}, anchors  # reach: both calls
     for name, start, end, line in anchors:
         assert start <= line <= end, (name, start, end, line)
+
+
+def test_csharp_member_bodies_are_anchored_on_their_member(tmp_path: Path) -> None:
+    """WI-binap: an accessor's, an indexer's and an operator's calls are credited
+    to that member, not the class. Two indexers of one class share the name
+    ``this[]``; only the position tells them apart."""
+    (tmp_path / "A.cs").write_text("""\
+public class A
+{
+    static int One() { return 1; }
+    static int Two() { return 2; }
+    public int P
+    {
+        get { return One(); }
+    }
+    public int this[int i] => One();
+    public int this[string s] => Two();
+    public static A operator -(A a) { Two(); return a; }
+}
+""")
+    result = analyze_csharp(tmp_path)
+    kinds = {s.id: s.kind for s in result.symbols}
+    anchors = _anchors(result)
+    assert {a[3] for a in anchors} >= {7, 9, 10, 11}, anchors  # reach
+    assert not [e for e in result.edges if e.edge_type == "calls" and kinds.get(e.src) == "class"]
+    for name, start, end, line in anchors:
+        assert start <= line <= end, (name, start, end, line)

@@ -53,9 +53,12 @@ def test_an_edge_with_no_mode_reports_nothing():
     assert call_site_modes(None) == ()
 
 
-def test_a_non_string_mode_value_is_ignored_not_crashed():
-    """``meta`` is deserialized from an artifact that may have been edited."""
-    assert call_site_modes({"io_mode_values": ["w", 7, None]}) == ("w",)
+def test_a_non_string_mode_value_is_an_unknown_site_not_crashed():
+    """``meta`` is deserialized from an artifact that may have been edited.
+
+    Read as ``None``, a site with no known mode, rather than dropped: a
+    dropped site is INV-rajak's defect."""
+    assert call_site_modes({"io_mode_values": ["w", 7, None]}) == ("w", None, None)
 
 
 def test_a_non_list_values_key_falls_back_to_the_singular():

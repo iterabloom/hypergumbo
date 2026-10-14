@@ -3,9 +3,12 @@
 
 This module provides (1) path normalization and comparison (normalize_path,
 to_relative_path, paths_match, path_ends_with, get_filename,
-is_under_directory), and (2) heuristic path/node classification used by
-entrypoint ranking and production-slice filtering (is_utility_file,
-is_infrastructure_path, is_test_file, is_test_node). All paths stored in
+is_under_directory), (2) heuristic path/node classification used by
+entrypoint ranking, production-slice filtering and taint-flow scoping
+(is_utility_file, is_infrastructure_path, is_test_file, classify_test_file
+with its TEST_FILE_REASON_* categories, is_migration_file, is_test_node), and
+(3) names_no_source_file, the shared predicate for synthetic (``<external>``)
+or absent node paths. All paths stored in
 Symbol IDs, Symbol.path, and UsageContext.path should be normalized using
 the normalization utilities.
 

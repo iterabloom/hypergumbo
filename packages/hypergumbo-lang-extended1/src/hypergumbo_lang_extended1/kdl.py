@@ -6,9 +6,10 @@ a cleaner syntax than JSON or XML while being more structured than YAML.
 
 How It Works
 ------------
-Uses TreeSitterAnalyzer base class for single-pass orchestration:
-1. Pass 1: Extract nodes with their arguments and properties
-2. Identifies top-level configuration sections and nested structures
+Uses the TreeSitterAnalyzer base class. Pass 1 extracts every node with its
+arguments and properties (signature string, plus ``meta`` depth, arguments and
+properties); Pass 2 adds nothing, since no edge is extracted. The grammar
+comes from the language pack.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the KDL-specific extraction
@@ -17,7 +18,7 @@ logic.
 Symbols Extracted
 -----------------
 - **Nodes**: KDL nodes representing configuration entries
-- **Sections**: Top-level nodes that contain children (configuration sections)
+- **Sections**: Nodes that contain children, at any depth (configuration sections)
 
 Why This Design
 ---------------
@@ -111,7 +112,7 @@ def _extract_node_field(
 
 def _extract_kdl_node(
     node: "tree_sitter.Node", rel_path: str, depth: int,
-    symbols_out: list[Symbol],
+    symbols_out: list[Symbol], chain: tuple[str, ...] = (),
 ) -> None:
     """Extract a KDL node and recursively process children."""
     node_name = ""
@@ -129,7 +130,9 @@ def _extract_kdl_node(
             # Recursively process children
             for nested in child.children:
                 if nested.type == "node":
-                    _extract_kdl_node(nested, rel_path, depth + 1, symbols_out)
+                    _extract_kdl_node(
+                        nested, rel_path, depth + 1, symbols_out, (*chain, node_name),
+                    )
 
     if not node_name:
         return  # pragma: no cover
@@ -148,7 +151,7 @@ def _extract_kdl_node(
     # Both ids are minted together by make_doc_symbol_ids (INV-dulah);
     # node.id stays byte-identical (the doc-family composite shape).
     symbol_id, stable_id = make_doc_symbol_ids(
-        "kdl", str(rel_path), kind, node_name, span.start_line, span.end_line,
+        "kdl", str(rel_path), kind, node_name, span.start_line, span.end_line, chain,
     )
 
     # Build signature

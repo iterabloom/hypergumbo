@@ -1,0 +1,23 @@
+- op: create  # 1480
+  at: '2026-10-03T17:37:46Z'  # 1480
+  by: agent  # 1480
+  actor: jgstern_agent  # 1480
+  clock: 1  # 1480
+  nonce: '1480'  # 1480
+  data:  # 1480
+    kind: work_item  # 1480
+    title: "erlang process_send sweeps in calls that send no message: proc_lib.hibernate, global.whereis_name (verified) and the erlang module row's register/unregister/process_flag/monitor/link (WI-jupaf shape, unadjudicated)"  # 1480
+    status: todo_hard  # 1480
+    priority: 3  # 1480
+    parent:  # 1480
+    tags:  # 1480
+    - catalogue  # 1480
+    - io_boundary  # 1480
+    - erlang  # 1480
+    - elixir  # 1480
+    isbefore: []  # 1480
+    duplicate_of: []  # 1480
+    not_duplicate_of: []  # 1480
+    pr_ref:  # 1480
+    description: "Prior-tranche flags from WI-vafad (tranche 2, beam, 2026-09-13), never filed, re-verified ACCEPT at dev fe3c32259d (docs/audits/0022, prior-backlog section), plus the module-sweep shape behind them.\n\n  proc_lib.hibernate   process_send -> NONE   proc_lib:hibernate(M,F,A) is erlang:hibernate(?MODULE, wake_up, [M,F,A]) (otp proc_lib.erl:306-307). It discards the stack and waits, and sends no message.\n  global.whereis_name  process_send -> NONE   where(Name) is an ets:lookup on global_names plus is_process_alive (global.erl:382-383, 2070-2082). No message is sent. The unrowed erlang:whereis is its local twin.\nBoth are inherited by elixir (4 rows).\n\nTHE SHAPE BEHIND THEM (observed by the tranche-3 orchestrator, NOT adjudicated; these are vouched rows outside the sweep's scope): erlang.yaml:236-238 process_send lists `erlang` [send, \"!\", send_after, send_nosuspend, spawn, spawn_link, spawn_monitor, spawn_opt, exit, register, unregister, monitor, demonitor, link, unlink, process_flag]. register / unregister / process_flag send no message, and monitor / link / exit are signals in BEAM terms. That is the WI-jupaf module-sweep defect (a row written for a module sweeps in members that do not cross its boundary), the root cause tranche 2 named under nearly all its findings. Adjudicate those members in the same pass rather than by name.\n\nFIX OBLIGATION: process_send is a sink. ADR-0049 ruling 3, both arms cold, never pin a removal."  # 1480
+    fields: {}  # 1480

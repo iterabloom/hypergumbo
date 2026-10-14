@@ -1,0 +1,22 @@
+- op: create  # 0b80
+  at: '2026-10-04T01:40:59Z'  # 0b80
+  by: agent  # 0b80
+  actor: jgstern_agent  # 0b80
+  clock: 1  # 0b80
+  nonce: 0b80  # 0b80
+  data:  # 0b80
+    kind: work_item  # 0b80
+    title: "go: a generic function used as a VALUE (register(Map[int]), Handler: Map[int]) emits no reference edge, and a method chained on a conversion-spelled instantiation (Map[int](x).M()) is untyped (WI-nulig residual)"  # 0b80
+    status: todo_hard  # 0b80
+    priority: 3  # 0b80
+    parent:  # 0b80
+    tags:  # 0b80
+    - go  # 0b80
+    - call_graph  # 0b80
+    - analysis_quality  # 0b80
+    isbefore: []  # 0b80
+    duplicate_of: []  # 0b80
+    not_duplicate_of: []  # 0b80
+    pr_ref:  # 0b80
+    description: "FOUND 2026-10-03 while fixing WI-nulig-gipot-samir-movik-latuj-tizin-vagig-lorup (branch jgstern-agent/fix/vinuh), which made an explicitly instantiated generic CALL emit its edge. Residual shapes of the same family, measured and left out of that branch:\n\n1. A generic function used as a VALUE: `register(Map[int])` (function-reference arm, _extract_function_reference_edges) and `Handler: Map[int]` (keyed_element arm). The argument/value is an index_expression (or generic_type), which neither arm reads, so no function_reference_arg / struct_field_reference edge is emitted. Raw tree-sitter census (argument or keyed value whose operand names a generic function declared in the same repo): prometheus 0, alertmanager 0, forgejo 0, otel-collector 2 (confmap/internal/e2e/fuzz_test.go:73,80 targetNested[T]), istio 11 (sets.Set[...] in pilot/pkg/xds/*; may be the generic TYPE Set, not checked).\n2. A method chained on a conversion-spelled instantiation, `Map[int](x).Foo()`: the chained-call branch reads only a call_expression operand, so the receiver is untyped (falls to the generic guards). Not counted.\n\nBoth are the INV-guzuj absent-is-not-empty shape at lower volume than the call arm."  # 0b80
+    fields: {}  # 0b80

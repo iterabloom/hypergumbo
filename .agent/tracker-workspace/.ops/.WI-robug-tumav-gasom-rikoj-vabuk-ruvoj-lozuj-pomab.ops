@@ -1,0 +1,22 @@
+- op: create  # 471d
+  at: '2026-10-14T10:28:13Z'  # 471d
+  by: agent  # 471d
+  actor: jgstern_agent  # 471d
+  clock: 1  # 471d
+  nonce: 471d  # 471d
+  data:  # 471d
+    kind: work_item  # 471d
+    title: "htrac serve --background is a no-op: _cmd_serve never reads args.background, so the server never daemonizes"  # 471d
+    status: todo_hard  # 471d
+    priority: 3  # 471d
+    parent:  # 471d
+    tags:  # 471d
+    - docstring_audit  # 471d
+    - tracker  # 471d
+    - server  # 471d
+    isbefore: []  # 471d
+    duplicate_of: []  # 471d
+    not_duplicate_of: []  # 471d
+    pr_ref:  # 471d
+    description: "Found by the 2026-10-14 docstring-staleness audit (serve.py review, verifier v3). serve.py's module docstring and the CLI help both promise a daemon mode; nothing implements it.\n\nEvidence (as of b0c9ee1872):\n- packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py declares `--background` on `htrac serve` with help \"Daemonize and write PID file\" (~cli.py:3029-3031).\n- `_cmd_serve` (~cli.py:2469-2506) handles `args.stop` and `args.status` and never reads `args.background`. A grep of the tracker package finds no other reference, and `git log -S\"args.background\" -- packages/hypergumbo-tracker` is empty: it was never wired.\n- `serve.run_server` always runs uvicorn in the foreground and writes the PID file unconditionally.\n\nRepro (described by the verifier, not run because it blocks): `htrac serve --background` should return at once with a daemon running. Observed: it prints \"Starting htrac serve on 127.0.0.1:7380\" and blocks in the foreground exactly like `htrac serve`.\n\nThe serve.py docstring line \"PID file management supports --background, --stop, and --status\" was left unchanged on purpose: it states the intent, and the code is what is wrong. Fix either by daemonizing (fork/setsid, or re-exec detached, then write the PID file from the child) or by removing the flag and the docstring claim together."  # 471d
+    fields: {}  # 471d

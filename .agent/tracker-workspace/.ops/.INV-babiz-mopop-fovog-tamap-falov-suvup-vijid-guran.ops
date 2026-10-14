@@ -22,3 +22,41 @@
     fields:  # 2671
       statement: "A catalogue row must name the boundary its call actually crosses. VIOLATED: objc.yaml rows NSTask [interrupt, terminate] and swift.yaml rows Process [interrupt, terminate] under subprocess, but neither spawns anything -- terminate sends SIGTERM to an ALREADY-RUNNING child (corelibs Process.swift calls kill(processIdentifier, SIGTERM)). python and rust row the same operation under ipc_send, under a DATED ruling: python.yaml multiprocessing.Process [kill, terminate] carries \"2026-09-06 WI-dupok: signals the child (os.kill's row is the module-level form); start() is the launch and sits under subprocess\", and rust.yaml std::process::Child [kill] cites that same kind. Three rows across two languages say ipc_send with a ruling; two rows across two languages say subprocess with none."  # 2671
       root_cause: "Module-granularity attribution, the same mechanism INV-mulul names for rust std::process and WI-jupaf named for erlang os:cmd. NSTask and Foundation.Process genuinely ARE subprocess primitives at launch/launchAndReturnError, so the boundary was applied to the whole class rather than per method, sweeping in terminate, interrupt and waitUntilExit. The objc row's own note defeats it: it justifies the row as \"equivalent to subprocess.run in Python\", but python SPLITS precisely there -- run() is subprocess, kill/terminate is ipc_send. waitUntilExit is a third case, neither a launch nor a signal, and sits in both rows unexamined."  # 2671
+- op: discuss  # a3ca
+  at: '2026-09-28T02:02:21Z'  # a3ca
+  by: agent  # a3ca
+  actor: jgstern_agent  # a3ca
+  clock: 2  # a3ca
+  nonce: a3ca  # a3ca
+  message: "RE-VERIFIED 2026-09-27 at dev f474411e11. STILL VIOLATED, unchanged: objc.yaml:214-222 NSTask [launch, launchAndReturnError:, waitUntilExit, terminate, interrupt] and swift.yaml:152-159 Process [launchPath, waitUntilExit, terminate, interrupt], both under subprocess, both notes unchanged. python.yaml:693-695 (kill/terminate ipc_send, WI-dupok) and rust.yaml:431-436 (Child.kill ipc_send) unchanged.\n\nShipped CLI (io-boundaries):\n  objc [task terminate] / [task interrupt] / [task waitUntilExit] -> subprocess NSTask.{terminate,interrupt,waitUntilExit}\n  swift p.terminate() / p.interrupt() / p.waitUntilExit()         -> subprocess Process.{terminate,interrupt,waitUntilExit}\n\nA WORSE DEFECT IN THE SAME SWIFT ROW, found while reproducing this one and filed separately (missed boundaries, the false-all-clear direction): the swift row catalogues NO launch. p.run(), t.launch(), Process.run(url, arguments:) and Process.launchedProcess(launchPath:arguments:) all produce 0 chains, while every non-launch member above is reported as subprocess. The row's one launch-sounding entry, launchPath, is a property, never a call. objc lacks the class-method launcher launchedTaskWithLaunchPath:arguments: the same way. See the item filed today."  # a3ca
+- op: update  # 5bf1
+  at: '2026-09-28T02:03:29Z'  # 5bf1
+  by: agent  # 5bf1
+  actor: jgstern_agent  # 5bf1
+  clock: 3  # 5bf1
+  nonce: 5bf1  # 5bf1
+  set: {}  # 5bf1
+  add:  # 5bf1
+    not_duplicate_of: [INV-vamif-malav-kobof-kusoj-bopoj-hodoz-potat-kudup]  # 5bf1
+- op: discuss  # 2b52
+  at: '2026-09-28T02:03:29Z'  # 2b52
+  by: agent  # 2b52
+  actor: jgstern_agent  # 2b52
+  clock: 4  # 2b52
+  nonce: 2b52  # 2b52
+  message: "The separately filed swift/objc missing-launch item named in the entry above is INV-vamif."  # 2b52
+- op: update  # b74b
+  at: '2026-09-28T03:23:12Z'  # b74b
+  by: agent  # b74b
+  actor: jgstern_agent  # b74b
+  clock: 5  # b74b
+  nonce: b74b  # b74b
+  set:  # b74b
+    status: satisfied  # b74b
+- op: discuss  # 1613
+  at: '2026-09-28T03:23:12Z'  # 1613
+  by: agent  # 1613
+  actor: jgstern_agent  # 1613
+  clock: 6  # 1613
+  nonce: '1613'  # 1613
+  message: "Fixed in PR #1261 (ff7defd603). terminate / interrupt (and suspend / resume, SIGSTOP/SIGCONT, the same operation) moved from subprocess to ipc_send in both swift.yaml (Process) and objc.yaml (NSTask), the dated WI-dupok ruling python.yaml and rust.yaml apply. waitUntilExit, the third case the root_cause named, is declared NOT I/O in new Process / NSTask module_completeness grants: it blocks and returns nothing, python.yaml's multiprocessing.Process.join (disclosed, not rowed); rust's Child.wait is rowed ipc_recv because it RETURNS the status, which Swift/ObjC read separately from terminationStatus. The objc note arguing 'equivalent to subprocess.run' is replaced. Behavioural evidence on merged dev (io-boundaries, cold cache): p.terminate() / p.interrupt() -> ipc_send Process.terminate / Process.interrupt; [task terminate] / [task interrupt] -> ipc_send NSTask.*; p.waitUntilExit() / [task waitUntilExit] -> no chain. Pinned by test_swift_objc_process_rows.py (catalogue level, shipped command, and module_io_is_enumerated for both classes)."  # 1613

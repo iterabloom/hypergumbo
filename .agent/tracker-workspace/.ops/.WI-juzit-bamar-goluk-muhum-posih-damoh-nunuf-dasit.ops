@@ -1,0 +1,22 @@
+- op: create  # 1ebe
+  at: '2026-10-01T12:51:01Z'  # 1ebe
+  by: agent  # 1ebe
+  actor: jgstern_agent  # 1ebe
+  clock: 1  # 1ebe
+  nonce: 1ebe  # 1ebe
+  data:  # 1ebe
+    kind: work_item  # 1ebe
+    title: "inherited_calls Site 2: the strict same-name guard refuses nearly every objc project class, because one ObjC class mints a class symbol per @interface, @implementation and category"  # 1ebe
+    status: todo_hard  # 1ebe
+    priority: 3  # 1ebe
+    parent:  # 1ebe
+    tags:  # 1ebe
+    - objc  # 1ebe
+    - analysis_quality  # 1ebe
+    - receiver_typing  # 1ebe
+    isbefore: []  # 1ebe
+    duplicate_of: []  # 1ebe
+    not_duplicate_of: []  # 1ebe
+    pr_ref:  # 1ebe
+    description: "FILED 2026-10-01 from WI-dason's corpus A/B. inherited_calls Site 2 (receiver_type_hint) applies the strict INV-fahub same-name ambiguity guard to objc -- `if src_lang not in _LEGACY_SITE2_LANGS and len(type_class_ids) > 1: return None` in _resolve_site2 -- and the guard's premise (two same-named class symbols are two DIFFERENT classes) is false for Objective-C. ObjC has one global class namespace; the objc analyzer mints one class symbol per @interface, per @implementation and per category, so one logical class routinely has several.\n\nMEASURED on the survey A arm (dev 1f2cfda568), objc class symbols per class name:\n  ReactiveObjC   102 of 105 class names have more than one symbol (RACSignal: 13)\n  SDWebImage     104 of 105 (SDImageRoundCornerTransformer: 4)\n  ResearchKit    552 of 639\nSo Site 2 refuses nearly every objc project class it is handed. The objc receivers that reach Site 2 are the declared project-class receivers (WI-higob: `Svc *s; [s frob]`) and, since WI-dason, class messages to a project class other than the caller's own.\n\nEVIDENCE that the refusal costs correct resolutions: WI-dason first routed EVERY project-class message to Site 2. On the seven-repository objc corpus that lost 12 correct resolutions Site 1 had made -- [RACSignal empty] inside a RACSignal category (3), [SDImage*Transformer new] inside that transformer (9) -- because RACSignal and the transformers each have 4+ class symbols. It gained 4 correct ones ([ORKChoiceQuestionResult answerClass], [ORKAgeAnswerFormat minimumAgeSentinelValue] x3), all on classes with exactly ONE symbol. WI-dason shipped a carve-out (a message to the caller's own class keeps the Site-1 route) to avoid the 12 losses; the guard itself is untouched.\n\n_SITE1_STRICT_LANGS already records the same argument for ruby (a reopened class is one logical class) and keeps ruby out of the Site-1 guard; Site 2 has no equivalent exemption.\n\nFIX SHAPE (unmeasured): exempt objc from the Site-2 same-name guard (one class, many symbols), or have the objc analyzer thread receiver_type_id (WI-supat) for a class the file can name uniquely. Either one changes resolved edges on every objc repo: A/B the resolved-edge SET, read a sample, both directions. Watch for repos that compile SEVERAL apps/targets with the same class name (test fixtures, sample apps): there two same-named classes really are distinct."  # 1ebe
+    fields: {}  # 1ebe

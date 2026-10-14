@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Layer-3 project-local catalog — tmp_artifact zone sinks.
+# hypergumbo's in-repo self-audit catalogue — tmp_artifact zone sinks.
 zone: tmp_artifact
 trust_level: untrusted
 

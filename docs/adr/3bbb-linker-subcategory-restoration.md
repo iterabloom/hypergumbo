@@ -81,7 +81,7 @@ The opening sentence of every file in `packages/hypergumbo-core/src/hypergumbo_c
 """[Protocol|Bridge|Framework|Infrastructure] linker: <one-line purpose>.
 ```
 
-**Update (landed):** This was originally proposed as convention-only ("enforced by convention, not tooling for now"). Tooling now exists — `generate-architecture` parses every linker docstring's opening sentence, counts modules by subcategory, and surfaces any that don't declare one in an `Uncategorized` bucket (PR #3084, see Status line). The post-rollout invariant is `Uncategorized == 0`, so a missing or malformed subcategory declaration is caught mechanically at doc-regeneration time rather than only by spot audit at review.
+**Enforcement.** `generate-architecture` parses every linker docstring's opening sentence, counts modules by subcategory, and surfaces any that don't declare one in an `Uncategorized` bucket (PR #3084, see Status line). The invariant is `Uncategorized == 0`, so a missing or malformed subcategory declaration is caught mechanically at doc-regeneration time rather than only by spot audit at review.
 
 ### 4. Cataloguing documents use the subcategory vocabulary
 
@@ -92,7 +92,7 @@ The opening sentence of every file in `packages/hypergumbo-core/src/hypergumbo_c
 
 The subcategory label is part of the standard header for a new linker module. The PR body cites this ADR and includes a corresponding entry in `LINKERS.md`'s table.
 
-**Update (landed):** The proposal text below described this as "a convention-level commitment; no automated check is introduced today," deferring automation to a follow-up. That follow-up landed: `generate-architecture` scans `linkers/*.py` for the subcategory token in each module's opening docstring sentence and reports any module lacking one as `Uncategorized` (PR #3084, see Status line and §3). The convention is therefore now mechanically checked at doc-regeneration time, not merely by review-phase spot audit.
+The declaration is mechanically checked by the same `generate-architecture` scan (§3), which reports a linker module lacking the subcategory token as `Uncategorized`; review-phase spot audit is not the only check.
 
 ### 6. Bakeoff prioritization follows INV-nimuj
 
@@ -123,7 +123,7 @@ The pre-existing `cross_language_linkers` tag is retained for backwards-continui
 
 ## Consequences
 
-Implementation was sequenced across **seven** PRs, six non-governance and one governance. (The proposal originally planned six; the `generate-architecture` enforcement work — PR 7 below — was added during rollout and is reflected in the Status line's seven-PR count.) The PR-number mapping to the merged commits is in the Status line at the top of this ADR.
+Implementation was sequenced across **seven** PRs, six non-governance and one governance. PR 7 below is the `generate-architecture` enforcement work. The PR-number mapping to the merged commits is in the Status line at the top of this ADR.
 
 | PR | Surface | Merged as | Governance | Depends on |
 |---|---|---|---|---|

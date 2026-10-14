@@ -31,6 +31,22 @@ Why This Design
 - Function definitions use assignment operators (<-, =, <<-)
 - library() and require() for package imports
 - Useful for scientific computing and data analysis codebases
+
+Function identity (WI-tusad)
+----------------------------
+Each ``name <- function(...)`` records its parameters in ``meta["parameters"]``
+(``y = 2`` is a default, ``...`` a variadic) and mints the ADR-0035 producer
+stable_id through ``overload_arity.declared_arity_stable_id``. The scope chain
+is the names of the named functions the assignment sits in, outermost first,
+joined by ``/`` (a character no plain R name contains, where ``.`` is common:
+``print.default``), so ``inner`` inside ``outer_a`` and inside ``outer_b``
+hash apart; a top-level function's chain is its name and its scope is the
+file. A reassignment of one name in one file (``run <- function(x)`` then
+``run <- function(x, y)``) is two definitions told apart by their parameters;
+before this both shared the backstop floor key and were left null. Two
+definitions alike in scope, name and parameters are a same-scope tie the
+per-file occurrence pass orders. A ``source("x.R")`` symbol takes the same
+chain over the sourced path (``outer/x.R``), with no parameters.
 """
 from __future__ import annotations
 
@@ -58,6 +74,9 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id, parameter_entry,
+)
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 
 if TYPE_CHECKING:
@@ -115,6 +134,76 @@ def _extract_r_signature(func_def: "tree_sitter.Node", source: bytes) -> Optiona
     return f"({', '.join(params)})"
 
 
+def _r_parameters(
+    func_def: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, object]]:
+    """``meta["parameters"]`` of an R ``function_definition``.
+
+    A ``parameter`` holding an ``identifier`` is a named parameter (with a
+    default when it holds anything past the name and ``=``); one holding
+    ``dots`` is ``...``, the variadic.
+    """
+    params_node = find_child_by_type(func_def, "parameters")
+    entries: list[dict[str, object]] = []
+    if params_node is None:  # pragma: no cover - function() always has params node
+        return entries
+    for child in params_node.children:
+        if child.type != "parameter":
+            continue
+        name_node = find_child_by_type(child, "identifier")
+        if name_node is not None:
+            has_default = any(
+                c.type not in ("identifier", "=", ",") for c in child.children
+            )
+            entries.append(
+                parameter_entry(node_text(name_node, source), default=has_default),
+            )
+        elif find_child_by_type(child, "dots") is not None:
+            entries.append(parameter_entry("...", variadic=True))
+    return entries
+
+
+def _assigned_function_name(
+    node: "Optional[tree_sitter.Node]", source: bytes,
+) -> Optional[str]:
+    """The name ``node`` binds when it is ``name <- function(...)``, else None.
+
+    ``node`` is the ``binary_operator``; ``<-``, ``=`` and ``<<-`` all count.
+    """
+    if node is None or node.type != "binary_operator":
+        return None
+    name: Optional[str] = None
+    is_assignment = has_function = False
+    for child in node.children:
+        if child.type == "identifier":
+            name = node_text(child, source)
+        elif child.type in ("<-", "=", "<<-"):
+            is_assignment = True
+        elif child.type == "function_definition":
+            has_function = True
+    return name if is_assignment and has_function else None
+
+
+def _r_scope_chain(
+    node: "tree_sitter.Node", source: bytes, func_name: str,
+) -> str:
+    """``outer/inner`` for ``inner`` assigned inside ``outer``'s body.
+
+    Walks up from the assignment, prepending every enclosing named function
+    (an anonymous ``function(i)`` passed to ``lapply`` has no name and is
+    passed over). See the module docstring for the separator.
+    """
+    chain = [func_name]
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            enclosing = _assigned_function_name(current.parent, source)
+            if enclosing is not None:
+                chain.append(enclosing)
+        current = current.parent
+    return "/".join(reversed(chain))
+
+
 def _find_enclosing_function_r(
     node: "tree_sitter.Node",
     decl_index: SymbolsAt,
@@ -163,28 +252,21 @@ def _extract_r_symbols(
     for node in iter_tree(root_node):
         # Function definitions: binary_operator with <- and function_definition on right
         if node.type == "binary_operator":
-            # Check for function assignment
-            left_node = None
-            right_node = None
-            is_assignment = False
-
-            for child in node.children:
-                if child.type == "identifier":
-                    left_node = child
-                elif child.type in ("<-", "=", "<<-"):
-                    is_assignment = True
-                elif child.type == "function_definition":
-                    right_node = child
-
-            if is_assignment and left_node and right_node:
-                func_name = node_text(left_node, source)
+            func_name = _assigned_function_name(node, source)
+            right_node = find_child_by_type(node, "function_definition")
+            if func_name is not None and right_node is not None:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = make_symbol_id("r", rel_path, start_line, end_line, func_name, "function")
+                meta = {PARAMETERS_KEY: _r_parameters(right_node, source)}
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=declared_arity_stable_id(
+                        kind="function", lang="r", path=rel_path, name=func_name,
+                        qualified_name=_r_scope_chain(node, source, func_name),
+                        arity=declared_arity(meta),
+                    ),
                     shape_id=None,
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="function",
@@ -199,6 +281,7 @@ def _extract_r_symbols(
                     ),
                     origin=PASS_ID,
                     signature=_extract_r_signature(right_node, source),
+                    meta=meta,
                     cyclomatic_complexity=compute_cyclomatic_complexity(right_node, "r"),
                     line_span=end_line - start_line + 1,
                 )
@@ -272,7 +355,16 @@ def _extract_r_symbols(
                                             source_id = make_symbol_id("r", rel_path, start_line, start_line, file_path, "source")
                                             src_sym = Symbol(
                                                 id=source_id,
-                                                stable_id=None,
+                                                # WI-tusad: scoped by the enclosing
+                                                # named functions (``outer/x.R``).
+                                                stable_id=declared_arity_stable_id(
+                                                    kind="source", lang="r", path=rel_path,
+                                                    name=file_path,
+                                                    qualified_name=_r_scope_chain(
+                                                        node, source, file_path,
+                                                    ),
+                                                    arity=None,
+                                                ),
                                                 shape_id=None,
                                                 fingerprint=hashlib.sha256(file_path.encode()).hexdigest()[:16],
                                                 kind="source",

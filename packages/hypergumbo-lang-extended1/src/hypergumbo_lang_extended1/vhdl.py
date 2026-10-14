@@ -5,7 +5,7 @@ This analyzer uses tree-sitter to parse VHDL files and extract:
 - Entity declarations
 - Architecture definitions
 - Package declarations
-- Component declarations (rare; uncovered path)
+- Component declarations (inside an architecture)
 
 If tree-sitter-vhdl is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -33,11 +33,17 @@ Why This Design
 - Uses tree-sitter-vhdl package for grammar
 - Two-pass allows cross-file entity resolution
 - Hardware-specific: entities, architectures, packages are first-class
+- Identity (ADR-0035, WI-tusad): every symbol mints
+  ``overload_arity.scoped_stable_id``. An architecture is scoped by the
+  entity it implements and a component by the architecture declaring it
+  (``top/rtl``), so ``architecture rtl of a`` and ``architecture rtl of b``
+  in one file are two symbols that the floor key ``(kind, path, name)``
+  nulled. Entities and packages are library units, unique by name.
 """
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -45,11 +51,13 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    ancestor_labels,
     iter_tree,
     node_text,
     make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.overload_arity import scoped_stable_id
 
 from hypergumbo_core.symbol_resolution import ListNameResolver
 
@@ -101,6 +109,14 @@ def _get_package_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     return None  # pragma: no cover
 
 
+def _architecture_label(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """``entity/arch`` for an ``architecture_definition`` (a scope chain link)."""
+    if node.type != "architecture_definition":
+        return None
+    info = _get_architecture_info(node, source)
+    return f"{info[1]}/{info[0]}" if info else None
+
+
 class VhdlAnalyzer(TreeSitterAnalyzer):
     """VHDL language analyzer using tree-sitter-vhdl."""
 
@@ -132,7 +148,9 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
 
                     sym = Symbol(
                         id=symbol_id,
-                        stable_id=None,
+                        stable_id=scoped_stable_id(
+                            kind="entity", lang="vhdl", path=rel_path, name=entity_name,
+                        ),
                         shape_id=None,
                         fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                         kind="entity",
@@ -160,7 +178,10 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
 
                     sym = Symbol(
                         id=symbol_id,
-                        stable_id=None,
+                        stable_id=scoped_stable_id(
+                            kind="architecture", lang="vhdl", path=rel_path,
+                            name=arch_name, scope=(entity_name,),
+                        ),
                         shape_id=None,
                         display_label=f"{arch_name}({entity_name})",
                         fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
@@ -189,7 +210,9 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
 
                     sym = Symbol(
                         id=symbol_id,
-                        stable_id=None,
+                        stable_id=scoped_stable_id(
+                            kind="package", lang="vhdl", path=rel_path, name=pkg_name,
+                        ),
                         shape_id=None,
                         fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                         kind="package",
@@ -207,17 +230,23 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
                     analysis.symbols.append(sym)
                     analysis.symbol_by_name[pkg_name] = sym
 
-            elif node.type == "component_declaration":  # pragma: no cover - rare VHDL syntax
-                for child in node.children:  # pragma: no cover
-                    if child.type == "identifier":  # pragma: no cover
-                        comp_name = node_text(child, source)  # pragma: no cover
-                        start_line = node.start_point[0] + 1  # pragma: no cover
-                        end_line = node.end_point[0] + 1  # pragma: no cover
-                        symbol_id = make_symbol_id("vhdl", rel_path, start_line, end_line, comp_name, "component")  # pragma: no cover
+            elif node.type == "component_declaration":
+                for child in node.children:
+                    if child.type == "identifier":
+                        comp_name = node_text(child, source)
+                        start_line = node.start_point[0] + 1
+                        end_line = node.end_point[0] + 1
+                        symbol_id = make_symbol_id("vhdl", rel_path, start_line, end_line, comp_name, "component")
 
-                        sym = Symbol(  # pragma: no cover
+                        sym = Symbol(
                             id=symbol_id,
-                            stable_id=None,
+                            stable_id=scoped_stable_id(
+                                kind="component", lang="vhdl", path=rel_path,
+                                name=comp_name,
+                                scope=ancestor_labels(
+                                    node, lambda n: _architecture_label(n, source),
+                                ),
+                            ),
                             shape_id=None,
                             fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                             kind="component",
@@ -232,12 +261,12 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
                             ),
                             origin=PASS_ID,
                         )
-                        analysis.symbols.append(sym)  # pragma: no cover
-                        break  # pragma: no cover
+                        analysis.symbols.append(sym)
+                        break
 
         return analysis
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Any]) -> None:
         """Register symbols by lowercase name for case-insensitive VHDL lookup.
 
         WI-morud: store as a multi-value list per lowercased name so the
@@ -255,7 +284,7 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Any],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: ListNameResolver,
     ) -> list[Edge]:

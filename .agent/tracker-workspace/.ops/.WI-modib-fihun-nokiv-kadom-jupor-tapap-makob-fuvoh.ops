@@ -1,0 +1,22 @@
+- op: create  # 0835
+  at: '2026-10-01T12:21:18Z'  # 0835
+  by: agent  # 0835
+  actor: jgstern_agent  # 0835
+  clock: 1  # 0835
+  nonce: '0835'  # 0835
+  data:  # 0835
+    kind: work_item  # 0835
+    title: "scala: a def with no declared return type (lila 52% of defs, sbt 14%) feeds nothing to WI-gokop's return-type registry, so chains through it stay untyped"  # 0835
+    status: todo_hard  # 0835
+    priority: 3  # 0835
+    parent:  # 0835
+    tags:  # 0835
+    - scala  # 0835
+    - analysis_quality  # 0835
+    - io_boundary  # 0835
+    isbefore: []  # 0835
+    duplicate_of: []  # 0835
+    not_duplicate_of: []  # 0835
+    pr_ref:  # 0835
+    description: "FOUND 2026-10-01 while sizing WI-gokop-nudub-zunal-zibij-fuvad-libot-bituk-visid (branch jgstern-agent/feat/gokop-scala-inferred-receivers, not yet integrated).\n\nWHAT. WI-gokop's return-type registry records a def's DECLARED return type only. Scala lets a def omit it (`def repo = new Repo`, `def users = userRepo.all`), and then the registry has nothing, so every call result, chained receiver and field chain through that def stays untyped.\n\nSIZE (tree-sitter count of function_definition nodes with no return_type field): sbt 1,780 of 12,364 defs (14.4%); lila 6,636 of 12,782 (51.9%). After WI-gokop the largest remaining un-hinted shapes are exactly the ones this feeds: field chains a.b.m() (sbt 2,509 / lila 11,198 edges) and chained call results (sbt 1,461+427 / lila 6,141+1,408). How many of those are blocked by an undeclared return type rather than by a library/implicit/alias type is NOT measured.\n\nFIX SHAPE (not designed): in Pass 2 (where _ScalaReceiverTyper exists), type an undeclared def's body expression on demand (memoised, cycle-guarded, like _value_def) and treat it as that def's registry entry; the body's own lexical scope applies. Cost: Pass 1 cannot do it (the registry is not built yet), so the answer exists only in Pass 2 and is per-file unless a pre-pass is added. Precision: same rules as WI-gokop (implicit-import names, type params refused; a qualified project type is package-checked)."  # 0835
+    fields: {}  # 0835

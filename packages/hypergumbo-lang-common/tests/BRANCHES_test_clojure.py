@@ -116,8 +116,9 @@ class TestPrivateFunctions:
 
         public = next((s for s in result.symbols if s.name == "public-api"), None)
         assert public is not None
-        # Public functions should NOT have visibility meta
-        assert public.meta is None
+        # Public functions should NOT have visibility meta (their parameters
+        # are recorded, WI-tusad)
+        assert "visibility" not in (public.meta or {})
 
 class TestEnclosingFunctionResolution:
     """Branch coverage for enclosing function detection."""

@@ -1,0 +1,21 @@
+- op: create  # 3dc8
+  at: '2026-10-07T00:30:19Z'  # 3dc8
+  by: agent  # 3dc8
+  actor: jgstern_agent  # 3dc8
+  clock: 1  # 3dc8
+  nonce: 3dc8  # 3dc8
+  data:  # 3dc8
+    kind: work_item  # 3dc8
+    title: "Cache dependency analysis by package@version from lockfile pins (--trace-deps reuse across repos/runs)"  # 3dc8
+    status: todo_soft  # 3dc8
+    priority: 3  # 3dc8
+    parent:  # 3dc8
+    tags:  # 3dc8
+    - supply_chain  # 3dc8
+    - cache  # 3dc8
+    isbefore: []  # 3dc8
+    duplicate_of: []  # 3dc8
+    not_duplicate_of: []  # 3dc8
+    pr_ref:  # 3dc8
+    description: "Follow-up to WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok. With --trace-deps, installed dependency source (e.g. thc_dev deps/: 81 Mix packages) is re-parsed on every cold survey and the whole results entry is keyed by repo state. A package pinned in mix.lock / package-lock.json / composer.lock / go.sum / Gemfile.lock at a version is identical across runs and across repos, so its parsed symbols/edges could be cached once under <ecosystem>/<name>@<version> and spliced in. Open questions: cross-file resolution between first-party and dependency symbols happens after parsing, so only per-file analyzer output is cacheable; git/path deps (thc_dev heroicons) have no version pin and need a content hash instead."  # 3dc8
+    fields: {}  # 3dc8

@@ -24,6 +24,15 @@ Handled statement shapes, all of them children of a ``statement_list``:
 - ``i++`` / ``i--``                         — inc_statement, dec_statement
 - ``ch <- v``                               — send_statement (defines nothing)
 - ``go f(x)``, bare calls                   — go_statement, expression_statement
+- ``k, v := range xs``                      — range_clause (loop header)
+
+Importing the module also calls ``register_ddg_language`` to make Go a DDG
+language: every ``function_declaration`` and ``method_declaration`` is a
+function, named and kinded exactly as ``go.py`` names them (``Recv.name``
+for methods, via the analyzer's receiver-type helper) so the DDG ids match
+the Go analyzer's ids. The spec also walks the outermost function-literal
+bodies bound under a package-level ``var`` (cobra's ``Run: func(...)``,
+``var h = func(...)``), anchored on that variable's symbol (WI-rovun).
 
 Why a Node Type Must Also Be Declared Atomic
 --------------------------------------------
@@ -40,10 +49,12 @@ Scope
 -----
 Intraprocedural and statement-level, matching the Python and Rust
 extractors. Cross-function flow needs function summaries (ADR-0017 Phase
-3). Two Go-specific bindings are *not* reached, because the CFG mapping's
-conditional/loop hooks name only condition/body children and never the
-initializer: ``if err := do(); err != nil`` and ``for i := 0; ...``, plus
-``for i, v := range xs``. Those variables are invisible to def/use today.
+3). Header bindings -- ``if err := do(); err != nil``, ``for i := 0; ...;
+i++``, ``for i, v := range xs``, ``switch x := f(); x`` -- reach this module
+because go.yaml's conditional/loop/switch hooks record each header part as a
+statement of its own (WI-losod); the parts are ordinary statement types plus
+``range_clause``. A type switch's ``v := x.(type)`` and a ``select`` case's
+``v := <-ch`` are NOT recorded: go.yaml does not map those statements.
 Pointer aliasing (``p := &x; *p = tainted``) is not modelled — the same
 class of gap as Rust borrow aliases.
 """
@@ -249,6 +260,21 @@ def _handle_send_statement(node: Any, source: bytes) -> DefUseResult:
     return DefUseResult(uses=uses)
 
 
+def _handle_range_clause(node: Any, source: bytes) -> DefUseResult:
+    """Handle `k, v := range xs` (and `k, v = range xs`, `range ch`).
+
+    The CFG's loop hook records the clause in the loop header, so each
+    iteration DEFINES the left side from the ranged expression (WI-losod).
+    caddy's `for _, v := range os.Environ() { fmt.Println(v) }` -- the
+    reference case for this area -- had no definition of `v` at all.
+    """
+    left = node.child_by_field_name("left")
+    right = node.child_by_field_name("right")
+    defines = _names_from_expression_list(left, source) if left is not None else []
+    uses = _collect_identifiers(right, source) if right is not None else []
+    return DefUseResult(defines=defines, uses=uses)
+
+
 def _handle_expression_statement(node: Any, source: bytes) -> DefUseResult:
     """Handle a bare expression statement (usually a call)."""
     uses: list[str] = []
@@ -273,6 +299,7 @@ _HANDLERS: dict[str, Callable[[Any, bytes], DefUseResult]] = {
     "dec_statement": _handle_inc_dec_statement,
     "send_statement": _handle_send_statement,
     "go_statement": _handle_expression_statement,
+    "range_clause": _handle_range_clause,
 }
 
 
@@ -307,10 +334,50 @@ def _go_symbol_kind(node: Any) -> str:
     return "method" if node.type == "method_declaration" else "function"
 
 
+def _go_bound_literal_bodies(node: Any, source: bytes) -> list[Any]:
+    """The bodies of the function literals a PACKAGE-LEVEL ``var_spec`` holds.
+
+    WI-rovun. The Go analyzer anchors every call under a package-level ``var``
+    on that variable's own symbol (INV-nopoh) -- cobra's ``Run: func(cmd, args)
+    {...}``, ``var handler = func(...) {...}`` -- so the DDG walks those
+    literals under the same id, which ``ddg_build`` takes from the analyzer at
+    the ``var_spec``'s exact span rather than rebuilding it here (WI-mufag).
+
+    The package-level test is the analyzer's own (``_go_package_level_var_name``),
+    so the two cannot disagree about which ``var`` is a binding: a ``var``
+    inside a function is a LOCAL (INV-sidab) whose literal is already part of
+    the enclosing function's CFG, and gets no bodies here.
+
+    OUTERMOST literals only, in source order. A literal nested in another is
+    part of the outer body's CFG (as one nested in a declaration is), and
+    walking it again would record its statements twice.
+
+    A literal's parameters are not definitions, exactly as a declaration's are
+    not: ``build_function_cfg`` is handed the body in both cases.
+    """
+    from .go import _go_package_level_var_name
+
+    if _go_package_level_var_name(node, source) is None:
+        return []
+    bodies: list[Any] = []
+    stack = list(reversed(node.children))
+    while stack:
+        current = stack.pop()
+        if current.type == "func_literal":
+            body = current.child_by_field_name("body")
+            if body is not None:
+                bodies.append(body)
+            continue
+        stack.extend(reversed(current.children))
+    return bodies
+
+
 register_ddg_language(LanguageDdgSpec(
     language="go",
-    file_glob="*.go",
     function_node_types=frozenset({"function_declaration", "method_declaration"}),
     name_for=_go_function_name,
     kind_for=_go_symbol_kind,
+    bound_callable_node_types=frozenset({"var_spec"}),
+    bound_bodies_for=_go_bound_literal_bodies,
+    bound_anchor_kinds=frozenset({"variable"}),
 ))

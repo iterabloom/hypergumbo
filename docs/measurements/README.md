@@ -46,6 +46,55 @@ disbelieve the number.
 One markdown file per measurement, named `<NNNN>-<topic>.md`, numbered
 independently of the ADR and audit-findings series.
 
+## What a row counts
+
+A taint-precision record reports two units. A **situation** is the
+post-`INV-karud` collapse record. A **row** is one (source call site, sink call
+site) pair, the pair `collapsed_flow_count` counts. Before the collapse existed
+(0001, 0003), a reported flow was one source→sink pair, and those records call
+it a flow.
+
+**A row is a call-graph reachability pair, not a claim that a value flowed.**
+Every row was included because the sink is reachable from the source in the
+call graph (`if sink_node in reachable`, `propagate_taint_structural` in
+`taint.py`). That holds whatever the row's `analysis_method` is: ADR-0017 §3a's
+walk never adds a row. It raises a row to `ddg` where it finds a dependence,
+and since `b26d97bd11` (2026-09-02) it also removes a row whose dependence it
+refutes. For a `structural` row, nothing beyond reachability was checked
+except two narrow pair refusals: `_source_and_sink_are_one_call` (INV-lozat)
+and `_source_names_can_reach_sink` (INV-fumod). The published
+`dataflow_coverage` block states this as `inclusion_decided_by`.
+
+So the row denominator grows with how much a source reaches, not with how much
+tainted data moves. A source that is a FILE node reaches everything its file
+calls. On kamaraflow (2026-08-27, `WI-badab`), one `argv` read was paired with
+four distinct sinks for a collapsed count of 8, in a repository with one
+`os.makedirs` call site. Nothing is miscounted. The count is of a different
+population than a reader of "precision per row" assumes.
+
+ADR-0048 F1 still requires the row rate beside the situation rate in every
+record. **A record that publishes a row rate says, beside it, that the rate is
+over reachability pairs**, and links this section. Records 0001, 0003, 0004,
+0005, 0006 and 0012 publish row rates and carry that note. Every row rate in
+the index below is over this population.
+
+## Which tree an arm measures
+
+An A/B arm is the measurement of ONE tree's code, and a wrong arm exits 0 with
+plausible numbers. `scripts/measure-taint-precision.py`,
+`scripts/measure-narrowing-headroom.py` and `scripts/measure-catalogue-exposure.py`
+locate the tree they live in and pin it on `sys.path` (`scripts/measure_code_tree.py`).
+When `PYTHONPATH` supplies an in-scope package (`hypergumbo_core`, and for the
+taint script every `hypergumbo_lang_*`) from a different directory, the script
+REFUSES with exit 2 and names both; set `HG_MEASURE_TREE=script` to measure the
+code beside the script or `HG_MEASURE_TREE=pythonpath` to measure what
+`PYTHONPATH` selects. Every run prints the tree it resolved, and each package's
+directory, before any number (`code under test: ...`), and refuses a MIXED tree
+(packages in scope resolving to more than one tree). Record that line per arm:
+it is the arm's control. It shows a directory, not a commit, so two arms in one
+directory (a checkout switched between runs) still need a blob or edge-count
+control of their own.
+
 ## Index
 
 | ID | Title | Instrument | Result |
@@ -79,3 +128,4 @@ independently of the ADR and audit-findings series.
 | [0027](0027-objc-macro-parse-recovery.md) | Which macros break the Objective-C parse, and what recovering them reaches (WI-lafom) | Each suspected construct parsed IN ISOLATION rather than read at the first ERROR node's line; each rewrite rule priced cumulatively and on ERROR NODES rather than whole files; two arms by blob, asserted at BEGIN and END; whole-artifact equality before any field is picked; every moved site read back | **Three triggers, none of them what the item named: `NS_ASSUME_NONNULL_BEGIN` only in the WRAPPING position, `NS_ENUM`/`NS_OPTIONS` (unnamed by the item), and the availability attributes.** ERROR files **74 → 38 of 387 (19.1% → 9.8%)**, ERROR nodes **1687 → 265**, MISSING **305 → 98**, `property_declaration` **436 → 491**, `class_interface` **322 → 349**, no count falling anywhere. **End to end on AFNetworking, the case the item was filed about: primitives via objc 12 → 21 and `net_recv` 0 → 2**, six `NSURLSession` rows reaching for the first time — measurement 0026's refuted prediction resolved against the INPUT rather than the fix. Recovering the HEADER alone does not do it; the intermediate arm has `session` as a property and `net_recv` still 0, because the calls live in the `.m`. **The grammar-bump option is CLOSED, not skipped** (3.0.2 newest published, upstream dormant since 2024-12-16, its NS_OPTIONS bug open since 2025-02-25). **The availability rule was dropped once on a real number that was not measuring it** — Apple's eighteen names spelled exactly recover ZERO files, because AFNetworking writes `AF_API_AVAILABLE`, and that macro alone is 820 of `AFURLSessionManager.m`'s 822 ERROR nodes. A generic `SHOUTY(...)` rule stays rejected: it sheds 17 real properties. The one count that fell is a precision gain — 41 re-keys of `AFURLSessionManager → external`, a first-party class leaving the slot at the count the item predicted. 85 of 85 newly typed fmdb slots correct; Mantle byte-identical, as pre-registered |
 | [0028](0028-swift-self-property-receiver.md) | What typing a Swift `self.<property>` receiver reaches (WI-dodop) | Priced on the MODULE SLOT and on io-boundary CHAINS, never on the typed SHARE — a PROJECT receiver type is typed and then correctly refused (INV-kotob), so the share rises 368 where the slot rises 252 and pricing on it would credit the refusals; two arms by blob asserted at BEGIN and END; three repositories that sized nothing beside the one that did; `method_edges` asserted IDENTICAL across arms as the internal control; moved rows read back against source | **`self` parses as `self_expression`, not `simple_identifier`, so writing `self.` in front of a property DESTROYED the receiver hint for the identical call** (`db.write(x)` types, `self.db.write(x)` did not) — `hint == 'self'` occurs 0 times in 1,913 classified sites. Module slot **+442 across four repositories, 0 lost in any module in any repo** (vapor 807→1,059, hummingbird 654→770, Kingfisher 939→987, Alamofire 478→504); 25 of 25 sampled rows correct, 0 wrong-type. End to end on vapor: io-boundary chains **43 → 59**, distinct primitives **16 → 17**, 0 lost — **but 14 of the 16 new chains are `logging`**, so the severity-weighted result is +1 newly reachable primitive (`NonBlockingFileIO.readChunked`) and 2 substantive chains. **Pre-registered P4 REFUTED**: self-shaped receivers are 777 (40.6%) across two buckets, not the largest single one — the 938 sites where `_type_of` RAN and returned None are, and they are untouched. Two instrument errors caught in this measurement's own output: a `[:12]` truncation manufactured an `Array 20 → 0` regression (caught by arithmetic — per-module deltas summed to +208 against a +252 total), and the 59.3%-external sizing figure keys declarations by property name repo-wide and is an estimate with a known bias, barred from being an acceptance criterion |
 | [0029](0029-t0c-drain-ledger-and-suppression.md) | What the ten-cell INV-linub drain moved, and what a declared sanitizer does to it (T0c) | Seven-language table with PER-ROW PROVENANCE (six inherited from each cell's own live A/B, javascript measured here); both arms pinned in git worktrees reached through `PYTHONPATH` so a main-tree edit cannot reach a running arm; two-way primitive diff that RAISES on an unknown schema key and cross-checks its own derivation against the tool's published `primitives_used`; a no-leakage control repo with zero files of any drained language; and a NO-DECLARATION arm added mid-measurement because the pre-registered control could not fail | **Six of seven languages moved a primitive, two moved a verdict, ZERO primitives lost anywhere.** javascript (measured here, workadventure): 5 primitives gained / 0 lost, `host-description-no-network` evidence 4 → 7, 4/4 read back correct — and one finding against the CATALOGUE rather than the analyzer, the `process.on` row matching any event where its own note says `'message'`. Control byte-identical (md5-equal `io.json` and `vc.json`). **Arm A separates two things that were being conflated under "suppression": a DECLARATION suppresses heavily (0 → 158 sanitized flows on pretix from seven declared functions), and THE DRAIN DOES NOT (closing every escape site at once moves sanitized_flows and violated_claims by 0, at a cost of one evidence item).** Because arm B is a CEILING that is a proof about the whole family. The 2026-09-07 worry that escape-closing "can only delete findings" is answered in the negative by an instrument demonstrably able to see suppression. The misspelling trap the ruling warned about (`taint_sanitizers:`) is CLOSED and was verified live rather than restated. `nextjs` was launched as the javascript subject and stopped by me at 26 min for resource contention — recorded, not omitted. |
+| [0030](0030-js-handler-assignment-corpus-delta.md) | What the JavaScript handler-assignment construct (`ws.onmessage = h`) moves on a corpus (WI-zohuk) | Two arms one assignment apart (`JS_ASSIGNABLE_ROWS` emptied in an overlay copy, the imported `js_ts.py` blob asserted at BEGIN and END); survey + verify-claims + io-boundaries per arm on five repositories; non-destruction asserted by an order-independent digest over every edge; an analyzer-only census over 38 repositories; a spelling census by receiver binding; a two-arm fixture for the verdict gate | **4 emitted sites in 38 repositories (1 production, argo-cd), all correct; 0 verdict changes and 0 new / lost / changed taint situations** on the five surveyed repositories, default and non-production configurations alike, so the precision population is EMPTY, not 100%. The construct reaches 4 of 21 typable handler sites; the other 17 are receiver-binding gaps (WI-ponid). On a fixture the construct flips every `confirmed_with_caveats` to `inconclusive` through `method_starved_modules` (WI-dapap (2), WI-bobuf); 0 corpus occurrences. nextjs NOT MEASURED (arm B stopped at 3 h 05 min). |

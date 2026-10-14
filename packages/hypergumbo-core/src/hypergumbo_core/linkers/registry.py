@@ -37,6 +37,10 @@ How It Works
    each priority cohort to a ``ThreadPoolExecutor`` so independent
    linkers run in parallel. A shared ``parsed_trees`` cross-linker
    parse cache (per-language) avoids re-parsing the same files.
+   Because cohort members share a pool, a linker's wall-clock
+   ``duration_ms`` overlaps its siblings' and inflates while they hold
+   the GIL; ``_run_linker_with_cache`` therefore also stamps ``cpu_ms``,
+   the linker's own-thread CPU time, read on the worker (WI-nuvam).
 4. Each linker is called uniformly via ``run_linker()`` with
    LinkerContext.
 5. A post-pass (``_connect_synthetic_to_enclosing``) wires synthetic
@@ -102,12 +106,13 @@ In cli.py:
 from __future__ import annotations
 
 import os
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from itertools import groupby
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Collection, Iterator
+
+from ..pass_clock import PassClock
 
 if TYPE_CHECKING:
     from ..ir import AnalysisRun, Edge, Symbol
@@ -255,18 +260,36 @@ class LinkerContext:
         assert self._symbol_by_id is not None  # for type checker
         return self._symbol_by_id.get(symbol_id)
 
-    def find_symbols_by_name(self, name: str) -> list["Symbol"]:
-        """Find all symbols matching a name.
+    def find_symbols_by_name(
+        self, name: str, languages: Collection[str] | None = None,
+    ) -> list["Symbol"]:
+        """Find all symbols matching a name, optionally within a language set.
+
+        A name a linker reads out of source can denote only a symbol in a
+        language its mechanism reaches: ``set_defaults(func=X)`` names a
+        Python callable, a cobra ``RunE: X`` field a Go func value. An
+        unscoped lookup makes every same-named symbol in ANY language a
+        candidate, which costs twice (WI-gopok): a lone foreign namesake
+        becomes a confident wrong edge, and one beside the right symbol
+        inflates the INV-zuhub candidate count, demoting a precise edge to a
+        0.5 ``disambiguation_fallback`` pair. Pass ``languages`` for such a
+        lookup; leave it ``None`` only when the mechanism genuinely crosses
+        languages.
 
         Args:
             name: The symbol name to search for (matches short name)
+            languages: When given, keep only symbols whose ``language`` is in
+                this set. ``None`` keeps every language.
 
         Returns:
             List of matching symbols (may be empty).
         """
         self._ensure_indexes()
         assert self._symbols_by_name is not None  # for type checker
-        return self._symbols_by_name.get(name, [])
+        found = self._symbols_by_name.get(name, [])
+        if languages is None:
+            return found
+        return [s for s in found if s.language in languages]
 
     def find_enclosing_symbol(
         self,
@@ -713,7 +736,10 @@ def _run_linker_with_cache(
     read_log: set[str] = set()
     token = set_active_parse_cache(ctx.parsed_trees)
     read_token = set_active_read_log(read_log)
-    _t0 = time.perf_counter()
+    # WI-nuvam: started HERE, on the thread that runs the linker body (this
+    # wrapper is what the cohort pool submits), because the CPU half of the
+    # reading is per-thread.
+    _clock = PassClock()
     try:
         result = func(ctx)
     finally:
@@ -725,12 +751,16 @@ def _run_linker_with_cache(
     # out-of-order as_completed makes per-linker wall-clock impossible at the
     # post-dispatch sites. Stamp the per-pass productivity counters here too
     # (result.symbols/result.edges are this pass's direct output, before any
-    # accumulation). duration_ms is guarded so the ~40 linker bodies that
-    # self-time keep their value; the counters are derived facts, always set.
-    _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+    # accumulation); the counters are derived facts, always set.
+    # WI-nuvam: the stamp sets cpu_ms, the linker's own-thread CPU time, and
+    # duration_ms from the SAME clock. It used to keep a self-timing body's
+    # duration_ms, but a body's timer spans only part of the call, and a wall
+    # figure over a different span from cpu_ms cannot be compared with it.
+    # Linkers in one priority cohort share a pool, so the wall figure overlaps
+    # its siblings' and inflates while they hold the GIL; cpu_ms does not.
+    _cost = _clock.read()
     if result.run is not None:
-        if not result.run.duration_ms:
-            result.run.duration_ms = _elapsed_ms
+        _cost.stamp(result.run)
         # WI-finij: fill files_analyzed from what the body ACTUALLY read, so
         # the zero that derive_silence_reason reads as "received no input
         # files" is a measurement rather than an unset default. Guarded like
@@ -1057,7 +1087,7 @@ def run_all_linkers(
             {"pass_id": enclosure_pass_id}
         ),
     )
-    _encl_t0 = time.perf_counter()
+    _encl_clock = PassClock()
     try:
         enclosure_edges = _connect_synthetic_to_enclosing(
             enclosure_ctx,
@@ -1074,7 +1104,7 @@ def run_all_linkers(
         return results
     # INV-gizik: this synthesis pass does not flow through _run_linker_with_cache,
     # so stamp its duration + edge count here (no nodes; it only emits edges).
-    enclosure_run.duration_ms = int((time.perf_counter() - _encl_t0) * 1000)
+    _encl_clock.read().stamp(enclosure_run)
     enclosure_run.edges_emitted = len(enclosure_edges)
     if enclosure_edges:
         results.append(("enclosure", LinkerResult(edges=enclosure_edges, run=enclosure_run)))

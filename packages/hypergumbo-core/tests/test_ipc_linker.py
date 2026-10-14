@@ -604,7 +604,7 @@ class TestVariableChannelPatterns:
     """Tests for variable-based channel detection."""
 
     def test_detect_variable_send_channel(self) -> None:
-        """Detects ipcRenderer.send with variable channel."""
+        """ipcRenderer.send(CHANNEL) resolves a same-file string constant (WI-misod)."""
         from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
@@ -614,8 +614,9 @@ ipcRenderer.send(CHANNEL, { path: '/tmp/file.txt' });
         patterns = detect_ipc_patterns(source, "javascript")
 
         assert len(patterns) == 1
-        assert patterns[0]["channel"] == "CHANNEL"
-        assert patterns[0]["channel_type"] == "variable"
+        assert patterns[0]["channel"] == "open-file"
+        assert patterns[0]["channel_type"] == "constant"
+        assert patterns[0]["channel_identifier"] == "CHANNEL"
 
     def test_detect_variable_receive_channel(self) -> None:
         """Detects ipcMain.on with variable channel."""
@@ -630,8 +631,9 @@ ipcMain.on(OPEN_FILE_CHANNEL, (event, data) => {
         patterns = detect_ipc_patterns(source, "javascript")
 
         assert len(patterns) == 1
-        assert patterns[0]["channel"] == "OPEN_FILE_CHANNEL"
-        assert patterns[0]["channel_type"] == "variable"
+        assert patterns[0]["channel"] == "open-file"
+        assert patterns[0]["channel_type"] == "constant"
+        assert patterns[0]["channel_identifier"] == "OPEN_FILE_CHANNEL"
 
     def test_detect_attribute_access_channel(self) -> None:
         """Detects channel with attribute access like config.channel."""
@@ -644,7 +646,8 @@ ipcRenderer.invoke(config.ipcChannel, { data: 'test' });
 
         assert len(patterns) == 1
         assert patterns[0]["channel"] == "config.ipcChannel"
-        assert patterns[0]["channel_type"] == "variable"
+        assert patterns[0]["channel_type"] == "unresolved"
+        assert patterns[0]["channel_identifier"] == "config.ipcChannel"
 
     def test_literal_channel_has_literal_type(self) -> None:
         """Verifies literal channels have channel_type='literal'."""
@@ -658,9 +661,10 @@ ipcRenderer.send('user-login', { user: 'test' });
         assert len(patterns) == 1
         assert patterns[0]["channel"] == "user-login"
         assert patterns[0]["channel_type"] == "literal"
+        assert patterns[0]["channel_identifier"] is None
 
     def test_variable_channel_linking(self, tmp_path: Path) -> None:
-        """Links variable channels when using same variable name."""
+        """Same-named constants with the same value join on the VALUE (WI-misod)."""
         from hypergumbo_core.linkers.ipc import link_ipc
 
         renderer = tmp_path / "renderer.js"
@@ -679,12 +683,37 @@ ipcMain.on(OPEN_CHANNEL, (event, data) => {
 
         result = link_ipc(tmp_path)
 
-        assert len(result.edges) >= 1
-        # Find edges between variable-matched patterns
-        var_edges = [e for e in result.edges if e.evidence_type == "variable_match"]
-        assert len(var_edges) >= 1
-        assert var_edges[0].confidence == 0.65  # Lower confidence for variable match
-        assert var_edges[0].meta.get("channel_type") == "variable"
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.evidence_type == "ipc_channel_match"
+        assert edge.confidence == 0.85
+        assert edge.meta["channel_type"] == "constant"
+        assert edge.meta["channel"] == "open-file"
+
+    def test_unresolved_channels_join_on_the_identifier(self, tmp_path: Path) -> None:
+        """An imported (unresolvable) channel constant joins only an equal identifier."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        (tmp_path / "renderer.js").write_text("""
+import { OPEN_CHANNEL } from './channels';
+ipcRenderer.send(OPEN_CHANNEL, {});
+""")
+        (tmp_path / "main.js").write_text("""
+import { OPEN_CHANNEL } from './channels';
+ipcMain.on(OPEN_CHANNEL, handler);
+ipcMain.on('OPEN_CHANNEL', handler);
+""")
+
+        result = link_ipc(tmp_path)
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst.endswith("main.js:3-3:receive:OPEN_CHANNEL")
+        assert edge.evidence_type == "variable_match"
+        assert edge.confidence == 0.65
+        assert edge.meta["channel_type"] == "unresolved"
+        assert edge.meta["channel_identifier"] == "OPEN_CHANNEL"
+        assert "channel" not in edge.meta
 
     def test_symbol_has_channel_type_metadata(self, tmp_path: Path) -> None:
         """Symbols include channel_type in metadata."""
@@ -699,13 +728,18 @@ ipcMain.on(CHANNEL_VAR, handler);
         result = link_ipc(tmp_path)
 
         # Should have both sender and receiver symbols
-        assert len(result.symbols) >= 1
+        assert len(result.symbols) == 2
         for sym in result.symbols:
-            assert "channel_type" in sym.meta
-            assert sym.meta["channel_type"] == "variable"
+            assert sym.meta["channel_type"] == "unresolved"
+            assert sym.meta["channel"] is None
+            assert sym.meta["channel_identifier"] == "CHANNEL_VAR"
 
-    def test_mixed_literal_and_variable_no_match(self, tmp_path: Path) -> None:
-        """Literal channel doesn't match different variable name."""
+    def test_constant_channel_joins_literal_sender(self, tmp_path: Path) -> None:
+        """WI-misod: a constant-channel receiver joins its literal-channel sender.
+
+        Before WI-misod this test pinned the defect -- it asserted NO edge,
+        because the receiver's channel was stored as the identifier 'CHANNEL'.
+        """
         from hypergumbo_core.linkers.ipc import link_ipc
 
         renderer = tmp_path / "renderer.js"
@@ -721,8 +755,23 @@ ipcMain.on(CHANNEL, handler);
 
         result = link_ipc(tmp_path)
 
-        # No edges: literal 'open-file' != variable 'CHANNEL'
-        assert len(result.edges) == 0
+        assert len(result.edges) == 1
+        assert result.edges[0].meta["channel"] == "open-file"
+        assert result.edges[0].meta["channel_type"] == "constant"
+
+    def test_identifier_text_does_not_join_an_equal_string(self, tmp_path: Path) -> None:
+        """An unresolved identifier `save` is not the channel 'save'."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        (tmp_path / "renderer.js").write_text("ipcRenderer.send(save, {});\n")
+        (tmp_path / "main.js").write_text("ipcMain.on('save', handler);\n")
+
+        result = link_ipc(tmp_path)
+
+        assert result.edges == []
+        [sender] = result.symbols
+        assert sender.meta["channel_type"] == "unresolved"
+        assert sender.meta["channel"] is None
 
 
 class TestNewElectronPatterns:
@@ -858,7 +907,8 @@ mainWindow.webContents.send(CHANNEL_NAME, payload);
         patterns = detect_ipc_patterns(source, "javascript")
         wc_sends = [p for p in patterns if p.get("method") == "webcontents_send"]
         assert len(wc_sends) == 1
-        assert wc_sends[0]["channel_type"] == "variable"
+        assert wc_sends[0]["channel_type"] == "unresolved"
+        assert wc_sends[0]["channel_identifier"] == "CHANNEL_NAME"
 
 
 class TestContextBridgeDetection:

@@ -41,6 +41,7 @@
 # Naming convention: Elixir calls render as `Module.function` — the
 # dotted form matches the `module.name` lookup the io_boundary engine
 # uses for `kind="function"` entries.
+provenance: builtin
 language: elixir
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``
@@ -218,9 +219,10 @@ net_send:
 # Subprocess — System.cmd, System.shell, Port.open
 # ---------------------------------------------------------------------------
 subprocess:
-  - module: System
-    functions: [halt]
-    notes: "Elixir System.halt ends the VM; it launches nothing and returns nothing."
+  # System.halt is NOT rowed (INV-mulul): it ends THIS VM and launches
+  # nothing -- what its own note here used to say while rowing it subprocess,
+  # a taint sink and an opaque launch. rust's std::process::exit / abort
+  # were removed for the same reason.
   - module: System
     functions: [cmd, shell]
     simultaneous: true
@@ -228,8 +230,9 @@ subprocess:
       Elixir System.cmd/System.shell launch external processes AND return
       `{output, exit_status}` -- the output half is the child's bytes, so
       they carry an ipc_recv row too (INV-lozat / ADR-0049 ruling 1).
-      `halt` moved to its own row because `simultaneous` is a property of
-      the primitive and these three did not share it.
+      `halt` was split off this row because `simultaneous` is a property of
+      the primitive and these three did not share it; it is now unrowed
+      (see above).
   - module: Port
     functions: [open, command]
     notes: "Erlang-style external ports (used for subprocess IPC)"
@@ -287,8 +290,19 @@ host_info_read:
 # ---------------------------------------------------------------------------
 logging:
   - module: Logger
-    functions: [debug, info, warn, warning, error, notice, critical, alert, emergency, log, metadata, configure]
-    notes: "Elixir stdlib Logger — unified logging API"
+    functions: [debug, info, warn, warning, error, notice, critical, alert, emergency, log]
+    notes: >-
+      Elixir stdlib Logger -- unified logging API. NOT metadata / configure
+      (WI-ragaz, audit-findings 0021 Step 5): both write nothing at the call.
+      configure sets the facility's options; metadata attaches key/values to
+      the calling process that a LATER emitter may print, if the formatter is
+      configured to print that key. The later emitter is rowed here, so the
+      crossing is represented (ADR-0049 ruling 3; the erlang parent's `logger`
+      row likewise leaves set/update_process_metadata unrowed). What is lost
+      is a value carried through process metadata into a later log line: the
+      taint walk does not follow the process dictionary, which a sink at the
+      attach site was covering by adjacency, not by the call's own effect.
+      Unrowed, both are disclosed as external_potential.
   - module: IO
     functions: [puts, warn, write, binwrite]
     notes: "IO-based ad-hoc logging (puts/write to :stdio; binwrite same but bytes)"
@@ -302,7 +316,7 @@ logging:
 # parent, and those ARE the standard library.
 
 # ---------------------------------------------------------------------------
-# IPC — GenServer, Process, GenStage, Oban (job queues)
+# IPC and BEAM process messaging -- System.cmd output, GenServer, Process, Task
 # ---------------------------------------------------------------------------
 ipc_recv:
   - module: System
@@ -322,13 +336,35 @@ ipc_recv:
       Elixir inherits erlang's rows (`_CATALOG_PARENTS`), so `os:cmd` arrives
       from there; these two are Elixir's own.
 
-ipc_send:
+# BEAM message sends are process_send, not ipc_send (WI-nuhor, audit-findings
+# 0021 Step 5): the far side is a peer process inside the same runtime, which
+# is exactly process_send's registry description, and erlang.yaml -- this
+# catalogue's parent -- rows `erlang:send` / `!` and `gen_server:call` / `cast`
+# / `abcast` / `multi_call` there. One act had two boundaries depending on the
+# spelling. Both boundaries map to the `ipc` taint zone, so the move changes
+# the headline label and no taint sink.
+process_send:
   - module: GenServer
     functions: [call, cast, abcast, multi_call]
-    notes: "GenServer message passing"
+    notes: "GenServer message passing -- erlang's gen_server rows, elixir spelling."
   - module: Process
     functions: [send, send_after]
-    notes: "Raw process messaging"
+    notes: "Raw process messaging -- erlang:send / send_after, elixir spelling."
+  # Task spawns (WI-busam, audit-findings 0021 Step 5). They were ipc_send
+  # ("async execution boundary"); a spawn starts a BEAM process inside the same
+  # runtime and copies the closure, with every value it captured, into it --
+  # erlang.yaml's precedent rows erlang:spawn / spawn_link, proc_lib:spawn and
+  # supervisor:start_child under process_send. Same `ipc` taint zone, so a pure
+  # relabel.
+  # async_stream is lazy (its tasks start when the stream is enumerated) and is
+  # kept: the spawn it arranges has no other row, so deleting it would drop the
+  # crossing rather than relocate it (ADR-0049 ruling 3). Task.Supervisor's
+  # start_child was spelled as a FUNCTION named `Supervisor.start_child` on
+  # module `Task`, which no call site produces (the call reported
+  # external_potential); it is re-homed to its module below.
   - module: Task
-    functions: [async, async_stream, start, start_link, Supervisor.start_child]
-    notes: "Task spawns — async execution boundary"
+    functions: [async, async_stream, start, start_link]
+    notes: "Task spawns -- erlang:spawn / spawn_link, elixir spelling."
+  - module: Task.Supervisor
+    functions: [start_child]
+    notes: "Supervised task spawn -- supervisor:start_child, elixir spelling."

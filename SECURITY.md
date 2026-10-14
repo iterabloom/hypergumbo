@@ -27,6 +27,19 @@ The `pytest` row is stronger than it looks: a `conftest.py` executes at **collec
 
 **Checked, and not claimed as more than it is.** No `eval()` or `exec()` on file content anywhere in `packages/*/src`; YAML loading uses `CSafeLoader` throughout; `.md` and `.txt` files are not collected as tests. That last one is a **configuration** fact — one line in `pyproject.toml` revokes it — not a structural guarantee, and is recorded here as configuration rather than as a property of the tree.
 
+### Independent check: the I/O allowlist
+
+The verdicts below are hypergumbo grading itself, and every one carries caveats naming what the analysis could not see. ``scripts/check-io-allowlist`` is a second check that shares none of that machinery: a stdlib-only AST walk of ``packages/*/src`` that finds every call site — and every non-call reference, such as a primitive handed to a callback — of a risky primitive family (filesystem writes and deletes, process launch, network clients and model downloads, servers, ``eval``/``exec``/``compile``, unsafe deserialization, native-library loading, dynamic import of a non-literal name) and requires each one to be listed in ``docs/hypergumbo.io-allowlist.yaml`` with its zone, the program it launches, its purpose and the commands that reach it. An unlisted site or a stale entry fails CI. It proves nothing about a site — an entry is a reviewed statement — only that no site exists that nobody reviewed. It covers ``hypergumbo-tracker`` too, which the claims below do not. What it cannot see is listed in the script's docstring.
+
+Families with no site in the tree today (adding one fails the gate until it is reviewed): ``code_exec``, ``native``.
+
+**Sites the allowlist records as findings rather than as reviewed-and-fine** — each names an open tracker item:
+
+- ``INV-gujus-fahub-pusip-dugoz-hidaj-vulav-higop-jihuf``: ``hypergumbo_core.sketch_embeddings._load_embedding_model``, ``hypergumbo_core.sketch_embeddings._load_modernbert_model``
+- ``INV-kuroj-nihok-pupiv-zanun-jovij-ladod-mabiz-kiliz``: ``hypergumbo_core.backend_trust.record_decision``, ``hypergumbo_core.catalogue_home.materialize_catalogue_home``, ``hypergumbo_core.in_repo_catalogues.record_in_repo_decision``, ``hypergumbo_core.repo_tier_offer.record_offer_decision``, ``hypergumbo_core.repo_tier_offer.write_repo_tier_examples``
+- ``INV-tusos-gibog-pupan-ratid-tutug-kivub-fison-zuhad``: ``hypergumbo_lang_rust_analyzer.invoke.run_rust_analyzer_scip``, ``hypergumbo_lang_scip_python.analyzer.analyze_python_with_scip_impl``, ``hypergumbo_lang_scip_python.invoke.run_scip_python_index``
+- ``WI-puban-modig-mifip-mazov-dakas-jufot-bokob-vodut``: ``hypergumbo_tracker.stop_hook._call_openrouter``
+
 **Read the claims below as CLAIMS UNDER TEST, not as assurances.** They state what each entry-point category is *intended* to do. What the analysis actually reports is:
 
 | verdict | count | meaning |

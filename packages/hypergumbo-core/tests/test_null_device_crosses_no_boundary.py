@@ -91,9 +91,10 @@ def test_an_edge_with_no_kind_reports_nothing():
     assert call_site_target_kinds(None) == ()
 
 
-def test_a_non_string_kind_is_ignored_not_crashed():
+def test_a_non_string_kind_is_an_unknown_site_not_crashed():
+    """Read as ``None`` rather than dropped (INV-rajak)."""
     assert call_site_target_kinds({"io_target_kind_values": ["host_path", 7]}) \
-        == ("host_path",)
+        == ("host_path", None)
 
 
 def test_a_non_list_values_key_falls_back_to_the_singular():

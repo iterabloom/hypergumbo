@@ -5,8 +5,6 @@
 - Date: 2026-06-12
 - Supersedes: —
 - Superseded by: —
-
-> Amended in place — Core ordering contract in force; the finalize internal API has been amended repeatedly — read §6.1 (2026-06-13) for the live sub-step set, NOT the original §6 table. (§6.1 amendment 2026-06-13; recons 2026-06-15 remove sub-steps 5/7/9, vacate rules R4/R6, reverse sub-decision #7.)
 - Related: ADR-0033 (Spec-vs-Data Validator Stage — its ratchet matrix is the substrate for ruling §7's two-pass validation, and its referential-integrity check is the post-filter pass that moves into finalize), ADR-0037 (Edge Resolution Semantics — its single edge-finalization verdict is the stage ruling §4/§6 places *after* filtering), ADR-0035 (stable-id v6 identity contract — the identity-hashing stage that ruling §2 pins strictly after early-relativize), ADR-0034 (id-construction discipline). Tracker items: see the "Tracker items" section at the end.
 
 **Decision provenance.** Unlike ADRs 0035–0042, this ADR does **not** record a fresh human ruling. It records an *engineering artifact* — the stage-ordering contract for the analysis pipeline — derived from those rulings and from the `META-jalur` root-cause family. The design-decision register (2026-06-10 interview, `~/hypergumbo_lab_notebook/decision_register_06102026.md`) states: *"Remaining open human decisions … none. The stage-ordering ADR (META-jalur child) … [is an] engineering artifact to be authored with [its] implementing fixes, governed by [the] rulings above."* Every resolution below cites a prior accepted ruling or direct code evidence; **no new human-level policy is introduced.** This ADR fixes the *order* of the pipeline and names its invariants; the *code* is carried by the implementing fixes (`run-lifecycle:F1`, `synthetic:F3`, `validator:F3`, `entrypoint:F4`, `projection:F1`), tracked under `WI-pozur` below.
@@ -72,11 +70,9 @@ The filter-time discriminator is `meta["entry_point"]` (the `pyproject_script` c
 
 ### 6. A single finalize stage is the only pre-serialization reconcile point (resolves C5)
 
-> **Live sub-step set: see §6.1 (amendment, 2026-06-13) and its recons (2026-06-15).** The original §6 prose below lists finalizers as first authored; the amended §6.1 table is authoritative — sub-steps 5/7/9 are REMOVED, rules R4/R6 are VACATED, and ratified sub-decision #7 is REVERSED. Read §6.1 for the live set, NOT this paragraph's original enumeration.
+One **finalize** stage is the single point at which placeholder-derived fields are reconciled against final state before serialization. It subsumes the previously-scattered finalizers: the repo-fingerprint stamp and the skipped-files → `limits.partial_results_reason` scan fold into it; it recomputes `run_signature` from the final `AnalysisRun` fields (`META-hufaz`), backfills `pass_version` including on override-analyze analyzers (`WI-mipul`), and runs the idempotent re-relativize backstop (§2). Budget-tier and compact projections are **consumers** of the finalized map; the tiered projection re-derives its summary through `compact.recompute_view_summary` (§6.1). This section fixes the stage's *position and responsibilities*; §6.1 gives its internal API and the live sub-step list.
 
-One **finalize** stage is the single point at which placeholder-derived fields are reconciled against final state before serialization. It subsumes the currently-scattered finalizers: the repo-fingerprint stamp and the skipped-files → `limits.partial_results_reason` scan fold into it; it recomputes `run_signature` from the final `AnalysisRun` fields (`META-hufaz`) and backfills `pass_version` including on override-analyze analyzers (`WI-mipul`; the `config_fingerprint` backstop and the emission-counts recompute originally listed here are deferred/removed in `run-lifecycle:F1` — see §6.1's amended ratified sub-decisions), and runs the idempotent re-relativize backstop (§2). Budget-tier and compact projections become **consumers** of the finalized map via one shared re-derive helper with a deterministic lexicographic tie-break (so output does not depend on `PYTHONHASHSEED`). This ADR fixes the stage's *position and responsibilities*; its internal API is designed by `run-lifecycle:F1` (the finalize carrier). That design — deferred when this ADR was first authored — is **now specified in §6.1 below** (amendment, 2026-06-13).
-
-### 6.1 Finalize internal API (amendment, 2026-06-13)
+### 6.1 Finalize internal API
 
 **Decision provenance (distinct from this ADR's parent body).** Unlike the rest of
 ADR-0043 — which §"Decision provenance" notes records *no* fresh human ruling — this
@@ -96,9 +92,8 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap: ...
 - `FinalizeContext` is a mutable carrier (`symbols`, `edges`, `usage_contexts`,
   `analysis_runs` [dicts — note the `to_dict()` key is `"pass"`, not `"pass_id"`],
   `behavior_map`, `limits`, `repo_root`, a `PassMetadataLookup`, and a
-  `violations` accumulator) threaded through the sub-steps. (The `run-lifecycle:F1`
-  carrier omits the originally-listed `config` field — no F1 sub-step reads it; it is added
-  when a later slot-filler needs it, no orchestrator change required.)
+  `violations` accumulator) threaded through the sub-steps. It has no `config` field:
+  no sub-step reads one, and adding it needs no orchestrator change.
 - Each sub-step is a free function `_finalize_<concern>(ctx) -> None` that mutates
   `ctx` in place — identical in shape to the existing house pattern
   (`stamp_symbol_fingerprints`, `populate_synthetic_class_b_identity`,
@@ -108,8 +103,7 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap: ...
   reconciled view §8's round-trip test asserts on. Immutability is **shallow**
   (rebind raises; consumers contract not to mutate the inner dict).
 - A **registry / Protocol / topological-scheduler is explicitly rejected**: finalize
-  is a closed set with a shallow (~four-edge) dependency graph fixed by §6's
-  responsibility list, so a scheduler is apparatus the graph does not need. The two
+  is a closed, hand-ordered list with a shallow dependency graph, so a scheduler is apparatus the graph does not need. The two
   load-bearing orderings are pinned by call-site adjacency **and** two ~5-line
   white-box guard tests (R2, R3 below).
 
@@ -119,24 +113,33 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap: ...
 |---|----------|-------------------------|-----------|
 | — | *(entry precondition)* final node/edge set fixed (Phase D filter + Phase E boundary/edge-final complete); finalize never changes membership | R1 | — |
 | 1 | `_finalize_re_relativize` | §2 idempotent re-relativize backstop (replaces the ad-hoc second normalize) | precondition |
-| 2 | `_finalize_stamp_run_lifecycle` | `WI-mipul`: backstop `pass_version` from pass_metadata (incl. override-analyze). The `config_fingerprint` backstop is deferred to `WI-mipul`'s producer-side work (see amended ratified #4); `toolchain`/`origin_run_id` are populated upstream. | 1 |
+| 2 | `_finalize_stamp_run_lifecycle` | `WI-mipul`: backstop `pass_version` from pass_metadata (incl. override-analyze). `toolchain`/`origin_run_id` are populated upstream; `config_fingerprint` is producer-side (ratified #4). | 1 |
 | 3 | `_finalize_recompute_run_signature` | `META-hufaz`: re-hash from **final** AR fields | **2 (hard)** |
 | 4 | `_finalize_repo_fingerprint` | subsumes the scattered repo-fingerprint stamp | precondition |
-| ~~5~~ | *(removed — 2026-06-15 recon; amended ratified #5)* ~~`_finalize_emission_counts`~~ | **Removed**, not stubbed — the ratified per-run-by-`origin_run_id` recompute is unsound: `files_analyzed` is contractually a *file* count (`== profile.languages[L].files`), but the recompute yields a *node/path* count and does not close `INV-gizik` (IR-consuming passes stay 0). The real fix is a new provenance field, tracked under `INV-gizik`. Numbering keeps the gap to match the code. | — |
 | 6 | `_finalize_skipped_into_limits` | subsumes the skipped-files → `limits.partial_results_reason` scan (crashed-pass reason wins) | precondition |
-| ~~7~~ | *(removed — 2026-06-15 recon; reverses ratified #9, see amended ratified #7)* ~~`_finalize_confidence_aggregates`~~ | **Removed**, not stubbed — the confidence:F1/F2 IDs denote per-edge *derivation* / ranking-detection *separation* (producer-side, ADR-0039, `INV-suvil` family), which ADR-0039 keeps **out** of finalize (`Edge.confidence` left untouched). The behavior_map confidence aggregate this row described already exists over the final set: `metrics.avg_confidence` is computed *after* `finalize()` (`cli.py`) over the committed final edges, and `sketch.confidence_mass` rolls up EP/datamodel confidence — so there is no reconcile gap and no consumer for a finalize-time tenant. Numbering keeps the gap to match the code. See amended ratified #7. | — |
+| 6c | `_finalize_demote_receiver_blind_magnets` | `INV-fahub`: redirect the two cleanly-harmful receiver-blind magnet sub-classes (production→test-helper misbind, stdlib-interface-method shadow) to an external dst | before 7 |
+| 7 | `_finalize_edge_resolution` | ADR-0037 rulings 1/2: one edge-resolution verdict per `edge.dst` against the final node set, deriving `is_resolved` and `dst_ref` | before 8 |
+| 7a | `_finalize_demote_superseded_stubs` | ADR-0057 §14: same-site stub demotion | after 7 |
+| 7b | `_finalize_compute_visibility` | `INV-jusot`: fold the visibility signals into one `Symbol.visibility` level | before 8 |
+| 7c | `_finalize_prune_repro_grammars` | `WI-fonod` / `WI-givad`: `reproducibility_context.captured.grammars` → only the grammars whose analyzer emitted nodes | before 8 |
 | 8 | `_finalize_commit_dicts` | write reconciled dicts into `behavior_map` so every downstream reader sees one view | all mutators |
-| ~~9~~ | *(removed — 2026-06-15 recon; amended ratified #9)* ~~`_finalize_declared_fields`~~ | **Removed**, not stubbed — the writer-contract half already runs over the final substrate in sub-step 10's `validate_ir` (declared-fields:F1(a) / `INV-zotip`, satisfied); the population-contract half lands in the writer-contract *validator* (`WI-libib` — "extend the validator class", inside `_check_writer_contract` where the record stream lives) and in producers (declared-fields:F5 / `INV-dubam`), never in finalize. A finalize-time population re-check would append net-new violations and *grow* the shrink-only ratchet (measured +2…+57/substrate against the zero-headroom baseline of 12). Numbering keeps the gap to match the code. See amended ratified #9. | — |
 | 10 | `_finalize_referential_integrity` | §7 FK predicate (edges ⊆ nodes; `is_resolved ⇒ dst ∈ nodes`) + ADR-0039 per-edge range — **structurally LAST** | all preceding |
-| — | `recompute_view_summary(view_map, population, centrality)` — **not a sub-step**; the pure helper the tiered (budget-tier) projection calls *after* its shrink loop to re-derive `nodes_summary` from the FINAL on-disk arrays (projection:F1 / INV-pazur). Implemented narrower than the design-time `re_derive_view(finalized, selected_ids)`: it re-derives only the summary block from the authoritative post-shrink arrays, leaving the node/edge/entrypoint sets the shrink loop already produced untouched | projection-finalize | `finalize()` returned |
+| — | `recompute_view_summary(view_map, population, centrality)` — **not a sub-step**; the pure helper the tiered (budget-tier) projection calls *after* its shrink loop to re-derive `nodes_summary` from the FINAL on-disk arrays (projection:F1 / INV-pazur). It re-derives only the summary block from the authoritative post-shrink arrays, leaving the node/edge/entrypoint sets the shrink loop produced untouched | projection-finalize | `finalize()` returned |
 
-**Dependency rules.** *(R4 and R6 VACATED — 2026-06-15 recons; the sub-steps they ordered against [declared-fields #9, emission-counts #5] were removed.)* R1 entry-precondition (finalize never mutates membership);
+The numbers are the code's own (`finalize.py::finalize` comments); 5 and 9 are unused.
+
+**Not finalize sub-steps, and why.** Each would either reconcile nothing or grow the shrink-only validation ratchet (`test_validation_report_empty.py`) with net-new violations for a concern whose fix lives elsewhere:
+
+- **#5 — Emission counts** (`INV-gizik`). `files_analyzed` is contractually a *file* count (`== profile.languages[L].files`); a per-run recompute by `origin_run_id` yields a *node/path* count and leaves IR-consuming passes at 0. The fix is a new provenance field, tracked under `INV-gizik`.
+- **#7 — Confidence aggregates.** Per-edge confidence derivation and ranking-detection separation are producer-side (ADR-0039, `INV-suvil` / `META-ruhob`), and ADR-0039 keeps `Edge.confidence` out of finalize. The `behavior_map` aggregate already runs over the final set — `metrics.avg_confidence` is computed after `finalize()` in `cli.py`, and `sketch.confidence_mass` rolls up entrypoint/datamodel confidence — so there is no reconcile gap.
+- **#9 — Declared-fields population contract.** The writer-contract check already runs over the final substrate in sub-step 10's `validate_ir` (declared-fields:F1(a) / `INV-zotip`); the population-contract engine extends the writer-contract *validator* (`WI-libib`, inside `_check_writer_contract`) and producers (declared-fields:F5 / `INV-dubam`). A finalize-time re-check measured +2…+57 violations per substrate.
+- **#4 — `config_fingerprint` backstop.** `validate_ir` is silent on the default `config_fingerprint`, so backstop violations would be net-new (~+8/substrate) for a producer-side fix; it stays with `WI-mipul` / `INV-lidul`.
+
+**Dependency rules.** R1 entry-precondition (finalize never mutates membership);
 **R2 (hard):** run_signature recompute strictly after the AR-field stamp (else it
 hashes create-time placeholders — the META-hufaz defect); **R3 (hard):** the FK /
 referential-integrity check is the last violation-appending sub-step (validates
-exactly the substrate that serializes, §7); R4 (vacated — the declared-fields
-sub-step it ordered after the stamps was removed; see amended ratified #9); R5
-re-relativize first; R6 (vacated — the emission-counts step it ordered limits against was removed); R7 projections are strictly
+exactly the substrate that serializes, §7); R5 re-relativize first; R7 projections are strictly
 downstream consumers of the frozen handle (a projection cannot re-introduce a
 reconciled value); R8 the remainder is order-free (the §3 idempotency property carried
 into Phase F). R2 and R3 are each pinned by a white-box test, not just by position.
@@ -155,81 +158,26 @@ closure evidence); it is deliberately out of scope for projection:F1, which clos
 summary↔array inconsistency (INV-pazur) by construction without changing the emitted
 node/edge set.
 
-**Ratified sub-decisions.** (4) `config_fingerprint` on override-analyze runs:
-**backstop-with-violation** was the original ruling, but the `run-lifecycle:F1` carrier
-**defers** it to `WI-mipul`'s producer-side work rather than recording a validation-class
-violation here. Recording one would *grow* the shrink-only validation ratchet
-(`test_validation_report_empty.py`) — `validate_ir` is silent on the default
-`config_fingerprint` today, so the backstop violations would be net-new (~+8/substrate) —
-for a concern whose real fix is producer-side. The broken-cache-key concern stays visible
-via `WI-mipul` / `INV-lidul` in the tracker (per "we track everything in git"), not a
-runtime key. F1 still performs the `pass_version` backfill (pure fill, ratchet-safe).
-(5) emission-counts: the original **per-run, counted by `origin_run_id`** ruling is
-**withdrawn as unsound** — `files_analyzed` is contractually a *file* count
-(`== profile.languages[L].files`), but that recompute yields a *node/path* count and does
-not close `INV-gizik` (IR-consuming passes stay 0). The sub-step is **removed** from
-finalize; the real fix is a new provenance field, tracked under `INV-gizik`. (6)
-`FinalizedMap` immutability: **shallow `frozen=True`** plus a consumer-side no-mutation
-contract. (9) `_finalize_declared_fields`: planned as a documented stub for
-declared-fields:F1(a)/F5; **removed** (not stubbed) by a post-ratification analysis (the
-declared-fields-f1 fill-vs-remove recon, 2026-06-15) that **falsified the slot's premise**.
-The premise was that declared-fields:F1(a)/F5 would *fill* this slot with zero orchestrator
-change; the analysis found the work lands elsewhere: F1(a) (getattr→`_read`, `INV-zotip`,
-satisfied) already ships through sub-step 10's `validate_ir` writer-contract subset over the
-final substrate (its check fires on the dict-shaped AnalysisRun records F1(a) repaired); the
-population-contract engine (declared-fields:F1 / G8) extends
-the writer-contract *validator* (`WI-libib`, inside `_check_writer_contract`), not finalize;
-and F5 is producer-side (`INV-dubam`). The stub was a true no-op whose only possible
-finalize-time payload — appending population violations — would *grow* the shrink-only
-validation ratchet (`test_validation_report_empty.py`, zero headroom at 12/substrate; measured
-+2…+57). Per "we track everything in git" and the emission-counts precedent (#5), the slot is
-removed; the work stays visible via `WI-libib` / `INV-dubam` / `INV-jahiv`. (7)
-`_finalize_confidence_aggregates`: planned as a documented stub for confidence:F1/F2;
-**removed** (not stubbed) by a follow-on recon (the confidence-f1 fill-vs-remove recon,
-2026-06-15). *This reverses the retention #9 originally asserted* — that the confidence stub
-had "a genuine finalize-time tenant" because its payload would be a `behavior_map` aggregate.
-The recon falsified that premise exactly as #9 falsified declared-fields': (a) the
-confidence:F1/F2 IDs denote per-edge *derivation* and ranking-detection *separation*
-(producer-side, ADR-0039, `INV-suvil`/`META-ruhob` family), and ADR-0039 keeps per-edge
-confidence **out** of finalize — so the named owner never fills this slot; (b) the aggregate
-it described already exists over the final set (`metrics.avg_confidence`, computed *after*
-`finalize()`; `sketch.confidence_mass` over EP/datamodels), so there is no reconcile gap; (c)
-no consumer reads a finalize-emitted confidence field. "Ratchet-safe" only meant a fill would
-be *harmless*, not that the slot had a tenant. The slot is removed; the genuine confidence
-work stays tracked under `INV-suvil` / `META-ruhob` / ADR-0039.
+**Ratified sub-decisions.** (4) `config_fingerprint` on override-analyze runs is a
+producer-side fix (`WI-mipul`), not a finalize backstop; finalize performs the
+`pass_version` backfill only (pure fill, ratchet-safe). (6) `FinalizedMap` immutability:
+**shallow `frozen=True`** plus a consumer-side no-mutation contract. The rule numbers R4 and
+R6 are unused.
 
-**Phasing — `run-lifecycle:F1` is the carrier.** F1's PR lands the module + the
-orchestrator spine + the fully-implemented run-lifecycle sub-steps, with the other
-three families' sub-steps as **documented stubs** (confidence: no-op, **since removed** — see
-amended ratified #7; declared-fields: originally the existing `validate_ir` subset, **since
-removed** — see amended ratified #9; referential-integrity: the lifted existing `validate_ir`
-call, structurally last from day one), so F1 merges green **without** them. Two run-lifecycle sub-steps named in the table above did **not** land as written:
-`_finalize_emission_counts` (5) is **removed** (unsound — amended ratified #5) and the
-`config_fingerprint` half of sub-step 2 is **deferred** to `WI-mipul` (amended #4); both
-are tracked in the tracker, not stubbed in code. **The Phase-2 "each family fills a named
-slot" model did not materialize.** Of the three families: `projection-finalize` became a
-*downstream consumer* (`compact.recompute_view_summary`, not a sub-step); and both the
-`declared-fields` (9) and `confidence` (7) stubs were **removed** (amended ratified #9 and #7)
-once follow-on recons found their work lands outside finalize — declared-fields in the
-writer-contract *validator* (`WI-libib`) + producers (declared-fields:F5), confidence in the
-per-edge derivation family (`INV-suvil`, ADR-0039) with its aggregate already covered by
-`metrics`/`sketch`. So no Phase-2 family adds a finalize sub-step; the finalize body is exactly
-the run-lifecycle:F1 carrier's own sub-steps (the seam-(a) merge-collision hazard the stubs
-were meant to dissolve simply did not arise, since the families landed elsewhere). Per the
-§"Sequencing constraint", finalize still lands **after**
-the **reader-half** of seam (b) — the `py.py` scope-stack / call-resolution rewrite
-(`WI-jafat`, T0, **merged**) — and the Phase D/E reorder (`WI-pozur`, **merged**), so the
-entry precondition (substrate final on entry) holds. The **producer-half** of seam (b) —
-the stable-id v6 hash bump (`WI-gitun`, T1) — is *structurally independent* of finalize's
-landing: finalize reads `node.id` and the run-signature inputs
-(`pass_id`/version/config/toolchain), neither of which v6 changes, so finalize's v6
-dependency is **diff-churn coordination, not correctness or purpose** (the one predicted
-cross-run diff — the §8 round-trip golden — regenerates when v6 lands). F1 may therefore
-land as a T0 ahead of v6.
+**Sequencing.** `run-lifecycle:F1` carried the module, the orchestrator spine and the
+run-lifecycle sub-steps; later sub-steps (6c, 7, 7a, 7b, 7c) were added to the same flat
+list by their own families. Per §"Sequencing constraint", finalize lands **after** the
+**reader-half** of seam (b) — the `py.py` scope-stack / call-resolution rewrite
+(`WI-jafat`, merged) — and the Phase D/E reorder (`WI-pozur`, merged), so the entry
+precondition (substrate final on entry) holds. The **producer-half** of seam (b) — the
+stable-id v6 hash bump (`WI-gitun`) — is structurally independent of finalize: finalize
+reads `node.id` and the run-signature inputs (`pass_id`/version/config/toolchain), neither
+of which v6 changes, so the dependency is diff-churn coordination (the §8 round-trip golden
+regenerates), not correctness.
 
 **Closure.** Unchanged from §8: the serialization round-trip property test (every
 emitted artifact reflects one reconciled view) is the closure evidence for `META-jalur`
-(+ `META-hufaz`, `WI-mipul`); it lands with the implementing fixes, not this amendment.
+(+ `META-hufaz`, `WI-mipul`); it lands with the implementing fixes.
 
 ### 7. Validation runs at two points, with denominator-scope disclosure (resolves C1)
 

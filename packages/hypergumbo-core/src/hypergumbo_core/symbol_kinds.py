@@ -27,16 +27,24 @@ Axis taxonomy (per ADR-0027 §1):
   per-cluster audit-findings docs).
 - ``pending_classification`` — deferred values still on the registry:
   the residual Cluster B / G members, the Cluster H shading/storage
-  qualifiers awaiting their audit, and ``operation``, deferred to v6
-  under id-format:F3. Per-value verdicts arrive with each cluster's
-  audit-findings doc.
+  qualifiers awaiting their audit, ``operation`` (registered under
+  id-format:F3; its id-changing fold to ``query`` is deferred and not yet
+  scheduled), and ``multimethod`` (Clojure ``defmulti``). Per-value
+  verdicts arrive with each cluster's audit-findings doc.
 
 Beyond the axis taxonomy this module also owns the **type-family** surface
 (audit-findings 0018): :data:`TYPE_FAMILY_ABSTRACT` / :data:`TYPE_FAMILY_CONCRETE`,
 ``SymbolKindSpec.type_family``, :data:`ABSTRACT_KIND_LANGUAGES`, the query
 helpers :func:`type_like_kind_names` / :func:`abstract_type_kind_names` /
 :func:`is_abstract_type`, and a second registry scanner,
-:func:`find_partial_abstract_family_literals`.
+:func:`find_partial_abstract_family_literals`. It also owns
+:func:`is_initializer`, which says whether a symbol is the code that runs on
+construction: the ``constructor`` kind, or a ``method``/``function`` with its
+language's reserved initializer name (``_INITIALIZER_NAMES_BY_LANGUAGE``:
+python ``__init__``, javascript/typescript ``constructor``, ruby
+``initialize``, php ``__construct``). It also owns
+:data:`SOLIDITY_CALLABLE_DECLARATION_KINDS`, kept in core because both the
+Solidity producer and the ``solidity_abi`` linker read it.
 
 The ``endpoint_shape`` axis was retired in PR #3633 (Phase 4b enum
 closure / WI-butol). All 71 deprecated values that occupied that axis
@@ -186,7 +194,7 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Zig error-set declaration. Surfaced by WI-nubuv's "
                    "inline-IfExp / non-string-Constant classifier fixes "
                    "from the function-local kind union in "
-                   "hypergumbo-lang-extended1/zig.py:259. Zig errors are "
+                   "hypergumbo-lang-extended1/zig.py:332. Zig errors are "
                    "a first-class language construct sibling to "
                    "`struct` / `enum` / `union`."),
     SymbolKindSpec("list", AXIS_LANGUAGE_CONSTRUCT,
@@ -618,7 +626,7 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("signal", AXIS_LANGUAGE_CONSTRUCT,
                    "Signal symbol (VHDL / Verilog / Qt). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("message", AXIS_LANGUAGE_CONSTRUCT,
-                   "Protobuf ``message`` declaration (``proto.py:260``). "
+                   "Protobuf ``message`` declaration (``proto.py:296``). "
                    "CANONICAL per audit-findings 0007 (reclassified Wave 6 "
                    "PR 4 — the original DEPRECATE-NO-FOLD verdict was a "
                    "literal-grep blind-spot miss; ``proto.py`` emits via "
@@ -637,15 +645,15 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("node", AXIS_LANGUAGE_CONSTRUCT,
                    "Node symbol (k8s / DSL). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("inductive", AXIS_LANGUAGE_CONSTRUCT,
-                   "Lean ``inductive`` type declaration (``lean.py:247``). "
+                   "Lean ``inductive`` type declaration (``lean.py:391``). "
                    "CANONICAL per audit-findings 0007 (reclassified Wave 6 "
                    "PR 4 — the original DEPRECATE-NO-FOLD verdict was a "
                    "literal-grep blind-spot miss; ``lean.py`` emits via "
                    "``add_symbol(..., 'inductive')`` indirection)."),
     SymbolKindSpec("theorem", AXIS_LANGUAGE_CONSTRUCT,
                    "Theorem-prover top-level construct (Lean theorems and "
-                   "lemmas at ``lean.py:222,231``; TLA+ theorems at "
-                   "``tlaplus.py:207``). CANONICAL per audit-findings 0007 "
+                   "lemmas at ``lean.py:355,368``; TLA+ theorems at "
+                   "``tlaplus.py:286``). CANONICAL per audit-findings 0007 "
                    "(reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD "
                    "verdict was a literal-grep blind-spot miss; both producers "
                    "emit via ``add_symbol(..., 'theorem')`` indirection)."),
@@ -715,6 +723,22 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "child). Semantically an anonymous query; pending the "
                    "producer fold to `query` (id-changing, deferred to v6). "
                    "Registered per id-format:F3."),
+
+    # ----------------------------------------------------------------
+    # WI-lijaz discovery -- a value read back through a returned tuple
+    # ----------------------------------------------------------------
+    # clojure.py chooses ``kind`` from ``_is_def_form``'s dict of
+    # ``(kind, visibility)`` tuples and unpacks the returned tuple
+    # (``kind, visibility = def_info``). value_flow refused that unpack as an
+    # escape of ``def_info`` until WI-lijaz stopped counting the read being
+    # answered as one; the value then surfaced. Registered AXIS_PENDING per
+    # the WI-nubuv ext A precedent above, for the per-cluster audit.
+    SymbolKindSpec("multimethod", AXIS_PENDING,
+                   "Clojure ``defmulti``: a multimethod, the dispatch function "
+                   "whose implementations are the ``defmethod`` forms (kind "
+                   "``method``). Pending classification: a language construct "
+                   "on its face; the audit decides whether it stays distinct "
+                   "from ``function``."),
 )
 
 

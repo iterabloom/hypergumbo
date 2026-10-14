@@ -8,7 +8,14 @@ the *orchestrator*: ``run_all_analyzers`` runs the registered analyzers via a
 parallel ``ThreadPoolExecutor`` dispatch, stamps the config fingerprint,
 filters by file presence, runs the file-symbol / anchor synthesis passes,
 normalizes paths, dedups edges, and merges the dependency manifest — so it is
-not a pure facade. It provides the stable import points used by cli.py and
+not a pure facade. Each analyzer runs inside ``_run_costed`` on its pool
+worker, which reads the pass's own-thread CPU time there (WI-nuvam: wall time
+under the pool overlaps and inflates with contention, see ``pass_clock``) and
+hands the cost to ``collect_analyzer_result`` to stamp before serialization.
+An analyzer that raises is recorded as a crashed pass and the run continues
+(§17 fail-open) -- except a ``CatalogueError``, a catalogue file that does not
+parse, which would fail identically on every run and is re-raised for the CLI
+to report with exit 2. It provides the stable import points used by cli.py and
 partial_install_warnings.py.
 
 Import points:
@@ -19,7 +26,6 @@ Import points:
 from __future__ import annotations
 
 import os
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -35,7 +41,9 @@ from ..pass_silence import (
     UNREPORTED,
     derive_silence_reason,
 )
+from ..pass_clock import PassClock, PassCost
 from ..paths import normalize_path
+from ..yaml_catalogs import CatalogueError
 from .base import (
     populate_kind_stable_ids,
     synthesize_file_anchors_for_node_bearing_paths,
@@ -106,6 +114,7 @@ def collect_analyzer_result(
     all_usage_contexts: list[UsageContext],
     limits: Limits,
     analyzer_name: str = "",
+    cost: PassCost | None = None,
 ) -> None:
     """Collect results from an analyzer into the aggregated lists.
 
@@ -123,6 +132,11 @@ def collect_analyzer_result(
             record a ``skipped_passes`` entry when the result carries no run
             (WI-didil). Optional for backward compatibility; when empty, a
             ``run=None`` result is drained but not recorded as a skip.
+        cost: The pass's wall + own-thread CPU time, measured ON THE WORKER
+            that ran it (``_run_costed``) and stamped here, at the chokepoint,
+            before ``to_dict()`` snapshots the run (WI-nuvam). ``None`` leaves
+            ``cpu_ms`` unmeasured (serialized ``null``), which is what a direct
+            caller that did not time the pass gets.
     """
     # A result with no run is an analyzer that produced nothing (WI-didil).
     # It reaches here — rather than being short-circuited by the file-presence
@@ -171,6 +185,7 @@ def collect_analyzer_result(
             collect_analyzer_result(
                 result, analysis_runs, all_symbols, all_edges,
                 all_usage_contexts, limits, analyzer_name=analyzer_name,
+                cost=cost,
             )
             return
         all_symbols.extend(result.symbols)
@@ -233,6 +248,9 @@ def collect_analyzer_result(
         # config_fingerprint stamps).
         result.run.nodes_emitted = len(result.symbols)
         result.run.edges_emitted = len(result.edges)
+        # WI-nuvam: the pass's own cost, measured on its worker thread.
+        if cost is not None:
+            cost.stamp(result.run)
         # INV-bikaj (arc T6): stamp WHY this pass emitted nothing, at the same
         # chokepoint as the counters it is derived from. Only what is certain
         # from the counters — an analyzer that read files and produced nothing
@@ -346,6 +364,20 @@ def _filter_by_file_presence(
     return retained
 
 
+def _run_costed(func: Any, *args: Any, **kwargs: Any) -> tuple[Any, PassCost]:
+    """Run one analyzer and measure it ON THE THREAD THAT RUNS IT (WI-nuvam).
+
+    This is what the pool submits, so the clock starts and stops inside the
+    worker. ``thread_time`` is per-thread: read on the orchestrating thread,
+    which only waits in ``as_completed``, it would report ~0 for every pass.
+    An analyzer that raises propagates unchanged; its crash is recorded by the
+    caller and there is no run to cost.
+    """
+    clock = PassClock()
+    result = func(*args, **kwargs)
+    return result, clock.read()
+
+
 def run_all_analyzers(
     repo_root: Path,
     max_files: int | None = None,
@@ -413,13 +445,23 @@ def run_all_analyzers(
             kwargs: dict[str, Any] = {}
             if analyzer.supports_max_files and max_files is not None:  # pragma: no cover
                 kwargs["max_files"] = max_files
-            future = pool.submit(analyzer.get_func(), repo_root, **kwargs)
+            future = pool.submit(
+                _run_costed, analyzer.get_func(), repo_root, **kwargs
+            )
             futures[future] = analyzer
 
         for future in as_completed(futures):
             analyzer = futures[future]
             try:
-                result = future.result()
+                result, cost = future.result()
+            except CatalogueError:
+                # NOT fail-open: a catalogue file that does not parse -- a
+                # user's library_signatures.d or dataflow_patterns.d file --
+                # would fail the same way for every run, and recording it as
+                # one crashed pass emitted a map with the whole language
+                # missing and exit 0. Re-raised so the CLI reports the file
+                # with exit 2, like a broken file read outside the pool.
+                raise
             except Exception as exc:
                 # §17 fail-open (WI-madal L3): a single analyzer raising must
                 # not abort the whole run. Record it pass-level and continue so
@@ -436,7 +478,7 @@ def run_all_analyzers(
 
             collect_analyzer_result(
                 result, analysis_runs, all_symbols, all_edges, all_usage_contexts,
-                limits, analyzer_name=analyzer.name,
+                limits, analyzer_name=analyzer.name, cost=cost,
             )
 
             # Capture symbols for linkers (e.g., JNI needs c_symbols and java_symbols)
@@ -473,7 +515,7 @@ def run_all_analyzers(
             {"pass_id": "orchestrator_file_symbol_synthesis"}
         ),
     )
-    _file_synth_t0 = time.perf_counter()
+    _file_synth_clock = PassClock()
     _synth_file_symbols = synthesize_file_symbols_for_dangling_edges(
         all_symbols, all_edges, repo_root=repo_root,
         origin_run_id=_file_synth_run.execution_id,
@@ -528,7 +570,7 @@ def run_all_analyzers(
     if _total_file_synth:
         # INV-gizik: this synthesis pass bypasses both analyzer + linker
         # chokepoints; stamp its duration + node count (it emits only Symbols).
-        _file_synth_run.duration_ms = int((time.perf_counter() - _file_synth_t0) * 1000)
+        _file_synth_clock.read().stamp(_file_synth_run)
         _file_synth_run.nodes_emitted = _total_file_synth
         analysis_runs.append(_file_synth_run.to_dict())
 

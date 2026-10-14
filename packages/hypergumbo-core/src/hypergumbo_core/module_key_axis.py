@@ -25,7 +25,7 @@ names a local binding at one call site; ``resp`` is not where ``read`` is
 defined. That is the same cut ADR-0023 made for ``Edge.edge_type`` -- properties
 of an endpoint are queried from the endpoint, not smuggled into the label -- and
 the receiver's type already has a home in ``Edge.meta["receiver_type_hint"]``
-(stamped by eight analyzers, read by neither ``io_boundary`` nor ``taint``;
+(stamped by nine analyzers, read by neither ``io_boundary`` nor ``taint``;
 WI-monul).
 
 WHY THIS IS A STRUCTURAL-POLICY AXIS RATHER THAN A REGISTRY OF VALUES. Module
@@ -66,7 +66,7 @@ bugs. Over 65,187 external refs on a 21-repo, 10-language cold cohort, 7.8% of
 slots are not a single module identity.
 
 The producer surface says the same thing in a different way: 54 ``ExternalRef``
-construction sites across 20 analyzers, and the local feeding ``module_path`` is
+construction sites across 22 analyzers, and the local feeding ``module_path`` is
 variously ``path_hint``, ``module_hint``, ``module_name``, ``mod``, ``hint``,
 ``ns``, ``pkg``, ``receiver_name``, ``wildcard_module`` and the literal
 ``"redirect"``. No two analyzers call the thing the same name.
@@ -86,7 +86,7 @@ from typing import Final
 
 #: The axiom, as one sentence, so a consumer can quote it without
 #: re-deriving it from prose. Cited by ADR-0051 and by WI-virav's
-#: annotation sweep over the ~18-item pile.
+#: annotation sweep over the 20-item pile.
 MODULE_KEY_AXIOM: Final[str] = (
     "The module key names the STATIC OWNER PATH of the called symbol -- the "
     "namespace or type in which it is DEFINED, spelled in the source "
@@ -163,7 +163,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=1893,
+                line=2587,
                 anchor="module_path=path_hint",
                 note=(
                     "The CORRECT shape, kept as the contrast case: the hint "
@@ -195,15 +195,19 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/objc.py"
                 ),
-                line=1032,
-                anchor="_module: str | None = receiver_name",
+                line=1136,
+                anchor="_module = receiver_name",
                 note=(
                     "Reads as a receiver-variable site and is not: it is "
                     "gated on receiver_name[0].isupper(), and a capitalised "
                     "Objective-C message receiver is normally a CLASS name. "
                     "The 2026-09-01 audit recorded this as objc writing a "
                     "receiver variable; that attribution was wrong and the "
-                    "lowercase identifiers it counted came from swift."
+                    "lowercase identifiers it counted came from swift. "
+                    "Since WI-dason the site is also gated on the class NOT "
+                    "being one the repo declares: a project class is a "
+                    "symbol, not an external owner, and rides in "
+                    "receiver_type_hint only."
                 ),
             ),
         ),
@@ -232,7 +236,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=1822,
+                line=2516,
                 anchor="_module = _external_type or import_aliases.get(callee_name)",
                 note=(
                     "WAS the conflation in its purest form, and the single "
@@ -277,7 +281,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=1599,
+                line=1962,
                 anchor='module_hint = ",".join(_slots)',
                 note=(
                     "The file's entire #include set joined into one slot, "
@@ -307,7 +311,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/bash.py"
                 ),
-                line=1425,
+                line=1589,
                 anchor='module_path="redirect"',
                 note=(
                     "A shell redirection is not a call; the name slot holds "
@@ -342,7 +346,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=6616,
+                line=7383,
                 anchor='"process": "process",',
                 note=(
                     "The identity mapping that puts a global's own name into "
@@ -354,7 +358,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=933,
+                line=1015,
                 anchor="JS_KNOWN_GLOBALS",
                 note=(
                     "The globals treated as addressable owners — 11 as of "

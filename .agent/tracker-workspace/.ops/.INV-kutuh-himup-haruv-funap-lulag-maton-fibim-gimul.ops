@@ -1,0 +1,39 @@
+- op: create  # 9257
+  at: '2026-10-11T04:26:56Z'  # 9257
+  by: agent  # 9257
+  actor: jgstern_agent  # 9257
+  clock: 1  # 9257
+  nonce: '9257'  # 9257
+  data:  # 9257
+    kind: invariant  # 9257
+    title: "cli: --backend=X as the final argv token is not stripped, so argparse exits 2"  # 9257
+    status: violated  # 9257
+    priority: 3  # 9257
+    parent:  # 9257
+    tags:  # 9257
+    - cli  # 9257
+    - bug  # 9257
+    - docstring_audit  # 9257
+    isbefore: []  # 9257
+    duplicate_of: []  # 9257
+    not_duplicate_of: []  # 9257
+    pr_ref:  # 9257
+    description: "Repro: `hypergumbo catalog --backend=tree-sitter` -> exit 2 'unrecognized arguments: --backend=tree-sitter'; `hypergumbo catalog --backend tree-sitter`, `hypergumbo --backend=tree-sitter catalog` and `... --backend=tree-sitter --help` all exit 0. test_backend_cli_flag.py only tests `=` before the subcommand. Fix: iterate range(len(argv)) and read argv[idx+1] only when it exists; add a test with `--backend=X` last.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 9257
+    fields:  # 9257
+      statement: "`--backend` is accepted in any position, in both `--backend X` and `--backend=X` forms (cli.py module docstring)."  # 9257
+      root_cause: "main's pre-scan loops `for idx in range(len(argv) - 1)`, so the last token is never examined, even in the `=` form that needs no following token."  # 9257
+- op: update  # c101
+  at: '2026-10-11T05:50:30Z'  # c101
+  by: agent  # c101
+  actor: jgstern_agent  # c101
+  clock: 2  # c101
+  nonce: c101  # c101
+  set:  # c101
+    status: satisfied  # c101
+- op: discuss  # d196
+  at: '2026-10-11T05:50:31Z'  # d196
+  by: agent  # d196
+  actor: jgstern_agent  # d196
+  clock: 3  # d196
+  nonce: d196  # d196
+  message: "Fixed in PR #1529 (merge 70ca0396e5). Root cause: main's --backend pre-scan looped range(len(argv) - 1), so the last token was never examined, even in the self-contained '=' form. Same loop also bypassed argparse's choices= (the flag is stripped before argparse runs), so an unknown value like '--backend bogus' was silently ignored and the command ran. Fix: new _strip_backend_flag(argv, parser) scans every token (stopping at '--'), reads the value token only when it exists and is not another option, and rejects a missing value ('expected one argument') or unknown one ('invalid choice') via parser.error, exit 2; choices come from one BACKEND_CHOICES tuple shared with add_argument. Evidence on dev 70ca0396e5: 'hypergumbo catalog --backend=tree-sitter' -> exit 0, prints the catalog ('Suggested for current repo: ...'); 'hypergumbo catalog --backend' -> exit 2 'argument --backend: expected one argument'; 'hypergumbo catalog --backend=bogus' -> exit 2 'argument --backend: invalid choice: 'bogus' (choose from tree-sitter, rust-analyzer, scip-python)'. Tests: test_backend_cli_flag.py (=-form last, =-form sole token, trailing bare --backend, --backend followed by a flag, unknown choice in 5 positions, -- terminator). Analogues: no other pre-scanned flag in main has a lookahead (--debug and --help/--all are membership tests)."  # d196

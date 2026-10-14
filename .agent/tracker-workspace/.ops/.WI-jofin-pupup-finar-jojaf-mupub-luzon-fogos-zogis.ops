@@ -1,0 +1,36 @@
+- op: create  # 7d26
+  at: '2026-10-01T10:47:44Z'  # 7d26
+  by: agent  # 7d26
+  actor: jgstern_agent  # 7d26
+  clock: 1  # 7d26
+  nonce: 7d26  # 7d26
+  data:  # 7d26
+    kind: work_item  # 7d26
+    title: "swift: a generic type PARAMETER (T, C, Downstream, Base) and a dotted NESTED project type (MemoryStorage.Backend 59 + DiskStorage.Backend 58 on Kingfisher) fill the module slot that INV-kotob reserves for external types"  # 7d26
+    status: todo_hard  # 7d26
+    priority: 3  # 7d26
+    parent:  # 7d26
+    tags:  # 7d26
+    - swift  # 7d26
+    - analysis_quality  # 7d26
+    - io_boundary  # 7d26
+    isbefore: []  # 7d26
+    duplicate_of: []  # 7d26
+    not_duplicate_of: []  # 7d26
+    pr_ref:  # 7d26
+    description: "FILED 2026-10-01 from WI-mofil-tidog-forob-tovah-givud-lijog-vuvug-gutid's per-module slot A/B.\n\nMECHANISM. INV-kotob refuses a PROJECT type in the swift module slot (it rides only in receiver_type_hint). Two kinds of name escape that refusal and fill the slot as if external:\n  (1) a GENERIC TYPE PARAMETER used as a declared type -- `func secureCompare<C>(to other: C)`, `init(..., downstream: Downstream)` with `Inner<Downstream: Subscriber>`: the parameter arm (`_swift_param_name_and_type`) and the field registry take the spelling `C` / `Downstream` / `T` as a type. `_swift_type_parameter_names` already exists and is applied to RETURN types (WI-higob), not to parameter or property annotations.\n  (2) a NESTED project type spelled with a dot -- `MemoryStorage.Backend`, `DiskStorage.Backend` (Kingfisher), `URLEncodedFormNode.Array` / `.Map` (hummingbird), `URLEncodedFormEncoder.Configuration` (vapor), `URLEncodedFormEncoder.DateEncoding` etc. (Alamofire): the project-type test does not recognise the dotted name.\n\nCOUNTED (analyze_swift, external method edges by dst module, dev 8cfcab7b07 = BEFORE WI-mofil):\n  vapor:       T 10, C 8, URLEncodedFormEncoder.Configuration 5, Element 2, E 2, Base 1\n  hummingbird: URLEncodedFormNode.Array 7, URLEncodedFormNode.Map 5, ChildChannel 4, Base 2, Context 1\n  Kingfisher:  MemoryStorage.Backend 59, DiskStorage.Backend 58, Base 32, T 2\n  Alamofire:   Downstream 12, Failure 2, T 1\n  swift-argument-parser: T 12\nAfter WI-mofil's branch: hummingbird URLEncodedFormNode.Array 26 (+19), Kingfisher DiskStorage.Backend 63 (+5), Alamofire URLEncodedFormEncoder.* 9 (+9, new), vapor C 9 (+1); Downstream 12 -> 0 and ChildChannel 4 -> 3 (their leak sources closed). Only names on the list above were counted -- a full census needs the declared generic parameters and nested types per file, which this count does NOT do.\n\nWhy it matters: a filled slot names a catalogue MODULE; `T` / `C` / `Base` cannot match a row (harmless to recall) but a project nested type named like a library one could, and every such row inflates the \"slot filled\" measurement that receiver-typing work is priced on (WI-mofil's own +18 Kingfisher / +33 hummingbird gains include 5 / 19 of these).\n\nDIRECTION. Apply the generic-parameter filter wherever a declared type is read (parameter, property, if-let annotation, field registry); test the project-type refusal against the dotted name's HEAD as well as the full name."  # 7d26
+    fields: {}  # 7d26
+- op: discuss  # 26bf
+  at: '2026-10-03T19:53:18Z'  # 26bf
+  by: agent  # 26bf
+  actor: jgstern_agent  # 26bf
+  clock: 2  # 26bf
+  nonce: 26bf  # 26bf
+  message: "RUST INSTANCE OF THIS SHAPE, seen 2026-10-03 while re-verifying INV-juvul (branch jgstern-agent/fix/dudal-withholding, base 2e21275d0e): bellman's uncatalogued-module list carries E::Fr, E::G1Affine and E::G2Affine. E is a generic type PARAMETER (groth16/src/verifier.rs:11 `prepare_verifying_key<E: MultiMillerLoop>`, generator.rs:32 `E::Fr::random(&mut rng)`), so these are associated types of a trait bound, not modules; each one withholds every clean verdict in that repo. Not measured beyond bellman; not filed separately because it is this item's mechanism in a second language."  # 26bf
+- op: discuss  # 863c
+  at: '2026-10-04T22:14:53Z'  # 863c
+  by: agent  # 863c
+  actor: jgstern_agent  # 863c
+  clock: 3  # 863c
+  nonce: 863c  # 863c
+  message: "From WI-hojib/WI-tagir (branch jgstern-agent/fix/hojib on top of WI-silos 41fd9834a6, not merged). PARTIAL overlap with this item's half (1), and a measured increase in half (2).\n\nHalf (1), the generic parameter used as a declared type, is now refused on the MEMBER path only. `_swift_member_type` refuses a property's type when it names a generic parameter of the declaring type, in Pass 1's field registry and in the binding pass. `_swift_type_parameter_names` now also collects a protocol's `associatedtype` names (hummingbird `associatedtype Responder` + `var responder: Responder { get }`).\n\nOn the 4-repo frozen A/B (origin/dev 385ec63be1 vs silos+hojib), generic-parameter or Self slots go 183 -> 170. Slots that left: Base x30 (KingfisherWrapper), Provider, Handler, S, M0/M1, ParentWriter, Parent, BaseChannel, BaseApp, Generator, CoreSequence, Delegate, Interceptor (a generic parameter shadowing the real Interceptor class).\n\nNOT done here, still this item's:\n- PARAMETERS typed by a generic parameter (`func f<C>(x: C)`): vapor C 8, T 12 remain.\n- `Self` as an emit-site type head: hummingbird has 131 `Self` slots on both arms.\n- A generic parameter of an EXTERNAL generic type that an extension adds members to: Alamofire `extension Result { var success: Success? }` -> `result.success.map` stamps `Success`, 2 sites, newly reached because member chains are now typed.\n- A typealias to a collection: Alamofire `typealias Object = [(key:..., value:...)]` -> slot `Object`, 3 sites.\n\nHalf (2), dotted nested project types in the slot, gets MORE exposure: 217 -> 234 rows on the same corpus, because member chains now reach more dotted-typed members (Kingfisher DiskStorage.Backend 63 -> 73, MemoryStorage.Backend 59 -> 64). The types are right; the slot policy is this item's defect. Record: ~/hypergumbo_lab_notebook/decontend/run_10032026/hojib.md and hojib/."  # 863c

@@ -1,0 +1,23 @@
+- op: create  # a0a0
+  at: '2026-10-06T08:06:05Z'  # a0a0
+  by: agent  # a0a0
+  actor: jgstern_agent  # a0a0
+  clock: 1  # a0a0
+  nonce: a0a0  # a0a0
+  data:  # a0a0
+    kind: invariant  # a0a0
+    title: "coverage_census lazy-greedy (CELF) diverges from cost-weighted greedy when tests share a group fixed cost: a charged group makes its other tests cheaper, so stale ratios are lower bounds, not upper bounds"  # a0a0
+    status: violated  # a0a0
+    priority: 3  # a0a0
+    parent:  # a0a0
+    tags:  # a0a0
+    - test_selection  # a0a0
+    - correctness  # a0a0
+    isbefore: []  # a0a0
+    duplicate_of: []  # a0a0
+    not_duplicate_of: []  # a0a0
+    pr_ref:  # a0a0
+    description: "Found by the 2026-10-06 docstring-audit random sample (blind re-review of coverage_census.py), reproduced by a verifier through the public API (build_cost_model, CoverageIndex.add, greedy_trajectory) vs a plain greedy: t1 (g.py, setup 100, call 1, lines 1-200), t2 (g.py, call 1, lines 201-250), t3 (g.py, no coverage, sets median setup 0), v (h.py, call 10, lines 251-265). Target 250/265: CELF picks t1,v,t2 = 265 lines / 112.0s; plain greedy t1,t2 = 250 lines / 102.0s. Target 1.0: CELF cumulative 101,111,112 vs greedy 101,102,112. Script: ~/hypergumbo_lab_notebook/staleness_audit_10052026 follow-up (scratch celf.py). Existing grouped fixed-cost test (test_coverage_census.py ~:372-382) checks only total seconds, not pick order. Fix shapes: re-push the group's members when a group is charged, or treat a group charge as invalidating their heap entries. Module docstring (lines 7-8, 53-55) also claims an inverted line->tests index that is not built."  # a0a0
+    fields:  # a0a0
+      statement: "greedy_trajectory returns the same pick order as plain cost-weighted greedy (recompute every ratio each step), which is what its docstring and ln(n) / (1-1/e) guarantee claim."  # a0a0
+      root_cause: "coverage_census.py: gain_and_cost adds a group's fixed cost only while the group is uncharged (~:565); the heap stores gain/cost ratios (~:573); after charged_groups.add (~:609) the remaining members of that group get cheaper so their true ratio RISES above the queued one; the early-accept at ~:586 assumes the stale entry is an upper bound. Nothing re-pushes group members when a group is charged."  # a0a0

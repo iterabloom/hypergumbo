@@ -491,6 +491,42 @@ class Circle : Drawable {
         assert implements_edges[0].src == circle.id
         assert implements_edges[0].dst == drawable.id
 
+    def test_interface_extending_interface_is_extends(self, tmp_path: Path) -> None:
+        """``interface KChild : KBase`` is an ``extends`` edge (WI-kalug).
+
+        The resolver tries the interface map first and labelled every
+        interface target ``implements`` -- including from an interface
+        source, which does not implement anything. The core inheritance
+        linker now labels the same relation ``extends``; had Kotlin kept
+        ``implements``, the pipeline carried both labels for one relation.
+        """
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Shapes.kt").write_text("""
+interface KBase {
+    fun m()
+}
+
+interface KChild : KBase {
+    fun n()
+}
+
+class KImpl : KChild {
+    override fun m() {}
+    override fun n() {}
+}
+""")
+        result = analyze_kotlin(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.kind in ("class", "interface")}
+        got = sorted(
+            (e.src, e.edge_type, e.dst, e.evidence_type)
+            for e in result.edges if e.edge_type in ("extends", "implements")
+        )
+        assert got == sorted([
+            (by_name["KChild"].id, "extends", by_name["KBase"].id, "ast_extends"),
+            (by_name["KImpl"].id, "implements", by_name["KChild"].id, "ast_implements"),
+        ])
+
     def test_no_edge_for_external_superclass(self, tmp_path: Path) -> None:
         """No edge created when superclass is not in analyzed codebase."""
         from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
@@ -873,7 +909,7 @@ class TestKotlinFileReadErrors:
         kt_file.write_text("fun test() {}")
 
         with patch.object(Path, "read_bytes", side_effect=OSError("Read failed")):
-            result = _extract_symbols_from_file(kt_file, parser, run)
+            result = _extract_symbols_from_file(kt_file, parser, run, rel_path="test.kt")
 
         assert result.symbols == []
 
@@ -1522,7 +1558,7 @@ fun main() {
 }
 """)
 
-        analysis = _extract_symbols_from_file(kt_file, parser, run)
+        analysis = _extract_symbols_from_file(kt_file, parser, run, rel_path=kt_file.name)
 
         # Check imports are extracted
         assert "Helper" in analysis.imports
@@ -1573,7 +1609,7 @@ class Helper {
 """)
 
         # Extract symbols and imports
-        analysis = _extract_symbols_from_file(caller_file, parser, run)
+        analysis = _extract_symbols_from_file(caller_file, parser, run, rel_path=caller_file.name)
         local_symbols = analysis.symbol_by_name
         imports = analysis.imports
 
@@ -1745,11 +1781,16 @@ fun outer() {
         )
         assert call_edge is not None, "Call inside nested lambdas should be attributed to outermost function"
 
-    def test_call_at_top_level_outside_function_no_edge(self, tmp_path: Path) -> None:
-        """Calls at top level (outside any function) should not create edges.
+    def test_call_at_top_level_outside_function_is_anchored_on_the_file(self, tmp_path: Path) -> None:
+        """A call at top level (outside any function) is anchored on the FILE.
 
-        Top-level property initializers run at object creation time, not inside
-        any specific function. These calls should not be attributed.
+        This test used to pin "should not create edges", on the reasoning that a
+        top-level initialiser runs in no particular function. That is true of the
+        FUNCTION and does not make the call disappear: INV-foluz requires every
+        parsed call to emit an edge on some symbol, and INV-bamij names kotlin's
+        top-level ``val`` as a shape that broke it. The file pseudo-symbol is the
+        anchor python and php use for module-level code, which answers the old
+        concern: the call is not attributed to any function.
         """
         from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
@@ -1770,12 +1811,12 @@ val result = helper()
         helper_func = next((s for s in result.symbols if s.name == "helper"), None)
         assert helper_func is not None
 
-        # There should be no call edge to helper (call is at top level)
         call_edges = [
             e for e in result.edges
             if e.dst == helper_func.id and e.edge_type == "calls"
         ]
-        assert len(call_edges) == 0, "Top-level call should not create an edge"
+        assert len(call_edges) == 1, [e.src for e in call_edges]
+        assert call_edges[0].src.endswith(":1-1:file:file"), call_edges[0].src
 
 
 class TestKotlinAmbiguousMethodGuard:

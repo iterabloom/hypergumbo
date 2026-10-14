@@ -11,16 +11,26 @@ ADR-0017 §1c Phase 2:
 - Field writes (``self.field = expr``) — treated as mutation of ``self``
 - Index writes (``data[idx] = val``) — treated as mutation of ``data``
 - ``for`` loops (``for item in iter``)
-- ``if let`` / ``match`` arm bindings
+- ``if let`` / ``while let`` / let-chains and ``match`` arm bindings
 - ``return`` expressions
-- Closure parameters (conservative: all captured vars are uses)
+- Writes through a dereference (``*y = expr``)
+- Closures: every identifier the body reads is a use of the statement that
+  creates the closure, except the closure's own parameters. The body itself
+  is built as its own CFG region (``nested_function`` in
+  ``cfg_nodes/rust.yaml``), so its bindings never define the outer variables.
 
 The ``?`` operator is handled at the CFG level (dual control-flow edges
-via the ``early_return_on_error`` semantic hook). The extractor treats
-the Ok-side binding as a simple ``let`` define.
+via the ``early_return`` hook, ``semantics: return_on_err``, in
+``cfg_nodes/rust.yaml``). The extractor treats the Ok-side binding as a
+simple ``let`` define.
 
-Hard patterns (borrow alias tracking, ``ref``/``ref mut`` in match arms,
-macro invocation analysis) were addressed in Phase 2b (WI-bifog).
+``ref``/``ref mut`` match-arm patterns and macro invocation arguments were
+addressed in Phase 2b (WI-bifog). Borrow aliasing is not tracked: a write
+through one reference does not define the variable it borrows.
+
+Importing the module also calls ``register_ddg_language`` to make Rust a DDG
+language: every ``function_item`` (methods included) is a function, named and
+kinded by the spec's defaults so the DDG ids match the Rust analyzer's ids.
 """
 from __future__ import annotations
 
@@ -127,10 +137,18 @@ def _collect_pattern_names(node: Any, source: bytes) -> list[str]:
         return names
 
     if node.type == "tuple_struct_pattern":
-        # e.g., Some(x), Ok(val)
+        # e.g., Some(x), Ok(val). The constructor is the ``type`` field, and
+        # this grammar spells a bare one as an ``identifier``: without the
+        # field test ``Some`` was collected as a bound NAME (seen once
+        # WI-losod handed ``if let Some(x) = opt`` to this collector).
         names = []
-        for child in node.children:
-            if child.is_named and child.type != "type_identifier" and child.type != "scoped_identifier":
+        for i, child in enumerate(node.children):
+            if (
+                child.is_named
+                and node.field_name_for_child(i) != "type"
+                and child.type != "type_identifier"
+                and child.type != "scoped_identifier"
+            ):
                 names.extend(_collect_pattern_names(child, source))
         return names
 
@@ -292,13 +310,9 @@ def _handle_return_expression(node: Any, source: bytes) -> DefUseResult:
 def _handle_if_expression(node: Any, source: bytes) -> DefUseResult:
     """Handle if expression header (condition only, not body)."""
     condition = node.child_by_field_name("condition")
-    if condition and condition.type == "let_condition":
+    if condition and condition.type in ("let_condition", "let_chain"):
         # if let Some(x) = expr
-        pattern = condition.child_by_field_name("pattern")
-        value = condition.child_by_field_name("value")
-        defines = _collect_pattern_names(pattern, source) if pattern else []
-        uses = _collect_identifiers(value, source) if value else []
-        return DefUseResult(defines=defines, uses=uses)
+        return _handle_let_condition(condition, source)
     uses = _collect_identifiers(condition, source) if condition else []
     return DefUseResult(uses=uses)
 
@@ -324,18 +338,50 @@ def _handle_expression_statement(node: Any, source: bytes) -> DefUseResult:
 
 
 def _handle_closure_expression(node: Any, source: bytes) -> DefUseResult:
-    """Handle closure: |x, y| expr (conservative capture)."""
+    """Handle closure: |x, y| expr (conservative capture).
+
+    The body's identifiers are uses -- a captured value is read by the
+    statement that creates the closure -- EXCEPT the closure's own parameters,
+    which are bindings of the closure, not of the enclosing function. They were
+    once returned as DEFINITIONS here, which was harmless only while nothing
+    handed this handler a node: since cfg_nodes/rust.yaml records a closure
+    met outside an atomic statement as a statement of its own (WI-faful), a
+    parameter named like an outer variable would have killed it.
+    """
     params = node.child_by_field_name("parameters")
-    defines: list[str] = []
+    own: set[str] = set()
     if params:
         for child in params.children:
             if child.type == "identifier":
-                name = _node_text(child, source)
-                if name != "_":
-                    defines.append(name)
-    # Body identifiers are conservative uses (captures)
+                own.add(_node_text(child, source))
     body = node.child_by_field_name("body")
     uses = _collect_identifiers(body, source) if body else []
+    return DefUseResult(uses=[u for u in uses if u not in own])
+
+
+def _handle_let_condition(node: Any, source: bytes) -> DefUseResult:
+    """Handle `let PAT = expr` in an `if` / `while` header (WI-losod).
+
+    The CFG records the condition of `if let Some(x) = opt {` as its statement,
+    and in this grammar that node is a `let_condition`: it DEFINES the
+    pattern's names and reads the value. A `let_chain` (`if let A(a) = x &&
+    c`) holds several, each defining its own pattern.
+    """
+    if node.type == "let_chain":
+        defines: list[str] = []
+        uses: list[str] = []
+        for child in node.named_children:
+            handler = _HANDLERS.get(child.type)
+            part = handler(child, source) if handler else DefUseResult(
+                uses=_collect_identifiers(child, source),
+            )
+            defines.extend(part.defines)
+            uses.extend(part.uses)
+        return DefUseResult(defines=defines, uses=uses)
+    pattern = node.child_by_field_name("pattern")
+    value = node.child_by_field_name("value")
+    defines = _collect_pattern_names(pattern, source) if pattern else []
+    uses = _collect_identifiers(value, source) if value else []
     return DefUseResult(defines=defines, uses=uses)
 
 
@@ -350,6 +396,8 @@ _HANDLERS: dict[str, Any] = {
     "match_arm": _handle_match_arm,
     "expression_statement": _handle_expression_statement,
     "closure_expression": _handle_closure_expression,
+    "let_condition": _handle_let_condition,
+    "let_chain": _handle_let_condition,
 }
 
 
@@ -362,6 +410,5 @@ _HANDLERS: dict[str, Any] = {
 # which reads downstream as "this function has no DDG data".
 register_ddg_language(LanguageDdgSpec(
     language="rust",
-    file_glob="*.rs",
     function_node_types=frozenset({"function_item"}),
 ))

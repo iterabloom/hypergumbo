@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: MPL-2.0
 """Stop hook helpers for the hypergumbo tracker.
 
-Provides count_todos, hash_todos, and generate_guidance functions used
-by the stop hook governance system. These functions wrap TrackerSet with
-fail-closed semantics: all exceptions are caught and result in exit code 1,
-preventing silent governance failures.
+Provides count_todos, hash_todos, and generate_guidance functions for
+the stop hook governance system (count_todos and generate_guidance are
+called by stop_logic.sh via ``scripts/tracker count-todos`` / ``guidance``).
+These functions wrap TrackerSet with fail-closed semantics: all exceptions
+are caught and result in exit code 1, preventing silent governance failures.
 
 Design rationale:
 - Fail-closed: if the tracker is broken, the stop hook blocks. This is
@@ -12,11 +13,20 @@ Design rationale:
 - Hard/soft distinction: --hard returns only statuses containing "hard"
   from the blocking_statuses list. --soft returns the remainder.
   This matches the hard/soft TODO convention.
-- hash_todos provides a fingerprint for circuit-breaker detection:
-  if the hash hasn't changed between stop attempts, no progress was made.
-- generate_guidance writes a markdown file listing blocking items sorted
-  by priority. This replaces the grep-based guidance generation in
-  stop_logic.sh (Phase 1: dual-mode with grep fallback).
+- hash_todos is a SHA256 fingerprint of blocking items (id, status, title),
+  exposed only through the ``hash-todos`` CLI subcommand. The stop hook's
+  circuit breaker does NOT use it: stop_logic.sh hashes file mtimes in the
+  progress sentinel directories instead, so progress means changed work
+  product rather than changed tracker state.
+- generate_guidance writes a markdown guidance file. With no unread human
+  messages it lists blocking items sorted by priority; when any unread
+  human message exists it instead writes the REPLY-FIRST CYCLE document
+  (_build_reply_first_guidance, WI-ripuz) that suppresses the TODO list.
+  In that branch, items whose first unread message starts with a
+  ``[[preface]]`` tag go through an LLM precedence gate (WI-mofaz) that
+  makes an outbound OpenRouter call when OPENROUTER_API_KEY is set; a
+  missing key or failed call means "do not elevate". This replaces the
+  grep-based guidance generation formerly in stop_logic.sh.
 
 See ADR-0013 for the full design specification.
 """

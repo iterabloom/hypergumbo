@@ -26,3 +26,18 @@
   clock: 2  # 5d55
   nonce: 5d55  # 5d55
   message: "PROGRESS via PR #149 (WI-sarag): the None-guard this item wants is now\nBAKED INTO the single node.text chokepoint (analyze.base.node_own_text),\nand the 34 private copies that each hand-rolled (or forgot) the guard now\nroute through it. REMAINING on this item: the inline .text.decode sites\nOUTSIDE the swept copies (~7 unguarded of ~34 total at last count, e.g.\ncli.py:3451/3458 and lua.py:840) — re-count before draining, and prefer\nrouting them through node_own_text over adding local guards. The item\nstays open on that residual."  # 5d55
+- op: update  # 1c67
+  at: '2026-09-29T13:39:24Z'  # 1c67
+  by: agent  # 1c67
+  actor: jgstern_agent  # 1c67
+  clock: 3  # 1c67
+  nonce: 1c67  # 1c67
+  set:  # 1c67
+    status: done  # 1c67
+- op: discuss  # b4a5
+  at: '2026-09-29T13:39:24Z'  # b4a5
+  by: agent  # b4a5
+  actor: jgstern_agent  # b4a5
+  clock: 4  # b4a5
+  nonce: b4a5  # b4a5
+  message: "STALE -- ALREADY FIXED, closed on positive evidence (2026-09-29, dev after PR #1302). Enumerated every `.text.decode(` in packages/*/src: 14 sites (not 34 -- the rest moved to node_text helpers since filing), and EVERY one is guarded: toml_config.py:93/95/104/111 (the item's named file) all carry `if node.text else \"\"`; view_template_spring.py's two COMPARED sites default to \"\" (method name, \"ModelAndView\") and its two EMITTED sites bail on None (`if expr.text is None: return None`, `if arg.text is None: continue`) -- exactly the per-site split this item asked for; kotlin.py:193 defaults to None; cyclomatic.py:863/958 catch the AttributeError. Also grepped `.text.strip/split/...` and `.text[...]`: the three hits are ElementTree / Textual TextArea, not tree-sitter. The whole-tree mypy strict run reports no union-attr on a Node.text decode."  # b4a5

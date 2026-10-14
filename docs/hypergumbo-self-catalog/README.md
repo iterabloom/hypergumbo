@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# hypergumbo's project-local self-audit catalog
+# hypergumbo's in-repo self-audit catalogue
 
-**What this directory IS:** project-local taint catalog entries used ONLY
-for hypergumbo's own self-audit (`docs/hypergumbo.claims.yaml`). Loaded
-via `extra_catalogs:` in the claims YAML.
+**What this directory IS:** taint catalogue entries used ONLY for
+hypergumbo's own self-audit (`docs/hypergumbo.claims.yaml`). Loaded via
+`extra_catalogs:` in the claims YAML.
 
 **What this directory is NOT:** part of hypergumbo-the-tool's built-in
 catalogs. Users installing hypergumbo from PyPI do NOT inherit these
@@ -18,35 +18,29 @@ are NEVER the right place — that would commit hypergumbo-the-tool to
 maintaining catalog entries for that library across all users, violating
 the stdlib-only scope.
 
-## Catalog layering, refresher
+## Where this sits among the catalogue tiers
 
-There are FOUR layers. Layer 1b was added by ADR-0047 and is the one
-that makes "shipped" and "vouched for" different questions:
+Catalogue data comes in four tiers ([ADR-0061](../adr/0061-catalogue-tiers-for-every-family.md);
+the user-facing page is [CATALOGUES.md](../CATALOGUES.md)):
 
-1. **Built-in stdlib catalogs** at `packages/hypergumbo-core/src/hypergumbo_core/io_primitives/<lang>.yaml`.
-   Stdlib only, enforced for every language by the scope gate in
-   `test_catalogue_scope_gates.py`. Hypergumbo-the-tool's responsibility,
-   shipped to PyPI users, and rows it STANDS BEHIND.
-1b. **Shipped community overlays** at `io_primitives_overlays/*.yaml`.
-   Third-party rows hypergumbo distributes and discloses but does NOT
-   vouch for (ADR-0047 rulings 1/5/6). They load by DEFAULT, carry
-   `provenance: community` and a dated `retrieved:`, are stamped
-   `unvouched` at load — so they can add findings but never license an
-   all-clear — and every run that loads one says so on stderr.
-   `--no-default-overlays` turns them off.
-2. **Project-local catalogs supplied by users.** The `--taint-sources` /
-   `--taint-sinks` / `--taint-sanitizers` CLI flags + `extra_catalogs:`
-   key in claims YAML. Each user can declare per-project rules for the
-   libraries THEY use. Rows the USER stands behind.
-3. **Hypergumbo's OWN project-local catalog (this directory).** A specific
-   *use* of layer 2's customization point, targeting this repo's audit.
+1. **Built-in** — `packages/hypergumbo-core/src/hypergumbo_core/<family>/`, rows
+   hypergumbo stands behind. Stdlib only, enforced for every family by the scope
+   gate in `test_catalogue_scope_gates.py`.
+2. **Community** — shipped third-party rows, `provenance: community`. They load
+   by default and may ADD findings but never make a verdict cleaner;
+   `--no-default-overlays` turns the I/O ones off.
+3. **Yours** — your channel directories under `$XDG_CONFIG_HOME/hypergumbo/`
+   and the files you name with `--io-primitives` / `--taint-*`.
+4. **In-repo** — catalogue data inside the analysed repository. It loads only
+   on opt-in; naming a claims file on the command line opts in that file's
+   `extra_catalogs:`.
 
-The firewall: built-in (layer 1) is hypergumbo-the-tool's ongoing
-commitment. This directory (layer 3) is one project (hypergumbo itself)
-using the layer-2 mechanism. Do NOT promote entries here into layer 1 —
-and note that layer 1b is NOT the escape hatch for that rule either: it
-is for widely-used third-party libraries, not for one project's own
-dependencies.
+**This directory is in-repo data**, opted in by `--claims docs/hypergumbo.claims.yaml`:
+one project (hypergumbo itself) using the mechanism every project has. Do NOT
+promote entries here into the built-in catalogues — that would commit
+hypergumbo-the-tool to those libraries for every user — and the community tier
+is not the escape hatch for that rule either: it is for widely-used
+third-party libraries, not for one project's own dependencies.
 
 ## Contents
 
@@ -54,7 +48,7 @@ dependencies.
   (`cmd_sketch`, `cmd_run`, `cmd_install_gitleaks`, etc.) as a synthetic
   taint source with `start_at: callee`. These act as the entry-point
   anchors for the per-entry-point safety claims.
-- `peer_zones.yaml` — declares the project-local peer sink zones
+- `peer_zones.yaml` — declares hypergumbo's own peer sink zones
   (`user_cache`, `user_out`, `local_bin`, `site_packages`, `rustup_dir`,
   `hf_cache`, `tmp_build`, `subprocess`, `dev_zone`) by listing specific
   sink call sites within hypergumbo's own code.
@@ -64,10 +58,10 @@ dependencies.
   > mechanism in `_merge_with_user_override` (taint.py) remains
   > available for finer-grained per-`(module, name, kind)` zone swaps.
 
-## Layer-3 entry rule
+## Entry rule
 
 If hypergumbo's own source code starts using a new third-party library
-that does observable IO, add it here (NOT to layer 1):
+that does observable IO, add it here (NOT to the built-in catalogues):
 
 ```yaml
 # In an appropriate file in this directory:

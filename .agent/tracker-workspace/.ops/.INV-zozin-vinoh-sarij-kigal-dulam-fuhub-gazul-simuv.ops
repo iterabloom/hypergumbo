@@ -1,0 +1,24 @@
+- op: create  # 37fc
+  at: '2026-10-11T04:30:02Z'  # 37fc
+  by: agent  # 37fc
+  actor: jgstern_agent  # 37fc
+  clock: 1  # 37fc
+  nonce: 37fc  # 37fc
+  data:  # 37fc
+    kind: invariant  # 37fc
+    title: "glsl: layout(...)-qualified in/out/uniform declarations produce no symbol, and function names are lowercased"  # 37fc
+    status: violated  # 37fc
+    priority: 3  # 37fc
+    parent:  # 37fc
+    tags:  # 37fc
+    - glsl  # 37fc
+    - analyzer  # 37fc
+    - docstring_audit  # 37fc
+    isbefore: []  # 37fc
+    duplicate_of: []  # 37fc
+    not_duplicate_of: []  # 37fc
+    pr_ref:  # 37fc
+    description: "Repro: both layout forms -> no symbol; a call to MyFn goes to a different function myfn. Also dead code: _make_edge_id / hashlib (~34, 71-74).\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 37fc
+    fields:  # 37fc
+      statement: "GLSL 3.30+ declarations such as `layout(location = 0) in vec3 pos;` and `layout(std140) uniform Block {...}` produce symbols; function identity is case-sensitive."  # 37fc
+      root_cause: "glsl.py ~243-248 classifies declarations with text.startswith('uniform'/'in '/'out '); names are lowercased at ~202/305/353."  # 37fc

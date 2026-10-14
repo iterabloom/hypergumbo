@@ -1,0 +1,25 @@
+- op: create  # 986a
+  at: '2026-10-11T04:31:23Z'  # 986a
+  by: agent  # 986a
+  actor: jgstern_agent  # 986a
+  clock: 1  # 986a
+  nonce: 986a  # 986a
+  data:  # 986a
+    kind: invariant  # 986a
+    title: "ini: sensitive-value masking matches keywords as substrings (keyboard_layout, author, monkey) and keeps first/last char and length"  # 986a
+    status: violated  # 986a
+    priority: 4  # 986a
+    parent:  # 986a
+    tags:  # 986a
+    - ini  # 986a
+    - privacy  # 986a
+    - analyzer  # 986a
+    - docstring_audit  # 986a
+    isbefore: []  # 986a
+    duplicate_of: []  # 986a
+    not_duplicate_of: []  # 986a
+    pr_ref:  # 986a
+    description: "Repro: 'hunter22' -> 'h******2'; keyboard_layout, author, monkey flagged sensitive.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 986a
+    fields:  # 986a
+      statement: "INI masking hides values of sensitive keys without flagging unrelated keys and without leaking length or edge characters."  # 986a
+      root_cause: "ini.py _mask_value uses substring keyword matching and renders v[0] + '*'*(n-2) + v[-1]."  # 986a

@@ -91,7 +91,6 @@ no-op pass gets a run is the ADR-0056 question the owner reserved).
 """
 from __future__ import annotations
 
-import time
 from dataclasses import MISSING, dataclass, field, fields, replace
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
@@ -100,6 +99,7 @@ from ..arbitration import (
     ArbitrationPolicy,
 )
 from ..arbitration import CORROBORATED_CONFIDENCE as CORROBORATED_CONFIDENCE  # re-export: the §13 level
+from ..pass_clock import PassClock
 from ..ir import (
     PASS_VERSION,
     AnalysisRun,
@@ -631,7 +631,7 @@ def merge_producer_records(
             declaration (from :func:`~.registry.merge_participants`). This is
             the refusal ADR-0057 §10 requires; it is not caught here.
     """
-    started = time.perf_counter()
+    clock = PassClock()  # WI-nuvam: wall + own-thread CPU of this serial pass
     report = MergeReport()
     pass_of_run = _pass_of_run(analysis_runs)
 
@@ -752,7 +752,7 @@ def merge_producer_records(
         return report
 
     run.nodes_emitted = len(report.merged)
-    run.duration_ms = int((time.perf_counter() - started) * 1000)
+    clock.read().stamp(run)
     report.run = run
     analysis_runs.append(run.to_dict())
     return report

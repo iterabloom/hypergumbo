@@ -51,6 +51,7 @@ module and ``asymmetric(...)`` constructs nothing.
 
 from __future__ import annotations
 
+import ast
 import collections
 from pathlib import Path
 
@@ -60,6 +61,7 @@ from hypergumbo_core.io_boundary import load_catalog
 from hypergumbo_lang_mainstream.py import (
     BUILTIN_CONSTRUCTOR_NAMES,
     EXTERNAL_CONSTRUCTOR_TYPES,
+    _external_constructor_type,
 )
 
 
@@ -95,16 +97,34 @@ class TestEveryCatalogueReceiverTypeIsMintable:
             f"dotted constructor, so every method on them is unreachable: {missing}"
         )
 
-    def test_every_catalogue_type_has_a_bare_key(self) -> None:
-        """``from smtplib import SMTP; SMTP(a)`` — the ``ast.Name`` branch."""
-        missing = sorted(
-            t for t in _catalogue_receiver_types()
-            if EXTERNAL_CONSTRUCTOR_TYPES.get(t.rsplit(".", 1)[1]) != t
-        )
+    def test_every_catalogue_type_is_mintable_from_a_bare_constructor(self) -> None:
+        """``from smtplib import SMTP; SMTP(a)`` — the ``ast.Name`` branch.
+
+        Asked of the RESOLVER, not of the table's bare keys. A leaf two types
+        claim is withheld from the table by design (``csv.DictWriter`` and the
+        community ``defusedcsv.csv.DictWriter``, WI-kozaj), and the binding
+        check still mints each from its own import through the PascalCase
+        construction rule. A withheld LOWERCASE leaf would have no such route,
+        and this assertion is what would say so.
+        """
+        missing = []
+        for t in sorted(_catalogue_receiver_types()):
+            module, leaf = t.rsplit(".", 1)
+            call = ast.parse(f"{leaf}(a)").body[0].value
+            assert isinstance(call, ast.Call)
+            if _external_constructor_type(call, {leaf: (module, leaf)}, {}) != t:
+                missing.append(t)
         assert missing == [], (
             f"{len(missing)} catalogued receiver type(s) cannot be minted from a "
             f"bare constructor: {missing}"
         )
+
+    def test_a_withheld_leaf_is_withheld_from_the_table(self) -> None:
+        """The collision guard is live: the shared ``DictWriter`` leaf is not
+        in the table, so the test above exercised the binding route for it."""
+        types = _catalogue_receiver_types()
+        assert {"csv.DictWriter", "defusedcsv.csv.DictWriter"} <= types
+        assert "DictWriter" not in EXTERNAL_CONSTRUCTOR_TYPES
 
     def test_the_file_row_survives_derivation(self) -> None:
         """``open`` → ``file`` is NOT catalogue-derived and must not be lost.
@@ -312,6 +332,7 @@ def _resolve_ctor(source: str) -> str | None:
     import ast
 
     from hypergumbo_lang_mainstream.py import (
+        _collect_scope_value_names,
         _extract_imports,
         _external_constructor_type,
     )
@@ -323,7 +344,14 @@ def _resolve_ctor(source: str) -> str | None:
         f"fixture must contain exactly one call so the subject is unambiguous; "
         f"found {len(calls)}"
     )
-    return _external_constructor_type(calls[0], imports, module_imports)
+    # INV-dulum: the call's own function scope, from production's collector, so
+    # a parameter or local that shadows an import is seen the way the analyzer
+    # sees it. Fixtures here hold at most one function around the call.
+    funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+    shadowed = _collect_scope_value_names(funcs[0]) if funcs else frozenset()
+    return _external_constructor_type(
+        calls[0], imports, module_imports, shadowed=shadowed,
+    )
 
 
 class TestDottedModuleConstructorsResolve:
@@ -431,21 +459,24 @@ class TestDottedModuleConstructorsResolve:
             "def f(h):\n    return mylib.client.HTTPConnection(h)\n"
         ) == "mylib.client.HTTPConnection"
 
-    @pytest.mark.xfail(strict=True, reason=(
-        "KNOWN GAP, PRE-EXISTING AND WIDENED HERE — filed, not fixed in this PR. "
-        "module_imports is built by an ast.walk over the WHOLE FILE, so it is "
-        "file-scoped and knows nothing about a local binding that shadows an "
-        "imported module name. This already mistyped the depth-1 form (a local "
-        "`socket` parameter still resolves `socket.socket(h)` to the stdlib "
-        "type); chain-unwinding extends the same exposure to depth >= 2. Marked "
-        "strict so whoever makes it scope-aware gets a RED test rather than a "
-        "silently-passing one they never notice."
-    ))
     def test_a_local_shadow_should_not_be_typed(self) -> None:
+        """INV-dulum (was a strict xfail): ``module_imports`` is file-scoped, so
+        a ``http`` PARAMETER satisfied the root check and the call was typed as
+        the stdlib class. The scope's value bindings now withhold it."""
         assert _resolve_ctor(
             "import http.client\n\n\n"
             "def f(http, h):\n    return http.client.HTTPConnection(h)\n"
         ) is None
+
+    def test_a_function_local_import_is_still_typed(self) -> None:
+        """THE TRAP the INV-dulum fix had to step around: a function-local
+        ``import`` binds the name TO THE MODULE. It is a local binding, but not
+        a shadow, and refusing it would turn the false positive into a false
+        negative on the ordinary lazy-import idiom."""
+        assert _resolve_ctor(
+            "def f(h):\n    import http.client\n"
+            "    return http.client.HTTPConnection(h)\n"
+        ) == "http.client.HTTPConnection"
 
 
 class TestDottedConstructorsReachTheCatalogue:

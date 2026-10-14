@@ -43,3 +43,10 @@
   clock: 4  # 9782
   nonce: '9782'  # 9782
   message: "Shipped via PR #3823 (merged at 4549106aec). linkers/js_module.py now uses make_file_id(lang, rel_path) for emitted file Symbol ids (canonical :1-1:file:file shape), make_file_stable_id for stable_id, and a pre-pass existing_file_symbol_by_canonical_id map for cross-producer dedup against orchestrator-synthesized canonical file Symbols. _make_module_file_id helper removed. Dogfood: 5 → 0 duplicate file Symbols on htrac-frontend .ts paths in hypergumbo self-analysis; js-module-linker-v1 now emits 0 file Symbols total (every resolved import target reuses existing canonical). Three new tests in TestInvMovorCanonicalFileIdReuse pin the fix. Full suite: 2552 passed; 100% coverage. Test fixture in test_route_handler_linker.py:2143 updated from legacy id to canonical."  # 9782
+- op: discuss  # 3388
+  at: '2026-10-01T14:08:23Z'  # 3388
+  by: agent  # 3388
+  actor: jgstern_agent  # 3388
+  clock: 5  # 3388
+  nonce: '3388'  # 3388
+  message: "New instance of this statement (one file-kind Symbol per path across producers), found 2026-10-01 during WI-majov on dev af4e16964b: a .ts file importing ./util.js makes js-module-linker mint typescript:src/util.js:1-1:file:file beside the analyzer's javascript:src/util.js:1-1:file:file (target id built with the IMPORTER's language, js_module.py ~805). Filed as WI-babuk-nufoh-rolig-sabus-gobuk-zituh-sofup-holid. This note changes no status; this row's fix (absolute-path shape) is not contradicted."  # 3388

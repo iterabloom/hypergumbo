@@ -326,7 +326,9 @@ def test_cmd_io_boundaries_json_envelope_top_level_keys(
 ) -> None:
     """PR-B property test: --json envelope top-level shape locked.
 
-    The io-boundaries envelope (schema_version 2.3 since WI-fasap added
+    The io-boundaries envelope (schema_version 2.4 since WI-pogar added
+    untraced_modules, the modules behind the external_potential chains grouped
+    by ecosystem; 2.3 since WI-fasap added
     db_compose_edges, the database twin of net_listen; 2.2 since
     WI-nosah/ADR-0049 added net_listen_edges for deferred crossings; 2.1 added
     command_launch_edges; 2.0 redefined total_io_edges + added
@@ -369,6 +371,7 @@ def test_cmd_io_boundaries_json_envelope_top_level_keys(
         "command_launch_edges",
         "net_listen_edges",
         "db_compose_edges",
+        "untraced_modules",
         "boundaries",
         "unsupported_languages",
     }
@@ -381,6 +384,9 @@ def test_cmd_io_boundaries_json_envelope_top_level_keys(
     assert isinstance(data["total_io_edges"], int)
     assert isinstance(data["boundaries"], dict)
     assert isinstance(data["unsupported_languages"], list)
+    assert data["untraced_modules"] == {
+        "third_party": [], "stdlib": [], "unknown": [],
+    }
 
     # Filtered path: exercises the manually-rebuilt envelope in
     # cmd_io_boundaries (the branch that does not call BoundaryMap.to_dict).

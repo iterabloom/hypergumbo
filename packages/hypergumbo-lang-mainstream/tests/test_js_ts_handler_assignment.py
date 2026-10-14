@@ -33,7 +33,8 @@ change's work and each has a test below. Three more resolve for NEITHER --
 they are receiver-typing gaps that predate this construct and would need a
 second copy of receiver resolution to fix here, so they are filed instead
 (WI-ponid: assignment-bound and field-bound receivers land on ``external``;
-WI-vipos: a computed-property call emits no edge at all) and pinned below as
+WI-vipos: a computed-property call emitted no edge at all -- since fixed, see
+test_js_ts_computed_property_call.py) and the WI-ponid two are pinned below as
 KNOWN GAPS so they cannot be mistaken for this change's failures.
 
 THE PROPERTY MUST BE ONE THE CATALOGUE ROWS. ``ws.onopen = h`` and

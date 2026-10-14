@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Infrastructure linker: build target for connecting manifest entries to main() functions.
 
-Manifest analyzers (TOML for Cargo.toml, JSON for package.json) create
+Manifest analyzers (TOML for Cargo.toml, JSON for package.json, plus XML
+and ``manifest_targets``) create
 ``defines_target`` edges that point from build target symbols (Cargo
 ``[[bin]]``, npm ``bin``) to file paths. These file paths are bare strings
 (e.g., ``src/main.rs``), not valid node IDs, so the slicer cannot follow
@@ -16,11 +17,14 @@ application code.
 How It Works
 ------------
 1. Scan all edges for ``defines_target`` type
-2. For each, collect the destination file path
-3. Resolve relative paths against the manifest file's directory (critical
-   for monorepos where Cargo.toml/package.json are in subdirectories)
-4. Search symbols for a ``main`` function in that file
-5. Create a ``calls`` edge: build_target → main()
+2. For each, collect the target file path (``meta["target_path"]`` when
+   present, else the edge's ``dst``)
+3. If no symbols live at that path, resolve it against the manifest file's
+   directory (critical for monorepos where Cargo.toml/package.json are in
+   subdirectories)
+4. Search symbols in that file for the function named by
+   ``meta["target_function"]`` when present, else for ``main``
+5. Create a ``calls`` edge: build_target → that function
 
 Why a Linker
 ------------

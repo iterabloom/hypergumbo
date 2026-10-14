@@ -20,7 +20,9 @@ Framework detection examines dependency manifests:
 - Each manifest format has a structured parser that extracts the declared
   dependency names, instead of substring-matching raw text (which matched
   comments and collisions like ``transformers`` in ``sentence-transformers``).
-  pip ``-r`` / ``-c`` includes are followed transitively, within the repo.
+  A token-matching raw-text fallback (``_manifest_has_package``) remains for
+  build-script DSL markers such as ``android {`` / ``qt +=``, and for
+  nginx.conf. pip ``-r`` / ``-c`` includes are followed transitively, within the repo.
 - Some frameworks come from file presence instead: ``.proto`` files
   (protobuf), Solidity config files (Foundry, Hardhat) and
   ``AndroidManifest.xml`` (android).
@@ -34,7 +36,9 @@ in subdirectories. This enables detection in:
 - Multi-project repositories
 
 Manifests found by name (``_find_manifest_files``) skip dot-directories,
-common non-project directories (node_modules, vendor, venv, etc.) and
+common non-project directories (node_modules, vendor, venv, etc.), any
+directory a discovery content rule identifies as installed dependency source
+or build output (Mix ``deps/``, a virtualenv named ``env``; ADR-0004), and
 test-fixture directories; glob-based detectors (e.g. ``*.cabal``) do not.
 
 Profiling is intentionally shallow - we look for package names in
@@ -52,6 +56,9 @@ only later, by ``refine_frameworks``, which promotes/demotes frameworks:
   (Rails) are exempt: they load at boot without an explicit import.
 - The prod importer node ids of each confirmed framework are kept in
   ``RepoProfile.framework_evidence`` as provenance.
+``RepoProfile`` itself lists each framework once, sorted, whichever path
+produced it: the ecosystem scanners overlap (hardhat is both a JS and a
+Solidity framework), so the raw scan can name one framework twice.
 ``IMPORT_OVERRIDES`` translates manifest names that differ from their
 import module (``scikit-learn`` imports as ``sklearn``).
 
@@ -70,7 +77,8 @@ This enables users to:
 
 Why This Design
 ---------------
-- Extension-based language detection is simple and reliable
+- Extension-based language detection (or an analyzer's own file
+  enumerator) is simple and reliable
 - Dependency file scanning catches frameworks even in empty repos
 - Shallow heuristics prioritize speed over precision
 - The profile informs which analyzers to run and what to expect
@@ -84,7 +92,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-from .discovery import find_files
+from .discovery import find_files, under_content_rule_dir
 
 if TYPE_CHECKING:
     from .ir import Edge, Symbol
@@ -688,7 +696,7 @@ class FrameworkMode(Enum):
     - NONE: Skip framework detection entirely
     - ALL: Check all known frameworks for detected languages
     - EXPLICIT: Only check explicitly specified frameworks
-    - AUTO: Auto-detect based on detected languages (default)
+    - AUTO: Auto-detect by scanning every ecosystem's manifests (default)
     """
 
     NONE = "none"
@@ -780,22 +788,59 @@ class LanguageStats:
     shebang scripts surface for bash); otherwise the count falls back to
     the language's extension globs. Matches ``analysis_runs[L].files_analyzed``
     for languages with a registered analyzer.
+
+    ``test_files`` (WI-ritaf) is how many of those ``files`` sit on a test or
+    test-support path (``selection.filters.is_test_path`` on the repo-relative
+    path -- the predicate the sketch's "N non-test + M test" files line uses).
+    ``files - test_files`` is the language's non-test footprint, so a consumer
+    asking "what is this project written in?" can tell a production language
+    from one that appears only as test fixtures. It is a SEPARATE field on
+    purpose: ``files`` must stay the enumerated count, because the WI-jadig
+    pre-filter skips an analyzer whose languages read ``files == 0``, and
+    shrinking it would stop the fixture languages' analyzers from running.
+    ``None`` means not measured (a profile restored from a cache written
+    before the field existed) and is omitted from ``to_dict``; it is never
+    read as ``0``, which is the positive claim "no test files".
     """
 
     files: int = 0
     loc: int = 0
+    test_files: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"files": self.files, "loc": self.loc}
+        result: dict[str, Any] = {"files": self.files, "loc": self.loc}
+        if self.test_files is not None:
+            result["test_files"] = self.test_files
+        return result
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "LanguageStats":
-        return cls(files=d.get("files", 0), loc=d.get("loc", 0))
+        return cls(
+            files=d.get("files", 0),
+            loc=d.get("loc", 0),
+            test_files=d.get("test_files"),
+        )
 
 
 @dataclass
 class RepoProfile:
-    """Profile of a repository's languages and frameworks."""
+    """Profile of a repository's languages and frameworks.
+
+    The framework fields are normalised once, here, in ``__post_init__``
+    (INV-vapov), so every producer gets the same guarantee: the AUTO manifest
+    scan (which concatenates per-ecosystem results, so a name two scanners
+    detect, such as hardhat from JS and Solidity, arrives twice), an EXPLICIT
+    ``--frameworks`` list a user typed with a repeat, ``refine_frameworks``,
+    and a cached ``from_dict`` written before this rule existed:
+
+    - ``frameworks``, ``dev_frameworks`` and ``requested_frameworks`` each list
+      a name at most once, sorted (the order ``to_dict`` already emitted).
+    - ``dev_frameworks`` excludes anything in ``frameworks``: a framework
+      confirmed for prod is not also dev-only (``refine_frameworks`` sends each
+      name to one side; a cached or hand-built profile may not).
+    - ``framework_evidence`` keys only names in ``frameworks`` (its contract is
+      provenance for confirmed frameworks), each with a sorted, unique node list.
+    """
 
     languages: dict[str, LanguageStats] = field(default_factory=dict)
     frameworks: list[str] = field(default_factory=list)
@@ -810,6 +855,19 @@ class RepoProfile:
     # JS lib on a repo with unavailable JS/TS extraction) is absent here, not
     # keyed to an empty list — "evidence where the graph supports it".
     framework_evidence: dict[str, list[str]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # INV-vapov: the single place that guarantees unique, sorted,
+        # mutually consistent framework fields (see the class docstring).
+        self.frameworks = sorted(set(self.frameworks))
+        prod = set(self.frameworks)
+        self.dev_frameworks = sorted(set(self.dev_frameworks) - prod)
+        self.requested_frameworks = sorted(set(self.requested_frameworks))
+        self.framework_evidence = {
+            fw: sorted(set(nodes))
+            for fw, nodes in sorted(self.framework_evidence.items())
+            if fw in prod
+        }
 
     def to_dict(self) -> dict[str, Any]:
         result = {
@@ -903,6 +961,7 @@ def _detect_languages(
     # wired to the six analyzers whose name equals their language and
     # silently absent for the rest. First declaring producer wins.
     from .analyze.registry import analyzers_for_language, ensure_discovered
+    from .selection.filters import is_test_path
     ensure_discovered()
 
     for lang, patterns in LANGUAGE_EXTENSIONS.items():
@@ -917,9 +976,36 @@ def _detect_languages(
             files = set(find_files(repo_root, patterns, excludes=excludes))
         if files:
             loc = sum(_count_loc(f) for f in files) if count_loc else 0
-            languages[lang] = LanguageStats(files=len(files), loc=loc)
+            # WI-ritaf: classify on the REPO-RELATIVE path, so a checkout that
+            # itself lives under a ``tests/`` directory is not all-test.
+            test_files = sum(
+                1 for f in files
+                if is_test_path(f.relative_to(repo_root).as_posix())
+            )
+            languages[lang] = LanguageStats(
+                files=len(files), loc=loc, test_files=test_files,
+            )
 
     return languages
+
+
+def _in_non_project_dir(repo_root: Path, dir_parts: tuple[str, ...]) -> bool:
+    """Is a manifest under ``dir_parts`` someone else's, not the project's?
+
+    Dot-directories, the dependency names ``node_modules`` / ``vendor`` /
+    ``venv`` / ``.venv`` / ``__pycache__``, and -- by content -- any directory
+    a discovery content rule claims (Mix ``deps/``, a virtualenv named
+    ``env``, build output; ADR-0004 §"Installed dependency source"). Without
+    the content arm an installed ``deps/cowboy/mix.exs`` declared the cowboy
+    framework for a Phoenix project that never names it.
+    """
+    if any(
+        p.startswith(".")
+        or p in ("node_modules", "vendor", "venv", ".venv", "__pycache__")
+        for p in dir_parts
+    ):
+        return True
+    return under_content_rule_dir(repo_root, dir_parts)
 
 
 def _find_manifest_files(repo_root: Path, filename: str, max_depth: int = 3) -> list[Path]:
@@ -951,11 +1037,7 @@ def _find_manifest_files(repo_root: Path, filename: str, max_depth: int = 3) -> 
             if path.is_file():
                 # Skip common non-project directories
                 parts = path.relative_to(repo_root).parts
-                if any(
-                    p.startswith(".")
-                    or p in ("node_modules", "vendor", "venv", ".venv", "__pycache__")
-                    for p in parts[:-1]
-                ):
+                if _in_non_project_dir(repo_root, parts[:-1]):
                     continue
                 # WI-sudug: skip manifests inside test-fixture directories.
                 # detekt (Kotlin static-analysis tool) triggered a false
@@ -1216,11 +1298,7 @@ def _collect_pip_requirements_deps(repo_root: Path, max_depth: int = 3) -> set[s
                     continue
                 parts = path.relative_to(repo_root).parts
                 # Mirror _find_manifest_files's directory exclusions.
-                if any(
-                    p.startswith(".")
-                    or p in ("node_modules", "vendor", "venv", ".venv", "__pycache__")
-                    for p in parts[:-1]
-                ):
+                if _in_non_project_dir(repo_root, parts[:-1]):
                     continue
                 from .paths import is_test_file as _is_test_file
                 rel_for_fixture_check = "/".join(parts)
@@ -3040,7 +3118,10 @@ def _detect_frameworks(repo_root: Path) -> list[str]:
         repo_root: Path to the repository root.
 
     Returns:
-        List of detected framework names.
+        Detected framework names, in scanner order. A name several ecosystem
+        scanners detect (hardhat from JS and Solidity, ktor from Kotlin and
+        Gradle) appears once per scanner; ``RepoProfile`` collapses the
+        repeats, so callers build a profile rather than emit this list.
     """
     frameworks: list[str] = []
     frameworks.extend(_detect_python_frameworks(repo_root))
@@ -3322,9 +3403,13 @@ def refine_frameworks(
        FPs (``react`` imported by build tooling, ``graphql`` imported
        for type definitions) while letting through scoped npm packages
        (``@apollo/server``), Go full paths (``github.com/.../gin``),
-       and Maven coords (``org.springframework.boot``). This phase
-       resolves the workspace-import surface of INV-rojip (WI-donud's
-       motivating case: apollo-server smoke-test consumer).
+       and Maven coords (``org.springframework.boot``). Bare-name
+       patterns have their own arm: they promote on a prod submodule
+       (prefix) import such as ``react/jsx-runtime`` (WI-pusad), or on
+       an exact import for ``_BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS``
+       (WI-tosul). This phase resolves the workspace-import surface of
+       INV-rojip (WI-donud's motivating case: apollo-server smoke-test
+       consumer).
 
     2. **Demote** — for every framework in the working list, check
        import edges in its languages. Frameworks with no prod-non-test
@@ -3541,7 +3626,9 @@ def detect_profile(
     elif framework_spec.mode == FrameworkMode.ALL:
         # Use ALL known frameworks for detected languages (don't scan dependency files)
         # This enables pattern matching even when frameworks aren't in dependency manifests
-        detected_frameworks = list(framework_spec.frameworks)
+        # Sorted: ``frameworks`` is a set, and ``list(<set>)`` emitted the
+        # profile's framework list in per-process hash order (WI-vosag).
+        detected_frameworks = sorted(framework_spec.frameworks)
     elif framework_spec.mode == FrameworkMode.EXPLICIT:
         # User explicitly requested these frameworks - trust them, don't scan dependency files
         # This enables pattern matching even when frameworks aren't in manifest files

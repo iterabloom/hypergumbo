@@ -6,7 +6,8 @@ This analyzer uses tree-sitter to parse OpenGL Shading Language files and extrac
 - Struct definitions
 - Uniform variable declarations
 - Input/output variable declarations (in/out)
-- Function calls
+- Function calls (an unresolved callee such as vec4 or texture becomes a
+  ``glsl:builtin:<name>`` target at confidence 0.70)
 
 If tree-sitter-glsl is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -16,6 +17,16 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, structs, uniforms, in/out variables
 2. Pass 2: Extract call edges using NameResolver
+
+Identity (WI-tusad). GLSL overloads a function by parameter types
+(``float f(float)`` / ``vec2 f(vec2)``), so a function records its parameters,
+types and ``in``/``out`` qualifiers included, in ``meta["parameters"]``
+(``hypergumbo_core.analyze.c_family.c_family_parameters``: tree-sitter-glsl
+extends tree-sitter-c) and mints the ADR-0035 producer stable_id over them with
+``overload_arity.declared_arity_stable_id`` (typed tier). Uniforms, inputs,
+outputs, varyings and attributes take the same formula with no arity. Before,
+none of them computed a stable_id and two overloads nulled each other on the
+backstop floor key. Structs keep the table formula.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the GLSL-specific extraction
@@ -47,8 +58,14 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
 )
+from hypergumbo_core.analyze.c_family import (
+    c_family_parameter_list, c_family_parameters,
+)
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, declared_arity, declared_arity_stable_id,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
@@ -176,10 +193,19 @@ def _extract_glsl_symbols(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = make_symbol_id("glsl", rel_path, start_line, end_line, func_name, "function")
+                param_list = c_family_parameter_list(node)
+                meta = (
+                    {PARAMETERS_KEY: c_family_parameters(param_list, source)}
+                    if param_list is not None else None
+                )
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=None,
+                    stable_id=declared_arity_stable_id(
+                        kind="function", lang="glsl", path=rel_path,
+                        name=func_name, qualified_name=func_name,
+                        arity=declared_arity(meta),
+                    ),
                     shape_id=None,
                     fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                     kind="function",
@@ -195,6 +221,7 @@ def _extract_glsl_symbols(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=_extract_glsl_signature(node, source),
+                    meta=meta,
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "glsl"),
                     line_span=end_line - start_line + 1,
                 )
@@ -257,7 +284,10 @@ def _extract_glsl_symbols(
 
                     sym = Symbol(
                         id=symbol_id,
-                        stable_id=None,
+                        stable_id=declared_arity_stable_id(
+                            kind=kind, lang="glsl", path=rel_path, name=var_name,
+                            qualified_name=var_name, arity=None,
+                        ),
                         shape_id=None,
                         fingerprint=None,  # WI-vudul: central stamp_symbol_fingerprints owns this (was dead bare-hex)
                         kind=kind,
@@ -346,7 +376,7 @@ class GlslAnalyzer(TreeSitterAnalyzer):
         return analysis
 
     def register_symbol(
-        self, symbol: Symbol, global_symbols: dict,
+        self, symbol: Symbol, global_symbols: dict[str, Symbol],
     ) -> None:
         """Register symbol globally; functions indexed by lowercase name."""
         if symbol.kind == "function":
@@ -357,7 +387,7 @@ class GlslAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

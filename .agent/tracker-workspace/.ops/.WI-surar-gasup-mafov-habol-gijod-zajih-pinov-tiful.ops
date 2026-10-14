@@ -1,0 +1,59 @@
+- op: create  # 5b9d
+  at: '2026-09-26T16:26:09Z'  # 5b9d
+  by: agent  # 5b9d
+  actor: jgstern_agent  # 5b9d
+  clock: 1  # 5b9d
+  nonce: 5b9d  # 5b9d
+  data:  # 5b9d
+    kind: work_item  # 5b9d
+    title: "ruby emits a constant receiver's module slot lowercased and without its namespace (Net::HTTP.get -> ruby:http:0-0:get), so an I/O overlay row spelled as ruby writes it cannot match"  # 5b9d
+    status: todo_hard  # 5b9d
+    priority: 2  # 5b9d
+    parent:  # 5b9d
+    tags:  # 5b9d
+    - ruby  # 5b9d
+    - io_boundary  # 5b9d
+    - module_key  # 5b9d
+    isbefore: []  # 5b9d
+    duplicate_of: []  # 5b9d
+    not_duplicate_of: []  # 5b9d
+    pr_ref:  # 5b9d
+    description: "FOUND 2026-09-25 while fixing WI-guhuv. Record: ~/hypergumbo_lab_notebook/guhuv_09252026/ (rb_noreq survey).\n\nThe ruby analyzer emits a constant receiver's module slot LOWERCASED and WITHOUT ITS NAMESPACE, with or without a require:\n\n    Net::HTTP.get(URI(u))   -> calls ruby:http:0-0:get:external_symbol   (call_construct method)\n    File.write(p, s)        -> calls ruby:file:0-0:write:external_symbol\n\nWHY IT MATTERS NOW. Since WI-guhuv a user can give ruby I/O rows through an overlay. The row a ruby author writes, `module: Net::HTTP`, cannot match: _module_matches('Net::HTTP', 'http') is False, because a component-suffix match must agree in case (INV-dijor, deliberate). What matches today is `http`, `HTTP` or `net/http`. Measured with the shipped matcher:\n    Net::HTTP -> False   net::http -> True   net/http -> True   HTTP -> True   http -> True\nSo the overlay works only when the author guesses the analyzer's spelling, and `HTTP` would also match any other constant whose last component is Http/HTTP (`Faraday::HTTP`, a project `Api::HTTP`), because the namespace that tells them apart was dropped.\n\nWHICH SIDE IS WRONG: the analyzer. ADR-0051 says the slot names an OWNER PATH; `Net::HTTP` is the owner path ruby writes, and `http` is neither that nor the require path. NOT CHECKED: the other ruby receiver shapes (instance receivers, `::`-rooted constants, nested modules in the project), and whether any shipped consumer relies on the lowercase spelling (the verify_claims docstring cites `ruby:http:0-0:new` as analyzer output)."  # 5b9d
+    fields: {}  # 5b9d
+- op: discuss  # 744c
+  at: '2026-10-01T00:59:23Z'  # 744c
+  by: agent  # 744c
+  actor: jgstern_agent  # 744c
+  clock: 2  # 744c
+  nonce: 744c  # 744c
+  message: "PREMISE CHECK 2026-09-30 (dev 134a06d505): CURRENT. Code, repro and matcher outcomes all hold as filed.\nCODE: ruby.py ~2448-2461 (the WI-rijij/WI-mafik constant-receiver fallback): bare_class = receiver_class.lstrip(\":\"), a \"::\" receiver is cut to its LAST segment (rsplit(\"::\",1)[-1]), then require_hints.get(...) else bare_class.lower(). The lowercase heuristic dates from be0ddcb8eb (2026-05-12); WI-johib's ruby commits (2165b45f5a, 66608925db, 88ccd2e515, 09-28) changed the project-symbol lookup, not this slot.\nREPRO (scratch fixtures, survey, fresh cache), with and without require 'net/http':\n  Net::HTTP.get(URI(u)) -> ruby:http:0-0:get:external_symbol, dst_ref.module_path 'http', call_construct method, receiver constant_external\n  File.write(p, s) -> ruby:file:0-0:write:external_symbol\n  ::Net::HTTP.get(...) -> the same edge (call_lines [2, 4]), so the ::-rooted shape is covered by the same defect.\nMATCHER (python -c, io_boundary._module_matches(c, 'http')): Net::HTTP False, net::http True, net/http True, HTTP True, http True -- identical to the filing.\nCONSUMERS of the lowercase spelling: no built-in io_primitives/ruby.yaml exists (ruby rows come only from overlays); verify_claims.py ~3635 docstring cites ruby:http:0-0:new:external_symbol as analyzer output (text only); receiver_blind_magnets.py ~79 and axis_meta_keys.py ~483 key on the meta value constant_external, not on the slot spelling. Not checked: community overlays outside packages/*/src, and frameworks/*.yaml.\nADR-0051 §1 (owner path \"spelled in the source language's import vocabulary\") supports the item's \"the analyzer is wrong\" reading.\nAdjacent, not in scope: per ADR-0059 a call on the constant itself (Net::HTTP.get, File.write) is function-kind, yet the edge is stamped call_construct=method. WI-kazut (P3) is the binding-side sibling (Prometheus::Client short-name capture), already cross-referenced from WI-kazut."  # 744c
+- op: discuss  # eba6
+  at: '2026-10-01T12:22:26Z'  # eba6
+  by: agent  # eba6
+  actor: jgstern_agent  # eba6
+  clock: 3  # eba6
+  nonce: eba6  # eba6
+  message: "WORK DONE 2026-10-01 (concurrent run, NOT merged, no status change). Branch jgstern-agent/fix/surar (worktree ~/hg_wt/surar), local commit d5e987abce \"fix(ruby): a constant receiver's module slot is the constant as written (WI-surar)\". Report: ~/hypergumbo_lab_notebook/decontend/run_09302026/surar.md.\n\nCHANGE: ruby.py _try_receiver_call constant-external fallback now sets module_hint = receiver_class.lstrip(\":\") -- the constant as written, less a root \"::\" (Net::HTTP, File, JSON, Rack::Utils). The require-hint lookup and the .lower() heuristic are gone from this path (the require hint is a last-segment-keyed FILE hint; it still serves bare-call and base-class resolution); the now-unused require_hints parameter of _try_receiver_call is removed. The two project-owner producers in the same function already used the as-written spelling. call_construct stays \"method\" (the ADR-0059 function-kind question is not touched).\n\nBEHAVIOUR (verify-claims, overlay net_recv row get, fixture \"require 'net/http'; def fetch(u) X.get(URI(u)) end\", must_not_exist claim):\n  origin/dev: row Net::HTTP, call Net::HTTP -> inconclusive (the filed defect)\n  branch:     row Net::HTTP, call Net::HTTP -> violated; rows net/http and HTTP -> violated (pinned)\n  branch:     row Net::HTTP, call Faraday::HTTP -> inconclusive (namespace control); a mutant that drops the namespace but keeps case turns it violated, so the control can fail.\nTESTS: test_ruby_constant_receiver.py +14 cases (red on origin/dev: 9 failed); targeted smart-test on the branch: 10235 passed, 1 skipped, 4 xfailed, 0 failed, changed source files 100% covered. Five tests that pinned the old spelling were corrected to the analyzer's output (test_ruby x2, polyglot ruby fixture, core test_io_overlay_uncatalogued_language, core test_verify_claims).\n\nMEASURED (analyze_ruby, origin/dev vs branch, by call site): postal/chatwoot/mastodon edge totals and constant-external site sets identical (474/1844/2539 sites); slots: case-only 291/1520/2065, namespace restored 180/322/465, require path 3/2/9. On mastodon 3 sites were WRONG before (RSpec::Matchers attributed to paperclip/matchers via a last-segment require hint). Spelling change only: no catalogue, no boundary count moves.\n\nNOT DONE / NOT CLAIMED: the general claim \"every ruby module slot is an owner path\" is not asserted -- only the constant-receiver fallback was changed. A constant that names a VALUE (postal's Postal::Config = initialize_config, 125 sites) gets that constant, not the value's type. Instance receivers on external types emit no edge at all (pre-existing, separate). Filed: WI-gomup (lexical constant lookup misses compact class A::B declarations, seen on chatwoot), WI-mahik (perl's sibling: Pkg->m emits no edge / binds receiver-blind)."  # eba6
+- op: update  # e812
+  at: '2026-10-02T04:14:10Z'  # e812
+  by: agent  # e812
+  actor: jgstern_agent  # e812
+  clock: 4  # e812
+  nonce: e812  # e812
+  set:  # e812
+    status: done  # e812
+    pr_ref: '#1383'  # e812
+- op: discuss  # 4405
+  at: '2026-10-02T04:14:10Z'  # 4405
+  by: agent  # 4405
+  actor: jgstern_agent  # 4405
+  clock: 5  # 4405
+  nonce: '4405'  # 4405
+  message: "DONE: merged in PR #1383. _try_receiver_call uses the constant as written minus a leading :: as the module slot: Net::HTTP.get -> ruby:Net::HTTP:0-0:get with or without require 'net/http'; File.write -> File. Behavioural evidence: verify-claims with an overlay net_recv {module: Net::HTTP, functions: [get]} over Net::HTTP.get: inconclusive on dev, violated on the branch; a Net::HTTP row leaves Faraday::HTTP.get inconclusive, and a namespace-dropping mutant turns that control violated (pinned in test_ruby_constant_receiver.py through verify-claims). Corpus (postal / chatwoot / mastodon, per call site): identical edge and call-site sets; 180 / 322 / 465 slots regained their namespace; 3 mastodon sites lost a wrong paperclip/matchers attribution. NOT asserted: every Ruby module slot is an owner path (Postal::Config = runtime value gets the constant's name). Residuals: WI-gomup, WI-mahik (P2).\nFull report (closure evidence, corpus tables, residual list): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/surar.md"  # 4405
+- op: discuss  # ac95
+  at: '2026-10-03T15:03:59Z'  # ac95
+  by: agent  # ac95
+  actor: jgstern_agent  # ac95
+  clock: 6  # ac95
+  nonce: ac95  # ac95
+  message: "NOTE FROM WI-mujod (branch jgstern-agent/fix/mujod, commit c07a5ca605, NOT merged): one of this item's pins moves. test_ruby_constant_receiver.py pinned that an overlay row spelled `HTTP` reaches `Net::HTTP.get` (verdict violated). WI-mujod refuses _module_matches' hint-longer suffix direction -- a module slot carrying MORE leading components than the row names a different owner -- and `Net::HTTP` vs a row `HTTP` is exactly that shape (`HTTP` is also the http.rb gem's top-level constant). This item's own filing named the hazard (\"HTTP would also match ... Faraday::HTTP, a project Api::HTTP\"). On the branch the `HTTP` case is its own test asserting `inconclusive` (fail-closed: the call is unclassified, the module unenumerated); rows `Net::HTTP` and `net/http` still give `violated`, and the Faraday::HTTP control is unchanged. No status change requested."  # ac95

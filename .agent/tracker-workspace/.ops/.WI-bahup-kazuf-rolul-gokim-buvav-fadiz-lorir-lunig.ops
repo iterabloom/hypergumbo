@@ -1,0 +1,22 @@
+- op: create  # 38b3
+  at: '2026-10-03T17:11:01Z'  # 38b3
+  by: agent  # 38b3
+  actor: jgstern_agent  # 38b3
+  clock: 1  # 38b3
+  nonce: 38b3  # 38b3
+  data:  # 38b3
+    kind: work_item  # 38b3
+    title: "rust: a .method() call whose NAME equals a use-imported free function is qualified as that function (buf.write(x) on a Vec under use std::fs::write -> rust:std::fs:0-0:write, an fs_write-shaped edge)"  # 38b3
+    status: todo_hard  # 38b3
+    priority: 3  # 38b3
+    parent:  # 38b3
+    tags:  # 38b3
+    - rust  # 38b3
+    - analysis_quality  # 38b3
+    - io_boundary  # 38b3
+    isbefore: []  # 38b3
+    duplicate_of: []  # 38b3
+    not_duplicate_of: []  # 38b3
+    pr_ref:  # 38b3
+    description: "FOUND 2026-10-03 during INV-dulum-kakum-guhus-podas-mirup-lavut-jamob-kakif's sibling-language sweep (branch jgstern-agent/fix/dulum). NOT the same mechanism as INV-dulum -- recorded because it mints the same kind of fabricated boundary.\n\nTHE FACT. In rust.py the `.method()` path looks the METHOD NAME up in `use_aliases`: for a method call `full_scoped_name` is None, and `elif callee_name in use_aliases:` (rust.py:2879) runs with no method-call guard. So a method call whose NAME equals a `use`-imported free function is qualified as that function.\n\nLIVE REPRO (dev b7417402dc):\n\n    use std::fs::write;\n    use std::io::Write as _;\n    fn f(mut buf: Vec<u8>) { buf.write(b\"x\").unwrap(); }   // Vec::write (io::Write)\n    fn g() { write(\"p\", b\"x\").unwrap(); }                  // std::fs::write\n\n  -> calls f -> rust:std::fs:0-0:write   WRONG (an in-memory Vec write, typed as a filesystem write)\n  -> calls g -> rust:std::fs:0-0:write   right\n\nDIRECTION: false positive -- an fs_write-shaped edge (and so a boundary / taint sink) on a method call on an arbitrary receiver. `write`/`read`/`open`/`remove` are exactly the names both the `use`-imported free functions and common trait methods carry. NOT MEASURED. WI-zojis (done) fixed an earlier Rust method-name collision; this is a path it did not cover. `::` path calls are structurally immune to the INV-dulum shadow shape (a `let` cannot be the root of a `::` path)."  # 38b3
+    fields: {}  # 38b3

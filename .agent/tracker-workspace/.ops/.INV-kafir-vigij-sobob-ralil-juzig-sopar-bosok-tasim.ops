@@ -1,0 +1,22 @@
+- op: create  # 06e9
+  at: '2026-10-06T05:06:30Z'  # 06e9
+  by: agent  # 06e9
+  actor: jgstern_agent  # 06e9
+  clock: 1  # 06e9
+  nonce: '06e9'  # 06e9
+  data:  # 06e9
+    kind: invariant  # 06e9
+    title: "wolfram.py counts every definition as a call (f[x_] := ... emits calls file -> f), and never analyzes .m files (find_wolfram_files has no caller; *.m not in file_patterns)"  # 06e9
+    status: violated  # 06e9
+    priority: 2  # 06e9
+    parent:  # 06e9
+    tags:  # 06e9
+    - analysis_quality  # 06e9
+    isbefore: []  # 06e9
+    duplicate_of: []  # 06e9
+    not_duplicate_of: []  # 06e9
+    pr_ref:  # 06e9
+    description: "Found by the 2026-10-06 docstring audit tail pass; reviewer reproduced both: f[x_]:=..., h[z_]:=..., q[x_]=... each yield a calls edge from the file to f/h/q though nothing calls them; a .m file that classify_dot_m_file labels wolfram produces no symbols. Related, lower severity: every call edge starts at the file node, not the enclosing function (~L284, ~L307), and calls are deduplicated per file and callee name (~L295). wolfram.py's module docstring states all of these."  # 06e9
+    fields:  # 06e9
+      statement: "A definition is not a call; and a file the analyzer claims (classify_dot_m_file labels it wolfram) is analyzed."  # 06e9
+      root_cause: "The left-hand side f[x_] of := / = is itself a call node, and the call walk (~L274-313) does not skip the definition head. file_patterns is ['*.wl','*.wls','*.nb'] (~L333); find_wolfram_files (~L76) would handle .m but nothing calls it and _find_source_files is not overridden."  # 06e9

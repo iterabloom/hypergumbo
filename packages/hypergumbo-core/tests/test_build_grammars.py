@@ -151,6 +151,30 @@ class TestBuildGrammar:
             result = build_grammar(spec, tmp_path, quiet=True)
             assert result is False
 
+    def test_missing_vendor_source_message_is_actionable(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The missing-source error must tell an installed user what to do.
+
+        INV-bazoz: the old message pointed at ``docs/grammars/vendor-sync.md``,
+        a file that exists only in a source checkout. A user of a broken or
+        stripped install needs the path that was looked up and a remedy
+        that works for them (reinstall hypergumbo-core).
+        """
+        spec = GrammarSpec(
+            name="test",
+            repo_url="https://example.com/test.git",
+            function_name="tree_sitter_test",
+            scanner_type="none",
+        )
+        missing = tmp_path / "vendor"
+        with patch("hypergumbo_core.build_grammars.VENDOR_ROOT", missing):
+            assert build_grammar(spec, tmp_path, quiet=False) is False
+        out = capsys.readouterr().out
+        assert str(missing / "tree-sitter-test" / "src") in out
+        assert "hypergumbo-core" in out
+        assert "reinstall" in out.lower()
+
     def test_build_grammar_pip_install_failure(self, tmp_path: Path) -> None:
         """Test handling when pip install fails."""
         spec = GrammarSpec(
@@ -237,12 +261,49 @@ class TestBuildGrammar:
 class TestVendorLayout:
     """Tests for the vendor directory layout (WI-fipab-kivoj)."""
 
-    def test_vendor_root_points_at_repo_root(self) -> None:
-        """``VENDOR_ROOT`` must resolve to ``<repo_root>/vendor``."""
+    def test_vendor_root_is_inside_the_installed_package(self) -> None:
+        """``VENDOR_ROOT`` must live inside the ``hypergumbo_core`` package.
+
+        INV-bazoz: it used to be ``Path(__file__).parents[4] / "vendor"``,
+        the repo root of a source checkout. A wheel packages only
+        ``src/hypergumbo_core``, so from a pip/pipx install that path
+        landed at ``<venv>/vendor`` and ``build-grammars`` failed for
+        every grammar. Anything outside the package directory is not in
+        the wheel, so the property is "under the package dir".
+        """
+        import hypergumbo_core
         from hypergumbo_core.build_grammars import VENDOR_ROOT
-        # ``VENDOR_ROOT`` derives from this module's location; we don't
-        # care about the absolute prefix, only the leaf segment.
+        pkg_dir = Path(hypergumbo_core.__file__).resolve().parent
+        assert VENDOR_ROOT.resolve().is_relative_to(pkg_dir)
         assert VENDOR_ROOT.name == "vendor"
+
+    def test_wheel_config_ships_the_whole_package_dir(self) -> None:
+        """The core wheel must include every file under the package dir.
+
+        The vendored C sources are package data, not Python modules, so
+        they reach the wheel only because hatch's ``packages`` option
+        copies the whole directory. An ``exclude`` / ``only-include`` /
+        ``artifacts`` filter added later could silently drop them again;
+        this pins the config shape the fix relies on. (The behavioural
+        check — build the wheel, install it in a fresh venv, run
+        ``hypergumbo build-grammars`` — is recorded on INV-bazoz.)
+        """
+        try:
+            import tomllib
+        except ModuleNotFoundError:  # pragma: no cover - py3.10
+            import tomli as tomllib  # type: ignore[no-redef]
+        import hypergumbo_core
+        from hypergumbo_core.build_grammars import VENDOR_ROOT
+        pkg_dir = Path(hypergumbo_core.__file__).resolve().parent
+        pyproject = pkg_dir.parents[1] / "pyproject.toml"
+        cfg = tomllib.loads(pyproject.read_text())
+        wheel = cfg["tool"]["hatch"]["build"]["targets"]["wheel"]
+        assert wheel["packages"] == ["src/hypergumbo_core"]
+        for key in ("exclude", "only-include", "only-packages"):
+            assert key not in wheel, f"wheel target gained {key!r}"
+        assert VENDOR_ROOT.resolve().is_relative_to(
+            (pkg_dir.parents[1] / "src" / "hypergumbo_core").resolve()
+        )
 
     def test_vendor_dir_for_constructs_path(self) -> None:
         """``vendor_dir_for(name)`` is ``VENDOR_ROOT / 'tree-sitter-<name>'``."""

@@ -22,3 +22,10 @@
     pr_ref:  # 9b4c
     description: "After W4 (strict mode) lands and the bulk of the codebase is clean, sweep the remaining `# type: ignore` comments. For each: (a) is it still needed? (b) does it have the specific error code `[error-code]`? (c) is the underlying issue actually a bug to fix or a justified suppression? Replace bare `# type: ignore` with codes; remove no-longer-needed suppressions; convert genuine-bug suppressions into tracker items."  # 9b4c
     fields: {}  # 9b4c
+- op: discuss  # 3bf7
+  at: '2026-09-29T15:12:45Z'  # 3bf7
+  by: agent  # 3bf7
+  actor: jgstern_agent  # 3bf7
+  clock: 2  # 3bf7
+  nonce: 3bf7  # 3bf7
+  message: "PARTIAL 2026-09-29 (PR 1306, merged). (a) STILL NEEDED: warn_unused_ignores=true under strict, and the whole-tree run reports no unused-ignore, so every remaining suppression still suppresses something. (b) CODES: the last two bare ignores (sketch.py selected_key_symbols' deliberate None default -> [assignment]; lua.py fa.tree -> [arg-type]) now carry codes; ignore-without-code is 0. (c) NOT DONE: the per-site bug-or-justified review of the 37 coded ignores -- 17 union-attr (candidate None dereferences, WI-vokiz's class), 8 attr-defined, 5 assignment, 3 no-any-return, 2 valid-type, 2 arg-type, across cfg.py, verify_claims.py, sketch.py, analyzer_identity.py, cli.py, cyclomatic.py, taint.py, openapi.py, astro.py, py.py, lua.py, merge_producers.py, rust_analyzer invoke.py, tracker race_log.py / serve.py. Item stays open for (c)."  # 3bf7

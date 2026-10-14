@@ -20,3 +20,25 @@
     pr_ref:  # b156
     description: "FOUND 2026-08-29 while closing WI-sofov (ADR-0047 ruling 10). Filed rather than\nfolded in, because it is a gap in a ruling's PREMISE and not in its\nimplementation.\n\nRULING 10'S TABLE SAYS taint_sources / taint_sanitizers ALREADY HAVE A CHANNEL\n(\"yes (exists)\"). That is true of the MECHANISM -- a user can supply rows via\n`--taint-sources` / `--taint-sanitizers` and via a claims file's\n`extra_catalogs:` -- and FALSE of the DIRECTORY. Verified on merged dev:\n\n    $ grep -rn \"taint_sources\\.d\\b\" packages/*/src --include=*.py \\\n        | grep -v yaml_catalogs.py | grep -v catalogue_home.py\n    (0 hits; same for taint_sanitizers.d)\n\nThe registry declares both channels (WI-tupid / ruling 7), `init-catalogs`\ncreates both directories (WI-talaz), and NOTHING SCANS EITHER. A user who drops\na YAML in $XDG_CONFIG_HOME/hypergumbo/taint_sources.d/ gets no effect and no\nerror.\n\nTHIS IS EXACTLY THE io_primitives.d GAP WI-talaz FOUND AND CLOSED, one family\nover: the registry declaring a channel is not the loader reading it, and the\ntwo drifted apart silently because nothing gated the difference. It is the same\nshape as INV-misup on the analyzer side -- a row that is present, correct and\nstructurally unreachable.\n\nNOT A FALSE-COVERAGE RISK TODAY, which is what keeps this P3. Nobody is misled:\n`catalog-inventory` reports both as declared-but-unread, and the README that\n`init-catalogs` writes lists them under \"NOT yet consulted\", both derived from\nthe same WIRED_CHANNELS constant the loaders use. The cost is missing\ncapability, not a wrong answer.\n\nWHAT THE FIX LOOKS LIKE. `user_channel_files(\"taint_sources\")` already exists\nand needs no new machinery; the work is deciding the MERGE SEMANTICS, which are\nnot obvious and differ from the three channels already wired:\n  * a user SOURCE only widens what is treated as untrusted -- it can add\n    findings, never remove them, so it needs no caveat;\n  * a user SANITIZER REMOVES flows the tool would otherwise report, so it is\n    the CAVEAT_USER_SUPPLIED_SANITIZER case in its most literal form -- and\n    unlike the function_summaries arm the plumbing already exists, because a\n    sanitized flow surfaces as a finding carrying `sanitized_by_user_supplied`\n    and `_credited_sanitizers` already reads it.\nSo the sanitizer half may be nearly free, and the two halves should still be\nadjudicated separately rather than wired as one \"taint channel\".\n\nSEQUENCING: independent of everything else in ADR-0047, which is now otherwise\ncomplete (r1/r8 WI-surun, r3/r4 WI-talaz, r9 WI-putat, r10 WI-sofov, the\ninventory WI-vafit)."  # b156
     fields: {}  # b156
+- op: discuss  # a1c1
+  at: '2026-09-29T17:05:35Z'  # a1c1
+  by: agent  # a1c1
+  actor: jgstern_agent  # a1c1
+  clock: 2  # a1c1
+  nonce: a1c1  # a1c1
+  message: "SCOPE EXTENDED by ADR-0061 ruling 7 (merged #1308, owner rulings 2026-09-29): the taint families get one persistent 'yours' home, so this item now also covers ADDING taint_sinks.d/ and reversing the no_channel_reason recorded on taint_sinks in yaml_catalogs.py (an agent decision taken with ADR-0060, answered by ruling 7). Acceptance: taint_sources.d/, taint_sanitizers.d/ and taint_sinks.d/ are all read by verify-claims, disclosed under the 'yours' tier (INV-gumom), and catalog-inventory reports them as read."  # a1c1
+- op: update  # 11aa
+  at: '2026-09-30T06:42:35Z'  # 11aa
+  by: agent  # 11aa
+  actor: jgstern_agent  # 11aa
+  clock: 3  # 11aa
+  nonce: 11aa  # 11aa
+  set:  # 11aa
+    status: done  # 11aa
+- op: discuss  # b1ca
+  at: '2026-09-30T06:42:35Z'  # b1ca
+  by: agent  # b1ca
+  actor: jgstern_agent  # b1ca
+  clock: 4  # b1ca
+  nonce: b1ca  # b1ca
+  message: "Done in PR #1324 (merged, dev a196aaddb5). verify-claims reads $XDG_CONFIG_HOME/hypergumbo/taint_sources.d, taint_sinks.d (new; registry channel declared per ADR-0061 ruling 7) and taint_sanitizers.d as a user layer below the claims file and the flags; channel sanitizers are stamped user_supplied (existing caveat); a channel file still declaring provenance: community joins the community layer, which only adds and which --no-default-overlays omits (the shipped *_community.yaml files load the same way, result-identical today). WIRED_CHANNELS includes all three, so catalog-inventory and the seeded README report every declared channel as read. BEHAVIOURAL EVIDENCE on merged dev: crm.lookup source in taint_sources.d -> violated rc 1 (the no-channel control is refused rc 2 unknown label), file listed in catalog_provenance tiers.yours; + crm.scrub in taint_sanitizers.d -> sanitized_flows 1 with caveat user_supplied_sanitizer [crm.scrub] (rc 2 only because crm itself is unclassified); catalog-inventory JSON read_now True for taint_sources/taint_sanitizers/taint_sinks. Residual (WI-lidof's sweep): the user_supplied_sanitizer caveat says 'supplied by the analysed repository' and stderr 'project-local', wrong for the operator's own channel."  # b1ca

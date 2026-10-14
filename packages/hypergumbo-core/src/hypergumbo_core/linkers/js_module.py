@@ -5,23 +5,39 @@ The JS/TS analyzer creates `imports` edges with synthetic dst IDs like
 'javascript:./utils:0-0:module:module' where the import path is embedded
 in the ID string. These edges are orphaned because no symbol has that ID.
 
-This linker resolves those import paths to actual files on disk, creates
-`module_file` symbols for each resolved target, and creates two types of
-edges:
+This linker resolves those import paths to actual files on disk, reuses the
+canonical `kind="file"` symbol for each resolved target, whatever its language
+(minting one with the `make_file_id` id when none exists), and creates two
+types of edges.
 
-1. `imports` - from the importing file symbol to the module_file
+A minted target node carries the TARGET's own language (`taxonomy.get_language`),
+never the importer's (WI-babuk): `.ts` importing `./util.js` mints
+`javascript:src/util.js`, and an imported image or font is a real file with no
+source language, so `language=None` with the importer's language as
+`discovery_language` and in the id's language slot (ADR-0036). Labelled with the
+importer's language, imported binaries were parsed as JavaScript downstream
+(crypto-flow-linker never finished on nextjs). The edges are:
+
+1. `imports` - from the importing file symbol to the target file symbol
    (file-level dependency; ADR-0023 §6 Phase 3 folded the former
    `imports_module` type away, and consumers recover that specialization
-   from `dst.kind in {module_file, file}`)
-2. `module_exports` - from the module_file to each function/method/class
-   defined in that file (enabling cross-file reachability)
+   from `dst.kind == 'file'`)
+2. `module_exports` - from the target file symbol to each function, method,
+   class, getter, setter or constructor that the file EXPORTS (enabling
+   cross-file reachability). "Exports" is the analyzer's positive verdict,
+   ``Symbol.is_exported is True`` (ESM ``export``; CommonJS
+   ``module.exports`` / ``exports.x``). WI-sinol: the kind filter alone sent
+   the edge to class members and private helpers too (14 of 26 edges false
+   on the htrac frontend), telling a consumer that ``ItemList.render`` is
+   importable. ``False`` and ``None`` (no verdict) both withhold the edge;
+   a class member is reached through its exported class.
 
 Together these create a traversable path:
-  file_A --imports--> module_file_B --module_exports--> functionInB
+  file_A --imports--> file_B --module_exports--> functionInB
 
 For npm packages (bare/scoped imports like 'lodash', '@vue/test-utils'),
-the linker creates `npm_package` symbols and `imports` edges to them
-(recovered by `dst.kind == 'npm_package'`).
+the linker creates `kind="package"` symbols carrying
+`meta['package_ecosystem'] == 'npm'` and `imports` edges to them.
 
 Path Alias Resolution
 ---------------------
@@ -29,7 +45,13 @@ Non-relative imports that aren't npm packages may be project aliases:
 - **tsconfig.json paths**: `@/*` -> `./src/*` (Next.js, Vite, Angular)
 - **Vite resolve.alias**: `dashboard` -> `./app/javascript/dashboard`
 The linker reads these config files at startup and expands aliases before
-resolving to files. This handles 68% of GrowthBook's TS imports and 33%
+resolving to files. ``_build_tsconfig_alias_index`` indexes every
+tsconfig.json / jsconfig.json outside node_modules by directory, following
+each one's ``extends`` chain (up to ``_MAX_EXTENDS_DEPTH``) for inherited
+``paths`` / ``baseUrl``; an importing file uses the nearest ancestor
+directory's aliases (``_get_aliases_for_file``), so monorepo packages keep
+their own. Vite aliases come only from the repo root and are merged in,
+longest prefix first. This handles 68% of GrowthBook's TS imports and 33%
 of Chatwoot's JS imports.
 
 File Extension Probing
@@ -57,6 +79,7 @@ from typing import TYPE_CHECKING
 
 from ..analyze.base import make_dependency_stable_id, make_file_id, make_file_stable_id
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
+from ..taxonomy import get_language
 from ._text_filters import read_source_text
 from .registry import (
     LinkerActivation,
@@ -74,7 +97,9 @@ PASS_ID = make_pass_id("js-module-linker")
 # .js first because it's the most common in real-world JS/TS projects.
 _PROBE_EXTENSIONS = (".js", ".ts", ".jsx", ".tsx", ".mjs", ".mts", ".vue", ".json")
 
-# Symbol kinds that represent "exported" callable code in a JS/TS module.
+# Symbol kinds that represent exportable callable code in a JS/TS module.
+# A kind is necessary, not sufficient: module_exports also requires
+# ``is_exported is True`` (WI-sinol).
 #
 # ADR-0027 Phase-2 audit (WI-jukav): all members are AXIS_LANGUAGE_CONSTRUCT
 # (Cluster A) and stable across Phase 3. JS ``export`` declarations only
@@ -647,9 +672,9 @@ def link_js_modules(
     """Resolve JS/TS import edges to file-level and npm package symbols.
 
     For each unresolved import edge:
-    1. Relative imports (./foo, ../bar) → resolve to actual file, create
-       module_file symbol and imports + module_exports edges.
-    2. npm packages (lodash, @vue/x) → create npm_package symbol and
+    1. Relative imports (./foo, ../bar) → resolve to actual file, reuse or
+       create its file symbol and emit imports + module_exports edges.
+    2. npm packages (lodash, @vue/x) → create a package symbol and
        imports edge.
     3. Dynamic imports (<dynamic:var>) → skip.
 
@@ -675,18 +700,29 @@ def link_js_modules(
     # must reuse that id rather than minting a parallel shadow node. The map
     # is keyed on canonical ``make_file_id`` output so the lookup is O(1) and
     # byte-equivalent to what downstream consumers see.
-    existing_file_symbol_by_canonical_id: dict[str, Symbol] = {}
+    #
+    # WI-babuk: keyed by PATH, over file Symbols of EVERY language. Keyed by
+    # ``make_file_id(importer_lang, path)`` and filtered to JS/TS, a .ts
+    # importing ./util.js or ./style.css missed the real javascript / css node
+    # and minted a phantom in the importer's language beside it.
+    existing_file_symbol_by_path: dict[str, Symbol] = {}
     for sym in symbols:
         path_by_id[sym.id] = sym.path
-        if sym.kind == "file" and sym.language in _JS_LANGUAGES:
-            existing_file_symbol_by_canonical_id[
-                make_file_id(sym.language, sym.path)
-            ] = sym
+        if sym.kind == "file":
+            existing_file_symbol_by_path.setdefault(sym.path, sym)
 
-    # Build map: normalized_file_path -> list of exportable symbols
+    # Build map: normalized_file_path -> list of EXPORTED symbols.
+    # WI-sinol: the kind filter alone admitted class members and private
+    # helpers. ``is_exported is True`` is the analyzer's positive verdict
+    # (ESM ``export``, CommonJS ``module.exports`` / ``exports.x``); ``False``
+    # (measured private) and ``None`` (no verdict) both withhold the edge.
     symbols_by_file: dict[str, list[Symbol]] = defaultdict(list)
     for sym in symbols:
-        if sym.kind in _EXPORTABLE_KINDS and sym.language in _JS_LANGUAGES:
+        if (
+            sym.kind in _EXPORTABLE_KINDS
+            and sym.language in _JS_LANGUAGES
+            and sym.is_exported is True
+        ):
             symbols_by_file[sym.path].append(sym)
 
     # Cache for module_file and npm_package symbols to avoid duplicates
@@ -700,6 +736,8 @@ def link_js_modules(
     if not import_edges:
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(symbols=[], edges=[], run=run)
+
+    repo_root_abs = repo_root.resolve()
 
     # Build alias indices (once per run)
     # tsconfig index: maps directory → aliases from nearest tsconfig.json
@@ -738,17 +776,24 @@ def link_js_modules(
         evidence_type = "import_resolution"
         import_confidence = 0.90
 
+        # WI-fukaf: ANCHOR ON THE REPO ROOT. Production symbol paths are
+        # repo-relative ('src/a.ts'); read as-is they resolved relative imports
+        # against the process CWD, so the same repository surveyed from outside
+        # its own directory lost imports (koel: module_exports 2,085 -> 1,471),
+        # and the tsconfig ancestor walk never met the index's absolute keys.
+        # ``root / path`` leaves an already-absolute path unchanged.
+        abs_src = repo_root_abs / src_path
+
         if _is_relative_import(import_path):
             # Relative import: resolve from source file's directory
-            source_dir = Path(src_path).parent
-            base_path = (source_dir / import_path).resolve()
+            base_path = (abs_src.parent / import_path).resolve()
             resolved = _probe_file(base_path)
         else:
             # Non-relative: get per-file aliases (nearest tsconfig + Vite)
-            src_dir = str(Path(src_path).parent)
+            src_dir = str(abs_src.parent)
             if src_dir not in aliases_cache:
                 file_aliases = _get_aliases_for_file(
-                    src_path, tsconfig_index, repo_root
+                    str(abs_src), tsconfig_index, repo_root
                 )
                 combined = file_aliases + vite_aliases
                 combined.sort(key=lambda a: len(a[0]), reverse=True)
@@ -764,7 +809,7 @@ def link_js_modules(
         if resolved is not None:
             # Compute path relative to repo_root for the symbol
             try:
-                rel_path = str(resolved.relative_to(repo_root))
+                rel_path = str(resolved.relative_to(repo_root_abs))
             except ValueError:
                 # Resolved path outside repo — use absolute
                 rel_path = str(resolved)
@@ -786,28 +831,37 @@ def link_js_modules(
             # and only annotate the imports edge against the existing id.
             # Mirrors the websocket linker's INV-ronuf/WI-hifol pattern.
             if rel_path not in module_file_cache:
-                sym_id = make_file_id(lang, rel_path)
-                existing = existing_file_symbol_by_canonical_id.get(sym_id)
+                existing = existing_file_symbol_by_path.get(rel_path)
                 if existing is not None:
                     # Reuse the canonical Symbol from upstream producers.
                     module_file_cache[rel_path] = existing
                 else:
-                    ext = resolved.suffix.lower()
-                    if ext == ".cjs":
-                        module_system = "commonjs"
-                    else:
-                        module_system = "esm"
+                    # WI-babuk: the TARGET's own language, from the core
+                    # registry; never the importer's. A target with no source
+                    # language (an image, a font) is still a real file
+                    # (kind="file" is ADR-0031's Class A exception):
+                    # language=None, and the id's language slot carries the
+                    # importer's language as discovery_language (ADR-0036).
+                    target_lang = get_language(resolved)
+                    id_lang = target_lang or lang
+                    meta: dict[str, object] = {}
+                    if target_lang is not None:  # an asset is no module
+                        meta["module_system"] = (
+                            "commonjs" if resolved.suffix.lower() == ".cjs"
+                            else "esm"
+                        )
                     mod_sym = Symbol(
-                        id=sym_id,
-                        stable_id=make_file_stable_id(lang, rel_path),
+                        id=make_file_id(id_lang, rel_path),
+                        stable_id=make_file_stable_id(id_lang, rel_path),
                         name=resolved.stem,
                         kind="file",
-                        language=lang,
+                        language=target_lang,
+                        discovery_language=None if target_lang else lang,
                         path=rel_path,
                         span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        meta={"module_system": module_system},
+                        meta=meta,
                     )
                     module_file_cache[rel_path] = mod_sym
                     new_symbols.append(mod_sym)
@@ -815,8 +869,8 @@ def link_js_modules(
             mod_sym = module_file_cache[rel_path]
 
             # ADR-0023 §6 Phase 3 (WI-mokam-jalig): emit canonical
-            # 'imports'; consumers query dst.kind in {module_file, file}
-            # to recover the prior 'imports_module' specialization.
+            # 'imports'; consumers query dst.kind == 'file' to recover
+            # the prior 'imports_module' specialization.
             new_edges.append(Edge.create(
                 src=edge.src,
                 dst=mod_sym.id,
@@ -901,8 +955,9 @@ def link_js_modules(
             pkg_sym = npm_package_cache[pkg_name]
 
             # ADR-0023 §6 Phase 3 (WI-mokam-jalig): emit canonical
-            # 'imports'; consumers query dst.kind == 'npm_package' to
-            # recover the prior 'imports_module' specialization.
+            # 'imports'; consumers query dst.kind == 'package' (with
+            # meta.package_ecosystem == 'npm') to recover the prior
+            # 'imports_module' specialization.
             new_edges.append(Edge.create(
                 src=edge.src,
                 dst=pkg_sym.id,

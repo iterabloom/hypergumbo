@@ -1,0 +1,21 @@
+- op: create  # 75c7
+  at: '2026-10-07T00:30:24Z'  # 75c7
+  by: agent  # 75c7
+  actor: jgstern_agent  # 75c7
+  clock: 1  # 75c7
+  nonce: 75c7  # 75c7
+  data:  # 75c7
+    kind: work_item  # 75c7
+    title: "Installed-dependency / build-output detection: ecosystems not yet covered (Carthage, Yarn PnP, bower, SwiftPM, cargo vendor, phx.digest)"  # 75c7
+    status: todo_soft  # 75c7
+    priority: 3  # 75c7
+    parent:  # 75c7
+    tags:  # 75c7
+    - discovery  # 75c7
+    - supply_chain  # 75c7
+    isbefore: []  # 75c7
+    duplicate_of: []  # 75c7
+    not_duplicate_of: []  # 75c7
+    pr_ref:  # 75c7
+    description: "Follow-up to WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok. discovery.INSTALLED_DEP_RULES covers Mix deps/, node_modules/, Composer vendor/, Go vendor/, Bundler vendor/bundle, CocoaPods Pods/, virtualenvs; BUILD_OUTPUT_RULES covers Mix cover/, Phoenix priv/static/assets, .dart_tool, .stack-work, elm-stuff (+ .elixir_ls by name). Not covered, so analysed if present: Carthage/Checkouts (Cartfile.resolved beside), Yarn PnP .yarn/cache (zips; .pnp.cjs beside), bower_components (bower.json beside), Swift PM .build/checkouts (Package.resolved beside), cargo vendor output (vendor/ with .cargo/config.toml source replacement + per-crate .cargo-checksum.json), Bundler installs outside vendor/bundle (BUNDLE_PATH in .bundle/config), and Phoenix mix phx.digest output (per-file priv/static/*-<32hex>.* beside cache_manifest.json -- needs a per-file rule, not a directory rule). Each needs a marker check, a package listing for --trace-deps, and a fixture test in test_installed_dependency_source.py."  # 75c7
+    fields: {}  # 75c7

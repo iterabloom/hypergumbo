@@ -24,6 +24,7 @@ from hypergumbo_core.linkers._view_template_core import (
     link_via_strategies,
 )
 from hypergumbo_core.linkers.registry import LinkerContext
+from hypergumbo_core.overload_arity import pass_minted_stable_id
 
 
 def _method_symbol(name: str = "UsersController#index") -> Symbol:
@@ -101,6 +102,11 @@ class TestLinkViaStrategies:
         assert template_sym.path == "templates/users.html"
         assert template_sym.origin == [PASS_ID]
         assert edge.dst == template_sym.id
+        # INV-fufij: minted after the stable_id backstop, so it stamps its own.
+        assert template_sym.stable_id == pass_minted_stable_id(
+            owner=PASS_ID, kind="template", lang="html",
+            path="templates/users.html", name="users.html",
+        )
 
     def test_missing_candidate_emits_nothing(self, tmp_path: Path) -> None:
         method = _method_symbol()

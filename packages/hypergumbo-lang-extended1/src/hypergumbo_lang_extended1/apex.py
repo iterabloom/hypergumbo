@@ -28,6 +28,17 @@ Symbol Types
 Edge Types
 ----------
 - calls: Method calls from one symbol to another
+
+Identity
+--------
+A nested type and its members hash the full chain of enclosing types
+(ADR-0035 §1, scheme v9; INV-punig): a class, interface or enum takes
+``overload_arity.nested_qualified_name`` over its enclosing types, and a
+member, whose name already spells its nearest owner (``Inner.go``),
+``nested_member_qualified_name``. Both are empty for a top-level type and a
+member of one, which keep their values; ``class Inner`` with ``go`` nested in
+``class A`` and in ``class B`` are two identities, and deleting ``A`` moves
+nothing.
 """
 
 from __future__ import annotations
@@ -45,6 +56,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import nested_member_qualified_name, nested_qualified_name
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
@@ -166,7 +178,7 @@ def _extract_params(node: "tree_sitter.Node") -> list[str]:
 
 def _extract_method_symbol(
     node: "tree_sitter.Node", rel_path: str, current_class: Optional[str],
-    analyzer: TreeSitterAnalyzer,
+    analyzer: TreeSitterAnalyzer, owners: tuple[str, ...] = (),
 ) -> Optional[Symbol]:
     """Extract a method symbol from a method_declaration node."""
     name = None
@@ -217,6 +229,7 @@ def _extract_method_symbol(
         id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "method"),
         stable_id=analyzer.compute_stable_id(
             node, kind="method", name=qualified_name,
+            qualified_name=nested_member_qualified_name(owners, qualified_name, "."),
             file_stable_id=analyzer._file_anchor(rel_path),
         ),
         name=qualified_name,
@@ -239,7 +252,7 @@ def _extract_method_symbol(
 
 def _extract_constructor_symbol(
     node: "tree_sitter.Node", rel_path: str, current_class: Optional[str],
-    analyzer: TreeSitterAnalyzer,
+    analyzer: TreeSitterAnalyzer, owners: tuple[str, ...] = (),
 ) -> Optional[Symbol]:
     """Extract a constructor symbol from a constructor_declaration node."""
     name = None
@@ -275,6 +288,7 @@ def _extract_constructor_symbol(
         id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "constructor"),
         stable_id=analyzer.compute_stable_id(
             node, kind="constructor", name=qualified_name,
+            qualified_name=nested_member_qualified_name(owners, qualified_name, "."),
             file_stable_id=analyzer._file_anchor(rel_path),
         ),
         name=qualified_name,
@@ -297,7 +311,7 @@ def _extract_constructor_symbol(
 
 def _extract_field_symbols(
     node: "tree_sitter.Node", rel_path: str, current_class: Optional[str],
-    analyzer: TreeSitterAnalyzer,
+    analyzer: TreeSitterAnalyzer, owners: tuple[str, ...] = (),
 ) -> list[Symbol]:
     """Extract field symbols from a field_declaration node."""
     symbols: list[Symbol] = []
@@ -337,6 +351,7 @@ def _extract_field_symbols(
                     id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "field"),
                     stable_id=analyzer.compute_stable_id(
                         node, kind="field", name=qualified_name,
+                        qualified_name=nested_member_qualified_name(owners, qualified_name, "."),
                         file_stable_id=analyzer._file_anchor(rel_path),
                     ),
                     name=qualified_name,
@@ -359,37 +374,42 @@ def _extract_field_symbols(
 def _extract_class_body(
     body_node: "tree_sitter.Node", rel_path: str, current_class: str,
     analysis: FileAnalysis, analyzer: TreeSitterAnalyzer,
+    owners: tuple[str, ...] = (),
 ) -> None:
-    """Extract members from a class body, recursing into inner classes."""
+    """Extract members from a class body, recursing into inner classes.
+
+    ``owners`` is the chain of types enclosing the members, outermost first,
+    ending with ``current_class``.
+    """
     for child in body_node.children:
         if child.type == "method_declaration":
-            sym = _extract_method_symbol(child, rel_path, current_class, analyzer)
+            sym = _extract_method_symbol(child, rel_path, current_class, analyzer, owners)
             if sym:
                 analysis.symbols.append(sym)
                 analysis.node_for_symbol[sym.id] = child
                 analysis.symbol_by_name[sym.name] = sym
         elif child.type == "constructor_declaration":
-            sym = _extract_constructor_symbol(child, rel_path, current_class, analyzer)
+            sym = _extract_constructor_symbol(child, rel_path, current_class, analyzer, owners)
             if sym:
                 analysis.symbols.append(sym)
                 analysis.node_for_symbol[sym.id] = child
                 analysis.symbol_by_name[sym.name] = sym
         elif child.type == "field_declaration":
-            for sym in _extract_field_symbols(child, rel_path, current_class, analyzer):
+            for sym in _extract_field_symbols(child, rel_path, current_class, analyzer, owners):
                 analysis.symbols.append(sym)
                 analysis.node_for_symbol[sym.id] = child
                 analysis.symbol_by_name[sym.name] = sym
         elif child.type == "class_declaration":
-            _extract_class_node(child, rel_path, analysis, analyzer)
+            _extract_class_node(child, rel_path, analysis, analyzer, owners)
         elif child.type == "interface_declaration":
-            _extract_interface_node(child, rel_path, analysis, analyzer)
+            _extract_interface_node(child, rel_path, analysis, analyzer, owners)
         elif child.type == "enum_declaration":
-            _extract_enum_node(child, rel_path, analysis, analyzer)
+            _extract_enum_node(child, rel_path, analysis, analyzer, owners)
 
 
 def _extract_class_node(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
-    analyzer: TreeSitterAnalyzer,
+    analyzer: TreeSitterAnalyzer, scope: tuple[str, ...] = (),
 ) -> None:
     """Extract a class and its members."""
     name = None
@@ -425,6 +445,7 @@ def _extract_class_node(
             id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
             stable_id=analyzer.compute_stable_id(
                 node, kind="class", name=name,
+                qualified_name=nested_qualified_name(scope, name),
                 file_stable_id=analyzer._file_anchor(rel_path),
             ),
             name=name,
@@ -446,12 +467,12 @@ def _extract_class_node(
 
         for child in node.children:
             if child.type == "class_body":
-                _extract_class_body(child, rel_path, name, analysis, analyzer)
+                _extract_class_body(child, rel_path, name, analysis, analyzer, (*scope, name))
 
 
 def _extract_interface_node(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
-    analyzer: TreeSitterAnalyzer,
+    analyzer: TreeSitterAnalyzer, scope: tuple[str, ...] = (),
 ) -> None:
     """Extract an interface and its methods."""
     name = None
@@ -476,6 +497,7 @@ def _extract_interface_node(
             id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "interface"),
             stable_id=analyzer.compute_stable_id(
                 node, kind="interface", name=name,
+                qualified_name=nested_qualified_name(scope, name),
                 file_stable_id=analyzer._file_anchor(rel_path),
             ),
             name=name,
@@ -499,7 +521,9 @@ def _extract_interface_node(
             if child.type == "interface_body":
                 for member in child.children:
                     if member.type == "method_declaration":
-                        method_sym = _extract_method_symbol(member, rel_path, name, analyzer)
+                        method_sym = _extract_method_symbol(
+                            member, rel_path, name, analyzer, (*scope, name),
+                        )
                         if method_sym:
                             analysis.symbols.append(method_sym)
                             analysis.node_for_symbol[method_sym.id] = member
@@ -508,7 +532,7 @@ def _extract_interface_node(
 
 def _extract_enum_node(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
-    analyzer: TreeSitterAnalyzer,
+    analyzer: TreeSitterAnalyzer, scope: tuple[str, ...] = (),
 ) -> None:
     """Extract an enum definition."""
     name = None
@@ -539,6 +563,7 @@ def _extract_enum_node(
             id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
             stable_id=analyzer.compute_stable_id(
                 node, kind="enum", name=name,
+                qualified_name=nested_qualified_name(scope, name),
                 file_stable_id=analyzer._file_anchor(rel_path),
             ),
             name=name,
@@ -838,7 +863,7 @@ class ApexAnalyzer(TreeSitterAnalyzer):
         return analysis
 
     def register_symbol(
-        self, symbol: Symbol, global_symbols: dict,
+        self, symbol: Symbol, global_symbols: dict[str, Symbol],
     ) -> None:
         """Register symbol by qualified name only.
 
@@ -849,7 +874,7 @@ class ApexAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

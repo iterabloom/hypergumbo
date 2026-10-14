@@ -3,14 +3,208 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v8.1.0
-- Released **schema** is at: vdid not say why
+- Released **tool** is at: v9.0.0
+- Released **schema** is at: v0.20.14
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 > **Looking for the reader-friendly summary?** See **[docs/RELEASE-NOTES-8.X.md](docs/RELEASE-NOTES-8.X.md)** for the audience-organized release notes of the current line — each opens with a TL;DR naming the breaking changes. Earlier lines: [7.x](docs/RELEASE-NOTES-7.X.md), [6.x](docs/RELEASE-NOTES-6.X.md), [5.x](docs/RELEASE-NOTES-5.X.md). This file is the **implementer log**: structured, mechanism-level entries per release.
 
 ## [Unreleased]
+
+## [9.0.0] - 2026-10-14
+
+### Summary
+
+- **`stable_id` scheme v9 (ADR-0035)**: every symbol gets its id from its own producer, and deleting one symbol moves no other's id.
+- **Catalogue tiers (ADR-0061)**: only `provenance: builtin` rows can make a verdict cleaner, and in-repo catalogue data loads only on opt-in.
+- **Installed dependency source is skipped by default and disclosed (ADR-0004)**; `--trace-deps` opts in.
+- **Calls bind to the declaration in scope** in Go, JS/TS, Python, Swift and Perl; C++, Elixir and Nim choose overloads by arity.
+- **Taint follows more flows**: sources a helper returns, loop-header bindings, and new `code_execution`, `dom_injection` and `navigation_read` boundaries.
+- **Catalogue rows say what the call does**: rows claiming crossings their calls do not make are removed or moved.
+- **Security review aids**: a plain-language README trust section and `scripts/check-io-allowlist`, a CI gate over every risky call site.
+- **Three survey stalls fixed**, and **`build-grammars` works from a PyPI install**.
+
+### Breaking and contract changes
+
+Details are in the sections below.
+
+- **`stable_id_scheme` v8 → v9**: stored v8 ids are not comparable; re-analyze and join on path, kind, name and span, or `fingerprint`. Top-level declarations keep their id unless a hashed input changed.
+- **Node set and names**: Elixir clauses and PureScript signature/equations fold into one node; nested OCaml, F#, Agda and Lean declarations, deep TOML tables, Perl block-package subs, SPARQL queries and Elixir protocol impls are renamed; several dropped declarations are now emitted.
+- **`qualified_name`** carries every enclosing scope in Proto, Cap'n Proto, C#, TypeScript, PHP and Tcl.
+- **Discovery defaults** (ADR-0004): installed dependency trees are skipped unless `--trace-deps`; committed `node_modules`/`vendor` are analysed; build-output names are pruned only on tool evidence.
+- **Catalogue trust** (ADR-0061): community sanitizers, summaries and grants are withheld, so some verdicts become `violated`; in-repo catalogue data is opt-in.
+- **Exit codes**: broken catalogue or config files, a bad `--backend` value and `python -m hypergumbo_core.cli` exit 2.
+- **Versions**: `SCHEMA_VERSION` 0.20.13 → 0.20.14 (additive); `verify-claims --json` envelope 2.4 → 2.6 (2.5 `trusted_sink_flows`, 2.6 `sink_carriers`); `io-boundaries --json` envelope 2.3 → 2.4 (additive); validation report 0.3 → 0.4.
+- **`smart-test`** fails a run that executes zero tests.
+
+### Added
+
+#### Catalogue tiers (ADR-0061)
+
+- **Every shipped catalogue file declares `provenance: builtin` (standard library) or `community` (third-party)**, enforced by a gate; the merged catalogues are unchanged.
+- **A community row can add a finding but never make a verdict cleaner.** Community sanitizers and function summaries are withheld and named (`withheld_sanitizers`, `withheld_community_summary`), wherever the file sits.
+- **A repository's own `.hypergumbo.toml` catalogue data loads only on opt-in** (`--in-repo-catalogues`, or `hypergumbo trust-catalogues [PATH]`); preferences still load.
+- **User taint channels are read** (`taint_sources.d/`, `taint_sinks.d/`, `taint_sanitizers.d/`), and **the verdict names every catalogue file it rested on**, by tier, under `catalog_provenance.tiers`.
+
+#### Taint and verify-claims
+
+- **New sink zones `code_execution` and `dom_injection`** (`eval`/`exec`, `document.write`), and a **`navigation_read` boundary** that makes the page URL `untrusted_input` (10 JS/TS repositories: 12 verdicts inconclusive → violated).
+- **The data-flow walk covers more code**: Java and C def/use, JS/TS arrow functions and callbacks, Go function literals under a package-level `var`, and Python `with` bindings. C++ is not covered.
+- **One write is one finding**: a stream use carried by a sink call is folded into it, with carriers listed in `sink_carriers` (envelope 2.6).
+- **`trust_level: trusted` sinks are excluded and disclosed** in `trusted_sink_flows` (envelope 2.5), and a row can require a target kind (`requires_target_kind`).
+
+#### Installed dependency source (ADR-0004)
+
+- **Installed dependency source is skipped by default, and the skip is disclosed.** Package-manager directories are recognised by content (`discovery.INSTALLED_DEP_RULES`: Mix, npm, Composer, Go, Bundler, CocoaPods, virtualenvs), reported on stderr, in the sketch and in `supply_chain_summary.installed_deps_skipped`; calls into them become external stubs reported as I/O unknown.
+- **`--trace-deps <pkg,...|all|none>`** on `sketch`, `survey` and `slice`, or the `trace_deps` config key (ADR-0045), analyses the named packages as tier 3; it is part of the results-cache key.
+- **A committed directory is never treated as installed**: `node_modules` and `vendor` left `DEFAULT_EXCLUDES`, so committed vendor trees are analysed as tier 3 (`--exclude vendor` restores the old behaviour).
+- **Build and generated output is recognised by the tool that writes it, not by name**: `.elixir_ls/`, `.dart_tool/`, `elm-stuff/` and similar by content; `dist`, `build`, `target`, `site` and similar only on their tool's evidence (a `Cargo.toml` beside `target/`), disclosed in `supply_chain_summary.generated_output_skipped`. Same-named source directories such as qemu's `target/` are now analysed (329 of the 354 the old name rule pruned on the corpus).
+
+#### Analysis output
+
+- **New fields**: `metrics.edge_confidence` (histogram, median), `profile.languages[*].test_files`, `analysis_runs[].cpu_ms` beside wall time, and per-limit slice truncation counts (`limits_detail`).
+- **Mix and npm manifests mark external calls `direct` or `transitive`** (from `mix.exs`/`package.json` and their lockfiles; `mix.exs` is read, never executed), and a matched stub is marked `ecosystem=third_party` when the standard-library catalogue is silent. `Cargo.toml`, `Gemfile` and `composer.json` are not read yet.
+
+#### Analyzers
+
+- **Elixir and Erlang behaviours are modelled**: `@callback` / `-callback` symbols, `implements` edges and callback dispatch by name and arity. An Elixir `@behaviour :erlang_module` reaches the in-repo Erlang behaviour (ejabberd: 0 → 242 `implements` edges).
+- **Elixir protocols are modelled**: `defprotocol`/`defimpl` mint the protocol and `P.T` impl modules with `implements` edges and dispatch by name and arity; impls of library protocols such as `Jason.Encoder` are rooted.
+- **Java records are analysed** (trino: +4,480 `instantiates` edges); implicit accessors are not emitted yet.
+- **Scala types receivers bound by inference** (sbt: typed external method calls 19.7% → 24.6%).
+- **Fifteen C headers with no I/O surface** (`stdint`, `ctype`, `math`, ...) are declared complete.
+
+#### Developer tooling
+
+- **`stable_id` gate** (`test_stable_id_floor_gate.py`, shrink-only baseline `.ci/stable-id-floor-baseline.json`, both sections empty) runs the pipeline over 204 per-language fixtures (96 nest a same-name construct under two parents) and fails on:
+  - a null or floor-keyed id, of any kind, including symbols minted by linkers and passes;
+  - an id that moves, nulls or drops when an earlier same-name sibling or parent is deleted;
+  - an id that depends on the checkout directory;
+  - a language with no fixture, or one that can nest but has no two-parent fixture (flat languages carry a written reason).
+- **Shared `stable_id` helpers** in `overload_arity`: `declared_arity_stable_id`, `scoped_stable_id`, `scoped_table_stable_id` and `pass_minted_stable_id`.
+- **Independent I/O allowlist gate** (`scripts/check-io-allowlist`, per-PR and scheduled CI): every risky call site in `packages/*/src` (file writes, process launches, network, `eval`/`exec`, unsafe deserialization, native loading, dynamic import) must be listed with its purpose in `docs/hypergumbo.io-allowlist.yaml`. The checker imports nothing from hypergumbo; three behaviours its first review found are now in SECURITY.md.
+- **`Edge.meta` keys must be registered** (a fourth producer-ratchet axis; `Symbol(...)` keys not gated yet). **`check-docstring-drift`** gains `--registry-refs` and `--rolling N`.
+
+### Changed
+
+#### `stable_id` scheme v9 (ADR-0035)
+
+- **`stable_id_scheme` is `hypergumbo-stableid-v9`, completing the ADR-0035 migration**: every symbol takes its `stable_id` from its own producer (the analyzer or pass that emits it), and deleting a symbol moves no other symbol's id. One bump covers every change to an id a producer already computed. The contract:
+  - **Every kind has a producer id**, hashing its scope, name and declared parameters (written to `meta.parameters`). This newly covers 31 languages (the BEAM, ML, Lisp, IDL and shader analyzers, Jupyter, COBOL, Circom and others), member and doc kinds that lacked one, and symbols minted by linkers and `manifest_targets`. The backstop floor key (`populate_kind_stable_ids`), added this cycle, remains as a safety net the gate holds at zero.
+  - **Every scope that can repeat within a file is hashed** (types, functions, block namespaces, modules, template blocks and branches, headings, rules, dependency groups); a scope a file has once is left to the file anchor.
+  - **No line number or ordinal is hashed**; a genuine same-scope tie is still split by occurrence (ADR-0035 §1).
+  - **Paths are repo-relative**, and **overloads hash their declared parameters** (Ada functions also their result type).
+- **Ids that differ from 8.1.0**: every symbol minted by `make_doc_stable_id` (it hashed line numbers); nested declarations and members in 38 languages, plus C function-local tags, assembler local labels and JSON, Cargo and Maven dependency groups; callables whose declared parameters entered the hash (C++ definitions, HLSL, Nim, Ada, Pascal, SQL, Scheme, Racket, V); Circom, Jupyter, WGSL, Vue and Solidity symbols; and every renamed node. The per-language list and churn are in the spec's `stable_id_scheme` history (measured against the pre-bump tree, not 8.1.0). The results-cache key hashes the analyzer source, so no older cached survey is reused.
+
+### Fixed
+
+#### Taint and verify-claims
+
+- **A call into dependency source that was not analysed is I/O unknown, not "no I/O"** (ADR-0016 §7). `io-boundaries` lists such modules under *I/O unknown* (`untraced_modules`) instead of printing "No I/O boundary calls detected."; `verify-claims` says why it withholds the verdict. An overlay vouching for the module can still confirm a claim, and the verdict says the source was not traced.
+- **`provenance: community` files stay community through every channel** (ADR-0061: `--taint-*`, `--io-primitives`, `extra_catalogs:`, `function_summaries.d/`). Such a file used to clear flows or replace shipped rows; now it only adds, its sanitizers, summaries and grants are withheld and named, and it is listed under `named_community_files`.
+- **A broken catalogue or config file is a clean error naming the file, exit 2.** It crashed with exit 1 (`violated`'s code) or was skipped in silence.
+- **The results-cache key covers the user files the analysis reads**: `frameworks.d/`, `library_signatures.d/`, `dataflow_patterns.d/`, `config.toml` and `.hypergumbo.toml`. Editing one left commands answering from the old survey.
+- **A source a helper returns is followed into its callers** (ADR-0017 §4c; `source_returned_by`). Rust tail expressions and JS/TS arrow bodies are not covered yet.
+- **Loop headers, if/switch initializers and `let x = match ..` define their variables** in all six languages the data-flow walk covers, and a nested function or closure body is its own region instead of being inlined.
+- **C and C++ taint finds sources and sinks through the `#include` set**, by the same row rule as `io-boundaries`, and a writer's sink follows its target (11 C/C++ repositories: 11 withheld verdicts → `violated`).
+- **Taint, `io-boundaries` and slices follow a construction into the constructor** (Python, JS/TS, Dart), and a harmless call no longer hides a real one to the same callee in the same function.
+- **A collapsed group takes its resource-naming and trusted flags per member**, not from its first; the first-member rule had hidden `fmt.Fprintln(conn, secret)` behind `net.Dial(...)`.
+- **Fewer verdicts are withheld for no reason**: a call to a shipped non-I/O sink (`eval`, `document.write`) is an examined opaque site (ADR-0060 §6); a relative or `node:` import is first-party only when it lands on analysed source; a language with no taint catalogue gates only claims over labels it declares; an I/O overlay works for a language with no shipped catalogue.
+- **Caveats are accurate**: a clean `untrusted_input` verdict carries `deferred_crossing` (ADR-0049); modules reached through a JS handler assignment or a Python dunder are no longer "structurally invisible"; the unknown-scope share counts only real method calls.
+- **`verify-claims` no longer hangs on a self-referencing directory symlink**, its `--help` boundary list comes from the registry, and hypergumbo's 18 self-claims are `confirmed_with_caveats` again.
+
+#### Receiver typing and call resolution
+
+- **Declarations that produced no symbol now do, so the calls inside them are kept**: C/C++ declarator shapes, pointer-returning CUDA functions, C# accessors, indexers, operators and events, Pony behaviours, Pascal methods and Rust `extern` functions (`meta.ffi_import`). A gate fails when an edge's source is neither a symbol nor the file.
+- **Calls are credited by position**: C++ and Pony find a call's enclosing function by position, and calls outside any function appear in ten more languages, anchored on the enclosing type or the file.
+- **Overloads are chosen by arity** in C++, Elixir and Nim; several matches stamp `resolution_quality="ambiguous"`.
+- **Names bind to the declaration in scope**:
+  - JS/TS: enclosing scopes before the repository-wide lookup (four repositories: 7,153 wrong edges removed); computed-property calls and property-assigned callbacks emit edges.
+  - Go: the scope at the use site and the caller's own package; a method on a call's result is typed by that result; explicit generic instantiations emit calls.
+  - Python: `self.method()` through the class `self` denotes; an imported base class through its import (Django's `TestCase` inheritance cycle is gone); a local shadows an imported module or builtin.
+  - Swift: the binding in scope at the position, with initialisers typed by value and properties recorded per type.
+  - Perl: `Pkg->m()` by its package.
+  - ORM, subprocess, argparse and cobra linkers: only in the languages their mechanism reaches.
+- **More receivers are typed**: four more Java shapes, with library-signature rows (now keyed by fully-qualified owner) read by Kotlin and Scala too; Django managers through a model `@property` or a relation field.
+- **Unresolved calls are recorded, not dropped**: Ruby receiverless calls (`puts`, the Rails DSL) and Go bare calls emit the external placeholder, and Objective-C and Ruby module slots name what the source names.
+- **Each `.h` header is parsed by one grammar**, and a partly parsed file is listed in `limits.failed_files`.
+
+#### Inheritance and linkers
+
+- **TypeScript, Dart and Kotlin interface inheritance emit edges**, and C++/C# dispatch through abstract bases (grpc: +1,905 `dispatches_to`).
+- **JS/TS `module_exports` edges reach only exported names** (koel: 2,084 → 94). Module links resolve tsconfig `paths` whatever the working directory, JS-family linkers label TypeScript `typescript`, and HTML `<script src>` edges land on the in-repo file.
+- **Pub/sub linkers store an unresolved identifier under `topic_identifier`/`channel_identifier`/`event_identifier`**, not as the topic.
+- **`use AppWeb, :live_view` / `:live_component` modules implement `Phoenix.LiveView` / `Phoenix.LiveComponent`** with their callbacks rooted: the web module's `apply(__MODULE__, which, [])` dispatcher is followed into its quote. A `use` inside a quote no longer roots the defining module's own functions.
+
+#### Reaching the I/O catalogue
+
+- **A call on an application type that inherits a library type reaches the library's row** when the type does not define the member (a `use Ecto.Repo` module's `Repo.all`, a `requests.Session` subclass's `self.get`); the ancestors walked are recorded in `meta["external_owner_ancestors"]`.
+- **A call bound inside the repository no longer falls through to a library row by short name** (gatling: 15 false `StdIn` reads gone).
+- **A launch that returns a handle has its crossing at the read** (`Popen.communicate()`, `popen` streams, `Process.getInputStream()`). Go's `exec.Command` rows stay until re-measured now that returned sources are followed.
+- **Every JS/TS extension** (`.mjs`, `.cjs`, `.jsx`, `.tsx`, `.mts`, `.cts`) reaches the data-flow (DDG) specs and linkers, from one shared list.
+- **Factory results are typed through `library_signatures`**, so `urllib` opener sends and `csv.writer` writes are found where the data goes in. Every send through an opener also shows an environment-to-network flow, not yet ruled on.
+- **Module matching is exact**: a row no longer claims a longer module ending in its name (koel: 41 false network sends), Go rows are keyed by import path, and C++ `<cstdio>`-style headers reach the C rows.
+- **Channels are named for what they are**: a process's own standard output is `logging` in every catalogue, Kotlin/Scala `System.out` included, and a Go Unix-domain socket is IPC.
+- **More calls reach their row** (from-imported modules, typed receivers, fully-qualified Scala and Rust, PHP grouped `use`), and `io-boundaries` lists calls into unclassified libraries again.
+- **Row corrections**: added C `open`/`creat`, Go file-handle writes, Swift and Objective-C launches, `defusedcsv` and Django storage; removed calls that cross nothing (process exits, logging configuration, in-process notifications, Erlang table info, data-less Node events); moved directory reads to `host_info_read`, `exec.LookPath` to `fs_read`, Elixir message sends to `process_send`, and `Oban.insert*` and `sqlite3` backup to `db_write`.
+
+#### Identity, naming and containment
+
+- **Elixir functions are one node per name and arity**: the clauses of `def greet(:a)` / `def greet(:b)` fold into one `function` or `macro` node spanning them, as Erlang's do, with the arity in `meta.parameters` (phoenix/lib: 2,231 → 1,837 nodes).
+- **A PureScript function is one node**: its signature and equations fold into one node; a class member's signature stays its own node and is no longer dropped.
+- **Declarations that were dropped are emitted**: second same-name declarations in OCaml, Agda, Lean and Wolfram; Julia `where` methods, `function Base.show(...)` and `function f end`; one-letter V types; Kotlin declarations whose body closes on the last member's line (a tree-sitter-kotlin 1.1.0 parse error).
+- **Fewer spurious nodes**: a Jupyter method is emitted once, as `Class.method` (40-notebook sample: 89 → 69 function nodes); OCaml local `let x = ... in` values are no longer functions; a Twig `{% else %}` is no longer a `conditional` named `if `.
+- **Names carry their enclosing module, namespace or type**: OCaml, F#, Agda and Lean declarations (`A.run`, `A.C.deep`, `A.t`, `A.S`), Agda fields (`Pair.fst`), F# records, unions and fields (`A.Point.X`) and class-level `let`s (`Shape.helper`). An OCaml call that a same-name type used to capture now reaches the function (16 of 17 such calls on a sample).
+- **`qualified_name` carries every enclosing scope**: PHP (each declaration's own namespace), C# (`A.B.C.Go`, not `B.C.Go`), TypeScript namespaces, Proto and Cap'n Proto (`demo.A.B.Inner`); a Tcl proc's node id and `meta.namespace` carry the full `namespace eval` path.
+- **Other name and metadata fixes**:
+  - TOML tables with three or more key parts keep their dotted name (`[tool.poetry.dependencies]` was `dependencies`);
+  - a Perl sub in `package B { }` is named under `B`; SPARQL queries are named by form (`SELECT`), not ordinal;
+  - reStructuredText sections report their real `meta.level` (all were 1);
+  - Twig symbols report their own line (not the line above), and `{% block title "Hi" %}` is named `title`;
+  - HLSL, Ada, Pascal, SQL, V, Racket and Scheme callables write `meta.parameters`; Racket/Scheme `param_count` and V method `signature` are corrected.
+- **The containment linker contains a dotted name whose prefix is no symbol in its file** (a Lean `A.S`, a C++ out-of-line `Token::get`; 383 `contains` edges added on the corpus samples, none removed). A file is never contained, and an owner found by qualified name must sit in the child's file.
+- **A Circom file with an intermediate signal (`signal x;`) no longer crashes the run** with *"internal error: TypeError"* (`modifiers=None`).
+- **Swift and Rust symbols no longer vary with the installed grammar** (floors raised to tree-sitter-swift 0.7.4 and tree-sitter-rust 0.24.2), and an imported file's node carries its own language (`discovery_language` records the importer's).
+
+#### Routes, frameworks and the sketch
+
+- **Route markers are HTTP routes, not library exports.** When several detectors classify one symbol, the most confident wins (it was the first to run), and a route marker no longer picks up `library_export` by name (thc: `http_route` entrypoints 2 → 240).
+- **Phoenix routes match `mix phx.routes`.**
+  - Only a module using `Phoenix.Router` or `Plug.Router` defines routes, and never on the right side of `|>` (cache `get`s and test `conn |> get(...)` calls were routes).
+  - `resources` mounts eight routes (`update` on PATCH and PUT) and honours `only:`, `except:`, `singleton:` and `param:`.
+  - A route's controller and path carry the enclosing `scope` aliases and prefixes (`AppWeb.UserController`, `/users/:user_id/posts`), so the handler is matched exactly, not by name suffix.
+- **Sketch output no longer depends on the per-process hash salt**: the Tests line, the Configuration section in hybrid mode, `--frameworks all`, `Limits.merge` and the embedding file sampler. Test-framework detection samples up to 200 files plus root runner config and recognises 21 more frameworks.
+- **The sketch's Entry Points section keeps to its budget** (one entry count shared across groups; thc: 22.7k → 7.4k characters), and a route line names its handler (`GET /feed` → `FeedController.index`).
+- **`profile.frameworks` lists each framework once**, even when two ecosystems or a repeated `--frameworks` name detect it.
+- **The dependency linker counts only third-party Rust and Python imports** when it warns about missing TOML declarations, not every import.
+- **Python stdlib recognition covers 3.10–3.13**, so `distutils` and the other modules removed in 3.12 are no longer `third_party`.
+- **Smaller**: bash multi-variable `export`; `compact` leads with key symbols; Ansible needs Ansible evidence (repositories with claims 180 → 9); Astro paths and Laravel route literals; no launched programs read from a script's appended binary.
+
+#### Survey speed on large repositories
+
+- **Three stalls fixed**: supply-chain classification reads each file once, not once per symbol (319 s CPU on flink); the crypto-flow linker checks for a keyword before parsing (over an hour on nextjs); the sketch's file ranking tokenizes each doc once. End-to-end times have not been re-measured.
+
+#### Tooling and release
+
+- **The `embeddings` extra requires sentence-transformers `~=5.7`** (was `~=5.2.2`, which could not reach the PYSEC-2026-4164 fix in 5.6.0), and `install-embeddings` upgrades an older install instead of reporting it installed. One constant (`cli.EMBEDDINGS_REQUIREMENT`) and a test hold the five copies of the requirement together.
+- **`hypergumbo build-grammars` works from a PyPI install.** The Lean, Wolfram and Circom C sources now ship in `hypergumbo-core` (+0.7 MB); no wheel contained them, so it failed for all three from pip or pipx.
+- **`--backend` is checked wherever it appears**: `--backend=X` as the last argument works (it exited 2 with "unrecognized arguments"), and a missing or unknown value exits 2 instead of being ignored.
+- **`smart-test` never passes a run that executed nothing.** Zero tests executed (pytest exit 5 or 4, all deselected or skipped) fails with "ZERO TESTS EXECUTED"; a change with nothing to test still passes. Deleted test files are left out of the selection, and a selection or Woodpecker manifest naming a missing path is refused.
+- **Instruments no longer report success on bad input**: `python -m hypergumbo_core.cli` exits 2 instead of a silent 0, measurement scripts name and check the code tree under test, and cohort instruments print `COHORT: covered K of N given` and exit 4 when short.
+- **Registry gates follow values carried through data** (`hypergumbo_core.value_flow`), which found undeclared Kotlin, SCIP and evidence-type producers, now fixed.
+- **CI**: the test-only-reachability ratchet runs on the Woodpecker cron, the catalogue scope gate agrees across Python 3.10–3.13, the scheduled suites cover scip-python, and the release scripts read `SCHEMA_VERSION` correctly (8.1.0 shipped a garbled line).
+- **Smaller**: `auto-pr --tracker-id` no longer stalls after a merge; the mypy strict surface shrinks 666 → 503; bakeoff runs treat a crashed run as unfinished; the dependency audit drops 24 stale ignores; `measure-taint-precision.py packet` lists each sink site once; the dormant GitHub workflow's manifest banners count correctly.
+
+### Documentation
+
+- **README has a plain-language "Security and trust" section**: that agents wrote most of the code and no human has read it line by line, what a default run reads, writes and downloads (including the one-time embedding-model download from huggingface.co), which commands download or run code, the open findings, what an untrusted repository can influence, and how to run hypergumbo confined. The README no longer says the meta-package installs the tracker.
+- **[docs/CATALOGUES.md](docs/CATALOGUES.md)** covers catalogue tiers, families and the in-repo opt-in.
+- **ADR-0061 decides catalogue tiers**, and ADR-0016, 0017, 0045, 0047 and 0060 agree with it. ADR-0017 adds §4c, and 21 ADRs now state the shipped design.
+- **ADR-0004 records the installed-dependency-source rule and ADR-0016 §7 the I/O-unknown rule** described above. The spec's default-exclude list (which wrongly listed `venv/`) and its claim that only tiers 1–2 are parsed are corrected.
+- **ADR-0049's Lazy rows outside Django were checked against library source**: `getResultStream` leaves the list, and the rest are held with reasons.
+- **[Audit 0022](docs/audits/0022-inv-nular-remainder-sweep-tranche-3.md) source-checks 335 more catalogue rows** and files 19 candidate fixes.
+- **ADR-0035 is Accepted, with the producer migration complete**, and the spec's `stable_id_scheme` version history records the v8 → v9 contract and per-language churn.
+- **Four module-docstring audits**: 83 files corrected or extended; 59 more, including a random sample of modules no audit had reached; then 33 corrected and 14 extended; then 47 corrected and 22 extended, which also filed six code defects the docstrings had described correctly. Also measurement 0030 and corrections to earlier measurement records; `VERIFY-CLAIMS-SCOPE.md` explains why no verdict consults partial parses.
 
 ## [8.1.0] - 2026-09-25
 
@@ -2398,6 +2592,25 @@ Initial public release with comprehensive static analysis capabilities.
 
 | Version | Date       | Highlights                                                   |
 | ------- | ---------- | ------------------------------------------------------------ |
+| 9.0.0 | 2026-10-14 | `stable_id_scheme` v9: deleting a symbol moves no other id; catalogue tiers (only `builtin` rows clear a flow, in-repo catalogue data opt-in); installed dependency source skipped by default (`--trace-deps`); calls bind to the declaration in scope in five languages |
+| 8.1.0   | 2026-09-25 | Calls credited to their enclosing function by position (25 analyzers); receiver typing in 10 languages; opt-in scip-python backend merged per record (ADR-0057); `is_exported` can be `null`; taint useful precision 24.1% → 30.9% |
+| 8.0.0   | 2026-08-20 | **Breaking:** `verify-claims` exit code 3 (`confirmed_with_caveats`), envelope 2.0, `Edge.quality` removed. Analysing a repo no longer runs its code; bounded results cache; cold survey 517.7s → 220.0s |
+| 7.0.0   | 2026-07-27 | **Breaking:** edge types 50 → 25 (stored maps no longer validate), `verify-claims --json` is a versioned object, declared deps move tier 2 → 3. `survey` is the primary verb; Python MRO and DI resolution |
+| 6.1.0   | 2026-06-18 | Correctness campaign: `stable_id` v5 → v8, crashing passes contained instead of aborting the run, cache invalidates on grammar upgrade, Python `qualified_name` populated |
+| 6.0.0   | 2026-06-10 | **Breaking:** `Symbol.language` and `canonical_name` split into typed fields (ADR-0031/0032), `origin` becomes a list. View templates for Django, Phoenix, Spring, Blade; spec-vs-data validator (ADR-0033) |
+| 5.0.1   | 2026-05-09 | `--backend rust-analyzer` refuses a broken rustup proxy instead of silently falling back to tree-sitter |
+| 5.0.0   | 2026-05-09 | Rust SCIP backend usable end to end (`hypergumbo[rust-analyzer]` published); `add-extras` / `remove-extras` replace the install-extras commands |
+| 4.1.0   | 2026-05-08 | `Symbol.kind` and `Edge.evidence_type` registries (ADR-0027/0028) with drift linters; dispatch and inheritance fixes across nine linkers |
+| 4.0.0   | 2026-05-03 | **Breaking:** 33 deprecated `edge_type` values removed (schema 0.4.0). Canonical edge-type registry; `is_example_file` / `is_config_file`; Starlette routes |
+| 3.0.0   | 2026-04-29 | **Breaking:** `io-boundaries` catalogs hold only stdlib primitives; wrappers surface as `external_potential`. Attribute-style I/O primitives; project-local taint catalogs |
+| 2.7.0   | 2026-04-21 | Rust SCIP backend via rust-analyzer (ADR-0014, opt-in); controller and router route linkers; Django ORM, Jackson, Airflow, Kafka Streams and Rust trait dispatch linkers |
+| 2.6.0   | 2026-04-12 | `io-boundaries` excludes test chains by default; slice uses a file cap and hub pruning instead of adaptive hop limits |
+| 2.5.1   | 2026-04-05 | Security pins: pygments ≥ 2.20.0, requests ≥ 2.33.0 |
+| 2.5.0   | 2026-04-04 | Taint-flow analysis (ADR-0017): structural, intraprocedural and interprocedural; I/O catalogs for Objective-C, Scala, Haskell, Swift |
+| 2.4.0   | 2026-03-21 | `io-boundaries` and `verify-claims` (ADR-0016); Electron, crypto-flow and message-dispatch linkers |
+| 2.3.0   | 2026-03-16 | Dataflow access modes (ADR-0015); Yjs and Tauri event linkers; shared file index removes ~75% of uncached runtime |
+| 2.2.1   | 2026-03-15 | Jupyter plus six regex analyzers (Blade, Gnuplot, Handlebars, Just, Mermaid, QML); `slice --files` crash fixed |
+| 2.2.0   | 2026-03-12 | Solidity ABI, Tauri IPC, wasm_bindgen, React component and middleware-chain linkers; gRPC proto routes linked to Go implementations |
 | 2.1.0   | 2026-03-01 | 9 new linkers (DI, HTTP, FFI, Vue, ORM, etc.), 150+ framework patterns, smart test selection |
 | 2.0.2   | 2026-02-01 | Default token budget increased to 8000                       |
 | 2.0.1   | 2026-01-31 | `--files` flag for slice (smart test selection support)       |
@@ -2413,14 +2626,32 @@ Initial public release with comprehensive static analysis capabilities.
 | 0.6.0   | 2025-12-29 | Lean, Wolfram, Agda analyzers; release automation            |
 | 0.5.0   | 2025-12-26 | Initial release: 32 analyzers, 12 linkers                    |
 
-[Unreleased]: https://codeberg.org/iterabloom/hypergumbo/compare/v2.1.0...HEAD
-[2.1.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v2.0.2...v2.1.0
-[2.0.2]: https://codeberg.org/iterabloom/hypergumbo/compare/v2.0.0...v2.0.2
-[2.0.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v1.2.1...v2.0.0
-[1.2.1]: https://codeberg.org/iterabloom/hypergumbo/compare/v1.2.0...v1.2.1
-[1.1.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.9.1...v1.1.0
-[0.9.1]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.9.0...v0.9.1
-[0.9.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.6.9...v0.9.0
-[0.6.9]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.6.0...v0.6.9
-[0.6.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.5.0...v0.6.0
-[0.5.0]: https://codeberg.org/iterabloom/hypergumbo/releases/tag/v0.5.0
+[Unreleased]: https://github.com/iterabloom/hypergumbo/compare/v9.0.0...HEAD
+[9.0.0]: https://github.com/iterabloom/hypergumbo/compare/v6.1.0...v9.0.0
+[8.1.0]: https://github.com/iterabloom/hypergumbo/compare/v8.0.0...v8.1.0
+[8.0.0]: https://github.com/iterabloom/hypergumbo/compare/v7.0.0...v8.0.0
+[7.0.0]: https://github.com/iterabloom/hypergumbo/compare/v6.1.0...v7.0.0
+[6.1.0]: https://github.com/iterabloom/hypergumbo/compare/v6.0.0...v6.1.0
+[6.0.0]: https://github.com/iterabloom/hypergumbo/compare/v5.0.1...v6.0.0
+[5.0.1]: https://github.com/iterabloom/hypergumbo/compare/v5.0.0...v5.0.1
+[5.0.0]: https://github.com/iterabloom/hypergumbo/compare/v4.1.0...v5.0.0
+[4.1.0]: https://github.com/iterabloom/hypergumbo/compare/v4.0.0...v4.1.0
+[4.0.0]: https://github.com/iterabloom/hypergumbo/compare/v3.0.0...v4.0.0
+[3.0.0]: https://github.com/iterabloom/hypergumbo/compare/v2.7.0...v3.0.0
+[2.7.0]: https://github.com/iterabloom/hypergumbo/compare/v2.6.0...v2.7.0
+[2.6.0]: https://github.com/iterabloom/hypergumbo/compare/v2.5.1...v2.6.0
+[2.5.1]: https://github.com/iterabloom/hypergumbo/compare/v2.5.0...v2.5.1
+[2.5.0]: https://github.com/iterabloom/hypergumbo/compare/v2.4.0...v2.5.0
+[2.4.0]: https://github.com/iterabloom/hypergumbo/compare/v2.3.0...v2.4.0
+[2.3.0]: https://github.com/iterabloom/hypergumbo/compare/v2.2.1...v2.3.0
+[2.2.1]: https://github.com/iterabloom/hypergumbo/compare/v2.2.0...v2.2.1
+[2.2.0]: https://github.com/iterabloom/hypergumbo/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/iterabloom/hypergumbo/compare/v2.0.2...v2.1.0
+[2.0.2]: https://github.com/iterabloom/hypergumbo/compare/v2.0.0...v2.0.2
+[2.0.0]: https://github.com/iterabloom/hypergumbo/compare/v1.2.1...v2.0.0
+[1.2.1]: https://github.com/iterabloom/hypergumbo/compare/v1.2.0...v1.2.1
+[1.1.0]: https://github.com/iterabloom/hypergumbo/compare/v0.9.1...v1.1.0
+[0.9.1]: https://github.com/iterabloom/hypergumbo/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/iterabloom/hypergumbo/compare/v0.6.9...v0.9.0
+[0.6.9]: https://github.com/iterabloom/hypergumbo/compare/v0.6.0...v0.6.9
+[0.6.0]: https://github.com/iterabloom/hypergumbo/releases/tag/v0.6.0

@@ -10,8 +10,9 @@ How It Works
 ------------
 Given a source blob and the 1-based line range of a function definition, parse
 the source with tree-sitter-rust, locate the unique ``function_item`` or
-``function_signature_item`` (trait method declarations, WI-duguk) whose line
-span matches, and feed the same inputs rust.py uses into
+``function_signature_item`` (trait method declarations, WI-duguk; foreign
+``extern``-block declarations, INV-lopus, which own no type and so take the
+``function`` kind) whose line span matches, and feed the same inputs rust.py uses into
 ``make_typed_stable_id`` — kind, normalized signature and visibility, plus
 ``name``, ``qualified_name`` (mandatory since v5 / ADR-0035 §1) and
 ``file_stable_id`` (v7). The output is byte-for-byte identical to the
@@ -79,6 +80,7 @@ from hypergumbo_lang_mainstream.rust import (
     _get_trait_owner,
     is_rust_tree_sitter_available,
     normalize_rust_signature,
+    rust_hashed_qualified_name,
 )
 
 if TYPE_CHECKING:
@@ -170,15 +172,15 @@ def compute_rust_stable_id_from_source(
         # Dedup contract (WI-zakub): name/qualified_name must be byte-identical
         # to what rust.py:_analyze_rust computes for the same function_item, so
         # the resulting stable_id matches. rust.py uses func_name (the bare
-        # ``name`` field) and full_name (``{impl_target}::{func_name}`` for
-        # impl methods, else func_name).
+        # ``name`` field) and ``rust_hashed_qualified_name`` (enclosing mods and
+        # functions, the owner, the name; INV-fabih), which this calls too.
         name_node = _find_child_by_field(node, "name")
         func_name = node_text(name_node, source) if name_node else ""
-        full_name = f"{owner}::{func_name}" if owner else func_name
 
         return make_typed_stable_id(
             kind, norm_sig, visibility,
-            name=func_name, qualified_name=full_name,
+            name=func_name,
+            qualified_name=rust_hashed_qualified_name(node, source, owner, func_name),
             file_stable_id=file_stable_id,
         )
 

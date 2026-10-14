@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017: Taint sanitizers — third-party encryption.
+#
+# A COMMUNITY companion (ADR-0061): these rows describe third-party libraries
+# and ship without being maintained. The standard-library rows for the same
+# transforms sit in encryption.yaml; the loader reads both, and the tier comes
+# from the provenance line, not the file name.
+#
+# `retrieved` is the date these rows were last edited, the latest date they
+# can have been checked against the libraries they describe.
+provenance: community
+retrieved: 2026-03-25
+description: "Encryption converts plaintext to ciphertext"
+transforms:
+  - input_taint: plaintext
+    output_taint: ciphertext
+    functions:
+      python:
+        - cryptography.fernet.Fernet.encrypt
+        - cryptography.hazmat.primitives.ciphers.aead.AESGCM.encrypt
+        - cryptography.hazmat.primitives.ciphers.aead.AESCCM.encrypt
+        - cryptography.hazmat.primitives.ciphers.aead.ChaCha20Poly1305.encrypt
+      rust:
+        - aes_gcm::Aes256Gcm::encrypt
+        - ring::aead::SealingKey::seal_in_place
+
+  - input_taint: key_material
+    output_taint: derived_key
+    functions:
+      rust:
+        - hkdf::Hkdf::expand

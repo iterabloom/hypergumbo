@@ -2,18 +2,19 @@
 """Python dependency manifest parsing for ``pyproject.toml`` projects.
 
 Parallel of ``jvm_deps.py`` for Python. Extracts declared dependencies from
-``pyproject.toml`` so that ``ir.create_boundary_nodes`` can classify
-unresolved Python imports as tier 2 (direct dependency the project
-declares) vs tier 3 (indirect / stdlib / unknown).
+``pyproject.toml`` so that ``ir.create_boundary_nodes`` can stamp an
+unresolved Python import's boundary node ``meta["directness"]`` as a direct
+dependency the project declares, or not. Every boundary node is tier 3
+(ADR-0041 §1 made tier 3 the sole external tier and moved direct/transitive
+onto the ``directness`` stamp); this module does not change tiers.
 
 Why
 ---
-Without a manifest, every Python boundary node falls back to tier 3.
-On a Python-heavy repo with hypergumbo's own pyproject (``click``,
-``rich``, ``pydantic``, …) every direct dep is the same tier-3 as some
-deep transitive thing — sketch / slice ranking and dead-code analysis
-can't distinguish the project's own pinned deps from arbitrary externals
-(WI-nunuj).
+Without a manifest, no Python boundary node can be called direct. On a
+Python-heavy repo with hypergumbo's own pyproject (``click``, ``rich``,
+``pydantic``, …) every direct dep would read the same as some deep transitive
+thing — sketch / slice ranking and dead-code analysis can't distinguish the
+project's own pinned deps from arbitrary externals (WI-nunuj).
 
 Sources parsed
 --------------
@@ -30,11 +31,21 @@ The walk collects every ``pyproject.toml`` under ``repo_root`` rather
 than just the root file. Monorepo layouts where the root pyproject is
 shared-tool-configuration only and actual ``[project].dependencies``
 live in ``packages/<pkg>/pyproject.toml`` are first-class. Skips the
-shared ``DEFAULT_EXCLUDES`` directory set (``node_modules``, ``venv``,
-``dist``, …) and dot-prefixed dirs so a ``pyproject.toml`` inside a
-``.venv/`` site-packages directory cannot smuggle a fake dep.
+shared ``discovery.manifest_walk_skip()`` directory set (``DEFAULT_EXCLUDES``
+plus ``node_modules`` / ``vendor``), dot-prefixed dirs, and directories a
+discovery content rule claims (a virtualenv, Mix ``deps/``, …) so a
+``pyproject.toml`` inside a virtualenv's site-packages cannot smuggle a fake
+dep.
 Mirrors :func:`hypergumbo_lang_mainstream.py._detect_source_roots`,
 which fixed the same monorepo gap for file discovery (WI-davan E1).
+
+Workspace-member subtraction (INV-nuzas, ADR-0041 §1): the walk also reads
+each pyproject's OWN distribution name (``_extract_distribution_name``:
+``[project].name``, else ``[tool.poetry].name``). Those names go through the
+same dist-to-import resolution and are removed from the final set, after the
+stdlib carve-out, so a monorepo sibling one package depends on (e.g.
+``hypergumbo_core``) is treated as first-party source, never stamped as a
+direct external dependency.
 
 Distribution-name vs import-name resolution
 -------------------------------------------
@@ -44,15 +55,16 @@ The dist name on PyPI doesn't always equal the Python import name —
 to invert at parse time when the dev environment has the package
 installed (the bakeoff context usually does). Unknown dist names fall
 through to the dist name verbatim with hyphens swapped for underscores
-— most deps match this anyway, and a false-negative just lands in
-tier 3, the current default (no regression).
+— most deps match this anyway. A false negative stamps the import
+``directness='undeclared'`` (a declared dependency reads as phantom)
+whenever some pyproject produced entries; tier is unaffected.
 
 Stdlib carve-out
 ----------------
 The single-source ``python.yaml`` ``stdlib_modules`` catalog (ADR-0041 §3,
 via ``io_boundary.load_catalog("python").is_stdlib_module``) filters the
 resolved import-name set. A user who declares ``os`` (or any other stdlib
-name) in ``pyproject.toml`` won't accidentally promote it to tier 2. This is
+name) in ``pyproject.toml`` won't accidentally have it stamped direct. This is
 the SAME stdlib recognizer the supply-chain ecosystem classifier uses — one
 source, not the live interpreter's ``sys.stdlib_module_names`` (which would
 be a second, version-drifting source the §3 single-source constraint forbids).
@@ -132,12 +144,12 @@ def _extract_distribution_name(data: dict) -> str | None:
     is the fallback. Returns ``None`` when neither is a non-empty string.
 
     Used for workspace-member subtraction (supply-verdict F3 / INV-nuzas,
-    ADR-0041 D8a). In a monorepo, a sibling package that another package
+    ADR-0041 §1). In a monorepo, a sibling package that another package
     declares as a dependency is first-party workspace source, not a
     third-party direct dependency. Collecting each package's own name lets
-    :func:`parse_python_dependencies` remove the sibling from the tier-2
-    "direct dependency" set instead of mislabelling in-repo code as an
-    external dependency (the "tier-2 direct dependency lie", leverage #27).
+    :func:`parse_python_dependencies` remove the sibling from the declared
+    dependency set instead of mislabelling in-repo code as a direct external
+    dependency (the "direct dependency lie", leverage #27).
     """
     project = data.get("project")
     if isinstance(project, dict):
@@ -213,8 +225,9 @@ def _resolve_import_names(dist_names: set[str]) -> set[str]:
     the dist installed, ``packages_distributions()`` gives us the real
     mapping; otherwise we fall back to the dist name verbatim (with
     hyphens swapped for underscores) — most deps match this anyway, and
-    a false negative falls through to the tier-3 default rather than
-    silently promoting something to tier 2.
+    a false negative stamps the import ``undeclared`` (a declared
+    dependency reads as phantom) rather than silently stamping something
+    direct.
     """
     dist_to_import = _build_dist_to_import_map()
     out: set[str] = set()
@@ -234,16 +247,17 @@ def _find_pyproject_files(repo_root: Path) -> list[Path]:
 
     Monorepo support: collects the root pyproject AND every
     ``packages/<pkg>/pyproject.toml`` (or any depth). Skips
-    ``DEFAULT_EXCLUDES`` directories (``node_modules``, ``venv``,
-    ``dist``, …) and dot-prefixed dirs so fake deps inside a vendored
-    ``.venv/site-packages/<some-pkg>/pyproject.toml`` cannot leak
+    ``discovery.manifest_walk_skip()`` names (``node_modules``, ``vendor``,
+    ``dist``, …), dot-prefixed dirs and content-claimed dependency dirs
+    (``walks_into``) so fake deps inside a vendored
+    ``venv/lib/.../site-packages/<some-pkg>/pyproject.toml`` cannot leak
     into the manifest.
 
     Returns sorted by path for deterministic output.
     """
-    from hypergumbo_core.discovery import DEFAULT_EXCLUDES
+    from hypergumbo_core.discovery import manifest_walk_skip, walks_into
 
-    skip = set(DEFAULT_EXCLUDES)
+    skip = manifest_walk_skip()
     out: list[Path] = []
     stack: list[Path] = [repo_root]
     while stack:
@@ -255,9 +269,8 @@ def _find_pyproject_files(repo_root: Path) -> list[Path]:
         for entry in entries:
             if entry.is_file() and entry.name == "pyproject.toml":
                 out.append(entry)
-            elif entry.is_dir():
-                if entry.name in skip or entry.name.startswith("."):
-                    continue
+            # INV-pivir: never into a directory symlink (a cycle is unbounded).
+            elif walks_into(entry, skip):
                 stack.append(entry)
     return sorted(out)
 
@@ -274,7 +287,7 @@ def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
     ``python.yaml`` stdlib catalog (ADR-0041 §3,
     ``io_boundary.load_catalog("python").is_stdlib_module``) so a user who
     erroneously declares ``os`` (or any other stdlib name) in pyproject
-    doesn't accidentally promote it to tier 2. Same dependency declared by
+    doesn't accidentally have it stamped direct. Same dependency declared by
     multiple packages collapses to one entry (set-union semantics).
 
     Returns:
@@ -311,7 +324,7 @@ def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
     import_names = {n for n in import_names if not stdlib_catalog.is_stdlib_module(n)}
 
     # Workspace-member subtraction (supply-verdict F3 / INV-nuzas, ADR-0041
-    # D8a). A monorepo sibling that another package declares as a dependency is
+    # §1). A monorepo sibling that another package declares as a dependency is
     # first-party workspace source, not a third-party direct dependency.
     # Resolve each package's own distribution name through the same
     # dist→import path and remove it, so the boundary classifier does not stamp

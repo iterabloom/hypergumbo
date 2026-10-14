@@ -464,7 +464,7 @@ class TestExtractDistributionName:
 
 
 class TestWorkspaceMemberSubtraction:
-    """supply-verdict F3 / INV-nuzas (ADR-0041 D8a): a monorepo sibling that
+    """supply-verdict F3 / INV-nuzas (ADR-0041 §1): a monorepo sibling that
     another workspace package declares as a dependency is first-party source,
     not a third-party direct dependency — it must NOT land in the tier-2
     direct-dependency manifest (the "tier-2 direct dependency lie")."""

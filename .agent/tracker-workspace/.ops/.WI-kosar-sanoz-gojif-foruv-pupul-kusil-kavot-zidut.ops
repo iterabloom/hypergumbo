@@ -1,0 +1,21 @@
+- op: create  # f191
+  at: '2026-10-06T05:23:54Z'  # f191
+  by: agent  # f191
+  actor: jgstern_agent  # f191
+  clock: 1  # f191
+  nonce: f191  # f191
+  data:  # f191
+    kind: work_item  # f191
+    title: "Fleet family: analyzers that find a call's ENCLOSING callable by name through the repo-wide resolver (tlaplus, zig, llvm_ir, agda; cobol PERFORM targets) -- fix as one family and gate the shape"  # f191
+    status: todo_hard  # f191
+    priority: 2  # f191
+    parent:  # f191
+    tags:  # f191
+    - analysis_quality  # f191
+    - call_resolution  # f191
+    isbefore: []  # f191
+    duplicate_of: []  # f191
+    not_duplicate_of: []  # f191
+    pr_ref:  # f191
+    description: "The 2026-10-05/06 docstring audit reproduced the same defect in three analyzers, each filed: INV-razus (tlaplus.py resolver.lookup(enclosing_name)), INV-musij (zig.py resolver.lookup(qualified_name) for the enclosing fn), INV-nafij (llvm_ir.py resolver.lookup(caller_name)); and the cobol analogue for PERFORM targets, INV-lutaj. A grep for the shape found one more not yet reproduced: agda.py ~L417 'enclosing_result = resolver.lookup(enclosing_name)' (same structure as tlaplus). Earlier fixes of this family went one language at a time (Pony WI-rokus, Pascal WI-darik, CUDA WI-fohuh; INV-midag for the base helper). Proposal: (1) fix all five by finding the enclosing definition by position in the current file (the base analyzer's helper); (2) add a shrink-only gate that flags resolver.lookup(...) whose argument is an enclosing/caller name in packages/hypergumbo-lang-*/src, plus a shared two-file same-name fixture every analyzer runs (two files each defining the same callable, each calling a different helper; assert each call's src is in its own file). Grep used: resolver\\.lookup\\((enclosing|caller|current_func|func_name|enclosing_name|qualified_name|caller_name) -- most hits are legitimate CALLEE lookups; only the five above resolve the CALLER."  # f191
+    fields: {}  # f191

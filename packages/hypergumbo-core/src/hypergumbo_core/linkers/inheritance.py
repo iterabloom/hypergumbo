@@ -12,7 +12,12 @@ How It Works
    extends/implements) and class/module symbols with included_modules metadata
    (for includes)
 2. For each base class name, looks up the target symbol
-3. Creates extends (for classes) or implements (for interfaces) edges
+3. Creates extends (for classes) or implements (for interfaces) edges. The
+   edge type follows the SOURCE as well as the target: an inherently-abstract
+   source (interface / trait / protocol) only ever *extends* its bases —
+   Java/TS/PHP ``interface A extends B``, Scala ``trait A extends B``, Swift
+   ``protocol A: B`` — so its edges are ``extends`` even to an interface
+   target (WI-kalug). Only a concrete type *implements* an interface.
 4. When a base resolves to no in-tree symbol (an external/stdlib base), mints an
    unresolved-external ``extends`` edge instead of dropping the relationship —
    WI-jubag Approach C, the framework-agnostic chokepoint generalization of the
@@ -22,6 +27,11 @@ How It Works
    (``{lang}:external:0-0:{name}:unresolved``), which is INV-nuzas-safe by
    construction. A name-based dedup lets this coexist with the per-analyzer
    fallbacks without double-emitting. See ``_external_base_edge``.
+   A base an analyzer already classified as external THROUGH THE FILE'S
+   IMPORTS (an unresolved edge with an ``ExternalRef``) is not looked up in
+   the tree at all: this linker has no import context, and retrying such a
+   base's last segment bound Python's ``unittest.TestCase`` to Django's own
+   ``TestCase`` (WI-ratid).
 5. Also emits ``includes`` edges (evidence_type=ast_includes) from
    ``included_modules`` metadata for Ruby mixins (WI-hatip), resolving module
    names via a dedicated module-name map
@@ -42,7 +52,7 @@ import time
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
-from ..symbol_kinds import type_like_kind_names
+from ..symbol_kinds import abstract_type_kind_names, type_like_kind_names
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
@@ -288,6 +298,18 @@ def _edge_target_base_name(edge: Edge, symbol_by_id: dict[str, Symbol]) -> str |
     return None
 
 
+def _canonical_base_name(base_name: str) -> tuple[str, bool]:
+    """``(last segment, is_qualified)`` of a raw ``base_classes`` entry.
+
+    Strips generics of both grammars (``Foo<T>`` and Python ``Foo[T]``), then
+    takes the last dotted/scoped segment: ``unittest.TestCase`` ->
+    ``("TestCase", True)``, ``Generic[T]`` -> ``("Generic", False)``.
+    """
+    stripped = base_name.split("<")[0].split("[")[0]
+    is_qualified = ("." in stripped) or ("::" in stripped)
+    return re.split(r"::|\.", stripped)[-1], is_qualified
+
+
 def _external_base_edge(
     sym: Symbol,
     base_name: str,
@@ -332,11 +354,7 @@ def _external_base_edge(
     implements-vs-extends without a resolved target, so they default to
     ``extends`` (matching the merged py.py fallback).
     """
-    # Strip generics of both grammars (``Foo<T>`` and Python ``Foo[T]``), then
-    # take the last dotted/scoped segment as the canonical name.
-    stripped = base_name.split("<")[0].split("[")[0]
-    is_qualified = ("." in stripped) or ("::" in stripped)
-    canonical = re.split(r"::|\.", stripped)[-1]
+    canonical, is_qualified = _canonical_base_name(base_name)
 
     if not _CLEAN_IDENT.fullmatch(canonical):
         return None
@@ -375,12 +393,17 @@ def _create_inheritance_edges(
     """Create extends/implements edges from base_classes metadata.
 
     For each symbol with base_classes metadata:
-    - If base is an interface in our codebase -> implements edge
+    - If base is an interface in our codebase -> implements edge, unless the
+      SOURCE is itself an interface/trait/protocol -> extends edge (WI-kalug)
     - If base is a class in our codebase -> extends edge
     - If base resolves to no in-tree symbol (external/stdlib) -> an
       unresolved-external ``extends`` edge (WI-jubag Approach C); see
       ``_external_base_edge`` for the guards
-    - If edge already exists (from analyzer) -> skip to avoid duplicates
+    - If an analyzer already connected the pair (extends OR implements) ->
+      skip: one relation, one edge
+    - If an analyzer already classified the base as external through the
+      file's imports (an unresolved edge with an ``ExternalRef`` of the same
+      name) -> skip: no in-tree lookup by name (WI-ratid)
 
     Uses ``resolve_target_symbol`` to disambiguate when multiple classes or
     interfaces share the same name.
@@ -395,9 +418,13 @@ def _create_inheritance_edges(
     Returns:
         List of NEW extends/implements edges (not duplicates)
     """
-    # Build set of existing edge keys for deduplication
-    existing_edge_keys: set[tuple[str, str, str]] = {
-        (e.src, e.dst, e.edge_type)
+    # Pairs an analyzer already connected. Keyed WITHOUT the edge type: one
+    # inheritance relation is one edge. Keyed with it, an analyzer that labels
+    # a pair differently from this linker (Kotlin labelled interface->interface
+    # ``implements`` until WI-kalug) got a second, contradicting edge for the
+    # same relation; the analyzer's edge stands, as for an external base.
+    existing_pairs: set[tuple[str, str]] = {
+        (e.src, e.dst)
         for e in existing_edges
         if e.edge_type in ("extends", "implements")
     }
@@ -416,6 +443,16 @@ def _create_inheritance_edges(
     # bases to that analyzer (which resolves aliases the chokepoint can't) and
     # only adds the dotted/qualified bases the analyzer left behind.
     srcs_with_analyzer_external: set[str] = set()
+    # WI-ratid: (source, base name) pairs an analyzer already classified as an
+    # EXTERNAL base THROUGH THE FILE'S IMPORTS -- an unresolved edge carrying an
+    # ``ExternalRef``. This linker has no import context, so it must not then
+    # bind that base to an in-tree class that merely shares its last segment:
+    # py.py classifies ``unittest.TestCase`` as external, and binding it to
+    # Django's own ``TestCase`` closed an inheritance cycle that disabled every
+    # MRO walk under Django's test hierarchy. js_ts emits such an edge only
+    # after its own name lookup found no in-tree class or interface, so this
+    # lookup would find none either (read in js_ts.py, not measured).
+    analyzer_external_bases: set[tuple[str, str]] = set()
     for e in existing_edges:
         if e.edge_type in ("extends", "implements"):
             name = _edge_target_base_name(e, symbol_by_id)
@@ -423,8 +460,13 @@ def _create_inheritance_edges(
                 seen_base_names_by_src.setdefault(e.src, set()).add(name)
             if not e.is_resolved:
                 srcs_with_analyzer_external.add(e.src)
+                if e.dst_ref is not None:
+                    analyzer_external_bases.add((e.src, e.dst_ref.name))
 
     edges: list[Edge] = []
+    # WI-kalug: an abstract type inherits from an abstract base; it does not
+    # implement it. Registry-derived, so a new abstract kind joins the rule.
+    abstract_kinds = abstract_type_kind_names()
 
     for sym in symbols:
         if sym.kind not in type_like_kind_names():
@@ -435,6 +477,11 @@ def _create_inheritance_edges(
             continue
 
         for base_class_name in base_classes:
+            if (
+                sym.id, _canonical_base_name(base_class_name)[0],
+            ) in analyzer_external_bases:
+                continue  # WI-ratid: the analyzer classified it, with imports.
+
             # Handle various naming patterns:
             # - Generic: List<int> -> List
             # - Qualified: Foo.Bar -> try Bar first, then Foo.Bar
@@ -477,7 +524,9 @@ def _create_inheritance_edges(
                 )
                 if resolved is not None:
                     target_sym, is_fallback = resolved
-                    edge_type = "implements"
+                    edge_type = (
+                        "extends" if sym.kind in abstract_kinds else "implements"
+                    )
                     break
                 if rust_kind_discipline:
                     continue
@@ -508,9 +557,8 @@ def _create_inheritance_edges(
             if target_sym.id == sym.id:
                 continue
 
-            # Skip if edge already exists (from analyzer)
-            edge_key = (sym.id, target_sym.id, edge_type)
-            if edge_key in existing_edge_keys:
+            # Skip if an analyzer already connected this pair (either label)
+            if (sym.id, target_sym.id) in existing_pairs:
                 continue
 
             # INV-zuhub: simple-name fallback edges carry conf <= 0.5 and
@@ -541,7 +589,7 @@ def _create_inheritance_edges(
 
 @register_linker(
     "inheritance-linker",
-    priority=15,  # Before type_hierarchy (priority 20)
+    priority=15,  # Before type_hierarchy (priority 60)
     # CNF: the analyzers that actually write the two Symbol.meta keys this
     # linker reads — ``base_classes`` and ``included_modules`` — enumerated
     # from their sources rather than from which languages have inheritance

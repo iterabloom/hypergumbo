@@ -1,0 +1,20 @@
+- op: create  # a30d
+  at: '2026-10-01T17:23:34Z'  # a30d
+  by: agent  # a30d
+  actor: jgstern_agent  # a30d
+  clock: 1  # a30d
+  nonce: a30d  # a30d
+  data:  # a30d
+    kind: work_item  # a30d
+    title: "rust: resolved self.m() calls are stamped call_construct=function, and macro-body calls carry none; stamping the real construct moves unknown_receiver_scope's denominator, so measure first"  # a30d
+    status: todo_hard  # a30d
+    priority: 3  # a30d
+    parent:  # a30d
+    tags:  # a30d
+    - taint  # a30d
+    isbefore: []  # a30d
+    duplicate_of: []  # a30d
+    not_duplicate_of: []  # a30d
+    pr_ref:  # a30d
+    description: "FOUND BY WI-dapap (2026-10-01, worktree ~/hg_wt/dapap, branch jgstern-agent/fix/dapap). Two facts about rust's call_construct on RESOLVED in-repo call edges, one mechanism.\n\n(a) A resolved `self.m()` call is stamped `function`, not `method`. Repro (rust analyzer only, analyze_rust on a one-file crate):\n    impl Server { fn run(&self) { self.handle(1); Self::assoc(2); free(3); } fn handle(&self, m: i32) -> i32 { m } fn assoc(m: i32) -> i32 { m } }\n  observed: line `self.handle(1)` -> dst Server.handle, meta {call_construct: function}; `Self::assoc(2)` -> {call_construct: function, receiver: qualified}; `free(3)` -> {call_construct: function}. The `self.handle` stamp comes from the short-name fallback (rust.py \"Strategy 2: Fall back to short name\", meta={\"call_construct\": \"function\"}), which does not distinguish a method call from a free call. A `self.m()` call is a call on a receiver: by base.py's own definition its construct is `method`.\n\n(b) Calls found inside a macro's token tree (`println!(\"{}\", self.handle(4))`, `tokio::select!{...}`) carry NO call_construct since WI-dapap removed `macro_body` (a detector name, not a construct). _extract_macro_call_names already sees the shape per site: `self . ident (` (method), `A :: ident (` (function, as rust stamps `Self::f()` elsewhere) and `ident (` (function), so the real construct is available.\n\nWHY NOT FIXED IN WI-dapap: stamping `method` is not inert. unknown_receiver_scope and accessor_name_receiver_scope count every method-construct call-family edge in a catalogued language as their DENOMINATOR (in-repo dsts included, verify_claims.py), so (a) and (b) both move the \"N of M method call site(s)\" caveat text on rust repos. `self.x()` inside `write!`/`println!`/`assert!` bodies is common in rust (Display impls), so the delta on a real crate is not known to be small. NOT MEASURED.\n\nFIX SHAPE: stamp the per-site construct in both places; then A/B a rust cohort (survey + verify-claims per arm, separate XDG_CACHE_HOME) and report the denominator change and any caveat/verdict change. `function` stamps on in-repo dsts are inert for every current consumer (they compare against \"method\" only, and method_starved_modules reads only catalogued module dsts); `method` stamps are the part that moves numbers."  # a30d
+    fields: {}  # a30d

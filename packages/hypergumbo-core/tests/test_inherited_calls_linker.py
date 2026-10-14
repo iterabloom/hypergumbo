@@ -3114,6 +3114,52 @@ class TestInvGuvivStdlibBaseShadow:
         assert len(resolved) == 1
         assert resolved[0].dst == second_pop.id
 
+    @staticmethod
+    def _site3_ctx(store_bases: list) -> tuple:
+        """Child(Parent); Parent declares ``store: Store``; Store declares
+        ``store_bases`` with the in-tree ``Mixin`` (which defines ``pop``)
+        among them. ``self.store.pop()`` in Child is the Site-3 call."""
+        mixin = _py_cls("sym:py.Mixin", "Mixin", path="/mixin.py")
+        mixin_pop = _py_method("sym:py.Mixin.pop", "Mixin.pop", path="/mixin.py")
+        store = _py_cls_bases("sym:py.Store", "Store", store_bases, path="/store.py")
+        parent = _py_cls_fields(
+            "sym:py.Parent", "Parent", {"store": "Store"}, path="/parent.py",
+        )
+        child = _py_cls("sym:py.Child", "Child", path="/child.py")
+        caller = _py_caller()
+        edges = [
+            _edge(store.id, mixin.id, "extends"),
+            _edge(child.id, parent.id, "extends"),
+            _unresolved_site3_lang(
+                src_id=caller.id, callee_name="pop",
+                enclosing_class="Child", inherited_field_receiver="store",
+                lang="python",
+            ),
+        ]
+        ctx = LinkerContext(
+            repo_root=Path("/"),
+            symbols=[mixin, mixin_pop, store, parent, child, caller], edges=edges,
+        )
+        return ctx, caller, mixin_pop
+
+    def test_site3_stdlib_base_shadows_field_type_method(self) -> None:
+        # The field's type is Store(dict, Mixin): Store's real MRO puts dict
+        # ahead of Mixin, so self.store.pop() is dict.pop. The Site-3 walk on
+        # the field type must bias to unresolved, as Site-1/Site-2 do.
+        ctx, caller, _ = self._site3_ctx(["dict", "Mixin"])
+        result = link_inherited_calls(ctx)
+        assert [e for e in result.edges if e.src == caller.id] == []
+
+    def test_site3_stdlib_base_after_intree_base_resolves(self) -> None:
+        # Positive control for the test above (same fixture, bases swapped):
+        # Store(Mixin, dict) puts Mixin first, so Mixin.pop is the real target.
+        ctx, caller, mixin_pop = self._site3_ctx(["Mixin", "dict"])
+        result = link_inherited_calls(ctx)
+        resolved = [e for e in result.edges if e.src == caller.id]
+        assert len(resolved) == 1
+        assert resolved[0].dst == mixin_pop.id
+        assert resolved[0].evidence_type == "ast_call_inherited_field"
+
 
 # ---------------------------------------------------------------------------
 # Scala / Swift MRO walkers (WI-nazab / WI-sojim).
@@ -3406,7 +3452,8 @@ class TestFleetSite1Walkers:
     base class's method. Validates the ``_MRO_WALKERS`` registration + Site-1
     dispatch for go/rust/php/js/ts/csharp/cpp/objc (the walker functions
     themselves are covered by the ruby/groovy/java/scala/swift tests above;
-    dart/lua/zig are deliberately unregistered — no inheritance model)."""
+    dart/lua/zig are unregistered — lua/zig have no inheritance model, and
+    dart's mixin-first lookup order has no walker yet)."""
 
     def test_each_fleet_language_recovers_inherited_call(self) -> None:
         from hypergumbo_core.analyze.base import make_unresolved_edge

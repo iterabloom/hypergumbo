@@ -1,0 +1,43 @@
+- op: create  # 1767
+  at: '2026-10-07T03:57:43Z'  # 1767
+  by: agent  # 1767
+  actor: jgstern_agent  # 1767
+  clock: 1  # 1767
+  nonce: '1767'  # 1767
+  data:  # 1767
+    kind: work_item  # 1767
+    title: "elixir: Phoenix route markers ignore the enclosing scope prefix (scope \"/admin\" + get \"/users\" -> /users, not /admin/users)"  # 1767
+    status: todo_hard  # 1767
+    priority: 2  # 1767
+    parent:  # 1767
+    tags:  # 1767
+    - elixir  # 1767
+    - routes  # 1767
+    isbefore: []  # 1767
+    duplicate_of: []  # 1767
+    not_duplicate_of: []  # 1767
+    pr_ref:  # 1767
+    description: "Found while fixing INV-liraj. The Elixir analyzer's Phoenix route markers take the literal path of `get`/`live`/... and do not prepend the enclosing `scope \"/prefix\"`.\n\nRepro (fresh fixture, hypergumbo dev @ jgstern-agent/fix/route-marker-entrypoint-precedence):\n  lib/app_web/router.ex:\n    scope \"/admin\", AppWeb do\n      live \"/\", Admin.DashboardLive\n      get \"/users\", Admin.UserController, :index\n    end\n  `hypergumbo routes <repo>` prints `[LIVE] /` and `[GET] /users` -- expected `/admin` and `/admin/users`.\n\nOn thc (~/special_repos/thc) router.ex has scopes \"/admin\" (line 1208), \"/venue-mod\" (1188) etc.; their routes collide with root routes of the same label (\"LIVE /\" appears for TVHomeLive and Admin.DashboardLive), and detect_entrypoints' route-label dedup then collapses distinct routes into one (377 router markers -> 359 unique names). Nested scopes and `scope path: ..., as: ...` keyword forms need the same treatment."  # 1767
+    fields: {}  # 1767
+- op: discuss  # 00ea
+  at: '2026-10-11T04:32:12Z'  # 00ea
+  by: agent  # 00ea
+  actor: jgstern_agent  # 00ea
+  clock: 2  # 00ea
+  nonce: 00ea  # 00ea
+  message: "2026-10-10 docstring audit (verifier repro): beyond the scope PATH prefix, the same router fixture shows `resources` emits 7 routes with no PUT, ignores only:/except:, and leaves the controller unqualified by the scope alias (UserController, not AppWeb.UserController). Filed separately as the resources item; fixing both together is natural."  # 00ea
+- op: update  # 396e
+  at: '2026-10-11T11:26:46Z'  # 396e
+  by: agent  # 396e
+  actor: jgstern_agent  # 396e
+  clock: 3  # 396e
+  nonce: 396e  # 396e
+  set:  # 396e
+    status: done  # 396e
+- op: discuss  # da5b
+  at: '2026-10-11T11:26:46Z'  # da5b
+  by: agent  # da5b
+  actor: jgstern_agent  # da5b
+  clock: 4  # da5b
+  nonce: da5b  # da5b
+  message: "Fixed in PR #1536 (e6e9657d2d), on top of INV-lokut's PR #1535. Root cause: route paths were taken literally; the call walk carried no scope context. Fix: the scope-aware walk (_iter_router_calls) now carries path segments too — scope positional or path: segments, nested scopes concatenate, and a resources ... do block nests under <path>/:<name>_<param> (Phoenix.Naming.resource_name, name:/param: overrides, bare path for singleton); paths are joined like Phoenix join_path (empty/trailing segments dropped). Evidence: the filed fixture (scope \"/admin\", AppWeb: live \"/\", Admin.DashboardLive; get \"/users\", Admin.UserController, :index) -> 'hypergumbo routes <fixture> --minimal' prints '[LIVE] /admin' and '[GET] /admin/users' (was / and /users). thc: router markers 377, distinct names 359 -> 377; 'hypergumbo routes ~/special_repos/thc --language elixir' 371 -> 389 routes. http_route entrypoints stay 240 on thc because the size-scaled entrypoint cap is 240 there, not because of collisions."  # da5b
