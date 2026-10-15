@@ -1,0 +1,22 @@
+- op: create  # e808
+  at: '2026-10-15T05:05:25Z'  # e808
+  by: agent  # e808
+  actor: jgstern_agent  # e808
+  clock: 1  # e808
+  nonce: e808  # e808
+  data:  # e808
+    kind: work_item  # e808
+    title: "Disclose committed vendored code analysed as tier 3 and left out of summaries (stderr, sketch Overview, supply_chain_summary.vendored_analysed)"  # e808
+    status: todo_hard  # e808
+    priority: 3  # e808
+    parent:  # e808
+    tags:  # e808
+    - supply_chain  # e808
+    - discovery  # e808
+    - developer_experience  # e808
+    isbefore: []  # e808
+    duplicate_of: []  # e808
+    not_duplicate_of: []  # e808
+    pr_ref:  # e808
+    description: "Disclose committed vendored code that was analysed as tier 3 and left out of the summaries (ADR-0004 3a), in the same three places as the installed-deps disclosure (ADR-0004 point 4): a stderr line, a line in the sketch Overview, and supply_chain_summary.vendored_analysed = {dirs, entries: [{path, languages, files}]} (entries capped at 10). Nothing printed when there is none. Proposed text:\n\n  \"Vendored third-party code analysed as tier 3, not counted in the language breakdown: packages/hypergumbo-core/src/hypergumbo_core/vendor/ (C/C++, 4 files). To skip: --exclude <dir>.\"\n\nDirectory grouping: report the tier-3 root that the supply_chain pattern matched, not every file. Schema addition needs the usual schema/concept-axes regeneration."  # e808
+    fields: {}  # e808

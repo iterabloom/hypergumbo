@@ -1,0 +1,22 @@
+- op: create  # 898e
+  at: '2026-10-15T05:05:10Z'  # 898e
+  by: agent  # 898e
+  actor: jgstern_agent  # 898e
+  clock: 1  # 898e
+  nonce: 898e  # 898e
+  data:  # 898e
+    kind: work_item  # 898e
+    title: "Migrate or justify the ~60 branch-tier computed confidence sites on banded pathways (WI-famiv-gumof computed cohort)"  # 898e
+    status: todo_hard  # 898e
+    priority: 3  # 898e
+    parent:  # 898e
+    tags:  # 898e
+    - confidence  # 898e
+    - adr0039  # 898e
+    - analysis_quality  # 898e
+    isbefore: []  # 898e
+    duplicate_of: []  # 898e
+    not_duplicate_of: []  # 898e
+    pr_ref:  # 898e
+    description: "Read and migrate the ~60 BRANCH-TIER computed confidence sites on banded pathways: sites that pass confidence=<variable> where branches set different constants (e.g. js_ts edge_confidence 0.90 / 0.85 by resolution route; `0.9 if is_fallback else 0.8`; `X if name in registry else Y`). 2026-10-15 static audit: 119 computed sites on banded pathways in total, of which ~35 are base-times-resolver (handled by the ruling-6 implementation item) and the rest are this cohort.\n\nEach tier encodes \"different evidence\". For each site decide: (a) the tiers are resolution quality -> express as a ruling-6 resolver score; (b) they are different inference routes -> separate registered evidence types; (c) the value cannot be expressed -> keep it, and justify it in a comment and in the ADR-0039 list of caller-valued sites. Batch by producer file; several PRs are expected. Closes WI-famiv-gumof's \"computed cohort bounded in-band or explicitly justified per site\" condition."  # 898e
+    fields: {}  # 898e
