@@ -103,11 +103,13 @@ JNI_REQUIREMENTS = [
         name="java_native_methods",
         description="Java native method declarations",
         check=_count_java_native_methods,
+        languages=("java",),
     ),
     LinkerRequirement(
         name="c_cpp_jni_functions",
         description="C/C++ JNI implementation functions (Java_*)",
         check=_count_c_cpp_jni_functions,
+        languages=("c", "cpp", "rust"),
     ),
 ]
 

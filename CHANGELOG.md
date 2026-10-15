@@ -27,6 +27,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - `check-confidence-sites`: shrink-only gate on confidence call sites.
 - Pre-commit hook runs `check-confidence-sites` on producer edits.
 - Partial-install warnings ignore vendored (tier 3) code.
+- Linker requirements declare languages; suggestions and gate work.
+- Install suggestions name the package that ships each analyzer.
 
 ## [9.0.0] - 2026-10-14
 

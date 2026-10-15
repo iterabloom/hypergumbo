@@ -359,11 +359,13 @@ RUBY_FFI_REQUIREMENTS = [
         name="ruby_files",
         description="Ruby files (potential FFI gem or C extension callers)",
         check=_count_ruby_files,
+        languages=("ruby",),
     ),
     LinkerRequirement(
         name="c_cpp_functions",
         description="C/C++ function implementations",
         check=_count_c_cpp_functions,
+        languages=("c", "cpp"),
     ),
 ]
 

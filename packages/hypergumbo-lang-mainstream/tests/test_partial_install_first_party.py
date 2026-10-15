@@ -40,7 +40,7 @@ def test_vendored_c_does_not_fire_linker_warnings(tmp_path: Path) -> None:
         "main.go": _GO,
         "third_party/lib/helper.c": _C,
     })
-    assert not [m for m in messages if "CGO-LINKER" in m or "RUBY-FFI" in m], messages
+    assert not [m for m in messages if m.startswith(("CGO linker", "RUBY-FFI linker"))], messages
 
 
 def test_first_party_c_still_fires_the_cgo_warning(tmp_path: Path) -> None:
@@ -48,6 +48,6 @@ def test_first_party_c_still_fires_the_cgo_warning(tmp_path: Path) -> None:
         "main.go": _GO,
         "native/helper.c": _C,
     })
-    cgo = [m for m in messages if "CGO-LINKER" in m]
+    cgo = [m for m in messages if m.startswith("CGO linker")]
     assert len(cgo) == 1, messages
     assert "2 C/C++ function implementations" in cgo[0]

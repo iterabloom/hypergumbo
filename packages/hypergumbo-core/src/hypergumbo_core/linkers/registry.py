@@ -544,11 +544,18 @@ class LinkerRequirement:
         description: Human-readable description (e.g., "Java native methods")
         check: Function that takes LinkerContext and returns count of available items.
             Return 0 to indicate the requirement is unmet.
+        languages: Languages whose presence in the tree can satisfy the
+            requirement (taxonomy names). An unmet requirement whose
+            languages are all absent does not warn, and the analyzer package
+            of each names the install suggestion (WI-tonuh). Empty when no
+            single set of languages is responsible (framework route
+            symbols, say), which turns both off.
     """
 
     name: str
     description: str
     check: Callable[[LinkerContext], int]
+    languages: tuple[str, ...] = ()
 
 
 @dataclass
@@ -1278,12 +1285,14 @@ class RequirementStatus:
         description: Human-readable description
         count: Number of matching items found (0 = unmet)
         met: True if count > 0
+        languages: The requirement's ``LinkerRequirement.languages``
     """
 
     name: str
     description: str
     count: int
     met: bool
+    languages: tuple[str, ...] = ()
 
 
 @dataclass
@@ -1319,7 +1328,7 @@ def check_linker_requirements(ctx: LinkerContext) -> list[LinkerDiagnostics]:
 
     Example output:
         LinkerDiagnostics(
-            linker_name="jni",
+            linker_name="jni-linker",
             linker_description="Java/C JNI bridge",
             requirements=[
                 RequirementStatus(name="java_native", description="Java native methods", count=0, met=False),
@@ -1345,6 +1354,7 @@ def check_linker_requirements(ctx: LinkerContext) -> list[LinkerDiagnostics]:
                 description=req.description,
                 count=count,
                 met=met,
+                languages=req.languages,
             ))
             if not met:
                 all_met = False

@@ -331,11 +331,13 @@ REACT_COMPONENT_REQUIREMENTS = [
         name="js_ts_files",
         description="JavaScript/TypeScript files with potential JSX usage",
         check=_count_js_ts_files,
+        languages=("javascript", "typescript"),
     ),
     LinkerRequirement(
         name="react_components",
         description="PascalCase function/class symbols (React component candidates)",
         check=_count_react_components,
+        languages=("javascript", "typescript"),
     ),
 ]
 

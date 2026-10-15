@@ -348,11 +348,13 @@ NAPI_REQUIREMENTS = [
         name="js_ts_files",
         description="JavaScript/TypeScript files (potential native addon callers)",
         check=_count_js_ts_files,
+        languages=("javascript", "typescript"),
     ),
     LinkerRequirement(
         name="c_cpp_functions",
         description="C/C++ function implementations (potential N-API addon sources)",
         check=_count_c_cpp_functions,
+        languages=("c", "cpp"),
     ),
 ]
 

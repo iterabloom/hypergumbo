@@ -295,11 +295,13 @@ SOLIDITY_ABI_REQUIREMENTS = [
         name="ts_js_files",
         description="TypeScript/JavaScript files (contract callers)",
         check=_count_ts_js_files,
+        languages=("javascript", "typescript"),
     ),
     LinkerRequirement(
         name="solidity_functions",
         description="Solidity function definitions (ABI targets)",
         check=_count_solidity_functions,
+        languages=("solidity",),
     ),
 ]
 

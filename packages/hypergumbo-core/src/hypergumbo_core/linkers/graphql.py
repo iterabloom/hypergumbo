@@ -486,11 +486,13 @@ GRAPHQL_REQUIREMENTS = [
         name="graphql_operations",
         description="GraphQL operation symbols (query/mutation/subscription)",
         check=_count_graphql_operations,
+        languages=("graphql",),
     ),
     LinkerRequirement(
         name="graphql_schema_fields",
         description="GraphQL schema field symbols (root-field join targets)",
         check=_count_graphql_schema_fields,
+        languages=("graphql",),
     ),
 ]
 

@@ -44,12 +44,14 @@ def _make_jni_diagnostics(
     java_req.description = "Java native method declarations"
     java_req.count = java_native_count
     java_req.met = java_native_count > 0
+    java_req.languages = ("java",)
 
     c_req = MagicMock()
     c_req.name = "c_cpp_jni_functions"
     c_req.description = "C/C++ JNI implementation functions"
     c_req.count = c_jni_count
     c_req.met = c_jni_count > 0
+    c_req.languages = ("c", "cpp", "rust")
 
     mock_diag.requirements = [java_req, c_req]
 
@@ -74,12 +76,14 @@ def _make_file_presence_diagnostics(js_ts_file_count: int, pattern_count: int) -
     js_req.description = "JavaScript/TypeScript files (potential native addon callers)"
     js_req.count = js_ts_file_count
     js_req.met = js_ts_file_count > 0
+    js_req.languages = ("javascript", "typescript")
 
     pattern_req = MagicMock()
     pattern_req.name = "c_cpp_napi_functions"
     pattern_req.description = "C/C++ N-API function implementations"
     pattern_req.count = pattern_count
     pattern_req.met = pattern_count > 0
+    pattern_req.languages = ("c", "cpp")
 
     mock_diag.requirements = [js_req, pattern_req]
     return [mock_diag]
@@ -153,13 +157,13 @@ class TestCheckUnanalyzedFiles:
 
         # Test common language
         profile_common = RepoProfile(
-            languages={"scala": LanguageStats(files=5, loc=100)}
+            languages={"haskell": LanguageStats(files=5, loc=100)}
         )
-        warnings_scala = check_unanalyzed_files(
+        warnings_haskell = check_unanalyzed_files(
             profile_common, registered_languages=set()
         )
-        assert len(warnings_scala) == 1
-        assert "hypergumbo-lang-common" in warnings_scala[0].message
+        assert len(warnings_haskell) == 1
+        assert "hypergumbo-lang-common" in warnings_haskell[0].message
 
         # Test extended language
         profile_extended = RepoProfile(
@@ -201,7 +205,7 @@ class TestCheckUnanalyzedFiles:
         warning = warnings_list[0]
         assert warning.language == "shell"
         # Should find the package via canonical name "bash"
-        assert "hypergumbo-lang-common" in warning.message
+        assert "hypergumbo-lang-mainstream" in warning.message
 
     def test_warning_for_unknown_language(self) -> None:
         """Warning for language not in our package mapping."""
@@ -380,9 +384,13 @@ class TestCheckPartialLinkerRequirements:
             "requirement is met alongside the file presence check."
         )
 
-    def test_partial_linker_suggests_correct_package(self) -> None:
+    def test_partial_linker_suggests_correct_package(self, monkeypatch) -> None:
         """Partial linker warning suggests correct package for missing language."""
         from unittest.mock import patch
+
+        import hypergumbo_core.partial_install_warnings as piw
+
+        monkeypatch.setattr(piw, "_distribution_installed", lambda name: False)
 
         from hypergumbo_core.linkers.registry import LinkerContext
 
@@ -412,7 +420,7 @@ class TestCheckPartialLinkerRequirements:
         from hypergumbo_core.linkers.registry import LinkerContext
 
         # Create a mock diagnostics result with partial requirements
-        # but the linker is not in LINKER_LANGUAGE_REQUIREMENTS
+        # whose unmet requirement declares no languages
         mock_diag = MagicMock()
         mock_diag.linker_name = "unknown_linker"
         mock_diag.linker_description = "Test linker"
@@ -428,6 +436,7 @@ class TestCheckPartialLinkerRequirements:
         unmet_req.description = "Unmet requirement"
         unmet_req.count = 0
         unmet_req.met = False
+        unmet_req.languages = ()
 
         mock_diag.requirements = [met_req, unmet_req]
 
@@ -471,11 +480,13 @@ class TestCheckPartialLinkerRequirements:
         go_req.description = "Go cgo calls (C.funcName() via import \"C\")"
         go_req.count = 0
         go_req.met = False
+        go_req.languages = ("go",)
         c_req = MagicMock()
         c_req.name = "c_cpp_functions"
         c_req.description = "C/C++ function implementations"
         c_req.count = 151
         c_req.met = True
+        c_req.languages = ("c", "cpp")
         mock_diag.requirements = [go_req, c_req]
 
         fake_spec = MagicMock()
@@ -582,11 +593,13 @@ class TestCheckPartialLinkerRequirements:
         go_req.description = "Go cgo calls"
         go_req.count = 0
         go_req.met = False
+        go_req.languages = ("go",)
         c_req = MagicMock()
         c_req.name = "c_cpp_functions"
         c_req.description = "C/C++ function implementations"
         c_req.count = 151
         c_req.met = True
+        c_req.languages = ("c", "cpp")
         mock_diag.requirements = [go_req, c_req]
 
         ctx = LinkerContext(
@@ -627,11 +640,13 @@ class TestCheckPartialLinkerRequirements:
         )
         toml_req.count = 0
         toml_req.met = False
+        toml_req.languages = ("rust", "python")
         import_req = MagicMock()
         import_req.name = "import_edges"
         import_req.description = "Import edges from code analyzers"
         import_req.count = 42
         import_req.met = True
+        import_req.languages = ("rust", "python")
         mock_diag.requirements = [toml_req, import_req]
 
         fake_spec = MagicMock()
@@ -976,43 +991,6 @@ class TestGetRegisteredAnalyzerLanguages:
         assert "objc" in registered
 
 
-class TestLanguagePackageMapping:
-    """Tests for the LANGUAGE_PACKAGES mapping."""
-
-    def test_mainstream_languages_mapped_correctly(self) -> None:
-        """Mainstream languages map to hypergumbo-lang-mainstream."""
-        mainstream = [
-            "python", "javascript", "typescript", "java", "c", "cpp",
-            "csharp", "go", "rust", "ruby", "php", "swift", "kotlin"
-        ]
-        for lang in mainstream:
-            assert LANGUAGE_PACKAGES.get(lang) == "hypergumbo-lang-mainstream", (
-                f"{lang} should be in hypergumbo-lang-mainstream"
-            )
-
-    def test_common_languages_mapped_correctly(self) -> None:
-        """Common languages map to hypergumbo-lang-common."""
-        common = [
-            "scala", "bash", "sql", "lua", "perl", "haskell", "ocaml",
-            "elixir", "erlang", "clojure", "fsharp"
-        ]
-        for lang in common:
-            assert LANGUAGE_PACKAGES.get(lang) == "hypergumbo-lang-common", (
-                f"{lang} should be in hypergumbo-lang-common"
-            )
-
-    def test_extended_languages_mapped_correctly(self) -> None:
-        """Extended languages map to hypergumbo-lang-extended1."""
-        extended = [
-            "zig", "nim", "agda", "lean", "cobol", "solidity",
-            "verilog", "vhdl", "fortran"
-        ]
-        for lang in extended:
-            assert LANGUAGE_PACKAGES.get(lang) == "hypergumbo-lang-extended1", (
-                f"{lang} should be in hypergumbo-lang-extended1"
-            )
-
-
 class TestRustAnalyzerDisclosure:
     """The Rust backend is opt-in, and the reason must be stated.
 
@@ -1295,3 +1273,157 @@ class TestFirstPartyRequirementCounts:
         # The caller's context is untouched.
         assert ctx.symbols == [own, vend]
         assert ctx.edges == [own_edge, vend_edge]
+
+
+class TestRequirementLanguages:
+    """WI-tonuh: the relevance gate and package suggestions read the languages
+    each ``LinkerRequirement`` declares, through the real registry.
+
+    They used to read a table keyed ``jni`` / ``swift_objc`` / ``dependency``
+    while diagnostics carry registered names (``jni-linker``), so neither ran.
+    """
+
+    @staticmethod
+    def _sym(lang: str, name: str, kind: str = "function", **extra) -> "Symbol":
+        from hypergumbo_core.ir import Span, Symbol
+
+        return Symbol(
+            id=f"{lang}:src/{name}:1-2:{name}:{kind}",
+            name=name,
+            kind=kind,
+            language=lang,
+            path=f"src/{name}",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+            origin=lang,
+            **extra,
+        )
+
+    @staticmethod
+    def _ctx(symbols: list, languages: set, frameworks: set | None = None):
+        import hypergumbo_core.cli  # registers the linkers (import side effect)
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        return LinkerContext(
+            repo_root=Path("."),
+            symbols=symbols,
+            edges=[],
+            detected_languages=languages,
+            detected_frameworks=frameworks or set(),
+        )
+
+    def _jni_ctx(self):
+        native = self._sym("java", "load", kind="method", modifiers=["native"])
+        return self._ctx([native], {"java", "c"})
+
+    def test_jni_suggests_the_package_of_the_missing_side(self, monkeypatch) -> None:
+        import hypergumbo_core.partial_install_warnings as piw
+
+        monkeypatch.setattr(piw, "_distribution_installed", lambda name: False)
+        jni = [w for w in check_partial_linker_requirements(self._jni_ctx())
+               if w.linker == "jni-linker"]
+        assert len(jni) == 1
+        assert jni[0].suggested_package == "hypergumbo-lang-mainstream"
+        assert jni[0].message.startswith("JNI linker found 1 Java native method")
+        assert "Is hypergumbo-lang-mainstream installed?" in jni[0].message
+
+    def test_no_suggestion_when_the_package_is_installed(self, monkeypatch) -> None:
+        # Asking "is X installed?" when X is installed sends the reader on an
+        # errand; the warning itself still fires.
+        import hypergumbo_core.partial_install_warnings as piw
+
+        monkeypatch.setattr(piw, "_distribution_installed", lambda name: True)
+        jni = [w for w in check_partial_linker_requirements(self._jni_ctx())
+               if w.linker == "jni-linker"]
+        assert len(jni) == 1
+        assert jni[0].suggested_package is None
+        assert "installed?" not in jni[0].message
+
+    def test_tauri_with_a_rust_frontend_does_not_warn(self) -> None:
+        # A Tauri app whose frontend is Rust (Yew, Leptos): commands exist,
+        # no JS/TS does, and no package install would add any.
+        command = self._sym(
+            "rust", "greet", meta={"annotations": [{"name": "tauri::command"}]},
+        )
+        ctx = self._ctx([command], {"rust"}, {"tauri"})
+        assert [w for w in check_partial_linker_requirements(ctx)
+                if w.linker == "tauri-ipc-linker"] == []
+
+    def test_tauri_with_js_in_the_tree_still_warns(self) -> None:
+        command = self._sym(
+            "rust", "greet", meta={"annotations": [{"name": "tauri::command"}]},
+        )
+        ctx = self._ctx([command], {"rust", "typescript"}, {"tauri"})
+        assert len([w for w in check_partial_linker_requirements(ctx)
+                    if w.linker == "tauri-ipc-linker"]) == 1
+
+    def test_every_declared_language_has_a_package(self) -> None:
+        import hypergumbo_core.cli  # registers the linkers (import side effect)
+        from hypergumbo_core.linkers.registry import get_all_linkers
+
+        for linker in get_all_linkers():
+            for req in linker.requirements:
+                assert set(req.languages) <= set(LANGUAGE_PACKAGES), (
+                    linker.name, req.name, req.languages,
+                )
+
+    def test_requirement_status_carries_the_languages(self) -> None:
+        from hypergumbo_core.linkers.registry import check_linker_requirements
+
+        diags = {d.linker_name: d for d in check_linker_requirements(self._jni_ctx())}
+        reqs = {r.name: r for r in diags["jni-linker"].requirements}
+        assert reqs["java_native_methods"].languages == ("java",)
+        assert set(reqs["c_cpp_jni_functions"].languages) == {"c", "cpp", "rust"}
+
+    def test_distribution_installed(self) -> None:
+        from hypergumbo_core.partial_install_warnings import _distribution_installed
+
+        assert _distribution_installed("hypergumbo-core")
+        assert not _distribution_installed("hypergumbo-no-such-package")
+
+
+def _analyzer_languages_by_package() -> dict[str, set[str]]:
+    """Map each language to the ``hypergumbo-lang-*`` packages that analyze it.
+
+    Read statically from the source tree (each package's ``ANALYZER_MODULES``
+    and every ``@register_analyzer`` in those modules), so it holds in CI's
+    per-package isolation where the other packages are not installed.
+    """
+    import ast
+
+    packages_dir = Path(__file__).resolve().parents[2]
+    found: dict[str, set[str]] = {}
+    for pkg_dir in sorted(packages_dir.glob("hypergumbo-lang-*")):
+        init = next((pkg_dir / "src").glob("*/__init__.py"))
+        modules: list[str] = []
+        for node in ast.walk(ast.parse(init.read_text())):
+            if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "ANALYZER_MODULES"
+                for t in node.targets
+            ):
+                modules = [ast.literal_eval(e) for e in node.value.elts]
+        for module in modules:
+            path = pkg_dir / "src" / (module.replace(".", "/") + ".py")
+            for node in ast.walk(ast.parse(path.read_text())):
+                if not (isinstance(node, ast.Call)
+                        and getattr(node.func, "id", None) == "register_analyzer"):
+                    continue
+                langs = {ast.literal_eval(node.args[0])} if node.args else set()
+                for kw in node.keywords:
+                    if kw.arg == "languages":
+                        langs |= set(ast.literal_eval(kw.value))
+                for lang in langs:
+                    found.setdefault(lang, set()).add(pkg_dir.name)
+    return found
+
+
+def test_language_packages_name_the_package_that_ships_the_analyzer() -> None:
+    """WI-tonuh: 22 of 56 entries named the wrong package (sql, lua, html,
+    css ... are in -mainstream, not -common), so the unanalyzed-files warning
+    told users to install a package that would not help."""
+    actual = _analyzer_languages_by_package()
+    wrong = {
+        lang: (pkg, sorted(actual.get(lang, ())))
+        for lang, pkg in LANGUAGE_PACKAGES.items()
+        if pkg not in actual.get(lang, ())
+    }
+    assert wrong == {}
