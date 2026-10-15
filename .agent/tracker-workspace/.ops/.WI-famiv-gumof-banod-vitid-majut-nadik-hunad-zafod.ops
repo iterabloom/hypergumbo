@@ -41,3 +41,10 @@
   clock: 4  # c43e
   nonce: c43e  # c43e
   message: "TRACKERIZED 2026-10-15 into: WI-tagov (ADR-0039 amendment: rulings 6+7, blocks the rest), WI-himod (ruling 6 at Edge.create + base x resolver cohort + js_ts scope-bound; drains INV-zatu), WI-nibar (ruling 7 in the band check; settles the 7 linker sites), WI-midoj (12 non-linker out-of-band literals), WI-lapun (~60 branch-tier computed sites), WI-vosif (CI ratchet on the static audit). This item closes when all six are done AND the audit reports 0 out-of-band literals with every remaining caller-valued site justified."  # c43e
+- op: discuss  # b2f2
+  at: '2026-10-15T08:43:51Z'  # b2f2
+  by: agent  # b2f2
+  actor: jgstern_agent  # b2f2
+  clock: 5  # b2f2
+  nonce: b2f2  # b2f2
+  message: "Status 2026-10-15: WI-tagov, WI-nibar, WI-midoj, WI-lapun, WI-vosif done; WI-himod code merged (PR #1606) and awaiting its self-tree evidence. Close condition, static half: scripts/check-confidence-sites over ee7dcb505c reports 0 out-of-band literal sites and 0 unjustified computed sites; the two remaining caller-valued sites (ast_call_namespace, qualified_call) carry the ADR-0039 marker. This item stays open until WI-himod closes."  # b2f2

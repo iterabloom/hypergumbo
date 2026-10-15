@@ -20,3 +20,19 @@
     pr_ref:  # 898e
     description: "Read and migrate the ~60 BRANCH-TIER computed confidence sites on banded pathways: sites that pass confidence=<variable> where branches set different constants (e.g. js_ts edge_confidence 0.90 / 0.85 by resolution route; `0.9 if is_fallback else 0.8`; `X if name in registry else Y`). 2026-10-15 static audit: 119 computed sites on banded pathways in total, of which ~35 are base-times-resolver (handled by the ruling-6 implementation item) and the rest are this cohort.\n\nEach tier encodes \"different evidence\". For each site decide: (a) the tiers are resolution quality -> express as a ruling-6 resolver score; (b) they are different inference routes -> separate registered evidence types; (c) the value cannot be expressed -> keep it, and justify it in a comment and in the ADR-0039 list of caller-valued sites. Batch by producer file; several PRs are expected. Closes WI-famiv-gumof's \"computed cohort bounded in-band or explicitly justified per site\" condition."  # 898e
     fields: {}  # 898e
+- op: update  # ac66
+  at: '2026-10-15T08:43:48Z'  # ac66
+  by: agent  # ac66
+  actor: jgstern_agent  # ac66
+  clock: 2  # ac66
+  nonce: ac66  # ac66
+  set:  # ac66
+    status: done  # ac66
+    pr_ref: '1606'  # ac66
+- op: discuss  # f642
+  at: '2026-10-15T08:43:49Z'  # f642
+  by: agent  # f642
+  actor: jgstern_agent  # f642
+  clock: 3  # f642
+  nonce: f642  # f642
+  message: "Merged in PR #1606 (ee7dcb505c). After WI-himod migrated the resolver cohort, the static check left 14 analyzer branch-tier sites (the ~60 estimate counted the 29 linker sites and the resolver products). Dispositions: (a) resolution grade: llvm_ir (min of two grades), agda (resolver grade; the 0.80 body / 0.75 signature split ignored match quality), ruby cascade (route grades 1.0 / 0.90 / 0.85 x resolver; the old 0.90 was over the ast_call ceiling); (b)/(derive): imports and includes set is_resolved and derive the base instead of a lower literal (d_lang, puppet, scss, astro, svelte, vue); local-registry calls derive base/unresolved base (matlab, purescript, racket, scheme published 1.0 on ast_call_direct, over the ceiling; robot also relabelled static -> ast_call_direct); (c) caller-valued with '# ADR-0039 caller-valued:' marker: js_ts ast_call_namespace and R qualified_call (pending-classification placeholders, no band, cluster-D audit). Evidence: check-confidence-sites reports 0 computed_uncommented; affected analyzer tests updated to the derived values and pass (full smart-test 30420 passed + 9 updated)."  # f642
