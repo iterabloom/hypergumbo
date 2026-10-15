@@ -36,3 +36,10 @@
   clock: 3  # 94d3
   nonce: 94d3  # 94d3
   message: "Merged in PR #1606 (ee7dcb505c). hypergumbo_core/confidence_sites.py (logic, 100% covered) + scripts/check-confidence-sites (thin CLI: gate / --list / --update-baseline, which refuses to add entries) + .ci/confidence-sites-baseline.json (empty). Findings: literal_out_of_band (analyzer band, or linker range for hypergumbo_core/linkers/) and computed_uncommented (variable, expression or conditional on a seeded pathway without the caller-valued marker in the call or the comment block above it). Gate: tests/test_confidence_sites.py::test_live_tree_matches_baseline (new or stale entries fail). Red check: the same scan over bab7eed514 reports 123 findings (111 computed, 12 literal). smart-test unions the gate test into any change touching packages/*/src (the import slice never selects it). NOT done: a .githooks pre-commit entry (governance file, needs owner approval)."  # 94d3
+- op: discuss  # 1116
+  at: '2026-10-15T09:51:06Z'  # 1116
+  by: agent  # 1116
+  actor: jgstern_agent  # 1116
+  clock: 4  # 1116
+  nonce: '1116'  # 1116
+  message: "Follow-up merged as PR #1610 (a2710a4e32), owner-approved governance change: .githooks/pre-commit runs scripts/check-confidence-sites whenever packages/*/src/*.py is staged; test_confidence_sites.py::test_pre_commit_hook_runs_the_check_for_package_source pins the trigger regex and command."  # 1116
