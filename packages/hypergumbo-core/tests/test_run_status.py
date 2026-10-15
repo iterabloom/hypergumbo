@@ -294,3 +294,31 @@ def test_reports_run_ends_the_run_when_the_call_raises(
     assert pipeline("ok", progress=True) == "ok"
     assert status._depth == 0
     assert status._stream_override.getvalue().count("Complete in") == 2
+
+
+def test_sketch_progress_reports_into_run_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    from hypergumbo_core.sketch import SketchProgress
+
+    monkeypatch.setenv("HG_HEARTBEAT", "0")
+    status = RunStatus(_Tty())
+    monkeypatch.setattr(run_status, "STATUS", status)
+    token = status.begin(True)
+    prog = SketchProgress()
+    prog.start_phase("config")
+    prog.start_phase("analysis", cached=True)
+    prog.start_phase("structure", cached=True)  # no cached text: plain name
+    prog.update_item_progress("Embedding files", 2, 5)
+    prog.complete_phase("structure")
+    prog.finish()
+    prog.disable()
+    prog.start_phase("format")
+    prog.update_item_progress("ignored", 1, 1)
+    status.end(token)
+    assert [label for label, _ in status._phases] == [
+        "Sketch: Extracting config",
+        "Sketch: Loading cached analysis",
+        "Sketch: Building structure",
+    ]
+    text = status._stream_override.getvalue()
+    assert "· Embedding files 2/5" in text
+    assert "ignored" not in text
