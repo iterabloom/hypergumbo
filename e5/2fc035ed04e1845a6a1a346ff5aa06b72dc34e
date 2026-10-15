@@ -1,0 +1,35 @@
+Original commit body from edde1333df9c8e8545a63b99586487713b95b260:
+
+Read off the first heartbeat timeline of a cold self-run (8m38s, 6 cores).
+
+Heartbeat format. Six workers on one comma-joined line were unreadable
+(`, ` vs ` > ` separators, a leading … on each, `x2:1166` running the
+recursion count into the line number, no pass name). Now one indented line
+per busy worker, named by its pass via run_status.worker_pass, which the
+analyzer pool (_run_named) and the linker chokepoint enter; innermost frame
+only; sorted, capped at 8 (+N more). The main stack stays explicit and is
+named by its pass when it runs one (serial linkers). Recursion reads
+`:1166 (recursion x2)`.
+
+Mislabelled phases. Fingerprint stamping ran after the linkers with no
+marker, so "Running linkers 1m59s" included up to ~1m of it: now
+"Stamping fingerprints". The sketch's source/test file collection ran under
+"Loading cached profile": now "Sketch: Collecting source and test files".
+
+Cold sketch re-walk (~1m on this repo). The survey ran inside
+_generate_sketch_impl, after the wrapper had peeked the cache and found
+nothing, so the cold sketch had no file index and every find_files walked
+the disk. _discover_or_survey now runs it in the wrapper, which then
+installs the same map-scoped index a warm run gets, and passes the loaded
+map on (a warm run no longer parses survey.json twice). reports_run moves
+to generate_sketch so the timeline stays one run. Cold and warm sketches
+now agree: Structure lists the survey's file universe, so EMPTY directories
+no longer appear on a cold run (warm runs already omitted them);
+test_many_directories now gives its 15 directories a file each.
+find_files serves sub-roots (src/) from an index rooted above them.
+
+.hypothesis/ added to DEFAULT_EXCLUDES and ddg_build._SKIP_DIRS: 5,677 of
+8,188 indexed files on this checkout (index now 2,361), each extensionless,
+so the bash analyzer opened every one.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
