@@ -1,0 +1,23 @@
+Original commit body from 9635ae347d48202451dcdab1a51c251c0c08243d:
+
+[passes] lines name only non-routine silence reasons (owner ruling
+2026-10-15). no_candidate_files, no_candidate_construct and
+backend_disabled were 122 of the 128 passes the two lines reported on
+hypergumbo's own tree; they are now counted at the end of the line
+("; N more routine ...") and nothing prints when every reason is
+routine. The artifact keeps every reason; ADR-0054 T1's ratio stays
+readable from the line (named counts plus N).
+
+The rust-analyzer nudge names the command that records a decision for
+the repository (trust-backend rust_analyzer <path> --revoke), after
+which ADR-0045 ruling 8 keeps it silent. Test runs the printed command
+through cli.main and checks the nudge stops.
+
+Partial-install warnings are written as plain stderr lines; through
+warnings.warn each carried "<path>/cli.py:12852: UserWarning:" and an
+echoed source line.
+
+The [warn] cross_field validation line is kept: it fires only on a
+producer-contract violation, and the self-tree has none (INV-zatu).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
