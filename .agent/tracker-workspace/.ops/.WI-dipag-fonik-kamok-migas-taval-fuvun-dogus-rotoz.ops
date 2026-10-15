@@ -19,3 +19,34 @@
     pr_ref:  # 7cf5
     description: "Partial-install / linker-requirement diagnostics must count only first-party implementations (tiers 1-2), not tier-3 vendored code (ADR-0004 3a, amendment item). Today on hypergumbo itself they fire twice on vendored tree-sitter grammar C under packages/hypergumbo-core/src/hypergumbo_core/vendor/:\n  \"CGO-LINKER linker found 53 C/C++ function implementations but 0 Go cgo calls\"\n  \"RUBY-FFI-LINKER linker found 53 C/C++ function implementations but 0 Ruby files\"\n\nOrdering bug to fix first: the check (check_partial_install_warnings, called at cli.py ~12825; logic in partial_install_warnings.py ~421-551) runs BEFORE _classify_symbols (cli.py ~12850), so symbols carry no tier yet. Move it after classification, keeping linker_ctx. Then count requirements on tier <= 2 symbols (the C/C++ count comes from linkers/cgo.py ~84 and siblings). Leave the actual linking untouched -- linkers still link into vendored code.\n\nEvidence at close: a self-survey prints neither warning; a fixture with first-party C and no Go still prints the CGO warning (the warning is not simply deleted). Related, distinct: WI-tonuh (requirement-table key mismatch in the same module), WI-vadom (stderr noise umbrella)."  # 7cf5
     fields: {}  # 7cf5
+- op: update  # e587
+  at: '2026-10-15T09:50:48Z'  # e587
+  by: agent  # e587
+  actor: jgstern_agent  # e587
+  clock: 2  # e587
+  nonce: e587  # e587
+  set:  # e587
+    status: done  # e587
+    pr_ref: '1607'  # e587
+- op: discuss  # 47b1
+  at: '2026-10-15T09:50:48Z'  # 47b1
+  by: agent  # 47b1
+  actor: jgstern_agent  # 47b1
+  clock: 3  # 47b1
+  nonce: 47b1  # 47b1
+  message: "Merged (c907eb1a16). Behavioural evidence: the self-survey on c907eb1a16 printed neither 'CGO-LINKER linker found 53 C/C++ ...' nor the RUBY-FFI warning (0 matches in stderr; the only remaining warning is the rust-analyzer disclosure), where both fired before. The warning is narrowed, not deleted: test_partial_install_first_party.py runs run_survey on main.go + native/helper.c and gets exactly one CGO warning ('2 C/C++ function implementations'); with third_party/lib/helper.c it gets none; red check on the pre-fix code fired the CGO warning on the vendored-only fixture."  # 47b1
+- op: update  # 80e3
+  at: '2026-10-15T09:51:05Z'  # 80e3
+  by: agent  # 80e3
+  actor: jgstern_agent  # 80e3
+  clock: 4  # 80e3
+  nonce: '80e3'  # 80e3
+  set:  # 80e3
+    pr_ref: '1609'  # 80e3
+- op: discuss  # 3f54
+  at: '2026-10-15T09:51:05Z'  # 3f54
+  by: agent  # 3f54
+  actor: jgstern_agent  # 3f54
+  clock: 5  # 3f54
+  nonce: 3f54  # 3f54
+  message: "Correction: the WI-dipag PR is #1609 (not #1607). The owner-approved pre-commit hook for WI-vosif merged as PR #1610 (a2710a4e32)."  # 3f54

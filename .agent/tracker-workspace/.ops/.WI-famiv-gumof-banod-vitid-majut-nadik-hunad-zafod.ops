@@ -48,3 +48,18 @@
   clock: 5  # b2f2
   nonce: b2f2  # b2f2
   message: "Status 2026-10-15: WI-tagov, WI-nibar, WI-midoj, WI-lapun, WI-vosif done; WI-himod code merged (PR #1606) and awaiting its self-tree evidence. Close condition, static half: scripts/check-confidence-sites over ee7dcb505c reports 0 out-of-band literal sites and 0 unjustified computed sites; the two remaining caller-valued sites (ast_call_namespace, qualified_call) carry the ADR-0039 marker. This item stays open until WI-himod closes."  # b2f2
+- op: update  # bbde
+  at: '2026-10-15T09:50:48Z'  # bbde
+  by: agent  # bbde
+  actor: jgstern_agent  # bbde
+  clock: 6  # bbde
+  nonce: bbde  # bbde
+  set:  # bbde
+    status: done  # bbde
+- op: discuss  # 0dc4
+  at: '2026-10-15T09:50:49Z'  # 0dc4
+  by: agent  # 0dc4
+  actor: jgstern_agent  # 0dc4
+  clock: 7  # 0dc4
+  nonce: 0dc4  # 0dc4
+  message: "All six children done: WI-tagov (PR #1605), WI-himod, WI-nibar, WI-midoj, WI-lapun, WI-vosif (PR #1606) plus the pre-commit hook (merged after #1607). Close condition met: scripts/check-confidence-sites over dev reports 'ok: 0 finding(s)' -- 0 out-of-band literal sites and 0 computed sites on seeded analyzer pathways without a derivation, a resolution_score, or the '# ADR-0039 caller-valued:' justification (two justified: js_ts ast_call_namespace, R qualified_call, both pending-classification placeholders). The class cannot regrow silently: CI test_confidence_sites + pre-commit hook. Runtime: self-tree validation matrix {} on c907eb1a16."  # 0dc4

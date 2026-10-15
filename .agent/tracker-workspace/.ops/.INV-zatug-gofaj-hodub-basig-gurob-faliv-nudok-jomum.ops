@@ -86,3 +86,18 @@
   clock: 10  # dbfd
   nonce: dbfd  # dbfd
   message: "Fix merged in PR #1606 (ee7dcb505c, WI-himod): the 31 c.py and 11 js_ts sites now derive 0.85 on ast_call_direct; linker edges are judged by the linker range (ruling 7). Not yet validated: re-run this invariant's own check (self-survey + scripts/check-self-tree-validation, cross_field|info at baseline 0) -- pending the next full-suite run or an owner-approved local self-survey."  # dbfd
+- op: update  # 9890
+  at: '2026-10-15T09:50:47Z'  # 9890
+  by: agent  # 9890
+  actor: jgstern_agent  # 9890
+  clock: 11  # 9890
+  nonce: '9890'  # 9890
+  set:  # 9890
+    status: satisfied  # 9890
+- op: discuss  # 3a28
+  at: '2026-10-15T09:50:47Z'  # 3a28
+  by: agent  # 3a28
+  actor: jgstern_agent  # 3a28
+  clock: 12  # 3a28
+  nonce: 3a28  # 3a28
+  message: "Re-ran this invariant's own check. Self-survey on c907eb1a16 (dev after PRs #1605/#1606 and the WI-dipag PR): `python -m hypergumbo_core survey . --out self-survey-c907.json` exit 0 (5m46s, 4.0 GB RSS); `scripts/check-self-tree-validation self-survey-c907.json .ci/self-tree-validation-baselines.json` exit 0, 'self-tree violation matrix: {}', 'OK: self-tree validation within baselines' (it reported cross_field|info: 42 > baseline 0 before). Root cause fixed in PR #1606 (ruling 6: c.py 0.95 x grade and js_ts 0.90 now derive 0.85 on ast_call_direct; ruling 7: linker edges judged by 0.40-0.95). Regrowth guard: scripts/check-confidence-sites (CI test + pre-commit hook, shrink-only empty baseline)."  # 3a28

@@ -36,3 +36,18 @@
   clock: 3  # f2eb
   nonce: f2eb  # f2eb
   message: "Code merged in PR #1606 (ee7dcb505c): Edge.create(resolution_score=) via confidence.derive_resolved_confidence (endpoints exact; errors for both kwargs / is_resolved=False / unseeded pathway); 87 base x grade sites migrated; 12 pathways seeded at their exact-match base; static call labels fixed (glsl, hlsl, nix, wgsl, fortran, R); js_ts scope-bound / explicit-import now grade 1.0 -> 0.85. Production-path evidence: test_c.py::TestCResolutionConfidence (exact cross-file call 0.85 evidence_derived, was 0.95; ambiguous call in band), test_js_ts_bare_name_scope_binding (position-proven bind 0.85, was 0.90), test_confidence.py interpolation tests (exact/suffix/ambiguous for n=2..59 all in band, ordering preserved). STILL OPEN: the item's named close evidence -- a self-survey with check-self-tree-validation exiting 0 -- has not been run (owner asked to be consulted before hypergumbo runs on a big repo). The full-suite self-tree-validation job on ee7dcb505c or later will provide it."  # f2eb
+- op: update  # 2d8d
+  at: '2026-10-15T09:50:47Z'  # 2d8d
+  by: agent  # 2d8d
+  actor: jgstern_agent  # 2d8d
+  clock: 4  # 2d8d
+  nonce: 2d8d  # 2d8d
+  set:  # 2d8d
+    status: done  # 2d8d
+- op: discuss  # a1ff
+  at: '2026-10-15T09:50:47Z'  # a1ff
+  by: agent  # a1ff
+  actor: jgstern_agent  # a1ff
+  clock: 5  # a1ff
+  nonce: a1ff  # a1ff
+  message: "Self-survey on c907eb1a16 (dev after PRs #1605/#1606 and the WI-dipag PR): `python -m hypergumbo_core survey . --out self-survey-c907.json` exit 0 (5m46s, 4.0 GB RSS); `scripts/check-self-tree-validation self-survey-c907.json .ci/self-tree-validation-baselines.json` exit 0, 'self-tree violation matrix: {}', 'OK: self-tree validation within baselines' (it reported cross_field|info: 42 > baseline 0 before). Plus the production-path tests cited in the PR #1606 note (C exact cross-file call 0.85 evidence_derived; JS scope-bound 0.85; interpolation in band for every ambiguity grade n=2..59). Baseline stays 0."  # a1ff
