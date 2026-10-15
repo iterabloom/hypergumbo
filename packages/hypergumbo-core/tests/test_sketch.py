@@ -663,10 +663,18 @@ class TestGenerateSketch:
         assert "No test files detected" in sketch
 
     def test_many_directories(self, tmp_path: Path) -> None:
-        """Sketch handles projects with many directories."""
-        # Create 15 directories
+        """Sketch handles projects with many directories.
+
+        Each directory holds a file. The Structure tree summarizes the
+        survey's file universe, cold or warm (INV-jumim), so a directory
+        with nothing in it is not part of that universe. This test made 15
+        EMPTY directories while a cold sketch still re-walked the working
+        tree, and a warm run of the same test would already have printed no
+        directories at all.
+        """
         for i in range(15):
             (tmp_path / f"dir_{i:02d}").mkdir()
+            (tmp_path / f"dir_{i:02d}" / "notes.md").write_text(f"# {i}\n")
         (tmp_path / "main.py").write_text("print('hello')\n")
 
         sketch = generate_sketch(tmp_path)

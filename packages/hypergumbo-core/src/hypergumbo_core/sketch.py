@@ -59,14 +59,16 @@ Sections in emission order:
 Data source
 -----------
 ``generate_sketch`` is a thin wrapper around ``_generate_sketch_impl``, which
-holds the section logic. When a behavior map is available (``cached_results``
-from ``--input``, or a warm survey.json in the results cache), the wrapper
+holds the section logic. Given no ``cached_results`` (``--input``), the
+wrapper loads the cached survey.json, and on a cold cache runs
+``run_behavior_map`` first and loads the map it wrote. Either way it then
 installs a synthetic ``FileIndex`` built from the map's node paths for the
-duration of the call. Test counting, language detection, source-file
-discovery and the Structure tree then summarize the map's files instead of
-re-walking the working tree. Given no ``cached_results``,
-``_generate_sketch_impl`` auto-discovers the cached survey.json. On a cold
-cache it runs ``run_behavior_map`` and loads the fresh map. A
+duration of the call, so test counting, language detection, source-file
+discovery and the Structure tree summarize the map's files instead of
+re-walking the working tree. The survey used to run inside
+``_generate_sketch_impl``, after the wrapper had already looked for a map and
+found none, so a cold sketch re-walked the tree with no index at all: about a
+minute on this repository, all of it reported under the profile phase. A
 ``CatalogueError`` propagates; other discovery errors fall back to direct
 profile detection and analysis. Profile, symbols and edges come from the map,
 and its ``sketch_precomputed`` block, when present, supplies the README
@@ -426,11 +428,12 @@ class SketchProgress:
     ``run_status``, which the survey nested inside a cold sketch reports
     into as well, so the two pipelines show as one timeline. Whether
     anything prints at all is decided by ``run_status.reports_run`` on
-    ``_generate_sketch_impl``; ``disable`` only silences this reporter.
+    ``generate_sketch``; ``disable`` only silences this reporter.
     """
 
     PHASES = {  # noqa: RUF012
         "profile": "Detecting profile",
+        "files": "Collecting source and test files",
         "readme": "Extracting README",
         "structure": "Building structure",
         "frameworks": "Detecting frameworks",
@@ -6224,6 +6227,33 @@ def _peek_cached_results(repo_root: Path) -> Optional[dict[str, Any]]:
     return None
 
 
+def _discover_or_survey(
+    repo_root: Path, progress: bool, log: Callable[[str], None],
+) -> Optional[dict[str, Any]]:
+    """The cached survey for ``repo_root``, running the survey first on a miss.
+
+    A ``CatalogueError`` from the survey propagates: the analysis met a
+    catalogue file that does not parse (a user's frameworks.d, say), and
+    swallowing it built the sketch from no analysis at all and exited 0; the
+    CLI reports the file with exit 2 instead. Any other failure returns None,
+    and ``_generate_sketch_impl`` falls back to direct analysis.
+    """
+    cached = _peek_cached_results(repo_root)
+    if cached is not None:
+        log("Auto-discovered cached results")
+        return cached
+    log("No cached results found, running analysis...")
+    from .cli import run_behavior_map
+    try:
+        run_behavior_map(repo_root, progress=progress)
+    except CatalogueError:
+        raise
+    except Exception:  # pragma: no cover - a failed auto-run falls back to direct analysis
+        return None
+    return _peek_cached_results(repo_root)
+
+
+@run_status.reports_run
 def generate_sketch(
     repo_root: Path,
     max_tokens: Optional[int] = None,
@@ -6246,23 +6276,28 @@ def generate_sketch(
 
     Thin wrapper around :func:`_generate_sketch_impl` that scopes the
     filesystem read-path to a behavior map's own file universe when one is
-    available (INV-jumim). When ``cached_results`` is provided (``--input``) or
-    a warm on-disk map is found, a synthetic :class:`FileIndex` built from the
-    map's node paths is installed for the duration of the call so test-file
-    counting, language detection, source-file discovery, and the Structure tree
-    summarize the MAP — not a re-walk of the working tree (which hung 60+s and
-    produced whole-repo sketches from package-scoped maps). The prior global
-    index is always restored. See :func:`_generate_sketch_impl` for the full
+    available (INV-jumim). The map is ``cached_results`` (``--input``), else
+    the on-disk survey, else the survey :func:`_discover_or_survey` runs on a
+    cold cache. A synthetic :class:`FileIndex` built from the map's node paths
+    is installed for the duration of the call so test-file counting, language
+    detection, source-file discovery, and the Structure tree summarize the
+    MAP — not a re-walk of the working tree (which hung 60+s and produced
+    whole-repo sketches from package-scoped maps). The cold-cache survey runs
+    here rather than inside the impl so a cold sketch gets the same index as
+    a warm one. The prior global index is always restored. See :func:`_generate_sketch_impl` for the full
     section-by-section contract and argument docs.
     """
     from .discovery import get_file_index, set_file_index
 
+    def _log(msg: str) -> None:
+        if verbose:  # pragma: no cover - verbose diagnostics
+            import sys
+            print(f"[sketch] {msg}", file=sys.stderr)
+
     repo_root = Path(repo_root).resolve()
-    map_for_scope = (
-        cached_results if cached_results is not None
-        else _peek_cached_results(repo_root)
-    )
-    map_index = _file_index_from_map(repo_root, map_for_scope)
+    if cached_results is None:
+        cached_results = _discover_or_survey(repo_root, progress, _log)
+    map_index = _file_index_from_map(repo_root, cached_results)
     kwargs = {
         "max_tokens": max_tokens, "exclude_tests": exclude_tests,
         "first_party_priority": first_party_priority, "extra_excludes": extra_excludes,
@@ -6283,7 +6318,6 @@ def generate_sketch(
         set_file_index(prev_index)
 
 
-@run_status.reports_run
 def _generate_sketch_impl(
     repo_root: Path,
     max_tokens: Optional[int] = None,
@@ -6398,44 +6432,6 @@ def _generate_sketch_impl(
 
     repo_root = Path(repo_root).resolve()
 
-    # Auto-discover cached results from cache directory if not explicitly provided
-    # If no cache exists, run analysis first to populate it
-    if cached_results is None:
-        from .survey_io import find_survey_in_dir
-        from .sketch_embeddings import _get_results_cache_dir
-        try:
-            cache_dir = _get_results_cache_dir(repo_root)
-            # ADR-0042: canonical survey.json (or a legacy alias) in the cache.
-            cached_path = find_survey_in_dir(cache_dir)
-            if cached_path is not None:
-                import json
-                _log(f"Auto-discovered cached results: {cached_path}")
-                cached_results = json.loads(cached_path.read_text())
-            else:
-                # No cache exists - run analysis to populate it
-                _log("No cached results found, running analysis...")
-                from .cli import run_behavior_map
-                run_behavior_map(repo_root, progress=progress)
-                # Now load the freshly generated cache. RE-DISCOVER: the pre-run
-                # lookup returned None (nothing existed yet), so we must resolve
-                # the just-written survey.json rather than reuse the None handle
-                # (ADR-0042 — an earlier `cached_path.exists()` here NPE'd on the
-                # None, silently falling back to a full re-walk of the now-
-                # populated cache dir and mis-reporting it as source).
-                fresh_path = find_survey_in_dir(cache_dir)
-                if fresh_path is not None:
-                    import json
-                    _log(f"Using freshly generated results: {fresh_path}")
-                    cached_results = json.loads(fresh_path.read_text())
-        except CatalogueError:
-            # NOT a cache-discovery error: the analysis met a catalogue file
-            # that does not parse (a user's frameworks.d, say). Swallowed, the
-            # sketch was built from no analysis at all and exited 0; the CLI
-            # reports the file with exit 2 instead.
-            raise
-        except Exception:  # pragma: no cover - cache discovery errors shouldn't block sketch
-            pass
-
     # Use cached profile if available, otherwise detect fresh
     using_cached_profile = cached_results is not None and "profile" in cached_results
     prog.start_phase("profile", cached=using_cached_profile)
@@ -6452,6 +6448,7 @@ def _generate_sketch_impl(
     repo_name = _get_repo_name(repo_root)
 
     # Collect source files early (needed for accurate LOC counts when exclude_tests=True)
+    prog.start_phase("files")
     source_files = _collect_source_files(repo_root, profile, exclude_tests=exclude_tests)
 
     # Pre-compute test analysis once (shared by Overview and Tests sections).

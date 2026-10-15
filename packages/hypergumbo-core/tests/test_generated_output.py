@@ -102,7 +102,7 @@ class TestSourceDirectoriesWithOutputNames:
             assert name not in DEFAULT_EXCLUDES
 
     @pytest.mark.parametrize("name", [
-        ".git", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache",
+        ".git", "__pycache__", ".mypy_cache", ".pytest_cache", ".hypothesis", ".ruff_cache",
         ".tox", ".nox", ".cache", ".eggs", ".terraform", ".elixir_ls",
         ".nyc_output", ".c8_output", ".ipynb_checkpoints",
     ])

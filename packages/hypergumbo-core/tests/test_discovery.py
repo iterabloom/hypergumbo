@@ -1126,24 +1126,48 @@ class TestFileIndexFindFilesIntegration:
         assert len(result) == 1
         assert result[0].name == "test.py"
 
-    def test_find_files_index_different_root_falls_back(self, tmp_path: Path) -> None:
-        """find_files should fall back to rglob when repo_root differs from index."""
+    def test_find_files_index_serves_a_subdirectory(self, tmp_path: Path) -> None:
+        """A root under the index's root is served from the index, filtered to it.
+
+        The file is deleted after indexing, so only the index can still name
+        it: an rglob fallback would find nothing. ``other/`` is indexed too,
+        and must not leak into the ``src/`` answer.
+        """
         from hypergumbo_core.discovery import FileIndex, set_file_index
 
-        sub = tmp_path / "sub"
+        sub = tmp_path / "src"
         sub.mkdir()
         (sub / "file.py").write_text("# file")
+        (tmp_path / "other").mkdir()
+        (tmp_path / "other" / "x.py").write_text("# x")
 
-        # Build index for tmp_path, but query for sub
         idx = FileIndex.build(tmp_path)
+        (sub / "file.py").unlink()
         try:
             set_file_index(idx)
             result = list(find_files(sub, ["*.py"]))
         finally:
             set_file_index(None)
 
-        # Should still find the file (via rglob fallback)
-        assert len(result) == 1
+        assert result == [sub / "file.py"]
+
+    def test_find_files_index_outside_root_falls_back(self, tmp_path: Path) -> None:
+        """A root outside the index's root falls back to rglob."""
+        from hypergumbo_core.discovery import FileIndex, set_file_index
+
+        (tmp_path / "indexed").mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "file.py").write_text("# file")
+
+        idx = FileIndex.build(tmp_path / "indexed")
+        try:
+            set_file_index(idx)
+            result = list(find_files(outside, ["*.py"]))
+        finally:
+            set_file_index(None)
+
+        assert result == [outside / "file.py"]
 
     def test_set_get_file_index(self) -> None:
         """set_file_index / get_file_index round-trip."""

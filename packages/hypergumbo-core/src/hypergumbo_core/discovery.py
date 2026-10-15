@@ -123,7 +123,7 @@ respecting exclude patterns. Also provides:
 
   WHAT STAYS NAME-BASED, AND WHY: VCS (``.git``, ``.svn``, ``.hg``), caches
   and IDE/tool state (``__pycache__``, ``.mypy_cache``, ``.pytest_cache``,
-  ``.ruff_cache``, ``.tox``, ``.nox``, ``.cache``, ``.ipynb_checkpoints``,
+  ``.hypothesis``, ``.ruff_cache``, ``.tox``, ``.nox``, ``.cache``, ``.ipynb_checkpoints``,
   ``.terraform``, ``.eggs``, ``*.egg-info``, ``.elixir_ls``, ``.nyc_output``,
   ``.c8_output``, ``.jest``), report and lock FILES (``coverage.xml``,
   ``lcov.info``, ``package-lock.json``, ...) and hypergumbo's own outputs.
@@ -536,6 +536,7 @@ DEFAULT_EXCLUDES = [
     "__pycache__",
     ".ipynb_checkpoints",  # Jupyter notebook auto-save copies
     ".pytest_cache",
+    ".hypothesis",  # Hypothesis example database: one extensionless file per example
     ".mypy_cache",
     ".ruff_cache",
     ".tox",
@@ -2291,9 +2292,13 @@ def find_files(
 ) -> Iterator[Path]:
     """Find files matching patterns while respecting exclude rules.
 
-    When a global FileIndex is set (via set_file_index()) for the same
-    ``repo_root``, delegates to the index for O(1) lookups instead of
-    calling rglob() per pattern. The index was built with its own
+    When a global FileIndex is set (via set_file_index()) for ``repo_root``
+    or a directory containing it, delegates to the index for O(1) lookups
+    instead of calling rglob() per pattern; for a sub-directory the index's
+    paths are filtered to those under it. Index patterns match on the file
+    name only, so the filter is the whole difference. Before the sub-directory
+    case, the sketch's walk of ``src/`` (``_collect_source_files``) fell
+    back to rglob() even with an index installed. The index was built with its own
     excludes, and in that case the ``excludes`` argument is NOT applied:
     only ``repo_root`` is compared (WI-duhih).
     Falls back to rglob() when no index is installed for this root.
@@ -2329,12 +2334,13 @@ def find_files(
     # ``excludes`` argument is not re-applied, WI-duhih), so only
     # max_files / max_file_bytes are applied here.
     index = _global_file_index
-    if index is not None and index.repo_root == repo_root:
+    if index is not None and repo_root.is_relative_to(index.repo_root):
+        under = None if repo_root == index.repo_root else repo_root
         count = 0
         seen: set[Path] = set()
         for pattern in patterns:
             for path in index.match_pattern(pattern):
-                if path in seen:
+                if path in seen or (under is not None and not path.is_relative_to(under)):
                     continue
                 seen.add(path)
                 if max_files is not None and count >= max_files:

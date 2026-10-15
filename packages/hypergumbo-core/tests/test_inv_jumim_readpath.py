@@ -373,3 +373,36 @@ class TestMapScopedReadPath:
             assert get_file_index() is None
         finally:
             set_file_index(before)
+
+    def test_cold_cache_runs_survey_then_scopes_read_path(
+        self, tmp_path: Path, monkeypatch,
+    ) -> None:
+        """A cold cache gets the same map-scoped index as a warm one.
+
+        The survey used to run inside ``_generate_sketch_impl``, after the
+        wrapper had peeked the cache and found nothing, so the cold sketch
+        collected its source and test files with no index installed: one
+        filesystem walk per lookup, about a minute on hypergumbo itself.
+        """
+        from hypergumbo_core import sketch as sketch_mod
+
+        (tmp_path / "app.py").write_text("def f():\n    return g()\n\n\ndef g():\n    return 1\n")
+        seen: list[object] = []
+        real = sketch_mod._collect_source_files
+
+        def spy(*args, **kwargs):
+            seen.append(get_file_index())
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(sketch_mod, "_collect_source_files", spy)
+        assert _peek_cached_results(tmp_path) is None
+        before = get_file_index()
+        set_file_index(None)
+        try:
+            generate_sketch(tmp_path, max_tokens=1500)
+            assert get_file_index() is None  # restored
+        finally:
+            set_file_index(before)
+        assert _peek_cached_results(tmp_path) is not None  # the survey ran
+        assert len(seen) == 1 and isinstance(seen[0], FileIndex)
+        assert seen[0].repo_root == tmp_path.resolve()
