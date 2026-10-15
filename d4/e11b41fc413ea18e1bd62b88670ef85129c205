@@ -1,0 +1,32 @@
+Original commit body from 85a6fb947ebc2258d544bb61683068e8e782001e:
+
+Owner decision (2026-10-14): of the three keys 05330569e1 asked the owner
+to ratify, keep edge_source::unemitted_edge_sources and
+meta_key_coherence::unregistered_edge_meta_keys; retire this one.
+
+The wrapper was three lines -- `sorted(_adjudicate_external_modules(...)[0])`
+-- and production stopped calling it at INV-dudal, when the gate began
+calling the walk directly for all four populations. What it still held
+was the 80-line docstring that is the coverage gate's design record (the
+enumerated-permits rule, the two fail-open predecessors INV-buzab /
+INV-zubuh, the untyped-receiver and uncatalogued-language residuals), on
+the one function production does not reach.
+
+- That docstring now heads _adjudicate_external_modules, with the
+  `vouched` paragraph restated (it said "extracted from" the wrapper).
+- The walk returns _ExternalAdjudication, a NamedTuple, so production's
+  four-way unpacking is unchanged and the 17 test call sites read
+  `.unknown` and compare sets.
+- Cross-references in verify_claims, io_boundary, supply_chain and test
+  docstrings point at the walk. The examined-negative test's
+  "wrapper delegates to the walk" link is dropped (nothing to delegate).
+- The stale "the catalog is None skip below" now names
+  _external_call_sites, where the skip is.
+- docs/surveys/stdlib-module-completeness-scope.md keeps the old name:
+  it is a dated 08-24 snapshot of the code it measured.
+- Baseline key removed from .ci/test-only-reachability-baseline.json.
+
+No behaviour change. smart-test: 17763 passed, 2 skipped, changed
+sources at 100%.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
