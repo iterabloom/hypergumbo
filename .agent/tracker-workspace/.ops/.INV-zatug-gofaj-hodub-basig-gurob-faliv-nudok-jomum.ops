@@ -50,3 +50,17 @@
   nonce: '1863'  # 1863
   set:  # 1863
     status: violated  # 1863
+- op: discuss  # 5d2d
+  at: '2026-10-15T04:25:35Z'  # 5d2d
+  by: agent  # 5d2d
+  actor: jgstern_agent  # 5d2d
+  clock: 6  # 5d2d
+  nonce: 5d2d  # 5d2d
+  message: "REGRESSED. Reopening: satisfied -> violated, on the item's own repro as run by the live CI gate.\n\nEvery scheduled full-suite run I checked fails self-tree-validation with the SAME matrix, 42 cells where the closure measured 0:\n\n    self-tree violation matrix: {'cross_field|info': 42}\n    SELF-TREE VALIDATION RATCHET BREACHED (WI-jigup):\n      cross_field|info: 42 > baseline 0\n    self-tree-validation exit=1\n\n  d4e11b41 2026-10-14T20:01  (pipeline 4744, latest; test-all-packages, self-claims-gate, test-agent-infra all OK -- this is the ONLY red step)\n  fb63c1c9 2026-10-14T06:32\n  5d7fb73f 2026-10-13T19:00\n  b4a783a9 2026-10-13T08:19\n  907d2f25 2026-10-12T19:59\n  86ae1ec3 2026-10-12T07:21\n  19b888d8 2026-10-11T20:50\n  17a5440f 2026-10-11T07:32\n  4879754a 2026-10-10T16:31   (oldest checked; also 42 -- the regression predates it)\n\nThe same \"[warn] 42 cross_field validation violation(s)\" line appears on stderr of a plain `hypergumbo hypergumbo` (seen by the owner on Colab and on agent-vm-16, 2026-10-14).\n\nNOT YET KNOWN: which 42 violations they are (the CI log prints only the matrix; the validation_report is in the self-tree.json artifact, which the job does not keep), and which commit introduced them. Next step: one self-survey, read validation_report.violations, group by message. Baseline stays at 0 -- per this item's own ruling, raising it is not an option."  # 5d2d
+- op: discuss  # 336a
+  at: '2026-10-15T04:42:33Z'  # 336a
+  by: agent  # 336a
+  actor: jgstern_agent  # 336a
+  clock: 7  # 336a
+  nonce: 336a  # 336a
+  message: "ROOT CAUSE, from one CI-identical self-survey (python -m hypergumbo_core run . on dev e52fc035ed, 2026-10-15): all 42 are Edge.confidence over the ast_call_direct ceiling 0.85, confidence_source=emitter_constant, edge_type calls. Two producers, two independent introductions:\n\n(1) 31 edges, C analyzer, observed 0.95 -- c.py:685 'confidence=0.95 * lookup_result.confidence' (unchanged since the analyzer was written; the computed-multiplier cohort WI-famiv-gumof names). The self-tree started EXERCISING it on 2026-10-10: d68a14fb84 'ship vendored grammar sources in the core wheel' put tree-sitter-lean/wolfram/circom C sources under packages/hypergumbo-core/src/hypergumbo_core/vendor/. All 31 edges are in vendor/tree-sitter-lean/src.\n\n(2) 11 edges, JS/TS analyzer, observed 0.90 -- js_ts.py ~5958 'edge_confidence = 0.90' on the scope-bound path added by c77d62b197 (2026-10-03, resolve a bare identifier by its enclosing scopes); previously these calls took 0.85, in band. Edges: htrac-frontend (5), emission-parity fixtures (6). NOT VERIFIED per edge that all 11 took the scope-bound branch (the explicit-import branch also sets 0.90 and dates from 2026-02); the date match is the evidence.\n\nFix direction, mirroring this item's July ruling (value moves to the pathway, the resolver multiplier stays): drop the literals so the ir.py chokepoint derives, or give scope-bound resolution a registered pathway whose band admits it. Baseline stays 0."  # 336a
