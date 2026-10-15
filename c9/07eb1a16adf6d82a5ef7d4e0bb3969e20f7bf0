@@ -1,0 +1,12 @@
+Original commit body from a7406c36e4af4a855e952495b91c5b12d64d1e56:
+
+ADR-0004 point 3a: committed vendored (tier 3) code is analysed but does
+not speak for the project. The partial-install check now runs after
+supply-chain classification and counts linker requirements over a
+first-party view (tier 1-2 symbols; edges whose source is not tier 3+).
+On hypergumbo itself the vendored tree-sitter grammar C fired CGO and
+RUBY-FFI warnings about 53 C functions; first-party C with no cgo calls
+still warns (production-path test on run_survey).
+
+Tracker: WI-dipag.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
