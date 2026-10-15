@@ -70,7 +70,7 @@ Declare has its own failure mode — the new value becomes a second undrained re
 >
 > **T2.** A run stamped `candidates_unresolved` is traced to a pass whose counterpart **is present in the same behavior map**. That is a recall defect wearing a correct-no-op label, and the value needs a sibling that says so.
 
-Both are fireable independently of the work they gate. T1 reads the stderr summary already wired into every `survey` run, including every bakeoff. T2 reads the behavior map itself. Contrast `INV-hujog`, whose trigger waits on a value only the declined wire-up can emit and therefore cannot fire.
+Both are fireable independently of the work they gate. T1 reads the stderr summary already wired into every `survey` run, including every bakeoff. (Since WI-vadom, 2026-10-15, that line names only non-routine reasons and ends with "; N more routine"; T1's denominator is the named counts plus N. Nothing is printed when every silence is routine, which T1 reads as 0%.) T2 reads the behavior map itself. Contrast `INV-hujog`, whose trigger waits on a value only the declined wire-up can emit and therefore cannot fire.
 
 ## Why this is an ADR and not an audit-findings document
 

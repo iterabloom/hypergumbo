@@ -29,6 +29,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - Partial-install warnings ignore vendored (tier 3) code.
 - Linker requirements declare languages; suggestions and gate work.
 - Install suggestions name the package that ships each analyzer.
+- `[passes]` lines name only non-routine silence reasons.
+- rust-analyzer notice names the command that silences it.
+- Partial-install warnings print plain, without UserWarning framing.
 
 ## [9.0.0] - 2026-10-14
 
