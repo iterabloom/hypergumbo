@@ -25,6 +25,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - Out-of-band confidence literals dropped; `static` call labels fixed.
 - Branch-tier confidence sites now derive or justify.
 - `check-confidence-sites`: shrink-only gate on confidence call sites.
+- Pre-commit hook runs `check-confidence-sites` on producer edits.
 - Partial-install warnings ignore vendored (tier 3) code.
 
 ## [9.0.0] - 2026-10-14
