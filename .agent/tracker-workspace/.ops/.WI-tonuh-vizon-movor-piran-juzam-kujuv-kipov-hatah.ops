@@ -18,3 +18,10 @@
     pr_ref:  # 530e
     description: "FOUND 2026-09-28 by the docstring-staleness audit (reviewer code aside), confirmed by reading the code on dev.\n\npartial_install_warnings.LINKER_LANGUAGE_REQUIREMENTS is keyed \"jni\", \"swift_objc\", \"dependency\". check_partial_linker_requirements looks it up with diag.linker_name, and linkers.registry.get_linker_diagnostics sets linker_name=linker.name -- the REGISTERED name (\"jni-linker\", \"dependency-linker\", ...). The .get() never hits, so (1) the per-requirement package suggestions are never produced and (2) the WI-ruman relevance gate (suppress a warning whose unmet requirements map only to languages absent from the tree) never fires. The registry's own example docstring (registry.py ~L1290) also shows linker_name=\"jni\". The module docstring now says the gate is inert (staleness audit C bundle).\n\nFIX SHAPE: key the table by registered linker name (or normalise at lookup), with a production-path test through get_linker_diagnostics, not a hand-built LinkerDiagnostics. Check WI-ruman's own closing test for the same hand-built-input shape. swift-objc-linker also declares no requirements."  # 530e
     fields: {}  # 530e
+- op: discuss  # 0ffb
+  at: '2026-10-15T05:07:33Z'  # 0ffb
+  by: agent  # 0ffb
+  actor: jgstern_agent  # 0ffb
+  clock: 2  # 0ffb
+  nonce: 0ffb  # 0ffb
+  message: "Same module as WI-dipag (partial_install_warnings.py), different bug: WI-dipag fixes WHAT is counted (tier) and WHEN (after classification); this item fixes the requirement-table key mismatch. Worth doing in the same PR if convenient; neither blocks the other."  # 0ffb

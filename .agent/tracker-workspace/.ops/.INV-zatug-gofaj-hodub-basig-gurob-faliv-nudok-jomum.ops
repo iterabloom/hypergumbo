@@ -64,3 +64,10 @@
   clock: 7  # 336a
   nonce: 336a  # 336a
   message: "ROOT CAUSE, from one CI-identical self-survey (python -m hypergumbo_core run . on dev e52fc035ed, 2026-10-15): all 42 are Edge.confidence over the ast_call_direct ceiling 0.85, confidence_source=emitter_constant, edge_type calls. Two producers, two independent introductions:\n\n(1) 31 edges, C analyzer, observed 0.95 -- c.py:685 'confidence=0.95 * lookup_result.confidence' (unchanged since the analyzer was written; the computed-multiplier cohort WI-famiv-gumof names). The self-tree started EXERCISING it on 2026-10-10: d68a14fb84 'ship vendored grammar sources in the core wheel' put tree-sitter-lean/wolfram/circom C sources under packages/hypergumbo-core/src/hypergumbo_core/vendor/. All 31 edges are in vendor/tree-sitter-lean/src.\n\n(2) 11 edges, JS/TS analyzer, observed 0.90 -- js_ts.py ~5958 'edge_confidence = 0.90' on the scope-bound path added by c77d62b197 (2026-10-03, resolve a bare identifier by its enclosing scopes); previously these calls took 0.85, in band. Edges: htrac-frontend (5), emission-parity fixtures (6). NOT VERIFIED per edge that all 11 took the scope-bound branch (the explicit-import branch also sets 0.90 and dates from 2026-02); the date match is the evidence.\n\nFix direction, mirroring this item's July ruling (value moves to the pathway, the resolver multiplier stays): drop the literals so the ir.py chokepoint derives, or give scope-bound resolution a registered pathway whose band admits it. Baseline stays 0."  # 336a
+- op: discuss  # b712
+  at: '2026-10-15T05:07:32Z'  # b712
+  by: agent  # b712
+  actor: jgstern_agent  # b712
+  clock: 8  # b712
+  nonce: b712  # b712
+  message: "Fix is tracked as WI-himod (ADR-0039 ruling 6 at Edge.create; c.py:685 and the js_ts scope-bound branch are both in its scope), after WI-tagov (the ADR amendment). Close this item only on a re-run of its own repro: self-survey + scripts/check-self-tree-validation exit 0 with an empty matrix."  # b712
