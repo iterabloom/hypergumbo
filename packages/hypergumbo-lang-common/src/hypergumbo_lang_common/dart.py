@@ -951,7 +951,6 @@ def _extract_edges_from_file(
                         lookup_result = resolver.lookup(qualified_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
-                            confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -960,7 +959,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="ast_call",
-                                confidence=confidence,
+                                resolution_score=lookup_result.confidence,
                                 meta={"call_construct": "method", "resolution_quality": "type_inferred"},
                             )
                             edges.append(edge)
@@ -1004,7 +1003,6 @@ def _extract_edges_from_file(
                                     enclosing_class=enclosing_type,
                                 ))
                             else:
-                                confidence = 0.85 * lookup_result.confidence
                                 edge = Edge.create(
                                     src=caller.id,
                                     dst=callee.id,
@@ -1013,7 +1011,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="ast_call",
-                                    confidence=confidence,
+                                    resolution_score=lookup_result.confidence,
                                     meta={"call_construct": "function"},
                                 )
                                 edges.append(edge)
@@ -1060,7 +1058,6 @@ def _extract_edges_from_file(
                                             enclosing_class=enclosing_type,
                                         ))
                                     else:
-                                        confidence = 0.80 * lookup_result.confidence
                                         edge = Edge.create(
                                             src=caller.id,
                                             dst=callee.id,
@@ -1069,7 +1066,7 @@ def _extract_edges_from_file(
                                             origin=PASS_ID,
                                             origin_run_id=run_id,
                                             evidence_type="ast_call",
-                                            confidence=confidence,
+                                            resolution_score=lookup_result.confidence,
                                             meta={"call_construct": "method"},
                                         )
                                         edges.append(edge)
@@ -1086,7 +1083,6 @@ def _extract_edges_from_file(
                         lookup_result = resolver.lookup(class_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
-                            confidence = 0.90 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -1095,7 +1091,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="ast_call",
-                                confidence=confidence,
+                                resolution_score=lookup_result.confidence,
                                 meta={"call_construct": "constructor"},
                             )
                             edges.append(edge)
@@ -1127,7 +1123,6 @@ def _extract_edges_from_file(
                             lookup_result = resolver.lookup(class_name, path_hint=path_hint)
                             if lookup_result.found and lookup_result.symbol:
                                 callee = lookup_result.symbol
-                                confidence = 0.90 * lookup_result.confidence
                                 edge = Edge.create(
                                     src=caller.id,
                                     dst=callee.id,
@@ -1136,7 +1131,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="ast_call",
-                                    confidence=confidence,
+                                    resolution_score=lookup_result.confidence,
                                     meta={"call_construct": "constructor"},
                                 )
                                 edges.append(edge)

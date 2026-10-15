@@ -803,7 +803,6 @@ def _extract_edges_from_file(
                             lookup_result = resolver.lookup(full_name)
                             if lookup_result.found and lookup_result.symbol:
                                 callee = lookup_result.symbol
-                                confidence = 0.85 * lookup_result.confidence
                                 edge = Edge.create(
                                     src=caller.id,
                                     dst=callee.id,
@@ -812,7 +811,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="ast_call",
-                                    confidence=confidence,
+                                    resolution_score=lookup_result.confidence,
                                     meta={"call_construct": "remote"},
                                 )
                                 edges.append(edge)
@@ -850,9 +849,11 @@ def _extract_edges_from_file(
                         callee = local_symbols.get(
                             f"{func_name}/{_arity_of(node)}",
                         )
-                        if callee is not None:
-                            confidence = 0.90
-                        else:
+                        # ADR-0039 ruling 6: a function defined in this
+                        # module is an exact match; otherwise the resolver
+                        # grades the match.
+                        resolution_score = 1.0
+                        if callee is None:
                             # ADR-0007: Use import module as path_hint
                             path_hint = None
                             if import_aliases and func_name in import_aliases:
@@ -862,9 +863,7 @@ def _extract_edges_from_file(
                             )
                             if lookup_result.found and lookup_result.symbol:
                                 callee = lookup_result.symbol
-                                confidence = 0.85 * lookup_result.confidence
-                            else:
-                                callee = None
+                                resolution_score = lookup_result.confidence
                         if callee is not None:
                             edge = Edge.create(
                                 src=caller.id,
@@ -874,7 +873,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="ast_call",
-                                confidence=confidence,
+                                resolution_score=resolution_score,
                                 meta={"call_construct": "local"},
                             )
                             edges.append(edge)

@@ -3501,7 +3501,9 @@ def _go_bare_reference_target(
 
     Serves ``register(handler)`` and ``Command{Run: run}``. Go scoping places a
     bare name in the caller's own package, so a hit in the caller's file wins
-    (confidence ``None``: ``Edge.create`` derives it), then ``own_package`` --
+    (score ``None``: ``Edge.create`` derives the pathway base), then
+    ``own_package``, whose match quality is returned as the ADR-0039 ruling-6
+    resolution score --
     never the repo-wide resolver, whose sole candidate in ANOTHER package was
     bound here at 0.70 and whose two-way tie bound the path-sorted first at
     0.49. A method or field the file lists under its bare name is skipped, as
@@ -3519,7 +3521,7 @@ def _go_bare_reference_target(
         return None
     found = own_package.lookup(ref_name)
     if found.symbol is not None and found.symbol.kind == "function":
-        return found.symbol, 0.70 * found.confidence
+        return found.symbol, found.confidence
     return None
 
 
@@ -3624,7 +3626,7 @@ def _go_selector_reference_target(
             and found.symbol.kind == "function"
             and _go_in_hinted_package(found.symbol, hint)
         ):
-            return found.symbol, 0.70 * found.confidence
+            return found.symbol, found.confidence
         return None
     return _go_typed_method_value(
         var_types.get(alias), name, import_aliases, module_path,
@@ -3801,7 +3803,7 @@ def _extract_function_reference_edges(
                 edge_type="calls",
                 line=line,
                 evidence_type="function_reference_arg",
-                confidence=target[1],
+                resolution_score=target[1],
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
             ))
@@ -3882,7 +3884,7 @@ def _emit_go_alias_edges(
                 edge_type="calls",
                 line=value_node.start_point[0] + 1,
                 evidence_type="function_reference",
-                confidence=target[1],
+                resolution_score=target[1],
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
             ))
@@ -5021,14 +5023,13 @@ def _extract_edges_from_file(
                                 )
                             ):
                                 # Scale base confidence by resolver's confidence multiplier
-                                edge_confidence = 0.80 * lookup_result.confidence
                                 edges.append(Edge.create(
                                     src=current_function.id,
                                     dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=edge_confidence,
+                                    resolution_score=lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": call_construct},
@@ -5209,7 +5210,7 @@ def _extract_edges_from_file(
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="struct_field_reference",
-                            confidence=field_ref[1],
+                            resolution_score=field_ref[1],
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
@@ -6857,7 +6858,6 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                         line=a.span.start_line if a.span else 0,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        confidence=0.95,
                         meta={"ref_construct": "build_tag_alternative"},
                     ))
 

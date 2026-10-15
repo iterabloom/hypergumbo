@@ -513,22 +513,26 @@ def _extract_nix_edges(
                     if caller:
                         # Use resolver for callee resolution
                         lookup_result = resolver.lookup(target_name)
+                        # ADR-0039 ruling 6: resolver match quality interpolates in the
+                        # pathway band; an external target derives the unresolved base
+                        # (ADR-0037).
+                        resolution_score: float | None = None
                         if lookup_result.found and lookup_result.symbol:
                             dst_id = lookup_result.symbol.id
-                            confidence = 0.85 * lookup_result.confidence
+                            resolution_score = lookup_result.confidence
                         else:
                             # External/builtin function
                             dst_id = f"nix:external:{target_name}:function"
-                            confidence = 0.70
 
                         edges.append(Edge.create(
                             src=caller.id,
                             dst=dst_id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
-                            confidence=confidence,
+                            resolution_score=resolution_score,
+                            is_resolved=resolution_score is not None,
                             origin=PASS_ID,
-                            evidence_type="static",
+                            evidence_type="ast_call_direct",
                             origin_run_id=run_id,
                         ))
 

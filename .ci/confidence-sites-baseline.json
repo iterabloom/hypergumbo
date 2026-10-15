@@ -1,0 +1,4 @@
+{
+  "description": "Shrink-only baseline for scripts/check-confidence-sites (ADR-0039 rulings 6-7, WI-vosif). Entries may only be removed.",
+  "findings": []
+}

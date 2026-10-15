@@ -501,12 +501,15 @@ def _process_import_declaration(
     import_name = node_text(fqn, source)
 
     # Resolve to actual module symbol if available
+    # ADR-0039: the import statement is certain, so the edge derives the
+    # ast_import base either way; whether the module is in the repo is
+    # is_resolved (ADR-0037), not confidence.
     if module_registry and import_name in module_registry:
         dst = module_registry[import_name]
-        confidence = 0.95
+        resolved = True
     else:
         dst = f"d:{import_name}:0-0:module:module"
-        confidence = 0.9
+        resolved = False
 
     edges.append(
         Edge.create(
@@ -515,7 +518,7 @@ def _process_import_declaration(
             edge_type="imports",
             evidence_type="ast_import",
             line=node.start_point[0] + 1,
-            confidence=confidence,
+            is_resolved=resolved,
             origin=PASS_ID,
             origin_run_id=run_id,
         )
@@ -763,7 +766,7 @@ def _resolve_and_emit_call_edge(
             edge_type="calls",
             evidence_type="ast_call",
             line=node.start_point[0] + 1,
-            confidence=0.85 * lookup_result.confidence,
+            resolution_score=lookup_result.confidence,
             origin=PASS_ID,
             origin_run_id=run_id,
         ))

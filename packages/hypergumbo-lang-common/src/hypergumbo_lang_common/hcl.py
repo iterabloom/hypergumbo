@@ -447,17 +447,18 @@ def _extract_edges_from_tree(
                 for ref_name, ref_line in refs:
                     # Try to match reference to a known symbol
                     target: Symbol | None = None
-                    confidence = 0.85
+                    # ADR-0039 ruling 6: a symbol of this file is an exact
+                    # match; a global one is graded by the resolver.
+                    resolution_score = 1.0
 
                     if ref_name in local_symbols:
                         target = local_symbols[ref_name]
-                        confidence = 0.95
                     else:
                         # Check global symbols via resolver
                         lookup_result = resolver.lookup(ref_name)
                         if lookup_result.found and lookup_result.symbol is not None:  # pragma: no cover - suffix fallback
                             target = lookup_result.symbol
-                            confidence = 0.85 * lookup_result.confidence
+                            resolution_score = lookup_result.confidence
 
                     if target and target.id != current_symbol.id:
                         edges.append(Edge.create(
@@ -466,7 +467,7 @@ def _extract_edges_from_tree(
                             edge_type="depends_on",
                             line=ref_line,
                             evidence_type="reference",
-                            confidence=confidence,
+                            resolution_score=resolution_score,
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         ))

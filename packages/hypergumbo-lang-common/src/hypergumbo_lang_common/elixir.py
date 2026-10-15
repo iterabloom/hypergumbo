@@ -3041,7 +3041,7 @@ def _extract_edges_from_tree(
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
-                                        confidence=0.80 * lookup_result.confidence,
+                                        resolution_score=lookup_result.confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         meta={"call_construct": "function"},

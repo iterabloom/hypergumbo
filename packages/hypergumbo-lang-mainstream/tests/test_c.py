@@ -241,6 +241,53 @@ int main() {
         assert len(call_edges) >= 1
 
 
+class TestCResolutionConfidence:
+    """ADR-0039 ruling 6 on the C call path (INV-zatug, WI-himod).
+
+    The resolver's grade used to multiply a private 0.95 base, so an exact
+    cross-file call published 0.95 on ``ast_call_direct`` (ceiling 0.85):
+    31 of the 42 self-tree violations, all in vendored tree-sitter C.
+    """
+
+    def _helper_calls(self, tmp_path: Path, files: dict[str, str]) -> list:
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        for name, text in files.items():
+            (tmp_path / name).write_text(text)
+        result = analyze_c(tmp_path)
+        return [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.dst.endswith(":helper:function")
+        ]
+
+    def test_exact_cross_file_call_gets_the_pathway_base(self, tmp_path: Path) -> None:
+        from hypergumbo_core.confidence import confidence_within_band
+
+        calls = self._helper_calls(tmp_path, {
+            "helpers.c": "int helper() { return 42; }\n",
+            "main.c": "int main() { return helper(); }\n",
+        })
+        assert len(calls) == 1
+        [edge] = calls
+        assert edge.evidence_type == "ast_call_direct"
+        assert edge.confidence == 0.85
+        assert edge.confidence_source == "evidence_derived"
+        assert confidence_within_band(edge.evidence_type, edge.confidence)
+
+    def test_ambiguous_call_stays_in_band(self, tmp_path: Path) -> None:
+        from hypergumbo_core.confidence import confidence_within_band
+
+        calls = self._helper_calls(tmp_path, {
+            "a.c": "int helper() { return 1; }\n",
+            "b.c": "int helper() { return 2; }\n",
+            "main.c": "int main() { return helper(); }\n",
+        })
+        assert calls, "non-vacuity: the call must bind"
+        for edge in calls:
+            assert confidence_within_band(edge.evidence_type, edge.confidence)
+            assert edge.confidence_source == "evidence_derived"
+
+
 class TestCJNIPatterns:
     """Tests for JNI pattern detection."""
 

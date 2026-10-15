@@ -1041,7 +1041,7 @@ def _extract_edges_from_file(
                             edge_type="calls",
                             line=line,
                             evidence_type="message_send",
-                            confidence=0.75 * lookup_result.confidence,
+                            resolution_score=lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             meta={"call_locality": "cross_file"},

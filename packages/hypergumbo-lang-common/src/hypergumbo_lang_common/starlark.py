@@ -428,13 +428,16 @@ def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
 
                     # Use resolver for callee resolution with path_hint
                     lookup_result = resolver.lookup(original_name, path_hint=path_hint)
+                    # ADR-0039 ruling 6: resolver match quality interpolates in the
+                    # pathway band; an external target derives the unresolved base
+                    # (ADR-0037).
+                    resolution_score: float | None = None
                     if lookup_result.found and lookup_result.symbol:
                         dst_id = lookup_result.symbol.id
-                        confidence = 0.85 * lookup_result.confidence
+                        resolution_score = lookup_result.confidence
                     else:
                         # External/builtin function or rule
                         dst_id = f"starlark:external:{target_name}:function"
-                        confidence = 0.70
 
                     ctx.edges.append(Edge.create(
                         src=caller.id,
@@ -442,7 +445,8 @@ def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
                         edge_type="calls",
                         evidence_type="ast_call",
                         line=node.start_point[0] + 1,
-                        confidence=confidence,
+                        resolution_score=resolution_score,
+                        is_resolved=resolution_score is not None,
                         origin=PASS_ID,
                         origin_run_id=ctx.run_id,
                     ))

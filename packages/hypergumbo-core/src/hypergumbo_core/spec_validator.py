@@ -377,15 +377,45 @@ def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
     not-yet-seeded carry no band (treated in-band). Emitted as advisory
     ``info`` under the existing ``cross_field`` class (confidence cohering with
     evidence_type is a cross-field property).
+
+    ADR-0039 ruling 7: an edge whose producing passes (``Edge.origin``) are all
+    registered linkers is judged against the spec §12 linker range
+    (0.40-0.95), not against the analyzer band of the evidence_type it
+    declares. An edge with any analyzer among its origins keeps the band.
     """
-    from hypergumbo_core.confidence import confidence_within_band
+    from hypergumbo_core.catalog import all_linker_pass_ids
+    from hypergumbo_core.confidence import (
+        LINKER_CONFIDENCE_RANGE,
+        confidence_within_band,
+    )
     from hypergumbo_core.evidence_types import find_evidence_type
 
+    linker_ids = all_linker_pass_ids()
     violations: list[ValidationViolation] = []
     for edge in edges:
         ev = getattr(edge, "evidence_type", None)
         conf = getattr(edge, "confidence", None)
         if ev is None or conf is None:
+            continue
+        origin = getattr(edge, "origin", None) or []
+        origins = [origin] if isinstance(origin, str) else list(origin)
+        if origins and all(o in linker_ids for o in origins):
+            if confidence_within_band(ev, conf, linker=True):
+                continue
+            low_l, high_l = LINKER_CONFIDENCE_RANGE
+            violations.append(ValidationViolation(
+                severity="info",
+                validator_class="cross_field",
+                message=(
+                    f"Edge.confidence {conf} from linker {origins[0]!r} is "
+                    f"outside the linker range [{low_l}, {high_l}] (spec §12, "
+                    f"ADR-0039 ruling 7)."
+                ),
+                field_name="confidence",
+                record_id=getattr(edge, "id", None),
+                observed=str(conf),
+                expected=f"[{low_l}, {high_l}]",
+            ))
             continue
         if confidence_within_band(ev, conf):
             continue

@@ -532,13 +532,15 @@ class _RobotExtractor:
         # Try to resolve the target
         resolved_id = self._symbol_registry.get(keyword_name)
 
+        # A keyword invocation is a direct call (ast_call_direct; it was
+        # labelled ``static``, a static-linkage declaration). ADR-0039: a
+        # registry hit derives the base and a miss is unresolved (ADR-0037),
+        # deriving the unresolved base; the old 1.0 was over the ceiling.
         if resolved_id:
             dst = resolved_id
-            confidence = 1.0
         else:
             # Unresolved - could be from library or imported resource
             dst = f"robot:unresolved:{keyword_name}"
-            confidence = 0.6
 
         edge = Edge.create(
             src=src,
@@ -547,8 +549,8 @@ class _RobotExtractor:
             line=node.start_point[0] + 1,
             origin=PASS_ID,
             origin_run_id=self._execution_id,
-            evidence_type="static",
-            confidence=confidence,
+            evidence_type="ast_call_direct",
+            is_resolved=bool(resolved_id),
             evidence_lang="robot",
         )
         self._edges.append(edge)

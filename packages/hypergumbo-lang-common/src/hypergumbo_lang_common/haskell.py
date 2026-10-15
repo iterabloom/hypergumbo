@@ -876,10 +876,13 @@ def _hs_emit_call_edge(
     if caller is None:
         return None
     lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+    # ADR-0039 ruling 6: a resolved callee's match quality (the resolver's
+    # grade times the short-name penalty) interpolates in the ast_call band.
+    resolution_score: float | None = None
     if lookup_result.found and lookup_result.symbol:
         dst = lookup_result.symbol.id
-        confidence = (
-            0.85 * lookup_result.confidence * _short_name_penalty(callee_name)
+        resolution_score = (
+            lookup_result.confidence * _short_name_penalty(callee_name)
         )
     else:
         # Unresolved call -- a synthetic external node so I/O boundary tagging
@@ -900,10 +903,8 @@ def _hs_emit_call_edge(
                 HASKELL_PRELUDE_EXPORTS,
             )
         dst = f"haskell:{module_hint if module_hint else 'external'}:0-0:{callee_name}:function"
-        # WI-nurun: confidence kept explicit -- this edge targets an *external*
-        # (unresolved) callee but is not flagged is_resolved=False, so
-        # derivation would over-score it as a resolved call.
-        confidence = 0.50
+        # An external callee is unresolved (ADR-0037); flagged so, it derives
+        # the ast_call unresolved base instead of a hand-kept literal.
     return Edge.create(
         src=caller.id,
         dst=dst,
@@ -912,7 +913,8 @@ def _hs_emit_call_edge(
         origin=PASS_ID,
         origin_run_id=run_id,
         evidence_type="ast_call",
-        confidence=confidence,
+        resolution_score=resolution_score,
+        is_resolved=resolution_score is not None,
         meta=meta,
     )
 

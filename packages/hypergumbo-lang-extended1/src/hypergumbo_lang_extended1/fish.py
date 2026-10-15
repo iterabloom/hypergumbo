@@ -324,7 +324,7 @@ class FishAnalyzer(TreeSitterAnalyzer):
                             edge_type="calls",
                             evidence_type="ast_call",
                             line=node.start_point[0] + 1,
-                            confidence=0.85 * result.confidence,
+                            resolution_score=result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         )

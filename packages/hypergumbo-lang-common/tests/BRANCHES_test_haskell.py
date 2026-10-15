@@ -66,9 +66,10 @@ caller x = helper x + unknownFn x
         resolved = [e for e in call_edges if ":external:" not in e.dst]
         unresolved = [e for e in call_edges if ":external:" in e.dst]
 
-        # Unresolved should have lower confidence (0.50)
+        # Unresolved edges derive the ast_call unresolved base (0.40).
         for e in unresolved:
-            assert e.confidence == 0.50
+            assert e.is_resolved is False
+            assert e.confidence == 0.40
 
 class TestMultipleDataTypes:
     """Branch coverage for multiple data type extraction."""

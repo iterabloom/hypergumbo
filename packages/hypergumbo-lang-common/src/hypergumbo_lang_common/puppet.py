@@ -478,7 +478,9 @@ class _PuppetExtractor:
             origin=PASS_ID,
             origin_run_id=self._execution_id,
             evidence_type="include",
-            confidence=0.95 if class_name in self._class_registry else 0.6,
+            # ADR-0039: the include is certain, so it derives the base;
+            # a target defined elsewhere is unresolved (ADR-0037).
+            is_resolved=class_name in self._class_registry,
             meta={"class_name": class_name, "ref_construct": "puppet_class"},
         )
         self._edges.append(edge)
