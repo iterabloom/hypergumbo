@@ -1,0 +1,20 @@
+Original commit body from 517bfb765810fba8f049b924002acddb836c7e63:
+
+ADR-0004 point 3a: committed vendored code is analysed but left out of
+the project's summaries (WI-kojul), so the run names it, in the same
+three places as the installed-dependency disclosure:
+
+- stderr: "Vendored third-party code analysed as tier 3, not counted in
+  the language breakdown: third_party/ (c; 1 file). To skip: --exclude
+  <dir>." (at most three directories named, then "N more")
+- the sketch Overview, under the language lines
+- supply_chain_summary.vendored_analysed = {dirs, entries: [{path,
+  languages, files}]}, capped at 10
+
+Entries come from tier-3 file nodes grouped by supply_chain.vendored_root,
+the directory the EXTERNAL_DEP path pattern matched; a file read by two
+analyzers counts once. Tier-3 source traced with --trace-deps has no
+vendored root and keeps its own disclosure. Nothing printed when there
+is none. Schema: supply_chain_summary gains vendored_analysed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
