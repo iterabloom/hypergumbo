@@ -1,0 +1,21 @@
+- op: create  # 8d7d
+  at: '2026-10-15T05:06:24Z'  # 8d7d
+  by: agent  # 8d7d
+  actor: jgstern_agent  # 8d7d
+  clock: 1  # 8d7d
+  nonce: 8d7d  # 8d7d
+  data:  # 8d7d
+    kind: work_item  # 8d7d
+    title: "Git submodules become installed-dependency source: gitlink-detected, skipped by default, disclosed, --trace-deps opt-in"  # 8d7d
+    status: todo_hard  # 8d7d
+    priority: 3  # 8d7d
+    parent:  # 8d7d
+    tags:  # 8d7d
+    - supply_chain  # 8d7d
+    - discovery  # 8d7d
+    isbefore: []  # 8d7d
+    duplicate_of: []  # 8d7d
+    not_duplicate_of: []  # 8d7d
+    pr_ref:  # 8d7d
+    description: "Git submodules become installed-dependency source (ADR-0004 point 1 row, amendment item): skipped by default, disclosed, opt-in via --trace-deps <path> / trace_deps (so the results-cache key already covers it).\n\nDetection by evidence, not name: a directory listed in .gitmodules whose HEAD entry is a gitlink (mode 160000), read with the same `git ls-tree HEAD -- <dir>` call discovery._head_entries already trusts (never the index -- the core.fsmonitor hazard point 3 documents). Outside git or with no commits: .gitmodules entry plus a `.git` FILE inside the directory. Add an entry to discovery.INSTALLED_DEP_RULES; extend the installed_deps disclosure (\"... git submodule ...\").\n\nTest with a fixture (the corpus cannot measure it: 35 repos, 362 submodule paths, 0 populated on 2026-10-15): populated submodule skipped and disclosed; --trace-deps <path> analyses it as tier 3; an unpopulated submodule path is a no-op."  # 8d7d
+    fields: {}  # 8d7d
