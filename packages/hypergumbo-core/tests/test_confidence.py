@@ -14,9 +14,14 @@ no published edge value changes here. See
 
 from __future__ import annotations
 
+import math
+
+import pytest
+
 from hypergumbo_core.confidence import (
     confidence_within_band,
     derive_confidence,
+    derive_resolved_confidence,
     find_constant_confidence_violations,
 )
 from hypergumbo_core.ir import Edge
@@ -303,3 +308,124 @@ def test_guard_partitions_by_emitter_and_value():
     violations = find_constant_confidence_violations(a + b + c)
     assert len(violations) == 1
     assert violations[0]["emitter"] == ("emitC",)
+
+
+# --- ADR-0039 ruling 6: resolver match quality interpolates within the band ---
+
+
+def test_resolved_exact_match_gets_pathway_base():
+    # An exact match (grade 1.0) lands on the base a producer passing nothing gets.
+    assert derive_resolved_confidence("ast_call", 1.0) == pytest.approx(0.85)
+    assert derive_resolved_confidence("ast_new", 1.0) == pytest.approx(0.95)
+
+
+def test_resolved_conditioned_pathway_interpolates_from_unresolved_base():
+    # ast_call band is [0.40, 0.85]: a suffix grade of 0.85 sits 85% of the way up.
+    assert derive_resolved_confidence("ast_call", 0.85) == pytest.approx(0.40 + 0.45 * 0.85)
+    assert derive_resolved_confidence("ast_call", 0.0) == pytest.approx(0.40)
+
+
+def test_resolved_unconditioned_pathway_interpolates_from_analyzer_floor():
+    # ast_new has no unresolved base, so its band floor is the 0.30 analyzer floor.
+    assert derive_resolved_confidence("ast_new", 0.0) == pytest.approx(0.30)
+    assert derive_resolved_confidence("ast_new", 0.5) == pytest.approx(0.30 + 0.65 * 0.5)
+
+
+def test_resolved_ambiguous_grades_never_leave_the_band():
+    # The rejected base * grade form fell below the floor here:
+    # 0.85 * 0.70 / sqrt(4) = 0.2975 < 0.40.
+    for n in range(2, 60):
+        grade = 0.70 / math.sqrt(n)
+        for ev in ("ast_call", "ast_call_direct", "macro_expansion", "ast_new", "message_send"):
+            assert confidence_within_band(ev, derive_resolved_confidence(ev, grade)), (ev, n)
+
+
+def test_resolved_preserves_match_ordering():
+    grades = [1.0, 0.90, 0.85, 0.70 / math.sqrt(2), 0.70 / math.sqrt(9)]
+    values = [derive_resolved_confidence("ast_call_direct", g) for g in grades]
+    assert values == sorted(values, reverse=True)
+
+
+def test_resolved_rejects_grade_outside_unit_interval():
+    with pytest.raises(ValueError, match="outside"):
+        derive_resolved_confidence("ast_call", 1.2)
+    with pytest.raises(ValueError, match="outside"):
+        derive_resolved_confidence("ast_call", -0.1)
+
+
+def test_resolved_rejects_unseeded_and_unregistered_pathways():
+    with pytest.raises(ValueError, match="no seeded base_confidence"):
+        derive_resolved_confidence("ast_call_namespace", 1.0)
+    with pytest.raises(ValueError, match="no seeded base_confidence"):
+        derive_resolved_confidence("not_a_registered_pathway", 1.0)
+
+
+def test_edge_create_resolution_score_is_evidence_derived_and_in_band():
+    edge = Edge.create(
+        src="c:a.c:1-2:f:function", dst="c:b.c:1-2:g:function", edge_type="calls",
+        line=1, origin="t", origin_run_id="u",
+        evidence_type="ast_call_direct", resolution_score=0.85,
+    )
+    assert edge.confidence == pytest.approx(0.50 + 0.35 * 0.85)
+    assert edge.confidence_source == "evidence_derived"
+    assert edge.rank_score == edge.confidence
+    assert confidence_within_band("ast_call_direct", edge.confidence)
+
+
+def test_edge_create_rejects_score_with_explicit_confidence():
+    with pytest.raises(ValueError, match="not both"):
+        Edge.create(src="a", dst="b", edge_type="calls", line=1,
+                    evidence_type="ast_call", confidence=0.6, resolution_score=0.9)
+
+
+def test_edge_create_rejects_score_on_unresolved_edge():
+    with pytest.raises(ValueError, match="is_resolved=False"):
+        Edge.create(src="a", dst="b", edge_type="calls", line=1,
+                    evidence_type="ast_call", is_resolved=False, resolution_score=0.9)
+
+
+def test_edge_create_none_score_keeps_derivation():
+    # resolution_score=None is "no grade": the edge derives as before.
+    edge = Edge.create(src="a", dst="b", edge_type="calls", line=1,
+                       origin="t", origin_run_id="u",
+                       evidence_type="ast_call", is_resolved=False, resolution_score=None)
+    assert edge.confidence == pytest.approx(0.40)
+    assert edge.confidence_source == "evidence_derived"
+
+
+def test_guard_resolver_graded_group_is_clean():
+    # >100 suffix-match edges share one interpolated value: a derivation, not a
+    # hidden constant.
+    edges = [
+        Edge.create(src=f"emit:{i}", dst="d", edge_type="calls", line=i,
+                    origin="emit", origin_run_id="u",
+                    evidence_type="ast_call", resolution_score=0.85)
+        for i in range(150)
+    ]
+    assert find_constant_confidence_violations(edges) == []
+
+
+def test_guard_evidence_derived_on_unseeded_pathway_is_flagged():
+    edges = _edges(150, src="emit", confidence=0.6,
+                   evidence_type="ast_call_namespace", confidence_source="evidence_derived")
+    assert len(find_constant_confidence_violations(edges)) == 1
+
+
+# --- ADR-0039 ruling 7: linker edges are judged by the linker range ---
+
+def test_linker_range_ignores_the_declared_pathway_band():
+    assert confidence_within_band("ast_call_direct", 0.9, linker=True)
+    assert not confidence_within_band("ast_call_direct", 0.9)
+    assert not confidence_within_band("ast_call_direct", 0.97, linker=True)
+    assert not confidence_within_band("ast_call_direct", 0.39, linker=True)
+    # Unseeded pathways have no analyzer band, but a linker edge still has a range.
+    assert not confidence_within_band("not_registered", 1.0, linker=True)
+
+
+def test_all_linker_pass_ids_holds_emitted_ids_not_analyzers():
+    from hypergumbo_core.catalog import all_linker_pass_ids
+
+    ids = all_linker_pass_ids()
+    assert "graphql-linker" in ids  # emitted PASS_ID
+    assert "view-template-linker" in ids  # divergent emitted PASS_ID (WI-gobip)
+    assert "python" not in ids

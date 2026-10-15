@@ -507,7 +507,6 @@ def _extract_edges_from_tree(
                             lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
-                            confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -516,7 +515,7 @@ def _extract_edges_from_tree(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="ast_call",
-                                confidence=confidence,
+                                resolution_score=lookup_result.confidence,
                                 meta={"call_construct": "application"},
                             )
                             edges.append(edge)

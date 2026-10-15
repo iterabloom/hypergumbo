@@ -119,6 +119,15 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("ruby")
 
+#: ADR-0039 ruling 6 grades for the bare-call resolution cascade. A same-class
+#: match is exact; an unqualified match in this file is graded like a path
+#: hint; the global resolver fallback runs only after both failed, so its own
+#: grade is discounted to stay below them. Before ruling 6 the cascade set
+#: 0.90 / 0.75 / ``0.70 * grade``; 0.90 was over the ast_call ceiling of 0.85.
+_RUBY_SAME_CLASS_GRADE = 1.0
+_RUBY_LOCAL_GRADE = 0.90
+_RUBY_GLOBAL_GRADE = 0.85
+
 #: INV-bamij: scopes whose BODY anchors a call in no method (class-body
 #: ``include``, a Rails ``has_many``).
 _SCOPE_BODY_NODES: frozenset[str] = frozenset({"class", "module", "singleton_class"})
@@ -2828,7 +2837,7 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=0.80 * lookup_result.confidence,
+                                    resolution_score=lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "method"},
@@ -2905,10 +2914,11 @@ def _extract_edges_from_file(
                 # method name, only allow same-class resolution.
                 ambiguous = len(_mc.get(callee_name, ())) >= 3
 
-                # Priority cascade:
-                # 1. Same-class qualified lookup (confidence 0.90)
-                # 2. Unqualified local_symbols lookup (confidence 0.75)
-                # 3. Global resolver fallback (confidence 0.70 * resolver)
+                # Priority cascade, each route graded for ADR-0039 ruling 6
+                # (Edge.create interpolates the grade in the ast_call band):
+                # 1. Same-class qualified lookup (exact)
+                # 2. Unqualified local_symbols lookup (a same-file hint)
+                # 3. Global resolver fallback (discounted resolver grade)
                 callee = _resolve_bare_call_class_aware(
                     callee_name, enclosing_class, local_symbols
                 )
@@ -2924,14 +2934,17 @@ def _extract_edges_from_file(
                         if ambiguous and not same_class:
                             pass
                         else:
-                            confidence = 0.90 if same_class else 0.75
+                            grade = (
+                                _RUBY_SAME_CLASS_GRADE if same_class
+                                else _RUBY_LOCAL_GRADE
+                            )
                             edges.append(Edge.create(
                                 src=current_method.id,
                                 dst=callee.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=confidence,
+                                resolution_score=grade,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "method", "receiver": "bare"},
@@ -2949,7 +2962,9 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.70 * lookup_result.confidence,
+                                resolution_score=(
+                                    _RUBY_GLOBAL_GRADE * lookup_result.confidence
+                                ),
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "method", "receiver": "bare"},

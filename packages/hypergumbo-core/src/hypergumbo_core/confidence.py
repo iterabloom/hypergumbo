@@ -29,6 +29,26 @@ fallback constant. The spec's 0.30 unknown-evidence MUST was withdrawn
 (confidence:F3 Stage A); re-introducing any blanket default would recreate the
 wrong-for-most-of-corpus problem WI-gifat filed.
 
+``derive_resolved_confidence(evidence_type, resolution_score)`` is ADR-0039
+ruling 6: a producer whose name resolver graded the match (1.0 exact, 0.90
+path hint, 0.85 suffix, ``0.70/sqrt(n)`` ambiguous) passes that grade, and
+the confidence is interpolated inside the pathway's band,
+``low + (base - low) * score``. The band is the same one
+``confidence_within_band`` checks, so the result is in band by construction;
+an exact match lands on the base a producer passing nothing would get. The
+rejected alternative, ``base * score``, fell below the floor
+(``0.85 * 0.70/sqrt(4) = 0.30`` against ``ast_call``'s 0.40) and kept a
+private base per producer. Unlike ``derive_confidence`` it raises rather
+than returning ``None`` for an unseeded pathway: an unseeded pathway has no
+band to interpolate in, and a producer that passed a score asked for one.
+
+Linker edges are a separate category (ADR-0039 ruling 7): their confidence is
+match quality, judged against :data:`LINKER_CONFIDENCE_RANGE` (spec §12,
+0.40-0.95) whatever ``evidence_type`` they declare. ``confidence_within_band``
+takes ``linker=True`` for them; deciding which edges are linker edges (the
+producing pass is a registered linker) is the caller's job, because it needs
+the pass catalog.
+
 ``confidence_within_band`` is the WI-nurun step-4 range-validation reader: it
 checks an edge's confidence sits inside the derived ``[low, base]`` band for
 its pathway — a forward regression guard surfaced as an advisory
@@ -75,9 +95,64 @@ def derive_confidence(evidence_type: str, *, is_resolved: bool = True) -> float 
 # seeded base_confidence (<= 0.95), never above it.
 _BAND_FLOOR: float = 0.30
 
+#: Spec §12 linker edge confidence range (ADR-0039 ruling 7): match quality,
+#: a different quantity from an analyzer pathway band.
+LINKER_CONFIDENCE_RANGE: tuple[float, float] = (0.40, 0.95)
 
-def confidence_within_band(evidence_type: str, confidence: float) -> bool:
+
+def _band(spec: Any) -> tuple[float, float]:
+    """Return the ``(low, high)`` band of a seeded pathway spec.
+
+    ``low`` is ``base_confidence_unresolved`` on the is_resolved-conditioned
+    pathways, else the analyzer floor; ``high`` is ``base_confidence``.
+    """
+    low = (
+        spec.base_confidence_unresolved
+        if spec.base_confidence_unresolved is not None
+        else _BAND_FLOOR
+    )
+    return low, spec.base_confidence
+
+
+def derive_resolved_confidence(evidence_type: str, resolution_score: float) -> float:
+    """ADR-0039 ruling 6: interpolate a resolver's match quality within the band.
+
+    Returns ``low + (base - low) * resolution_score`` for the pathway's band
+    (see :func:`_band`). ``resolution_score`` is a match quality in [0, 1] —
+    a ``LookupResult.confidence``, or a producer's product of such factors.
+
+    Raises ``ValueError`` when the score is outside [0, 1] or the pathway has
+    no seeded ``base_confidence`` (no band to interpolate in).
+    """
+    if not 0.0 <= resolution_score <= 1.0:
+        raise ValueError(
+            f"resolution_score={resolution_score!r} is outside [0, 1]"
+        )
+    spec = find_evidence_type(evidence_type)
+    if spec is None or spec.base_confidence is None:
+        raise ValueError(
+            f"evidence_type={evidence_type!r} has no seeded base_confidence, "
+            "so a resolution_score has no band to interpolate in (ADR-0039 "
+            "ruling 6); pass confidence= or use a seeded pathway"
+        )
+    low, high = _band(spec)
+    # The endpoints are returned exactly: an exact match must equal the base a
+    # producer passing nothing derives (0.40 + 0.45 * 1.0 is 0.8500000000000001).
+    if resolution_score == 1.0:
+        return high
+    if resolution_score == 0.0:
+        return low
+    return low + (high - low) * resolution_score
+
+
+def confidence_within_band(
+    evidence_type: str, confidence: float, *, linker: bool = False,
+) -> bool:
     """Return True if ``confidence`` is within the valid band for a pathway.
+
+    ``linker=True`` (ADR-0039 ruling 7) checks a linker edge against
+    :data:`LINKER_CONFIDENCE_RANGE` and ignores ``evidence_type``: the
+    analyzer band of the pathway a linker edge declares does not apply to it.
 
     For a *seeded* inference pathway the band is ``[low, base_confidence]``
     where ``low`` is ``base_confidence_unresolved`` when the pathway is
@@ -88,15 +163,28 @@ def confidence_within_band(evidence_type: str, confidence: float) -> bool:
     not-yet-seeded pathways have no band and are reported in-band (the caller's
     literal stands). This is the WI-nurun step-4 range-validation reader.
     """
+    if linker:
+        low, high = LINKER_CONFIDENCE_RANGE
+        return low - 1e-9 <= confidence <= high + 1e-9
     spec = find_evidence_type(evidence_type)
     if spec is None or spec.base_confidence is None:
         return True
-    low = (
-        spec.base_confidence_unresolved
-        if spec.base_confidence_unresolved is not None
-        else _BAND_FLOOR
+    low, high = _band(spec)
+    return low - 1e-9 <= confidence <= high + 1e-9
+
+
+def _is_derivable(edge: Any) -> bool:
+    """True when an ``evidence_derived`` edge's value is one the layer can produce.
+
+    That is its pathway's derived base, or — for a resolver-graded edge
+    (ADR-0039 ruling 6) — any value inside the seeded band.
+    """
+    base = derive_confidence(edge.evidence_type, is_resolved=edge.is_resolved)
+    if base is None:
+        return False
+    return base == edge.confidence or confidence_within_band(
+        edge.evidence_type, edge.confidence,
     )
-    return low - 1e-9 <= confidence <= spec.base_confidence + 1e-9
 
 
 def find_constant_confidence_violations(
@@ -118,14 +206,17 @@ def find_constant_confidence_violations(
 
     - entirely ``confidence_source='emitter_constant'`` (a declared hardcoded
       producer value — the legal transitional state), or
-    - entirely ``confidence_source='evidence_derived'`` with the value equal to
-      the registry ``base_confidence`` for each edge's ``evidence_type`` (a
-      genuine derivation; every edge of one pathway shares its seeded base).
+    - entirely ``confidence_source='evidence_derived'`` with each edge's value
+      equal to its pathway's derived base, or (ADR-0039 ruling 6) inside the
+      pathway's seeded band. A resolver-graded edge is derived but sits
+      between the floor and the base: every suffix match on ``ast_call`` gets
+      the same interpolated value, so a large group of them is a derivation,
+      not a hidden constant.
 
     Anything else — a ``composite`` value (ranking still fused; ruling 3 has not
     yet relocated it) held constant across >100 edges, or an ``evidence_derived``
-    value that does NOT match its registry base (a hardcoded constant
-    masquerading as derived) — is reported. Returns one descriptor per offending
+    value outside its pathway's band or on an unseeded pathway (a hardcoded
+    constant masquerading as derived) — is reported. Returns one descriptor per offending
     group (``emitter``, ``confidence``, ``count``, ``sources``, ``reason``);
     empty list means clean. Expressible as a property test over any behavior map.
     """
@@ -143,8 +234,7 @@ def find_constant_confidence_violations(
         if sources == {"emitter_constant"}:
             continue
         if sources == {"evidence_derived"} and all(
-            derive_confidence(e.evidence_type, is_resolved=e.is_resolved) == e.confidence
-            for e in group
+            _is_derivable(e) for e in group
         ):
             continue
         violations.append({

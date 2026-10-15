@@ -20,6 +20,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - `.hypothesis/` excluded by default.
 - Retired test-only `_uncatalogued_external_modules`; gate rationale now on `_adjudicate_external_modules`.
 - ADR-0039 rulings 6–7; ADR-0004 vendored/submodule amendment.
+- Resolver match grade interpolates within confidence band.
+- Linker edges judged by the linker confidence range.
+- Out-of-band confidence literals dropped; `static` call labels fixed.
+- Branch-tier confidence sites now derive or justify.
+- `check-confidence-sites`: shrink-only gate on confidence call sites.
 
 ## [9.0.0] - 2026-10-14
 

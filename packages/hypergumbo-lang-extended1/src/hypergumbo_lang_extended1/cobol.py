@@ -370,7 +370,7 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_perform",
-                                    confidence=0.85 * result.confidence,
+                                    resolution_score=result.confidence,
                                 )
                             else:  # pragma: no cover - unresolvable external paragraph
                                 edge = make_unresolved_edge(  # pragma: no cover
@@ -406,7 +406,7 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call",
-                                confidence=0.85 * result.confidence,
+                                resolution_score=result.confidence,
                             )
                         else:
                             edge = make_unresolved_edge(

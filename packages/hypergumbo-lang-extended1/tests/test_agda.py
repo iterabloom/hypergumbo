@@ -575,7 +575,7 @@ data Nat : Set where
         ), "Expected suc→Nat constructor type-sig reference"
 
     def test_type_sig_refs_confidence(self, tmp_path: Path) -> None:
-        """Type signature reference edges use confidence 0.75."""
+        """A type-signature reference takes the resolver grade (ADR-0039 ruling 6)."""
         from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """\
@@ -599,7 +599,8 @@ double zero = zero
             None,
         )
         assert sig_edge is not None
-        assert sig_edge.confidence == 0.75
+        # Exact match: the reference pathway base.
+        assert sig_edge.confidence == 0.95
 
 
 class TestAgdaRecordFieldExtraction:

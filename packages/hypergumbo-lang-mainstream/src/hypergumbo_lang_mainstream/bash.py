@@ -1443,7 +1443,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                             edge_type="calls",
                                             line=line,
                                             evidence_type="ast_call",
-                                            confidence=0.80 * lookup_result.confidence,
+                                            resolution_score=lookup_result.confidence,
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
                                             meta={"call_locality": "cross_file"},

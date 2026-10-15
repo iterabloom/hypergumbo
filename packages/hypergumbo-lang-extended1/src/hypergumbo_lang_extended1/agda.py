@@ -535,7 +535,6 @@ def _extract_edges_from_file(
             enclosing_name = _clause_name(node, source)
             if not enclosing_name:
                 continue  # pragma: no cover
-            confidence = 0.80
         elif rhs_text.startswith(":"):
             # Type signature: scan for qid references to defined types
             lhs = find_child_by_type(node, "lhs")
@@ -544,7 +543,6 @@ def _extract_edges_from_file(
             enclosing_name = _get_function_name_from_lhs(lhs, source)
             if not enclosing_name:
                 continue  # pragma: no cover
-            confidence = 0.75
         else:
             continue  # pragma: no cover - an rhs opens with = or :
         enclosing = by_chain.get(_declared_names(node, source, enclosing_name)[1])
@@ -570,7 +568,10 @@ def _extract_edges_from_file(
                         line=rhs_child.start_point[0] + 1,
                         origin=PASS_ID,
                         origin_run_id=run_id,
-                        confidence=confidence,
+                        # ADR-0039 ruling 6: the resolver's grade interpolates in
+                        # the reference band (it was 0.80 for a definition body and
+                        # 0.75 for a type signature, whatever the match quality).
+                        resolution_score=ref_result.confidence,
                     ))
 
     return edges, import_aliases

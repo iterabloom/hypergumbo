@@ -147,7 +147,6 @@ def _emit(
         edge_type="defines_target",
         evidence_type="build_target_main",
         line=line,
-        confidence=1.0,
         origin=PASS_ID,
         meta=edge_meta,
         origin_run_id=run_id,

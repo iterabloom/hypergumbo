@@ -440,7 +440,9 @@ def _extract_include(
         origin=PASS_ID,
         origin_run_id=execution_id,
         evidence_type="include",
-        confidence=0.95 if mixin_name in mixin_definitions else 0.6,
+        # ADR-0039: the include is certain, so it derives the base;
+        # a target defined elsewhere is unresolved (ADR-0037).
+        is_resolved=mixin_name in mixin_definitions,
         meta={"mixin_name": mixin_name, "ref_construct": "sass_mixin"},
     )
     edges.append(edge)

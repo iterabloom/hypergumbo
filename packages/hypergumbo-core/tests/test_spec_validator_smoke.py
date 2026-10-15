@@ -17,6 +17,11 @@ future change has to preserve.
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from hypergumbo_core.ir import Edge
+
 from hypergumbo_core.spec_validator import (
     VALIDATION_REPORT_SCHEMA_VERSION,
     ValidationViolation,
@@ -2495,6 +2500,44 @@ def test_confidence_range_clean_for_in_band_edge() -> None:
         v for v in validate_ir([], [edge], [])
         if v.field_name == "confidence"
     ] == []
+
+
+def _call_edge(confidence: float, origin: object) -> "Edge":
+    from hypergumbo_core.ir import Edge
+    return Edge.create(
+        src="python:a.py:1-1:f:function", dst="python:b.py:1-1:g:function",
+        edge_type="calls", line=1, evidence_type="ast_call_direct",
+        confidence=confidence, origin=origin, origin_run_id="test",
+    )
+
+
+def _confidence_violations(edge: "Edge") -> list:
+    return [v for v in validate_ir([], [edge], []) if v.field_name == "confidence"]
+
+
+def test_confidence_range_linker_edge_judged_by_linker_range() -> None:
+    """ADR-0039 ruling 7: a linker edge at 0.9 on ast_call_direct is in range
+    (0.40-0.95) although the analyzer band's ceiling is 0.85."""
+    assert _confidence_violations(_call_edge(0.9, "graphql-linker")) == []
+
+
+def test_confidence_range_analyzer_edge_keeps_the_band() -> None:
+    """The same value from an analyzer is over the ast_call_direct ceiling."""
+    violations = _confidence_violations(_call_edge(0.9, "python"))
+    assert [v.expected for v in violations] == ["[0.5, 0.85]"]
+
+
+def test_confidence_range_linker_edge_above_linker_ceiling() -> None:
+    violations = _confidence_violations(_call_edge(0.97, "graphql-linker"))
+    assert len(violations) == 1
+    assert violations[0].expected == "[0.4, 0.95]"
+    assert "graphql-linker" in violations[0].message
+    assert "ruling 7" in violations[0].message
+
+
+def test_confidence_range_mixed_origin_keeps_the_band() -> None:
+    """An edge an analyzer also produced is not a linker edge."""
+    assert len(_confidence_violations(_call_edge(0.9, ["graphql-linker", "python"]))) == 1
 
 
 # ----------------------------------------------------------------------

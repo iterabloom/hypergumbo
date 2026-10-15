@@ -144,7 +144,8 @@ main x = helper x
         )
         assert edge is not None
         assert edge.edge_type == "calls"
-        assert edge.confidence == 1.0
+        # A registry hit derives the ast_call_direct base (ADR-0039).
+        assert edge.confidence == 0.85
 
     def test_recursive_calls(self, tmp_path: Path) -> None:
         make_purescript_file(tmp_path, "Factorial.purs", """module Factorial where
@@ -186,7 +187,8 @@ main x = externalFunc x
         )
         assert edge is not None
         assert "unresolved" in edge.dst
-        assert edge.confidence == 0.6
+        assert edge.is_resolved is False
+        assert edge.confidence == 0.50
 
     def test_pass_id(self, tmp_path: Path) -> None:
         make_purescript_file(tmp_path, "Test.purs", """module Test where

@@ -361,7 +361,6 @@ def _process_bin(
                         edge_type="defines_target",
                         evidence_type="build_target_main",
                         line=start_line,
-                        confidence=1.0,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     )
@@ -417,7 +416,6 @@ def _process_bin(
                             edge_type="defines_target",
                             evidence_type="build_target_main",
                             line=start_line,
-                            confidence=1.0,
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         )
@@ -484,7 +482,6 @@ def _process_main_entry(
             edge_type="defines_target",
             evidence_type="build_target_main",
             line=start_line,
-            confidence=1.0,
             origin=PASS_ID,
             origin_run_id=run_id,
         )
@@ -602,7 +599,6 @@ def _process_exports(
                     edge_type="defines_target",
                     evidence_type="build_target_main",
                     line=start_line,
-                    confidence=1.0,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 )
@@ -663,7 +659,6 @@ def _process_exports(
                 edge_type="defines_target",
                 evidence_type="build_target_main",
                 line=start_line,
-                confidence=1.0,
                 origin=PASS_ID,
                 origin_run_id=run_id,
             )

@@ -275,7 +275,10 @@ def _extract_edges_recursive(
 
             if callee_name:
                 callee_id = symbol_registry.get(callee_name)
-                confidence = 1.0 if callee_id else 0.6
+                # ADR-0039: a registry hit derives the ast_call_direct base and a miss
+                # is unresolved (ADR-0037), deriving the unresolved base. The old
+                # ``1.0 if hit else 0.6`` put every hit over the 0.85 ceiling.
+                resolved = callee_id is not None
                 if callee_id is None:
                     callee_id = f"matlab:unresolved:{callee_name}"
 
@@ -288,7 +291,7 @@ def _extract_edges_recursive(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     evidence_type="ast_call_direct",
-                    confidence=confidence,
+                    is_resolved=resolved,
                     evidence_lang="matlab",
                 )
                 edges.append(edge)

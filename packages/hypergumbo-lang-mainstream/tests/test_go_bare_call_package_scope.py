@@ -87,7 +87,9 @@ def test_two_candidates_bind_the_callers_package_not_the_first_sorted(
     })
     [edge] = _calls_from(repo, "UseB")
     assert _dst_path(edge) == "b/b.go"
-    assert edge.confidence == 0.80
+    # An exact match in the caller's package: the ast_call base (ADR-0039
+    # ruling 6, resolver grade 1.0).
+    assert edge.confidence == 0.85
 
 
 def test_three_candidates_bind_instead_of_the_external_placeholder(
@@ -155,7 +157,9 @@ def test_build_constraint_variants_stay_in_the_package(tmp_path: Path) -> None:
     [edge] = _calls_from(repo, "UseA")
     assert _dst_path(edge) == "a/p_darwin.go"
     assert edge.is_resolved is True
-    assert round(edge.confidence, 3) == round(0.80 / 3 ** 0.5, 3)
+    # Three-way ambiguity: the package resolver grades it 1/sqrt(3),
+    # interpolated in the ast_call band [0.40, 0.85] (ADR-0039 ruling 6).
+    assert round(edge.confidence, 3) == round(0.40 + 0.45 / 3 ** 0.5, 3)
 
 
 def test_a_dot_import_still_reaches_the_imported_package(tmp_path: Path) -> None:

@@ -786,6 +786,29 @@ def all_known_pass_ids() -> frozenset[str]:
     )
 
 
+def all_linker_pass_ids() -> frozenset[str]:
+    """Return every pass id a registered linker stamps on ``Edge.origin``.
+
+    That is each linker's emitted module ``PASS_ID`` (WI-gobip: it can diverge
+    from the registration name, which is never stamped and so is left out).
+    ADR-0039 ruling 7 reads it to tell a linker edge, judged by the spec §12
+    linker range, from an analyzer edge, judged by its pathway band.
+
+    Linkers register when ``hypergumbo_core.cli`` imports their modules, so
+    this imports it: a validator run outside the CLI (a script reading a saved
+    behavior map) would otherwise see a near-empty registry and judge every
+    linker edge by the analyzer band.
+    """
+    import hypergumbo_core.cli  # noqa: F401 - registers the linkers (import side effect)
+
+    from .linkers.registry import _LINKER_REGISTRY
+    from .pass_metadata import _resolve_linker_pass_id
+
+    return frozenset(
+        _resolve_linker_pass_id(linker) for linker in _LINKER_REGISTRY.values()
+    )
+
+
 def all_known_languages() -> frozenset[str]:
     """Return the union of language tags across registered analyzers and linkers.
 

@@ -867,23 +867,27 @@ def _extract_fortran_edges(
                 start_line = node.start_point[0] + 1
                 # Use resolver for callee resolution
                 lookup_result = resolver.lookup(mod_name)
+                # A ``use`` statement is an import (ast_import), not a
+                # static-linkage declaration. The statement is certain, so the
+                # edge takes the pathway base (ADR-0039); whether the module is
+                # in the repo is is_resolved (ADR-0037), not confidence.
                 if lookup_result.found and lookup_result.symbol:
                     dst_id = lookup_result.symbol.id
-                    confidence = 0.90 * lookup_result.confidence
+                    resolved = True
                 else:
                     # External module not in our codebase
                     dst_id = f"fortran:external:{mod_name}"
-                    confidence = 0.70
+                    resolved = False
 
                 edge = Edge.create(
                     src=current_symbol,
                     dst=dst_id,
                     edge_type="imports",
                     line=start_line,
-                    confidence=confidence,
+                    is_resolved=resolved,
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    evidence_type="static",
+                    evidence_type="ast_import",
                 )
                 edges.append(edge)
 
@@ -902,23 +906,27 @@ def _extract_fortran_edges(
                 path_hint = import_aliases.get(call_name)
                 # Use resolver for callee resolution
                 lookup_result = resolver.lookup(call_name, path_hint=path_hint)
+                # ADR-0039 ruling 6: resolver match quality interpolates in the
+                # pathway band; an external target derives the unresolved base
+                # (ADR-0037).
+                resolution_score: float | None = None
                 if lookup_result.found and lookup_result.symbol:
                     dst_id = lookup_result.symbol.id
-                    confidence = 0.90 * lookup_result.confidence
+                    resolution_score = lookup_result.confidence
                 else:
                     # External subroutine not in our codebase
                     dst_id = f"fortran:external:{call_name}"
-                    confidence = 0.70
 
                 edge = Edge.create(
                     src=current_symbol,
                     dst=dst_id,
                     edge_type="calls",
                     line=start_line,
-                    confidence=confidence,
+                    resolution_score=resolution_score,
+                    is_resolved=resolution_score is not None,
                     origin=PASS_ID,
                     origin_run_id=run_id,
-                    evidence_type="static",
+                    evidence_type="ast_call_direct",
                 )
                 edges.append(edge)
 

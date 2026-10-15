@@ -490,7 +490,6 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                             lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol:
                                 callee = lookup_result.symbol
-                                confidence = 0.85 * lookup_result.confidence
                                 edge = Edge.create(
                                     src=caller.id,
                                     dst=callee.id,
@@ -499,7 +498,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="ast_call",
-                                    confidence=confidence,
+                                    resolution_score=lookup_result.confidence,
                                     meta={"call_construct": "function"},
                                 )
                                 edges.append(edge)
@@ -550,7 +549,6 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                         lookup_result = resolver.lookup(method_name, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
-                            confidence = 0.75 * lookup_result.confidence
                             edge = Edge.create(
                                 src=caller.id,
                                 dst=callee.id,
@@ -559,7 +557,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="ast_call",
-                                confidence=confidence,
+                                resolution_score=lookup_result.confidence,
                                 meta={"call_construct": "method"},
                             )
                             edges.append(edge)

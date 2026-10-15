@@ -475,13 +475,12 @@ def _extract_sql_edges(
                             lookup_result = resolver.lookup(ref_table.lower(), caller_path=_caller_path)
                             if lookup_result.found and lookup_result.symbol:
                                 dst_id = lookup_result.symbol.id
-                                confidence = 0.90 * lookup_result.confidence
                                 edge = Edge.create(
                                     src=table_sym.id,
                                     dst=dst_id,
                                     edge_type="references",
                                     line=start_line,
-                                    confidence=confidence,
+                                    resolution_score=lookup_result.confidence,
                                     origin=PASS_ID,
                                     evidence_type="sql_foreign_key",
                                     origin_run_id=run_id,

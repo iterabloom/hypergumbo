@@ -275,9 +275,12 @@ end
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
 
-        # Check for cross-file call edge with lower confidence
-        cross_file_edges = [e for e in call_edges if e.confidence == 0.80]
+        # The cross-file call resolves by exact name, so ADR-0039 ruling 6
+        # gives it the ast_call base (the resolver's grade is 1.0).
+        cross_file_edges = [e for e in call_edges if "helper" in e.dst.lower()]
         assert len(cross_file_edges) >= 1
+        assert all(e.confidence == 0.85 for e in cross_file_edges)
+        assert all(e.confidence_source == "evidence_derived" for e in cross_file_edges)
 
 class TestJuliaSymbolProperties:
     """Tests for symbol property correctness."""

@@ -1444,6 +1444,17 @@ if [[ -f "$CITATION_GATE_HELPER" ]] && command -v python3 &>/dev/null && [[ -n "
     fi
 fi
 
+# WI-vosif: the static confidence-site gate (test_confidence_sites.py) reads
+# every producer module by PATH, so the import-graph slice never selects it for
+# an analyzer or linker edit -- the change it exists to check. Any changed
+# package source unions it in; it costs about two seconds.
+CONFIDENCE_GATE_TEST="packages/hypergumbo-core/tests/test_confidence_sites.py"
+if [[ -f "$REPO_ROOT/$CONFIDENCE_GATE_TEST" ]] \
+        && echo "$CHANGED_FILES" | grep -qE '^packages/[^/]+/src/.*\.py$'; then
+    log "Producer edit - unioning the confidence-site gate (WI-vosif)"
+    AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CONFIDENCE_GATE_TEST" | sed '/^$/d' | sort -u)
+fi
+
 if [[ -z "$AFFECTED_TESTS" ]]; then
     # No affected tests found. Check why:
     if [[ -z "$CHANGED_SOURCE_FILES" ]]; then

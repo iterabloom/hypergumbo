@@ -128,7 +128,10 @@ class TestOwnFileDeclarationWins:
             if e.edge_type == "calls" and by_id.get(e.src) is not None
             and by_id[e.src].name == "f"
         ]
-        assert conf == [0.90], conf
+        # Exact (ADR-0039 ruling 6 grade 1.0): the ast_call_direct ceiling,
+        # above the same-package heuristic's 0.90 grade. It was 0.90, over
+        # the 0.85 ceiling (INV-zatug).
+        assert conf == [0.85], conf
 
     def test_export_and_arrow_declarations_bind(self, tmp_path: Path) -> None:
         _write(tmp_path, {

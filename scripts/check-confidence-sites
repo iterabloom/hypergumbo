@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Static audit of explicit Edge.create(confidence=...) sites (WI-vosif).
+
+Thin wrapper over ``hypergumbo_core.confidence_sites``; the logic, the
+finding kinds and the baseline rule are documented there.
+
+    scripts/check-confidence-sites                  # gate: exit 1 on new or stale
+    scripts/check-confidence-sites --list           # every finding, baseline or not
+    scripts/check-confidence-sites --update-baseline  # rewrite the baseline (shrink only)
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from hypergumbo_core.confidence_sites import (
+    BASELINE_PATH,
+    baseline_document,
+    compare_to_baseline,
+    load_baseline,
+    scan_tree,
+)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--list", action="store_true", help="print every finding")
+    parser.add_argument(
+        "--update-baseline", action="store_true",
+        help="rewrite the baseline; refused when it would add entries",
+    )
+    args = parser.parse_args(argv)
+    root = args.repo_root
+    findings = scan_tree(root)
+    if args.list:
+        for finding in findings:
+            print(finding.render())
+        print(f"{len(findings)} finding(s)")
+        return 0
+    baseline = load_baseline(root)
+    new, stale = compare_to_baseline(findings, baseline)
+    if args.update_baseline:
+        if new:
+            print("refusing to add entries to a shrink-only baseline:", file=sys.stderr)
+            for finding in new:
+                print("  " + finding.render(), file=sys.stderr)
+            return 1
+        (root / BASELINE_PATH).write_text(baseline_document(findings), encoding="utf-8")
+        print(f"baseline now holds {len(findings)} finding(s)")
+        return 0
+    for finding in new:
+        print("NEW   " + finding.render())
+    for key in stale:
+        print("STALE " + key + "  (remove it: --update-baseline)")
+    if new or stale:
+        return 1
+    print(f"ok: {len(findings)} finding(s), all in the baseline")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -299,9 +299,9 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`ast_call_inherited`** — Edge inferred from a call on an inherited member.
 - **`ast_call_inherited_field`** — Edge inferred from access to an inherited field.
 - **`ast_call_inherited_method`** — Edge inferred from a call on an inherited method.
-- **`ast_call_static`** — Edge inferred from a static (class-level) method call.
-- **`ast_call_this`** — Edge inferred from a `this`/`self` receiver call.
-- **`ast_call_this_property`** — Edge inferred from a `this.property` / `self.attr` resolved access.
+- **`ast_call_static`** — Edge inferred from a static (class-level) method call. _(derived confidence 0.95)_
+- **`ast_call_this`** — Edge inferred from a `this`/`self` receiver call. _(derived confidence 0.90)_
+- **`ast_call_this_property`** — Edge inferred from a `this.property` / `self.attr` resolved access. _(derived confidence 0.85)_
 - **`ast_call_type_inferred`** — Edge inferred from a call site where the receiver type was inferred. _(derived confidence 0.85)_
 - **`ast_call_ufcs`** — Edge inferred from a UFCS free-function call written with method syntax (x.foo() resolving to foo(x); D / Nim). _(derived confidence 0.80)_
 - **`ast_cite`** — Edge inferred from a citation/cross-reference link in source.
@@ -312,15 +312,15 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`ast_include`** — Edge inferred from an include directive in source AST (C/C++).
 - **`ast_includes`** — Edge inferred from a runtime mixin declaration (Ruby `include`/`extend`, etc.) — WI-hatip.
 - **`ast_method_inferred`** — Edge inferred from a method call where dispatch was inferred. _(derived confidence 0.70)_
-- **`ast_method_this`** — Edge inferred from a `this`/`self` method call.
+- **`ast_method_this`** — Edge inferred from a `this`/`self` method call. _(derived confidence 0.95)_
 - **`ast_method_this_property`** — Edge inferred from a `this.prop` / `self.attr` reference. _(derived confidence 0.90)_
 - **`ast_method_type_inferred`** — Edge inferred from a method call with type-inferred receiver. _(derived confidence 0.85)_
 - **`ast_name_read`** — Edge inferred from a bare-name read of a module-level variable (WI-jagus). _(derived confidence 0.85)_
 - **`ast_new`** — Edge inferred from a `new` constructor expression. _(derived confidence 0.95)_
 - **`ast_package`** — Edge inferred from a package declaration.
-- **`ast_perform`** — Edge inferred from a `perform`/effect-handler invocation (OCaml/Eff).
+- **`ast_perform`** — Edge inferred from a `perform`/effect-handler invocation (OCaml/Eff). _(derived confidence 0.85)_
 - **`ast_ref`** — Edge inferred from a generic name reference in source AST.
-- **`ast_static_call`** — Edge inferred from a static method call (qualifier-resolved).
+- **`ast_static_call`** — Edge inferred from a static method call (qualifier-resolved). _(derived confidence 0.95)_
 - **`ast_type_ref`** — Edge inferred from a type reference (annotation, generic, etc.). _(derived confidence 0.85)_
 - **`async_spawn`** — Edge inferred from an async spawn / task-creation construct. _(derived confidence 0.85)_
 - **`behaviour`** — Edge inferred from an Erlang `-behaviour(...)` attribute. _(derived confidence 0.95)_
@@ -328,16 +328,16 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`bridging_header_import`** — Edge inferred from an Objective-C bridging-header import. _(derived confidence 0.95)_
 - **`build_dependency`** — Edge inferred from a build-system dependency declaration. _(derived confidence 0.95)_
 - **`build_target_main`** — Edge inferred from a build target's main entry point. _(derived confidence 0.95)_
-- **`callable_reference`** — Edge inferred from a callable reference (Kotlin `::fn`, etc.).
+- **`callable_reference`** — Edge inferred from a callable reference (Kotlin `::fn`, etc.). _(derived confidence 0.80)_
 - **`callback_argument_reference`** — Edge inferred from a callback function passed as an argument. _(derived confidence 0.75)_
 - **`canonical_name`** — Edge inferred from canonical-name resolution. _(derived confidence 0.95)_
 - **`cgo_call`** — Edge inferred from a Go cgo C-function call.
 - **`closure_wrapper`** — Edge inferred from a closure/lambda wrapper construct. _(derived confidence 0.85)_
 - **`cmake_target_link`** — Edge inferred from a CMake `target_link_libraries` call.
-- **`constructor_reference`** — Edge inferred from a constructor reference (Java `::new`, etc.).
-- **`designated_init_fptr`** — Edge inferred from a designated-initializer function pointer (C99).
+- **`constructor_reference`** — Edge inferred from a constructor reference (Java `::new`, etc.). _(derived confidence 0.80)_
+- **`designated_init_fptr`** — Edge inferred from a designated-initializer function pointer (C99). _(derived confidence 0.85)_
 - **`dispatch_pattern`** — Edge inferred from a generic dispatch-pattern recognition. _(derived confidence 0.70)_
-- **`dispatch_table_initializer`** — Edge inferred from a dispatch-table initializer entry.
+- **`dispatch_table_initializer`** — Edge inferred from a dispatch-table initializer entry. _(derived confidence 0.80)_
 - **`dispatch_table_reference`** — Edge inferred from a reference into a dispatch table. _(derived confidence 0.85)_
 - **`dockerfile_copy_from`** — Edge inferred from a Dockerfile `COPY --from=...` directive. _(derived confidence 0.95)_
 - **`dockerfile_from`** — Edge inferred from a Dockerfile `FROM` directive. _(derived confidence 0.95)_
@@ -345,7 +345,7 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`eta_expansion`** — Edge inferred from an eta-expansion (point-free → pointed). _(derived confidence 0.85)_
 - **`extends`** — Edge inferred from a generic extends/inheritance relationship. _(derived confidence 0.95)_
 - **`function_pointer`** — Edge inferred from a function-pointer assignment or use. _(derived confidence 0.85)_
-- **`function_pointer_arg`** — Edge inferred from a function pointer passed as an argument.
+- **`function_pointer_arg`** — Edge inferred from a function pointer passed as an argument. _(derived confidence 0.80)_
 - **`function_reference`** — Edge inferred from a function reference (not a call). _(derived confidence 0.80)_
 - **`function_reference_arg`** — Edge inferred from a function reference passed as an argument. _(derived confidence 0.70)_
 - **`grpc_stub_resolution`** — Edge inferred from a gRPC stub-method resolution lookup. Cluster B canonical for `grpc_unresolved_resolution` (ADR-0028 §Phase 3 Cluster B / WI-nunal). _(derived confidence 0.75)_
@@ -390,7 +390,7 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`signal_constraint`** — Edge inferred from an HDL signal-constraint declaration. _(derived confidence 0.85)_
 - **`source_statement`** — Edge inferred from a generic source-level statement. _(derived confidence 0.95)_
 - **`span_overlap`** — Edge inferred from text-span overlap between symbols. _(derived confidence 0.90)_
-- **`sql_foreign_key`** — Edge inferred from a SQL `FOREIGN KEY` constraint.
+- **`sql_foreign_key`** — Edge inferred from a SQL `FOREIGN KEY` constraint. _(derived confidence 0.90)_
 - **`stack_construction`** — Edge inferred from a stack-frame construction site. _(derived confidence 0.85)_
 - **`static`** — Edge inferred from a static-linkage declaration. _(derived confidence 0.95)_
 - **`struct_field_reference`** — Edge inferred from a struct-field reference. _(derived confidence 0.70)_
@@ -431,14 +431,14 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 
 `Edge.create` derives `Edge.confidence` from the edge's `evidence_type` via `derive_confidence(evidence_type, is_resolved)` — detection *reliability*, not ranking prominence (that lives on `rank_score`). Values sit in the analyzer/linker band **0.30–0.95**; 1.0 is a reserved ceiling, since no detection method is certain. See [spec §12](hypergumbo-spec.md#12-confidence-scoring) for the model and [ADR-0039](adr/0039-confidence-separation.md) for the ruling.
 
-**81 of 130 pathways are seeded.** Each base is the edge-weighted modal confidence that pathway's producers historically hardcoded, so the migration off literal `confidence=` sites preserved the dominant cohort and collapsed per-emitter outliers onto one canonical value.
+**93 of 130 pathways are seeded.** Each base is the edge-weighted modal confidence that pathway's producers historically hardcoded, so the migration off literal `confidence=` sites preserved the dominant cohort and collapsed per-emitter outliers onto one canonical value.
 
 | Derived confidence | Pathways |
 |---|---|
-| **0.95** | `ast_attribute`, `ast_decorator`, `ast_extends`, `ast_implements`, `ast_import`, `ast_new`, `behaviour`, `bridging_header_import`, `build_dependency`, `build_target_main`, `canonical_name`, `dockerfile_copy_from`, `dockerfile_from`, `extends`, `hg_annotation`, `import`, `import_declaration`, `import_directive`, `import_statement`, `import_static`, `include`, `include_directive`, `link`, `module_source`, `open`, `open_import`, `reference`, `require`, `require_statement`, `source_statement`, `static`, `subdir_include`, `trait_impl`, `use`, `use-package`, `use_declaration`, `use_directive`, `using_directive` |
-| **0.90** | `ast_method_this_property`, `behaviour_callback`, `enclosing_scope`, `import_to_manifest`, `instance`, `message_send`, `notify`, `require_static`, `span_overlap`, `typeclass_instance` |
-| **0.85** | `ast_call`, `ast_call_direct`, `ast_call_type_inferred`, `ast_method_type_inferred`, `ast_name_read`, `ast_type_ref`, `async_spawn`, `closure_wrapper`, `dispatch_table_reference`, `eta_expansion`, `function_pointer`, `method_reference`, `module_attribute_reference`, `module_identifier_reference`, `naming_convention`, `signal_constraint`, `stack_construction`, `type_hierarchy` |
-| **0.80** | `ast_call_extension`, `ast_call_ufcs`, `function_reference`, `hash_field_reference`, `macro_expansion`, `object_field_reference` |
+| **0.95** | `ast_attribute`, `ast_call_static`, `ast_decorator`, `ast_extends`, `ast_implements`, `ast_import`, `ast_method_this`, `ast_new`, `ast_static_call`, `behaviour`, `bridging_header_import`, `build_dependency`, `build_target_main`, `canonical_name`, `dockerfile_copy_from`, `dockerfile_from`, `extends`, `hg_annotation`, `import`, `import_declaration`, `import_directive`, `import_statement`, `import_static`, `include`, `include_directive`, `link`, `module_source`, `open`, `open_import`, `reference`, `require`, `require_statement`, `source_statement`, `static`, `subdir_include`, `trait_impl`, `use`, `use-package`, `use_declaration`, `use_directive`, `using_directive` |
+| **0.90** | `ast_call_this`, `ast_method_this_property`, `behaviour_callback`, `enclosing_scope`, `import_to_manifest`, `instance`, `message_send`, `notify`, `require_static`, `span_overlap`, `sql_foreign_key`, `typeclass_instance` |
+| **0.85** | `ast_call`, `ast_call_direct`, `ast_call_this_property`, `ast_call_type_inferred`, `ast_method_type_inferred`, `ast_name_read`, `ast_perform`, `ast_type_ref`, `async_spawn`, `closure_wrapper`, `designated_init_fptr`, `dispatch_table_reference`, `eta_expansion`, `function_pointer`, `method_reference`, `module_attribute_reference`, `module_identifier_reference`, `naming_convention`, `signal_constraint`, `stack_construction`, `type_hierarchy` |
+| **0.80** | `ast_call_extension`, `ast_call_ufcs`, `callable_reference`, `constructor_reference`, `dispatch_table_initializer`, `function_pointer_arg`, `function_reference`, `hash_field_reference`, `macro_expansion`, `object_field_reference` |
 | **0.75** | `callback_argument_reference`, `grpc_stub_resolution`, `module_export_heuristic` |
 | **0.70** | `ast_method_inferred`, `dispatch_pattern`, `function_reference_arg`, `struct_field_reference` |
 | **0.50** | `ast_annotation` |
@@ -452,11 +452,11 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 | `ast_call_direct` | 0.85 | 0.50 |
 | `macro_expansion` | 0.80 | 0.40 |
 
-**Unseeded (49).** `derive_confidence` returns `None` for these, so the producer keeps whatever literal it emits and `confidence_source` stays `emitter_constant`. That is the honest state, not a gap to paper over: an unseeded pathway has no measured modal cohort to seed from. Seeding one is a producer-side migration (the ADR-0039 ruling-1 shape), not a documentation change.
+**Unseeded (37).** `derive_confidence` returns `None` for these, so the producer keeps whatever literal it emits and `confidence_source` stays `emitter_constant`. That is the honest state, not a gap to paper over: an unseeded pathway has no measured modal cohort to seed from. Seeding one is a producer-side migration (the ADR-0039 ruling-1 shape), not a documentation change.
 
 <details><summary>Unseeded pathways</summary>
 
-`alias_resolution`, `ast_call_inherited`, `ast_call_inherited_field`, `ast_call_inherited_method`, `ast_call_namespace`, `ast_call_static`, `ast_call_this`, `ast_call_this_property`, `ast_cite`, `ast_include`, `ast_includes`, `ast_method_this`, `ast_package`, `ast_perform`, `ast_ref`, `ast_static_call`, `callable_reference`, `cffi_call`, `cffi_stdlib_call`, `cgo_call`, `cmake_target_link`, `constructor_reference`, `ctypes_call`, `ctypes_stdlib_call`, `designated_init_fptr`, `dispatch_table_initializer`, `function_pointer_arg`, `import_resolution`, `interface_dispatch`, `ipc_channel_match`, `jsx_element`, `luajit_ffi_c`, `luajit_ffi_load`, `luajit_ffi_lookup`, `make_prerequisite`, `napi_addon_api`, `napi_create_function`, `qualified_call`, `recipe_dependency`, `require_alias_call`, `schema_relation`, `scip_occurrence_ref`, `scip_relationship`, `sql_foreign_key`, `topic_match`, `tree_sitter`, `variable_match`, `verilog_instantiation`, `vhdl_architecture`
+`alias_resolution`, `ast_call_inherited`, `ast_call_inherited_field`, `ast_call_inherited_method`, `ast_call_namespace`, `ast_cite`, `ast_include`, `ast_includes`, `ast_package`, `ast_ref`, `cffi_call`, `cffi_stdlib_call`, `cgo_call`, `cmake_target_link`, `ctypes_call`, `ctypes_stdlib_call`, `import_resolution`, `interface_dispatch`, `ipc_channel_match`, `jsx_element`, `luajit_ffi_c`, `luajit_ffi_load`, `luajit_ffi_lookup`, `make_prerequisite`, `napi_addon_api`, `napi_create_function`, `qualified_call`, `recipe_dependency`, `require_alias_call`, `schema_relation`, `scip_occurrence_ref`, `scip_relationship`, `topic_match`, `tree_sitter`, `variable_match`, `verilog_instantiation`, `vhdl_architecture`
 
 </details>
 

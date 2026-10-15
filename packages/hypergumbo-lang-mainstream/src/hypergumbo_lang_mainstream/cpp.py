@@ -128,7 +128,6 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id,
 )
-from hypergumbo_core.confidence import derive_confidence
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, OverloadChoice, choose_overload, declared_arity,
     declared_arity_stable_id, nested_member_qualified_name,
@@ -473,10 +472,6 @@ def _cpp_call_arity(call_node: "tree_sitter.Node") -> Optional[int]:
         count += 1
     return count
 
-
-#: The confidence a certain local ``ast_call`` bind derives (ADR-0039); an
-#: ambiguous overload choice scales it rather than restating a constant.
-_AST_CALL_CONFIDENCE: float = derive_confidence("ast_call", is_resolved=True) or 0.85
 
 #: Where a function prototype can stand: file and namespace scope, a class
 #: body, a template. A declaration in a function body declares a local.
@@ -1253,7 +1248,6 @@ def _try_instantiation_edge(
     current_function: Symbol,
     node: "tree_sitter.Node",
     evidence_type: str,
-    base_confidence: float,
     local_symbols: dict[str, Symbol],
     resolver: NameResolver,
     edges: list[Edge],
@@ -1261,8 +1255,9 @@ def _try_instantiation_edge(
 ) -> None:
     """Emit an instantiates edge if type_name resolves to a known symbol.
 
-    Checks local symbols first (higher confidence), then falls back to
-    the NameResolver for cross-file resolution.
+    Checks local symbols first (an exact match: the pathway base), then
+    falls back to the NameResolver, whose grade interpolates in the pathway
+    band (ADR-0039 ruling 6).
     """
     if type_name in local_symbols:
         target = local_symbols[type_name]
@@ -1272,7 +1267,6 @@ def _try_instantiation_edge(
             edge_type="instantiates",
             line=node.start_point[0] + 1,
             evidence_type=evidence_type,
-            confidence=base_confidence,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
         ))
@@ -1285,7 +1279,7 @@ def _try_instantiation_edge(
                 edge_type="instantiates",
                 line=node.start_point[0] + 1,
                 evidence_type=evidence_type,
-                confidence=(base_confidence - 0.05) * lookup_result.confidence,
+                resolution_score=lookup_result.confidence,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
             ))
@@ -1807,22 +1801,22 @@ def _extract_edges_from_tree(
                     if _local_callee is not None:
                         callee = _local_callee
                         _local_meta = {"call_construct": "function"}
-                        _local_conf: Optional[float] = None  # derived (ast_call)
+                        # ADR-0039 ruling 6: a local bind is exact; an
+                        # ambiguous overload choice grades it.
+                        _local_score = 1.0
                         _choice = overload_choice(callee, node)
                         if _choice is not None:
                             callee = _choice.symbol or callee
                             if _choice.ambiguous:
                                 _local_meta["resolution_quality"] = "ambiguous"
-                                _local_conf = (
-                                    _AST_CALL_CONFIDENCE * _choice.confidence
-                                )
+                                _local_score = _choice.confidence
                         edges.append(Edge.create(
                             src=current_function.id,
                             dst=callee.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
-                            confidence=_local_conf,
+                            resolution_score=_local_score,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             meta=_local_meta,
@@ -1900,9 +1894,7 @@ def _extract_edges_from_tree(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=(
-                                    0.80 * lookup_result.confidence * _arity_factor
-                                ),
+                                resolution_score=lookup_result.confidence * _arity_factor,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "function", **_arity_meta},
@@ -2013,7 +2005,7 @@ def _extract_edges_from_tree(
                                     dst=cb_lookup.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.80 * cb_lookup.confidence,
+                                    resolution_score=cb_lookup.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="function_pointer_arg",
@@ -2047,7 +2039,7 @@ def _extract_edges_from_tree(
                     # their own registered 'stack_construction' pathway.
                     _try_instantiation_edge(
                         type_name, current_function, node, "ast_new",
-                        0.90, local_symbols, resolver, edges, run,
+                        local_symbols, resolver, edges, run,
                     )
 
         # Stack object construction: Widget w; / Widget w(args); / Widget w{};
@@ -2210,7 +2202,7 @@ def _extract_edges_from_tree(
                 dst=lookup_result.symbol.id,
                 edge_type="dispatches_to",
                 line=inner_node.start_point[0] + 1,
-                confidence=0.80 * lookup_result.confidence,
+                resolution_score=lookup_result.confidence,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="dispatch_table_initializer",

@@ -1605,10 +1605,10 @@ Hypergumbo assigns confidence scores (0.0–1.0) in three independent categories
 | Category | What it scores | Scoring basis | Score range | Defined in |
 |----------|---------------|---------------|-------------|------------|
 | **Analyzer edge confidence** | Intra-language relationships (calls, imports) | 🟩 Derived from the inference pathway (`evidence_type`) via the registry `base_confidence` table, `is_resolved`-conditioned for call types ([ADR-0039](adr/0039-confidence-separation.md) / WI-nurun) | 0.30–0.95 | [Below](#edge-confidence-analyzer-evidence) |
-| **Linker edge confidence** | Linker-recovered relationships across all four subcategories — Bridge/Protocol examples include JNI, IPC, HTTP | Match quality (literal vs. dynamic, naming convention vs. annotation). 🟨 Judged by this range, not by the analyzer band of the `evidence_type` the edge declares ([ADR-0039](adr/0039-confidence-separation.md) ruling 7) | 0.40–0.95 | [Below](#edge-confidence-linker-edges), details in [§7](#7-linkers) |
+| **Linker edge confidence** | Linker-recovered relationships across all four subcategories — Bridge/Protocol examples include JNI, IPC, HTTP | Match quality (literal vs. dynamic, naming convention vs. annotation). 🟩 Judged by this range, not by the analyzer band of the `evidence_type` the edge declares ([ADR-0039](adr/0039-confidence-separation.md) ruling 7) | 0.40–0.95 | [Below](#edge-confidence-linker-edges), details in [§7](#7-linkers) |
 | **Entrypoint confidence** | Whether a symbol is an entry point | Detection method (manifest, decorator, convention, naming) | 0.70–0.99 | [Below](#entrypoint-confidence-tiers), details in [§8](#8-entrypoint-detection) |
 
-All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v2.1`) identifies the scoring algorithm version — `v2` marks the deterministic evidence→confidence derivation now in effect for analyzer edges ([ADR-0039](adr/0039-confidence-separation.md) / WI-nurun): the base score is a registry lookup keyed on `evidence_type`, `is_resolved`-conditioned for call types. 🟨 A name resolver's match quality interpolates within the pathway band ([ADR-0039](adr/0039-confidence-separation.md) ruling 6, below). Linker edges and unregistered or unseeded pathways keep the caller's value, as do the analyzer sites that `check-confidence-sites` lists as caller-valued. Consumers should read `confidence` purely as detection reliability on the 0.0–1.0 scale.
+All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v2.1`) identifies the scoring algorithm version — `v2` marks the deterministic evidence→confidence derivation now in effect for analyzer edges ([ADR-0039](adr/0039-confidence-separation.md) / WI-nurun): the base score is a registry lookup keyed on `evidence_type`, `is_resolved`-conditioned for call types. 🟩 A name resolver's match quality interpolates within the pathway band ([ADR-0039](adr/0039-confidence-separation.md) ruling 6, below). Linker edges and unregistered or unseeded pathways keep the caller's value, as do the analyzer sites that `check-confidence-sites` lists as caller-valued. Consumers should read `confidence` purely as detection reliability on the 0.0–1.0 scale.
 
 ### Edge confidence: analyzer evidence
 
@@ -1643,7 +1643,7 @@ emitted directly from `evidence_types.EVIDENCE_TYPES` and kept honest by the
 `generate-concept-axes --check` freshness gate (WI-limom). This section owns the
 *model*; that table owns the *values*, so the two cannot drift.
 
-🟨 **Resolution quality interpolates within the band (ADR-0039 ruling 6).** A
+🟩 **Resolution quality interpolates within the band (ADR-0039 ruling 6).** A
 producer whose name resolver reports a match quality `s` in [0, 1] (1.0 exact,
 0.90 path hint, 0.85 suffix, `0.70/sqrt(n)` ambiguous among `n` candidates) passes
 `Edge.create(..., resolution_score=s)` and gets
@@ -1687,7 +1687,7 @@ key on `rank_score`; `confidence` is now purely detection reliability.
 
 ### Edge confidence: linker edges
 
-Linkers (Tier 2 passes — all four subcategories) produce their own confidence scores based on match quality. These scores are independent of the analyzer-evidence scoring above. 🟨 A linker edge declares an `evidence_type` naming its inference pathway, but it is judged against this category's range (0.40–0.95), not against that pathway's analyzer band ([ADR-0039](adr/0039-confidence-separation.md) ruling 7). An edge counts as a linker edge when its producing pass (`Edge.origin`) is a registered linker. See [§7 Linkers](#7-linkers) for detection rules and limitations.
+Linkers (Tier 2 passes — all four subcategories) produce their own confidence scores based on match quality. These scores are independent of the analyzer-evidence scoring above. 🟩 A linker edge declares an `evidence_type` naming its inference pathway, but it is judged against this category's range (0.40–0.95), not against that pathway's analyzer band ([ADR-0039](adr/0039-confidence-separation.md) ruling 7). An edge counts as a linker edge when its producing pass (`Edge.origin`) is a registered linker. See [§7 Linkers](#7-linkers) for detection rules and limitations.
 
 | Linker | Match type | Confidence |
 |--------|-----------|------------|

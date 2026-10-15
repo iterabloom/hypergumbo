@@ -685,18 +685,16 @@ socket.on('message', handleMessage);
             elif edge.edge_type == "references":
                 assert edge.confidence == 0.85
 
-    def test_every_edge_confidence_within_its_derived_band(
+    def test_every_edge_confidence_within_the_linker_range(
         self, tmp_path: Path
     ) -> None:
-        """INV-zatug: every edge this linker emits sits inside the ADR-0039
-        band for its own declared evidence_type.
+        """Every edge this linker emits sits inside the spec §12 linker range.
 
-        The endpoint ``references`` edge hand-wrote 0.90 while declaring
-        ``ast_call_direct`` (whose ceiling is 0.85) — an over-claim relative
-        to the pathway it named. The declaration is correct and deliberate
-        (the ADR-0028 Phase-3 fold collapsed ``f"{pattern_type}_endpoint"``
-        into ``ast_call_direct`` + ``meta["framework_dispatch"]``), so the
-        value moves to the pathway, not the other way around.
+        ADR-0039 ruling 7 (2026-10-15): a linker edge is judged by the linker
+        range (0.40-0.95), not by the analyzer band of the evidence_type it
+        declares. That supersedes INV-zatug's July ruling, which moved the
+        endpoint ``references`` edge from 0.90 to the ast_call_direct ceiling
+        of 0.85; the value stayed, and both are in range.
 
         Written as a sweep over *all* emitted edges rather than the one known
         site: a per-site assertion only catches the site it names, and this
@@ -712,10 +710,10 @@ socket.on('message', handleMessage);
         assert result.edges, "non-vacuity: the linker must emit edges here"
         for edge in result.edges:
             assert confidence_within_band(
-                edge.evidence_type, edge.confidence
+                edge.evidence_type, edge.confidence, linker=True,
             ), (
                 f"{edge.edge_type} edge confidence {edge.confidence} is "
-                f"outside the band for {edge.evidence_type}"
+                "outside the linker range"
             )
 
     def test_symbol_origin(self, tmp_path: Path) -> None:

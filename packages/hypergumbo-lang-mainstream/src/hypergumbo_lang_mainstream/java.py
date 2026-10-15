@@ -164,7 +164,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
 
-from hypergumbo_core.confidence import derive_confidence
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.discovery import find_files
@@ -2941,28 +2940,17 @@ def _extract_edges(
                             candidate = f"{current_class}.{method_name}"
                             lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                             if lookup_result.found:
-                                # Scale the pathway's derived reliability by the
-                                # resolver's confidence multiplier.
-                                #
                                 # INV-zatug: the base was a hardcoded 0.95, so a
                                 # fully-resolved call published 0.95 — above the
-                                # ast_call_direct ceiling of 0.85. The multiplier
-                                # is meaningful and stays; only the base moves to
-                                # the ADR-0039 registry seed, so the value tracks
-                                # the inference pathway instead of a per-emitter
-                                # literal that drifted from it.
-                                edge_confidence = (
-                                    derive_confidence(
-                                        "ast_call_direct", is_resolved=True
-                                    )
-                                    or 0.85
-                                ) * lookup_result.confidence
+                                # ast_call_direct ceiling of 0.85. ADR-0039
+                                # ruling 6: the resolver's grade interpolates in
+                                # the pathway band instead.
                                 edge = Edge.create(
                                     src=current_method.id,
                                     dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=edge_confidence,
+                                    resolution_score=lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
@@ -3026,13 +3014,12 @@ def _extract_edges(
                             receiver_name, lookup_result.symbol, imports,
                             caller_file=str(file_path),
                         ):
-                            edge_confidence = 0.95 * lookup_result.confidence
                             edge = Edge.create(
                                 src=current_method.id,
                                 dst=lookup_result.symbol.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
-                                confidence=edge_confidence,
+                                resolution_score=lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_static",
@@ -3187,7 +3174,7 @@ def _extract_edges(
                                     dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.80 * lookup_result.confidence,
+                                    resolution_score=lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
@@ -3665,7 +3652,7 @@ def _extract_edges(
                                     dst=lookup_result.symbol.id,
                                     edge_type="instantiates",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.95 * lookup_result.confidence,
+                                    resolution_score=lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_new",
@@ -3730,7 +3717,7 @@ def _extract_edges(
                             dst=lookup_result.symbol.id,
                             edge_type="instantiates",
                             line=node.start_point[0] + 1,
-                            confidence=0.80 * lookup_result.confidence,
+                            resolution_score=lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="constructor_reference",
@@ -3754,7 +3741,7 @@ def _extract_edges(
                             dst=lookup_result.symbol.id,
                             edge_type="references",
                             line=node.start_point[0] + 1,
-                            confidence=0.80 * lookup_result.confidence,
+                            resolution_score=lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="method_reference",

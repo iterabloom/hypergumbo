@@ -113,8 +113,9 @@ void run() {
     name, start, quality, confidence = calls[0]
     assert name == "put" and start in (1, 2), calls
     assert quality == "ambiguous", calls
-    # The certain local bind's confidence (ast_call, 0.85) scaled by 1/sqrt(2).
-    assert abs(confidence - 0.85 / math.sqrt(2)) < 1e-6, calls
+    # ADR-0039 ruling 6: the 1/sqrt(2) choice grade interpolates in the
+    # ast_call band [0.40, 0.85].
+    assert abs(confidence - (0.40 + 0.45 / math.sqrt(2))) < 1e-6, calls
 
 
 def test_a_variadic_overload_admits_any_longer_call(tmp_path: Path) -> None:
@@ -356,4 +357,6 @@ void run() {
     assert len(calls) == 1, calls  # reach
     name, start, quality, confidence = calls[0]
     assert (name, start, quality) == ("put", 1, "ambiguous"), calls
-    assert abs(confidence - 0.80 / math.sqrt(2)) < 1e-6, calls
+    # Resolver grade 1.0 x choice grade 1/sqrt(2), interpolated in the
+    # ast_call band (ADR-0039 ruling 6).
+    assert abs(confidence - (0.40 + 0.45 / math.sqrt(2))) < 1e-6, calls
