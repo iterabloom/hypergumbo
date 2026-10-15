@@ -1,0 +1,22 @@
+- op: create  # 5973
+  at: '2026-10-15T02:57:22Z'  # 5973
+  by: agent  # 5973
+  actor: jgstern_agent  # 5973
+  clock: 1  # 5973
+  nonce: '5973'  # 5973
+  data:  # 5973
+    kind: work_item  # 5973
+    title: "Self-run stderr noise: fixture-triggered linker warnings, rust-analyzer hint, validation and [passes] diagnostics"  # 5973
+    status: todo_hard  # 5973
+    priority: 3  # 5973
+    parent:  # 5973
+    tags:  # 5973
+    - ux  # 5973
+    - cli  # 5973
+    - warnings  # 5973
+    isbefore: []  # 5973
+    duplicate_of: []  # 5973
+    not_duplicate_of: []  # 5973
+    pr_ref:  # 5973
+    description: "A cold `hypergumbo hypergumbo` (2026-10-14, both on Colab and on agent-vm-16) prints these to stderr, none actionable by the user running it:\n\n- CGO-LINKER: \"found 53 C/C++ function implementations but 0 Go cgo calls\"\n- RUBY-FFI-LINKER: \"found 53 C/C++ function implementations but 0 Ruby files\"\n- rust-analyzer hint (\"installed but NOT enabled\" / \"not installed\") — triggered by recorded Rust fixtures under packages/hypergumbo-lang-rust-analyzer/recorded/\n- \"[warn] 42 cross_field validation violation(s); see validation_report in artifact\"\n- \"[passes] 59 of 103 emitted nothing ...\" and \"[passes] 69 of 172 did not run ...\"\n\nThe 53 C functions are test fixtures; the linker warnings assume they are a C library awaiting Go/Ruby callers. Related, not duplicates: WI-tonuh (partial-install warnings never find a linker's requirement row), INV-narib (llvm_ir registered-language guess), WI-vasir (done: suppress false-positive linker warnings on every repo — this is a residue). The validation and [passes] lines are developer diagnostics; candidates for a --debug/verbose gate or a single summary line.\n\nEach warning class needs its own decision (keep / gate / fix trigger); this item collects them so the decisions are made together."  # 5973
+    fields: {}  # 5973
