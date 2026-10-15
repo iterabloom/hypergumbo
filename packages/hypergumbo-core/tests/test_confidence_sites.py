@@ -134,3 +134,18 @@ def test_live_tree_matches_baseline() -> None:
         "baseline entries no longer occur; remove them from "
         ".ci/confidence-sites-baseline.json (shrink-only):\n" + "\n".join(stale)
     )
+
+
+def test_pre_commit_hook_runs_the_check_for_package_source() -> None:
+    """The hook runs the gate whenever package source is staged.
+
+    The CI gate is ``test_live_tree_matches_baseline``; the hook is the local
+    early warning, and a narrower trigger regex would print "skipped" over
+    the producer files it exists to guard.
+    """
+    hook = _REPO_ROOT / ".githooks" / "pre-commit"
+    if not hook.exists():  # pragma: no cover - hook absent in sdist installs
+        return
+    text = hook.read_text(encoding="utf-8")
+    assert "scripts/check-confidence-sites" in text
+    assert 'grep -qE "^packages/[^/]+/src/.*\\.py$"' in text
