@@ -71,3 +71,18 @@
   clock: 8  # b712
   nonce: b712  # b712
   message: "Fix is tracked as WI-himod (ADR-0039 ruling 6 at Edge.create; c.py:685 and the js_ts scope-bound branch are both in its scope), after WI-tagov (the ADR amendment). Close this item only on a re-run of its own repro: self-survey + scripts/check-self-tree-validation exit 0 with an empty matrix."  # b712
+- op: update  # 90bc
+  at: '2026-10-15T08:43:50Z'  # 90bc
+  by: agent  # 90bc
+  actor: jgstern_agent  # 90bc
+  clock: 9  # 90bc
+  nonce: 90bc  # 90bc
+  set:  # 90bc
+    status: pending_validation  # 90bc
+- op: discuss  # dbfd
+  at: '2026-10-15T08:43:51Z'  # dbfd
+  by: agent  # dbfd
+  actor: jgstern_agent  # dbfd
+  clock: 10  # dbfd
+  nonce: dbfd  # dbfd
+  message: "Fix merged in PR #1606 (ee7dcb505c, WI-himod): the 31 c.py and 11 js_ts sites now derive 0.85 on ast_call_direct; linker edges are judged by the linker range (ruling 7). Not yet validated: re-run this invariant's own check (self-survey + scripts/check-self-tree-validation, cross_field|info at baseline 0) -- pending the next full-suite run or an owner-approved local self-survey."  # dbfd

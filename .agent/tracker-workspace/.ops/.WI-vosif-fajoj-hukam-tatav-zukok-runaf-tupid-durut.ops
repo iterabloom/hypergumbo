@@ -20,3 +20,19 @@
     pr_ref:  # 862e
     description: "Make WI-famiv-gumof's static producer audit a CI ratchet so the out-of-band confidence class cannot regrow. Today only the self-tree gate sees this class, and it sees just what the repo's own corpus exercises: 2 of 138 risky sites on 2026-10-15. JS/TS joined the class on 2026-10-03 (c77d62b197) unnoticed.\n\nShape: scripts/check-confidence-sites (ast walk over packages/*/src/**/*.py, every Edge.create passing confidence=; classify literal-in / literal-out / computed-banded / computed-unbanded; analyzer band vs linker range per ruling 7) with a shrink-only baseline in .ci/ (like .ci/self-tree-validation-baselines.json), run per-PR and as a pre-commit hook when producer files are staged. Logic in a hypergumbo_core module with unit tests (100% coverage); the script a thin wrapper. Prototype: scratchpad conf_audit.py from 2026-10-15 (Edge.create only; extend to direct Edge(...) construction if any producer uses it). Note: adding a pre-commit hook touches .githooks/ (governance, needs owner approval); the CI step alone does not."  # 862e
     fields: {}  # 862e
+- op: update  # 64ef
+  at: '2026-10-15T08:43:49Z'  # 64ef
+  by: agent  # 64ef
+  actor: jgstern_agent  # 64ef
+  clock: 2  # 64ef
+  nonce: 64ef  # 64ef
+  set:  # 64ef
+    status: done  # 64ef
+    pr_ref: '1606'  # 64ef
+- op: discuss  # 94d3
+  at: '2026-10-15T08:43:49Z'  # 94d3
+  by: agent  # 94d3
+  actor: jgstern_agent  # 94d3
+  clock: 3  # 94d3
+  nonce: 94d3  # 94d3
+  message: "Merged in PR #1606 (ee7dcb505c). hypergumbo_core/confidence_sites.py (logic, 100% covered) + scripts/check-confidence-sites (thin CLI: gate / --list / --update-baseline, which refuses to add entries) + .ci/confidence-sites-baseline.json (empty). Findings: literal_out_of_band (analyzer band, or linker range for hypergumbo_core/linkers/) and computed_uncommented (variable, expression or conditional on a seeded pathway without the caller-valued marker in the call or the comment block above it). Gate: tests/test_confidence_sites.py::test_live_tree_matches_baseline (new or stale entries fail). Red check: the same scan over bab7eed514 reports 123 findings (111 computed, 12 literal). smart-test unions the gate test into any change touching packages/*/src (the import slice never selects it). NOT done: a .githooks pre-commit entry (governance file, needs owner approval)."  # 94d3
