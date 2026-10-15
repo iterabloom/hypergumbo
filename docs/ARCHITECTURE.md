@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **358** Python modules (147 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 107 core, 4 CLI, 37 tracker)
-- **54950** symbols (functions, classes, methods)
-- **219198** edges by type:
-  - calls: 124241
-  - contains: 51183
-  - imports: 18489
-  - instantiates: 12420
-  - references: 9229
-  - module_attr_ref: 2003
-  - other: 1633
+- **360** Python modules (147 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 109 core, 4 CLI, 37 tracker)
+- **55168** symbols (functions, classes, methods)
+- **220074** edges by type:
+  - calls: 124711
+  - contains: 51378
+  - imports: 18584
+  - instantiates: 12474
+  - references: 9263
+  - module_attr_ref: 2021
+  - other: 1643
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 54950 Symbols + 219198 Edges + UsageContexts           │
+│  Output: 55168 Symbols + 220074 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,20 +279,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10258.3 | ir.py |
-| `len` | external_symbol | 7922.0 | <external> |
-| `write_text` | external_symbol | 7107.0 | <external> |
-| `Span` | class | 6678.4 | ir.py |
-| `LinkerContext` | class | 3710.1 | registry.py |
-| `get` | external_symbol | 3462.0 | <external> |
-| `load_catalog` | function | 3312.5 | io_boundary.py |
-| `Edge.create` | method | 2478.2 | ir.py |
-| `str` | external_symbol | 2372.0 | <external> |
-| `Path` | external_symbol | 2341.0 | <external> |
-| `next` | external_symbol | 2230.0 | <external> |
+| `Symbol` | class | 10272.3 | ir.py |
+| `len` | external_symbol | 7939.0 | <external> |
+| `write_text` | external_symbol | 7113.0 | <external> |
+| `Span` | class | 6687.2 | ir.py |
+| `LinkerContext` | class | 3718.5 | registry.py |
+| `get` | external_symbol | 3472.0 | <external> |
+| `load_catalog` | function | 3320.5 | io_boundary.py |
+| `Edge.create` | method | 2551.1 | ir.py |
+| `str` | external_symbol | 2374.0 | <external> |
+| `Path` | external_symbol | 2351.0 | <external> |
+| `next` | external_symbol | 2232.0 | <external> |
 | `load_framework_patterns` | function | 2107.0 | framework_patterns.py |
 | `TrackerApp` | class | 1969.8 | tui.py |
-| `append` | external_symbol | 1848.0 | <external> |
+| `append` | external_symbol | 1855.0 | <external> |
 | `main` | function | 1781.4 | cli.py |
 
 ## Pattern System
@@ -477,6 +477,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `build_combined_trend.py` | Build the cross-tranche combined trend report covering ALL completed dogfooding tranches. |
 | `catalogue_gate_terms.py` | Grep terms for ``scripts/smart-test``'s catalogue gate, derived per family. |
 | `check-audit-findings` | Pre-commit lint: every audit-findings doc under ``docs/audits/`` parses |
+| `check-confidence-sites` | Static audit of explicit Edge.create(confidence=...) sites (WI-vosif). |
 | `check-docstring-drift` | Module-docstring drift checker — co-change scan over .py source trees. |
 | `check-edge-type-drift` | Pre-commit lint: ``*EDGE_TYPE*`` sets in packages/ must be subsets |
 | `check-edge-type-runtime-coherence` | Runtime coherence check for the ADR-0023 edge-type axis. |
@@ -613,6 +614,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.check_recorded_producer_input`**: Static enforcement of ADR-0057 §12: cross-backend tests run on RECO...
 - **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
 - **`hypergumbo_core.confidence`**: Evidence -> confidence derivation (the ADR-0039 detection-reliabili...
+- **`hypergumbo_core.confidence_sites`**: Static audit of explicit ``Edge.create(confidence=...)`` sites (WI-...
 - **`hypergumbo_core.construction`**: A construction reaches the code that runs on construction (INV-rolo...
 - **`hypergumbo_core.coverage_census`**: Per-test coverage census and test-trajectory search.
 - **`hypergumbo_core.dataflow`**: YAML-driven dataflow classification for edges (ADR-0015).
@@ -662,6 +664,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.repo_fingerprint`**: Repository fingerprint: spec-defined hash of analyzed code state.
 - **`hypergumbo_core.repo_tier_offer`**: ADR-0047 ruling 9 — the developer-audience offer, and the decision ...
 - **`hypergumbo_core.routes`**: Canonical route accessor: decides route-ness and extracts path, met...
+- **`hypergumbo_core.run_status`**: Run status for humans watching a long run: a phase line, a heartbea...
 - **`hypergumbo_core.runtime_coherence`**: Runtime corpus-based coherence check for the ADR-0023 edge-type axis.
 - **`hypergumbo_core.rust_analyzer_install`**: Installer + availability helpers for the ``rust-analyzer`` binary (...
 - **`hypergumbo_core.safety_zones`**: Hypergumbo's internal write wrappers — declare each write's safety ...
@@ -965,8 +968,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: b0c9ee187200
-  commit_count: 8301
-  hypergumbo: 8.1.0
+  commit: 544c6ee02412
+  commit_count: 8332
+  hypergumbo: 9.0.0
   python: 3.12.3
 -->
