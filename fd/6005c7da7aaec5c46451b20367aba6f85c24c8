@@ -1,0 +1,20 @@
+Original commit body from 7a975d35438b6cc591dfea3a8b8c28c14ecebc36:
+
+ADR-0004 point 3a: summaries that describe the project count tiers 1-2
+only. The 2026-10-14 self-sketch said "Python (62%), C (26%)"; the C was
+305,712 lines of vendored, generated tree-sitter grammar source.
+
+profile.languages[L] gains own_files / own_loc: the share of files /
+loc that is tier 1-2 by supply_chain.tier_by_path, a new path-only
+classifier (the DERIVED_* and EXTERNAL_DEP_* steps of classify_file,
+now shared helpers, so the two cannot disagree on a pattern). files and
+loc are unchanged so analyzers still run on vendored code (WI-jadig
+pre-filter). The sketch Overview's language line, file and LOC totals
+read the own share (falling back to the whole count for an unmeasured
+profile), and its test count skips a vendored dependency's own tests.
+
+On this repo by path: 11 C/H files, 325,450 lines, all tier 3, so the
+Overview has no C line; Python moves by one 82-line vendored file.
+Schema: profile.languages gains own_files / own_loc (regenerated).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
