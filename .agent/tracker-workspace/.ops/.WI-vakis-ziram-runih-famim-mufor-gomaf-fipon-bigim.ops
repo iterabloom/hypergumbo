@@ -1,0 +1,23 @@
+- op: create  # deb6
+  at: '2026-10-15T05:06:29Z'  # deb6
+  by: agent  # deb6
+  actor: jgstern_agent  # deb6
+  clock: 1  # deb6
+  nonce: deb6  # deb6
+  data:  # deb6
+    kind: work_item  # deb6
+    title: "ADR-0004 amendment: committed vendored code stays analysed but does not speak for the project (3a, 3b); submodules move to installed-dependency source"  # deb6
+    status: todo_hard  # deb6
+    priority: 2  # deb6
+    parent:  # deb6
+    tags:  # deb6
+    - supply_chain  # deb6
+    - docs  # deb6
+    isbefore:  # deb6
+    - WI-kojul-mahuk-didiz-bojaj-luhod-ruvub-pafob-godum  # deb6
+    - WI-tiril-budah-fazaz-nahov-mazir-nufuv-dataj-bitud  # deb6
+    duplicate_of: []  # deb6
+    not_duplicate_of: []  # deb6
+    pr_ref:  # deb6
+    description: "Amend docs/adr/0004-file-taxonomy.md in place (dated 2026-10-15; Status stays Accepted) per the architect decision the owner adopted 2026-10-15: committed vendored code stays ANALYSED (point 3 kept), but it stops speaking for the project; git submodules move to installed-dependency handling. Also update the last bullet of docs/adr/0016-io-boundary-analysis.md §7 (also says submodules are analysed) and docs/hypergumbo-spec.md around line 212. Docs only.\n\n- Point 3: remove \"git submodules\" from the analysed list.\n- New 3a \"Analysed is not representative\": language breakdown, LOC totals, linker activation and partial-install diagnostics count tiers 1-2 only; tier 3 is disclosed separately (disclosure line in a sibling item).\n- New 3b: declarations by the ANALYSED repo (.gitattributes linguist-vendored, project config) never skip committed code. Evidence: linguist-vendored marks first-party code in the corpus (~/ALL_REPOS/whole_bunch_of_repos: kserve `*.sh`, litellm `*.ipynb`, emscripten `test/*` and `system/`, envoy certificates.inc; 10-14 repos use it). It is a GitHub language-bar control, not a provenance claim; skipping on it is a silent wrong exclusion (point 7 fallback) and lets the analysed repo choose what hypergumbo reads (ADR-0045 ruling 3).\n- Point 1 table: add \"git submodule | path in .gitmodules | gitlink (mode 160000) in HEAD, directory populated | submodule path\". Rationale: HEAD holds only a gitlink, so by point 3's own test the contents are not committed; a fresh clone never has them while a dev box may (corpus: 35 repos, 362 submodule paths, 0 populated) -- the parity argument point 3 rests on.\n- Rejected alternatives with reasons: skip by linguist-vendored; skip by content signature (reverses the 2026-10-06 ruling for committed go-mod vendor trees; the proposed tree-sitter signature does not even match hypergumbo's own vendor/, which has no grammar.js; would cut cgo edges into vendored C)."  # deb6
+    fields: {}  # deb6

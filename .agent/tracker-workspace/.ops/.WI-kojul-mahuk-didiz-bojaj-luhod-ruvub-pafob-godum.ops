@@ -1,0 +1,22 @@
+- op: create  # a0e6
+  at: '2026-10-15T05:06:13Z'  # a0e6
+  by: agent  # a0e6
+  actor: jgstern_agent  # a0e6
+  clock: 1  # a0e6
+  nonce: a0e6  # a0e6
+  data:  # a0e6
+    kind: work_item  # a0e6
+    title: "Profile language breakdown, LOC totals and sketch Overview count tiers 1-2 only (self-sketch says hypergumbo is 26% C, all vendored)"  # a0e6
+    status: todo_hard  # a0e6
+    priority: 2  # a0e6
+    parent:  # a0e6
+    tags:  # a0e6
+    - supply_chain  # a0e6
+    - developer_experience  # a0e6
+    isbefore:  # a0e6
+    - WI-pasan-hajad-zinuv-lalur-lakid-lovad-muloz-movon  # a0e6
+    duplicate_of: []  # a0e6
+    not_duplicate_of: []  # a0e6
+    pr_ref:  # a0e6
+    description: "The profile's language breakdown and LOC totals, and the sketch Overview built from them, count tiers 1-2 only (ADR-0004 3a). Today profile.py (~line 985, language/LOC detection) counts every analysed file, and sketch.py _format_language_stats (~2838-2876) prints it: the 2026-10-14 self-sketch says \"Python (62%), C (26%)\", with C at 324,161 LOC -- almost all of it vendored tree-sitter-lean's 305,712-line generated parser.c. Agents reading the sketch are told hypergumbo is a quarter C.\n\nUse a path-only tier check (supply_chain patterns; no file reads) per language bucket, so the profile stays cheap; percentages over tiers 1-2. Tier-3 totals are kept and disclosed by the disclosure-line item, not dropped. Accepted cost (ADR text): a first-party directory literally named vendor/ below the root (already tier 3, supply_chain.py ~577) also leaves the language line, visibly, because the disclosure names it.\n\nEvidence at close: self-sketch Overview shows no C line; tier-3 node count unchanged (174 on 2026-10-15)."  # a0e6
+    fields: {}  # a0e6
