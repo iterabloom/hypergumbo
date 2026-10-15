@@ -132,6 +132,7 @@ from .discovery import (
     match_content_rule, under_content_rule_dir,
 )
 from .profile import detect_profile, RepoProfile
+from .supply_chain import format_vendored_disclosure
 from . import run_status
 from .ir import Symbol, Edge, is_external_boundary
 from .paths import names_no_source_file
@@ -6506,6 +6507,11 @@ def _generate_sketch_impl(
     )
     if output_line:
         header = f"{header}\n\n{output_line}"
+    # ADR-0004 point 3a (WI-pasan): and the vendored code analysed but left out
+    # of the language line above.
+    vendored_line = format_vendored_disclosure(_scs.get("vendored_analysed"))
+    if vendored_line:
+        header = f"{header}\n\n{vendored_line}"
     sections.append(header)
 
     # Section 2: Structure (using tree format from the start)

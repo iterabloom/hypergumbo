@@ -426,7 +426,9 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "Supply-chain classification summary, keyed by tier name "
                     "(first_party / internal_dep / external_dep) plus the "
                     "exclusion-disclosure buckets derived_skipped, "
-                    "installed_deps_skipped and generated_output_skipped. Each "
+                    "installed_deps_skipped and generated_output_skipped, and "
+                    "vendored_analysed (analysed tier-3 vendored directories, "
+                    "ADR-0004 point 3a). Each "
                     "tier carries {files, symbols}; "
                     "external_dep also `ecosystem` and `directness` sub-buckets, "
                     "derived_skipped a {files, paths} shape, "
@@ -528,6 +530,42 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                                                 "MkDocs site, coverage report."
                                             ),
                                         },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    "vendored_analysed": {
+                        "type": "object",
+                        "description": (
+                            "Committed vendored code (tier 3 by an "
+                            "EXTERNAL_DEP path pattern: a nested vendor/, "
+                            "third_party/, node_modules/ ...) that was analysed "
+                            "but left out of the language breakdown and LOC "
+                            "totals (ADR-0004 point 3a, WI-pasan). One entry "
+                            "per vendored directory, from tier-3 file nodes; "
+                            "entries is capped at 10. {dirs: 0, entries: []} "
+                            "when there is none."
+                        ),
+                        "required": ["dirs", "entries"],
+                        "properties": {
+                            "dirs": {"type": "integer", "minimum": 0},
+                            "entries": {
+                                "type": "array",
+                                "maxItems": 10,
+                                "items": {
+                                    "type": "object",
+                                    "required": ["path", "languages", "files"],
+                                    "properties": {
+                                        "path": {
+                                            "type": "string",
+                                            "description": "Repo-relative vendored directory.",
+                                        },
+                                        "languages": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                        },
+                                        "files": {"type": "integer", "minimum": 0},
                                     },
                                 },
                             },

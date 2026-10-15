@@ -756,8 +756,16 @@ class TestTopLevelBlockTyping:
             "generated_output_skipped": {
                 "dirs": 1, "entries": [{"path": "target", "tool": "Cargo build"}],
             },
+            "vendored_analysed": {
+                "dirs": 1,
+                "entries": [{"path": "a/vendor", "languages": ["c"], "files": 4}],
+            },
         }
         jsonschema.Draft202012Validator(scs).validate(real)
+        # ADR-0004 point 3a (WI-pasan): the vendored bucket's shape is pinned.
+        bad = dict(real, vendored_analysed={"dirs": 1, "entries": [{"path": "x"}]})
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.Draft202012Validator(scs).validate(bad)
         # ADR-0004 point 7: the generated-output bucket's shape is pinned too.
         bad = dict(real, generated_output_skipped={"dirs": 1, "entries": [{"path": "x"}]})
         with pytest.raises(jsonschema.ValidationError):

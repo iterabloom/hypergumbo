@@ -310,6 +310,8 @@ from .supply_chain import (
     collect_first_party_package_names,
     collect_workspace_package_names,
     detect_package_roots,
+    format_vendored_disclosure,
+    vendored_analysed_summary,
 )
 from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
@@ -12083,7 +12085,9 @@ def _compute_supply_chain_summary(
     """Compute supply chain summary from classified symbols.
 
     Returns a dict with counts per tier plus the three exclusion-disclosure
-    buckets: ``derived_skipped``, ``installed_deps_skipped`` (ADR-0004
+    buckets and ``vendored_analysed`` (ADR-0004 point 3a: tier-3 vendored
+    directories analysed but not summarised, WI-pasan):
+    ``derived_skipped``, ``installed_deps_skipped`` (ADR-0004
     §"Installed dependency source" -- ``discovery.installed_deps_summary``'s
     ``{dirs, packages, entries}``, empty when nothing was skipped) and
     ``generated_output_skipped`` (point 7 --
@@ -12144,6 +12148,9 @@ def _compute_supply_chain_summary(
     summary["generated_output_skipped"] = generated_output_skipped or {
         "dirs": 0, "entries": [],
     }
+    # ADR-0004 point 3a (WI-pasan): committed vendored code was analysed but
+    # left out of the summaries, so say which directories.
+    summary["vendored_analysed"] = vendored_analysed_summary(symbols)
 
     return summary
 
@@ -13101,6 +13108,11 @@ def run_survey(
         installed_deps_skipped=installed_deps_skipped,
         generated_output_skipped=generated_output_skipped,
     )
+    _vendored_disclosure = format_vendored_disclosure(
+        behavior_map["supply_chain_summary"]["vendored_analysed"],
+    )
+    if _vendored_disclosure:
+        print(_vendored_disclosure, file=sys.stderr)
 
     # Pre-extract sketch data (config, readme)
     # This avoids needing to load the embedding model later in sketch mode

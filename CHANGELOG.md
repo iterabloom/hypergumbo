@@ -33,6 +33,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - rust-analyzer notice names the command that silences it.
 - Partial-install warnings print plain, without UserWarning framing.
 - Language breakdown and LOC totals count own code only.
+- Analysed vendored code disclosed: stderr, sketch, summary.
 
 ## [9.0.0] - 2026-10-14
 
