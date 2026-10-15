@@ -1,0 +1,21 @@
+- op: create  # 56d0
+  at: '2026-10-15T02:57:17Z'  # 56d0
+  by: agent  # 56d0
+  actor: jgstern_agent  # 56d0
+  clock: 1  # 56d0
+  nonce: 56d0  # 56d0
+  data:  # 56d0
+    kind: work_item  # 56d0
+    title: "Interactive overlay-examples prompt fires at the end of a plain survey/sketch run"  # 56d0
+    status: todo_hard  # 56d0
+    priority: 2  # 56d0
+    parent:  # 56d0
+    tags:  # 56d0
+    - ux  # 56d0
+    - cli  # 56d0
+    isbefore: []  # 56d0
+    duplicate_of: []  # 56d0
+    not_duplicate_of: []  # 56d0
+    pr_ref:  # 56d0
+    description: "At the end of a plain `hypergumbo hypergumbo` run, after the sketch is printed, hypergumbo asks interactively:\n\n  hypergumbo found a checkout at /home/jgstern_agent/hypergumbo.\n  Place EXAMPLE repo-tier overlay files in /home/jgstern_agent/hypergumbo/.hypergumbo-examples?\n  Nothing is written into any repository you analyse, and this is asked once. [y/N]\n\nObserved by the user 2026-10-14. Problems: (1) it blocks at the end of a long run that the user may have walked away from; (2) in a notebook (`!hypergumbo ...` in Colab) or any non-interactive stdin there is no way to answer — behaviour there has NOT been checked (does it read EOF as N, or hang?); (3) it is unrelated to the command the user ran.\n\nFirst step: find the prompt's call site and its isatty guard (if any), and reproduce under a non-TTY stdin. Then decide whether it belongs behind an explicit subcommand or flag instead."  # 56d0
+    fields: {}  # 56d0

@@ -42,3 +42,11 @@
   clock: 4  # a9ba
   nonce: a9ba  # a9ba
   message: "TEXT CORRECTION to the closure note above: one clause lost its content to a shell backtick (command substitution inside a double-quoted argument), so it reads \"php.py:1219 carries  on ast_call_direct\". The missing expression is:\n\n    0.95 * lookup_result.confidence\n\ni.e. php.py:1219 multiplies a hardcoded 0.95 base by the resolver confidence on the ast_call_direct pathway, whose ceiling is 0.85 -- so it publishes an over-claim whenever the resolver returns 1.0. That is the identical expression fixed in java.py under this item, still live in php.py, and it is a member of the WI-famiv-gumof class rather than of this item.\n\nNo other clause was affected (this was the only backtick pair in the note). Nothing about the closure evidence or the ruling changes."  # a9ba
+- op: update  # 1863
+  at: '2026-10-15T04:24:44Z'  # 1863
+  by: agent  # 1863
+  actor: jgstern_agent  # 1863
+  clock: 5  # 1863
+  nonce: '1863'  # 1863
+  set:  # 1863
+    status: violated  # 1863
