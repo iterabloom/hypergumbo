@@ -19,6 +19,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - Cold sketch reuses the survey file list; no re-walk.
 - `.hypothesis/` excluded by default.
 - Retired test-only `_uncatalogued_external_modules`; gate rationale now on `_adjudicate_external_modules`.
+- ADR-0039 rulings 6–7; ADR-0004 vendored/submodule amendment.
 
 ## [9.0.0] - 2026-10-14
 
