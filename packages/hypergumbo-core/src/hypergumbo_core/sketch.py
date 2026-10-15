@@ -2754,6 +2754,7 @@ def _analyze_test_files(
         and detected frameworks.
     """
     import re
+    from .supply_chain import tier_by_path
     from .taxonomy import LANGUAGE_EXTENSIONS
 
     excludes = list(DEFAULT_EXCLUDES)
@@ -2781,6 +2782,9 @@ def _analyze_test_files(
 
         rel_path = str(f.relative_to(repo_root))
         if not _is_test_path(rel_path):
+            continue
+        # A vendored dependency's own tests are not the project's (WI-kojul).
+        if tier_by_path(rel_path) is not None:
             continue
 
         try:
@@ -2859,26 +2863,30 @@ def _format_language_stats(
     if not profile.languages:
         return "No source files detected"
 
-    # Sort by LOC descending
+    # WI-kojul / ADR-0004 3a: the Overview describes the project, so it counts
+    # its own code (tiers 1-2) only; vendored and derived files are analysed
+    # but do not make the project "26% C".
     sorted_langs = sorted(
         profile.languages.items(),
-        key=lambda x: x[1].loc,
+        key=lambda x: x[1].own_loc_or_all,
         reverse=True,
     )
 
     # Calculate percentages
-    total_loc = sum(lang.loc for lang in profile.languages.values())
+    total_loc = sum(lang.own_loc_or_all for lang in profile.languages.values())
     if total_loc == 0:
         return "No source code detected"
 
     parts = []
     for lang, stats in sorted_langs[:5]:  # Top 5 languages
-        pct = (stats.loc / total_loc) * 100
+        pct = (stats.own_loc_or_all / total_loc) * 100
         if pct >= 1:  # Only show languages with ≥1%
             parts.append(f"{lang.title()} ({pct:.0f}%)")
 
     lang_line = ", ".join(parts)
-    total_files = sum(lang.files for lang in profile.languages.values())
+    total_files = sum(
+        lang.own_files_or_all for lang in profile.languages.values()
+    )
     ignore_marker = " [IGNORING TESTS]" if exclude_tests else ""
 
     # Compute test LOC if repo_root provided

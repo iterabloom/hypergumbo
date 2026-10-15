@@ -933,6 +933,48 @@ def classify_file(
     return result
 
 
+def _derived_path_reason(rel: str) -> Optional[str]:
+    """The DERIVED_* pattern a repo-relative path matches, as a reason."""
+    for pattern in DERIVED_PATH_PATTERNS:
+        if re.match(pattern, rel):
+            return f"path matches {pattern}"
+    for pattern in DERIVED_FILENAME_PATTERNS:
+        if re.search(pattern, rel):
+            return f"filename matches {pattern}"
+    return None
+
+
+def _external_path_label(rel: str) -> Optional[str]:
+    """The label of the EXTERNAL_DEP_* pattern a repo-relative path matches."""
+    for pattern, label in EXTERNAL_DEP_PATTERNS:
+        if re.match(pattern, rel):
+            return label
+    for pattern, label in EXTERNAL_DEP_DEEP_PATTERNS:
+        if re.search(pattern, rel):
+            return label
+    return None
+
+
+def tier_by_path(rel: str) -> Optional[Tier]:
+    """The tier a repo-relative path gets from its path alone, else ``None``.
+
+    The path-pattern steps of :func:`classify_file` (DERIVED_* then
+    EXTERNAL_DEP_*), with no file read and no filesystem check, for
+    summaries that must stay cheap: the profile's per-language own-code
+    counts (WI-kojul, ADR-0004 point 3a). ``None`` means the path does not
+    decide it; the full classifier may still find a minified file, build
+    output or installed dependency source, so this under-reports tier 3-4
+    rather than inventing it. Both use the same helpers, so they cannot
+    disagree about a path pattern.
+    """
+    rel = rel.replace("\\", "/")
+    if _derived_path_reason(rel) is not None:
+        return Tier.DERIVED
+    if _external_path_label(rel) is not None:
+        return Tier.EXTERNAL_DEP
+    return None
+
+
 def _classify_file_core(
     rel: str,
     path: Path,
@@ -959,29 +1001,20 @@ def _classify_file_core(
         return FileClassification(
             Tier.DERIVED, f"in {output[1]} output {output[0]}/",
         )
-    for pattern in DERIVED_PATH_PATTERNS:
-        if re.match(pattern, rel):
-            return FileClassification(Tier.DERIVED, f"path matches {pattern}")
-
-    for pattern in DERIVED_FILENAME_PATTERNS:
-        if re.search(pattern, rel):
-            return FileClassification(Tier.DERIVED, f"filename matches {pattern}")
+    derived = _derived_path_reason(rel)
+    if derived is not None:
+        return FileClassification(Tier.DERIVED, derived)
 
     # 2. Check content heuristics for minification (only for existing files)
     if path.exists() and is_likely_minified(path):
         return FileClassification(Tier.DERIVED, "detected as minified/generated")
 
-    # 3. Check external dependencies
-    for pattern, label in EXTERNAL_DEP_PATTERNS:
-        if re.match(pattern, rel):
-            pkg = _extract_package_name(rel, label)
-            return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
-
-    # 3b. Check deep external dependency patterns (vendored SDKs anywhere in path)
-    for pattern, label in EXTERNAL_DEP_DEEP_PATTERNS:
-        if re.search(pattern, rel):
-            pkg = _extract_package_name(rel, label)
-            return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
+    # 3. Check external dependencies, root-anchored then anywhere in the
+    # path (vendored SDKs, nested vendor/ trees).
+    external = _external_path_label(rel)
+    if external is not None:
+        pkg = _extract_package_name(rel, external)
+        return FileClassification(Tier.EXTERNAL_DEP, f"in {external}", pkg)
 
     # 3c. Installed dependency source traced with --trace-deps where no path
     # pattern reaches it (a virtualenv's site-packages, a nested Mix

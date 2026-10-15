@@ -32,6 +32,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - `[passes]` lines name only non-routine silence reasons.
 - rust-analyzer notice names the command that silences it.
 - Partial-install warnings print plain, without UserWarning framing.
+- Language breakdown and LOC totals count own code only.
 
 ## [9.0.0] - 2026-10-14
 
