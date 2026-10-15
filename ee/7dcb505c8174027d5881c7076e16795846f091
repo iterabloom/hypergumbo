@@ -1,0 +1,36 @@
+Original commit body from dfd8c19a522791382168055e6e190ebee23d4e82:
+
+Ruling 6 (WI-himod): Edge.create(resolution_score=s) interpolates a name
+resolver's grade inside the pathway band, low + (base - low) x s, via
+confidence.derive_resolved_confidence. 87 producer sites that multiplied
+a private base by the grade now pass the grade; 12 pathways whose only
+producers multiplied are seeded at their exact-match base. Call edges in
+glsl, hlsl, nix, wgsl, fortran and R that were labelled `static` (a
+static-linkage declaration) are relabelled ast_call_direct; fortran's
+`use` is ast_import. External targets set is_resolved=False and derive
+the unresolved base. The JS/TS scope-bound / explicit-import 0.90 and
+C's 0.95 x grade (the 42 INV-zatug self-tree violations) are now 0.85.
+
+Ruling 7 (WI-nibar): spec_validator judges an edge whose origins are all
+registered linkers (catalog.all_linker_pass_ids) by the spec section 12
+linker range, 0.40-0.95, not by its declared pathway's analyzer band.
+
+WI-midoj: the 12 out-of-band literals (build_target_main 1.0 x7, css,
+go naming_convention 0.95, circom x2, solidity) derive or pass a grade.
+
+WI-lapun: the 14 remaining analyzer branch-tier sites derive (imports,
+includes and local-registry calls set is_resolved instead of a lower
+literal; matlab/purescript/racket/scheme/robot no longer publish 1.0),
+pass a grade (llvm_ir, agda, ruby route grades), or carry an
+'# ADR-0039 caller-valued:' justification (ast_call_namespace and
+qualified_call, pending-classification placeholders with no band).
+
+WI-vosif: hypergumbo_core.confidence_sites + scripts/check-confidence-sites,
+a shrink-only static gate over every Edge.create(confidence=...) site
+(.ci/confidence-sites-baseline.json, empty). 0 findings on this tree,
+123 on dev before this change. smart-test unions the gate test into any
+change that touches package source, since the import-graph slice never
+selects it.
+
+Tracker: WI-himod, WI-nibar, WI-midoj, WI-lapun, WI-vosif.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
