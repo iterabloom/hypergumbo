@@ -1,0 +1,9 @@
+Original commit body from 2616a3a369d162d345c24778ce03ef19dbaa700a:
+
+WI-vosif follow-up, owner-approved governance change (2026-10-15): the
+pre-commit hook runs scripts/check-confidence-sites whenever a
+packages/*/src/*.py file is staged, so an out-of-band or unjustified
+confidence site fails locally before CI's test_confidence_sites gate.
+A wiring test pins the hook's trigger regex and command.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
