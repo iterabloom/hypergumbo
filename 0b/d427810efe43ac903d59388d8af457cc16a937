@@ -1,0 +1,6 @@
+Original commit body from cfe28416284a5f03f7162a5c9ca9c7b28294225c:
+
+CI's package-isolated coverage missed sketch.py:479 (update_item_progress
+with progress on), reached locally only via other packages' tests.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
