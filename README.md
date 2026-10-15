@@ -205,6 +205,7 @@ Useful flags:
 hypergumbo . -x                                # exclude test files (cleaner output)
 hypergumbo . --no-source                       # omit source code (included by default)
 hypergumbo . --no-progress                     # hide progress indicator (sketch/run only; on by default)
+HG_HEARTBEAT=10 hypergumbo .                   # stack heartbeat every 10s (default 30; 0 disables)
 hypergumbo io-boundaries --show-external-potential   # opt into the (large) external-potential bucket (text output)
 hypergumbo --help --all                        # comprehensive help for all commands
 ```

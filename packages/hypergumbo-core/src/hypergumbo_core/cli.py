@@ -171,7 +171,7 @@ from typing import (
 from rich.console import Console
 from rich.table import Table
 
-from . import __version__
+from . import __version__, run_status
 from .analyze.all_analyzers import run_all_analyzers
 from .analyze.base import (
     dedup_logical_synthetic_identities,
@@ -10069,7 +10069,9 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         "--progress",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Show progress indicator with ETA to stderr (default: on, use --no-progress to disable)",
+        help="Show progress on stderr: the phase, elapsed time, and a stack heartbeat "
+             "every 30s (HG_HEARTBEAT=N sets the interval, 0 disables) "
+             "(default: on, use --no-progress to disable)",
     )
     p_sketch.add_argument(
         "--readme-debug",
@@ -10317,7 +10319,9 @@ Cache location:
         "--progress",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Show progress indicator with ETA to stderr (default: on, use --no-progress to disable)",
+        help="Show progress on stderr: the phase, elapsed time, and a stack heartbeat "
+             "every 30s (HG_HEARTBEAT=N sets the interval, 0 disables) "
+             "(default: on, use --no-progress to disable)",
     )
     p_run.add_argument(
         "--locale",
@@ -12494,6 +12498,7 @@ def _releases_file_index(fn: _SurveyFn) -> _SurveyFn:
 
 
 @_releases_file_index
+@run_status.reports_run
 def run_survey(
     repo_root: Path,
     out_path: Path | None = None,
@@ -12561,32 +12566,6 @@ def run_survey(
         List of file paths for all generated artifacts (main output + tier files).
     """
     import sys
-    import time
-
-    # Progress tracking
-    start_time = time.time()
-
-    def show_progress(phase: str, pct: int) -> None:  # pragma: no cover
-        """Display progress to stderr."""
-        if not progress or not sys.stderr.isatty():
-            return
-        elapsed = time.time() - start_time
-        if pct > 0:
-            estimated_total = elapsed / (pct / 100)
-            remaining = estimated_total - elapsed
-            eta_str = f" ETA {remaining:.0f}s" if remaining > 0 else ""
-        else:
-            eta_str = ""
-        sys.stderr.write(f"\r[{pct:3d}%] {phase}...{eta_str}    ")
-        sys.stderr.flush()
-
-    def complete_progress() -> None:  # pragma: no cover
-        """Show completion message."""
-        if not progress or not sys.stderr.isatty():
-            return
-        elapsed = time.time() - start_time
-        sys.stderr.write(f"\r[100%] Complete in {elapsed:.1f}s           \n")
-        sys.stderr.flush()
 
     _log_memory("start")
 
@@ -12614,7 +12593,7 @@ def run_survey(
     from .arbitration import policy_from_config
     _arbitration_policy = policy_from_config(_load_config_or_exit(repo_root))
 
-    show_progress("Indexing files", 2)
+    run_status.phase("Indexing files")
     combined_excludes = list(DEFAULT_EXCLUDES)
     if extra_excludes:
         combined_excludes.extend(extra_excludes)
@@ -12643,7 +12622,7 @@ def run_survey(
 
     # Detect repo profile (languages, frameworks) with LOC counting.
     # Analyzers will read the same files shortly, so OS cache is warm.
-    show_progress("Detecting profile", 5)
+    run_status.phase("Detecting profile")
     profile = detect_profile(repo_root, extra_excludes=extra_excludes, frameworks=frameworks, count_loc=True)
     behavior_map["profile"] = profile.to_dict()
 
@@ -12656,7 +12635,7 @@ def run_survey(
 
     # Run all language analyzers using consolidated registry
     # This replaces ~800 lines of repetitive analyzer invocation code
-    show_progress("Running analyzers", 10)
+    run_status.phase("Running analyzers")
     # WI-jadig: pass profile through so the dispatcher can short-circuit
     # analyzers whose languages have 0 files in this repo (lifecycle policy
     # member of INV-manov — file-presence pre-filter).
@@ -12677,7 +12656,7 @@ def run_survey(
     # UsageContexts extracted during analysis may have symbol_ref=None when
     # the target symbol is in a different file. Now that we have the complete
     # symbol table, resolve these references using multi-strategy lookup.
-    show_progress("Resolving symbol references", 48)
+    run_status.phase("Resolving symbol references")
     resolution_stats = resolve_deferred_symbol_refs(all_symbols, all_usage_contexts)
     if resolution_stats.total_resolved > 0:
         _log_memory(  # pragma: no cover - debug logging
@@ -12724,7 +12703,7 @@ def run_survey(
     # This applies YAML-based patterns to add concept info (route, model, etc.)
     # to symbols based on their decorators, base classes, annotations, AND
     # usage contexts (v1.1.x) for call-based frameworks like Django URLs.
-    show_progress("Enriching symbols", 50)
+    run_status.phase("Enriching symbols")
     detected_frameworks = set(profile.frameworks)
     enrich_symbols(all_symbols, detected_frameworks, all_usage_contexts)
 
@@ -12784,7 +12763,7 @@ def run_survey(
         analysis_runs.append(_cbv_run.to_dict())
 
     # Run cross-language linkers
-    show_progress("Running linkers", 55)
+    run_status.phase("Running linkers")
     #
     # Every linker is registered via the @register_linker decorator in
     # linkers/registry.py (like analyzers) and runs through run_all_linkers;
@@ -12866,7 +12845,7 @@ def run_survey(
     stamp_symbol_fingerprints(all_symbols, repo_root)
 
     # Apply supply chain classification to all symbols
-    show_progress("Classifying symbols", 60)
+    run_status.phase("Classifying symbols")
     _classify_symbols(all_symbols, repo_root, package_roots, limits=limits)
 
     # WI-bosab: now that Symbol.is_test_file is set, strip naming-convention
@@ -13022,7 +13001,7 @@ def run_survey(
     _log_memory("after boundary nodes")
 
     # Rank symbols by importance (centrality + tier weighting) for output ordering
-    show_progress("Ranking symbols", 65)
+    run_status.phase("Ranking symbols")
     ranked = rank_symbols(
         all_symbols, all_edges,
         first_party_priority=True,
@@ -13071,13 +13050,13 @@ def run_survey(
     del all_usage_contexts
 
     # Compute metrics from analyzed nodes and edges
-    show_progress("Computing metrics", 70)
+    run_status.phase("Computing metrics")
     behavior_map["metrics"] = compute_metrics(
         all_nodes, all_edge_dicts, profile=behavior_map.get("profile"),
     )
 
     # Detect and store entrypoints (computed from symbols, persisted for convenience)
-    show_progress("Detecting entrypoints", 75)
+    run_status.phase("Detecting entrypoints")
     entrypoints = detect_entrypoints(all_symbols, all_edges)
     behavior_map["entrypoints"] = [ep.to_dict() for ep in entrypoints]
     del entrypoints  # Free Entrypoint objects
@@ -13125,7 +13104,7 @@ def run_survey(
     # Pre-extract sketch data (config, readme) if requested
     # This avoids reloading the embedding model when generating sketches later
     if include_sketch_precomputed:
-        show_progress("Pre-computing sketch data", 80)
+        run_status.phase("Pre-computing sketch data: config")
         sketch_precomputed: dict[str, str | list[str] | None] = {}
 
         # Extract config info using HYBRID mode (best quality, uses embeddings)
@@ -13137,6 +13116,7 @@ def run_survey(
             sketch_precomputed["config_info"] = ""
 
         # Extract README description (uses embedding model)
+        run_status.phase("Pre-computing sketch data: README")
         try:
             sketch_precomputed["readme_description"] = _extract_readme_description(repo_root)
         except Exception:  # pragma: no cover - graceful degradation
@@ -13174,6 +13154,7 @@ def run_survey(
         )
 
         # Compute centrality scores for all candidates
+        run_status.phase("Pre-computing sketch data: file mentions")
         if candidate_files and all_symbols:
             raw_in_degree = compute_raw_in_degree(all_symbols, all_edges)
             centrality_result = compute_symbol_mention_centrality_batch(
@@ -13338,7 +13319,7 @@ def run_survey(
     gc.collect()
     _log_memory("after cleanup")
 
-    show_progress("Writing output", 95)
+    run_status.phase("Writing output")
     if gzip_output:
         from .safety_zones import user_out_open_json_dump_gzip
         user_out_open_json_dump_gzip(out_path, behavior_map)
@@ -13349,7 +13330,6 @@ def run_survey(
 
     # The global file index is released by ``_releases_file_index`` on every
     # exit path of this function, including the merge pass's refusal.
-    complete_progress()
     return generated_files
 
 
