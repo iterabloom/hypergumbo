@@ -118,7 +118,7 @@ import re
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Callable, Container, Iterator, Optional
+from typing import Any, Callable, Container, Iterable, Iterator, Optional
 
 
 class Tier(IntEnum):
@@ -944,15 +944,90 @@ def _derived_path_reason(rel: str) -> Optional[str]:
     return None
 
 
+def _external_path_match(rel: str) -> Optional[tuple[str, str]]:
+    """``(label, root)`` of the EXTERNAL_DEP_* pattern a repo-relative path
+    matches, ``root`` being the directory the pattern ends at (every pattern
+    ends in ``/``): ``a/vendor/x/y.c`` gives ``("vendor/", "a/vendor")``."""
+    for pattern, label in EXTERNAL_DEP_PATTERNS:
+        m = re.match(pattern, rel)
+        if m:
+            return label, rel[: m.end() - 1]
+    for pattern, label in EXTERNAL_DEP_DEEP_PATTERNS:
+        m = re.search(pattern, rel)
+        if m:
+            return label, rel[: m.end() - 1]
+    return None
+
+
 def _external_path_label(rel: str) -> Optional[str]:
     """The label of the EXTERNAL_DEP_* pattern a repo-relative path matches."""
-    for pattern, label in EXTERNAL_DEP_PATTERNS:
-        if re.match(pattern, rel):
-            return label
-    for pattern, label in EXTERNAL_DEP_DEEP_PATTERNS:
-        if re.search(pattern, rel):
-            return label
-    return None
+    found = _external_path_match(rel)
+    return found[0] if found else None
+
+
+def vendored_root(rel: str) -> Optional[str]:
+    """The vendored directory a repo-relative path sits in, else ``None``.
+
+    The directory an EXTERNAL_DEP_* pattern matched (``pkg/vendor``), which
+    is what the vendored-code disclosure names (WI-pasan).
+    """
+    found = _external_path_match(rel.replace("\\", "/"))
+    return found[1] if found else None
+
+
+#: How many vendored directories ``supply_chain_summary.vendored_analysed``
+#: lists, like the other disclosure buckets.
+_VENDORED_ENTRIES_CAP = 10
+
+
+def vendored_analysed_summary(symbols: "Iterable[Any]") -> dict[str, Any]:
+    """``supply_chain_summary.vendored_analysed``: committed vendored code that
+    was analysed as tier 3 and left out of the summaries (ADR-0004 point 3a).
+
+    ``{dirs, entries: [{path, languages, files}]}``, one entry per vendored
+    directory (:func:`vendored_root`), from the tier-3 ``file`` nodes; a file
+    two analyzers read counts once. Tier-3 code with no vendored root --
+    installed dependency source traced with ``--trace-deps`` -- is not
+    vendored and has its own disclosure. Sorted by path, capped at 10.
+    """
+    files: dict[str, set[str]] = {}
+    languages: dict[str, set[str]] = {}
+    for sym in symbols:
+        if sym.kind != "file" or sym.supply_chain_tier != Tier.EXTERNAL_DEP:
+            continue
+        root = vendored_root(sym.path)
+        if root is None:
+            continue
+        files.setdefault(root, set()).add(sym.path)
+        languages.setdefault(root, set()).add(sym.language)
+    entries = [
+        {"path": root, "languages": sorted(languages[root]), "files": len(paths)}
+        for root, paths in sorted(files.items())
+    ]
+    return {"dirs": len(entries), "entries": entries[:_VENDORED_ENTRIES_CAP]}
+
+
+def format_vendored_disclosure(summary: "dict[str, Any] | None") -> Optional[str]:
+    """The one-line vendored-code disclosure, or ``None`` when there is none.
+
+    Names at most three directories, like the installed-dependency line.
+    """
+    if not summary or not summary.get("dirs"):
+        return None
+    parts = []
+    for e in (summary.get("entries") or [])[:3]:
+        n = e["files"]
+        parts.append(
+            f"{e['path']}/ ({', '.join(e['languages'])}; "
+            f"{n} file{'' if n == 1 else 's'})"
+        )
+    more = int(summary["dirs"]) - len(parts)
+    if more > 0:
+        parts.append(f"{more} more director{'y' if more == 1 else 'ies'}")
+    return (
+        "Vendored third-party code analysed as tier 3, not counted in the "
+        f"language breakdown: {', '.join(parts)}. To skip: --exclude <dir>."
+    )
 
 
 def tier_by_path(rel: str) -> Optional[Tier]:
