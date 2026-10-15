@@ -1,0 +1,22 @@
+- op: create  # 862e
+  at: '2026-10-15T05:05:15Z'  # 862e
+  by: agent  # 862e
+  actor: jgstern_agent  # 862e
+  clock: 1  # 862e
+  nonce: 862e  # 862e
+  data:  # 862e
+    kind: work_item  # 862e
+    title: "CI ratchet: static audit of Edge.create confidence sites against ADR-0039 bands, shrink-only baseline"  # 862e
+    status: todo_hard  # 862e
+    priority: 2  # 862e
+    parent:  # 862e
+    tags:  # 862e
+    - confidence  # 862e
+    - adr0039  # 862e
+    - ci_infrastructure  # 862e
+    isbefore: []  # 862e
+    duplicate_of: []  # 862e
+    not_duplicate_of: []  # 862e
+    pr_ref:  # 862e
+    description: "Make WI-famiv-gumof's static producer audit a CI ratchet so the out-of-band confidence class cannot regrow. Today only the self-tree gate sees this class, and it sees just what the repo's own corpus exercises: 2 of 138 risky sites on 2026-10-15. JS/TS joined the class on 2026-10-03 (c77d62b197) unnoticed.\n\nShape: scripts/check-confidence-sites (ast walk over packages/*/src/**/*.py, every Edge.create passing confidence=; classify literal-in / literal-out / computed-banded / computed-unbanded; analyzer band vs linker range per ruling 7) with a shrink-only baseline in .ci/ (like .ci/self-tree-validation-baselines.json), run per-PR and as a pre-commit hook when producer files are staged. Logic in a hypergumbo_core module with unit tests (100% coverage); the script a thin wrapper. Prototype: scratchpad conf_audit.py from 2026-10-15 (Edge.create only; extend to direct Edge(...) construction if any producer uses it). Note: adding a pre-commit hook touches .githooks/ (governance, needs owner approval); the CI step alone does not."  # 862e
+    fields: {}  # 862e
