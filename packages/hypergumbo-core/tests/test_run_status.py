@@ -100,8 +100,19 @@ def test_abridged_stack_collapses_recursion_and_truncates() -> None:
         ("hypergumbo_core.a", "walk", 5),
         ("hypergumbo_core.a", "leaf", 6),
     )
-    assert abridged_stack(frame, 2) == "… > a.walk x3 > a.leaf:6"
-    assert abridged_stack(frame, 4) == "a.f1 > a.f2 > a.walk x3 > a.leaf:6"
+    assert abridged_stack(frame, 2) == "… > a.walk (recursion x3) > a.leaf:6"
+    assert abridged_stack(frame, 4) == "a.f1 > a.f2 > a.walk (recursion x3) > a.leaf:6"
+    assert abridged_stack(frame, 1, elide=False) == "a.leaf:6"
+
+
+def test_abridged_stack_innermost_recursion_keeps_line_number_first() -> None:
+    frame = _stack(
+        ("hypergumbo_lang_mainstream.py", "_format_annotation", 1170),
+        ("hypergumbo_lang_mainstream.py", "_format_annotation", 1166),
+    )
+    assert abridged_stack(frame, 1, elide=False) == (
+        "py._format_annotation:1166 (recursion x2)"
+    )
 
 
 def test_abridged_stack_without_qualname_falls_back_to_name() -> None:
@@ -198,7 +209,7 @@ def test_heartbeat_on_non_tty_when_requested(monkeypatch: pytest.MonkeyPatch) ->
     assert status._thread is None
 
 
-def test_heartbeat_line_reports_owner_stack_and_busy_workers(
+def test_heartbeat_line_reports_owner_stack_and_one_line_per_worker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     status = RunStatus(_Tty())
@@ -209,23 +220,52 @@ def test_heartbeat_line_reports_owner_stack_and_busy_workers(
     analyzer = _stack(
         ("concurrent.futures.thread", "_worker", 1),
         ("hypergumbo_core.analyze.all_analyzers", "_run_costed", 2),
-        ("hypergumbo_lang_mainstream.py", "analyze_python", 3),
+        ("hypergumbo_core.analyze.base", "TreeSitterAnalyzer._analyze_body", 4570),
     )
     frames = {
         1: _stack(("hypergumbo_core.analyze.all_analyzers", "run_all_analyzers", 442)),
         2: analyzer,
-        3: analyzer,
-        4: _stack(("hypergumbo_core.linkers.cgo", "link", 7)),
+        3: _stack(("hypergumbo_core.linkers.cgo", "link", 7)),
+        4: _stack(("hypergumbo_core.ranking", "score", 9)),  # unnamed thread
         5: _stack(("threading", "wait", 1)),  # idle worker: omitted
         me: _stack(("hypergumbo_core.x", "should_not_appear", 1)),
     }
     monkeypatch.setattr(sys, "_current_frames", lambda: frames)
-    line = status.heartbeat_line(time.monotonic())
-    assert line.startswith("[    0s] Running analyzers (0s)")
-    assert "| all_analyzers.run_all_analyzers:442" in line
-    assert ("| workers: all_analyzers._run_costed > py.analyze_python:3 x2, "
-            "cgo.link:7") in line
-    assert "should_not_appear" not in line
+    monkeypatch.setattr(run_status, "_WORKER_PASSES", {2: "javascript", 3: "cgo-linker"})
+    lines = status.heartbeat_line(time.monotonic()).split("\n")
+    assert lines == [
+        "[    0s] Running analyzers (0s) | main: all_analyzers.run_all_analyzers:442",
+        "           cgo-linker  cgo.link:7",
+        "           javascript  base.TreeSitterAnalyzer._analyze_body:4570",
+        "           ranking     ranking.score:9",
+    ]
+
+
+def test_heartbeat_names_the_main_pass_and_caps_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    status = RunStatus(_Tty())
+    status._start = time.monotonic()
+    status._owner_ident = 1
+    frames = {1: _stack(("hypergumbo_core.linkers.websocket", "link", 3))}
+    for ident in range(10, 20):
+        frames[ident] = _stack(("hypergumbo_core.p", f"f{ident}", ident))
+    monkeypatch.setattr(sys, "_current_frames", lambda: frames)
+    monkeypatch.setattr(run_status, "_WORKER_PASSES", {1: "websocket-linker"})
+    lines = status.heartbeat_line(time.monotonic()).split("\n")
+    assert lines[0] == "[    0s] | main (websocket-linker): websocket.link:3"
+    assert len(lines) == 1 + 8 + 1
+    assert lines[-1] == "           +2 more"
+
+
+def test_worker_pass_names_the_thread_and_restores_on_exit() -> None:
+    ident = threading.get_ident()
+    with run_status.worker_pass("outer"):
+        assert run_status._WORKER_PASSES[ident] == "outer"
+        with run_status.worker_pass("inner"):
+            assert run_status._WORKER_PASSES[ident] == "inner"
+        assert run_status._WORKER_PASSES[ident] == "outer"
+    assert ident not in run_status._WORKER_PASSES
 
 
 def test_heartbeat_line_when_owner_has_no_hypergumbo_frame(
@@ -251,6 +291,16 @@ def test_live_heartbeat_redraws_the_phase_line(monkeypatch: pytest.MonkeyPatch) 
     beat = out.getvalue().split("\n")[0]
     # The beat overwrote the phase line in place, padded to its full width.
     assert beat.startswith("\r[    0s] Running linkers with a long label")
+
+
+def test_live_multi_line_heartbeat_pads_only_its_first_line() -> None:
+    out = _Tty()
+    status = RunStatus(out)
+    status._live = True
+    status._stream = out
+    status._drawn = 30
+    status._write_line("short\n           worker  a.b:1")
+    assert out.getvalue() == "\rshort" + " " * 25 + "\n           worker  a.b:1\n"
 
 
 def test_other_stderr_writes_clear_the_phase_line(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -12841,6 +12841,7 @@ def run_survey(
     # Symbols that don't already carry one (toml-v1, json-v1, wgsl-v1 keep
     # their manifest-derived fingerprints unchanged). Centralised in
     # hypergumbo_core.fingerprint so no analyzer change is required.
+    run_status.phase("Stamping fingerprints")
     from .fingerprint import stamp_symbol_fingerprints
     stamp_symbol_fingerprints(all_symbols, repo_root)
 

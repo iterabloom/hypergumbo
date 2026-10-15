@@ -113,6 +113,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Collection, Iterator
 
 from ..pass_clock import PassClock
+from ..run_status import worker_pass
 
 if TYPE_CHECKING:
     from ..ir import AnalysisRun, Edge, Symbol
@@ -741,7 +742,8 @@ def _run_linker_with_cache(
     # reading is per-thread.
     _clock = PassClock()
     try:
-        result = func(ctx)
+        with worker_pass(getattr(ctx, "linker_pass_id", "") or "linker"):
+            result = func(ctx)
     finally:
         reset_active_read_log(read_token)
         reset_active_parse_cache(token)

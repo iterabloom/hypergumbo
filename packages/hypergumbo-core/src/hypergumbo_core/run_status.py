@@ -23,15 +23,23 @@ One process-global ``RunStatus`` that both pipelines report into:
   ``item(label, current, total)`` appends a real count when a phase has
   one (files embedded, files analyzed).
 * **Heartbeat.** Every ``HG_HEARTBEAT`` seconds (default 30) a daemon thread
-  prints one permanent line: the phase, its elapsed time, and an abridged
-  stack. The stack lists the innermost hypergumbo frames of the thread that
-  started the run (``cli.run_survey > registry.run_all_linkers >
-  cgo.link_cgo:212``) plus a tally of what each busy pool worker is inside.
-  The worker tally matters because analyzers and linkers run in
-  ``ThreadPoolExecutor``s, and while they run the main thread only waits on
-  futures. The lines are permanent so the scrollback is a timeline of where
-  the run spent its time, which a ``\\r`` line that keeps overwriting itself
-  cannot give.
+  prints permanent lines. The first holds the phase, its elapsed time, and
+  an abridged stack of the thread that started the run: its innermost
+  hypergumbo frames, outermost first (``main: cli.run_survey >
+  registry.run_all_linkers > cgo.link_cgo:212``). Then one line per busy
+  pool worker: the pass it is running and its innermost frame
+  (``bash  bash.find_bash_files:235``). The worker lines matter because
+  analyzers and linkers run in ``ThreadPoolExecutor``s, and while they run
+  the main thread only waits on futures. They were first one comma-joined
+  tally on the main line, and six workers made it unreadable: ``, `` between
+  workers and `` > `` inside each, a leading ``…`` on every one, and no pass
+  name, so generic base-class code (``base.TreeSitterAnalyzer._analyze_body``)
+  could not say which language it was analyzing. The pass name comes from
+  ``worker_pass``, which the analyzer and linker pools enter around each
+  pass; a thread outside both is named by the module of its outermost
+  hypergumbo frame. The lines are permanent so the scrollback is a timeline
+  of where the run spent its time, which a ``\\r`` line that keeps
+  overwriting itself cannot give.
 * **Summary.** When the outermost run ends: ``Complete in 28m22s``, and for
   a run of 30 s or more the slowest phases, so "what was slow" is answered
   without re-running under a profiler.
@@ -70,21 +78,22 @@ for the next run in the same process.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import inspect
 import os
 import sys
 import threading
 import time
-from collections import Counter
-from typing import IO, Any, Callable, Optional, TypeVar
+from typing import IO, Any, Callable, Iterator, Optional, TypeVar
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 
 DEFAULT_HEARTBEAT_SECONDS = 30.0
 _ENV_HEARTBEAT = "HG_HEARTBEAT"
 _MAIN_FRAMES = 4
-_WORKER_FRAMES = 2
+_MAX_WORKER_LINES = 8
+_WORKER_INDENT = " " * 11
 _SUMMARY_PHASES = 3
 _SUMMARY_MIN_SECONDS = DEFAULT_HEARTBEAT_SECONDS
 
@@ -117,13 +126,11 @@ def _frame_label(frame: Any) -> Optional[str]:
     return f"{module.rsplit('.', 1)[-1]}.{qualname.replace('<locals>.', '')}"
 
 
-def abridged_stack(frame: Any, max_frames: int) -> str:
-    """The innermost ``max_frames`` hypergumbo frames, outermost first.
+def _collapsed_frames(frame: Any) -> tuple[list[list[Any]], int]:
+    """A thread's hypergumbo frames as ``[label, depth]``, outermost first.
 
-    Recursion collapses to ``label xN``. The innermost frame carries its
-    line number, which is what places a sample inside a function hundreds of
-    lines long (``run_survey``). An empty string means the thread had no
-    hypergumbo frame, which is an idle pool worker.
+    Consecutive frames with one label (recursion) collapse into one entry
+    whose depth counts them. Also returns the innermost frame's line number.
     """
     labels: list[str] = []
     innermost_line = 0
@@ -134,20 +141,67 @@ def abridged_stack(frame: Any, max_frames: int) -> str:
                 innermost_line = frame.f_lineno
             labels.append(label)
         frame = frame.f_back
-    if not labels:
-        return ""
-    labels.reverse()
     collapsed: list[list[Any]] = []
-    for label in labels:
+    for label in reversed(labels):
         if collapsed and collapsed[-1][0] == label:
             collapsed[-1][1] += 1
         else:
             collapsed.append([label, 1])
-    parts = [f"{lbl} x{n}" if n > 1 else lbl for lbl, n in collapsed]
-    parts[-1] = f"{parts[-1]}:{innermost_line}"
+    return collapsed, innermost_line
+
+
+def abridged_stack(frame: Any, max_frames: int, elide: bool = True) -> str:
+    """The innermost ``max_frames`` hypergumbo frames, outermost first.
+
+    The innermost frame carries its line number, which is what places a
+    sample inside a function hundreds of lines long (``run_survey``).
+    Recursion shows after it as ``(recursion xN)``; a bare ``xN`` ran into
+    the line number (``x2:1166``). A cut-off stack starts with ``…`` unless
+    ``elide`` is False. An empty string means the thread had no hypergumbo
+    frame, which is an idle pool worker.
+    """
+    collapsed, innermost_line = _collapsed_frames(frame)
+    if not collapsed:
+        return ""
+    parts = []
+    for i, (label, depth) in enumerate(collapsed):
+        text = f"{label}:{innermost_line}" if i == len(collapsed) - 1 else label
+        parts.append(f"{text} (recursion x{depth})" if depth > 1 else text)
     if len(parts) > max_frames:
-        parts = ["…", *parts[-max_frames:]]
+        parts = (["…"] if elide else []) + parts[-max_frames:]
     return " > ".join(parts)
+
+
+_WORKER_PASSES: dict[int, str] = {}
+
+
+@contextlib.contextmanager
+def worker_pass(name: str) -> Iterator[None]:
+    """Name the pass the current thread runs, for the heartbeat's worker lines.
+
+    One dict store and one pop per pass, on the thread that runs it; the
+    heartbeat thread only reads. CPython makes single dict operations
+    atomic, so no lock is needed.
+    """
+    ident = threading.get_ident()
+    previous = _WORKER_PASSES.get(ident)
+    _WORKER_PASSES[ident] = name
+    try:
+        yield
+    finally:
+        if previous is None:
+            _WORKER_PASSES.pop(ident, None)
+        else:
+            _WORKER_PASSES[ident] = previous
+
+
+def _thread_name(ident: int, frame: Any) -> str:
+    """The pass a thread runs, else the module of its outermost hypergumbo frame."""
+    name = _WORKER_PASSES.get(ident)
+    if name is not None:
+        return name
+    collapsed, _ = _collapsed_frames(frame)
+    return str(collapsed[0][0]).split(".", 1)[0]
 
 
 def _heartbeat_interval() -> tuple[float, bool]:
@@ -308,28 +362,38 @@ class RunStatus:
         return ", ".join(f"{label} {format_duration(secs)}" for label, secs in longest)
 
     def heartbeat_line(self, now: float) -> str:
-        """One line: status, the run thread's abridged stack, busy workers."""
+        """The status line, then one indented line per busy pool worker.
+
+        The status line carries the run thread's abridged stack after
+        ``main``, named by its pass when it is running one itself (a serial
+        linker). Workers are sorted by pass name and capped at
+        ``_MAX_WORKER_LINES``, the rest folded into ``+N more``.
+        """
         frames = sys._current_frames()
         line = self._status_text(now)
         owner = frames.get(self._owner_ident)
         if owner is not None:
             stack = abridged_stack(owner, _MAIN_FRAMES)
             if stack:
-                line += f" | {stack}"
+                main = _WORKER_PASSES.get(self._owner_ident)
+                line += f" | main ({main}): {stack}" if main else f" | main: {stack}"
         me = threading.get_ident()
-        workers: Counter[str] = Counter()
+        workers: list[tuple[str, str]] = []
         for ident, frame in frames.items():
             if ident in (self._owner_ident, me):
                 continue
-            stack = abridged_stack(frame, _WORKER_FRAMES)
+            stack = abridged_stack(frame, 1, elide=False)
             if stack:
-                workers[stack] += 1
-        if workers:
-            line += " | workers: " + ", ".join(
-                f"{stack} x{n}" if n > 1 else stack
-                for stack, n in workers.most_common()
-            )
-        return line
+                workers.append((_thread_name(ident, frame), stack))
+        workers.sort()
+        shown = workers[:_MAX_WORKER_LINES]
+        width = max((len(name) for name, _ in shown), default=0)
+        lines = [line] + [
+            f"{_WORKER_INDENT}{name:<{width}}  {stack}" for name, stack in shown
+        ]
+        if len(workers) > len(shown):
+            lines.append(f"{_WORKER_INDENT}+{len(workers) - len(shown)} more")
+        return "\n".join(lines)
 
     def _redraw(self) -> None:
         if not self._live:
@@ -348,8 +412,10 @@ class RunStatus:
     def _write_line(self, text: str) -> None:
         """A permanent line: clear the phase line, write, then redraw it."""
         if self._live:
-            pad = " " * max(0, self._drawn - len(text))
-            self._stream.write(f"\r{text}{pad}\n")
+            first, _, rest = text.partition("\n")
+            pad = " " * max(0, self._drawn - len(first))
+            tail = f"\n{rest}" if rest else ""
+            self._stream.write(f"\r{first}{pad}{tail}\n")
             self._drawn = 0
         else:
             self._stream.write(f"{text}\n")

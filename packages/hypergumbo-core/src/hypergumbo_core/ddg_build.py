@@ -138,7 +138,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 _SKIP_DIRS = frozenset({
     ".git", ".venv", "venv", ".tox", "__pycache__",
     ".ci", "node_modules", ".mypy_cache", ".pytest_cache",
-    ".ruff_cache", ".eggs",
+    ".ruff_cache", ".hypothesis", ".eggs",
 })
 
 

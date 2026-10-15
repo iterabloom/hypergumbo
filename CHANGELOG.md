@@ -15,6 +15,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Changed
 
 - Progress: phase, elapsed, 30s stack heartbeats; no ETA.
+- Heartbeat: one line per busy worker, named by pass.
+- Cold sketch reuses the survey file list; no re-walk.
+- `.hypothesis/` excluded by default.
 - Retired test-only `_uncatalogued_external_modules`; gate rationale now on `_adjudicate_external_modules`.
 
 ## [9.0.0] - 2026-10-14
