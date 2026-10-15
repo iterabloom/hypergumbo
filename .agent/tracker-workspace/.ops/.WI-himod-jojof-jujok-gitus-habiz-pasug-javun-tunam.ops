@@ -1,0 +1,22 @@
+- op: create  # 4537
+  at: '2026-10-15T05:04:11Z'  # 4537
+  by: agent  # 4537
+  actor: jgstern_agent  # 4537
+  clock: 1  # 4537
+  nonce: '4537'  # 4537
+  data:  # 4537
+    kind: work_item  # 4537
+    title: "Implement ADR-0039 ruling 6 at Edge.create: resolver score interpolates in band; migrate base x resolver sites; fix js_ts scope-bound 0.90 (drains INV-zatu)"  # 4537
+    status: todo_hard  # 4537
+    priority: 1  # 4537
+    parent:  # 4537
+    tags:  # 4537
+    - confidence  # 4537
+    - adr0039  # 4537
+    - analysis_quality  # 4537
+    isbefore: []  # 4537
+    duplicate_of: []  # 4537
+    not_duplicate_of: []  # 4537
+    pr_ref:  # 4537
+    description: "Implement ADR-0039 ruling 6 (resolver quality interpolates within the pathway band) at the Edge.create chokepoint, migrate the base-times-resolver cohort onto it, and fix the JS/TS scope-bound site. This is the change that drains INV-zatu's 42 self-tree violations and turns the full-suite self-tree-validation step green.\n\n1. ir.py Edge.create: accept the resolver score (name it; e.g. resolution_score: float | None). When given on an is_resolved-conditioned pathway, compute base_unresolved + (base - base_unresolved) x score via confidence.py (a new derive function beside derive_confidence) and stamp confidence_source=evidence_derived. Passing both confidence= and the score is an error.\n2. Migrate the ~35 sites of shape confidence=<BASE> * lookup_result.confidence (or * result.confidence) on banded pathways. The 2026-10-15 static audit lists them; re-run it (scratchpad conf_audit.py; becomes the CI ratchet in a sibling item). Includes c.py:685 (0.95 x, the 31 self-tree violations, all in vendored tree-sitter-lean C) and js_ts.py ~6280 (0.90 x).\n3. js_ts.py ~5950-5980: the scope-bound branch (edge_confidence = 0.90, added by c77d62b197 on 2026-10-03) and the explicit-import branch (0.90) are over the ast_call_direct ceiling 0.85 -- the other 11 self-tree violations (htrac-frontend, emission-parity fixtures). Express them as resolver scores under ruling 6 rather than literals.\n\nEVIDENCE TO CITE AT CLOSE (closure-evidence discipline): a self-survey with `python -m hypergumbo_core run . --out X` then `scripts/check-self-tree-validation X .ci/self-tree-validation-baselines.json` exiting 0 with an empty matrix; plus production-path tests of the interpolation (exact / suffix / ambiguous lands in band). Baseline stays 0."  # 4537
+    fields: {}  # 4537

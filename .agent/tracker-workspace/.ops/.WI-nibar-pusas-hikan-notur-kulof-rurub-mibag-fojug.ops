@@ -1,0 +1,22 @@
+- op: create  # 972a
+  at: '2026-10-15T05:04:17Z'  # 972a
+  by: agent  # 972a
+  actor: jgstern_agent  # 972a
+  clock: 1  # 972a
+  nonce: 972a  # 972a
+  data:  # 972a
+    kind: work_item  # 972a
+    title: "Band check judges linker edges by the spec 12 linker range (0.40-0.95), not the declared evidence_type's analyzer band (ADR-0039 ruling 7)"  # 972a
+    status: todo_hard  # 972a
+    priority: 2  # 972a
+    parent:  # 972a
+    tags:  # 972a
+    - confidence  # 972a
+    - adr0039  # 972a
+    - analysis_quality  # 972a
+    isbefore: []  # 972a
+    duplicate_of: []  # 972a
+    not_duplicate_of: []  # 972a
+    pr_ref:  # 972a
+    description: "Implement ADR-0039 ruling 7: the confidence band check judges a LINKER edge against the spec §12 linker range (match quality, 0.40-0.95), not against the analyzer band of the evidence_type it declares.\n\nTouch points: spec_validator._check_confidence_range (~line 367) and confidence.confidence_within_band; they need to know an edge's producing category. Derive it from the producing pass (the linker registry knows its names; Edge.origin carries the pass id), not from file paths. Mirror the rule in the static audit/ratchet (sibling item) so linker files (packages/hypergumbo-core/src/hypergumbo_core/linkers/) are checked against 0.40-0.95.\n\nConsequence: the 7 linker sites at 0.9 on ast_call_direct found by the 2026-10-15 audit (caddy_module_dispatch:168, graphql:369, graphql_resolver:545, grpc:665, openapi:420, tauri_ipc:691, vue_template_method:117) are in range, so WI-famiv-gumof's sub-class (a) closes by ruling rather than by edits. Test: a linker edge at 0.9 on ast_call_direct is in band; an analyzer edge at 0.9 on ast_call_direct is not; a linker edge at 0.97 is not."  # 972a
+    fields: {}  # 972a

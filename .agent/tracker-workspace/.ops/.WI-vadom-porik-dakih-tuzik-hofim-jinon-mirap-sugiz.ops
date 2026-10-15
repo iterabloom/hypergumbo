@@ -20,3 +20,10 @@
     pr_ref:  # 5973
     description: "A cold `hypergumbo hypergumbo` (2026-10-14, both on Colab and on agent-vm-16) prints these to stderr, none actionable by the user running it:\n\n- CGO-LINKER: \"found 53 C/C++ function implementations but 0 Go cgo calls\"\n- RUBY-FFI-LINKER: \"found 53 C/C++ function implementations but 0 Ruby files\"\n- rust-analyzer hint (\"installed but NOT enabled\" / \"not installed\") — triggered by recorded Rust fixtures under packages/hypergumbo-lang-rust-analyzer/recorded/\n- \"[warn] 42 cross_field validation violation(s); see validation_report in artifact\"\n- \"[passes] 59 of 103 emitted nothing ...\" and \"[passes] 69 of 172 did not run ...\"\n\nThe 53 C functions are test fixtures; the linker warnings assume they are a C library awaiting Go/Ruby callers. Related, not duplicates: WI-tonuh (partial-install warnings never find a linker's requirement row), INV-narib (llvm_ir registered-language guess), WI-vasir (done: suppress false-positive linker warnings on every repo — this is a residue). The validation and [passes] lines are developer diagnostics; candidates for a --debug/verbose gate or a single summary line.\n\nEach warning class needs its own decision (keep / gate / fix trigger); this item collects them so the decisions are made together."  # 5973
     fields: {}  # 5973
+- op: discuss  # 28fc
+  at: '2026-10-15T04:42:34Z'  # 28fc
+  by: agent  # 28fc
+  actor: jgstern_agent  # 28fc
+  clock: 2  # 28fc
+  nonce: 28fc  # 28fc
+  message: "CORRECTION to the description: the '53 C/C++ function implementations' behind the CGO-LINKER and RUBY-FFI-LINKER warnings are NOT test fixtures. Measured on a self-survey 2026-10-15: all 50 C function nodes are vendored tree-sitter grammar sources under packages/hypergumbo-core/src/hypergumbo_core/vendor/ (tree-sitter-lean 28, tree-sitter-wolfram 12, tree-sitter-circom 10), added to the tree by d68a14fb84 (2026-10-10). Same cause also produces 31 of INV-zatu's 42 self-tree violations. So the warning trigger here is vendored third-party C being analysed as first-party source, not a fixture-detection gap."  # 28fc
