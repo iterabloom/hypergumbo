@@ -451,23 +451,38 @@ class TestFormatSilenceSummary:
         line = format_silence_summary(
             {NO_CANDIDATE_FILES: 52, UNREPORTED: 5}, total_passes=78)
         assert line is not None
-        assert "57 of 78" in line          # silent / total
-        assert "no_candidate_files=52" in line
+        assert "5 of 78" in line           # noteworthy silent / total
         assert "unreported=5" in line
+        # WI-vadom: routine reasons are counted, not named.
+        assert "no_candidate_files" not in line
+        assert "52 more routine" in line
         assert "silence_reason" in line    # tells the reader where to look
         assert "\n" not in line            # one line, like the [warn] convention
 
     def test_reasons_are_ordered_most_common_first(self):
         from hypergumbo_core.pass_silence import format_silence_summary
         line = format_silence_summary(
-            {UNREPORTED: 2, NO_CANDIDATE_FILES: 9}, total_passes=20)
-        assert line.index("no_candidate_files") < line.index("unreported")
+            {UNREPORTED: 2, CANDIDATES_UNRESOLVED: 9}, total_passes=20)
+        assert line.index("candidates_unresolved") < line.index("unreported")
 
     def test_ties_break_alphabetically_so_the_line_is_deterministic(self):
         from hypergumbo_core.pass_silence import format_silence_summary
-        a = format_silence_summary({UNREPORTED: 3, NO_CANDIDATE_FILES: 3}, total_passes=9)
-        b = format_silence_summary({NO_CANDIDATE_FILES: 3, UNREPORTED: 3}, total_passes=9)
+        a = format_silence_summary({UNREPORTED: 3, CANDIDATES_UNRESOLVED: 3}, total_passes=9)
+        b = format_silence_summary({CANDIDATES_UNRESOLVED: 3, UNREPORTED: 3}, total_passes=9)
         assert a == b
+
+    def test_none_when_every_silence_is_routine(self):
+        """WI-vadom: nothing to find, at either level, asks nothing of anyone."""
+        from hypergumbo_core.pass_silence import format_silence_summary
+        assert format_silence_summary(
+            {NO_CANDIDATE_FILES: 45, NO_CANDIDATE_CONSTRUCT: 8}, total_passes=103,
+        ) is None
+
+    def test_no_routine_clause_when_nothing_is_routine(self):
+        from hypergumbo_core.pass_silence import format_silence_summary
+        line = format_silence_summary({UNREPORTED: 2}, total_passes=9)
+        assert line is not None
+        assert "routine" not in line
 
 
 class TestEmitSilenceSummary:
@@ -479,8 +494,9 @@ class TestEmitSilenceSummary:
         emit_silence_summary(runs)
         err = capsys.readouterr().err
         assert err.count("\n") == 1
-        assert "2 of 3" in err
+        assert "1 of 3" in err
         assert "unreported=1" in err
+        assert "1 more routine" in err
 
     def test_silent_when_every_pass_emitted(self, capsys):
         from hypergumbo_core.pass_silence import emit_silence_summary
@@ -543,15 +559,31 @@ class TestFormatSkipSummary:
 
     def test_orders_most_common_first_then_alphabetically(self) -> None:
         line = format_skip_summary(
-            {BACKEND_DISABLED: 1, NO_CANDIDATE_FILES: 5, DEPENDENCY_UNAVAILABLE: 1},
+            {PASS_CRASHED: 1, UNREPORTED: 5, DEPENDENCY_UNAVAILABLE: 1},
             total_passes=20,
         )
         assert line is not None
-        assert line.index("no_candidate_files=5") < line.index("backend_disabled=1")
-        assert line.index("backend_disabled=1") < line.index("dependency_unavailable=1")
+        assert line.index("unreported=5") < line.index("dependency_unavailable=1")
+        assert line.index("dependency_unavailable=1") < line.index("pass_crashed=1")
+
+    def test_none_when_every_skip_is_routine(self) -> None:
+        """WI-vadom: no files to run on, or an opt-in backend left off."""
+        assert format_skip_summary(
+            {NO_CANDIDATE_FILES: 67, BACKEND_DISABLED: 2}, total_passes=172,
+        ) is None
+
+    def test_routine_skips_are_counted_not_named(self) -> None:
+        line = format_skip_summary(
+            {NO_CANDIDATE_FILES: 67, BACKEND_DISABLED: 2, DEPENDENCY_UNAVAILABLE: 1},
+            total_passes=172,
+        )
+        assert line is not None
+        assert line.startswith("[passes] 1 of 172 did not run: dependency_unavailable=1;")
+        assert "69 more routine" in line
+        assert "backend_disabled" not in line
 
     def test_names_the_field_to_read_for_detail(self) -> None:
-        line = format_skip_summary({NO_CANDIDATE_FILES: 1}, total_passes=2)
+        line = format_skip_summary({DEPENDENCY_UNAVAILABLE: 1}, total_passes=2)
         assert line is not None
         assert "limits.skipped_passes" in line
 

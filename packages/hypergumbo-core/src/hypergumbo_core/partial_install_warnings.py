@@ -62,15 +62,16 @@ In cli.py after analysis:
         profile, linker_ctx, emit_warnings=True, repo_root=repo_root,
     )
 
-The default ``emit_warnings=True`` emits each finding via
-``warnings.warn(..., UserWarning, stacklevel=2)`` (which the
-Python warnings module routes to stderr). Pass ``emit_warnings=False``
-to suppress emission and iterate over the returned list instead.
+The default ``emit_warnings=True`` writes each finding to stderr as plain
+text (not ``warnings.warn``, whose file:line prefix and echoed source line
+were noise; WI-vadom). Pass ``emit_warnings=False`` to suppress emission and
+iterate over the returned list instead.
 """
 
 from __future__ import annotations
 
-import warnings as python_warnings
+import shlex
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping
@@ -386,6 +387,14 @@ def check_rust_analyzer_disclosure(
         "macros as you — the same trust you extend by opening it in an "
         "editor. Enable it only for repositories you trust."
     )
+    # WI-vadom: the nudge repeats until a decision is recorded (ruling 8
+    # above), so it says how to record one. It fired on every run of
+    # hypergumbo's own tree, whose only Rust is recorded test crates.
+    target = f" {shlex.quote(str(repo_root))}" if repo_root is not None else ""
+    decline = (
+        f"  Not wanted here: hypergumbo trust-backend rust_analyzer{target} "
+        "--revoke  (records the answer; this notice stops)"
+    )
     if enabled:
         # WI-dojud: the backend is already running for THIS invocation, so the
         # "here is how to turn it on" arm would be false. The trust caveat is
@@ -405,7 +414,7 @@ def check_rust_analyzer_disclosure(
             "tree-sitter analyzer.\n"
             "  Enable per run:  --backend rust-analyzer\n"
             "  Or by env:       HYPERGUMBO_RUST_ANALYZER=1\n"
-            f"{caveat}"
+            f"{caveat}\n{decline}"
         )
     else:
         message = (
@@ -413,7 +422,7 @@ def check_rust_analyzer_disclosure(
             "far more precise Rust type and call-target resolution.\n"
             "  Install:  rustup component add rust-analyzer\n"
             "  Then enable per run with --backend rust-analyzer.\n"
-            f"{caveat}"
+            f"{caveat}\n{decline}"
         )
 
     return [PartialInstallWarning(
@@ -606,7 +615,7 @@ def check_partial_install_warnings(
     Args:
         profile: The detected repository profile
         linker_ctx: The linker context after analysis
-        emit_warnings: If True, emit warnings via Python's warnings module
+        emit_warnings: If True, write each warning to stderr
 
     Returns:
         List of all partial install warnings detected.
@@ -631,9 +640,12 @@ def check_partial_install_warnings(
         ),
     )
 
-    # Emit warnings if requested
+    # Plain stderr lines, like the discovery disclosures. Through
+    # ``warnings.warn`` each one was prefixed "<path>/cli.py:12852:
+    # UserWarning:" and followed by the echoed source line, two lines of
+    # noise per message that told the reader nothing (WI-vadom).
     if emit_warnings:
         for warning in all_warnings:
-            python_warnings.warn(warning.message, UserWarning, stacklevel=2)
+            sys.stderr.write(warning.message + "\n")
 
     return all_warnings

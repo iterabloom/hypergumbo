@@ -11,24 +11,26 @@ the project, while first-party C with no cgo calls is still reported.
 
 from __future__ import annotations
 
-import warnings
+import contextlib
+import io
 from pathlib import Path
 
 from hypergumbo_core.cli import run_survey
 
 
 def _survey_warnings(repo: Path, files: dict[str, str]) -> list[str]:
+    """The survey's stderr lines (the CLI writes the warnings there)."""
     for rel, text in files.items():
         path = repo / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
         run_survey(
             repo, repo / "out.json", progress=False,
             include_sketch_precomputed=False, enable_handler_slices=False,
         )
-    return [str(w.message) for w in caught]
+    return err.getvalue().splitlines()
 
 
 _GO = "package main\n\nfunc main() {}\n"

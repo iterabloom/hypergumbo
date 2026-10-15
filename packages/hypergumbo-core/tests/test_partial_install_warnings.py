@@ -769,8 +769,8 @@ class TestCheckPartialLinkerRequirements:
 class TestCheckPartialInstallWarnings:
     """Tests for the combined check function."""
 
-    def test_emits_python_warnings_when_requested(self) -> None:
-        """Warnings are emitted via Python's warnings module."""
+    def test_emits_plain_stderr_lines_when_requested(self, capsys) -> None:
+        """Warnings are plain stderr lines, not ``warnings.warn`` (WI-vadom)."""
         from unittest.mock import patch
         from hypergumbo_core.linkers.registry import LinkerContext
 
@@ -800,13 +800,16 @@ class TestCheckPartialInstallWarnings:
                     profile, ctx, emit_warnings=True
                 )
 
-        # Check that warnings were emitted
-        assert len(w) > 0
-        assert any("zig" in str(warning.message).lower() for warning in w)
+        # No Python warning: its "cli.py:NNN: UserWarning:" prefix and
+        # echoed source line were the noise.
+        assert len(w) == 0
+        err = capsys.readouterr().err
+        assert err.startswith("Detected 5 zig file(s)")
+        assert "UserWarning" not in err
         assert len(result) > 0
 
-    def test_no_python_warnings_when_disabled(self) -> None:
-        """No Python warnings when emit_warnings=False."""
+    def test_nothing_written_when_disabled(self, capsys) -> None:
+        """Nothing on stderr, and no Python warning, when emit_warnings=False."""
         from unittest.mock import patch
         from hypergumbo_core.linkers.registry import LinkerContext
 
@@ -836,8 +839,9 @@ class TestCheckPartialInstallWarnings:
                     profile, ctx, emit_warnings=False
                 )
 
-        # No Python warnings emitted
+        # Nothing emitted
         assert len(w) == 0
+        assert capsys.readouterr().err == ""
         # But we still get the result
         assert len(result) > 0
 

@@ -161,6 +161,47 @@ SILENCE_REASONS: Final[frozenset[str]] = frozenset({
 })
 
 
+#: The reasons a run on an ordinary repository produces in bulk and that ask
+#: nothing of anyone: nothing to find (state A, at the file level and the
+#: construct level) and an opt-in backend the user left off. The stderr lines
+#: count them but do not name them (WI-vadom, owner ruling 2026-10-15): on
+#: hypergumbo's own tree they were 122 of the 128 passes the two lines
+#: reported, which buried the six worth a look. The artifact keeps every
+#: reason.
+ROUTINE_SILENCE_REASONS: Final[frozenset[str]] = frozenset({
+    NO_CANDIDATE_FILES,
+    NO_CANDIDATE_CONSTRUCT,
+    BACKEND_DISABLED,
+})
+
+
+def _summary_parts(counts: Mapping[str, int]) -> tuple[int, str, int] | None:
+    """Split counts into (noteworthy total, rendered parts, routine total).
+
+    ``None`` when every count is routine, so the caller prints nothing.
+    Reasons are ordered most-common-first, ties broken alphabetically.
+    """
+    noteworthy = {
+        reason: n for reason, n in counts.items()
+        if reason not in ROUTINE_SILENCE_REASONS
+    }
+    if not noteworthy:
+        return None
+    parts = ", ".join(
+        f"{reason}={n}"
+        for reason, n in sorted(noteworthy.items(), key=lambda kv: (-kv[1], kv[0]))
+    )
+    total = sum(noteworthy.values())
+    return total, parts, sum(counts.values()) - total
+
+
+def _routine_clause(routine: int) -> str:
+    """The trailing count of routine passes; empty when there are none."""
+    if not routine:
+        return ""
+    return f"; {routine} more routine (nothing to find, or opt-in backend off)"
+
+
 def all_pass_silence_reason_names() -> frozenset[str]:
     """Single source of truth for the pass-silence vocabulary.
 
@@ -232,8 +273,8 @@ def silence_reason_for_candidates(candidates: "Sized") -> str:
     producer" (eleven call sites through this helper — the same shape as
     :data:`NO_CANDIDATE_CONSTRUCT`, which is considered good design) and "no
     consumer" (:func:`summarize_silence` counts by whatever string it finds and
-    :func:`format_silence_summary` prints every reason by name, both wired into
-    the CLI). Recorded in ``docs/adr/0054-pass-silence-candidates-unresolved.md``.
+    :func:`format_silence_summary` prints every non-routine reason by name,
+    both wired into the CLI). Recorded in ``docs/adr/0054-pass-silence-candidates-unresolved.md``.
 
     Note it never returns ``""``: a pass that emitted has no silence to explain,
     and the chokepoints clear a body claim in that case without the body having
@@ -270,11 +311,15 @@ def summarize_silence(analysis_runs: Iterable[Mapping[str, object]]) -> dict[str
 def format_silence_summary(
     counts: Mapping[str, int], *, total_passes: int
 ) -> str | None:
-    """Render the one-line silence summary, or ``None`` when nothing was silent.
+    """Render the one-line silence summary, or ``None`` when none is due.
 
-    Returns ``None`` on an empty summary so a corpus where every pass produced
-    output generates no chatter — the same discipline as
+    Returns ``None`` when no pass was silent for a reason outside
+    :data:`ROUTINE_SILENCE_REASONS`, so a run with nothing worth a look
+    generates no chatter — the same discipline as
     ``spec_validator.emit_stderr_summary``, which is silent on a clean run.
+    The routine passes are counted, not named, at the end of the line, so
+    the share of each named reason among all silent passes (ADR-0054 T1)
+    can still be read off it.
 
     Reasons are ordered most-common-first, ties broken alphabetically, so the
     line is DETERMINISTIC across runs and two surveys can be diffed without
@@ -286,15 +331,13 @@ def format_silence_summary(
     reader who sees a non-zero ``unreported`` needs the per-pass detail in
     ``analysis_runs[].silence_reason`` to act on it.
     """
-    if not counts:
+    split = _summary_parts(counts)
+    if split is None:
         return None
-    silent = sum(counts.values())
-    parts = ", ".join(
-        f"{reason}={n}"
-        for reason, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    )
+    silent, parts, routine = split
     return (
-        f"[passes] {silent} of {total_passes} emitted nothing: {parts} "
+        f"[passes] {silent} of {total_passes} emitted nothing: {parts}"
+        f"{_routine_clause(routine)} "
         f"(per-pass detail in analysis_runs[].silence_reason)"
     )
 
@@ -413,20 +456,19 @@ def format_skip_summary(
 ) -> str | None:
     """Render the one-line skipped-passes summary, or ``None`` when none is due.
 
-    Same discipline as :func:`format_silence_summary`: ``None`` on empty so a
-    run that skipped nothing generates no chatter, most-common-first with
+    Same discipline as :func:`format_silence_summary`: ``None`` when every
+    skip is routine, so a run with nothing worth a look generates no chatter,
+    the routine skips counted at the end of the line, most-common-first with
     alphabetical tie-breaking so two surveys diff without spurious churn, and
     the line names WHERE TO LOOK rather than only that something happened.
     """
-    if not counts:
+    split = _summary_parts(counts)
+    if split is None:
         return None
-    skipped = sum(counts.values())
-    parts = ", ".join(
-        f"{code}={n}"
-        for code, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    )
+    skipped, parts, routine = split
     return (
-        f"[passes] {skipped} of {total_passes} did not run: {parts} "
+        f"[passes] {skipped} of {total_passes} did not run: {parts}"
+        f"{_routine_clause(routine)} "
         f"(per-pass detail in limits.skipped_passes)"
     )
 
