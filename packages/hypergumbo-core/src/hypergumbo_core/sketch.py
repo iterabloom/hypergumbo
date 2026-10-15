@@ -130,6 +130,7 @@ from .discovery import (
     match_content_rule, under_content_rule_dir,
 )
 from .profile import detect_profile, RepoProfile
+from . import run_status
 from .ir import Symbol, Edge, is_external_boundary
 from .paths import names_no_source_file
 from .entrypoints import detect_entrypoints, Entrypoint, EntrypointKind
@@ -416,28 +417,31 @@ class ConfigExtractionMode(Enum):
     HYBRID = "hybrid"
 
 
-class SketchProgress:  # pragma: no cover
-    """Progress reporter for sketch generation with ETA calculation.
+class SketchProgress:
+    """The sketch's phase names, reported into the shared ``run_status``.
 
-    Tracks progress through phases and estimates time remaining based on
-    historical timing of completed phases.
-
-    This class is marked no cover because it's UI-only output code.
+    The sketch used to keep its own clock and print ``[ 45%] ... ETA``
+    from a fixed percentage per phase. It now only names its phases.
+    Timing, the heartbeat and the single ``Complete`` line belong to
+    ``run_status``, which the survey nested inside a cold sketch reports
+    into as well, so the two pipelines show as one timeline. Whether
+    anything prints at all is decided by ``run_status.reports_run`` on
+    ``_generate_sketch_impl``; ``disable`` only silences this reporter.
     """
 
-    PHASES = [  # noqa: RUF012
-        ("profile", "Detecting profile", 0.05),
-        ("readme", "Extracting README", 0.10),
-        ("structure", "Building structure", 0.15),
-        ("frameworks", "Detecting frameworks", 0.20),
-        ("tests", "Analyzing tests", 0.25),
-        ("config", "Extracting config", 0.45),  # Config is often slowest
-        ("analysis", "Running static analysis", 0.70),
-        ("symbols", "Ranking symbols", 0.80),
-        ("embedding", "Embedding additional files", 0.90),
-        ("centrality", "Computing symbol centrality", 0.95),
-        ("format", "Formatting output", 1.0),
-    ]
+    PHASES = {  # noqa: RUF012
+        "profile": "Detecting profile",
+        "readme": "Extracting README",
+        "structure": "Building structure",
+        "frameworks": "Detecting frameworks",
+        "tests": "Analyzing tests",
+        "config": "Extracting config",
+        "analysis": "Running static analysis",
+        "symbols": "Ranking symbols",
+        "embedding": "Embedding additional files",
+        "centrality": "Computing symbol centrality",
+        "format": "Formatting output",
+    }
 
     # Display text for cached phases (overrides PHASES display text)
     CACHED_DISPLAY = {  # noqa: RUF012
@@ -450,143 +454,32 @@ class SketchProgress:  # pragma: no cover
         "centrality": "Using cached centrality",
     }
 
-    def __init__(self, output_stream=None):
-        """Initialize progress reporter.
-
-        Args:
-            output_stream: Stream to write progress to (default: sys.stderr).
-        """
-        import sys
-        import time
-        self._stream = output_stream or sys.stderr
-        self._start_time = time.time()
-        self._phase_times: dict[str, float] = {}
-        self._current_phase_idx = 0
-        # WI-vuhas: \r-based progress redraw garbles captured stderr
-        # (`2>&1`, pipes, files). Only emit when the stream is a TTY.
-        self._enabled = bool(getattr(self._stream, "isatty", lambda: False)())
-
-    def disable(self) -> None:
-        """Disable progress output."""
-        self._enabled = False
-
-    def enable(self) -> None:
-        """Enable progress output."""
+    def __init__(self) -> None:
         self._enabled = True
 
-    def start_phase(self, phase_name: str, cached: bool = False) -> None:
-        """Mark the start of a phase.
+    def disable(self) -> None:
+        """Stop reporting phases from this sketch."""
+        self._enabled = False
 
-        Args:
-            phase_name: Name of the phase (e.g., "profile", "config").
-            cached: If True, show "loading cached" message instead of "computing".
-        """
+    def start_phase(self, phase_name: str, cached: bool = False) -> None:
+        """Report entry into a named sketch phase (``"config"``, ...)."""
         if not self._enabled:
             return
-
-        import time
-
-        # Find phase index and display info
-        phase_info = None
-        for idx, (name, display, progress) in enumerate(self.PHASES):
-            if name == phase_name:
-                phase_info = (idx, display, progress)
-                self._current_phase_idx = idx
-                break
-
-        if phase_info is None:
-            return
-
-        idx, display, progress = phase_info
-
-        # Use cached display text if available and cached=True
-        if cached and phase_name in self.CACHED_DISPLAY:
-            display = self.CACHED_DISPLAY[phase_name]
-
-        pct = int(progress * 100)
-
-        # Calculate ETA based on elapsed time and progress
-        elapsed = time.time() - self._start_time
-        if progress > 0:
-            estimated_total = elapsed / progress
-            remaining = estimated_total - elapsed
-            if remaining > 0:
-                eta_str = f" ETA {remaining:.0f}s"
-            else:
-                eta_str = ""
-        else:
-            eta_str = ""
-
-        # Write progress line (carriage return to overwrite)
-        self._stream.write(f"\r[{pct:3d}%] {display}...{eta_str}    ")
-        self._stream.flush()
+        display = self.PHASES[phase_name]
+        if cached:
+            display = self.CACHED_DISPLAY.get(phase_name, display)
+        run_status.phase(f"Sketch: {display}")
 
     def complete_phase(self, phase_name: str) -> None:
-        """Mark a phase as complete and record timing.
-
-        Args:
-            phase_name: Name of the phase that completed.
-        """
-        if not self._enabled:
-            return
-
-        import time
-        self._phase_times[phase_name] = time.time()
+        """Phase ends are implied by the next ``start_phase``; kept for callers."""
 
     def update_item_progress(self, label: str, current: int, total: int) -> None:
-        """Update progress for item-level operations within a phase.
-
-        Args:
-            label: Description of items being processed (e.g., "Embedding files").
-            current: Current item number (1-indexed).
-            total: Total number of items.
-        """
-        if not self._enabled:
-            return
-
-        import time
-
-        # Calculate overall progress based on current phase
-        phase_progress = 0.0
-        next_progress = 1.0
-        for idx, (_name, _display, progress) in enumerate(self.PHASES):
-            if idx == self._current_phase_idx:
-                phase_progress = progress
-                if idx + 1 < len(self.PHASES):
-                    next_progress = self.PHASES[idx + 1][2]
-                break
-
-        # Interpolate within the phase
-        item_fraction = current / total if total > 0 else 1.0
-        phase_span = next_progress - phase_progress
-        overall_progress = phase_progress + (item_fraction * phase_span * 0.9)
-        pct = int(overall_progress * 100)
-
-        # Calculate ETA
-        elapsed = time.time() - self._start_time
-        if overall_progress > 0:
-            estimated_total = elapsed / overall_progress
-            remaining = estimated_total - elapsed
-            if remaining > 0:
-                eta_str = f" ETA {remaining:.0f}s"
-            else:
-                eta_str = ""
-        else:
-            eta_str = ""
-
-        # Write progress line
-        self._stream.write(f"\r[{pct:3d}%] {label}: {current}/{total}{eta_str}    ")
-        self._stream.flush()
+        """Attach a real count (``Embedding files 41/53``) to the current phase."""
+        if self._enabled:
+            run_status.item(label, current, total)
 
     def finish(self) -> None:
-        """Mark progress as complete and show final status."""
-        if not self._enabled:
-            return
-
-        import time
-        elapsed = time.time() - self._start_time
-        self._stream.write(f"\r[100%] Complete in {elapsed:.1f}s           \n")
-        self._stream.flush()
+        """The ``Complete`` line is printed by ``run_status``; kept for callers."""
 
 
 # Probe system for embedding-based config extraction:
@@ -6390,6 +6283,7 @@ def generate_sketch(
         set_file_index(prev_index)
 
 
+@run_status.reports_run
 def _generate_sketch_impl(
     repo_root: Path,
     max_tokens: Optional[int] = None,
@@ -6521,7 +6415,7 @@ def _generate_sketch_impl(
                 # No cache exists - run analysis to populate it
                 _log("No cached results found, running analysis...")
                 from .cli import run_behavior_map
-                run_behavior_map(repo_root)
+                run_behavior_map(repo_root, progress=progress)
                 # Now load the freshly generated cache. RE-DISCOVER: the pre-run
                 # lookup returned None (nothing existed yet), so we must resolve
                 # the just-written survey.json rather than reuse the None handle

@@ -14,6 +14,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- Progress: phase, elapsed, 30s stack heartbeats; no ETA.
 - Retired test-only `_uncatalogued_external_modules`; gate rationale now on `_adjudicate_external_modules`.
 
 ## [9.0.0] - 2026-10-14
