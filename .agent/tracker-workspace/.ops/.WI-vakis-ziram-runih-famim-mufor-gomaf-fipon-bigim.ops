@@ -21,3 +21,18 @@
     pr_ref:  # deb6
     description: "Amend docs/adr/0004-file-taxonomy.md in place (dated 2026-10-15; Status stays Accepted) per the architect decision the owner adopted 2026-10-15: committed vendored code stays ANALYSED (point 3 kept), but it stops speaking for the project; git submodules move to installed-dependency handling. Also update the last bullet of docs/adr/0016-io-boundary-analysis.md §7 (also says submodules are analysed) and docs/hypergumbo-spec.md around line 212. Docs only.\n\n- Point 3: remove \"git submodules\" from the analysed list.\n- New 3a \"Analysed is not representative\": language breakdown, LOC totals, linker activation and partial-install diagnostics count tiers 1-2 only; tier 3 is disclosed separately (disclosure line in a sibling item).\n- New 3b: declarations by the ANALYSED repo (.gitattributes linguist-vendored, project config) never skip committed code. Evidence: linguist-vendored marks first-party code in the corpus (~/ALL_REPOS/whole_bunch_of_repos: kserve `*.sh`, litellm `*.ipynb`, emscripten `test/*` and `system/`, envoy certificates.inc; 10-14 repos use it). It is a GitHub language-bar control, not a provenance claim; skipping on it is a silent wrong exclusion (point 7 fallback) and lets the analysed repo choose what hypergumbo reads (ADR-0045 ruling 3).\n- Point 1 table: add \"git submodule | path in .gitmodules | gitlink (mode 160000) in HEAD, directory populated | submodule path\". Rationale: HEAD holds only a gitlink, so by point 3's own test the contents are not committed; a fresh clone never has them while a dev box may (corpus: 35 repos, 362 submodule paths, 0 populated) -- the parity argument point 3 rests on.\n- Rejected alternatives with reasons: skip by linguist-vendored; skip by content signature (reverses the 2026-10-06 ruling for committed go-mod vendor trees; the proposed tree-sitter signature does not even match hypergumbo's own vendor/, which has no grammar.js; would cut cgo edges into vendored C)."  # deb6
     fields: {}  # deb6
+- op: update  # 37ec
+  at: '2026-10-15T06:59:06Z'  # 37ec
+  by: agent  # 37ec
+  actor: jgstern_agent  # 37ec
+  clock: 2  # 37ec
+  nonce: 37ec  # 37ec
+  set:  # 37ec
+    status: done  # 37ec
+- op: discuss  # a787
+  at: '2026-10-15T06:59:06Z'  # a787
+  by: agent  # a787
+  actor: jgstern_agent  # a787
+  clock: 3  # a787
+  nonce: a787  # a787
+  message: "Merged in PR #1605 (bab7eed514). ADR-0004: header note; point 2 table gains the git-submodule row plus the 'why a submodule is installed' paragraph (gitlink-only HEAD, 35 repos / 362 paths / 0 populated); point 3 drops submodules from the analysed list; new 3a (summaries count tiers 1-2; tier 3 disclosed) and 3b (repo declarations such as linguist-vendored never skip committed code) with the rejected alternatives (linguist-vendored; content signature). ADR-0016 section 7 bullet and spec Analysis options updated (marked in progress). Docs-only; implementation is WI-dipag, WI-kojul, WI-pasan, WI-tiril."  # a787

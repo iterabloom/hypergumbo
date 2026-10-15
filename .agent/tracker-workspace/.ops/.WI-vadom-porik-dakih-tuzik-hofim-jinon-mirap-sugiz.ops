@@ -27,3 +27,10 @@
   clock: 2  # 28fc
   nonce: 28fc  # 28fc
   message: "CORRECTION to the description: the '53 C/C++ function implementations' behind the CGO-LINKER and RUBY-FFI-LINKER warnings are NOT test fixtures. Measured on a self-survey 2026-10-15: all 50 C function nodes are vendored tree-sitter grammar sources under packages/hypergumbo-core/src/hypergumbo_core/vendor/ (tree-sitter-lean 28, tree-sitter-wolfram 12, tree-sitter-circom 10), added to the tree by d68a14fb84 (2026-10-10). Same cause also produces 31 of INV-zatu's 42 self-tree violations. So the warning trigger here is vendored third-party C being analysed as first-party source, not a fixture-detection gap."  # 28fc
+- op: discuss  # 9b97
+  at: '2026-10-15T05:07:33Z'  # 9b97
+  by: agent  # 9b97
+  actor: jgstern_agent  # 9b97
+  clock: 3  # 9b97
+  nonce: 9b97  # 9b97
+  message: "The CGO-LINKER / RUBY-FFI-LINKER half of this item is now WI-dipag (count only tier 1-2 implementations; move the check after classification). Remaining here: the rust-analyzer hint, the [warn] validation line, the [passes] lines."  # 9b97
