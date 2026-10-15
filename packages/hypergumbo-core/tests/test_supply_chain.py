@@ -3396,3 +3396,33 @@ class TestSupplyChainSummaryFileScoping:
             [self._sym("a.py", "file", "a.py", 1)], []
         )
         assert scs["external_dep"]["directness"] == {}
+
+
+class TestTierByPath:
+    """WI-kojul: the path-only part of classify_file, for cheap summaries."""
+
+    def test_vendored_dependency_is_tier_3(self) -> None:
+        from hypergumbo_core.supply_chain import Tier, tier_by_path
+
+        assert tier_by_path("pkg/src/x/vendor/tree-sitter-lean/src/parser.c") == Tier.EXTERNAL_DEP
+        assert tier_by_path("node_modules/left-pad/index.js") == Tier.EXTERNAL_DEP
+
+    def test_derived_by_path_is_tier_4(self) -> None:
+        from hypergumbo_core.supply_chain import Tier, tier_by_path
+
+        assert tier_by_path("static/app.min.js") == Tier.DERIVED
+
+    def test_own_code_has_no_path_tier(self) -> None:
+        from hypergumbo_core.supply_chain import tier_by_path
+
+        assert tier_by_path("src/app.py") is None
+        assert tier_by_path("native/helper.c") is None
+
+    def test_agrees_with_classify_file(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import classify_file, tier_by_path
+
+        for rel in ("a/vendor/b/c.c", "node_modules/x/y.js", "x/app.min.js"):
+            path = tmp_path / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("int a;\n")
+            assert classify_file(path, tmp_path).tier == tier_by_path(rel)

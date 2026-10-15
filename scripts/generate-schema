@@ -202,7 +202,8 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                                         "`lines`/`percentage` keys the producer "
                                         "(profile.LanguageStats.to_dict) never "
                                         "emits; the real emitted shape is "
-                                        "{files, loc} plus test_files."
+                                        "{files, loc} plus test_files, "
+                                        "own_files and own_loc."
                                     )
                                 },
                                 "test_files": {
@@ -223,6 +224,33 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                                         "measured (a profile restored from a "
                                         "cache that predates the field); "
                                         "absent is not 0."
+                                    )
+                                },
+                                "own_files": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "description": (
+                                        "How many of `files` are the "
+                                        "project's own code: supply-chain "
+                                        "tier 1-2 by path "
+                                        "(supply_chain.tier_by_path; no file "
+                                        "read). Committed vendored and "
+                                        "derived files are still analysed "
+                                        "but leave this count, and the "
+                                        "sketch's language line and totals "
+                                        "read it (WI-kojul, ADR-0004 point "
+                                        "3a). Omitted when not measured; "
+                                        "absent is not 0."
+                                    )
+                                },
+                                "own_loc": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "description": (
+                                        "The `loc` of the `own_files` files "
+                                        "(0 when LOC was not counted). "
+                                        "Omitted when not measured; absent "
+                                        "is not 0 (WI-kojul)."
                                     )
                                 }
                             }

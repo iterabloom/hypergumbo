@@ -801,16 +801,43 @@ class LanguageStats:
     ``None`` means not measured (a profile restored from a cache written
     before the field existed) and is omitted from ``to_dict``; it is never
     read as ``0``, which is the positive claim "no test files".
+
+    ``own_files`` / ``own_loc`` (WI-kojul, ADR-0004 point 3a) are the share
+    of ``files`` / ``loc`` that is the project's own code: tier 1-2 by
+    :func:`supply_chain.tier_by_path`, a path-only check so the profile reads
+    no extra files. Committed vendored code (tier 3) and derived files are
+    still analysed, but summaries that describe the project -- the sketch's
+    language line and LOC totals -- read these, so 305,712 lines of vendored
+    tree-sitter C no longer make hypergumbo "26% C". Separate fields for the
+    same reason as ``test_files``. ``None`` means not measured; readers use
+    ``own_files_or_all`` / ``own_loc_or_all``, which fall back to the whole
+    count.
     """
 
     files: int = 0
     loc: int = 0
     test_files: int | None = None
+    own_files: int | None = None
+    own_loc: int | None = None
+
+    @property
+    def own_files_or_all(self) -> int:
+        """``own_files``, or ``files`` when the split was not measured."""
+        return self.files if self.own_files is None else self.own_files
+
+    @property
+    def own_loc_or_all(self) -> int:
+        """``own_loc``, or ``loc`` when the split was not measured."""
+        return self.loc if self.own_loc is None else self.own_loc
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {"files": self.files, "loc": self.loc}
         if self.test_files is not None:
             result["test_files"] = self.test_files
+        if self.own_files is not None:
+            result["own_files"] = self.own_files
+        if self.own_loc is not None:
+            result["own_loc"] = self.own_loc
         return result
 
     @classmethod
@@ -819,6 +846,8 @@ class LanguageStats:
             files=d.get("files", 0),
             loc=d.get("loc", 0),
             test_files=d.get("test_files"),
+            own_files=d.get("own_files"),
+            own_loc=d.get("own_loc"),
         )
 
 
@@ -962,6 +991,7 @@ def _detect_languages(
     # silently absent for the rest. First declaring producer wins.
     from .analyze.registry import analyzers_for_language, ensure_discovered
     from .selection.filters import is_test_path
+    from .supply_chain import tier_by_path
     ensure_discovered()
 
     for lang, patterns in LANGUAGE_EXTENSIONS.items():
@@ -975,15 +1005,17 @@ def _detect_languages(
             # Use a set to deduplicate files (e.g., *.ts and *.d.ts both match foo.d.ts)
             files = set(find_files(repo_root, patterns, excludes=excludes))
         if files:
-            loc = sum(_count_loc(f) for f in files) if count_loc else 0
             # WI-ritaf: classify on the REPO-RELATIVE path, so a checkout that
             # itself lives under a ``tests/`` directory is not all-test.
-            test_files = sum(
-                1 for f in files
-                if is_test_path(f.relative_to(repo_root).as_posix())
-            )
+            rels = {f: f.relative_to(repo_root).as_posix() for f in files}
+            file_loc = {f: _count_loc(f) if count_loc else 0 for f in files}
+            own = [f for f in files if tier_by_path(rels[f]) is None]
             languages[lang] = LanguageStats(
-                files=len(files), loc=loc, test_files=test_files,
+                files=len(files),
+                loc=sum(file_loc.values()),
+                test_files=sum(1 for f in files if is_test_path(rels[f])),
+                own_files=len(own),
+                own_loc=sum(file_loc[f] for f in own),
             )
 
     return languages
