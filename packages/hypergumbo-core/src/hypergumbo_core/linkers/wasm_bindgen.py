@@ -513,11 +513,13 @@ WASM_BINDGEN_REQUIREMENTS = [
         name="js_ts_files",
         description="JavaScript/TypeScript files (potential wasm import callers)",
         check=_count_js_ts_files,
+        languages=("javascript", "typescript"),
     ),
     LinkerRequirement(
         name="wasm_bindgen_functions",
         description="Rust #[wasm_bindgen] functions (WASM exports)",
         check=_count_wasm_bindgen_functions,
+        languages=("rust",),
     ),
 ]
 

@@ -368,6 +368,7 @@ DEPENDENCY_REQUIREMENTS = [
         name="toml_dependencies",
         description="TOML dependency declarations (Cargo.toml, pyproject.toml)",
         check=_count_toml_dependencies,
+        languages=("rust", "python"),
     ),
     LinkerRequirement(
         name="import_edges",
@@ -375,6 +376,7 @@ DEPENDENCY_REQUIREMENTS = [
         # is excluded (stdlib/toolchain and first-party imports).
         description="third-party Rust/Python import edges",
         check=_count_import_edges,
+        languages=("rust", "python"),
     ),
 ]
 

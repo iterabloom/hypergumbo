@@ -630,6 +630,7 @@ RESOLVER_REQUIREMENTS = [
         name="graphql_schema",
         description="GraphQL schema symbols (type/field/interface)",
         check=_count_graphql_schema,
+        languages=("graphql",),
     ),
 ]
 

@@ -323,11 +323,13 @@ LUA_FFI_REQUIREMENTS = [
         name="lua_files",
         description="Lua files (potential LuaJIT FFI callers)",
         check=_count_lua_files,
+        languages=("lua",),
     ),
     LinkerRequirement(
         name="c_functions",
         description="C/C++ function implementations (FFI targets)",
         check=_count_c_functions,
+        languages=("c", "cpp"),
     ),
 ]
 

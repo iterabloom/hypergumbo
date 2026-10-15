@@ -1126,6 +1126,7 @@ GRPC_REQUIREMENTS = [
         name="proto_files",
         description=".proto service definition files",
         check=_count_proto_files,
+        languages=("proto",),
     ),
     LinkerRequirement(
         name="grpc_symbols",

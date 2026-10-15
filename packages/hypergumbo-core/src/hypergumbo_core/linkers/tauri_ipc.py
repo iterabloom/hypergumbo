@@ -1010,11 +1010,13 @@ TAURI_IPC_REQUIREMENTS = [
         name="js_ts_files",
         description="JavaScript/TypeScript files (potential Tauri invoke callers)",
         check=_count_js_ts_files,
+        languages=("javascript", "typescript"),
     ),
     LinkerRequirement(
         name="tauri_command_functions",
         description="Rust #[tauri::command] functions (IPC targets)",
         check=_count_tauri_commands,
+        languages=("rust",),
     ),
 ]
 
