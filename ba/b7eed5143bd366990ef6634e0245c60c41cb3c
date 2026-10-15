@@ -1,0 +1,15 @@
+Original commit body from 37aab529d9e48c0862faeb21559947cf1c891da6:
+
+ADR-0039 ruling 6: a name resolver's match quality interpolates within
+the pathway band (low + (base - low) x score) instead of multiplying a
+private per-producer base. Ruling 7: linker edges are judged by the spec
+section 12 linker range (0.40-0.95), not the declared evidence type's
+analyzer band; supersedes INV-zatug's July websocket ruling.
+
+ADR-0004 point 3a: committed vendored (tier 3) code stays analysed but
+summaries count tiers 1-2 only. 3b: the analysed repo's declarations
+(linguist-vendored) never skip committed code. Git submodules move to
+installed-dependency handling. ADR-0016 section 7 and spec updated.
+
+Tracker: WI-tagov, WI-vakis.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
