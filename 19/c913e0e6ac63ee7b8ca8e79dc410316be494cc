@@ -1,0 +1,20 @@
+Original commit body from b6b46d71dd067018e57e25f3ceae7be62c8962ec:
+
+check_partial_linker_requirements looked up a table keyed jni /
+swift_objc / dependency with diag.linker_name, which carries the
+registered name (jni-linker), so the lookup never hit: no package
+suggestion was ever produced and the WI-ruman relevance gate never ran.
+
+LinkerRequirement now declares the languages that can satisfy it
+(carried on RequirementStatus); the table is gone, so there is no
+second key to drift. 16 linkers declare them. The gate now silences,
+e.g., a Tauri app with a Rust frontend ("0 JavaScript/TypeScript
+files"). A suggested package that is already installed is dropped.
+Label "CGO-LINKER linker" becomes "CGO linker".
+
+LANGUAGE_PACKAGES named the wrong package for 22 of 56 languages
+(sql/lua/html/css are in -mainstream, cuda/proto/graphql in -common);
+the unanalyzed-files warning used it live. Regenerated (74 entries) and
+checked by a test that reads every @register_analyzer in the tree.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
