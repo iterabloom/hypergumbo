@@ -12820,14 +12820,6 @@ def run_survey(
     widen_route_stable_ids(all_symbols)
     split_within_file_stable_id_collisions(all_symbols)
 
-    # Check for partial installation issues (ADR-0010 Item 8)
-    # Emit warnings for: unanalyzed files, partial linker requirements
-    check_partial_install_warnings(
-        profile, linker_ctx, emit_warnings=True, repo_root=repo_root,
-    )
-
-    del linker_ctx, captured_symbols  # Free linker data structures
-
     # Deduplicate edges by edge_key (src + dst + type, ignoring line) and
     # remove self-loops (src == dst) which inflate centrality without adding
     # useful connectivity. Common sources: visitor patterns, name collisions.
@@ -12835,6 +12827,9 @@ def run_survey(
     # different call sites (e.g., 24 calls from InitialSchema#up to
     # Provisioner#create_table in postal).
     all_edges = deduplicate_edges(all_edges, remove_self_loops=True)
+    # The partial-install check below reads linker_ctx after classification;
+    # point it at the deduplicated list so the pre-dedup one can be freed.
+    linker_ctx.edges = all_edges
     _log_memory("after linkers")
 
     # WI-fanun: stamp structural fingerprints on analyzer-produced source
@@ -12848,6 +12843,17 @@ def run_survey(
     # Apply supply chain classification to all symbols
     run_status.phase("Classifying symbols")
     _classify_symbols(all_symbols, repo_root, package_roots, limits=limits)
+
+    # Check for partial installation issues (ADR-0010 Item 8). Emit warnings
+    # for: unanalyzed files, partial linker requirements. It runs after
+    # classification because the linker-requirement counts include only
+    # first-party code (tiers 1-2, ADR-0004 point 3a): linker_ctx.symbols is
+    # all_symbols, so the tiers stamped above are visible to it.
+    check_partial_install_warnings(
+        profile, linker_ctx, emit_warnings=True, repo_root=repo_root,
+    )
+
+    del linker_ctx, captured_symbols  # Free linker data structures
 
     # WI-bosab: now that Symbol.is_test_file is set, strip naming-convention
     # framework concepts (service_by_name / controller_by_name / handler_by_name)

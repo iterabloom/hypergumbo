@@ -25,7 +25,15 @@ system. Linkers with partial requirements (some met, some not) trigger
 a linker whose activation would not fire on this tree (WI-zamoz), one whose
 only met requirements are ``*_files`` presence counts (WI-vasir), and one
 whose unmet requirements map (via ``LINKER_LANGUAGE_REQUIREMENTS``) only to
-languages absent from the tree (WI-ruman). That third gate, and the package
+languages absent from the tree (WI-ruman). The requirement counts see only
+the project's own code (WI-dipag, ADR-0004 point 3a): symbols of supply-chain
+tier 1-2, and edges whose source is not a tier-3+ symbol. Committed vendored
+code is still linked; it just does not make the project look like a partial
+install. Measured on hypergumbo itself: 53 C functions in the vendored
+tree-sitter grammar sources (``hypergumbo_core/vendor/``) fired
+"CGO-LINKER linker found 53 C/C++ function implementations but 0 Go cgo
+calls" and the matching RUBY-FFI warning. The CLI therefore calls the check
+after supply-chain classification, which is what stamps the tiers. That third gate, and the package
 suggestions, are currently inert: ``LINKER_LANGUAGE_REQUIREMENTS`` is keyed
 ``jni`` / ``swift_objc`` / ``dependency`` while diagnostics carry the
 registered names (``jni-linker``, ...), so the lookup never hits.
@@ -418,6 +426,34 @@ def check_rust_analyzer_disclosure(
     )]
 
 
+#: Highest supply-chain tier that counts as the project's own code
+#: (FIRST_PARTY = 1, INTERNAL_DEP = 2; ADR-0004 point 3a).
+_FIRST_PARTY_MAX_TIER = 2
+
+
+def first_party_view(linker_ctx: "LinkerContext") -> "LinkerContext":
+    """Return a copy of ``linker_ctx`` restricted to the project's own code.
+
+    Keeps symbols of supply-chain tier 1-2 and drops edges whose source is a
+    tier-3+ symbol (an edge whose source is not a known symbol is kept). The
+    linker-requirement counters read ``symbols`` and ``edges`` only, so this
+    makes every counter first-party without touching the counters.
+    """
+    from dataclasses import replace
+
+    vendored_ids = {
+        sym.id for sym in linker_ctx.symbols
+        if sym.supply_chain_tier > _FIRST_PARTY_MAX_TIER
+    }
+    if not vendored_ids:
+        return linker_ctx
+    return replace(
+        linker_ctx,
+        symbols=[s for s in linker_ctx.symbols if s.id not in vendored_ids],
+        edges=[e for e in linker_ctx.edges if e.src not in vendored_ids],
+    )
+
+
 def check_partial_linker_requirements(
     linker_ctx: "LinkerContext",
 ) -> list[PartialInstallWarning]:
@@ -436,7 +472,7 @@ def check_partial_linker_requirements(
     from .linkers.registry import check_linker_requirements, get_all_linkers
 
     warnings: list[PartialInstallWarning] = []
-    diagnostics = check_linker_requirements(linker_ctx)
+    diagnostics = check_linker_requirements(first_party_view(linker_ctx))
 
     # WI-zamoz: skip linkers that wouldn't have activated on this tree.
     # check_linker_requirements iterates ALL registered linkers, so e.g.

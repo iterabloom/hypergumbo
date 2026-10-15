@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -17,6 +18,10 @@ from hypergumbo_core.partial_install_warnings import (
     check_unanalyzed_files,
 )
 from hypergumbo_core.profile import LanguageStats, RepoProfile
+
+if TYPE_CHECKING:
+    from hypergumbo_core.ir import Edge, Symbol
+    from hypergumbo_core.linkers.registry import LinkerContext
 
 
 def _make_jni_diagnostics(
@@ -1189,3 +1194,104 @@ class TestRustAnalyzerDisclosureRespectsTheGate:
             {"1", "true", "yes", "on"},
         )
         assert not hasattr(piw, "_RUST_ANALYZER_TRUTHY")
+
+
+class TestFirstPartyRequirementCounts:
+    """WI-dipag / ADR-0004 point 3a: linker-requirement counts see only tiers 1-2.
+
+    These run the REAL registry (``check_linker_requirements`` over every
+    registered linker) rather than mocked diagnostics, so the cgo counters
+    themselves are exercised. Linkers register when ``hypergumbo_core.cli``
+    imports their modules, hence the import in ``_ctx``.
+    """
+
+    @staticmethod
+    def _sym(lang: str, name: str, path: str, tier: int) -> "Symbol":
+        from hypergumbo_core.ir import Span, Symbol
+
+        return Symbol(
+            id=f"{lang}:{path}:1-2:{name}:function",
+            name=name,
+            kind="function",
+            language=lang,
+            path=path,
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+            origin=lang,
+            supply_chain_tier=tier,
+        )
+
+    @staticmethod
+    def _cgo_call(src: str) -> "Edge":
+        from hypergumbo_core.ir import Edge
+
+        return Edge.create(
+            src=src, dst="go:C:0-0:puts:unresolved", edge_type="calls",
+            line=3, evidence_type="method_call", is_resolved=False,
+            origin="go", origin_run_id="test",
+        )
+
+    def _ctx(self, symbols: list, edges: list | None = None) -> "LinkerContext":
+        import hypergumbo_core.cli  # registers the linkers (import side effect)
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        return LinkerContext(
+            repo_root=Path("."),
+            symbols=symbols,
+            edges=edges or [],
+            detected_languages={"go", "c"},
+        )
+
+    def _cgo_warnings(self, ctx: "LinkerContext") -> list:
+        return [
+            w for w in check_partial_linker_requirements(ctx)
+            if "cgo" in (w.linker or "")
+        ]
+
+    def test_vendored_c_alone_does_not_warn(self) -> None:
+        # The hypergumbo self-survey case: C functions only in a committed
+        # vendored grammar tree (tier 3), and Go code with no cgo calls.
+        symbols = [self._sym("go", "main", "main.go", 1)] + [
+            self._sym("c", f"ts_fn{i}", "vendor/tree-sitter-lean/src/parser.c", 3)
+            for i in range(53)
+        ]
+        assert self._cgo_warnings(self._ctx(symbols)) == []
+
+    def test_first_party_c_still_warns(self) -> None:
+        # The warning is narrowed, not deleted: first-party C with no cgo
+        # calls is still a partial install.
+        symbols = [
+            self._sym("go", "main", "main.go", 1),
+            self._sym("c", "helper", "native/helper.c", 1),
+        ]
+        warnings_list = self._cgo_warnings(self._ctx(symbols))
+        assert len(warnings_list) == 1
+        assert "1 C/C++ function implementations" in warnings_list[0].message
+        assert warnings_list[0].linker == "cgo-linker"
+
+    def test_cgo_calls_from_vendored_go_do_not_count(self) -> None:
+        # A cgo call inside vendored Go is not the project's cgo call: with
+        # it filtered out, first-party C plus zero first-party calls warns.
+        vendored_go = self._sym("go", "vend", "vendor/x/x.go", 3)
+        symbols = [vendored_go, self._sym("c", "helper", "native/helper.c", 1)]
+        ctx = self._ctx(symbols, [self._cgo_call(vendored_go.id)])
+        assert len(self._cgo_warnings(ctx)) == 1
+
+    def test_first_party_view_is_identity_without_vendored_code(self) -> None:
+        from hypergumbo_core.partial_install_warnings import first_party_view
+
+        ctx = self._ctx([self._sym("c", "helper", "native/helper.c", 1)])
+        assert first_party_view(ctx) is ctx
+
+    def test_first_party_view_drops_tier3_symbols_and_their_edges(self) -> None:
+        from hypergumbo_core.partial_install_warnings import first_party_view
+
+        own = self._sym("go", "main", "main.go", 2)
+        vend = self._sym("c", "lib", "third_party/lib.c", 3)
+        own_edge, vend_edge = self._cgo_call(own.id), self._cgo_call(vend.id)
+        ctx = self._ctx([own, vend], [own_edge, vend_edge])
+        view = first_party_view(ctx)
+        assert view.symbols == [own]
+        assert view.edges == [own_edge]
+        # The caller's context is untouched.
+        assert ctx.symbols == [own, vend]
+        assert ctx.edges == [own_edge, vend_edge]
