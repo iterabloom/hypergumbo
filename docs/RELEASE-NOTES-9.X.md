@@ -76,7 +76,7 @@ partial-install warnings name the right package.
 
 ---
 
-## Unreleased
+## 9.1.0 — 2026-10-16
 
 > `SCHEMA_VERSION` 0.20.14 → 0.20.15 adds three fields. `confidence_model`
 > v2.1 → v2.2 changes values, not shape. No `--json` envelope version
