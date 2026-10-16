@@ -725,10 +725,12 @@ main = print (f 42)
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         f_edges = [e for e in call_edges if e.dst.endswith(":f:function")]
         assert len(f_edges) >= 1
-        # Single-letter penalty: 0.85 * resolver_conf * 0.15
-        # Should be well below the normal ~0.68 threshold
+        # Single-letter penalty: the match grade is resolver_conf * 0.15, and
+        # ADR-0039 ruling 6 interpolates it in the ast_call band [0.40, 0.85],
+        # so the edge sits just above the floor (the old base * grade form put
+        # it at 0.13, below the band).
         for edge in f_edges:
-            assert edge.confidence < 0.20
+            assert edge.confidence == pytest.approx(0.40 + 0.45 * 0.15)
 
     def test_normal_name_call_gets_full_confidence(self, tmp_path: Path) -> None:
         """A call to a normal-length name gets no penalty."""

@@ -29,7 +29,7 @@ TWO channels know a call is a launch: the catalogue
 analyzer sets because ADR-0016 rules out a bash io_primitives catalogue).
 :func:`_opaque_launch_sites` was taught to read the producer stamp FIRST, so
 that opacity is structural rather than a favour the catalogue does.
-:func:`_uncatalogued_external_modules` was never taught it and asks
+:func:`_adjudicate_external_modules` was never taught it and asks
 ``classify_call`` only. The python path was immune only INCIDENTALLY, because
 ``subprocess.run`` carries a row that ``classify_call`` matches —
 ``test_the_python_path_was_immune_only_by_luck`` pins that, since an immunity
@@ -51,7 +51,7 @@ from hypergumbo_core.io_boundary import IoBoundaryCatalog, IoPrimitive
 from hypergumbo_core.verify_claims import (
     BoundaryCoverage,
     _opaque_launch_sites,
-    _uncatalogued_external_modules,
+    _adjudicate_external_modules,
     compute_boundary_coverage,
 )
 
@@ -105,8 +105,8 @@ REQUESTS = {
 class TestALaunchIsNotABlindSpot:
     def test_a_producer_stamped_launch_is_not_an_uncatalogued_module(self) -> None:
         """THE DEFECT, at the one-edge resolution that makes it undeniable."""
-        unknown = _uncatalogued_external_modules([LAUNCH], {"bash": _bash_catalog()})
-        assert unknown == [], (
+        unknown = _adjudicate_external_modules([LAUNCH], {"bash": _bash_catalog()}).unknown
+        assert unknown == set(), (
             f"the launch counted itself as blindness: {unknown}. It is disclosed "
             "as an opaque launch on the same edge, so counting it here makes "
             "qualifying_only unsatisfiable whenever a launch exists."
@@ -142,8 +142,8 @@ class TestTheGateStillRefusesRealBlindness:
     every assertion above while destroying the gate INV-buzab/INV-zubuh built."""
 
     def test_a_genuinely_uncatalogued_module_still_blocks(self) -> None:
-        unknown = _uncatalogued_external_modules([REQUESTS], {"python": _py_catalog()})
-        assert unknown == ["requests"]
+        unknown = _adjudicate_external_modules([REQUESTS], {"python": _py_catalog()}).unknown
+        assert unknown == {"requests"}
 
     def test_a_launch_does_not_launder_an_unrelated_blind_module(self) -> None:
         """The two populations must stay independent: a repo that both launches
@@ -151,7 +151,7 @@ class TestTheGateStillRefusesRealBlindness:
         is correctly withheld because the silence is ambiguous."""
         edges = [LAUNCH, REQUESTS]
         catalogs = {"bash": _bash_catalog(), "python": _py_catalog()}
-        assert _uncatalogued_external_modules(edges, catalogs) == ["requests"]
+        assert _adjudicate_external_modules(edges, catalogs).unknown == {"requests"}
         coverage = compute_boundary_coverage(edges, {"bash", "python"}, catalogs)
         assert coverage.qualifying_only is False, (
             "a real blind spot beside a launch must still withhold the "
@@ -170,7 +170,7 @@ class TestTheGateStillRefusesRealBlindness:
             "type": "calls",
         }
         catalogs = {"python": _py_catalog()}
-        assert _uncatalogued_external_modules([run], catalogs) == []
+        assert _adjudicate_external_modules([run], catalogs).unknown == set()
         assert _opaque_launch_sites([run], catalogs) == ["subprocess.run"]
 
 

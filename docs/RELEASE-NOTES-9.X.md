@@ -49,6 +49,114 @@ stored ids, node sets and some verdicts differ from 8.x.
 
 `SCHEMA_VERSION` advances 0.20.13 → 0.20.14 (additive).
 
+**9.1.0 makes summaries describe your own code, and says what each run
+left out.** No output field is removed or renamed, but three things change
+what you will see:
+
+1. **Edge confidence values move** (`confidence_model` v2.1 → v2.2). A name
+   resolver's match quality now sets the score inside its evidence band
+   instead of multiplying a base value, so values shift while the meaning
+   and the 0–1 scale stay; JS/TS scope-bound calls go 0.90 → 0.85. Re-tune
+   any threshold set against 9.0.0, and compare `confidence_model` before
+   comparing scores across runs.
+2. **Populated git submodules are skipped by default**, like installed
+   dependency source, and the skip is disclosed. `--trace-deps <path>`
+   analyses one.
+3. **The language breakdown and totals count your own code.** Committed
+   vendored code is still analysed, and is now named separately: on
+   hypergumbo itself, "Python (62%), C (26%)" loses the C line, which was
+   vendored tree-sitter grammar source.
+
+Also in 9.1.0: the sketch's Structure tree shows lines of code; progress
+shows elapsed time and what each worker is doing; surveys find files such as
+`requirements/base.txt` and Play's `conf/*.routes` that they used to miss;
+partial-install warnings name the right package.
+
+`SCHEMA_VERSION` advances 0.20.14 → 0.20.15 (additive).
+
+---
+
+## 9.1.0 — 2026-10-16
+
+> `SCHEMA_VERSION` 0.20.14 → 0.20.15 adds three fields. `confidence_model`
+> v2.1 → v2.2 changes values, not shape. No `--json` envelope version
+> changes.
+
+### At a glance
+
+- **Summaries describe your own code (ADR-0004).** The sketch Overview's
+  language lines, file count and LOC count tier 1–2 code only. Vendored code
+  committed to the repository is still analysed, so its calls and edges are
+  in the graph; it just no longer speaks for the project.
+- **Analysed vendored code is disclosed** in the same three places as skipped
+  dependency source: a stderr line ("Vendored third-party code analysed as
+  tier 3, not counted in the language breakdown: third_party/ (c; 1 file).
+  To skip: --exclude <dir>."), the sketch Overview, and
+  `supply_chain_summary.vendored_analysed`.
+- **Git submodules are treated as installed dependency source.** A submodule
+  is recognised by evidence (declared in `.gitmodules`, recorded as a gitlink
+  in `HEAD`), not by name. It is skipped and disclosed ("Installed dependency
+  source not analysed: lib/sub/ (git submodule)"), and `--trace-deps lib/sub`
+  analyses it as tier 3. An empty, unpopulated submodule and an undeclared
+  nested repository are unchanged.
+- **Edge confidence comes from evidence bands (ADR-0039 rulings 6–7).** The 87
+  analyzer call sites that multiplied a private base value by a match
+  grade now hand the grade to one shared rule. Edges produced only by linkers
+  are validated against the linker range, 0.40–0.95.
+- **Generated parsers are recognised without a marker.** Tree-sitter, Bison,
+  flex, re2c and ragel output that lacks an `@generated` comment is now
+  tier 4 (generated) rather than hand-written vendored code, so the default
+  tier filter drops its nodes.
+
+### For JSON consumers
+
+- `profile.languages[*].own_files` / `own_loc`: the tier 1–2 share of `files`
+  / `loc`. `files` and `loc` are unchanged. The new keys are omitted when not
+  measured; absent is not 0.
+- `supply_chain_summary.vendored_analysed`: `{dirs, entries: [{path,
+  languages, files}]}`, at most 10 entries.
+- `confidence_model` is `"hypergumbo-evidence-v2.2"`. Scores from v2.1 and
+  v2.2 runs are not directly comparable.
+
+### Sketch and terminal output
+
+- **The Structure tree has a LOC column**: non-blank lines per file, and the
+  sum of its items per directory. When the tree is built from a behavior map,
+  a sentence under it says that files no analyzer recognised (JSON data,
+  extensionless scripts) are left out.
+- **Progress shows elapsed time and one heartbeat line per busy worker**,
+  named by the pass it runs, in place of estimated percentages. Two phases
+  that were reported under the wrong name are relabelled.
+- **Quieter stderr.** `[passes]` lines name only unusual reasons a pass
+  produced nothing and count the routine ones. Partial-install warnings are
+  plain lines instead of Python warnings with a source-file prefix. The
+  rust-analyzer nudge names the command that silences it for a repository.
+
+### Fixes
+
+- **Surveys find files under directory patterns** such as
+  `requirements/*.txt`, `reqs/*.txt`, Play's `conf/*.routes` and
+  `META-INF/services/*`. A real run used a file index that matched patterns
+  against bare file names only, so these files were found in unit tests and
+  missed in every survey.
+- **Partial-install warnings work.** A key mismatch meant no package was ever
+  suggested; the suggestion now appears, names the right package (22 of 56
+  languages named the wrong one), and is dropped when that package is already
+  installed. Vendored code no longer triggers these warnings.
+
+### Performance
+
+- **A sketch without a cached survey no longer walks the disk for every
+  pattern** (about a minute on this repository). `.hypothesis/` is excluded by
+  default; it held 5,677 of 8,188 indexed files on one checkout.
+
+### Known limitations
+
+- The Structure tree's counts and LOC leave out files no analyzer recognises.
+  The tree says so; it does not list them.
+- Play's `conf/routes` files now reach the analyzer, but routes still do not
+  connect to their Scala controller methods (INV-nabas).
+
 ---
 
 ## 9.0.0 — 2026-10-14

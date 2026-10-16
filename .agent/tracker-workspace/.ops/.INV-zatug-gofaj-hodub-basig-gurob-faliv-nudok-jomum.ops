@@ -42,3 +42,62 @@
   clock: 4  # a9ba
   nonce: a9ba  # a9ba
   message: "TEXT CORRECTION to the closure note above: one clause lost its content to a shell backtick (command substitution inside a double-quoted argument), so it reads \"php.py:1219 carries  on ast_call_direct\". The missing expression is:\n\n    0.95 * lookup_result.confidence\n\ni.e. php.py:1219 multiplies a hardcoded 0.95 base by the resolver confidence on the ast_call_direct pathway, whose ceiling is 0.85 -- so it publishes an over-claim whenever the resolver returns 1.0. That is the identical expression fixed in java.py under this item, still live in php.py, and it is a member of the WI-famiv-gumof class rather than of this item.\n\nNo other clause was affected (this was the only backtick pair in the note). Nothing about the closure evidence or the ruling changes."  # a9ba
+- op: update  # 1863
+  at: '2026-10-15T04:24:44Z'  # 1863
+  by: agent  # 1863
+  actor: jgstern_agent  # 1863
+  clock: 5  # 1863
+  nonce: '1863'  # 1863
+  set:  # 1863
+    status: violated  # 1863
+- op: discuss  # 5d2d
+  at: '2026-10-15T04:25:35Z'  # 5d2d
+  by: agent  # 5d2d
+  actor: jgstern_agent  # 5d2d
+  clock: 6  # 5d2d
+  nonce: 5d2d  # 5d2d
+  message: "REGRESSED. Reopening: satisfied -> violated, on the item's own repro as run by the live CI gate.\n\nEvery scheduled full-suite run I checked fails self-tree-validation with the SAME matrix, 42 cells where the closure measured 0:\n\n    self-tree violation matrix: {'cross_field|info': 42}\n    SELF-TREE VALIDATION RATCHET BREACHED (WI-jigup):\n      cross_field|info: 42 > baseline 0\n    self-tree-validation exit=1\n\n  d4e11b41 2026-10-14T20:01  (pipeline 4744, latest; test-all-packages, self-claims-gate, test-agent-infra all OK -- this is the ONLY red step)\n  fb63c1c9 2026-10-14T06:32\n  5d7fb73f 2026-10-13T19:00\n  b4a783a9 2026-10-13T08:19\n  907d2f25 2026-10-12T19:59\n  86ae1ec3 2026-10-12T07:21\n  19b888d8 2026-10-11T20:50\n  17a5440f 2026-10-11T07:32\n  4879754a 2026-10-10T16:31   (oldest checked; also 42 -- the regression predates it)\n\nThe same \"[warn] 42 cross_field validation violation(s)\" line appears on stderr of a plain `hypergumbo hypergumbo` (seen by the owner on Colab and on agent-vm-16, 2026-10-14).\n\nNOT YET KNOWN: which 42 violations they are (the CI log prints only the matrix; the validation_report is in the self-tree.json artifact, which the job does not keep), and which commit introduced them. Next step: one self-survey, read validation_report.violations, group by message. Baseline stays at 0 -- per this item's own ruling, raising it is not an option."  # 5d2d
+- op: discuss  # 336a
+  at: '2026-10-15T04:42:33Z'  # 336a
+  by: agent  # 336a
+  actor: jgstern_agent  # 336a
+  clock: 7  # 336a
+  nonce: 336a  # 336a
+  message: "ROOT CAUSE, from one CI-identical self-survey (python -m hypergumbo_core run . on dev e52fc035ed, 2026-10-15): all 42 are Edge.confidence over the ast_call_direct ceiling 0.85, confidence_source=emitter_constant, edge_type calls. Two producers, two independent introductions:\n\n(1) 31 edges, C analyzer, observed 0.95 -- c.py:685 'confidence=0.95 * lookup_result.confidence' (unchanged since the analyzer was written; the computed-multiplier cohort WI-famiv-gumof names). The self-tree started EXERCISING it on 2026-10-10: d68a14fb84 'ship vendored grammar sources in the core wheel' put tree-sitter-lean/wolfram/circom C sources under packages/hypergumbo-core/src/hypergumbo_core/vendor/. All 31 edges are in vendor/tree-sitter-lean/src.\n\n(2) 11 edges, JS/TS analyzer, observed 0.90 -- js_ts.py ~5958 'edge_confidence = 0.90' on the scope-bound path added by c77d62b197 (2026-10-03, resolve a bare identifier by its enclosing scopes); previously these calls took 0.85, in band. Edges: htrac-frontend (5), emission-parity fixtures (6). NOT VERIFIED per edge that all 11 took the scope-bound branch (the explicit-import branch also sets 0.90 and dates from 2026-02); the date match is the evidence.\n\nFix direction, mirroring this item's July ruling (value moves to the pathway, the resolver multiplier stays): drop the literals so the ir.py chokepoint derives, or give scope-bound resolution a registered pathway whose band admits it. Baseline stays 0."  # 336a
+- op: discuss  # b712
+  at: '2026-10-15T05:07:32Z'  # b712
+  by: agent  # b712
+  actor: jgstern_agent  # b712
+  clock: 8  # b712
+  nonce: b712  # b712
+  message: "Fix is tracked as WI-himod (ADR-0039 ruling 6 at Edge.create; c.py:685 and the js_ts scope-bound branch are both in its scope), after WI-tagov (the ADR amendment). Close this item only on a re-run of its own repro: self-survey + scripts/check-self-tree-validation exit 0 with an empty matrix."  # b712
+- op: update  # 90bc
+  at: '2026-10-15T08:43:50Z'  # 90bc
+  by: agent  # 90bc
+  actor: jgstern_agent  # 90bc
+  clock: 9  # 90bc
+  nonce: 90bc  # 90bc
+  set:  # 90bc
+    status: pending_validation  # 90bc
+- op: discuss  # dbfd
+  at: '2026-10-15T08:43:51Z'  # dbfd
+  by: agent  # dbfd
+  actor: jgstern_agent  # dbfd
+  clock: 10  # dbfd
+  nonce: dbfd  # dbfd
+  message: "Fix merged in PR #1606 (ee7dcb505c, WI-himod): the 31 c.py and 11 js_ts sites now derive 0.85 on ast_call_direct; linker edges are judged by the linker range (ruling 7). Not yet validated: re-run this invariant's own check (self-survey + scripts/check-self-tree-validation, cross_field|info at baseline 0) -- pending the next full-suite run or an owner-approved local self-survey."  # dbfd
+- op: update  # 9890
+  at: '2026-10-15T09:50:47Z'  # 9890
+  by: agent  # 9890
+  actor: jgstern_agent  # 9890
+  clock: 11  # 9890
+  nonce: '9890'  # 9890
+  set:  # 9890
+    status: satisfied  # 9890
+- op: discuss  # 3a28
+  at: '2026-10-15T09:50:47Z'  # 3a28
+  by: agent  # 3a28
+  actor: jgstern_agent  # 3a28
+  clock: 12  # 3a28
+  nonce: 3a28  # 3a28
+  message: "Re-ran this invariant's own check. Self-survey on c907eb1a16 (dev after PRs #1605/#1606 and the WI-dipag PR): `python -m hypergumbo_core survey . --out self-survey-c907.json` exit 0 (5m46s, 4.0 GB RSS); `scripts/check-self-tree-validation self-survey-c907.json .ci/self-tree-validation-baselines.json` exit 0, 'self-tree violation matrix: {}', 'OK: self-tree validation within baselines' (it reported cross_field|info: 42 > baseline 0 before). Root cause fixed in PR #1606 (ruling 6: c.py 0.95 x grade and js_ts 0.90 now derive 0.85 on ast_call_direct; ruling 7: linker edges judged by 0.40-0.95). Regrowth guard: scripts/check-confidence-sites (CI test + pre-commit hook, shrink-only empty baseline)."  # 3a28

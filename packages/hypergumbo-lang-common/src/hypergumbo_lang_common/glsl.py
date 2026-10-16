@@ -7,7 +7,9 @@ This analyzer uses tree-sitter to parse OpenGL Shading Language files and extrac
 - Uniform variable declarations
 - Input/output variable declarations (in/out)
 - Function calls (an unresolved callee such as vec4 or texture becomes a
-  ``glsl:builtin:<name>`` target at confidence 0.70)
+  ``glsl:builtin:<name>`` target at the ast_call_direct unresolved base,
+  0.50; resolved callees interpolate 0.50-0.85 by resolver match quality,
+  ADR-0039)
 
 If tree-sitter-glsl is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -333,21 +335,26 @@ def _extract_glsl_edges(
 
                 # Try to resolve the callee
                 result = resolver.lookup(func_name.lower())
+                # ADR-0039 ruling 6: a resolved callee's confidence is the
+                # resolver's match quality interpolated in the ast_call_direct
+                # band; a builtin is an unresolved target (ADR-0037) and
+                # derives the unresolved base.
+                resolution_score: float | None = None
                 if result.symbol is not None:
                     dst_id = result.symbol.id
-                    confidence = 0.85 * result.confidence
+                    resolution_score = result.confidence
                 else:
                     dst_id = f"glsl:builtin:{func_name}"
-                    confidence = 0.70
 
                 edge = Edge.create(
                     src=caller.id,
                     dst=dst_id,
                     edge_type="calls",
                     line=start_line,
-                    confidence=confidence,
+                    resolution_score=resolution_score,
+                    is_resolved=resolution_score is not None,
                     origin=PASS_ID,
-                    evidence_type="static",
+                    evidence_type="ast_call_direct",
                     origin_run_id=run_id,
                 )
                 edges.append(edge)

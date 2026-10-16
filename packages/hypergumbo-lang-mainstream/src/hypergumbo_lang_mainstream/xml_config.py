@@ -361,7 +361,6 @@ def _process_maven_pom(
                     edge_type="defines_target",
                     evidence_type="build_target_main",
                     line=line,
-                    confidence=1.0,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 )

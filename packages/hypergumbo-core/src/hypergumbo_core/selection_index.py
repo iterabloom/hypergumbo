@@ -4,7 +4,9 @@
 WHAT IT IS. After every run, fold that run's per-test coverage contexts into a
 persistent map from AST block (see :mod:`hypergumbo_core.block_hash`) to the
 tests observed executing it. At commit time, re-hash the changed files, diff
-against the stored digests, and select the tests attached to blocks that moved.
+each one against its base-commit source, which the caller supplies
+(``git show <base>:<path>``), and select the tests attached to blocks that
+moved.
 
 WHY INCREMENTAL RATHER THAN A CENSUS SNAPSHOT. A snapshot cannot see code that
 did not exist when it was taken, so under red-green-refactor every newly written
@@ -32,16 +34,35 @@ THE THREE SEMANTICS THAT ARE EASY TO GET WRONG, each with tests of its own:
 3. **A test that ran and produced no rows is UNMEASURED, not unneeded.** 15.9%
    of this suite is in that state — the tracker package is outside COV_PATHS,
    and subprocess/`scripts/` tests leave no in-process trace. Coverage can never
-   select them, so they are recorded explicitly and reported by
-   :class:`Selection`, which is what stops a future narrowing mode from
-   silently dropping them.
+   select them, so they are recorded explicitly (on full runs only: a targeted
+   run's ``--cov`` scope makes silence meaningless) and reported by
+   :class:`Selection`, which is what stops ``--narrow`` (below) from silently
+   dropping them.
 
 SOUNDNESS BOUNDARY, stated because it is the thing that would bite. The index
 knows "tests I have OBSERVED executing block B", a subset of "tests that execute
 B", until every test has run since B appeared. So this selector is sound as of
 the last FULL run and under-selects for newly added code between full runs. The
-``last_full_run_sha`` marker exists so a caller can report that age rather than
-pretend it does not exist. It is why this is a UNION member and never the gate.
+``last_full_run_sha`` marker is written so a caller can report that age rather
+than pretend it does not exist, but nothing reads it yet. It is why this is a
+UNION member by default and never the merge gate; the opt-in, local-only
+``--narrow`` mode (Phase 3, WI-bolot) may drop only ``speakable_test_files``
+outside the keep set (``touching_test_files`` plus the selected tests' files),
+and refuses outright on any ``narrowing_blockers`` reason.
+
+RUN-SET HELPERS AND NARROWING. The index speaks absolute pytest node ids; the
+run set is a list of repo-relative test files. ``files_of``, ``rebase_to_repo``
+and ``selectable_test_files`` convert one to the other (the last also drops
+files that no longer exist, so widening a run never adds a collection error).
+Narrowing is stated as data rather than left to a shell pipeline:
+``touching_test_files`` is the keep set (tests observed executing ANY block of a
+changed file, because the local coverage gate is whole-file);
+``speakable_test_files`` is the only droppable set (files with coverage rows and
+no unmeasured test); ``narrowing_blockers`` names the reasons to refuse outright
+(an unknown coverable source file, a missing changed file); and
+``narrow_run_set`` applies them, returning a :class:`Narrowing` whose
+``refusal`` is set, with the run set left whole, when a blocker fires or the
+result would be empty.
 """
 from __future__ import annotations
 

@@ -42,6 +42,7 @@ from ..pass_silence import (
     derive_silence_reason,
 )
 from ..pass_clock import PassClock, PassCost
+from ..run_status import worker_pass
 from ..paths import normalize_path
 from ..yaml_catalogs import CatalogueError
 from .base import (
@@ -378,6 +379,12 @@ def _run_costed(func: Any, *args: Any, **kwargs: Any) -> tuple[Any, PassCost]:
     return result, clock.read()
 
 
+def _run_named(name: str, func: Any, *args: Any, **kwargs: Any) -> tuple[Any, PassCost]:
+    """``_run_costed`` with the thread named for the run-status heartbeat."""
+    with worker_pass(name):
+        return _run_costed(func, *args, **kwargs)
+
+
 def run_all_analyzers(
     repo_root: Path,
     max_files: int | None = None,
@@ -446,7 +453,7 @@ def run_all_analyzers(
             if analyzer.supports_max_files and max_files is not None:  # pragma: no cover
                 kwargs["max_files"] = max_files
             future = pool.submit(
-                _run_costed, analyzer.get_func(), repo_root, **kwargs
+                _run_named, analyzer.name, analyzer.get_func(), repo_root, **kwargs
             )
             futures[future] = analyzer
 

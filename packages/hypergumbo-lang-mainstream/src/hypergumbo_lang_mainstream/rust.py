@@ -2738,7 +2738,7 @@ def _extract_edges_from_file(
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
-                                        confidence=0.80 * lookup_result.confidence,
+                                        resolution_score=lookup_result.confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         meta={"call_construct": "function", "receiver": "qualified"},
@@ -2779,7 +2779,7 @@ def _extract_edges_from_file(
                                                 edge_type="calls",
                                                 line=node.start_point[0] + 1,
                                                 evidence_type="ast_call",
-                                                confidence=0.80 * lr.confidence,
+                                                resolution_score=lr.confidence,
                                                 origin=PASS_ID,
                                                 origin_run_id=run_id,
                                                 meta={"call_construct": "function", "receiver": "qualified"},
@@ -3103,7 +3103,6 @@ def _extract_edges_from_file(
                                     and _sym is not None
                                     and not _defer
                                 ):
-                                    confidence = 0.80 * lookup_result.confidence
                                     # WI-fazaj: a scoped ``Type::method()`` call that
                                     # resolves *here* (Strategy 1 missed it; the
                                     # cross-package survey ``method_resolver`` / bare-name
@@ -3127,7 +3126,7 @@ def _extract_edges_from_file(
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         evidence_type="ast_call",
-                                        confidence=confidence,
+                                        resolution_score=lookup_result.confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         meta=_meta,

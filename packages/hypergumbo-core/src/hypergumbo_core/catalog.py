@@ -33,9 +33,14 @@ Beyond the build, the module provides:
   gates because a gate would abort surveys on stale declarations.
 - **Axis resolvers.** ``all_known_pass_ids`` and ``all_known_languages``
   return the legal values of the ``pass-id`` and ``language`` field axes:
-  the registered names plus pipeline passes that emit runs without being
-  registered (``_BUILTIN_PIPELINE_PASS_IDS``, ``_SYNTHETIC_PASS_IDS``), and
-  the registered languages plus the taxonomy's.
+  the registered names, plus each linker's emitted ``PASS_ID`` when it
+  differs from its registration name (e.g. ``view-template-linker``), plus
+  pipeline passes that emit runs without being registered
+  (``_BUILTIN_PIPELINE_PASS_IDS``, ``_SYNTHETIC_PASS_IDS``); and the
+  registered languages plus the taxonomy's. ``all_linker_pass_ids`` returns
+  only the pass ids registered linkers stamp on ``Edge.origin``, so the spec
+  validator can judge a linker edge by the linker range rather than an
+  analyzer pathway band (ADR-0039 ruling 7).
 - **Suggestions.** ``suggest_passes_for_languages`` maps detected languages
   to relevant passes, ignoring the config formats in ``CONFIG_LANGUAGES``.
 
@@ -783,6 +788,29 @@ def all_known_pass_ids() -> frozenset[str]:
         | emitted_linker_pass_ids
         | _BUILTIN_PIPELINE_PASS_IDS
         | _SYNTHETIC_PASS_IDS
+    )
+
+
+def all_linker_pass_ids() -> frozenset[str]:
+    """Return every pass id a registered linker stamps on ``Edge.origin``.
+
+    That is each linker's emitted module ``PASS_ID`` (WI-gobip: it can diverge
+    from the registration name, which is never stamped and so is left out).
+    ADR-0039 ruling 7 reads it to tell a linker edge, judged by the spec §12
+    linker range, from an analyzer edge, judged by its pathway band.
+
+    Linkers register when ``hypergumbo_core.cli`` imports their modules, so
+    this imports it: a validator run outside the CLI (a script reading a saved
+    behavior map) would otherwise see a near-empty registry and judge every
+    linker edge by the analyzer band.
+    """
+    import hypergumbo_core.cli  # noqa: F401 - registers the linkers (import side effect)
+
+    from .linkers.registry import _LINKER_REGISTRY
+    from .pass_metadata import _resolve_linker_pass_id
+
+    return frozenset(
+        _resolve_linker_pass_id(linker) for linker in _LINKER_REGISTRY.values()
     )
 
 

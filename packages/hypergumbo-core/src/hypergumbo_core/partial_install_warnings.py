@@ -24,11 +24,22 @@ system. Linkers with partial requirements (some met, some not) trigger
 ``check_partial_linker_requirements`` suppresses three unactionable cases:
 a linker whose activation would not fire on this tree (WI-zamoz), one whose
 only met requirements are ``*_files`` presence counts (WI-vasir), and one
-whose unmet requirements map (via ``LINKER_LANGUAGE_REQUIREMENTS``) only to
-languages absent from the tree (WI-ruman). That third gate, and the package
-suggestions, are currently inert: ``LINKER_LANGUAGE_REQUIREMENTS`` is keyed
-``jni`` / ``swift_objc`` / ``dependency`` while diagnostics carry the
-registered names (``jni-linker``, ...), so the lookup never hits.
+whose unmet requirements can be satisfied only by languages absent from the
+tree (WI-ruman). Each ``LinkerRequirement`` declares those languages, and
+they also pick the package to suggest; a package already installed is not
+suggested. The requirement counts see only
+the project's own code (WI-dipag, ADR-0004 point 3a): symbols of supply-chain
+tier 1-2, and edges whose source is not a tier-3+ symbol. Committed vendored
+code is still linked; it just does not make the project look like a partial
+install. Measured on hypergumbo itself: 53 C functions in the vendored
+tree-sitter grammar sources (``hypergumbo_core/vendor/``) fired
+"CGO-LINKER linker found 53 C/C++ function implementations but 0 Go cgo
+calls" and the matching RUBY-FFI warning. The CLI therefore calls the check
+after supply-chain classification, which is what stamps the tiers. Until
+WI-tonuh the languages came from a table keyed ``jni`` / ``swift_objc`` /
+``dependency`` while diagnostics carry registered names (``jni-linker``),
+so the lookup never hit and the third gate and the suggestions never ran;
+declaring them on the requirement leaves no second key to drift.
 
 The Rust disclosure is emitted whether or not the binary is installed. It
 is skipped when the backend is off and the user has already recorded a
@@ -51,15 +62,16 @@ In cli.py after analysis:
         profile, linker_ctx, emit_warnings=True, repo_root=repo_root,
     )
 
-The default ``emit_warnings=True`` emits each finding via
-``warnings.warn(..., UserWarning, stacklevel=2)`` (which the
-Python warnings module routes to stderr). Pass ``emit_warnings=False``
-to suppress emission and iterate over the returned list instead.
+The default ``emit_warnings=True`` writes each finding to stderr as plain
+text (not ``warnings.warn``, whose file:line prefix and echoed source line
+were noise; WI-vadom). Pass ``emit_warnings=False`` to suppress emission and
+iterate over the returned list instead.
 """
 
 from __future__ import annotations
 
-import warnings as python_warnings
+import shlex
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping
@@ -76,104 +88,98 @@ from .rust_analyzer_install import is_rust_analyzer_available
 # Language -> Package Mapping (ADR-0010)
 # =============================================================================
 
-# Maps language names to the package that provides their analyzer.
-# This aligns with the ADR-0010 modular package structure.
-# Note: analyzers ship in the separate ``hypergumbo-lang-*`` packages; this
-# mapping names the package suggested for each language.
+# Maps each language to the ``hypergumbo-lang-*`` package whose analyzer
+# covers it, for the "install X" suggestions. It cannot be read from the
+# packages at runtime because the point is to name one that is NOT installed,
+# so it is a table, and
+# ``test_language_packages_name_the_package_that_ships_the_analyzer`` checks
+# it against every ``@register_analyzer`` in the source tree (WI-tonuh: 22 of
+# 56 entries had drifted, e.g. sql/lua/html/css named -common, not
+# -mainstream). Config-only languages are left out; they never warn.
 
 LANGUAGE_PACKAGES: dict[str, str] = {
-    # hypergumbo-lang-mainstream (ADR-0010)
-    "python": "hypergumbo-lang-mainstream",
-    "javascript": "hypergumbo-lang-mainstream",
-    "typescript": "hypergumbo-lang-mainstream",
-    "java": "hypergumbo-lang-mainstream",
+    # hypergumbo-lang-mainstream
+    "bash": "hypergumbo-lang-mainstream",
     "c": "hypergumbo-lang-mainstream",
     "cpp": "hypergumbo-lang-mainstream",
     "csharp": "hypergumbo-lang-mainstream",
+    "css": "hypergumbo-lang-mainstream",
+    "dockerfile": "hypergumbo-lang-mainstream",
     "go": "hypergumbo-lang-mainstream",
-    "rust": "hypergumbo-lang-mainstream",
-    "ruby": "hypergumbo-lang-mainstream",
-    "php": "hypergumbo-lang-mainstream",
-    "swift": "hypergumbo-lang-mainstream",
+    "groovy": "hypergumbo-lang-mainstream",
+    "html": "hypergumbo-lang-mainstream",
+    "java": "hypergumbo-lang-mainstream",
+    "javascript": "hypergumbo-lang-mainstream",
+    "jupyter": "hypergumbo-lang-mainstream",
     "kotlin": "hypergumbo-lang-mainstream",
-    # hypergumbo-lang-common (ADR-0010)
-    "scala": "hypergumbo-lang-common",
-    "bash": "hypergumbo-lang-common",
-    "sql": "hypergumbo-lang-common",
-    "html": "hypergumbo-lang-common",
-    "css": "hypergumbo-lang-common",
-    "dockerfile": "hypergumbo-lang-common",
-    "lua": "hypergumbo-lang-common",
-    "perl": "hypergumbo-lang-common",
-    "haskell": "hypergumbo-lang-common",
-    "ocaml": "hypergumbo-lang-common",
-    "elixir": "hypergumbo-lang-common",
-    "erlang": "hypergumbo-lang-common",
+    "lua": "hypergumbo-lang-mainstream",
+    "objc": "hypergumbo-lang-mainstream",
+    "perl": "hypergumbo-lang-mainstream",
+    "php": "hypergumbo-lang-mainstream",
+    "powershell": "hypergumbo-lang-mainstream",
+    "python": "hypergumbo-lang-mainstream",
+    "ruby": "hypergumbo-lang-mainstream",
+    "rust": "hypergumbo-lang-mainstream",
+    "scala": "hypergumbo-lang-mainstream",
+    "sql": "hypergumbo-lang-mainstream",
+    "swift": "hypergumbo-lang-mainstream",
+    "typescript": "hypergumbo-lang-mainstream",
+    # hypergumbo-lang-common
     "clojure": "hypergumbo-lang-common",
-    "fsharp": "hypergumbo-lang-common",
-    "groovy": "hypergumbo-lang-common",
+    "commonlisp": "hypergumbo-lang-common",
+    "cuda": "hypergumbo-lang-common",
     "dart": "hypergumbo-lang-common",
-    "julia": "hypergumbo-lang-common",
-    "r": "hypergumbo-lang-common",
+    "elixir": "hypergumbo-lang-common",
     "elm": "hypergumbo-lang-common",
-    # hypergumbo-lang-extended1 (ADR-0010)
-    "zig": "hypergumbo-lang-extended1",
-    "nim": "hypergumbo-lang-extended1",
+    "erlang": "hypergumbo-lang-common",
+    "fortran": "hypergumbo-lang-common",
+    "fsharp": "hypergumbo-lang-common",
+    "glsl": "hypergumbo-lang-common",
+    "graphql": "hypergumbo-lang-common",
+    "handlebars": "hypergumbo-lang-common",
+    "haskell": "hypergumbo-lang-common",
+    "hlsl": "hypergumbo-lang-common",
+    "julia": "hypergumbo-lang-common",
+    "just": "hypergumbo-lang-common",
+    "latex": "hypergumbo-lang-common",
+    "nix": "hypergumbo-lang-common",
+    "ocaml": "hypergumbo-lang-common",
+    "proto": "hypergumbo-lang-common",
+    "purescript": "hypergumbo-lang-common",
+    "qml": "hypergumbo-lang-common",
+    "r": "hypergumbo-lang-common",
+    "svelte": "hypergumbo-lang-common",
+    "thrift": "hypergumbo-lang-common",
+    "vue": "hypergumbo-lang-common",
+    "wgsl": "hypergumbo-lang-common",
+    # hypergumbo-lang-extended1
+    "ada": "hypergumbo-lang-extended1",
     "agda": "hypergumbo-lang-extended1",
-    "lean": "hypergumbo-lang-extended1",
+    "asm": "hypergumbo-lang-extended1",
+    "blade": "hypergumbo-lang-extended1",
+    "capnp": "hypergumbo-lang-extended1",
+    "circom": "hypergumbo-lang-extended1",
     "cobol": "hypergumbo-lang-extended1",
+    "d": "hypergumbo-lang-extended1",
+    "fish": "hypergumbo-lang-extended1",
+    "gdscript": "hypergumbo-lang-extended1",
+    "gnuplot": "hypergumbo-lang-extended1",
+    "jsonnet": "hypergumbo-lang-extended1",
+    "lean": "hypergumbo-lang-extended1",
+    "llvm_ir": "hypergumbo-lang-extended1",
+    "mermaid": "hypergumbo-lang-extended1",
+    "nim": "hypergumbo-lang-extended1",
     "solidity": "hypergumbo-lang-extended1",
+    "tlaplus": "hypergumbo-lang-extended1",
     "verilog": "hypergumbo-lang-extended1",
     "vhdl": "hypergumbo-lang-extended1",
-    "fortran": "hypergumbo-lang-extended1",
-    "ada": "hypergumbo-lang-extended1",
-    "d": "hypergumbo-lang-extended1",
     "wolfram": "hypergumbo-lang-extended1",
-    "cuda": "hypergumbo-lang-extended1",
-    "glsl": "hypergumbo-lang-extended1",
-    "hlsl": "hypergumbo-lang-extended1",
-    "wgsl": "hypergumbo-lang-extended1",
-    "gdscript": "hypergumbo-lang-extended1",
-    "nix": "hypergumbo-lang-extended1",
-    "proto": "hypergumbo-lang-extended1",
-    "graphql": "hypergumbo-lang-extended1",
-    "thrift": "hypergumbo-lang-extended1",
-    "capnp": "hypergumbo-lang-extended1",
-    "powershell": "hypergumbo-lang-extended1",
-    "fish": "hypergumbo-lang-extended1",
-    "objc": "hypergumbo-lang-extended1",
-    "vue": "hypergumbo-lang-extended1",
-    "svelte": "hypergumbo-lang-extended1",
+    "zig": "hypergumbo-lang-extended1",
 }
 
-# Linker -> Required Languages mapping
-# Used to suggest which packages are needed for linker requirements
-# Keys must match the LinkerRequirement.name values from each linker
-LINKER_LANGUAGE_REQUIREMENTS: dict[str, dict[str, list[str]]] = {
-    "jni": {
-        "java_native_methods": ["java"],
-        "c_cpp_jni_functions": ["c"],
-    },
-    "swift_objc": {
-        "swift_functions": ["swift"],
-        "objc_functions": ["objc"],
-    },
-    # WI-ruman: the DEPENDENCY linker has ``always=True`` activation,
-    # so the WI-zamoz gate doesn't suppress its partial warnings. The
-    # ``toml_dependencies`` requirement is structurally satisfiable
-    # only when the tree contains a language that uses TOML manifests
-    # (Rust → Cargo.toml, Python → pyproject.toml). On a pure-Go /
-    # JVM / JS repo it can never reach >0 regardless of which
-    # hypergumbo packages are installed, so an unmet diagnostic is
-    # noise. The per-requirement relevance gate below uses this map
-    # to suppress in that case.
-    "dependency": {
-        "toml_dependencies": ["rust", "python"],
-    },
-}
-
-# Languages that don't have analyzers (config/markup only)
-# These are detected in profile but shouldn't trigger warnings
+# Config/markup languages never produce an unanalyzed-files warning. Several
+# have analyzers (json, yaml, toml in -mainstream), but a missing one leaves
+# none of the project's code unanalyzed.
 CONFIG_ONLY_LANGUAGES: set[str] = {
     "json", "yaml", "toml", "xml", "ini", "markdown", "rst", "asciidoc",
     "makefile", "cmake", "starlark", "hcl",
@@ -381,6 +387,14 @@ def check_rust_analyzer_disclosure(
         "macros as you — the same trust you extend by opening it in an "
         "editor. Enable it only for repositories you trust."
     )
+    # WI-vadom: the nudge repeats until a decision is recorded (ruling 8
+    # above), so it says how to record one. It fired on every run of
+    # hypergumbo's own tree, whose only Rust is recorded test crates.
+    target = f" {shlex.quote(str(repo_root))}" if repo_root is not None else ""
+    decline = (
+        f"  Not wanted here: hypergumbo trust-backend rust_analyzer{target} "
+        "--revoke  (records the answer; this notice stops)"
+    )
     if enabled:
         # WI-dojud: the backend is already running for THIS invocation, so the
         # "here is how to turn it on" arm would be false. The trust caveat is
@@ -400,7 +414,7 @@ def check_rust_analyzer_disclosure(
             "tree-sitter analyzer.\n"
             "  Enable per run:  --backend rust-analyzer\n"
             "  Or by env:       HYPERGUMBO_RUST_ANALYZER=1\n"
-            f"{caveat}"
+            f"{caveat}\n{decline}"
         )
     else:
         message = (
@@ -408,7 +422,7 @@ def check_rust_analyzer_disclosure(
             "far more precise Rust type and call-target resolution.\n"
             "  Install:  rustup component add rust-analyzer\n"
             "  Then enable per run with --backend rust-analyzer.\n"
-            f"{caveat}"
+            f"{caveat}\n{decline}"
         )
 
     return [PartialInstallWarning(
@@ -416,6 +430,45 @@ def check_rust_analyzer_disclosure(
         message=message,
         language="rust",
     )]
+
+
+#: Highest supply-chain tier that counts as the project's own code
+#: (FIRST_PARTY = 1, INTERNAL_DEP = 2; ADR-0004 point 3a).
+_FIRST_PARTY_MAX_TIER = 2
+
+
+def first_party_view(linker_ctx: "LinkerContext") -> "LinkerContext":
+    """Return a copy of ``linker_ctx`` restricted to the project's own code.
+
+    Keeps symbols of supply-chain tier 1-2 and drops edges whose source is a
+    tier-3+ symbol (an edge whose source is not a known symbol is kept). The
+    linker-requirement counters read ``symbols`` and ``edges`` only, so this
+    makes every counter first-party without touching the counters.
+    """
+    from dataclasses import replace
+
+    vendored_ids = {
+        sym.id for sym in linker_ctx.symbols
+        if sym.supply_chain_tier > _FIRST_PARTY_MAX_TIER
+    }
+    if not vendored_ids:
+        return linker_ctx
+    return replace(
+        linker_ctx,
+        symbols=[s for s in linker_ctx.symbols if s.id not in vendored_ids],
+        edges=[e for e in linker_ctx.edges if e.src not in vendored_ids],
+    )
+
+
+def _distribution_installed(name: str) -> bool:
+    """True when the distribution ``name`` is installed in this environment."""
+    from importlib.metadata import PackageNotFoundError, distribution
+
+    try:
+        distribution(name)
+    except PackageNotFoundError:
+        return False
+    return True
 
 
 def check_partial_linker_requirements(
@@ -436,7 +489,7 @@ def check_partial_linker_requirements(
     from .linkers.registry import check_linker_requirements, get_all_linkers
 
     warnings: list[PartialInstallWarning] = []
-    diagnostics = check_linker_requirements(linker_ctx)
+    diagnostics = check_linker_requirements(first_party_view(linker_ctx))
 
     # WI-zamoz: skip linkers that wouldn't have activated on this tree.
     # check_linker_requirements iterates ALL registered linkers, so e.g.
@@ -489,30 +542,29 @@ def check_partial_linker_requirements(
         if all(r.name.endswith("_files") for r in met_reqs):
             continue
 
-        # Find suggested packages for unmet requirements.
-        # Build the unmet-requirement → relevant-languages mapping in
-        # the same pass so the relevance gate below can consume it.
-        suggested_packages: set[str] = set()
-        unmet_relevant_languages: set[str] = set()
-        linker_reqs = LINKER_LANGUAGE_REQUIREMENTS.get(diag.linker_name, {})
-        for unmet in unmet_reqs:
-            if unmet.name in linker_reqs:
-                for lang in linker_reqs[unmet.name]:
-                    unmet_relevant_languages.add(lang)
-                    if lang in LANGUAGE_PACKAGES:
-                        suggested_packages.add(LANGUAGE_PACKAGES[lang])
+        # The languages that could satisfy the unmet requirements, as each
+        # requirement declares them (WI-tonuh), feed both the relevance gate
+        # and the package suggestion. A package already installed is not
+        # suggested: "is X installed?" has an answer, and it is yes.
+        unmet_relevant_languages = {
+            lang for unmet in unmet_reqs for lang in unmet.languages
+        }
+        suggested_packages = {
+            LANGUAGE_PACKAGES[lang] for lang in unmet_relevant_languages
+            if lang in LANGUAGE_PACKAGES
+            and not _distribution_installed(LANGUAGE_PACKAGES[lang])
+        }
 
-        # WI-ruman: relevance gate for `always=True` linkers whose
-        # unmet requirements are structurally tied to specific
-        # languages. If the tree contains none of the languages that
-        # could satisfy this requirement, the warning is unactionable
-        # (installing the suggested package wouldn't help — there's
-        # nothing in the tree for the analyzer to find). Skip the
-        # diagnostic. Only fires when (a) we have detection data
-        # (preserves test-fixture behavior), (b) the linker has a
-        # language-relevance map, and (c) the unmet requirements'
-        # relevant languages have zero overlap with detected
-        # languages.
+        # WI-ruman: relevance gate. If the tree contains none of the
+        # languages that could satisfy the unmet requirements, the
+        # warning is unactionable (installing the suggested package
+        # wouldn't help — there's nothing in the tree for the analyzer
+        # to find). Skip the diagnostic. Only fires when (a) we have
+        # detection data (preserves test-fixture behavior), (b) the
+        # unmet requirements declare languages, and (c) none of those
+        # languages was detected. It catches what the WI-zamoz
+        # activation gate cannot: always-on linkers, and
+        # framework-activated ones (a Tauri app with a Rust frontend).
         if (
             has_detection
             and unmet_relevant_languages
@@ -524,17 +576,19 @@ def check_partial_linker_requirements(
             f"{r.count} {r.description}" for r in met_reqs
         )
         unmet_str = ", ".join(r.description for r in unmet_reqs)
+        # Registered names end in "-linker"; "JNI-LINKER linker" said it twice.
+        label = diag.linker_name.removesuffix("-linker").upper()
 
         if suggested_packages:
             package_list = ", ".join(sorted(suggested_packages))
             message = (
-                f"{diag.linker_name.upper()} linker found {met_str} but 0 {unmet_str}.\n"
+                f"{label} linker found {met_str} but 0 {unmet_str}.\n"
                 f"  Is {package_list} installed?"
             )
             suggested = sorted(suggested_packages)[0]  # Primary suggestion
         else:
             message = (
-                f"{diag.linker_name.upper()} linker found {met_str} but 0 {unmet_str}."
+                f"{label} linker found {met_str} but 0 {unmet_str}."
             )
             suggested = None
 
@@ -561,7 +615,7 @@ def check_partial_install_warnings(
     Args:
         profile: The detected repository profile
         linker_ctx: The linker context after analysis
-        emit_warnings: If True, emit warnings via Python's warnings module
+        emit_warnings: If True, write each warning to stderr
 
     Returns:
         List of all partial install warnings detected.
@@ -586,9 +640,12 @@ def check_partial_install_warnings(
         ),
     )
 
-    # Emit warnings if requested
+    # Plain stderr lines, like the discovery disclosures. Through
+    # ``warnings.warn`` each one was prefixed "<path>/cli.py:12852:
+    # UserWarning:" and followed by the echoed source line, two lines of
+    # noise per message that told the reader nothing (WI-vadom).
     if emit_warnings:
         for warning in all_warnings:
-            python_warnings.warn(warning.message, UserWarning, stacklevel=2)
+            sys.stderr.write(warning.message + "\n")
 
     return all_warnings

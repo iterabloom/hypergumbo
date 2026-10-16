@@ -452,6 +452,30 @@ else
     echo -e "${YELLOW}skipped (no packages/*.py staged)${NC}"
 fi
 
+# Confidence call sites (WI-vosif, ADR-0039 rulings 6-7) — every
+# Edge.create(confidence=...) site must sit inside its band (analyzer pathway
+# band, or the linker range for hypergumbo_core/linkers/) and every computed
+# analyzer value must derive, pass a resolution_score, or carry an
+# '# ADR-0039 caller-valued:' justification. Shrink-only baseline in
+# .ci/confidence-sites-baseline.json. The CI gate is
+# tests/test_confidence_sites.py; this catches it before the push.
+echo -n "  Confidence call sites... "
+if git diff --cached --name-only | grep -qE "^packages/[^/]+/src/.*\.py$"; then
+    CONF_LOG="/tmp/.confidence-sites.$$"
+    if scripts/check-confidence-sites > "$CONF_LOG" 2>&1; then
+        echo -e "${GREEN}✓${NC}"
+        rm -f "$CONF_LOG"
+    else
+        echo -e "${RED}✗${NC}"
+        echo ""
+        cat "$CONF_LOG"
+        rm -f "$CONF_LOG"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}skipped (no package source staged)${NC}"
+fi
+
 # Fallback-coherence (L4 / INV-zuhub) — gates the intra-call kwarg
 # coherence between confidence and meta['disambiguation_fallback'] at
 # Edge.create call sites under packages/.../linkers/. Catches the "set

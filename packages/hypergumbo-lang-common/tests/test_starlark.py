@@ -320,9 +320,10 @@ def my_rule(name):
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         external_calls = [e for e in call_edges if "external" in e.dst]
         assert len(external_calls) >= 1
-        # External calls have lower confidence
+        # External calls are unresolved and derive the ast_call unresolved base.
         for e in external_calls:
-            assert e.confidence == 0.70
+            assert e.is_resolved is False
+            assert e.confidence == 0.40
 
     def test_resolved_call_confidence(self, temp_repo: Path) -> None:
         """Resolved calls have higher confidence than external calls."""

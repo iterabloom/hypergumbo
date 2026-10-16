@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """WI-vafit — the inventory a USER needs of what this installation knows.
 
-``scripts/yaml-catalog-index`` already answers a question about these 156 YAML
-files, but it answers the OPERATOR's: *is the registry in sync with the tree?*
-It also ships to nobody — ``pyproject.toml`` packages ``src/hypergumbo_core``,
-so ``scripts/`` is not in the wheel, and a user who installed hypergumbo cannot
-run it at all.
+``scripts/yaml-catalog-index`` already answers a question about the
+registry's YAML files, but it answers the OPERATOR's: *is the registry in sync
+with the tree?* It also ships to nobody — ``pyproject.toml`` packages
+``src/hypergumbo_core``, so ``scripts/`` is not in the wheel, and a user who
+installed hypergumbo cannot run it at all.
 
 THE USER'S QUESTIONS ARE DIFFERENT, and they are the reason this is a new view
 rather than a port:
@@ -36,12 +36,13 @@ also sat outside the WI-sugav subprocess guard (found by WI-surun). An
 inventory that inherited the same list would under-report the very installation
 it is describing.
 
-WIRED IS NOT THE SAME AS EXTENSIBLE, and saying so is the point. Five of the
-six declared channels are read by nothing today: the registry declares the
-family extensible, and the loader has not been taught to look (WI-sofov). An
-inventory that printed "extensible: yes" for all six would be describing an
-intention as though it were a capability, and a user would put a file in
-``frameworks.d/`` and watch it do nothing.
+WIRED IS NOT THE SAME AS EXTENSIBLE, and saying so is the point. The registry
+declaring a family extensible (``user_channel``) says nothing about whether a
+loader has been taught to look in that channel, so ``read_now`` comes from the
+hand-maintained :data:`WIRED_CHANNELS`, not from ``user_channel``. An inventory
+that printed "extensible: yes" for every declared channel would describe an
+intention as though it were a capability, and a user could put a file in a
+channel nothing reads and watch it do nothing.
 """
 
 from __future__ import annotations

@@ -391,13 +391,16 @@ def _extract_cuda_edges(
 
                 # Use resolver for callee resolution
                 lookup_result = resolver.lookup(called_name.lower())
+                # ADR-0039 ruling 6: resolver match quality interpolates in the
+                # pathway band; an external target derives the unresolved base
+                # (ADR-0037).
+                resolution_score: float | None = None
                 if lookup_result.found and lookup_result.symbol:
                     dst_id = lookup_result.symbol.id
-                    confidence = 0.90 * lookup_result.confidence
+                    resolution_score = lookup_result.confidence
                 else:
                     # Synthetic ID for unknown functions (like CUDA API)
                     dst_id = f"cuda:external:{called_name}:function"
-                    confidence = 0.70
 
                 if is_kernel_launch:
                     edge = Edge.create(
@@ -405,7 +408,8 @@ def _extract_cuda_edges(
                         dst=dst_id,
                         edge_type="calls",
                         line=start_line,
-                        confidence=confidence,
+                        resolution_score=resolution_score,
+                        is_resolved=resolution_score is not None,
                         origin=PASS_ID,
                         evidence_type="ast_call_direct",
                         meta={
@@ -420,7 +424,8 @@ def _extract_cuda_edges(
                         dst=dst_id,
                         edge_type="calls",
                         line=start_line,
-                        confidence=confidence,
+                        resolution_score=resolution_score,
+                        is_resolved=resolution_score is not None,
                         origin=PASS_ID,
                         evidence_type="ast_call_direct",
                         origin_run_id=run_id,

@@ -202,7 +202,8 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                                         "`lines`/`percentage` keys the producer "
                                         "(profile.LanguageStats.to_dict) never "
                                         "emits; the real emitted shape is "
-                                        "{files, loc} plus test_files."
+                                        "{files, loc} plus test_files, "
+                                        "own_files and own_loc."
                                     )
                                 },
                                 "test_files": {
@@ -223,6 +224,33 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                                         "measured (a profile restored from a "
                                         "cache that predates the field); "
                                         "absent is not 0."
+                                    )
+                                },
+                                "own_files": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "description": (
+                                        "How many of `files` are the "
+                                        "project's own code: supply-chain "
+                                        "tier 1-2 by path "
+                                        "(supply_chain.tier_by_path; no file "
+                                        "read). Committed vendored and "
+                                        "derived files are still analysed "
+                                        "but leave this count, and the "
+                                        "sketch's language line and totals "
+                                        "read it (WI-kojul, ADR-0004 point "
+                                        "3a). Omitted when not measured; "
+                                        "absent is not 0."
+                                    )
+                                },
+                                "own_loc": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "description": (
+                                        "The `loc` of the `own_files` files "
+                                        "(0 when LOC was not counted). "
+                                        "Omitted when not measured; absent "
+                                        "is not 0 (WI-kojul)."
                                     )
                                 }
                             }
@@ -398,7 +426,9 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "Supply-chain classification summary, keyed by tier name "
                     "(first_party / internal_dep / external_dep) plus the "
                     "exclusion-disclosure buckets derived_skipped, "
-                    "installed_deps_skipped and generated_output_skipped. Each "
+                    "installed_deps_skipped and generated_output_skipped, and "
+                    "vendored_analysed (analysed tier-3 vendored directories, "
+                    "ADR-0004 point 3a). Each "
                     "tier carries {files, symbols}; "
                     "external_dep also `ecosystem` and `directness` sub-buckets, "
                     "derived_skipped a {files, paths} shape, "
@@ -500,6 +530,42 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                                                 "MkDocs site, coverage report."
                                             ),
                                         },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    "vendored_analysed": {
+                        "type": "object",
+                        "description": (
+                            "Committed vendored code (tier 3 by an "
+                            "EXTERNAL_DEP path pattern: a nested vendor/, "
+                            "third_party/, node_modules/ ...) that was analysed "
+                            "but left out of the language breakdown and LOC "
+                            "totals (ADR-0004 point 3a, WI-pasan). One entry "
+                            "per vendored directory, from tier-3 file nodes; "
+                            "entries is capped at 10. {dirs: 0, entries: []} "
+                            "when there is none."
+                        ),
+                        "required": ["dirs", "entries"],
+                        "properties": {
+                            "dirs": {"type": "integer", "minimum": 0},
+                            "entries": {
+                                "type": "array",
+                                "maxItems": 10,
+                                "items": {
+                                    "type": "object",
+                                    "required": ["path", "languages", "files"],
+                                    "properties": {
+                                        "path": {
+                                            "type": "string",
+                                            "description": "Repo-relative vendored directory.",
+                                        },
+                                        "languages": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                        },
+                                        "files": {"type": "integer", "minimum": 0},
                                     },
                                 },
                             },

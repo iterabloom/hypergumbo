@@ -24,14 +24,21 @@ The three rules
 
 1. **No bypass.** A key declared ``merge_union`` or ``producer_primary``
    may not be assigned directly — it must route through
-   ``axis_meta_keys.write_meta_key``, where the fold lives exactly once.
+   ``axis_meta_keys.write_meta_key`` (to add), where the fold lives exactly
+   once, or ``filter_meta_key`` (to remove entries). A subscript write
+   through a local alias of the dict (``meta = sym.meta; meta["k"] = ...``,
+   ``_meta_aliases``) is a bypass too; a copy (``dict(sym.meta)``) is not.
 
 2. **Collision-capable keys must declare.** A key written BOTH at
    construction time (a ``meta={...}`` kwarg, or a dict assigned wholesale
    to ``.meta``) AND by post-hoc mutation (``x.meta["k"] = ...``, a pass
    walking records it did not create) is reachable by two writers. It may
-   not sit at the ``unaudited`` default. This is the rule that fails
-   CLOSED: silence from an author is not evidence of single-writer.
+   not sit at the ``unaudited`` default, and must be registered at all
+   (an unregistered collision-capable key is also an offender). The
+   post-hoc census (``_scan``) counts direct subscript writes, alias-mediated
+   writes and ``write_meta_key(<meta>, "k", ...)`` calls alike: a write
+   routed through the chokepoint is still a second writer. This is the rule
+   that fails CLOSED: silence from an author is not evidence of single-writer.
 
    The discriminator is narrow on purpose, and was validated before it was
    trusted: 80 registered keys are written by more than one *module*, but

@@ -4,7 +4,9 @@
 This analyzer uses tree-sitter to parse Lua files and extract:
 - Function declarations (global, local, dot-index `Table.func`)
 - Method-style function definitions (`Table:method`)
-- Function call relationships (direct, dot-index, method)
+- Function call relationships (direct, dot-index, method). A call outside
+  every function (module-level setup code, or a function literal bound to a
+  module-level local or table field) takes the file symbol as its caller
 - require statements (imports) with alias tracking
 - Cross-file require-alias call resolution
 - One ``file`` symbol per module, plus per-symbol identity (``stable_id``;
@@ -49,13 +51,15 @@ Lua-Specific Considerations
   export pattern in OpenResty/Kong Lua modules
 - require() is the standard import mechanism
 - Lua is dynamically typed, so call resolution is based on name matching.
-  Method calls (obj:method()) get lower confidence (0.40x) than direct
-  calls (func(), 0.85x) because common method names like connect, send,
-  close collide across unrelated receiver objects
+  Match grades interpolate in the ast_call band (0.40-0.85): a direct or
+  dot call (func()) takes the resolver's grade, while an untyped method
+  call (obj:method()) is graded at the band floor because common method
+  names like connect, send, close collide across unrelated receiver objects
 - Single-assignment type tracking: when a local variable is assigned from
   a known table/class (e.g., `local sock = MyClass` or `local sock = mod.tcp()`),
   the receiver type is tracked. Method calls on typed receivers resolve to
-  `ReceiverType.method` with higher confidence (0.80x). This eliminates
+  `ReceiverType.method` with a higher grade (0.90 x the resolver's grade,
+  in the ast_call band). This eliminates
   false positive edges from name collisions (e.g., sock:send vs pdk.response:send)
 - Require-alias resolution: when `local X = require("foo.bar")` is followed
   by `X.method()` or `X:method()`, the call resolves to symbols defined in
@@ -509,14 +513,18 @@ def _extract_edges_from_file(
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
 
-    # Confidence multipliers for call resolution. Direct calls (func())
-    # use a higher base because function names tend to be unique. Method
-    # calls (obj:method()) use a lower base because Lua lacks static types
-    # and common method names (connect, send, close) collide across
-    # unrelated receiver objects, producing false positive edges.
-    CONFIDENCE_DIRECT_CALL = 0.85
-    CONFIDENCE_METHOD_CALL = 0.40
-    CONFIDENCE_TYPED_METHOD_CALL = 0.80
+    # Match grades for call resolution (ADR-0039 ruling 6: Edge.create
+    # interpolates the grade in the ast_call band, 0.40-0.85). A direct call
+    # (func()) or dot call takes the resolver's grade as is, because function
+    # names tend to be unique. A method call (obj:method()) on a receiver of
+    # known type is graded like a path hint. An untyped method call matched
+    # by name alone is graded 0, the band floor: Lua lacks static types and
+    # common method names (connect, send, close) collide across unrelated
+    # receiver objects. Before ruling 6 these were bases of 0.85 / 0.80 /
+    # 0.40 multiplied by the resolver's grade, which put the untyped case
+    # below the floor.
+    TYPED_METHOD_GRADE = 0.90
+    UNTYPED_METHOD_GRADE = 0.0
     CONFIDENCE_REQUIRE_ALIAS = 0.85
 
     # Extract variable type assignments for receiver-based method resolution
@@ -647,7 +655,6 @@ def _extract_edges_from_file(
                             qualified_name = f"{receiver_type}.{callee_name}"
                             typed_lookup = resolver.lookup(qualified_name, caller_path=_caller_path)
                             if typed_lookup.found:
-                                confidence = CONFIDENCE_TYPED_METHOD_CALL * typed_lookup.confidence
                                 edge = Edge.create(
                                     src=caller.id,
                                     dst=typed_lookup.symbol.id,
@@ -656,7 +663,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="ast_call",
-                                    confidence=confidence,
+                                    resolution_score=TYPED_METHOD_GRADE * typed_lookup.confidence,
                                     meta={"call_construct": "method", "resolution_quality": "typed"},
                                 )
                                 edges.append(edge)
@@ -666,8 +673,6 @@ def _extract_edges_from_file(
                             # Fallback: name-only resolution
                             lookup_result = resolver.lookup(callee_name, caller_path=_caller_path)
                             callee = lookup_result.symbol if lookup_result.found else None
-                            base = CONFIDENCE_METHOD_CALL
-                            confidence = base * lookup_result.confidence if lookup_result.found else 0.50
                             # INV-fahub: an untyped ``obj:method()`` whose short
                             # name only suffix-matches a DIFFERENT table's method
                             # is a magnet — withhold it (defer to the Site-1
@@ -687,7 +692,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="ast_call",
-                                    confidence=confidence,
+                                    resolution_score=UNTYPED_METHOD_GRADE,
                                     meta={"call_construct": "function"},
                                 )
                                 edges.append(edge)
@@ -722,7 +727,6 @@ def _extract_edges_from_file(
                             qualified = f"{receiver_name}.{callee_name}"
                             lookup_result = resolver.lookup(qualified, caller_path=_caller_path)
                             if lookup_result.found:
-                                confidence = CONFIDENCE_DIRECT_CALL * lookup_result.confidence
                                 edge = Edge.create(
                                     src=caller.id,
                                     dst=lookup_result.symbol.id,
@@ -731,7 +735,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="ast_call",
-                                    confidence=confidence,
+                                    resolution_score=lookup_result.confidence,
                                     meta={"call_construct": "function"},
                                 )
                                 edges.append(edge)
@@ -757,7 +761,6 @@ def _extract_edges_from_file(
                         # Direct call: func(args)
                         lookup_result = resolver.lookup(callee_name, caller_path=_caller_path)
                         callee = lookup_result.symbol if lookup_result.found else None
-                        confidence = CONFIDENCE_DIRECT_CALL * lookup_result.confidence if lookup_result.found else 0.50
                         # INV-fahub: a bare ``func()`` whose short name only
                         # suffix-matches a DIFFERENT table's method is a magnet —
                         # withhold it (defer to the Site-1 ``inherited_calls``
@@ -776,7 +779,7 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 evidence_type="ast_call",
-                                confidence=confidence,
+                                resolution_score=lookup_result.confidence,
                                 meta={"call_construct": "function"},
                             )
                             edges.append(edge)

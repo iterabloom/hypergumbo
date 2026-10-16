@@ -209,7 +209,7 @@ Additional gitignore-style glob patterns for paths to skip, on top of the defaul
 * 🟩 **Generated output is recognised by the tool that writes it, not by name** (INV-hagof): `dist`, `build`, `_build`, `out`, `target`, `site`, `_site` and the coverage-report directory names (`coverage`, `htmlcov`, `lcov-report`, `TestResults`, …) are **not** default excludes — matched by name at any depth they deleted source (qemu's `target/`, next.js's `packages/next/src/build`, plausible's `lib/plausible/site/`; 329 of the 354 such directories pruned across the 273-repo corpus had no tool evidence). `discovery.BUILD_OUTPUT_RULES` claims one only on the producing tool's evidence: its manifest beside the directory (`target/` ← `Cargo.toml`/`pom.xml`/`build.sbt`, `_build/` ← `mix.exs`/`rebar.config`/Sphinx `conf.py`, `site/` ← `mkdocs.yml` and its `site_dir`, `_site/` ← Jekyll `_config.yml`, `build/` ← Gradle, …), a declared output (`package.json` entry points, `tsconfig` `outDir`, `action.yml` `runs.main`), or a marker the tool writes into it (`CMakeCache.txt`, `CACHEDIR.TAG`, a coverage report file, a self-ignoring `.gitignore`, …); `dist`/`build`/`out` beside a bare `package.json` count only when positively untracked. Committed output is still output. **A directory with an output name and no evidence is analysed.** Pruned output is **disclosed** — a stderr line, a sketch Overview line and [`supply_chain_summary.generated_output_skipped`](#supply_chain_summary--classification-overview), e.g. *"Generated output not analysed: target/ (Cargo build). Recognised by the tool that writes each (ADR-0004)."* Tier 4 asks the same rules. See [ADR-0004](adr/0004-file-taxonomy.md) §"Installed dependency source" point 7.
 * **Virtualenvs are excluded by content, not by name.** `venv` / `.venv` / `env` are deliberately **not** default excludes: a directory with one of those names is pruned only if it holds `pyvenv.cfg`, `bin/activate` or `Scripts/activate`, because an `env/` directory is as often first-party source.
 * Minified and bundled files (`*.min.js`, `*.bundle.js`) are not excluded by name; they are classified tier 4 (derived) and dropped after classification ([§14](#14-supply-chain-classification)).
-* 🟩 **Installed dependency source is not parsed by default** (WI-bapal): source a package manager installed into the working tree is recognised by **content**, per ecosystem (`discovery.INSTALLED_DEP_RULES`; the virtualenv rule above is one entry): Mix `deps/` (`mix.exs` + `mix.lock` beside it, or `deps/*/hex_metadata.config`); `node_modules/` (`package.json` beside it, or a package manager's state file inside — `.package-lock.json`, `.yarn-integrity`, `.modules.yaml`, `.yarn-state.yml`); Composer `vendor/` (`composer.json` beside it + `vendor/autoload.php`); Go `vendor/` (`go.mod` beside it + `vendor/modules.txt`); Bundler `vendor/bundle` (`Gemfile.lock` beside `vendor/` + `bundle/ruby/`); CocoaPods `Pods/` (`Podfile.lock` beside it + `Pods/Manifest.lock`). **A directory whose files are committed (present in HEAD) is vendored code, never installed**, whatever marker it carries — a committed `go mod vendor` tree is analysed as tier 3 — so markers decide only for untracked directories (a repository with no git, or no commits, falls back to markers). A skip is **disclosed** — one stderr line, one line in the sketch's Overview, and [`supply_chain_summary.installed_deps_skipped`](#supply_chain_summary--classification-overview) — e.g. *"Installed dependency source not analysed: deps/ (81 Mix packages). Calls into them appear as external stubs. To trace into them: --trace-deps <pkg,...\|all>"*; nothing is printed when nothing was skipped. A `node_modules` or `vendor` with no marker (a resolver test fixture, Rails `vendor/javascript`, a vendored C library) is analysed and classified tier 3. Tool build output conditioned on content (Mix `cover/` beside `mix.exs`, Phoenix `priv/static/assets` under a `mix.exs` project, `.dart_tool` beside `pubspec.yaml`, `.stack-work` beside `stack.yaml`, `elm-stuff` beside `elm.json`) is pruned with no opt-in and disclosed as generated output (see "Generated output is recognised by the tool that writes it" above). **Not yet covered** (analysed if present): Carthage `Carthage/Checkouts`, Yarn PnP `.yarn/cache`, `bower_components`, Swift PM `.build/checkouts`, `cargo vendor` output, Phoenix `mix phx.digest` output (per-file `priv/static/*-<hash>.*`). See [ADR-0004](adr/0004-file-taxonomy.md) §"Installed dependency source".
+* 🟩 **Installed dependency source is not parsed by default** (WI-bapal): source a package manager installed into the working tree is recognised by **content**, per ecosystem (`discovery.INSTALLED_DEP_RULES`; the virtualenv rule above is one entry): Mix `deps/` (`mix.exs` + `mix.lock` beside it, or `deps/*/hex_metadata.config`); `node_modules/` (`package.json` beside it, or a package manager's state file inside — `.package-lock.json`, `.yarn-integrity`, `.modules.yaml`, `.yarn-state.yml`); Composer `vendor/` (`composer.json` beside it + `vendor/autoload.php`); Go `vendor/` (`go.mod` beside it + `vendor/modules.txt`); Bundler `vendor/bundle` (`Gemfile.lock` beside `vendor/` + `bundle/ruby/`); CocoaPods `Pods/` (`Podfile.lock` beside it + `Pods/Manifest.lock`). **A directory whose files are committed (present in HEAD) is vendored code, never installed**, whatever marker it carries — a committed `go mod vendor` tree is analysed as tier 3 — so markers decide only for untracked directories (a repository with no git, or no commits, falls back to markers). A skip is **disclosed** — one stderr line, one line in the sketch's Overview, and [`supply_chain_summary.installed_deps_skipped`](#supply_chain_summary--classification-overview) — e.g. *"Installed dependency source not analysed: deps/ (81 Mix packages). Calls into them appear as external stubs. To trace into them: --trace-deps <pkg,...\|all>"*; nothing is printed when nothing was skipped. A `node_modules` or `vendor` with no marker (a resolver test fixture, Rails `vendor/javascript`, a vendored C library) is analysed and classified tier 3. 🟩 Committed tier-3 code is analysed but does not count in the project's summaries: language breakdown, LOC and partial-install diagnostics count tiers 1–2, and tier 3 gets its own disclosure line (ADR-0004 point 3a). Linker activation is not a summary and still reads every detected language, so bridges from first-party code into vendored code keep their edges (ADR-0004 3a amendment, ADR-0055). Implemented: partial-install diagnostics (WI-dipag), language breakdown and LOC (`profile.languages[*].own_files` / `own_loc`, WI-kojul), and the disclosure — one stderr line, one line in the sketch Overview and [`supply_chain_summary.vendored_analysed`](#supply_chain_summary--classification-overview) `{dirs, entries: [{path, languages, files}]}`, e.g. *"Vendored third-party code analysed as tier 3, not counted in the language breakdown: lib/third_party/ (c; 4 files). To skip: --exclude <dir>."* (WI-pasan; nothing printed when there is none). A repository's own declarations (`.gitattributes` `linguist-vendored`) never cause committed code to be skipped (point 3b). 🟩 A git submodule (a `.gitmodules` path with a gitlink in HEAD; outside git, a `.git` file in it) is installed dependency source: skipped by default, disclosed (*"lib/sub/ (git submodule)"*), and traced as tier 3 with `--trace-deps <path>`, the path `.gitmodules` declares (WI-tiril). An unpopulated submodule is an empty directory and a no-op; an undeclared nested repository is analysed as before. Tool build output conditioned on content (Mix `cover/` beside `mix.exs`, Phoenix `priv/static/assets` under a `mix.exs` project, `.dart_tool` beside `pubspec.yaml`, `.stack-work` beside `stack.yaml`, `elm-stuff` beside `elm.json`) is pruned with no opt-in and disclosed as generated output (see "Generated output is recognised by the tool that writes it" above). **Not yet covered** (analysed if present): Carthage `Carthage/Checkouts`, Yarn PnP `.yarn/cache`, `bower_components`, Swift PM `.build/checkouts`, `cargo vendor` output, Phoenix `mix phx.digest` output (per-file `priv/static/*-<hash>.*`). See [ADR-0004](adr/0004-file-taxonomy.md) §"Installed dependency source".
 
 🟩 **`--trace-deps <pkg,...|all|none>`** (on `sketch`, `survey`/`run`, `slice`; WI-bapal)
 Opt in to parsing installed dependency source, per package (`--trace-deps langchain,httpx`) or wholesale (`--trace-deps all`); `none` overrides the config key for one command. Package names are matched case-insensitively with `-`/`_`/`.` folded, against the name each layout gives: the Mix app directory (`phoenix_html`), the npm package (`react`, `@scope/name`), Composer's `vendor/package`, the Go module path from `vendor/modules.txt`, the gem name (`rack` for `rack-3.0.8`), the pod, and a virtualenv's **import** name in `site-packages` (`yaml`, not `PyYAML`; a single-module `six.py` is `six`). Per package, only the named packages' directories inside an installed directory are analysed. Traced dependency files are classified tier 3 (a traced virtualenv or nested `deps/` that no path pattern reaches is classified through the same content test, reason `in installed dependency source <dir>/`). The `trace_deps` key in the configuration ([Configuration files](#configuration-files), ADR-0045) carries the same setting. The setting is part of the results-cache key: the state segment gains `-deps-all` / `-deps-<hash>` when something is traced, so untraced entries keep their keys. Without it, `io-boundaries` / `verify-claims` report calls into the untraced source as I/O unknown, never clean (🟩 ADR-0016 §7; WI-pogar).
@@ -973,7 +973,7 @@ Single file: `survey.json`
 ```json
 {
   "schema_version": "0.20.6",
-  "confidence_model": "hypergumbo-evidence-v2.1",
+  "confidence_model": "hypergumbo-evidence-v2.2",
   "stable_id_scheme": "hypergumbo-stableid-v9",
   "shape_id_scheme": "hypergumbo-shapeid-v3",
   "repo_fingerprint_scheme": "hypergumbo-repofp-v2",
@@ -1016,7 +1016,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 ### Confidence scoring
 
-The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v2.1`) identifies the scoring algorithm. See [§12 Confidence scoring](#12-confidence-scoring) for the full confidence model and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations.
+The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v2.2`) identifies the scoring algorithm. See [§12 Confidence scoring](#12-confidence-scoring) for the full confidence model and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations.
 
 ### analysis_runs[] — provenance tracking
 
@@ -1034,10 +1034,10 @@ Why the field exists: `analysis_runs[]` records that a pass emitted zero edges b
 
 **What the orchestrator will and will not claim.** It stamps only what it derives with certainty from counters it already holds: zero files ⇒ `no_candidate_files`, otherwise `unreported`. It never infers `no_candidate_construct` — only a pass body knows whether it looked for a construct and failed to find one, and a reason invented on the producer's behalf would be a fabricated disclosure. **`prerequisite_absent` now has a producer (WI-dabup / ADR-0056 W3), and it is not the obvious one.** It is NOT stamped merely because a `depends_on` conjunct is unsatisfied: 98.94% of skip records are `no files matched`, so an unsatisfied conjunct nearly always means the repository lacks that language — a correct no-op, and stamping it as an ordering defect would make the field assert a defect about a repo that simply has no Rust in it. It is stamped when **every** literal of some conjunct did not run **and at least one of them was skipped with a `silence_reason` other than `no_candidate_files`** — a toolchain reason rather than a file reason. A prerequisite that ran and honestly found nothing still satisfies its dependents. The stamp fills only a field the pass body left empty: a body that spoke keeps its word, so a bridge linker that truthfully reports `no_candidate_construct` about the side it *could* scan is not overruled, and `prerequisite_absent` therefore under-reports rather than overwriting a true claim. Structurally it can only see ANALYZER prerequisites, since only analyzer passes are enumerated in `limits.skipped_passes`. **A non-zero `unreported` count is expected, and a ZERO does not mean the work is done** — most passes never claim a reason at all, so a drained count measures the corpus, not completion.
 
-**Surfaced, not only recorded.** At the end of a run the CLI writes one line to stderr summarising the population, beside the validator's `[warn]` lines and under the same discipline — silent when every pass produced output:
+**Surfaced, not only recorded.** At the end of a run the CLI writes one line to stderr summarising the population, beside the validator's `[warn]` lines and under the same discipline — silent when nothing is worth a look. It names only the reasons outside `ROUTINE_SILENCE_REASONS` (`no_candidate_files`, `no_candidate_construct`, `backend_disabled`: nothing to find, or an opt-in backend left off) and counts the routine passes at the end, so the share of each named reason among all silent passes can still be read off it (WI-vadom, owner ruling 2026-10-15; on hypergumbo's own tree the routine reasons were 122 of the 128 passes the two lines reported). A sibling line summarises `limits.skipped_passes` the same way (`... did not run: ...`):
 
 ```
-[passes] 57 of 78 emitted nothing: no_candidate_files=52, unreported=5 (per-pass detail in analysis_runs[].silence_reason)
+[passes] 5 of 78 emitted nothing: unreported=5; 52 more routine (nothing to find, or opt-in backend off) (per-pass detail in analysis_runs[].silence_reason)
 ```
 
 Reasons are ordered most-common-first with ties broken alphabetically, so the line is deterministic and two surveys can be diffed without spurious churn. A value outside the declared vocabulary is reported under its own name rather than dropped or folded into a neighbour: a drifted producer must not read as a clean run. The reusable consumer API is `summarize_silence` / `format_silence_summary` / `emit_silence_summary` in `hypergumbo_core.pass_silence`.
@@ -1105,8 +1105,8 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
 ```json
 {
   "languages": {
-    "python": {"files": 42, "loc": 15230, "test_files": 11},
-    "javascript": {"files": 18, "loc": 8420, "test_files": 0}
+    "python": {"files": 42, "loc": 15230, "test_files": 11, "own_files": 42, "own_loc": 15230},
+    "javascript": {"files": 18, "loc": 8420, "test_files": 0, "own_files": 16, "own_loc": 7100}
   },
   "frameworks": ["fastapi", "react"]
 }
@@ -1115,6 +1115,8 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
 **File-count definition:** `languages[L].files` is the count of files the language-L analyzer would enumerate on this repo. When an analyzer registers a canonical `find_files` callable, that callable's output is the count — so extensionless shebang scripts (e.g., `.githooks/pre-commit`, `scripts/auto-pr`) appear in `languages.bash.files`, matching `analysis_runs[bash].files_analyzed`. Otherwise the count falls back to the language's extension globs (e.g., `*.py` / `*.pyi` for Python).
 
 **Test-file share:** `languages[L].test_files` is how many of `languages[L].files` sit on a test or test-support path (`tests/`, `fixtures/`, `*_test.*`, `spec/`, ...: `selection.filters.is_test_path` applied to the repo-relative path, the same predicate the sketch's "N non-test + M test" files line uses). `files - test_files` is the language's non-test footprint, so a consumer asking "what is this project written in?" can separate production languages from languages that appear only as test fixtures (`test_files == files`). `files` is deliberately NOT reduced: the WI-jadig file-presence pre-filter skips an analyzer whose declared languages all read `files == 0`, so shrinking it would stop analyzers from running on fixture files. `test_files` is omitted when it was not measured (a profile restored from a cache written before the field existed); absent is not `0`. (WI-ritaf.)
+
+**Own-code share:** `languages[L].own_files` / `own_loc` are the part of `files` / `loc` that is the project's own code, supply-chain tier 1–2 decided by path alone (`supply_chain.tier_by_path`: the `DERIVED_*` and `EXTERNAL_DEP_*` patterns, no file read). Committed vendored code (a nested `vendor/`, `node_modules/`, `third_party/`, ...) and derived files stay in `files` and are analysed, but summaries that describe the project count only the own share (ADR-0004 point 3a): the sketch Overview's language line, file and LOC totals read `own_*`, and its test count skips a vendored dependency's own tests. The path check under-reports tier 3–4 (a minified file or installed dependency source found by content still counts here) rather than inventing it. Omitted when not measured; absent is not `0`, and readers fall back to `files` / `loc`. (WI-kojul.)
 
 **LOC definition:** Lines of code counts non-empty lines in files matching language extensions — the SLOC convention shared with `cloc` and `tokei`'s "code" tally. Whitespace-only lines are excluded; comments are NOT stripped. Expect the number to run ~10-20% lower than raw `wc -l` for typical source files (the gap is blank lines). Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§15 File role classification](#15-file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
@@ -1418,7 +1420,7 @@ Markdown output to stdout (not a file). This is the default output mode. Designe
 |-------|---------|---------|
 | 1 | 🟩 Header | Title, description |
 | 2 | 🟩 Overview | Language breakdown, file counts, LOC |
-| 3 | 🟩 Structure | Tree built from important files |
+| 3 | 🟩 Structure | Tree built from important files, with a LOC column; counts cover files with a detected symbol, and a note under the tree says so |
 | 4 | 🟩 Frameworks | Detected frameworks/libraries |
 | 5 | 🟩 Tests | Test file count, frameworks, coverage estimate |
 | 6 | 🟩 Configuration | Config file excerpts (heuristic + semantic) |
@@ -1470,14 +1472,15 @@ C++ (82%), Lua (12%), CMake (6%)
 ~120,000 LOC (~105,000 non-test + ~15,000 test)
 
 ## Structure
-/path/to/minetest-wasm/
-├── CMakeLists.txt
-├── src
-│   ├── main.cpp
-│   └── [and 234 other items]
-├── builtin
-│   └── [and 45 other items]
-└── [and 12 other items]
+     /path/to/minetest-wasm/
+ 92  ├── CMakeLists.txt
+ 97k ├── src
+  1k │   ├── main.cpp
+ 96k │   └── [and 234 other items]
+ 14k ├── builtin
+ 14k │   └── [and 45 other items]
+  9k └── [and 12 other items]
+Counts and LOC cover only files with at least one detected symbol; files with none, such as JSON data or extensionless scripts, are left out.
 
 ## Frameworks
 - cmake
@@ -1605,10 +1608,10 @@ Hypergumbo assigns confidence scores (0.0–1.0) in three independent categories
 | Category | What it scores | Scoring basis | Score range | Defined in |
 |----------|---------------|---------------|-------------|------------|
 | **Analyzer edge confidence** | Intra-language relationships (calls, imports) | 🟩 Derived from the inference pathway (`evidence_type`) via the registry `base_confidence` table, `is_resolved`-conditioned for call types ([ADR-0039](adr/0039-confidence-separation.md) / WI-nurun) | 0.30–0.95 | [Below](#edge-confidence-analyzer-evidence) |
-| **Linker edge confidence** | Linker-recovered relationships across all four subcategories — Bridge/Protocol examples include JNI, IPC, HTTP | Match quality (literal vs. dynamic, naming convention vs. annotation) | 0.40–0.95 | [Below](#edge-confidence-linker-edges), details in [§7](#7-linkers) |
+| **Linker edge confidence** | Linker-recovered relationships across all four subcategories — Bridge/Protocol examples include JNI, IPC, HTTP | Match quality (literal vs. dynamic, naming convention vs. annotation). 🟩 Judged by this range, not by the analyzer band of the `evidence_type` the edge declares ([ADR-0039](adr/0039-confidence-separation.md) ruling 7) | 0.40–0.95 | [Below](#edge-confidence-linker-edges), details in [§7](#7-linkers) |
 | **Entrypoint confidence** | Whether a symbol is an entry point | Detection method (manifest, decorator, convention, naming) | 0.70–0.99 | [Below](#entrypoint-confidence-tiers), details in [§8](#8-entrypoint-detection) |
 
-All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v2.1`) identifies the scoring algorithm version — `v2` marks the deterministic evidence→confidence derivation now in effect for analyzer edges ([ADR-0039](adr/0039-confidence-separation.md) / WI-nurun): the base score is a registry lookup keyed on `evidence_type`, `is_resolved`-conditioned for call types. Unregistered/unseeded pathways and dynamically-computed sites fall back to the caller's value; consumers should read `confidence` purely as detection reliability on the 0.0–1.0 scale.
+All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v2.2`) identifies the scoring algorithm version — `v2` marks the deterministic evidence→confidence derivation now in effect for analyzer edges ([ADR-0039](adr/0039-confidence-separation.md) / WI-nurun): the base score is a registry lookup keyed on `evidence_type`, `is_resolved`-conditioned for call types. 🟩 A name resolver's match quality interpolates within the pathway band ([ADR-0039](adr/0039-confidence-separation.md) ruling 6, below). Linker edges and unregistered or unseeded pathways keep the caller's value, as do the analyzer sites that `check-confidence-sites` lists as caller-valued. Consumers should read `confidence` purely as detection reliability on the 0.0–1.0 scale.
 
 ### Edge confidence: analyzer evidence
 
@@ -1643,8 +1646,25 @@ emitted directly from `evidence_types.EVIDENCE_TYPES` and kept honest by the
 `generate-concept-axes --check` freshness gate (WI-limom). This section owns the
 *model*; that table owns the *values*, so the two cannot drift.
 
-**Not yet derived (retain explicit `confidence=`):** sites that *compute*
-confidence dynamically (linker match-strength scores), and the pathways
+🟩 **Resolution quality interpolates within the band (ADR-0039 ruling 6).** A
+producer whose name resolver reports a match quality `s` in [0, 1] (1.0 exact,
+0.90 path hint, 0.85 suffix, `0.70/sqrt(n)` ambiguous among `n` candidates) passes
+`Edge.create(..., resolution_score=s)` and gets
+`low + (base − low) × s`, where `base` is the pathway's `base_confidence` and
+`low` is `base_confidence_unresolved` for the `is_resolved`-conditioned call
+pathways and 0.30 for every other seeded pathway. An exact match gets the base
+and an ambiguous one moves toward the floor without crossing it. The rejected
+alternative, `base × s`, dropped below the floor
+(`0.85 × 0.70/sqrt(4) = 0.30` on `ast_call`, whose floor is 0.40) and kept a
+private base per producer. Passing both `confidence=` and `resolution_score=`,
+passing a score on an unseeded pathway, or passing one with `is_resolved=False`
+raises `ValueError`. An analyzer site on a seeded pathway that still passes an
+explicit `confidence=` carries a `# ADR-0039 caller-valued: <reason>` comment,
+and `scripts/check-confidence-sites` lists every such site.
+
+**Not yet derived (retain explicit `confidence=`):** linker match-strength
+scores (ruling 7: judged against the linker range 0.40–0.95), the caller-valued
+analyzer sites above, and the pathways
 registered without a seeded `base_confidence` — `derive_confidence` returns
 `None` for those, so the producer keeps its literal and `confidence_source`
 stays `emitter_constant`. Only literal hardcoded constants on seeded inference
@@ -1670,7 +1690,7 @@ key on `rank_score`; `confidence` is now purely detection reliability.
 
 ### Edge confidence: linker edges
 
-Linkers (Tier 2 passes — all four subcategories) produce their own confidence scores based on match quality. These scores are independent of the analyzer-evidence scoring above. See [§7 Linkers](#7-linkers) for detection rules and limitations.
+Linkers (Tier 2 passes — all four subcategories) produce their own confidence scores based on match quality. These scores are independent of the analyzer-evidence scoring above. 🟩 A linker edge declares an `evidence_type` naming its inference pathway, but it is judged against this category's range (0.40–0.95), not against that pathway's analyzer band ([ADR-0039](adr/0039-confidence-separation.md) ruling 7). An edge counts as a linker edge when its producing pass (`Edge.origin`) is a registered linker. See [§7 Linkers](#7-linkers) for detection rules and limitations.
 
 | Linker | Match type | Confidence |
 |--------|-----------|------------|
@@ -1826,9 +1846,15 @@ def is_likely_derived(path: Path) -> bool:
     if re.search(r'//[#@]\s*sourceMappingURL=', tail):
         return True
 
-    # Heuristic 3: Generator header in first 5 lines
-    head = '\n'.join(lines[:5])
-    if re.search(r'(Generated by|@generated|DO NOT EDIT)', head, re.I):
+    # Heuristic 3: a generated-file DECLARATION in the leading comment block
+    # (@generated / auto-generated / automatically generated / DO NOT EDIT on
+    # a comment line; prose about generated code does not count, INV-bokim)
+    head = content[:4096]
+    if has_generated_marker(head):
+        return True
+
+    # Heuristic 3b: a C-family generator's structural fingerprint (WI-munam)
+    if generator_fingerprint(head, path.suffix):
         return True
 
     return False
@@ -1838,6 +1864,7 @@ def is_likely_derived(path: Path) -> bool:
 - 150 chars/line: GitHub Linguist uses 110; hypergumbo uses 150 to reduce false positives on legitimately long lines (e.g., data URIs, long strings). Minified code typically has 1000+ chars/line.
 - Source map check: Presence of `sourceMappingURL` is a strong signal that this file was generated from another source.
 - Generator header: Many tools (protoc, swagger-codegen, etc.) add header comments.
+- Generator fingerprints (`supply_chain._GENERATOR_FINGERPRINTS`, C-family files only): a tree-sitter parser (`#include "tree_sitter/parser.h"` AND `#define LANGUAGE_VERSION`; a hand-written external `scanner.c` has only the first), a GNU Bison / flex / re2c banner on a comment line, or a `#line N "x.y"` directive into a grammar source (`.y .yy .ypp .l .ll .lex .rl .re`). Two of hypergumbo's three vendored tree-sitter `parser.c` files carry no `@generated`. Over 158,304 C-family files in the local corpus the fingerprints matched 36, all generator output (Bison, flex, ragel), none already marked.
 
 #### 2. External dependency detection (tier 3)
 
@@ -2244,7 +2271,7 @@ For the technical contract governing output schema stability, see [Appendix C](#
 * **Confidence model versions**: `hypergumbo-evidence-vMAJOR.MINOR`
   - MAJOR: Incompatible changes (requires new schema)
   - MINOR: Refinements (new evidence types, score adjustments)
-  - The emitted value carried a bare `v2` until WI-huhin, which did not match this grammar and left MINOR unexpressible — so ADR-0039's refinement (new evidence types, exactly what MINOR is for) had no way to signal itself, and the next refinement would have had to choose between a misleading MAJOR bump and silence. `hypergumbo-evidence-v2.0` is the first *conforming* rendering of the **same** model, not a refinement of `v2`; MAJOR is unchanged and no scoring behaviour differs. `v2.1` (ADR-0057 §13, WI-binis) is the first MINOR refinement: a new `confidence_source`, `corroborated`, and its declared 0.95 for an edge two distinct pathways reached; no single-producer score changes.
+  - The emitted value carried a bare `v2` until WI-huhin, which did not match this grammar and left MINOR unexpressible — so ADR-0039's refinement (new evidence types, exactly what MINOR is for) had no way to signal itself, and the next refinement would have had to choose between a misleading MAJOR bump and silence. `hypergumbo-evidence-v2.0` is the first *conforming* rendering of the **same** model, not a refinement of `v2`; MAJOR is unchanged and no scoring behaviour differs. `v2.1` (ADR-0057 §13, WI-binis) is the first MINOR refinement: a new `confidence_source`, `corroborated`, and its declared 0.95 for an edge two distinct pathways reached; no single-producer score changes. `v2.2` ([ADR-0039](adr/0039-confidence-separation.md) rulings 6–7) is the first MINOR refinement that does change single-producer scores: a resolver's grade interpolates inside its pathway band instead of multiplying a private base, so values move (JS/TS scope-bound 0.90 → 0.85) while the meaning and the bands stay.
 
 ### Compatibility guarantees
 
@@ -2326,8 +2353,8 @@ This appendix defines the **technical contract** for output consumers: which fie
 - `analysis_runs[].run_signature`: Deterministic fingerprint of pass configuration
 
 **4. Confidence scoring:**
-- `confidence_model` field identifies the scoring algorithm (`hypergumbo-evidence-v2.1`)
-- `confidence` is detection reliability (0.0–1.0); there is no normative default for unknown `evidence_type` (the deterministic evidence→confidence model is **implemented** for seeded pathways — [ADR-0039](adr/0039-confidence-separation.md) / WI-nurun; unseeded/dynamically-computed sites fall back to the caller's value). Ranking prominence lives in the sibling `rank_score` field, and `confidence_source` records how each `confidence` was produced.
+- `confidence_model` field identifies the scoring algorithm (`hypergumbo-evidence-v2.2`)
+- `confidence` is detection reliability (0.0–1.0); there is no normative default for unknown `evidence_type` (the deterministic evidence→confidence model is **implemented** for seeded pathways — [ADR-0039](adr/0039-confidence-separation.md) / WI-nurun; resolver match quality interpolates within the band per ruling 6; linker edges, unseeded pathways and the listed caller-valued sites keep the caller's value). Ranking prominence lives in the sibling `rank_score` field, and `confidence_source` records how each `confidence` was produced.
 
 ### Extensible Contracts (can add in minor versions)
 
@@ -2374,17 +2401,18 @@ This appendix defines the **technical contract** for output consumers: which fie
 - Example: Switching from `python:file.py:10-15:func:function` to `sha256:abc123`
 
 **4. Changing confidence semantics:**
-- Example: Redefining what evidence types mean or changing the scoring algorithm
+- Example: Redefining what `confidence` measures, its scale, or what an evidence type means
+- Not breaking: changing how a score is computed within that meaning (new evidence types, interpolation inside a band, a pathway's base value). Such a refinement changes emitted values and bumps `confidence_model` MINOR ([Appendix A](#appendix-a-release-lifecycle--support)), not the tool's major version; ADR-0039 rulings 6–7 (`v2.2`) are an example. A consumer comparing scores across runs must compare `confidence_model` first.
 
 ### Version fields: three independent axes
 
 Output carries version numbers along **three deliberately independent axes** (WI-bobog / WI-romup). Consumers must not conflate them, and producers must not consolidate them onto one number or rename the wire fields (each has consumers, so a rename is a breaking change):
 
-1. **Top-level format version** — `schema_version` (currently `0.20.6`, the `SCHEMA_VERSION` constant). The version of the survey (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
+1. **Top-level format version** — `schema_version` (currently `0.20.15`, the `SCHEMA_VERSION` constant). The version of the survey (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
 2. **Tool/package version** — `__version__`, surfaced under **three** names that are **not** schema versions: `reproducibility_context.hypergumbo_version` (bare, e.g. `7.0.0`), `analysis_runs[].version` (bare, e.g. `7.0.0`), and `limits.analyzer_version` (prefixed, `hypergumbo-<__version__>`). Increments every release; says nothing about output format. **Only `limits.analyzer_version` carries the `hypergumbo-` prefix**, and that is deliberate — it is the one surface that names the *producing tool* rather than reporting the version of a record the tool is already the author of. Consumers joining these for an equality check must strip the prefix from `analyzer_version`; they are the same underlying `__version__` (WI-tinul, which recorded the three-way disagreement and the failed join).
 3. **Per-view / per-sub-schema versions** — several JSON surfaces version their own wire shape independently of axes 1–2:
    - The CLI **read-view** envelopes (`routes`, `test-coverage`, `config`, `catalog`, `cache-status`, `repeat-finder`) share `READ_VIEW_SCHEMA_VERSION` (currently `0.1.0`), a single placeholder for the views that have not needed to evolve independently. A view that does need to promotes to its own named constant, and `dead-code-maybe` already has: it carries `DEAD_CODE_MAYBE_SCHEMA_VERSION` (currently `0.2.0`), not the shared placeholder.
-   - `io-boundaries` carries `IO_BOUNDARIES_SCHEMA_VERSION` (`2.3`), `verify-claims` carries `VERIFY_CLAIMS_SCHEMA_VERSION` (`2.6`), and the embedded `validation_report` block carries `VALIDATION_REPORT_SCHEMA_VERSION` (`0.4`) — each with its own changelog. A change to one of these bumps only that surface's version, **not** the top-level `schema_version`. (So `validation_report.schema_version` legitimately differs from the enclosing map's `schema_version` — they are different schemas.)
+   - `io-boundaries` carries `IO_BOUNDARIES_SCHEMA_VERSION` (`2.4`), `verify-claims` carries `VERIFY_CLAIMS_SCHEMA_VERSION` (`2.6`), and the embedded `validation_report` block carries `VALIDATION_REPORT_SCHEMA_VERSION` (`0.4`) — each with its own changelog. A change to one of these bumps only that surface's version, **not** the top-level `schema_version`. (So `validation_report.schema_version` legitimately differs from the enclosing map's `schema_version` — they are different schemas.)
 
 ### Algorithm-identification fields and `stable_id_scheme` version history
 

@@ -19,3 +19,25 @@
     pr_ref:  # b7f2
     description: "Since PR #1504 (WI-bapal), `vendor/` is no longer excluded by name, so committed vendored code is analysed as tier 3 (intended). On hypergumbo's own repo that pulls in the committed tree-sitter grammars under vendor/, including generated parser.c files (~10 MB each); self-survey went 3:54 → 4:55 wall and 2.95 → 3.35 GB peak RSS (+221 symbols, +313 edges, all tier 3). tree-sitter-generated parser.c / scanner tables are machine output: classify them as tier 4 (derived) via GENERATED_CODE_PATTERNS / the derived header check (tree-sitter emits a recognisable header and `#include \"tree_sitter/parser.h\"` + huge static tables) so they're skipped like other generated code. Check analogues: other generators that commit large C/Go tables (bison/yacc *.tab.c, re2c, protobuf .pb.c, ragel). Measure self-survey before/after."  # b7f2
     fields: {}  # b7f2
+- op: discuss  # a6a9
+  at: '2026-10-15T05:07:33Z'  # a6a9
+  by: agent  # a6a9
+  actor: jgstern_agent  # a6a9
+  clock: 2  # a6a9
+  nonce: a6a9  # a6a9
+  message: "RELATED FINDING 2026-10-15 (architect review, not yet investigated): the profile counts vendored tree-sitter-lean's 305,712-line generated parser.c in LOC (324,161 C LOC in the 2026-10-14 self-sketch, 25.7% of counted LOC) although that file contributes NO nodes to the survey. Why it yields no nodes is unknown (size cap? parse failure? intended?). Only lean's parser.c carries an @generated header; circom's and wolfram's do not, so a header-based tier-4 rule would miss two of three. The language-line half is now WI-kojul (summaries count tiers 1-2 only); this item keeps the tier-4 question and the parse cost."  # a6a9
+- op: update  # baac
+  at: '2026-10-16T01:09:17Z'  # baac
+  by: agent  # baac
+  actor: jgstern_agent  # baac
+  clock: 3  # baac
+  nonce: baac  # baac
+  set:  # baac
+    status: done  # baac
+- op: discuss  # 0b67
+  at: '2026-10-16T01:09:17Z'  # 0b67
+  by: agent  # 0b67
+  actor: jgstern_agent  # 0b67
+  clock: 4  # 0b67
+  nonce: 0b67  # 0b67
+  message: "Classification half fixed in PR #1616 (d1220b7bc4); parse-cost half split out as WI-lutud. Puzzle answered: lean's parser.c contributed zero nodes because it was ALREADY tier 4 by its '@generated' header -- parsed (partial parse, 31 damaged nodes), then dropped by the default tier filter (limits.tier_filtered_files on the c907 self-survey); its 305,712 lines were in the profile's LOC (now left out by WI-kojul). circom's and wolfram's parser.c carry no header and were tier 3. Fix: supply_chain._GENERATOR_FINGERPRINTS (C-family only, 4 KiB head, feeds tier and is_generated): tree-sitter (parser.h include AND #define LANGUAGE_VERSION), Bison/flex/re2c banner on a comment line, #line into .y/.yy/.ypp/.l/.ll/.lex/.rl/.re. Evidence: classify_file on the real tree -- all three vendored parser.c DERIVED/is_generated, lean scanner.c and wolfram scanner.cc stay EXTERNAL_DEP; tests TestGeneratorFingerprints (incl. negatives: hand-written scanner, banner in a string literal, fingerprint text in a .py). Analogues: corpus sweep of 158,304 C-family files in ~/ALL_REPOS/whole_bunch_of_repos -> 36 matches (Bison 26, flex 5, grammar #line 5: modsecurity, virtualbox, seabios, kbuild, ClickHouse rageled_files), all generator output, none previously marked. NOT done: self-survey before/after (tier-4 files are still parsed, so wall time would not move; that is WI-lutud)."  # 0b67

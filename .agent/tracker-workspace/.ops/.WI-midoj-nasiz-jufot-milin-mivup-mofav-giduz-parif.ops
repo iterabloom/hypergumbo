@@ -1,0 +1,38 @@
+- op: create  # a087
+  at: '2026-10-15T05:04:22Z'  # a087
+  by: agent  # a087
+  actor: jgstern_agent  # a087
+  clock: 1  # a087
+  nonce: a087  # a087
+  data:  # a087
+    kind: work_item  # a087
+    title: "Fix the 12 non-linker out-of-band literal confidence sites (build_target_main 1.0 x7, css 1.0, go naming_convention 0.95, circom x2, solidity)"  # a087
+    status: todo_hard  # a087
+    priority: 2  # a087
+    parent:  # a087
+    tags:  # a087
+    - confidence  # a087
+    - adr0039  # a087
+    - analysis_quality  # a087
+    isbefore: []  # a087
+    duplicate_of: []  # a087
+    not_duplicate_of: []  # a087
+    pr_ref:  # a087
+    description: "Fix the 12 out-of-band LITERAL confidence sites that are not linkers (2026-10-15 static audit; linker sites are settled by ruling 7). Per INV-zatu's July rule: fix the label where the label is wrong, the value where the value is wrong; prefer dropping the literal so Edge.create derives.\n\n  build_target_main at 1.0 (reserved ceiling): json_config.py 358, 414, 481, 599, 660; manifest_targets.py 144; xml_config.py 358\n  css.py:224 ast_import at 1.0\n  go.py:6852 naming_convention at 0.95 (seeded 0.85)\n  circom.py:347 ast_call at 0.95, circom.py:372 ast_call at 0.9\n  solidity.py:674 ast_call_direct at 0.9\n\nRe-run the audit first; line numbers drift. Related: WI-rafut (jsonnet calls edge at a computed 1.0) is the computed-value twin of this item."  # a087
+    fields: {}  # a087
+- op: update  # 4bff
+  at: '2026-10-15T08:43:48Z'  # 4bff
+  by: agent  # 4bff
+  actor: jgstern_agent  # 4bff
+  clock: 2  # 4bff
+  nonce: 4bff  # 4bff
+  set:  # 4bff
+    status: done  # 4bff
+    pr_ref: '1606'  # 4bff
+- op: discuss  # 109b
+  at: '2026-10-15T08:43:48Z'  # 109b
+  by: agent  # 109b
+  actor: jgstern_agent  # 109b
+  clock: 3  # 109b
+  nonce: 109b  # 109b
+  message: "Merged in PR #1606 (ee7dcb505c). The 12 sites: build_target_main 1.0 x7 (json_config x5, manifest_targets, xml_config) and css ast_import 1.0 dropped their literal -> derive 0.95; go build-tag alternates (naming_convention 0.95) -> derive 0.85; solidity local call 0.90 on ast_call_direct -> derive 0.85; circom main/component calls (ast_call 0.95/0.90) -> resolution_score=result.confidence. Evidence: scripts/check-confidence-sites --list reports 0 findings (literal_out_of_band 0) on ee7dcb505c, vs 12 literal_out_of_band on bab7eed514; test_manifest_targets::test_edge_confidence asserts 0.95. WI-rafut (jsonnet computed 1.0) not touched by this item."  # 109b

@@ -13,20 +13,36 @@ respecting exclude patterns. Also provides:
 
 - **Single-walk file index:** ``set_file_index()`` installs a global
   ``FileIndex`` that REPLACES ``find_files``' source of files: whenever the
-  installed index's ``repo_root`` equals the requested one, ``find_files``
-  matches patterns against the index (applying only ``max_files`` and the
-  size limit -- the ``excludes`` argument is not re-checked) and never walks
-  the tree. ``cli.run_survey`` installs one built from a single ``os.walk``
+  requested root equals or lies under the installed index's ``repo_root`` (a
+  sub-directory request is answered from the index, filtered to that
+  sub-directory), ``find_files`` matches patterns against the index (applying
+  only ``max_files`` and the size limit -- the ``excludes`` argument is not
+  re-checked) and never walks the tree. ``cli.run_survey`` installs one built from a single ``os.walk``
   (``FileIndex.build``) and clears it on every exit path; ``sketch`` installs
   a map-scoped ``FileIndex.from_paths`` for the ``--input`` / warm-map case
   (INV-jumim), so ``find_files`` then yields only the map's files. With no
-  index installed, ``find_files`` falls back to ``rglob`` per pattern.
+  index installed, ``find_files`` falls back to ``rglob`` per pattern. The two
+  paths return the same files for any pattern: the index matches a pattern
+  with a directory segment (``requirements/*.txt``) against the path, not the
+  bare name, and both match a pure ``*.ext`` pattern case-insensitively
+  (INV-kalaj).
 
 - **Test-file gate for content-scanning linkers:** ``find_non_test_files()``
   wraps ``find_files`` (same signature, every argument forwarded) and
   withholds paths that ``paths.is_test_file`` classifies as test files, so
   linkers that regex-scan file content do not build production edges out of
   fixtures and assertions (linker-evidence-gating:F1; WI-nitob, WI-rilin).
+
+- **Exclude-pattern semantics and the shared prune rule:**
+  ``_normalize_exclude_pattern`` gives excludes gitignore-style meaning, so
+  ``ui``, ``ui/``, ``ui/**``, ``**/ui/**`` and ``**/ui`` are one exclude;
+  ``_classify_excludes`` then sorts patterns into exact names (set lookup),
+  per-part globs, and path patterns (anything still holding a ``/``), which
+  are matched against the repo-relative path by both
+  ``_is_excluded_classified`` and ``FileIndex.build``. ``is_pruned_dir`` is
+  the one "prune this directory?" predicate both walkers call (exact names,
+  content rules, globs); ``under_content_rule_dir`` applies the content rules
+  to scans that glob or ``rglob`` instead of walking.
 
 - **Ambiguous extension disambiguation:**
 
@@ -76,6 +92,11 @@ respecting exclude patterns. Also provides:
   (``walks_into`` + ``manifest_walk_skip``) never enter a content-claimed
   directory, traced or not, and keep skipping ``node_modules`` / ``vendor``
   by name: a dependency's manifest never names the project.
+  Git submodules (WI-tiril) are the one installed source selected by
+  declaration rather than name: ``SUBMODULE_RULE`` claims a directory that
+  holds a ``.git``, that the enclosing work tree's ``.gitmodules`` declares,
+  and whose HEAD entry is a gitlink (``_match_submodule``); its one package
+  is the declared path, so ``--trace-deps lib/sub`` analyses it as tier 3.
 
 - **Generated output, recognised by the tool that writes it (ADR-0004
   §"Installed dependency source" point 7).** The same shape again, for build,
@@ -106,8 +127,10 @@ respecting exclude patterns. Also provides:
   ``_sibling_output`` (the producing tool's manifest beside the candidate) never
   claims a directory that holds a project manifest of its own (a subproject named
   ``build``); the ``_sibling_file`` rules (``cover``, ``.dart_tool``,
-  ``.stack-work``, ``elm-stuff``), the Sphinx split-layout ``build/`` rule and
-  sbt's ``project/target`` arm do not apply that check.
+  ``.stack-work``, ``elm-stuff``), the Sphinx split-layout ``build/`` rule,
+  sbt's ``project/target`` arm, setuptools ``build/`` and Python ``dist/`` do
+  not apply that check; MkDocs ``site/`` and untracked JS output check only
+  for their own manifest inside the directory.
 
   THE FALLBACK: a directory with an output NAME and no tool evidence is
   ANALYSED. A wrong exclusion is silent and removes findings (every instance
@@ -123,7 +146,7 @@ respecting exclude patterns. Also provides:
 
   WHAT STAYS NAME-BASED, AND WHY: VCS (``.git``, ``.svn``, ``.hg``), caches
   and IDE/tool state (``__pycache__``, ``.mypy_cache``, ``.pytest_cache``,
-  ``.ruff_cache``, ``.tox``, ``.nox``, ``.cache``, ``.ipynb_checkpoints``,
+  ``.hypothesis``, ``.ruff_cache``, ``.tox``, ``.nox``, ``.cache``, ``.ipynb_checkpoints``,
   ``.terraform``, ``.eggs``, ``*.egg-info``, ``.elixir_ls``, ``.nyc_output``,
   ``.c8_output``, ``.jest``), report and lock FILES (``coverage.xml``,
   ``lcov.info``, ``package-lock.json``, ...) and hypergumbo's own outputs.
@@ -133,6 +156,7 @@ respecting exclude patterns. Also provides:
 from __future__ import annotations
 
 import functools
+import os
 import json
 import re
 from dataclasses import dataclass, field
@@ -536,6 +560,7 @@ DEFAULT_EXCLUDES = [
     "__pycache__",
     ".ipynb_checkpoints",  # Jupyter notebook auto-save copies
     ".pytest_cache",
+    ".hypothesis",  # Hypothesis example database: one extensionless file per example
     ".mypy_cache",
     ".ruff_cache",
     ".tox",
@@ -1322,6 +1347,20 @@ def _head_entries(directory: str) -> tuple[str, ...] | None:
     point the query at a different repository; ``GIT_NO_LAZY_FETCH`` keeps a
     partial clone from fetching over the network.
     """
+    d = Path(directory)
+    out = _ls_tree_head(d.parent, ["--name-only", f"{d.name}/"])
+    if out is None:
+        return None
+    return tuple(
+        line for line in out.splitlines()
+        if line and not line.rsplit("/", 1)[-1].startswith(".")
+    )
+
+
+def _ls_tree_head(cwd: Path, args: list[str]) -> str | None:
+    """``git ls-tree HEAD <args...> --`` style query run in ``cwd``: stdout,
+    or ``None`` when git cannot say. The hazards and the environment
+    scrubbing are :func:`_head_entries`'s; this is the one place they live."""
     import os
     import shutil
     import subprocess  # nosec B404 - only for SubprocessError; the call goes through repo_inspect_git
@@ -1331,27 +1370,24 @@ def _head_entries(directory: str) -> tuple[str, ...] | None:
     git = shutil.which("git")
     if git is None:  # pragma: no cover - git is installed wherever the suite runs
         return None
-    d = Path(directory)
     env = {
         k: v for k, v in os.environ.items()
         if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
                      "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR")
     }
     env["GIT_NO_LAZY_FETCH"] = "1"
+    *opts, target = args
     try:
         proc = repo_inspect_git(
-            [git, "ls-tree", "--name-only", "HEAD", "--", f"{d.name}/"],
-            cwd=d.parent, capture_output=True, text=True, check=False,
+            [git, "ls-tree", *opts, "HEAD", "--", target],
+            cwd=cwd, capture_output=True, text=True, check=False,
             env=env, timeout=30,
         )
     except (OSError, subprocess.SubprocessError):  # pragma: no cover - defensive
         return None
     if proc.returncode != 0:
         return None
-    return tuple(
-        line for line in proc.stdout.splitlines()
-        if line and not line.rsplit("/", 1)[-1].startswith(".")
-    )
+    return str(proc.stdout)
 
 
 def _is_committed_dir(directory: str) -> bool:
@@ -1384,6 +1420,90 @@ def _match_content_rule(directory: str, name: str) -> ContentRule | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Git submodules (ADR-0004 point 2 table, amended 2026-10-15; WI-tiril)
+# ---------------------------------------------------------------------------
+
+#: The disclosure label of a submodule.
+SUBMODULE_ECOSYSTEM = "git submodule"
+
+_GITMODULES_PATH_RE = re.compile(r"^\s*path\s*=\s*(.+?)\s*$", re.MULTILINE)
+
+
+@functools.lru_cache(maxsize=1024)
+def _declared_submodule_paths(directory: str) -> frozenset[str]:
+    """The ``path =`` entries of ``<directory>/.gitmodules``."""
+    text = _read_small(Path(directory) / ".gitmodules")
+    return frozenset(
+        m.group(1).strip().strip('"').rstrip("/")
+        for m in _GITMODULES_PATH_RE.finditer(text)
+    )
+
+
+def _submodule_declaration(path: Path) -> tuple[Path, str] | None:
+    """``(superproject, declared path)`` when the nearest enclosing work tree
+    declares ``path`` in its ``.gitmodules``, else ``None``.
+
+    The search stops at the first ancestor holding a ``.git`` -- that is the
+    work tree a submodule would belong to -- and never climbs above the
+    active root."""
+    for anc in path.parents:
+        rel = path.relative_to(anc).as_posix()
+        if rel in _declared_submodule_paths(str(anc)):
+            return anc, rel
+        if anc == _active_trace_root or os.path.lexists(anc / ".git"):
+            break
+    return None
+
+
+@functools.lru_cache(maxsize=8192)
+def _match_submodule(directory: str) -> ContentRule | None:
+    """:data:`SUBMODULE_RULE` when ``directory`` is a populated git submodule.
+
+    By evidence, not name (ADR-0004 point 2): a directory holding a ``.git``
+    (a populated submodule always does; this stat is all an ordinary
+    directory pays), which the enclosing work tree's ``.gitmodules`` declares,
+    and whose HEAD entry is a gitlink (mode ``160000``), read with the same
+    ``git ls-tree HEAD`` :func:`_head_entries` trusts -- never the index.
+    When git cannot say (no git, no commits), a ``.git`` FILE is the
+    evidence: that is what ``git submodule`` leaves in a checkout. An
+    unpopulated submodule is an empty directory with no ``.git`` and is a
+    no-op; an undeclared nested repository is analysed as before.
+    """
+    path = Path(directory)
+    dotgit = path / ".git"
+    if not os.path.lexists(dotgit) or path.is_symlink():
+        return None
+    found = _submodule_declaration(path)
+    if found is None:
+        return None
+    superproject, rel = found
+    out = _ls_tree_head(superproject, [rel])
+    if out is None:
+        is_gitlink = dotgit.is_file()
+    else:
+        is_gitlink = out.split(None, 1)[:1] == ["160000"]
+    return SUBMODULE_RULE if is_gitlink else None
+
+
+def _submodule_marker(d: Path) -> bool:
+    return _match_submodule(str(d)) is not None
+
+
+def _submodule_packages(d: Path) -> dict[str, Path]:
+    """One package per submodule, named by its declared path -- what a user
+    passes to ``--trace-deps``."""
+    found = _submodule_declaration(d)
+    return {found[1]: d} if found else {}
+
+
+#: Installed dependency source selected by declaration, not by name, so it is
+#: not in :data:`INSTALLED_DEP_RULES` (whose ``dir_name`` selects candidates).
+SUBMODULE_RULE = ContentRule(
+    "", SUBMODULE_ECOSYSTEM, _submodule_marker, _submodule_packages,
+)
+
+
 def match_content_rule(path: Path) -> ContentRule | None:
     """The content rule that claims directory ``path``, or ``None``.
 
@@ -1396,9 +1516,11 @@ def match_content_rule(path: Path) -> ContentRule | None:
     path: discovery asks once per candidate per walk and the answer cannot
     change within a run.
     """
-    if path.name not in CONTENT_RULE_DIR_NAMES:
-        return None
-    return _match_content_rule(str(path), path.name)
+    if path.name in CONTENT_RULE_DIR_NAMES:
+        rule = _match_content_rule(str(path), path.name)
+        if rule is not None:
+            return rule
+    return _match_submodule(str(path))
 
 
 def under_content_rule_dir(repo_root: Path, dir_parts: "Iterable[str]") -> bool:
@@ -1574,7 +1696,7 @@ def content_rule_prunes(name: str, path: Path) -> bool:
        such an on-the-way directory is not a package and is pruned.
     """
     trace = _active_trace
-    rule = match_content_rule(path) if name in CONTENT_RULE_DIR_NAMES else None
+    rule = match_content_rule(path)
     if rule is not None:
         if not rule.is_installed_dep:
             return True
@@ -1652,6 +1774,9 @@ def format_installed_deps_disclosure(summary: "dict[str, Any] | None") -> str | 
     entries = summary.get("entries") or []
     parts = []
     for e in entries[:3]:
+        if e["ecosystem"] == SUBMODULE_ECOSYSTEM:
+            parts.append(f"{e['path']}/ ({SUBMODULE_ECOSYSTEM})")
+            continue
         n = e["packages"]
         noun = "package" if n == 1 else "packages"
         parts.append(f"{e['path']}/ ({n} {e['ecosystem']} {noun})")
@@ -1790,6 +1915,48 @@ def is_pruned_dir(
 def _has_glob_chars(pattern: str) -> bool:
     """Check whether a pattern contains fnmatch glob characters."""
     return any(c in pattern for c in "*?[")
+
+
+def _pure_extension(pattern: str) -> str | None:
+    """The lowercase ``.ext`` of a pure single-extension pattern, else None.
+
+    ``*.py`` and ``**/*.py`` are pure; ``*.blade.php`` (a compound suffix:
+    ``Path.suffix`` keeps only the last segment, WI-navaf), ``Dockerfile*``
+    and anything with a directory segment are not. Both ``find_files``
+    paths match a pure pattern on ``Path.suffix`` case-insensitively, so a
+    FileIndex and the ``rglob`` fallback agree on ``Foo.H`` (INV-kalaj).
+    """
+    if pattern.startswith("**/"):
+        pattern = pattern[3:]
+    if (
+        pattern.startswith("*.")
+        and not _has_glob_chars(pattern[2:])
+        and "." not in pattern[2:]
+        and "/" not in pattern
+    ):
+        return pattern[1:].lower()
+    return None
+
+
+def _path_segments_match(parts: tuple[str, ...], pattern: tuple[str, ...]) -> bool:
+    """Match path segments against pattern segments, with ``**`` spanning any.
+
+    Each non-``**`` pattern segment fnmatches exactly one path segment, so
+    ``*`` never crosses a ``/``. This is ``rglob``'s rule once the caller
+    prefixes the pattern with ``**`` (INV-kalaj).
+    """
+    if not pattern:
+        return not parts
+    head, rest = pattern[0], pattern[1:]
+    if head == "**":
+        return any(
+            _path_segments_match(parts[i:], rest) for i in range(len(parts) + 1)
+        )
+    return (
+        bool(parts)
+        and fnmatch(parts[0], head)
+        and _path_segments_match(parts[1:], rest)
+    )
 
 
 def _normalize_exclude_pattern(pattern: str) -> str:
@@ -2003,11 +2170,13 @@ class FileIndex:
     - _by_name: maps filename (e.g. 'Makefile') to list of Paths
     - _all_files: sorted list of all indexed files
     - _repo_root: the repository root used during construction
+    - _children: directory -> {child name: is_dir}, built on first
+      :meth:`children` call
     """
 
     __slots__ = (
-        "_all_files", "_by_ext", "_by_name", "_generated_output_roots",
-        "_installed_dep_roots", "_repo_root",
+        "_all_files", "_by_ext", "_by_name", "_children",
+        "_generated_output_roots", "_installed_dep_roots", "_repo_root",
     )
 
     def __init__(
@@ -2025,6 +2194,35 @@ class FileIndex:
         self._all_files = all_files
         self._installed_dep_roots = installed_dep_roots or []
         self._generated_output_roots = generated_output_roots or []
+        self._children: "dict[Path, dict[str, bool]] | None" = None
+
+    def children(self, dir_path: Path) -> "dict[str, bool] | None":
+        """Immediate children of ``dir_path`` as ``{name: is_dir}``, or
+        ``None`` when ``dir_path`` is not under this index's root.
+
+        A child is a directory when some indexed file lies below it. The map
+        is built in one pass over the files on first call, so a caller that
+        visits every directory (the sketch's Structure LOC column) pays once
+        rather than one scan of every file per directory.
+        """
+        try:
+            dir_path.relative_to(self._repo_root)
+        except ValueError:
+            return None
+        if self._children is None:
+            tree: dict[Path, dict[str, bool]] = {}
+            for f in self._all_files:
+                try:
+                    parts = f.relative_to(self._repo_root).parts
+                except ValueError:  # pragma: no cover - indexed files lie under the root
+                    continue
+                d = self._repo_root
+                for i, name in enumerate(parts):
+                    kids = tree.setdefault(d, {})
+                    kids[name] = kids.get(name, False) or i < len(parts) - 1
+                    d = d / name
+            self._children = tree
+        return self._children.get(dir_path, {})
 
     @property
     def installed_dep_roots(self) -> "list[tuple[Path, ContentRule]]":
@@ -2225,13 +2423,19 @@ class FileIndex:
         """Return all indexed files."""
         return self._all_files
 
-    def match_pattern(self, pattern: str) -> Iterator[Path]:
-        """Match a single pattern using the best strategy.
+    def match_pattern(self, pattern: str, root: Path | None = None) -> Iterator[Path]:
+        """Match a single pattern the way ``root.rglob(pattern)`` would.
 
         Classifies the pattern as:
-        - Pure extension ('*.py') → O(1) dict lookup
+        - Directory segment ('requirements/*.txt', 'src/**/*.py') → each
+          file's path relative to ``root`` (default: the index root) is
+          matched segment by segment, anchored at the end, as rglob does.
+          Matching on the bare file name, which never holds a '/', found
+          nothing, so every survey dropped such files (INV-kalaj).
+        - Pure extension ('*.py') → O(1) dict lookup, case-insensitive
+          (``_pure_extension``, shared with the rglob fallback)
         - Exact filename ('Makefile') → O(1) dict lookup
-        - Glob ('Dockerfile*', '*.gradle.kts') → fnmatch scan
+        - Glob ('Dockerfile*', '*.gradle.kts') → fnmatch scan of names
 
         Handles '**/' prefix (stripped, since the index is already
         recursive).
@@ -2240,22 +2444,24 @@ class FileIndex:
         if pattern.startswith("**/"):
             pattern = pattern[3:]
 
-        if not _has_glob_chars(pattern):
+        ext = _pure_extension(pattern)
+        if "/" in pattern:
+            base = self._repo_root if root is None else root
+            segments = ("**", *(s for s in pattern.split("/") if s))
+            for fpath in self._all_files:
+                try:
+                    parts = fpath.relative_to(base).parts
+                except ValueError:
+                    continue
+                if _path_segments_match(parts, segments):
+                    yield fpath
+        elif not _has_glob_chars(pattern):
             # Exact filename: 'Makefile', 'justfile', etc.
             yield from self._by_name.get(pattern, [])
-        elif (
-            pattern.startswith("*.")
-            and not _has_glob_chars(pattern[2:])
-            and "." not in pattern[2:]
-        ):
-            # Pure single-extension: '*.py', '*.tsx'.
-            # Compound suffixes like '*.blade.php', '*.d.ts', '*.lagda.md'
-            # MUST NOT take this path — Path.suffix only retains the last
-            # segment, so '_by_ext[".blade.php"]' would be empty and the
-            # pattern would silently match zero files (WI-navaf: blade
-            # analyzer was never enrolling on koel because of this).
-            ext = pattern[1:]  # '.py', '.tsx'
-            yield from self._by_ext.get(ext.lower(), [])
+        elif ext is not None:
+            # Pure single-extension: '*.py', '*.tsx'. Compound suffixes like
+            # '*.blade.php' fall through to the glob scan (WI-navaf).
+            yield from self._by_ext.get(ext, [])
         else:
             # General glob: 'Dockerfile*', '*.gradle.kts', '*.blade.php', etc.
             for fpath in self._all_files:
@@ -2291,9 +2497,17 @@ def find_files(
 ) -> Iterator[Path]:
     """Find files matching patterns while respecting exclude rules.
 
-    When a global FileIndex is set (via set_file_index()) for the same
-    ``repo_root``, delegates to the index for O(1) lookups instead of
-    calling rglob() per pattern. The index was built with its own
+    When a global FileIndex is set (via set_file_index()) for ``repo_root``
+    or a directory containing it, delegates to the index for O(1) lookups
+    instead of calling rglob() per pattern; for a sub-directory the index's
+    paths are filtered to those under it, and a pattern with a directory
+    segment is matched relative to ``repo_root``, as rglob would. Both paths
+    return the same files for every pattern (INV-kalaj; the index used to
+    match file names only, so ``requirements/*.txt`` found nothing in a
+    survey), and both match a pure ``*.ext`` pattern case-insensitively
+    (``_pure_extension``). Before the sub-directory
+    case, the sketch's walk of ``src/`` (``_collect_source_files``) fell
+    back to rglob() even with an index installed. The index was built with its own
     excludes, and in that case the ``excludes`` argument is NOT applied:
     only ``repo_root`` is compared (WI-duhih).
     Falls back to rglob() when no index is installed for this root.
@@ -2329,12 +2543,13 @@ def find_files(
     # ``excludes`` argument is not re-applied, WI-duhih), so only
     # max_files / max_file_bytes are applied here.
     index = _global_file_index
-    if index is not None and index.repo_root == repo_root:
+    if index is not None and repo_root.is_relative_to(index.repo_root):
+        under = None if repo_root == index.repo_root else repo_root
         count = 0
         seen: set[Path] = set()
         for pattern in patterns:
-            for path in index.match_pattern(pattern):
-                if path in seen:
+            for path in index.match_pattern(pattern, root=repo_root):
+                if path in seen or (under is not None and not path.is_relative_to(under)):
                     continue
                 seen.add(path)
                 if max_files is not None and count >= max_files:
@@ -2359,12 +2574,23 @@ def find_files(
     exact, globs, paths = _classify_excludes(excludes)
 
     count = 0
+    # A file two patterns match is yielded once, as on the index path
+    # (``*.R`` and ``*.r`` both match ``x.R`` under the shared suffix rule).
+    walked: set[Path] = set()
     for pattern in patterns:
-        for path in repo_root.rglob(pattern):
+        ext = _pure_extension(pattern)
+        candidates = (
+            repo_root.rglob(pattern)
+            if ext is None
+            # Same case-insensitive suffix rule as the index (INV-kalaj).
+            else (p for p in repo_root.rglob("*") if p.suffix.lower() == ext)
+        )
+        for path in candidates:
             if max_files is not None and count >= max_files:
                 return
-            if not path.is_file():
+            if path in walked or not path.is_file():
                 continue
+            walked.add(path)
             if _is_excluded_classified(path, repo_root, exact, globs, paths):
                 continue
             if _is_under_locale_exclude(path):

@@ -1,0 +1,41 @@
+- op: create  # 7b44
+  at: '2026-10-15T05:05:20Z'  # 7b44
+  by: agent  # 7b44
+  actor: jgstern_agent  # 7b44
+  clock: 1  # 7b44
+  nonce: 7b44  # 7b44
+  data:  # 7b44
+    kind: work_item  # 7b44
+    title: "ADR-0039 amendment: ruling 6 (resolver quality interpolates within band) and ruling 7 (linker edges use the spec 12 linker range); spec 12 updated"  # 7b44
+    status: todo_hard  # 7b44
+    priority: 1  # 7b44
+    parent:  # 7b44
+    tags:  # 7b44
+    - confidence  # 7b44
+    - adr0039  # 7b44
+    - docs  # 7b44
+    isbefore:  # 7b44
+    - WI-himod-jojof-jujok-gitus-habiz-pasug-javun-tunam  # 7b44
+    - WI-nibar-pusas-hikan-notur-kulof-rurub-mibag-fojug  # 7b44
+    - WI-lapun-rudor-butun-zaguv-dozot-mamab-rozuz-dikap  # 7b44
+    - WI-vosif-fajoj-hukam-tatav-zukok-runaf-tupid-durut  # 7b44
+    duplicate_of: []  # 7b44
+    not_duplicate_of: []  # 7b44
+    pr_ref:  # 7b44
+    description: "Amend docs/adr/0039-confidence-separation.md in place (per docs/adr/README.md lifecycle) with two OWNER DECISIONS taken 2026-10-15 (recorded on WI-famiv-gumof), and update docs/hypergumbo-spec.md §12 to match. Docs only; the code follows in the sibling items.\n\nRULING 6 (resolver quality interpolates within the pathway band). For an is_resolved-conditioned analyzer pathway (ast_call, ast_call_direct, macro_expansion; see evidence_types.py), a resolved edge gets\n    conf = base_unresolved + (base - base_unresolved) x resolver_score\nwhere resolver_score is the NameResolver LookupResult.confidence (1.0 exact, 0.90 path hint, 0.85 suffix, 0.70/sqrt(n) ambiguous; symbol_resolution.py ~line 202). Exact match -> the pathway base; ambiguity moves toward the unresolved base; always in band; registry-derived; preserves today's ordering. Producers pass only the resolver score. State why plain base x score was rejected: 0.85 x 0.70/sqrt(4) = 0.30, below the band floor. Say which non-call pathways (if any) also take a resolver score, or that none do.\n\nRULING 7 (linker edges are judged by the §12 linker range). Spec §12 already says linker confidence is match quality, 0.40-0.95, a separate category from analyzer edges. The analyzer band of a declared evidence_type does NOT apply to a linker edge. Record that this supersedes INV-zatu's July agent ruling that moved the websocket linker onto the analyzer band.\n\nAlso reconcile §12's sentence \"dynamically-computed sites fall back to the caller's value\" with ruling 6: computed call-pathway confidences become ruling-6 derivations; any remaining caller-valued site must be listed and justified (WI-famiv-gumof close condition)."  # 7b44
+    fields: {}  # 7b44
+- op: update  # e809
+  at: '2026-10-15T06:59:05Z'  # e809
+  by: agent  # e809
+  actor: jgstern_agent  # e809
+  clock: 2  # e809
+  nonce: e809  # e809
+  set:  # e809
+    status: done  # e809
+- op: discuss  # 959f
+  at: '2026-10-15T06:59:05Z'  # 959f
+  by: agent  # 959f
+  actor: jgstern_agent  # 959f
+  clock: 3  # 959f
+  nonce: 959f  # 959f
+  message: "Merged in PR #1605 (bab7eed514). docs/adr/0039 gains ruling 6 (resolution_score interpolates low+(base-low)xs; applies to every seeded pathway, low = base_unresolved or the 0.30 floor; errors for both kwargs / unseeded / is_resolved=False; base x score rejected with the 0.30-below-0.40 example) and ruling 7 (linker edges judged by 0.40-0.95; linker = producing pass is a registered linker; supersedes INV-zatug's July websocket ruling). Spec section 12 reconciled: the 'dynamically-computed sites fall back to the caller's value' sentence is replaced; remaining caller-valued analyzer sites carry '# ADR-0039 caller-valued: <reason>' and are listed by scripts/check-confidence-sites (WI-vosif). Docs-only item; the code is WI-himod / WI-nibar."  # 959f

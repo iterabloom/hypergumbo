@@ -9,8 +9,9 @@ fields conforms to the axis the annotation declares.
 
 The pipeline (``cli.run_behavior_map``) constructs ``Symbol`` / ``Edge`` /
 ``AnalysisRun`` records through ordered passes (analyzers → linkers →
-fingerprint stamping → supply-chain classification → boundary synthesis →
-route promotion → tier filtering → metrics → write). Each pass is a writer;
+fingerprint stamping → supply-chain classification → route promotion →
+tier filtering → boundary synthesis → finalize (validate) → metrics →
+write). Each pass is a writer;
 no pass is a reader. Until this module, nothing read the emitted records
 and checked them against the schema axioms, axis catalogs, or producer
 contracts. That gap is INV-sugat — "no spec-vs-data validator stage exists
@@ -20,7 +21,9 @@ The validator classes (ADR-0033 §"Validator classes") shipped incrementally:
 the Phase-0 module landed the scaffolding (the ``ValidationViolation``
 dataclass, the public ``validate_ir`` entry point, the pipeline wire-up at
 ``cli.py``'s end-of-pipeline post-pass slot) with every class off, and the
-campaign's Phase-3/5/6 PRs then turned each on. All of the classes below are
+campaign's Phase-3/5/6 PRs then turned each on. ``validate_ir`` now runs
+inside ``finalize()`` as sub-step 10, structurally last (ADR-0043 §6);
+``cli.py`` keeps only the stderr summary. All of the classes below are
 now ACTIVE — ``validate_ir`` runs each, and the corpus surfaces real
 violations (see "The gate's realized form" below for how the CI ratchet
 holds those counts shrink-only):
@@ -32,18 +35,25 @@ holds those counts shrink-only):
    uniqueness invariant; *bounded-enum* is a fixed-list check;
    *free-text* skips value-level checks (the justification was the gate
    at source-write time).
-2. **Writer-contract** — for each ``(producer-class, axis-tagged field)``
-   pair, verify records from that producer populate the field. Generalizes
-   the four sub-patterns in INV-luhur's META description and folds in
-   WI-rolol sub-task B.
+2. **Writer-contract** — partitions by (record class, field): sub-pattern 2
+   (default-only initializer) for ``AnalysisRun.config_fingerprint``; a
+   sub-pattern-1 never-populated table (currently empty); and a
+   kind-conditioned (language, kind, field) population contract.
+   Sub-patterns 3 and 4 (of INV-luhur's META description) are codified
+   producer-side, not detected. Folds in WI-rolol sub-task B.
 3. **Cross-field coherence** — documented field-pair invariants:
-   ``Edge.dst_ref ↔ Edge.dst``, ``Symbol.language is None ↔
-   Symbol.protocol_origin is not None`` for synthetic stand-ins,
-   ``Symbol.display_label`` populated on synthetic stand-ins only. The
+   ``Edge.dst_ref ↔ Edge.dst``; non-file Symbols with both ``language``
+   and ``protocol_origin`` populated are flagged (the both-None half is
+   deferred); ``Symbol.display_label`` populated on synthetic stand-ins
+   only. The
    ``cross_field`` class also carries several other wired checks: the
    ADR-0037 ``is_resolved ↔ dst`` FK, ``origin_run_id`` FK integrity,
    dangling-endpoint detection, edge ``confidence`` range, route-marker
-   single-home, and the receiver-blind-magnet gate.
+   single-home, the receiver-blind-magnet gate, the ADR-0035 §5 per-file
+   ``stable_id`` uniqueness error (``_check_stable_id_per_file_uniqueness``),
+   and the Class-B identity-stamp canary (a synthetic stand-in missing
+   ``stable_id`` / ``fingerprint`` / ``discovery_language`` / ``origin`` /
+   ``display_label`` is flagged, one umbrella violation per field).
 4. **Verdict-enum completeness** — verdict-emitting code paths must enumerate
    an ``inconclusive`` (or equivalent) branch for missing-data cases.
    Folds in WI-rolol sub-task A (``ClaimVerdict.inconclusive``).
@@ -59,7 +69,18 @@ holds those counts shrink-only):
    be a registered symbol-kind and equal ``Symbol.kind`` (advisory ``warning``
    until the v6 kind-slot folds clear the WI-pubiv/WI-kugaj/tsconfig backlog),
    the name-slot must be non-empty (advisory), and the span must satisfy
-   ``start <= end`` (``error``).
+   ``start <= end`` (``error``). The class also pins ``Edge.id`` to
+   ``edge:sha256:<16hex>`` (``_check_edge_id_format``) and requires the
+   ``hgfp2:`` prefix on every non-null real-source ``Symbol.fingerprint``
+   (``_check_fingerprint_format``).
+
+Besides ``violations`` and ``violations_by_class``, the
+``validation_report`` that ``build_validation_report`` emits carries a
+``wired_checks`` manifest (``_WIRED_CHECKS``: each predicate wired into
+``validate_ir`` and the class it feeds, so a class count of 0 means "these
+named checks found nothing", not "no defects") and ``stable_id_stats``
+(``compute_stable_id_stats``: the ALL-Symbols stable_id population,
+collision rate, None cohort and backstop floor cohort).
 
 Why scaffold first
 ------------------
@@ -92,9 +113,12 @@ Each substrate's violation count may shrink below its committed baseline
 violation trips CI. ``--include-docs`` exercises the flag-gated writer
 paths a default-only gate would let escape (WI-himoj). The gate also
 co-ratchets the ADR-0023 §3 ``runtime_coherence`` offender count per
-substrate as a separate dimension. The heavy self-analysis variant of the
-same matrix is future work for full-suite (the strategy's "fixture corpus
-per-PR; self-tree in full-suite").
+substrate as a separate dimension; per substrate, the fixture gate ratchets
+the lumped total, each (validator_class, severity) cell, and
+runtime_coherence. A full-suite ``self-tree-validation`` job ratchets the
+same per-(validator_class, severity) matrix on hypergumbo's own tree
+(``scripts/check-self-tree-validation`` vs
+``.ci/self-tree-validation-baselines.json``, WI-jigup).
 
 This soft-introduction posture lets the validator land cleanly: users see
 violations as informational warnings; CI catches regressions; downstream
@@ -377,15 +401,45 @@ def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
     not-yet-seeded carry no band (treated in-band). Emitted as advisory
     ``info`` under the existing ``cross_field`` class (confidence cohering with
     evidence_type is a cross-field property).
+
+    ADR-0039 ruling 7: an edge whose producing passes (``Edge.origin``) are all
+    registered linkers is judged against the spec §12 linker range
+    (0.40-0.95), not against the analyzer band of the evidence_type it
+    declares. An edge with any analyzer among its origins keeps the band.
     """
-    from hypergumbo_core.confidence import confidence_within_band
+    from hypergumbo_core.catalog import all_linker_pass_ids
+    from hypergumbo_core.confidence import (
+        LINKER_CONFIDENCE_RANGE,
+        confidence_within_band,
+    )
     from hypergumbo_core.evidence_types import find_evidence_type
 
+    linker_ids = all_linker_pass_ids()
     violations: list[ValidationViolation] = []
     for edge in edges:
         ev = getattr(edge, "evidence_type", None)
         conf = getattr(edge, "confidence", None)
         if ev is None or conf is None:
+            continue
+        origin = getattr(edge, "origin", None) or []
+        origins = [origin] if isinstance(origin, str) else list(origin)
+        if origins and all(o in linker_ids for o in origins):
+            if confidence_within_band(ev, conf, linker=True):
+                continue
+            low_l, high_l = LINKER_CONFIDENCE_RANGE
+            violations.append(ValidationViolation(
+                severity="info",
+                validator_class="cross_field",
+                message=(
+                    f"Edge.confidence {conf} from linker {origins[0]!r} is "
+                    f"outside the linker range [{low_l}, {high_l}] (spec §12, "
+                    f"ADR-0039 ruling 7)."
+                ),
+                field_name="confidence",
+                record_id=getattr(edge, "id", None),
+                observed=str(conf),
+                expected=f"[{low_l}, {high_l}]",
+            ))
             continue
         if confidence_within_band(ev, conf):
             continue

@@ -2278,7 +2278,8 @@ function main(logger) {
         inferred_calls = [e for e in call_edges if e.evidence_type == "ast_method_inferred"]
         assert len(inferred_calls) == 1
         assert "writeMessage" in inferred_calls[0].dst
-        assert inferred_calls[0].confidence == 0.60
+        # Exact grade on ast_method_inferred: its base (ADR-0039 ruling 6).
+        assert inferred_calls[0].confidence == 0.70
 
     def test_inferred_method_no_fanout(self, tmp_path: Path) -> None:
         """Bare name fallback emits at most one edge, not N edges for N candidates.

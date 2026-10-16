@@ -1,0 +1,24 @@
+- op: create  # 7075
+  at: '2026-10-16T07:59:45Z'  # 7075
+  by: agent  # 7075
+  actor: jgstern_agent  # 7075
+  clock: 1  # 7075
+  nonce: '7075'  # 7075
+  data:  # 7075
+    kind: invariant  # 7075
+    title: "catalogue inventory 'yours' column counts only io_primitives.d; user files in the other 7 wired channels show 0"  # 7075
+    status: violated  # 7075
+    priority: 3  # 7075
+    parent:  # 7075
+    tags:  # 7075
+    - catalogue  # 7075
+    - cli  # 7075
+    - docstring_audit  # 7075
+    isbefore: []  # 7075
+    duplicate_of: []  # 7075
+    not_duplicate_of: []  # 7075
+    pr_ref:  # 7075
+    description: "catalogue_inventory.build_inventory (~:201) sets your_files=len(user_paths) if channel == \"io_primitives.d\" else 0, where user_paths comes from user_overlay_paths (io_primitives.d only). All 8 declared user channels are wired (catalogue_home.WIRED_CHANNELS), so a user's files in frameworks.d, dataflow_patterns.d, taint_*.d, function_summaries.d and library_signatures.d show 0 in the CLI \"yours\" column (cli.py ~:7994) and JSON your_files (~:7971).\n\nReproduced 2026-10-16: XDG_CONFIG_HOME with one YAML each in hypergumbo/frameworks.d/ and hypergumbo/io_primitives.d/ -> build_inventory reports your_files frameworks=0, io_primitives=1, while catalogue_home.user_channel_files('frameworks', env) returns the file. Suggested fix: your_files=len(user_channel_files(spec.directory, environ, home)) if channel else 0. Found by the 2026-10-16 docstring-staleness audit."  # 7075
+    fields:  # 7075
+      statement: "The inventory's your_files counts the user's files in every wired user channel."  # 7075
+      root_cause: "build_inventory hardcodes io_primitives.d and uses user_overlay_paths instead of user_channel_files."  # 7075

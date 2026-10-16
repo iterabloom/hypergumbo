@@ -10,10 +10,11 @@ This analyzer uses tree-sitter to parse Haskell files and extract:
   that drives ``is_exported`` (an explicit list, an open module, or absent),
   with an instance following the visibility of its class
 - Function call relationships (including external edges for I/O boundary
-  matching). Confidence is fixed at 0.85 resolved / 0.50 external, then
-  damped hard for very short callee names (1-char x 0.15, 2-char x 0.50) —
-  single-letter Haskell binders would otherwise dominate the call graph
-  with false resolutions
+  matching). A resolved call's confidence interpolates in the ast_call band
+  from the resolver grade times a short-name penalty (1-char x 0.15, 2-char
+  x 0.50) — single-letter Haskell binders would otherwise dominate the call
+  graph with false resolutions. External calls take the ast_call unresolved
+  base
 - ``implements`` edges from a typeclass instance to its class
 
 If tree-sitter with Haskell support is not installed, the analyzer
@@ -30,7 +31,22 @@ writeFile, putStrLn) produce external edges in the format
 ``haskell:{module}:0-0:{name}:function`` so the I/O boundary tagging pass
 (ADR-0016) can match them against ``io_primitives/haskell.yaml``. Qualified
 calls resolved through import aliases carry the full module name as the
-module hint for precise matching.
+module hint for precise matching. An unresolved bare name that the I/O
+catalogue's gate refuses as ambiguous (``HASKELL_GATED_NAMES``) gets its
+module hint from the file's unqualified imports or the implicit Prelude
+(``_hs_bare_call_module``); other bare names keep ``external``.
+
+Two more call-edge features:
+
+- Bare zero-argument monadic actions (``x <- getLine``, a bare ``do``
+  statement, the argument of a combinator in ``_HS_ACTION_COMBINATORS``
+  such as ``liftIO getCurrentTime``) emit ``calls`` edges with
+  ``call_construct="monadic_action"``. Locally bound names and ``return``
+  are skipped.
+- A handle-taking read (``hGetLine``, ``hGetContents``, ...) stamps
+  ``meta["io_target_kind"]``: ``std_stream`` for stdin/stdout/stderr,
+  ``host_path`` for a handle from ``openFile``/``openBinaryFile`` (inline
+  or via a local binding). An unrecognised handle gets no stamp.
 
 Why This Design
 ---------------
@@ -876,10 +892,13 @@ def _hs_emit_call_edge(
     if caller is None:
         return None
     lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+    # ADR-0039 ruling 6: a resolved callee's match quality (the resolver's
+    # grade times the short-name penalty) interpolates in the ast_call band.
+    resolution_score: float | None = None
     if lookup_result.found and lookup_result.symbol:
         dst = lookup_result.symbol.id
-        confidence = (
-            0.85 * lookup_result.confidence * _short_name_penalty(callee_name)
+        resolution_score = (
+            lookup_result.confidence * _short_name_penalty(callee_name)
         )
     else:
         # Unresolved call -- a synthetic external node so I/O boundary tagging
@@ -900,10 +919,8 @@ def _hs_emit_call_edge(
                 HASKELL_PRELUDE_EXPORTS,
             )
         dst = f"haskell:{module_hint if module_hint else 'external'}:0-0:{callee_name}:function"
-        # WI-nurun: confidence kept explicit -- this edge targets an *external*
-        # (unresolved) callee but is not flagged is_resolved=False, so
-        # derivation would over-score it as a resolved call.
-        confidence = 0.50
+        # An external callee is unresolved (ADR-0037); flagged so, it derives
+        # the ast_call unresolved base instead of a hand-kept literal.
     return Edge.create(
         src=caller.id,
         dst=dst,
@@ -912,7 +929,8 @@ def _hs_emit_call_edge(
         origin=PASS_ID,
         origin_run_id=run_id,
         evidence_type="ast_call",
-        confidence=confidence,
+        resolution_score=resolution_score,
+        is_resolved=resolution_score is not None,
         meta=meta,
     )
 

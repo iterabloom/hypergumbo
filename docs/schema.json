@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.20.14"
+      "const": "0.20.15"
     },
     "confidence_model": {
       "type": "string",
@@ -69,12 +69,22 @@
               },
               "loc": {
                 "type": "integer",
-                "description": "Source-lines-of-code (SLOC) for this language \u2014 the file-level LOC convention. Distinct from the per-symbol line_span (physical end-start+1 span). WI-bozid: the schema previously declared phantom `lines`/`percentage` keys the producer (profile.LanguageStats.to_dict) never emits; the real emitted shape is {files, loc} plus test_files."
+                "description": "Source-lines-of-code (SLOC) for this language \u2014 the file-level LOC convention. Distinct from the per-symbol line_span (physical end-start+1 span). WI-bozid: the schema previously declared phantom `lines`/`percentage` keys the producer (profile.LanguageStats.to_dict) never emits; the real emitted shape is {files, loc} plus test_files, own_files and own_loc."
               },
               "test_files": {
                 "type": "integer",
                 "minimum": 0,
                 "description": "How many of `files` sit on a test or test-support path (tests/, fixtures/, *_test.*, ...; selection.filters.is_test_path on the repo-relative path). `files - test_files` is the language's non-test footprint: a language with test_files == files appears only in tests or fixtures. `files` itself is not reduced, so analyzers still run on fixture files (WI-ritaf). Omitted when not measured (a profile restored from a cache that predates the field); absent is not 0."
+              },
+              "own_files": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "How many of `files` are the project's own code: supply-chain tier 1-2 by path (supply_chain.tier_by_path; no file read). Committed vendored and derived files are still analysed but leave this count, and the sketch's language line and totals read it (WI-kojul, ADR-0004 point 3a). Omitted when not measured; absent is not 0."
+              },
+              "own_loc": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The `loc` of the `own_files` files (0 when LOC was not counted). Omitted when not measured; absent is not 0 (WI-kojul)."
               }
             }
           }
@@ -213,7 +223,7 @@
     },
     "supply_chain_summary": {
       "type": "object",
-      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus the exclusion-disclosure buckets derived_skipped, installed_deps_skipped and generated_output_skipped. Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets, derived_skipped a {files, paths} shape, installed_deps_skipped a {dirs, packages, entries} shape and generated_output_skipped a {dirs, entries} shape (ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
+      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus the exclusion-disclosure buckets derived_skipped, installed_deps_skipped and generated_output_skipped, and vendored_analysed (analysed tier-3 vendored directories, ADR-0004 point 3a). Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets, derived_skipped a {files, paths} shape, installed_deps_skipped a {dirs, packages, entries} shape and generated_output_skipped a {dirs, entries} shape (ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
       "properties": {
         "installed_deps_skipped": {
           "type": "object",
@@ -298,6 +308,48 @@
                   "tool": {
                     "type": "string",
                     "description": "Label of the rule whose evidence claimed it, e.g. Cargo build, MkDocs site, coverage report."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "vendored_analysed": {
+          "type": "object",
+          "description": "Committed vendored code (tier 3 by an EXTERNAL_DEP path pattern: a nested vendor/, third_party/, node_modules/ ...) that was analysed but left out of the language breakdown and LOC totals (ADR-0004 point 3a, WI-pasan). One entry per vendored directory, from tier-3 file nodes; entries is capped at 10. {dirs: 0, entries: []} when there is none.",
+          "required": [
+            "dirs",
+            "entries"
+          ],
+          "properties": {
+            "dirs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "entries": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "languages",
+                  "files"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Repo-relative vendored directory."
+                  },
+                  "languages": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "files": {
+                    "type": "integer",
+                    "minimum": 0
                   }
                 }
               }

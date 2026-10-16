@@ -17,8 +17,9 @@ How It Works
 1. Check if tree-sitter with R grammar is available
 2. If not available, return skipped result (not an error)
 3. Parse all .R and .r files
-4. Pass 1: extract functions (with their docstrings) and library imports
-   into a global symbol registry
+4. Pass 1: extract functions (with their docstrings) into a global symbol
+   registry, and emit library/require ``imports`` edges and ``source``
+   symbols
 5. Pass 2: create call edges, resolving callees across files through a
    NameResolver; a ``pkg::func`` call passes the package as a path hint
    and gets higher confidence. Calls that resolve to no repo symbol
@@ -476,29 +477,50 @@ def _extract_r_edges(
             if caller:
                 # Use resolver for callee resolution with path_hint
                 lookup_result = resolver.lookup(func_name, path_hint=path_hint)
-                if lookup_result.found and lookup_result.symbol:
-                    dst_id = lookup_result.symbol.id
-                    # Higher confidence for namespace-qualified calls
-                    base_confidence = 0.95 if path_hint else 0.90
-                    confidence = base_confidence * lookup_result.confidence
+                # ADR-0039 ruling 6: a resolved plain call's match quality
+                # interpolates in the ast_call_direct band, and a builtin or
+                # external target derives the unresolved base (ADR-0037).
+                target = lookup_result.symbol if lookup_result.found else None
+                resolved = target is not None
+                if target is not None:
+                    dst_id = target.id
+                elif path_hint:
+                    dst_id = f"r:external:{path_hint}::{func_name}"
                 else:
-                    # Builtin or external function
-                    if path_hint:
-                        dst_id = f"r:external:{path_hint}::{func_name}"
-                    else:
-                        dst_id = f"r:builtin:{func_name}"
-                    confidence = 0.75 if path_hint else 0.70
+                    dst_id = f"r:builtin:{func_name}"
 
-                edge = Edge.create(
-                    src=caller.id,
-                    dst=dst_id,
-                    edge_type="calls",
-                    line=start_line,
-                    confidence=confidence,
-                    origin=PASS_ID,
-                    evidence_type="static" if not path_hint else "qualified_call",
-                    origin_run_id=run_id,
-                )
+                if path_hint:
+                    # ADR-0039 caller-valued: qualified_call is a pending-
+                    # classification placeholder with no seeded band (its
+                    # cluster-D audit may fold it into a call pathway), so
+                    # ``pkg::f()`` keeps its own values until then.
+                    edge = Edge.create(
+                        src=caller.id,
+                        dst=dst_id,
+                        edge_type="calls",
+                        line=start_line,
+                        confidence=(
+                            0.95 * lookup_result.confidence if resolved else 0.75
+                        ),
+                        is_resolved=resolved,
+                        origin=PASS_ID,
+                        evidence_type="qualified_call",
+                        origin_run_id=run_id,
+                    )
+                else:
+                    edge = Edge.create(
+                        src=caller.id,
+                        dst=dst_id,
+                        edge_type="calls",
+                        line=start_line,
+                        resolution_score=(
+                            lookup_result.confidence if resolved else None
+                        ),
+                        is_resolved=resolved,
+                        origin=PASS_ID,
+                        evidence_type="ast_call_direct",
+                        origin_run_id=run_id,
+                    )
                 edges.append(edge)
 
 

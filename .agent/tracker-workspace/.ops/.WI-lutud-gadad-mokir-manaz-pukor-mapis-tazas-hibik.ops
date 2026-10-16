@@ -1,0 +1,21 @@
+- op: create  # 2b61
+  at: '2026-10-16T00:57:09Z'  # 2b61
+  by: agent  # 2b61
+  actor: jgstern_agent  # 2b61
+  clock: 1  # 2b61
+  nonce: 2b61  # 2b61
+  data:  # 2b61
+    kind: work_item  # 2b61
+    title: "Tier-4 (derived) files are parsed, then dropped: skip them before parsing when the tier filter would drop them"  # 2b61
+    status: todo_soft  # 2b61
+    priority: 3  # 2b61
+    parent:  # 2b61
+    tags:  # 2b61
+    - supply_chain  # 2b61
+    - performance  # 2b61
+    isbefore: []  # 2b61
+    duplicate_of: []  # 2b61
+    not_duplicate_of: []  # 2b61
+    pr_ref:  # 2b61
+    description: "FOUND 2026-10-15 while doing WI-munam. A file classified tier 4 (path pattern, @generated header, or since WI-munam a generator fingerprint) is still read and parsed by its analyzer; the default tier filter drops its symbols and edges afterwards (cli.py ~12942, limits.tier_filtered_files). On hypergumbo's self-survey (c907eb1a16) lean's 10.7 MB generated parser.c was parsed (partial parse, 31 damaged nodes) and then filtered, so reclassifying the other two vendored parser.c files (WI-munam) changes what the map contains but not the parse cost behind WI-munam's \"+26% wall\".\n\nFix shape: when the effective max tier excludes 4, skip a file before parsing using only the cheap checks (DERIVED_* path patterns, the 4 KiB header marker and generator fingerprint, both already in supply_chain), and record it in tier_filtered_files as today. Open question to settle first: a first-party call into a skipped generated module (e.g. a *_pb2.py) is resolved today and then has its target dropped; skipping before parse may turn it into an external stub. Measure that and the wall-time change on one self-survey (owner approval needed for that run)."  # 2b61
+    fields: {}  # 2b61

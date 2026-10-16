@@ -502,7 +502,9 @@ class TestAnalysisResult:
         )
         result = _analyze_manifest_targets(tmp_path)
         edge = result.edges[0]
-        assert edge.confidence == 1.0
+        # 1.0 is the reserved ceiling; the edge derives the build_target_main
+        # base (ADR-0039, WI-midoj).
+        assert edge.confidence == 0.95
         assert edge.edge_type == "defines_target"
 
 

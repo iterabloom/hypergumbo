@@ -37,11 +37,12 @@ How It Works
 2. If not available, return skipped result (not an error)
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
+   - Pass 2: Detect calls and resolve against global symbol registry,
+     then annotate each file's edges with dataflow (ADR-0015 Tier 1)
 4. Detect function calls and import statements
-5. Post-passes over the assembled result: per-file dataflow annotation
-   (ADR-0015 Tier 1), inheritance edges, annotation edges, and the
-   Gradle/Maven ``dependency_manifest`` from ``parse_jvm_dependencies``
+5. Post-passes over the assembled result: inheritance edges, annotation
+   edges, and the Gradle/Maven ``dependency_manifest`` from
+   ``parse_jvm_dependencies``
 
 Why This Design
 ---------------
@@ -1819,7 +1820,7 @@ def _extract_edges_from_file(
                     edges.append(Edge.create(
                         src=current_function.id, dst=found.symbol.id,
                         edge_type="calls", line=line,
-                        confidence=0.95 * found.confidence,
+                        resolution_score=found.confidence,
                         origin=PASS_ID, origin_run_id=run.execution_id,
                         evidence_type="ast_call_static",
                     ))
@@ -1848,7 +1849,7 @@ def _extract_edges_from_file(
                 edges.append(Edge.create(
                     src=current_function.id, dst=found.symbol.id,
                     edge_type="calls", line=line,
-                    confidence=0.90 * found.confidence,
+                    resolution_score=found.confidence,
                     origin=PASS_ID, origin_run_id=run.execution_id,
                     evidence_type="ast_call_this",
                 ))
@@ -1992,7 +1993,7 @@ def _extract_edges_from_file(
                                     dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.90 * lookup_result.confidence,
+                                    resolution_score=lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_this",
@@ -2028,8 +2029,7 @@ def _extract_edges_from_file(
                                         dst=_target.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
-                                        confidence=0.85
-                                        * lookup_result.confidence,
+                                        resolution_score=lookup_result.confidence,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         evidence_type=(
@@ -2100,7 +2100,7 @@ def _extract_edges_from_file(
                                     dst=_target.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.95 * lookup_result.confidence,
+                                    resolution_score=lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_static",
@@ -2127,7 +2127,7 @@ def _extract_edges_from_file(
                                     dst=_target.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.85 * lookup_result.confidence,
+                                    resolution_score=lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_type_inferred",
@@ -2230,7 +2230,7 @@ def _extract_edges_from_file(
                                     dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    confidence=0.75 * lookup_result.confidence,
+                                    resolution_score=lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
@@ -2334,7 +2334,7 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.80 * lookup_result.confidence,
+                                resolution_score=lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "function"},
@@ -2400,7 +2400,7 @@ def _extract_edges_from_file(
                         dst=lookup_result.symbol.id,
                         edge_type="references",
                         line=node.start_point[0] + 1,
-                        confidence=0.80 * lookup_result.confidence,
+                        resolution_score=lookup_result.confidence,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         evidence_type="callable_reference",
@@ -2443,7 +2443,7 @@ def _extract_edges_from_file(
                             dst=lookup_result.symbol.id,
                             edge_type="references",
                             line=node.start_point[0] + 1,
-                            confidence=0.80 * lookup_result.confidence,
+                            resolution_score=lookup_result.confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="callable_reference",

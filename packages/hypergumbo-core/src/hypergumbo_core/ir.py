@@ -38,6 +38,17 @@ Key IR Classes
   colon-encoded id; consumers read the callee name through
   ``callee_name_of`` (``meta["callee_name"]``, then ``dst_ref.name``, then
   the span-anchored ``symbol_name_slot`` parse of ``dst``).
+- **Edge construction**: ``Edge.create`` derives ``confidence`` from the
+  evidence registry (``derive_confidence(evidence_type, is_resolved=...)``)
+  when no explicit value is passed, falling back to 0.85 on an unseeded
+  pathway. Given ``resolution_score`` it interpolates inside the pathway's
+  band instead (ADR-0039 ruling 6), and raises ``ValueError`` if that is
+  combined with ``confidence=`` or ``is_resolved=False``. It then stamps
+  ``confidence_source`` and stamps ``evidence_lang`` from the src id's
+  language slot when that slot is a catalog language. ``__post_init__``
+  raises ``ValueError`` on an empty ``origin`` or ``origin_run_id``;
+  ``from_dict`` substitutes ``LEGACY_DESERIALIZED_SENTINEL`` for a missing
+  value so legacy artifacts still load.
 - **attribution / alternatives** (on Symbol and Edge): the ADR-0057 §6
   provenance slot, set only by the merge pass on a record folded from two
   producers. ``attribution`` maps a field to the pass IDs whose value the
@@ -1024,6 +1035,7 @@ class Edge:
         evidence_lang: Optional[str] = None,
         is_resolved: bool = True,
         dst_ref: Optional[ExternalRef] = None,
+        resolution_score: float | None = None,
         derived_from: Optional[List[str]] = None,
         meta: Optional[Dict[str, Any]] = None,
         access_mode: Optional[str] = None,
@@ -1041,6 +1053,14 @@ class Edge:
         (ADR-0037 ruling 1/2) derives the authoritative value from the dst
         node's kind. The ``= True`` default is retained as the RCT-pinned
         producer surface; do not rely on it surviving to the serialized map.
+
+        ``resolution_score`` (ADR-0039 ruling 6) is a name resolver's match
+        quality in [0, 1] (``LookupResult.confidence``, or a producer's
+        product of such factors). Given it, confidence is interpolated inside
+        the pathway's band — ``low + (base - low) * score`` — and stamped
+        ``evidence_derived``. Passing it together with ``confidence``, with
+        ``is_resolved=False``, or on a pathway with no seeded base raises
+        ``ValueError``.
         """
         if access_mode is not None and access_mode not in VALID_ACCESS_MODES:
             raise ValueError(
@@ -1076,7 +1096,21 @@ class Edge:
         # fall back to the historical 0.85 default, so unmigrated producers are
         # unaffected; producers that pass an explicit confidence keep it.
         confidence_derived = False
-        if confidence is None:
+        if resolution_score is not None:
+            if confidence is not None:
+                raise ValueError(
+                    "pass confidence= or resolution_score=, not both "
+                    "(ADR-0039 ruling 6)"
+                )
+            if not is_resolved:
+                raise ValueError(
+                    "resolution_score grades a resolution; an edge created "
+                    "with is_resolved=False has none (ADR-0039 ruling 6)"
+                )
+            from hypergumbo_core.confidence import derive_resolved_confidence
+            confidence = derive_resolved_confidence(evidence_type, resolution_score)
+            confidence_derived = True
+        elif confidence is None:
             from hypergumbo_core.confidence import derive_confidence
             derived = derive_confidence(evidence_type, is_resolved=is_resolved)
             if derived is None:

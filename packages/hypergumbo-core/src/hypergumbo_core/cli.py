@@ -109,18 +109,38 @@ right there instead of silently falling back to tree-sitter; the resolved
 choice reaches the analyzer registry's backend gate through its environment
 variable.
 
+``main`` also normalises the rest of argv and is the exit-code chokepoint.
+``--debug`` is stripped and honoured in any position. A first token that is
+neither a subcommand nor path-like (no separator, no leading ``.``/``~``, not
+on disk) exits 2 with a did-you-mean suggestion instead of falling through to
+sketch. The positional path and ``--path`` collapse into ``args.path``, and
+giving both exits 2. After the command, ``_maybe_offer_repo_tier_examples``
+runs (ADR-0047). ``CatalogueError`` and ``SubstrateError`` exit 2 with the
+loader's message, ``BrokenPipeError`` exits 1 quietly, and any other
+exception prints "internal error" and exits 1 (re-raised under ``--debug``).
+
 ``verify-claims`` is orchestrated here as well (``cmd_verify_claims`` and its
 helpers). I/O overlays stack in ascending precedence: the user's
-``io_primitives.d/``, then config (user, then project), then opted-in in-repo
-config overlays, then the claims file's ``extra_catalogs``, then
-``--io-primitives``. ``--no-default-overlays`` drops the community-provenance
-files (ADR-0061). Taint claims run per language over the DDG-backed or
-structural propagator. A taint-blindness check (a language with no catalogue,
-or a catalogued language that emitted no call edges) supplies the reason the
-verdict layer uses to report a would-be ``confirmed`` as ``inconclusive``. The
-exit code is 0 when everything is confirmed, 1 when any claim is violated, 2
-when any is inconclusive and none violated, and 3 when any is
-``confirmed_with_caveats`` and none of the above.
+``io_primitives.d/``, then user config (``config.toml``), then the project's
+``.hypergumbo.toml`` overlays, loaded only on opt-in (``--in-repo-catalogues``
+or a ``trust-catalogues`` grant), then the claims file's ``extra_catalogs``,
+then ``--io-primitives``. ``--no-default-overlays`` drops the
+community-provenance files (ADR-0061). Taint claims run per language over the
+DDG-backed or structural propagator. A taint-blindness check (a language with
+no catalogue, or a catalogued language that emitted no call edges) supplies
+the reason the verdict layer uses to report a would-be ``confirmed`` as
+``inconclusive``. The exit code is 0 when everything is confirmed, 1 when any
+claim is violated, 2 when any is inconclusive and none violated, and 3 when
+any is ``confirmed_with_caveats`` and none of the above.
+
+``dead-code-maybe`` is implemented here too (``cmd_dead_code_maybe`` and its
+helpers ``production_callables``, ``_bfs_reachable`` and
+``_compute_cross_language_hits``): production callables minus a BFS over
+``_REACHABILITY_EDGE_TYPES`` from the ``--seeds`` set (plus ``view_func``
+dispatch handlers), after which three false-positive demoters drop symbols in
+generated files, methods reached by inheritance dispatch, and candidates
+whose name appears in at least ``--cross-lang-threshold`` other-language
+files.
 
 Why This Design
 ---------------
@@ -130,12 +150,15 @@ Why This Design
 - Read commands (slice, search, explain, ...) work from a persisted survey:
   they reload it via ``survey_io.load_substrate`` and, where they need IR
   objects, rehydrate it with ``Symbol.from_dict`` / ``Edge.from_dict``
-  (``_edge_from_dict`` is a thin wrapper), and ``_get_or_run_analysis`` runs
-  a survey first on a cache miss. ``sketch`` is the exception: the CLI reads a
-  survey only with ``--input``; otherwise ``sketch.py`` finds the cached
-  survey itself and runs a survey only on a cache miss. The ``--minimal``
-  flag (``_add_minimal_argument``) on the ``_get_or_run_analysis`` commands
-  skips that auto-survey's side outputs
+  (``_edge_from_dict`` is a thin wrapper), and ``_get_or_run_analysis`` runs a
+  survey first on a cache miss. ``dead-code-maybe`` is the exception to the
+  rehydration: it builds its entrypoint-detection Symbols by hand from seven
+  fields (dropping ``supply_chain_tier`` and ``modifiers``), and only its
+  edges go through ``Edge.from_dict``. ``sketch`` is the exception to the
+  reload: the CLI reads a survey only with ``--input``; otherwise
+  ``sketch.py`` finds the cached survey itself and runs a survey only on a
+  cache miss. The ``--minimal`` flag (``_add_minimal_argument``) on the
+  ``_get_or_run_analysis`` commands skips that auto-survey's side outputs
   (budget tiers, handler slices, ``sketch_precomputed``); it has no effect
   when a cached survey is reused.
 """
@@ -171,7 +194,7 @@ from typing import (
 from rich.console import Console
 from rich.table import Table
 
-from . import __version__
+from . import __version__, run_status
 from .analyze.all_analyzers import run_all_analyzers
 from .analyze.base import (
     dedup_logical_synthetic_identities,
@@ -310,6 +333,8 @@ from .supply_chain import (
     collect_first_party_package_names,
     collect_workspace_package_names,
     detect_package_roots,
+    format_vendored_disclosure,
+    vendored_analysed_summary,
 )
 from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
@@ -5542,13 +5567,15 @@ def _resolve_io_overlays(
     wired the directory was read by nothing, while the ruling-6 disclosure had
     been telling users to edit it on every run that loaded a community overlay.
 
-    ADR-0045 ruling 4 adds the two config tiers BENEATH the claims file, in the
-    order the ruling fixes — user config, then project config, then the claims
-    file, then the flag. A setting named closer to this specific invocation
-    wins. ``repo_root`` is optional so a caller that has not resolved one
-    simply gets no config tiers rather than a crash; that is a real case
-    (analysis from a cached map with no repository in hand) and not a
-    defensive branch.
+    ADR-0045 ruling 4 adds the two config tiers BENEATH the claims file, in
+    the order the ruling fixes — user config, then project config, then the
+    claims file, then the flag. The project tier (``.hypergumbo.toml``) loads
+    only on opt-in (``--in-repo-catalogues`` or a ``trust-catalogues`` grant;
+    see ``_opted_in_repo_overlays``); without one it contributes nothing. A
+    setting named closer to this specific invocation wins. ``repo_root`` is
+    optional so a caller that has not resolved one simply gets no config tiers
+    rather than a crash; that is a real case (analysis from a cached map with
+    no repository in hand) and not a defensive branch.
     """
     return [p for p, _ in _resolve_io_overlay_origins(args, claims_paths, repo_root)]
 
@@ -10069,7 +10096,9 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         "--progress",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Show progress indicator with ETA to stderr (default: on, use --no-progress to disable)",
+        help="Show progress on stderr: the phase, elapsed time, and a stack heartbeat "
+             "every 30s (HG_HEARTBEAT=N sets the interval, 0 disables) "
+             "(default: on, use --no-progress to disable)",
     )
     p_sketch.add_argument(
         "--readme-debug",
@@ -10317,7 +10346,9 @@ Cache location:
         "--progress",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Show progress indicator with ETA to stderr (default: on, use --no-progress to disable)",
+        help="Show progress on stderr: the phase, elapsed time, and a stack heartbeat "
+             "every 30s (HG_HEARTBEAT=N sets the interval, 0 disables) "
+             "(default: on, use --no-progress to disable)",
     )
     p_run.add_argument(
         "--locale",
@@ -12079,7 +12110,9 @@ def _compute_supply_chain_summary(
     """Compute supply chain summary from classified symbols.
 
     Returns a dict with counts per tier plus the three exclusion-disclosure
-    buckets: ``derived_skipped``, ``installed_deps_skipped`` (ADR-0004
+    buckets and ``vendored_analysed`` (ADR-0004 point 3a: tier-3 vendored
+    directories analysed but not summarised, WI-pasan):
+    ``derived_skipped``, ``installed_deps_skipped`` (ADR-0004
     §"Installed dependency source" -- ``discovery.installed_deps_summary``'s
     ``{dirs, packages, entries}``, empty when nothing was skipped) and
     ``generated_output_skipped`` (point 7 --
@@ -12140,6 +12173,9 @@ def _compute_supply_chain_summary(
     summary["generated_output_skipped"] = generated_output_skipped or {
         "dirs": 0, "entries": [],
     }
+    # ADR-0004 point 3a (WI-pasan): committed vendored code was analysed but
+    # left out of the summaries, so say which directories.
+    summary["vendored_analysed"] = vendored_analysed_summary(symbols)
 
     return summary
 
@@ -12494,6 +12530,7 @@ def _releases_file_index(fn: _SurveyFn) -> _SurveyFn:
 
 
 @_releases_file_index
+@run_status.reports_run
 def run_survey(
     repo_root: Path,
     out_path: Path | None = None,
@@ -12561,32 +12598,6 @@ def run_survey(
         List of file paths for all generated artifacts (main output + tier files).
     """
     import sys
-    import time
-
-    # Progress tracking
-    start_time = time.time()
-
-    def show_progress(phase: str, pct: int) -> None:  # pragma: no cover
-        """Display progress to stderr."""
-        if not progress or not sys.stderr.isatty():
-            return
-        elapsed = time.time() - start_time
-        if pct > 0:
-            estimated_total = elapsed / (pct / 100)
-            remaining = estimated_total - elapsed
-            eta_str = f" ETA {remaining:.0f}s" if remaining > 0 else ""
-        else:
-            eta_str = ""
-        sys.stderr.write(f"\r[{pct:3d}%] {phase}...{eta_str}    ")
-        sys.stderr.flush()
-
-    def complete_progress() -> None:  # pragma: no cover
-        """Show completion message."""
-        if not progress or not sys.stderr.isatty():
-            return
-        elapsed = time.time() - start_time
-        sys.stderr.write(f"\r[100%] Complete in {elapsed:.1f}s           \n")
-        sys.stderr.flush()
 
     _log_memory("start")
 
@@ -12614,7 +12625,7 @@ def run_survey(
     from .arbitration import policy_from_config
     _arbitration_policy = policy_from_config(_load_config_or_exit(repo_root))
 
-    show_progress("Indexing files", 2)
+    run_status.phase("Indexing files")
     combined_excludes = list(DEFAULT_EXCLUDES)
     if extra_excludes:
         combined_excludes.extend(extra_excludes)
@@ -12643,7 +12654,7 @@ def run_survey(
 
     # Detect repo profile (languages, frameworks) with LOC counting.
     # Analyzers will read the same files shortly, so OS cache is warm.
-    show_progress("Detecting profile", 5)
+    run_status.phase("Detecting profile")
     profile = detect_profile(repo_root, extra_excludes=extra_excludes, frameworks=frameworks, count_loc=True)
     behavior_map["profile"] = profile.to_dict()
 
@@ -12656,7 +12667,7 @@ def run_survey(
 
     # Run all language analyzers using consolidated registry
     # This replaces ~800 lines of repetitive analyzer invocation code
-    show_progress("Running analyzers", 10)
+    run_status.phase("Running analyzers")
     # WI-jadig: pass profile through so the dispatcher can short-circuit
     # analyzers whose languages have 0 files in this repo (lifecycle policy
     # member of INV-manov — file-presence pre-filter).
@@ -12677,7 +12688,7 @@ def run_survey(
     # UsageContexts extracted during analysis may have symbol_ref=None when
     # the target symbol is in a different file. Now that we have the complete
     # symbol table, resolve these references using multi-strategy lookup.
-    show_progress("Resolving symbol references", 48)
+    run_status.phase("Resolving symbol references")
     resolution_stats = resolve_deferred_symbol_refs(all_symbols, all_usage_contexts)
     if resolution_stats.total_resolved > 0:
         _log_memory(  # pragma: no cover - debug logging
@@ -12724,7 +12735,7 @@ def run_survey(
     # This applies YAML-based patterns to add concept info (route, model, etc.)
     # to symbols based on their decorators, base classes, annotations, AND
     # usage contexts (v1.1.x) for call-based frameworks like Django URLs.
-    show_progress("Enriching symbols", 50)
+    run_status.phase("Enriching symbols")
     detected_frameworks = set(profile.frameworks)
     enrich_symbols(all_symbols, detected_frameworks, all_usage_contexts)
 
@@ -12784,7 +12795,7 @@ def run_survey(
         analysis_runs.append(_cbv_run.to_dict())
 
     # Run cross-language linkers
-    show_progress("Running linkers", 55)
+    run_status.phase("Running linkers")
     #
     # Every linker is registered via the @register_linker decorator in
     # linkers/registry.py (like analyzers) and runs through run_all_linkers;
@@ -12841,14 +12852,6 @@ def run_survey(
     widen_route_stable_ids(all_symbols)
     split_within_file_stable_id_collisions(all_symbols)
 
-    # Check for partial installation issues (ADR-0010 Item 8)
-    # Emit warnings for: unanalyzed files, partial linker requirements
-    check_partial_install_warnings(
-        profile, linker_ctx, emit_warnings=True, repo_root=repo_root,
-    )
-
-    del linker_ctx, captured_symbols  # Free linker data structures
-
     # Deduplicate edges by edge_key (src + dst + type, ignoring line) and
     # remove self-loops (src == dst) which inflate centrality without adding
     # useful connectivity. Common sources: visitor patterns, name collisions.
@@ -12856,18 +12859,33 @@ def run_survey(
     # different call sites (e.g., 24 calls from InitialSchema#up to
     # Provisioner#create_table in postal).
     all_edges = deduplicate_edges(all_edges, remove_self_loops=True)
+    # The partial-install check below reads linker_ctx after classification;
+    # point it at the deduplicated list so the pre-dedup one can be freed.
+    linker_ctx.edges = all_edges
     _log_memory("after linkers")
 
     # WI-fanun: stamp structural fingerprints on analyzer-produced source
     # Symbols that don't already carry one (toml-v1, json-v1, wgsl-v1 keep
     # their manifest-derived fingerprints unchanged). Centralised in
     # hypergumbo_core.fingerprint so no analyzer change is required.
+    run_status.phase("Stamping fingerprints")
     from .fingerprint import stamp_symbol_fingerprints
     stamp_symbol_fingerprints(all_symbols, repo_root)
 
     # Apply supply chain classification to all symbols
-    show_progress("Classifying symbols", 60)
+    run_status.phase("Classifying symbols")
     _classify_symbols(all_symbols, repo_root, package_roots, limits=limits)
+
+    # Check for partial installation issues (ADR-0010 Item 8). Emit warnings
+    # for: unanalyzed files, partial linker requirements. It runs after
+    # classification because the linker-requirement counts include only
+    # first-party code (tiers 1-2, ADR-0004 point 3a): linker_ctx.symbols is
+    # all_symbols, so the tiers stamped above are visible to it.
+    check_partial_install_warnings(
+        profile, linker_ctx, emit_warnings=True, repo_root=repo_root,
+    )
+
+    del linker_ctx, captured_symbols  # Free linker data structures
 
     # WI-bosab: now that Symbol.is_test_file is set, strip naming-convention
     # framework concepts (service_by_name / controller_by_name / handler_by_name)
@@ -13022,7 +13040,7 @@ def run_survey(
     _log_memory("after boundary nodes")
 
     # Rank symbols by importance (centrality + tier weighting) for output ordering
-    show_progress("Ranking symbols", 65)
+    run_status.phase("Ranking symbols")
     ranked = rank_symbols(
         all_symbols, all_edges,
         first_party_priority=True,
@@ -13071,13 +13089,13 @@ def run_survey(
     del all_usage_contexts
 
     # Compute metrics from analyzed nodes and edges
-    show_progress("Computing metrics", 70)
+    run_status.phase("Computing metrics")
     behavior_map["metrics"] = compute_metrics(
         all_nodes, all_edge_dicts, profile=behavior_map.get("profile"),
     )
 
     # Detect and store entrypoints (computed from symbols, persisted for convenience)
-    show_progress("Detecting entrypoints", 75)
+    run_status.phase("Detecting entrypoints")
     entrypoints = detect_entrypoints(all_symbols, all_edges)
     behavior_map["entrypoints"] = [ep.to_dict() for ep in entrypoints]
     del entrypoints  # Free Entrypoint objects
@@ -13115,6 +13133,11 @@ def run_survey(
         installed_deps_skipped=installed_deps_skipped,
         generated_output_skipped=generated_output_skipped,
     )
+    _vendored_disclosure = format_vendored_disclosure(
+        behavior_map["supply_chain_summary"]["vendored_analysed"],
+    )
+    if _vendored_disclosure:
+        print(_vendored_disclosure, file=sys.stderr)
 
     # Pre-extract sketch data (config, readme)
     # This avoids needing to load the embedding model later in sketch mode
@@ -13125,7 +13148,7 @@ def run_survey(
     # Pre-extract sketch data (config, readme) if requested
     # This avoids reloading the embedding model when generating sketches later
     if include_sketch_precomputed:
-        show_progress("Pre-computing sketch data", 80)
+        run_status.phase("Pre-computing sketch data: config")
         sketch_precomputed: dict[str, str | list[str] | None] = {}
 
         # Extract config info using HYBRID mode (best quality, uses embeddings)
@@ -13137,6 +13160,7 @@ def run_survey(
             sketch_precomputed["config_info"] = ""
 
         # Extract README description (uses embedding model)
+        run_status.phase("Pre-computing sketch data: README")
         try:
             sketch_precomputed["readme_description"] = _extract_readme_description(repo_root)
         except Exception:  # pragma: no cover - graceful degradation
@@ -13174,6 +13198,7 @@ def run_survey(
         )
 
         # Compute centrality scores for all candidates
+        run_status.phase("Pre-computing sketch data: file mentions")
         if candidate_files and all_symbols:
             raw_in_degree = compute_raw_in_degree(all_symbols, all_edges)
             centrality_result = compute_symbol_mention_centrality_batch(
@@ -13338,7 +13363,7 @@ def run_survey(
     gc.collect()
     _log_memory("after cleanup")
 
-    show_progress("Writing output", 95)
+    run_status.phase("Writing output")
     if gzip_output:
         from .safety_zones import user_out_open_json_dump_gzip
         user_out_open_json_dump_gzip(out_path, behavior_map)
@@ -13349,7 +13374,6 @@ def run_survey(
 
     # The global file index is released by ``_releases_file_index`` on every
     # exit path of this function, including the merge pass's refusal.
-    complete_progress()
     return generated_files
 
 

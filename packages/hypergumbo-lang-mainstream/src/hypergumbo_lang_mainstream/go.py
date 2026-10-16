@@ -15,8 +15,10 @@ This analyzer uses tree-sitter to parse Go files and extract:
   ``var`` initializer (a cobra ``Run:`` literal, ``var logger = log.New(...)``)
 - Function references in struct literal fields (cobra, http dispatch), and
   known functions passed as call arguments (``calls`` edges with
-  ``evidence_type="function_reference_arg"``; confidence 0.70 x the target's
-  for a function in another file, the default for a same-file hit or a method;
+  ``evidence_type="function_reference_arg"``; confidence interpolated between
+  the analyzer floor and 0.70 by the resolver's match score (ADR-0039 ruling
+  6) for an own-package function in another file or an import-qualified
+  function, exactly 0.70 for a same-file hit or a method;
   ``_extract_function_reference_edges``)
 - Import relationships (import statements)
 - ``wraps`` edges for middleware composition, ``module_attr_ref`` for bare
@@ -25,6 +27,8 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - The module's dependency manifest, parsed from ``go.mod``
 - Web framework routes (Gin, Echo, Fiber, Gorilla mux, Chi, Macaron,
   go-swagger, and Go 1.22+ ``ServeMux`` "POST /path" patterns)
+- ADR-0015 Tier-1 dataflow access-mode annotation of each file's call
+  edges (``_annotate_dataflow``)
 
 If tree-sitter with Go support is not installed, the analyzer
 warns and returns a skipped result.
@@ -121,11 +125,18 @@ How It Works
      group path prepended (e.g., Group("/api") > GET("/users") → /api/users).
      Handles nested groups via AST ancestor walk. Variable-based groups
      (``api := r.Group("/api")``) are composed too.
-   - Mount points: r.Mount("/api/v1", handler) → route_mount symbol
+   - Mount points: r.Mount("/api/v1", handler) → route_mount symbol, plus
+     a ``calls`` edge from the enclosing function to the handler
+     (``evidence_type="ast_call_direct"``,
+     ``meta["framework_dispatch"]="route_mount"``); when the handler is not
+     in the file's symbols, the edge is unresolved and points at a
+     ``go:external`` placeholder
 9. Implicit interface satisfaction:
    - A struct whose method set (method name plus parameter and return
-     arity, including methods promoted through embedding) covers an
-     interface's gets that interface appended to ``meta["base_classes"]``,
+     arity, including methods promoted through embedding when the embedded
+     type's methods are declared in the same file as the embedding struct;
+     the cross-file pass unions per-file method sets without re-promoting)
+     covers an interface's gets that interface appended to ``meta["base_classes"]``,
      beside explicit ``var _ I = &S{}`` assertions. Matched per file in
      ``_extract_symbols_from_file``, then across files per package
      directory in ``_analyze_go_impl``.
@@ -3501,7 +3512,9 @@ def _go_bare_reference_target(
 
     Serves ``register(handler)`` and ``Command{Run: run}``. Go scoping places a
     bare name in the caller's own package, so a hit in the caller's file wins
-    (confidence ``None``: ``Edge.create`` derives it), then ``own_package`` --
+    (score ``None``: ``Edge.create`` derives the pathway base), then
+    ``own_package``, whose match quality is returned as the ADR-0039 ruling-6
+    resolution score --
     never the repo-wide resolver, whose sole candidate in ANOTHER package was
     bound here at 0.70 and whose two-way tie bound the path-sorted first at
     0.49. A method or field the file lists under its bare name is skipped, as
@@ -3519,7 +3532,7 @@ def _go_bare_reference_target(
         return None
     found = own_package.lookup(ref_name)
     if found.symbol is not None and found.symbol.kind == "function":
-        return found.symbol, 0.70 * found.confidence
+        return found.symbol, found.confidence
     return None
 
 
@@ -3624,7 +3637,7 @@ def _go_selector_reference_target(
             and found.symbol.kind == "function"
             and _go_in_hinted_package(found.symbol, hint)
         ):
-            return found.symbol, 0.70 * found.confidence
+            return found.symbol, found.confidence
         return None
     return _go_typed_method_value(
         var_types.get(alias), name, import_aliases, module_path,
@@ -3801,7 +3814,7 @@ def _extract_function_reference_edges(
                 edge_type="calls",
                 line=line,
                 evidence_type="function_reference_arg",
-                confidence=target[1],
+                resolution_score=target[1],
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
             ))
@@ -3882,7 +3895,7 @@ def _emit_go_alias_edges(
                 edge_type="calls",
                 line=value_node.start_point[0] + 1,
                 evidence_type="function_reference",
-                confidence=target[1],
+                resolution_score=target[1],
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
             ))
@@ -5021,14 +5034,13 @@ def _extract_edges_from_file(
                                 )
                             ):
                                 # Scale base confidence by resolver's confidence multiplier
-                                edge_confidence = 0.80 * lookup_result.confidence
                                 edges.append(Edge.create(
                                     src=current_function.id,
                                     dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    confidence=edge_confidence,
+                                    resolution_score=lookup_result.confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": call_construct},
@@ -5209,7 +5221,7 @@ def _extract_edges_from_file(
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="struct_field_reference",
-                            confidence=field_ref[1],
+                            resolution_score=field_ref[1],
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
@@ -6857,7 +6869,6 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                         line=a.span.start_line if a.span else 0,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        confidence=0.95,
                         meta={"ref_construct": "build_tag_alternative"},
                     ))
 

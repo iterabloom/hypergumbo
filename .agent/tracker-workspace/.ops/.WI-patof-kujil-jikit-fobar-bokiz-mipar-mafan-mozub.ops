@@ -1,0 +1,22 @@
+- op: create  # 90e0
+  at: '2026-10-15T02:57:12Z'  # 90e0
+  by: agent  # 90e0
+  actor: jgstern_agent  # 90e0
+  clock: 1  # 90e0
+  nonce: '90e0'  # 90e0
+  data:  # 90e0
+    kind: work_item  # 90e0
+    title: "Cold sketch embeds 433 additional files on CPU to display 8 (1m52s of 8m38s self-run)"  # 90e0
+    status: todo_hard  # 90e0
+    priority: 2  # 90e0
+    parent:  # 90e0
+    tags:  # 90e0
+    - performance  # 90e0
+    - sketch  # 90e0
+    - ux  # 90e0
+    isbefore: []  # 90e0
+    duplicate_of: []  # 90e0
+    not_duplicate_of: []  # 90e0
+    pr_ref:  # 90e0
+    description: "Measured by the run-status heartbeat on a cold `hypergumbo hypergumbo` (6 cores, 2026-10-14): \"Sketch: Embedding additional files\" took 1m52s of an 8m38s run (Slowest phases line), embedding 433 candidate files on CPU via sketch_embeddings.batch_embed_files (heartbeat at 7m00s-8m30s, counts 128/433 -> 384/433). It was the largest sketch-side phase and the third-largest overall, after analyzers (2m22s) and linkers (1m59s, of which up to ~1m was fingerprint stamping, since relabelled).\n\nThe 8,000-token sketch displays 8 Additional Files. Embedding 433 to choose 8 is the cost to question: candidates could be pre-ranked by the cheap file-mention density the survey already computes (sketch_precomputed.additional_file_centrality_scores) and only the top-K embedded, or the embeddings computed once in the survey and cached with it.\n\nNot measured: how much the ranking of the displayed 8 would change under a top-K pre-filter. That is the first thing to measure before choosing."  # 90e0
+    fields: {}  # 90e0

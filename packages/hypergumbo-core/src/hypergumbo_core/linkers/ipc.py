@@ -896,11 +896,13 @@ IPC_REQUIREMENTS = [
         name="js_ts_files",
         description="JavaScript/TypeScript files",
         check=_count_js_ts_files,
+        languages=("javascript", "typescript"),
     ),
     LinkerRequirement(
         name="electron_patterns",
         description="Electron IPC patterns in code",
         check=_count_electron_patterns_in_code,
+        languages=("javascript", "typescript"),
     ),
 ]
 

@@ -14,7 +14,14 @@ How It Works
    - Rails: controller_action = "users#index" → UsersController#index
    - Phoenix: controller = "UserController", action = "index" → UserController.index
    - Laravel: controller_action = "UserController@index"
-   - Express/JS: handler_ref = "userController.list" → list function
+   - Express/JS: handler_ref = "userController.list" → list function.
+     The same name-based path serves the name-shaped handler_ref on markers
+     from ``materialize_route_symbols``, and falls back to JSX component
+     suffixes (``<Route element={<Foo />}>`` → FooComponent / FooView /
+     FooPage / FooScreen / FooContainer)
+   - Direct ID: a handler_ref shaped like a symbol ID
+     (``language:/path:...``, e.g. Starlette and Flask-RESTful markers) is
+     resolved by ID, not by name
    - Django: view_name = "list_users" or "accounts.views.list_users"
    - Go/Gin: handler_name = "listUsers" or "handlers.GetAPI"
 3. Resolve handler reference to actual method/function symbols
@@ -22,6 +29,10 @@ How It Works
 5. For React Router v6.4+ routes: resolve loader_ref/action_ref to function
    symbols and create additional ``dispatches_to`` edges with
    role=loader/action metadata
+6. Confidence: handler edges get 0.9 and loader/action edges 0.85. Either
+   drops to 0.5 with ``disambiguation_fallback=True`` when the resolved
+   symbol's name or qualified_name is shared by another non-route symbol
+   (the single-value name index may have picked the wrong one)
 
 Why This Design
 ---------------
@@ -30,10 +41,15 @@ Why This Design
 - Supports multiple frameworks via pluggable resolution strategies
 - Post-hoc linking works with complete symbol table
 
-Note: Route symbols are created by language analyzers, not by the framework
-pattern enrichment layer. Enrichment adds ``concept: route`` to handler
+Note: Route markers come from language analyzers and, for annotation-based
+frameworks (JAX-RS, Spring MVC, ASP.NET), from
+``framework_patterns.materialize_route_symbols``, which mints a marker per
+enriched ``concept: route`` handler with ``handler_ref`` set to the handler
+name. ``expand_class_based_view_routes`` replaces a Django CBV ``ANY`` marker
+with per-method markers. Enrichment adds ``concept: route`` to handler
 symbols (tagging the view function); this linker connects route *entities* to
-handlers via ``dispatches_to`` edges. Both are derived from the same UsageContext
+handlers via ``dispatches_to`` edges. Analyzer-created markers and the
+``concept: route`` tags are both derived from the same UsageContext
 extraction pass — see each analyzer's "Route Detection Architecture" docs.
 
 Supported Frameworks
@@ -42,6 +58,7 @@ Supported Frameworks
 - Elixir/Phoenix: controller + action fields
 - PHP/Laravel: controller_action = "Controller@action"
 - JS/TS Express: handler_ref = "module.function"
+- Python Starlette / Flask-RESTful: handler_ref = full symbol ID (direct)
 - Python/Django: view_name = "view_function" or "module.view_function"
 - Go/Gin/Echo/Fiber/Chi: handler_name = "functionName" or "pkg.FunctionName"
 - React Router v6.4+: loader_ref/action_ref = data loader/action function names

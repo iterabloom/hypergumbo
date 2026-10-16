@@ -347,10 +347,8 @@ class _AstroFileExtractor:
             # representation in the graph.
             if import_path:
                 edge_dst = import_path
-                edge_confidence = 0.95
             else:
                 edge_dst = f"astro:component:{tag_name}:0-0:{tag_name}:component"
-                edge_confidence = 0.6
             edge = Edge.create(
                 src=make_file_id("astro", str(rel_path)),
                 dst=edge_dst,
@@ -359,7 +357,10 @@ class _AstroFileExtractor:
                 origin=PASS_ID,
                 origin_run_id=self._execution_id,
                 evidence_type="import",
-                confidence=edge_confidence,
+                # ADR-0039: the component reference is certain, so it
+                # derives the import base; an unimported tag names no import
+                # and is unresolved (ADR-0037). It was 0.95 / 0.6.
+                is_resolved=bool(import_path),
                 meta={
                     "import_path": import_path,
                     "source_path": str(rel_path),

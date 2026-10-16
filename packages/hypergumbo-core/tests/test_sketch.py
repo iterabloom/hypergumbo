@@ -663,10 +663,18 @@ class TestGenerateSketch:
         assert "No test files detected" in sketch
 
     def test_many_directories(self, tmp_path: Path) -> None:
-        """Sketch handles projects with many directories."""
-        # Create 15 directories
+        """Sketch handles projects with many directories.
+
+        Each directory holds a file. The Structure tree summarizes the
+        survey's file universe, cold or warm (INV-jumim), so a directory
+        with nothing in it is not part of that universe. This test made 15
+        EMPTY directories while a cold sketch still re-walked the working
+        tree, and a warm run of the same test would already have printed no
+        directories at all.
+        """
         for i in range(15):
             (tmp_path / f"dir_{i:02d}").mkdir()
+            (tmp_path / f"dir_{i:02d}" / "notes.md").write_text(f"# {i}\n")
         (tmp_path / "main.py").write_text("print('hello')\n")
 
         sketch = generate_sketch(tmp_path)
@@ -9687,3 +9695,40 @@ class TestConfigExtractionFallbackWarning:
     # installed. We do not try to mock-force it here because Python's
     # import machinery short-circuits on cached sys.modules entries
     # making the simulation brittle.
+
+
+def test_language_stats_count_own_code_only(tmp_path: Path) -> None:
+    """WI-kojul / ADR-0004 3a: the Overview counts tiers 1-2 only.
+
+    The 2026-10-14 self-sketch said "Python (62%), C (26%)" because of
+    305,712 lines of vendored, generated tree-sitter C. Vendored code is
+    still analysed; it just does not describe the project.
+    """
+    from hypergumbo_core.profile import LanguageStats, RepoProfile
+    from hypergumbo_core.sketch import _format_language_stats
+
+    profile = RepoProfile()
+    profile.languages = {
+        "python": LanguageStats(files=10, loc=900, own_files=10, own_loc=900),
+        "c": LanguageStats(files=4, loc=3000, own_files=1, own_loc=100),
+        "lean": LanguageStats(files=2, loc=50, own_files=0, own_loc=0),
+    }
+    (tmp_path / "app.py").write_text("x = 1\n")
+    result = _format_language_stats(profile, tmp_path)
+    lang_line, files_line, loc_line = result.splitlines()
+    assert lang_line == "Python (90%), C (10%)"
+    assert files_line.startswith("11 files")
+    assert loc_line.startswith("~1,000 LOC")
+
+
+def test_test_analysis_skips_vendored_tests(tmp_path: Path) -> None:
+    """A vendored dependency's own tests are not the project's tests."""
+    from hypergumbo_core.sketch import _analyze_test_files
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text("def test_a():\n    pass\n")
+    vend_tests = tmp_path / "vendor" / "lib" / "tests"
+    vend_tests.mkdir(parents=True)
+    (vend_tests / "test_lib.py").write_text("def test_b():\n    pass\n")
+    analysis = _analyze_test_files(tmp_path)
+    assert (analysis.test_files, analysis.test_loc) == (1, 2)

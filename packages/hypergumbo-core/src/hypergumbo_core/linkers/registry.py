@@ -32,6 +32,15 @@ How It Works
    - ``requirements``: language presence the linker depends on,
      consumed by ``partial_install_warnings`` to surface "linker X
      ran with only some of its requirements met" diagnostics.
+   - ``depends_on``: upstream analyzer pass IDs in CNF (outer-AND of
+     inner-OR clauses), surfaced into ``Pass.depends_on``.
+   - ``supersedes_consumed_stub``: whether this pass's resolution may
+     demote the stub it names in ``Edge.derived_from`` (ADR-0057 §14.1).
+   - catalog metadata (``pass_label``, ``backend``, ``languages``,
+     ``availability``, ``requires``) co-located with registration.
+   A linker that runs unconditionally but whose gating nobody has
+   assessed uses the ``always_on_unreviewed()`` factory instead of
+   ``LinkerActivation(always=True)``.
 2. The registry stores linker functions by name.
 3. ``run_all_linkers()`` groups linkers by priority and dispatches
    each priority cohort to a ``ThreadPoolExecutor`` so independent
@@ -41,8 +50,17 @@ How It Works
    ``duration_ms`` overlaps its siblings' and inflates while they hold
    the GIL; ``_run_linker_with_cache`` therefore also stamps ``cpu_ms``,
    the linker's own-thread CPU time, read on the worker (WI-nuvam).
-4. Each linker is called uniformly via ``run_linker()`` with
-   LinkerContext.
+4. Each linker is invoked with its LinkerContext through
+   ``_run_linker_with_cache()`` (``run_linker()`` is the by-name entry
+   point to the same wrapper). The wrapper fills ``files_analyzed``
+   from the files the body actually read (when the body left it
+   unset) and stamps ``silence_reason`` on a run the body left
+   unexplained: ``PREREQUISITE_ABSENT`` when a ``depends_on`` clause
+   was blocked by a skipped analyzer (``skipped_pass_codes``), else
+   the answer from ``derive_silence_reason``.
+   A linker that raises is contained (§17 fail-open):
+   ``_record_linker_crash`` records it via
+   ``limits.record_crashed_pass`` and dispatch continues.
 5. A post-pass (``_connect_synthetic_to_enclosing``) wires synthetic
    nodes minted by linkers into their enclosing real symbols.
 
@@ -76,7 +94,7 @@ and a producer-identity ``config_fingerprint`` (via
 ``_stamp_config_fingerprint()``, INV-lidul / WI-mipul) on the returned
 ``AnalysisRun`` — so linker bodies don't need to thread either manually.
 Without the config_fingerprint stamp every linker run would carry the
-constant default sentinel, collapsing all ~61 registered linker passes onto one cache key.
+constant default sentinel, collapsing all ~63 registered linker passes onto one cache key.
 
 Usage
 -----
@@ -113,6 +131,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Collection, Iterator
 
 from ..pass_clock import PassClock
+from ..run_status import worker_pass
 
 if TYPE_CHECKING:
     from ..ir import AnalysisRun, Edge, Symbol
@@ -543,11 +562,18 @@ class LinkerRequirement:
         description: Human-readable description (e.g., "Java native methods")
         check: Function that takes LinkerContext and returns count of available items.
             Return 0 to indicate the requirement is unmet.
+        languages: Languages whose presence in the tree can satisfy the
+            requirement (taxonomy names). An unmet requirement whose
+            languages are all absent does not warn, and the analyzer package
+            of each names the install suggestion (WI-tonuh). Empty when no
+            single set of languages is responsible (framework route
+            symbols, say), which turns both off.
     """
 
     name: str
     description: str
     check: Callable[[LinkerContext], int]
+    languages: tuple[str, ...] = ()
 
 
 @dataclass
@@ -741,7 +767,8 @@ def _run_linker_with_cache(
     # reading is per-thread.
     _clock = PassClock()
     try:
-        result = func(ctx)
+        with worker_pass(getattr(ctx, "linker_pass_id", "") or "linker"):
+            result = func(ctx)
     finally:
         reset_active_read_log(read_token)
         reset_active_parse_cache(token)
@@ -1276,12 +1303,14 @@ class RequirementStatus:
         description: Human-readable description
         count: Number of matching items found (0 = unmet)
         met: True if count > 0
+        languages: The requirement's ``LinkerRequirement.languages``
     """
 
     name: str
     description: str
     count: int
     met: bool
+    languages: tuple[str, ...] = ()
 
 
 @dataclass
@@ -1317,7 +1346,7 @@ def check_linker_requirements(ctx: LinkerContext) -> list[LinkerDiagnostics]:
 
     Example output:
         LinkerDiagnostics(
-            linker_name="jni",
+            linker_name="jni-linker",
             linker_description="Java/C JNI bridge",
             requirements=[
                 RequirementStatus(name="java_native", description="Java native methods", count=0, met=False),
@@ -1343,6 +1372,7 @@ def check_linker_requirements(ctx: LinkerContext) -> list[LinkerDiagnostics]:
                 description=req.description,
                 count=count,
                 met=met,
+                languages=req.languages,
             ))
             if not met:
                 all_met = False

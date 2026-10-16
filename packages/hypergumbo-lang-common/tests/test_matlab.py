@@ -270,8 +270,10 @@ end
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) == 1
 
-        # Should have lower confidence for unresolved target
-        assert call_edges[0].confidence == 0.6
+        # An unresolved target derives the ast_call_direct unresolved base
+        # (ADR-0039; ADR-0037).
+        assert call_edges[0].is_resolved is False
+        assert call_edges[0].confidence == 0.50
         assert "unresolved:unknown_function" in call_edges[0].dst
 
 

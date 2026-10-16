@@ -101,7 +101,9 @@ def test_same_arity_overloads_are_an_ambiguous_record(tmp_path: Path) -> None:
     )})
     where, quality, conf = _calls(tmp_path, "a.nim")[4]
     assert where == "a.nim:1" and quality == "ambiguous"
-    assert math.isclose(conf, 0.85 / math.sqrt(2))
+    # ADR-0039 ruling 6: the 1/sqrt(2) choice grade interpolates in the
+    # ast_call band [0.40, 0.85].
+    assert math.isclose(conf, 0.40 + 0.45 / math.sqrt(2))
 
 
 def test_defaults_varargs_and_a_block_argument_count(tmp_path: Path) -> None:

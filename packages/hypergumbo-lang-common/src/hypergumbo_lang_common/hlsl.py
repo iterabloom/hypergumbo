@@ -4,10 +4,9 @@
 Detects:
 - Function definitions (vertex, pixel, compute shaders)
 - Struct definitions (input/output structures)
-- Variable declarations (including the fields inside cbuffer blocks; the
-  cbuffer block itself is not captured as a distinct symbol)
-- Variable declarations (including textures, samplers, and buffers, all
-  emitted as kind='variable')
+- Variable declarations (textures, samplers, buffers and the fields inside
+  cbuffer blocks, all kind='variable'; the cbuffer block itself is not a
+  distinct symbol)
 - Call edges (function-to-function 'calls' edges)
 
 HLSL is Microsoft's High Level Shading Language for DirectX.
@@ -28,8 +27,9 @@ and result assembly. This module provides only the HLSL-specific extraction logi
    resource declarations are not distinctly tracked).
 7. Extract call edges (pass 2): for each call_expression, resolve the callee
    via the NameResolver and emit a 'calls' edge — to the resolved symbol
-   (confidence 0.85 * resolver confidence) or to an
-   'hlsl:external:<name>:function' target at 0.70 confidence.
+   (interpolated in the ast_call_direct band: 0.50 + 0.35 * resolver
+   confidence) or to an 'hlsl:external:<name>:function' target at the
+   unresolved base, 0.50.
 
 A function records its parameters, types included, in ``meta["parameters"]``
 (``c_family_parameters``) and its stable_id hashes them
@@ -259,21 +259,25 @@ def _extract_hlsl_edges(
 
             # Try to resolve the callee
             result = resolver.lookup(target_name)
+            # ADR-0039 ruling 6: resolver match quality interpolates in the
+            # ast_call_direct band; an external target derives the
+            # unresolved base (ADR-0037).
+            resolution_score: float | None = None
             if result.symbol is not None:
                 dst_id = result.symbol.id
-                confidence = 0.85 * result.confidence
+                resolution_score = result.confidence
             else:
                 dst_id = f"hlsl:external:{target_name}:function"
-                confidence = 0.70
 
             edge = Edge.create(
                 src=caller.id,
                 dst=dst_id,
                 edge_type="calls",
                 line=node.start_point[0] + 1,
-                confidence=confidence,
+                resolution_score=resolution_score,
+                is_resolved=resolution_score is not None,
                 origin=PASS_ID,
-                evidence_type="static",
+                evidence_type="ast_call_direct",
                 origin_run_id=run_id,
             )
             edges.append(edge)

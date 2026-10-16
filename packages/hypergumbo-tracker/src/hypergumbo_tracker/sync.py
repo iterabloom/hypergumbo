@@ -36,9 +36,29 @@ Design:
   switching branches during a running bakeoff or test would break things.
   The plumbing approach builds the commit in a separate index, creates a
   branch ref with ``update-ref``, pushes, then cleans up — the working tree
-  never changes.  try/finally ensures gate file and temp index cleanup.
-
-See the plan document for the full design specification.
+  is never switched to another branch.  The one working-tree write: after a
+  successful merge while on the base branch, the ops dirs are reset to HEAD
+  (untracked ops files removed), local dev is fast-forwarded, and the
+  INV-dalup snapshot is union-restored.  try/finally ensures gate file and
+  temp index cleanup.
+- Data-loss safeguards and retry paths in ``do_sync()``: ops are staged
+  additively (``git add --ignore-removal``, INV-lovih) so a stale working
+  tree can never commit an op-log deletion; the destructive cleanup runs only
+  when ``merge_succeeded`` is set (WI-lufal); ops are snapshotted before the
+  cleanup and union-restored after it (``_snapshot_ops_files`` /
+  ``_union_restore_ops``, INV-dalup); ``RecoverSuppressionLock`` is held for
+  the whole sync.  On the Forgejo backend only, a stale-pending CI run (no
+  jobs started) closes the PR, backs off and repushes, up to two retries.
+  On both backends, if dev advanced during CI the sync commit is rebuilt on
+  the new base and force-pushed.  On GitHub the PR is opened explicitly
+  (``_create_pr``, ``POST /pulls``) and the head branch is deleted after
+  merge (``_delete_remote_branch``).
+- ``find_superseded_sync_branches()`` / ``prune_superseded_sync_branches()``
+  garbage-collect ``tracker-sync/*`` branches whose merge into the base
+  leaves its tree unchanged (exact tree equality via ``git merge-tree
+  --write-tree``, git >= 2.38).  The predicate fails safe: anything
+  undecidable yields an empty list.  Pruning closes the PR and deletes the
+  remote branch best-effort, and defaults to ``dry_run``.
 """
 
 from __future__ import annotations

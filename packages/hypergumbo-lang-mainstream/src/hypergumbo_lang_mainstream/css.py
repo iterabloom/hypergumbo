@@ -227,7 +227,6 @@ def _process_css_tree(
                         edge_type="imports",
                         evidence_type="ast_import",
                         line=start_line,
-                        confidence=1.0,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     )

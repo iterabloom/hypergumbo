@@ -33,10 +33,12 @@ Confidence seeding (ADR-0039):
   (``ast_call``, ``ast_call_direct``, ``macro_expansion``) also carry
   ``base_confidence_unresolved`` for edges with ``is_resolved=False``, set
   inline on their specs. ``confidence.derive_confidence`` reads both.
-- Single-valued pathways are seeded from the ``_CONFIDENCE_SEEDS`` table
-  (disjoint from the inline seeds), which ``_apply_confidence_seeds``
+- Most single-valued pathways are seeded from the ``_CONFIDENCE_SEEDS``
+  table (disjoint from the inline seeds), which ``_apply_confidence_seeds``
   overlays onto ``_RAW_EVIDENCE_TYPES`` to produce the public
-  ``EVIDENCE_TYPES``.
+  ``EVIDENCE_TYPES``; the rest (e.g. ``ast_import``, ``ast_new``,
+  ``span_overlap``) carry a single ``base_confidence`` inline on their
+  specs.
 
 Axis taxonomy (per ADR-0028 §1):
 
@@ -579,19 +581,35 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
 # the per-emitter hardcoded outliers collapse to this single canonical value —
 # the INV-suvil fix (confidence derived from evidence, not hardcoded per
 # emitter). Keys are disjoint from the inline-seeded specs above
-# (``test_confidence_seeds_disjoint_from_inline``).
+# (``test_confidence_seeds_disjoint_from_inline``). The entries marked
+# "ADR-0039 ruling 6" were unseeded while their producers passed only
+# ``<base> * resolver grade``; ruling 6 moved that grade into
+# ``Edge.create(resolution_score=...)``, which needs a band, so each is seeded
+# at its producers' exact-match base.
 _CONFIDENCE_SEEDS: dict[str, float] = {
     "ast_annotation": 0.5,
     "ast_attribute": 0.95,
     "ast_call_extension": 0.8,
+    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.95 x resolver grade.
+    "ast_call_static": 0.95,
+    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.9 x resolver grade.
+    "ast_call_this": 0.9,
+    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.85 x resolver grade.
+    "ast_call_this_property": 0.85,
     "ast_call_type_inferred": 0.85,
     "ast_call_ufcs": 0.8,
     "ast_decorator": 0.95,
     "ast_extends": 0.95,
     "ast_implements": 0.95,
     "ast_method_inferred": 0.7,
+    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.95 x resolver grade.
+    "ast_method_this": 0.95,
     "ast_method_this_property": 0.9,
     "ast_method_type_inferred": 0.85,
+    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.85 x resolver grade.
+    "ast_perform": 0.85,
+    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.95 x resolver grade.
+    "ast_static_call": 0.95,
     "ast_type_ref": 0.85,
     "async_spawn": 0.85,
     "behaviour": 0.95,
@@ -602,9 +620,17 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     # ceiling so the producer stops emitting the reserved-1.0 literal.
     "build_dependency": 0.95,
     "build_target_main": 0.95,
+    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.8 x resolver grade.
+    "callable_reference": 0.8,
     "canonical_name": 0.95,
     "closure_wrapper": 0.85,
+    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.8 x resolver grade.
+    "constructor_reference": 0.8,
+    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.85 x resolver grade.
+    "designated_init_fptr": 0.85,
     "dispatch_pattern": 0.7,
+    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.8 x resolver grade.
+    "dispatch_table_initializer": 0.8,
     "dispatch_table_reference": 0.85,
     "dockerfile_copy_from": 0.95,
     "dockerfile_from": 0.95,
@@ -612,6 +638,8 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "eta_expansion": 0.85,
     "extends": 0.95,
     "function_pointer": 0.85,
+    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.8 x resolver grade.
+    "function_pointer_arg": 0.8,
     "function_reference": 0.8,
     "function_reference_arg": 0.7,
     "grpc_stub_resolution": 0.75,
@@ -646,6 +674,8 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "require_static": 0.9,
     "signal_constraint": 0.85,
     "source_statement": 0.95,
+    # ADR-0039 ruling 6 (WI-himod): every producer passed 0.9 x resolver grade.
+    "sql_foreign_key": 0.9,
     "stack_construction": 0.85,
     "static": 0.95,
     "struct_field_reference": 0.7,

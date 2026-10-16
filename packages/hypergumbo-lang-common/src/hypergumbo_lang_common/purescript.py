@@ -541,7 +541,10 @@ class _PureScriptExtractor:
                             qualified = f"{self._current_module}.{call_name}"
                             callee_id = self._symbol_registry.get(qualified)
 
-                        confidence = 1.0 if callee_id else 0.6
+                        # ADR-0039: a registry hit derives the ast_call_direct base and a miss
+                        # is unresolved (ADR-0037), deriving the unresolved base. The old
+                        # ``1.0 if hit else 0.6`` put every hit over the 0.85 ceiling.
+                        resolved = callee_id is not None
                         if callee_id is None:
                             callee_id = f"purescript:unresolved:{call_name}"
 
@@ -554,7 +557,7 @@ class _PureScriptExtractor:
                             origin=PASS_ID,
                             origin_run_id=self._run_id,
                             evidence_type="ast_call_direct",
-                            confidence=confidence,
+                            is_resolved=resolved,
                             evidence_lang="purescript",
                         )
                         self.edges.append(edge)

@@ -26,7 +26,8 @@ file. Signals are checked in order; first match wins:
    beside ``mkdocs.yml`` ... -- never a bare ``dist``/``build``/``out``/
    ``target`` name), then the remaining path patterns (dot-named tool
    directories, ``__pycache__``) and filename patterns, then a content check
-   for minified output
+   for minified output (also generated-file declarations, C-family generator
+   fingerprints, and a webpack bootstrap)
 2. External dependency detection (tier 3) - root-anchored node_modules/,
    vendor/, third_party/ (and the third-party/, thirdparty/ spellings),
    external/, deps/, Pods/, Carthage/, .yarn/cache/, _vendor/
@@ -83,9 +84,11 @@ of which step matched:
 - ``is_generated`` (WI-tizij / WI-pofin) - a path match against
   ``GENERATED_CODE_PATTERNS`` (OpenAPI models, protobuf stubs, k8s code-gen,
   go-swagger, openapi-gen TS), else a declaration in the file's leading
-  comment block within the first 4 KiB. The header test is one predicate,
-  ``_has_generated_marker``, shared with the minified-content check in step 1
-  so the flag and tier 4 cannot disagree (INV-bokim / INV-pogob).
+  comment block within the first 4 KiB, or a C-family generator's
+  structural fingerprint (``_generator_fingerprint``: tree-sitter, Bison,
+  flex, re2c). The header tests, ``_has_generated_marker`` and
+  ``_generator_fingerprint``, are shared with the minified-content check in
+  step 1 so the flag and tier 4 cannot disagree (INV-bokim / INV-pogob).
 - ``is_config`` (WI-jobuj) - the basename is a package-manager or build
   manifest in ``CONFIG_FILE_NAMES``; suppressed when ``is_test`` or
   ``is_example`` is already set, so the three role flags stay exclusive.
@@ -108,6 +111,25 @@ Manifest Readers
   repo's self-references by published name as uncatalogued third-party
   modules.
 
+Vendored-Code Disclosure and Path-Only Tiering
+----------------------------------------------
+Committed vendored code is analysed as tier 3 but left out of the summaries
+(ADR-0004 point 3a), so these helpers disclose it:
+
+- :func:`vendored_root` returns the vendored directory an EXTERNAL_DEP_*
+  pattern matched for a path (``pkg/vendor``), else ``None``.
+- :func:`vendored_analysed_summary` builds
+  ``supply_chain_summary.vendored_analysed`` from the tier-3 ``file`` nodes:
+  one entry per vendored directory with its languages and file count,
+  sorted by path and capped at 10.
+- :func:`format_vendored_disclosure` renders that summary as the one-line
+  disclosure (at most three directories named) that sketch and the CLI print.
+- :func:`tier_by_path` runs only the path-pattern steps of
+  :func:`classify_file` (DERIVED_* then EXTERNAL_DEP_*), with no file read,
+  for cheap summaries such as the profile's per-language own-code counts.
+  ``None`` means the path alone does not decide the tier, so it under-reports
+  tiers 3-4 rather than inventing them.
+
 See §14 of the hypergumbo spec for full details.
 """
 
@@ -118,7 +140,7 @@ import re
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Callable, Container, Iterator, Optional
+from typing import Any, Callable, Container, Iterable, Iterator, Optional
 
 
 class Tier(IntEnum):
@@ -822,6 +844,51 @@ def _has_generated_marker(head: str) -> bool:
         _leading_comment_block(head),
     ) is not None
 
+#: C-family files: the only ones the generator fingerprints below examine.
+_C_FAMILY_EXTS = frozenset({".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh"})
+
+#: Structural fingerprints of generator output that does not DECLARE itself
+#: (WI-munam). Each entry is a set of patterns that must ALL match the head.
+#: Measured cause: of the three vendored tree-sitter grammars in this tree only
+#: lean's parser.c says ``@generated``; circom's and wolfram's open with the
+#: parser include and the ``LANGUAGE_VERSION`` table header, so their parse
+#: tables were tier 3 and stood for hand-written C. The INV-bokim discipline
+#: holds: tree-sitter and ``#line`` are preprocessor directives at the start of
+#: a line, the banners must sit on a comment line, and only C-family files are
+#: examined, so prose ABOUT a generator -- a docstring, a Python test fixture,
+#: a string literal -- is not mistaken for its output. tree-sitter needs both
+#: halves: a hand-written external ``scanner.c`` includes the parser header
+#: too, but defines no tables. ``#line N "x.y"`` pointing into a grammar
+#: source is how bison, flex, ragel and re2c tie their output to its input;
+#: ``#line`` into an ordinary ``.c`` is a hand-written trick and does not count.
+_COMMENT_LINE = r"(?m)^[ \t]*(?://|/\*+|\*)[^\n]*?"
+_GENERATOR_FINGERPRINTS: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
+    ("tree-sitter", (
+        re.compile(r'(?m)^#include\s*[<"]tree_sitter/parser\.h[>"]'),
+        re.compile(r"(?m)^#define\s+LANGUAGE_VERSION\s+\d+"),
+    )),
+    ("GNU Bison", (re.compile(_COMMENT_LINE + r"A Bison parser, made by GNU Bison"),)),
+    ("flex", (re.compile(_COMMENT_LINE + r"A lexical scanner generated by flex"),)),
+    ("re2c", (re.compile(_COMMENT_LINE + r"Generated by re2c"),)),
+    ("grammar #line", (re.compile(
+        r'(?m)^#line\s+\d+\s+"[^"\n]*\.(?:y|yy|ypp|l|ll|lex|rl|re)"',
+    ),)),
+)
+
+
+def _generator_fingerprint(head: str, suffix: str) -> Optional[str]:
+    """The generator whose structural fingerprint ``head`` carries, if any.
+
+    Only for C-family ``suffix`` (see :data:`_GENERATOR_FINGERPRINTS`).
+    """
+    if suffix.lower() not in _C_FAMILY_EXTS:
+        return None
+    for name, patterns in _GENERATOR_FINGERPRINTS:
+        if all(p.search(head) for p in patterns):
+            return name
+    return None
+
+
 # Only scan the first chunk of the file. Generated-file markers
 # conventionally live in the first few lines, so a 4 KiB cap is more
 # than enough and keeps the cost bounded on large files.
@@ -882,7 +949,10 @@ def _has_generated_header(path: Path) -> bool:
             head = fh.read(_HEADER_SCAN_BYTES)
     except (OSError, IOError):  # pragma: no cover
         return False
-    return _has_generated_marker(head.decode("utf-8", errors="ignore"))
+    text = head.decode("utf-8", errors="ignore")
+    return _has_generated_marker(text) or (
+        _generator_fingerprint(text, path.suffix) is not None
+    )
 
 
 def classify_file(
@@ -933,6 +1003,123 @@ def classify_file(
     return result
 
 
+def _derived_path_reason(rel: str) -> Optional[str]:
+    """The DERIVED_* pattern a repo-relative path matches, as a reason."""
+    for pattern in DERIVED_PATH_PATTERNS:
+        if re.match(pattern, rel):
+            return f"path matches {pattern}"
+    for pattern in DERIVED_FILENAME_PATTERNS:
+        if re.search(pattern, rel):
+            return f"filename matches {pattern}"
+    return None
+
+
+def _external_path_match(rel: str) -> Optional[tuple[str, str]]:
+    """``(label, root)`` of the EXTERNAL_DEP_* pattern a repo-relative path
+    matches, ``root`` being the directory the pattern ends at (every pattern
+    ends in ``/``): ``a/vendor/x/y.c`` gives ``("vendor/", "a/vendor")``."""
+    for pattern, label in EXTERNAL_DEP_PATTERNS:
+        m = re.match(pattern, rel)
+        if m:
+            return label, rel[: m.end() - 1]
+    for pattern, label in EXTERNAL_DEP_DEEP_PATTERNS:
+        m = re.search(pattern, rel)
+        if m:
+            return label, rel[: m.end() - 1]
+    return None
+
+
+def _external_path_label(rel: str) -> Optional[str]:
+    """The label of the EXTERNAL_DEP_* pattern a repo-relative path matches."""
+    found = _external_path_match(rel)
+    return found[0] if found else None
+
+
+def vendored_root(rel: str) -> Optional[str]:
+    """The vendored directory a repo-relative path sits in, else ``None``.
+
+    The directory an EXTERNAL_DEP_* pattern matched (``pkg/vendor``), which
+    is what the vendored-code disclosure names (WI-pasan).
+    """
+    found = _external_path_match(rel.replace("\\", "/"))
+    return found[1] if found else None
+
+
+#: How many vendored directories ``supply_chain_summary.vendored_analysed``
+#: lists, like the other disclosure buckets.
+_VENDORED_ENTRIES_CAP = 10
+
+
+def vendored_analysed_summary(symbols: "Iterable[Any]") -> dict[str, Any]:
+    """``supply_chain_summary.vendored_analysed``: committed vendored code that
+    was analysed as tier 3 and left out of the summaries (ADR-0004 point 3a).
+
+    ``{dirs, entries: [{path, languages, files}]}``, one entry per vendored
+    directory (:func:`vendored_root`), from the tier-3 ``file`` nodes; a file
+    two analyzers read counts once. Tier-3 code with no vendored root --
+    installed dependency source traced with ``--trace-deps`` -- is not
+    vendored and has its own disclosure. Sorted by path, capped at 10.
+    """
+    files: dict[str, set[str]] = {}
+    languages: dict[str, set[str]] = {}
+    for sym in symbols:
+        if sym.kind != "file" or sym.supply_chain_tier != Tier.EXTERNAL_DEP:
+            continue
+        root = vendored_root(sym.path)
+        if root is None:
+            continue
+        files.setdefault(root, set()).add(sym.path)
+        languages.setdefault(root, set()).add(sym.language)
+    entries = [
+        {"path": root, "languages": sorted(languages[root]), "files": len(paths)}
+        for root, paths in sorted(files.items())
+    ]
+    return {"dirs": len(entries), "entries": entries[:_VENDORED_ENTRIES_CAP]}
+
+
+def format_vendored_disclosure(summary: "dict[str, Any] | None") -> Optional[str]:
+    """The one-line vendored-code disclosure, or ``None`` when there is none.
+
+    Names at most three directories, like the installed-dependency line.
+    """
+    if not summary or not summary.get("dirs"):
+        return None
+    parts = []
+    for e in (summary.get("entries") or [])[:3]:
+        n = e["files"]
+        parts.append(
+            f"{e['path']}/ ({', '.join(e['languages'])}; "
+            f"{n} file{'' if n == 1 else 's'})"
+        )
+    more = int(summary["dirs"]) - len(parts)
+    if more > 0:
+        parts.append(f"{more} more director{'y' if more == 1 else 'ies'}")
+    return (
+        "Vendored third-party code analysed as tier 3, not counted in the "
+        f"language breakdown: {', '.join(parts)}. To skip: --exclude <dir>."
+    )
+
+
+def tier_by_path(rel: str) -> Optional[Tier]:
+    """The tier a repo-relative path gets from its path alone, else ``None``.
+
+    The path-pattern steps of :func:`classify_file` (DERIVED_* then
+    EXTERNAL_DEP_*), with no file read and no filesystem check, for
+    summaries that must stay cheap: the profile's per-language own-code
+    counts (WI-kojul, ADR-0004 point 3a). ``None`` means the path does not
+    decide it; the full classifier may still find a minified file, build
+    output or installed dependency source, so this under-reports tier 3-4
+    rather than inventing it. Both use the same helpers, so they cannot
+    disagree about a path pattern.
+    """
+    rel = rel.replace("\\", "/")
+    if _derived_path_reason(rel) is not None:
+        return Tier.DERIVED
+    if _external_path_label(rel) is not None:
+        return Tier.EXTERNAL_DEP
+    return None
+
+
 def _classify_file_core(
     rel: str,
     path: Path,
@@ -959,29 +1146,20 @@ def _classify_file_core(
         return FileClassification(
             Tier.DERIVED, f"in {output[1]} output {output[0]}/",
         )
-    for pattern in DERIVED_PATH_PATTERNS:
-        if re.match(pattern, rel):
-            return FileClassification(Tier.DERIVED, f"path matches {pattern}")
-
-    for pattern in DERIVED_FILENAME_PATTERNS:
-        if re.search(pattern, rel):
-            return FileClassification(Tier.DERIVED, f"filename matches {pattern}")
+    derived = _derived_path_reason(rel)
+    if derived is not None:
+        return FileClassification(Tier.DERIVED, derived)
 
     # 2. Check content heuristics for minification (only for existing files)
     if path.exists() and is_likely_minified(path):
         return FileClassification(Tier.DERIVED, "detected as minified/generated")
 
-    # 3. Check external dependencies
-    for pattern, label in EXTERNAL_DEP_PATTERNS:
-        if re.match(pattern, rel):
-            pkg = _extract_package_name(rel, label)
-            return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
-
-    # 3b. Check deep external dependency patterns (vendored SDKs anywhere in path)
-    for pattern, label in EXTERNAL_DEP_DEEP_PATTERNS:
-        if re.search(pattern, rel):
-            pkg = _extract_package_name(rel, label)
-            return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
+    # 3. Check external dependencies, root-anchored then anywhere in the
+    # path (vendored SDKs, nested vendor/ trees).
+    external = _external_path_label(rel)
+    if external is not None:
+        pkg = _extract_package_name(rel, external)
+        return FileClassification(Tier.EXTERNAL_DEP, f"in {external}", pkg)
 
     # 3c. Installed dependency source traced with --trace-deps where no path
     # pattern reaches it (a virtualenv's site-packages, a nested Mix
@@ -1154,7 +1332,8 @@ def is_likely_minified(path: Path) -> bool:
     2. Source map reference in last 3 lines (transpiled)
     3. A comment-anchored generated-file declaration in the header --
        :func:`_has_generated_marker`, shared with the ``is_generated`` flag
-       so the two cannot disagree (INV-bokim / INV-pogob)
+       so the two cannot disagree (INV-bokim / INV-pogob); or (3b) a C-family
+       generator's structural fingerprint, :func:`_generator_fingerprint`
     4. Webpack bootstrap pattern in first 10 lines
 
     Args:
@@ -1190,6 +1369,11 @@ def is_likely_minified(path: Path) -> bool:
     # it used to read -- two windows would still be two answers for a file whose
     # marker sits at line eight, which is the drift INV-pogob was filed for.
     if _has_generated_marker(content[:_HEADER_SCAN_BYTES]):
+        return True
+
+    # Heuristic 3b (WI-munam): a generator's structural fingerprint, same
+    # window, shared with the is_generated flag via _has_generated_header.
+    if _generator_fingerprint(content[:_HEADER_SCAN_BYTES], path.suffix):
         return True
 
     # Heuristic 4: Webpack bootstrap in first 10 lines (bundled but not minified)
@@ -1508,7 +1692,7 @@ def _own_cargo_package_name(content: str) -> Optional[str]:
     of them on purpose because "what is this repo's executable called" is a
     different question with a different failure direction. Here a dependency's
     name admitted as the repo's own would SUPPRESS a genuine third-party module
-    from :func:`verify_claims._uncatalogued_external_modules`, which is the one
+    from :func:`verify_claims._adjudicate_external_modules`, which is the one
     direction that gate exists to prevent.
     """
     from .profile import _load_toml
@@ -1575,7 +1759,7 @@ def collect_first_party_package_names(repo_root: Path) -> set[str]:
     """The names this repository PUBLISHES ITSELF UNDER, read from its manifests.
 
     THE THIRD FIRST-PARTY MECHANISM (INV-vivok).
-    ``verify_claims._uncatalogued_external_modules`` already excludes a module
+    ``verify_claims._adjudicate_external_modules`` already excludes a module
     whose FILE this analysis read (``_analyzed_modules``, path-derived) and one
     the language marks as internal (``is_definitionally_first_party`` —
     ``crate::``, ``./``). Neither can see a repo that refers to itself by the

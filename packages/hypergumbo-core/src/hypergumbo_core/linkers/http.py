@@ -9,8 +9,12 @@ detected by language analyzers.
 Two URL shapes get special handling beyond the literal case. JS/TS template
 literals are folded to a comparable path before matching, so
 ``fetch(`/api/users/${id}`)`` lines up with a server route carrying a path
-parameter. And a URL that resolves only to a variable falls back to prefix
-matching against known routes rather than being dropped.
+parameter. A template literal that stops at an unresolved slot, or is not
+anchored at ``/``, keeps its literal prefix as url_type="variable"; if that
+prefix has 2 or more path segments it falls back to prefix matching against
+known routes. A bare-identifier URL (``fetch(API_URL)``) is recorded as a
+client symbol at 0.65, but the constant is not substituted and the URL is
+not matched to a route.
 
 Detected Client Patterns
 ------------------------
@@ -57,6 +61,16 @@ Java:
 - @GET("/api/users") - Retrofit annotation
 - @POST("/api/items") - Retrofit annotation
 
+Elm (``_scan_elm_file``):
+- Utils.Api.get (apiUrl ++ "/path") - wrapper module; the base-URL variable
+  is dropped as the host and the literal path is matched
+- Http.get { url = "/path", ... } - elm/http method-named record forms
+- Http.request { method = "POST", url = "/path", ... } - explicit-method
+  record, with the method and url fields in either order
+- let url = String.join "/" [ apiUrl, "silence", uuid ] in
+  Utils.Api.get url ... - let-bound fold (``_find_elm_let_bound_url_calls``);
+  identifier items become ``{name}`` placeholders
+
 Variable URL Detection
 ----------------------
 URLs stored in variables are detected with lower confidence (0.65 vs 0.9;
@@ -71,7 +85,7 @@ Routes are matched by:
 2. URL path pattern (exact match or parameterized)
 
 Parameterized routes are supported:
-- /users/:id (Express/Flask style)
+- /users/:id (Express/Rails style)
 - /users/{id} (FastAPI/Retrofit style)
 - /users/<id> (Flask style)
 
@@ -92,7 +106,8 @@ Why This Design
 - Regex-based client detection is fast and portable
 - Route matching handles common parameterization patterns
 - Symbols for client calls enable slice traversal from either end
-- Variable URL detection catches patterns where URLs are stored in constants
+- Variable URL detection records calls whose URL is a constant or variable
+  (as client symbols; non-template constants are not resolved to a route)
 """
 
 from __future__ import annotations

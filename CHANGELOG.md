@@ -3,14 +3,46 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v9.0.0
-- Released **schema** is at: v0.20.14
+- Released **tool** is at: v9.1.0
+- Released **schema** is at: v0.20.15
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
-> **Looking for the reader-friendly summary?** See **[docs/RELEASE-NOTES-8.X.md](docs/RELEASE-NOTES-8.X.md)** for the audience-organized release notes of the current line — each opens with a TL;DR naming the breaking changes. Earlier lines: [7.x](docs/RELEASE-NOTES-7.X.md), [6.x](docs/RELEASE-NOTES-6.X.md), [5.x](docs/RELEASE-NOTES-5.X.md). This file is the **implementer log**: structured, mechanism-level entries per release.
+> **Looking for the reader-friendly summary?** See **[docs/RELEASE-NOTES-9.X.md](docs/RELEASE-NOTES-9.X.md)** for the audience-organized release notes of the current line — each opens with a TL;DR naming the breaking changes. Earlier lines: [8.x](docs/RELEASE-NOTES-8.X.md), [7.x](docs/RELEASE-NOTES-7.X.md), [6.x](docs/RELEASE-NOTES-6.X.md), [5.x](docs/RELEASE-NOTES-5.X.md). This file is the **implementer log**: structured, mechanism-level entries per release.
 
 ## [Unreleased]
+
+## [9.1.0] - 2026-10-16
+
+### Breaking and contract changes
+
+- **Git submodules are skipped by default**, like installed dependencies; `--trace-deps <path>` analyses one.
+- **Edge confidence values change**: they come from evidence bands (ADR-0039); linker edges may range 0.40–0.95; `confidence_model` v2.1 → v2.2.
+- **New schema fields** `profile.languages[*].own_files`/`own_loc` and `supply_chain_summary.vendored_analysed`; `SCHEMA_VERSION` 0.20.14 → 0.20.15 (additive).
+
+### Added
+
+- **The sketch's Structure tree shows lines of code** and says which files it omits.
+- **Progress shows elapsed time and one heartbeat line per worker**, replacing estimated percentages.
+- **Analysed vendored code is disclosed** on stderr, in the sketch and in the summary.
+- **`check-confidence-sites`** checks confidence literals in CI and pre-commit.
+
+### Changed
+
+- **Language breakdown and totals count your own code only**; vendored code is still analysed (ADR-0004).
+- **Generated parsers without a marker are supply-chain tier 4**: tree-sitter, Bison, flex, re2c, ragel.
+- **A sketch without a cached survey no longer walks the repository twice**; `.hypothesis/` is excluded.
+
+### Fixed
+
+- **Surveys find files under subdirectory patterns**, such as `requirements/*.txt`, `conf/*.routes` and `META-INF/services/*`.
+- **Quieter stderr**: routine pass-silence reasons collapse to a count; warnings lose Python's prefix.
+- **Partial-install warnings suggest the right package** and ignore vendored code; no suggestion ever appeared before.
+
+### Documentation
+
+- ADR-0039 rulings 6–7; ADR-0004 amendments on vendored code, submodules and linker activation; ARCHITECTURE.md regenerated.
+- Module docstrings: 41 corrected, 24 extended (staleness audit).
 
 ## [9.0.0] - 2026-10-14
 
@@ -2592,6 +2624,7 @@ Initial public release with comprehensive static analysis capabilities.
 
 | Version | Date       | Highlights                                                   |
 | ------- | ---------- | ------------------------------------------------------------ |
+| 9.1.0 | 2026-10-16 | Summaries count your own code; analysed vendored code disclosed; git submodules skipped by default; edge confidence from evidence bands (`confidence_model` v2.2); Structure tree LOC column; surveys find `requirements/*.txt` and `conf/*.routes` |
 | 9.0.0 | 2026-10-14 | `stable_id_scheme` v9: deleting a symbol moves no other id; catalogue tiers (only `builtin` rows clear a flow, in-repo catalogue data opt-in); installed dependency source skipped by default (`--trace-deps`); calls bind to the declaration in scope in five languages |
 | 8.1.0   | 2026-09-25 | Calls credited to their enclosing function by position (25 analyzers); receiver typing in 10 languages; opt-in scip-python backend merged per record (ADR-0057); `is_exported` can be `null`; taint useful precision 24.1% → 30.9% |
 | 8.0.0   | 2026-08-20 | **Breaking:** `verify-claims` exit code 3 (`confirmed_with_caveats`), envelope 2.0, `Edge.quality` removed. Analysing a repo no longer runs its code; bounded results cache; cold survey 517.7s → 220.0s |
@@ -2626,8 +2659,9 @@ Initial public release with comprehensive static analysis capabilities.
 | 0.6.0   | 2025-12-29 | Lean, Wolfram, Agda analyzers; release automation            |
 | 0.5.0   | 2025-12-26 | Initial release: 32 analyzers, 12 linkers                    |
 
-[Unreleased]: https://github.com/iterabloom/hypergumbo/compare/v9.0.0...HEAD
-[9.0.0]: https://github.com/iterabloom/hypergumbo/compare/v6.1.0...v9.0.0
+[Unreleased]: https://github.com/iterabloom/hypergumbo/compare/v9.1.0...HEAD
+[9.1.0]: https://github.com/iterabloom/hypergumbo/compare/v9.0.0...v9.1.0
+[9.0.0]: https://github.com/iterabloom/hypergumbo/compare/v8.1.0...v9.0.0
 [8.1.0]: https://github.com/iterabloom/hypergumbo/compare/v8.0.0...v8.1.0
 [8.0.0]: https://github.com/iterabloom/hypergumbo/compare/v7.0.0...v8.0.0
 [7.0.0]: https://github.com/iterabloom/hypergumbo/compare/v6.1.0...v7.0.0

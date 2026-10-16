@@ -5085,3 +5085,56 @@ def test_refine_frameworks_output_unique_and_evidence_consistent() -> None:
     assert result.dev_frameworks == ["pytest"]
     assert set(result.framework_evidence) <= set(result.frameworks)
     assert result.framework_evidence == {"flask": [src_id]}
+
+
+def test_detect_languages_counts_own_code_separately(tmp_path: Path) -> None:
+    """WI-kojul / ADR-0004 3a: each language carries its tier 1-2 share.
+
+    A committed vendor tree (tier 3 by path) is still enumerated in
+    ``files`` -- the analyzer must keep running on it -- but ``own_files`` /
+    ``own_loc`` leave it out, so the summaries do not say the project is
+    written in its vendored C.
+    """
+    from hypergumbo_core.profile import _detect_languages
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("def main():\n    pass\n\n")
+    vend = tmp_path / "pkg" / "vendor" / "grammar"
+    vend.mkdir(parents=True)
+    (vend / "parser.c").write_text("int a;\nint b;\nint c;\n")
+    (tmp_path / "native.c").write_text("int own;\n")
+
+    langs = _detect_languages(tmp_path, count_loc=True)
+
+    assert (langs["c"].files, langs["c"].loc) == (2, 4)
+    assert (langs["c"].own_files, langs["c"].own_loc) == (1, 1)
+    assert (langs["python"].own_files, langs["python"].own_loc) == (1, 2)
+
+
+def test_detect_languages_own_loc_is_zero_when_loc_is_not_counted(
+    tmp_path: Path,
+) -> None:
+    from hypergumbo_core.profile import _detect_languages
+
+    (tmp_path / "vendor").mkdir()
+    (tmp_path / "vendor" / "x.c").write_text("int a;\n")
+    langs = _detect_languages(tmp_path)
+    assert (langs["c"].files, langs["c"].own_files, langs["c"].own_loc) == (1, 0, 0)
+
+
+def test_language_stats_own_code_serialization() -> None:
+    """Emitted when measured, ABSENT when not (a profile from an older cache)."""
+    from hypergumbo_core.profile import LanguageStats
+
+    measured = LanguageStats(files=4, loc=10, test_files=0, own_files=3, own_loc=7)
+    assert measured.to_dict() == {
+        "files": 4, "loc": 10, "test_files": 0, "own_files": 3, "own_loc": 7,
+    }
+    assert LanguageStats.from_dict(measured.to_dict()) == measured
+
+    legacy = LanguageStats.from_dict({"files": 4, "loc": 10})
+    assert legacy.own_files is None and legacy.own_loc is None
+    assert "own_files" not in legacy.to_dict()
+    # Readers fall back to the whole count when the split was not measured.
+    assert (legacy.own_files_or_all, legacy.own_loc_or_all) == (4, 10)
+    assert (measured.own_files_or_all, measured.own_loc_or_all) == (3, 7)

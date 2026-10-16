@@ -512,6 +512,7 @@ DATABASE_QUERY_REQUIREMENTS = [
         name="table_symbols",
         description="SQL table symbols from schema files",
         check=_count_table_symbols,
+        languages=("sql",),
     ),
 ]
 

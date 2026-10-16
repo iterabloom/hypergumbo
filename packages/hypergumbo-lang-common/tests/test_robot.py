@@ -173,7 +173,10 @@ Main Keyword
             None
         )
         assert call_edge is not None
-        assert call_edge.confidence == 1.0
+        # A keyword invocation is an ast_call_direct edge; a registry hit
+        # derives its base (ADR-0039).
+        assert call_edge.evidence_type == "ast_call_direct"
+        assert call_edge.confidence == 0.85
 
     def test_extracts_test_to_keyword_call(self, tmp_path: Path) -> None:
         make_robot_file(tmp_path, "test.robot", """
@@ -206,7 +209,8 @@ My Test
             None
         )
         assert call_edge is not None
-        assert call_edge.confidence == 0.6
+        assert call_edge.is_resolved is False
+        assert call_edge.confidence == 0.50
 
     def test_filters_builtin_keywords(self, tmp_path: Path) -> None:
         make_robot_file(tmp_path, "test.robot", """

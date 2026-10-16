@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Gitleaks integration for secret scanning.
 
-This module provides best-effort secret scanning of hypergumbo output before
-users share it (e.g., pasting into LLM chat windows). It uses gitleaks, an
+This module provides best-effort secret scanning of ``hypergumbo sketch``
+output before users share it (e.g., pasting into LLM chat windows). It uses gitleaks, an
 open-source (MIT licensed) secret scanner.
 
 Key design decisions:
@@ -11,7 +11,7 @@ Key design decisions:
   embeddings, and rust-analyzer).
 - Scan is opt-out: once installed, scans run by default (use
   ``--no-secret-scan`` to skip).
-- Always nag: if not installed, every run suggests installing.
+- Always nag: if not installed, every ``sketch`` run suggests installing.
 - Always warn: even with gitleaks, disclaimer that it's best-effort.
 - Graceful degradation: if gitleaks fails, warn but don't block output.
 
@@ -31,7 +31,8 @@ Public surface
   the binary is missing.
 - ``get_gitleaks_path``: resolve the binary, ours first then ``PATH``.
 - ``format_secret_warning``: render findings for the user.
-- ``SecretFinding``: the per-finding record the above two exchange.
+- ``SecretFinding``: the per-finding record returned by ``scan_content*``
+  and consumed by ``format_secret_warning``.
 
 Filesystem discipline
 ---------------------
@@ -39,16 +40,17 @@ All fs-write operations route through ``hypergumbo_core.safety_zones``
 wrappers (``install_artifact_write_bytes`` / ``install_artifact_chmod``
 / ``install_artifact_unlink`` / ``install_artifact_copy`` /
 ``install_artifact_mkdir`` / ``cache_write`` / ``cache_mkdir`` /
-``tmp_artifact_dir``). The wrappers tag each write with its trust zone
+``tmp_artifact_dir`` / ``tmp_artifact_extract``). The wrappers tag each write with its trust zone
 (``install_artifact`` / ``user_cache`` / ``tmp_artifact``) so the
 per-entry-point taint catalog can verify zone reachability claims without
 short-name sink overapproximation (Unreleased CHANGELOG / safety-claims work).
 
 Not a write, and the widest-reading thing this module does: the scan itself
 runs through ``repo_inspect_scan`` (WI-fasuv), the ``repo_inspection``
-SUBPROCESS zone rather than a filesystem one. It reads the whole analysed
-repository, so it is binned separately from the writes above and is the
-sink that matters most when reasoning about what this module can reach.
+SUBPROCESS zone rather than a filesystem one. It reads every byte of output
+handed to it on stdin (``gitleaks stdin``), so it is binned separately from
+the writes above and is the sink that matters most when reasoning about
+what this module can reach.
 
 The goal is safety by default without requiring a PhD to configure.
 """

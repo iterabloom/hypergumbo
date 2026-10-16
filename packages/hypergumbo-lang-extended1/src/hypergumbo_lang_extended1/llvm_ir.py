@@ -340,7 +340,6 @@ def _resolve_calls(
     Uses NameResolver for flexible symbol lookup with confidence tracking.
     """
     edges: list[Edge] = []
-    base_confidence = 0.90
 
     for caller_name, callee_name, line, _col in all_calls:
         caller_result = resolver.lookup(caller_name)
@@ -351,8 +350,9 @@ def _resolve_calls(
             callee_sym = callee_result.symbol
             assert caller_sym is not None
             assert callee_sym is not None
-            # Combine base confidence with resolver confidence
-            confidence = base_confidence * min(
+            # ADR-0039 ruling 6: the weaker of the two resolver grades
+            # interpolates in the ast_call_direct band.
+            resolution_score = min(
                 caller_result.confidence, callee_result.confidence
             )
             edge = Edge.create(
@@ -360,7 +360,7 @@ def _resolve_calls(
                 dst=callee_sym.id,
                 edge_type="calls",
                 line=line,
-                confidence=confidence,
+                resolution_score=resolution_score,
                 origin=PASS_ID,
                 origin_run_id=run_id,
                 evidence_type="ast_call_direct",

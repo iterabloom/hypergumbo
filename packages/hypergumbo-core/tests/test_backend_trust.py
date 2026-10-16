@@ -311,6 +311,36 @@ class TestTheNudgeStopsAskingSomeoneWhoAnswered:
         assert len(got) == 1
         assert "NOT enabled" in got[0].message
 
+    @pytest.mark.parametrize("available", [True, False])
+    def test_the_command_the_nudge_names_silences_it(
+        self, tmp_path: Path, monkeypatch, capsys, available: bool,
+    ) -> None:
+        """WI-vadom: the nudge repeats until a decision is recorded, so it
+        names the command that records one -- and running that exact
+        command, through the real CLI, must stop it."""
+        import shlex
+
+        from hypergumbo_core.cli import main
+        from hypergumbo_core.partial_install_warnings import (
+            check_rust_analyzer_disclosure,
+        )
+
+        repo = tmp_path / "my repo"
+        repo.mkdir()
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        msg = check_rust_analyzer_disclosure(
+            self._profile(), available=available, enabled=False, repo_root=repo,
+        )[0].message
+        line = next(ln for ln in msg.splitlines() if "Not wanted here:" in ln)
+        command = line.split("Not wanted here:", 1)[1].split("  (", 1)[0]
+        argv = shlex.split(command)
+        assert argv[:3] == ["hypergumbo", "trust-backend", "rust_analyzer"]
+        assert main(argv[1:]) == 0
+        capsys.readouterr()
+        assert check_rust_analyzer_disclosure(
+            self._profile(), available=available, enabled=False, repo_root=repo,
+        ) == []
+
     def test_without_a_repo_root_the_nudge_behaves_as_before(
         self, tmp_path: Path,
     ) -> None:
@@ -324,6 +354,7 @@ class TestTheNudgeStopsAskingSomeoneWhoAnswered:
             self._profile(), available=True, enabled=False, repo_root=None,
         )
         assert len(got) == 1
+        assert "trust-backend rust_analyzer --revoke" in got[0].message
 
 
 class TestTheGrantIsTheLowestTier:

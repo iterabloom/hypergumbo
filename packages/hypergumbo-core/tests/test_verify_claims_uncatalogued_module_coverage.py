@@ -448,7 +448,7 @@ class TestDisclosedResiduals:
 
         BOTH HALVES OF THAT RATIONALE ARE FALSE for this command, and the
         prose saying so was already corrected once — in
-        ``_uncatalogued_external_modules``'s SCOPE paragraph — without this
+        ``_adjudicate_external_modules``'s SCOPE paragraph — without this
         assertion being revisited. ``cmd_verify_claims`` derives its supported
         set as ``languages & set(catalogs)`` and never consults
         ``is_supported``; ``unsupported_taint_languages`` is populated only
@@ -491,7 +491,7 @@ class TestDisclosedResiduals:
         language of the edge's ``src`` — the code doing the calling. A call
         whose ``src`` is a catalogued language but whose ``dst`` names a
         language with no catalogue slips past it, and then
-        ``_uncatalogued_external_modules`` skips the dst on
+        ``_adjudicate_external_modules`` skips the dst on
         ``catalog is None`` because there is no catalogue to adjudicate the
         module against. So the module is neither classified nor reported.
 

@@ -38,6 +38,11 @@ Ruby's namespaced instance method is ``Foo::Bar#baz``, whose member boundary
 is the ``#``. Splitting on ``.`` or ``::`` first yields a mangled owner.
 This ordering is precisely the kind of detail that decays when each caller
 re-derives it, which is why the tuple is exported rather than inlined.
+
+Re-declaration is enforced by ``find_hand_rolled_separator_literals``, which
+fails the build on any literal tuple/list/set in hypergumbo-core's source made
+only of these separators (two or more of them); single separators, collections
+containing any other separator, and per-language analyzer packages are exempt.
 """
 
 from __future__ import annotations

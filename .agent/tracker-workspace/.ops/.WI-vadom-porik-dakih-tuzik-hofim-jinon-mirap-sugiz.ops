@@ -1,0 +1,51 @@
+- op: create  # 5973
+  at: '2026-10-15T02:57:22Z'  # 5973
+  by: agent  # 5973
+  actor: jgstern_agent  # 5973
+  clock: 1  # 5973
+  nonce: '5973'  # 5973
+  data:  # 5973
+    kind: work_item  # 5973
+    title: "Self-run stderr noise: fixture-triggered linker warnings, rust-analyzer hint, validation and [passes] diagnostics"  # 5973
+    status: todo_hard  # 5973
+    priority: 3  # 5973
+    parent:  # 5973
+    tags:  # 5973
+    - ux  # 5973
+    - cli  # 5973
+    - warnings  # 5973
+    isbefore: []  # 5973
+    duplicate_of: []  # 5973
+    not_duplicate_of: []  # 5973
+    pr_ref:  # 5973
+    description: "A cold `hypergumbo hypergumbo` (2026-10-14, both on Colab and on agent-vm-16) prints these to stderr, none actionable by the user running it:\n\n- CGO-LINKER: \"found 53 C/C++ function implementations but 0 Go cgo calls\"\n- RUBY-FFI-LINKER: \"found 53 C/C++ function implementations but 0 Ruby files\"\n- rust-analyzer hint (\"installed but NOT enabled\" / \"not installed\") — triggered by recorded Rust fixtures under packages/hypergumbo-lang-rust-analyzer/recorded/\n- \"[warn] 42 cross_field validation violation(s); see validation_report in artifact\"\n- \"[passes] 59 of 103 emitted nothing ...\" and \"[passes] 69 of 172 did not run ...\"\n\nThe 53 C functions are test fixtures; the linker warnings assume they are a C library awaiting Go/Ruby callers. Related, not duplicates: WI-tonuh (partial-install warnings never find a linker's requirement row), INV-narib (llvm_ir registered-language guess), WI-vasir (done: suppress false-positive linker warnings on every repo — this is a residue). The validation and [passes] lines are developer diagnostics; candidates for a --debug/verbose gate or a single summary line.\n\nEach warning class needs its own decision (keep / gate / fix trigger); this item collects them so the decisions are made together."  # 5973
+    fields: {}  # 5973
+- op: discuss  # 28fc
+  at: '2026-10-15T04:42:34Z'  # 28fc
+  by: agent  # 28fc
+  actor: jgstern_agent  # 28fc
+  clock: 2  # 28fc
+  nonce: 28fc  # 28fc
+  message: "CORRECTION to the description: the '53 C/C++ function implementations' behind the CGO-LINKER and RUBY-FFI-LINKER warnings are NOT test fixtures. Measured on a self-survey 2026-10-15: all 50 C function nodes are vendored tree-sitter grammar sources under packages/hypergumbo-core/src/hypergumbo_core/vendor/ (tree-sitter-lean 28, tree-sitter-wolfram 12, tree-sitter-circom 10), added to the tree by d68a14fb84 (2026-10-10). Same cause also produces 31 of INV-zatu's 42 self-tree violations. So the warning trigger here is vendored third-party C being analysed as first-party source, not a fixture-detection gap."  # 28fc
+- op: discuss  # 9b97
+  at: '2026-10-15T05:07:33Z'  # 9b97
+  by: agent  # 9b97
+  actor: jgstern_agent  # 9b97
+  clock: 3  # 9b97
+  nonce: 9b97  # 9b97
+  message: "The CGO-LINKER / RUBY-FFI-LINKER half of this item is now WI-dipag (count only tier 1-2 implementations; move the check after classification). Remaining here: the rust-analyzer hint, the [warn] validation line, the [passes] lines."  # 9b97
+- op: update  # c981
+  at: '2026-10-15T20:50:06Z'  # c981
+  by: agent  # c981
+  actor: jgstern_agent  # c981
+  clock: 4  # c981
+  nonce: c981  # c981
+  set:  # c981
+    status: done  # c981
+- op: discuss  # c097
+  at: '2026-10-15T20:50:06Z'  # c097
+  by: agent  # c097
+  actor: jgstern_agent  # c097
+  clock: 5  # c097
+  nonce: c097  # c097
+  message: "Fixed in PR #1613 (ddbe1b47ac), one decision per warning class. (1) CGO-/RUBY-FFI-LINKER: done earlier by WI-dipag (PR #1609; first-party counts only). (2) [passes] lines: owner ruling 2026-10-15 'actionable only' -- they name only reasons outside ROUTINE_SILENCE_REASONS (no_candidate_files, no_candidate_construct, backend_disabled; 122 of the 128 passes the lines reported on the self-tree) and end with '; N more routine', so ADR-0054 T1 stays readable (ADR text amended); nothing prints when all are routine. (3) rust-analyzer hint: it now names 'hypergumbo trust-backend rust_analyzer <path> --revoke'; ADR-0045 ruling 8 then keeps it silent. (4) Partial-install warnings print as plain stderr lines (no 'cli.py:12852: UserWarning:' prefix or echoed source line). (5) [warn] N cross_field validation line: KEPT -- it fires only on a producer-contract violation; the self-tree has none (INV-zatu, matrix {}). Behavioural evidence, live CLI on a 3-file temp repo (main.go, native/helper.c, src/main.rs): stderr = plain 'CGO linker found 1 C/C++ function implementations but 0 Go cgo calls ...', the rust notice ending 'Not wanted here: hypergumbo trust-backend rust_analyzer <tmp> --revoke  (records the answer; this notice stops)', and one '[passes] 4 of 69 emitted nothing: unreported=4; 60 more routine ...' line (no 'did not run' line: all 60+ skips routine). Ran the printed trust-backend command (exit 0, 'Declined rust_analyzer for <tmp>'), re-surveyed: 0 lines mention rust-analyzer. Test test_the_command_the_nudge_names_silences_it does the same through cli.main. Not re-checked on the full self-tree (no self-survey run for this item)."  # c097

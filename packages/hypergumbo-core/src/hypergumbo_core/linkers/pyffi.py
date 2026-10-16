@@ -544,11 +544,13 @@ PYFFI_REQUIREMENTS = [
         name="python_ffi_files",
         description="Python files (potential ctypes/cffi/PyO3 callers)",
         check=_count_python_ffi_files,
+        languages=("python",),
     ),
     LinkerRequirement(
         name="c_cpp_rust_functions",
         description="C/C++/Rust function implementations",
         check=_count_c_cpp_rust_functions,
+        languages=("c", "cpp", "rust"),
     ),
 ]
 

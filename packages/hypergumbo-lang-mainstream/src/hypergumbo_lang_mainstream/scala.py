@@ -2673,14 +2673,13 @@ def _extract_edges_from_file(
                             and not (_applies(callee_name, node) and _import_names_elsewhere(
                                 _sym, path_hint, file_packages, import_aliases))
                         ):
-                            conf = 0.80 * lookup_result.confidence * _short_name_penalty(callee_name)
                             edges.append(Edge.create(
                                 src=current_function.id,
                                 dst=_sym.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=conf,
+                                resolution_score=lookup_result.confidence * _short_name_penalty(callee_name),
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},

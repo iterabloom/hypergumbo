@@ -2,7 +2,7 @@
 """A repo referring to itself by its PUBLISHED PACKAGE NAME is first-party
 (INV-vivok).
 
-THE THIRD FIRST-PARTY MECHANISM. ``_uncatalogued_external_modules`` already
+THE THIRD FIRST-PARTY MECHANISM. ``_adjudicate_external_modules`` already
 asks two questions before reporting a module as unexamined:
 :func:`_is_analyzed_module` (path-derived — did I read a file at this path)
 and :func:`is_definitionally_first_party` (language-derived — is this

@@ -37,8 +37,15 @@ extract:
 - Function call relationships (edges)
 - Method call relationships (edges)
 - Object instantiation relationships (edges)
-- Inheritance: ``extends`` / ``implements`` (edges)
-- Decorator application: ``decorated_by`` (edges)
+- Inheritance: ``extends`` / ``implements`` (edges); a base resolving to no
+  project class/interface (after re-resolving an aliased import on its
+  canonical name) gets an unresolved edge (confidence 0.5) with an
+  ``ExternalRef`` ``dst_ref`` when an import names its module, else to the
+  ``external`` placeholder with none; a base imported from a relative path
+  emits nothing
+- Decorator application: ``decorated_by`` (edges); an unresolved or
+  non-callable decorator gets an unresolved ``decorated_by`` edge to
+  ``typescript:unresolved:0-0:<name>:unresolved``
 - ``references`` edges for functions passed rather than called:
   ``callback_argument_reference`` (a named function, or an inline anonymous
   callback, given as a call argument), ``object_field_reference``
@@ -82,7 +89,8 @@ Call-Site Resolution
   ``_ScopeBinder`` walks the scopes enclosing the identifier (parameters,
   ``catch`` and loop bindings, each block's declarations with ``var``
   hoisted, then the file's module scope and imports) and resolves a
-  declaration by POSITION. A declaration in scope wins outright (0.90); a
+  declaration by POSITION. A declaration in scope wins outright (an exact
+  grade, ``resolution_score`` 1.0, which is the ast_call_direct ceiling); a
   parameter or local value is a callee nothing can name and emits nothing;
   only a name bound by an import, or by nothing in the file, reaches the
   import, same-package and repo-wide name lookups (WI-sofuh). A called module binding
@@ -183,7 +191,9 @@ Why This Design
 - Svelte / Vue support reuses existing TS/JS parsing infrastructure
 - Uses iterative traversal (``iter_tree``) for the main walks to avoid
   RecursionError on deeply nested code; a few narrow helpers
-  (``_collect_type_identifiers``, ``_extract_route_objects``) still recurse
+  (``_collect_type_identifiers``, ``_extract_route_objects``,
+  ``_extract_component_from_jsx``, ``_get_receiver_name``,
+  ``_ts_value_to_python``, ``_pattern_binding_names``) still recurse
 """
 from __future__ import annotations
 
@@ -5186,6 +5196,18 @@ _BOUND_SYMBOL = "symbol"
 _BOUND_LOCAL = "local"
 _BOUND_IMPORT = "import"
 
+#: ADR-0039 ruling 6 match grades for a bare call's resolution routes. A
+#: declaration the call site sees in scope, or an explicit-import match, is
+#: exact. The same-package preference is a path hint, graded as the resolver
+#: grades one (0.90). The repo-wide resolver fallback runs only after those
+#: routes failed, so its own grade is discounted by the same 0.90 and an exact
+#: fallback hit never outranks a same-package match. Before ruling 6 these
+#: routes set 0.90 / 0.90 / 0.85 / ``0.85 * grade`` directly; the first two
+#: were over the ast_call_direct ceiling of 0.85.
+_JS_ROUTE_SCORE_EXACT = 1.0
+_JS_ROUTE_SCORE_SAME_PACKAGE = 0.90
+_JS_ROUTE_SCORE_RESOLVER = 0.90
+
 _JS_FUNCTION_SCOPES: frozenset[str] = frozenset({
     "function_declaration", "generator_function_declaration",
     "function_expression", "generator_function", "arrow_function",
@@ -5949,13 +5971,15 @@ def _extract_edges(
                         pass
                     elif (current_function := (_get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset) or module_symbol)):
                         callee = None
-                        edge_confidence = 0.85
+                        # ADR-0039 ruling 6: each route below grades its
+                        # match, and Edge.create interpolates the grade in
+                        # the ast_call_direct band.
+                        resolution_score = _JS_ROUTE_SCORE_EXACT
                         if _binding is not None and _binding[0] == _BOUND_SYMBOL:
                             # Proven by position: the declaration this call
                             # site sees. Stronger than every name heuristic
                             # below, including an explicit-import match.
                             callee = _binding[1]
-                            edge_confidence = 0.90
                         # Otherwise: import-path disambiguation first
                         # (cross-package same-name functions, e.g. two packages
                         # both export ``process()`` but main.js imports from one
@@ -5967,7 +5991,8 @@ def _extract_edges(
                                 import_module, file_path, func_name, symbols_by_name,
                             )
                             if callee is not None:
-                                edge_confidence = 0.90  # explicit import match
+                                # An explicit-import match is exact too.
+                                resolution_score = _JS_ROUTE_SCORE_EXACT
                         # Try same-package preference (avoids cross-package
                         # false positives for common names like error,
                         # resolve, reject when there's no import).
@@ -5976,7 +6001,7 @@ def _extract_edges(
                                 file_path, func_name, symbols_by_name,
                             )
                             if callee is not None:
-                                edge_confidence = 0.85  # same-package heuristic
+                                resolution_score = _JS_ROUTE_SCORE_SAME_PACKAGE
                         # INV-fahub: a bare ``foo()`` that resolves only via a
                         # weak short-name SUFFIX to a DIFFERENT class's method is
                         # the magnet (dozens of call sites -> one arbitrary
@@ -6010,7 +6035,10 @@ def _extract_edges(
                                         magnet_deferred = True
                                     else:
                                         callee = _sym
-                                        edge_confidence = 0.85 * lookup_result.confidence
+                                        resolution_score = (
+                                            _JS_ROUTE_SCORE_RESOLVER
+                                            * lookup_result.confidence
+                                        )
                         if (
                             callee is not None
                             and _called_module is not None
@@ -6030,7 +6058,7 @@ def _extract_edges(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
-                                confidence=edge_confidence,
+                                resolution_score=resolution_score,
                             )
                             edges.append(edge)
                         elif magnet_deferred:
@@ -6210,7 +6238,7 @@ def _extract_edges(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_this",
-                                    confidence=0.95 * lookup_result.confidence,
+                                    resolution_score=lookup_result.confidence,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -6277,7 +6305,17 @@ def _extract_edges(
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         evidence_type="ast_new" if is_class else "ast_call_namespace",
-                                        confidence=0.90 * lookup_result.confidence,
+                                        resolution_score=(
+                                            lookup_result.confidence if is_class else None
+                                        ),
+                                        # ADR-0039 caller-valued: ast_call_namespace is a
+                                        # pending-classification placeholder with no seeded
+                                        # band (its cluster-D audit may fold it into
+                                        # ast_call_direct), so it keeps this value until then.
+                                        confidence=(
+                                            None if is_class
+                                            else 0.90 * lookup_result.confidence
+                                        ),
                                     )
                                     edges.append(edge)
                                     edge_added = True
@@ -6497,7 +6535,7 @@ def _extract_edges(
                                             origin=PASS_ID,
                                             origin_run_id=run.execution_id,
                                             evidence_type="ast_method_inferred",
-                                            confidence=0.60 * lookup_result.confidence,
+                                            resolution_score=lookup_result.confidence,
                                         )
                                         edges.append(edge)
                                         edge_added = True
@@ -6711,7 +6749,7 @@ def _extract_edges(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_new",
-                    confidence=0.95 * lookup_confidence,
+                    resolution_score=lookup_confidence,
                 )
                 edges.append(edge)
 

@@ -192,7 +192,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/symbol_introspection.py"
                 ),
-                line=35,
+                line=39,
                 anchor="``Symbol.signature`` was historically extracted",
                 note=(
                     "The centralised producer for the ten languages that "
@@ -362,7 +362,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/js_ts.py"
         ),
-        line=6140,
+        line=6168,
         anchor="callee.signature",
         fact="return_type",
         note="Chained-call receiver typing.",

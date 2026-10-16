@@ -283,9 +283,15 @@ my_func <- function(data) {
 
         assert qualified is not None
         assert unqualified is not None
-        # Qualified should have higher confidence
-        assert qualified.confidence >= 0.70  # External qualified
-        assert unqualified.confidence >= 0.70  # External unqualified
+        # Qualified should have higher confidence: an external ``pkg::f()``
+        # names its package, while an unqualified builtin is an unresolved
+        # ast_call_direct edge and derives that pathway's unresolved base
+        # (ADR-0039; ADR-0037).
+        assert qualified.confidence == 0.75
+        assert unqualified.is_resolved is False
+        assert unqualified.evidence_type == "ast_call_direct"
+        assert unqualified.confidence == 0.50
+        assert qualified.confidence > unqualified.confidence
 
 class TestRSignatureExtraction:
     """Tests for R function signature extraction."""

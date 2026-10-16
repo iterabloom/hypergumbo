@@ -52,3 +52,10 @@
   clock: 5  # f65b
   nonce: f65b  # f65b
   message: "Owner decision 2026-10-14: an all-skipped targeted smart-test run keeps FAILING locally (no pass-with-warning). Rationale: a run that executed zero tests is exactly the false-green this invariant forbids; a missing optional dependency should surface as a failure, not a warning that can be missed. No code change needed; #1567 behaviour stands."  # f65b
+- op: discuss  # 2646
+  at: '2026-10-14T21:12:50Z'  # 2646
+  by: agent  # 2646
+  actor: jgstern_agent  # 2646
+  clock: 6  # 2646
+  nonce: '2646'  # 2646
+  message: "Follow-up 2026-10-14: the five test_smart_test_zero_collect tests had never passed in the cron test-agent-infra step. That step installed no pytest-cov, smart-test always passes --cov, so pytest exited 4 before collecting. Reproduced in a venv with exactly that step's packages (5 failed) and green with pytest-cov added (tests/ 2211 passed there). Fixed in 9875ecbca1 by adding pytest-cov to the step. The smart-test behaviour itself was correct; the misleading 'COVERAGE: (all files at 100%)' line on that exit-4 run is WI-visuv. Cron confirmation pending: the first full-suite firing after 9875ecbca1."  # 2646

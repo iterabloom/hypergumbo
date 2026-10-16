@@ -1,22 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Post-DDG IR refinement pass: resolve unresolved-external method-call edges.
 
-WI-dilih addresses a documented overapproximation in the structural and
-DDG-aware taint passes: when the Python analyzer can't pin a method
-call's receiver type, the resulting edge's ``dst`` is
-``python:external:0-0:NAME:unresolved`` — a placeholder that collides
-with any sink declared on the bare name ``NAME`` (``dict.get`` looks
+WI-dilih: when the Python analyzer can't pin a method call's receiver
+type, the resulting edge's ``dst`` on the behavior-map graph this pass
+consumes is ``python:external:0-0:NAME:external_symbol`` (the suffix was
+``:unresolved`` before the WI-pubiv boundary-id remap) — a placeholder
+that says nothing about which ``NAME`` was called (``dict.get`` looks
 the same as ``os.environ.get`` looks the same as
-``multiprocessing.Queue.get``). The sink matcher
-(``taint._lookup_named_entry``, which filters with
-``io_boundary._module_matches``) exempts BOTH placeholder spellings —
-``external`` and ``<external>``, held together in
-``taint._UNRESOLVED_MODULE_PLACEHOLDERS`` — from the short-name-collision
-check, because rejecting them outright would suppress legitimate findings.
+``multiprocessing.Queue.get``). With a placeholder hint (``external`` or
+``<external>``, held together in
+``taint._UNRESOLVED_MODULE_PLACEHOLDERS``), the sink matcher
+(``taint._lookup_named_entry``) delegates to
+``io_boundary.gate_named_entry``, whose io-boundary:F3 gate refuses an
+untyped method call outright — an under-approximation that drops true
+matches such as ``os.environ.get`` along with the false ones.
 
 This module's job is to *replace* the ``external`` placeholder with a
 real module path whenever the DDG can prove what the receiver was bound
-to.
+to, so refinement recovers the true matches the gate would otherwise
+drop.
 
 Pipeline placement (ADR-0017)
 -----------------------------
@@ -26,18 +28,19 @@ Per the ADR's per-language §1c accretion model, this pass slots between
 :func:`propagate_taint_structural`. It consumes the DDG (variable
 reaching-defs) plus the function's AST (for receiver chain inspection)
 and produces a rewritten edge list where unresolved externals that
-*can* be resolved have been. Edges whose receivers are parameters,
-closure captures, or call-returns (anything outside the §1c
-accretion's reach) keep the ``external`` placeholder and fall back to
-the documented overapproximation behaviour — consistent with the
-ADR's "per-language precision" framing.
+*can* be resolved have been. Edges whose receivers are unannotated
+parameters, closure captures, or call-returns (anything outside the
+§1c accretion's reach) keep the ``external`` placeholder and stay
+refused by the method-call gate — consistent with the ADR's
+"per-language precision" framing.
 
 Scope
 -----
 The pass is structurally a consumer of a §1c def/use extractor's DDG;
-it is applicable to any language with a §1c extractor (Python first,
-Rust / TypeScript when those extractors land). The current
-implementation is Python-only because the AST traversal helpers
+it is applicable to any language with a §1c extractor. §1c extractors
+exist for python, rust, typescript, javascript, go, java and c; only
+Python has the receiver-hint helpers, so refinement runs for Python
+only, because the AST traversal helpers
 (:func:`extract_python_imports`, :func:`extract_python_receiver_hints`)
 are written against tree-sitter Python node types. A sibling
 ``extract_rust_*`` / ``extract_typescript_*`` would extend coverage

@@ -11,21 +11,28 @@ How It Works
 base sections (1-6) are built unconditionally and joined first; if
 they alone reach the budget (and no ``require_sections`` is set),
 the truncated base is returned. Sections 7-9 and 11-13 are each
-gated on data availability and remaining budget (``_section_ok``). Key Symbols is not budget-gated: it renders
-at least ``MIN_KEY_SYMBOLS`` (5) entries whenever analysis yields
-symbols. A final ``truncate_to_tokens`` pass then trims the whole
-sketch. Section budget allocation follows ADR-0005 (Entry Points
-~33% of remaining; Data Models ~20%; Source Files Content ~75% of
-what remains after the structural sections; etc.).
+gated on data availability and remaining budget (``_section_ok``).
+Key Symbols is not budget-gated: its selection budget never drops
+below ``MIN_KEY_SYMBOLS`` (5). A final ``truncate_to_tokens`` pass
+then trims the whole sketch. Section budget allocation follows
+ADR-0005 (Entry Points ~33% of remaining; Data Models ~20%; Source
+Files Content ~75% of what remains after the structural sections;
+etc.).
 
 Sections in emission order:
 1.  Header — repo name, plus the README-derived elevator pitch when
     one is available (always)
 2.  Overview — language breakdown and LOC estimate, plus the
-    installed-dependency-source disclosure line when deps were skipped and
-    the generated-output disclosure line when generated output was pruned
+    installed-dependency-source disclosure line when deps were skipped,
+    the generated-output disclosure line when generated output was pruned,
+    and the vendored-code disclosure line (``format_vendored_disclosure``)
+    when vendored code was analysed but left out of the language line
 3.  Structure — tree of paths to important files across up to 10 root
-    dirs (top-level listing when there are none)
+    dirs (top-level listing when there are none), with a fixed-width LOC
+    column per line (``_TreeLoc``; all kept files, vendored included; the
+    root line's column is left blank) and, when a map-scoped index bounds
+    the tree, a closing note (``_structure_scope_note``) that files with no
+    detected symbol are left out of the counts and LOC
 4.  Frameworks — the profile's detected frameworks plus its dev/test-only
     frameworks (annotated ``(dev)``), in one alphabetical list
 5.  Tests — test framework + estimated coverage breakdown
@@ -51,7 +58,12 @@ Sections in emission order:
     "... and N more files"
 10. Key Symbols — top symbols by dampened centrality
 11. Additional Files — always emitted when the budget allows;
-    ``--with-source`` shrinks its budget to 5% rather than gating it
+    ``--with-source`` shrinks its budget to 5% rather than gating it.
+    ``_select_additional_files`` chooses files README first, then
+    round-robin over README-linked files, 5W1H embedding-similarity rank
+    (when sentence-transformers is available) and symbol-mention-centrality
+    rank; already-chosen files skip ranking
+    (``_select_additional_files_preselected``)
 12. Source Files Content — full source for the top-ranked files
     (only when ``with_source=True``)
 13. Additional Files Content — full source for additional files
@@ -59,14 +71,16 @@ Sections in emission order:
 Data source
 -----------
 ``generate_sketch`` is a thin wrapper around ``_generate_sketch_impl``, which
-holds the section logic. When a behavior map is available (``cached_results``
-from ``--input``, or a warm survey.json in the results cache), the wrapper
+holds the section logic. Given no ``cached_results`` (``--input``), the
+wrapper loads the cached survey.json, and on a cold cache runs
+``run_behavior_map`` first and loads the map it wrote. Either way it then
 installs a synthetic ``FileIndex`` built from the map's node paths for the
-duration of the call. Test counting, language detection, source-file
-discovery and the Structure tree then summarize the map's files instead of
-re-walking the working tree. Given no ``cached_results``,
-``_generate_sketch_impl`` auto-discovers the cached survey.json. On a cold
-cache it runs ``run_behavior_map`` and loads the fresh map. A
+duration of the call, so test counting, language detection, source-file
+discovery and the Structure tree summarize the map's files instead of
+re-walking the working tree. The survey used to run inside
+``_generate_sketch_impl``, after the wrapper had already looked for a map and
+found none, so a cold sketch re-walked the tree with no index at all: about a
+minute on this repository, all of it reported under the profile phase. A
 ``CatalogueError`` propagates; other discovery errors fall back to direct
 profile detection and analysis. Profile, symbols and edges come from the map,
 and its ``sketch_precomputed`` block, when present, supplies the README
@@ -119,7 +133,7 @@ from __future__ import annotations
 import os
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, List, Optional
 
 if TYPE_CHECKING:
     from .discovery import FileIndex
@@ -130,6 +144,8 @@ from .discovery import (
     match_content_rule, under_content_rule_dir,
 )
 from .profile import detect_profile, RepoProfile
+from .supply_chain import format_vendored_disclosure
+from . import run_status
 from .ir import Symbol, Edge, is_external_boundary
 from .paths import names_no_source_file
 from .entrypoints import detect_entrypoints, Entrypoint, EntrypointKind
@@ -416,28 +432,32 @@ class ConfigExtractionMode(Enum):
     HYBRID = "hybrid"
 
 
-class SketchProgress:  # pragma: no cover
-    """Progress reporter for sketch generation with ETA calculation.
+class SketchProgress:
+    """The sketch's phase names, reported into the shared ``run_status``.
 
-    Tracks progress through phases and estimates time remaining based on
-    historical timing of completed phases.
-
-    This class is marked no cover because it's UI-only output code.
+    The sketch used to keep its own clock and print ``[ 45%] ... ETA``
+    from a fixed percentage per phase. It now only names its phases.
+    Timing, the heartbeat and the single ``Complete`` line belong to
+    ``run_status``, which the survey nested inside a cold sketch reports
+    into as well, so the two pipelines show as one timeline. Whether
+    anything prints at all is decided by ``run_status.reports_run`` on
+    ``generate_sketch``; ``disable`` only silences this reporter.
     """
 
-    PHASES = [  # noqa: RUF012
-        ("profile", "Detecting profile", 0.05),
-        ("readme", "Extracting README", 0.10),
-        ("structure", "Building structure", 0.15),
-        ("frameworks", "Detecting frameworks", 0.20),
-        ("tests", "Analyzing tests", 0.25),
-        ("config", "Extracting config", 0.45),  # Config is often slowest
-        ("analysis", "Running static analysis", 0.70),
-        ("symbols", "Ranking symbols", 0.80),
-        ("embedding", "Embedding additional files", 0.90),
-        ("centrality", "Computing symbol centrality", 0.95),
-        ("format", "Formatting output", 1.0),
-    ]
+    PHASES = {  # noqa: RUF012
+        "profile": "Detecting profile",
+        "files": "Collecting source and test files",
+        "readme": "Extracting README",
+        "structure": "Building structure",
+        "frameworks": "Detecting frameworks",
+        "tests": "Analyzing tests",
+        "config": "Extracting config",
+        "analysis": "Running static analysis",
+        "symbols": "Ranking symbols",
+        "embedding": "Embedding additional files",
+        "centrality": "Computing symbol centrality",
+        "format": "Formatting output",
+    }
 
     # Display text for cached phases (overrides PHASES display text)
     CACHED_DISPLAY = {  # noqa: RUF012
@@ -450,143 +470,32 @@ class SketchProgress:  # pragma: no cover
         "centrality": "Using cached centrality",
     }
 
-    def __init__(self, output_stream=None):
-        """Initialize progress reporter.
-
-        Args:
-            output_stream: Stream to write progress to (default: sys.stderr).
-        """
-        import sys
-        import time
-        self._stream = output_stream or sys.stderr
-        self._start_time = time.time()
-        self._phase_times: dict[str, float] = {}
-        self._current_phase_idx = 0
-        # WI-vuhas: \r-based progress redraw garbles captured stderr
-        # (`2>&1`, pipes, files). Only emit when the stream is a TTY.
-        self._enabled = bool(getattr(self._stream, "isatty", lambda: False)())
-
-    def disable(self) -> None:
-        """Disable progress output."""
-        self._enabled = False
-
-    def enable(self) -> None:
-        """Enable progress output."""
+    def __init__(self) -> None:
         self._enabled = True
 
-    def start_phase(self, phase_name: str, cached: bool = False) -> None:
-        """Mark the start of a phase.
+    def disable(self) -> None:
+        """Stop reporting phases from this sketch."""
+        self._enabled = False
 
-        Args:
-            phase_name: Name of the phase (e.g., "profile", "config").
-            cached: If True, show "loading cached" message instead of "computing".
-        """
+    def start_phase(self, phase_name: str, cached: bool = False) -> None:
+        """Report entry into a named sketch phase (``"config"``, ...)."""
         if not self._enabled:
             return
-
-        import time
-
-        # Find phase index and display info
-        phase_info = None
-        for idx, (name, display, progress) in enumerate(self.PHASES):
-            if name == phase_name:
-                phase_info = (idx, display, progress)
-                self._current_phase_idx = idx
-                break
-
-        if phase_info is None:
-            return
-
-        idx, display, progress = phase_info
-
-        # Use cached display text if available and cached=True
-        if cached and phase_name in self.CACHED_DISPLAY:
-            display = self.CACHED_DISPLAY[phase_name]
-
-        pct = int(progress * 100)
-
-        # Calculate ETA based on elapsed time and progress
-        elapsed = time.time() - self._start_time
-        if progress > 0:
-            estimated_total = elapsed / progress
-            remaining = estimated_total - elapsed
-            if remaining > 0:
-                eta_str = f" ETA {remaining:.0f}s"
-            else:
-                eta_str = ""
-        else:
-            eta_str = ""
-
-        # Write progress line (carriage return to overwrite)
-        self._stream.write(f"\r[{pct:3d}%] {display}...{eta_str}    ")
-        self._stream.flush()
+        display = self.PHASES[phase_name]
+        if cached:
+            display = self.CACHED_DISPLAY.get(phase_name, display)
+        run_status.phase(f"Sketch: {display}")
 
     def complete_phase(self, phase_name: str) -> None:
-        """Mark a phase as complete and record timing.
-
-        Args:
-            phase_name: Name of the phase that completed.
-        """
-        if not self._enabled:
-            return
-
-        import time
-        self._phase_times[phase_name] = time.time()
+        """Phase ends are implied by the next ``start_phase``; kept for callers."""
 
     def update_item_progress(self, label: str, current: int, total: int) -> None:
-        """Update progress for item-level operations within a phase.
-
-        Args:
-            label: Description of items being processed (e.g., "Embedding files").
-            current: Current item number (1-indexed).
-            total: Total number of items.
-        """
-        if not self._enabled:
-            return
-
-        import time
-
-        # Calculate overall progress based on current phase
-        phase_progress = 0.0
-        next_progress = 1.0
-        for idx, (_name, _display, progress) in enumerate(self.PHASES):
-            if idx == self._current_phase_idx:
-                phase_progress = progress
-                if idx + 1 < len(self.PHASES):
-                    next_progress = self.PHASES[idx + 1][2]
-                break
-
-        # Interpolate within the phase
-        item_fraction = current / total if total > 0 else 1.0
-        phase_span = next_progress - phase_progress
-        overall_progress = phase_progress + (item_fraction * phase_span * 0.9)
-        pct = int(overall_progress * 100)
-
-        # Calculate ETA
-        elapsed = time.time() - self._start_time
-        if overall_progress > 0:
-            estimated_total = elapsed / overall_progress
-            remaining = estimated_total - elapsed
-            if remaining > 0:
-                eta_str = f" ETA {remaining:.0f}s"
-            else:
-                eta_str = ""
-        else:
-            eta_str = ""
-
-        # Write progress line
-        self._stream.write(f"\r[{pct:3d}%] {label}: {current}/{total}{eta_str}    ")
-        self._stream.flush()
+        """Attach a real count (``Embedding files 41/53``) to the current phase."""
+        if self._enabled:
+            run_status.item(label, current, total)
 
     def finish(self) -> None:
-        """Mark progress as complete and show final status."""
-        if not self._enabled:
-            return
-
-        import time
-        elapsed = time.time() - self._start_time
-        self._stream.write(f"\r[100%] Complete in {elapsed:.1f}s           \n")
-        self._stream.flush()
+        """The ``Complete`` line is printed by ``run_status``; kept for callers."""
 
 
 # Probe system for embedding-based config extraction:
@@ -2858,6 +2767,7 @@ def _analyze_test_files(
         and detected frameworks.
     """
     import re
+    from .supply_chain import tier_by_path
     from .taxonomy import LANGUAGE_EXTENSIONS
 
     excludes = list(DEFAULT_EXCLUDES)
@@ -2885,6 +2795,9 @@ def _analyze_test_files(
 
         rel_path = str(f.relative_to(repo_root))
         if not _is_test_path(rel_path):
+            continue
+        # A vendored dependency's own tests are not the project's (WI-kojul).
+        if tier_by_path(rel_path) is not None:
             continue
 
         try:
@@ -2963,26 +2876,30 @@ def _format_language_stats(
     if not profile.languages:
         return "No source files detected"
 
-    # Sort by LOC descending
+    # WI-kojul / ADR-0004 3a: the Overview describes the project, so it counts
+    # its own code (tiers 1-2) only; vendored and derived files are analysed
+    # but do not make the project "26% C".
     sorted_langs = sorted(
         profile.languages.items(),
-        key=lambda x: x[1].loc,
+        key=lambda x: x[1].own_loc_or_all,
         reverse=True,
     )
 
     # Calculate percentages
-    total_loc = sum(lang.loc for lang in profile.languages.values())
+    total_loc = sum(lang.own_loc_or_all for lang in profile.languages.values())
     if total_loc == 0:
         return "No source code detected"
 
     parts = []
     for lang, stats in sorted_langs[:5]:  # Top 5 languages
-        pct = (stats.loc / total_loc) * 100
+        pct = (stats.own_loc_or_all / total_loc) * 100
         if pct >= 1:  # Only show languages with ≥1%
             parts.append(f"{lang.title()} ({pct:.0f}%)")
 
     lang_line = ", ".join(parts)
-    total_files = sum(lang.files for lang in profile.languages.values())
+    total_files = sum(
+        lang.own_files_or_all for lang in profile.languages.values()
+    )
     ignore_marker = " [IGNORING TESTS]" if exclude_tests else ""
 
     # Compute test LOC if repo_root provided
@@ -3070,32 +2987,18 @@ def _dir_children_from_index(dir_path: Path) -> Optional[list[tuple[str, bool]]]
     index = get_file_index()
     if index is None:
         return None
-    try:
-        dir_path.relative_to(index.repo_root)
-    except ValueError:
-        return None
-    children: dict[str, bool] = {}
-    for f in index.all_files():
-        try:
-            rel = f.relative_to(dir_path)
-        except ValueError:
-            continue
-        parts = rel.parts
-        if not parts:  # pragma: no cover - index stores files, not dir_path itself
-            continue
-        name = parts[0]
-        is_dir = len(parts) > 1
-        children[name] = children.get(name, False) or is_dir
-    return sorted(children.items())
+    children = index.children(dir_path)
+    return None if children is None else sorted(children.items())
 
 
-def _count_dir_items(
+def _kept_dir_children(
     dir_path: Path,
     repo_root: Path,
     name_excludes: list[str],
     exclude_tests: bool = False,
-) -> int:
-    """Count immediate non-excluded children of ``dir_path``.
+) -> list[tuple[str, bool]]:
+    """Immediate non-excluded ``(name, is_dir)`` children of ``dir_path``:
+    the items the Structure tree counts and sums LOC over.
 
     Honors a map-scoped :class:`FileIndex` when one covers ``dir_path``
     (INV-jumim: a ``--input`` sketch must count the MAP's items, not the
@@ -3110,8 +3013,8 @@ def _count_dir_items(
         try:
             children = [(it.name, it.is_dir()) for it in dir_path.iterdir()]
         except (PermissionError, OSError):  # pragma: no cover
-            return 0
-    count = 0
+            return []
+    kept: list[tuple[str, bool]] = []
     for name, is_dir in children:
         if any(fnmatch(name, p) for p in name_excludes):
             continue
@@ -3126,8 +3029,126 @@ def _count_dir_items(
                     continue  # Skip test directory
                 if not is_additional_file_candidate(dir_path / name):
                     continue  # Skip test source file (keep CONFIG/DOC)
-        count += 1
-    return count
+        kept.append((name, is_dir))
+    return kept
+
+
+def _count_dir_items(
+    dir_path: Path,
+    repo_root: Path,
+    name_excludes: list[str],
+    exclude_tests: bool = False,
+) -> int:
+    """Count immediate non-excluded children of ``dir_path``
+    (see :func:`_kept_dir_children`)."""
+    return len(_kept_dir_children(dir_path, repo_root, name_excludes, exclude_tests))
+
+
+#: Bytes sniffed for a NUL to tell a binary file from text. A binary file's
+#: "lines" are meaningless, so it counts zero rather than noise.
+_BINARY_SNIFF_BYTES = 8192
+
+
+def _file_sloc(path: Path) -> int:
+    """Non-blank lines of a text file (:func:`profile.sloc_of_text`); 0 for a
+    binary file or one that cannot be read. The sniff is read first, so a
+    large binary is never read whole."""
+    from .profile import sloc_of_text
+
+    try:
+        with path.open("rb") as fh:
+            head = fh.read(_BINARY_SNIFF_BYTES)
+            if b"\0" in head:
+                return 0
+            data = head + fh.read()
+    except OSError:
+        return 0
+    return sloc_of_text(data.decode("utf-8", errors="ignore"))
+
+
+def _format_loc(n: int) -> str:
+    """A LOC count in four columns: up to three digits and a unit
+    (`` ``, ``k``, ``M``, ``G``), rounded half up -- ``  9 ``, `` 14k``,
+    ``  1M``. Fixed width keeps the tree's connectors aligned."""
+    if n < 1000:
+        return f"{n:>3} "
+    for unit, scale in (("k", 10**3), ("M", 10**6)):
+        shown = (n + scale // 2) // scale
+        if shown < 1000:
+            return f"{shown:>3}{unit}"
+    return f"{(n + 5 * 10**8) // 10**9:>3}G"
+
+
+class _TreeLoc:
+    """LOC for the Structure tree's left column, memoised per path.
+
+    A file counts its non-blank lines (:func:`_file_sloc`); a directory sums
+    the items :func:`_kept_dir_children` keeps, so a directory's LOC covers
+    exactly what its item count covers -- the same excludes, the same
+    installed-dependency and build-output skips, the same map-scoped index.
+    A symlink counts zero and is never followed: following could loop, and
+    the target is counted where it lives if it lies in the repository.
+
+    The tree counts every kept file, vendored ones included. It maps where
+    the lines are on disk; it is not one of the project summaries ADR-0004
+    3a restricts to tiers 1-2 (the Overview's LOC line is). Memoising makes
+    each file read once however many tree lines contain it.
+    """
+
+    def __init__(self, repo_root: Path, name_excludes: list[str], exclude_tests: bool) -> None:
+        self._root = repo_root
+        self._excludes = name_excludes
+        self._exclude_tests = exclude_tests
+        self._memo: dict[Path, int] = {}
+
+    def __call__(self, path: Path) -> int:
+        hit = self._memo.get(path)
+        if hit is None:
+            hit = self._memo[path] = self._measure(path)
+        return hit
+
+    def _measure(self, path: Path) -> int:
+        if path.is_symlink():
+            return 0
+        if path.is_dir():
+            return sum(
+                self(path / name)
+                for name, _ in _kept_dir_children(
+                    path, self._root, self._excludes, self._exclude_tests,
+                )
+            )
+        return _file_sloc(path)
+
+    def column(self, path: Path) -> str:
+        """``path``'s LOC formatted for the column, with its trailing gap."""
+        return f"{_format_loc(self(path))} "
+
+    def remainder(self, dir_path: Path, shown: "Iterable[str]") -> str:
+        """The column for an ``[and N other items]`` line: ``dir_path``'s LOC
+        less that of the ``shown`` children."""
+        rest = self(dir_path) - sum(self(dir_path / name) for name in shown)
+        return f"{_format_loc(max(0, rest))} "
+
+
+#: The root line's column: blank, because the Overview states the project's
+#: LOC and the tree's all-files total would read as a second, larger answer.
+_ROOT_LOC_COLUMN = " " * 5
+
+#: Printed under the tree when its universe is a behavior map's files (the
+#: normal case, INV-jumim): the map names only files that yielded a symbol,
+#: so data files and scripts no analyzer recognises are in neither the item
+#: counts nor the LOC. On hypergumbo itself that left out 132 tracked files,
+#: 394k lines, on 2026-10-16. Recording the survey's full discovered-file list
+#: would close the gap; the owner chose disclosure instead.
+_STRUCTURE_SCOPE_NOTE = (
+    "Counts and LOC cover only files with at least one detected symbol; "
+    "files with none, such as JSON data or extensionless scripts, are left out."
+)
+
+
+def _structure_scope_note(repo_root: Path) -> list[str]:
+    """The closing note's lines when a map-scoped index bounds the tree."""
+    return [_STRUCTURE_SCOPE_NOTE] if _dir_children_from_index(repo_root) is not None else []
 
 
 def _count_root_items(repo_root: Path, excludes: list[str]) -> int:
@@ -3173,7 +3194,8 @@ def _format_structure_tree_fallback(
     name_excludes = _normalize_name_excludes(excludes)
 
     lines = [_section_header("Structure", exclude_tests), "", "```"]
-    lines.append(f"{repo_root.name}/")
+    lines.append(f"{_ROOT_LOC_COLUMN}{repo_root.name}/")
+    loc = _TreeLoc(repo_root, name_excludes, exclude_tests)
 
     # Build set of all source file patterns from SOURCE_EXTENSIONS
     source_patterns: set[str] = set()
@@ -3259,7 +3281,7 @@ def _format_structure_tree_fallback(
 
     for i, (name, is_dir) in enumerate(shown_items):
         is_last = (i == len(shown_items) - 1) and hidden_count == 0
-        prefix = "└── " if is_last else "├── "
+        prefix = loc.column(repo_root / name) + ("└── " if is_last else "├── ")
         if is_dir:
             dir_path = repo_root / name
             item_count = count_items(dir_path)
@@ -3272,9 +3294,11 @@ def _format_structure_tree_fallback(
             lines.append(f"{prefix}{name}")
 
     if hidden_count > 0:
-        lines.append(f"└── [and {hidden_count} other items]")
+        column = loc.remainder(repo_root, (name for name, _ in shown_items))
+        lines.append(f"{column}└── [and {hidden_count} other items]")
 
     lines.append("```")
+    lines.extend(_structure_scope_note(repo_root))
     return "\n".join(lines)
 
 
@@ -3366,6 +3390,11 @@ def _format_structure_tree(
         """
         return _count_dir_items(path, repo_root, name_excludes)
 
+    loc = _TreeLoc(repo_root, name_excludes, exclude_tests=False)
+
+    def shown_names(node: dict[str, Any]) -> list[str]:
+        return [c["name"] for c in node["children"].values() if c["shown"]]
+
     def render_tree(node: dict[str, Any], path: Path, prefix: str = "") -> list[str]:
         """Render tree node and its children."""
         lines: list[str] = []
@@ -3393,7 +3422,7 @@ def _format_structure_tree(
             has_more_siblings = not is_truly_last
             child_prefix = prefix + ("│   " if has_more_siblings else "    ")
 
-            lines.append(f"{prefix}{connector}{child['name']}")
+            lines.append(f"{loc.column(child_path)}{prefix}{connector}{child['name']}")
 
             # If directory with shown children, recurse
             if not child["is_file"] and child["children"]:
@@ -3401,12 +3430,13 @@ def _format_structure_tree(
 
                 # Count hidden items inside this child directory
                 child_total = count_items(child_path) if child_path.is_dir() else 0
-                child_shown = len([c for c in child["children"].values() if c["shown"]])
-                child_hidden = max(0, child_total - child_shown)
+                child_shown = shown_names(child)
+                child_hidden = max(0, child_total - len(child_shown))
 
                 if child_hidden > 0:
                     # "and N other items" is always the last item in this directory
-                    lines.append(f"{child_prefix}└── [and {child_hidden} other items]")
+                    column = loc.remainder(child_path, child_shown)
+                    lines.append(f"{column}{child_prefix}└── [and {child_hidden} other items]")
 
         return lines
 
@@ -3418,12 +3448,17 @@ def _format_structure_tree(
     hidden_root = total_root_items - len(seen_root_dirs)
 
     if hidden_root > 0:
-        tree_lines.append(f"└── [and {hidden_root} other items]")
+        column = loc.remainder(repo_root, shown_names(root))
+        tree_lines.append(f"{column}└── [and {hidden_root} other items]")
 
     # Build the output
-    lines = [_section_header("Structure", exclude_tests), "", "```", f"{repo_root.name}/"]
+    lines = [
+        _section_header("Structure", exclude_tests), "", "```",
+        f"{_ROOT_LOC_COLUMN}{repo_root.name}/",
+    ]
     lines.extend(tree_lines)
     lines.append("```")
+    lines.extend(_structure_scope_note(repo_root))
 
     return "\n".join(lines)
 
@@ -6331,6 +6366,33 @@ def _peek_cached_results(repo_root: Path) -> Optional[dict[str, Any]]:
     return None
 
 
+def _discover_or_survey(
+    repo_root: Path, progress: bool, log: Callable[[str], None],
+) -> Optional[dict[str, Any]]:
+    """The cached survey for ``repo_root``, running the survey first on a miss.
+
+    A ``CatalogueError`` from the survey propagates: the analysis met a
+    catalogue file that does not parse (a user's frameworks.d, say), and
+    swallowing it built the sketch from no analysis at all and exited 0; the
+    CLI reports the file with exit 2 instead. Any other failure returns None,
+    and ``_generate_sketch_impl`` falls back to direct analysis.
+    """
+    cached = _peek_cached_results(repo_root)
+    if cached is not None:
+        log("Auto-discovered cached results")
+        return cached
+    log("No cached results found, running analysis...")
+    from .cli import run_behavior_map
+    try:
+        run_behavior_map(repo_root, progress=progress)
+    except CatalogueError:
+        raise
+    except Exception:  # pragma: no cover - a failed auto-run falls back to direct analysis
+        return None
+    return _peek_cached_results(repo_root)
+
+
+@run_status.reports_run
 def generate_sketch(
     repo_root: Path,
     max_tokens: Optional[int] = None,
@@ -6353,23 +6415,28 @@ def generate_sketch(
 
     Thin wrapper around :func:`_generate_sketch_impl` that scopes the
     filesystem read-path to a behavior map's own file universe when one is
-    available (INV-jumim). When ``cached_results`` is provided (``--input``) or
-    a warm on-disk map is found, a synthetic :class:`FileIndex` built from the
-    map's node paths is installed for the duration of the call so test-file
-    counting, language detection, source-file discovery, and the Structure tree
-    summarize the MAP — not a re-walk of the working tree (which hung 60+s and
-    produced whole-repo sketches from package-scoped maps). The prior global
-    index is always restored. See :func:`_generate_sketch_impl` for the full
+    available (INV-jumim). The map is ``cached_results`` (``--input``), else
+    the on-disk survey, else the survey :func:`_discover_or_survey` runs on a
+    cold cache. A synthetic :class:`FileIndex` built from the map's node paths
+    is installed for the duration of the call so test-file counting, language
+    detection, source-file discovery, and the Structure tree summarize the
+    MAP — not a re-walk of the working tree (which hung 60+s and produced
+    whole-repo sketches from package-scoped maps). The cold-cache survey runs
+    here rather than inside the impl so a cold sketch gets the same index as
+    a warm one. The prior global index is always restored. See :func:`_generate_sketch_impl` for the full
     section-by-section contract and argument docs.
     """
     from .discovery import get_file_index, set_file_index
 
+    def _log(msg: str) -> None:
+        if verbose:  # pragma: no cover - verbose diagnostics
+            import sys
+            print(f"[sketch] {msg}", file=sys.stderr)
+
     repo_root = Path(repo_root).resolve()
-    map_for_scope = (
-        cached_results if cached_results is not None
-        else _peek_cached_results(repo_root)
-    )
-    map_index = _file_index_from_map(repo_root, map_for_scope)
+    if cached_results is None:
+        cached_results = _discover_or_survey(repo_root, progress, _log)
+    map_index = _file_index_from_map(repo_root, cached_results)
     kwargs = {
         "max_tokens": max_tokens, "exclude_tests": exclude_tests,
         "first_party_priority": first_party_priority, "extra_excludes": extra_excludes,
@@ -6504,44 +6571,6 @@ def _generate_sketch_impl(
 
     repo_root = Path(repo_root).resolve()
 
-    # Auto-discover cached results from cache directory if not explicitly provided
-    # If no cache exists, run analysis first to populate it
-    if cached_results is None:
-        from .survey_io import find_survey_in_dir
-        from .sketch_embeddings import _get_results_cache_dir
-        try:
-            cache_dir = _get_results_cache_dir(repo_root)
-            # ADR-0042: canonical survey.json (or a legacy alias) in the cache.
-            cached_path = find_survey_in_dir(cache_dir)
-            if cached_path is not None:
-                import json
-                _log(f"Auto-discovered cached results: {cached_path}")
-                cached_results = json.loads(cached_path.read_text())
-            else:
-                # No cache exists - run analysis to populate it
-                _log("No cached results found, running analysis...")
-                from .cli import run_behavior_map
-                run_behavior_map(repo_root)
-                # Now load the freshly generated cache. RE-DISCOVER: the pre-run
-                # lookup returned None (nothing existed yet), so we must resolve
-                # the just-written survey.json rather than reuse the None handle
-                # (ADR-0042 — an earlier `cached_path.exists()` here NPE'd on the
-                # None, silently falling back to a full re-walk of the now-
-                # populated cache dir and mis-reporting it as source).
-                fresh_path = find_survey_in_dir(cache_dir)
-                if fresh_path is not None:
-                    import json
-                    _log(f"Using freshly generated results: {fresh_path}")
-                    cached_results = json.loads(fresh_path.read_text())
-        except CatalogueError:
-            # NOT a cache-discovery error: the analysis met a catalogue file
-            # that does not parse (a user's frameworks.d, say). Swallowed, the
-            # sketch was built from no analysis at all and exited 0; the CLI
-            # reports the file with exit 2 instead.
-            raise
-        except Exception:  # pragma: no cover - cache discovery errors shouldn't block sketch
-            pass
-
     # Use cached profile if available, otherwise detect fresh
     using_cached_profile = cached_results is not None and "profile" in cached_results
     prog.start_phase("profile", cached=using_cached_profile)
@@ -6558,6 +6587,7 @@ def _generate_sketch_impl(
     repo_name = _get_repo_name(repo_root)
 
     # Collect source files early (needed for accurate LOC counts when exclude_tests=True)
+    prog.start_phase("files")
     source_files = _collect_source_files(repo_root, profile, exclude_tests=exclude_tests)
 
     # Pre-compute test analysis once (shared by Overview and Tests sections).
@@ -6607,6 +6637,11 @@ def _generate_sketch_impl(
     )
     if output_line:
         header = f"{header}\n\n{output_line}"
+    # ADR-0004 point 3a (WI-pasan): and the vendored code analysed but left out
+    # of the language line above.
+    vendored_line = format_vendored_disclosure(_scs.get("vendored_analysed"))
+    if vendored_line:
+        header = f"{header}\n\n{vendored_line}"
     sections.append(header)
 
     # Section 2: Structure (using tree format from the start)

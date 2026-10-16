@@ -595,7 +595,6 @@ def _extract_edges_from_tree(
                                 path_hint = import_aliases[receiver]
 
                     # Try to resolve the target using NameResolver with path_hint
-                    base_confidence = 0.9
                     lookup_result = resolver.lookup(call_name, path_hint=path_hint)
                     line = node.start_point[0] + 1
                     _sym = lookup_result.symbol
@@ -632,13 +631,16 @@ def _extract_edges_from_tree(
                             enclosing_class=container,
                         ))
                     else:
+                        # ADR-0039 ruling 6: the resolver's grade
+                        # interpolates in the ast_call_direct band; a
+                        # placeholder target is unresolved (ADR-0037).
+                        resolution_score: float | None = None
                         if lookup_result.found and _sym is not None:
                             dst_id = _sym.id
-                            confidence = base_confidence * lookup_result.confidence
+                            resolution_score = lookup_result.confidence
                         else:
                             # Create placeholder ID for unresolved call
                             dst_id = f"zig:{rel_path}:0-0:{call_name}:function"
-                            confidence = 0.6
 
                         edge = Edge.create(
                             src=current_function_sym.id,
@@ -648,7 +650,8 @@ def _extract_edges_from_tree(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             evidence_type="ast_call_direct",
-                            confidence=confidence,
+                            resolution_score=resolution_score,
+                            is_resolved=resolution_score is not None,
                         )
                         edges.append(edge)
 

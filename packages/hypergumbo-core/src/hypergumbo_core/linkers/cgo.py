@@ -95,11 +95,13 @@ CGO_REQUIREMENTS = [
         name="go_cgo_calls",
         description="Go cgo calls (C.funcName() via import \"C\")",
         check=_count_go_cgo_calls,
+        languages=("go",),
     ),
     LinkerRequirement(
         name="c_cpp_functions",
         description="C/C++ function implementations",
         check=_count_c_cpp_functions,
+        languages=("c", "cpp"),
     ),
 ]
 

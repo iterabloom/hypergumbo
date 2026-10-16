@@ -35,8 +35,9 @@ Each claim in ``claims`` specifies:
     - ``source_taint``: Taint label that must not reach the sink zone
     - ``prohibited_sink_zone``: Zone where tainted data must not arrive
     - ``allowed_sanitizers``: List of sanitizer qualified names (optional).
-      Parsed and validated, but no verdict consults it yet: a flow counts as
-      sanitized only through the taint catalogue's sanitizers.
+      Accepted as a key (its value is not type-checked), but no verdict
+      consults it yet: a flow counts as sanitized only through the taint
+      catalogue's sanitizers.
 
 Verdict Types
 -------------
@@ -83,8 +84,12 @@ silently discarded (a bare ``None`` sub-key still means "none").
 
 Caveats
 -------
-Any verdict may carry a structured ``caveats`` list, built through one shared
-constructor so the text and JSON renderers disclose identically. On a clean
+Any verdict may carry a structured ``caveats`` list of dicts (``kind``,
+``entries``, prose ``detail``). The text renderer prints each dict's
+``detail`` and the JSON emits the dict, so both disclose the same text. Most
+writers go through ``_merge_caveat``, which folds a repeated kind into one
+entry; the two ``CAVEAT_USER_SUPPLIED_SANITIZER`` writers append directly.
+On a clean
 verdict a non-empty list makes it ``confirmed_with_caveats``;
 ``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_WITHHELD_COMMUNITY_SANITIZER`` and
 ``CAVEAT_WITHHELD_COMMUNITY_SUMMARY`` ride a ``violated`` verdict, and caveats
@@ -145,7 +150,7 @@ How It Works
    sink such as ``eval`` (INV-dudal), fed through one gate as
    ``opaque = launches + sorted(evaluations)`` and marked ``qualifying_only``
    when they are the sole blocker; and calls into modules no catalogue row
-   classifies (``_uncatalogued_external_modules``). When some of those
+   classifies (``_adjudicate_external_modules``). When some of those
    unclassified modules are third-party dependency source,
    ``_untraced_dependency_clause`` appends to the withheld reason that N of
    them are untraced dependency source whose I/O is unknown, not absent
@@ -235,7 +240,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, NamedTuple, Optional
 
 if TYPE_CHECKING:
     from .taint import TaintFlowFinding
@@ -546,7 +551,7 @@ CAVEAT_DISPLACED_SHIPPED_ENTRY = "displaced_shipped_entry"
 #: network send, while the ``fs_read`` control fired ``violated`` in BOTH arms,
 #: so the null was not a broken run.
 #:
-#: WHY THIS IS NOT A COVERAGE FAILURE. ``_uncatalogued_external_modules``
+#: WHY THIS IS NOT A COVERAGE FAILURE. ``_adjudicate_external_modules``
 #: counts only a dst that NAMES a module; ARM 1's edge is the bare placeholder
 #: ``python:external:0-0:sendall:external_symbol``, which names none. That skip
 #: is deliberate and is UNCHANGED — the placeholder is the largest edge
@@ -1653,7 +1658,7 @@ class BoundaryCoverage:
       import ``requests``) *in the same run* that correctly reported 20
       ``fs_read`` chains, so the analysis was demonstrably not blind — it
       looked, could not classify ``requests``, and reported the silence as
-      safety. See :func:`_uncatalogued_external_modules` for the predicate and
+      safety. See :func:`_adjudicate_external_modules` for the predicate and
       the residual it deliberately leaves open.
 
     When ``complete`` is ``False``, :func:`verify_claim` returns
@@ -1686,7 +1691,7 @@ class BoundaryCoverage:
     #: through a receiver of unknown type (INV-fibis). Populated on EVERY
     #: coverage result, including a complete one, and that is the difference
     #: from :attr:`opaque_sites`: an untyped receiver does NOT make coverage
-    #: incomplete — the residual in :func:`_uncatalogued_external_modules`
+    #: incomplete — the residual in :func:`_adjudicate_external_modules`
     #: stands unchanged, deliberately — it QUALIFIES a verdict that is
     #: otherwise clean. Keyed by boundary so a caller cannot widen the scope by
     #: forgetting to apply it; see :func:`untyped_receiver_sites` for why the
@@ -3532,7 +3537,7 @@ def _is_producer_stamped_launch(edge: dict[str, Any]) -> bool:
 
     ONE HOME FOR ONE FACT. Two functions need this answer and they used to hold
     one copy between them: :func:`_opaque_launch_sites` read the stamp inline
-    and :func:`_uncatalogued_external_modules` never asked at all, so the same
+    and :func:`_adjudicate_external_modules` never asked at all, so the same
     edge was reported as a NAMED opaque door by one and as an UNEXAMINED module
     by the other. Those are contradictory findings about one call, and the
     contradiction was load-bearing — ``qualifying_only = not unknown`` meant a
@@ -3563,7 +3568,7 @@ def _opaque_launch_sites(
 
     INV-gahuz. The catalogue classified these calls CORRECTLY — ``subprocess.run``
     really is a subprocess primitive — and that is exactly why they were being
-    read as examined negatives: :func:`_uncatalogued_external_modules` permits any
+    read as examined negatives: :func:`_adjudicate_external_modules` permits any
     call ``classify_call`` matches, which is right for every boundary that names
     a KNOWN surface and wrong for the one that names OPACITY. See
     :data:`~hypergumbo_core.io_boundary.OPAQUE_BOUNDARIES` for why ``subprocess``
@@ -3852,12 +3857,101 @@ def _is_sibling_of_examined_read(
     )
 
 
-def _uncatalogued_external_modules(
+def load_bearing_grants(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
     first_party_packages: frozenset[str] = frozenset(),
-) -> list[str]:
-    """Return the external modules this analysis called into and cannot adjudicate.
+) -> dict[str, list[str]]:
+    """Language -> modules a completeness grant declared examined for THIS run.
+
+    WI-lavut. The ``vouched`` set of :func:`_adjudicate_external_modules`, the
+    coverage gate's own walk -- one iteration, one predicate -- so it holds the
+    modules the gate let through at ``if disjuncts and not unenumerated``. A grant that no call reached is not
+    load-bearing and is not listed; a call a row classified was examined by the
+    row and is not listed either.
+    """
+    _unknown, vouched, _evaluations, _untraced = _adjudicate_external_modules(
+        raw_edges, catalogs, first_party_packages,
+    )
+    return {lang: sorted(mods) for lang, mods in sorted(vouched.items()) if mods}
+
+
+def untraced_vouched_grants(
+    load_bearing: Mapping[str, Sequence[str]],
+) -> dict[str, list[str]]:
+    """The load-bearing grants an OVERLAY made, not the built-in catalogue.
+
+    WI-pogar / ADR-0016 §7. Every load-bearing grant vouches for a module whose
+    source this analysis did not read -- the gate only ever adjudicates calls
+    into external stubs. A grant in the built-in catalogue is hypergumbo's own
+    dated audit of a RUNTIME module (that catalogue is stdlib-scoped by
+    policy); a grant only an overlay makes is someone's vouch for code that was
+    never traced -- typically a dependency, since "overlays are where
+    third-party modules go" (ADR-0016 Context). The owner decision: such a
+    grant may still confirm, and the verdict must say the source behind it was
+    not traced. This is the set that sentence names.
+
+    Asked of the built-in catalogue ALONE (``include_defaults=False``): a
+    community overlay may not declare ``module_completeness`` at all, and a
+    user overlay is precisely what is being separated out.
+    """
+    from .io_boundary import load_catalog
+
+    out: dict[str, list[str]] = {}
+    for lang, modules in sorted(load_bearing.items()):
+        builtin = load_catalog(lang, include_defaults=False)
+        vouched = sorted(
+            m for m in modules if not builtin.module_io_is_enumerated(m)
+        )
+        if vouched:
+            out[lang] = vouched
+    return out
+
+
+class _ExternalAdjudication(NamedTuple):
+    """The four populations of :func:`_adjudicate_external_modules`, by name.
+
+    A tuple so production can unpack all four in one statement; named so a
+    caller after one set reads ``.unknown`` rather than an index.
+    """
+
+    unknown: set[str]
+    vouched: dict[str, set[str]]
+    evaluations: set[str]
+    untraced: set[str]
+
+
+def _adjudicate_external_modules(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+    first_party_packages: frozenset[str] = frozenset(),
+) -> _ExternalAdjudication:
+    """``(unknown, vouched, evaluations, untraced)`` over one walk of the external call sites.
+
+    ``unknown`` is the coverage gate: the external modules this analysis called
+    into and cannot adjudicate. The paragraphs from THE PERMITTING CASE on
+    are its predicate and the residuals it leaves open.
+
+    ``vouched`` (WI-lavut) is the complementary set, the modules a completeness
+    grant let through, read by :func:`load_bearing_grants`. It shares this
+    iteration because two walks sharing ``classify_call`` but not the iteration
+    is INV-motos's shape (two callers, one predicate, different populations),
+    so the split point is inside the loop, not beside it.
+
+    ``untraced`` (WI-pogar) is the subset of ``unknown`` that
+    :func:`io_boundary.module_ecosystem` calls ``third_party`` under the call's
+    own catalogue: UNTRACED DEPENDENCY SOURCE, whose I/O is unknown because it
+    was never read (ADR-0016 §7). It only ever changes wording -- every member
+    is already in ``unknown`` and already withholds the verdict -- and it is
+    empty for a language that enumerates no standard library, where a
+    dependency and a runtime module cannot be told apart.
+
+    ``evaluations`` (INV-dudal) is the third population of the same walk: call
+    sites that are EXACTLY a shipped non-I/O taint sink (``eval``,
+    ``document.write``) in a module no grant enumerates. They are examined --
+    the catalogue says what they are -- and opaque: what the evaluated code or
+    written markup goes on to do is not in the edge set. They come back as site
+    names for the opaque-site channel, never as modules.
 
     THE PERMITTING CASE IS ENUMERATED, NOT THE BLOCKING ONE. A module supports
     a clean verdict when this catalogue has ENUMERATED its I/O surface —
@@ -3921,8 +4015,9 @@ def _uncatalogued_external_modules(
     for this command. ``cmd_verify_claims`` derives its supported set as
     ``languages & set(catalogs)`` and never consults ``is_supported``, and
     ``unsupported_taint_languages`` is populated only when the claims file
-    carries a taint constraint. So the ``catalog is None`` skip below drops the
-    language entirely. Reproduced on the shipped CLI with a 12-line Ruby fixture
+    carries a taint constraint. So the ``catalog is None`` skip in
+    :func:`_external_call_sites` drops the language entirely. Reproduced on
+    the shipped CLI with a 12-line Ruby fixture
     doing ``Net::HTTP.new(...).post(path, "key=#{ENV['API_KEY']}")``: both the
     ``net_send`` and ``fs_write`` claims return ``confirmed`` rc 0, with an empty
     ``unsupported_taint_languages`` and no disclosure of any kind — and the
@@ -3939,90 +4034,6 @@ def _uncatalogued_external_modules(
     # function's residual depends on. Adding a seventh home is how the drift
     # WI-ribuz files gets one entry longer. Imported inside the function because
     # ``taint`` is heavy and only this one path needs it.
-    unknown, _vouched, _evaluations, _untraced = _adjudicate_external_modules(
-        raw_edges, catalogs, first_party_packages,
-    )
-    return sorted(unknown)
-
-
-def load_bearing_grants(
-    raw_edges: list[dict[str, Any]],
-    catalogs: dict[str, IoBoundaryCatalog],
-    first_party_packages: frozenset[str] = frozenset(),
-) -> dict[str, list[str]]:
-    """Language -> modules a completeness grant declared examined for THIS run.
-
-    WI-lavut. The same walk as :func:`_uncatalogued_external_modules` -- one
-    iteration, one predicate -- keeping the modules the gate let through at
-    ``if disjuncts and not unenumerated``. A grant that no call reached is not
-    load-bearing and is not listed; a call a row classified was examined by the
-    row and is not listed either.
-    """
-    _unknown, vouched, _evaluations, _untraced = _adjudicate_external_modules(
-        raw_edges, catalogs, first_party_packages,
-    )
-    return {lang: sorted(mods) for lang, mods in sorted(vouched.items()) if mods}
-
-
-def untraced_vouched_grants(
-    load_bearing: Mapping[str, Sequence[str]],
-) -> dict[str, list[str]]:
-    """The load-bearing grants an OVERLAY made, not the built-in catalogue.
-
-    WI-pogar / ADR-0016 §7. Every load-bearing grant vouches for a module whose
-    source this analysis did not read -- the gate only ever adjudicates calls
-    into external stubs. A grant in the built-in catalogue is hypergumbo's own
-    dated audit of a RUNTIME module (that catalogue is stdlib-scoped by
-    policy); a grant only an overlay makes is someone's vouch for code that was
-    never traced -- typically a dependency, since "overlays are where
-    third-party modules go" (ADR-0016 Context). The owner decision: such a
-    grant may still confirm, and the verdict must say the source behind it was
-    not traced. This is the set that sentence names.
-
-    Asked of the built-in catalogue ALONE (``include_defaults=False``): a
-    community overlay may not declare ``module_completeness`` at all, and a
-    user overlay is precisely what is being separated out.
-    """
-    from .io_boundary import load_catalog
-
-    out: dict[str, list[str]] = {}
-    for lang, modules in sorted(load_bearing.items()):
-        builtin = load_catalog(lang, include_defaults=False)
-        vouched = sorted(
-            m for m in modules if not builtin.module_io_is_enumerated(m)
-        )
-        if vouched:
-            out[lang] = vouched
-    return out
-
-
-def _adjudicate_external_modules(
-    raw_edges: list[dict[str, Any]],
-    catalogs: dict[str, IoBoundaryCatalog],
-    first_party_packages: frozenset[str] = frozenset(),
-) -> tuple[set[str], dict[str, set[str]], set[str], set[str]]:
-    """``(unknown, vouched, evaluations, untraced)`` over one walk of the external call sites.
-
-    ``untraced`` (WI-pogar) is the subset of ``unknown`` that
-    :func:`io_boundary.module_ecosystem` calls ``third_party`` under the call's
-    own catalogue: UNTRACED DEPENDENCY SOURCE, whose I/O is unknown because it
-    was never read (ADR-0016 §7). It only ever changes wording -- every member
-    is already in ``unknown`` and already withholds the verdict -- and it is
-    empty for a language that enumerates no standard library, where a
-    dependency and a runtime module cannot be told apart.
-
-    Extracted from :func:`_uncatalogued_external_modules` when WI-lavut needed
-    the complementary set: two walks sharing ``classify_call`` but not the
-    iteration is INV-motos's shape (two callers, one predicate, different
-    populations), so the split point is inside the loop, not beside it.
-
-    ``evaluations`` (INV-dudal) is the third population of the same walk: call
-    sites that are EXACTLY a shipped non-I/O taint sink (``eval``,
-    ``document.write``) in a module no grant enumerates. They are examined --
-    the catalogue says what they are -- and opaque: what the evaluated code or
-    written markup goes on to do is not in the edge set. They come back as site
-    names for the opaque-site channel, never as modules.
-    """
     from .io_boundary import ECOSYSTEM_THIRD_PARTY, module_ecosystem
     from .taint import _module_from_symbol_path, shipped_non_boundary_sink_sites
 
@@ -4224,7 +4235,7 @@ def _adjudicate_external_modules(
         if _is_first_party_package(module, first_party_packages):
             continue
         _unknown(module, catalog)
-    return unknown, vouched, evaluations, untraced
+    return _ExternalAdjudication(unknown, vouched, evaluations, untraced)
 
 
 def _non_boundary_sink_site(
@@ -4282,7 +4293,7 @@ def untyped_receiver_sites(
     """Call sites reaching a catalogued METHOD through a receiver of unknown type,
     grouped by the boundary that method is catalogued for (INV-fibis).
 
-    THE RESIDUAL :func:`_uncatalogued_external_modules` DOCUMENTS, ANSWERED AT A
+    THE RESIDUAL :func:`_adjudicate_external_modules` DOCUMENTS, ANSWERED AT A
     DIFFERENT LAYER. That function counts only a dst that NAMES a module, so the
     bare placeholder ``python:external:0-0:sendall:external_symbol`` is skipped —
     correctly, because it identifies no library to report and is the largest edge
@@ -4303,7 +4314,7 @@ def untyped_receiver_sites(
     THREE FILTERS, EACH LOAD-BEARING:
 
     * **the placeholder**, asked through ``_module_from_symbol_path`` — the same
-      predicate :func:`_uncatalogued_external_modules` uses for the complementary
+      predicate :func:`_adjudicate_external_modules` uses for the complementary
       half of the same population, so the two cannot come to disagree about which
       edges name a module (WI-ribuz's drift, and the reason there is no seventh
       home for module extraction here).
@@ -4379,7 +4390,7 @@ def _untyped_receiver_call_sites(
     :func:`untyped_receiver_sites`):
 
     * **the placeholder**, asked through ``_module_from_symbol_path`` — the same
-      predicate :func:`_uncatalogued_external_modules` uses for the complementary
+      predicate :func:`_adjudicate_external_modules` uses for the complementary
       half of the same population, so the two cannot come to disagree about which
       edges name a module.
     * **``call_construct == "method"``**, the producer's own statement that a
@@ -5091,7 +5102,7 @@ def _call_production_coverage(
     # never reaches ``supported_languages`` in the first place, because
     # ``cmd_verify_claims`` builds its catalogs dict under
     # ``if catalog.primitives:`` and drops an empty catalogue. The same
-    # omission makes ``_uncatalogued_external_modules`` skip it on
+    # omission makes ``_adjudicate_external_modules`` skip it on
     # ``catalog is None``. So the calls were seen, none could be classified,
     # and the verdict was ``confirmed``: reproduced on a 7-line Ruby fixture
     # posting ``ENV['API_KEY']`` to a remote host, rc 0, no disclosure.
@@ -5176,8 +5187,7 @@ def _call_production_coverage(
     launches = _opaque_launch_sites(raw_edges, catalogs)
     # ONE WALK for both answers the gate needs from it (INV-dudal): the modules
     # no grant examined, and the shipped non-I/O sink sites that are examined
-    # but opaque. ``_uncatalogued_external_modules`` is the same walk keeping
-    # only the first.
+    # but opaque.
     unknown_set, _vouched, evaluations, untraced = _adjudicate_external_modules(
         raw_edges, catalogs, first_party_packages,
     )

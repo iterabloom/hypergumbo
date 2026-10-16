@@ -21,12 +21,13 @@ first ordinary green run.
 
 OBSERVATIONS THAT REST ON NOTHING ARE EXCLUDED, NOT COUNTED AS PASSES. A cold
 index, or a commit whose changed files are all new code, selects nothing and
-therefore "misses" everything. Admitting those would both flood the miss column
-with phantoms and inflate the commit count toward the threshold without
-evidence behind it. :attr:`Evidence.informative_rate` is reported for exactly
-that reason: if most observations are disqualified, "30 commits" is a much
-longer wait than it sounds, and that should be visible from the counter rather
-than discovered weeks later.
+therefore "misses" everything; a run whose test-id join mostly failed
+(``join_rate < 0.5``) is excluded too. Admitting those would both flood the
+miss column with phantoms and inflate the commit count toward the threshold
+without evidence behind it. :attr:`Evidence.informative_rate` is reported for
+exactly that reason: if most observations are disqualified, "30 commits" is a
+much longer wait than it sounds, and that should be visible from the counter
+rather than discovered weeks later.
 """
 from __future__ import annotations
 
