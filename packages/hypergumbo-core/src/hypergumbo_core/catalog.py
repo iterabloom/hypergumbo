@@ -37,7 +37,10 @@ Beyond the build, the module provides:
   differs from its registration name (e.g. ``view-template-linker``), plus
   pipeline passes that emit runs without being registered
   (``_BUILTIN_PIPELINE_PASS_IDS``, ``_SYNTHETIC_PASS_IDS``); and the
-  registered languages plus the taxonomy's.
+  registered languages plus the taxonomy's. ``all_linker_pass_ids`` returns
+  only the pass ids registered linkers stamp on ``Edge.origin``, so the spec
+  validator can judge a linker edge by the linker range rather than an
+  analyzer pathway band (ADR-0039 ruling 7).
 - **Suggestions.** ``suggest_passes_for_languages`` maps detected languages
   to relevant passes, ignoring the config formats in ``CONFIG_LANGUAGES``.
 

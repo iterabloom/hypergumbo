@@ -22,7 +22,15 @@ normalization (``_short_base_name`` style).
 
 The module also exports the INV-zuhub short-name disambiguation pair
 :func:`build_short_name_collisions` / :func:`short_name_fallback`, and
-:func:`build_inheritance_index`.
+:func:`build_inheritance_index`. For linkers that must name the records they
+read in ``Edge.derived_from`` (INV-rukor), :func:`build_inheritance_edge_index`
+keeps each hop's edge id and :func:`collect_transitive_base_origins` returns
+each base name with the edge and ancestor ids that led to it.
+:func:`match_framework_bases` is the shared body of the table-driven
+framework-dispatch linkers (``django_orm_dispatch``,
+``airflow_framework_dispatch``, ``_third_party_bases``): it matches each class's
+transitive base chain against a base -> method-name table and returns the
+per-method provenance.
 
 Why a shared helper instead of per-linker logic
 -----------------------------------------------

@@ -38,6 +38,17 @@ Key IR Classes
   colon-encoded id; consumers read the callee name through
   ``callee_name_of`` (``meta["callee_name"]``, then ``dst_ref.name``, then
   the span-anchored ``symbol_name_slot`` parse of ``dst``).
+- **Edge construction**: ``Edge.create`` derives ``confidence`` from the
+  evidence registry (``derive_confidence(evidence_type, is_resolved=...)``)
+  when no explicit value is passed, falling back to 0.85 on an unseeded
+  pathway. Given ``resolution_score`` it interpolates inside the pathway's
+  band instead (ADR-0039 ruling 6), and raises ``ValueError`` if that is
+  combined with ``confidence=`` or ``is_resolved=False``. It then stamps
+  ``confidence_source`` and stamps ``evidence_lang`` from the src id's
+  language slot when that slot is a catalog language. ``__post_init__``
+  raises ``ValueError`` on an empty ``origin`` or ``origin_run_id``;
+  ``from_dict`` substitutes ``LEGACY_DESERIALIZED_SENTINEL`` for a missing
+  value so legacy artifacts still load.
 - **attribution / alternatives** (on Symbol and Edge): the ADR-0057 §6
   provenance slot, set only by the merge pass on a record folded from two
   producers. ``attribution`` maps a field to the pass IDs whose value the

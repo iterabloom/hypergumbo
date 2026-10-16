@@ -4,7 +4,9 @@
 This analyzer uses tree-sitter to parse Lua files and extract:
 - Function declarations (global, local, dot-index `Table.func`)
 - Method-style function definitions (`Table:method`)
-- Function call relationships (direct, dot-index, method)
+- Function call relationships (direct, dot-index, method). A call outside
+  every function (module-level setup code, or a function literal bound to a
+  module-level local or table field) takes the file symbol as its caller
 - require statements (imports) with alias tracking
 - Cross-file require-alias call resolution
 - One ``file`` symbol per module, plus per-symbol identity (``stable_id``;

@@ -29,6 +29,17 @@ respecting exclude patterns. Also provides:
   linkers that regex-scan file content do not build production edges out of
   fixtures and assertions (linker-evidence-gating:F1; WI-nitob, WI-rilin).
 
+- **Exclude-pattern semantics and the shared prune rule:**
+  ``_normalize_exclude_pattern`` gives excludes gitignore-style meaning, so
+  ``ui``, ``ui/``, ``ui/**``, ``**/ui/**`` and ``**/ui`` are one exclude;
+  ``_classify_excludes`` then sorts patterns into exact names (set lookup),
+  per-part globs, and path patterns (anything still holding a ``/``), which
+  are matched against the repo-relative path by both
+  ``_is_excluded_classified`` and ``FileIndex.build``. ``is_pruned_dir`` is
+  the one "prune this directory?" predicate both walkers call (exact names,
+  content rules, globs); ``under_content_rule_dir`` applies the content rules
+  to scans that glob or ``rglob`` instead of walking.
+
 - **Ambiguous extension disambiguation:**
 
   - ``.m`` files: shared by Objective-C, MATLAB, and Wolfram.

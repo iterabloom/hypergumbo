@@ -32,6 +32,15 @@ How It Works
    - ``requirements``: language presence the linker depends on,
      consumed by ``partial_install_warnings`` to surface "linker X
      ran with only some of its requirements met" diagnostics.
+   - ``depends_on``: upstream analyzer pass IDs in CNF (outer-AND of
+     inner-OR clauses), surfaced into ``Pass.depends_on``.
+   - ``supersedes_consumed_stub``: whether this pass's resolution may
+     demote the stub it names in ``Edge.derived_from`` (ADR-0057 §14.1).
+   - catalog metadata (``pass_label``, ``backend``, ``languages``,
+     ``availability``, ``requires``) co-located with registration.
+   A linker that runs unconditionally but whose gating nobody has
+   assessed uses the ``always_on_unreviewed()`` factory instead of
+   ``LinkerActivation(always=True)``.
 2. The registry stores linker functions by name.
 3. ``run_all_linkers()`` groups linkers by priority and dispatches
    each priority cohort to a ``ThreadPoolExecutor`` so independent
@@ -43,7 +52,15 @@ How It Works
    the linker's own-thread CPU time, read on the worker (WI-nuvam).
 4. Each linker is invoked with its LinkerContext through
    ``_run_linker_with_cache()`` (``run_linker()`` is the by-name entry
-   point to the same wrapper).
+   point to the same wrapper). The wrapper fills ``files_analyzed``
+   from the files the body actually read (when the body left it
+   unset) and stamps ``silence_reason`` on a run the body left
+   unexplained: ``PREREQUISITE_ABSENT`` when a ``depends_on`` clause
+   was blocked by a skipped analyzer (``skipped_pass_codes``), else
+   the answer from ``derive_silence_reason``.
+   A linker that raises is contained (§17 fail-open):
+   ``_record_linker_crash`` records it via
+   ``limits.record_crashed_pass`` and dispatch continues.
 5. A post-pass (``_connect_synthetic_to_enclosing``) wires synthetic
    nodes minted by linkers into their enclosing real symbols.
 

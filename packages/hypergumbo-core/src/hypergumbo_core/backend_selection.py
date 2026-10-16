@@ -19,6 +19,16 @@ in its own warning was inert — and for the SCIP backend that warning is a
 variable (then the only durable opt-in hypergumbo offered) and then deliberately
 opted out for one untrusted repo executed its build scripts anyway.
 
+THE TWO BACKENDS. Each has its vocabulary here (``RUST_ANALYZER_*``,
+``SCIP_PYTHON_*``; ``--backend tree-sitter`` turns both off) and a bound
+resolver. :func:`resolve_scip_python_optin` consults flag > env >
+``[backends] scip_python`` in the config tiers (:func:`_config_tier`, project
+over user). :func:`resolve_rust_analyzer_optin` consults flag > env > the
+per-repository trust grant (``backend_trust.read_decision``).
+:func:`resolved_backend_set` combines both into the names of the backends
+that will actually run (opted in AND installed), the run configuration the
+results-cache key is built from.
+
 THE THREE-VALUED RETURN IS THE POINT. :func:`resolve_optin` returns
 ``True`` / ``False`` / ``None``, where ``None`` means *no tier consulted so far
 expressed an opinion* and ``False`` means *a tier said no*. Both callers

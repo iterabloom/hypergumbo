@@ -27,6 +27,8 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - The module's dependency manifest, parsed from ``go.mod``
 - Web framework routes (Gin, Echo, Fiber, Gorilla mux, Chi, Macaron,
   go-swagger, and Go 1.22+ ``ServeMux`` "POST /path" patterns)
+- ADR-0015 Tier-1 dataflow access-mode annotation of each file's call
+  edges (``_annotate_dataflow``)
 
 If tree-sitter with Go support is not installed, the analyzer
 warns and returns a skipped result.
@@ -123,7 +125,12 @@ How It Works
      group path prepended (e.g., Group("/api") > GET("/users") → /api/users).
      Handles nested groups via AST ancestor walk. Variable-based groups
      (``api := r.Group("/api")``) are composed too.
-   - Mount points: r.Mount("/api/v1", handler) → route_mount symbol
+   - Mount points: r.Mount("/api/v1", handler) → route_mount symbol, plus
+     a ``calls`` edge from the enclosing function to the handler
+     (``evidence_type="ast_call_direct"``,
+     ``meta["framework_dispatch"]="route_mount"``); when the handler is not
+     in the file's symbols, the edge is unresolved and points at a
+     ``go:external`` placeholder
 9. Implicit interface satisfaction:
    - A struct whose method set (method name plus parameter and return
      arity, including methods promoted through embedding when the embedded
