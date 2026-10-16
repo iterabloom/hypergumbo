@@ -7,7 +7,9 @@ This analyzer uses tree-sitter to parse OpenGL Shading Language files and extrac
 - Uniform variable declarations
 - Input/output variable declarations (in/out)
 - Function calls (an unresolved callee such as vec4 or texture becomes a
-  ``glsl:builtin:<name>`` target at confidence 0.70)
+  ``glsl:builtin:<name>`` target at the ast_call_direct unresolved base,
+  0.50; resolved callees interpolate 0.50-0.85 by resolver match quality,
+  ADR-0039)
 
 If tree-sitter-glsl is not installed, the analyzer
 gracefully degrades and returns an empty result.

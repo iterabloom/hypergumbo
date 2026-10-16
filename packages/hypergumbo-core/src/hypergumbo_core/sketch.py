@@ -11,19 +11,22 @@ How It Works
 base sections (1-6) are built unconditionally and joined first; if
 they alone reach the budget (and no ``require_sections`` is set),
 the truncated base is returned. Sections 7-9 and 11-13 are each
-gated on data availability and remaining budget (``_section_ok``). Key Symbols is not budget-gated: it renders
-at least ``MIN_KEY_SYMBOLS`` (5) entries whenever analysis yields
-symbols. A final ``truncate_to_tokens`` pass then trims the whole
-sketch. Section budget allocation follows ADR-0005 (Entry Points
-~33% of remaining; Data Models ~20%; Source Files Content ~75% of
-what remains after the structural sections; etc.).
+gated on data availability and remaining budget (``_section_ok``).
+Key Symbols is not budget-gated: its selection budget never drops
+below ``MIN_KEY_SYMBOLS`` (5). A final ``truncate_to_tokens`` pass
+then trims the whole sketch. Section budget allocation follows
+ADR-0005 (Entry Points ~33% of remaining; Data Models ~20%; Source
+Files Content ~75% of what remains after the structural sections;
+etc.).
 
 Sections in emission order:
 1.  Header — repo name, plus the README-derived elevator pitch when
     one is available (always)
 2.  Overview — language breakdown and LOC estimate, plus the
-    installed-dependency-source disclosure line when deps were skipped and
-    the generated-output disclosure line when generated output was pruned
+    installed-dependency-source disclosure line when deps were skipped,
+    the generated-output disclosure line when generated output was pruned,
+    and the vendored-code disclosure line (``format_vendored_disclosure``)
+    when vendored code was analysed but left out of the language line
 3.  Structure — tree of paths to important files across up to 10 root
     dirs (top-level listing when there are none)
 4.  Frameworks — the profile's detected frameworks plus its dev/test-only

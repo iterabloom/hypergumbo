@@ -82,7 +82,8 @@ Call-Site Resolution
   ``_ScopeBinder`` walks the scopes enclosing the identifier (parameters,
   ``catch`` and loop bindings, each block's declarations with ``var``
   hoisted, then the file's module scope and imports) and resolves a
-  declaration by POSITION. A declaration in scope wins outright (0.90); a
+  declaration by POSITION. A declaration in scope wins outright (an exact
+  grade, ``resolution_score`` 1.0, which is the ast_call_direct ceiling); a
   parameter or local value is a callee nothing can name and emits nothing;
   only a name bound by an import, or by nothing in the file, reaches the
   import, same-package and repo-wide name lookups (WI-sofuh). A called module binding
@@ -183,7 +184,9 @@ Why This Design
 - Svelte / Vue support reuses existing TS/JS parsing infrastructure
 - Uses iterative traversal (``iter_tree``) for the main walks to avoid
   RecursionError on deeply nested code; a few narrow helpers
-  (``_collect_type_identifiers``, ``_extract_route_objects``) still recurse
+  (``_collect_type_identifiers``, ``_extract_route_objects``,
+  ``_extract_component_from_jsx``, ``_get_receiver_name``,
+  ``_ts_value_to_python``, ``_pattern_binding_names``) still recurse
 """
 from __future__ import annotations
 

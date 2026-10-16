@@ -33,7 +33,9 @@ the full attrpath of each enclosing binding, then its own (``a.run``,
 ``b.run``), a ``let``-bound name marked ``let:x`` so it never ties with a
 same-name attribute, and everything inside a file-level function under the
 file's stem (the name that function is emitted with). The emitted ``name``
-stays the first attrpath identifier. Before, nothing computed a stable_id and
+stays the first attrpath identifier (except a derivation, which is emitted
+under its ``name``/``pname`` string when one is found). Before, nothing
+computed a stable_id and
 every symbol rode the backstop floor key (kind, file, name), which ``run`` in
 two attribute sets shares, so both were null. Two anonymous attribute sets in
 one list binding the same name still tie (the per-file split pass numbers

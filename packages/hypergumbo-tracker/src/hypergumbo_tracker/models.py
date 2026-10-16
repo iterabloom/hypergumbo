@@ -18,8 +18,13 @@ Design rationale:
   must never mutate existing ops.
 - CompiledItem is mutable because ``compile_ops()`` (in ``store.py``)
   builds it incrementally by folding ops in Lamport clock order.
-- Config loading follows the config.yaml → config.yaml.template → defaults
-  chain, matching the .env.example → .env pattern.
+- Config loading is preceded by an authoritative host-protected
+  ``/etc/hypergumbo-tracker/<repo-id>*/config.yaml`` layer (see
+  ``protected_config``). When the host root exists and the config dir is
+  inside a git repo, a missing protected config refuses to load instead of
+  falling back. Otherwise loading follows the config.yaml →
+  config.yaml.template → defaults chain, matching the .env.example → .env
+  pattern.
 - Actor resolution uses os.getuid() which is non-forgeable — the agent
   cannot become the human's UID without sudo, which it doesn't have.
 

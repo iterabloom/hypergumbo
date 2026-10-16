@@ -31,8 +31,8 @@ This analyzer uses tree-sitter to parse Erlang files and extract:
 
 Erlang's multi-clause functions are coalesced: consecutive ``fun_decl``
 clauses for the same name/arity become ONE symbol, with cyclomatic
-complexity summed across the clauses and the line span covering all of
-them. Emitting a symbol per clause would triple-count a idiomatic
+complexity of one base path plus every clause's decision points and the
+line span covering all of them. Emitting a symbol per clause would triple-count a idiomatic
 pattern-matched function.
 
 Function and macro identity (WI-tusad). A function's stable_id is the

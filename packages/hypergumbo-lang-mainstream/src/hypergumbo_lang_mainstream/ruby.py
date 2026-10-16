@@ -27,12 +27,13 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
 - Method parameter filtering to prevent bare-identifier false positives
 
 If tree-sitter with Ruby support is not installed, the analyzer
-gracefully degrades and returns an empty result.
+gracefully degrades: it emits a ``UserWarning`` and returns a skipped
+result (``skip_reason_code=DEPENDENCY_UNAVAILABLE``).
 
 How It Works
 ------------
 1. Check if tree-sitter-ruby is available
-2. If not available, return skipped result (not an error)
+2. If not available, warn and return a skipped result (not an error)
 3. Multi-pass analysis — Ruby overrides ``analyze()`` because it needs
    more than the standard two passes:
    - Pass 1: Parse all files, extract all symbols into global registry

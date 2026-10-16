@@ -26,7 +26,8 @@ file. Signals are checked in order; first match wins:
    beside ``mkdocs.yml`` ... -- never a bare ``dist``/``build``/``out``/
    ``target`` name), then the remaining path patterns (dot-named tool
    directories, ``__pycache__``) and filename patterns, then a content check
-   for minified output
+   for minified output (also generated-file declarations, C-family generator
+   fingerprints, and a webpack bootstrap)
 2. External dependency detection (tier 3) - root-anchored node_modules/,
    vendor/, third_party/ (and the third-party/, thirdparty/ spellings),
    external/, deps/, Pods/, Carthage/, .yarn/cache/, _vendor/
@@ -83,9 +84,11 @@ of which step matched:
 - ``is_generated`` (WI-tizij / WI-pofin) - a path match against
   ``GENERATED_CODE_PATTERNS`` (OpenAPI models, protobuf stubs, k8s code-gen,
   go-swagger, openapi-gen TS), else a declaration in the file's leading
-  comment block within the first 4 KiB. The header test is one predicate,
-  ``_has_generated_marker``, shared with the minified-content check in step 1
-  so the flag and tier 4 cannot disagree (INV-bokim / INV-pogob).
+  comment block within the first 4 KiB, or a C-family generator's
+  structural fingerprint (``_generator_fingerprint``: tree-sitter, Bison,
+  flex, re2c). The header tests, ``_has_generated_marker`` and
+  ``_generator_fingerprint``, are shared with the minified-content check in
+  step 1 so the flag and tier 4 cannot disagree (INV-bokim / INV-pogob).
 - ``is_config`` (WI-jobuj) - the basename is a package-manager or build
   manifest in ``CONFIG_FILE_NAMES``; suppressed when ``is_test`` or
   ``is_example`` is already set, so the three role flags stay exclusive.

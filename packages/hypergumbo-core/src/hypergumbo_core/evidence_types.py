@@ -33,10 +33,12 @@ Confidence seeding (ADR-0039):
   (``ast_call``, ``ast_call_direct``, ``macro_expansion``) also carry
   ``base_confidence_unresolved`` for edges with ``is_resolved=False``, set
   inline on their specs. ``confidence.derive_confidence`` reads both.
-- Single-valued pathways are seeded from the ``_CONFIDENCE_SEEDS`` table
-  (disjoint from the inline seeds), which ``_apply_confidence_seeds``
+- Most single-valued pathways are seeded from the ``_CONFIDENCE_SEEDS``
+  table (disjoint from the inline seeds), which ``_apply_confidence_seeds``
   overlays onto ``_RAW_EVIDENCE_TYPES`` to produce the public
-  ``EVIDENCE_TYPES``.
+  ``EVIDENCE_TYPES``; the rest (e.g. ``ast_import``, ``ast_new``,
+  ``span_overlap``) carry a single ``base_confidence`` inline on their
+  specs.
 
 Axis taxonomy (per ADR-0028 §1):
 

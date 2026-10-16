@@ -2,18 +2,21 @@
 """Slow test masking for smart-test.
 
 Uses the behavior map's symbol-level call graph to identify slow tests
-that do not connect to changed code, allowing smart-test to deselect
-them via ``pytest --deselect``.
+that do not connect to changed code, and emits them as ``pytest
+--deselect`` arguments. It is a standalone calculator (runnable as
+``python -m hypergumbo_core.test_masking``). It was built for smart-test,
+which stopped calling it in 6c95b9d784 because deselecting tests broke
+local 100%-coverage verification. It has no current caller.
 
 How It Works
 ------------
 1. Load the cached behavior map (nodes + edges).
 2. Identify symbols in changed source files.
 3. Reverse-BFS from changed symbols → ``affected_set``, capped at
-   ``max_hops = 10``. Dependents further than 10 hops upstream never enter
+   ``max_hops = 10``. Dependents 10 or more hops upstream never enter
    the set and stay eligible for deselection — the cap is a deliberate
    bound, not full transitive closure.
-4. For each slow test (>threshold mean duration) in the affected test
+4. For each slow test (>= threshold mean duration) in the affected test
    files, check if the test's node ID is in ``affected_set``.
 5. If not → emit ``--deselect=<pytest_node_id>``.
 

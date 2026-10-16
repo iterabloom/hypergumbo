@@ -29,8 +29,8 @@ source text) so the baseline survives line drift:
     seeded pathway, or the linker range 0.40-0.95.
 ``computed_uncommented``
     An analyzer site on a seeded pathway that computes its value (a variable,
-    an expression, or a conditional between literals) and does not carry ``# ADR-0039 caller-valued: <reason>`` on a line of the call or the
-    line above it. Ruling 6 says such a site either passes nothing, passes a
+    an expression, or a conditional between literals) and does not carry ``# ADR-0039 caller-valued: <reason>`` on a line of the call or in the
+    comment block directly above it. Ruling 6 says such a site either passes nothing, passes a
     ``resolution_score``, or says why it cannot.
 
 Linker sites that compute their value, and analyzer sites on unseeded or

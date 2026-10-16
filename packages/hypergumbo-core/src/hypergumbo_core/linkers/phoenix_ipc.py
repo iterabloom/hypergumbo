@@ -22,10 +22,12 @@ Phoenix LiveView:
 
 How It Works
 ------------
-1. Find all Elixir files (*.ex, *.exs) in the repository
+1. Find all non-test Elixir files (*.ex, *.exs) in the repository
 2. Scan each file for Phoenix patterns using regex
 3. Extract event names from send/receive patterns
-4. Create edges linking files with matching events
+4. Mint a synthetic symbol for each send site, and for each receive site
+   whose event is sent somewhere, then emit ``event_publishes``
+   (channel_kind=ipc) from each sender to every receiver of the same event
 
 Why This Design
 ---------------

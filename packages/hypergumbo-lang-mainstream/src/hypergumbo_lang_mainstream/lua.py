@@ -49,13 +49,15 @@ Lua-Specific Considerations
   export pattern in OpenResty/Kong Lua modules
 - require() is the standard import mechanism
 - Lua is dynamically typed, so call resolution is based on name matching.
-  Method calls (obj:method()) get lower confidence (0.40x) than direct
-  calls (func(), 0.85x) because common method names like connect, send,
-  close collide across unrelated receiver objects
+  Match grades interpolate in the ast_call band (0.40-0.85): a direct or
+  dot call (func()) takes the resolver's grade, while an untyped method
+  call (obj:method()) is graded at the band floor because common method
+  names like connect, send, close collide across unrelated receiver objects
 - Single-assignment type tracking: when a local variable is assigned from
   a known table/class (e.g., `local sock = MyClass` or `local sock = mod.tcp()`),
   the receiver type is tracked. Method calls on typed receivers resolve to
-  `ReceiverType.method` with higher confidence (0.80x). This eliminates
+  `ReceiverType.method` with a higher grade (0.90 x the resolver's grade,
+  in the ast_call band). This eliminates
   false positive edges from name collisions (e.g., sock:send vs pdk.response:send)
 - Require-alias resolution: when `local X = require("foo.bar")` is followed
   by `X.method()` or `X:method()`, the call resolves to symbols defined in

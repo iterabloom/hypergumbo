@@ -41,8 +41,9 @@ How It Works
    ``duration_ms`` overlaps its siblings' and inflates while they hold
    the GIL; ``_run_linker_with_cache`` therefore also stamps ``cpu_ms``,
    the linker's own-thread CPU time, read on the worker (WI-nuvam).
-4. Each linker is called uniformly via ``run_linker()`` with
-   LinkerContext.
+4. Each linker is invoked with its LinkerContext through
+   ``_run_linker_with_cache()`` (``run_linker()`` is the by-name entry
+   point to the same wrapper).
 5. A post-pass (``_connect_synthetic_to_enclosing``) wires synthetic
    nodes minted by linkers into their enclosing real symbols.
 
@@ -76,7 +77,7 @@ and a producer-identity ``config_fingerprint`` (via
 ``_stamp_config_fingerprint()``, INV-lidul / WI-mipul) on the returned
 ``AnalysisRun`` — so linker bodies don't need to thread either manually.
 Without the config_fingerprint stamp every linker run would carry the
-constant default sentinel, collapsing all ~61 registered linker passes onto one cache key.
+constant default sentinel, collapsing all ~63 registered linker passes onto one cache key.
 
 Usage
 -----

@@ -10,10 +10,11 @@ This analyzer uses tree-sitter to parse Haskell files and extract:
   that drives ``is_exported`` (an explicit list, an open module, or absent),
   with an instance following the visibility of its class
 - Function call relationships (including external edges for I/O boundary
-  matching). Confidence is fixed at 0.85 resolved / 0.50 external, then
-  damped hard for very short callee names (1-char x 0.15, 2-char x 0.50) —
-  single-letter Haskell binders would otherwise dominate the call graph
-  with false resolutions
+  matching). A resolved call's confidence interpolates in the ast_call band
+  from the resolver grade times a short-name penalty (1-char x 0.15, 2-char
+  x 0.50) — single-letter Haskell binders would otherwise dominate the call
+  graph with false resolutions. External calls take the ast_call unresolved
+  base
 - ``implements`` edges from a typeclass instance to its class
 
 If tree-sitter with Haskell support is not installed, the analyzer

@@ -35,8 +35,9 @@ Each claim in ``claims`` specifies:
     - ``source_taint``: Taint label that must not reach the sink zone
     - ``prohibited_sink_zone``: Zone where tainted data must not arrive
     - ``allowed_sanitizers``: List of sanitizer qualified names (optional).
-      Parsed and validated, but no verdict consults it yet: a flow counts as
-      sanitized only through the taint catalogue's sanitizers.
+      Accepted as a key (its value is not type-checked), but no verdict
+      consults it yet: a flow counts as sanitized only through the taint
+      catalogue's sanitizers.
 
 Verdict Types
 -------------
@@ -83,8 +84,12 @@ silently discarded (a bare ``None`` sub-key still means "none").
 
 Caveats
 -------
-Any verdict may carry a structured ``caveats`` list, built through one shared
-constructor so the text and JSON renderers disclose identically. On a clean
+Any verdict may carry a structured ``caveats`` list of dicts (``kind``,
+``entries``, prose ``detail``). The text renderer prints each dict's
+``detail`` and the JSON emits the dict, so both disclose the same text. Most
+writers go through ``_merge_caveat``, which folds a repeated kind into one
+entry; the two ``CAVEAT_USER_SUPPLIED_SANITIZER`` writers append directly.
+On a clean
 verdict a non-empty list makes it ``confirmed_with_caveats``;
 ``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_WITHHELD_COMMUNITY_SANITIZER`` and
 ``CAVEAT_WITHHELD_COMMUNITY_SUMMARY`` ride a ``violated`` verdict, and caveats
