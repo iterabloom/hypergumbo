@@ -1,0 +1,21 @@
+Original commit body from eac9a1f974c60fe0939759e49edce1fb6f0b291d:
+
+ADR-0004 point 3a (2026-10-15) listed "which linkers count as active"
+among the summaries that count tiers 1-2 only. No output reports active
+linkers, so the line could only mean activation, which decides which
+linkers run and so which edges exist. Counting only tiers 1-2 there
+contradicts the same paragraph ("Linking is unchanged") and its third
+rejected alternative: a cgo / JNI / Python-FFI / N-API / Ruby-FFI
+bridge into vendored C would stop activating, losing its edges silently
+(an unactivated linker records no run).
+
+ADR-0055 (2026-09-16) already refuses activation tightening on that
+asymmetry; its criterion and blocking precondition (a disclosure
+channel for a closed gate) cover a tier-based gate too. The amendment
+removes the line, records why, and notes the unsized cost seen on one
+repo (napi 8.4 s, ruby-ffi 9.3 s on the 2026-10-15 self-survey, both
+running only because of vendored C). ADR-0055 gains the reciprocal
+reference; the spec drops its "Not yet: linker activation" gap and
+marks point 3a implemented.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
