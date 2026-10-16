@@ -973,7 +973,7 @@ Single file: `survey.json`
 ```json
 {
   "schema_version": "0.20.6",
-  "confidence_model": "hypergumbo-evidence-v2.1",
+  "confidence_model": "hypergumbo-evidence-v2.2",
   "stable_id_scheme": "hypergumbo-stableid-v9",
   "shape_id_scheme": "hypergumbo-shapeid-v3",
   "repo_fingerprint_scheme": "hypergumbo-repofp-v2",
@@ -1016,7 +1016,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 ### Confidence scoring
 
-The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v2.1`) identifies the scoring algorithm. See [§12 Confidence scoring](#12-confidence-scoring) for the full confidence model and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations.
+The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v2.2`) identifies the scoring algorithm. See [§12 Confidence scoring](#12-confidence-scoring) for the full confidence model and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations.
 
 ### analysis_runs[] — provenance tracking
 
@@ -1611,7 +1611,7 @@ Hypergumbo assigns confidence scores (0.0–1.0) in three independent categories
 | **Linker edge confidence** | Linker-recovered relationships across all four subcategories — Bridge/Protocol examples include JNI, IPC, HTTP | Match quality (literal vs. dynamic, naming convention vs. annotation). 🟩 Judged by this range, not by the analyzer band of the `evidence_type` the edge declares ([ADR-0039](adr/0039-confidence-separation.md) ruling 7) | 0.40–0.95 | [Below](#edge-confidence-linker-edges), details in [§7](#7-linkers) |
 | **Entrypoint confidence** | Whether a symbol is an entry point | Detection method (manifest, decorator, convention, naming) | 0.70–0.99 | [Below](#entrypoint-confidence-tiers), details in [§8](#8-entrypoint-detection) |
 
-All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v2.1`) identifies the scoring algorithm version — `v2` marks the deterministic evidence→confidence derivation now in effect for analyzer edges ([ADR-0039](adr/0039-confidence-separation.md) / WI-nurun): the base score is a registry lookup keyed on `evidence_type`, `is_resolved`-conditioned for call types. 🟩 A name resolver's match quality interpolates within the pathway band ([ADR-0039](adr/0039-confidence-separation.md) ruling 6, below). Linker edges and unregistered or unseeded pathways keep the caller's value, as do the analyzer sites that `check-confidence-sites` lists as caller-valued. Consumers should read `confidence` purely as detection reliability on the 0.0–1.0 scale.
+All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v2.2`) identifies the scoring algorithm version — `v2` marks the deterministic evidence→confidence derivation now in effect for analyzer edges ([ADR-0039](adr/0039-confidence-separation.md) / WI-nurun): the base score is a registry lookup keyed on `evidence_type`, `is_resolved`-conditioned for call types. 🟩 A name resolver's match quality interpolates within the pathway band ([ADR-0039](adr/0039-confidence-separation.md) ruling 6, below). Linker edges and unregistered or unseeded pathways keep the caller's value, as do the analyzer sites that `check-confidence-sites` lists as caller-valued. Consumers should read `confidence` purely as detection reliability on the 0.0–1.0 scale.
 
 ### Edge confidence: analyzer evidence
 
@@ -2271,7 +2271,7 @@ For the technical contract governing output schema stability, see [Appendix C](#
 * **Confidence model versions**: `hypergumbo-evidence-vMAJOR.MINOR`
   - MAJOR: Incompatible changes (requires new schema)
   - MINOR: Refinements (new evidence types, score adjustments)
-  - The emitted value carried a bare `v2` until WI-huhin, which did not match this grammar and left MINOR unexpressible — so ADR-0039's refinement (new evidence types, exactly what MINOR is for) had no way to signal itself, and the next refinement would have had to choose between a misleading MAJOR bump and silence. `hypergumbo-evidence-v2.0` is the first *conforming* rendering of the **same** model, not a refinement of `v2`; MAJOR is unchanged and no scoring behaviour differs. `v2.1` (ADR-0057 §13, WI-binis) is the first MINOR refinement: a new `confidence_source`, `corroborated`, and its declared 0.95 for an edge two distinct pathways reached; no single-producer score changes.
+  - The emitted value carried a bare `v2` until WI-huhin, which did not match this grammar and left MINOR unexpressible — so ADR-0039's refinement (new evidence types, exactly what MINOR is for) had no way to signal itself, and the next refinement would have had to choose between a misleading MAJOR bump and silence. `hypergumbo-evidence-v2.0` is the first *conforming* rendering of the **same** model, not a refinement of `v2`; MAJOR is unchanged and no scoring behaviour differs. `v2.1` (ADR-0057 §13, WI-binis) is the first MINOR refinement: a new `confidence_source`, `corroborated`, and its declared 0.95 for an edge two distinct pathways reached; no single-producer score changes. `v2.2` ([ADR-0039](adr/0039-confidence-separation.md) rulings 6–7) is the first MINOR refinement that does change single-producer scores: a resolver's grade interpolates inside its pathway band instead of multiplying a private base, so values move (JS/TS scope-bound 0.90 → 0.85) while the meaning and the bands stay.
 
 ### Compatibility guarantees
 
@@ -2353,7 +2353,7 @@ This appendix defines the **technical contract** for output consumers: which fie
 - `analysis_runs[].run_signature`: Deterministic fingerprint of pass configuration
 
 **4. Confidence scoring:**
-- `confidence_model` field identifies the scoring algorithm (`hypergumbo-evidence-v2.1`)
+- `confidence_model` field identifies the scoring algorithm (`hypergumbo-evidence-v2.2`)
 - `confidence` is detection reliability (0.0–1.0); there is no normative default for unknown `evidence_type` (the deterministic evidence→confidence model is **implemented** for seeded pathways — [ADR-0039](adr/0039-confidence-separation.md) / WI-nurun; resolver match quality interpolates within the band per ruling 6; linker edges, unseeded pathways and the listed caller-valued sites keep the caller's value). Ranking prominence lives in the sibling `rank_score` field, and `confidence_source` records how each `confidence` was produced.
 
 ### Extensible Contracts (can add in minor versions)
@@ -2401,17 +2401,18 @@ This appendix defines the **technical contract** for output consumers: which fie
 - Example: Switching from `python:file.py:10-15:func:function` to `sha256:abc123`
 
 **4. Changing confidence semantics:**
-- Example: Redefining what evidence types mean or changing the scoring algorithm
+- Example: Redefining what `confidence` measures, its scale, or what an evidence type means
+- Not breaking: changing how a score is computed within that meaning (new evidence types, interpolation inside a band, a pathway's base value). Such a refinement changes emitted values and bumps `confidence_model` MINOR ([Appendix A](#appendix-a-release-lifecycle--support)), not the tool's major version; ADR-0039 rulings 6–7 (`v2.2`) are an example. A consumer comparing scores across runs must compare `confidence_model` first.
 
 ### Version fields: three independent axes
 
 Output carries version numbers along **three deliberately independent axes** (WI-bobog / WI-romup). Consumers must not conflate them, and producers must not consolidate them onto one number or rename the wire fields (each has consumers, so a rename is a breaking change):
 
-1. **Top-level format version** — `schema_version` (currently `0.20.6`, the `SCHEMA_VERSION` constant). The version of the survey (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
+1. **Top-level format version** — `schema_version` (currently `0.20.15`, the `SCHEMA_VERSION` constant). The version of the survey (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
 2. **Tool/package version** — `__version__`, surfaced under **three** names that are **not** schema versions: `reproducibility_context.hypergumbo_version` (bare, e.g. `7.0.0`), `analysis_runs[].version` (bare, e.g. `7.0.0`), and `limits.analyzer_version` (prefixed, `hypergumbo-<__version__>`). Increments every release; says nothing about output format. **Only `limits.analyzer_version` carries the `hypergumbo-` prefix**, and that is deliberate — it is the one surface that names the *producing tool* rather than reporting the version of a record the tool is already the author of. Consumers joining these for an equality check must strip the prefix from `analyzer_version`; they are the same underlying `__version__` (WI-tinul, which recorded the three-way disagreement and the failed join).
 3. **Per-view / per-sub-schema versions** — several JSON surfaces version their own wire shape independently of axes 1–2:
    - The CLI **read-view** envelopes (`routes`, `test-coverage`, `config`, `catalog`, `cache-status`, `repeat-finder`) share `READ_VIEW_SCHEMA_VERSION` (currently `0.1.0`), a single placeholder for the views that have not needed to evolve independently. A view that does need to promotes to its own named constant, and `dead-code-maybe` already has: it carries `DEAD_CODE_MAYBE_SCHEMA_VERSION` (currently `0.2.0`), not the shared placeholder.
-   - `io-boundaries` carries `IO_BOUNDARIES_SCHEMA_VERSION` (`2.3`), `verify-claims` carries `VERIFY_CLAIMS_SCHEMA_VERSION` (`2.6`), and the embedded `validation_report` block carries `VALIDATION_REPORT_SCHEMA_VERSION` (`0.4`) — each with its own changelog. A change to one of these bumps only that surface's version, **not** the top-level `schema_version`. (So `validation_report.schema_version` legitimately differs from the enclosing map's `schema_version` — they are different schemas.)
+   - `io-boundaries` carries `IO_BOUNDARIES_SCHEMA_VERSION` (`2.4`), `verify-claims` carries `VERIFY_CLAIMS_SCHEMA_VERSION` (`2.6`), and the embedded `validation_report` block carries `VALIDATION_REPORT_SCHEMA_VERSION` (`0.4`) — each with its own changelog. A change to one of these bumps only that surface's version, **not** the top-level `schema_version`. (So `validation_report.schema_version` legitimately differs from the enclosing map's `schema_version` — they are different schemas.)
 
 ### Algorithm-identification fields and `stable_id_scheme` version history
 

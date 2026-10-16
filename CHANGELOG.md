@@ -15,8 +15,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Breaking and contract changes
 
 - **Git submodules are skipped by default**, like installed dependencies; `--trace-deps <path>` analyses one.
-- **Edge confidence values change**: they come from evidence bands (ADR-0039); linker edges may range 0.40–0.95.
-- **New schema fields** `profile.languages[*].own_files`/`own_loc` and `supply_chain_summary.vendored_analysed`; `SCHEMA_VERSION` not bumped.
+- **Edge confidence values change**: they come from evidence bands (ADR-0039); linker edges may range 0.40–0.95; `confidence_model` v2.1 → v2.2.
+- **New schema fields** `profile.languages[*].own_files`/`own_loc` and `supply_chain_summary.vendored_analysed`; `SCHEMA_VERSION` 0.20.14 → 0.20.15 (additive).
 
 ### Added
 
