@@ -21,6 +21,7 @@ from hypergumbo_core.sketch import (
     _format_loc,
     _format_structure_tree,
     _format_structure_tree_fallback,
+    _STRUCTURE_SCOPE_NOTE,
     _TreeLoc,
 )
 
@@ -172,3 +173,25 @@ def test_index_children_map(tmp_path: Path) -> None:
     assert idx.children(tmp_path / "a") == {"b.py": False}
     assert idx.children(tmp_path / "empty") == {}
     assert idx.children(tmp_path.parent) is None
+
+
+def test_map_scoped_tree_says_which_files_it_leaves_out(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.py").write_text(_lines(8))
+    set_file_index(FileIndex.from_paths(tmp_path, [tmp_path / "src" / "main.py"]))
+    try:
+        tree = _format_structure_tree(tmp_path, ["src/main.py"])
+        fallback = _format_structure_tree_fallback(tmp_path, [], exclude_tests=False)
+    finally:
+        set_file_index(None)
+
+    for result in (tree, fallback):
+        assert result.endswith("```\n" + _STRUCTURE_SCOPE_NOTE), result
+
+
+def test_walked_tree_has_no_scope_note(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.py").write_text(_lines(8))
+
+    assert _STRUCTURE_SCOPE_NOTE not in _format_structure_tree(tmp_path, ["src/main.py"])
+    assert _STRUCTURE_SCOPE_NOTE not in _format_structure_tree_fallback(tmp_path, [])
