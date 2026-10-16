@@ -1,0 +1,22 @@
+- op: create  # c22e
+  at: '2026-10-16T07:59:56Z'  # c22e
+  by: agent  # c22e
+  actor: jgstern_agent  # c22e
+  clock: 1  # c22e
+  nonce: c22e  # c22e
+  data:  # c22e
+    kind: work_item  # c22e
+    title: "dead-code-maybe hand-builds entrypoint Symbols from 7 fields, dropping supply_chain_tier and modifiers; use Symbol.from_dict"  # c22e
+    status: todo_hard  # c22e
+    priority: 4  # c22e
+    parent:  # c22e
+    tags:  # c22e
+    - cli  # c22e
+    - dead_code  # c22e
+    - docstring_audit  # c22e
+    isbefore: []  # c22e
+    duplicate_of: []  # c22e
+    not_duplicate_of: []  # c22e
+    pr_ref:  # c22e
+    description: "cmd_dead_code_maybe (cli.py ~:9192-9207) builds Symbol(id, name, kind, language, path, span, meta) by hand for entrypoint detection instead of Symbol.from_dict, dropping supply_chain_tier (defaults to 1) and modifiers. detect_entrypoints reads both (tier>=3 rank penalties ~entrypoints.py:1735/1852; declaration-vs-definition dedup ~:1585), so vendored entrypoints are not demoted and declaration duplicates are not collapsed. Impact limited to --min-confidence > 0 (default 0.0). Fix: route through Symbol.from_dict like every other read path. Confirmed by reading, 2026-10-16 docstring-staleness audit."  # c22e
+    fields: {}  # c22e

@@ -34,3 +34,10 @@
   clock: 3  # f813
   nonce: f813  # f813
   message: "Implemented in PR #1617 (756f85f550). discovery.SUBMODULE_RULE (installed-dependency rule selected by declaration, not name): a directory holding a .git, declared in the enclosing work tree's .gitmodules, whose HEAD entry is a gitlink (git ls-tree HEAD, never the index; via the factored _ls_tree_head); with no git/no commits, a .git FILE. One package per submodule = the declared path. Behavioural evidence, tests/test_submodules.py on a real superproject built with 'git submodule add': (1) FileIndex.build lists only app.py, installed_deps_summary entry {path: lib/sub, ecosystem: 'git submodule', packages: 1}, disclosure starts 'Installed dependency source not analysed: lib/sub/ (git submodule).'; (2) TraceDeps.parse('lib/sub') -> lib/sub/dep.py indexed, classify_file tier EXTERNAL_DEP package 'lib/sub', no disclosure entry; (3) a plain 'git clone' (empty lib/sub) -> no rule, dirs 0; (4) no-git export with .gitmodules + .git file -> claimed; (5) undeclared nested repo inside an outer work tree -> not claimed. Not run on the corpus (35 repos, 362 submodule paths, 0 populated on 2026-10-15)."  # f813
+- op: discuss  # f135
+  at: '2026-10-16T03:09:28Z'  # f135
+  by: agent  # f135
+  actor: jgstern_agent  # f135
+  clock: 4  # f135
+  nonce: f135  # f135
+  message: "Correction: the PR is #1618 (commit 756f85f550 on dev), not #1617 -- #1617 was a superseded tracker-sync branch that auto-pr's log listed after the merge."  # f135
