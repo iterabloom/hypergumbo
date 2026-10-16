@@ -1,0 +1,21 @@
+- op: create  # 32ba
+  at: '2026-10-16T11:27:15Z'  # 32ba
+  by: agent  # 32ba
+  actor: jgstern_agent  # 32ba
+  clock: 1  # 32ba
+  nonce: 32ba  # 32ba
+  data:  # 32ba
+    kind: work_item  # 32ba
+    title: "prepare-release and bump-version take the previous release tag from git describe on dev, which reaches only v6.1.0: wrong [X.Y.Z] compare link and a bogus tracker-changed warning"  # 32ba
+    status: todo_hard  # 32ba
+    priority: 3  # 32ba
+    parent:  # 32ba
+    tags:  # 32ba
+    - release  # 32ba
+    - scripts  # 32ba
+    isbefore: []  # 32ba
+    duplicate_of: []  # 32ba
+    not_duplicate_of: []  # 32ba
+    pr_ref:  # 32ba
+    description: "Release tags v7.0.0-v9.0.0 sit on main, so 'git describe --tags --abbrev=0 --match v*' run on dev returns v6.1.0. Two consumers: (1) prepare-release:286 PREV_TAG writes the CHANGELOG link definition, which is how 9.0.0 got '[9.0.0]: .../compare/v6.1.0...v9.0.0' (fixed by hand in PR #1639; 9.1.0 run with PREV_TAG=v9.0.0 override); (2) bump-version:200 LAST_TAG drives 'hypergumbo-tracker source changed since v6.1.0 but --tracker not specified', diffing tracker src across three releases. Repro on dev at 3cb2eb8625: git describe --tags --abbrev=0 --match 'v*' -> v6.1.0 while git tag -l 'v*' --sort=-v:refname | head -1 -> v9.0.0. Fix direction: pick the highest v* tag below VERSION by version sort (git tag -l --sort=-v:refname), shared by both scripts, with a test that builds a repo whose release tags are off the current branch."  # 32ba
+    fields: {}  # 32ba
