@@ -251,7 +251,7 @@ about six audits. Choose N for the review budget, not for the flag count.
 **Record every file you read, matches included,** in the fix PR:
 
 ```bash
-scripts/check-docstring-drift --record-review <file> [<file> ...] --run 2026-10-06
+scripts/check-docstring-drift --record-review <file> [--record-review <file> ...] --run 2026-10-06
 ```
 
 A file read and found accurate leaves no commit behind. Without its ledger
@@ -411,6 +411,7 @@ means something only if it beats the rate outside the flags.
 | 2026-10-06 | — | — | **30 (seeded random, never read)** | **19 (≥63%)**⁵ | #1492 |
 | 2026-10-10 | 4 | 1 (25%) | 30 (rolling, never read) + 23 (code changed since last audit) | 21 (70%) + 18 (78%)⁶ | #1521 (A+B+D), #1522 (C) |
 | 2026-10-14 | 10 | 2 (20%) | 30 (rolling, never read) + 18 (code changed, docstring untouched) + 20 (most changed, docstring touched) | 26 (87%) + 7 (39%) + 14 (70%)⁷ | #1583 (A+B+D), #1584 (C) |
+| 2026-10-16 | 9 | 0 (0%)⁸ | 30 (rolling, never read) + 30 (code changed since the last audit) | 19 (63%) + 26 (87%)⁸ | #1630 (A+B+D), C bundle |
 
 ¹ The pool was the 70 flagged plus 9 tracker-ref-only files; the notebook
 records 55 drifted files across all 79, not split by source.
@@ -433,6 +434,10 @@ in 1 (validation_ratchet.py, rolling), and 24 others were not re-read. The
 "docstring touched" 20 are the most-changed files since the last audit whose
 module docstring was ALSO edited in that window; the untouched 18 changed far
 less (2 to 119 changed lines each, against 159 to 2,098).
+⁸ The flagged 9 were eight accurate docstrings and hack.py, whose false claim is
+the open code regression INV-pobap (counted as a code defect, not drift). A
+blind re-review of 5 first-pass "matches" found drift in 1 (ir.py,
+code-changed group); the other 18 were not re-read, so 26 is a lower bound.
 
 The 2026-05-15 run also produced #3751 as a side-effect (widening the
 `verify-generated` window 5 → 15 commits). Its notebook entry is at
@@ -611,6 +616,22 @@ and the never-read rolling set again gave most of the yield (26 of 30). When a
 finding is both a docstring claim and a code defect (the Agda aliases), leave
 the docstring stating the intent and file the code. The notebook entry is
 `~/<repo>_lab_notebook/staleness_audit_10142026.md`.
+
+The 2026-10-16 run read 69 files: the 9 flagged, 30 from the rolling read and
+the 30 most-changed files since the 2026-10-14 audit. 45 drifted (lower bound):
+0 of 9, 19 of 30 and 26 of 30. 115 first-pass findings went to default-REJECT
+verifiers: 112 confirmed (4 re-graded), 3 rejected. The largest family was
+confidence figures written before ADR-0039 ruling 6 (seven modules). Code
+defects filed: INV-kalaj (FileIndex never matches a `dir/*.ext` pattern, so
+`requirements/*.txt` and Play's `conf/*.routes` vanish from every survey),
+INV-hilod, INV-vivit, WI-zijop; evidence added to INV-zujag, INV-pobap, WI-biraf
+and WI-fidan. Two lessons. First, the flagged set was again the least drifted
+group, for the third run in a row (1 of 4, 2 of 10, 0 of 9); the rolling read
+and the code-changed set carry the yield. Second, `--record-review` takes one
+path per flag (`--record-review a.py --record-review b.py`); a list after a
+single flag records only the first path. Re-anchor `SignatureNotion`
+`emission_sites` by hand too: no test checks them, and one had been stale
+since the 2026-10-14 bundle.
 
 **A caveat to carry into any future run: the flagged count measures the
 scan, not the tree.** The two most consequential findings of the
