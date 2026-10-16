@@ -1,0 +1,10 @@
+Original commit body from b494336b93cc52516a2f7406dbd8e4cfe77e2923:
+
+Each entry now says what changed in words a reader without the
+mechanism can follow: 'cold sketch', 'tier 4', '[passes] reasons' and
+'suggestions work' spelled out; the duplicate edge-confidence bullet
+in Changed merged into Breaking; schema fields given their paths. The
+no-behaviour-change _uncatalogued_external_modules refactor is dropped.
+Still ~8 words per commit (191 words, 24 commits).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
