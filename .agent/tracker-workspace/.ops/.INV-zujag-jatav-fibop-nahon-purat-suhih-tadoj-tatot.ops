@@ -22,3 +22,10 @@
     fields:  # f2fe
       statement: "A typed receiver's method binds to the method of the receiver's own type in that type's package (the _go_method_of_type rule)."  # f2fe
       root_cause: "Symbols are keyed by unqualified Type.Method. The typed-local and method-value arms use _go_method_of_type, but the field-chain arm (go.py ~L4417-4420) and the chained-return-type arm (~L4556-4559) do 'target = candidates[0]' from global_symbols."  # f2fe
+- op: discuss  # c4a8
+  at: '2026-10-16T08:01:04Z'  # c4a8
+  by: agent  # c4a8
+  actor: jgstern_agent  # c4a8
+  clock: 2  # c4a8
+  nonce: c4a8  # c4a8
+  message: "Reproduced a sibling case 2026-10-16 (docstring audit): the field-chain arm also binds an in-repo method when the field's type is KNOWN EXTERNAL. Temp module: mylog/logger.go declares (*Logger).Info; app/engine.go has type Engine struct{ logger *slog.Logger } and calls e.logger.Info(\"hi\"). analyze_go emits Engine.Run -> go:mylog/logger.go:5-5:Logger.Info:method, meta receiver=typed_field, confidence 0.85. Cause: go.py ~4451-4461 does the bare local/global lookup before the _external_package_for_type check in the elif (~4478-4492). go.py's docstring L64-67 states the intended rule (never looked up in-repo); fix order: external check first, then the package-scoped lookup this item already asks for."  # c4a8
