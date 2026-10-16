@@ -1,0 +1,7 @@
+Original commit body from 5f1a53b8487aa827b5a42511e78de7d70674bf3a:
+
+TL;DR addendum naming the three changes a reader will see (confidence
+values, submodules skipped, own-code summaries) and an Unreleased
+section that prepare-release promotes to 9.1.0.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
