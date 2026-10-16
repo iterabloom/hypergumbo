@@ -1,0 +1,6 @@
+Original commit body from b6207e87b5bb846d4b8a6fedf9354b9a023b094c:
+
+prepare-release promotes '| Unreleased |' to the release version and
+stops when the row is missing.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
