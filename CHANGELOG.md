@@ -14,34 +14,32 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
-- **Git submodules skipped by default**; `--trace-deps <path>` analyses them (ADR-0004).
-- **Edge confidence values change** (ADR-0039 rulings 6–7).
-- **Schema adds `own_files`/`own_loc`, `vendored_analysed`**; `SCHEMA_VERSION` unchanged.
+- **Git submodules are skipped by default**, like installed dependencies; `--trace-deps <path>` analyses one.
+- **Edge confidence values change**: they come from evidence bands (ADR-0039); linker edges may range 0.40–0.95.
+- **New schema fields** `profile.languages[*].own_files`/`own_loc` and `supply_chain_summary.vendored_analysed`; `SCHEMA_VERSION` not bumped.
 
 ### Added
 
-- **Structure tree LOC column**; notes symbol-less files are uncounted.
-- **Progress shows elapsed time and per-worker heartbeats**, not fake ETAs.
-- **Analysed vendored code disclosed**: stderr, sketch, summary.
-- **`check-confidence-sites` gate**, in CI and pre-commit.
+- **The sketch's Structure tree shows lines of code** and says which files it omits.
+- **Progress shows elapsed time and one heartbeat line per worker**, replacing estimated percentages.
+- **Analysed vendored code is disclosed** on stderr, in the sketch and in the summary.
+- **`check-confidence-sites`** checks confidence literals in CI and pre-commit.
 
 ### Changed
 
-- **Summaries count own code only** (ADR-0004 3a); vendored code still analysed.
-- **Unmarked generated parsers are tier 4** (tree-sitter, Bison, flex, re2c, ragel).
-- **Edge confidence derives from evidence bands**; linker edges judged 0.40–0.95.
-- **Cold sketches reuse the survey file list**; `.hypothesis/` excluded.
-- **`_uncatalogued_external_modules` retired**; no behaviour change.
+- **Language breakdown and totals count your own code only**; vendored code is still analysed (ADR-0004).
+- **Generated parsers without a marker are supply-chain tier 4**: tree-sitter, Bison, flex, re2c, ragel.
+- **A sketch without a cached survey no longer walks the repository twice**; `.hypothesis/` is excluded.
 
 ### Fixed
 
-- **Surveys find `requirements/*.txt`, `conf/*.routes`, `META-INF/services/*`.**
-- **Quieter stderr**: routine `[passes]` reasons counted, warnings plain.
-- **Partial-install suggestions work** and name the right package.
+- **Surveys find files under subdirectory patterns**, such as `requirements/*.txt`, `conf/*.routes` and `META-INF/services/*`.
+- **Quieter stderr**: routine pass-silence reasons collapse to a count; warnings lose Python's prefix.
+- **Partial-install warnings suggest the right package** and ignore vendored code; no suggestion ever appeared before.
 
 ### Documentation
 
-- ADR-0039 rulings 6–7; ADR-0004 vendored/submodule amendments; ARCHITECTURE.md regenerated.
+- ADR-0039 rulings 6–7; ADR-0004 amendments on vendored code, submodules and linker activation; ARCHITECTURE.md regenerated.
 - Module docstrings: 41 corrected, 24 extended (staleness audit).
 
 ## [9.0.0] - 2026-10-14
