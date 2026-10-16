@@ -21,3 +21,10 @@
     fields:  # ae61
       statement: "Every file the Hack analyzer's docstring names as Hack (.hack, .hh, and .php files with a <?hh header) is analyzed by HackAnalyzer."  # ae61
       root_cause: "When hack.py moved onto TreeSitterAnalyzer, discovery fell back to the base find_files(file_patterns) with patterns *.hack/*.hh; the find_hack_files call that sniffed .php headers (present in 0eac60c485) was dropped, leaving it test-only."  # ae61
+- op: discuss  # 03af
+  at: '2026-10-16T08:03:14Z'  # 03af
+  by: agent  # 03af
+  actor: jgstern_agent  # 03af
+  clock: 2  # 03af
+  nonce: 03af  # 03af
+  message: "Re-confirmed 2026-10-16 (docstring audit verifier): repro with a.php (<?hh header) + b.hack -> analyze_hack emits only b.hack's symbol. git log -S shows the production caller find_hack_files(self.repo_root) was removed in cfd3132756 (Phase 3 extended1 TreeSitterAnalyzer migration), so this is a regression, not never-landed. Docstring left stating the intent."  # 03af
