@@ -1,0 +1,19 @@
+Original commit body from 3ef038b3519508199a6c7d307147eaf70bd8919c:
+
+Every Structure-tree line under the root opens with a four-column LOC
+count (three digits and a unit: " ", k, M), rounded half up. A file shows
+its non-blank lines; a directory the sum over the items its count covers
+(same excludes, installed-dependency and build-output skips, map-scoped
+index); an "[and N other items]" line the remainder of its directory.
+Binary files and symlinks count zero. The root line is blank: the Overview
+states the project's tier 1-2 LOC (ADR-0004 3a); the tree maps every file
+on disk.
+
+- profile.sloc_of_text: the one non-blank-line rule, shared with _count_loc.
+- FileIndex.children: directory map built once, so visiting every
+  directory is linear rather than one scan of all files per directory.
+- sketch._kept_dir_children factored out of _count_dir_items; _TreeLoc
+  memoises per path so each file is read once.
+- ADR-0005 output format and spec example updated.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
