@@ -1,0 +1,24 @@
+- op: create  # dedf
+  at: '2026-10-16T07:59:40Z'  # dedf
+  by: agent  # dedf
+  actor: jgstern_agent  # dedf
+  clock: 1  # dedf
+  nonce: dedf  # dedf
+  data:  # dedf
+    kind: invariant  # dedf
+    title: "FileIndex.match_pattern never matches a pattern with a directory segment (requirements/*.txt, conf/*.routes): fnmatch on the bare filename"  # dedf
+    status: violated  # dedf
+    priority: 2  # dedf
+    parent:  # dedf
+    tags:  # dedf
+    - discovery  # dedf
+    - analysis_quality  # dedf
+    - docstring_audit  # dedf
+    isbefore: []  # dedf
+    duplicate_of: []  # dedf
+    not_duplicate_of: []  # dedf
+    pr_ref:  # dedf
+    description: "FileIndex.match_pattern's general-glob branch (discovery.py ~:2399-2402) does fnmatch(fpath.name, pattern), so a pattern with a directory segment and no leading '**/' can never match under an installed index, which every run_survey installs. Patterns '**/x' work (handled elsewhere); 'dir/*.ext' and '*/dir/name' do not.\n\nReproduced 2026-10-16 (scratch tree setup.py, pkg/setup.py, conf/app.routes, api/x.proto): walk finds conf/*.routes = 1, index finds 0; '**/setup.py' and '**/*.proto' agree (2/1). requirements.find_requirements_files with requirements.txt, requirements/base.txt, reqs/dev.txt: walk 3 files, index only requirements.txt.\n\nAffected call sites (grep of find_files patterns with '/'): requirements.py 'requirements/*.txt', 'reqs/*.txt' (pip requirements under requirements/ are silently skipped in every survey); play_routes.py 'conf/*.routes' partials and multi-module '*/conf/routes' (the main conf/routes is found by a direct is_file check). Structural fix: match '/'-containing patterns against the repo-relative POSIX path with the same semantics as the rglob fallback, plus a test that each analyzer's patterns return the same files with and without an index. Found by the 2026-10-16 docstring-staleness audit (reviewer + default-REJECT verifier)."  # dedf
+    fields:  # dedf
+      statement: "find_files returns the same files for a pattern whether or not a FileIndex is installed."  # dedf
+      root_cause: "FileIndex.match_pattern general-glob branch fnmatches fpath.name, which never contains '/'."  # dedf

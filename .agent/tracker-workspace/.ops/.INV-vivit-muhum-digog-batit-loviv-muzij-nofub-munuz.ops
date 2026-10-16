@@ -1,0 +1,24 @@
+- op: create  # 8e39
+  at: '2026-10-16T07:59:51Z'  # 8e39
+  by: agent  # 8e39
+  actor: jgstern_agent  # 8e39
+  clock: 1  # 8e39
+  nonce: '8e39'  # 8e39
+  data:  # 8e39
+    kind: invariant  # 8e39
+    title: "router-routes-linker depends_on omits scala/kotlin/haskell/fsharp/clojure/erlang/r router producers and lists ruby/go/csharp, which have none"  # 8e39
+    status: violated  # 8e39
+    priority: 3  # 8e39
+    parent:  # 8e39
+    tags:  # 8e39
+    - linker  # 8e39
+    - framework_linker  # 8e39
+    - docstring_audit  # 8e39
+    isbefore: []  # 8e39
+    duplicate_of: []  # 8e39
+    not_duplicate_of: []  # 8e39
+    pr_ref:  # 8e39
+    description: "router_routes.py ~:145 declares depends_on=[[\"python\",\"javascript\",\"ruby\",\"java\",\"go\",\"csharp\",\"elixir\",\"php\"]]. The 16 concept: router producers' languages are python (fastapi, flask), javascript (nuxt, remix, sveltekit), java (vertx), elixir (phoenix), php (laminas), scala (http4s), kotlin (http4k), haskell (yesod), fsharp (giraffe), clojure (pedestal, ring-compojure), erlang (cowboy), r (plumber). No ruby/go/csharp YAML has concept: router. Effect: Pass.depends_on and prerequisite_absent_clauses are wrong, e.g. a yesod-only repo with the haskell grammar missing is never stamped PREREQUISITE_ABSENT; activation is always_on_unreviewed so the linker still runs. Correct clause: [[\"python\",\"javascript\",\"java\",\"elixir\",\"php\",\"scala\",\"kotlin\",\"haskell\",\"fsharp\",\"clojure\",\"erlang\",\"r\"]]. Same family as INV-tukig (controller_routes). Structural: derive these clauses from the framework YAMLs' language fields rather than hand lists. Confirmed by reading (reviewer + verifier), 2026-10-16 docstring-staleness audit."  # 8e39
+    fields:  # 8e39
+      statement: "A linker's depends_on clause names exactly the languages whose producers feed it."  # 8e39
+      root_cause: "router_routes depends_on is a hand-written list that drifted from the concept: router YAMLs."  # 8e39
