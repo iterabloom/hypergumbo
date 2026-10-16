@@ -168,6 +168,7 @@ The Structure section displays a `tree`-like visualization showing paths to impo
 - Every expanded branch terminates at least one visible file (the "important file" that caused inclusion)
 - Sibling counts shown as `[and N other items]`
 - Each line under the root opens with a LOC column (added 2026-10-16): four columns, up to three digits and a unit (` `, `k`, `M`), rounded half up. A file shows its non-blank lines; a directory the sum over the items its count covers (same excludes and skips); an `[and N other items]` line the part of its directory the shown lines leave out. Binary files and symlinks count zero. The root line has no count: the Overview states the project's LOC over tiers 1–2 (ADR-0004 3a), while the tree counts every file on disk, vendored code included, to show where the lines are.
+- When the tree is built from a behavior map (the normal case, INV-jumim), the map names only files that yielded a symbol, so item counts and LOC leave out the rest. One sentence under the tree says so: *"Counts and LOC cover only files with at least one detected symbol; files with none, such as JSON data or extensionless scripts, are left out."* On hypergumbo itself on 2026-10-16 that was 132 tracked files and 394k lines, mostly the vendored grammars' generated `parser.c`. Recording the survey's full discovered-file list would close the gap; the owner chose the disclosure instead.
 - Nested structure revealed along the path to important files
 - Hidden directories (`.github/`, etc.) included if they contain important files
 

@@ -3122,6 +3122,22 @@ class _TreeLoc:
 #: LOC and the tree's all-files total would read as a second, larger answer.
 _ROOT_LOC_COLUMN = " " * 5
 
+#: Printed under the tree when its universe is a behavior map's files (the
+#: normal case, INV-jumim): the map names only files that yielded a symbol,
+#: so data files and scripts no analyzer recognises are in neither the item
+#: counts nor the LOC. On hypergumbo itself that left out 132 tracked files,
+#: 394k lines, on 2026-10-16. Recording the survey's full discovered-file list
+#: would close the gap; the owner chose disclosure instead.
+_STRUCTURE_SCOPE_NOTE = (
+    "Counts and LOC cover only files with at least one detected symbol; "
+    "files with none, such as JSON data or extensionless scripts, are left out."
+)
+
+
+def _structure_scope_note(repo_root: Path) -> list[str]:
+    """The closing note's lines when a map-scoped index bounds the tree."""
+    return [_STRUCTURE_SCOPE_NOTE] if _dir_children_from_index(repo_root) is not None else []
+
 
 def _count_root_items(repo_root: Path, excludes: list[str]) -> int:
     """Count all non-excluded items (files and directories) at root level.
@@ -3270,6 +3286,7 @@ def _format_structure_tree_fallback(
         lines.append(f"{column}└── [and {hidden_count} other items]")
 
     lines.append("```")
+    lines.extend(_structure_scope_note(repo_root))
     return "\n".join(lines)
 
 
@@ -3429,6 +3446,7 @@ def _format_structure_tree(
     ]
     lines.extend(tree_lines)
     lines.append("```")
+    lines.extend(_structure_scope_note(repo_root))
 
     return "\n".join(lines)
 

@@ -1420,7 +1420,7 @@ Markdown output to stdout (not a file). This is the default output mode. Designe
 |-------|---------|---------|
 | 1 | 🟩 Header | Title, description |
 | 2 | 🟩 Overview | Language breakdown, file counts, LOC |
-| 3 | 🟩 Structure | Tree built from important files, with a LOC column |
+| 3 | 🟩 Structure | Tree built from important files, with a LOC column; counts cover files with a detected symbol, and a note under the tree says so |
 | 4 | 🟩 Frameworks | Detected frameworks/libraries |
 | 5 | 🟩 Tests | Test file count, frameworks, coverage estimate |
 | 6 | 🟩 Configuration | Config file excerpts (heuristic + semantic) |
@@ -1480,6 +1480,7 @@ C++ (82%), Lua (12%), CMake (6%)
  14k ├── builtin
  14k │   └── [and 45 other items]
   9k └── [and 12 other items]
+Counts and LOC cover only files with at least one detected symbol; files with none, such as JSON data or extensionless scripts, are left out.
 
 ## Frameworks
 - cmake
