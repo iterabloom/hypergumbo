@@ -2622,6 +2622,7 @@ Initial public release with comprehensive static analysis capabilities.
 
 | Version | Date       | Highlights                                                   |
 | ------- | ---------- | ------------------------------------------------------------ |
+| Unreleased | — | Summaries count your own code; analysed vendored code disclosed; git submodules skipped by default; edge confidence from evidence bands (`confidence_model` v2.2); Structure tree LOC column; surveys find `requirements/*.txt` and `conf/*.routes` |
 | 9.0.0 | 2026-10-14 | `stable_id_scheme` v9: deleting a symbol moves no other id; catalogue tiers (only `builtin` rows clear a flow, in-repo catalogue data opt-in); installed dependency source skipped by default (`--trace-deps`); calls bind to the declaration in scope in five languages |
 | 8.1.0   | 2026-09-25 | Calls credited to their enclosing function by position (25 analyzers); receiver typing in 10 languages; opt-in scip-python backend merged per record (ADR-0057); `is_exported` can be `null`; taint useful precision 24.1% → 30.9% |
 | 8.0.0   | 2026-08-20 | **Breaking:** `verify-claims` exit code 3 (`confirmed_with_caveats`), envelope 2.0, `Edge.quality` removed. Analysing a repo no longer runs its code; bounded results cache; cold survey 517.7s → 220.0s |
