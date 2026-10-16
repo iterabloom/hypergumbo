@@ -12,6 +12,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+
+- **The developer-offer examples directory is gitignored**, by this repo's root `.gitignore` and by one it carries inside.
+
 ## [9.1.0] - 2026-10-16
 
 ### Breaking and contract changes
