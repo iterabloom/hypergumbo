@@ -22,3 +22,19 @@
     fields:  # dedf
       statement: "find_files returns the same files for a pattern whether or not a FileIndex is installed."  # dedf
       root_cause: "FileIndex.match_pattern general-glob branch fnmatches fpath.name, which never contains '/'."  # dedf
+- op: update  # d61d
+  at: '2026-10-16T10:35:03Z'  # d61d
+  by: agent  # d61d
+  actor: jgstern_agent  # d61d
+  clock: 2  # d61d
+  nonce: d61d  # d61d
+  set:  # d61d
+    status: satisfied  # d61d
+    pr_ref: '1633'  # d61d
+- op: discuss  # b98c
+  at: '2026-10-16T10:35:03Z'  # b98c
+  by: agent  # b98c
+  actor: jgstern_agent  # b98c
+  clock: 3  # b98c
+  nonce: b98c  # b98c
+  message: "Fixed in PR #1633 (e0bd0ecdf8). Root cause: FileIndex.match_pattern fnmatched globs against fpath.name; a pattern with a directory segment now matches the path relative to the requested root, segment-wise with ** spanning, anchored at the end (rglob's rule). Behavioural evidence, filed repro re-run on merged dev 2026-10-16: scratch tree (setup.py, pkg/setup.py, conf/app.routes, api/x.proto) walk vs index = {'**/setup.py': 2/2, '**/*.proto': 1/1, 'conf/*.routes': 1/1} (index was 0 for conf/*.routes before); find_requirements_files with requirements.txt, requirements/base.txt, reqs/dev.txt returns all three under an index (was only requirements.txt). Production-path tests: test_requirements_file_index.py (mainstream) and test_file_index_path_patterns.py, whose guard checks walk == index for 297 literal source patterns. The guard also found and the PR fixed two sibling divergences: case-insensitive pure *.ext (index) vs case-sensitive rglob, and walk not deduping a file two patterns match. Also repaired: di_resolution META-INF/services/* (Maven layout) and sketch __tests__/*.js|ts."  # b98c
