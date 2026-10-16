@@ -19,3 +19,10 @@
     pr_ref:  # 3bf5
     description: "Each is referenced only by its definition, docstrings and tests (checked packages/, scripts/, hooks, workflows, entry points). cache.get_compiled treats any mtime change as a miss, so invalidate_stale's discussion-only fast path never runs; query_blocking's 'for count_todos' claim was false. TOKENS_PER_NODE_OVERHEAD is re-exported in selection/__init__ __all__ and tested only for > 0. Decide per helper: delete or wire.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 3bf5
     fields: {}  # 3bf5
+- op: discuss  # 8e3c
+  at: '2026-10-16T08:01:47Z'  # 8e3c
+  by: agent  # 8e3c
+  actor: jgstern_agent  # 8e3c
+  clock: 2  # 8e3c
+  nonce: 8e3c  # 8e3c
+  message: "Two more from the 2026-10-16 docstring audit (verifier-checked greps of packages/, scripts/, hooks, workflows, entry points; git log -S): (1) hypergumbo_core.test_masking has no caller since 6c95b9d784 removed its smart-test integration (only its tests and a comment at scripts/smart-test:872); docstring now says so. (2) selection_index writes meta last_full_run_sha but nothing reads it (never landed: only f1250331f6 introduced it); docstring now says 'nothing reads it yet'. Decide: delete or wire."  # 8e3c
