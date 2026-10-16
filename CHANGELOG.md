@@ -14,6 +14,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- Sketch Structure tree: per-line LOC column.
 - Progress: phase, elapsed, 30s stack heartbeats; no ETA.
 - Heartbeat: one line per busy worker, named by pass.
 - Cold sketch reuses the survey file list; no re-walk.

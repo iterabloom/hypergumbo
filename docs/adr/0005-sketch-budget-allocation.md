@@ -2,7 +2,7 @@
 # 5. Sketch Budget Allocation and Section Composition
 
 Date: 2025-01-15
-Updated: 2026-03-19
+Updated: 2026-10-16 (Structure LOC column)
 Status: Partially superseded by ADR-0039 (entrypoint-selection rows: entrypoints rank by `rank_score`, not `confidence`)
 
 ## Context
@@ -152,21 +152,22 @@ The Structure section displays a `tree`-like visualization showing paths to impo
 **Output format:**
 
 ```
-/path/to/repo/
-├── config.yaml
-├── src
-│   ├── main.py
-│   └── [and 42 other items]
-├── tests
-│   ├── integration
-│   │   ├── test_api.py
-│   │   └── [and 12 other items]
-│   └── [and 8 other items]
-└── [and 5 other items]
+     /path/to/repo/
+ 40  ├── config.yaml
+ 12k ├── src
+315  │   ├── main.py
+ 12k │   └── [and 42 other items]
+  6k ├── tests
+  2k │   ├── integration
+410  │   │   ├── test_api.py
+  1k │   │   └── [and 12 other items]
+  4k │   └── [and 8 other items]
+  3k └── [and 5 other items]
 ```
 
 - Every expanded branch terminates at least one visible file (the "important file" that caused inclusion)
 - Sibling counts shown as `[and N other items]`
+- Each line under the root opens with a LOC column (added 2026-10-16): four columns, up to three digits and a unit (` `, `k`, `M`), rounded half up. A file shows its non-blank lines; a directory the sum over the items its count covers (same excludes and skips); an `[and N other items]` line the part of its directory the shown lines leave out. Binary files and symlinks count zero. The root line has no count: the Overview states the project's LOC over tiers 1–2 (ADR-0004 3a), while the tree counts every file on disk, vendored code included, to show where the lines are.
 - Nested structure revealed along the path to important files
 - Hidden directories (`.github/`, etc.) included if they contain important files
 
@@ -260,7 +261,7 @@ Two distinct centrality metrics exist:
 
 A 16k-token sketch of litellm (~1M LOC, 4678 files) produces:
 
-**Structure section (tree format):**
+**Structure section (tree format; captured before the LOC column was added):**
 ```
 /home/user/litellm/
 ├── AGENTS.md

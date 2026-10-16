@@ -121,7 +121,7 @@ from __future__ import annotations
 import os
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, List, Optional
 
 if TYPE_CHECKING:
     from .discovery import FileIndex
@@ -2975,32 +2975,18 @@ def _dir_children_from_index(dir_path: Path) -> Optional[list[tuple[str, bool]]]
     index = get_file_index()
     if index is None:
         return None
-    try:
-        dir_path.relative_to(index.repo_root)
-    except ValueError:
-        return None
-    children: dict[str, bool] = {}
-    for f in index.all_files():
-        try:
-            rel = f.relative_to(dir_path)
-        except ValueError:
-            continue
-        parts = rel.parts
-        if not parts:  # pragma: no cover - index stores files, not dir_path itself
-            continue
-        name = parts[0]
-        is_dir = len(parts) > 1
-        children[name] = children.get(name, False) or is_dir
-    return sorted(children.items())
+    children = index.children(dir_path)
+    return None if children is None else sorted(children.items())
 
 
-def _count_dir_items(
+def _kept_dir_children(
     dir_path: Path,
     repo_root: Path,
     name_excludes: list[str],
     exclude_tests: bool = False,
-) -> int:
-    """Count immediate non-excluded children of ``dir_path``.
+) -> list[tuple[str, bool]]:
+    """Immediate non-excluded ``(name, is_dir)`` children of ``dir_path``:
+    the items the Structure tree counts and sums LOC over.
 
     Honors a map-scoped :class:`FileIndex` when one covers ``dir_path``
     (INV-jumim: a ``--input`` sketch must count the MAP's items, not the
@@ -3015,8 +3001,8 @@ def _count_dir_items(
         try:
             children = [(it.name, it.is_dir()) for it in dir_path.iterdir()]
         except (PermissionError, OSError):  # pragma: no cover
-            return 0
-    count = 0
+            return []
+    kept: list[tuple[str, bool]] = []
     for name, is_dir in children:
         if any(fnmatch(name, p) for p in name_excludes):
             continue
@@ -3031,8 +3017,110 @@ def _count_dir_items(
                     continue  # Skip test directory
                 if not is_additional_file_candidate(dir_path / name):
                     continue  # Skip test source file (keep CONFIG/DOC)
-        count += 1
-    return count
+        kept.append((name, is_dir))
+    return kept
+
+
+def _count_dir_items(
+    dir_path: Path,
+    repo_root: Path,
+    name_excludes: list[str],
+    exclude_tests: bool = False,
+) -> int:
+    """Count immediate non-excluded children of ``dir_path``
+    (see :func:`_kept_dir_children`)."""
+    return len(_kept_dir_children(dir_path, repo_root, name_excludes, exclude_tests))
+
+
+#: Bytes sniffed for a NUL to tell a binary file from text. A binary file's
+#: "lines" are meaningless, so it counts zero rather than noise.
+_BINARY_SNIFF_BYTES = 8192
+
+
+def _file_sloc(path: Path) -> int:
+    """Non-blank lines of a text file (:func:`profile.sloc_of_text`); 0 for a
+    binary file or one that cannot be read. The sniff is read first, so a
+    large binary is never read whole."""
+    from .profile import sloc_of_text
+
+    try:
+        with path.open("rb") as fh:
+            head = fh.read(_BINARY_SNIFF_BYTES)
+            if b"\0" in head:
+                return 0
+            data = head + fh.read()
+    except OSError:
+        return 0
+    return sloc_of_text(data.decode("utf-8", errors="ignore"))
+
+
+def _format_loc(n: int) -> str:
+    """A LOC count in four columns: up to three digits and a unit
+    (`` ``, ``k``, ``M``, ``G``), rounded half up -- ``  9 ``, `` 14k``,
+    ``  1M``. Fixed width keeps the tree's connectors aligned."""
+    if n < 1000:
+        return f"{n:>3} "
+    for unit, scale in (("k", 10**3), ("M", 10**6)):
+        shown = (n + scale // 2) // scale
+        if shown < 1000:
+            return f"{shown:>3}{unit}"
+    return f"{(n + 5 * 10**8) // 10**9:>3}G"
+
+
+class _TreeLoc:
+    """LOC for the Structure tree's left column, memoised per path.
+
+    A file counts its non-blank lines (:func:`_file_sloc`); a directory sums
+    the items :func:`_kept_dir_children` keeps, so a directory's LOC covers
+    exactly what its item count covers -- the same excludes, the same
+    installed-dependency and build-output skips, the same map-scoped index.
+    A symlink counts zero and is never followed: following could loop, and
+    the target is counted where it lives if it lies in the repository.
+
+    The tree counts every kept file, vendored ones included. It maps where
+    the lines are on disk; it is not one of the project summaries ADR-0004
+    3a restricts to tiers 1-2 (the Overview's LOC line is). Memoising makes
+    each file read once however many tree lines contain it.
+    """
+
+    def __init__(self, repo_root: Path, name_excludes: list[str], exclude_tests: bool) -> None:
+        self._root = repo_root
+        self._excludes = name_excludes
+        self._exclude_tests = exclude_tests
+        self._memo: dict[Path, int] = {}
+
+    def __call__(self, path: Path) -> int:
+        hit = self._memo.get(path)
+        if hit is None:
+            hit = self._memo[path] = self._measure(path)
+        return hit
+
+    def _measure(self, path: Path) -> int:
+        if path.is_symlink():
+            return 0
+        if path.is_dir():
+            return sum(
+                self(path / name)
+                for name, _ in _kept_dir_children(
+                    path, self._root, self._excludes, self._exclude_tests,
+                )
+            )
+        return _file_sloc(path)
+
+    def column(self, path: Path) -> str:
+        """``path``'s LOC formatted for the column, with its trailing gap."""
+        return f"{_format_loc(self(path))} "
+
+    def remainder(self, dir_path: Path, shown: "Iterable[str]") -> str:
+        """The column for an ``[and N other items]`` line: ``dir_path``'s LOC
+        less that of the ``shown`` children."""
+        rest = self(dir_path) - sum(self(dir_path / name) for name in shown)
+        return f"{_format_loc(max(0, rest))} "
+
+
+#: The root line's column: blank, because the Overview states the project's
+#: LOC and the tree's all-files total would read as a second, larger answer.
+_ROOT_LOC_COLUMN = " " * 5
 
 
 def _count_root_items(repo_root: Path, excludes: list[str]) -> int:
@@ -3078,7 +3166,8 @@ def _format_structure_tree_fallback(
     name_excludes = _normalize_name_excludes(excludes)
 
     lines = [_section_header("Structure", exclude_tests), "", "```"]
-    lines.append(f"{repo_root.name}/")
+    lines.append(f"{_ROOT_LOC_COLUMN}{repo_root.name}/")
+    loc = _TreeLoc(repo_root, name_excludes, exclude_tests)
 
     # Build set of all source file patterns from SOURCE_EXTENSIONS
     source_patterns: set[str] = set()
@@ -3164,7 +3253,7 @@ def _format_structure_tree_fallback(
 
     for i, (name, is_dir) in enumerate(shown_items):
         is_last = (i == len(shown_items) - 1) and hidden_count == 0
-        prefix = "└── " if is_last else "├── "
+        prefix = loc.column(repo_root / name) + ("└── " if is_last else "├── ")
         if is_dir:
             dir_path = repo_root / name
             item_count = count_items(dir_path)
@@ -3177,7 +3266,8 @@ def _format_structure_tree_fallback(
             lines.append(f"{prefix}{name}")
 
     if hidden_count > 0:
-        lines.append(f"└── [and {hidden_count} other items]")
+        column = loc.remainder(repo_root, (name for name, _ in shown_items))
+        lines.append(f"{column}└── [and {hidden_count} other items]")
 
     lines.append("```")
     return "\n".join(lines)
@@ -3271,6 +3361,11 @@ def _format_structure_tree(
         """
         return _count_dir_items(path, repo_root, name_excludes)
 
+    loc = _TreeLoc(repo_root, name_excludes, exclude_tests=False)
+
+    def shown_names(node: dict[str, Any]) -> list[str]:
+        return [c["name"] for c in node["children"].values() if c["shown"]]
+
     def render_tree(node: dict[str, Any], path: Path, prefix: str = "") -> list[str]:
         """Render tree node and its children."""
         lines: list[str] = []
@@ -3298,7 +3393,7 @@ def _format_structure_tree(
             has_more_siblings = not is_truly_last
             child_prefix = prefix + ("│   " if has_more_siblings else "    ")
 
-            lines.append(f"{prefix}{connector}{child['name']}")
+            lines.append(f"{loc.column(child_path)}{prefix}{connector}{child['name']}")
 
             # If directory with shown children, recurse
             if not child["is_file"] and child["children"]:
@@ -3306,12 +3401,13 @@ def _format_structure_tree(
 
                 # Count hidden items inside this child directory
                 child_total = count_items(child_path) if child_path.is_dir() else 0
-                child_shown = len([c for c in child["children"].values() if c["shown"]])
-                child_hidden = max(0, child_total - child_shown)
+                child_shown = shown_names(child)
+                child_hidden = max(0, child_total - len(child_shown))
 
                 if child_hidden > 0:
                     # "and N other items" is always the last item in this directory
-                    lines.append(f"{child_prefix}└── [and {child_hidden} other items]")
+                    column = loc.remainder(child_path, child_shown)
+                    lines.append(f"{column}{child_prefix}└── [and {child_hidden} other items]")
 
         return lines
 
@@ -3323,10 +3419,14 @@ def _format_structure_tree(
     hidden_root = total_root_items - len(seen_root_dirs)
 
     if hidden_root > 0:
-        tree_lines.append(f"└── [and {hidden_root} other items]")
+        column = loc.remainder(repo_root, shown_names(root))
+        tree_lines.append(f"{column}└── [and {hidden_root} other items]")
 
     # Build the output
-    lines = [_section_header("Structure", exclude_tests), "", "```", f"{repo_root.name}/"]
+    lines = [
+        _section_header("Structure", exclude_tests), "", "```",
+        f"{_ROOT_LOC_COLUMN}{repo_root.name}/",
+    ]
     lines.extend(tree_lines)
     lines.append("```")
 
