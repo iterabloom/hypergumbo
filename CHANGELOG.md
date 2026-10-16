@@ -35,6 +35,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Surveys find `requirements/*.txt`, `conf/*.routes`, `META-INF/services/*`.**
 - **Quieter stderr**: routine `[passes]` reasons counted, warnings plain.
 - **Partial-install suggestions work** and name the right package.
 

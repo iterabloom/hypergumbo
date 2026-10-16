@@ -21,7 +21,11 @@ respecting exclude patterns. Also provides:
   (``FileIndex.build``) and clears it on every exit path; ``sketch`` installs
   a map-scoped ``FileIndex.from_paths`` for the ``--input`` / warm-map case
   (INV-jumim), so ``find_files`` then yields only the map's files. With no
-  index installed, ``find_files`` falls back to ``rglob`` per pattern.
+  index installed, ``find_files`` falls back to ``rglob`` per pattern. The two
+  paths return the same files for any pattern: the index matches a pattern
+  with a directory segment (``requirements/*.txt``) against the path, not the
+  bare name, and both match a pure ``*.ext`` pattern case-insensitively
+  (INV-kalaj).
 
 - **Test-file gate for content-scanning linkers:** ``find_non_test_files()``
   wraps ``find_files`` (same signature, every argument forwarded) and
@@ -1913,6 +1917,48 @@ def _has_glob_chars(pattern: str) -> bool:
     return any(c in pattern for c in "*?[")
 
 
+def _pure_extension(pattern: str) -> str | None:
+    """The lowercase ``.ext`` of a pure single-extension pattern, else None.
+
+    ``*.py`` and ``**/*.py`` are pure; ``*.blade.php`` (a compound suffix:
+    ``Path.suffix`` keeps only the last segment, WI-navaf), ``Dockerfile*``
+    and anything with a directory segment are not. Both ``find_files``
+    paths match a pure pattern on ``Path.suffix`` case-insensitively, so a
+    FileIndex and the ``rglob`` fallback agree on ``Foo.H`` (INV-kalaj).
+    """
+    if pattern.startswith("**/"):
+        pattern = pattern[3:]
+    if (
+        pattern.startswith("*.")
+        and not _has_glob_chars(pattern[2:])
+        and "." not in pattern[2:]
+        and "/" not in pattern
+    ):
+        return pattern[1:].lower()
+    return None
+
+
+def _path_segments_match(parts: tuple[str, ...], pattern: tuple[str, ...]) -> bool:
+    """Match path segments against pattern segments, with ``**`` spanning any.
+
+    Each non-``**`` pattern segment fnmatches exactly one path segment, so
+    ``*`` never crosses a ``/``. This is ``rglob``'s rule once the caller
+    prefixes the pattern with ``**`` (INV-kalaj).
+    """
+    if not pattern:
+        return not parts
+    head, rest = pattern[0], pattern[1:]
+    if head == "**":
+        return any(
+            _path_segments_match(parts[i:], rest) for i in range(len(parts) + 1)
+        )
+    return (
+        bool(parts)
+        and fnmatch(parts[0], head)
+        and _path_segments_match(parts[1:], rest)
+    )
+
+
 def _normalize_exclude_pattern(pattern: str) -> str:
     """Normalize a user-supplied exclude pattern to gitignore-style semantics.
 
@@ -2377,13 +2423,19 @@ class FileIndex:
         """Return all indexed files."""
         return self._all_files
 
-    def match_pattern(self, pattern: str) -> Iterator[Path]:
-        """Match a single pattern using the best strategy.
+    def match_pattern(self, pattern: str, root: Path | None = None) -> Iterator[Path]:
+        """Match a single pattern the way ``root.rglob(pattern)`` would.
 
         Classifies the pattern as:
-        - Pure extension ('*.py') → O(1) dict lookup
+        - Directory segment ('requirements/*.txt', 'src/**/*.py') → each
+          file's path relative to ``root`` (default: the index root) is
+          matched segment by segment, anchored at the end, as rglob does.
+          Matching on the bare file name, which never holds a '/', found
+          nothing, so every survey dropped such files (INV-kalaj).
+        - Pure extension ('*.py') → O(1) dict lookup, case-insensitive
+          (``_pure_extension``, shared with the rglob fallback)
         - Exact filename ('Makefile') → O(1) dict lookup
-        - Glob ('Dockerfile*', '*.gradle.kts') → fnmatch scan
+        - Glob ('Dockerfile*', '*.gradle.kts') → fnmatch scan of names
 
         Handles '**/' prefix (stripped, since the index is already
         recursive).
@@ -2392,22 +2444,24 @@ class FileIndex:
         if pattern.startswith("**/"):
             pattern = pattern[3:]
 
-        if not _has_glob_chars(pattern):
+        ext = _pure_extension(pattern)
+        if "/" in pattern:
+            base = self._repo_root if root is None else root
+            segments = ("**", *(s for s in pattern.split("/") if s))
+            for fpath in self._all_files:
+                try:
+                    parts = fpath.relative_to(base).parts
+                except ValueError:
+                    continue
+                if _path_segments_match(parts, segments):
+                    yield fpath
+        elif not _has_glob_chars(pattern):
             # Exact filename: 'Makefile', 'justfile', etc.
             yield from self._by_name.get(pattern, [])
-        elif (
-            pattern.startswith("*.")
-            and not _has_glob_chars(pattern[2:])
-            and "." not in pattern[2:]
-        ):
-            # Pure single-extension: '*.py', '*.tsx'.
-            # Compound suffixes like '*.blade.php', '*.d.ts', '*.lagda.md'
-            # MUST NOT take this path — Path.suffix only retains the last
-            # segment, so '_by_ext[".blade.php"]' would be empty and the
-            # pattern would silently match zero files (WI-navaf: blade
-            # analyzer was never enrolling on koel because of this).
-            ext = pattern[1:]  # '.py', '.tsx'
-            yield from self._by_ext.get(ext.lower(), [])
+        elif ext is not None:
+            # Pure single-extension: '*.py', '*.tsx'. Compound suffixes like
+            # '*.blade.php' fall through to the glob scan (WI-navaf).
+            yield from self._by_ext.get(ext, [])
         else:
             # General glob: 'Dockerfile*', '*.gradle.kts', '*.blade.php', etc.
             for fpath in self._all_files:
@@ -2446,8 +2500,12 @@ def find_files(
     When a global FileIndex is set (via set_file_index()) for ``repo_root``
     or a directory containing it, delegates to the index for O(1) lookups
     instead of calling rglob() per pattern; for a sub-directory the index's
-    paths are filtered to those under it. Index patterns match on the file
-    name only, so the filter is the whole difference. Before the sub-directory
+    paths are filtered to those under it, and a pattern with a directory
+    segment is matched relative to ``repo_root``, as rglob would. Both paths
+    return the same files for every pattern (INV-kalaj; the index used to
+    match file names only, so ``requirements/*.txt`` found nothing in a
+    survey), and both match a pure ``*.ext`` pattern case-insensitively
+    (``_pure_extension``). Before the sub-directory
     case, the sketch's walk of ``src/`` (``_collect_source_files``) fell
     back to rglob() even with an index installed. The index was built with its own
     excludes, and in that case the ``excludes`` argument is NOT applied:
@@ -2490,7 +2548,7 @@ def find_files(
         count = 0
         seen: set[Path] = set()
         for pattern in patterns:
-            for path in index.match_pattern(pattern):
+            for path in index.match_pattern(pattern, root=repo_root):
                 if path in seen or (under is not None and not path.is_relative_to(under)):
                     continue
                 seen.add(path)
@@ -2516,12 +2574,23 @@ def find_files(
     exact, globs, paths = _classify_excludes(excludes)
 
     count = 0
+    # A file two patterns match is yielded once, as on the index path
+    # (``*.R`` and ``*.r`` both match ``x.R`` under the shared suffix rule).
+    walked: set[Path] = set()
     for pattern in patterns:
-        for path in repo_root.rglob(pattern):
+        ext = _pure_extension(pattern)
+        candidates = (
+            repo_root.rglob(pattern)
+            if ext is None
+            # Same case-insensitive suffix rule as the index (INV-kalaj).
+            else (p for p in repo_root.rglob("*") if p.suffix.lower() == ext)
+        )
+        for path in candidates:
             if max_files is not None and count >= max_files:
                 return
-            if not path.is_file():
+            if path in walked or not path.is_file():
                 continue
+            walked.add(path)
             if _is_excluded_classified(path, repo_root, exact, globs, paths):
                 continue
             if _is_under_locale_exclude(path):
