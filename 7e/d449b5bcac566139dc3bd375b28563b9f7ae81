@@ -1,0 +1,20 @@
+Original commit body from f6b6ae22b06430fa84f61fd7f05bc33d1a15e550:
+
+SCHEMA_VERSION 0.20.14 -> 0.20.15: profile.languages[*].own_files /
+own_loc (WI-kojul) and supply_chain_summary.vendored_analysed (WI-pasan)
+shipped in docs/schema.json without a bump. Additive, hence patch.
+
+CONFIDENCE_MODEL hypergumbo-evidence-v2.1 -> v2.2: ADR-0039 rulings 6-7
+changed single-producer scores (grade interpolates inside the band; JS/TS
+scope-bound 0.90 -> 0.85) while the output still claimed 9.0.0's model.
+Same meaning and bands, so MINOR per spec Appendix A.
+
+Spec Appendix C listed 'changing the scoring algorithm' as breaking,
+contradicting Appendix A's 'score adjustments' under confidence_model
+MINOR. Appendix C now reserves breaking for redefining what confidence
+measures, its scale or an evidence type's meaning, and says a scoring
+refinement bumps confidence_model MINOR. Also corrects two stale
+'currently' versions in the version-axes section (schema_version 0.20.6,
+io-boundaries 2.3).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
