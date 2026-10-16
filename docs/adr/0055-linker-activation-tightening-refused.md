@@ -104,3 +104,4 @@ This is bucket 1 per `docs/adr/README.md` — a load-bearing refusal binding fut
 - [ADR-3bbb](3bbb-linker-subcategory-restoration.md) — the subcategory vocabulary evaluated as H3.
 - [ADR-0054](0054-pass-silence-candidates-unresolved.md) — the disclosure axis evaluated as H1/H2, and the filing constraint.
 - [ADR-0056](0056-pass-silence-producerless-values.md) — why `prerequisite_absent` is not the landing value for a closed gate.
+- [ADR-0004](0004-file-taxonomy.md) point 3a — amended 2026-10-16 to keep linker activation off the tier-1–2 summary list, on this ADR's reasoning (a tier-based gate is the same recall-loss direction).

@@ -36,6 +36,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - Analysed vendored code disclosed: stderr, sketch, summary.
 - Unmarked tree-sitter, Bison, flex, re2c, ragel output is tier 4.
 - Git submodules skipped and disclosed; `--trace-deps <path>` analyses them.
+- ADR-0004 3a: linker activation keeps vendored languages (ADR-0055).
 
 ## [9.0.0] - 2026-10-14
 
