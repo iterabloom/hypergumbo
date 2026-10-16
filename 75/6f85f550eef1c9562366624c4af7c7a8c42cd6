@@ -1,0 +1,22 @@
+Original commit body from 95e209ebe9bd2e0d2a32e1af07f8856311df4657:
+
+ADR-0004 point 2 table (2026-10-15): HEAD holds only a gitlink for a
+submodule, so its contents are not committed and a fresh clone never
+has them. A populated submodule is now skipped by default, disclosed
+("Installed dependency source not analysed: lib/sub/ (git submodule).
+..."), and analysed as tier 3 with --trace-deps <declared path>.
+
+Detection by evidence, not name: discovery.SUBMODULE_RULE claims a
+directory that holds a .git (one lstat is all an ordinary directory
+pays), that the enclosing work tree's .gitmodules declares, and whose
+HEAD entry is a gitlink (mode 160000), read with git ls-tree HEAD like
+_head_entries (never the index); with no git or no commits, a .git
+file. The git call is factored into _ls_tree_head so the hazard
+handling lives once. An unpopulated submodule (empty directory) and an
+undeclared nested repository are unchanged.
+
+Tests build a real superproject with `git submodule add`: skipped and
+disclosed, traced as tier 3 with package lib/sub, a plain clone's
+empty submodule is a no-op.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
