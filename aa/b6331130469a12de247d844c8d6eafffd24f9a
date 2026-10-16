@@ -1,0 +1,27 @@
+Original commit body from 326e56a9b9fa6cdd76cd78f087136c964a51c0c9:
+
+Pool: 9 flagged + 30 rolling (never reviewed) + 30 code-changed since
+the 2026-10-14 audit = 69 files; 46 drifted (lower bound; a blind
+re-review of 5 'matches' found drift in 1, ir.py). ~115 findings, each
+checked by a default-REJECT verifier: 4 rejected, the rest confirmed
+(several re-graded). This commit applies the A/B/D fixes; the C
+(omission) rewrites follow separately.
+
+Largest families: confidence figures written before ADR-0039 ruling 6
+(go, js_ts, lua, glsl, hlsl, haskell, confidence.py); wrong pipeline
+order and stale 'future work' in spec_validator; stale tier/opt-in
+prose in backend_selection, rust-analyzer, cli overlay order;
+gitleaks scans stdin output of sketch only; safety_zones ships in the
+wheel.
+
+Code defects are filed, not papered over (docstrings keep stating the
+intent): INV-kalaj (FileIndex never matches 'dir/*.ext' patterns),
+INV-hilod (catalogue inventory 'yours' counts one channel), INV-vivit
+(router-routes depends_on), WI-zijop (dead-code-maybe hand-built
+Symbols); evidence added to INV-zujag, INV-pobap, WI-biraf, WI-fidan.
+
+Citation registries re-anchored after the line shifts:
+module_key_axis (3) and signature_axis (3). Ledger records all 69
+files. test_signature_axis + test_module_key_axis: 43 passed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
