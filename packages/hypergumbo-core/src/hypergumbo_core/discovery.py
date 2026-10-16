@@ -2110,11 +2110,13 @@ class FileIndex:
     - _by_name: maps filename (e.g. 'Makefile') to list of Paths
     - _all_files: sorted list of all indexed files
     - _repo_root: the repository root used during construction
+    - _children: directory -> {child name: is_dir}, built on first
+      :meth:`children` call
     """
 
     __slots__ = (
-        "_all_files", "_by_ext", "_by_name", "_generated_output_roots",
-        "_installed_dep_roots", "_repo_root",
+        "_all_files", "_by_ext", "_by_name", "_children",
+        "_generated_output_roots", "_installed_dep_roots", "_repo_root",
     )
 
     def __init__(
@@ -2132,6 +2134,35 @@ class FileIndex:
         self._all_files = all_files
         self._installed_dep_roots = installed_dep_roots or []
         self._generated_output_roots = generated_output_roots or []
+        self._children: "dict[Path, dict[str, bool]] | None" = None
+
+    def children(self, dir_path: Path) -> "dict[str, bool] | None":
+        """Immediate children of ``dir_path`` as ``{name: is_dir}``, or
+        ``None`` when ``dir_path`` is not under this index's root.
+
+        A child is a directory when some indexed file lies below it. The map
+        is built in one pass over the files on first call, so a caller that
+        visits every directory (the sketch's Structure LOC column) pays once
+        rather than one scan of every file per directory.
+        """
+        try:
+            dir_path.relative_to(self._repo_root)
+        except ValueError:
+            return None
+        if self._children is None:
+            tree: dict[Path, dict[str, bool]] = {}
+            for f in self._all_files:
+                try:
+                    parts = f.relative_to(self._repo_root).parts
+                except ValueError:  # pragma: no cover - indexed files lie under the root
+                    continue
+                d = self._repo_root
+                for i, name in enumerate(parts):
+                    kids = tree.setdefault(d, {})
+                    kids[name] = kids.get(name, False) or i < len(parts) - 1
+                    d = d / name
+            self._children = tree
+        return self._children.get(dir_path, {})
 
     @property
     def installed_dep_roots(self) -> "list[tuple[Path, ContentRule]]":

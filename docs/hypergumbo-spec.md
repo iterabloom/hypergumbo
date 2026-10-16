@@ -1420,7 +1420,7 @@ Markdown output to stdout (not a file). This is the default output mode. Designe
 |-------|---------|---------|
 | 1 | 🟩 Header | Title, description |
 | 2 | 🟩 Overview | Language breakdown, file counts, LOC |
-| 3 | 🟩 Structure | Tree built from important files |
+| 3 | 🟩 Structure | Tree built from important files, with a LOC column |
 | 4 | 🟩 Frameworks | Detected frameworks/libraries |
 | 5 | 🟩 Tests | Test file count, frameworks, coverage estimate |
 | 6 | 🟩 Configuration | Config file excerpts (heuristic + semantic) |
@@ -1472,14 +1472,14 @@ C++ (82%), Lua (12%), CMake (6%)
 ~120,000 LOC (~105,000 non-test + ~15,000 test)
 
 ## Structure
-/path/to/minetest-wasm/
-├── CMakeLists.txt
-├── src
-│   ├── main.cpp
-│   └── [and 234 other items]
-├── builtin
-│   └── [and 45 other items]
-└── [and 12 other items]
+     /path/to/minetest-wasm/
+ 92  ├── CMakeLists.txt
+ 97k ├── src
+  1k │   ├── main.cpp
+ 96k │   └── [and 234 other items]
+ 14k ├── builtin
+ 14k │   └── [and 45 other items]
+  9k └── [and 12 other items]
 
 ## Frameworks
 - cmake

@@ -949,10 +949,15 @@ def _count_loc(file_path: Path, max_file_size: int | None = None) -> int:
     try:
         if max_file_size is not None and file_path.stat().st_size > max_file_size:
             return 0
-        content = file_path.read_text(encoding="utf-8", errors="ignore")
-        return sum(1 for line in content.splitlines() if line.strip())
+        return sloc_of_text(file_path.read_text(encoding="utf-8", errors="ignore"))
     except (OSError, IOError):  # pragma: no cover - defensive
         return 0
+
+
+def sloc_of_text(content: str) -> int:
+    """Non-blank lines of ``content``: the one SLOC rule for every LOC count
+    hypergumbo prints (the profile's totals, the sketch's Structure tree)."""
+    return sum(1 for line in content.splitlines() if line.strip())
 
 
 def _detect_languages(
