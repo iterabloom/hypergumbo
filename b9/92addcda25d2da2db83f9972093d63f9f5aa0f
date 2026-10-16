@@ -1,0 +1,11 @@
+Original commit body from 019436a5509e334ebf7dbae6914e764c7a47cb78:
+
+Groups the 25 terse one-liners into Breaking/Added/Changed/Fixed/
+Documentation with bold-led sentences, matching 9.0.0's shape. Folds
+duplicate pairs (LOC column + scope note, confidence sites + hook,
+heartbeat + phase line, ADR bullets). Names the unbumped schema
+additions. Header now points at RELEASE-NOTES-9.X.md as the current
+line. Phase 1: all 18 commits since v9.0.0 were already represented;
+tracker changelog has no commits since 0.10.0.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
