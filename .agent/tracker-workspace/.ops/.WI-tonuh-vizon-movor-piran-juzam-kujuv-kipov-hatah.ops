@@ -25,3 +25,25 @@
   clock: 2  # 0ffb
   nonce: 0ffb  # 0ffb
   message: "Same module as WI-dipag (partial_install_warnings.py), different bug: WI-dipag fixes WHAT is counted (tier) and WHEN (after classification); this item fixes the requirement-table key mismatch. Worth doing in the same PR if convenient; neither blocks the other."  # 0ffb
+- op: update  # c012
+  at: '2026-10-15T19:41:10Z'  # c012
+  by: agent  # c012
+  actor: jgstern_agent  # c012
+  clock: 3  # c012
+  nonce: c012  # c012
+  set:  # c012
+    status: done  # c012
+- op: discuss  # 8adf
+  at: '2026-10-15T19:41:11Z'  # 8adf
+  by: agent  # 8adf
+  actor: jgstern_agent  # 8adf
+  clock: 4  # 8adf
+  nonce: 8adf  # 8adf
+  message: "Fixed in PR #1612 (544c6ee024). Root cause: partial_install_warnings looked up LINKER_LANGUAGE_REQUIREMENTS (keys jni/swift_objc/dependency) with diag.linker_name, which is the registered name (jni-linker), so .get() never hit. Fix: LinkerRequirement.languages (carried on RequirementStatus) declared on 16 linkers; the table is deleted, so no second key can drift. Behavioural evidence, production-path tests through the real registry (check_linker_requirements over get_all_linkers, no hand-built LinkerDiagnostics): test_jni_suggests_the_package_of_the_missing_side (Java native method, no Java_* C; warning 'JNI linker found 1 Java native method ...  Is hypergumbo-lang-mainstream installed?'), test_tauri_with_a_rust_frontend_does_not_warn (WI-ruman gate now fires: rust-only Tauri tree, no warning; before, 'found 1 Rust #[tauri::command] functions but 0 JavaScript/TypeScript files'), test_tauri_with_js_in_the_tree_still_warns. Also: a suggested package already installed is dropped; LANGUAGE_PACKAGES had 22 of 56 entries naming the wrong package (live in the unanalyzed-files warning) -- regenerated to 74 entries and checked against every @register_analyzer in the tree. swift-objc-linker still declares no requirements (unchanged)."  # 8adf
+- op: discuss  # 0348
+  at: '2026-10-15T19:41:23Z'  # 0348
+  by: agent  # 0348
+  actor: jgstern_agent  # 0348
+  clock: 5  # 0348
+  nonce: '0348'  # 0348
+  message: "Correction: the commit on dev is 63c2531c5e (auto-pr rebased; 544c6ee024 was the pre-rebase branch hash)."  # 0348

@@ -20,3 +20,18 @@
     pr_ref:  # e808
     description: "Disclose committed vendored code that was analysed as tier 3 and left out of the summaries (ADR-0004 3a), in the same three places as the installed-deps disclosure (ADR-0004 point 4): a stderr line, a line in the sketch Overview, and supply_chain_summary.vendored_analysed = {dirs, entries: [{path, languages, files}]} (entries capped at 10). Nothing printed when there is none. Proposed text:\n\n  \"Vendored third-party code analysed as tier 3, not counted in the language breakdown: packages/hypergumbo-core/src/hypergumbo_core/vendor/ (C/C++, 4 files). To skip: --exclude <dir>.\"\n\nDirectory grouping: report the tier-3 root that the supply_chain pattern matched, not every file. Schema addition needs the usual schema/concept-axes regeneration."  # e808
     fields: {}  # e808
+- op: update  # 63a3
+  at: '2026-10-15T23:34:04Z'  # 63a3
+  by: agent  # 63a3
+  actor: jgstern_agent  # 63a3
+  clock: 2  # 63a3
+  nonce: 63a3  # 63a3
+  set:  # 63a3
+    status: done  # 63a3
+- op: discuss  # 2034
+  at: '2026-10-15T23:34:04Z'  # 2034
+  by: agent  # 2034
+  actor: jgstern_agent  # 2034
+  clock: 3  # 2034
+  nonce: '2034'  # 2034
+  message: "Implemented in PR #1615 (b53ac16880). supply_chain_summary.vendored_analysed = {dirs, entries: [{path, languages, files}]} (cap 10) from tier-3 file nodes grouped by supply_chain.vendored_root (the directory the EXTERNAL_DEP pattern matched); stderr line + sketch Overview line via format_vendored_disclosure; nothing printed when none. Behavioural evidence, production-path test test_vendored_code_is_disclosed_on_stderr_in_the_artifact_and_the_sketch (mainstream package; real run_survey over main.go + third_party/lib/helper.c): stderr contains 'Vendored third-party code analysed as tier 3, not counted in the language breakdown: third_party/ (c; 1 file). To skip: --exclude <dir>.', the artifact's vendored_analysed is {dirs: 1, entries: [{path: third_party, languages: [c], files: 1}]}, and generate_sketch(cached_results=bm) contains the same line; test_no_vendored_disclosure_without_vendored_code: native/helper.c gives no line. Not run on the self-tree. Text differs from the proposal only in the parenthetical ('c; 1 file' -- analyzer language names, not 'C/C++')."  # 2034

@@ -19,3 +19,18 @@
     pr_ref:  # 8d7d
     description: "Git submodules become installed-dependency source (ADR-0004 point 1 row, amendment item): skipped by default, disclosed, opt-in via --trace-deps <path> / trace_deps (so the results-cache key already covers it).\n\nDetection by evidence, not name: a directory listed in .gitmodules whose HEAD entry is a gitlink (mode 160000), read with the same `git ls-tree HEAD -- <dir>` call discovery._head_entries already trusts (never the index -- the core.fsmonitor hazard point 3 documents). Outside git or with no commits: .gitmodules entry plus a `.git` FILE inside the directory. Add an entry to discovery.INSTALLED_DEP_RULES; extend the installed_deps disclosure (\"... git submodule ...\").\n\nTest with a fixture (the corpus cannot measure it: 35 repos, 362 submodule paths, 0 populated on 2026-10-15): populated submodule skipped and disclosed; --trace-deps <path> analyses it as tier 3; an unpopulated submodule path is a no-op."  # 8d7d
     fields: {}  # 8d7d
+- op: update  # cd38
+  at: '2026-10-16T03:06:58Z'  # cd38
+  by: agent  # cd38
+  actor: jgstern_agent  # cd38
+  clock: 2  # cd38
+  nonce: cd38  # cd38
+  set:  # cd38
+    status: done  # cd38
+- op: discuss  # f813
+  at: '2026-10-16T03:06:59Z'  # f813
+  by: agent  # f813
+  actor: jgstern_agent  # f813
+  clock: 3  # f813
+  nonce: f813  # f813
+  message: "Implemented in PR #1617 (756f85f550). discovery.SUBMODULE_RULE (installed-dependency rule selected by declaration, not name): a directory holding a .git, declared in the enclosing work tree's .gitmodules, whose HEAD entry is a gitlink (git ls-tree HEAD, never the index; via the factored _ls_tree_head); with no git/no commits, a .git FILE. One package per submodule = the declared path. Behavioural evidence, tests/test_submodules.py on a real superproject built with 'git submodule add': (1) FileIndex.build lists only app.py, installed_deps_summary entry {path: lib/sub, ecosystem: 'git submodule', packages: 1}, disclosure starts 'Installed dependency source not analysed: lib/sub/ (git submodule).'; (2) TraceDeps.parse('lib/sub') -> lib/sub/dep.py indexed, classify_file tier EXTERNAL_DEP package 'lib/sub', no disclosure entry; (3) a plain 'git clone' (empty lib/sub) -> no rule, dirs 0; (4) no-git export with .gitmodules + .git file -> claimed; (5) undeclared nested repo inside an outer work tree -> not claimed. Not run on the corpus (35 repos, 362 submodule paths, 0 populated on 2026-10-15)."  # f813

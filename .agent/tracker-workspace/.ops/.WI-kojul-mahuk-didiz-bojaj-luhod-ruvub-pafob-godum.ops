@@ -20,3 +20,18 @@
     pr_ref:  # a0e6
     description: "The profile's language breakdown and LOC totals, and the sketch Overview built from them, count tiers 1-2 only (ADR-0004 3a). Today profile.py (~line 985, language/LOC detection) counts every analysed file, and sketch.py _format_language_stats (~2838-2876) prints it: the 2026-10-14 self-sketch says \"Python (62%), C (26%)\", with C at 324,161 LOC -- almost all of it vendored tree-sitter-lean's 305,712-line generated parser.c. Agents reading the sketch are told hypergumbo is a quarter C.\n\nUse a path-only tier check (supply_chain patterns; no file reads) per language bucket, so the profile stays cheap; percentages over tiers 1-2. Tier-3 totals are kept and disclosed by the disclosure-line item, not dropped. Accepted cost (ADR text): a first-party directory literally named vendor/ below the root (already tier 3, supply_chain.py ~577) also leaves the language line, visibly, because the disclosure names it.\n\nEvidence at close: self-sketch Overview shows no C line; tier-3 node count unchanged (174 on 2026-10-15)."  # a0e6
     fields: {}  # a0e6
+- op: update  # 0d16
+  at: '2026-10-15T22:11:13Z'  # 0d16
+  by: agent  # 0d16
+  actor: jgstern_agent  # 0d16
+  clock: 2  # 0d16
+  nonce: 0d16  # 0d16
+  set:  # 0d16
+    status: done  # 0d16
+- op: discuss  # 6b7b
+  at: '2026-10-15T22:11:14Z'  # 6b7b
+  by: agent  # 6b7b
+  actor: jgstern_agent  # 6b7b
+  clock: 3  # 6b7b
+  nonce: 6b7b  # 6b7b
+  message: "Fixed in PR #1614 (fd6005c7da). profile.languages[L] gains own_files/own_loc (tier 1-2 by the new path-only supply_chain.tier_by_path, sharing classify_file's DERIVED_*/EXTERNAL_DEP_* helpers); files/loc unchanged so analyzers still run on vendored code. Sketch Overview language line, file and LOC totals read the own share; its test count skips vendored tests. Evidence: test_language_stats_count_own_code_only (profile with C loc 3000/own 100 renders 'Python (90%), C (10%)', totals 11 files / ~1,000 LOC), test_detect_languages_counts_own_code_separately (vendor/grammar/parser.c in files, not own_*). On this repo, tier_by_path over git ls-files: 11 C/H files, 325,450 lines, own 0 -> no C line; Python 1684 files / own 1683. NOT run: a self-sketch (big repo; not authorised this session), so the item's 'self-sketch Overview shows no C line' is shown by the path measurement and the formatter test, not a live sketch. Gap noted: ADR-0004 3a also lists 'which linkers count as active'; linker activation still reads profile.languages keys (no item covers it)."  # 6b7b
