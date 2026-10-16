@@ -34,3 +34,18 @@
   clock: 3  # 9b97
   nonce: 9b97  # 9b97
   message: "The CGO-LINKER / RUBY-FFI-LINKER half of this item is now WI-dipag (count only tier 1-2 implementations; move the check after classification). Remaining here: the rust-analyzer hint, the [warn] validation line, the [passes] lines."  # 9b97
+- op: update  # c981
+  at: '2026-10-15T20:50:06Z'  # c981
+  by: agent  # c981
+  actor: jgstern_agent  # c981
+  clock: 4  # c981
+  nonce: c981  # c981
+  set:  # c981
+    status: done  # c981
+- op: discuss  # c097
+  at: '2026-10-15T20:50:06Z'  # c097
+  by: agent  # c097
+  actor: jgstern_agent  # c097
+  clock: 5  # c097
+  nonce: c097  # c097
+  message: "Fixed in PR #1613 (ddbe1b47ac), one decision per warning class. (1) CGO-/RUBY-FFI-LINKER: done earlier by WI-dipag (PR #1609; first-party counts only). (2) [passes] lines: owner ruling 2026-10-15 'actionable only' -- they name only reasons outside ROUTINE_SILENCE_REASONS (no_candidate_files, no_candidate_construct, backend_disabled; 122 of the 128 passes the lines reported on the self-tree) and end with '; N more routine', so ADR-0054 T1 stays readable (ADR text amended); nothing prints when all are routine. (3) rust-analyzer hint: it now names 'hypergumbo trust-backend rust_analyzer <path> --revoke'; ADR-0045 ruling 8 then keeps it silent. (4) Partial-install warnings print as plain stderr lines (no 'cli.py:12852: UserWarning:' prefix or echoed source line). (5) [warn] N cross_field validation line: KEPT -- it fires only on a producer-contract violation; the self-tree has none (INV-zatu, matrix {}). Behavioural evidence, live CLI on a 3-file temp repo (main.go, native/helper.c, src/main.rs): stderr = plain 'CGO linker found 1 C/C++ function implementations but 0 Go cgo calls ...', the rust notice ending 'Not wanted here: hypergumbo trust-backend rust_analyzer <tmp> --revoke  (records the answer; this notice stops)', and one '[passes] 4 of 69 emitted nothing: unreported=4; 60 more routine ...' line (no 'did not run' line: all 60+ skips routine). Ran the printed trust-backend command (exit 0, 'Declined rust_analyzer for <tmp>'), re-surveyed: 0 lines mention rust-analyzer. Test test_the_command_the_nudge_names_silences_it does the same through cli.main. Not re-checked on the full self-tree (no self-survey run for this item)."  # c097

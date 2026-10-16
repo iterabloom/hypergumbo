@@ -63,3 +63,10 @@
   clock: 7  # 0dc4
   nonce: 0dc4  # 0dc4
   message: "All six children done: WI-tagov (PR #1605), WI-himod, WI-nibar, WI-midoj, WI-lapun, WI-vosif (PR #1606) plus the pre-commit hook (merged after #1607). Close condition met: scripts/check-confidence-sites over dev reports 'ok: 0 finding(s)' -- 0 out-of-band literal sites and 0 computed sites on seeded analyzer pathways without a derivation, a resolution_score, or the '# ADR-0039 caller-valued:' justification (two justified: js_ts ast_call_namespace, R qualified_call, both pending-classification placeholders). The class cannot regrow silently: CI test_confidence_sites + pre-commit hook. Runtime: self-tree validation matrix {} on c907eb1a16."  # 0dc4
+- op: discuss  # 432d
+  at: '2026-10-15T09:51:48Z'  # 432d
+  by: agent  # 432d
+  actor: jgstern_agent  # 432d
+  clock: 8  # 432d
+  nonce: 432d  # 432d
+  message: "Correction to the closing note: the pre-commit hook merged as PR #1610 (the WI-dipag PR was #1609)."  # 432d
