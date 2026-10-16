@@ -75,8 +75,11 @@ _STATE_BASENAME = "offers.json"
 #: Dot-prefixed and tool-named. ``~/hypergumbo`` IS a git working tree, and the
 #: same "output committed by accident" hazard the ruling names for analysed
 #: repositories applies in weaker form here — so the directory announces what
-#: it is, sits out of the way of a casual ``git add .``, and the prompt names
-#: the exact path before anyone answers.
+#: it is, and the prompt names the exact path before anyone answers. The dot
+#: does NOT keep it out of ``git add .``; two ``.gitignore`` rules do: this
+#: repository's root one (a current clone) and the ``*`` the tree carries
+#: inside itself (an older clone, or a ``~/hypergumbo`` that is not this
+#: repository at all).
 _EXAMPLES_DIRNAME = ".hypergumbo-examples"
 
 
@@ -215,8 +218,8 @@ hypergumbo never writes into a repository it analyses, and in-repo catalogue
 data loads only when you opt in (`--in-repo-catalogues`, or
 `hypergumbo trust-catalogues`).
 
-This directory is safe to delete. If you keep it, consider adding it to your
-`.git/info/exclude` — it is generated, and it is not part of the project.
+This directory is safe to delete. It is generated and not part of the project,
+so it carries a `.gitignore` that ignores everything in it, itself included.
 
 For YOUR OWN rows, which do load, use `hypergumbo init-catalogs` and edit
 `$XDG_CONFIG_HOME/hypergumbo/io_primitives.d/`.
@@ -233,6 +236,7 @@ def write_repo_tier_examples(dest: Path) -> "tuple[Path, ...]":
     dest = Path(dest)
     written: "list[Path]" = []
     targets = {
+        dest / ".gitignore": "*\n",
         dest / "README.md": _EXAMPLE_README,
         dest / "io_primitives.d" / "example-in-house-http.yaml": _EXAMPLE_OVERLAY,
     }

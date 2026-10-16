@@ -15,6 +15,7 @@ build/
 
 # hypergumbo
 .hypergumbo/
+.hypergumbo-examples/
 hypergumbo_capsule/
 hypergumbo.results.json
 hypergumbo.results.*.json
