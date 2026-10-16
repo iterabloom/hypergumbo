@@ -1,0 +1,12 @@
+Original commit body from ee6f89892a1a7860fcff52027d0cf970c35c5720:
+
+When the Structure tree is built from a behavior map (the normal case,
+INV-jumim), the map names only files that yielded a symbol, so item counts
+and the LOC column leave out data files and scripts no analyzer
+recognises. On hypergumbo itself that was 132 tracked files, 394k lines
+(mostly the vendored grammars' generated parser.c). One sentence under
+the tree now says so, with JSON data and extensionless scripts as the
+examples. Owner chose this disclosure over recording the survey's full
+discovered-file list. ADR-0005 and spec updated.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
