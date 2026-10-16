@@ -1,0 +1,6 @@
+Original commit body from 386ffdb1b746bfc2a4b192e5dbc2e2148d712e6a:
+
+prepare-release took the previous tag from git describe on dev, which
+reaches only v6.1.0: the v7-v9 release tags sit on main.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
