@@ -1,0 +1,24 @@
+Original commit body from b5f83b3de4044d0a1a1b75499d07f698fc294767:
+
+Of hypergumbo's three vendored tree-sitter grammars only lean's
+parser.c says @generated; circom's and wolfram's were tier 3, their
+generated parse tables standing for hand-written C. (lean's parser.c
+contributing zero nodes was already this: tier 4 by its header, its
+nodes dropped by the default tier filter after parsing.)
+
+supply_chain._GENERATOR_FINGERPRINTS, C-family files only, in the same
+4 KiB head as the comment-marker check and feeding both the tier and
+is_generated: a tree-sitter parser (the parser.h include AND #define
+LANGUAGE_VERSION; a hand-written scanner.c has only the include), a
+Bison / flex / re2c banner on a comment line, or #line N "x.y" into a
+grammar source (.y .yy .ypp .l .ll .lex .rl .re). Prose about a
+generator does not match (INV-bokim).
+
+On this tree: all three parser.c now DERIVED, both scanners tier 3.
+Corpus sweep, 158,304 C-family files: 36 matches, all generator output
+(Bison, flex, ragel), none previously marked.
+
+Not addressed: tier-4 files are still parsed, then dropped
+(cli.py tier filter), so this does not cut parse cost.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
