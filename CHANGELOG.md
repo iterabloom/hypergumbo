@@ -14,38 +14,33 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
-- **Git submodules are skipped by default** (ADR-0004): a submodule's contents are not committed, so it is handled like installed dependency source. The run names it on stderr; `--trace-deps <path>` analyses it as tier 3.
-- **Edge confidence values change** (ADR-0039 rulings 6–7, below).
-- **Schema additions**: `profile.languages[*].own_files` / `own_loc` and `supply_chain_summary.vendored_analysed`. `SCHEMA_VERSION` is still 0.20.14.
+- **Git submodules skipped by default**; `--trace-deps <path>` analyses them (ADR-0004).
+- **Edge confidence values change** (ADR-0039 rulings 6–7).
+- **Schema adds `own_files`/`own_loc`, `vendored_analysed`**; `SCHEMA_VERSION` unchanged.
 
 ### Added
 
-- **The sketch's Structure tree shows lines of code** for every file and directory, plus a note that files with no detected symbol (JSON data, extensionless scripts) are not counted.
-- **Progress output reports real progress**: the phase line shows elapsed time and real counts instead of a made-up percentage and ETA. Every 30 s a heartbeat lists each busy worker by pass and code location (`HG_HEARTBEAT`; 0 turns it off). Runs over 30 s end with the slowest phases.
-- **Analysed vendored code is disclosed** on stderr, in the sketch Overview and in `supply_chain_summary.vendored_analysed`.
-- **`check-confidence-sites`**: a shrink-only gate over every hard-coded edge confidence. It runs in CI, and in the pre-commit hook whenever package source is staged.
+- **Structure tree LOC column**; notes symbol-less files are uncounted.
+- **Progress shows elapsed time and per-worker heartbeats**, not fake ETAs.
+- **Analysed vendored code disclosed**: stderr, sketch, summary.
+- **`check-confidence-sites` gate**, in CI and pre-commit.
 
 ### Changed
 
-- **Summaries describe the project's own code** (ADR-0004 3a). Committed vendored (tier 3) code is still analysed, but the language breakdown, file and LOC totals, test count and partial-install warnings leave it out. On hypergumbo itself, 305k lines of vendored tree-sitter C no longer show up as "C (26%)". Linker activation still counts vendored languages (ADR-0055).
-- **Generated parsers with no `@generated` marker are tier 4**: tree-sitter, Bison, flex, re2c and ragel output is recognised by its banner or `#line` directives.
-- **Edge confidence comes from the evidence band** (ADR-0039):
-  - A name resolver's match grade places the edge inside its pathway's band, instead of scaling a private constant (ruling 6).
-  - Linker edges are checked against the linker range, 0.40–0.95 (ruling 7).
-  - Out-of-band literals are gone.
-  - Call edges in GLSL, HLSL, Nix, WGSL, Fortran and R that were mislabelled `static` are now `ast_call_direct`.
-- **Cold sketches reuse the survey's file list** instead of walking the disk again, so they match warm sketches: empty directories no longer appear in Structure.
-- **`.hypothesis/` is excluded by default.**
-- **`_uncatalogued_external_modules` is retired**; its design notes moved to `_adjudicate_external_modules`. This does not change behaviour.
+- **Summaries count own code only** (ADR-0004 3a); vendored code still analysed.
+- **Unmarked generated parsers are tier 4** (tree-sitter, Bison, flex, re2c, ragel).
+- **Edge confidence derives from evidence bands**; linker edges judged 0.40–0.95.
+- **Cold sketches reuse the survey file list**; `.hypothesis/` excluded.
+- **`_uncatalogued_external_modules` retired**; no behaviour change.
 
 ### Fixed
 
-- **Less stderr noise.** `[passes]` names only unusual silence reasons and counts the routine ones. The rust-analyzer notice names the command that silences it. Partial-install warnings print as plain lines, without `UserWarning` framing.
-- **Partial-install suggestions appear.** Linker requirements now declare the languages that satisfy them. The suggestion lookup never matched before, so its relevance check never ran. Install hints name the right package; 22 of 56 languages named the wrong one.
+- **Quieter stderr**: routine `[passes]` reasons counted, warnings plain.
+- **Partial-install suggestions work** and name the right package.
 
 ### Documentation
 
-- ADR-0039 gains rulings 6–7. ADR-0004 is amended for vendored code and submodules, and its point 3a cross-references ADR-0055. `docs/ARCHITECTURE.md` is regenerated.
+- ADR-0039 rulings 6–7; ADR-0004 vendored/submodule amendments; ARCHITECTURE.md regenerated.
 
 ## [9.0.0] - 2026-10-14
 
