@@ -34,6 +34,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - Partial-install warnings print plain, without UserWarning framing.
 - Language breakdown and LOC totals count own code only.
 - Analysed vendored code disclosed: stderr, sketch, summary.
+- Unmarked tree-sitter, Bison, flex, re2c, ragel output is tier 4.
 
 ## [9.0.0] - 2026-10-14
 
