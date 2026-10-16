@@ -2658,7 +2658,7 @@ Initial public release with comprehensive static analysis capabilities.
 | 0.5.0   | 2025-12-26 | Initial release: 32 analyzers, 12 linkers                    |
 
 [Unreleased]: https://github.com/iterabloom/hypergumbo/compare/v9.0.0...HEAD
-[9.0.0]: https://github.com/iterabloom/hypergumbo/compare/v6.1.0...v9.0.0
+[9.0.0]: https://github.com/iterabloom/hypergumbo/compare/v8.1.0...v9.0.0
 [8.1.0]: https://github.com/iterabloom/hypergumbo/compare/v8.0.0...v8.1.0
 [8.0.0]: https://github.com/iterabloom/hypergumbo/compare/v7.0.0...v8.0.0
 [7.0.0]: https://github.com/iterabloom/hypergumbo/compare/v6.1.0...v7.0.0
