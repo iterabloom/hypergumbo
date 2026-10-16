@@ -1,0 +1,35 @@
+Original commit body from 73739c189cb2c38074b2769c81f13cbc9f5951f9:
+
+FileIndex.match_pattern fnmatched every glob against the bare file
+name, which never holds a '/', so under the index every survey installs
+a pattern with a directory segment matched nothing. Lost in production,
+found in unit tests (which run without an index):
+- requirements.py 'requirements/*.txt', 'reqs/*.txt'
+- play_routes.py 'conf/*.routes' partials and '*/conf/routes'
+- di_resolution 'META-INF/services/*' (Maven-layout ServiceLoader
+  bindings under src/main/resources)
+- sketch TEST_FILE_PATTERNS '__tests__/*.js', '__tests__/*.ts'
+
+match_pattern now matches such a pattern against the path relative to
+the requested root (find_files passes it), segment by segment with
+'**' spanning any number, anchored at the end: rglob's rule.
+
+The new guard compares both find_files paths on every literal pattern
+the source tree declares (file_patterns, pattern lists, find_files /
+find_non_test_files call literals: 297 of 430 collected, placed at two
+depths). It found two more divergences of the same invariant, both
+fixed toward the index (production) behaviour:
+- pure '*.ext' patterns: the index matched Path.suffix
+  case-insensitively, rglob case-sensitively ('*.h' vs Foo.H). One
+  helper, _pure_extension, now drives both paths.
+- a file two patterns match ('*.R' and '*.r'; '*.py' and 'test_*.py')
+  was yielded once by the index and twice by the walk; the walk now
+  dedups too.
+
+Live check (scratch tree): walk and index now agree on
+META-INF/services/*, __tests__/*.js, conf/*.routes and *.h (Foo.H).
+smart-test affected set before the dedup: 20775 passed, 14 failed
+(all R/Fortran duplicate-file tests, fixed by the dedup); those 14
+plus the new tests: 179 passed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
