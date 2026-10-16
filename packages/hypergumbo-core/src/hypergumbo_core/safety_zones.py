@@ -13,8 +13,10 @@ at ``docs/hypergumbo-self-catalog/`` declares in its corresponding zone.
 Most wrappers are otherwise transparent — they delegate to
 ``Path.write_text`` / ``Path.write_bytes`` / ``shutil.copy2`` /
 ``np.save`` etc. with no behavior change relative to a direct call.
-The DESTRUCTIVE ones are not: :func:`cache_rmtree`, :func:`cache_unlink`,
-:func:`cache_write_zip`, :func:`tmp_artifact_rmtree` and
+The ZONE-ENFORCED ones are not: :func:`cache_rmtree`, :func:`cache_unlink`,
+:func:`cache_write_zip`, :func:`cache_rename` (both endpoints),
+:func:`tmp_artifact_rmtree`, :func:`tmp_artifact_extract` (``dest`` and
+every archive member; non-regular tar members refused) and
 :func:`install_artifact_unlink` first resolve the path and raise
 :class:`SafetyZoneViolation` if it escapes its zone root (symlinks
 included). That check is a real runtime guard, not a label.
@@ -24,14 +26,16 @@ How to use — the full wrapper inventory, by zone:
 - **user_cache** (``~/.cache/hypergumbo/<fingerprint>/...``):
   :func:`cache_write`, :func:`cache_write_bytes`, :func:`cache_save_npy`,
   :func:`cache_mkdir`; and the zone-enforced :func:`cache_write_zip`
-  (soft-delete archives), :func:`cache_unlink`, :func:`cache_rmtree`.
+  (soft-delete archives), :func:`cache_rename`, :func:`cache_unlink`,
+  :func:`cache_rmtree`.
 - **user_out** (a user-supplied ``--out`` path): :func:`user_out_write`,
   :func:`user_out_open_json_dump` (the ``with open(...) as f:
   json.dump(...)`` pattern), :func:`user_out_open_json_dump_gzip`,
   :func:`user_out_mkdir`.
 - **tmp_artifact** (ephemeral ``/tmp/`` — sketch comparisons, grammar
   build dirs): :func:`tmp_artifact_write`, :func:`tmp_artifact_mkdir`,
-  and the zone-enforced :func:`tmp_artifact_rmtree`.
+  :func:`tmp_artifact_dir` (a context-managed scratch directory), and the
+  zone-enforced :func:`tmp_artifact_rmtree` and :func:`tmp_artifact_extract`.
 - **install_artifact** (downloaded binaries, archive contents):
   :func:`install_artifact_write_bytes`, :func:`install_artifact_copy`,
   :func:`install_artifact_mkdir`, :func:`install_artifact_chmod`, and the
@@ -47,20 +51,20 @@ How to use — the full wrapper inventory, by zone:
   tool whether it is installed and at what version.
 
 What this pattern does NOT do:
-- It does NOT prevent misuse for the NON-destructive wrappers — a
+- It does NOT prevent misuse for the NON-enforced wrappers — a
   developer who calls ``tmp_artifact_write`` on a cache path still gets
   the wrong zone label, silently. For those the pattern is a
   declarative-honesty discipline; the linter or audit catches drift.
-  The destructive wrappers listed above are the exception: they enforce
-  containment at runtime, because mislabelling a delete is not
-  recoverable the way mislabelling a write is.
+  The zone-enforced wrappers listed above are the exception: they enforce
+  containment at runtime, because a mislabelled delete, rename or archive
+  extraction is not recoverable the way a mislabelled plain write is.
 - It does NOT extend hypergumbo-the-tool's analyzer with new
   capabilities. The analyzer still works on call-graph BFS by callee
   name. The wrappers just give the BFS distinct callees to bin into
   zones.
-- It is NOT shipped to PyPI consumers. This module lives in
-  hypergumbo's source tree so its OWN code can be zone-tagged; the
-  pattern is documented in ``docs/SECURITY.md`` as the recommended
+- It is NOT a public API for consumers. It ships inside hypergumbo-core
+  only so hypergumbo's OWN code can be zone-tagged; the
+  pattern is documented in ``SECURITY.md`` as the recommended
   technique for any hypergumbo user wanting path-bounded claims in
   their own code (in any language). Each project authors its own
   wrappers in its own language.

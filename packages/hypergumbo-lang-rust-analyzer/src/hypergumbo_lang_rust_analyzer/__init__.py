@@ -8,12 +8,15 @@ The package is complete as scoped (WI-duzul, done). Its parts:
   modules plus the ``rust.py`` stable-id parity helper.
 - ``invoke.py`` shells out to ``rust-analyzer scip`` to produce that blob.
 - ``gate.py`` holds the opt-in machinery: the backend runs only when
-  requested (``--backend rust-analyzer`` or the env flag) AND the binary
-  resolves on ``PATH``.
+  requested (ranked flag > env > per-repo trust grant, ADR-0045 rulings
+  4/7) AND the binary resolves on ``PATH``.
 - ``analyzer.py`` registers the backend with the analyzer registry at
-  priority 45, above ``rust.py``.
-- ``graceful_degrade.py`` returns ``None`` so the caller can fall through
-  to ``rust.py`` when the backend cannot run.
+  priority 45 (lower runs earlier, so before ``rust.py``'s default 50);
+  the two are peer backends for ``rust``.
+- ``graceful_degrade.py`` returns a ``ScipAttempt`` (success, or failure
+  with a silence code); ``analyzer.py`` reports a failure as a skip
+  carrying that code. The tree-sitter ``rust.py`` pass runs independently
+  as the other ``rust`` backend.
 
 SAFETY: ``rust-analyzer`` executes ``build.rs``. Never point this backend
 at an untrusted repository.

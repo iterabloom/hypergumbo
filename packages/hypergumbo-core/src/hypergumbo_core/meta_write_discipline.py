@@ -24,7 +24,8 @@ The three rules
 
 1. **No bypass.** A key declared ``merge_union`` or ``producer_primary``
    may not be assigned directly — it must route through
-   ``axis_meta_keys.write_meta_key``, where the fold lives exactly once.
+   ``axis_meta_keys.write_meta_key`` (to add), where the fold lives exactly
+   once, or ``filter_meta_key`` (to remove entries).
 
 2. **Collision-capable keys must declare.** A key written BOTH at
    construction time (a ``meta={...}`` kwarg, or a dict assigned wholesale

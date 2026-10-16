@@ -37,11 +37,12 @@ How It Works
 2. If not available, return skipped result (not an error)
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
+   - Pass 2: Detect calls and resolve against global symbol registry,
+     then annotate each file's edges with dataflow (ADR-0015 Tier 1)
 4. Detect function calls and import statements
-5. Post-passes over the assembled result: per-file dataflow annotation
-   (ADR-0015 Tier 1), inheritance edges, annotation edges, and the
-   Gradle/Maven ``dependency_manifest`` from ``parse_jvm_dependencies``
+5. Post-passes over the assembled result: inheritance edges, annotation
+   edges, and the Gradle/Maven ``dependency_manifest`` from
+   ``parse_jvm_dependencies``
 
 Why This Design
 ---------------

@@ -42,7 +42,7 @@ The linker is effective when both conditions hold:
   ``get``/``post``/``resources``/``live`` macro calls), http4s
   (``HttpRoutes.of`` call site enclosing ``case GET -> Root / ...``
   arms), http4k (routing combinator calls enclosing ``bind``
-  registrations), Yesod (``mkYesod`` quasiquote enclosing route-table
+  registrations), Yesod (``parseRoutes`` quasiquote enclosing route-table
   entries), giraffe / pedestal / ring-compojure route-table
   expressions, cowboy ``routes`` list, sveltekit/remix/nuxt file-route
   tables, vertx ``Router.route()`` chains, plumber ``pr_get``/``pr_post``
@@ -52,7 +52,10 @@ The linker is effective when both conditions hold:
   Rails) — the router concept isn't emitted on a code symbol there, so
   nothing to link. Filesystem-convention routers where the routes are
   separate files and cross-file containment is required (a file-level
-  routing table that doesn't enclose the handlers textually).
+  routing table that doesn't enclose the handlers textually). FastAPI
+  (``APIRouter``) and Flask (``Blueprint``): the router concept sits on a
+  single-line variable assignment, whose span cannot enclose the decorated
+  route functions defined on later lines.
 
 How It Works
 ------------

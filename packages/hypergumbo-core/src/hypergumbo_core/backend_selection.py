@@ -2,37 +2,42 @@
 """Precedence resolution for per-backend opt-in decisions (ADR-0045 ruling 4).
 
 WHY THIS MODULE EXISTS. A multi-fidelity backend (ADR-0012) can be selected
-from several places — a CLI flag, an environment variable, and eventually a
-project config file and a user config file (ADR-0045 ruling 4 fixes the order:
-**flag > env > project config > user config > built-in default**). Before this
-module there was no single place that owned that ordering, and the CLI
-expressed the flag by *writing the environment variable*, which erased the
-distinction between the two highest tiers entirely. The observable consequence
-was not theoretical: ``--backend tree-sitter`` did not disable a backend that
+from several places — a CLI flag, an environment variable, a project config
+file and a user config file (ADR-0045 ruling 4 fixes the order:
+**flag > env > project config > user config > built-in default**). The config
+tiers exist for non-executing backends (scip_python, WI-nanom); for
+rust_analyzer, whose indexing executes code, a per-repository trust store
+fills that role instead. Before this module there was no single place that
+owned that ordering, and the CLI expressed the flag by *writing the
+environment variable*, which erased the distinction between the two highest
+tiers entirely. The observable consequence was not theoretical:
+``--backend tree-sitter`` did not disable a backend that
 ``HYPERGUMBO_RUST_ANALYZER=1`` had enabled, so the opt-out the tool advertises
 in its own warning was inert — and for the SCIP backend that warning is a
 *security* disclosure, because indexing executes the analysed repository's
 ``build.rs`` and proc macros as the invoking user. A user who exported the
-variable (the only durable opt-in hypergumbo offers) and then deliberately
+variable (then the only durable opt-in hypergumbo offered) and then deliberately
 opted out for one untrusted repo executed its build scripts anyway.
 
 THE THREE-VALUED RETURN IS THE POINT. :func:`resolve_optin` returns
 ``True`` / ``False`` / ``None``, where ``None`` means *no tier consulted so far
-expressed an opinion* and ``False`` means *a tier said no*. Today both make the
-backend not run, so a two-valued version would behave identically and pass the
-same tests. It would also be a latent bug: the moment a config tier is added,
-an explicit ``HYPERGUMBO_RUST_ANALYZER=0`` collapsed into "no opinion" would
-start LOSING to a config file that says on, silently re-enabling code
-execution the user had turned off. The distinction is unobservable through any
-current caller, which is exactly why it is pinned by tests in this package
-rather than left for the config work to get right later.
+expressed an opinion* and ``False`` means *a tier said no*. Both callers
+observe the difference, because a lower tier is consulted only on ``None``: for
+scip_python an environment ``False`` returns before the config tier's answer,
+so ``HYPERGUMBO_SCIP_PYTHON=0`` beats a config file that says on; for
+rust_analyzer a ``None`` falls through to the trust store while a ``False``
+does not, so an explicit ``HYPERGUMBO_RUST_ANALYZER=0`` cannot be overridden by
+a recorded trust grant. A two-valued version that collapsed "said no" into "no
+opinion" would silently re-enable a backend the user had turned off — for the
+Rust backend, code execution — which is why the distinction is pinned by tests
+in this package.
 
 UNRECOGNISED VALUES FAIL SAFE, AND FAIL AS A DECISION. The shipped gate read
 "anything not truthy" as not-enabled. This module preserves that (``garbage``
-and ``""`` resolve to ``False``, not ``None``) so that a future config tier
-cannot turn the backend on for a user whose environment variable says
-something the parser did not understand. Fail safe; and fail loudly enough
-that a lower tier is not asked.
+and ``""`` resolve to ``False``, not ``None``) so that neither a config tier
+nor the trust store can turn the backend on for a user whose environment
+variable says something the parser did not understand. Fail safe; and fail
+loudly enough that a lower tier is not asked.
 
 ON THE ENVIRONMENT VARIABLE AS A TRANSPORT. The CLI still writes the resolved
 decision into the environment variable, because the gate runs deep inside the

@@ -4,10 +4,9 @@
 Detects:
 - Function definitions (vertex, pixel, compute shaders)
 - Struct definitions (input/output structures)
-- Variable declarations (including the fields inside cbuffer blocks; the
-  cbuffer block itself is not captured as a distinct symbol)
-- Variable declarations (including textures, samplers, and buffers, all
-  emitted as kind='variable')
+- Variable declarations (textures, samplers, buffers and the fields inside
+  cbuffer blocks, all kind='variable'; the cbuffer block itself is not a
+  distinct symbol)
 - Call edges (function-to-function 'calls' edges)
 
 HLSL is Microsoft's High Level Shading Language for DirectX.
@@ -28,8 +27,9 @@ and result assembly. This module provides only the HLSL-specific extraction logi
    resource declarations are not distinctly tracked).
 7. Extract call edges (pass 2): for each call_expression, resolve the callee
    via the NameResolver and emit a 'calls' edge — to the resolved symbol
-   (confidence 0.85 * resolver confidence) or to an
-   'hlsl:external:<name>:function' target at 0.70 confidence.
+   (interpolated in the ast_call_direct band: 0.50 + 0.35 * resolver
+   confidence) or to an 'hlsl:external:<name>:function' target at the
+   unresolved base, 0.50.
 
 A function records its parameters, types included, in ``meta["parameters"]``
 (``c_family_parameters``) and its stable_id hashes them

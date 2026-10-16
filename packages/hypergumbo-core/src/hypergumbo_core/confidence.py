@@ -14,8 +14,9 @@ pathways plus the resolution-conditioned ones (``ast_call`` /
 (``Edge.is_resolved`` False) take ``base_confidence_unresolved``;
 ``Edge.create`` derives confidence when a producer omits it (the default-flip),
 and the producer migration dropped the literal ``confidence=`` at the analyzer
-emit sites — so analyzer edge confidence is now derived from evidence, closing
-INV-suvil. Linker edges keep their separate match-quality value (spec §12), and
+emit sites — so analyzer edge confidence on seeded pathways is now derived
+from evidence, closing INV-suvil (see the contract below for the unseeded
+remainder). Linker edges keep their separate match-quality value (spec §12), and
 a handful of sites whose confidence encodes context the table cannot express
 (dynamically-computed match-strength / the ``type_hierarchy`` dampener; the
 ambiguity / unresolved context-encoders) deliberately retain an explicit
@@ -24,8 +25,12 @@ ambiguity / unresolved context-encoders) deliberately retain an explicit
 Contract: ``derive_confidence(evidence_type)`` returns the registered
 ``base_confidence`` for that inference pathway, or ``None`` when the type is
 unregistered OR registered-but-not-yet-seeded. ``None`` deliberately means "no
-derived value" so the caller keeps its own literal — there is NO single
-fallback constant. The spec's 0.30 unknown-evidence MUST was withdrawn
+derived value" so the caller keeps its own literal — ``derive_confidence``
+itself has no fallback. ``Edge.create`` maps None to the historical flat 0.85,
+stamped ``emitter_constant``, so edges on unregistered or not-yet-seeded
+evidence types (23 unseeded inference pathways plus the
+``pending_classification`` entries, at time of writing) are not
+evidence-derived. The spec's 0.30 unknown-evidence MUST was withdrawn
 (confidence:F3 Stage A); re-introducing any blanket default would recreate the
 wrong-for-most-of-corpus problem WI-gifat filed.
 
@@ -58,7 +63,8 @@ its pathway — a forward regression guard surfaced as an advisory
 groups edges by (``origin`` emitter, confidence value) and reports every group
 of more than ``threshold`` (default 100) edges that is neither entirely
 ``confidence_source='emitter_constant'`` nor entirely ``evidence_derived`` with
-each edge at its registry base value, meaning an undeclared flat constant. It
+each edge at its registry base value or (ruling 6) inside the pathway's seeded
+band, meaning an undeclared flat constant. It
 is exercised as a property test over a behavior map and has no production
 caller.
 """

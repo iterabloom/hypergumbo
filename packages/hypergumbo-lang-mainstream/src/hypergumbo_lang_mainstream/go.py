@@ -15,8 +15,10 @@ This analyzer uses tree-sitter to parse Go files and extract:
   ``var`` initializer (a cobra ``Run:`` literal, ``var logger = log.New(...)``)
 - Function references in struct literal fields (cobra, http dispatch), and
   known functions passed as call arguments (``calls`` edges with
-  ``evidence_type="function_reference_arg"``; confidence 0.70 x the target's
-  for a function in another file, the default for a same-file hit or a method;
+  ``evidence_type="function_reference_arg"``; confidence interpolated between
+  the analyzer floor and 0.70 by the resolver's match score (ADR-0039 ruling
+  6) for an own-package function in another file or an import-qualified
+  function, exactly 0.70 for a same-file hit or a method;
   ``_extract_function_reference_edges``)
 - Import relationships (import statements)
 - ``wraps`` edges for middleware composition, ``module_attr_ref`` for bare
@@ -124,8 +126,10 @@ How It Works
    - Mount points: r.Mount("/api/v1", handler) → route_mount symbol
 9. Implicit interface satisfaction:
    - A struct whose method set (method name plus parameter and return
-     arity, including methods promoted through embedding) covers an
-     interface's gets that interface appended to ``meta["base_classes"]``,
+     arity, including methods promoted through embedding when the embedded
+     type's methods are declared in the same file as the embedding struct;
+     the cross-file pass unions per-file method sets without re-promoting)
+     covers an interface's gets that interface appended to ``meta["base_classes"]``,
      beside explicit ``var _ I = &S{}`` assertions. Matched per file in
      ``_extract_symbols_from_file``, then across files per package
      directory in ``_analyze_go_impl``.

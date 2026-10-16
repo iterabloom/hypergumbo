@@ -9,8 +9,9 @@ fields conforms to the axis the annotation declares.
 
 The pipeline (``cli.run_behavior_map``) constructs ``Symbol`` / ``Edge`` /
 ``AnalysisRun`` records through ordered passes (analyzers → linkers →
-fingerprint stamping → supply-chain classification → boundary synthesis →
-route promotion → tier filtering → metrics → write). Each pass is a writer;
+fingerprint stamping → supply-chain classification → route promotion →
+tier filtering → boundary synthesis → finalize (validate) → metrics →
+write). Each pass is a writer;
 no pass is a reader. Until this module, nothing read the emitted records
 and checked them against the schema axioms, axis catalogs, or producer
 contracts. That gap is INV-sugat — "no spec-vs-data validator stage exists
@@ -20,7 +21,9 @@ The validator classes (ADR-0033 §"Validator classes") shipped incrementally:
 the Phase-0 module landed the scaffolding (the ``ValidationViolation``
 dataclass, the public ``validate_ir`` entry point, the pipeline wire-up at
 ``cli.py``'s end-of-pipeline post-pass slot) with every class off, and the
-campaign's Phase-3/5/6 PRs then turned each on. All of the classes below are
+campaign's Phase-3/5/6 PRs then turned each on. ``validate_ir`` now runs
+inside ``finalize()`` as sub-step 10, structurally last (ADR-0043 §6);
+``cli.py`` keeps only the stderr summary. All of the classes below are
 now ACTIVE — ``validate_ir`` runs each, and the corpus surfaces real
 violations (see "The gate's realized form" below for how the CI ratchet
 holds those counts shrink-only):
@@ -32,14 +35,17 @@ holds those counts shrink-only):
    uniqueness invariant; *bounded-enum* is a fixed-list check;
    *free-text* skips value-level checks (the justification was the gate
    at source-write time).
-2. **Writer-contract** — for each ``(producer-class, axis-tagged field)``
-   pair, verify records from that producer populate the field. Generalizes
-   the four sub-patterns in INV-luhur's META description and folds in
-   WI-rolol sub-task B.
+2. **Writer-contract** — partitions by (record class, field): sub-pattern 2
+   (default-only initializer) for ``AnalysisRun.config_fingerprint``; a
+   sub-pattern-1 never-populated table (currently empty); and a
+   kind-conditioned (language, kind, field) population contract.
+   Sub-patterns 3 and 4 (of INV-luhur's META description) are codified
+   producer-side, not detected. Folds in WI-rolol sub-task B.
 3. **Cross-field coherence** — documented field-pair invariants:
-   ``Edge.dst_ref ↔ Edge.dst``, ``Symbol.language is None ↔
-   Symbol.protocol_origin is not None`` for synthetic stand-ins,
-   ``Symbol.display_label`` populated on synthetic stand-ins only. The
+   ``Edge.dst_ref ↔ Edge.dst``; non-file Symbols with both ``language``
+   and ``protocol_origin`` populated are flagged (the both-None half is
+   deferred); ``Symbol.display_label`` populated on synthetic stand-ins
+   only. The
    ``cross_field`` class also carries several other wired checks: the
    ADR-0037 ``is_resolved ↔ dst`` FK, ``origin_run_id`` FK integrity,
    dangling-endpoint detection, edge ``confidence`` range, route-marker
@@ -92,9 +98,12 @@ Each substrate's violation count may shrink below its committed baseline
 violation trips CI. ``--include-docs`` exercises the flag-gated writer
 paths a default-only gate would let escape (WI-himoj). The gate also
 co-ratchets the ADR-0023 §3 ``runtime_coherence`` offender count per
-substrate as a separate dimension. The heavy self-analysis variant of the
-same matrix is future work for full-suite (the strategy's "fixture corpus
-per-PR; self-tree in full-suite").
+substrate as a separate dimension; per substrate, the fixture gate ratchets
+the lumped total, each (validator_class, severity) cell, and
+runtime_coherence. A full-suite ``self-tree-validation`` job ratchets the
+same per-(validator_class, severity) matrix on hypergumbo's own tree
+(``scripts/check-self-tree-validation`` vs
+``.ci/self-tree-validation-baselines.json``, WI-jigup).
 
 This soft-introduction posture lets the validator land cleanly: users see
 violations as informational warnings; CI catches regressions; downstream

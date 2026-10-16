@@ -11,7 +11,9 @@ Language detection enumerates files per language: an analyzer's own
 otherwise the language's extension patterns via the discovery module:
 - Counts files per language
 - Tallies lines of code (LOC) only when ``count_loc=True`` (default off)
-- Returns a RepoProfile with language statistics
+- Returns a RepoProfile with language statistics (per language: files,
+  optional LOC, test-file count, and the own-code tier 1-2 share — see
+  ``LanguageStats``)
 
 Framework detection examines dependency manifests:
 - Python: pyproject.toml, requirements.txt, setup.py, Pipfile
@@ -53,7 +55,9 @@ only later, by ``refine_frameworks``, which promotes/demotes frameworks:
   ``_BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS``.
 - Demote: a framework with no prod import moves to
   ``RepoProfile.dev_frameworks``. ``_AUTOLOAD_BY_CONVENTION_FRAMEWORKS``
-  (Rails) are exempt: they load at boot without an explicit import.
+  (Rails) are exempt: they load at boot without an explicit import. So is
+  a framework none of whose languages emit import edges: it is kept
+  unvalidated, since there is nothing to check it against.
 - The prod importer node ids of each confirmed framework are kept in
   ``RepoProfile.framework_evidence`` as provenance.
 ``RepoProfile`` itself lists each framework once, sorted, whichever path

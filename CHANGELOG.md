@@ -41,6 +41,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Documentation
 
 - ADR-0039 rulings 6–7; ADR-0004 vendored/submodule amendments; ARCHITECTURE.md regenerated.
+- Module docstrings corrected in 41 files (staleness audit).
 
 ## [9.0.0] - 2026-10-14
 

@@ -30,10 +30,15 @@ Why This Design
 - Supports multiple frameworks via pluggable resolution strategies
 - Post-hoc linking works with complete symbol table
 
-Note: Route symbols are created by language analyzers, not by the framework
-pattern enrichment layer. Enrichment adds ``concept: route`` to handler
+Note: Route markers come from language analyzers and, for annotation-based
+frameworks (JAX-RS, Spring MVC, ASP.NET), from
+``framework_patterns.materialize_route_symbols``, which mints a marker per
+enriched ``concept: route`` handler with ``handler_ref`` set to the handler
+name. ``expand_class_based_view_routes`` replaces a Django CBV ``ANY`` marker
+with per-method markers. Enrichment adds ``concept: route`` to handler
 symbols (tagging the view function); this linker connects route *entities* to
-handlers via ``dispatches_to`` edges. Both are derived from the same UsageContext
+handlers via ``dispatches_to`` edges. Analyzer-created markers and the
+``concept: route`` tags are both derived from the same UsageContext
 extraction pass — see each analyzer's "Route Detection Architecture" docs.
 
 Supported Frameworks

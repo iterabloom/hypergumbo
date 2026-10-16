@@ -2,9 +2,9 @@
 """Shared helper: collect transitive base-class names via inheritance edges.
 
 Framework-dispatch linkers (``airflow_framework_dispatch``,
-``django_orm_dispatch``, etc.) match a class against a per-base method
-table by reading ``meta.base_classes`` directly. That works for direct
-subclasses of a framework base but misses the dominant real-world case:
+``django_orm_dispatch``, etc.) used to match a class against a per-base
+method table by reading ``meta.base_classes`` directly. That worked for
+direct subclasses of a framework base but missed the dominant real-world case:
 projects use intermediate base classes (``AlloyDBWriteBaseOperator``
 extending ``BaseOperator``, ``LoggedModel`` extending ``models.Model``,
 ``HierarkeyForm`` extending ``Form``) that wrap the framework's actual

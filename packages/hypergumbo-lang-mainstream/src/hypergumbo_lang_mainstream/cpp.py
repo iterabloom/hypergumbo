@@ -49,8 +49,9 @@ Call-edge details:
   destructor and a conversion operator (WI-saduj).
 - **Member calls**: ``this->a->b()`` is resolved through class field types
   (``_resolve_cpp_field_chain``). A member call whose method name is in
-  ``_CPP_STL_METHODS`` (``v.clear()``) is never resolved against project
-  symbols and emits no call edge. A bare call whose only match is a
+  ``_CPP_STL_METHODS`` (``v.clear()``) is not resolved against project
+  symbols and emits no call edge, unless the ``this->`` field chain
+  (``_resolve_cpp_field_chain``) types its receiver. A bare call whose only match is a
   DIFFERENT class's method on weak evidence is withheld
   (``defer_bare_method_call``, INV-fahub) and emitted unresolved with
   ``enclosing_class``.
@@ -62,8 +63,8 @@ Call-edge details:
   not capture a libc/STL call.
 - **Unresolved module hint**: when the file has system ``#include``
   headers, the hint is the comma-joined include set, prefixed with ``std``
-  when the call names ``std::`` or the file has ``using namespace std``
-  (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
+  when the call names ``std::`` or, for an unqualified call, the file has
+  ``using namespace std`` (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
   Member calls carry ``call_construct="method"``.
 - **Scope** (INV-fabih): every stable_id's qualified-name slot holds the
   enclosing namespaces and classes the name does not already spell

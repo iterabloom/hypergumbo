@@ -36,9 +36,11 @@ Design:
   switching branches during a running bakeoff or test would break things.
   The plumbing approach builds the commit in a separate index, creates a
   branch ref with ``update-ref``, pushes, then cleans up — the working tree
-  never changes.  try/finally ensures gate file and temp index cleanup.
-
-See the plan document for the full design specification.
+  is never switched to another branch.  The one working-tree write: after a
+  successful merge while on the base branch, the ops dirs are reset to HEAD
+  (untracked ops files removed), local dev is fast-forwarded, and the
+  INV-dalup snapshot is union-restored.  try/finally ensures gate file and
+  temp index cleanup.
 """
 
 from __future__ import annotations

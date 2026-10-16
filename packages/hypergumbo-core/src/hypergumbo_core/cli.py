@@ -111,16 +111,17 @@ variable.
 
 ``verify-claims`` is orchestrated here as well (``cmd_verify_claims`` and its
 helpers). I/O overlays stack in ascending precedence: the user's
-``io_primitives.d/``, then config (user, then project), then opted-in in-repo
-config overlays, then the claims file's ``extra_catalogs``, then
-``--io-primitives``. ``--no-default-overlays`` drops the community-provenance
-files (ADR-0061). Taint claims run per language over the DDG-backed or
-structural propagator. A taint-blindness check (a language with no catalogue,
-or a catalogued language that emitted no call edges) supplies the reason the
-verdict layer uses to report a would-be ``confirmed`` as ``inconclusive``. The
-exit code is 0 when everything is confirmed, 1 when any claim is violated, 2
-when any is inconclusive and none violated, and 3 when any is
-``confirmed_with_caveats`` and none of the above.
+``io_primitives.d/``, then user config (``config.toml``), then the project's
+``.hypergumbo.toml`` overlays, loaded only on opt-in (``--in-repo-catalogues``
+or a ``trust-catalogues`` grant), then the claims file's ``extra_catalogs``,
+then ``--io-primitives``. ``--no-default-overlays`` drops the
+community-provenance files (ADR-0061). Taint claims run per language over the
+DDG-backed or structural propagator. A taint-blindness check (a language with
+no catalogue, or a catalogued language that emitted no call edges) supplies
+the reason the verdict layer uses to report a would-be ``confirmed`` as
+``inconclusive``. The exit code is 0 when everything is confirmed, 1 when any
+claim is violated, 2 when any is inconclusive and none violated, and 3 when
+any is ``confirmed_with_caveats`` and none of the above.
 
 Why This Design
 ---------------
@@ -130,12 +131,15 @@ Why This Design
 - Read commands (slice, search, explain, ...) work from a persisted survey:
   they reload it via ``survey_io.load_substrate`` and, where they need IR
   objects, rehydrate it with ``Symbol.from_dict`` / ``Edge.from_dict``
-  (``_edge_from_dict`` is a thin wrapper), and ``_get_or_run_analysis`` runs
-  a survey first on a cache miss. ``sketch`` is the exception: the CLI reads a
-  survey only with ``--input``; otherwise ``sketch.py`` finds the cached
-  survey itself and runs a survey only on a cache miss. The ``--minimal``
-  flag (``_add_minimal_argument``) on the ``_get_or_run_analysis`` commands
-  skips that auto-survey's side outputs
+  (``_edge_from_dict`` is a thin wrapper), and ``_get_or_run_analysis`` runs a
+  survey first on a cache miss. ``dead-code-maybe`` is the exception to the
+  rehydration: it builds its entrypoint-detection Symbols by hand from seven
+  fields (dropping ``supply_chain_tier`` and ``modifiers``), and only its
+  edges go through ``Edge.from_dict``. ``sketch`` is the exception to the
+  reload: the CLI reads a survey only with ``--input``; otherwise
+  ``sketch.py`` finds the cached survey itself and runs a survey only on a
+  cache miss. The ``--minimal`` flag (``_add_minimal_argument``) on the
+  ``_get_or_run_analysis`` commands skips that auto-survey's side outputs
   (budget tiers, handler slices, ``sketch_precomputed``); it has no effect
   when a cached survey is reused.
 """
@@ -5544,13 +5548,15 @@ def _resolve_io_overlays(
     wired the directory was read by nothing, while the ruling-6 disclosure had
     been telling users to edit it on every run that loaded a community overlay.
 
-    ADR-0045 ruling 4 adds the two config tiers BENEATH the claims file, in the
-    order the ruling fixes — user config, then project config, then the claims
-    file, then the flag. A setting named closer to this specific invocation
-    wins. ``repo_root`` is optional so a caller that has not resolved one
-    simply gets no config tiers rather than a crash; that is a real case
-    (analysis from a cached map with no repository in hand) and not a
-    defensive branch.
+    ADR-0045 ruling 4 adds the two config tiers BENEATH the claims file, in
+    the order the ruling fixes — user config, then project config, then the
+    claims file, then the flag. The project tier (``.hypergumbo.toml``) loads
+    only on opt-in (``--in-repo-catalogues`` or a ``trust-catalogues`` grant;
+    see ``_opted_in_repo_overlays``); without one it contributes nothing. A
+    setting named closer to this specific invocation wins. ``repo_root`` is
+    optional so a caller that has not resolved one simply gets no config tiers
+    rather than a crash; that is a real case (analysis from a cached map with
+    no repository in hand) and not a defensive branch.
     """
     return [p for p, _ in _resolve_io_overlay_origins(args, claims_paths, repo_root)]
 

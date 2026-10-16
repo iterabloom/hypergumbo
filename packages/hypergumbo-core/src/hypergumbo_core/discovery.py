@@ -13,10 +13,11 @@ respecting exclude patterns. Also provides:
 
 - **Single-walk file index:** ``set_file_index()`` installs a global
   ``FileIndex`` that REPLACES ``find_files``' source of files: whenever the
-  installed index's ``repo_root`` equals the requested one, ``find_files``
-  matches patterns against the index (applying only ``max_files`` and the
-  size limit -- the ``excludes`` argument is not re-checked) and never walks
-  the tree. ``cli.run_survey`` installs one built from a single ``os.walk``
+  requested root equals or lies under the installed index's ``repo_root`` (a
+  sub-directory request is answered from the index, filtered to that
+  sub-directory), ``find_files`` matches patterns against the index (applying
+  only ``max_files`` and the size limit -- the ``excludes`` argument is not
+  re-checked) and never walks the tree. ``cli.run_survey`` installs one built from a single ``os.walk``
   (``FileIndex.build``) and clears it on every exit path; ``sketch`` installs
   a map-scoped ``FileIndex.from_paths`` for the ``--input`` / warm-map case
   (INV-jumim), so ``find_files`` then yields only the map's files. With no
@@ -111,8 +112,10 @@ respecting exclude patterns. Also provides:
   ``_sibling_output`` (the producing tool's manifest beside the candidate) never
   claims a directory that holds a project manifest of its own (a subproject named
   ``build``); the ``_sibling_file`` rules (``cover``, ``.dart_tool``,
-  ``.stack-work``, ``elm-stuff``), the Sphinx split-layout ``build/`` rule and
-  sbt's ``project/target`` arm do not apply that check.
+  ``.stack-work``, ``elm-stuff``), the Sphinx split-layout ``build/`` rule,
+  sbt's ``project/target`` arm, setuptools ``build/`` and Python ``dist/`` do
+  not apply that check; MkDocs ``site/`` and untracked JS output check only
+  for their own manifest inside the directory.
 
   THE FALLBACK: a directory with an output NAME and no tool evidence is
   ANALYSED. A wrong exclusion is silent and removes findings (every instance
