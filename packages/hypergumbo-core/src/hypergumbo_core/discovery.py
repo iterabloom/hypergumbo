@@ -76,6 +76,11 @@ respecting exclude patterns. Also provides:
   (``walks_into`` + ``manifest_walk_skip``) never enter a content-claimed
   directory, traced or not, and keep skipping ``node_modules`` / ``vendor``
   by name: a dependency's manifest never names the project.
+  Git submodules (WI-tiril) are the one installed source selected by
+  declaration rather than name: ``SUBMODULE_RULE`` claims a directory that
+  holds a ``.git``, that the enclosing work tree's ``.gitmodules`` declares,
+  and whose HEAD entry is a gitlink (``_match_submodule``); its one package
+  is the declared path, so ``--trace-deps lib/sub`` analyses it as tier 3.
 
 - **Generated output, recognised by the tool that writes it (ADR-0004
   §"Installed dependency source" point 7).** The same shape again, for build,
@@ -133,6 +138,7 @@ respecting exclude patterns. Also provides:
 from __future__ import annotations
 
 import functools
+import os
 import json
 import re
 from dataclasses import dataclass, field
@@ -1323,6 +1329,20 @@ def _head_entries(directory: str) -> tuple[str, ...] | None:
     point the query at a different repository; ``GIT_NO_LAZY_FETCH`` keeps a
     partial clone from fetching over the network.
     """
+    d = Path(directory)
+    out = _ls_tree_head(d.parent, ["--name-only", f"{d.name}/"])
+    if out is None:
+        return None
+    return tuple(
+        line for line in out.splitlines()
+        if line and not line.rsplit("/", 1)[-1].startswith(".")
+    )
+
+
+def _ls_tree_head(cwd: Path, args: list[str]) -> str | None:
+    """``git ls-tree HEAD <args...> --`` style query run in ``cwd``: stdout,
+    or ``None`` when git cannot say. The hazards and the environment
+    scrubbing are :func:`_head_entries`'s; this is the one place they live."""
     import os
     import shutil
     import subprocess  # nosec B404 - only for SubprocessError; the call goes through repo_inspect_git
@@ -1332,27 +1352,24 @@ def _head_entries(directory: str) -> tuple[str, ...] | None:
     git = shutil.which("git")
     if git is None:  # pragma: no cover - git is installed wherever the suite runs
         return None
-    d = Path(directory)
     env = {
         k: v for k, v in os.environ.items()
         if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
                      "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR")
     }
     env["GIT_NO_LAZY_FETCH"] = "1"
+    *opts, target = args
     try:
         proc = repo_inspect_git(
-            [git, "ls-tree", "--name-only", "HEAD", "--", f"{d.name}/"],
-            cwd=d.parent, capture_output=True, text=True, check=False,
+            [git, "ls-tree", *opts, "HEAD", "--", target],
+            cwd=cwd, capture_output=True, text=True, check=False,
             env=env, timeout=30,
         )
     except (OSError, subprocess.SubprocessError):  # pragma: no cover - defensive
         return None
     if proc.returncode != 0:
         return None
-    return tuple(
-        line for line in proc.stdout.splitlines()
-        if line and not line.rsplit("/", 1)[-1].startswith(".")
-    )
+    return str(proc.stdout)
 
 
 def _is_committed_dir(directory: str) -> bool:
@@ -1385,6 +1402,90 @@ def _match_content_rule(directory: str, name: str) -> ContentRule | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Git submodules (ADR-0004 point 2 table, amended 2026-10-15; WI-tiril)
+# ---------------------------------------------------------------------------
+
+#: The disclosure label of a submodule.
+SUBMODULE_ECOSYSTEM = "git submodule"
+
+_GITMODULES_PATH_RE = re.compile(r"^\s*path\s*=\s*(.+?)\s*$", re.MULTILINE)
+
+
+@functools.lru_cache(maxsize=1024)
+def _declared_submodule_paths(directory: str) -> frozenset[str]:
+    """The ``path =`` entries of ``<directory>/.gitmodules``."""
+    text = _read_small(Path(directory) / ".gitmodules")
+    return frozenset(
+        m.group(1).strip().strip('"').rstrip("/")
+        for m in _GITMODULES_PATH_RE.finditer(text)
+    )
+
+
+def _submodule_declaration(path: Path) -> tuple[Path, str] | None:
+    """``(superproject, declared path)`` when the nearest enclosing work tree
+    declares ``path`` in its ``.gitmodules``, else ``None``.
+
+    The search stops at the first ancestor holding a ``.git`` -- that is the
+    work tree a submodule would belong to -- and never climbs above the
+    active root."""
+    for anc in path.parents:
+        rel = path.relative_to(anc).as_posix()
+        if rel in _declared_submodule_paths(str(anc)):
+            return anc, rel
+        if anc == _active_trace_root or os.path.lexists(anc / ".git"):
+            break
+    return None
+
+
+@functools.lru_cache(maxsize=8192)
+def _match_submodule(directory: str) -> ContentRule | None:
+    """:data:`SUBMODULE_RULE` when ``directory`` is a populated git submodule.
+
+    By evidence, not name (ADR-0004 point 2): a directory holding a ``.git``
+    (a populated submodule always does; this stat is all an ordinary
+    directory pays), which the enclosing work tree's ``.gitmodules`` declares,
+    and whose HEAD entry is a gitlink (mode ``160000``), read with the same
+    ``git ls-tree HEAD`` :func:`_head_entries` trusts -- never the index.
+    When git cannot say (no git, no commits), a ``.git`` FILE is the
+    evidence: that is what ``git submodule`` leaves in a checkout. An
+    unpopulated submodule is an empty directory with no ``.git`` and is a
+    no-op; an undeclared nested repository is analysed as before.
+    """
+    path = Path(directory)
+    dotgit = path / ".git"
+    if not os.path.lexists(dotgit) or path.is_symlink():
+        return None
+    found = _submodule_declaration(path)
+    if found is None:
+        return None
+    superproject, rel = found
+    out = _ls_tree_head(superproject, [rel])
+    if out is None:
+        is_gitlink = dotgit.is_file()
+    else:
+        is_gitlink = out.split(None, 1)[:1] == ["160000"]
+    return SUBMODULE_RULE if is_gitlink else None
+
+
+def _submodule_marker(d: Path) -> bool:
+    return _match_submodule(str(d)) is not None
+
+
+def _submodule_packages(d: Path) -> dict[str, Path]:
+    """One package per submodule, named by its declared path -- what a user
+    passes to ``--trace-deps``."""
+    found = _submodule_declaration(d)
+    return {found[1]: d} if found else {}
+
+
+#: Installed dependency source selected by declaration, not by name, so it is
+#: not in :data:`INSTALLED_DEP_RULES` (whose ``dir_name`` selects candidates).
+SUBMODULE_RULE = ContentRule(
+    "", SUBMODULE_ECOSYSTEM, _submodule_marker, _submodule_packages,
+)
+
+
 def match_content_rule(path: Path) -> ContentRule | None:
     """The content rule that claims directory ``path``, or ``None``.
 
@@ -1397,9 +1498,11 @@ def match_content_rule(path: Path) -> ContentRule | None:
     path: discovery asks once per candidate per walk and the answer cannot
     change within a run.
     """
-    if path.name not in CONTENT_RULE_DIR_NAMES:
-        return None
-    return _match_content_rule(str(path), path.name)
+    if path.name in CONTENT_RULE_DIR_NAMES:
+        rule = _match_content_rule(str(path), path.name)
+        if rule is not None:
+            return rule
+    return _match_submodule(str(path))
 
 
 def under_content_rule_dir(repo_root: Path, dir_parts: "Iterable[str]") -> bool:
@@ -1575,7 +1678,7 @@ def content_rule_prunes(name: str, path: Path) -> bool:
        such an on-the-way directory is not a package and is pruned.
     """
     trace = _active_trace
-    rule = match_content_rule(path) if name in CONTENT_RULE_DIR_NAMES else None
+    rule = match_content_rule(path)
     if rule is not None:
         if not rule.is_installed_dep:
             return True
@@ -1653,6 +1756,9 @@ def format_installed_deps_disclosure(summary: "dict[str, Any] | None") -> str | 
     entries = summary.get("entries") or []
     parts = []
     for e in entries[:3]:
+        if e["ecosystem"] == SUBMODULE_ECOSYSTEM:
+            parts.append(f"{e['path']}/ ({SUBMODULE_ECOSYSTEM})")
+            continue
         n = e["packages"]
         noun = "package" if n == 1 else "packages"
         parts.append(f"{e['path']}/ ({n} {e['ecosystem']} {noun})")
