@@ -4,6 +4,9 @@
 This analyzer uses tree-sitter to parse C++ files and extract:
 - Class declarations
 - Struct declarations
+- Base classes: a class or struct with a base list records it in
+  ``meta["base_classes"]`` (``_extract_base_classes_cpp``) for the
+  inheritance linker
 - Enum declarations
 - Function definitions (standalone and class methods)
 - Pure-virtual methods, which carry ``modifiers=[visibility, "virtual",

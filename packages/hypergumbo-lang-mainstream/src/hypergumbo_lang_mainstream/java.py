@@ -120,6 +120,11 @@ How It Works
    unresolved with ``enclosing_class`` / ``receiver_type_hint`` /
    ``inherited_field_receiver`` hints; the
    Tier-2 ``inherited_calls`` linker walks the hierarchy and resolves them.
+   A resolved call, ``new`` or ``::new`` target is dropped when the file
+   imports a different class of that simple name, or when a bare name would
+   reach a nested type from another file (``_is_import_class_mismatch``;
+   INV-finak, WI-bunul). Colliding base-class names resolve same-file, then
+   import, then first by id (``_resolve_base_class_java``).
    A call or ``new`` in no method or constructor (a field initialiser, an
    initialiser block) is anchored on the enclosing class / interface / enum /
    record, else the file (``_get_enclosing_type_symbol``, INV-bamij); a method

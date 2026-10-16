@@ -31,7 +31,22 @@ writeFile, putStrLn) produce external edges in the format
 ``haskell:{module}:0-0:{name}:function`` so the I/O boundary tagging pass
 (ADR-0016) can match them against ``io_primitives/haskell.yaml``. Qualified
 calls resolved through import aliases carry the full module name as the
-module hint for precise matching.
+module hint for precise matching. An unresolved bare name that the I/O
+catalogue's gate refuses as ambiguous (``HASKELL_GATED_NAMES``) gets its
+module hint from the file's unqualified imports or the implicit Prelude
+(``_hs_bare_call_module``); other bare names keep ``external``.
+
+Two more call-edge features:
+
+- Bare zero-argument monadic actions (``x <- getLine``, a bare ``do``
+  statement, the argument of a combinator in ``_HS_ACTION_COMBINATORS``
+  such as ``liftIO getCurrentTime``) emit ``calls`` edges with
+  ``call_construct="monadic_action"``. Locally bound names and ``return``
+  are skipped.
+- A handle-taking read (``hGetLine``, ``hGetContents``, ...) stamps
+  ``meta["io_target_kind"]``: ``std_stream`` for stdin/stdout/stderr,
+  ``host_path`` for a handle from ``openFile``/``openBinaryFile`` (inline
+  or via a local binding). An unrecognised handle gets no stamp.
 
 Why This Design
 ---------------

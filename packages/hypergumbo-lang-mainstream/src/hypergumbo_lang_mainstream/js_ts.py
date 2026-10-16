@@ -37,8 +37,15 @@ extract:
 - Function call relationships (edges)
 - Method call relationships (edges)
 - Object instantiation relationships (edges)
-- Inheritance: ``extends`` / ``implements`` (edges)
-- Decorator application: ``decorated_by`` (edges)
+- Inheritance: ``extends`` / ``implements`` (edges); a base resolving to no
+  project class/interface (after re-resolving an aliased import on its
+  canonical name) gets an unresolved edge (confidence 0.5) with an
+  ``ExternalRef`` ``dst_ref`` when an import names its module, else to the
+  ``external`` placeholder with none; a base imported from a relative path
+  emits nothing
+- Decorator application: ``decorated_by`` (edges); an unresolved or
+  non-callable decorator gets an unresolved ``decorated_by`` edge to
+  ``typescript:unresolved:0-0:<name>:unresolved``
 - ``references`` edges for functions passed rather than called:
   ``callback_argument_reference`` (a named function, or an inline anonymous
   callback, given as a call argument), ``object_field_reference``

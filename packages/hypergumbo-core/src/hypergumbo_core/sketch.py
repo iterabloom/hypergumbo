@@ -28,7 +28,11 @@ Sections in emission order:
     and the vendored-code disclosure line (``format_vendored_disclosure``)
     when vendored code was analysed but left out of the language line
 3.  Structure — tree of paths to important files across up to 10 root
-    dirs (top-level listing when there are none)
+    dirs (top-level listing when there are none), with a fixed-width LOC
+    column per line (``_TreeLoc``; all kept files, vendored included; the
+    root line's column is left blank) and, when a map-scoped index bounds
+    the tree, a closing note (``_structure_scope_note``) that files with no
+    detected symbol are left out of the counts and LOC
 4.  Frameworks — the profile's detected frameworks plus its dev/test-only
     frameworks (annotated ``(dev)``), in one alphabetical list
 5.  Tests — test framework + estimated coverage breakdown
@@ -54,7 +58,12 @@ Sections in emission order:
     "... and N more files"
 10. Key Symbols — top symbols by dampened centrality
 11. Additional Files — always emitted when the budget allows;
-    ``--with-source`` shrinks its budget to 5% rather than gating it
+    ``--with-source`` shrinks its budget to 5% rather than gating it.
+    ``_select_additional_files`` chooses files README first, then
+    round-robin over README-linked files, 5W1H embedding-similarity rank
+    (when sentence-transformers is available) and symbol-mention-centrality
+    rank; already-chosen files skip ranking
+    (``_select_additional_files_preselected``)
 12. Source Files Content — full source for the top-ranked files
     (only when ``with_source=True``)
 13. Additional Files Content — full source for additional files

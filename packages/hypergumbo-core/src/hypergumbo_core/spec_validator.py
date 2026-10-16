@@ -49,7 +49,11 @@ holds those counts shrink-only):
    ``cross_field`` class also carries several other wired checks: the
    ADR-0037 ``is_resolved ↔ dst`` FK, ``origin_run_id`` FK integrity,
    dangling-endpoint detection, edge ``confidence`` range, route-marker
-   single-home, and the receiver-blind-magnet gate.
+   single-home, the receiver-blind-magnet gate, the ADR-0035 §5 per-file
+   ``stable_id`` uniqueness error (``_check_stable_id_per_file_uniqueness``),
+   and the Class-B identity-stamp canary (a synthetic stand-in missing
+   ``stable_id`` / ``fingerprint`` / ``discovery_language`` / ``origin`` /
+   ``display_label`` is flagged, one umbrella violation per field).
 4. **Verdict-enum completeness** — verdict-emitting code paths must enumerate
    an ``inconclusive`` (or equivalent) branch for missing-data cases.
    Folds in WI-rolol sub-task A (``ClaimVerdict.inconclusive``).
@@ -65,7 +69,18 @@ holds those counts shrink-only):
    be a registered symbol-kind and equal ``Symbol.kind`` (advisory ``warning``
    until the v6 kind-slot folds clear the WI-pubiv/WI-kugaj/tsconfig backlog),
    the name-slot must be non-empty (advisory), and the span must satisfy
-   ``start <= end`` (``error``).
+   ``start <= end`` (``error``). The class also pins ``Edge.id`` to
+   ``edge:sha256:<16hex>`` (``_check_edge_id_format``) and requires the
+   ``hgfp2:`` prefix on every non-null real-source ``Symbol.fingerprint``
+   (``_check_fingerprint_format``).
+
+Besides ``violations`` and ``violations_by_class``, the
+``validation_report`` that ``build_validation_report`` emits carries a
+``wired_checks`` manifest (``_WIRED_CHECKS``: each predicate wired into
+``validate_ir`` and the class it feeds, so a class count of 0 means "these
+named checks found nothing", not "no defects") and ``stable_id_stats``
+(``compute_stable_id_stats``: the ALL-Symbols stable_id population,
+collision rate, None cohort and backstop floor cohort).
 
 Why scaffold first
 ------------------

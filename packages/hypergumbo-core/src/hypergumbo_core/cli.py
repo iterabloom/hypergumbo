@@ -109,6 +109,16 @@ right there instead of silently falling back to tree-sitter; the resolved
 choice reaches the analyzer registry's backend gate through its environment
 variable.
 
+``main`` also normalises the rest of argv and is the exit-code chokepoint.
+``--debug`` is stripped and honoured in any position. A first token that is
+neither a subcommand nor path-like (no separator, no leading ``.``/``~``, not
+on disk) exits 2 with a did-you-mean suggestion instead of falling through to
+sketch. The positional path and ``--path`` collapse into ``args.path``, and
+giving both exits 2. After the command, ``_maybe_offer_repo_tier_examples``
+runs (ADR-0047). ``CatalogueError`` and ``SubstrateError`` exit 2 with the
+loader's message, ``BrokenPipeError`` exits 1 quietly, and any other
+exception prints "internal error" and exits 1 (re-raised under ``--debug``).
+
 ``verify-claims`` is orchestrated here as well (``cmd_verify_claims`` and its
 helpers). I/O overlays stack in ascending precedence: the user's
 ``io_primitives.d/``, then user config (``config.toml``), then the project's
@@ -122,6 +132,15 @@ the reason the verdict layer uses to report a would-be ``confirmed`` as
 ``inconclusive``. The exit code is 0 when everything is confirmed, 1 when any
 claim is violated, 2 when any is inconclusive and none violated, and 3 when
 any is ``confirmed_with_caveats`` and none of the above.
+
+``dead-code-maybe`` is implemented here too (``cmd_dead_code_maybe`` and its
+helpers ``production_callables``, ``_bfs_reachable`` and
+``_compute_cross_language_hits``): production callables minus a BFS over
+``_REACHABILITY_EDGE_TYPES`` from the ``--seeds`` set (plus ``view_func``
+dispatch handlers), after which three false-positive demoters drop symbols in
+generated files, methods reached by inheritance dispatch, and candidates
+whose name appears in at least ``--cross-lang-threshold`` other-language
+files.
 
 Why This Design
 ---------------

@@ -61,6 +61,16 @@ Java:
 - @GET("/api/users") - Retrofit annotation
 - @POST("/api/items") - Retrofit annotation
 
+Elm (``_scan_elm_file``):
+- Utils.Api.get (apiUrl ++ "/path") - wrapper module; the base-URL variable
+  is dropped as the host and the literal path is matched
+- Http.get { url = "/path", ... } - elm/http method-named record forms
+- Http.request { method = "POST", url = "/path", ... } - explicit-method
+  record, with the method and url fields in either order
+- let url = String.join "/" [ apiUrl, "silence", uuid ] in
+  Utils.Api.get url ... - let-bound fold (``_find_elm_let_bound_url_calls``);
+  identifier items become ``{name}`` placeholders
+
 Variable URL Detection
 ----------------------
 URLs stored in variables are detected with lower confidence (0.65 vs 0.9;

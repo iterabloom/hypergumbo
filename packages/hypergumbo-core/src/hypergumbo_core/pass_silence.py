@@ -76,6 +76,28 @@ looked for a construct and failed to find one; a reason invented on the
 producer's behalf would be a fabricated disclosure, which is worse than none.
 The residue is stamped :data:`UNREPORTED`, which makes it COUNTABLE instead of
 invisible and leaves a later pass to drain it producer by producer.
+
+What the module provides
+------------------------
+Beyond the vocabulary (:data:`SILENCE_REASONS`) and
+:func:`derive_silence_reason`:
+
+- **Producers.** :func:`silence_reason_for_candidates` is a pass body's own
+  claim from what its scan found (:data:`NO_CANDIDATE_CONSTRUCT` or
+  :data:`CANDIDATES_UNRESOLVED`); :func:`prerequisite_absent_clauses` names the
+  ``depends_on`` conjuncts that went missing for a toolchain reason, which
+  the linker wrapper stamps as :data:`PREREQUISITE_ABSENT`.
+- **The two host summaries.** :func:`summarize_silence` /
+  :func:`format_silence_summary` / :func:`emit_silence_summary` read
+  ``analysis_runs[].silence_reason``; :func:`summarize_skip_reasons` /
+  :func:`format_skip_summary` / :func:`emit_skip_summary` read
+  ``limits.skipped_passes`` (a missing code counts as :data:`UNREPORTED`).
+  Each writes one stderr line, counting but not naming the
+  :data:`ROUTINE_SILENCE_REASONS`, and writes nothing when every silence is
+  routine.
+- **The census.** :func:`census_silence` unions both hosts into one
+  per-pass :class:`SilenceCensus`; given the catalog it also lists passes
+  that reached neither host, which :func:`emit_unaccounted_warning` reports.
 """
 from __future__ import annotations
 

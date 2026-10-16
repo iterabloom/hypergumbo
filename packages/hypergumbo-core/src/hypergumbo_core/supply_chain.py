@@ -111,6 +111,25 @@ Manifest Readers
   repo's self-references by published name as uncatalogued third-party
   modules.
 
+Vendored-Code Disclosure and Path-Only Tiering
+----------------------------------------------
+Committed vendored code is analysed as tier 3 but left out of the summaries
+(ADR-0004 point 3a), so these helpers disclose it:
+
+- :func:`vendored_root` returns the vendored directory an EXTERNAL_DEP_*
+  pattern matched for a path (``pkg/vendor``), else ``None``.
+- :func:`vendored_analysed_summary` builds
+  ``supply_chain_summary.vendored_analysed`` from the tier-3 ``file`` nodes:
+  one entry per vendored directory with its languages and file count,
+  sorted by path and capped at 10.
+- :func:`format_vendored_disclosure` renders that summary as the one-line
+  disclosure (at most three directories named) that sketch and the CLI print.
+- :func:`tier_by_path` runs only the path-pattern steps of
+  :func:`classify_file` (DERIVED_* then EXTERNAL_DEP_*), with no file read,
+  for cheap summaries such as the profile's per-language own-code counts.
+  ``None`` means the path alone does not decide the tier, so it under-reports
+  tiers 3-4 rather than inventing them.
+
 See §14 of the hypergumbo spec for full details.
 """
 
