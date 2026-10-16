@@ -19,3 +19,10 @@
     pr_ref:  # c936
     description: "Found by the 2026-10-05 docstring staleness audit. verify_claims.py parses allowed_sanitizers (~L2137, TaintFlowSpec) and validates the key (~L1811), but the verdict filter (~L5778-5783) checks only f.sanitized from the taint catalogue; grep finds no other reader in packages/*/src. So listing a sanitizer in a claim changes nothing, silently. Same shape as trust_level: trusted, which was documented and never read until it was wired. Decide: wire it (a flow whose sanitized_by intersects allowed_sanitizers counts as sanitized, disclosed like sanitized_flows) or reject the key with an error. The module docstring now says it is parsed but not consulted."  # c936
     fields: {}  # c936
+- op: discuss  # 4159
+  at: '2026-10-16T08:02:30Z'  # 4159
+  by: agent  # 4159
+  actor: jgstern_agent  # 4159
+  clock: 2  # 4159
+  nonce: '4159'  # 4159
+  message: "2026-10-16 docstring audit, reproduced: the value is not type-checked either. A claims file with allowed_sanitizers: \"notalist\" loads cleanly (TaintFlowConstraint(..., allowed_sanitizers='notalist')); only the key name is validated (_ALLOWED_TAINT_FLOW_KEYS). verify_claims docstring now says 'accepted as a key (its value is not type-checked)'."  # 4159
