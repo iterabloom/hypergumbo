@@ -35,6 +35,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - Language breakdown and LOC totals count own code only.
 - Analysed vendored code disclosed: stderr, sketch, summary.
 - Unmarked tree-sitter, Bison, flex, re2c, ragel output is tier 4.
+- Git submodules skipped and disclosed; `--trace-deps <path>` analyses them.
 
 ## [9.0.0] - 2026-10-14
 
