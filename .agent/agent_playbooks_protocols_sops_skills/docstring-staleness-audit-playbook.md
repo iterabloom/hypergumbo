@@ -412,6 +412,7 @@ means something only if it beats the rate outside the flags.
 | 2026-10-10 | 4 | 1 (25%) | 30 (rolling, never read) + 23 (code changed since last audit) | 21 (70%) + 18 (78%)⁶ | #1521 (A+B+D), #1522 (C) |
 | 2026-10-14 | 10 | 2 (20%) | 30 (rolling, never read) + 18 (code changed, docstring untouched) + 20 (most changed, docstring touched) | 26 (87%) + 7 (39%) + 14 (70%)⁷ | #1583 (A+B+D), #1584 (C) |
 | 2026-10-16 | 9 | 0 (0%)⁸ | 30 (rolling, never read) + 30 (code changed since the last audit) | 19 (63%) + 26 (87%)⁸ | #1630 (A+B+D), C bundle |
+| 2026-10-17 | 9 | not re-read⁹ | 30 (rolling, never read) + 9 (code changed since the last review) | 20 (67%) + 4 (44%)⁹ | #1689 (A+B+D), C bundle |
 
 ¹ The pool was the 70 flagged plus 9 tracker-ref-only files; the notebook
 records 55 drifted files across all 79, not split by source.
@@ -438,6 +439,10 @@ less (2 to 119 changed lines each, against 159 to 2,098).
 the open code regression INV-pobap (counted as a code defect, not drift). A
 blind re-review of 5 first-pass "matches" found drift in 1 (ir.py,
 code-changed group); the other 18 were not re-read, so 26 is a lower bound.
+⁹ All 9 flagged files had been read the day before with no code change since,
+so they were not re-read. A blind re-review of 5 first-pass "matches" found
+drift in 1 (tracker configure.py, rolling); the other 10 were not re-read, so
+both rates are lower bounds.
 
 The 2026-05-15 run also produced #3751 as a side-effect (widening the
 `verify-generated` window 5 → 15 commits). Its notebook entry is at
@@ -632,6 +637,22 @@ path per flag (`--record-review a.py --record-review b.py`); a list after a
 single flag records only the first path. Re-anchor `SignatureNotion`
 `emission_sites` by hand too: no test checks them, and one had been stale
 since the 2026-10-14 bundle.
+
+The 2026-10-17 run read 39 files: the 30-file rolling read and the 9 files whose
+code changed after the 2026-10-16 review. The 9 flagged files were not re-read,
+because all had been read the day before with no code change since. 24 drifted
+(lower bound): 20 of 30 and 4 of 9. Default-REJECT verifiers checked 65
+first-pass findings: 61 confirmed (4 re-graded), 4 rejected. Code defects filed:
+INV-zulin (setup check 22 accepts only FORGEJO_TOKEN for a github origin),
+INV-gitup (`check_field_key` names flags no subcommand accepts) and INV-fudud
+(the websocket linker misses `async_to_sync(self.channel_layer.send)`). Two
+lessons. First, `scripts/smart-test <source files>` treats the arguments as test
+paths and exits 5 with "zero tests executed"; run it with no arguments, so it
+selects from the diff. Second, a tracker auto-sync during the audit left local
+`dev` behind after `auto-pr`'s post-merge pull aborted on colliding `.ops`, and
+the next branch silently started from the old tip. Check `git log -1 dev`
+against `origin/dev` before branching for the C bundle, and run
+`scripts/tracker reconcile` if they differ.
 
 **A caveat to carry into any future run: the flagged count measures the
 scan, not the tree.** The two most consequential findings of the
