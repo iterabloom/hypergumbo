@@ -1,0 +1,38 @@
+Original commit body from 8adde10b768bf6c6892af22048e3302e3bbef4f4:
+
+Pool: 39 files, the 30-file rolling read (never reviewed) plus the 9 whose
+code changed after the 2026-10-16 review. First pass: 25 drifted. A blind
+re-review of 5 first-pass "matches" found 1 more (tracker configure.py).
+Default-REJECT verifiers checked 65 findings: 61 confirmed (4 re-graded),
+4 rejected.
+
+The largest wrong claims fixed here:
+- rust-analyzer analyzer/invoke: the fallback "returns None"; it returns a
+  ScipAttempt and a failure is a coded skip (since 4c4d8b8a70).
+- discovery: "git status never exempts" committed build output; the
+  self-ignoring-.gitignore marker consults git and does (ADR-0004 row 257).
+  Also "removed in v0.5.1" -> v2.1.0.
+- merge_producers: arbitration is config-driven since WI-hukuf, not "until";
+  the section-15 external-key fold contradicted "stays two edges".
+- edge_types: find_axis_drift checks consumer sets, not registry axes;
+  PROTOCOL_KINDS/BRIDGE_KINDS are ADR-0023 meta vocabularies, not ADR-3bbb.
+- field_keys: cited a test name that does not exist and said update runs
+  no check; noise_filter: a since-fixed C# gap and "dropped at finalize"
+  (Phase D); scip/index: has_type was removed; backend_agreement: a
+  one-producer language is skipped, not reported.
+- tracker cli: no top-level `rename`; `reconcile` listed, `recover` marked
+  deprecated; 41 -> 43 subcommands; auto-sync default 50 -> 80.
+
+Three first lines no longer wrap (merge_producers, field_keys,
+check_recorded_producer_input). One C item rides along in
+rust-analyzer/analyzer.py: its run-provenance paragraph replaced the
+stale None sentence in place. The rest of the C bundle follows.
+
+Code defects filed: INV-zulin (setup check 22 ignores HG_GITHUB_TOKEN),
+INV-gitup (check_field_key names flags no subcommand accepts), INV-fudud
+(websocket misses async_to_sync(self.channel_layer.send)).
+
+Ledger: all 39 reads recorded (--record-review, run 2026-10-17). Citation
+anchors (MODULE_KEY_NOTIONS, SIGNATURE_NOTIONS): 0 stale after the edits.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
