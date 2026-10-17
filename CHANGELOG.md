@@ -19,6 +19,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **A GitHub Release now gets every file, or the job fails and says which are missing.** Assets upload one at a time with retries and the attached set is verified by name; re-running the job repairs an incomplete release. `v7.0.0` and `v9.1.0` had each been left incomplete by one transient upload error. The SBOM now describes the shipped wheels and their resolved dependencies instead of the build tooling, and `SHA256SUMS` covers it.
 - **`.hypergumbo-examples/` cannot be committed by accident**: hypergumbo writes a `.gitignore` inside it, and this repository's root `.gitignore` lists it too.
 - **The self-claims gate is green again**: `threading.Event`, the progress heartbeat's stop flag, is declared in the Python catalogue as having no I/O surface; all 18 verdicts are unchanged.
 - **The test-only-reachability gate counts callers under `scripts/`**, so a function used only by a repository script no longer fails the cron as test-only.
