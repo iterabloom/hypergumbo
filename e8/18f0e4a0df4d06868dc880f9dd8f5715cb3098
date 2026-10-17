@@ -1,0 +1,38 @@
+Original commit body from 582d4311e1d6a0a14a0982b1d99d31d0106a9f29:
+
+The two static gates read hypergumbo's Python and stop there: neither
+check-io-allowlist nor check-self-claims can see a program a dependency
+launches, a write a C extension makes, or whether a listed site is reached
+by a default run. scripts/io-manifest watches the process instead. It runs
+the installed CLI (default package set, non-editable, no extras) over six
+small real repositories pinned in docs/io-manifest/corpus.txt under strace,
+reduces every write / delete / rename / exec / connect ATTEMPT to a
+path-zone line, and compares the set with docs/io-manifest/expected.txt.
+
+expected.txt is 13 lines: three read-only git plumbing commands, the CLI's
+own invocations, and writes to exactly <cache>, <tmp>, <out> and /dev/null.
+No connect of any family; nothing under <repo> or <home>.
+
+Gate rules: a new line fails; a write under <repo>/ (ADR-0047 ruling 9) or
+an AF_INET/AF_INET6 connect fails whatever expected.txt says; a traced
+command exiting non-zero fails. Missing expected lines are a note only.
+
+Hermetic by construction: HOME, XDG_CACHE_HOME and TMPDIR point at scratch
+dirs under --out, PYTHONDONTWRITEBYTECODE and HF_HUB_OFFLINE are set, and
+--path lets a developer hide gitleaks / rust-analyzer to reproduce the
+runner. Measured: strace doubles a run; the whole corpus traced 4-wide took
+57 s wall here. The job runs in parallel with security-audit; both gate
+build-and-publish.
+
+Corpus: full-stack-fastapi-template (Python+TS; also survey + slice),
+git-bug (Go+GraphQL+React), ripgrep (Rust), okhttp (Kotlin+Java), postal
+(Rails+HAML), crun (C). Each sketches in under 45 s.
+
+Not covered, stated in the docs: install-* commands, both backends,
+embeddings, the tracker, a TTY, reads.
+
+SECURITY.md is generated: the new "observed I/O manifest" subsection is
+rendered by scripts/generate-security-md from corpus.txt and expected.txt,
+so its repository list and line count cannot drift from the files.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
