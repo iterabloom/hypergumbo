@@ -177,9 +177,9 @@ clients.
 password verification. Per-credential rate limiting with exponential backoff.
 Configure in `config.yaml` under `auth`.
 
-The web frontend (Vite + TypeScript + BlockSuite) lives in
-`packages/htrac-frontend/`. It uses a service worker for cache-first loading
-and reconnects to WebSocket with exponential backoff.
+There is no web frontend yet. The planned one is a Yjs-backed tracker document
+with BlockNote and @xyflow/react views (ADR-0019 as re-scoped 2026-10-17); the
+server's `static_dir` hook is where it will mount.
 
 ## Core concepts
 

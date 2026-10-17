@@ -144,8 +144,6 @@ enable_error_code = [
     "redundant-self",
     "unimported-reveal",
 ]
-# htrac-frontend is a JS/TS package (no Python under src/) — never type-check it.
-exclude = ["packages/htrac-frontend/"]
 
 # The tracker TUI drives Textual, whose widget/action methods return
 # `AwaitComplete` awaitables that are idiomatically fire-and-forget (they
