@@ -38,3 +38,18 @@
     tags: [adr_0019]  # ea06
   remove:  # ea06
     tags: [adr-0019]  # ea06
+- op: update  # 36b8
+  at: '2026-10-17T03:43:04Z'  # 36b8
+  by: agent  # 36b8
+  actor: jgstern_agent  # 36b8
+  clock: 4  # 36b8
+  nonce: 36b8  # 36b8
+  set:  # 36b8
+    status: wont_do  # 36b8
+- op: discuss  # e3d6
+  at: '2026-10-17T03:43:04Z'  # e3d6
+  by: agent  # e3d6
+  actor: jgstern_agent  # e3d6
+  clock: 5  # e3d6
+  nonce: e3d6  # e3d6
+  message: "Folded into WI-pupod as a checklist line (owner ruling 2026-10-16). Placeholder; the epic's RE-OPEN TRIGGER governs when Xcode/TestFlight work resumes."  # e3d6
