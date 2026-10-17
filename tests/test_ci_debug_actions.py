@@ -58,7 +58,8 @@ _ARTIFACTS = json.dumps({"artifacts": [
     {"id": 9, "name": "io-manifest", "size_in_bytes": 123, "expired": False},
     {"id": 8, "name": "old", "size_in_bytes": 1, "expired": True},
 ]})
-_BLOB = "https://productionresultssa0.blob.core.windows.net/actions-results/x?sig=abc"
+_BLOB = "https://results.example-storage.net/actions-results/x?sig=abc"   # not allowlisted
+_GH_BLOB = "https://productionresultssa7.blob.core.windows.net/actions-results/x?sig=abc"  # allowlisted by pattern
 _LISTED = "https://api.github.com/not-really-but-listed/x"
 
 
@@ -182,10 +183,18 @@ def test_logs_with_an_unknown_name_names_the_jobs(tmp_path):
 def test_logs_refuses_a_redirect_to_an_unlisted_host_and_never_requests_it(tmp_path):
     r, urls = _run(tmp_path, ("logs", "--actions", "1"), _log_fixtures(_BLOB))
     assert r.returncode == 3, (r.stdout, r.stderr)
-    assert "productionresultssa0.blob.core.windows.net" in r.stderr
+    assert "results.example-storage.net" in r.stderr
     assert "ALLOWED_WEBSITES.md" in r.stderr
-    assert not any("blob.core.windows.net" in u for u in urls), urls
+    assert not any("example-storage.net" in u for u in urls), urls
     assert r.stdout == ""
+
+
+def test_logs_follows_githubs_numbered_results_storage_listed_as_a_pattern(tmp_path):
+    r, urls = _run(tmp_path, ("logs", "--actions", "1"), _log_fixtures(
+        _GH_BLOB, [{"match": f"GET {_GH_BLOB}", "code": 200, "body": "the log\n"}]))
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == "the log\n"
+    assert _GH_BLOB in urls
 
 
 def test_logs_follows_a_redirect_to_a_listed_host_and_prints_the_log(tmp_path):
@@ -202,7 +211,10 @@ def test_the_allowlist_match_covers_a_parent_domain_but_not_a_lookalike(tmp_path
     probe = (
         f'source <(sed -n "/^_actions_host_allowlisted()/,/^}}/p" "{script}"); '
         f'SCRIPT_DIR="{script.parent}"; '
-        'for h in api.github.com sub.raw.githubusercontent.com notgithub.com evilgithub.com; do '
+        'for h in api.github.com sub.raw.githubusercontent.com notgithub.com evilgithub.com '
+        'productionresultssa0.blob.core.windows.net productionresultssa19.blob.core.windows.net '
+        'evil.productionresultssa0.blob.core.windows.net blob.core.windows.net '
+        'productionresultssa0.blob.core.windows.net.evil.com productionresultssa.blob.core.windows.net; do '
         'if _actions_host_allowlisted "$h"; then echo "$h yes"; else echo "$h no"; fi; done'
     )
     import subprocess
@@ -211,6 +223,13 @@ def test_the_allowlist_match_covers_a_parent_domain_but_not_a_lookalike(tmp_path
     assert "sub.raw.githubusercontent.com yes" in out
     assert "notgithub.com no" in out
     assert "evilgithub.com no" in out
+    # the pattern entry: one label, whole host, no parent-domain reach
+    assert "productionresultssa0.blob.core.windows.net yes" in out
+    assert "productionresultssa19.blob.core.windows.net yes" in out
+    assert "productionresultssa.blob.core.windows.net yes" in out, "empty label is a legal glob match"
+    assert "evil.productionresultssa0.blob.core.windows.net no" in out
+    assert "\nblob.core.windows.net no" in "\n" + out
+    assert "productionresultssa0.blob.core.windows.net.evil.com no" in out
 
 
 # --- artifact -----------------------------------------------------------------
@@ -238,8 +257,8 @@ def test_artifact_refuses_an_unlisted_redirect_with_exit_3(tmp_path):
         {"match": "/actions/artifacts/9/zip", "code": 302, "location": _BLOB},
     ])
     assert r.returncode == 3
-    assert "blob.core.windows.net" in r.stderr
-    assert not any("blob.core.windows.net" in u for u in urls)
+    assert "results.example-storage.net" in r.stderr
+    assert not any("example-storage.net" in u for u in urls)
     assert not dest.exists() or not any(dest.iterdir())
 
 

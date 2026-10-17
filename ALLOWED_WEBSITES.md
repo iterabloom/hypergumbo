@@ -30,6 +30,19 @@
 # instance sits behind Cloudflare Access — so a failing pipeline is
 # undiagnosable from the agent side without reaching it (WI-solob).
 - $WOODPECKER_SERVER  (see .env)
+# GitHub Actions results storage. api.github.com answers
+# `/actions/jobs/<id>/logs` and `/actions/artifacts/<id>/zip` with a redirect
+# to one of GitHub's numbered Azure storage accounts (productionresultssa0,
+# productionresultssa1, ...); `scripts/ci-debug --actions logs|artifact`
+# follows a redirect only to a host matching an entry here, and one `*`
+# stands for exactly one DNS label. RATIONALE: the release workflow runs on
+# GitHub Actions, and its job logs and artifacts (the io-manifest gate's
+# observed manifest among them) were otherwise unreadable through the
+# approved scripts (WI-pubur; owner approval 2026-10-17).
+# SCOPE LIMIT, stated rather than left implicit: these hosts only, and only
+# the read-only GET of the signed URL GitHub hands out. blob.core.windows.net
+# at large — Azure blob storage in general — is deliberately NOT listed.
+- productionresultssa*.blob.core.windows.net
 
 ## Papers / scholarly
 - arxiv.org
