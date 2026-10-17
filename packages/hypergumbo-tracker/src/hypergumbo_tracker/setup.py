@@ -33,7 +33,8 @@ The check sequence covers four areas:
    state validity. NOT read-only — the wrapper-shim, AGENTS.md-block and
    ``core.hooksPath`` checks all write to the repo and return
    ``status="fixed"``.
-3. **Sync prerequisites** (check 22): remote origin, FORGEJO_TOKEN,
+3. **Sync prerequisites** (check 22): remote origin, the token sync needs
+   for its forge (HG_GITHUB_TOKEN for github, FORGEJO_TOKEN for forgejo),
    git identity — advisory check for ``htrac sync`` workflow.
 4. **Install provenance** (check 23): who can modify the running tracker
    code. Advisory, and an accident guard rather than a security control —
@@ -74,6 +75,14 @@ from hypergumbo_tracker.models import (
     resolve_actor,
 )
 from hypergumbo_tracker.store import _find_git_dir
+from hypergumbo_tracker.sync import (
+    NO_FORGE_TOKEN_MESSAGE,
+    _load_env,
+    api_base_from_url,
+    forge_backend,
+    forge_token,
+    missing_forge_token_message,
+)
 from hypergumbo_tracker.validation import ValidationResult, validate_all
 
 
@@ -2747,7 +2756,11 @@ def _check_sync_prerequisites(
     Advisory check (status is ``ok`` or ``warn``, never ``error``) since
     sync is an optional workflow.  Verifies:
     1. Remote ``origin`` exists.
-    2. ``FORGEJO_TOKEN`` present in ``.env`` or environment.
+    2. The token sync presents to the origin's forge is present in ``.env``
+       or the environment: ``HG_GITHUB_TOKEN`` for github, ``FORGEJO_TOKEN``
+       for forgejo (``sync.FORGE_TOKEN_VARS``). Its ``.env`` parser and
+       messages are sync's own, so the check and sync cannot disagree. With
+       no origin, either token satisfies this half.
     3. Git identity configured (``user.name``, ``user.email``).
     """
     if repo_root is None:
@@ -2758,6 +2771,7 @@ def _check_sync_prerequisites(
         )
 
     problems: list[str] = []
+    origin_url = ""
 
     # 1. Remote origin
     try:
@@ -2770,24 +2784,22 @@ def _check_sync_prerequisites(
         )
         if remote_result.returncode != 0:
             problems.append("No remote 'origin' configured")
+        else:
+            origin_url = remote_result.stdout.strip()
     except FileNotFoundError:  # pragma: no cover — git always available in CI
         problems.append("git not found")
 
-    # 2. FORGEJO_TOKEN
-    has_token = bool(os.environ.get("FORGEJO_TOKEN"))
-    if not has_token:
-        # Check .env file
-        env_path = repo_root / ".env"
-        if env_path.is_file():
-            content = env_path.read_text()
-            for line in content.splitlines():
-                if line.strip().startswith("FORGEJO_TOKEN="):
-                    value = line.strip().split("=", 1)[1].strip()
-                    if value:
-                        has_token = True
-                    break
-    if not has_token:
-        problems.append("FORGEJO_TOKEN not found in .env or environment")
+    # 2. The origin's forge token
+    env_vars = _load_env(repo_root)
+    api_base = api_base_from_url(origin_url) if origin_url else ""
+    if origin_url and not api_base:
+        problems.append("Could not parse a forge API URL from remote 'origin'")
+    if api_base:
+        backend = forge_backend(api_base)
+        if not forge_token(backend, env_vars):
+            problems.append(missing_forge_token_message(backend))
+    elif not (forge_token("github", env_vars) or forge_token("forgejo", env_vars)):
+        problems.append(NO_FORGE_TOKEN_MESSAGE)
 
     # 3. Git identity
     if not problems or "git not found" not in problems:

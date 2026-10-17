@@ -12,6 +12,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 - **The unshipped web-frontend scaffold** (`packages/htrac-frontend`): never built, tested or shipped, and the source of most of the repository's Dependabot alerts. ADR-0019 no longer claims it shipped; the frontend is re-scoped to a Yjs-backed tracker document, BlockSuite dropped.
 - **`htrac serve --background`**, which never daemonized; `--stop` and `--status` are unchanged.
 
+### Fixed
+
+- **`htrac setup` checks for the token sync actually uses.** That is `HG_GITHUB_TOKEN` for a GitHub origin and `FORGEJO_TOKEN` for a Forgejo one. The check used to accept only `FORGEJO_TOKEN`. It warned on a correctly configured GitHub repository and passed one that would fail to sync. Pruning superseded sync branches likewise sent the GitHub token to Forgejo when both were set.
+
 ## [0.10.0] - 2026-10-14
 
 ### Added
