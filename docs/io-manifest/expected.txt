@@ -1,0 +1,23 @@
+# Observed I/O manifest for the installed hypergumbo CLI (scripts/io-manifest).
+# One line per distinct write / mkdir / unlink / rmdir / rename / chmod / chown /
+# exec / connect attempt seen while running `sketch` on the six repositories in
+# corpus.txt, plus `survey` and `slice` on the one marked slice=. Produced from a
+# plain install (no extras) with HOME, XDG_CACHE_HOME and TMPDIR pointed at
+# scratch directories. docs/io-manifest/README.md explains the tokens and what
+# to do when a release fails against this file.
+#
+# A write under <repo>/ or an AF_INET/AF_INET6 connect fails the gate even if
+# listed here. Lines are op<TAB>target, sorted.
+exec	git config --get remote.origin.url
+exec	git rev-list --max-parents=0 HEAD
+exec	git rev-parse HEAD
+exec	hypergumbo sketch <repo>
+exec	hypergumbo slice --input <out>/... --entry backend/app/main.py
+exec	hypergumbo survey <repo> --out <out>/...
+mkdir	<cache>/hypergumbo/...
+mkdir	<out>/...
+unlink	<tmp>/...
+write	/dev/null
+write	<cache>/hypergumbo/...
+write	<out>/...
+write	<tmp>/...

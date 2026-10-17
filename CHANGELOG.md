@@ -14,6 +14,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **A release now fails when the installed CLI is seen doing I/O it did not do last release.** `scripts/io-manifest` runs `hypergumbo` over six pinned repositories under `strace` and reduces every write, delete, rename, program launch and connection attempt to a short manifest ([`docs/io-manifest/expected.txt`](docs/io-manifest/expected.txt)). A new line, a write into the analysed repository or a network connection fails the release. Unlike the two static gates, this one sees what dependencies and C extensions do.
 - **A PR now fails when shipped code calls a module the I/O catalogue cannot classify** (`scripts/check-claims-coverage`, ~30 s), rather than the twice-daily cron hours later.
 
 ### Fixed

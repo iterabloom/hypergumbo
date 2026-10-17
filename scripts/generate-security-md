@@ -324,6 +324,59 @@ def _render_independent_gate_section() -> list[str]:
     return lines
 
 
+def _render_observed_manifest_section() -> list[str]:
+    """The release-time gate that watches the PROCESS rather than reading
+    the Python: ``scripts/io-manifest`` (``.github/workflows/release.yml``).
+
+    Rendered from the committed corpus and manifest so the repository count,
+    the repository names and the line count cannot drift from this text.
+    """
+    corpus_path = REPO_ROOT / "docs" / "io-manifest" / "corpus.txt"
+    expected_path = REPO_ROOT / "docs" / "io-manifest" / "expected.txt"
+    lines = ["### Independent check: the observed I/O manifest", ""]
+    try:
+        corpus_rows = [
+            ln.split("#", 1)[0].split()
+            for ln in corpus_path.read_text(encoding="utf-8").splitlines()
+            if ln.split("#", 1)[0].strip()
+        ]
+        manifest = [
+            ln for ln in expected_path.read_text(encoding="utf-8").splitlines()
+            if ln.strip() and not ln.lstrip().startswith("#")
+        ]
+    except OSError:
+        lines.append("(``docs/io-manifest/`` not found)")
+        lines.append("")
+        return lines
+    names = ", ".join(f"``{row[0]}``" for row in corpus_rows)
+    sliced = [row[0] for row in corpus_rows if any(o.startswith("slice=") for o in row[3:])]
+    lines.append(
+        "Both checks above read the Python. ``scripts/io-manifest`` watches "
+        "the process instead: at every release it runs the installed "
+        "``hypergumbo`` (the default package set, no extras) over the "
+        f"{len(corpus_rows)} repositories pinned in "
+        "[`docs/io-manifest/corpus.txt`](docs/io-manifest/corpus.txt) "
+        f"({names}) under ``strace`` and reduces every write, delete, rename, "
+        "``execve`` and ``connect`` attempt — succeeded or not — to a zone line "
+        "such as ``write <cache>/hypergumbo/...`` or ``exec git rev-parse HEAD``. "
+        "The set is compared with "
+        "[`docs/io-manifest/expected.txt`](docs/io-manifest/expected.txt), "
+        f"currently {len(manifest)} lines; a new line fails the release, and two "
+        "lines fail it whatever the expected file says: a write under the "
+        "analysed repository (ADR-0047 ruling 9) and an ``AF_INET``/``AF_INET6`` "
+        "connect. It is the only check that sees a launch or a write made by a "
+        "dependency or a C extension. Its scope is exactly what it ran: "
+        f"``sketch`` on the {len(corpus_rows)} repositories, ``survey`` and "
+        f"``slice`` on {', '.join(f'``{n}``' for n in sliced) or 'none'}, no "
+        "``install-*`` command, no backend, no embeddings, no tracker, no "
+        "terminal. Reads are not recorded. "
+        "[`docs/io-manifest/README.md`](docs/io-manifest/README.md) explains "
+        "the tokens and what to do when a release fails against the file."
+    )
+    lines.append("")
+    return lines
+
+
 def _render_claims_section(
     claims_data: dict, verdicts: dict[str, str],
 ) -> list[str]:
@@ -340,6 +393,7 @@ def _render_claims_section(
     lines.append("")
     lines.extend(_render_scope_section())
     lines.extend(_render_independent_gate_section())
+    lines.extend(_render_observed_manifest_section())
     lines.extend(_render_measured_status(verdicts))
 
     claims = claims_data.get("claims", [])

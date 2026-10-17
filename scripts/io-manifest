@@ -1,0 +1,552 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Release gate: the I/O the installed CLI was OBSERVED to perform.
+
+WHY THIS EXISTS. The two static gates grade hypergumbo's source:
+``scripts/check-io-allowlist`` lists every risky primitive call site in
+``packages/*/src``, and ``scripts/check-self-claims`` asks hypergumbo's own
+analysis whether the SECURITY.md claims hold. Both stop at the edge of the
+Python: neither can see a program a dependency launches (``ldconfig -p`` from
+under a ``transformers`` import), a write a C extension makes, or whether a
+listed site is actually reached by a default run. This gate watches the
+process instead. It runs the installed ``hypergumbo`` over a small pinned
+corpus under ``strace``, reduces every write, delete, rename, launch and
+connection attempt to a path-zone line, and compares the set against
+``docs/io-manifest/expected.txt``. A new line fails the release.
+
+WHAT IT PROVES, AND WHAT IT DOES NOT. It proves what these commands did on
+these repositories on this runner, with no extras installed. It is the
+"every scenario we exercised" statement, not "every scenario". It does not
+exercise the ``install-*`` commands, the rust-analyzer or scip-python
+backends, embeddings, the tracker, or an interactive terminal (the
+``~/hypergumbo`` examples offer is TTY-only). Reads are not recorded: the
+CLI reads the whole analysed repository by design, and a read elsewhere
+(``/etc``, the Python install) is not what the README's claims are about.
+
+HOW A RUN IS MADE HERMETIC. ``HOME``, ``XDG_CACHE_HOME`` and ``TMPDIR`` are
+pointed at scratch directories under ``--out`` so every write lands under a
+root this script knows and can name (``<home>``, ``<cache>``, ``<tmp>``), the
+same on a developer machine and on the release runner. ``PYTHONDONTWRITEBYTECODE``
+keeps the interpreter from writing ``.pyc`` files into the install, and
+``HF_HUB_OFFLINE`` keeps an embeddings install, if one is present, off the
+network. ``--path`` replaces ``PATH`` for the traced processes, so a developer
+can hide a locally installed ``gitleaks`` or ``rust-analyzer`` and reproduce
+the runner's manifest.
+
+ATTEMPTS, NOT OUTCOMES. A line is recorded whether the syscall succeeded or
+failed: an attempted write outside its zone is the finding, and ``EACCES`` on
+it is the operating system saving us, not a reason to look away.
+
+THE LINE VOCABULARY (tab-separated ``op`` and ``target``):
+
+* ``write`` -- ``open``/``openat``/``creat``/``openat2`` with a writing flag
+  (``O_WRONLY``, ``O_RDWR``, ``O_CREAT``, ``O_TRUNC``, ``O_APPEND``);
+* ``mkdir``, ``unlink``, ``rmdir``, ``truncate``, ``chmod``, ``chown``,
+  ``symlink``, ``link``;
+* ``rename`` -- ``<src> -> <dst>``;
+* ``exec`` -- ``argv[0]`` basename and up to six arguments, paths normalised;
+* ``connect`` -- address family, then ``<ip>:<port>`` or the socket path.
+
+Targets are normalised to zone tokens: ``<repo>/...`` (an analysed
+repository; any write there fails the gate outright, ADR-0047 ruling 9),
+``<cache>/hypergumbo/...`` and ``<tmp>/...`` (collapsed: the structure inside
+is not the question),
+``<out>/...`` (files the run asked for with ``--out``, and what ``survey``
+writes beside them; collapsed, since the names are the corpus's), ``<home>/...``
+(kept exact), ``<python>/...`` (the install prefix),
+``/dev/shm/sem.*`` (POSIX semaphores). Anything else is the literal path.
+
+TWO HARD RULES ``check`` applies regardless of the expected file: a write
+under ``<repo>/`` fails, and a ``connect`` with ``AF_INET``/``AF_INET6``
+fails. They are the README's two default-run promises, and the expected file
+must not be able to bless a breach of either.
+
+USAGE::
+
+    scripts/io-manifest run --corpus docs/io-manifest/corpus.txt \\
+        --out /tmp/iom --expected docs/io-manifest/expected.txt
+    scripts/io-manifest run ... --corpus-root ~/ALL_REPOS/whole_bunch_of_repos \\
+        --path /usr/bin:/bin   # reproduce the runner locally, extras hidden
+    scripts/io-manifest reduce --out /tmp/iom /tmp/iom/trace/*.trace
+    scripts/io-manifest check --observed /tmp/iom/observed.txt \\
+        --expected docs/io-manifest/expected.txt
+
+Exit codes: 0 clean; 1 the gate failed (new lines, a repo write, a network
+connect, or a traced command exited non-zero); 2 usage or environment
+(no ``strace``, a corpus checkout that cannot be made).
+"""
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import os
+import re
+import shutil
+import subprocess  # nosec B404 - launches git, strace and the CLI under test
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+
+WRITE_FLAGS = ("O_WRONLY", "O_RDWR", "O_CREAT", "O_TRUNC", "O_APPEND")
+
+#: Syscalls traced. Reads (``O_RDONLY`` opens, ``stat``) are filtered out at
+#: reduction time, so ``openat`` is traced in full.
+TRACED_SYSCALLS = (
+    "open,openat,openat2,creat,"
+    "mkdir,mkdirat,rename,renameat,renameat2,unlink,unlinkat,rmdir,"
+    "link,linkat,symlink,symlinkat,truncate,chmod,fchmodat,chown,fchownat,lchown,"
+    "connect,execve,execveat"
+)
+
+_QUOTED = re.compile(r'"((?:[^"\\]|\\.)*)"')
+_LINE = re.compile(r"^(?:\d+\s+)?(?:\[pid\s+\d+\]\s+)?([a-z_0-9]+)\((.*)$")
+_HEX = re.compile(r"^[0-9a-f]{7,64}$")
+_SEM = re.compile(r"^/dev/shm/sem\.[^/]+$")
+
+
+# ---------------------------------------------------------------------------
+# Corpus
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CorpusEntry:
+    """One pinned repository: ``name owner/repo sha [slice=<entry>]``."""
+
+    name: str
+    repo: str
+    sha: str
+    slice_entry: str | None = None
+
+    @property
+    def url(self) -> str:
+        return f"https://github.com/{self.repo}.git"
+
+
+def parse_corpus(text: str) -> list[CorpusEntry]:
+    entries: list[CorpusEntry] = []
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) < 3:
+            raise ValueError(f"corpus line {lineno}: need 'name owner/repo sha', got {raw!r}")
+        name, repo, sha, *opts = parts
+        if not _HEX.match(sha) or len(sha) < 12:
+            raise ValueError(f"corpus line {lineno}: sha must be >= 12 hex chars, got {sha!r}")
+        slice_entry = None
+        for opt in opts:
+            key, _, value = opt.partition("=")
+            if key != "slice" or not value:
+                raise ValueError(f"corpus line {lineno}: unknown option {opt!r}")
+            slice_entry = value
+        entries.append(CorpusEntry(name, repo, sha, slice_entry))
+    names = [e.name for e in entries]
+    if len(set(names)) != len(names):
+        raise ValueError("corpus names must be unique")
+    return entries
+
+
+# ---------------------------------------------------------------------------
+# Normalisation and reduction
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Zones:
+    """Roots to tokenise. Longest prefix wins, so ``cache`` (under ``out``)
+    is matched before ``out``."""
+
+    repos: dict[str, str]  # token suffix -> absolute root
+    out: str
+    cache: str
+    tmp: str
+    home: str
+    python: str
+
+    def _pairs(self) -> list[tuple[str, str]]:
+        pairs = [(root, "<repo>") for root in self.repos.values()]
+        pairs += [
+            (self.cache, "<cache>"),
+            (self.tmp, "<tmp>"),
+            (self.home, "<home>"),
+            (self.out, "<out>"),
+            (self.python, "<python>"),
+        ]
+        return sorted(((r.rstrip("/"), t) for r, t in pairs if r), key=lambda p: -len(p[0]))
+
+    def norm(self, path: str) -> str:
+        path = re.sub(r"/+", "/", path)
+        if not path.startswith("/"):
+            return f"<rel>/{path}"
+        for root, token in self._pairs():
+            if path == root or path.startswith(root + "/"):
+                rest = path[len(root):].lstrip("/")
+                if token == "<cache>":
+                    top = rest.split("/", 1)[0] if rest else ""
+                    return f"<cache>/{top}/..." if top else "<cache>"
+                if token == "<tmp>":
+                    return "<tmp>/..." if rest else "<tmp>"
+                if token == "<out>":
+                    return "<out>/..." if rest else "<out>"
+                return f"{token}/{rest}" if rest else token
+        if _SEM.match(path):
+            return "/dev/shm/sem.*"  # noqa: S108 - a label, not a path we use
+        return path
+
+
+def _args_of(rest: str) -> str:
+    """The argument text of a syscall line: everything before the `` = ``
+    result, or the whole thing for an ``<unfinished ...>`` line."""
+    rest = rest.split(" <unfinished", 1)[0]
+    idx = rest.rfind(") = ")
+    return rest[:idx] if idx >= 0 else rest
+
+
+def _paths(args: str) -> list[str]:
+    return [m.group(1).encode().decode("unicode_escape") for m in _QUOTED.finditer(args)]
+
+
+def _norm_arg(zones: Zones, arg: str) -> str:
+    if arg.startswith("/"):
+        return zones.norm(arg)
+    if _HEX.match(arg) and len(arg) >= 12:
+        return "<sha>"
+    return arg
+
+
+def reduce_line(zones: Zones, line: str) -> str | None:
+    """One strace line -> one manifest line, or ``None`` when it is not an
+    event this gate records (a read, a resumed half, a signal, an exit)."""
+    m = _LINE.match(line.strip())
+    if not m:
+        return None
+    name, rest = m.group(1), m.group(2)
+    args = _args_of(rest)
+    paths = _paths(args)
+
+    if name in ("open", "openat", "openat2", "creat"):
+        if not paths:
+            return None
+        if name != "creat" and not any(flag in args for flag in WRITE_FLAGS):
+            return None
+        return f"write\t{zones.norm(paths[0])}"
+    if name in ("mkdir", "mkdirat"):
+        return f"mkdir\t{zones.norm(paths[0])}" if paths else None
+    if name == "unlinkat":
+        op = "rmdir" if "AT_REMOVEDIR" in args else "unlink"
+        return f"{op}\t{zones.norm(paths[0])}" if paths else None
+    if name in ("unlink", "rmdir", "truncate"):
+        return f"{name}\t{zones.norm(paths[0])}" if paths else None
+    if name in ("chmod", "fchmodat"):
+        return f"chmod\t{zones.norm(paths[0])}" if paths else None
+    if name in ("chown", "fchownat", "lchown"):
+        return f"chown\t{zones.norm(paths[0])}" if paths else None
+    if name in ("rename", "renameat", "renameat2"):
+        if len(paths) < 2:
+            return None
+        return f"rename\t{zones.norm(paths[0])} -> {zones.norm(paths[1])}"
+    if name in ("symlink", "symlinkat", "link", "linkat"):
+        if len(paths) < 2:
+            return None
+        op = "symlink" if name.startswith("symlink") else "link"
+        return f"{op}\t{zones.norm(paths[1])} -> {zones.norm(paths[0])}"
+    if name in ("execve", "execveat"):
+        if not paths:
+            return None
+        argv = paths[1:8] if len(paths) > 1 else []  # argv[0] + six arguments
+        exe = os.path.basename(paths[0]) or paths[0]
+        shown = " ".join([exe, *(_norm_arg(zones, a) for a in argv[1:])])
+        return f"exec\t{shown}"
+    if name == "connect":
+        fam = re.search(r"sa_family=(\w+)", args)
+        if not fam:
+            return None
+        family = fam.group(1)
+        port = re.search(r"sin6?_port=htons\((\d+)\)", args)
+        if port:
+            return f"connect\t{family} <ip>:{port.group(1)}"
+        sun = re.search(r'sun_path=(@?)"((?:[^"\\]|\\.)*)"', args)
+        if sun:
+            prefix = "@" if sun.group(1) else ""
+            return f"connect\t{family} {prefix}{zones.norm(sun.group(2)) if sun.group(2).startswith('/') else sun.group(2)}"
+        return f"connect\t{family}"
+    return None
+
+
+def reduce_traces(zones: Zones, traces: dict[str, str]) -> dict[str, set[str]]:
+    """``{manifest line: {run labels that produced it}}`` over ``traces``,
+    a mapping of run label -> strace output text."""
+    out: dict[str, set[str]] = {}
+    for label, text in traces.items():
+        for raw in text.splitlines():
+            line = reduce_line(zones, raw)
+            if line is not None:
+                out.setdefault(line, set()).add(label)
+    return out
+
+
+def render(observed: dict[str, set[str]]) -> str:
+    return "".join(f"{line}\n" for line in sorted(observed))
+
+
+def render_by_run(observed: dict[str, set[str]]) -> str:
+    return "".join(
+        f"{line}\t[{', '.join(sorted(runs))}]\n" for line, runs in sorted(observed.items())
+    )
+
+
+# ---------------------------------------------------------------------------
+# Check
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class CheckResult:
+    new: list[str] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)
+    repo_writes: list[str] = field(default_factory=list)
+    network: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not (self.new or self.repo_writes or self.network)
+
+
+def parse_manifest(text: str) -> set[str]:
+    return {
+        line.rstrip("\n")
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+
+def check(observed: set[str], expected: set[str]) -> CheckResult:
+    result = CheckResult()
+    result.new = sorted(observed - expected)
+    result.missing = sorted(expected - observed)
+    for line in sorted(observed):
+        op, _, target = line.partition("\t")
+        if op != "exec" and op != "connect" and (
+            target.startswith("<repo>/") or " -> <repo>/" in target or target == "<repo>"
+        ):
+            result.repo_writes.append(line)
+        if op == "connect" and re.match(r"AF_INET6?\b", target):
+            result.network.append(line)
+    return result
+
+
+def format_check(result: CheckResult) -> str:
+    out: list[str] = []
+    if result.repo_writes:
+        out.append("FAIL: write into an analysed repository (ADR-0047 ruling 9):")
+        out += [f"  {line}" for line in result.repo_writes]
+    if result.network:
+        out.append("FAIL: network connection from a default run:")
+        out += [f"  {line}" for line in result.network]
+    if result.new:
+        out.append("FAIL: observed I/O not in the expected manifest (review, then add):")
+        out += [f"  {line}" for line in result.new]
+    if result.missing:
+        out.append("note: expected lines not observed this run (the corpus no longer exercises them?):")
+        out += [f"  {line}" for line in result.missing]
+    if result.ok:
+        out.append("OK: every observed I/O line is in the expected manifest")
+    return "\n".join(out) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------------
+
+
+def _git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 # nosec B603 B607 - fixed argv, no shell
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=False,  # noqa: S607
+    )
+
+
+def ensure_checkout(entry: CorpusEntry, root: Path) -> Path:
+    """``root/<name>`` at the pinned sha: reused when already there, else a
+    depth-1 fetch of exactly that commit."""
+    dest = root / entry.name
+    if (dest / ".git").exists():
+        head = _git("rev-parse", "HEAD", cwd=dest)
+        if head.returncode == 0 and head.stdout.strip().startswith(entry.sha):
+            return dest
+        raise SystemExit(
+            f"{dest}: HEAD {head.stdout.strip()[:12]} is not the pinned {entry.sha[:12]}"
+        )
+    dest.mkdir(parents=True, exist_ok=True)
+    for step, argv in (("init", ["init", "-q", str(dest)]),
+                       ("remote", ["remote", "add", "origin", entry.url])):
+        proc = _git(*argv, cwd=None if step == "init" else dest)
+        if proc.returncode != 0:
+            raise SystemExit(f"{entry.name}: git {step} failed: {proc.stderr.strip()}")
+    # A depth-1 fetch of the bare commit is the cheap path; a server that
+    # does not serve unadvertised commits gets a full fetch instead.
+    fetch = _git("fetch", "-q", "--depth", "1", "origin", entry.sha, cwd=dest)
+    if fetch.returncode != 0:
+        fetch = _git("fetch", "-q", "origin", cwd=dest)
+        if fetch.returncode != 0:
+            raise SystemExit(f"{entry.name}: git fetch failed: {fetch.stderr.strip()}")
+    checkout = _git("checkout", "-q", entry.sha, cwd=dest)
+    if checkout.returncode != 0:
+        raise SystemExit(f"{entry.name}: git checkout failed: {checkout.stderr.strip()}")
+    return dest
+
+
+def _commands(entry: CorpusEntry, repo: Path, work: Path) -> list[tuple[str, list[str]]]:
+    cmds = [("sketch", ["sketch", str(repo)])]
+    if entry.slice_entry:
+        survey = work / f"{entry.name}.survey.json"
+        cmds.append(("survey", ["survey", str(repo), "--out", str(survey)]))
+        cmds.append((
+            "slice",
+            ["slice", "--input", str(survey), "--entry", entry.slice_entry,
+             "--out", str(work / f"{entry.name}.slice.json")],
+        ))
+    return cmds
+
+
+def trace_entry(
+    entry: CorpusEntry, repo: Path, out: Path, exe: str, env: dict[str, str], strace: str,
+) -> list[tuple[str, Path, int]]:
+    """Run each command for ``entry`` under strace. Returns
+    ``(label, trace path, exit code)`` per command."""
+    results = []
+    for cmd_name, argv in _commands(entry, repo, out / "work"):
+        label = f"{entry.name}.{cmd_name}"
+        trace = out / "trace" / f"{label}.trace"
+        log = out / "logs" / label
+        with open(f"{log}.out", "wb") as fo, open(f"{log}.err", "wb") as fe:
+            proc = subprocess.run(  # noqa: S603 # nosec B603 - fixed argv, no shell
+                [strace, "-f", "-qq", "-s", "512", "-e", f"trace={TRACED_SYSCALLS}",
+                 "-o", str(trace), "--", exe, *argv],
+                cwd=out / "work", env=env, stdout=fo, stderr=fe, check=False,
+            )
+        results.append((label, trace, proc.returncode))
+    return results
+
+
+def run(args: argparse.Namespace) -> int:
+    strace = shutil.which("strace")
+    if strace is None:
+        print("io-manifest: strace is not installed", file=sys.stderr)
+        return 2
+    exe = shutil.which(args.hypergumbo) if "/" not in args.hypergumbo else args.hypergumbo
+    if exe is None or not Path(exe).exists():
+        print(f"io-manifest: hypergumbo executable not found: {args.hypergumbo}", file=sys.stderr)
+        return 2
+    exe = str(Path(exe).resolve())
+    entries = parse_corpus(Path(args.corpus).read_text())
+    out = Path(args.out).resolve()
+    for sub in ("home", "cache", "tmp", "work", "trace", "logs"):
+        (out / sub).mkdir(parents=True, exist_ok=True)
+    corpus_root = Path(args.corpus_root).resolve() if args.corpus_root else out / "corpus"
+    repos = {e.name: ensure_checkout(e, corpus_root) for e in entries}
+
+    env = {
+        "HOME": str(out / "home"),
+        "XDG_CACHE_HOME": str(out / "cache"),
+        "TMPDIR": str(out / "tmp"),
+        "PATH": args.path or os.environ.get("PATH", ""),
+        "LANG": "C.UTF-8",
+        "TERM": "dumb",
+        "NO_COLOR": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "HF_HUB_OFFLINE": "1",
+    }
+    zones = Zones(
+        repos={name: str(path.resolve()) for name, path in repos.items()},
+        out=str(out), cache=str(out / "cache"), tmp=str(out / "tmp"),
+        home=str(out / "home"), python=str(Path(exe).parent.parent),
+    )
+
+    failures: list[str] = []
+    traces: dict[str, str] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        futures = [
+            pool.submit(trace_entry, e, repos[e.name], out, exe, env, strace) for e in entries
+        ]
+        for fut in futures:
+            for label, trace, rc in fut.result():
+                traces[label] = trace.read_text(errors="replace") if trace.exists() else ""
+                if rc != 0:
+                    failures.append(f"{label}: exit {rc} (see {out / 'logs' / label}.err)")
+
+    observed = reduce_traces(zones, traces)
+    (out / "observed.txt").write_text(render(observed))
+    (out / "observed.by-run.txt").write_text(render_by_run(observed))
+    print(f"io-manifest: {len(traces)} traced runs, {len(observed)} distinct lines "
+          f"-> {out / 'observed.txt'}")
+    for line in failures:
+        print(f"FAIL: traced command failed: {line}")
+
+    rc = 1 if failures else 0
+    if args.expected:
+        result = check(set(observed), parse_manifest(Path(args.expected).read_text()))
+        sys.stdout.write(format_check(result))
+        if not result.ok:
+            rc = 1
+    else:
+        sys.stdout.write(render(observed))
+    return rc
+
+
+def cmd_reduce(args: argparse.Namespace) -> int:
+    out = Path(args.out).resolve()
+    exe = shutil.which(args.hypergumbo) or args.hypergumbo
+    corpus_root = Path(args.corpus_root).resolve() if args.corpus_root else out / "corpus"
+    repos = {p.name: str(p.resolve()) for p in corpus_root.iterdir()} if corpus_root.is_dir() else {}
+    zones = Zones(
+        repos=repos, out=str(out), cache=str(out / "cache"), tmp=str(out / "tmp"),
+        home=str(out / "home"), python=str(Path(exe).resolve().parent.parent),
+    )
+    traces = {Path(t).stem: Path(t).read_text(errors="replace") for t in args.traces}
+    sys.stdout.write(render(reduce_traces(zones, traces)))
+    return 0
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    result = check(
+        parse_manifest(Path(args.observed).read_text()),
+        parse_manifest(Path(args.expected).read_text()),
+    )
+    sys.stdout.write(format_check(result))
+    return 0 if result.ok else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="io-manifest", description=__doc__.split("\n\n")[0])
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_run = sub.add_parser("run", help="trace the corpus, reduce, and check")
+    p_run.add_argument("--corpus", required=True)
+    p_run.add_argument("--out", required=True)
+    p_run.add_argument("--expected")
+    p_run.add_argument("--corpus-root", help="existing checkouts (default: <out>/corpus, fetched)")
+    p_run.add_argument("--hypergumbo", default="hypergumbo")
+    p_run.add_argument("--path", help="PATH for the traced processes (default: inherit)")
+    p_run.add_argument("--jobs", type=int, default=max(1, min(4, os.cpu_count() or 1)))
+    p_run.set_defaults(func=run)
+
+    p_red = sub.add_parser("reduce", help="reduce saved traces to manifest lines")
+    p_red.add_argument("--out", required=True)
+    p_red.add_argument("--corpus-root")
+    p_red.add_argument("--hypergumbo", default="hypergumbo")
+    p_red.add_argument("traces", nargs="+")
+    p_red.set_defaults(func=cmd_reduce)
+
+    p_chk = sub.add_parser("check", help="compare an observed manifest with the expected one")
+    p_chk.add_argument("--observed", required=True)
+    p_chk.add_argument("--expected", required=True)
+    p_chk.set_defaults(func=cmd_check)
+
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

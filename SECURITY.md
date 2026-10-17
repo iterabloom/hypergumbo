@@ -40,6 +40,10 @@ Families with no site in the tree today (adding one fails the gate until it is r
 - ``INV-tusos-gibog-pupan-ratid-tutug-kivub-fison-zuhad``: ``hypergumbo_lang_rust_analyzer.invoke.run_rust_analyzer_scip``, ``hypergumbo_lang_scip_python.analyzer.analyze_python_with_scip_impl``, ``hypergumbo_lang_scip_python.invoke.run_scip_python_index``
 - ``WI-puban-modig-mifip-mazov-dakas-jufot-bokob-vodut``: ``hypergumbo_tracker.stop_hook._call_openrouter``
 
+### Independent check: the observed I/O manifest
+
+Both checks above read the Python. ``scripts/io-manifest`` watches the process instead: at every release it runs the installed ``hypergumbo`` (the default package set, no extras) over the 6 repositories pinned in [`docs/io-manifest/corpus.txt`](docs/io-manifest/corpus.txt) (``full-stack-fastapi-template``, ``git-bug``, ``ripgrep``, ``okhttp``, ``postal``, ``crun``) under ``strace`` and reduces every write, delete, rename, ``execve`` and ``connect`` attempt — succeeded or not — to a zone line such as ``write <cache>/hypergumbo/...`` or ``exec git rev-parse HEAD``. The set is compared with [`docs/io-manifest/expected.txt`](docs/io-manifest/expected.txt), currently 13 lines; a new line fails the release, and two lines fail it whatever the expected file says: a write under the analysed repository (ADR-0047 ruling 9) and an ``AF_INET``/``AF_INET6`` connect. It is the only check that sees a launch or a write made by a dependency or a C extension. Its scope is exactly what it ran: ``sketch`` on the 6 repositories, ``survey`` and ``slice`` on ``full-stack-fastapi-template``, no ``install-*`` command, no backend, no embeddings, no tracker, no terminal. Reads are not recorded. [`docs/io-manifest/README.md`](docs/io-manifest/README.md) explains the tokens and what to do when a release fails against the file.
+
 **Read the claims below as CLAIMS UNDER TEST, not as assurances.** They state what each entry-point category is *intended* to do. What the analysis actually reports is:
 
 | verdict | count | meaning |
