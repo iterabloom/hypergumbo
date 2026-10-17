@@ -1,0 +1,21 @@
+Original commit body from c36146a934d4fe656fda199e917881ec1b244f39:
+
+htrac setup's sync-prerequisite check looked only for FORGEJO_TOKEN, while
+htrac sync presents HG_GITHUB_TOKEN to a github origin. It warned on a
+correctly configured github repository and passed one with only the
+Codeberg token, which github.com rejects.
+
+The token rule now lives in one table, sync.FORGE_TOKEN_VARS, with
+forge_backend / forge_token / api_base_from_url helpers. Preflight, the
+superseded-branch prune and setup check 22 all read it, with sync's own
+.env parser and messages, and a parametrized test pins that the check and
+sync agree for every backend/token pair.
+
+Analogue fixed: prune_superseded_sync_branches took HG_GITHUB_TOKEN first
+on every forge (sending the GitHub PAT to Codeberg when both were set) and
+never looked at os.environ.
+
+Also reported now: an origin URL that cannot be parsed; with no origin,
+either token satisfies the token half.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
