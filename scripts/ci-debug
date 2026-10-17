@@ -4,7 +4,8 @@
 # CI Debug Helper - Fetch and analyze Forgejo/Gitea Actions run logs
 #
 # Works with any Forgejo/Gitea/Codeberg instance. Detects the API
-# base URL from git remote origin automatically.
+# base URL from git remote origin automatically. With `--actions` it reads
+# GitHub Actions instead (release.yml runs there; see the arm below).
 #
 # Required environment variable (whichever the backend needs — see C9 in
 # lib/forgejo-api.sh::resolve_forge_token):
@@ -52,6 +53,15 @@ usage() {
   echo "                    is found on ANY gate reporting on the commit (WI-ratam)"
   echo "  analyze-deps      Check tree-sitter packages vs pyproject.toml"
   echo ""
+  echo "GitHub Actions (release.yml runs there; everything else is Woodpecker). Add --actions:"
+  echo "  runs --actions [workflow.yml] [N]   Recent runs, newest first (default N=10)"
+  echo "  status --actions <run-id>           Jobs, steps, conclusions, durations"
+  echo "  logs --actions <run-id> [job]       One job's log (default: the first failed job)"
+  echo "  artifact --actions <run-id> <name> <new-empty-dir>"
+  echo "                                      Download and unzip an artifact into a NEW empty dir"
+  echo "  Logs and artifacts arrive via a redirect; it is followed only to a host listed in"
+  echo "  ALLOWED_WEBSITES.md, otherwise the command names the host and exits 3."
+  echo ""
   echo "Examples:"
   echo "  $0 runs              # Show last 10 runs"
   echo "  $0 status            # Show status for current commit"
@@ -62,6 +72,10 @@ usage() {
   echo "  $0 logs pytest       # Fetch log for 'pytest' job at HEAD"
   echo "  $0 logs pytest abc123  # Fetch log for 'pytest' job at specific commit"
   echo "  $0 analyze-deps      # Find missing tree-sitter dependencies"
+  echo "  $0 runs --actions release.yml      # Release workflow runs (incl. workflow_dispatch dry runs)"
+  echo "  $0 status --actions 39068691320    # That run's jobs and steps"
+  echo "  $0 logs --actions 39068691320 io-manifest"
+  echo "  $0 artifact --actions 39068691320 io-manifest /tmp/iom-artifact"
 }
 
 # INV-bozid (masking): a Woodpecker status is ONE bit for a whole workflow.
@@ -82,11 +96,12 @@ _expand_step_sentinels() {
   done
 }
 
-# GitHub arm: GitHub Actions is disabled under Woodpecker CI, so /actions/runs
-# returns an empty workflow_runs (HTTP 200) — there is no run history to list.
-# The only agent-readable CI signal is the Woodpecker commit-STATUS, so render
-# HEAD's status entries as pseudo-runs. (status/pr-status read the same endpoint
-# and are already shape-compatible.)
+# GitHub arm (default, no --actions): pushes, PRs and crons run on Woodpecker,
+# not on GitHub Actions, so /actions/runs holds nothing about them — only the
+# release workflow's runs, which `--actions` reads. The agent-readable CI signal
+# for a COMMIT is the Woodpecker commit-STATUS, so render HEAD's status entries
+# as pseudo-runs. (status/pr-status read the same endpoint and are already
+# shape-compatible.)
 _cmd_runs_github() {
   local sha
   sha=$(git rev-parse HEAD)
@@ -598,15 +613,318 @@ cmd_analyze_deps() {
     done
 }
 
+# ------------------------------------------------------------------
+# GitHub Actions arm (WI-pubur). Explicit: `--actions` anywhere on the command
+# line; nothing above changes without it.
+#
+# The release workflow (.github/workflows/release.yml) is the one thing that
+# runs on GitHub Actions — pushes, PRs and crons run on Woodpecker — and until
+# this arm the approved scripts could not see it at all: not a release run, not
+# a workflow_dispatch dry run, not its artifacts. Four read-only views of it:
+#
+#   runs --actions [WORKFLOW_FILE] [N]      GET /actions/runs or /actions/workflows/<f>/runs
+#   status --actions RUN_ID                 GET /actions/runs/<id> + /actions/runs/<id>/jobs
+#   logs --actions RUN_ID [JOB]             GET /actions/jobs/<job>/logs
+#   artifact --actions RUN_ID NAME NEW_DIR  GET /actions/runs/<id>/artifacts + /actions/artifacts/<a>/zip
+#
+# JSON goes through api_get like everything else. Logs and artifact zips are
+# different: api.github.com answers them with a redirect to a storage host.
+# ALLOWED_WEBSITES.md says a redirect to an unlisted host is not followed, so
+# _actions_download checks the target host against that file first and, when
+# it is not listed, NAMES it and returns 3 instead of fetching. Adding the host
+# is an owner decision (the file says so), not something this script decides.
+# ------------------------------------------------------------------
+_actions_require_github() {
+  if [[ "${FORGE_BACKEND:-forgejo}" != "github" ]]; then
+    echo "❌ --actions reads GitHub Actions; the detected backend is '${FORGE_BACKEND:-forgejo}' ($REPO_SLUG)." >&2
+    exit 1
+  fi
+}
+
+# _actions_host_allowlisted HOST -> 0 when ALLOWED_WEBSITES.md lists HOST or a
+# parent domain of it (`foo.github.com` is covered by `github.com`). Entries are
+# the `- domain` bullets; the `$WOODPECKER_SERVER` placeholder is not a domain.
+_actions_host_allowlisted() {
+  local host="$1" file="$SCRIPT_DIR/../ALLOWED_WEBSITES.md" entry
+  [[ -f "$file" ]] || return 1
+  while read -r entry; do
+    if [[ "$host" == "$entry" || "$host" == *".$entry" ]]; then
+      return 0
+    fi
+  done < <(sed -nE 's/^- ([A-Za-z0-9.-]+)([[:space:]].*)?$/\1/p' "$file")
+  return 1
+}
+
+# _actions_download URL OUTFILE
+#   A 200 is written to OUTFILE and returns 0. A redirect is followed only when
+#   its host is allowlisted (return 0 / 1 as the download goes); otherwise the
+#   host is named on stderr and the return is 3. Anything else returns 1.
+_actions_download() {
+  local url="$1" out="$2" probe code loc host
+  resolve_forge_token
+  local hdr=(-H "Authorization: token ${FORGE_TOKEN:-}"
+             -H "Accept: application/vnd.github+json"
+             -H "X-GitHub-Api-Version: 2022-11-28")
+  probe=$(curl -s --max-time 60 -o "$out" -w '%{http_code} %{redirect_url}' "${hdr[@]}" "$url" 2>/dev/null) \
+    || probe="000 "
+  code="${probe%% *}"
+  loc="${probe#* }"
+  case "$code" in
+    200)
+      return 0 ;;
+    301|302|303|307|308)
+      host=$(printf '%s' "$loc" | sed -E 's#^[a-zA-Z]+://([^/:?]+).*#\1#')
+      if ! _actions_host_allowlisted "$host"; then
+        echo "⛔ GitHub serves this through a redirect to '$host', which is not in ALLOWED_WEBSITES.md." >&2
+        echo "   Not followed (that file's rule). To enable it, ask the owner to add the host, with the rationale." >&2
+        return 3
+      fi
+      # curl drops Authorization on a cross-host hop, and the signed URL needs none.
+      code=$(curl -sL --max-time 120 -o "$out" -w '%{http_code}' "${hdr[@]}" "$url" 2>/dev/null) || code="000"
+      if [[ "$code" == "200" ]]; then
+        return 0
+      fi
+      echo "❌ download failed after the redirect: HTTP $code" >&2
+      return 1 ;;
+    *)
+      echo "❌ HTTP $code for ${url#"$API_BASE"}" >&2
+      return 1 ;;
+  esac
+}
+
+cmd_runs_actions() {
+  _actions_require_github
+  local wf="${1:-}" limit="${2:-10}" url
+  if [[ -n "$wf" ]]; then
+    url="$API_BASE/actions/workflows/$wf/runs?per_page=$limit"
+  else
+    url="$API_BASE/actions/runs?per_page=$limit"
+  fi
+  echo "GitHub Actions runs for $REPO_SLUG${wf:+ ($wf)}, newest first:"
+  echo "---"
+  if ! api_get "$url"; then
+    echo "❌ Failed to fetch runs (HTTP $API_HTTP_CODE)"
+    exit 1
+  fi
+  echo "$API_RESPONSE" | python3 -c '
+import sys, json
+runs = json.load(sys.stdin).get("workflow_runs") or []
+if not runs:
+    print("No runs.")
+    sys.exit(0)
+for r in runs:
+    concl = r.get("conclusion") or r.get("status") or "?"
+    if concl == "success":
+        marker = "✅"
+    elif concl in ("failure", "timed_out", "startup_failure"):
+        marker = "❌"
+    elif r.get("status") != "completed":
+        marker = "⏳"
+    else:
+        marker = "⚪"
+    wf = (r.get("path") or "").rsplit("/", 1)[-1]
+    rid, num = r.get("id"), r.get("run_number")
+    ev, br = r.get("event") or "", r.get("head_branch") or ""
+    sha = (r.get("head_sha") or "")[:8]
+    when = (r.get("created_at") or "")[:16]
+    title = (r.get("display_title") or "")[:40]
+    print(f"{marker} run {rid}  #{num}  {concl:<10} {ev:<17} {br:<12} @{sha}  {when}  {wf}  {title}")
+'
+}
+
+cmd_status_actions() {
+  _actions_require_github
+  local run_id="${1:-}"
+  if [[ -z "$run_id" ]]; then
+    echo "Usage: $0 status --actions <run-id>      (ids: $0 runs --actions)" >&2
+    exit 1
+  fi
+  if ! api_get "$API_BASE/actions/runs/$run_id"; then
+    echo "❌ Failed to fetch run $run_id (HTTP $API_HTTP_CODE)"
+    exit 1
+  fi
+  local run_json="$API_RESPONSE"
+  if ! api_get "$API_BASE/actions/runs/$run_id/jobs?per_page=100"; then
+    echo "❌ Failed to fetch jobs of run $run_id (HTTP $API_HTTP_CODE)"
+    exit 1
+  fi
+  echo "$API_RESPONSE" | RUN_JSON="$run_json" python3 -c '
+import sys, json, os
+from datetime import datetime
+
+def secs(a, b):
+    if not a or not b:
+        return ""
+    p = lambda t: datetime.fromisoformat(t.replace("Z", "+00:00"))
+    return f"{(p(b) - p(a)).total_seconds():.0f}s"
+
+def mark(c, status=None):
+    if c == "success":
+        return "✅"
+    if c in ("failure", "timed_out", "startup_failure", "action_required"):
+        return "❌"
+    if c in ("skipped", "cancelled", "neutral"):
+        return "⏭ "
+    return "⏳" if status != "completed" else "⚪"
+
+run = json.loads(os.environ["RUN_JSON"])
+concl = run.get("conclusion") or run.get("status") or "?"
+sha = (run.get("head_sha") or "")[:8]
+print("%s run %s #%s %s: %s/%s  event=%s branch=%s @%s" % (
+    mark(concl, run.get("status")), run.get("id"), run.get("run_number"), run.get("name", ""),
+    run.get("status"), concl, run.get("event"), run.get("head_branch"), sha))
+jobs = json.load(sys.stdin).get("jobs") or []
+print("Jobs:")
+for j in jobs:
+    c = j.get("conclusion") or j.get("status") or "?"
+    d = secs(j.get("started_at"), j.get("completed_at"))
+    print("  %s %s: %s%s  [job %s]" % (mark(c, j.get("status")), j.get("name"), c, (" (" + d + ")") if d else "", j.get("id")))
+    for s in j.get("steps") or []:
+        sc = s.get("conclusion") or s.get("status") or "?"
+        tag = {"success": "OK  ", "failure": "FAIL", "skipped": "SKIP", "cancelled": "CANC"}.get(sc, sc[:4].upper())
+        sd = secs(s.get("started_at"), s.get("completed_at"))
+        print("      %s  %s%s" % (tag, s.get("name"), ("  " + sd) if sd else ""))
+'
+}
+
+# _actions_pick_job RUN_ID [NAME] -> prints "<job id>\t<job name>" or returns 1.
+#   No name: the first job that failed (failure / timed_out / cancelled), else
+#   the first job. A name: an exact match, else a case-insensitive substring
+#   match that must be unique, or the candidates are listed.
+_actions_pick_job() {
+  local run_id="$1" want="${2:-}"
+  if ! api_get "$API_BASE/actions/runs/$run_id/jobs?per_page=100"; then
+    echo "❌ Failed to fetch jobs of run $run_id (HTTP $API_HTTP_CODE)" >&2
+    return 1
+  fi
+  echo "$API_RESPONSE" | WANT="$want" python3 -c '
+import sys, json, os
+jobs = json.load(sys.stdin).get("jobs") or []
+want = os.environ.get("WANT", "")
+if not jobs:
+    print("no jobs on this run", file=sys.stderr); sys.exit(1)
+if not want:
+    bad = [j for j in jobs if (j.get("conclusion") or "") in ("failure", "timed_out", "cancelled", "startup_failure")]
+    pick = (bad or jobs)[0]
+else:
+    exact = [j for j in jobs if j.get("name") == want]
+    sub = [j for j in jobs if want.lower() in (j.get("name") or "").lower()]
+    if exact:
+        pick = exact[0]
+    elif len(sub) == 1:
+        pick = sub[0]
+    elif sub:
+        print("job name is ambiguous; candidates: " + ", ".join(j.get("name") for j in sub), file=sys.stderr); sys.exit(1)
+    else:
+        print("no job matches " + repr(want) + "; jobs: " + ", ".join(j.get("name") for j in jobs), file=sys.stderr); sys.exit(1)
+print(str(pick.get("id")) + "\t" + str(pick.get("name")))
+'
+}
+
+cmd_logs_actions() {
+  _actions_require_github
+  local run_id="${1:-}" want="${2:-}" picked job_id job_name tmp rc
+  if [[ -z "$run_id" ]]; then
+    echo "Usage: $0 logs --actions <run-id> [job]      (ids: $0 runs --actions)" >&2
+    exit 1
+  fi
+  picked=$(_actions_pick_job "$run_id" "$want") || exit 1
+  job_id="${picked%%$'\t'*}"
+  job_name="${picked#*$'\t'}"
+  echo "Fetching log of job '$job_name' (job $job_id, run $run_id)..." >&2
+  tmp=$(mktemp)
+  if _actions_download "$API_BASE/actions/jobs/$job_id/logs" "$tmp"; then
+    cat "$tmp"
+    rm -f "$tmp"
+  else
+    rc=$?
+    rm -f "$tmp"
+    exit "$rc"
+  fi
+}
+
+cmd_artifact_actions() {
+  _actions_require_github
+  local run_id="${1:-}" name="${2:-}" dest="${3:-}" picked art_id tmp rc
+  if [[ -z "$run_id" || -z "$name" || -z "$dest" ]]; then
+    echo "Usage: $0 artifact --actions <run-id> <artifact-name> <new-empty-dir>" >&2
+    exit 1
+  fi
+  # Untrusted data goes into a NEW, empty directory, never beside anything else.
+  if [[ -e "$dest" ]] && { [[ ! -d "$dest" ]] || [[ -n "$(ls -A "$dest" 2>/dev/null)" ]]; }; then
+    echo "❌ $dest exists and is not an empty directory; artifacts are extracted into a new empty directory only." >&2
+    exit 1
+  fi
+  if ! api_get "$API_BASE/actions/runs/$run_id/artifacts?per_page=100"; then
+    echo "❌ Failed to list artifacts of run $run_id (HTTP $API_HTTP_CODE)" >&2
+    exit 1
+  fi
+  picked=$(echo "$API_RESPONSE" | NAME="$name" python3 -c '
+import sys, json, os
+arts = json.load(sys.stdin).get("artifacts") or []
+name = os.environ["NAME"]
+hit = [a for a in arts if a.get("name") == name]
+if not hit:
+    print("no artifact named " + repr(name) + "; available: " + ", ".join(a.get("name", "?") for a in arts), file=sys.stderr); sys.exit(1)
+a = hit[0]
+if a.get("expired"):
+    print("artifact " + repr(name) + " has expired", file=sys.stderr); sys.exit(1)
+print(str(a.get("id")) + "\t" + str(a.get("size_in_bytes", 0)))
+') || exit 1
+  art_id="${picked%%$'\t'*}"
+  echo "Downloading artifact '$name' (id $art_id, ${picked#*$'\t'} bytes) of run $run_id..." >&2
+  tmp=$(mktemp --suffix=.zip)
+  if _actions_download "$API_BASE/actions/artifacts/$art_id/zip" "$tmp"; then
+    :
+  else
+    rc=$?
+    rm -f "$tmp"
+    exit "$rc"
+  fi
+  mkdir -p "$dest"
+  # Safe extraction: no absolute members, no `..`, nothing outside DEST.
+  ZIP="$tmp" DEST="$dest" python3 - <<'PY'
+import os, sys, zipfile
+dest = os.path.realpath(os.environ["DEST"])
+n = 0
+with zipfile.ZipFile(os.environ["ZIP"]) as zf:
+    for info in zf.infolist():
+        name = info.filename
+        target = os.path.realpath(os.path.join(dest, name))
+        if name.startswith(("/", "\\")) or ".." in name.split("/") or not target.startswith(dest + os.sep):
+            print(f"refusing zip member that escapes the destination: {name!r}", file=sys.stderr)
+            sys.exit(1)
+    for info in zf.infolist():
+        zf.extract(info, dest)
+        n += int(not info.is_dir())
+print(f"Extracted {n} file(s) into {dest}")
+PY
+  rc=$?
+  rm -f "$tmp"
+  exit "$rc"
+}
+
+# `--actions` may appear anywhere; strip it and remember.
+ACTIONS_MODE=false
+_cli_args=()
+for _a in "$@"; do
+  if [[ "$_a" == "--actions" ]]; then
+    ACTIONS_MODE=true
+  else
+    _cli_args+=("$_a")
+  fi
+done
+set -- "${_cli_args[@]+"${_cli_args[@]}"}"
+
 case "${1:-runs}" in
   runs)
-    cmd_runs
+    if $ACTIONS_MODE; then cmd_runs_actions "${2:-}" "${3:-}"; else cmd_runs; fi
     ;;
   cron-status)
     cmd_cron_status "${2:-}" "${3:-}"
     ;;
   status)
-    cmd_status "${2:-}"
+    if $ACTIONS_MODE; then cmd_status_actions "${2:-}"; else cmd_status "${2:-}"; fi
     ;;
   pr-status)
     cmd_pr_status "${2:-}"
@@ -615,7 +933,15 @@ case "${1:-runs}" in
     cmd_pr_body "${2:-}"
     ;;
   logs)
-    cmd_logs "${2:-}" "${3:-}"
+    if $ACTIONS_MODE; then cmd_logs_actions "${2:-}" "${3:-}"; else cmd_logs "${2:-}" "${3:-}"; fi
+    ;;
+  artifact)
+    if $ACTIONS_MODE; then
+      cmd_artifact_actions "${2:-}" "${3:-}" "${4:-}"
+    else
+      echo "artifact is a GitHub Actions command: $0 artifact --actions <run-id> <name> <new-empty-dir>" >&2
+      exit 1
+    fi
     ;;
   analyze-deps)
     cmd_analyze_deps

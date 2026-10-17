@@ -93,11 +93,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LIB = REPO_ROOT / "scripts" / "lib" / "forgejo-api.sh"
 SCRIPTS = REPO_ROOT / "scripts"
 
-# Fake ``curl``: parses -X/-o/-H/-d + the URL, logs the invocation, and returns
-# a fixtured body/code. Mirrors test_forge_backend_github.py's fake so fixtures
-# are interchangeable.
+# Fake ``curl``: parses -X/-o/-H/-d/-w/-L + the URL, logs the invocation, and
+# returns a fixtured body/code. Mirrors test_forge_backend_github.py's fake so
+# fixtures are interchangeable. Fixture keys beyond ``match``/``code``/``body``:
+# ``location`` (the response is a redirect to that URL: without ``-L`` the
+# body is empty and ``%{redirect_url}`` renders it; with ``-L`` the fake makes
+# a second, logged request to it and serves THAT url's fixture) and
+# ``body_b64`` (a binary body, for zips). ``-w`` formats ``%{http_code}`` and
+# ``%{redirect_url}`` like real curl does.
 FAKE_CURL = r'''#!/usr/bin/env python3
-import json, os, sys
+import base64, json, os, sys
 args = sys.argv[1:]
 method = "GET"
 outfile = None
@@ -105,6 +110,7 @@ url = None
 headers = []
 data = None
 w_fmt = None
+follow = False
 i = 0
 while i < len(args):
     a = args[i]
@@ -121,27 +127,50 @@ while i < len(args):
     if a == "--max-time":
         i += 2; continue
     if a.startswith("-"):
+        if not a.startswith("--") and "L" in a[1:]:
+            follow = True
         i += 1; continue
     url = a; i += 1
-rec = {"method": method, "url": url, "headers": headers, "data": data}
-log = os.environ.get("CURL_LOG")
-if log:
-    with open(log, "a") as fh:
-        fh.write(json.dumps(rec) + "\n")
-code = "200"
-body = "{}"
 fixtures = json.loads(os.environ.get("CURL_FIXTURES", "[]"))
-key = f"{method} {url or ''}"
-for fx in fixtures:
-    if fx["match"] in key:
-        code = str(fx.get("code", 200))
-        body = fx.get("body", "{}")
-        break
+log = os.environ.get("CURL_LOG")
+
+def record(u):
+    if log:
+        with open(log, "a") as fh:
+            fh.write(json.dumps({"method": method, "url": u, "headers": headers, "data": data}) + "\n")
+
+def lookup(u):
+    key = f"{method} {u or ''}"
+    for fx in fixtures:
+        if fx["match"] in key:
+            return fx
+    return None
+
+record(url)
+fx = lookup(url)
+code = str(fx.get("code", 200)) if fx else "200"
+raw = (base64.b64decode(fx["body_b64"]) if fx and "body_b64" in fx
+       else (fx.get("body", "{}") if fx else "{}").encode())
+location = (fx or {}).get("location", "")
+if location and follow:
+    # Real curl: a second request to the Location, served by ITS fixture.
+    record(location)
+    fx2 = lookup(location)
+    code = str(fx2.get("code", 200)) if fx2 else "404"
+    raw = (base64.b64decode(fx2["body_b64"]) if fx2 and "body_b64" in fx2
+           else (fx2.get("body", "") if fx2 else "").encode())
+    location = ""
+elif location:
+    raw = b""
+trailer = ""
+if w_fmt is not None:
+    trailer = (w_fmt.replace("\\n", "\n").replace("%{http_code}", code)
+               .replace("%{redirect_url}", location))
 if outfile:
-    # Real curl: body to the file, -w format (the http code) to stdout.
-    with open(outfile, "w") as fh:
-        fh.write(body)
-    sys.stdout.write(code)
+    # Real curl: body to the file, the -w format to stdout.
+    with open(outfile, "wb") as fh:
+        fh.write(raw)
+    sys.stdout.write(trailer if w_fmt is not None else code)
 else:
     # Real curl without -o: body to stdout; a trailing -w '\n%{http_code}'
     # appends the code on its own line (the Woodpecker log-fetch shape).
@@ -149,9 +178,10 @@ else:
     # and had drifted from it here -- it printed the CODE alone, so the
     # first green-path log fetch through this harness parsed "200" as the
     # log body ("returned int, not a log-entry list").
-    sys.stdout.write(body)
+    sys.stdout.buffer.write(raw)
+    sys.stdout.flush()
     if w_fmt is not None:
-        sys.stdout.write("\n" + code)
+        sys.stdout.write(trailer)
 '''
 
 # Fake ``gh`` for contribute: logs argv; ``auth status`` exits $GH_AUTH_EXIT

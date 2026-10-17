@@ -25,6 +25,18 @@ When CI fails but tests pass locally, use `./scripts/ci-debug`:
 
 # Analyze tree-sitter dependencies (finds missing packages)
 ./scripts/ci-debug analyze-deps
+
+# GitHub Actions (WI-pubur). Only the release workflow runs there; everything
+# above reads Woodpecker. `--actions` may go anywhere on the line. Read-only.
+./scripts/ci-debug runs --actions release.yml      # recent runs, incl. workflow_dispatch dry runs
+./scripts/ci-debug status --actions <run-id>       # jobs, steps, conclusions, durations
+./scripts/ci-debug logs --actions <run-id> [job]   # one job's log; default: the first failed job
+./scripts/ci-debug artifact --actions <run-id> <name> <new-empty-dir>
+# Logs and artifacts are served through a redirect to a storage host. The
+# command follows it only when that host is listed in ALLOWED_WEBSITES.md;
+# otherwise it names the host and exits 3. Adding a host is an owner decision
+# (the allowlist says so) — ask, with domain and rationale, rather than route
+# around it with gh or curl.
 ```
 
 **`auto-pr` exit-code recovery.** When `./scripts/auto-pr` exits non-zero:
