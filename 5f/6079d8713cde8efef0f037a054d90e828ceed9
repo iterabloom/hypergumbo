@@ -1,0 +1,10 @@
+Original commit body from 77118d1b0cbc5415137674f2487609cd37e2b940:
+
+The security section said a run writes to the cache plus "an -o path you
+choose". The observed I/O manifest run showed `survey --out X.json` also
+writing X.4k.json, X.16k.json, X.64k.json (compact-tier previews) and an
+X.slices/ directory of per-route handler slices beside X.json. The README
+now says so and names the two flags that suppress them
+(--no-sketch-fan-out --no-handler-slices). Meta-package README copy synced.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
