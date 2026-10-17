@@ -1,0 +1,24 @@
+Original commit body from 92d785f4e3c2111a085c7718a89b881c49ee7a4c:
+
+The cron full-suite (pipelines 4867, 4872) failed self-tree-validation on
+four confidence_sites functions "reachable only from their own tests".
+They are not: scripts/check-confidence-sites imports and calls all four.
+production_source_files globbed packages/*/src/**/*.py alone, repository
+gates are extensionless, so a call from scripts/ was invisible and the
+only visible callers were the tests. check_id_construction sat in the
+baseline for the same reason, and 05330569e1 ratified
+unregistered_edge_meta_keys into it while counting 37 keys of that shape.
+
+production_source_files now also returns the repository's Python scripts:
+.py at any depth under scripts/, or any file whose first line is a Python
+shebang. They vote as referencers only; _is_production still admits just
+packages/*/src symbols to the cohort, so a script's own functions are
+never judged. 96 scripts, one extra ast.parse pass of ~0.15 s.
+
+Measured on a fresh self-analysis map at 8bc23ede1d:
+  old production set (385 files): gated 340, new 4 (the confidence_sites
+    four), gone 0 -- the cron failure, reproduced
+  new production set (481 files): gated 301, new 0, gone 35
+The baseline is rewritten from that map: 35 keys removed, none added.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
