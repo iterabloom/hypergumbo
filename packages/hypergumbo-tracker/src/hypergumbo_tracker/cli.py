@@ -3026,10 +3026,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Start web server for remote access (requires starlette, uvicorn)",
     )
     p_serve.add_argument(
-        "--background", action="store_true",
-        help="Daemonize and write PID file",
-    )
-    p_serve.add_argument(
         "--stop", action="store_true",
         help="Stop a running serve process",
     )
