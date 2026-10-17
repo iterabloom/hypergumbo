@@ -1,0 +1,30 @@
+Original commit body from 5e30c23b32d37603b515ba6aae4b76761d0fd4dd:
+
+Two defects in build-and-publish, both shown by the v9.1.0 run (WI-hasol):
+
+1. `gh release create <tag> <assets...>` uploaded everything in one call
+   with no retry and no check. One transient error from GitHub's upload
+   host (v7.0.0: HTTP 400, v9.1.0: HTTP 404) aborted it after the Release
+   was already public, leaving it incomplete. Now: create the Release with
+   no assets, and only if it does not exist; upload each asset on its own
+   with `gh release upload --clobber`, up to four attempts with backoff;
+   then verify by name against the Release that every built file is
+   attached, and fail the job naming the gaps. A re-run repairs an
+   incomplete Release instead of dying on "already exists".
+
+2. The SBOM step ran `cyclonedx-py environment` in the build environment,
+   where nothing had installed hypergumbo. Every published sbom.json listed
+   build, twine and cyclonedx-bom (v9.0.0: 66 components, no hypergumbo
+   package, no grammar). Now the built wheels are installed into a scratch
+   venv and that is inventoried; a result without hypergumbo-core is
+   dropped with a warning, as before. The step moves before checksums so
+   SHA256SUMS covers sbom.json.
+
+v9.1.0 repaired by hand the same way (release wheels, checksums verified,
+installed into a scratch venv, inventoried: 93 components, all eight
+packages, 49 grammars) and uploaded; its SHA256SUMS predates the file and
+is left as published.
+
+Pinned by tests/test_release_asset_upload.py; RELEASE_SOP updated.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
