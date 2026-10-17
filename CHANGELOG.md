@@ -14,7 +14,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
-- **`ci-debug --actions` reads GitHub Actions**, where the release workflow runs: `runs`, `status` (jobs, steps, durations), `logs` and `artifact`. Read-only. Logs and artifacts arrive through a redirect to a storage host, which is followed only when that host is in `ALLOWED_WEBSITES.md`; otherwise the command names it and exits 3.
+- **`ci-debug --actions` reads GitHub Actions**, where the release workflow runs: `runs`, `status` (jobs, steps, durations), `logs` and `artifact`. Read-only. Logs and artifacts arrive through a redirect to a storage host, which is followed only when that host is in `ALLOWED_WEBSITES.md`; otherwise the command names it and exits 3. GitHub's numbered results-storage hosts are listed for exactly that purpose (`productionresultssa*.blob.core.windows.net`, one `*` per label).
 - **A release now fails when the installed CLI is seen doing I/O it did not do last release.** `scripts/io-manifest` runs `hypergumbo` over six pinned repositories under `strace` and reduces every write, delete, rename, program launch and connection attempt to a short manifest ([`docs/io-manifest/expected.txt`](docs/io-manifest/expected.txt)). A new line, a write into the analysed repository or a network connection fails the release. Unlike the two static gates, this one sees what dependencies and C extensions do.
 - **A PR now fails when shipped code calls a module the I/O catalogue cannot classify** (`scripts/check-claims-coverage`, ~30 s), rather than the twice-daily cron hours later.
 

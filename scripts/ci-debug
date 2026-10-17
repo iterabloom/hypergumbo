@@ -644,14 +644,24 @@ _actions_require_github() {
 # _actions_host_allowlisted HOST -> 0 when ALLOWED_WEBSITES.md lists HOST or a
 # parent domain of it (`foo.github.com` is covered by `github.com`). Entries are
 # the `- domain` bullets; the `$WOODPECKER_SERVER` placeholder is not a domain.
+# An entry may hold `*`, which stands for exactly ONE label
+# (`productionresultssa*.blob.core.windows.net` covers `productionresultssa7.`
+# but not `evil.productionresultssa7.`); a wildcard entry matches whole hosts
+# only, never as a parent domain.
 _actions_host_allowlisted() {
-  local host="$1" file="$SCRIPT_DIR/../ALLOWED_WEBSITES.md" entry
+  local host="$1" file="$SCRIPT_DIR/../ALLOWED_WEBSITES.md" entry re
   [[ -f "$file" ]] || return 1
   while read -r entry; do
-    if [[ "$host" == "$entry" || "$host" == *".$entry" ]]; then
+    if [[ "$entry" == *"*"* ]]; then
+      re="${entry//./\\.}"
+      re="^${re//\*/[A-Za-z0-9-]*}\$"
+      if [[ "$host" =~ $re ]]; then
+        return 0
+      fi
+    elif [[ "$host" == "$entry" || "$host" == *".$entry" ]]; then
       return 0
     fi
-  done < <(sed -nE 's/^- ([A-Za-z0-9.-]+)([[:space:]].*)?$/\1/p' "$file")
+  done < <(sed -nE 's/^- ([A-Za-z0-9.*-]+)([[:space:]].*)?$/\1/p' "$file")
   return 1
 }
 
