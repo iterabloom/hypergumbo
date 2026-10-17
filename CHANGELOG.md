@@ -29,6 +29,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - ARCHITECTURE.md regenerated.
 - Module docstrings: 16 corrected, 5 extended (staleness audit).
 - ADR-0004 point 7 now names both rows that consult git.
+- README names the files `survey --out` writes beside its output, and the flags that suppress them.
 
 ## [9.1.0] - 2026-10-16
 
