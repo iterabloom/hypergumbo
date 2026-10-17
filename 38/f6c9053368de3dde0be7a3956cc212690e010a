@@ -1,0 +1,25 @@
+Original commit body from 3803037f2a37c8e0759df20233ad706f09479f17:
+
+api.github.com answers /actions/jobs/<id>/logs and /actions/artifacts/<id>/zip
+with a redirect to one of GitHub's numbered Azure storage accounts
+(productionresultssa0, sa1, ...). ALLOWED_WEBSITES.md did not list them, so
+`ci-debug --actions logs|artifact` refused by design (exit 3, host named).
+
+Owner decision 2026-10-17 (WI-pubur discussion): list the family as
+`productionresultssa*.blob.core.windows.net`, not blob.core.windows.net at
+large. The ci-debug matcher now honours `*` in an entry as exactly one DNS
+label and treats such an entry as a whole-host match, never a parent domain:
+productionresultssa19. matches, evil.productionresultssa0. does not, and
+blob.core.windows.net itself does not. The allowlist entry carries the
+rationale and the scope limit (read-only GET of the signed URL only).
+
+Verified live after the change: `logs --actions 39068691320 io-manifest`
+returns the 55 KB job log; `artifact --actions 39068691320 io-manifest <dir>`
+extracts 26 files, byte-identical to the copy fetched with gh under the
+earlier one-off waiver. Tests: the refusal cases move to a host that stays
+unlisted, the storage host gains a positive case, and the matcher test pins
+the one-label rule.
+
+Governance file (ALLOWED_WEBSITES.md); owner approval recorded on WI-pubur.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
