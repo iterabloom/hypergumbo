@@ -29,3 +29,18 @@
   nonce: '59e1'  # 59e1
   set:  # 59e1
     status: violated  # 59e1
+- op: update  # 6bb6
+  at: '2026-10-17T07:52:35Z'  # 6bb6
+  by: agent  # 6bb6
+  actor: jgstern_agent  # 6bb6
+  clock: 3  # 6bb6
+  nonce: 6bb6  # 6bb6
+  set:  # 6bb6
+    status: satisfied  # 6bb6
+- op: discuss  # 21be
+  at: '2026-10-17T07:52:35Z'  # 21be
+  by: agent  # 21be
+  actor: jgstern_agent  # 21be
+  clock: 4  # 21be
+  nonce: 21be  # 21be
+  message: "SATISFIED by PR #1686 (dev aa3d0053fd): a per-PR arm for the statement's shape. hypergumbo_core/claims_coverage_guard.py runs the registered python analyzer over shipped_artifact_roots (FileIndex.from_paths scope), relativises ids with the pipeline's _relativize_ir_paths, loads the catalogue the CLI loads (python.yaml + shipped community overlays + the claims file's overlays) and asks verify_claims._call_production_coverage -- the cron's own decision, no AST approximation. scripts/check-claims-coverage exits 0 qualifiable / 1 withheld (names the module, prints the remedy) / 2 infrastructure; .woodpecker/woodpecker.yml step 'claims-coverage', path-filtered to packages/*/src/**, docs/io-primitives-overlays/**, docs/hypergumbo.claims.yaml and the script; tests/test_ci_claims_coverage_guard_wiring.py pins the step. EVIDENCE. Calibration on dev 416315836b: analyzer-only edges (67,926) and the full map reach the same verdict, complete=False qualifying_only=True, same three launch sites. Positive repro of the statement: with the threading.Event entry removed from python.yaml (INV-konad's regression) the script exits 1 with 'calls into 1 module(s) that the I/O catalog could not classify (threading.Event)'; restored, exit 0. Same flip for datetime.date (this item's instance) in the unit calibration. On CI the step ran on PR #1686 itself: 'shipped files: 386 edges: 67926 36.9s ... the shipped tree's self-claims are qualifiable' (pipeline step OK, ~37 s plus a ~2 min install, parallel to pytest, so no critical-path cost). SCOPE, stated: this guards the uncatalogued-module shape only (4 of the 5 reds since 09-03); the eighteen-verdict drift comparison, taint regressions and verdicts moving to violated still wait for the cron. Module docstring says so."  # 21be
