@@ -1927,6 +1927,19 @@ module_completeness:
       callable's own, reached through its own edges. Rowing the executor would
       attribute every worker's crossing to the scheduler. shutdown joins
       threads.
+  - module: threading.Event
+    completeness: complete
+    retrieved: "2026-10-17"
+    notes: >-
+      INV-konad, the fourth recorded instance of the WI-jabus shape. An
+      in-process flag: set / clear / is_set flip a boolean under a Condition,
+      and wait(timeout) blocks on that Condition -- time passes, nothing
+      crosses. The `threading` entry above already covers the module;
+      exact matching is why the class must be said separately. Reached from
+      every CLI entry point since 49aea53b93, as run_status.py's heartbeat
+      stop flag (`self._stop.wait(interval)`), which is what turned one
+      untyped receiver into the unknown that withheld all 18 self-claims
+      (cron full-suite from 2026-10-15 05:51 EDT).
   - module: urllib.request.Request
     completeness: complete
     retrieved: "2026-09-14"
