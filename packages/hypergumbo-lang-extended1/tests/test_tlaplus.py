@@ -507,3 +507,38 @@ Next == x' = x + 1
         assert x_sym is not None
         # Next references x (both primed and unprimed)
         assert any(e.src == next_sym.id and e.dst == x_sym.id for e in ref_edges)
+
+
+class TestTlaplusSameNamedOperators:
+    """INV-razus / WI-kosar: a reference binds the operator of that name in
+    THIS spec before any other spec's; the enclosing operator is the
+    definition that contains the reference, by position."""
+
+    def test_reference_prefers_this_specs_operator(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_extended1.tlaplus import analyze_tlaplus
+
+        make_tla_file(tmp_path, "A.tla", """\
+---- MODULE A ----
+x == 1
+Init == x
+====
+""")
+        make_tla_file(tmp_path, "B.tla", """\
+---- MODULE B ----
+y == 2
+Init == y
+Bar == Init
+====
+""")
+        result = analyze_tlaplus(tmp_path)
+
+        by_id = {s.id: s for s in result.symbols}
+        pairs = {
+            (by_id[e.src].path, by_id[e.src].name, by_id[e.dst].path, by_id[e.dst].name)
+            for e in result.edges if e.edge_type == "references"
+        }
+        assert pairs == {
+            ("A.tla", "Init", "A.tla", "x"),
+            ("B.tla", "Init", "B.tla", "y"),
+            ("B.tla", "Bar", "B.tla", "Init"),
+        }

@@ -20,8 +20,13 @@ Pass 2 (Edge Extraction):
 - CALL edges: CALL "program-name" statements
 - Both carry the resolver's confidence scaled by 0.85; a target found nowhere
   still gets an edge, via ``make_unresolved_edge``.
-- The caller is the last paragraph header seen; paragraph symbols span only
-  their header line.
+- The caller is the paragraph or section whose header last preceded the
+  statement, taken by the header's POSITION (``symbol_declared_by``); paragraph
+  and section symbols span only their header line.
+- A target binds, in order, a paragraph or section of the PERFORMING program,
+  one of this file, and only then the repo-wide registry (INV-lutaj, WI-kosar):
+  before, ``PERFORM INIT-PARA`` could bind another file's ``INIT-PARA``, and a
+  statement inside a section was credited to the paragraph before it.
 
 Identity (WI-tusad): every symbol mints the ADR-0035 producer id with
 ``overload_arity.declared_arity_stable_id``, no arity, over its full scope
@@ -32,11 +37,6 @@ CUST-NAME`` under ``01 ACCOUNT-REC``; an 88 condition under the entry it
 follows; a 66 renames under its record). So two programs' ``MAIN-PARA`` or two
 records' ``CUST-NAME`` hold distinct ids, and deleting one moves no other id.
 Emitted names stay bare; the chain is a hash input only.
-
-Known gaps: a PERFORM target is looked up repo-wide by name, so a paragraph of
-the same name in another file can be chosen; and a section header does not
-update the current caller, so a statement in a section is credited to the
-paragraph before it.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the COBOL-specific extraction
@@ -67,6 +67,8 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_symbol_id,
     make_unresolved_edge,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import declared_arity_stable_id
@@ -160,6 +162,21 @@ def _stable_id(kind: str, rel_path: str, name: str, chain: list[str]) -> str:
 # ---------------------------------------------------------------------------
 # CobolAnalyzer: TreeSitterAnalyzer subclass
 # ---------------------------------------------------------------------------
+
+
+def _resolve_target(
+    name: str, program_targets: dict[str, Symbol],
+    local_symbols: dict[str, Symbol], resolver: "NameResolver",
+) -> tuple[Symbol | None, float]:
+    """The PERFORM / CALL target ``name`` and its match grade: a paragraph or
+    section of the performing program first, then one of this file, then the
+    repo-wide registry (a CALLed program usually lives in another file)."""
+    key = name.upper()
+    own = program_targets.get(key) or local_symbols.get(key)
+    if own is not None:
+        return own, resolver.CONFIDENCE_EXACT
+    result = resolver.lookup(key)
+    return result.symbol, result.confidence
 
 
 class CobolAnalyzer(TreeSitterAnalyzer):
@@ -339,12 +356,24 @@ class CobolAnalyzer(TreeSitterAnalyzer):
         """Extract PERFORM and CALL edges from COBOL procedure division."""
         edges: list[Edge] = []
         root = tree.root_node
+        decl_index = symbols_at(self.file_symbols(local_symbols))
 
-        current_paragraph_name: str | None = None
         for proc_div in _find_all_descendants(root, {"procedure_division"}):
+            # This program's paragraphs and sections, from their headers'
+            # positions, so a PERFORM binds inside the program that performs it
+            # (two programs in one file may both have an INIT-PARA).
+            program_targets: dict[str, Symbol] = {}
+            for header in proc_div.children:
+                if header.type in ("paragraph_header", "section_header"):
+                    own = symbol_declared_by(header, decl_index)
+                    if own is not None:
+                        program_targets.setdefault(own.name.upper(), own)
+
+            current_caller: Symbol | None = None
             for node in proc_div.children:
-                if node.type == "paragraph_header":
-                    current_paragraph_name = _extract_text(node, source).rstrip(".").strip()
+                if node.type in ("paragraph_header", "section_header"):
+                    current_caller = symbol_declared_by(node, decl_index)
+                src_id = current_caller.id if current_caller else make_file_id("cobol", rel_path)
 
                 # Find PERFORM statements
                 for perform in _find_all_descendants(node, {"perform_statement_call_proc"}):
@@ -353,24 +382,19 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                         label_node = find_child_by_type(procedure_node, "label")
                         if label_node:
                             target_name = _extract_text(label_node, source).strip()
-
-                            if current_paragraph_name:
-                                caller_sym = local_symbols.get(current_paragraph_name.upper())
-                                src_id = caller_sym.id if caller_sym else make_file_id("cobol", rel_path)
-                            else:  # pragma: no cover - file-level PERFORM is rare
-                                src_id = make_file_id("cobol", rel_path)  # pragma: no cover
-
-                            result = resolver.lookup(target_name.upper())
-                            if result.symbol is not None:
+                            target, confidence = _resolve_target(
+                                target_name, program_targets, local_symbols, resolver,
+                            )
+                            if target is not None:
                                 edge = Edge.create(
                                     src=src_id,
-                                    dst=result.symbol.id,
+                                    dst=target.id,
                                     edge_type="calls",
                                     line=perform.start_point[0] + 1,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_perform",
-                                    resolution_score=result.confidence,
+                                    resolution_score=confidence,
                                 )
                             else:  # pragma: no cover - unresolvable external paragraph
                                 edge = make_unresolved_edge(  # pragma: no cover
@@ -389,24 +413,19 @@ class CobolAnalyzer(TreeSitterAnalyzer):
                     string_node = find_child_by_type(call, "string")
                     if string_node:
                         target_name = _extract_text(string_node, source).strip().strip('"\'')
-
-                        if current_paragraph_name:
-                            caller_sym = local_symbols.get(current_paragraph_name.upper())
-                            src_id = caller_sym.id if caller_sym else make_file_id("cobol", rel_path)
-                        else:  # pragma: no cover - file-level CALL is rare
-                            src_id = make_file_id("cobol", rel_path)  # pragma: no cover
-
-                        result = resolver.lookup(target_name.upper())
-                        if result.symbol is not None:
+                        target, confidence = _resolve_target(
+                            target_name, program_targets, local_symbols, resolver,
+                        )
+                        if target is not None:
                             edge = Edge.create(
                                 src=src_id,
-                                dst=result.symbol.id,
+                                dst=target.id,
                                 edge_type="calls",
                                 line=call.start_point[0] + 1,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call",
-                                resolution_score=result.confidence,
+                                resolution_score=confidence,
                             )
                         else:
                             edge = make_unresolved_edge(

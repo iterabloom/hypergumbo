@@ -673,3 +673,50 @@ class TestAgdaCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestAgdaSameNamedDefinitions:
+    """WI-kosar: a reference binds the definition of that name in THIS file
+    before any other file's (the enclosing definition is already by position,
+    INV-kagib)."""
+
+    def test_reference_prefers_this_files_definition(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_extended1.agda import analyze_agda
+
+        # ``postulate`` rather than ``data``: tree-sitter-agda loses the
+        # declaration that follows a ``data ... where`` block in this layout.
+        make_agda_file(tmp_path, "A.agda", """
+module A where
+
+postulate Nat : Set
+postulate zero : Nat
+
+run : Nat
+run = zero
+
+bar : Nat
+bar = run
+""")
+        make_agda_file(tmp_path, "B.agda", """
+module B where
+
+postulate Nat : Set
+postulate zero : Nat
+
+run : Nat
+run = zero
+
+baz : Nat
+baz = run
+""")
+        result = analyze_agda(tmp_path)
+
+        by_id = {s.id: s for s in result.symbols}
+        refs = [
+            (by_id[e.src].path, by_id[e.src].name, by_id[e.dst].path, by_id[e.dst].name)
+            for e in result.edges if e.edge_type == "references"
+        ]
+        cross_file = [r for r in refs if r[0] != r[2]]
+        assert cross_file == [], refs
+        assert ("A.agda", "bar", "A.agda", "run") in refs, refs
+        assert ("B.agda", "baz", "B.agda", "run") in refs, refs

@@ -764,3 +764,61 @@ class TestZigBareMethodMagnetGate:
         assert edge.meta.get("enclosing_class") == "Widget"
         assert edge.dst_ref is not None
         assert edge.dst_ref.module_path == "mod.zig"
+
+
+class TestZigEnclosingByPosition:
+    """INV-musij / WI-kosar: a call's enclosing function is the declaration
+    that contains it, found by POSITION in this file, never by name through
+    the repo-wide resolver (which handed back whichever same-named function
+    registered last)."""
+
+    def test_same_named_functions_in_two_files_keep_their_own_calls(self, tmp_path: Path) -> None:
+        (tmp_path / "a.zig").write_text(
+            "fn helperA() void {}\n"
+            "pub fn run() void {\n"
+            "    helperA();\n"
+            "}\n"
+        )
+        (tmp_path / "b.zig").write_text(
+            "fn helperB() void {}\n"
+            "pub fn run() void {\n"
+            "    helperB();\n"
+            "}\n"
+        )
+
+        result = analyze_zig(tmp_path)
+
+        by_id = {s.id: s for s in result.symbols}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(calls) == 2
+        for edge in calls:
+            src, dst = by_id[edge.src], by_id[edge.dst]
+            assert src.name == "run"
+            assert src.path == dst.path, (src.path, dst.path)
+
+    def test_same_named_methods_on_two_structs_in_one_file_keep_their_own_calls(self, tmp_path: Path) -> None:
+        (tmp_path / "s.zig").write_text(
+            "fn helperA() void {}\n"
+            "fn helperB() void {}\n"
+            "const A = struct {\n"
+            "    pub fn go(self: A) void {\n"
+            "        _ = self;\n"
+            "        helperA();\n"
+            "    }\n"
+            "};\n"
+            "const B = struct {\n"
+            "    pub fn go(self: B) void {\n"
+            "        _ = self;\n"
+            "        helperB();\n"
+            "    }\n"
+            "};\n"
+        )
+
+        result = analyze_zig(tmp_path)
+
+        by_id = {s.id: s for s in result.symbols}
+        pairs = {
+            (by_id[e.src].name, by_id[e.dst].name)
+            for e in result.edges if e.edge_type == "calls"
+        }
+        assert pairs == {("A.go", "helperA"), ("B.go", "helperB")}

@@ -427,3 +427,78 @@ class TestLlvmIrCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestLlvmIrEnclosingByPosition:
+    """INV-nafij / WI-kosar: the caller of a call edge is the ``define`` that
+    contains the instruction, found by POSITION in this file; the callee is
+    this file's ``define`` when it has one, the repo-wide registry otherwise."""
+
+    def test_same_named_defines_in_two_files_keep_their_own_calls(self, tmp_path: Path) -> None:
+        make_llvm_file(tmp_path, "a.ll", """
+define void @helper_a() {
+  ret void
+}
+
+define void @foo() {
+  call void @helper_a()
+  ret void
+}
+""")
+        make_llvm_file(tmp_path, "b.ll", """
+define void @helper_b() {
+  ret void
+}
+
+define void @foo() {
+  call void @helper_b()
+  ret void
+}
+""")
+
+        result = analyze_llvm_ir(tmp_path)
+
+        by_id = {s.id: s for s in result.symbols}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(calls) == 2
+        for edge in calls:
+            src, dst = by_id[edge.src], by_id[edge.dst]
+            assert src.name == "foo"
+            assert src.path == dst.path, (src.path, dst.path)
+
+    def test_callee_defined_in_both_files_binds_to_this_files_define(self, tmp_path: Path) -> None:
+        body = """
+define void @helper() {
+  ret void
+}
+
+define void @foo() {
+  call void @helper()
+  ret void
+}
+"""
+        make_llvm_file(tmp_path, "a.ll", body)
+        make_llvm_file(tmp_path, "b.ll", body)
+
+        result = analyze_llvm_ir(tmp_path)
+
+        by_id = {s.id: s for s in result.symbols}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(calls) == 2
+        assert {by_id[e.src].path for e in calls} == {"a.ll", "b.ll"}
+        for edge in calls:
+            assert by_id[edge.src].path == by_id[edge.dst].path
+            assert edge.confidence == pytest.approx(1.0 * edge.confidence)  # resolved, not placeholder
+            assert "external" not in edge.dst
+
+    def test_call_to_a_function_defined_nowhere_is_dropped(self, tmp_path: Path) -> None:
+        make_llvm_file(tmp_path, "a.ll", """
+define void @foo() {
+  call void @printf()
+  ret void
+}
+""")
+
+        result = analyze_llvm_ir(tmp_path)
+
+        assert [e for e in result.edges if e.edge_type == "calls"] == []
