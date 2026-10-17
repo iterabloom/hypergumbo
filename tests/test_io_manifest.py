@@ -147,7 +147,8 @@ def test_exec_shows_program_and_normalised_arguments():
             '0x7ffd /* 12 vars */) = 0')
     assert _r(line) == "exec\tgit -C <repo> rev-parse HEAD"
     sha = "0a88cccd5188" + "0" * 28
-    assert _r(f'1 execve("/usr/bin/git", ["git", "cat-file", "-p", "{sha}", "a", "b", "c", "d", "e"], 0x1 /* 1 var */) = 0') == "exec\tgit cat-file -p <sha> a b c"
+    ten = '", "'.join(["cat-file", "-p", sha, "a", "b", "c", "d", "e", "f", "g"])
+    assert _r(f'1 execve("/usr/bin/git", ["git", "{ten}"], 0x1 /* 1 var */) = 0') == "exec\tgit cat-file -p <sha> a b c d e"
 
 
 def test_connect_families():
@@ -278,6 +279,29 @@ def test_reduce_subcommand_reads_saved_traces(tmp_path: Path, capsys):
     rc = iom.main(["reduce", "--out", str(out), "--hypergumbo", sys.executable, str(trace)])
     assert rc == 0
     assert capsys.readouterr().out == "mkdir\t<cache>/hypergumbo/...\nwrite\t<repo>/junk\n"
+
+
+def test_reduce_can_rereduce_a_ci_artifact_without_local_paths(tmp_path: Path, capsys):
+    """The runner's paths do not exist here; --corpus and --python supply the
+    zone roots as strings, which is how expected.txt is regenerated from the
+    uploaded artifact."""
+    ci_out = "/home/runner/work/_temp/io-manifest"
+    trace = tmp_path / "ripgrep.sketch.trace"
+    trace.write_text(
+        f'1 execve("/opt/hostedtoolcache/Python/3.11.17/x64/bin/hypergumbo", ["hypergumbo", "sketch", "{ci_out}/corpus/ripgrep"], 0x1 /* 1 var */) = 0\n'
+        f'1 creat("{ci_out}/corpus/ripgrep/junk", 0644) = 3\n'
+        f'1 mkdir("{ci_out}/home/.rustup", 0755) = 0\n'
+        f'1 openat(AT_FDCWD, "/opt/hostedtoolcache/Python/3.11.17/x64/lib/x.pyc", O_WRONLY|O_CREAT, 0644) = 4\n'
+    )
+    rc = iom.main(["reduce", "--out", ci_out, "--corpus", str(DOCS / "corpus.txt"),
+                   "--python", "/opt/hostedtoolcache/Python/3.11.17/x64", str(trace)])
+    assert rc == 0
+    assert capsys.readouterr().out == (
+        "exec\thypergumbo sketch <repo>\n"
+        "mkdir\t<home>/.rustup\n"
+        "write\t<python>/lib/x.pyc\n"
+        "write\t<repo>/junk\n"
+    )
 
 
 def test_run_refuses_without_strace(tmp_path: Path, monkeypatch, capsys):

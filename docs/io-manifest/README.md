@@ -35,7 +35,7 @@ write	<out>/...
 | `/dev/shm/sem.*` | POSIX semaphores. |
 | anything else | The literal path. |
 
-`exec` lines show the program's basename and up to six arguments with paths
+`exec` lines show the program's basename and up to eight arguments with paths
 tokenised and long hex strings replaced by `<sha>`. `connect` lines show the
 address family and, for IP, `<ip>:<port>`. **Any `AF_INET` or `AF_INET6`
 connect fails the gate**, whatever this file says.
@@ -48,7 +48,9 @@ Lines record attempts, not outcomes. An `unlink /dev/stdout` that returned
 Covered: `hypergumbo sketch` on each of the six repositories, plus `survey`
 and `slice --entry <file>` on the one marked `slice=` in `corpus.txt`; the
 default package set, installed from the release checkout exactly as
-`pip install hypergumbo` would install it; no extras.
+`pip install hypergumbo` would install it; no extras. The GitHub runner image
+has `rust-analyzer` on `PATH` (a rustup proxy), so the manifest also records
+hypergumbo's version probe of it and the proxy's creation of `$HOME/.rustup`.
 
 Not covered, and not claimed: the `install-*` commands, the rust-analyzer
 and scip-python backends, embeddings, the tracker, an interactive terminal
@@ -78,6 +80,24 @@ corpus stopped exercising something, which is worth a look but does not
 block the release.
 
 ## Regenerating or extending it
+
+The expected file is generated from the release runner's own traces, not from
+a developer machine, because the runner image decides which optional tools
+are on `PATH`. Download the `io-manifest` artifact from a release run (a
+`workflow_dispatch` with `dry_run=true` is enough) and re-reduce it here; no
+runner path needs to exist locally:
+
+```bash
+scripts/io-manifest reduce --out /home/runner/work/_temp/io-manifest \
+    --corpus docs/io-manifest/corpus.txt \
+    --python /opt/hostedtoolcache/Python/<version>/x64 artifact/trace/*.trace
+```
+
+`--out` is the runner's `$RUNNER_TEMP/io-manifest` and `--python` is the
+prefix of the runner's Python (both appear in the job log). Review every line
+that differs from the committed file before replacing it.
+
+A local run is still the fast way to see what a change does:
 
 ```bash
 # Hermetic local reproduction of the runner (hide gitleaks / rust-analyzer):
