@@ -1,0 +1,35 @@
+- op: create  # 99ec
+  at: '2026-10-17T21:25:02Z'  # 99ec
+  by: agent  # 99ec
+  actor: jgstern_agent  # 99ec
+  clock: 1  # 99ec
+  nonce: 99ec  # 99ec
+  data:  # 99ec
+    kind: work_item  # 99ec
+    title: "ci-debug cannot see GitHub Actions runs, jobs, logs or artifacts (release.yml runs there)"  # 99ec
+    status: needs_human_review  # 99ec
+    priority: 3  # 99ec
+    parent:  # 99ec
+    tags:  # 99ec
+    - ci  # 99ec
+    - governance  # 99ec
+    isbefore: []  # 99ec
+    duplicate_of: []  # 99ec
+    not_duplicate_of: []  # 99ec
+    pr_ref:  # 99ec
+    description: "`scripts/ci-debug` cannot see GitHub Actions. Its GitHub arm (comment at ~line 85) assumes \"GitHub Actions is disabled under Woodpecker CI\" and renders only commit statuses, which is where Woodpecker reports. That assumption is stale since the Phase-4 migration: `.github/workflows/release.yml` runs on GitHub-hosted runners, so every release run, dry run (`workflow_dispatch`) and its artifacts are invisible through the approved scripts. On 2026-10-17 the owner had to waive the AGENTS.md CI-API rule once so the agent could read a dry run of the new `io-manifest` gate with `gh`.\n\nProposed change (governance file, so filed for approval rather than as a PR):\n\n1. `ci-debug runs --actions [WORKFLOW]`: `GET /repos/{o}/{r}/actions/runs?per_page=N[&event=workflow_dispatch]`, filtered by workflow file; prints id, status, conclusion, event, branch, created, title.\n2. `ci-debug status --actions <run-id>`: `GET /actions/runs/{id}/jobs` -> per-job and per-step conclusions and durations.\n3. `ci-debug logs --actions <run-id> <job-name>`: `GET /actions/jobs/{job-id}/logs` (follows the redirect), written to a file and tail-printed like the Woodpecker path.\n4. `ci-debug artifact --actions <run-id> <name> <dir>`: `GET /actions/runs/{id}/artifacts` then `/actions/artifacts/{id}/zip`, unzipped into a NEW empty directory (untrusted data).\n\nAll read-only GETs to `api.github.com` (allowlisted), authenticated with `HG_GITHUB_TOKEN` through the existing `api_get` in `scripts/lib/forgejo-api.sh`; no new secret, no write. Auto-detect is not proposed: `--actions` is explicit so the Woodpecker default path is unchanged. Also retire the stale comment. Tests: pin the request shapes with a fake `api_get`, plus one live smoke test that lists the Release workflow's runs.\n\nRequesting owner approval to implement; `ci-debug` and `scripts/lib/forgejo-api.sh` are governance files."  # 99ec
+    fields: {}  # 99ec
+- op: discuss  # 87f7
+  at: '2026-10-17T21:25:13Z'  # 87f7
+  by: agent  # 87f7
+  actor: jgstern_agent  # 87f7
+  clock: 2  # 87f7
+  nonce: 87f7  # 87f7
+  message: "Approval requested: add an explicit --actions arm to ci-debug (runs / status / logs / artifact) using read-only GETs to api.github.com through the existing api_get helper, as described in the item. No auto-detect; the Woodpecker default path is unchanged. Touches scripts/ci-debug and scripts/lib/forgejo-api.sh (governance). Will implement via auto-pr only after an explicit yes here."  # 87f7
+- op: discuss  # 3f17
+  at: '2026-10-17T22:15:30Z'  # 3f17
+  by: agent  # 3f17
+  actor: jgstern_agent  # 3f17
+  clock: 3  # 3f17
+  nonce: 3f17  # 3f17
+  message: "Owner approval received 2026-10-17 (chat): 'i approve WI-pubur and approve auto-pr without --gov'. Implementing the explicit --actions arm as proposed (runs / status / logs / artifact; read-only GETs via api_get). Will merge through the normal auto-pr path per that approval."  # 3f17

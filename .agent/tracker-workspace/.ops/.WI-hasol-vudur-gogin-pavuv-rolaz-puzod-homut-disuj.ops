@@ -1,0 +1,36 @@
+- op: create  # 5c8b
+  at: '2026-10-17T21:25:08Z'  # 5c8b
+  by: agent  # 5c8b
+  actor: jgstern_agent  # 5c8b
+  clock: 1  # 5c8b
+  nonce: 5c8b  # 5c8b
+  data:  # 5c8b
+    kind: work_item  # 5c8b
+    title: "release.yml: asset upload has no retry or completeness check; v9.1.0 GitHub Release lacks sbom.json after a transient 404"  # 5c8b
+    status: todo_hard  # 5c8b
+    priority: 3  # 5c8b
+    parent:  # 5c8b
+    tags:  # 5c8b
+    - release  # 5c8b
+    - ci  # 5c8b
+    isbefore: []  # 5c8b
+    duplicate_of: []  # 5c8b
+    not_duplicate_of: []  # 5c8b
+    pr_ref:  # 5c8b
+    description: "The v9.1.0 release run (GitHub Actions run 38899828875, 2026-10-16) published to PyPI, then its \"Create GitHub Release\" step failed: `gh release create` got `HTTP 404: Not Found` from `uploads.github.com` while uploading `hypergumbo_lang_rust_analyzer-9.1.0.tar.gz`. The release https://github.com/iterabloom/hypergumbo/releases/tag/v9.1.0 exists and is not a draft, with 17 assets: 8 packages x (wheel + sdist) and SHA256SUMS. `dist/sbom.json` was generated (log: \"SBOM generated (78173 bytes)\") and is missing from the release. The workflow's own comment records v7.0.0 failing the same step with \"HTTP 400: Bad Content-Length\", so this is the second release left incomplete by a transient upload error.\n\nInvariant-shaped defect in `.github/workflows/release.yml` (not a governance file): asset upload has no retry and no completeness check, and a failure after `gh release create` leaves a published release missing assets with nothing to repair it.\n\nProposed fix: create the release first with no assets, then upload each asset with `gh release upload --clobber` in a retry loop (3 attempts, backoff), then verify `gh release view --json assets` lists every file in `dist/` and fail loudly if not. The retried upload is idempotent with `--clobber`, so a re-run of the job repairs a partial release instead of failing on \"already exists\".\n\nImmediate repair for v9.1.0: `gh release upload v9.1.0 dist/sbom.json` from a checkout that regenerates the SBOM, or accept its absence for that version. Owner's call."  # 5c8b
+    fields: {}  # 5c8b
+- op: update  # 39d4
+  at: '2026-10-17T22:02:01Z'  # 39d4
+  by: agent  # 39d4
+  actor: jgstern_agent  # 39d4
+  clock: 2  # 39d4
+  nonce: 39d4  # 39d4
+  set:  # 39d4
+    status: done  # 39d4
+- op: discuss  # 9196
+  at: '2026-10-17T22:02:03Z'  # 9196
+  by: agent  # 9196
+  actor: jgstern_agent  # 9196
+  clock: 3  # 9196
+  nonce: '9196'  # 9196
+  message: "Fixed in PR #1697. Root cause: one gh release create <tag> <assets...> with no retry and no post-check, so one transient upload error (v7.0.0 HTTP 400, v9.1.0 HTTP 404) left a public Release incomplete; and the SBOM step inventoried the build env (v9.0.0 sbom.json: 66 components, no hypergumbo package). Fix: create the Release with no assets and only if absent; per-asset gh release upload --clobber with 4 attempts; verify attached names against the Release and fail naming gaps; SBOM built from the wheels installed into a scratch venv, dropped unless it contains hypergumbo-core, generated before SHA256SUMS. Behavioural evidence for the repair: v9.1.0 Release re-read via gh release view after the upload -> 18 assets, sbom.json 95,506 bytes, byte-identical (cmp) to the file generated from the release's own wheels (checksums verified against SHA256SUMS): 93 components incl. all 8 packages at release versions and 49 tree-sitter grammars. Not yet exercised: the rewritten workflow step itself runs only on the next tag push; its shape is pinned by tests/test_release_asset_upload.py. v9.1.0's SHA256SUMS predates sbom.json and was left as published."  # 9196
