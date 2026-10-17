@@ -14,18 +14,18 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
-- **Per-PR self-claims coverage guard** (`scripts/check-claims-coverage`): the python analyzer plus the cron gate's own coverage decision, ~30 s, fails a PR whose shipped code calls a module the I/O catalogue cannot classify.
+- **A PR now fails when shipped code calls a module the I/O catalogue cannot classify** (`scripts/check-claims-coverage`, ~30 s), rather than the twice-daily cron hours later.
 
 ### Fixed
 
-- **The self-claims gate is green again**: the heartbeat's `threading.Event` receiver is declared enumerated in the Python catalogue; all 18 verdicts are unchanged.
-- **The developer-offer examples directory is gitignored**, by this repo's root `.gitignore` and by one it carries inside.
-- **`generate-architecture --check` no longer counts tracker auto-sync commits** toward the 30-commit staleness window.
-- **The test-only-reachability gate counts `scripts/` as production callers**, so a core function called only from a repository gate no longer fails the cron as test-only.
+- **`.hypergumbo-examples/` cannot be committed by accident**: hypergumbo writes a `.gitignore` inside it, and this repository's root `.gitignore` lists it too.
+- **The self-claims gate is green again**: `threading.Event`, the progress heartbeat's stop flag, is declared in the Python catalogue as having no I/O surface; all 18 verdicts are unchanged.
+- **The test-only-reachability gate counts callers under `scripts/`**, so a function used only by a repository script no longer fails the cron as test-only.
+- **`generate-architecture --check` no longer counts tracker auto-sync commits** toward its 30-commit staleness window.
 
 ### Documentation
 
-- **ADR-0019 corrected**: the web frontend was never implemented; it is re-scoped to a Yjs-backed tracker document (BlockSuite dropped).
+- ARCHITECTURE.md regenerated.
 
 ## [9.1.0] - 2026-10-16
 

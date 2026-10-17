@@ -7,13 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
-### Changed
-
-- **`htrac serve --background` removed**: it never daemonized (nothing read the flag); `--stop`/`--status` unchanged (WI-robug).
-
 ### Removed
 
-- **The unshipped web-frontend scaffold** (`packages/htrac-frontend`: Lit + Vite, never built or shipped; the source of the repo's Dependabot alerts). ADR-0019's frontend is re-scoped to a Yjs-backed document (WI-pupod).
+- **The unshipped web-frontend scaffold** (`packages/htrac-frontend`): never built, tested or shipped, and the source of most of the repository's Dependabot alerts. ADR-0019 no longer claims it shipped; the frontend is re-scoped to a Yjs-backed tracker document, BlockSuite dropped.
+- **`htrac serve --background`**, which never daemonized; `--stop` and `--status` are unchanged.
 
 ## [0.10.0] - 2026-10-14
 
