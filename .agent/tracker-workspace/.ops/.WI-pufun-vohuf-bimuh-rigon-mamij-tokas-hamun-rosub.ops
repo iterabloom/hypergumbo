@@ -1,0 +1,24 @@
+- op: create  # e28d
+  at: '2026-10-17T03:25:01Z'  # e28d
+  by: agent  # e28d
+  actor: jgstern_agent  # e28d
+  clock: 1  # e28d
+  nonce: e28d  # e28d
+  data:  # e28d
+    kind: work_item  # e28d
+    title: "serve: client-side encrypted Yjs updates (fragment key -> HKDF -> AES-256-GCM), server as opaque relay; precondition for any off-localhost exposure"  # e28d
+    status: todo_soft  # e28d
+    priority: 4  # e28d
+    parent:  # e28d
+    tags:  # e28d
+    - tracker_serve  # e28d
+    - security  # e28d
+    - yjs  # e28d
+    - plazaflow  # e28d
+    - someday  # e28d
+    isbefore: []  # e28d
+    duplicate_of: []  # e28d
+    not_duplicate_of: []  # e28d
+    pr_ref:  # e28d
+    description: "## What\nClient-side encryption of Yjs updates for the live tracker document, with the server as an opaque relay that stores and forwards ciphertext it cannot read: key material from a URL fragment -> HKDF-SHA-256 -> AES-256-GCM, the fragment scrubbed from the URL after key derivation (history.replaceState). This is PlazaFlow's v0.2 step (custom relay replacing y-websocket because y-websocket merges plaintext updates) rehearsed on the tracker, and it is the precondition for exposing the sync endpoint (item D) anywhere but 127.0.0.1.\n## Preconditions (isbefore edges)\nWI-hopip (serve write-API auth) and WI-sunan (tracker self-claims covering serve) must be done first: an encrypted relay does not substitute for authenticating the write path, and the self-claims must state what the relay can and cannot see.\n## Done when\nRelay-side storage holds only ciphertext (test: snapshot bytes contain no plaintext field values); two clients with the fragment converge; a client without it cannot decrypt; the AAD binds tracker-root id and key epoch. Document the honest security model (what this does NOT protect) in serve.py and SECURITY.md.\n## Context\n~/hypergumbo_lab_notebook/notebookjournal_10162026_2318.md section 4; PlazaFlow spec v0.2 (pf-prelim) §Encryption; ADR-0019 §Security."  # e28d
+    fields: {}  # e28d
