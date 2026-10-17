@@ -445,8 +445,8 @@ def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
         ))
 
     # WI-zolot: Native WebSocket constructor with template-string URL.
-    # The TS client at packages/htrac-frontend/src/ws-client.ts builds the
-    # URL as ``${proto}//${location.host}/ws`` — backticks, with the route
+    # A TS client typically builds the URL as
+    # ``${proto}//${location.host}/ws`` — backticks, with the route
     # path as a trailing literal. We extract that trailing path so the
     # cross-language bridge edge has something to match the server's route
     # declaration against.

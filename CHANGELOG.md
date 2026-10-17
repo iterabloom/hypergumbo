@@ -17,6 +17,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The developer-offer examples directory is gitignored**, by this repo's root `.gitignore` and by one it carries inside.
 - **`generate-architecture --check` no longer counts tracker auto-sync commits** toward the 30-commit staleness window.
 
+### Documentation
+
+- **ADR-0019 corrected**: the web frontend was never implemented; it is re-scoped to a Yjs-backed tracker document (BlockSuite dropped).
+
 ## [9.1.0] - 2026-10-16
 
 ### Breaking and contract changes

@@ -16,8 +16,7 @@ analyzer, because the ``@register_analyzer`` it imports reads as ``Any``)
 and HIDES real ones (``arg-type`` mismatches whose callee lives in another
 package). Passing every ``packages/*/src/<pkg>`` root in one invocation
 lets cross-package imports resolve to real types — which is what
-INV-zogud's ``mypy <repo>`` means. htrac-frontend (JS/TS, no Python src)
-is excluded, matching ``[tool.mypy] exclude``.
+INV-zogud's ``mypy <repo>`` means.
 
 The baseline records the total and a per-error-code breakdown. The ratchet
 is shrink-only: it fails if the total grows, if any error code's count
@@ -105,11 +104,11 @@ _COLOR_FORCING_ENV = ("FORCE_COLOR", "MYPY_FORCE_COLOR", "CLICOLOR_FORCE")
 
 
 def _source_roots() -> list[Path]:
-    """Every ``packages/*/src/<pkg>`` directory except htrac-frontend / eggs."""
+    """Every ``packages/*/src/<pkg>`` directory except eggs."""
     roots: list[Path] = []
     for pkg_src in sorted(REPO_ROOT.glob("packages/*/src/*/")):
         parts = str(pkg_src)
-        if "htrac-frontend" in parts or ".egg-info" in parts:
+        if ".egg-info" in parts:
             continue
         if not pkg_src.is_dir():
             continue  # pragma: no cover — glob only yields dirs
