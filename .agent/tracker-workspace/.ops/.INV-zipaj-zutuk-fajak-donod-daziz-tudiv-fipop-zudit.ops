@@ -1,0 +1,25 @@
+- op: create  # 858f
+  at: '2026-10-17T02:10:46Z'  # 858f
+  by: agent  # 858f
+  actor: jgstern_agent  # 858f
+  clock: 1  # 858f
+  nonce: 858f  # 858f
+  data:  # 858f
+    kind: invariant  # 858f
+    title: "Lang-common LaTeX: import/reference edges use raw '<path>:file' src and raw target dst, failing the id_format validator on every LaTeX repo"  # 858f
+    status: violated  # 858f
+    priority: 3  # 858f
+    parent:  # 858f
+    tags:  # 858f
+    - latex  # 858f
+    - analyzer  # 858f
+    - validator  # 858f
+    - dogfood  # 858f
+    isbefore: []  # 858f
+    duplicate_of: []  # 858f
+    not_duplicate_of: []  # 858f
+    pr_ref:  # 858f
+    description: "## Statement\nThe LaTeX analyzer (`packages/hypergumbo-lang-common/src/hypergumbo_lang_common/latex.py`) builds every `imports`/`references` edge with raw strings as endpoints: `src=f\"{rel_path}:file\"` (a 2-part string, lines 298/325/349/377) and `dst=<raw target name>` (e.g. `fontenc`). Neither is a symbol id. The file symbol that should be the src exists (`latex:<path>:1-1:file:file`), so every such edge dangles; `create_boundary_nodes` then parses the src string as `<language>:<path>...`, putting the file path in the language slot.\n\n## Observed (dogfood 2026-10-16, hypergumbo 9.1.0, repo /tmp/pf-prelim — one .tex file, 17 edges)\n- `validation_report.violations`: 1 × `id_format` / `non_canonical_language_prefix`, record_id `docs/pre_spec_research/spyware_analysis.tex:<unknown>:0-0:docs/pre_spec_research/spyware_analysis.tex:external_symbol`, severity error. Stderr: `[warn] 1 id_format validation violation(s)`.\n- 17 edges with `src` = that synthesized id and `dst` like `fontenc:<unknown>:0-0:fontenc:external_symbol`; `is_resolved: False` on all.\n- Any LaTeX repo with a `\\usepackage`/`\\input`/`\\ref` reproduces it.\n\n## Repro\n`printf '\\\\documentclass{article}\\\\n\\\\usepackage{fontenc}\\\\n\\\\begin{document}x\\\\end{document}\\\\n' > /tmp/t/a.tex && hypergumbo run /tmp/t --out /tmp/t.json` → inspect `validation_report.violations` and the `imports` edge's `src`.\n\n## Expected\nsrc = the emitted file symbol's id (built with `make_symbol_id(\"latex\", rel_path, 1, 1, \"file\", \"file\")` or taken from the created symbol); dst reshaped into a 5-part external id the way markdown's `_make_link_dst_id` does (WI-diruj precedent). Validator clean; edges resolve to the file node.\n\n## Scope / analogues\n`grep -rn 'f\"{rel_path}:file\"' packages/*/src` finds no other analyzer using the pattern — latex-only. Root-cause family: INV-habit (latex overrides `analyze()` wholesale and bypasses the TreeSitterAnalyzer conventions, which is how it missed both `make_symbol_id` for edges and the link-dst reshaping)."  # 858f
+    fields:  # 858f
+      statement: "Every edge the LaTeX analyzer emits has endpoints that are canonical symbol ids: src is the emitted file symbol's id and dst is a 5-part external id, so the id_format validator is clean and the edges resolve to the file node."  # 858f
+      root_cause: "latex.py builds edges with src=f\"{rel_path}:file\" (lines 298/325/349/377) and dst=<raw target name> instead of make_symbol_id / a reshaped external id; create_boundary_nodes then parses the 2-part src as <language>:<path>, putting the file path in the language slot. Family: INV-habit (latex bypasses the TreeSitterAnalyzer conventions)."  # 858f
