@@ -20,3 +20,12 @@
     pr_ref:  # 9781
     description: "## What\nTranslate permitted edits made in the live Y.Doc by remote clients into tracker ops through the normal `TrackerSet`/`Store` API (update, discuss), carrying attribution. The bridge must never write .ops files directly: validation, locks, edit-mode windows and the journal all apply because the ops go through the same code path as the CLI.\n## Rules (from the live-document ADR, item A)\n- Only fields the ADR marks live-editable are accepted; edits to op-only fields (status, priority, tags, parent, isbefore, locks) are rejected and the authoritative value is re-projected so the client converges back.\n- Attribution: the Yjs transaction's pseudonymous token is resolved to a `by:` identity via the out-of-doc resolution table; unknown tokens are refused (no anonymous ops).\n- Idempotence: transactions whose origin is the projection (item B) are ignored; an op emitted by the bridge must not re-trigger the bridge when its projection lands.\n- Conflict: a CLI op and a live edit on the same field -- the op wins; the live edit is either re-applied as a new op (if still valid) or dropped with an awareness notice. Decide and test both branches.\n## Done when\nTests cover: accepted edit -> op appears in the ops log with the right `by:`; rejected field -> client state converges back; projection-origin transaction ignored; CLI-vs-live conflict on one field. Coverage 100%.\n## Context\n~/hypergumbo_lab_notebook/notebookjournal_10162026_2318.md section 4."  # 9781
     fields: {}  # 9781
+- op: update  # a07f
+  at: '2026-10-17T03:30:18Z'  # a07f
+  by: agent  # a07f
+  actor: jgstern_agent  # a07f
+  clock: 2  # a07f
+  nonce: a07f  # a07f
+  set: {}  # a07f
+  add:  # a07f
+    isbefore: [WI-fujus-nojaz-pomoz-kinid-jutot-jolom-bisus-gazam]  # a07f
