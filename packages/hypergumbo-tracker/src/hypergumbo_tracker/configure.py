@@ -4,7 +4,9 @@
 Provides ``run_configure(root)`` which walks the human user through
 each section of config.yaml (statuses, kinds, stop_hook, well_known_tags,
 actor_resolution, lamport_branches), validates the result, shows a
-diff summary, and writes with 0444 enforcement.
+diff summary, asks for a y/N confirmation, and writes with 0444
+enforcement. When a workspace ``tracker-workspace/config.yaml`` exists it
+offers to overwrite and re-lock that file with the same content too.
 
 Human-only: agents are rejected at the top of run_configure().
 

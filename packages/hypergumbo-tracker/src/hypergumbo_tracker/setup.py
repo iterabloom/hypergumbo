@@ -42,7 +42,11 @@ The check sequence covers four areas:
 Entry point: ``run_setup(root, repo_root, *, with_policy_template=False)``
 returns a list of CheckResult; the keyword drives policy-template scaffolding.
 ``format_results`` and ``results_to_json`` (both in this module) render them;
-the ``setup`` handler in cli.py prints the result.
+the ``setup`` handler in cli.py prints the result. ``generate_human_shim(root)``
+prints a copy-paste command block for the human when the agent declines to
+continue. ``config_lock`` / ``config_unlock`` (0444 / 0644; they raise
+``OwnershipTransferRefused`` internally and swallow it) are shared with
+configure.py, migration.py and cli.py.
 """
 
 from __future__ import annotations

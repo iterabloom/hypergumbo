@@ -17,6 +17,15 @@ Submodules
 - ``frameworks`` (data) + ``framework_patterns`` (code) — YAML-driven
   framework detection
 - ``cli`` — argparse entry point
+- ``profile`` — repo profile detection (language/framework heuristics)
+- ``discovery`` + ``taxonomy`` + ``paths`` — file discovery/excludes,
+  ADR-0004 file taxonomy, path utilities
+- ``entrypoints`` + ``datamodels`` — YAML-driven entry-point and data-model
+  detection
+- ``catalog`` — registry-derived pass catalog
+- ``arbitration`` + ``finalize`` + ``spec_validator`` — producer precedence
+  (ADR-0057 §5), the pre-serialization reconcile stage (ADR-0043 §6),
+  spec-vs-data validation (ADR-0033)
 - ``sketch`` / ``sketch_embeddings`` — Markdown sketch generation
 - ``compact`` — budget-aware selection + residual summarization
 - ``slice`` — entry-point subgraph extraction

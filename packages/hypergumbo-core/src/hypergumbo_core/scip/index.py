@@ -19,6 +19,11 @@ Why this is a thin glue layer:
   :mod:`hypergumbo_core.scip.descriptor`. We reuse it unchanged.
 * The hypergumbo ``Symbol`` dataclass is already the downstream IR for
   every analyzer; this module just fills the same fields.
+* Kind comes from the producer's ``SymbolInformation.kind`` when it maps to
+  a registered kind (``_SCIP_KIND_MAP``), else from the descriptor chain
+  (WI-gapup / ADR-0057 §7; see the comment block above
+  ``symbol_information_kind_values``). An empty ``Document.language`` falls
+  back to the file extension (WI-nanom).
 * A SCIP ``Document`` is self-contained (its ``symbols`` list names
   everything the ``occurrences`` list refers to), so the translator is
   one linear pass over ``index.documents`` with a tiny

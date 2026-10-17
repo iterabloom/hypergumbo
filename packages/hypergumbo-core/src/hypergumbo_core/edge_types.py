@@ -29,7 +29,15 @@ Consumers that need a subset of edge types use the curated constants
 this module exports (``IMPORT_EDGE_TYPES``, ``INHERITANCE_EDGE_TYPES``)
 rather than their own literals; the property test in
 ``tests/test_edge_types.py`` enforces that every hardcoded set in the
-codebase is a subset of this registry.
+codebase is a subset of this registry. For the inheritance family, set
+membership is NOT the answer (``includes`` is overloaded with Ruby mixins;
+INV-nosoz): use ``is_inheritance_edge`` / ``is_inheritance_edge_record``
+(both edge shapes, via ``inheritance_edge_fields``) and
+``inheritance_dispatch_role``, built on ``CONCRETE_INHERITANCE_EDGE_TYPES``,
+``INTERFACE_SATISFACTION_EDGE_TYPES`` and ``MIXIN_INCLUDE_EVIDENCE_TYPES``.
+``find_partial_inheritance_family_literals`` is the second linter: it flags
+a hand-written literal that enumerates only part of the family, checked
+against ``INHERITANCE_EDGE_TYPE_LANGUAGES``.
 
 Axis taxonomy:
 

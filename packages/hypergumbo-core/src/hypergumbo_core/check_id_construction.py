@@ -30,7 +30,8 @@ WHAT IS FORBIDDEN IS NOT THE F-STRING, IT IS THE UNGRAMMATICAL ID. A synthetic
 linker stand-in has no source span and legitimately writes ``0-0`` by hand;
 14 of the 40 hand-built templates are conformant and stay. Banning the spelling
 would have deleted those for nothing and taught authors to route around the
-check. So the rule is ADR-0036's grammar applied to the TEMPLATE:
+check. So the rule for ``Symbol(id=...)`` is ADR-0036's grammar applied to
+the TEMPLATE:
 
     {lang}:{path}:{start}-{end}:{name}:{kind}
 
@@ -38,6 +39,14 @@ parsed from the right (``span, name, kind = parts[-3:]``) because the path slot
 is the only one allowed to contain colons. A slot filled by an interpolation is
 OPAQUE and is not judged — the check refuses to invent a verdict it has no
 evidence for, which is why ``python:{}:1-1:{}:{}`` passes.
+
+EDGE IDS GET THEIR OWN RULE. WI-vodin asked for ``Edge.id`` to meet the node
+grammar. Measured, that premise is false: all 18,283 apollo-server edge ids
+are content digests. So ``Edge(id=...)`` is judged, through the same three
+hops, against ``edge:sha256:<16hex>`` (:func:`edge_template_problem`). For
+both constructors, an id built by a ``+`` chain is reported as
+``concatenated_id``, because a concatenation cannot be checked against
+either grammar.
 
 WHAT IT FOUND ON ITS FIRST RUN, and the reason this is INV-kurup's class rather
 than hygiene: 26 of the 40 templates produce ids that hypergumbo's OWN runtime
