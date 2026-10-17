@@ -314,6 +314,33 @@ steps:
       - pip install "pyyaml>=6"
       - scripts/check-io-allowlist
 
+  # ── self-claims COVERAGE guard, per PR (INV-jojog) ─────────────────────────
+  # NOT the drift gate (see the tombstone above `pytest`): that compares all
+  # eighteen verdicts and needs the full map. This answers one question the
+  # cron would otherwise answer up to 12 h later -- does the shipped code call
+  # into a module the I/O catalogue can neither row nor enumerate? -- which
+  # was four of the five self-claims reds since 09-03 (INV-bofab, INV-fugus,
+  # INV-jojog, INV-konad). The python analyzer over the packaging-declared
+  # roots, then verify_claims' own coverage decision: ~30 s plus the install,
+  # no grammar build (tree-sitter-python is a wheel). Path filter: anything
+  # that can move the answer -- shipped source (the catalogue lives under it),
+  # the self overlay, the claims file, the script.
+  # tests/test_ci_claims_coverage_guard_wiring.py pins this step.
+  - name: claims-coverage
+    image: python:3.11-bookworm
+    depends_on: []
+    when:
+      - path:
+          include:
+            - "packages/*/src/**"
+            - "docs/io-primitives-overlays/**"
+            - "docs/hypergumbo.claims.yaml"
+            - "scripts/check-claims-coverage"
+    commands:
+      - pip install --upgrade pip
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream
+      - scripts/check-claims-coverage
+
   # ── tracker data validation (only when tracker files changed) ──────────────
   - name: tracker-validate
     image: python:3.11-bookworm
@@ -378,6 +405,13 @@ steps:
   #
   # Detection is now bounded by the cron cadence (up to ~12h), not by one
   # commit. tests/test_ci_self_claims_gate_scope.py pins what remains.
+  #
+  # ONE SHAPE GOT A CHEAP PER-PR ARM BACK (INV-jojog, 2026-10-17): the
+  # `claims-coverage` step above asks the cron's own coverage decision over
+  # the python analyzer's edges alone (~30 s), so a shipped call into a module
+  # the catalogue cannot classify -- four of the five reds since 09-03 --
+  # fails the PR. The eighteen-verdict drift comparison still waits for the
+  # cron.
 
   # ── pytest + 100%-coverage-of-changed-files (smart-test manifest) ──────────
   # Faithful port of ci.yml's pytest job. No venv (the container IS the isolation)
