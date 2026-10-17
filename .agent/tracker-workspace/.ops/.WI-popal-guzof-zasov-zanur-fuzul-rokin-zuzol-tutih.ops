@@ -44,3 +44,18 @@
   clock: 4  # 92a0
   nonce: 92a0  # 92a0
   message: "Owner decision 2026-10-16: rather than bump the lockfile (variant D measured 44 -> 0 advisories with @blocksuite/* removed and vite 7), the unshipped Lit scaffold in packages/htrac-frontend is being REMOVED -- it imports no BlockSuite, is never built in CI or shipped, and the lockfile only ages back into alerts. Closes when the removal PR merges; residual Dependabot alerts (if any) come from the recorded Cargo.lock test fixture under packages/hypergumbo-lang-rust-analyzer/recorded/ and need an auto-dismiss rule in repo settings."  # 92a0
+- op: update  # 5eb4
+  at: '2026-10-17T05:15:20Z'  # 5eb4
+  by: agent  # 5eb4
+  actor: jgstern_agent  # 5eb4
+  clock: 5  # 5eb4
+  nonce: 5eb4  # 5eb4
+  set:  # 5eb4
+    status: done  # 5eb4
+- op: discuss  # 9382
+  at: '2026-10-17T05:15:20Z'  # 9382
+  by: agent  # 9382
+  actor: jgstern_agent  # 9382
+  clock: 6  # 9382
+  nonce: '9382'  # 9382
+  message: "Closed by PR #1681 (merged 2026-10-17): packages/htrac-frontend removed outright per the owner's decision rather than bumping the lockfile. Behavioural evidence: the lockfile that carried the alerts no longer exists on dev (git ls-files packages/htrac-frontend -> empty); before removal, variant D (drop @blocksuite/*, vite 7.3.7) had measured 44 -> 0 npm advisories, so the alerts were entirely that lockfile's. Residual Dependabot alerts, if the tab still shows any, come from the recorded Cargo.lock test fixture under packages/hypergumbo-lang-rust-analyzer/recorded/aardvark_dns/ and need an auto-dismiss rule in repo settings (owner-only)."  # 9382

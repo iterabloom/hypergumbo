@@ -1,0 +1,24 @@
+- op: create  # d482
+  at: '2026-10-17T04:04:15Z'  # d482
+  by: agent  # d482
+  actor: jgstern_agent  # d482
+  clock: 1  # d482
+  nonce: d482  # d482
+  data:  # d482
+    kind: invariant  # d482
+    title: "Self-claims drift on dev: 18 claims flipped confirmed_with_caveats -> inconclusive with every opaque_boundary caveat gone (cron full-suite f7c93e49)"  # d482
+    status: violated  # d482
+    priority: 2  # d482
+    parent:  # d482
+    tags:  # d482
+    - security  # d482
+    - verify_claims  # d482
+    - ci_infrastructure  # d482
+    isbefore: []  # d482
+    duplicate_of: []  # d482
+    not_duplicate_of: []  # d482
+    pr_ref:  # d482
+    description: "## Symptom (cron full-suite, dev @ f7c93e494e, 2026-10-16 18:33 EDT, pipeline 4872)\n`self-claims-gate` fails: `check-self-claims-drift: SELF-CLAIM DRIFT` with 36 changed lines = 18 claims whose verdict flipped `confirmed_with_caveats -> inconclusive`, and in EVERY one the `opaque_boundary` caveat disappeared while the other caveats stayed. Affected: `{add-extras,build-grammars,install-embeddings,install-gitleaks,install-rust-analyzer,runtime-cli}-no-{dev-zone,host-fs,install-artifact}` (the full list is in the pipeline log). Snapshot: docs/hypergumbo.claims.expected.json (18 claims, all confirmed_with_caveats as of the 9.1.0 release).\n## Why it matters\n`opaque_boundary` is the caveat verify-claims attaches when a flow crosses a subprocess launch it cannot see inside (ADR-0016). All of them vanishing at once means the analysis no longer recognises the launch sites (`safety_zones.repo_inspect_*`, the pip/rustup/gitleaks subprocess wrappers) as launches on these flows -- and then cannot reach a verdict. That is either an analysis regression (the launch list ADR-0016 says the qualification \"rests entirely on\" being complete is no longer found) or an input change, not a security improvement. The gate is doing its job; SECURITY.md's published claims are currently not reproducible on dev.\n## Not yet known\nWhich change caused it. The previous full-suite verdict is >40 commits back (ci-debug cron-status shows only the latest per workflow); between the last known-green nightly leg (ea77558c, 01:01) and f7c93e49 lie the 9.1.0 release commits (confidence_model v2.2 / SCHEMA_VERSION bump #1635, release 9.1.0 f463872548), #1643 (repo_tier_offer .gitignore), the ARCHITECTURE regen, and ~34 tracker syncs. CI installs fresh dependency versions each run (failing run: tree-sitter 0.25.2, tree-sitter-language-pack 0.13.0) -- compare with the last green run's `Successfully installed` line. Diagnosis needs one local `scripts/check-self-claims` run (hypergumbo on itself, ~5 min; owner approval required for big-repo runs) and a bisect over those few code commits.\n## Done when\nRoot cause named; either the analysis regression is fixed and the snapshot is unchanged, or the drift is understood and the snapshot updated with the rationale recorded here (closure-evidence discipline: cite the re-run output)."  # d482
+    fields:  # d482
+      statement: "scripts/check-self-claims on dev reproduces docs/hypergumbo.claims.expected.json exactly: every published claim keeps its recorded verdict and caveat set, so SECURITY.md's claims are reproducible from the tree they describe."  # d482
+      root_cause: "Unknown as of 2026-10-17. All 18 flips lose the opaque_boundary caveat at once, so verify-claims no longer recognises the subprocess launch sites on these flows; candidates are the 9.1.0 analysis changes (confidence_model v2.2) or a fresh-install dependency version change in CI. Needs one local check-self-claims run plus a bisect over the few code commits since the last green full-suite."  # d482
