@@ -38,3 +38,18 @@
     tags: [adr_0019]  # 90b7
   remove:  # 90b7
     tags: [adr-0019]  # 90b7
+- op: update  # 883e
+  at: '2026-10-17T03:42:09Z'  # 883e
+  by: agent  # 883e
+  actor: jgstern_agent  # 883e
+  clock: 4  # 883e
+  nonce: 883e  # 883e
+  set:  # 883e
+    status: wont_do  # 883e
+- op: discuss  # 87d6
+  at: '2026-10-17T03:42:10Z'  # 87d6
+  by: agent  # 87d6
+  actor: jgstern_agent  # 87d6
+  clock: 5  # 87d6
+  nonce: 87d6  # 87d6
+  message: "Folded into WI-pupod as a checklist line (owner ruling 2026-10-16). Placeholder with no content beyond the ADR reference; the epic's RE-OPEN TRIGGER governs when this work resumes. Note: the original text assumed WKWebView renders BlockSuite -- the frontend is now a Yjs-backed document with BlockNote/xyflow views."  # 87d6
