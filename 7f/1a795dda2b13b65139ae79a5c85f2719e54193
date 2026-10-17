@@ -1,0 +1,35 @@
+Original commit body from 987f584337db375af0dfef649ac9f0caa0994331:
+
+The release workflow runs on GitHub Actions; pushes, PRs and crons run on
+Woodpecker, which is all ci-debug could read. Its GitHub arm still said
+"GitHub Actions is disabled", so a release run, a workflow_dispatch dry
+run and its artifacts were invisible through the approved scripts, and on
+2026-10-17 the owner had to waive the CI-API rule once for `gh`.
+
+Explicit `--actions`, anywhere on the line; the default arm is unchanged:
+
+  runs --actions [workflow.yml] [N]   /actions/runs or /actions/workflows/<f>/runs
+  status --actions <run-id>           /actions/runs/<id> + its jobs: steps, durations
+  logs --actions <run-id> [job]       /actions/jobs/<job>/logs (first failed job by default)
+  artifact --actions <run-id> <name> <new-empty-dir>
+                                      /actions/runs/<id>/artifacts + /actions/artifacts/<a>/zip
+
+JSON goes through api_get. Logs and artifact zips come back as a redirect
+to a storage host; ALLOWED_WEBSITES.md says such a redirect is not
+followed unless the host is listed, so _actions_download checks the target
+against that file and, when unlisted, names it and exits 3. Measured live:
+both redirect to productionresultssa0.blob.core.windows.net, which is not
+listed, so today `runs` and `status` work and `logs`/`artifact` refuse by
+design; whether to list that host is the owner's call (the file says so).
+
+Artifacts extract only into a NEW empty directory, and a zip member that
+escapes it is refused before anything is written.
+
+The fake curl in tests/_forge_github_harness.py learns redirects
+(`location`), `-L`, `-w` formatting of %{redirect_url}, and binary bodies
+(`body_b64`); existing harness users are unchanged (75 pass).
+
+Owner approval for this governance change: WI-pubur discussion, 2026-10-17
+("i approve WI-pubur and approve auto-pr without --gov").
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
