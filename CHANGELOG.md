@@ -15,6 +15,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Fixed
 
 - **The developer-offer examples directory is gitignored**, by this repo's root `.gitignore` and by one it carries inside.
+- **`generate-architecture --check` no longer counts tracker auto-sync commits** toward the 30-commit staleness window.
 
 ## [9.1.0] - 2026-10-16
 
