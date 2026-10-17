@@ -37,3 +37,10 @@
   clock: 3  # 1926
   nonce: '1926'  # 1926
   message: "Filed low-priority (P4, todo_soft) from the post-cutover PERMANENT-checklist audit (#9). Deliberately deferred: htrac-frontend is a private/unpublished BlockSuite frontend, not in CI, zero overlap with shipped Python wheels — so this is contained frontend hygiene, not a migration blocker and not soak-relevant. Fix is a self-contained npm bump in packages/htrac-frontend/ (26/27 patchable; alert #20 dompurify is no-fix) but needs a node toolchain + local build verification against the @blocksuite 0.17.33/vite 6 pins (no CI net). Pick up when there's bandwidth + local build access."  # 1926
+- op: discuss  # 92a0
+  at: '2026-10-17T03:45:50Z'  # 92a0
+  by: agent  # 92a0
+  actor: jgstern_agent  # 92a0
+  clock: 4  # 92a0
+  nonce: 92a0  # 92a0
+  message: "Owner decision 2026-10-16: rather than bump the lockfile (variant D measured 44 -> 0 advisories with @blocksuite/* removed and vite 7), the unshipped Lit scaffold in packages/htrac-frontend is being REMOVED -- it imports no BlockSuite, is never built in CI or shipped, and the lockfile only ages back into alerts. Closes when the removal PR merges; residual Dependabot alerts (if any) come from the recorded Cargo.lock test fixture under packages/hypergumbo-lang-rust-analyzer/recorded/ and need an auto-dismiss rule in repo settings."  # 92a0
