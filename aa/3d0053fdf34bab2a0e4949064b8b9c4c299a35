@@ -1,0 +1,43 @@
+Original commit body from 78fc1329eae05ad6fba06e12f6f8036c85051c7a:
+
+Four times since 09-03 a shipped-code call into a Python name the I/O
+catalogue neither rows nor enumerates reached dev and withheld all 18
+self-claim verdicts at once: builtins (INV-bofab), datetime.date.today
+(INV-fugus), datetime.date.fromisoformat (INV-jojog), threading.Event
+(INV-konad). Each was seen only by the twice-daily cron, because the
+drift gate's per-PR arm was removed on 2026-08-30 at ~14 min of critical
+path. Up to 12 h of red dev and a bisect per occurrence.
+
+The question those four ask does not need the map. _call_production_
+coverage decides qualifying_only from the edge set alone, and the python
+analyzer produces that edge set -- receiver typing included, stamped in
+py.py -- in 27 s over the 386 shipped files. So:
+
+  hypergumbo_core/claims_coverage_guard.py   runs the registered python
+      analyzer over shipped_artifact_roots (a FileIndex.from_paths scope,
+      INV-jumim's mechanism), relativises ids with the pipeline's own
+      _relativize_ir_paths, loads the catalogue the way the CLI does
+      (python.yaml + shipped community overlays + the claims file's
+      overlays) and asks the cron's own decision function. No AST walk,
+      no second spelling of "module slot".
+  scripts/check-claims-coverage              exit 0 qualifiable / 1
+      withheld (names the module, prints the remedy) / 2 infrastructure.
+  .woodpecker/woodpecker.yml                 `claims-coverage` step, per
+      PR, path-filtered to shipped source, the self overlay, the claims
+      file and the script; installs core + lang-mainstream only.
+
+Calibrated on dev at 416315836b: the analyzer-only edge set (67,926
+edges) and the full map reach the same verdict, complete=False,
+qualifying_only=True, same three launch sites (subprocess.Popen,
+subprocess.Popen.communicate, subprocess.run). With the threading.Event
+entry removed from python.yaml the script exits 1 naming threading.Event;
+restored, exit 0. The first draft test-filtered the file list and
+reported hypergumbo_core.spec_validator as an untraced third-party
+module (is_test_file's *spec* rule); the cron's denominator is
+edge_in_artifact and nothing else, and now so is this.
+
+What it does not catch is written in the module docstring: the
+eighteen-verdict drift comparison, taint regressions, a verdict moving
+to violated all still wait for the cron.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
