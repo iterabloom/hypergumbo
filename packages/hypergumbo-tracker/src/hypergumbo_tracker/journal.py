@@ -41,10 +41,13 @@ lines. For the current format this is *equivalent* to a line-level union:
 ``store._serialize_op`` stamps a per-op ``# <nonce>`` comment on every non-empty
 line (with scalar folding disabled via ``width=sys.maxsize``), so every line is
 unique to its op and a line-level dedup never collides. Op-block is chosen as
-the single canonical restore primitive so the journal and the ``do_sync`` /
-``do_merge`` restorers share *one* implementation — not because the line-level
-union corrupts the real format (it does not). The journal is the durable source
-all of them read from.
+the canonical restore primitive so the journal restore (:func:`recover`) and
+``do_sync``'s ``sync._union_restore_ops`` share *one* implementation — not
+because the line-level union corrupts the real format (it does not). The bash
+``do_merge`` restorer (``_ops_union_restore_file`` in
+``scripts/lib/forgejo-api.sh``) still uses a line-level ``awk`` union, which is
+equivalent for the current format for the same reason. The journal is the
+durable source the Python restorers read from.
 """
 from __future__ import annotations
 

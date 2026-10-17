@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Static enforcement of ADR-0057 §12: cross-backend tests run on RECORDED
-producer input, never on the incumbent arm's output fed back (WI-romuh).
+"""Static enforcement of ADR-0057 §12: cross-backend tests use recorded producer input (WI-romuh).
+
+Cross-backend tests run on RECORDED producer input, never on the incumbent
+arm's output fed back.
 
 WHY A LINT AND NOT A REVIEW RULE. The stable_id parity test collected a
 baseline from ``rust.py``, fed ``rust.py``'s own spans into the SCIP parity
@@ -18,16 +20,16 @@ input from that output and hand it to a cross-backend consumer. So:
 * SOURCES are calls to an incumbent producer — the entry function of the
   non-index backend of every language with two anchored producers, read
   from the registry declarations (:func:`incumbent_producer_names`), plus
-  ``run_analyzer("<that analyzer>", ...)`` — and, one hop out, any function
-  in the same test module whose body calls a source
-  (``_collect_rust_py_stable_ids`` is that shape).
+  ``run_analyzer("<that analyzer>", ...)`` — and, transitively, any function
+  in the same test module whose body calls a source (computed to a fixpoint;
+  ``_collect_rust_py_stable_ids`` is that shape).
 * TAINT starts at a name bound from a source call and follows assignment,
   tuple unpacking, ``for`` targets, ``with ... as`` and comprehension
   targets, within one test function. Anything more is real dataflow and
   would trade a sharp rule for a fuzzy one.
-* SINKS are :data:`CROSS_BACKEND_CONSUMERS` — the core SCIP shim, the
-  rust-analyzer package's translation and parity helpers, and (when it
-  lands) the merge pass. A sink call whose arguments mention a tainted
+* SINKS are :data:`CROSS_BACKEND_CONSUMERS` — the core SCIP shim and the
+  rust-analyzer package's translation and parity helpers. The merge pass is
+  deliberately not a sink: both arms are its legitimate inputs. A sink call whose arguments mention a tainted
   name, or contain a source call outright, is an offence.
 
 A test that feeds on purpose says so: ``@pytest.mark.incumbent_fed("<reason>")``.

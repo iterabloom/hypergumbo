@@ -15,22 +15,25 @@ file symbols.
 **``property`` is a homonym too (WI-tisom).** It sat in the blanket set labelled
 "CSS structural", but no CSS analyzer has ever emitted it: css.py and scss.py
 had no ``kind="property"`` when the entry was added (commit 4eab1afde7) and have
-none now. Its real producers are five analyzers:
+none now. Its real producers are five analyzers, plus core's SCIP importer
+(``Property`` in any language, which passes through):
 - swift: a computed property, a callable with a body;
 - C#: a property with get/set bodies;
 - ``.properties``: a config key;
 - QML: a property declaration;
 - objective-c: a bodyless ``@property``.
 So the default view dropped every swift and C# property. It also dropped every
-call edge from them, since an edge whose src is gone is dropped at finalize.
+call edge from them, since Phase D drops every edge whose src or dst is a
+noise symbol.
 Measured with analyze_swift on five swift repos:
 - 3,323 property symbols;
 - 12,552 call edges out of them (Alamofire 206, swift-composable-architecture 9,765);
 - 364 edges into them.
 The declaration-only producers carried 0 edges on 8 repos (4 objective-c, 1 QML,
 3 ``.properties``, 91,695 symbols). They stay noise; swift and C# do not. C#
-carried 0 edges as well, because its analyzer credits no call in an accessor
-(WI-binap). That is an analyzer gap, not a reason to hide the declaration.
+carried 0 edges as well, because its analyzer then credited no call in an
+accessor (WI-binap, since fixed). That was an analyzer gap, not a reason to
+hide the declaration.
 
 **The ``entry_role=script`` split (WI-papag).** A single predicate
 (``kind=="file" and entry_role=="script"``) conflated two genuinely different

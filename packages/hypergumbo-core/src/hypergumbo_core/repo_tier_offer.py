@@ -27,8 +27,8 @@ the one sentence that must land.
 
 **It is never raised in a non-interactive context.** An offer that blocks a CI
 run or an agent invocation is a defect, not a courtesy. The gate is on STDIN —
-``cli.py``'s existing ``isatty`` checks are on stderr, but those gate
-*rendering*; an offer needs an *answer*, so the stream that must be a terminal
+the progress line's ``isatty`` check (``run_status.py``) is on stderr, but it
+gates *rendering*; an offer needs an *answer*, so the stream that must be a terminal
 is the one the answer arrives on.
 
 WHERE THE DECISION LIVES, AND WHY IT IS NOT THE TRUST STORE. WI-putat's original

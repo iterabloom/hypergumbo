@@ -3,7 +3,8 @@
 
 This linker detects WebSocket patterns in JavaScript/TypeScript and Python code.
 It emits three canonical edge types: ``event_publishes`` (emitter → listener),
-``references`` (client → server endpoint) and ``calls`` (the cross-language
+``references`` (declaring file → the endpoint symbol it declares, for client
+and server endpoints alike) and ``calls`` (the cross-language
 client → server bridge). The bespoke ``message_send`` / ``message_receive``
 types this module once emitted were folded away by ADR-0023 §6; the arrows
 below name the ROLE a matched site plays, not an edge type.
@@ -29,12 +30,12 @@ Django Channels (Python):
 - channel_layer.send('channel', message) -> send-site
 - channel_layer.send(channel_var, message) -> send-site (variable channel)
 - channel_layer.group_send('group', message) -> send-site
-- async for message in websocket.receive() -> receive-site
 
 FastAPI / Starlette WebSocket (Python):
 - @app.websocket('/path') -> endpoint
 - WebSocketRoute('/path', endpoint) -> endpoint
-- websocket.receive_json() / receive_text() -> receive-site
+- websocket.receive() / receive_json() / receive_text() -> receive-site
+  (``async for message in websocket.receive()`` lands here, tagged ``fastapi``)
 - websocket.send_json() / send_text() -> send-site
 - websocket.accept() -> endpoint
 
@@ -45,7 +46,9 @@ NOT detected, despite having a compiled pattern or an obvious spelling:
   ``DJANGO_CONSUMER_SEND`` is compiled but never applied.
 - Django Channels routing — ``DJANGO_CHANNELS_ROUTE`` is compiled but never
   applied. The one decorator pattern that does run is
-  ``@<app>.websocket(...)``, and it is tagged ``fastapi``.
+  ``@<app>.websocket(...)``, and it is tagged ``fastapi``; edges'
+  ``framework_dispatch`` becomes ``starlette`` when starlette but not fastapi
+  is a declared Python dependency (WI-fizir).
 
 Event Detection Strategy
 ------------------------
@@ -59,10 +62,12 @@ For variable-based events, we use heuristic matching:
 
 How It Works
 ------------
-1. Find all JavaScript/TypeScript/Python files in the repository
+1. Find non-test JavaScript/TypeScript (plus .vue/.svelte) and Python files
 2. Scan each file for WebSocket patterns using regex
 3. Extract event names (literals) or variable names from patterns
-4. Create edges linking files with matching events/variables
+4. Create ``event_publishes`` edges between distinct files whose send/receive
+   sites share an event or variable name, skipping generic ``message`` pairs
+   where both sides are fastapi/native
 5. Create connection-handler symbols with ``kind="function"`` and
    ``meta['framework_role']='websocket_endpoint'`` (the ADR-0027 fold —
    there is no ``websocket_endpoint`` symbol kind)

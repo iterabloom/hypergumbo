@@ -54,8 +54,10 @@ its shapes are not printed.
 
 The producer labels are the registration names the merge pass wrote
 (``rust`` / ``rust_analyzer``), the incumbent first (``incumbent_first``).
-A language whose artifact shows one producer is reported as such and
-measures nothing — an empty table is a fact, not a silence.
+A language with fewer than two producers present is skipped: it gets no
+section and no YAML entry. Only when no language in the artifact has two
+producers does the table say so ("No language in this artifact was analysed
+by two producers"), and an empty table is then a fact, not a silence.
 
 WHAT THE NUMBERS ARE NOT. Agreement is not correctness: two producers
 agreeing on ``kind`` says the value is uncontested, not that it is right,

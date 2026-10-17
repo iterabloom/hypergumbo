@@ -117,13 +117,17 @@ respecting exclude patterns. Also provides:
   not -- qemu's ``target/`` (653 source files), next.js's ``packages/next/src/build`` (259), grafana's
   ``pkg/build`` (350), gitlab's ``lib/gitlab/ci/build`` and ``.../coverage``,
   plausible's ``lib/plausible/site/``. Hugo's ``public/`` was the first
-  instance (removed in v0.5.1). Build output is always pruned (no opt-in) and
+  instance (removed in v2.1.0). Build output is always pruned (no opt-in) and
   COMMITTED output is still output (a GitHub Action commits the
-  ``dist/index.js`` it runs), so git status never exempts it; the one place
-  git is consulted is as SUPPORTING evidence -- ``dist``/``build``/``out``
-  beside a ``package.json`` with no declared entry point are claimed only
-  when positively untracked (``_is_untracked_dir``), because VS Code's
-  committed ``extensions/*/build/`` are build scripts. A rule built on
+  ``dist/index.js`` it runs), so git status does not exempt a directory that
+  tool evidence claims. Git is consulted in two places, each where the marker
+  alone is too weak: ``dist``/``build``/``out`` beside a ``package.json``
+  with no declared entry point are claimed only when positively untracked
+  (``_is_untracked_dir``), because VS Code's committed
+  ``extensions/*/build/`` are build scripts; and a self-ignoring
+  ``.gitignore`` claims a directory only when it is not committed
+  (``_is_committed_dir``), because files committed there were force-added on
+  purpose. A rule built on
   ``_sibling_output`` (the producing tool's manifest beside the candidate) never
   claims a directory that holds a project manifest of its own (a subproject named
   ``build``); the ``_sibling_file`` rules (``cover``, ``.dart_tool``,
@@ -549,7 +553,7 @@ DEFAULT_EXCLUDES = [
     # plausible .../site/ module from the analysis. They are recognised per
     # tool through BUILD_OUTPUT_RULES (ADR-0004 §"Installed dependency
     # source" point 7) and disclosed when skipped. Hugo's public/ left this
-    # list in v0.5.1 for the same reason (Airflow routes/public/, 109 API
+    # list in v2.1.0 for the same reason (Airflow routes/public/, 109 API
     # handlers; Laravel/Symfony public/).
     ".elixir_ls",  # ElixirLS language-server build/cache dir (ADR-0004 §7)
     # VCS and IDE
@@ -1229,8 +1233,9 @@ COVERAGE_DIR_NAMES: frozenset[str] = frozenset({
 #: and labels it in the disclosure. Committed or not does not matter: a
 #: project may commit its generated output (a GitHub Action commits the
 #: ``dist/index.js`` its ``action.yml`` runs) and it is still generated --
-#: only :func:`_untracked_beside_package_json` uses git, as supporting
-#: evidence where the manifest alone is too weak. A directory with an output
+#: git is consulted only as supporting evidence where the marker alone is
+#: too weak -- :func:`_untracked_beside_package_json` (positively untracked)
+#: and :func:`_self_ignoring` (not committed). A directory with an output
 #: NAME and no evidence is ANALYSED (see the module docstring for why).
 #: NOT YET COVERED (analysed if present): Phoenix ``mix phx.digest`` output
 #: (per-file ``priv/static/*-<hash>.*``), a custom MkDocs ``site_dir`` /
@@ -1413,7 +1418,9 @@ def _match_content_rule(directory: str, name: str) -> ContentRule | None:
         if rule.marker(path):
             # Point 3 is about INSTALLED source: committed dependency code is
             # vendored and analysed. Generated output stays generated when a
-            # project commits it (point 7), so no git query for build output.
+            # project commits it (point 7), so this point asks git nothing
+            # about build output; the two build-output markers that do
+            # consult git do so inside ``rule.marker`` above.
             if rule.is_installed_dep and _is_committed_dir(directory):
                 return None
             return rule

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""The merge pass: two producers' records for one declaration become one
-Symbol (ADR-0057 §3, WI-kokiz).
+"""The merge pass: two producers' records for one declaration become one Symbol.
+
+ADR-0057 §3, WI-kokiz.
 
 WHY A PASS, AND WHY HERE. When two backends analyse one language — the
 tree-sitter ``rust`` incumbent and the ``rust_analyzer`` SCIP arm — each
@@ -28,10 +29,12 @@ WHAT IT READS, AND FROM WHERE. Nothing here is Rust-shaped:
   supplies the anchored producers and REFUSES, naming the analyzer, a
   producer of a shared language with no declaration; that exception is
   this pass's refusal, and it is not caught here.
-* WHICH producer's value the scalar slot keeps: the incumbent's
-  (:func:`~.registry.incumbent_first` — ADR-0057 §5's built-in default,
-  incumbent first for every categorical attribute, until WI-hukuf makes it
-  a ``config.toml`` preference). Where the incumbent did not observe an
+* WHICH producer's value the scalar slot keeps: the precedence of the
+  ``policy`` argument (:class:`~..arbitration.ArbitrationPolicy`). The
+  built-in, ``BUILTIN_POLICY``, is ADR-0057 §5's incumbent-first default
+  (:func:`~.registry.incumbent_first`). Since WI-hukuf, ``config.toml``'s
+  ``[merge] prefer`` / ``[merge.prefer_by_attribute]`` can change it, and
+  cli.py passes ``policy_from_config(...)``. Where the incumbent did not observe an
   attribute and the other producer did (``signature``, ``docstring``,
   ``qualified_name``, ...), the merged record takes the value that exists —
   disjoint coverage is one value with one provenance (§1).
@@ -54,8 +57,9 @@ Per tracked attribute the members' values form a candidate set — agreement
 is one value with two producers, disagreement two values with one each, an
 attribute only one producer observed has one entry. The scalar the record
 carries is produced by :func:`arbitrate`: a pure function over that set
-with ONE stamped default, precedence in incumbent-first order for every
-categorical attribute (``span`` is the one exception: the item-role
+with ONE stamped default, the policy's precedence for every categorical
+attribute — incumbent-first under the built-in, or the
+``[merge.prefer_by_attribute]`` order where config sets one (``span`` is the one exception: the item-role
 member's span, whichever producer that is — INV-lodum). The choice is
 written into the record's ``attribution`` (``field -> [producers holding
 the carried value]``) and the losers into ``alternatives`` (``field ->
@@ -74,11 +78,20 @@ survivor is the incumbent's edge, the others' call sites are absorbed
 (``_absorb_call_site``), ``origin`` is the union, and ``confidence`` is
 COMBINED, not arbitrated by precedence: two DISTINCT inference pathways
 (different ``evidence_type``) reaching one edge make it ``corroborated``
-at :data:`CORROBORATED_CONFIDENCE` with both originals kept in
+at the policy's ``corroborated_confidence`` (default
+:data:`CORROBORATED_CONFIDENCE`; ``[merge] corroborated_confidence``) with
+both originals kept in
 ``alternatives``; the same pathway twice is not new evidence and keeps the
 incumbent's value. A disagreement on any of the three identity fields
 stays two edges, each with its own ``origin`` — that IS the provenance of
-the disagreement. Usage contexts' ``symbol_ref`` is rewired the same way.
+the disagreement. One exception (§15, :func:`_absorb_partial_external_keys`)
+runs before ``deduplicate_edges``. Two producers' edges with the same ``src``
+and ``edge_type``, a shared call line, the same callee under the incumbent's
+``name_key``, and exactly one ``dst`` stating the receiver's module are one
+call. The partial edge is absorbed into the complete one: ``dst`` is rewritten
+from the stated ref, the id is re-minted, and the fold is counted in
+:attr:`MergeReport.external_folds`. Usage contexts' ``symbol_ref`` is rewired
+the same way.
 
 WHAT IT REFUSES TO GUESS. A record with two candidate partners, or a
 candidate claimed by two records, is left unmerged and reported
@@ -127,8 +140,9 @@ PASS_ID = "producer-merge"
 #: ADR-0057 §13: the confidence of an edge two DISTINCT inference pathways
 #: reached — ADR-0012's number for a type-resolved call. A declared level,
 #: not a formula: ``max`` would launder SCIP's 0.85 emitter constant into
-#: evidence and noisy-OR overstates producers reading the same text. It
-#: joins the per-attribute table WI-hukuf makes configurable.
+#: evidence and noisy-OR overstates producers reading the same text. The
+#: built-in policy's default; configurable since WI-hukuf as
+#: ``[merge] corroborated_confidence``.
 
 #: Attributes whose candidates are recorded per merged record (ADR-0057 §1).
 TRACKED_ATTRIBUTES: Tuple[str, ...] = (
