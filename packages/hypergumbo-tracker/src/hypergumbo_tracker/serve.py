@@ -22,9 +22,13 @@ change (a CLI or TUI write) broadcasts a fresh ``state_snapshot`` to every
 connected WebSocket client. ``create_app(static_dir=...)`` optionally mounts
 a static frontend build at ``/`` after the API and WebSocket routes.
 
-PID file management supports ``--background``, ``--stop``, and ``--status``
-flags: ``write_pid_file`` / ``read_pid_file`` / ``remove_pid_file`` handle
-the lifecycle, and ``stop_server`` sends SIGTERM to a running instance.
+PID file management supports ``--stop`` and ``--status``: the foreground
+server writes its PID file on start (``write_pid_file`` / ``read_pid_file`` /
+``remove_pid_file`` handle the lifecycle) and ``stop_server`` sends SIGTERM to
+a running instance. There is no daemon mode: a ``--background`` flag was
+declared for months without anything reading it (WI-robug), so it was removed
+rather than implemented; run the server under systemd, tmux or ``nohup`` if
+it must outlive the shell.
 
 Why This Design
 ---------------

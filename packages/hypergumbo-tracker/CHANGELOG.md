@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Changed
+
+- **`htrac serve --background` removed**: it never daemonized (nothing read the flag); `--stop`/`--status` unchanged (WI-robug).
+
 ## [0.10.0] - 2026-10-14
 
 ### Added

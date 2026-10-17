@@ -2,7 +2,7 @@
 """Tests for the htrac serve skeleton (Starlette/uvicorn server).
 
 The serve module provides a Starlette application with a /health endpoint,
-PID file management for --background/--stop/--status, and uvicorn integration.
+PID file management for --stop/--status, and uvicorn integration.
 Bind to 127.0.0.1 only for security (external access via Tor/native app).
 """
 from __future__ import annotations
@@ -65,7 +65,7 @@ class TestCreateApp:
 
 
 class TestPidFile:
-    """Tests for PID file management (--background/--stop/--status)."""
+    """Tests for PID file management (--stop/--status)."""
 
     def test_write_pid_file(self, tmp_path: Path) -> None:
         """write_pid_file creates a file with the current PID."""
@@ -212,7 +212,6 @@ class TestCmdServe:
             command="serve",
             stop=False,
             status=True,
-            background=False,
             port=None,
             json=False,
             tracker_root_resolved=str(tmp_path),
@@ -232,7 +231,6 @@ class TestCmdServe:
             command="serve",
             stop=True,
             status=False,
-            background=False,
             port=None,
             json=False,
             tracker_root_resolved=str(tmp_path),
@@ -253,7 +251,6 @@ class TestCmdServe:
             command="serve",
             stop=False,
             status=True,
-            background=False,
             port=None,
             json=True,
             tracker_root_resolved=str(tmp_path),
@@ -384,7 +381,6 @@ class TestCmdServeForegound:
             command="serve",
             stop=False,
             status=False,
-            background=False,
             port=9999,
             json=False,
             tracker_root_resolved=str(tmp_path),
@@ -409,7 +405,6 @@ class TestCmdServeForegound:
             command="serve",
             stop=False,
             status=False,
-            background=False,
             port=None,
             json=False,
             tracker_root_resolved=str(tmp_path),
@@ -440,7 +435,6 @@ class TestCmdServeForegound:
             command="serve",
             stop=True,
             status=False,
-            background=False,
             port=None,
             json=False,
             tracker_root_resolved=str(tmp_path),
@@ -469,7 +463,6 @@ class TestCmdServeForegound:
             command="serve",
             stop=False,
             status=True,
-            background=False,
             port=None,
             json=False,
             tracker_root_resolved=str(tmp_path),
@@ -495,7 +488,6 @@ class TestCmdServeForegound:
             command="serve",
             stop=False,
             status=True,
-            background=False,
             port=None,
             json=False,
             tracker_root_resolved=str(tmp_path),

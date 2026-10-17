@@ -164,7 +164,6 @@ Both users can read all items — the access control only applies to writes.
 
 ```bash
 htrac serve                    # Foreground on 127.0.0.1:7380
-htrac serve --background       # Daemonize
 htrac serve --status           # Check if running
 htrac serve --stop             # Shut down
 ```
