@@ -1,0 +1,23 @@
+- op: create  # 8d27
+  at: '2026-10-17T09:12:02Z'  # 8d27
+  by: agent  # 8d27
+  actor: jgstern_agent  # 8d27
+  clock: 1  # 8d27
+  nonce: 8d27  # 8d27
+  data:  # 8d27
+    kind: invariant  # 8d27
+    title: "websocket linker misses async_to_sync(self.channel_layer.send) in Django Channels sync consumers"  # 8d27
+    status: violated  # 8d27
+    priority: 3  # 8d27
+    parent:  # 8d27
+    tags:  # 8d27
+    - linker_protocol  # 8d27
+    - docstring_audit  # 8d27
+    isbefore: []  # 8d27
+    duplicate_of: []  # 8d27
+    not_duplicate_of: []  # 8d27
+    pr_ref:  # 8d27
+    description: "Invariant: the websocket linker detects the Django Channels send idiom used inside sync consumers.\n\nViolated today: `DJANGO_ASYNC_SEND` (packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py ~271-274) matches only a bare `channel_layer` inside `async_to_sync(...)`. The common sync-consumer form `async_to_sync(self.channel_layer.send)(\"chat\", ...)` (and `group_send`) matches neither send regex, so it produces no send-site and no edge.\n\nRepro: fixture under the audit scratchpad (wsfix/app/) built by the docstring-staleness audit 2026-10-17 verifier; running the linker's pattern scan over it yields no send-site for that line. Also noted in the same read: `DJANGO_CONSUMER_SEND` and `DJANGO_CHANNELS_ROUTE` are compiled but never applied (already disclosed in the module docstring's \"NOT detected\" block)."  # 8d27
+    fields:  # 8d27
+      statement: "the websocket linker detects the Django Channels async_to_sync send idiom in sync consumers"  # 8d27
+      root_cause: "DJANGO_ASYNC_SEND matches only a bare channel_layer, not self.channel_layer"  # 8d27
