@@ -1,0 +1,19 @@
+Original commit body from d8e45cf9e5b6fe0a73a244adca8242fd9aba04d1:
+
+Phase 0: the ADR-0019 correction rode the htrac-frontend removal, whose
+non-tracker footprint was the ADR itself, a comment and two mypy
+exclusions; it now lives in the tracker changelog's Removed entry, which
+already recorded the scaffold's removal. Phase 1: all eight commits since
+v9.1.0 were represented except the ARCHITECTURE.md regeneration, added
+under Documentation. Phase 2: every entry leads with the effect a reader
+sees ("a PR now fails when...", ".hypergumbo-examples/ cannot be committed
+by accident") instead of the mechanism ("the python analyzer plus the cron
+gate's own coverage decision", "receiver is declared enumerated"); the
+one user-facing fix moves to the top of Fixed; tracker IDs stripped; the
+--background removal moves from Changed to Removed beside the scaffold.
+
+Main 140 -> 123 words, tracker 50 -> 52 (it absorbed the ADR line); about
+22 words per commit over the eight, not the ~8 of the 9.1.0 cycle, because
+each commit here is a distinct change with no sibling to fold into.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
