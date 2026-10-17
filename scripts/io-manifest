@@ -44,7 +44,7 @@ THE LINE VOCABULARY (tab-separated ``op`` and ``target``):
 * ``mkdir``, ``unlink``, ``rmdir``, ``truncate``, ``chmod``, ``chown``,
   ``symlink``, ``link``;
 * ``rename`` -- ``<src> -> <dst>``;
-* ``exec`` -- ``argv[0]`` basename and up to six arguments, paths normalised;
+* ``exec`` -- ``argv[0]`` basename and up to eight arguments, paths normalised;
 * ``connect`` -- address family, then ``<ip>:<port>`` or the socket path.
 
 Targets are normalised to zone tokens: ``<repo>/...`` (an analysed
@@ -68,6 +68,10 @@ USAGE::
     scripts/io-manifest run ... --corpus-root ~/ALL_REPOS/whole_bunch_of_repos \\
         --path /usr/bin:/bin   # reproduce the runner locally, extras hidden
     scripts/io-manifest reduce --out /tmp/iom /tmp/iom/trace/*.trace
+    scripts/io-manifest reduce --out /home/runner/work/_temp/io-manifest \\
+        --corpus docs/io-manifest/corpus.txt \\
+        --python /opt/hostedtoolcache/Python/3.11.17/x64 artifact/trace/*.trace
+                                 # re-reduce a CI artifact; no local paths needed
     scripts/io-manifest check --observed /tmp/iom/observed.txt \\
         --expected docs/io-manifest/expected.txt
 
@@ -255,7 +259,7 @@ def reduce_line(zones: Zones, line: str) -> str | None:
     if name in ("execve", "execveat"):
         if not paths:
             return None
-        argv = paths[1:8] if len(paths) > 1 else []  # argv[0] + six arguments
+        argv = paths[1:10] if len(paths) > 1 else []  # argv[0] + eight arguments
         exe = os.path.basename(paths[0]) or paths[0]
         shown = " ".join([exe, *(_norm_arg(zones, a) for a in argv[1:])])
         return f"exec\t{shown}"
@@ -496,13 +500,26 @@ def run(args: argparse.Namespace) -> int:
 
 
 def cmd_reduce(args: argparse.Namespace) -> int:
-    out = Path(args.out).resolve()
-    exe = shutil.which(args.hypergumbo) or args.hypergumbo
-    corpus_root = Path(args.corpus_root).resolve() if args.corpus_root else out / "corpus"
-    repos = {p.name: str(p.resolve()) for p in corpus_root.iterdir()} if corpus_root.is_dir() else {}
+    """Re-reduce saved traces. With ``--corpus`` and ``--python`` the zone roots
+    are taken as strings, so a CI artifact reduces on a machine where none of
+    its paths exist; without them they are read from the local filesystem."""
+    out = Path(args.out)
+    corpus_root = Path(args.corpus_root) if args.corpus_root else out / "corpus"
+    if args.corpus:
+        names = [e.name for e in parse_corpus(Path(args.corpus).read_text())]
+        repos = {n: str(corpus_root / n) for n in names}
+    elif corpus_root.is_dir():
+        repos = {p.name: str(p.resolve()) for p in corpus_root.iterdir()}
+    else:
+        repos = {}
+    if args.python:
+        python = args.python
+    else:
+        exe = shutil.which(args.hypergumbo) or args.hypergumbo
+        python = str(Path(exe).resolve().parent.parent)
     zones = Zones(
         repos=repos, out=str(out), cache=str(out / "cache"), tmp=str(out / "tmp"),
-        home=str(out / "home"), python=str(Path(exe).resolve().parent.parent),
+        home=str(out / "home"), python=python,
     )
     traces = {Path(t).stem: Path(t).read_text(errors="replace") for t in args.traces}
     sys.stdout.write(render(reduce_traces(zones, traces)))
@@ -535,6 +552,8 @@ def main(argv: list[str] | None = None) -> int:
     p_red = sub.add_parser("reduce", help="reduce saved traces to manifest lines")
     p_red.add_argument("--out", required=True)
     p_red.add_argument("--corpus-root")
+    p_red.add_argument("--corpus", help="corpus file: repo roots become <corpus-root>/<name> as strings")
+    p_red.add_argument("--python", help="the install prefix, as a string (default: from --hypergumbo)")
     p_red.add_argument("--hypergumbo", default="hypergumbo")
     p_red.add_argument("traces", nargs="+")
     p_red.set_defaults(func=cmd_reduce)

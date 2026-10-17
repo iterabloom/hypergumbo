@@ -8,13 +8,23 @@
 #
 # A write under <repo>/ or an AF_INET/AF_INET6 connect fails the gate even if
 # listed here. Lines are op<TAB>target, sorted.
+#
+# Generated from the release runner's own traces (GitHub ubuntu-latest, run
+# 39068691320, 2026-10-17). Two lines come from the runner image rather than
+# from hypergumbo's packages: `rust-analyzer` is on its PATH as a rustup proxy,
+# so hypergumbo's documented version probe (`rust-analyzer --version`, README
+# "Security and trust") runs, and the proxy creates `$HOME/.rustup` when it is
+# absent. On a machine without rust-analyzer both lines are reported as
+# "expected but not observed", which is a note, not a failure.
 exec	git config --get remote.origin.url
 exec	git rev-list --max-parents=0 HEAD
 exec	git rev-parse HEAD
 exec	hypergumbo sketch <repo>
-exec	hypergumbo slice --input <out>/... --entry backend/app/main.py
+exec	hypergumbo slice --input <out>/... --entry backend/app/main.py --out <out>/...
 exec	hypergumbo survey <repo> --out <out>/...
+exec	rust-analyzer --version
 mkdir	<cache>/hypergumbo/...
+mkdir	<home>/.rustup
 mkdir	<out>/...
 unlink	<tmp>/...
 write	/dev/null
