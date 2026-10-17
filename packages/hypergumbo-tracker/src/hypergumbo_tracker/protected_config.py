@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MPL-2.0
 """Host-level protected tracker config: the only location an agent cannot forge.
 
-WHY THIS EXISTS. ADR-0013 protects ``config.yaml`` — the governance vocabulary
-the whole tracker validates against — with file ownership and mode, and claims
-the OS enforces it. **It does not.** Replacing a file needs write permission on
+WHY THIS EXISTS. ADR-0013 originally protected ``config.yaml`` — the governance
+vocabulary the whole tracker validates against — with file ownership and mode,
+on the premise that the OS enforces it. **It does not.** Replacing a file needs write permission on
 its DIRECTORY, not on the file: create a tempfile, ``rename()`` over the target.
 The kernel checks the directory. The tracker's own ``tag_catalog.save_catalog``
 does exactly that, in the same directory as ``config.yaml``, so the agent must
@@ -29,8 +29,9 @@ setup (``groupadd`` / ``usermod`` / ``chgrp`` / ``chmod g+s``).
 
 THE DOWNGRADE ATTACK, and why absence is fatal. If a missing protected config
 silently fell through to the in-repo one, an agent would not need to write the
-protected config at all — it would only need it not to be found, and step 2
-hands it a file it fully controls. So **the existence of the root directory is
+protected config at all — it would only need it not to be found, and the
+in-repo fallback (``config.yaml``, else the template — steps 1-2 of
+``models.load_config``) hands it a file it fully controls. So **the existence of the root directory is
 the opt-in signal**: if ``/etc/hypergumbo-tracker/`` exists but this repo has no
 config under it, loading REFUSES rather than falling back. The agent can neither
 create nor remove that directory, so it cannot forge either answer. Hosts that

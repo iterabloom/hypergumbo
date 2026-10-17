@@ -413,8 +413,8 @@ def create_app(
     Args:
         tracker_set: Optional TrackerSet to wire into the API routes.
             If None, API routes return 503 but /health still works.
-        static_dir: Optional path to a directory of static files (BlockSuite
-            frontend build output). Mounted at ``/`` as a fallback after all
+        static_dir: Optional path to a directory of static files (a built
+            web frontend; none ships today, see ADR-0019). Mounted at ``/`` as a fallback after all
             API/WebSocket routes. If None, no static files are served.
 
     Returns a configured Starlette app. Does not start the server;

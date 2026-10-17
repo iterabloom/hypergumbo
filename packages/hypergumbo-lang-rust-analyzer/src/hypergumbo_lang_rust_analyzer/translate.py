@@ -6,7 +6,7 @@ How It Works
 ``rust-analyzer scip`` emits a Protobuf-encoded ``scip.Index`` file
 describing every defined symbol, every reference, and every
 relationship in a Rust workspace. This module wraps the hypergumbo-core
-SCIP shim (``hypergumbo_core.scip.*``) with two things the generic
+SCIP shim (``hypergumbo_core.scip.*``) with three things the generic
 shim cannot do on its own:
 
 1. **Stable-ID parity with rust.py.** The core shim fills

@@ -41,12 +41,13 @@ Out of scope for this module — each has SHIPPED and lives in a sibling
 * Analyzer-registry wiring — ``analyzer.py``, registered via
   ``@register_analyzer("rust_analyzer", priority=45, languages=["rust"],
   backend="scip")``, above ``rust.py``.
-* The opt-in flag (``HYPERGUMBO_RUST_ANALYZER`` env var +
-  ``--backend rust-analyzer`` CLI flag) that gates whether the shell-out
-  fires at all — ``gate.py``.
+* The opt-in tiers (``--backend rust-analyzer`` CLI flag >
+  ``HYPERGUMBO_RUST_ANALYZER`` env var > per-repo trust record) that gate
+  whether the shell-out fires at all — ``gate.py``.
 * Graceful-degrade when the binary is absent (WI-nohah) —
-  ``graceful_degrade.py``, which returns ``None`` so the caller falls
-  through to ``rust.py``. Callers still decide what to do with
+  ``graceful_degrade.py``, which returns
+  ``ScipAttempt.failure(silence_code, detail)`` so ``analyzer.py`` records a
+  coded skip and ``rust.py`` remains the Rust producer. Callers still decide what to do with
   :class:`RustAnalyzerNotInstalled`.
 """
 

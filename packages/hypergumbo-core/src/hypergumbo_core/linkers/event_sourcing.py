@@ -20,6 +20,7 @@ JavaScript (EventEmitter, custom events):
 - emitter.on('eventName', handler) - literal event name
 - emitter.on(EVENT_NAME, handler) - variable event name
 - emitter.once('eventName', handler)
+- emitter.addListener('eventName', handler)
 - emitter.addEventListener('eventName', handler)
 - emitter.addEventListener(EVENT_NAME, handler)
 - emitter.dispatchEvent(new CustomEvent('eventName'))
@@ -34,6 +35,8 @@ framework set was supplied at all); the EventBus rows are unconditional:
 - EventBus.publish(EVENT_NAME, data) - variable event name
 - EventBus.subscribe('eventName', handler)
 - EventBus.subscribe(EVENT_NAME, handler)
+- @on_event / @event_handler / @listen / @subscribe('eventName' | EVENT_NAME)
+  on handlers
 
 Java (Spring ApplicationEvent):
 - applicationEventPublisher.publishEvent(event)
@@ -44,7 +47,7 @@ Java (Guava EventBus, and framework-agnostic shapes):
 - eventBus.post(event)
 - @Subscribe on methods
 - generic emitters: fire / dispatch / notify / raise
-- generic listeners: register / addListener / subscribe / on
+- generic listeners: register / addListener / addEventListener / subscribe / on
 
 Go:
 - channel send / receive (ch <- v, <-ch)

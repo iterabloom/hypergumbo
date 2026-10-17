@@ -1,14 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Registered analyzer entry point for the SCIP-backed Rust backend (WI-duzul Slice C-final).
 
-This module threads the four primitives the earlier slices delivered
+This module threads the three primitives the earlier slices delivered
 into the hypergumbo-core analyzer-registry surface:
 
 1. :func:`hypergumbo_lang_rust_analyzer.gate.should_use_rust_analyzer_backend`
    gates the whole function on the user's opt-in + binary availability.
 2. :func:`hypergumbo_lang_rust_analyzer.graceful_degrade.try_analyze_with_rust_analyzer`
-   handles the actual shell-out + SCIP → IR translation and returns
-   ``None`` on any of the WI-nohah fall-through conditions.
+   handles the actual shell-out + SCIP → IR translation and returns a
+   :class:`ScipAttempt`. A failure carries a silence code (missing binary,
+   non-zero exit, exit-0-with-no-index, undecodable blob) that this module
+   turns into a coded skip; an empty index is a success (WI-luvud).
 3. The stable-id parity HELPER is threaded inside
    :func:`~hypergumbo_lang_rust_analyzer.translate.translate_scip_to_hg`.
    It does not make the emitted Symbols deduplicable against the
@@ -27,9 +29,9 @@ output when the user opts in. Priority 45 (vs. the registry default
 bearing, just consistent with the "higher quality backend runs first"
 convention.
 
-When the opt-in gate returns False (the default for every session
-that hasn't set ``HYPERGUMBO_RUST_ANALYZER=1`` or passed
-``--backend rust-analyzer``), this analyzer returns an
+When the opt-in gate returns False (the default unless
+``--backend rust-analyzer``, a truthy ``HYPERGUMBO_RUST_ANALYZER``, or a
+per-repo trust record opts in — see :mod:`.gate`), this analyzer returns an
 :class:`AnalysisResult` marked ``skipped=True`` (``skip_reason="rust-analyzer
 backend not enabled"``) immediately. No file walk, no subprocess.
 ``rust.py`` takes care of Rust analysis in that case.
@@ -41,6 +43,12 @@ Successful SCIP-sourced Symbols already carry ``origin="scip"`` from
 preserves the provenance marker the WI-nohah description calls out.
 Downstream tools can filter on ``symbol.origin`` to trust-weight SCIP-
 derived symbols separately from tree-sitter-derived ones.
+
+Run provenance (WI-didag): an ``AnalysisRun`` is minted before dispatch
+and its ``execution_id`` is threaded into the translator, so every
+emitted Symbol and Edge names a serialized run. The run returns with the
+output, stamped with ``silence_reason_for_candidates(symbols)``; a run
+that indexed nothing is not a skip (WI-luvud).
 
 Diagnostics
 -----------
@@ -193,12 +201,12 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
     shells out to ``rust-analyzer scip <repo_root>``, translates the
     emitted SCIP index into hypergumbo ``Symbol`` / ``Edge`` objects
     (through the rust.py stable_id parity helper, which abstains on
-    production spans — INV-dolud), and returns them. All three
-    WI-nohah fall-through conditions are handled inside
-    :func:`try_analyze_with_rust_analyzer` and surface here as a
-    ``None`` return — this function swallows that to an empty
-    AnalysisResult so the registry treats "no SCIP run" identically
-    to "SCIP run produced nothing".
+    production spans — INV-dolud), and returns them. The WI-nohah
+    fall-through conditions are handled inside
+    :func:`try_analyze_with_rust_analyzer`, which returns a
+    :class:`ScipAttempt`; a failed attempt surfaces here as a skipped
+    AnalysisResult carrying the attempt's silence code (WI-luvud), and
+    a run that indexed nothing is an empty, unskipped result.
 
     WI-todon engagement diagnostics: a real log callable
     (:func:`_emit_user_warning`) is wired into

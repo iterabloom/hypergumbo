@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
-"""What may be stored under a custom field key, and what may not (INV-varil,
-INV-linan).
+"""What may and may not be stored under a custom field key (INV-varil, INV-linan).
 
 THE DEFECT, MEASURED RATHER THAN ASSERTED. ``--field key=value`` split on the
 first ``=`` and stored the key verbatim. Nothing checked it. Over a 2,233-item
@@ -50,11 +49,12 @@ THE THREE TIERS, and why only one of them has an escape hatch.
 
 WHY THE CORE SET IS A LIST HERE AND NOT DERIVED FROM argparse. The rule has to
 run in the STORE, because a gate that lives only in the CLI is bypassed by every
-other writer — and ``Store.update`` runs no schema check at all today, which is
-how ``fields.status`` reached 11 items. The store cannot import the CLI's
+other writer — before this gate ``Store.update`` ran no key check at all, which
+is how ``fields.status`` reached 11 items. The store cannot import the CLI's
 parser without a circular import, so the names live here and
-``tests/test_field_keys.py::test_every_core_name_has_a_cli_flag`` asserts the
-two agree. One rule, one home, and a test that fails if they drift.
+``tests/test_field_keys.py::test_every_core_name_has_a_cli_flag_or_is_read_only``
+asserts that every core name except the tracker-computed ones (``id``,
+``kind``, ``discussion``, ``created``, ``updated``) has a flag. One rule, one home, and a test that fails if they drift.
 """
 from __future__ import annotations
 

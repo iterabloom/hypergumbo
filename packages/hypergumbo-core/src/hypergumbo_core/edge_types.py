@@ -13,14 +13,18 @@ axis annotations (under the ``x-axis-of-values`` extension keyword).
 It also exports the meta-discriminator vocabulary consumers need once
 ``edge_type`` alone stopped answering their question: ``IMPORT_EDGE_TYPES``
 and ``INHERITANCE_EDGE_TYPES`` (curated subsets), ``PROTOCOL_KINDS`` and
-``BRIDGE_KINDS`` (the ADR-3bbb linker subcategories a mechanism belongs to),
+``BRIDGE_KINDS`` (the closed value sets for ``edge.meta['protocol']`` and
+``edge.meta['bridge_kind']``, the mechanism the ADR-0023 §6 fold moved out of
+the edge-type name),
 ``is_grpc_rpc_implementation`` (a predicate that reads ``meta`` because the
 fold moved the distinction there), ``is_callback_registration`` (a predicate
 that reads ``meta`` because ``references`` is OVERLOADED — one edge type
 carrying handler registrations, TypeScript type references and object-literal
 fields, which taint must tell apart even though reachability need not), and
-``find_axis_drift`` — the linter that fails the build when a registry value
-stops matching its declared axis.
+``find_axis_drift`` — the linter (``scripts/check-edge-type-drift`` and the
+property test) that flags any consumer-side hardcoded ``*EDGE_TYPE*`` set
+naming a value this registry lacks, and, with ``strict=True``, a registry value
+whose axis is not ``relationship`` or ``pending_classification``.
 Consumers that need a subset of edge types use the curated constants
 this module exports (``IMPORT_EDGE_TYPES``, ``INHERITANCE_EDGE_TYPES``)
 rather than their own literals; the property test in
@@ -33,7 +37,8 @@ Axis taxonomy:
   relationship between src and dst. **Every registered value now sits
   on this axis.**
 - ``endpoint_shape`` — **empty.** The ADR-0023 §6 fold retired every
-  value that occupied it (see the note above ``EDGE_TYPES``).
+  value that occupied it (see the note at the end of the ``EDGE_TYPES``
+  tuple).
 - ``pending_classification`` — **empty.** The dispatch and publish
   family audits issued per-value verdicts and promoted or folded every
   member (audit-findings 0001 onward).
