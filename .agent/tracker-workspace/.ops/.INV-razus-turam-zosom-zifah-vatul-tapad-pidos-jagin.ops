@@ -21,3 +21,10 @@
     fields:  # f681
       statement: "A call edge's src is the callable whose body contains the call, found by position in the call's own file (the INV-midag rule the base analyzer follows)."  # f681
       root_cause: "tlaplus.py ~L281 looks up the enclosing operator/theorem/assumption with resolver.lookup(enclosing_name) over the repo-wide resolver instead of the file's own symbols by span."  # f681
+- op: discuss  # e6df
+  at: '2026-10-17T22:56:07Z'  # e6df
+  by: agent  # e6df
+  actor: jgstern_agent  # e6df
+  clock: 2  # e6df
+  nonce: e6df  # e6df
+  message: "Re-checked on dev 38f6c90533 against the filed repro (A.tla: x == 1, Init == x; B.tla: y == 2, Init == y, Bar == Init). Half fixed by 907d2f25d3 (WI-tusad B4): the enclosing operator is now taken by position (symbol_declared_by), so A.tla:Init -> A.tla:x and B.tla:Init -> B.tla:y; the title's defect (one spec's Init body credited to the other) no longer reproduces. Residual: B.tla:Bar -> A.tla:Init. The referenced target is still resolved repo-wide by bare name at tlaplus.py:405 (resolver.lookup(ref_name) with no path_hint; _local_operator covers LET-locals only), so a same-named operator in another spec can win over the one in the same file. Fix shape: pass path_hint=rel_path as zig.py:598 does, so a same-file definition is preferred, and add the two-file same-name fixture the item asked for. Stays violated for the target side."  # e6df

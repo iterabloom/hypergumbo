@@ -33,3 +33,40 @@
   clock: 3  # 3f17
   nonce: 3f17  # 3f17
   message: "Owner approval received 2026-10-17 (chat): 'i approve WI-pubur and approve auto-pr without --gov'. Implementing the explicit --actions arm as proposed (runs / status / logs / artifact; read-only GETs via api_get). Will merge through the normal auto-pr path per that approval."  # 3f17
+- op: update  # 8b81
+  at: '2026-10-17T22:16:17Z'  # 8b81
+  by: agent  # 8b81
+  actor: jgstern_agent  # 8b81
+  clock: 4  # 8b81
+  nonce: 8b81  # 8b81
+  set:  # 8b81
+    status: in_progress  # 8b81
+- op: update  # 95c9
+  at: '2026-10-17T22:36:40Z'  # 95c9
+  by: agent  # 95c9
+  actor: jgstern_agent  # 95c9
+  clock: 5  # 95c9
+  nonce: 95c9  # 95c9
+  set:  # 95c9
+    status: done  # 95c9
+- op: discuss  # 09c1
+  at: '2026-10-17T22:36:40Z'  # 09c1
+  by: agent  # 09c1
+  actor: jgstern_agent  # 09c1
+  clock: 6  # 09c1
+  nonce: 09c1  # 09c1
+  message: "Done in PR #1699 (merged via auto-pr per owner approval). ci-debug gains an explicit --actions arm: runs [workflow] [N], status <run-id>, logs <run-id> [job], artifact <run-id> <name> <new-empty-dir>; read-only GETs via api_get; the default Woodpecker arm is unchanged. Behavioural evidence, live on dev after merge: 'ci-debug runs --actions release.yml' lists the release runs (39068691320 failure/workflow_dispatch, 38899828875 failure/v9.1.0, 38649503505 success/v9.0.0 ...); 'status --actions 39068691320' renders security-audit success 69s, io-manifest failure 113s with the FAIL step 'Trace the corpus...' 76s, build-and-publish skipped; 'logs --actions 39068691320' and 'artifact --actions 39068691320 io-manifest <dir>' both exit 3 naming productionresultssa0.blob.core.windows.net, which ALLOWED_WEBSITES.md does not list, and make no request to it. Pinned by tests/test_ci_debug_actions.py (24 tests) through the fake-curl harness, which learned redirects/-L/body_b64. Open follow-up for the owner: whether to list that storage host (GitHub serves job logs and artifact zips from productionresultssa<N>.blob.core.windows.net); until then logs/artifact are gated by design."  # 09c1
+- op: discuss  # 43f5
+  at: '2026-10-17T22:40:30Z'  # 43f5
+  by: agent  # 43f5
+  actor: jgstern_agent  # 43f5
+  clock: 7  # 43f5
+  nonce: 43f5  # 43f5
+  message: "Owner approval 2026-10-17 (chat: 'i approve 2'): list GitHub's Actions results storage as the pattern productionresultssa*.blob.core.windows.net in ALLOWED_WEBSITES.md, with the ci-debug matcher honouring one * per label, so logs/artifact --actions follow that redirect. Implementing now; merging through the normal auto-pr path as approved for this item."  # 43f5
+- op: discuss  # da50
+  at: '2026-10-17T22:46:26Z'  # da50
+  by: agent  # da50
+  actor: jgstern_agent  # da50
+  clock: 8  # da50
+  nonce: da50  # da50
+  message: "Follow-up merged in PR #1700: ALLOWED_WEBSITES.md lists productionresultssa*.blob.core.windows.net (one * per label; rationale and scope limit in the file) and the ci-debug matcher honours it. Live from dev after merge: 'logs --actions 39068691320 io-manifest' returns the job log; 'artifact --actions 39068691320 io-manifest <dir>' extracts 26 files, byte-identical to the gh-fetched copy. All four --actions views now work through the approved script; the one-off gh waiver is no longer needed."  # da50

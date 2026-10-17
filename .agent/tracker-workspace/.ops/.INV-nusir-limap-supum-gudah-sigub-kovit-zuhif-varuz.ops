@@ -20,3 +20,18 @@
     fields:  # 15bc
       statement: "One declaration produces one symbol."  # 15bc
       root_cause: "The signature branch (~L274-293) creates a function symbol, and the function branch (~L238-256) creates another; only the signature branch checks for an existing symbol (~L267), and that update path is pragma: no cover, so it never runs in tests."  # 15bc
+- op: update  # 56df
+  at: '2026-10-17T22:56:06Z'  # 56df
+  by: agent  # 56df
+  actor: jgstern_agent  # 56df
+  clock: 2  # 56df
+  nonce: 56df  # 56df
+  set:  # 56df
+    status: satisfied  # 56df
+- op: discuss  # 62b1
+  at: '2026-10-17T22:56:06Z'  # 62b1
+  by: agent  # 62b1
+  actor: jgstern_agent  # 62b1
+  clock: 3  # 62b1
+  nonce: 62b1  # 62b1
+  message: "Satisfied on dev 38f6c90533. Fixed by 481db32997 (stable_id F1): the 'function' handler emits one symbol per name per declaration block, from its first equation; the 'signature' handler emits only when nothing in the block implements the name (_has_equations). Behavioral evidence, filed repro re-run: Main.purs with 'foo :: Int -> Int' then 'foo x = x + 1' -> analyze_purescript yields exactly one function symbol Main.foo (4-4, signature 'Int -> Int'); the reversed order (equation then signature) also yields one symbol (3-3, same signature). Gaps left open: no regression test covers either order (the filed fix asked for both), and the comment at tests/test_purescript.py:261-264 still describes the dual emit as pre-existing."  # 62b1
