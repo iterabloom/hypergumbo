@@ -1,0 +1,11 @@
+Original commit body from 98ab185e451bdeeec7af3c08d896196a5562cbbc:
+
+The staleness window measured raw commit distance, so an afternoon of
+tracker filing (34 consecutive `tracker: N files (M ops)` auto-sync
+commits, zero code commits between them) pushed a doc regenerated that
+morning past the 30-commit window and failed verify-generated on the next
+PR. Tracker commits move no code. The check now subtracts commits whose
+subject carries the `tracker:` prefix (optionally scoped) from the
+distance and says so in its output; `fix(tracker): ...` still counts.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
