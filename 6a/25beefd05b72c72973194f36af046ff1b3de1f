@@ -1,0 +1,9 @@
+Original commit body from 8dae614dd5a60aecd17b4a7862a9896f1cda7e0a:
+
+Row: 39 read (30 rolling, 9 code-changed), 24 drifted (lower bound), 61 of
+65 findings confirmed. Notes: smart-test with source-file arguments runs
+zero tests (exit 5); a tracker auto-sync can leave local dev behind after
+auto-pr's post-merge pull, so check dev against origin/dev before branching
+for the C bundle.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
