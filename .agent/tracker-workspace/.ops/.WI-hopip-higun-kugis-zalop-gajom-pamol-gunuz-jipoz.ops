@@ -36,3 +36,12 @@
   clock: 3  # bd8d
   nonce: bd8d  # bd8d
   message: "2026-10-10 docstring audit, two latent defects in serve_duress for when the auth modules are wired: (1) call_on_duress_login catches only asyncio.TimeoutError (~145), so a handler that raises propagates ValueError; (2) load_duress_handler silently returns the no-op handler on any import error or missing path, with no warning. Also serve_auth_config (AuthConfig.from_dict) has no production caller and load_config ignores the auth section. Docstrings now say these modules are unwired."  # bd8d
+- op: update  # 585f
+  at: '2026-10-17T03:34:41Z'  # 585f
+  by: agent  # 585f
+  actor: jgstern_agent  # 585f
+  clock: 4  # 585f
+  nonce: 585f  # 585f
+  set: {}  # 585f
+  add:  # 585f
+    isbefore: [WI-pufun-vohuf-bimuh-rigon-mamij-tokas-hamun-rosub]  # 585f
