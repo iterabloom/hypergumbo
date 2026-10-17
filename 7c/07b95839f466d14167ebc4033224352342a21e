@@ -1,0 +1,12 @@
+Original commit body from 8d5ec0402c240a3d9bb0e68efa5b2539c6d64484:
+
+The flag was declared with help text "Daemonize and write PID file" and
+documented in serve.py's docstring and the README, but `_cmd_serve` never
+read it and `run_server` always ran uvicorn in the foreground (WI-robug,
+found by the 2026-10-14 docstring-staleness audit; `git log -S` shows it
+was never wired). Owner ruling 2026-10-16: remove the promise rather than
+implement daemonization, since serve is not about to be used. `--stop` and
+`--status` are unchanged; the docstring now says how to keep the server
+alive past the shell.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
