@@ -1,0 +1,21 @@
+- op: create  # e9e2
+  at: '2026-10-17T02:10:19Z'  # e9e2
+  by: agent  # e9e2
+  actor: jgstern_agent  # e9e2
+  clock: 1  # e9e2
+  nonce: e9e2  # e9e2
+  data:  # e9e2
+    kind: work_item  # e9e2
+    title: "Sketch Key Symbols footer says 'N more symbols across 0 other files' when the remainder lives in files already shown"  # e9e2
+    status: todo_hard  # e9e2
+    priority: 4  # e9e2
+    parent:  # e9e2
+    tags:  # e9e2
+    - sketch  # e9e2
+    - dogfood  # e9e2
+    isbefore: []  # e9e2
+    duplicate_of: []  # e9e2
+    not_duplicate_of: []  # e9e2
+    pr_ref:  # e9e2
+    description: "## Statement\nThe sketch's Key Symbols global footer (`sketch.py:6271`) reports `(... and {unselected} more symbols across {len(by_file) - len(selected_by_file)} other files)`. `unselected` counts candidate symbols not selected anywhere, but the file-count term is the number of files with *no* selected symbol — so whenever the unselected candidates live in files that are already shown, the line reads \"... across 0 other files\".\n\n## Observed (dogfood 2026-10-16, hypergumbo 9.1.0, /tmp/pf-prelim)\nKey Symbols shows one file with 5 symbols and \"(... +39 more, top score: 1.46)\", followed by \"(... and 27 more symbols across 0 other files)\". The 27 are lower-ranked candidates in the same file; the per-file \"+39 more\" already covers that file's remainder, so the reader gets two overlapping remainders and an impossible file count.\n\n## Expected\nWhen the file-count term is 0, say so truthfully — e.g. \"(... and 27 lower-ranked symbols in the files above)\" — or fold them into the per-file remainder. When it is >0, keep the current wording. A unit test with a single-file repo whose candidate count exceeds the per-file cap pins it."  # e9e2
+    fields: {}  # e9e2

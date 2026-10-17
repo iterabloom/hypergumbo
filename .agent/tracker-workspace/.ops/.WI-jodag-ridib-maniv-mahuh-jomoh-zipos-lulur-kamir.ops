@@ -1,0 +1,31 @@
+- op: create  # 2202
+  at: '2026-10-17T02:10:13Z'  # 2202
+  by: agent  # 2202
+  actor: jgstern_agent  # 2202
+  clock: 1  # 2202
+  nonce: '2202'  # 2202
+  data:  # 2202
+    kind: work_item  # 2202
+    title: "Default noise filter drops documentation/config nodes (markdown sections, links) without any disclosure in limits, metrics, stderr or the sketch"  # 2202
+    status: todo_hard  # 2202
+    priority: 3  # 2202
+    parent:  # 2202
+    tags:  # 2202
+    - sketch  # 2202
+    - limits  # 2202
+    - disclosure  # 2202
+    - markdown  # 2202
+    - dogfood  # 2202
+    isbefore: []  # 2202
+    duplicate_of: []  # 2202
+    not_duplicate_of: []  # 2202
+    pr_ref:  # 2202
+    description: "## Statement\n`hypergumbo run`/`sketch` drop every non-code node kind (markdown `section`/`code_block`/`link`, config, CSS structure — `is_noise_symbol`, cli.py:12986) and their edges unless `--include-docs`, and record nothing about having done so: not in `limits`, not in `metrics`, not on stderr, not in the sketch. On a documentation-dominant repository the default map therefore has no document structure and no hint that a flag would give it one.\n\n## Observed (dogfood 2026-10-16, hypergumbo 9.1.0)\n- /tmp/pf-prelim (55 .md / 48,740 LOC = 96% of the repo, 1 .py, 1 .tex): default `run` → 241 nodes, of which the 55 markdown nodes are all `kind=file`; 0 markdown edges. The sketch lists every spec file under \"Additional Files\" and shows Key Symbols only for the one Python file. `grep -ci 'include-docs'` over sketch stdout/stderr, run log, `limits`, `metrics` = 0.\n- Two-file fixture (README.md with h1/h2/h3, a fenced code block, two links, a table; other.md): default → 2 `file` nodes, 0 edges. `--include-docs` → 12 nodes (5 section, 1 code_block, 2 link, 2 file, 2 external_symbol), 2 `references` edges. The analyzer is fine; the filter is silent.\n\n## Why it matters\nAGENTS.md: \"Explicit gaps over implicit completeness.\" A reader of the default map cannot tell \"this repo has no documentation structure\" from \"documentation structure was removed\". For agents using the sketch to orient in a spec-first repo (the PlazaFlow case: 66k lines of spec, 0 lines of product code), the default output is silently empty of the only content there is.\n\n## Proposed fix (general, not a markdown special case)\n1. When the noise filter drops symbols, record counts by kind in the artifact, e.g. `limits.noise_filtered = {\"section\": N, \"link\": M, \"code_block\": K, ...}` and the edges removed, with the flag name that would retain them.\n2. The sketch prints one line when the drop is material (e.g. dropped nodes ≥ 10% of candidates, or doc LOC ≥ 50% of the profile): \"N documentation/config nodes omitted (markdown sections, links, ...); rerun with --include-docs to keep them.\"\n3. Possibly: when the profile is doc-dominant, the Structure tree still shows docs — already true — but \"Additional Files\" should say why they have no symbols listed.\n\n## Not this item\nINV-gosub covers `--include-docs` link resolution to synthetic `<external>`; WI-gatub (done) covered sections dropped for some files. Neither covers disclosure of the default drop."  # 2202
+    fields: {}  # 2202
+- op: discuss  # 10ed
+  at: '2026-10-17T02:11:16Z'  # 10ed
+  by: agent  # 10ed
+  actor: jgstern_agent  # 10ed
+  clock: 2  # 10ed
+  nonce: 10ed  # 10ed
+  message: "Addendum (same dogfood run): `hypergumbo sketch --include-docs` → exit 2, 'unrecognized arguments: --include-docs'. Only `run` accepts the flag (run --help: 2 mentions; sketch --help: 0). So on a doc-dominant repo the sketch — the agent-facing entry point — has no way to show document structure at all, and any disclosure line it prints must point users at `run --include-docs` until sketch gains the flag. Suggest the fix adds the flag to sketch (and any other subcommand that builds an analysis) in the same change, so the disclosure is actionable where it is read."  # 10ed
