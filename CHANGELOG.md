@@ -20,6 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Zig, LLVM IR and COBOL anchor a call on the declaration that contains it, by position; TLA+, Agda and COBOL bind a referenced name in the same file before the repo** (WI-kosar family: INV-musij, INV-nafij, INV-razus, INV-lutaj). Two files defining a same-named function no longer have one's calls credited to the other's, a COBOL section header now updates the caller, and a `PERFORM` binds inside the performing program.
 - **A GitHub Release now gets every file, or the job fails and says which are missing.** Assets upload one at a time with retries and the attached set is verified by name; re-running the job repairs an incomplete release. `v7.0.0` and `v9.1.0` had each been left incomplete by one transient upload error. The SBOM now describes the shipped wheels and their resolved dependencies instead of the build tooling, and `SHA256SUMS` covers it.
 - **`.hypergumbo-examples/` cannot be committed by accident**: hypergumbo writes a `.gitignore` inside it, and this repository's root `.gitignore` lists it too.
 - **The self-claims gate is green again**: `threading.Event`, the progress heartbeat's stop flag, is declared in the Python catalogue as having no I/O surface; all 18 verdicts are unchanged.

@@ -264,3 +264,95 @@ class TestAnalyzeCOBOLFallback:
                 result = analyze_cobol(tmp_path)
         assert result.skipped
         assert "not available" in result.skip_reason
+
+
+class TestCobolCallerAndTargetByPosition:
+    """INV-lutaj / WI-kosar: a PERFORM binds the paragraph or section of that
+    name in the performing program; a statement's src is the paragraph or
+    section header that precedes it, found by position."""
+
+    @staticmethod
+    def _perform_pairs(result):
+        by_id = {s.id: s for s in result.symbols}
+        return [
+            (by_id[e.src], by_id[e.dst])
+            for e in result.edges if e.meta.get("call_type") == "perform"
+        ]
+
+    def test_perform_binds_this_files_paragraph_over_another_files(self, tmp_path: Path) -> None:
+        for name, prog in (("a.cbl", "A-PROG"), ("b.cbl", "B-PROG")):
+            (tmp_path / name).write_text(f"""
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. {prog}.
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           PERFORM INIT-PARA.
+           STOP RUN.
+       INIT-PARA.
+           DISPLAY "{prog}".
+""")
+
+        result = analyze_cobol(tmp_path)
+
+        pairs = self._perform_pairs(result)
+        assert len(pairs) == 2
+        for src, dst in pairs:
+            assert (src.name, dst.name) == ("MAIN-PARA", "INIT-PARA")
+            assert src.path == dst.path, (src.path, dst.path)
+
+    def test_section_header_updates_the_caller(self, tmp_path: Path) -> None:
+        (tmp_path / "sec.cob").write_text("""
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. SEC-TEST.
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           PERFORM WORK-SEC.
+           STOP RUN.
+       WORK-SEC SECTION.
+           PERFORM INIT-PARA.
+       INIT-PARA.
+           DISPLAY "INIT".
+""")
+
+        result = analyze_cobol(tmp_path)
+
+        pairs = {
+            (src.kind, src.name, dst.kind, dst.name)
+            for src, dst in self._perform_pairs(result)
+        }
+        assert pairs == {
+            ("paragraph", "MAIN-PARA", "section", "WORK-SEC"),
+            ("section", "WORK-SEC", "paragraph", "INIT-PARA"),
+        }
+
+    def test_two_programs_in_one_file_keep_their_own_perform_targets(self, tmp_path: Path) -> None:
+        (tmp_path / "two.cob").write_text("""
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. FIRST-PROG.
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           PERFORM INIT-PARA.
+           STOP RUN.
+       INIT-PARA.
+           DISPLAY "FIRST".
+       END PROGRAM FIRST-PROG.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. SECOND-PROG.
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           PERFORM INIT-PARA.
+           STOP RUN.
+       INIT-PARA.
+           DISPLAY "SECOND".
+       END PROGRAM SECOND-PROG.
+""")
+
+        result = analyze_cobol(tmp_path)
+
+        pairs = self._perform_pairs(result)
+        assert len(pairs) == 2
+        assert len({src.id for src, _ in pairs}) == 2, "each program's MAIN-PARA is its own caller"
+        for src, dst in pairs:
+            # INIT-PARA is three lines below its own program's MAIN-PARA; the
+            # other program's is nine lines away.
+            assert dst.span.start_line - src.span.start_line == 3, (src.span, dst.span)
