@@ -1,0 +1,15 @@
+Original commit body from 750e0bd95c13637b3060f8cb8d39f97c0819f6fc:
+
+Point 7's "Committed output is still output" paragraph said git is consulted
+only in the supporting-evidence row. Its own marker row (a self-ignoring
+.gitignore, "uncommitted only") consults git too, and so does the code:
+discovery._self_ignoring ends with `not _is_committed_dir(...)`. Verified
+live: a self-ignored htmlcov/ is claimed when untracked and analysed when a
+file there is committed. Both the check and the wrong sentence date from
+b89cc2e5a2. The paragraph now names both rows and says a committed directory
+escapes only that one rule; any other rule may still claim it.
+
+Also adds the changelog lines the 2026-10-17 docstring-audit PRs (#1689,
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
+#1691) omitted, in both changelogs.
