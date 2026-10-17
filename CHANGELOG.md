@@ -12,6 +12,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **Per-PR self-claims coverage guard** (`scripts/check-claims-coverage`): the python analyzer plus the cron gate's own coverage decision, ~30 s, fails a PR whose shipped code calls a module the I/O catalogue cannot classify.
+
 ### Fixed
 
 - **The self-claims gate is green again**: the heartbeat's `threading.Event` receiver is declared enumerated in the Python catalogue; all 18 verdicts are unchanged.
