@@ -34,6 +34,12 @@ Design rationale:
 - --tracker-root global option defaults to .agent/ (nearest ancestor).
 - Exit codes: 0 = success, 1 = user error, 2 = internal error.
 - TUI subcommand launches Textual app (requires textual optional dep).
+- Auto-sync lives here: after a successful command in _MUTATION_COMMANDS (or
+  a ``tags`` editorial verb), main() calls _maybe_auto_sync(). It syncs once
+  pending ops exceed the threshold, waits for an in-flight auto-pr
+  (.git/PR_PENDING), and stops retrying after failures via a
+  .git/TRACKER_SYNC_FAILED circuit breaker. --no-auto-sync disables it;
+  ``tui`` runs its own sync only when it changed data.
 
 See ADR-0013 for the full design specification.
 """

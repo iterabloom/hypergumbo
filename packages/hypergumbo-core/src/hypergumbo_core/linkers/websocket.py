@@ -30,6 +30,10 @@ Django Channels (Python):
 - channel_layer.send('channel', message) -> send-site
 - channel_layer.send(channel_var, message) -> send-site (variable channel)
 - channel_layer.group_send('group', message) -> send-site
+- async_to_sync(channel_layer.send|group_send)('channel', msg) -> send-site
+  (bare ``channel_layer`` only)
+- class X(WebsocketConsumer) (any base containing ``WebsocketConsumer``) ->
+  endpoint (event = class name)
 
 FastAPI / Starlette WebSocket (Python):
 - @app.websocket('/path') -> endpoint
