@@ -1,0 +1,29 @@
+Original commit body from c134611cb5e632f0f0f300618f0274e656f2f7e0:
+
+packages/htrac-frontend was a two-commit (2026-04-04) Lit + Vite scaffold:
+812 lines that imported no BlockSuite despite the package's name, were
+never built or tested in CI, never reached a wheel, and were unreachable
+from any command (run_server() builds the app without a static_dir or a
+TrackerSet). Its only external effect was the repository's Dependabot
+banner -- 44 of the 47 alerts came from its lockfile (WI-popal).
+
+The decision it rested on has changed: BlockSuite's standalone npm line
+has published nothing substantive since 0.22.4 (2025-07-01) and its repo
+carries only bot PRs since 2025-07-07, so ADR-0019's "learning vehicle"
+rationale no longer has an object. Owner ruling 2026-10-16 (WI-pupod):
+the frontend is re-scoped to a Yjs-backed tracker document with BlockNote
+and @xyflow/react views (ADR-0062 / WI-tofog and dependents), and the
+scaffold is removed rather than its lockfile bumped -- a fix that would
+have aged straight back into alerts. When that work starts it begins from
+a React scaffold; this one stays recoverable from history.
+
+ADR-0019's status line claimed the BlockSuite web frontend was
+"implemented and shipped in v0.2.0"; it now says what exists. The frontend
+row, the rationale paragraph, the Part A frontend bullet and open question
+§"Web frontend framework choice" are rewritten to the new decision per the
+ADR lifecycle rule (excise, don't banner); the index row follows. Stray
+references removed: the mypy exclude in pyproject.toml, check-mypy-ratchet's
+special case, and a comment in linkers/websocket.py that cited the deleted
+TS client as its example.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
