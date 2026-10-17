@@ -1,0 +1,31 @@
+Original commit body from 93a22a9bec42e34567859410c47a14378c50571c:
+
+The cron self-claims-gate has been red since the 2026-10-15 05:51 EDT run:
+all 18 claims confirmed_with_caveats -> inconclusive, every one losing its
+opaque_boundary caveat. Reproduced locally at 8bc23ede1d (same 36-line
+drift as pipelines 4867 and 4872; dependency versions identical between
+the last green run at d4e11b41 and the first red at b61a205e, so not an
+input change).
+
+The verdict text names the cause: "it makes calls into 1 module(s) that
+the I/O catalog could not classify (threading.Event), which is what
+withholds the qualified verdict the launches alone would have earned".
+49aea53b93 (feat(progress): heartbeat) gave run_status.py a stop flag,
+`self._stop = threading.Event()`, read on every CLI entry point via
+`self._stop.wait(interval)`. Receiver typing names that call
+threading.Event.wait; module_io_is_enumerated matches EXACTLY, so the
+`threading` grant in python.yaml does not reach the class, and one
+unknown sets qualifying_only False for every claim at once -- the
+WI-jabus shape (4d0933b10c), fourth recorded instance.
+
+Fix, on that precedent: a dated module_completeness entry for
+threading.Event in python.yaml (set / clear / is_set / wait are
+in-process; nothing crosses). No rows, no scope-gate change (its top
+module is stdlib).
+
+Evidence: verify-claims --minimal on this tree returns rc 3, 18/18
+confirmed_with_caveats, opaque_boundary present on all 18, no
+"could not classify" clause; check-self-claims-drift: OK -- 18 claims
+unchanged. docs/hypergumbo.claims.expected.json is not touched.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
