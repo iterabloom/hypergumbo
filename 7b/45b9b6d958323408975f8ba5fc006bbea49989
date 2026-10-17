@@ -1,0 +1,24 @@
+Original commit body from 3f52797d06cbd5ea4a54ce017b9ad81edfd58c76:
+
+The first dry run of the gate (workflow_dispatch, run 39068691320) failed
+with three new lines, and the gate was right each time:
+
+* `exec hypergumbo slice ... --out`: expected.txt had been frozen before the
+  reducer's argument cap was corrected. The cap is now eight arguments, so
+  the slice command renders whole, and the file is regenerated.
+* `exec rust-analyzer --version` and `mkdir <home>/.rustup`: the GitHub
+  runner image has rust-analyzer on PATH as a rustup proxy. hypergumbo's
+  documented version probe runs it and the proxy creates $HOME/.rustup
+  under the scratch home. Real, benign, and now in the manifest with a
+  comment; on a machine without rust-analyzer they report as "expected
+  but not observed", a note.
+
+`reduce` gains --corpus and --python so a downloaded artifact re-reduces
+here with no runner path present; that is now the documented way to
+regenerate expected.txt, since the runner image decides which optional
+tools are on PATH. SECURITY.md regenerated (15 lines); README count fixed.
+
+Measured on the runner: io-manifest job 113 s (76 s tracing) beside a
+69 s security-audit, so the gate adds about 45 s to a release.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
