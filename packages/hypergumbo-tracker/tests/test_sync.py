@@ -4417,6 +4417,131 @@ class TestSyncSetupCheck:
         assert result.status == "ok"
 
 
+class TestSyncSetupCheckForgeToken:
+    """INV-zulin: check 22 accepts exactly the token ``htrac sync`` presents
+    to the origin's forge (HG_GITHUB_TOKEN for github, FORGEJO_TOKEN for
+    forgejo). Before the fix it looked only for FORGEJO_TOKEN, so it warned on
+    a correctly configured github repository and passed one that had only the
+    Codeberg token, which github.com rejects."""
+
+    @staticmethod
+    def _run(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        origin: str | None,
+        env_file: str = "",
+    ) -> Any:
+        from hypergumbo_tracker.setup import _check_sync_prerequisites
+
+        for name in ("FORGEJO_TOKEN", "HG_GITHUB_TOKEN"):
+            monkeypatch.delenv(name, raising=False)
+        if env_file:
+            (tmp_path / ".env").write_text(env_file)
+        remote = (
+            _make_completed_process(stdout=origin + "\n")
+            if origin is not None
+            else _make_completed_process(returncode=2)
+        )
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                remote,
+                _make_completed_process(stdout="User\n"),
+                _make_completed_process(stdout="u@e.com\n"),
+            ]
+            return _check_sync_prerequisites(tmp_path, repo_root=tmp_path)
+
+    @pytest.mark.parametrize("origin", [
+        "https://github.com/o/r.git",
+        "git@github.com:o/r.git",
+    ])
+    def test_github_origin_with_its_token_is_ok(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: str,
+    ) -> None:
+        result = self._run(
+            tmp_path, monkeypatch, origin, "HG_GITHUB_TOKEN=ghp_x\n",
+        )
+        assert result.status == "ok", result.details
+
+    def test_github_origin_with_only_the_forgejo_token_warns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        result = self._run(
+            tmp_path, monkeypatch, "https://github.com/o/r.git",
+            "FORGEJO_TOKEN=cb_x\n",
+        )
+        assert result.status == "warn"
+        assert "HG_GITHUB_TOKEN" in result.message
+        assert "github" in result.message
+
+    def test_forgejo_origin_with_only_the_github_token_warns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        result = self._run(
+            tmp_path, monkeypatch, "https://codeberg.org/o/r.git",
+            "HG_GITHUB_TOKEN=ghp_x\n",
+        )
+        assert result.status == "warn"
+        assert "FORGEJO_TOKEN" in result.message
+
+    def test_quoted_env_value_counts(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Read with sync's own ``.env`` parser, so a value sync accepts
+        (quoted) is accepted here too."""
+        result = self._run(
+            tmp_path, monkeypatch, "https://github.com/o/r.git",
+            'HG_GITHUB_TOKEN="ghp_x"\n',
+        )
+        assert result.status == "ok", result.details
+
+    def test_unparsable_origin_warns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        result = self._run(
+            tmp_path, monkeypatch, "/srv/git/local-mirror",
+            "HG_GITHUB_TOKEN=ghp_x\n",
+        )
+        assert result.status == "warn"
+        assert "parse" in result.message.lower()
+
+    def test_no_origin_accepts_either_token(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """With no origin the forge is unknown, so either token satisfies the
+        token half (sync's own fail-fast rule); only the remote is reported."""
+        result = self._run(tmp_path, monkeypatch, None, "HG_GITHUB_TOKEN=ghp_x\n")
+        assert result.status == "warn"
+        assert not any("TOKEN" in d for d in result.details)
+
+    def test_no_origin_and_no_token_names_both(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        result = self._run(tmp_path, monkeypatch, None)
+        assert any(
+            "HG_GITHUB_TOKEN" in d and "FORGEJO_TOKEN" in d
+            for d in result.details
+        )
+
+    @pytest.mark.parametrize("origin,backend", [
+        ("https://github.com/o/r.git", "github"),
+        ("https://codeberg.org/o/r.git", "forgejo"),
+    ])
+    @pytest.mark.parametrize("present", ["HG_GITHUB_TOKEN", "FORGEJO_TOKEN"])
+    def test_agrees_with_sync_preflight_token_choice(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        origin: str,
+        backend: str,
+        present: str,
+    ) -> None:
+        """The setup check and sync read one table, so they cannot disagree."""
+        from hypergumbo_tracker.sync import FORGE_TOKEN_VARS
+
+        result = self._run(tmp_path, monkeypatch, origin, f"{present}=t\n")
+        assert (result.status == "ok") == (FORGE_TOKEN_VARS[backend] == present)
+
+
 # ---------------------------------------------------------------------------
 # Failover detection
 # ---------------------------------------------------------------------------

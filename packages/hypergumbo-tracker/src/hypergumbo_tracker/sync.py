@@ -415,6 +415,43 @@ def _api_base_for(host: str, owner: str, repo: str) -> str:
     return f"https://{host}/api/v1/repos/{owner}/{repo}"
 
 
+#: The credential ``htrac sync`` presents to each forge backend. The two are
+#: NOT interchangeable (the Codeberg token 401s against github.com), so every
+#: reader picks by the origin's backend from this one table: preflight, the
+#: superseded-branch prune, and ``htrac setup`` check 22 (INV-zulin, whose
+#: check once looked for FORGEJO_TOKEN only).
+FORGE_TOKEN_VARS: dict[str, str] = {
+    "github": "HG_GITHUB_TOKEN",
+    "forgejo": "FORGEJO_TOKEN",
+}
+
+
+def forge_backend(api_base: str) -> str:
+    """``"github"`` for a github.com API base, else ``"forgejo"``."""
+    return "github" if "api.github.com" in api_base else "forgejo"
+
+
+def forge_token(backend: str, env_vars: dict[str, str]) -> str:
+    """The token sync presents to ``backend``: ``.env`` first, then the
+    environment, else ``""``."""
+    name = FORGE_TOKEN_VARS[backend]
+    return env_vars.get(name) or os.environ.get(name, "")
+
+
+#: The error when neither forge token is present (the forge may be unknown).
+NO_FORGE_TOKEN_MESSAGE = (
+    "no forge token (HG_GITHUB_TOKEN or FORGEJO_TOKEN) in .env or environment"
+)
+
+
+def missing_forge_token_message(backend: str) -> str:
+    """The error for an origin whose backend's token is absent."""
+    return (
+        f"{FORGE_TOKEN_VARS[backend]} not found in .env or environment "
+        f"(required for the {backend} origin)"
+    )
+
+
 def _detect_api_base(repo_root: Path) -> str:
     """Extract the REST API base URL from git remote ``origin``.
 
@@ -428,9 +465,13 @@ def _detect_api_base(repo_root: Path) -> str:
     result = _git(repo_root, "remote", "get-url", "origin", check=False)
     if result.returncode != 0:
         return ""
+    return api_base_from_url(result.stdout.strip())
 
-    url = result.stdout.strip()
 
+def api_base_from_url(url: str) -> str:
+    """The REST API base for a remote URL (HTTPS or SSH), or ``""`` when the
+    URL has neither shape. :func:`_detect_api_base` applied to a URL already
+    in hand, for a caller that has read ``origin`` itself."""
     # HTTPS: https://host/owner/repo.git
     # Also handles embedded credentials: https://user:token@host/...
     m = re.match(
@@ -1133,10 +1174,11 @@ def preflight_check(repo_root: Path) -> PreflightResult:
     3. Current branch: record for later restore.
     4. No staged non-tracker files: abort if non-tracker files are staged.
     5. Dirty tracker files: check for changes to commit.
-    6. Credentials: FORGEJO_TOKEN from .env or environment.
+    6. Credentials: at least one forge token (.env or environment).
     7. Git identity: user.name and user.email configured.
     8. Remote exists: origin remote is configured.
-    9. API base: parse Forgejo API URL from remote.
+    9. API base: parse the forge API URL from remote, then require the
+       token :data:`FORGE_TOKEN_VARS` names for its backend.
 
     Returns:
         PreflightResult with ok=True if all checks pass.
@@ -1239,15 +1281,11 @@ def preflight_check(repo_root: Path) -> PreflightResult:
     #    interchangeable with FORGEJO_TOKEN — presenting the Codeberg token to
     #    github.com would 401, so the two are kept distinct.
     env_vars = _load_env(repo_root)
-    forgejo_token = env_vars.get("FORGEJO_TOKEN") or os.environ.get(
-        "FORGEJO_TOKEN", ""
-    )
+    forgejo_token = forge_token("forgejo", env_vars)
     forgejo_user = env_vars.get("FORGEJO_USER") or os.environ.get(
         "FORGEJO_USER", ""
     )
-    github_token = env_vars.get("HG_GITHUB_TOKEN") or os.environ.get(
-        "HG_GITHUB_TOKEN", ""
-    )
+    github_token = forge_token("github", env_vars)
 
     push_remote = "origin"
 
@@ -1256,7 +1294,7 @@ def preflight_check(repo_root: Path) -> PreflightResult:
     if not forgejo_token and not github_token:
         return PreflightResult(
             ok=False,
-            error="FORGEJO_TOKEN not found in .env or environment",
+            error=NO_FORGE_TOKEN_MESSAGE,
         )
 
     # 7. Git identity
@@ -1291,7 +1329,7 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         )
 
     # Forge backend follows the resolved api_base (i.e. the origin host).
-    backend = "github" if "api.github.com" in api_base else "forgejo"
+    backend = forge_backend(api_base)
 
     # Select the effective push/API credential by backend.  For GitHub, the PAT
     # authenticates as the password and the username is ignored, so the
@@ -1299,19 +1337,16 @@ def preflight_check(repo_root: Path) -> PreflightResult:
     # keeps its ``forgejo_*`` field names (they now carry "the resolved forge
     # credential" for either backend; a rename is a possible follow-up).
     if backend == "github":
-        forge_token = github_token
+        token = github_token
         forge_user = "x-access-token"
-        missing_error = (
-            "HG_GITHUB_TOKEN not found in .env or environment "
-            "(required for the github origin)"
-        )
     else:
-        forge_token = forgejo_token
+        token = forgejo_token
         forge_user = forgejo_user
-        missing_error = "FORGEJO_TOKEN not found in .env or environment"
 
-    if not forge_token:
-        return PreflightResult(ok=False, error=missing_error)
+    if not token:
+        return PreflightResult(
+            ok=False, error=missing_forge_token_message(backend),
+        )
 
     return PreflightResult(
         ok=True,
@@ -1321,7 +1356,7 @@ def preflight_check(repo_root: Path) -> PreflightResult:
         changed_files=changed_files,
         api_base=api_base,
         forgejo_user=forge_user,
-        forgejo_token=forge_token,
+        forgejo_token=token,
         push_remote=push_remote,
         backend=backend,
     )
@@ -1444,15 +1479,13 @@ def prune_superseded_sync_branches(
     if not candidates or dry_run:
         return candidates
 
+    if api_base is None:
+        api_base = _detect_api_base(repo_root)
     if token is None:
-        env = _load_env(repo_root)
-        token = env.get("HG_GITHUB_TOKEN") or env.get("FORGEJO_TOKEN") or ""
+        token = forge_token(forge_backend(api_base), _load_env(repo_root))
     if not token:  # pragma: no cover - unauthenticated path
         _log("prune: no token available, reporting only")
         return candidates
-
-    if api_base is None:
-        api_base = _detect_api_base(repo_root)
     for branch in candidates:
         found = _find_open_pr(api_base, token, branch)
         if found is not None:
