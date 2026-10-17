@@ -37,3 +37,21 @@
   clock: 3  # 02a7
   nonce: 02a7  # 02a7
   message: "P0/P1 SWEEP 2026-08-17, dev 11a240f83d. THIS ITEM NEEDS AN OWNER RULING AND HAS\nNEVER HAD ONE. Surfacing rather than editing, because nothing here is mine to decide.\n\nWHAT THE SWEEP FOUND. This is the only P1 in the tracker with zero discussion entries\nand no activity since it was filed on 2026-05-24 — 85 days. Its status is\nneeds_human_review, which means it is NOT in tracker ready, so no agent session will\never pick it up on its own. It is not blocked by a dependency and it is not parked with\na re-open trigger; it is simply parked at a priority that claims it is urgent while\nsitting in a status that guarantees nothing happens.\n\nWHY THAT COMBINATION IS THE PROBLEM. P1 next to INV-lupav (P0) and seven live taint /\nio-boundary invariants asserts this epic is comparably urgent. Nothing in the last 85\ndays has treated it that way, and the declared next focus is analysis quality. So the\npriority field is currently carrying a claim the project is not acting on, which is the\nsame failure mode WI-nazos exists to prevent for INV-zogud: a hold asserted in one place\nand contradicted by the queue.\n\nSCOPE, FOR THE RULING. ADR-0019 Part A is a large multi-component build — htrac serve\n(Python/Starlette), a Tor onion service, a native iOS/macOS app in Swift, four-factor\nauth, a BlockSuite web frontend, and WebSocket live sync. Several of those are outside\nevery skill this project has otherwise exercised, and the Swift app in particular is not\nsomething the current CI can build or test.\n\nTHREE OPTIONS, none of which I have taken:\n  (a) DEMOTE to P3/P4 and leave it needs_human_review — records that it is real but not\n      competing with the analysis-quality queue.\n  (b) PARK as wont_do + someday with a named re-open trigger, the same shape the four\n      performance items got on 2026-08-17. Keeps the design, stops it reading as active.\n  (c) KEEP AT P1 and say what makes it urgent — in which case it needs decomposing into\n      buildable sub-items, because as a single epic it is not actionable.\n\nI did not pick one. If it is (a) or (b) I can apply it in a minute."  # 02a7
+- op: update  # f743
+  at: '2026-10-17T03:41:15Z'  # f743
+  by: agent  # f743
+  actor: jgstern_agent  # f743
+  clock: 4  # f743
+  nonce: f743  # f743
+  set:  # f743
+    status: todo_soft  # f743
+    priority: 3  # f743
+  add:  # f743
+    tags: [someday]  # f743
+- op: discuss  # 3320
+  at: '2026-10-17T03:41:15Z'  # 3320
+  by: agent  # 3320
+  actor: jgstern_agent  # 3320
+  clock: 5  # 3320
+  nonce: '3320'  # 3320
+  message: "Owner ruling 2026-10-16: re-scoped (frontend = Yjs-backed tracker document + BlockNote/xyflow views; see WI-tofog-lumat-daram-fijih-fosij-judik-muzid-lafar), parked at P3/todo_soft/someday with the RE-OPEN TRIGGER written in the description, WI-tisaf and WI-dakag folded in as checklist lines. ADR-0019 correction and removal of the unshipped Lit scaffold follow in PRs."  # 3320
