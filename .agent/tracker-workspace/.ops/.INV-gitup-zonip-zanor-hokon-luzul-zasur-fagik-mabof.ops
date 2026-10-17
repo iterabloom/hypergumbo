@@ -1,0 +1,23 @@
+- op: create  # 111d
+  at: '2026-10-17T09:11:14Z'  # 111d
+  by: agent  # 111d
+  actor: jgstern_agent  # 111d
+  clock: 1  # 111d
+  nonce: 111d  # 111d
+  data:  # 111d
+    kind: invariant  # 111d
+    title: "check_field_key tells the user to pass --created/--updated/--id/--discussion, flags no subcommand accepts"  # 111d
+    status: violated  # 111d
+    priority: 3  # 111d
+    parent:  # 111d
+    tags:  # 111d
+    - tracker  # 111d
+    - docstring_audit  # 111d
+    isbefore: []  # 111d
+    duplicate_of: []  # 111d
+    not_duplicate_of: []  # 111d
+    pr_ref:  # 111d
+    description: "Invariant: when `check_field_key` rejects a core attribute used as a custom `--field` key, the tier-1 message never names a CLI flag that no subcommand accepts (field_keys.py's own `_IRREGULAR_FLAGS` comment calls that \"worse than no message\").\n\nViolated today for the four tracker-computed core names. `check_field_key('created')` raises: \"'created' is a core attribute, not a custom field: ... Use --created instead.\" The same happens for `updated`, `id` and `discussion`. Walking the parser from `_build_parser()` (nested subparsers included), no subcommand accepts any of those four flags. `flag_for` (field_keys.py ~113-118) has no branch for computed attributes. `tests/test_field_keys.py::test_every_core_name_has_a_cli_flag_or_is_read_only` exempts these names (line ~177) instead of asserting their message. Since a91653e88e.\n\nFound by the docstring-staleness audit 2026-10-17 (verifier reproduced with a Python call, not the CLI). Fix direction: a computed-attribute branch in `flag_for` that says the attribute is set by the tracker and cannot be written, plus a test asserting the message for each exempted name."  # 111d
+    fields:  # 111d
+      statement: "a tier-1 core-attribute rejection never names a CLI flag that no subcommand accepts"  # 111d
+      root_cause: "flag_for has no branch for tracker-computed attributes, and the drift test exempts them instead of asserting their message"  # 111d
