@@ -340,6 +340,91 @@ class TestAstScanning:
         assert refs.loads == {}
 
 
+class TestRepositoryScriptsAreProductionCallers:
+    """WI-famub: a ``scripts/`` gate is a production caller the map cannot see.
+
+    ``scripts/check-confidence-sites`` imports and calls four functions of
+    ``confidence_sites``; the cron full-suite failed all four as test-only,
+    because ``production_source_files`` globbed ``packages/*/src`` alone and
+    repository scripts are extensionless. ``check_id_construction`` sat in the
+    baseline for the same reason, and any future ``scripts/check-*`` backed by
+    a core module would have tripped the gate on its first cron. Scripts VOTE
+    as referencers; they are not themselves gated (``_is_production`` still
+    admits only ``packages/*/src`` symbols to the cohort).
+    """
+
+    @staticmethod
+    def _tree(tmp_path: Path) -> Path:
+        prod = tmp_path / PROD
+        prod.parent.mkdir(parents=True)
+        prod.write_text("def scan_tree():\n    pass\n", encoding="utf-8")
+        scripts = tmp_path / "scripts"
+        (scripts / "lib").mkdir(parents=True)
+        (scripts / "check-thing").write_text(
+            "#!/usr/bin/env python3\nfrom p.mod import scan_tree\nscan_tree()\n",
+            encoding="utf-8",
+        )
+        (scripts / "lib" / "helper.py").write_text(
+            "x = from_a_module\n", encoding="utf-8",
+        )
+        (scripts / "run.sh").write_text(
+            "#!/usr/bin/env bash\necho scan_tree\n", encoding="utf-8",
+        )
+        (scripts / "notes.txt").write_text("scan_tree in prose\n", encoding="utf-8")
+        (scripts / "__pycache__").mkdir()
+        (scripts / "__pycache__" / "helper.cpython-311.pyc").write_bytes(b"\x00\x01")
+        return tmp_path
+
+    def test_python_under_scripts_is_a_production_source(self, tmp_path: Path) -> None:
+        """Extensionless with a Python shebang, or ``.py`` at any depth."""
+        root = self._tree(tmp_path)
+        rel = {str(f.relative_to(root)) for f in production_source_files(root)}
+        assert rel == {PROD, "scripts/check-thing", "scripts/lib/helper.py"}
+
+    def test_a_function_called_only_from_a_scripts_gate_is_not_test_only(
+        self, tmp_path: Path,
+    ) -> None:
+        root = self._tree(tmp_path)
+        refs = collect_production_references(production_source_files(root), root)
+        symbol = TestOnlySymbol("s", "scan_tree", "function", PROD)
+
+        assert refs.loads["scan_tree"] == {"scripts/check-thing"}
+        assert demotion_reason(symbol, refs) == DEMOTION_CROSS_MODULE
+        assert gated_cohort([symbol], refs) == ([], {DEMOTION_CROSS_MODULE: 1})
+
+    def test_a_shell_script_is_not_a_python_source(self, tmp_path: Path) -> None:
+        """``run.sh`` names ``scan_tree``; a shebang for another interpreter
+        must not get it parsed, and prose in a text file must not vote."""
+        root = self._tree(tmp_path)
+        names = {f.name for f in production_source_files(root)}
+        assert "run.sh" not in names
+        assert "notes.txt" not in names
+
+    def test_a_tree_without_scripts_is_just_the_packages(self, tmp_path: Path) -> None:
+        prod = tmp_path / PROD
+        prod.parent.mkdir(parents=True)
+        prod.write_text("", encoding="utf-8")
+        assert production_source_files(tmp_path) == [prod]
+
+    def test_an_unreadable_script_is_left_out(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Same conservative direction as the AST scan: fewer references,
+        never a crash, for a gate that can delete work from a baseline."""
+        root = self._tree(tmp_path)
+        real_open = Path.open
+
+        def open_unless_gate(self: Path, *args: object, **kwargs: object) -> object:
+            if self.name == "check-thing":
+                raise OSError("unreadable")
+            return real_open(self, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(Path, "open", open_unless_gate)
+        names = {f.name for f in production_source_files(root)}
+        assert "check-thing" not in names
+        assert "helper.py" in names
+
+
 class TestAgainstTheLiveTree:
     """The gate's own motivating examples, asserted on this repository."""
 
@@ -387,5 +472,30 @@ class TestAgainstTheLiveTree:
     def test_production_source_files_finds_the_shipped_tree(self) -> None:
         root = Path(__file__).resolve().parents[3]
         files = production_source_files(root)
-        assert len(files) > 100
-        assert all("/src/" in str(f) for f in files)
+        rel = [str(f.relative_to(root)) for f in files]
+        assert len([r for r in rel if "/src/" in r]) > 100
+        assert all(r.startswith(("packages/", "scripts/")) for r in rel)
+        assert not any("/tests/" in r for r in rel)
+
+    def test_the_scripts_gates_are_production_callers(self) -> None:
+        """WI-famub's motivating examples, asserted on this repository.
+
+        ``confidence_sites.scan_tree`` and ``check_id_construction.
+        find_id_construction_drift`` have no caller under ``packages/*/src``:
+        their production callers are ``scripts/check-confidence-sites`` and
+        ``scripts/check-id-construction``. The cron failed the first as newly
+        test-only (2026-10-16) and the baseline had carried the second.
+        """
+        root = Path(__file__).resolve().parents[3]
+        files = production_source_files(root)
+        rel = {str(f.relative_to(root)) for f in files}
+        assert {"scripts/check-confidence-sites", "scripts/check-id-construction"} <= rel
+
+        refs = collect_production_references(files, root)
+        core = "packages/hypergumbo-core/src/hypergumbo_core"
+        for name, module in [
+            ("scan_tree", "confidence_sites"),
+            ("find_id_construction_drift", "check_id_construction"),
+        ]:
+            symbol = TestOnlySymbol("x", name, "function", f"{core}/{module}.py")
+            assert demotion_reason(symbol, refs) == DEMOTION_CROSS_MODULE, name

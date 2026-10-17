@@ -16,6 +16,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **The developer-offer examples directory is gitignored**, by this repo's root `.gitignore` and by one it carries inside.
 - **`generate-architecture --check` no longer counts tracker auto-sync commits** toward the 30-commit staleness window.
+- **The test-only-reachability gate counts `scripts/` as production callers**, so a core function called only from a repository gate no longer fails the cron as test-only.
 
 ### Documentation
 

@@ -61,6 +61,19 @@ AST, NOT GREP, AND THAT CHOICE HAS ALREADY PAID. A grep proxy once scored
 COMMENT in ``taint.py`` reading "``infer_summary`` still has zero production
 callers". Prose about deadness counted as evidence of life. This module collects
 ``ast.Name`` loads and ``ast.Attribute`` accesses, so a comment cannot vote.
+
+REPOSITORY SCRIPTS VOTE TOO (WI-famub). The first cut scanned ``packages/*/src``
+alone, and the map it reads is built from the same tree -- so a core module
+whose only production caller is a ``scripts/check-*`` gate had, as far as the
+gate could see, only its tests. ``check_id_construction`` was baselined for it;
+``confidence_sites`` failed the cron the day its gate shipped; a 2026-10-14
+commit ratified ``unregistered_edge_meta_keys`` into the baseline for the same
+reason and counted 37 keys of that shape already there. A ``scripts/`` gate is
+production in the only sense this module cares about: it is run, and not by a
+test runner. So ``production_source_files`` includes the repository's Python
+scripts, found by ``.py`` suffix or by a Python shebang since the gates are
+extensionless. They vote as referencers only -- their own functions are not
+under ``packages/*/src`` and are never in the cohort.
 """
 from __future__ import annotations
 
@@ -185,9 +198,43 @@ def collect_production_references(
     return refs
 
 
+def _has_python_shebang(path: Path) -> bool:
+    """Whether the file's first line hands it to a Python interpreter."""
+    try:
+        with path.open("rb") as fh:
+            first = fh.readline(256)
+    except OSError:
+        return False
+    return first.startswith(b"#!") and b"python" in first
+
+
+def repository_script_files(root: Path) -> list[Path]:
+    """Python under ``scripts/``: ``.py`` at any depth, or a Python shebang.
+
+    Repository gates are extensionless executables (``scripts/check-*``), so
+    a suffix glob cannot find them; the shebang is what names them Python.
+    ``__pycache__`` is skipped rather than read for a shebang it cannot have.
+    """
+    scripts = root / "scripts"
+    if not scripts.is_dir():
+        return []
+    found = [
+        path for path in scripts.rglob("*")
+        if "__pycache__" not in path.parts and path.is_file()
+        and (path.suffix == ".py" or _has_python_shebang(path))
+    ]
+    return sorted(found)
+
+
 def production_source_files(root: Path) -> list[Path]:
-    """Every shipped module: ``packages/*/src/**/*.py``, sorted for determinism."""
-    return sorted(root.glob("packages/*/src/**/*.py"))
+    """Every file production can call FROM, sorted for determinism.
+
+    The shipped modules, ``packages/*/src/**/*.py``, and the repository's own
+    Python scripts (see the module docstring on why scripts vote). Scripts are
+    REFERENCERS only: ``_is_production`` still admits just ``packages/*/src``
+    symbols to the gated cohort, so a script's own functions are never judged.
+    """
+    return sorted(root.glob("packages/*/src/**/*.py")) + repository_script_files(root)
 
 
 def _is_production(path: str) -> bool:
