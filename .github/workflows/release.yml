@@ -125,8 +125,67 @@ jobs:
   # Multi-Python + integration verification is the Woodpecker `nightly` cron's
   # job now; this workflow builds, publishes to PyPI, and cuts a GitHub Release.
   # ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # Observed I/O manifest (hard gate before publish)
+  #
+  # Runs the installed CLI over docs/io-manifest/corpus.txt under strace
+  # and compares every write, delete, rename, launch and connect attempt
+  # with docs/io-manifest/expected.txt. A new line fails the release; a
+  # write into an analysed repository or a network connection fails it
+  # whatever the expected file says. scripts/io-manifest's docstring is the
+  # specification; docs/io-manifest/README.md says how to read a failure.
+  # ─────────────────────────────────────────────────────────────
+  io-manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install strace
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq strace
+
+      - name: Install the default package set, as a user would
+        run: |
+          pip install --upgrade pip "wheel>=0.46.2"
+          # The packages `pip install hypergumbo` resolves to, built from this
+          # checkout and installed NON-editable so the traced code runs from
+          # site-packages like a release. No extras: no embeddings, no
+          # rust-analyzer, no scip-python, no tracker.
+          pip install packages/hypergumbo-core \
+                      packages/hypergumbo-lang-mainstream \
+                      packages/hypergumbo-lang-common \
+                      packages/hypergumbo-lang-extended1 \
+                      packages/hypergumbo
+
+      - name: Trace the corpus and compare with the expected manifest
+        run: |
+          ./scripts/io-manifest run \
+            --corpus docs/io-manifest/corpus.txt \
+            --expected docs/io-manifest/expected.txt \
+            --out "$RUNNER_TEMP/io-manifest" 2>&1 | tee io-manifest.log
+          exit "${PIPESTATUS[0]}"
+
+      - name: Upload the observed manifest and raw traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: io-manifest
+          path: |
+            ${{ runner.temp }}/io-manifest/observed.txt
+            ${{ runner.temp }}/io-manifest/observed.by-run.txt
+            ${{ runner.temp }}/io-manifest/trace/
+            ${{ runner.temp }}/io-manifest/logs/
+          retention-days: 14
+
   build-and-publish:
-    needs: [security-audit]
+    needs: [security-audit, io-manifest]
     runs-on: ubuntu-latest
     permissions:
       # `gh release create` writes a Release object + uploads assets.

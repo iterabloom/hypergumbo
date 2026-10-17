@@ -21,7 +21,7 @@ AGENT                                         HUMAN
 
 ## Release Workflow Overview
 
-The release pipeline is defined in `.github/workflows/release.yml` and runs on Forgejo/Codeberg.
+The release pipeline is defined in `.github/workflows/release.yml` and runs on GitHub-hosted runners.
 
 ### Trigger Conditions
 
@@ -35,9 +35,9 @@ The release workflow starts under two conditions:
 ### Pipeline Stages
 
 The release workflow (`.github/workflows/release.yml`) runs on GitHub-hosted
-`ubuntu-latest` runners with two jobs: `security-audit` (hard gate) then
-`build-and-publish`, which publishes to PyPI (twine) and cuts a GitHub Release
-(`gh release create`).
+`ubuntu-latest` runners with three jobs: `security-audit` and `io-manifest`
+(both hard gates, run in parallel) then `build-and-publish`, which publishes to
+PyPI (twine) and cuts a GitHub Release (`gh release create`).
 
 Multi-Python matrix testing and integration tests are **not** part of the release
 workflow. They run on the self-hosted Woodpecker `nightly` cron
@@ -45,14 +45,16 @@ workflow. They run on the self-hosted Woodpecker `nightly` cron
 `integration-test --quick`). Confirm a recent nightly is green before tagging.
 
 ```
-┌─────────────────┐
-│  security-audit │  ← hard gate (pip-audit, bandit, licenses, secrets)
-└────────┬────────┘
-         │
-         ▼
+┌─────────────────┐   ┌──────────────────────┐
+│  security-audit │   │  io-manifest         │  ← hard gates, in parallel
+│  (pip-audit,    │   │  (strace the CLI on  │
+│  bandit, ...)   │   │  6 pinned repos)     │
+└────────┬────────┘   └──────────┬───────────┘
+         └──────────┬────────────┘
+                    ▼
 ┌─────────────────────┐
 │  build-and-publish  │  → PyPI (twine) + GitHub Release (gh release create)
-│  (gated on audit)   │
+│  (gated on both)    │
 └─────────────────────┘
 ```
 
@@ -63,8 +65,20 @@ workflow. They run on the self-hosted Woodpecker `nightly` cron
 - **pip-licenses**: Audits dependency licenses, warns on copyleft
 - **trufflehog**: Scans for accidentally committed secrets (advisory)
 
+#### Job 1b: io-manifest (hard gate)
+Runs in parallel with `security-audit`. Installs the default package set
+non-editable, as `pip install hypergumbo` would, then runs
+`scripts/io-manifest run` over the six repositories pinned in
+`docs/io-manifest/corpus.txt` under `strace` and compares the reduced set of
+writes, deletes, renames, launches and connects with
+`docs/io-manifest/expected.txt`. Fails on a new line, on any write into an
+analysed repository, and on any network connection. The observed manifest and
+raw traces are uploaded as the `io-manifest` artifact (14 days) whether the
+job passes or fails. How to read a failure and when to update the expected
+file: `docs/io-manifest/README.md`. Budget: about 5 minutes.
+
 #### Job 2: build-and-publish
-Only runs if security-audit passes.
+Only runs if both gates pass.
 
 1. **Build**: Creates wheels + source distributions for all seven packages in dependency order
 2. **Checksums**: Generates SHA256SUMS for all artifacts
