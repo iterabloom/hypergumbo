@@ -237,28 +237,48 @@ jobs:
             python -m build
           fi
 
+      - name: Generate SBOM
+        run: |
+          # SBOM of what the release SHIPS: the built wheels, installed into a
+          # scratch environment with their resolved dependencies. Until v9.1.0
+          # this ran against the build environment itself, so every published
+          # sbom.json listed build, twine and cyclonedx-bom (66 components, no
+          # hypergumbo package) — WI-hasol. Best-effort: never fail the release
+          # on it, and DROP a missing/empty/invalid file so the release step
+          # cannot try to upload a 0-byte asset ("HTTP 400: Bad Content-Length"
+          # failed the v7.0.0 run). Runs BEFORE checksums so SHA256SUMS covers it.
+          SBOM_ENV="$RUNNER_TEMP/sbom-env"
+          python -m venv "$SBOM_ENV"
+          "$SBOM_ENV/bin/pip" install --quiet --upgrade pip
+          if "$SBOM_ENV/bin/pip" install --quiet --find-links dist/ dist/*.whl; then
+            cyclonedx-py environment "$SBOM_ENV/bin/python" --output-reproducible \
+                --output-format JSON --output-file dist/sbom.json \
+              || cyclonedx-py environment "$SBOM_ENV/bin/python" -o dist/sbom.json \
+              || true
+          else
+            echo "::warning::could not install the built wheels into a scratch environment; no SBOM"
+          fi
+          sbom_ok=0
+          if [[ -s dist/sbom.json ]]; then
+            python3 - <<'PY' && sbom_ok=1
+          import json, sys
+          names = {c.get("name", "").lower().replace("_", "-")
+                   for c in json.load(open("dist/sbom.json")).get("components", [])}
+          sys.exit(0 if "hypergumbo-core" in names else 1)
+          PY
+          fi
+          if [[ $sbom_ok -eq 1 ]]; then
+            echo "SBOM generated ($(wc -c < dist/sbom.json) bytes; describes the shipped packages)."
+          else
+            echo "::warning::SBOM missing, invalid, or not describing hypergumbo — omitting it from the release."
+            rm -f dist/sbom.json
+          fi
+
       - name: Generate checksums
         run: |
           cd dist
           sha256sum * > SHA256SUMS
           cat SHA256SUMS
-
-      - name: Generate SBOM
-        run: |
-          # Best-effort SBOM of the build environment — never fail the release on
-          # it. Try the current cyclonedx-py flags, fall back to the minimal form
-          # (JSON is the default), then DROP a missing/empty/invalid file so the
-          # release step can't try to upload a 0-byte asset (GitHub rejects that
-          # with "HTTP 400: Bad Content-Length" — which failed the v7.0.0 run).
-          cyclonedx-py environment --output-format JSON --output-file dist/sbom.json \
-            || cyclonedx-py environment -o dist/sbom.json \
-            || true
-          if [[ -s dist/sbom.json ]] && python3 -c "import json; json.load(open('dist/sbom.json'))" 2>/dev/null; then
-            echo "SBOM generated ($(wc -c < dist/sbom.json) bytes)."
-          else
-            echo "::warning::SBOM generation produced no valid output — omitting it from the release."
-            rm -f dist/sbom.json
-          fi
 
       - name: Verify wheels
         run: |
@@ -309,18 +329,53 @@ jobs:
             PRERELEASE_FLAG="--prerelease"
           fi
 
-          # Attach the wheels, sdists, checksums, and — only when it's non-empty
-          # (the Generate SBOM step drops a bad one) — the SBOM.
+          # Wheels, sdists, checksums, and — only when the SBOM step kept it — the SBOM.
           ASSETS=(dist/*.whl dist/*.tar.gz dist/SHA256SUMS)
           if [[ -s dist/sbom.json ]]; then
             ASSETS+=(dist/sbom.json)
           fi
 
-          # The tag already exists (this workflow was triggered by its push), so
-          # `gh release create <tag>` attaches a Release to it.
-          gh release create "$TAG" "${ASSETS[@]}" \
-            --title "$TAG" \
-            --notes-file release_notes.md \
-            $PRERELEASE_FLAG
+          # 1. The Release itself, with NO assets, and only when it does not exist
+          #    yet: a re-run of this job after a failed upload must REPAIR the
+          #    Release, not die on "already exists". The tag exists already (this
+          #    workflow was triggered by its push).
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists; attaching whatever is missing."
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file release_notes.md $PRERELEASE_FLAG
+          fi
 
+          # 2. One upload per asset, retried. GitHub's upload host fails
+          #    transiently (v7.0.0: HTTP 400, v9.1.0: HTTP 404), and one failure
+          #    used to abort `gh release create` with the Release already public
+          #    and the remaining files never attached (WI-hasol). --clobber makes
+          #    a retry, and a re-run of the whole job, idempotent.
+          failed=()
+          for asset in "${ASSETS[@]}"; do
+            for attempt in 1 2 3 4; do
+              if gh release upload "$TAG" "$asset" --clobber; then
+                break
+              elif [[ $attempt -eq 4 ]]; then
+                failed+=("$(basename "$asset")")
+              else
+                echo "upload of $asset failed (attempt $attempt); retrying in $((attempt * 15))s"
+                sleep $((attempt * 15))
+              fi
+            done
+          done
+
+          # 3. Verify by name against the Release itself, not against our own
+          #    bookkeeping: every file we built must be attached.
+          gh release view "$TAG" --json assets --jq '.assets[].name' | sort > attached.txt
+          missing=()
+          for asset in "${ASSETS[@]}"; do
+            grep -qxF "$(basename "$asset")" attached.txt || missing+=("$(basename "$asset")")
+          done
+          if (( ${#failed[@]} > 0 || ${#missing[@]} > 0 )); then
+            echo "::error::Release $TAG is incomplete."
+            echo "  upload failed: ${failed[*]:-none}"
+            echo "  not attached:  ${missing[*]:-none}"
+            exit 1
+          fi
+          echo "Release complete: $(wc -l < attached.txt) assets attached."
           echo "Release created: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"

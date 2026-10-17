@@ -80,14 +80,23 @@ file: `docs/io-manifest/README.md`. Budget: about 5 minutes.
 #### Job 2: build-and-publish
 Only runs if both gates pass.
 
-1. **Build**: Creates wheels + source distributions for all seven packages in dependency order
-2. **Checksums**: Generates SHA256SUMS for all artifacts
-3. **SBOM**: Generates Software Bill of Materials (CycloneDX format)
+1. **Build**: Creates wheels + source distributions for all eight packages in dependency order
+2. **SBOM**: Installs the built wheels into a scratch environment and inventories it
+   (CycloneDX JSON), so the bill of materials describes what ships, with resolved
+   dependencies. Best-effort: a missing or wrong SBOM is dropped with a warning, never
+   a failed release. (Until v9.1.0 this step inventoried the build environment, so the
+   published files listed `twine` and `cyclonedx-bom` rather than hypergumbo.)
+3. **Checksums**: Generates SHA256SUMS for every artifact, the SBOM included
 4. **Verify**: Dry-run install and twine check
 5. **Publish to PyPI**: Uses the `PYPI_TOKEN` secret (skipped on dry run / when unset)
 6. **Create GitHub Release**: Uses the Actions-auto-injected `GITHUB_TOKEN`
-   (`permissions: contents: write`) to create a release with the changelog notes and
-   upload the wheels, tarballs, checksums, and SBOM
+   (`permissions: contents: write`). Creates the release with the changelog notes and
+   no assets (skipped when it already exists), uploads each wheel, tarball, the
+   checksums and the SBOM one at a time with `gh release upload --clobber` and up to
+   four attempts, then verifies by name that every built file is attached and fails
+   the job if not. Re-running the job repairs an incomplete release instead of failing
+   on "already exists". (`v7.0.0` and `v9.1.0` were left incomplete by one transient
+   upload error each before this.)
 
 ## Prerequisites
 
