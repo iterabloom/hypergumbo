@@ -25,3 +25,18 @@
   clock: 2  # b1d3
   nonce: b1d3  # b1d3
   message: "From WI-nizug-lavig-duhob-finog-mudus-rizut-zidub-jurit (local branch `jgstern-agent/fix/nizug`, commit 8e1e058645, not merged): the `type_hierarchy._extends_admits_dispatch` docstring that claimed Go interface embedding and C# interface inheritance already produce `extends` edges between interface symbols is rewritten there. It now says no deny-list analyzer emits such a hop on the measured fixtures (C# `interface IB : IA`, Go `type RW interface { Reader; ... }`, Rust `trait Solid: Shape` all emit no edge, dev 4dfb1d645a) and names this item. Bearing on this item: once the producer emits the edge, the gate needs no change. With WI-kalug's core linker the edge is labelled `extends` (interface source), and the gate admits it because the child is abstract. Without WI-kalug the edge is `implements`, which the gate never touches. I ran WI-nizug's fixture with WI-kalug's core diff applied: the dispatches_to set was identical, and the only edge that changed was Java `IChild -> IBase` going from implements to extends."  # b1d3
+- op: update  # f74d
+  at: '2026-10-18T03:14:54Z'  # f74d
+  by: agent  # f74d
+  actor: jgstern_agent  # f74d
+  clock: 3  # f74d
+  nonce: f74d  # f74d
+  set:  # f74d
+    status: done  # f74d
+- op: discuss  # 3fda
+  at: '2026-10-18T03:14:54Z'  # 3fda
+  by: agent  # 3fda
+  actor: jgstern_agent  # 3fda
+  clock: 4  # 3fda
+  nonce: 3fda  # 3fda
+  message: "Done in PR #1707 (dev 0d9ebbe80d). csharp.py's interface_declaration branch calls _extract_base_list like the class and struct branches, so an interface's bases land in meta[\"base_classes\"] and the inheritance linker emits extends (WI-kalug's rule). Behavioral evidence: test_csharp.py::TestCSharpInterfaceInheritance (red: IChild.meta None; green: {'base_classes': ['IBase', 'IDisposable']}); end to end, hypergumbo survey on the item's fixture now emits extends IChild -> IBase, implements Impl -> IChild, and dispatches_to IBase.M -> Impl.M (type-hierarchy linker), where before only the implements edge existed. The type_hierarchy docstring that claimed this hop emitted no edge is corrected."  # 3fda

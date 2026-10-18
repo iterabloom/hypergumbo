@@ -1,0 +1,23 @@
+- op: create  # 69ce
+  at: '2026-10-18T00:11:17Z'  # 69ce
+  by: agent  # 69ce
+  actor: jgstern_agent  # 69ce
+  clock: 1  # 69ce
+  nonce: 69ce  # 69ce
+  data:  # 69ce
+    kind: invariant  # 69ce
+    title: "agda: a declaration tree-sitter-agda misparses after a layout block (go : Nat right after data ... where) is split into two function nodes and emitted as nothing, so the symbol and every reference to it vanish"  # 69ce
+    status: violated  # 69ce
+    priority: 3  # 69ce
+    parent:  # 69ce
+    tags:  # 69ce
+    - agda  # 69ce
+    - analysis_quality  # 69ce
+    isbefore: []  # 69ce
+    duplicate_of: []  # 69ce
+    not_duplicate_of: []  # 69ce
+    pr_ref:  # 69ce
+    description: "FOUND 2026-10-17 while writing the WI-kosar fixture (PR #1702 uses postulate instead). PROBES (analyze_agda on one file, dev ac651f01d5): (1) 'module A where / data Nat : Set where / zero : Nat / (blank) / go : Nat / go = zero / bar : Nat / bar = go' -> symbols Nat, zero, bar; NO go; references zero->Nat, bar->Nat only. (2) 'postulate Nat : Set / (blank) / run : Nat -> Nat / run x = x / bar : Nat -> Nat / bar x = run x' -> symbols Nat, bar; NO run. (3) control 'postulate Nat : Set / postulate zero : Nat / run : Nat / run = zero / bar : Nat / bar = run' -> all four symbols, all references. PARSE (tree-sitter-agda, probe 1): line 6 'go : Nat' is two 'function' nodes, [6:0] lhs=atom go and [6:3] lhs=atom ':' atom Nat, while line 9 'bar : Nat' is one function with function_name bar and rhs ': Nat'. The analyzer could recover the split (a function node whose lhs is a lone atom, followed on the same line by a sibling whose lhs starts with ':') or the fixture shape could be reported upstream; either way the loss is silent today. Not measured on a real Agda repo."  # 69ce
+    fields:  # 69ce
+      statement: "Every top-level type signature and its defining clause yield one function symbol, whatever declaration precedes them."  # 69ce
+      root_cause: "tree-sitter-agda parses 'go : Nat' on the line after a 'data ... where' block as two sibling 'function' nodes (lhs atom go | lhs atom ':' atom Nat) instead of one with a signature rhs; agda.py's function branch finds no name/rhs pair for either and skips both, and the next clause 'go = zero' then has no signature to attach to."  # 69ce
