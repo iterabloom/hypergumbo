@@ -418,8 +418,12 @@ def test_the_run_path_actually_calls_eviction():
     import inspect
 
     src = inspect.getsource(cli.cmd_run)
-    assert "_maybe_evict_cache" in src, "cmd_run no longer evicts"
-    assert src.index("_maybe_evict_cache") < src.index("_maybe_honk_cache"), (
+    assert "_housekeep_cache" in src, "cmd_run no longer houskeeps the cache"
+    # INV-durin: the two helpers sit behind the guard that keeps a housekeeping
+    # failure from failing the finished run; the order lives there now.
+    guard = inspect.getsource(cli._housekeep_cache)
+    assert "_maybe_evict_cache" in guard, "the guard no longer evicts"
+    assert guard.index("_maybe_evict_cache") < guard.index("_maybe_honk_cache"), (
         "eviction must precede the honk so the reported size is post-eviction"
     )
 
@@ -684,3 +688,114 @@ def test_the_report_names_archive_pruning_when_both_happen(
         "a run that hard-deleted archives must say so, not only report the "
         "recoverable half"
     )
+
+
+# ---------------------------------------------------------------------------
+# Concurrent evictors (INV-durin)
+# ---------------------------------------------------------------------------
+#
+# Two runs finishing together, both over the cap, collect the same candidates.
+# The first archives and removes an entry; the second's zip, partial->final
+# rename or entry->scratch rename then meets a path that is gone. Housekeeping
+# is best-effort: a run whose artifacts are written must not exit 1 over it,
+# and the loser must simply stop on the entry the winner already took.
+
+
+def _two_entries_over_cap(monkeypatch, cache_dir):
+    monkeypatch.setenv("HYPERGUMBO_CACHE_MAX_GB", str(4000 / (1024 ** 3)))
+    _make_entry(cache_dir, "r", "s2", size=3000, age_seconds=10_000)
+    return _make_entry(cache_dir, "r", "s1", size=3000, age_seconds=99_000)
+
+
+def test_an_entry_removed_by_a_concurrent_evictor_mid_zip_does_not_raise(
+    monkeypatch, cache_dir
+):
+    import shutil
+
+    old = _two_entries_over_cap(monkeypatch, cache_dir)
+    real_zip = cli.cache_write_zip
+
+    def _the_other_run_wins(partial, entry_path, members, zone_root=None):
+        shutil.rmtree(old)  # archived and removed by the concurrent run
+        return real_zip(partial, entry_path, members, zone_root=zone_root)
+
+    monkeypatch.setattr(cli, "cache_write_zip", _the_other_run_wins)
+    cli._maybe_evict_cache(cache_dir)  # must not raise
+    assert not old.exists()
+
+
+def test_a_partial_pruned_by_a_concurrent_run_does_not_raise(monkeypatch, cache_dir):
+    old = _two_entries_over_cap(monkeypatch, cache_dir)
+    real_rename = cli.cache_rename
+
+    def _partial_gone(src, dst, zone_root=None):
+        if src.name.endswith(cli._ARCHIVE_PARTIAL_SUFFIX):
+            raise FileNotFoundError(src)  # the other run's prune took it
+        return real_rename(src, dst, zone_root=zone_root)
+
+    monkeypatch.setattr(cli, "cache_rename", _partial_gone)
+    cli._maybe_evict_cache(cache_dir)
+    assert not old.exists(), "the entry is still reclaimed"
+
+
+def test_an_entry_renamed_away_by_a_concurrent_run_does_not_raise(monkeypatch, cache_dir):
+    old = _two_entries_over_cap(monkeypatch, cache_dir)
+    real_rename = cli.cache_rename
+
+    def _entry_gone(src, dst, zone_root=None):
+        if src == old:
+            raise FileNotFoundError(src)  # moved to .evicting- by the other run
+        return real_rename(src, dst, zone_root=zone_root)
+
+    monkeypatch.setattr(cli, "cache_rename", _entry_gone)
+    cli._maybe_evict_cache(cache_dir)
+
+
+def test_partial_archives_are_per_process(monkeypatch, cache_dir):
+    """Two runs must not write the same ``.partial``: one would publish the
+    other's half-written file. Each run's partial carries its pid and still
+    ends in the suffix the stale-partial sweep recognises."""
+    _two_entries_over_cap(monkeypatch, cache_dir)
+    seen: list[Path] = []
+    real_zip = cli.cache_write_zip
+
+    def _record(partial, entry_path, members, zone_root=None):
+        seen.append(partial)
+        return real_zip(partial, entry_path, members, zone_root=zone_root)
+
+    monkeypatch.setattr(cli, "cache_write_zip", _record)
+    cli._maybe_evict_cache(cache_dir)
+    assert seen
+    for partial in seen:
+        assert f".{os.getpid()}." in partial.name, partial.name
+        assert partial.name.endswith(cli._ARCHIVE_PARTIAL_SUFFIX), partial.name
+    assert not list(cache_dir.rglob("*" + cli._ARCHIVE_PARTIAL_SUFFIX))
+
+
+def test_housekeeping_failure_is_a_warning_not_a_failed_run(monkeypatch, capsys, tmp_path):
+    def _boom(*_a, **_k):
+        raise FileNotFoundError("results/x -> results/.evicting-x")
+
+    monkeypatch.setattr(cli, "_maybe_evict_cache", _boom)
+    cli._housekeep_cache(tmp_path)  # returns normally
+    err = capsys.readouterr().err
+    assert "cache housekeeping skipped" in err and ".evicting-x" in err
+
+
+def test_run_exits_zero_when_eviction_raises(monkeypatch, tmp_path, capsys):
+    """The filed symptom: every artifact written, then exit 1 with
+    'internal error: FileNotFoundError ... .evicting-...'."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_text("def hi():\n    return 1\n")
+
+    def _boom(*_a, **_k):
+        raise FileNotFoundError("results/x -> results/.evicting-x")
+
+    monkeypatch.setattr(cli, "_maybe_evict_cache", _boom)
+    out = tmp_path / "out.json"
+    rc = cli.main(["run", str(repo), "--out", str(out)])
+    assert rc == 0
+    assert out.exists()
+    assert "cache housekeeping skipped" in capsys.readouterr().err
