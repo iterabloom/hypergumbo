@@ -1,0 +1,23 @@
+Original commit body from a450ce9a8e8494ecafd8ffa29c018806e9258e02:
+
+Analyzer half of WI-pivap (the JVM / JS sibling of Python's WI-ratid).
+The base-class resolvers returned the ONLY in-repo candidate outright and
+read imports only to break ties, so `import junit.framework.TestCase;
+class T extends TestCase`, `import androidx.lifecycle.ViewModel; class M
+: ViewModel()` and `import { Component } from 'react'` got a resolved
+extends edge to an unrelated in-repo class of the same name.
+
+- import_bound_bases (new): Java and Kotlin record each class's
+  package-qualified name, so an explicitly imported base whose FQN no
+  in-repo candidate has is external; the analyzer emits an unresolved
+  edge with an ExternalRef, which the core linker also leaves alone.
+- js_ts: no qualified names, so the specifier decides, on positive
+  evidence only: a Node core module, or a registry package the
+  importing package.json declares and the repo does not define.
+  Workspace packages and undeclared aliases (@/models) keep the old
+  resolution.
+
+Core-linker half (qualified bases: std::exception, System.Exception,
+java.util.ArrayList<T>, io.Writer) is the next PR.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
