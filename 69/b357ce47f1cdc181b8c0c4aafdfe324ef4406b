@@ -1,0 +1,23 @@
+Original commit body from d03eb69ad92597bc8a19cd8e96c86ad888363a81:
+
+tree-sitter-swift parses ``xs[0]`` and ``r.headers["age"]`` as a
+``call_expression``; the only difference from ``g(1)`` is that the
+``value_arguments`` open with ``[``. The call pass never looked at the
+bracket, so every subscript read was a call: to a FIELD
+(``Response.headers:field``), to a parameter (``xs``), or a RESOLVED
+phantom call to an unrelated free function that shared the parameter's
+name (``data``).
+
+``_is_subscript`` reads the bracket. The edge pass emits no call for a
+subscript, and the receiver-typing walker types no element from one
+(nothing tracks element types; a wrong constructor guess is worse than
+none). The tree is iterated flat, so a call nested in a subscript's
+receiver (``make()[0]``) is still a call.
+
+Red on dev: exactly the three filed edges on the item's two fixtures.
+Green: none of them; ``f -> make`` from ``make()[0]`` kept.
+
+The module-key axis registry cites two Swift emission sites by line;
+the insertion moved them by fifteen lines, so the citations follow.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
