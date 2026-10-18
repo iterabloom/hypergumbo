@@ -21,7 +21,11 @@ This analyzer uses tree-sitter to parse Swift files and extract:
 - Stored properties (``field``) and top-level bindings (``variable``)
 - Route-marker symbols, extracted per file and appended in ``post_process``
 - Function call relationships, and ``references`` edges where a symbol is
-  named without being called
+  named without being called. A subscript (``xs[0]``, ``r.headers["age"]``)
+  is also a ``call_expression`` to the grammar, with ``value_arguments``
+  opened by ``[``; it is a member access, so it emits no call and types no
+  receiver (WI-dimad: it used to be a call edge to a field, to a parameter,
+  or a resolved phantom call to a same-named free function)
 - Import statements
 - Usage contexts for Vapor/Hummingbird route registrations
 
@@ -677,6 +681,15 @@ def _swift_parameter_labels(
             label = node_text(ids[0], source) if ids else None
             labels.append(None if label == "_" else label)
     return labels
+
+
+def _is_subscript(call: "tree_sitter.Node", source: bytes) -> bool:
+    """Whether this ``call_expression`` is a subscript: tree-sitter-swift
+    gives ``xs[0]`` and ``r.headers["age"]`` the same node as a call, the
+    bracket being the only difference (WI-dimad)."""
+    suffix = find_child_by_type(call, "call_suffix")
+    args = find_child_by_type(suffix, "value_arguments") if suffix is not None else None
+    return args is not None and source[args.start_byte:args.start_byte + 1] == b"["
 
 
 def _swift_call_argument_labels(
@@ -1661,6 +1674,8 @@ def _swift_receiver_expr_type(
             # evaluates to whatever the scope map says that name is.
             return env.name(node_text(node, source))
         if node.type == "call_expression":
+            if _is_subscript(node, source):
+                return None  # an element's type is not tracked
             return _swift_call_type(node, source, env)
         if node.type == "navigation_expression":
             head = node.children[0] if node.children else None
@@ -2349,7 +2364,7 @@ def _extract_edges_from_file(
                     origin_run_id=run_id,
                 ))
 
-        elif node.type == "call_expression":
+        elif node.type == "call_expression" and not _is_subscript(node, source):
             # INV-bamij: a call in no function (a top-level statement, a
             # closure bound to a global ``let``) is anchored on the file.
             current_function: Optional[Symbol] = (
