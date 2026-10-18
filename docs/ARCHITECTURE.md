@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **360** Python modules (147 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 109 core, 4 CLI, 37 tracker)
-- **55310** symbols (functions, classes, methods)
-- **220708** edges by type:
-  - calls: 125096
-  - contains: 51506
-  - imports: 18644
-  - instantiates: 12492
-  - references: 9291
-  - module_attr_ref: 2033
-  - other: 1646
+- **361** Python modules (147 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 110 core, 4 CLI, 37 tracker)
+- **55314** symbols (functions, classes, methods)
+- **221198** edges by type:
+  - calls: 125450
+  - contains: 51582
+  - imports: 18696
+  - instantiates: 12514
+  - references: 9303
+  - module_attr_ref: 2036
+  - other: 1617
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 55310 Symbols + 220708 Edges + UsageContexts           │
+│  Output: 55314 Symbols + 221198 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,20 +279,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10281.5 | ir.py |
-| `len` | external_symbol | 7947.0 | <external> |
-| `write_text` | external_symbol | 7135.0 | <external> |
-| `Span` | class | 6693.1 | ir.py |
-| `LinkerContext` | class | 3718.5 | registry.py |
-| `get` | external_symbol | 3474.0 | <external> |
-| `load_catalog` | function | 3320.5 | io_boundary.py |
-| `Edge.create` | method | 2551.1 | ir.py |
-| `str` | external_symbol | 2380.0 | <external> |
-| `Path` | external_symbol | 2359.0 | <external> |
-| `next` | external_symbol | 2234.0 | <external> |
+| `Symbol` | class | 10286.2 | ir.py |
+| `len` | external_symbol | 7961.0 | <external> |
+| `write_text` | external_symbol | 7158.0 | <external> |
+| `Span` | class | 6696.1 | ir.py |
+| `LinkerContext` | class | 3722.6 | registry.py |
+| `get` | external_symbol | 3484.0 | <external> |
+| `load_catalog` | function | 3328.4 | io_boundary.py |
+| `Edge.create` | method | 2554.8 | ir.py |
+| `str` | external_symbol | 2392.0 | <external> |
+| `Path` | external_symbol | 2369.0 | <external> |
+| `next` | external_symbol | 2235.0 | <external> |
 | `load_framework_patterns` | function | 2107.0 | framework_patterns.py |
 | `TrackerApp` | class | 1969.8 | tui.py |
-| `append` | external_symbol | 1857.0 | <external> |
+| `append` | external_symbol | 1863.0 | <external> |
 | `main` | function | 1781.4 | cli.py |
 
 ## Pattern System
@@ -477,6 +477,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `build_combined_trend.py` | Build the cross-tranche combined trend report covering ALL completed dogfooding tranches. |
 | `catalogue_gate_terms.py` | Grep terms for ``scripts/smart-test``'s catalogue gate, derived per family. |
 | `check-audit-findings` | Pre-commit lint: every audit-findings doc under ``docs/audits/`` parses |
+| `check-claims-coverage` | INV-jojog per-PR guard: can the shipped tree's self-claims still be qualified? |
 | `check-confidence-sites` | Static audit of explicit Edge.create(confidence=...) sites (WI-vosif). |
 | `check-docstring-drift` | Module-docstring drift checker — co-change scan over .py source trees. |
 | `check-edge-type-drift` | Pre-commit lint: ``*EDGE_TYPE*`` sets in packages/ must be subsets |
@@ -514,6 +515,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `generate-security-md` | Regenerate the audited-IO-surface section of SECURITY.md. |
 | `generate_schema_lib.py` | (no description) |
 | `highsev_root_review.py` | High-severity net-new root-review collator (Layer 1 of the root-review helper). |
+| `io-manifest` | Release gate: the I/O the installed CLI was OBSERVED to perform. |
 | `measure-analyzer-scaling.py` | Split the analyzer phase into FIXED cost and PER-FILE cost. |
 | `measure-blind-language-signal.py` | Measure candidate signals for "this language's I/O is structurally invisible". |
 | `measure-call-construct-census.py` | Per-language census of ``meta.call_construct`` on the call edges of a behavior map. |
@@ -611,7 +613,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.catalogues_doc`**: Render ``docs/CATALOGUES.md``: the one user-facing page about catal...
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
 - **`hypergumbo_core.check_id_construction`**: Static enforcement of ADR-0034's id-construction discipline (WI-vod...
-- **`hypergumbo_core.check_recorded_producer_input`**: Static enforcement of ADR-0057 §12: cross-backend tests run on RECO...
+- **`hypergumbo_core.check_recorded_producer_input`**: Static enforcement of ADR-0057 §12: cross-backend tests use recorde...
+- **`hypergumbo_core.claims_coverage_guard`**: INV-jojog: the per-PR arm of the self-claims COVERAGE question.
 - **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
 - **`hypergumbo_core.confidence`**: Evidence -> confidence derivation (the ADR-0039 detection-reliabili...
 - **`hypergumbo_core.confidence_sites`**: Static audit of explicit ``Edge.create(confidence=...)`` sites (WI-...
@@ -708,7 +711,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.analyze.c_family`**: The C-family declarator walk: where a C, C++ or CUDA definition nam...
 - **`hypergumbo_core.analyze.cyclomatic`**: Grammar-agnostic McCabe cyclomatic-complexity walker + decision-poi...
 - **`hypergumbo_core.analyze.edge_source`**: Where an edge comes FROM: the src of every edge is an emitted symbo...
-- **`hypergumbo_core.analyze.merge_producers`**: The merge pass: two producers' records for one declaration become one
+- **`hypergumbo_core.analyze.merge_producers`**: The merge pass: two producers' records for one declaration become o...
 - **`hypergumbo_core.analyze.registry`**: Analyzer registry for decorator-based dynamic dispatch.
 - **`hypergumbo_lang_mainstream.bash`**: Bash/shell script analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.c`**: C analysis pass using tree-sitter-c.
@@ -932,7 +935,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_tracker.clusters`**: Predicted clusters of tracker items: TF-IDF cosine, top-k neighbour...
 - **`hypergumbo_tracker.configure`**: Interactive CLI config editor for hypergumbo tracker.
 - **`hypergumbo_tracker.embeddings`**: Tier 2 embedding-based near-duplicate detection for the hypergumbo ...
-- **`hypergumbo_tracker.field_keys`**: What may be stored under a custom field key, and what may not (INV-...
+- **`hypergumbo_tracker.field_keys`**: What may and may not be stored under a custom field key (INV-varil,...
 - **`hypergumbo_tracker.hotspot_markup`**: Wrap detected item IDs in Textual ``[@click=...]`` action markup.
 - **`hypergumbo_tracker.id_matching`**: Detect tracker item IDs embedded in free-text panes (descriptions, ...
 - **`hypergumbo_tracker.item_nav_render`**: Assemble the display content for the tracker TUI item-nav modal.
@@ -968,8 +971,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: ef8bdbf58a17
-  commit_count: 8363
+  commit: a65232ca63f0
+  commit_count: 8437
   hypergumbo: 9.1.0
   python: 3.12.3
 -->
