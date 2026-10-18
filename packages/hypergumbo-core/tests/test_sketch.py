@@ -8057,7 +8057,7 @@ class TestCachedResults:
         monkeypatch.setattr(
             sketch_embeddings_module,
             "_get_results_cache_dir",
-            lambda repo_root: mock_cache,
+            lambda repo_root, **_kw: mock_cache,
         )
 
         # Generate sketch without passing cached_results - should auto-discover

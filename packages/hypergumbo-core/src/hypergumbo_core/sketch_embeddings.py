@@ -70,7 +70,7 @@ import os
 import re
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 if TYPE_CHECKING:
     import numpy as np
@@ -1520,7 +1520,9 @@ def _get_cache_dir(repo_root: Path) -> Path:
     return cache_dir
 
 
-def _get_results_cache_dir(repo_root: Path) -> Path:
+def _get_results_cache_dir(
+    repo_root: Path, *, extra_excludes: "Sequence[str] | None" = None,
+) -> Path:
     """Get or create the results cache directory for current repo state.
 
     Cache structure (WI-panih):
@@ -1550,7 +1552,12 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     state hash sees, and without them a cached survey kept answering after a
     channel file was added, edited or broken — the broken file never read, so
     never reported. Each suffix is absent when its files are, so a user with
-    no channel files and no config keeps every existing entry's key.
+    no channel files and no config keeps every existing entry's key. It is
+    suffixed ``-ex-<hash>`` with a digest of the ``-e`` / ``--exclude``
+    patterns the run was given (``discovery.exclude_cache_token``; WI-tisuj):
+    a survey that skipped ``lib/`` used to REPLACE the plain survey in the one
+    directory, and a read command, which takes no ``--exclude``, then
+    answered from it. Read commands look under the plain key only.
 
     The fourth segment (``<analyzer_identity>``) keys on the analyzer
     surface that produces the cached output — ``__version__`` plus a
@@ -1565,6 +1572,7 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
 
     Args:
         repo_root: Repository root path.
+        extra_excludes: The run's ``--exclude`` patterns, if any.
 
     Returns:
         Path to the results cache directory for current state.
@@ -1572,7 +1580,7 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     from . import backend_selection
     from .analyzer_identity import compute_analyzer_identity_hash
     from .catalogue_home import analysis_channel_token
-    from .discovery import resolve_trace_deps
+    from .discovery import exclude_cache_token, resolve_trace_deps
     from .user_config import config_cache_token
 
     fingerprint = _get_repo_fingerprint(repo_root)
@@ -1588,7 +1596,8 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     # analysis-stage catalogue channels and the two config tiers. Each token
     # is "" when no such file exists, so those users keep their key.
     for token in (trace_token, analysis_channel_token(),
-                  config_cache_token(repo_root)):
+                  config_cache_token(repo_root),
+                  exclude_cache_token(extra_excludes)):
         if token:
             state_hash = f"{state_hash}-{token}"
     analyzer_identity = compute_analyzer_identity_hash()

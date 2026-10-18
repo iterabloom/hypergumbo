@@ -1650,6 +1650,23 @@ def resolve_trace_deps(repo_root: Path) -> TraceDeps:
         return TraceDeps()
 
 
+def exclude_cache_token(extra_excludes: "Iterable[str] | None") -> str:
+    """Stable, filesystem-safe token for the results-cache key carrying the
+    ``-e`` / ``--exclude`` patterns a run was given; ``""`` when there are
+    none, so every run without excludes keeps its key (WI-tisuj).
+
+    The patterns are stripped, de-duplicated and sorted before hashing: the
+    excluded file set is what matters, not how the flags were spelled.
+    """
+    import hashlib
+
+    patterns = sorted({p.strip() for p in (extra_excludes or ()) if p and p.strip()})
+    if not patterns:
+        return ""
+    digest = hashlib.sha256("\n".join(patterns).encode()).hexdigest()
+    return f"ex-{digest[:12]}"
+
+
 def set_active_trace_deps(value: TraceDeps, repo_root: Path | None) -> None:
     """Install the policy the next walks apply (``cli.run_survey``)."""
     global _active_trace, _active_trace_root
