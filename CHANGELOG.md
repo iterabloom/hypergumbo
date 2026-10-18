@@ -20,7 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
-- **Two runs finishing together no longer fail each other over cache eviction**: each run writes its own partial archive, a candidate a concurrent run already took is skipped, and end-of-run housekeeping can only warn, never turn a finished run into exit 1 (INV-durin).
+- **Two runs finishing together no longer fail each other over cache eviction**: each run writes its own partial archive, a candidate a concurrent run already took is skipped and left out of this run's "Soft-deleted" summary (as is crash residue, which is hard-deleted), and end-of-run housekeeping can only warn, never turn a finished run into exit 1 (INV-durin).
 - **`--exclude` is part of the results-cache key**: `survey repo -e lib` no longer replaces the plain survey that `search`, `explain` and the other read commands answer from (WI-tisuj).
 - **C# interface inheritance and Go interface embedding now produce `extends` edges**: `interface IChild : IBase` and `type GChild interface { GBase; ... }` record their bases like classes and structs do (WI-ruzid, WI-gutas).
 - **Swift: a subscript (`xs[0]`, `r.headers["age"]`) is no longer emitted as a call** to a field, a parameter or a same-named free function (WI-dimad).

@@ -133,6 +133,41 @@ def test_cache_rmtree(tmp_path: Path, monkeypatch) -> None:
     assert not d.exists()
 
 
+def test_cache_rmtree_missing_ok_finishes_a_tree_another_process_is_removing(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """INV-durin: two evicting runs can remove the same scratch tree at once.
+    ``missing_ok`` makes a path that vanished mid-walk mean "someone else
+    removed that part", and it still removes what is left; without it the
+    error propagates as before."""
+    import shutil
+
+    import hypergumbo_core.safety_zones as sz
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    d = tmp_path / "hypergumbo" / "scratch"
+    (d / "sub").mkdir(parents=True)
+    (d / "sub" / "b.txt").write_text("b")
+    (d / "a.txt").write_text("a")
+    real = shutil.rmtree
+    calls = []
+
+    def _peer_takes_a_file_first(path, *a, **k):
+        calls.append(path)
+        if len(calls) == 1:
+            (d / "a.txt").unlink()  # the other run got here first
+            raise FileNotFoundError(d / "a.txt")
+        return real(path, *a, **k)
+
+    monkeypatch.setattr(sz.shutil, "rmtree", _peer_takes_a_file_first)
+    with pytest.raises(FileNotFoundError):
+        cache_rmtree(d)
+    calls.clear()
+    cache_rmtree(d, missing_ok=True)
+    assert not d.exists(), "the rest of the tree is still removed"
+    cache_rmtree(d, missing_ok=True)  # already gone entirely: no error
+
+
 def test_cache_rmtree_refuses_a_path_outside_its_zone(
     tmp_path: Path, monkeypatch,
 ) -> None:
