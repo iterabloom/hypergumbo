@@ -21,3 +21,18 @@
     fields:  # dbd5
       statement: "One call site produces one call edge."  # dbd5
       root_cause: "In tree-sitter-odin, obj.method(args) is a member_expression wrapping a call_expression (odin.py ~L320-330), so the plain call handler (~L287-318) also fires on the inner call and emits an edge to the bare method name."  # dbd5
+- op: update  # 0f2d
+  at: '2026-10-18T00:57:00Z'  # 0f2d
+  by: agent  # 0f2d
+  actor: jgstern_agent  # 0f2d
+  clock: 2  # 0f2d
+  nonce: 0f2d  # 0f2d
+  set:  # 0f2d
+    status: satisfied  # 0f2d
+- op: discuss  # 0126
+  at: '2026-10-18T00:57:00Z'  # 0126
+  by: agent  # 0126
+  actor: jgstern_agent  # 0126
+  clock: 3  # 0126
+  nonce: '0126'  # 0126
+  message: "Satisfied in PR #1704 (dev 12a9ece5c9). odin.py's call_expression branch stands down when its parent is a member_expression; the member branch emits the one module.func edge. Behavioral evidence (test_odin.py::TestOdinMemberCallEmitsOneEdge): on dev before the fix, main :: proc { fmt.println(\"hi\") } produced ['odin:external:0-0:fmt.println:unresolved', 'odin:external:0-0:println:unresolved']; after, the first only. A plain call to an unknown procedure still yields its unresolved edge, and a plain call to a defined procedure still resolves."  # 0126
