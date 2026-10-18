@@ -1,0 +1,20 @@
+Original commit body from 5b19aa056ea7ffb5651c6410ba9a48a7c5702ff5:
+
+Follow-up to #1710, found by re-running INV-durin's filed repro live
+(4 parallel surveys over the cap, isolated XDG_CACHE_HOME):
+
+- a run that lost the race still counted the entry: four runs each
+  printed "Soft-deleted 133.5 MB (7 stale entries)" when 7 existed in
+  total. _archive_entry now returns whether THIS process moved the
+  entry; the cap check still counts an entry a peer took.
+- a peer sweeping our .evicting- dir as residue made our rmtree raise,
+  ending the pass in a housekeeping warning. cache_rmtree(missing_ok=True)
+  finishes a tree another process is removing.
+- residue is hard-deleted and may be a peer's in-flight scratch, so it
+  counts toward the cap but not toward the "Soft-deleted ... Recoverable
+  (zipped)" summary.
+
+Live re-run after: 0 of 20 runs non-zero, 0 warnings, reported entries
+sum to exactly 7 in each of 5 rounds.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
