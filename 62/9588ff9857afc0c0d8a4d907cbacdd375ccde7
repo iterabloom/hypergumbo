@@ -1,0 +1,14 @@
+Original commit body from 544aff9d61d95a581cc2ee985b11359bb7baedde:
+
+Two hypergumbo runs sharing one cache could both pick the same entry to
+evict. The loser hit FileNotFoundError on the entry, the shared
+`.zip.partial`, or the `.evicting-` scratch name, and the traceback
+failed a run whose results were already written.
+
+- partial archives are per-process (`<stem>.zip.<pid>.partial`)
+- an entry, partial or scratch that vanished under a concurrent run is
+  treated as the other run's job and skipped
+- `cmd_run` calls `_housekeep_cache`, which turns any housekeeping
+  exception into a stderr warning; eviction is best-effort by contract
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
