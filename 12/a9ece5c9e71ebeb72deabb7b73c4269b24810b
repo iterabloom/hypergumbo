@@ -1,0 +1,14 @@
+Original commit body from 987b7df56f0dce536d57fac3946ecc6b9751ea70:
+
+tree-sitter-odin nests the call_expression of ``fmt.println(..)`` inside
+the member_expression, and both handlers fired: the member branch emitted
+the ``fmt.println`` edge and the call branch a second, bare ``println``
+one. The call branch now stands down when its parent is a
+member_expression; the member branch is the one that knows the module.
+
+Red on dev: ['odin:external:0-0:fmt.println:unresolved',
+'odin:external:0-0:println:unresolved'] for one call. Green: the first
+only. The bare unresolved path (a plain call to an unknown procedure),
+which the spurious edge had been covering, gets its own test.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
