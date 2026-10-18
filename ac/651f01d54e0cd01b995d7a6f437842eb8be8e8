@@ -1,0 +1,35 @@
+Original commit body from 08fafc31dcff9c0da7c0a9d69865eaa62d522fd0:
+
+The enclosing-callable family (WI-kosar): four analyzers found a call's
+CALLER by name through the repo-wide NameResolver, whose registry keeps one
+symbol per name, so two files defining the same function had one file's
+calls credited to the other's.
+
+- zig (INV-musij): the enclosing function is the ``function_declaration``
+  that contains the call, by position (``symbol_declared_by``), instead of
+  ``resolver.lookup(qualified_name)``.
+- llvm_ir (INV-nafij): the caller is the ``define`` at the recorded
+  position; the callee is this file's ``define`` first, the registry
+  otherwise (a local ``declare`` does not pre-empt another file's define).
+  The never-read ``_pending_calls`` store and the symbols/calls dual-purpose
+  walk are gone: Pass 1 extracts symbols, Pass 2 collects calls.
+- cobol (INV-lutaj): the caller is the paragraph OR section whose header
+  last preceded the statement, by position (a section header used not to
+  update it); a PERFORM/CALL target binds inside the performing program
+  first, then this file, then the registry.
+- tlaplus (INV-razus residual): a referenced name binds a LET-local, then
+  THIS spec's definition, then the registry; ``Bar == Init`` in spec B no
+  longer points at spec A's ``Init``.
+- agda: a referenced name binds this file's definition before the
+  registry's (``B.zero -> A.Nat`` on two files each defining ``Nat``).
+
+Each analyzer gains a two-file same-name fixture. The item's proposed
+regex gate on ``resolver.lookup(<caller-ish name>)`` was tried and not
+added: 11 of its 13 hits on the tree are legitimate callee lookups, so it
+would be a baseline of waivers rather than a gate.
+
+Test fixture note: tree-sitter-agda loses the declaration that follows a
+``data ... where`` block in the fixture's layout, so the Agda fixture uses
+``postulate``; the loss itself is filed separately.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
