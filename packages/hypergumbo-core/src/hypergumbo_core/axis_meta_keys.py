@@ -1312,7 +1312,9 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "identifier a publish / subscribe site wrote in place of an "
                 "event-name string, or the identifier an identifier-join "
                 "compared. ``event_name`` then holds the event VALUE, or "
-                "``None`` when the identifier could not be resolved (WI-misod)."),
+                "``None`` when the identifier could not be resolved (WI-misod). "
+                "On a websocket edge: the identifier an identifier-join "
+                "compared, with ``event`` None (WI-luhod)."),
     MetaKeySpec("queue_type", AXIS_EDGE_META,
                 "Message-queue family/pattern that produced a publish/subscribe "
                 "edge, from the message_queue linker's queue classification."),
@@ -1508,9 +1510,12 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "function's name as the route declared it."),
     # -- protocol linkers
     MetaKeySpec("url_type", AXIS_EDGE_META,
-                "HTTP client->route edge: 'literal' or 'variable', how the "
-                "client's URL was written (a string literal, or a variable "
-                "the linker folded)."),
+                "HTTP client->route edge: how the client's URL was written -- "
+                "'literal' (a string), 'constant' (an identifier resolved to a "
+                "same-file module-scope string), 'variable' (a template literal "
+                "folded to a prefix). Client symbols may also carry "
+                "'unresolved' (an identifier whose URL is unknown; never "
+                "route-matched, WI-luhod)."),
     MetaKeySpec("operation_type", AXIS_EDGE_META,
                 "GraphQL client edge: the operation type ('query', "
                 "'mutation', 'subscription'), or None when the document did "
@@ -1551,10 +1556,13 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "'variable' or 'unresolved')."),
     MetaKeySpec("event", AXIS_EDGE_META,
                 "Event name a websocket or Phoenix Channels event_publishes "
-                "edge carries."),
+                "edge carries. On a websocket edge it is the joined event "
+                "VALUE, or None when only identifiers were compared (then see "
+                "``event_identifier``; WI-luhod)."),
     MetaKeySpec("event_type", AXIS_EDGE_META,
-                "websocket event_publishes edge: 'literal' or 'variable', how "
-                "the event name was written at the two ends."),
+                "websocket event_publishes edge: what the sender/receiver join "
+                "compared (``_name_args`` join kind: 'literal', 'constant' or "
+                "'unresolved')."),
     MetaKeySpec("event_name", AXIS_EDGE_META,
                 "event_sourcing event_publishes edge: the event VALUE the "
                 "publisher and subscriber were joined on, or None when only "

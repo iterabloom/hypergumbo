@@ -1330,8 +1330,10 @@ socket.emit(EVENT_NAME, { user: 'test' });
         patterns = _detect_patterns(js_file)
 
         assert len(patterns) == 1
-        assert patterns[0].event == "EVENT_NAME"
-        assert patterns[0].event_type == "variable"
+        # WI-luhod: a same-file module-scope constant resolves to its value.
+        assert patterns[0].event == "user-login"
+        assert patterns[0].event_type == "constant"
+        assert patterns[0].event_identifier == "EVENT_NAME"
 
     def test_detect_variable_on_event(self, tmp_path: Path) -> None:
         """Detects socket.on with variable event name."""
@@ -1347,8 +1349,9 @@ socket.on(LOGIN_EVENT, (data) => {
         patterns = _detect_patterns(js_file)
 
         assert len(patterns) == 1
-        assert patterns[0].event == "LOGIN_EVENT"
-        assert patterns[0].event_type == "variable"
+        assert patterns[0].event == "user-login"
+        assert patterns[0].event_type == "constant"
+        assert patterns[0].event_identifier == "LOGIN_EVENT"
 
     def test_detect_attribute_access_event(self, tmp_path: Path) -> None:
         """Detects event with attribute access like config.event."""
@@ -1362,7 +1365,8 @@ io.emit(config.eventName, { data: 'test' });
 
         assert len(patterns) == 1
         assert patterns[0].event == "config.eventName"
-        assert patterns[0].event_type == "variable"
+        assert patterns[0].event_type == "unresolved"
+        assert patterns[0].event_identifier == "config.eventName"
 
     def test_literal_event_has_literal_type(self, tmp_path: Path) -> None:
         """Verifies literal events have event_type='literal'."""
@@ -1378,8 +1382,8 @@ socket.emit('user-login', { user: 'test' });
         assert patterns[0].event == "user-login"
         assert patterns[0].event_type == "literal"
 
-    def test_variable_event_linking(self, tmp_path: Path) -> None:
-        """Links variable events when using same variable name."""
+    def test_constant_events_join_on_their_value(self, tmp_path: Path) -> None:
+        """Two sites whose constants bind the same string join on that string."""
         sender = tmp_path / "sender.js"
         sender.write_text("""
 const EVENT = 'user-action';
@@ -1388,22 +1392,63 @@ socket.emit(EVENT, { action: 'click' });
 
         receiver = tmp_path / "receiver.js"
         receiver.write_text("""
-const EVENT = 'user-action';
-socket.on(EVENT, (data) => {
+const ACTION = 'user-action';
+socket.on(ACTION, (data) => {
     console.log('Action:', data.action);
 });
 """)
 
         result = link_websocket(tmp_path)
 
-        assert len(result.edges) >= 1
-        # Find message edges (not connection edges)
         msg_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
-        assert len(msg_edges) >= 1
-        # Variable matches have lower confidence
+        assert len(msg_edges) == 1
+        assert msg_edges[0].confidence == 0.85
+        assert msg_edges[0].evidence_type == "ast_call_direct"
+        assert msg_edges[0].meta.get("event") == "user-action"
+        assert msg_edges[0].meta.get("event_type") == "constant"
+
+    def test_unresolved_identifiers_join_on_the_identifier(self, tmp_path: Path) -> None:
+        """An identifier bound in another module stays unresolved; two sites
+        naming the same one still join, at the lower confidence, and the edge
+        asserts no event value."""
+        sender = tmp_path / "sender.js"
+        sender.write_text("""
+import { EVENT } from './events';
+socket.emit(EVENT, { action: 'click' });
+""")
+        receiver = tmp_path / "receiver.js"
+        receiver.write_text("""
+import { EVENT } from './events';
+socket.on(EVENT, handler);
+""")
+
+        result = link_websocket(tmp_path)
+
+        msg_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
+        assert len(msg_edges) == 1
         assert msg_edges[0].confidence == 0.65
         assert msg_edges[0].evidence_type == "variable_match"
-        assert msg_edges[0].meta.get("event_type") == "variable"
+        assert msg_edges[0].meta.get("event") is None
+        assert msg_edges[0].meta.get("event_type") == "unresolved"
+        assert msg_edges[0].meta.get("event_identifier") == "EVENT"
+
+    def test_an_identifier_never_matches_a_string_of_the_same_text(self, tmp_path: Path) -> None:
+        """WI-luhod: ``emit(chat)`` with ``chat`` a parameter is not the
+        ``'chat'`` event; the old raw-string grouping joined them."""
+        sender = tmp_path / "sender.js"
+        sender.write_text("""
+function relay(chat, payload) {
+    socket.emit(chat, payload);
+}
+""")
+        receiver = tmp_path / "receiver.js"
+        receiver.write_text("""
+socket.on('chat', handler);
+""")
+
+        result = link_websocket(tmp_path)
+
+        assert not [e for e in result.edges if e.edge_type == "event_publishes"]
 
     def test_endpoint_symbol_has_event_type(self, tmp_path: Path) -> None:
         """Endpoint symbols include event_type in metadata."""
@@ -1432,11 +1477,13 @@ await channel_layer.send(CHANNEL_NAME, {'type': 'notify'})
 
         send_patterns = [p for p in patterns if p.type == "send"]
         assert len(send_patterns) == 1
-        assert send_patterns[0].event == "CHANNEL_NAME"
-        assert send_patterns[0].event_type == "variable"
+        assert send_patterns[0].event == "notifications"
+        assert send_patterns[0].event_type == "constant"
 
-    def test_mixed_literal_and_variable_no_match(self, tmp_path: Path) -> None:
-        """Literal event doesn't match different variable name."""
+    def test_a_constant_joins_the_literal_it_names(self, tmp_path: Path) -> None:
+        """WI-luhod: ``on(EVENT)`` with ``const EVENT = 'user-login'`` is the
+        ``'user-login'`` event. Before the fix the raw identifier was the
+        grouping key, so this pair never joined."""
         sender = tmp_path / "sender.js"
         sender.write_text("""
 socket.emit('user-login', { user: 'test' });
@@ -1444,15 +1491,17 @@ socket.emit('user-login', { user: 'test' });
 
         receiver = tmp_path / "receiver.js"
         receiver.write_text("""
-const EVENT = 'user-login';  // Same value, different identifier
+const EVENT = 'user-login';
 socket.on(EVENT, handler);
 """)
 
         result = link_websocket(tmp_path)
 
-        # No message edges: literal 'user-login' != variable 'EVENT'
         msg_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
-        assert len(msg_edges) == 0
+        assert len(msg_edges) == 1
+        assert msg_edges[0].meta.get("event") == "user-login"
+        assert msg_edges[0].meta.get("event_type") == "constant"
+        assert msg_edges[0].meta.get("event_identifier") is None
 
     def test_generic_send_receive_no_interfile_edges(self, tmp_path: Path) -> None:
         """Generic send/receive (no event name) should not create inter-file edges.
