@@ -63,11 +63,14 @@ keeps a smaller ``--max-symbols`` budget's nodes contained in a larger one's:
   non-key file node cannot become a seed. Seeds are a prefix of the order under
   a quota of half the symbol budget; ``select_by_coverage`` fills the rest.
 - Connectivity path (the CLI default) drops external-boundary placeholders,
-  which would manufacture connectivity the code does not have, and calls
+  which would manufacture connectivity the code does not have, and test-path
+  symbols with the edges they originate (a test joins two entrypoints in the
+  call graph, not in the code; WI-zitag), and calls
   ``select_by_connectivity`` with ``interleave=True``: seeds alternate with
   greedy bridge picks against the total budget, so seeds are metered rather
   than preloaded. Only key symbols may enter as seeds
-  (``seed_eligible=is_key_symbol``); bridge picks stay unfiltered.
+  (``seed_eligible=is_key_symbol``); bridge picks are otherwise unfiltered by
+  kind, so a file node can still join two islands.
 
 Projected-view shape
 --------------------
@@ -132,7 +135,7 @@ from .selection.filters import (
     EXCLUDED_KINDS,  # re-export: test_compact.py imports this  # noqa: F401
     is_excluded_kind,
     is_key_symbol,
-    is_test_path as _is_test_path,  # re-export: test_compact.py imports this  # noqa: F401
+    is_test_path as _is_test_path,  # also imported by test_compact.py
     is_example_path as _is_example_path,
     key_symbols,
     production_edges,
@@ -1363,11 +1366,29 @@ def format_compact_behavior_map(
     # only key symbols as seeds or as the bootstrap (``seed_eligible`` below),
     # while greedy bridge picks stay unfiltered. The centrality path needs
     # neither: ``key_symbols`` already excludes both shapes.
+    #
+    # WI-zitag: the bridge exemption covers non-key KINDS (a file node can be
+    # the only thing joining two islands), not symbols declared in TEST FILES:
+    # a test that exercises two entrypoints joins them in the call graph, not
+    # in the production code. So connectivity mode applies the test half of the
+    # WI-zulij policy too: test-path symbols leave its population and
+    # test-sourced edges leave its graph (same order rule as above). Measured
+    # at K=400 on seven 2026-07-17 maps, test-path nodes went from express
+    # 248/400, SwiftyJSON 203/305, spring-petclinic 145/336, apollo-server
+    # 77/400, caddy 10/400, zoxide 5/231 to 0 on all seven, with the
+    # production node count unchanged (each map's shrink equals its test-path
+    # count), containment held, and isolated nodes / components within +-1.
+    # Refusing test-path nodes only as picks while keeping their edges for
+    # ranking differed from this by at most 4% of picked nodes at any budget.
     if not connectivity_aware:
         edges = production_edges(symbols, edges)
         symbols = key_symbols(symbols)
     else:
-        symbols = [s for s in symbols if not is_external_boundary(s)]
+        edges = production_edges(symbols, edges)
+        symbols = [
+            s for s in symbols
+            if not is_external_boundary(s) and not _is_test_path(s.path)
+        ]
 
     # Extract entrypoint symbol_ids to force-include them, ranked by
     # (-confidence, symbol_id) for a stable, budget-independent order.
