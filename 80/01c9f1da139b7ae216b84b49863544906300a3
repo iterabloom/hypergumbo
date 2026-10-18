@@ -1,0 +1,20 @@
+Original commit body from a7a9aaeaae82e2c174f172297a879df041e46631:
+
+Core-linker half of WI-pivap (mechanism B). _create_inheritance_edges
+retried a qualified base's last segment with no qualifier check, so C#
+System.Exception, C++ std::exception, Go io.Writer and Java
+java.util.ArrayList<String> bound any in-repo class of that name.
+
+- _qualifier_fit: the last segment binds only candidates whose
+  qualified_name fits the written base (either ends with the other on a
+  segment boundary: producers disagree on what qualified_name holds;
+  C#/Java/Kotlin/Go/C++ include the namespace, Python the in-module
+  qualname). Candidates with no qualified_name keep the name binding.
+  When every candidate records one and none fits, the base is external
+  (_qualified_external_edge, the written qualifier as its module).
+- cpp: class and struct symbols record their namespace-qualified name.
+
+Not handled: a BARE base imported through a namespace import (C# using,
+PHP use, Groovy / Scala imports) -- needs import context the linker lacks.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
