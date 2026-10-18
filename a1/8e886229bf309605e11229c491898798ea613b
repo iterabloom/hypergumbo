@@ -1,0 +1,21 @@
+Original commit body from df7b78a41986bb2fc6fd540c036ca96435ca0801:
+
+compact's connectivity path left its bridge picks unfiltered, which was
+meant for non-key KINDS (a file node joining two islands) but also let
+test-file symbols in: a test that exercises two entrypoints joins them
+in the call graph, not in the code. At K=400 test-path nodes were
+express 248/400, SwiftyJSON 203/305, spring-petclinic 145/336,
+apollo-server 77/400, caddy 10/400, zoxide 5/231.
+
+The connectivity population now gets the test half of the WI-zulij
+policy: production_edges on the unfiltered list, then test-path symbols
+dropped alongside external-boundary placeholders.
+
+A/B/C on seven 2026-07-17 maps x K in {10,100,400}: 0 test-path nodes
+everywhere; each map's node shrink equals its test-path count (no
+production node lost); isolated nodes and components within +-1;
+containment held in every cell. Refusing test nodes only as picks (B)
+picked the same nodes to within 4%. The shipped code reproduces the
+measured variant in 21/21 cells. Tables: lab notebook 2026-10-18.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
