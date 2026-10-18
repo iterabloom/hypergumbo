@@ -1,0 +1,25 @@
+Original commit body from 81f55317e191b642cee45954fd2aeacdb5255717:
+
+A cached survey is reused only by runs with the same analysis
+configuration: backends (WI-givib) and --trace-deps (WI-bapal) were in
+the key, -e/--exclude was not. ``hypergumbo survey repo -e lib`` wrote
+over the plain survey of ``repo``, and ``hypergumbo search lo repo``, a
+read command the user never asked to exclude anything, then answered
+"No symbols found matching lo" from it.
+
+``discovery.exclude_cache_token`` digests the stripped, de-duplicated,
+sorted patterns into ``ex-<12 hex>``; ``_get_results_cache_dir`` takes
+``extra_excludes`` and suffixes the state segment with it, as the
+trace-deps, channel and config tokens are. ``run_survey`` writes under
+that key; the ``sketch`` command and ``_discover_or_survey`` read and
+auto-run under it, so ``sketch -e lib`` is consistent with itself. Read
+commands take no ``--exclude`` and keep the plain key: an excluding
+survey is never what they find, the same rule as a one-off backend
+flag.
+
+Red: the item's three-command repro, run in-process, lost ``lo``.
+Green: the plain survey still holds ``hi`` and ``lo``; the excluding
+survey lives under its own key with ``hi`` only. A sketch test's stub
+of the cache-dir function gains the keyword the real one now takes.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
