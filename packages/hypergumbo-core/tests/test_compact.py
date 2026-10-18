@@ -4833,6 +4833,45 @@ class TestConnectivityDefaultPopulation:
             "so)"
         )
 
+    def test_a_test_file_symbol_is_not_a_bridge(self):
+        """WI-zitag: a test that exercises two entrypoints joins them in the
+        call graph but not in the production code. Before the fix it won the
+        first pick as a perfect bridge (express: 248 of 400 emitted nodes were
+        test-path at K=400)."""
+        a = make_symbol("ep_a", path="src/a.py")
+        b = make_symbol("ep_b", path="src/b.py")
+        t = make_symbol("exercise_both", path="tests/test_ab.py")
+        symbols = [a, b, t]
+        edges = [make_edge(t.id, a.id), make_edge(t.id, b.id)]
+        eps = [
+            {"symbol_id": a.id, "confidence": 0.9},
+            {"symbol_id": b.id, "confidence": 0.8},
+        ]
+        result = self._run(symbols, edges, eps, k=3)
+        names = [n["name"] for n in result["nodes"]]
+        assert names == ["ep_a", "ep_b"], f"a test-path node was picked: {names}"
+
+    def test_calls_from_tests_do_not_rank_bridge_picks(self):
+        """The production-edge half of the policy (the WI-zulij edge filter).
+        Two neighbours tie on component growth and edges added; the tiebreak is
+        centrality, which must not credit a symbol for being called by its own
+        test suite."""
+        seed = make_symbol("entry", path="src/entry.py")
+        used = make_symbol("used_in_prod", path="src/used.py")
+        tested = make_symbol("well_tested", path="src/tested.py")
+        other = make_symbol("other_caller", path="src/other.py")
+        tests = [make_symbol(f"test_{i}", path=f"tests/test_t{i}.py") for i in range(4)]
+        symbols = [seed, used, tested, other, *tests]
+        edges = [
+            make_edge(seed.id, used.id),
+            make_edge(seed.id, tested.id),
+            make_edge(other.id, used.id),
+            *[make_edge(t.id, tested.id) for t in tests],
+        ]
+        result = self._run(symbols, edges, [{"symbol_id": seed.id, "confidence": 0.9}], k=2)
+        names = [n["name"] for n in result["nodes"]]
+        assert names == ["entry", "used_in_prod"], names
+
     def test_bootstrap_without_seeds_starts_from_a_key_symbol(self):
         """No entrypoints and no cross-cutting edges: the stream bootstraps from
         the highest-centrality node — which must be a key symbol, or the
