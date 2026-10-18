@@ -18,6 +18,10 @@ This analyzer uses tree-sitter to parse C# files and extract:
   (INV-fabih: two nested ``class Inner``, or two in sibling namespace blocks,
   shared one bare-name table key, so deleting the first moved the second's
   ids). A file-scoped namespace is single per file and not in the chain.
+- A class, struct or interface records its base list in
+  ``meta["base_classes"]``; the inheritance linker turns it into ``extends``
+  / ``implements`` edges (WI-ruzid: interfaces recorded none, so
+  ``interface IChild : IBase`` produced no edge at all).
   The emitted ``qualified_name`` carries every enclosing namespace, the
   file-scoped one included (``A.B.C.Go``, ``N.M.K``; it kept the innermost
   block namespace only).
@@ -938,6 +942,10 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 iface_modifiers = _extract_modifiers(node)
+                # WI-ruzid: ``interface IChild : IBase`` records its bases as
+                # a class does; the inheritance linker turns an interface
+                # source's bases into ``extends`` edges (WI-kalug).
+                iface_bases = _extract_base_list(node, source)
                 ns_name = _get_csharp_enclosing_namespace(node, source)
                 cls_ancestors = _get_csharp_class_ancestors(node, source)
                 symbol = Symbol(
@@ -961,6 +969,7 @@ def _extract_symbols_from_file(
                         scope=_csharp_scope(node, source),
                     ),
                     modifiers=iface_modifiers,
+                    meta={"base_classes": iface_bases} if iface_bases else None,
                     line_span=end_line - start_line + 1,
                     is_exported="public" in iface_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),

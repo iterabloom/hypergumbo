@@ -140,6 +140,11 @@ How It Works
      beside explicit ``var _ I = &S{}`` assertions. Matched per file in
      ``_extract_symbols_from_file``, then across files per package
      directory in ``_analyze_go_impl``.
+   - An interface that embeds others (``type GChild interface { GBase; N() }``)
+     lists them in ``meta["base_classes"]`` too, unqualified, as a struct
+     lists its embedded structs (WI-gutas); the inheritance linker emits
+     ``GChild -extends-> GBase``. A type-set constraint (``~int | string``)
+     is not an embedding.
 10. I/O target kind:
    - An unresolved I/O call is stamped ``meta["io_target_kind"]``
      (``std_stream``, ``host_path``, ``pipe``, ``net_stream``,
@@ -1051,6 +1056,30 @@ def _extract_interface_methods(
     return methods
 
 
+def _extract_interface_embeddings(
+    interface_type_node: "tree_sitter.Node",
+    source: bytes,
+) -> list[str]:
+    """Embedded interfaces of an interface type, unqualified.
+
+    ``type GChild interface { GBase; io.Reader; N() }`` embeds ``GBase`` and
+    ``Reader``: each is a ``type_elem`` with ONE named term. A ``type_elem``
+    with several terms or an approximation (``~int | string``) is a type-set
+    constraint on a type parameter, not an embedding, and is skipped.
+    """
+    embedded: list[str] = []
+    for elem in interface_type_node.children:
+        if elem.type != "type_elem":
+            continue
+        terms = [c for c in elem.children if c.type != "|"]
+        if len(terms) != 1 or terms[0].type not in ("type_identifier", "qualified_type"):
+            continue
+        name = _extract_embedding_type_name(terms[0], source)
+        if name:
+            embedded.append(name)
+    return embedded
+
+
 def _extract_struct_embeddings(
     struct_type_node: "tree_sitter.Node",
     source: bytes,
@@ -1862,8 +1891,13 @@ def _extract_symbols_from_file(
                         else:
                             kind = "type"
 
-                        # Detect struct embedding (base_classes)
-                        embedded_types: list[str] = []
+                        # Detect struct embedding (base_classes); an interface's
+                        # embedded interfaces are its bases the same way
+                        # (WI-gutas), so ``GChild -extends-> GBase`` exists.
+                        embedded_types: list[str] = (
+                            _extract_interface_embeddings(type_node, source)
+                            if kind == "interface" else []
+                        )
                         if kind == "struct":
                             embedded_types = _extract_struct_embeddings(
                                 type_node, source,

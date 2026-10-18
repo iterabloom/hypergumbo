@@ -2826,3 +2826,23 @@ public class Bravo {
         # import_hint -> structured ExternalRef with the using-alias path.
         assert deferred.dst_ref is not None
         assert deferred.dst_ref.module_path == "Beta.ComputeMagnet"
+
+
+class TestCSharpInterfaceInheritance:
+    """WI-ruzid: ``interface IChild : IBase`` records its bases like a class
+    does, so the inheritance linker can emit ``IChild -extends-> IBase``."""
+
+    def test_interface_records_its_base_interfaces(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "c.cs").write_text(
+            "interface IBase { void M(); }\n"
+            "interface IChild : IBase, IDisposable { void N(); }\n"
+            "interface ILeaf { }\n"
+        )
+
+        result = analyze_csharp(tmp_path)
+
+        by_name = {s.name: s for s in result.symbols if s.kind == "interface"}
+        assert by_name["IChild"].meta == {"base_classes": ["IBase", "IDisposable"]}
+        assert by_name["ILeaf"].meta is None

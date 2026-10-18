@@ -8361,3 +8361,31 @@ def test_interface_method_declarations_carry_stable_id(tmp_path: Path) -> None:
     # Distinct methods -> distinct stable_ids.
     ids = {s.stable_id for s in iface_methods}
     assert len(ids) == 2
+
+
+class TestGoInterfaceEmbedding:
+    """WI-gutas: an interface that embeds another (``type GChild interface {
+    GBase; N() }``) records the embedded interfaces as ``base_classes``, as a
+    struct records its embedded structs, so the inheritance linker can emit
+    ``GChild -extends-> GBase``. A type-set constraint is not an embedding."""
+
+    def test_embedded_interfaces_are_base_classes(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "e.go").write_text(
+            "package p\n\n"
+            "import (\n\t\"fmt\"\n\t\"io\"\n)\n\n"
+            "type GBase interface { M() }\n"
+            "type GChild interface {\n\tGBase\n\tN()\n}\n"
+            "type RS interface {\n\tio.Reader\n\tfmt.Stringer\n}\n"
+            "type Num interface {\n\t~int | ~float64\n}\n"
+            "type Plain interface { Q() }\n"
+        )
+
+        result = analyze_go(tmp_path)
+
+        by_name = {s.name: s for s in result.symbols if s.kind == "interface"}
+        assert by_name["GChild"].meta.get("base_classes") == ["GBase"]
+        assert by_name["RS"].meta.get("base_classes") == ["Reader", "Stringer"]
+        assert not (by_name["Num"].meta or {}).get("base_classes")
+        assert not (by_name["Plain"].meta or {}).get("base_classes")
