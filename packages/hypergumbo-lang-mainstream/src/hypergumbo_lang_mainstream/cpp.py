@@ -6,7 +6,14 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Struct declarations
 - Base classes: a class or struct with a base list records it in
   ``meta["base_classes"]`` (``_extract_base_classes_cpp``) for the
-  inheritance linker
+  inheritance linker, and ``meta["virtual_members"]`` /
+  ``["override_members"]`` / ``["static_members"]`` (``_cpp_member_dispatch_meta``,
+  WI-digaj): the member-function names declared ``virtual`` (or
+  ``override`` / ``final``), ``override`` / ``final``, and ``static`` in the
+  class body. These keywords exist only on the in-class declaration, never
+  on an out-of-line definition, so the class carries them for
+  ``type_hierarchy``; a member DEFINED inline also carries its own as
+  ``modifiers``
 - Enum declarations
 - Function definitions (standalone and class methods)
 - Pure-virtual methods, which carry ``modifiers=[visibility, "virtual",
@@ -752,6 +759,112 @@ def _cpp_is_static(decl_node: "tree_sitter.Node", source: bytes) -> bool:
     )
 
 
+# Declarator wrappers a member function's ``function_declarator`` can sit
+# inside: ``Shape* Create()`` and ``const Shape& self()`` wrap it once.
+_CPP_DECLARATOR_WRAPPERS = frozenset({"pointer_declarator", "reference_declarator"})
+
+
+def _cpp_member_function_declarator(
+    member: "tree_sitter.Node",
+) -> Optional["tree_sitter.Node"]:
+    """The ``function_declarator`` of a member declaration or definition, or
+    None for a data member."""
+    for child in member.children:
+        node: Optional["tree_sitter.Node"] = child
+        while node is not None and node.type in _CPP_DECLARATOR_WRAPPERS:
+            node = next(
+                (c for c in node.children
+                 if c.type == "function_declarator" or c.type in _CPP_DECLARATOR_WRAPPERS),
+                None,
+            )
+        if node is not None and node.type == "function_declarator":
+            return node
+    return None
+
+
+def _cpp_member_keywords(
+    member: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, set[str]]]:
+    """``(name, keywords)`` for a member function, keywords drawn from
+    ``virtual`` / ``override`` / ``final`` / ``static``; None for a data member.
+
+    WI-digaj: these keywords exist only on the in-class declaration. An
+    out-of-line definition (``int Square::area() { ... }``) repeats none of
+    them, so they are read here, from the class body.
+    """
+    declarator = _cpp_member_function_declarator(member)
+    if declarator is None or not declarator.named_children:
+        return None
+    name = _node_text(declarator.named_children[0], source).strip()
+    keywords: set[str] = set()
+    if any(c.type == "virtual" for c in member.children):
+        keywords.add("virtual")
+    for spec in declarator.children:
+        if spec.type == "virtual_specifier":
+            keywords.add(_node_text(spec, source).strip())
+    if _cpp_is_static(member, source):
+        keywords.add("static")
+    return name, keywords
+
+
+def _cpp_member_dispatch_meta(
+    type_node: "tree_sitter.Node", source: bytes,
+) -> dict[str, list[str]]:
+    """Per-class member-dispatch facts for ``type_hierarchy`` (WI-digaj).
+
+    ``virtual_members``: names that are virtual IN this class (declared
+    ``virtual``, ``override`` or ``final``). ``override_members``: names
+    declared ``override`` / ``final``, which proves the base's member is
+    virtual too. ``static_members``: names declared ``static``. Recorded on the
+    class because the header that holds the class is the one place the
+    keywords are written. Empty lists are omitted.
+    """
+    body = _find_child_by_type(type_node, "field_declaration_list")
+    virtual: set[str] = set()
+    overrides: set[str] = set()
+    static: set[str] = set()
+    for member in body.children if body is not None else ():
+        if member.type not in ("field_declaration", "function_definition"):
+            continue
+        found = _cpp_member_keywords(member, source)
+        if found is None:
+            continue
+        name, keywords = found
+        if keywords & {"virtual", "override", "final"}:
+            virtual.add(name)
+        if keywords & {"override", "final"}:
+            overrides.add(name)
+        if "static" in keywords:
+            static.add(name)
+    facts = {
+        "virtual_members": sorted(virtual),
+        "override_members": sorted(overrides),
+        "static_members": sorted(static),
+    }
+    return {key: names for key, names in facts.items() if names}
+
+
+def _cpp_type_meta(
+    base_classes: list[str], type_node: "tree_sitter.Node", source: bytes,
+) -> Optional[dict[str, Any]]:
+    """A class / struct symbol's meta: its bases and its member-dispatch facts."""
+    meta: dict[str, Any] = {}
+    if base_classes:
+        meta["base_classes"] = base_classes
+    meta.update(_cpp_member_dispatch_meta(type_node, source))
+    return meta or None
+
+
+def _cpp_inline_member_modifiers(
+    definition: "tree_sitter.Node", source: bytes,
+) -> list[str]:
+    """Keywords on a member function DEFINED inside its class body (WI-digaj)."""
+    if definition.parent is None or definition.parent.type != "field_declaration_list":
+        return []
+    found = _cpp_member_keywords(definition, source)
+    return sorted(found[1]) if found is not None else []
+
+
 def _emit_cpp_field_symbols(
     analysis: "FileAnalysis",
     type_node: "tree_sitter.Node",
@@ -879,7 +992,7 @@ def _extract_symbols_from_tree(
 
                 # Extract base classes for inheritance linker
                 base_classes = _extract_base_classes_cpp(node, source)
-                meta = {"base_classes": base_classes} if base_classes else None
+                meta = _cpp_type_meta(base_classes, node, source)
 
                 # A cpp class declaring a pure virtual IS abstract. Recorded in
                 # modifiers, where the shared type-family predicate reads it —
@@ -938,7 +1051,7 @@ def _extract_symbols_from_tree(
 
                 # Extract base classes for inheritance linker
                 base_classes = _extract_base_classes_cpp(node, source)
-                meta = {"base_classes": base_classes} if base_classes else None
+                meta = _cpp_type_meta(base_classes, node, source)
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "struct"),
@@ -1108,6 +1221,9 @@ def _extract_symbols_from_tree(
                     origin_run_id=run.execution_id,
                     signature=signature,
                     meta=fn_meta,
+                    # WI-digaj: an inline in-class definition carries its own
+                    # virtual / override / final / static keywords.
+                    modifiers=_cpp_inline_member_modifiers(node, source),
                     # INV-loguk: analytical fields for C++ functions/methods.
                     line_span=end_line - start_line + 1,
                     cyclomatic_complexity=compute_cyclomatic_complexity(

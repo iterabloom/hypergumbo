@@ -1099,6 +1099,20 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "List of base-class names on class / interface "
                 "Symbols. Used by framework_patterns to identify "
                 "Django Model, SQLAlchemy Base, etc."),
+    MetaKeySpec("virtual_members", AXIS_SYMBOL_META,
+                "cpp class / struct Symbols: sorted names of member functions "
+                "virtual IN this class (declared ``virtual``, ``override`` or "
+                "``final``), read from the in-class declarations because an "
+                "out-of-line definition repeats no keyword. type_hierarchy "
+                "reads it per method (WI-digaj)."),
+    MetaKeySpec("override_members", AXIS_SYMBOL_META,
+                "cpp class / struct Symbols: sorted names of member functions "
+                "declared ``override`` / ``final`` in this class, which proves "
+                "the base member is virtual (WI-digaj)."),
+    MetaKeySpec("static_members", AXIS_SYMBOL_META,
+                "cpp class / struct Symbols: sorted names of member functions "
+                "declared ``static`` in this class; a static member never "
+                "dispatches (WI-digaj)."),
     MetaKeySpec("parent_base_classes", AXIS_SYMBOL_META,
                 "Transitive ancestor base classes on class Symbols. "
                 "Populated by the type_hierarchy linker."),

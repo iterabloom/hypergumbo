@@ -38,20 +38,18 @@ Limitations
 -----------
 - Only works where some pass emits inheritance edges: `inheritance-linker`
   (e.g. Go struct embedding) or the analyzers listed in `depends_on`
-- Dispatch through concrete `extends` is disabled for Go, C++ and Rust
+- Dispatch through concrete `extends` is disabled for Go and Rust
   (`NO_VIRTUAL_EXTENDS_LANGUAGES`) unless the child or the parent is abstract
-  (interface, trait, protocol, abstract class); `implements` is unaffected.
-  The parent-abstract arm admits every same-named method pair across the hop,
-  so a non-virtual C++ method hiding one of its abstract base's methods gets
-  an edge too; and a C++ concrete intermediate class (abstract `Shape` <-
-  concrete `Square` <- `Fancy`) is still a denied hop, so `Shape::area` does
-  not reach `Fancy::area`
-- C# is decided per METHOD instead (WI-digaj): through a class parent a pair
-  dispatches only when the child method carries `override`, so `new` and
-  plain name-hiding methods get no edge and a concrete base's
-  virtual/override pair does. A `static` method never dispatches in C#, Java,
-  C++, Swift or Dart (`STATIC_BOUND_LANGUAGES`); the guard reads recorded
-  modifiers, and the C++ analyzer records none on member functions yet
+  (interface, trait, protocol); `implements` is unaffected
+- C# and C++ are decided per METHOD instead (WI-digaj). C#: through a class
+  parent a pair dispatches only when the child method carries `override`.
+  C++: when the member is virtual in the parent or an ancestor (the class
+  symbol's `virtual_members`, or a pure virtual's own `virtual` modifier), or
+  the child declares it `override` / `final`. So `new` and plain name-hiding
+  methods get no edge, and a concrete base's virtual/override pair does. A
+  `static` method never dispatches in C#, Java, C++, Swift or Dart
+  (`STATIC_BOUND_LANGUAGES`, plus the C++ class's `static_members`). Not
+  checked: overloads of one name with different signatures, which still pair
 """
 
 from __future__ import annotations
@@ -59,7 +57,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from typing import TYPE_CHECKING
 
 from ..edge_types import (
@@ -105,9 +103,10 @@ PASS_ID = make_pass_id("type-hierarchy-linker")
 #              dispatch flows through `implements` edges, which are
 #              unaffected by this gate.
 #
-# C# left this set in WI-digaj: its analyzer records `override` / `new` /
-# `static` on every method, so the hop is admitted and the per-METHOD rule
-# (:func:`_method_pair_dispatches`) decides instead.
+# C# and C++ left this set in WI-digaj: their analyzers record which members
+# are virtual / overriding / static (C# per method, C++ per class), so the hop
+# is admitted and the per-METHOD rule (:func:`_method_pair_dispatches`)
+# decides instead.
 #
 # Languages WITH virtual dispatch through `extends` (default behavior):
 # Java, Kotlin, Python, Ruby, Scala, Swift, and any analyzer not in the
@@ -117,8 +116,18 @@ PASS_ID = make_pass_id("type-hierarchy-linker")
 # `implements` edges are unaffected — interface satisfaction is virtual
 # dispatch in every language that has the concept.
 NO_VIRTUAL_EXTENDS_LANGUAGES: frozenset[str] = frozenset({
-    "go", "cpp", "rust",
+    "go", "rust",
 })
+
+# WI-digaj: languages whose class symbols record, by member name, which
+# members are ``virtual_members`` / ``override_members`` / ``static_members``
+# (meta keys). C++ is the case that needs it: those keywords exist only on the
+# in-class declaration, and an out-of-line definition (``int Square::area()``,
+# usually in a ``.cc`` apart from the header) repeats none of them. A pair
+# dispatches when the member is virtual in the parent or any of its
+# ancestors, or the child declares it ``override`` / ``final``; never when it
+# is static on either side.
+DECLARED_VIRTUAL_LANGUAGES: frozenset[str] = frozenset({"cpp"})
 
 # WI-digaj: languages whose analyzer records ``override`` on every overriding
 # method. Through a CLASS parent (not an interface / trait / protocol, whose
@@ -140,14 +149,28 @@ STATIC_BOUND_LANGUAGES: frozenset[str] = frozenset({
 })
 
 
+def _meta_names(symbol: Symbol | None, key: str) -> list[str]:
+    """A per-class member-name list from ``symbol.meta`` (``[]`` when absent)."""
+    if symbol is None or not symbol.meta:
+        return []
+    names = symbol.meta.get(key)
+    return names if isinstance(names, list) else []
+
+
 def _method_pair_dispatches(
-    parent_method: Symbol, parent_class: Symbol, override: Symbol,
+    parent_method: Symbol,
+    parent_class: Symbol,
+    override: Symbol,
+    override_class: Symbol | None = None,
+    virtual_in_ancestry: Callable[[str, str], bool] | None = None,
 ) -> bool:
     """Per-METHOD dispatch rule, applied after the per-hop gate (WI-digaj).
 
     The hop gate (:func:`_extends_admits_dispatch`) decides whether a type's
     methods can be reached through its parent at all; this decides it for one
     same-named pair, from the modifiers the producers record.
+    ``virtual_in_ancestry(class_id, name)`` answers whether ``name`` is virtual
+    in that class or any ancestor (C++'s implicit virtual).
     """
     language = override.language or parent_method.language
     if language in STATIC_BOUND_LANGUAGES and (
@@ -155,6 +178,20 @@ def _method_pair_dispatches(
         or "static" in (override.modifiers or ())
     ):
         return False
+    if language in DECLARED_VIRTUAL_LANGUAGES:
+        name = _get_method_short_name(parent_method.name)
+        if name in _meta_names(parent_class, "static_members") or name in _meta_names(
+            override_class, "static_members",
+        ):
+            return False
+        return (
+            # A pure virtual's own symbol carries the keyword (it is emitted
+            # from the declaration); every other member is read off its class.
+            "virtual" in (parent_method.modifiers or ())
+            or (virtual_in_ancestry is not None
+                and virtual_in_ancestry(parent_class.id, name))
+            or name in _meta_names(override_class, "override_members")
+        )
     if language in OVERRIDE_KEYWORD_LANGUAGES and not is_abstract_type(
         parent_class.kind, (),
     ):
@@ -194,12 +231,10 @@ def _extends_admits_dispatch(
       abstract type cannot be instantiated; its methods are reached through
       a concrete descendant, which is exactly the dispatch this edge records.
 
-    The parent arm is an approximation, not per-method truth: a non-virtual
-    C++ method of a concrete child that shares a name with a method of its
-    abstract parent also gets an edge. C# no longer reaches this gate
-    (WI-digaj): it records ``override`` per method, and
-    :func:`_method_pair_dispatches` decides each pair. C++ records ``virtual``
-    only on pure virtuals, and out-of-line definitions carry no keywords at all.
+    The parent arm is an approximation, not per-method truth. C# and C++ no
+    longer reach this gate (WI-digaj): their producers record which members
+    are virtual, overriding or static, and :func:`_method_pair_dispatches`
+    decides each pair.
 
     ``parent_kind`` is None when the parent has no in-tree symbol (an
     unresolved external base), and then only the child is tested.
@@ -717,6 +752,26 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
         for class_id, sym in candidates
     }
 
+    # WI-digaj: C++'s implicit virtual. A member is virtual in a class when
+    # that class or any ancestor declares it so; walk the one-hop parents.
+    child_to_parents: dict[str, list[str]] = defaultdict(list)
+    for parent, children in one_hop_parents_to_children.items():
+        for child in children:
+            child_to_parents[child].append(parent)
+
+    def virtual_in_ancestry(class_id: str, name: str) -> bool:
+        seen: set[str] = set()
+        stack = [class_id]
+        while stack:
+            current = stack.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            if name in _meta_names(class_symbols.get(current), "virtual_members"):
+                return True
+            stack.extend(child_to_parents.get(current, ()))
+        return False
+
     # Create dispatches_to edges
     new_edges: list[Edge] = []
     seen_pairs: set[tuple[str, str]] = set()
@@ -764,7 +819,11 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                 if pair in seen_pairs:  # pragma: no cover - defensive for edge cases
                     continue
                 seen_pairs.add(pair)
-                if not _method_pair_dispatches(parent_method, parent_class, override):
+                if not _method_pair_dispatches(
+                    parent_method, parent_class, override,
+                    class_symbols.get(class_of_method[override.id]),
+                    virtual_in_ancestry,
+                ):
                     continue
 
                 # Test-file override RANKING penalty (WI-supok) — also ADR-0039
