@@ -1439,9 +1439,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Eviction never touches the entry this run just wrote — it is both the
     # newest for its repo and inside the grace period, which are two
     # independent reasons to skip it.
-    _cache_base = _get_cache_base()
-    _maybe_evict_cache(_cache_base)
-    _maybe_honk_cache(_cache_base)
+    _housekeep_cache(_get_cache_base())
 
     return 0
 
@@ -4349,6 +4347,15 @@ def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> None:
     can never be read as a cache hit and is reclaimed next run. At no point can
     a half-deleted directory sit at its state-hash name and serve a truncated
     survey as a cache hit.
+
+    TWO RUNS AT ONCE (INV-durin). Nothing serialises evictors: two runs that
+    finish together over the cap collect the same candidates, and the loser
+    meets a path the winner already archived and removed. So each run writes
+    its own ``.partial`` (the pid is in the name; one run must never publish
+    another's half-written file), and a ``FileNotFoundError`` at the zip, at
+    the partial's publication or at the entry's rename means the other run
+    got there first: this one stops on that entry, with nothing to undo, and
+    its stale partial is swept by :func:`_prune_soft_deleted`.
     """
     stem = f"{repo}__{entry_path.name}"
     files = [f for f in sorted(entry_path.rglob("*")) if f.is_file()]
@@ -4367,20 +4374,29 @@ def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> None:
         dest_dir = cache_dir / folder
         cache_mkdir(dest_dir, parents=True, exist_ok=True)
         final = dest_dir / f"{stem}.zip"
-        partial = dest_dir / f"{stem}.zip{_ARCHIVE_PARTIAL_SUFFIX}"
+        partial = dest_dir / f"{stem}.zip.{os.getpid()}{_ARCHIVE_PARTIAL_SUFFIX}"
         # Through the zone wrapper, never a bare ZipFile here: the discipline
         # gate matches fs-write primitives by NAME, and it is right to — a
         # syntactic check cannot tell a path-backed ZipFile from an in-memory
         # one, and the wrapper is what makes the zone-barrier sanitizer apply.
-        cache_write_zip(partial, entry_path, members, zone_root=cache_dir)
+        try:
+            cache_write_zip(partial, entry_path, members, zone_root=cache_dir)
+        except FileNotFoundError:
+            return  # a concurrent evictor removed the entry mid-zip
         staged.append((partial, final))
     for partial, final in staged:
-        cache_rename(partial, final, zone_root=cache_dir)
+        try:
+            cache_rename(partial, final, zone_root=cache_dir)
+        except FileNotFoundError:
+            continue  # our partial was swept as stale by a concurrent run
 
     scratch = entry_path.parent / (_EVICTION_SCRATCH_PREFIX + entry_path.name)
     if scratch.exists():  # pragma: no cover - prior residue at the same name
         cache_rmtree(scratch, zone_root=cache_dir)  # pragma: no cover
-    cache_rename(entry_path, scratch, zone_root=cache_dir)
+    try:
+        cache_rename(entry_path, scratch, zone_root=cache_dir)
+    except FileNotFoundError:
+        return  # a concurrent evictor already moved it away
     cache_rmtree(scratch, zone_root=cache_dir)
 
 
@@ -4427,6 +4443,21 @@ def _prune_soft_deleted(cache_dir: Path, *, dry_run: bool = False) -> int:
             total -= size
             freed += size
     return freed
+
+
+def _housekeep_cache(cache_base: Path) -> None:
+    """End-of-run cache bounding (WI-sidin) and size notice.
+
+    Housekeeping never fails a finished run (INV-durin): by the time this is
+    called every artifact is written, so an exception here -- a race with a
+    concurrent evictor, a permissions change under ``~/.cache`` -- is reported
+    on stderr and the command still exits 0.
+    """
+    try:
+        _maybe_evict_cache(cache_base)
+        _maybe_honk_cache(cache_base)
+    except Exception as exc:  # best-effort by contract (INV-durin)
+        print(f"Warning: cache housekeeping skipped: {exc}", file=sys.stderr)
 
 
 def _maybe_evict_cache(
