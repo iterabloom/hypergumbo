@@ -38,14 +38,20 @@ Limitations
 -----------
 - Only works where some pass emits inheritance edges: `inheritance-linker`
   (e.g. Go struct embedding) or the analyzers listed in `depends_on`
-- Dispatch through concrete `extends` is disabled for Go, C++, Rust and C#
+- Dispatch through concrete `extends` is disabled for Go, C++ and Rust
   (`NO_VIRTUAL_EXTENDS_LANGUAGES`) unless the child or the parent is abstract
   (interface, trait, protocol, abstract class); `implements` is unaffected.
   The parent-abstract arm admits every same-named method pair across the hop,
   so a non-virtual C++ method hiding one of its abstract base's methods gets
-  an edge too; and a concrete intermediate class (abstract `Shape` <- concrete
-  `Square` <- `Fancy`) is still a denied hop, so `Shape::area` does not reach
-  `Fancy::area`
+  an edge too; and a C++ concrete intermediate class (abstract `Shape` <-
+  concrete `Square` <- `Fancy`) is still a denied hop, so `Shape::area` does
+  not reach `Fancy::area`
+- C# is decided per METHOD instead (WI-digaj): through a class parent a pair
+  dispatches only when the child method carries `override`, so `new` and
+  plain name-hiding methods get no edge and a concrete base's
+  virtual/override pair does. A `static` method never dispatches in C#, Java,
+  C++, Swift or Dart (`STATIC_BOUND_LANGUAGES`); the guard reads recorded
+  modifiers, and the C++ analyzer records none on member functions yet
 """
 
 from __future__ import annotations
@@ -98,9 +104,10 @@ PASS_ID = make_pass_id("type-hierarchy-linker")
 #   - rust   — no inheritance; struct/trait are separate concepts.  Trait
 #              dispatch flows through `implements` edges, which are
 #              unaffected by this gate.
-#   - csharp — methods are non-virtual unless marked `virtual`/`override`.
-#              Pessimistic until per-method tracking lands, except across a
-#              hop into an abstract base (WI-nizug).
+#
+# C# left this set in WI-digaj: its analyzer records `override` / `new` /
+# `static` on every method, so the hop is admitted and the per-METHOD rule
+# (:func:`_method_pair_dispatches`) decides instead.
 #
 # Languages WITH virtual dispatch through `extends` (default behavior):
 # Java, Kotlin, Python, Ruby, Scala, Swift, and any analyzer not in the
@@ -110,8 +117,49 @@ PASS_ID = make_pass_id("type-hierarchy-linker")
 # `implements` edges are unaffected — interface satisfaction is virtual
 # dispatch in every language that has the concept.
 NO_VIRTUAL_EXTENDS_LANGUAGES: frozenset[str] = frozenset({
-    "go", "cpp", "rust", "csharp",
+    "go", "cpp", "rust",
 })
+
+# WI-digaj: languages whose analyzer records ``override`` on every overriding
+# method. Through a CLASS parent (not an interface / trait / protocol, whose
+# members are implemented without the keyword) a pair dispatches only when the
+# child method carries it: a ``new`` method or a plain same-named one hides the
+# parent's and is statically bound, and an abstract or virtual parent member
+# is implemented WITH it (C# requires the keyword for both).
+OVERRIDE_KEYWORD_LANGUAGES: frozenset[str] = frozenset({"csharp"})
+
+# WI-digaj: languages where a ``static`` member is bound at compile time, so a
+# same-named static in a subclass hides rather than overrides. Not universal:
+# PHP's ``static::`` late static binding, JavaScript statics reached through
+# ``this`` and Python classmethods all dispatch to the subclass, so the guard
+# is per language. It reads the method's recorded modifiers, so it is exact
+# where the producer records ``static`` (C#, Java) and inert where it does not
+# (C++ member functions record none yet).
+STATIC_BOUND_LANGUAGES: frozenset[str] = frozenset({
+    "csharp", "java", "cpp", "swift", "dart",
+})
+
+
+def _method_pair_dispatches(
+    parent_method: Symbol, parent_class: Symbol, override: Symbol,
+) -> bool:
+    """Per-METHOD dispatch rule, applied after the per-hop gate (WI-digaj).
+
+    The hop gate (:func:`_extends_admits_dispatch`) decides whether a type's
+    methods can be reached through its parent at all; this decides it for one
+    same-named pair, from the modifiers the producers record.
+    """
+    language = override.language or parent_method.language
+    if language in STATIC_BOUND_LANGUAGES and (
+        "static" in (parent_method.modifiers or ())
+        or "static" in (override.modifiers or ())
+    ):
+        return False
+    if language in OVERRIDE_KEYWORD_LANGUAGES and not is_abstract_type(
+        parent_class.kind, (),
+    ):
+        return "override" in (override.modifiers or ())
+    return True
 
 
 def _extends_admits_dispatch(
@@ -147,10 +195,11 @@ def _extends_admits_dispatch(
       a concrete descendant, which is exactly the dispatch this edge records.
 
     The parent arm is an approximation, not per-method truth: a non-virtual
-    C++ method (or a C# ``new`` method) of a concrete child that shares a
-    name with a method of its abstract parent also gets an edge. Per-method
-    ``virtual`` / ``override`` tracking would be exact; C# already records
-    those modifiers, C++ records ``virtual`` only on pure virtuals.
+    C++ method of a concrete child that shares a name with a method of its
+    abstract parent also gets an edge. C# no longer reaches this gate
+    (WI-digaj): it records ``override`` per method, and
+    :func:`_method_pair_dispatches` decides each pair. C++ records ``virtual``
+    only on pure virtuals, and out-of-line definitions carry no keywords at all.
 
     ``parent_kind`` is None when the parent has no in-tree symbol (an
     unresolved external base), and then only the child is tested.
@@ -715,6 +764,8 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                 if pair in seen_pairs:  # pragma: no cover - defensive for edge cases
                     continue
                 seen_pairs.add(pair)
+                if not _method_pair_dispatches(parent_method, parent_class, override):
+                    continue
 
                 # Test-file override RANKING penalty (WI-supok) — also ADR-0039
                 # ruling 3: test overrides (e.g. TestImpl.method → base.method)
