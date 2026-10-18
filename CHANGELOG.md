@@ -20,6 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **`--exclude` is part of the results-cache key**: `survey repo -e lib` no longer replaces the plain survey that `search`, `explain` and the other read commands answer from (WI-tisuj).
 - **C# interface inheritance and Go interface embedding now produce `extends` edges**: `interface IChild : IBase` and `type GChild interface { GBase; ... }` record their bases like classes and structs do (WI-ruzid, WI-gutas).
 - **Swift: a subscript (`xs[0]`, `r.headers["age"]`) is no longer emitted as a call** to a field, a parameter or a same-named free function (WI-dimad).
 - **Wolfram: a definition's head is not a call, a call is anchored on the definition that contains it, and Wolfram `.m` files are analyzed** (INV-kafir).

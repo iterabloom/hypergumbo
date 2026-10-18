@@ -6341,7 +6341,9 @@ def _file_index_from_map(
     return FileIndex.from_paths(repo_root, paths)
 
 
-def _peek_cached_results(repo_root: Path) -> Optional[dict[str, Any]]:
+def _peek_cached_results(
+    repo_root: Path, extra_excludes: Optional[List[str]] = None,
+) -> Optional[dict[str, Any]]:
     """Read an existing on-disk behavior map for ``repo_root`` WITHOUT running
     analysis.
 
@@ -6354,7 +6356,7 @@ def _peek_cached_results(repo_root: Path) -> Optional[dict[str, Any]]:
     from .sketch_embeddings import _get_results_cache_dir
 
     try:
-        cache_dir = _get_results_cache_dir(repo_root)
+        cache_dir = _get_results_cache_dir(repo_root, extra_excludes=extra_excludes)
         # ADR-0042: resolve the canonical survey.json (or any legacy alias) in
         # the cache dir instead of hardcoding the pre-rename basename.
         cached_path = find_survey_in_dir(cache_dir)
@@ -6368,8 +6370,13 @@ def _peek_cached_results(repo_root: Path) -> Optional[dict[str, Any]]:
 
 def _discover_or_survey(
     repo_root: Path, progress: bool, log: Callable[[str], None],
+    extra_excludes: Optional[List[str]] = None,
 ) -> Optional[dict[str, Any]]:
     """The cached survey for ``repo_root``, running the survey first on a miss.
+
+    Both look under the key the run's ``extra_excludes`` select (WI-tisuj), so
+    ``sketch -e lib`` reads or writes the survey that skipped ``lib/``, never
+    the plain one.
 
     A ``CatalogueError`` from the survey propagates: the analysis met a
     catalogue file that does not parse (a user's frameworks.d, say), and
@@ -6377,19 +6384,19 @@ def _discover_or_survey(
     CLI reports the file with exit 2 instead. Any other failure returns None,
     and ``_generate_sketch_impl`` falls back to direct analysis.
     """
-    cached = _peek_cached_results(repo_root)
+    cached = _peek_cached_results(repo_root, extra_excludes)
     if cached is not None:
         log("Auto-discovered cached results")
         return cached
     log("No cached results found, running analysis...")
     from .cli import run_behavior_map
     try:
-        run_behavior_map(repo_root, progress=progress)
+        run_behavior_map(repo_root, progress=progress, extra_excludes=extra_excludes)
     except CatalogueError:
         raise
     except Exception:  # pragma: no cover - a failed auto-run falls back to direct analysis
         return None
-    return _peek_cached_results(repo_root)
+    return _peek_cached_results(repo_root, extra_excludes)
 
 
 @run_status.reports_run
@@ -6435,7 +6442,7 @@ def generate_sketch(
 
     repo_root = Path(repo_root).resolve()
     if cached_results is None:
-        cached_results = _discover_or_survey(repo_root, progress, _log)
+        cached_results = _discover_or_survey(repo_root, progress, _log, extra_excludes)
     map_index = _file_index_from_map(repo_root, cached_results)
     kwargs = {
         "max_tokens": max_tokens, "exclude_tests": exclude_tests,

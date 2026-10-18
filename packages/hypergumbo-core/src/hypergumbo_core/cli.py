@@ -689,7 +689,10 @@ def _discover_input_file(repo_root: Path) -> Optional[Path]:
     Returns:
         Path to a survey artifact if found, None otherwise.
     """
-    # First, check cache directory (where 'hypergumbo survey' saves by default)
+    # First, check cache directory (where 'hypergumbo survey' saves by
+    # default). Read commands take no ``--exclude``, so this is the plain
+    # key: a survey run with ``-e`` lives under its own key and is never
+    # what a read command finds (WI-tisuj).
     try:
         from .sketch_embeddings import _get_results_cache_dir
 
@@ -1145,10 +1148,11 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         else:
             print("README Extraction Debug: No README found", file=sys.stderr)
 
-    # Get cache directory for artifact discovery
+    # Get cache directory for artifact discovery (under the key this run's
+    # excludes select, WI-tisuj)
     from .sketch_embeddings import _get_results_cache_dir
     try:
-        cache_dir = _get_results_cache_dir(repo_root)
+        cache_dir = _get_results_cache_dir(repo_root, extra_excludes=extra_excludes)
     except Exception:  # pragma: no cover - cache discovery errors
         cache_dir = None
 
@@ -12604,7 +12608,7 @@ def run_survey(
     # Default to cache directory if no explicit output path provided
     if out_path is None:
         from .sketch_embeddings import _get_results_cache_dir
-        cache_dir = _get_results_cache_dir(repo_root)
+        cache_dir = _get_results_cache_dir(repo_root, extra_excludes=extra_excludes)
         out_path = cache_dir / CANONICAL_SURVEY_FILENAME
 
     generated_files: list[Path] = []
