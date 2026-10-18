@@ -5354,7 +5354,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         # override an EXPLICIT `--kind file` / `--kind variable`. Suppress the
         # pre-filter only when the user did not ask for this exact kind; the
         # `--kind` mismatch filter below still hides everything else.
-        if is_excluded_kind(kind, node.get("meta")) and not (
+        if is_excluded_kind(kind, node.get("meta"), language=lang or None) and not (
             args.kind and kind == args.kind
         ):
             continue

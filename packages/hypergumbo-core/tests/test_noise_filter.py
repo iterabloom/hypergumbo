@@ -23,8 +23,61 @@ def _sym(kind, language="python", meta=None):
 
 
 def test_noise_kinds_are_filtered():
-    for kind in ("section", "pattern", "requirement", "label"):
+    for kind in ("pattern", "requirement", "label", "code_block"):
         assert is_noise_symbol(_sym(kind)) is True
+
+
+def test_a_section_is_noise_only_for_its_documentation_producers():
+    """INV-siza: ``section`` is a homonym. A markdown heading or an INI header
+    is document structure; a COBOL section is a callable that PERFORM targets.
+    Filtering by kind alone dropped every COBOL section with its call edges."""
+    for language in ("markdown", "rst", "latex", "ini", "kdl", "blade"):
+        assert is_noise_symbol(_sym("section", language=language)) is True, language
+    assert is_noise_symbol(_sym("section", language="cobol")) is False
+
+
+def test_a_paragraph_is_not_noise():
+    """INV-siza: only COBOL emits ``paragraph``, and a COBOL paragraph is a
+    callable (PERFORM / GO TO target)."""
+    assert is_noise_symbol(_sym("paragraph", language="cobol")) is False
+
+
+def test_every_section_producer_is_classified():
+    """A module that emits ``kind="section"`` must say whether its section is
+    document structure, so a new producer cannot inherit the drop silently
+    (the shape WI-tisom closed for ``property``)."""
+    import re
+    from pathlib import Path
+
+    from hypergumbo_core.noise_filter import _NOISE_SECTION_LANGUAGES
+
+    root = Path(__file__).resolve().parents[2]
+    # ``kind="section"`` / ``kind = "section" if ...`` (kdl), and blade's
+    # ``_CLOSES.get(closer, "section")``. HTML tag-name lists (svelte, vue,
+    # astro) and lean's grammar node type mention the word but emit no kind.
+    emits = re.compile(r"""kind\s*=\s*["']section["']|\.get\([^)]*["']section["']\)""")
+    found = {p.stem for p in root.glob("hypergumbo-lang-*/src/*/*.py")
+             if emits.search(p.read_text(encoding="utf-8"))}
+    assert "cobol" in found, "reach: the scan must see a known producer"
+    classified = {"cobol": False, "markdown": True, "rst": True, "latex": True,
+                  "ini": True, "kdl": True, "blade": True}
+    assert found == set(classified), (
+        f"unclassified: {sorted(found - set(classified))}; stale: {sorted(set(classified) - found)}")
+    for module, noise in classified.items():
+        assert (module in _NOISE_SECTION_LANGUAGES) is noise, module
+
+
+def test_paragraph_has_one_producer_and_it_is_a_callable():
+    """If a documentation language starts emitting ``paragraph``, this fails and
+    asks for the same language scoping ``section`` has."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    emits = re.compile(r"""kind\s*=\s*["']paragraph["']""")
+    found = {p.stem for p in root.glob("hypergumbo-lang-*/src/*/*.py")
+             if emits.search(p.read_text(encoding="utf-8"))}
+    assert found == {"cobol"}, sorted(found)
 
 
 def test_a_property_is_noise_only_for_its_declaration_only_producers():

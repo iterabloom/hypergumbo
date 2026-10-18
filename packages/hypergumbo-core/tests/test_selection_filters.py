@@ -240,6 +240,13 @@ class TestIsExcludedKind:
         assert is_excluded_kind("dependency") is True
         assert is_excluded_kind("file") is True
 
+    def test_a_section_is_excluded_only_for_documentation_languages(self):
+        """INV-siza: a COBOL section is a callable, not a heading. Without a
+        language the old kind-only answer stands."""
+        assert is_excluded_kind("section", language="markdown") is True
+        assert is_excluded_kind("section", language="cobol") is False
+        assert is_excluded_kind("section") is True
+
     def test_legacy_kind_not_in_set_is_not_excluded(self):
         """A kind not in the set is not excluded regardless of meta."""
         assert is_excluded_kind("function") is False
