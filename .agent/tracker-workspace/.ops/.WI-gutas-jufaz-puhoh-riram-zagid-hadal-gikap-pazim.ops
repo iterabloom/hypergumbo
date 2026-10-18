@@ -25,3 +25,18 @@
   clock: 2  # a543
   nonce: a543  # a543
   message: "From WI-nizug-lavig-duhob-finog-mudus-rizut-zidub-jurit (local branch `jgstern-agent/fix/nizug`, commit 8e1e058645, not merged): the `type_hierarchy._extends_admits_dispatch` docstring that claimed Go interface embedding and C# interface inheritance already produce `extends` edges between interface symbols is rewritten there. It now says no deny-list analyzer emits such a hop on the measured fixtures (C# `interface IB : IA`, Go `type RW interface { Reader; ... }`, Rust `trait Solid: Shape` all emit no edge, dev 4dfb1d645a) and names this item. Bearing on this item: once the producer emits the edge, the gate needs no change. With WI-kalug's core linker the edge is labelled `extends` (interface source), and the gate admits it because the child is abstract. Without WI-kalug the edge is `implements`, which the gate never touches. I ran WI-nizug's fixture with WI-kalug's core diff applied: the dispatches_to set was identical, and the only edge that changed was Java `IChild -> IBase` going from implements to extends."  # a543
+- op: update  # d364
+  at: '2026-10-18T03:15:37Z'  # d364
+  by: agent  # d364
+  actor: jgstern_agent  # d364
+  clock: 3  # d364
+  nonce: d364  # d364
+  set:  # d364
+    status: done  # d364
+- op: discuss  # 88c7
+  at: '2026-10-18T03:15:37Z'  # 88c7
+  by: agent  # 88c7
+  actor: jgstern_agent  # 88c7
+  clock: 4  # 88c7
+  nonce: 88c7  # 88c7
+  message: "Done in PR #1707 (dev 0d9ebbe80d). go.py: _extract_interface_embeddings lists an interface's single-term type_elem children (GBase; io.Reader as Reader) in meta[\"base_classes\"], as struct embedding does; a type-set constraint (~int | ~float64) is not an embedding. Behavioral evidence: test_go.py::TestGoInterfaceEmbedding (red: GChild.meta had no base_classes; green: ['GBase'], RS -> ['Reader', 'Stringer'], Num and Plain none); end to end, hypergumbo survey on the item's fixture emits extends GChild -> GBase (was zero extends/implements edges). Not measured, as the item noted: whether the new hop changes dispatches_to on any corpus repo."  # 88c7

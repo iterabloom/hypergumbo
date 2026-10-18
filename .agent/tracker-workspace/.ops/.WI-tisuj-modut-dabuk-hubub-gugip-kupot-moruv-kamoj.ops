@@ -19,3 +19,18 @@
     pr_ref:  # a0cc
     description: "Repro (2026-10-06, hypergumbo dev + WI-bapal branch): repo exfx with a.py (def hi) and lib/b.py (def lo). XDG_CACHE_HOME=fresh; 'hypergumbo survey exfx'; 'hypergumbo survey exfx -e lib'; then 'hypergumbo search lo exfx' prints 'No symbols found matching lo' -- the user never asked a read command to exclude lib/. Both surveys write one results dir (sketch_embeddings._get_results_cache_dir keys on repo state + resolved backends + trace_deps token + analyzer identity; extra_excludes is not in it). Violated invariant: a cached artifact is reused only by runs with the same analysis configuration (cf. WI-givib for backends, WI-bapal for --trace-deps). Fix shape: suffix the state segment with a hash of the normalised extra excludes when non-empty, as trace_deps does; decide whether read commands should then find an excluded survey (likely not, as with one-off backend flags)."  # a0cc
     fields: {}  # a0cc
+- op: update  # 526c
+  at: '2026-10-18T04:22:45Z'  # 526c
+  by: agent  # 526c
+  actor: jgstern_agent  # 526c
+  clock: 2  # 526c
+  nonce: 526c  # 526c
+  set:  # 526c
+    status: done  # 526c
+- op: discuss  # 0361
+  at: '2026-10-18T04:22:46Z'  # 0361
+  by: agent  # 0361
+  actor: jgstern_agent  # 0361
+  clock: 3  # 0361
+  nonce: '0361'  # 0361
+  message: "Done in PR #1709 (dev df2aef43b5). discovery.exclude_cache_token digests the stripped, de-duplicated, sorted -e patterns into ex-<12 hex>; _get_results_cache_dir(repo_root, extra_excludes=...) suffixes the state segment with it like the trace-deps / channel / config tokens; run_survey writes under that key, the sketch command and _discover_or_survey read and auto-run under it; read commands (no --exclude) keep the plain key, so an excluding survey is never what they find (the backend-flag rule). Behavioral evidence: test_results_cache_excludes_key.py re-runs the filed scenario in-process (survey repo; survey repo -e lib; read-path discovery) — red: the plain survey was replaced and 'lo' was gone; green: the plain survey still holds hi and lo, the excluding one lives under its own key with hi only."  # 0361
