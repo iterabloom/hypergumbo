@@ -1,0 +1,21 @@
+Original commit body from f8722779dbfd67eb74250cdbf61920788f1cb4c2:
+
+WI-misod's mechanism in two more linkers: a call-site identifier was
+stored in the slot that holds the joined value.
+
+- websocket: sites take their event from the shared _name_args
+  resolver; pair_by_name replaces the raw-string grouping, so
+  `const EVENT = 'chat'; emit(EVENT)` joins on('chat'), an unresolved
+  identifier joins only an equal identifier (0.65, variable_match), and
+  `emit(chat)` with chat a parameter no longer joins on('chat'). Edge
+  meta: event = joined value or None, event_type = join kind,
+  event_identifier = identifier of an identifier join.
+- http: bare-identifier URLs resolve through the same resolver
+  (Python, JS/TS, Java static final, Go const; Ruby has no rules).
+  A constant is matched and scored as a literal; an unresolved
+  identifier gets no url_path and is never route-matched (its TEXT was,
+  so fetch(API_URL) joined a route named API_URL).
+- Template-literal folding keeps its own module-const extractor
+  (the rule WI-sijoh measured); the decision is in its docstring.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
