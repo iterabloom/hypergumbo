@@ -433,10 +433,11 @@ CONCRETE_INHERITANCE_EDGE_TYPES: Final[frozenset[str]] = frozenset({
 """Inheritance spellings where the child is-a *concrete* parent type.
 
 Split out from :data:`INHERITANCE_EDGE_TYPES` because virtual dispatch
-through concrete inheritance is **language-dependent** — Go, C++, Rust and
-C# do not dispatch through it, so ``type_hierarchy`` gates these edges on
+through concrete inheritance is **language-dependent** — Go, C++ and Rust do
+not dispatch through it, so ``type_hierarchy`` gates these edges on
 ``_extends_admits_dispatch`` before treating a parent method as dispatchable
-to a child's same-named method.
+to a child's same-named method; C# dispatches only to an ``override``, which
+``type_hierarchy`` decides per method (WI-digaj).
 
 ``inherits`` is placed here rather than being split further by the
 destination's kind. Solidity's ``is`` spells both relations — measured on
