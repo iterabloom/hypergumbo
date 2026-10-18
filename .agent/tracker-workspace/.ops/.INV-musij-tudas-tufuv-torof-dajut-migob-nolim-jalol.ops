@@ -21,3 +21,18 @@
     fields:  # 301a
       statement: "A call edge's src is the callable whose body contains the call, found by position in the call's own file (the INV-midag rule the base analyzer follows)."  # 301a
       root_cause: "zig.py ~L466 resolves the enclosing function with resolver.lookup(qualified_name) over the repo-wide resolver. A second mismatch compounds it: ~L255 names any function in a container Container.fn, but the lookup key adds the container prefix only when the function takes self."  # 301a
+- op: update  # defa
+  at: '2026-10-18T00:10:17Z'  # defa
+  by: agent  # defa
+  actor: jgstern_agent  # defa
+  clock: 2  # defa
+  nonce: defa  # defa
+  set:  # defa
+    status: satisfied  # defa
+- op: discuss  # e6ab
+  at: '2026-10-18T00:10:17Z'  # e6ab
+  by: agent  # e6ab
+  actor: jgstern_agent  # e6ab
+  clock: 3  # e6ab
+  nonce: e6ab  # e6ab
+  message: "Satisfied in PR #1702 (dev ac651f01d5). zig.py finds a call's enclosing function with symbol_declared_by over symbols_at(this file's symbols) instead of resolver.lookup(qualified_name). Behavioral evidence: test_zig.py::TestZigEnclosingByPosition — a.zig and b.zig each define run() calling a different helper; every calls edge's src is now in the same file as its dst (before the fix: a.zig's run -> b.zig's helper, observed on the filed shape); two structs' same-named go() methods in one file keep their own calls."  # e6ab

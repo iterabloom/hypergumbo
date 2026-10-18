@@ -28,3 +28,18 @@
   clock: 2  # e6df
   nonce: e6df  # e6df
   message: "Re-checked on dev 38f6c90533 against the filed repro (A.tla: x == 1, Init == x; B.tla: y == 2, Init == y, Bar == Init). Half fixed by 907d2f25d3 (WI-tusad B4): the enclosing operator is now taken by position (symbol_declared_by), so A.tla:Init -> A.tla:x and B.tla:Init -> B.tla:y; the title's defect (one spec's Init body credited to the other) no longer reproduces. Residual: B.tla:Bar -> A.tla:Init. The referenced target is still resolved repo-wide by bare name at tlaplus.py:405 (resolver.lookup(ref_name) with no path_hint; _local_operator covers LET-locals only), so a same-named operator in another spec can win over the one in the same file. Fix shape: pass path_hint=rel_path as zig.py:598 does, so a same-file definition is preferred, and add the two-file same-name fixture the item asked for. Stays violated for the target side."  # e6df
+- op: update  # 009e
+  at: '2026-10-18T00:10:18Z'  # 009e
+  by: agent  # 009e
+  actor: jgstern_agent  # 009e
+  clock: 3  # 009e
+  nonce: 009e  # 009e
+  set:  # 009e
+    status: satisfied  # 009e
+- op: discuss  # a016
+  at: '2026-10-18T00:10:18Z'  # a016
+  by: agent  # a016
+  actor: jgstern_agent  # a016
+  clock: 4  # a016
+  nonce: a016  # a016
+  message: "Satisfied in PR #1702 (dev ac651f01d5). The enclosing side was fixed by 907d2f25d3 (position); the target side now binds, in order, a LET-local in scope, THIS spec's definition by bare name (module_ops), then the resolver. The filed repro is the new test test_tlaplus.py::TestTlaplusSameNamedOperators: A.tla:Init -> A.tla:x, B.tla:Init -> B.tla:y, B.tla:Bar -> B.tla:Init (was -> A.tla:Init on dev 38f6c90533, re-observed 2026-10-17 before the fix)."  # a016
