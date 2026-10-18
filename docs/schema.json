@@ -994,6 +994,9 @@
             "override": {
               "description": "True if the method overrides a superclass / interface method. Set by analyzers that parse ``override`` / ``@Override`` keywords."
             },
+            "override_members": {
+              "description": "cpp class / struct Symbols: sorted names of member functions declared ``override`` / ``final`` in this class, which proves the base member is virtual (WI-digaj)."
+            },
             "package_ecosystem": {
               "description": "Package-manager ecosystem on package-shaped Symbols (e.g. 'npm', 'composer'). Fold residue for the ``npm_package`` / ``composer_package`` \u2192 ``package`` migration per audit-findings 0005."
             },
@@ -1030,6 +1033,9 @@
             "static": {
               "description": "True on static method / field Symbols. Affects method-call resolution (no implicit ``self`` receiver)."
             },
+            "static_members": {
+              "description": "cpp class / struct Symbols: sorted names of member functions declared ``static`` in this class; a static member never dispatches (WI-digaj)."
+            },
             "tags": {
               "description": "Free-form tag list for analyzer-specific annotations not (yet) elevated to a named meta key. Use sparingly \u2014 sustained use of a tag is an ADR-0024 promotion signal."
             },
@@ -1041,6 +1047,9 @@
             },
             "virtual": {
               "description": "True on virtual / abstract method Symbols. Distinct from ``override`` (a virtual method may or may not also override)."
+            },
+            "virtual_members": {
+              "description": "cpp class / struct Symbols: sorted names of member functions virtual IN this class (declared ``virtual``, ``override`` or ``final``), read from the in-class declarations because an out-of-line definition repeats no keyword. type_hierarchy reads it per method (WI-digaj)."
             },
             "visibility_signal": {
               "description": "Which signal determined the canonical ``Symbol.visibility`` level (INV-jusot) \u2014 one of 'language_modifier' (an explicit ``modifiers`` term or the legacy Apex/Clojure ``meta['visibility']``), 'name_convention' (Python leading-underscore), or 'default' (public). Provenance for the computed visibility field; set by the finalize visibility pass. Replaces the retired ``meta['visibility']`` key, whose language-syntactic value is now folded into the typed ``Symbol.visibility`` field (the meta key collided with the field under the cross-axis hygiene test)."
