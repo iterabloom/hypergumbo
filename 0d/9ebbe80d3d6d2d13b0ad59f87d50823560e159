@@ -1,0 +1,25 @@
+Original commit body from 77651e8ee3bc1ab81a6ac048634cdf67cc4b9509:
+
+``interface IChild : IBase`` (C#) and ``type GChild interface { GBase;
+N() }`` (Go) produced no edge: neither analyzer put the bases in
+``meta["base_classes"]``, so the inheritance linker, which already turns
+an interface source's bases into ``extends`` edges (WI-kalug), had
+nothing to read.
+
+- csharp.py: the interface branch calls ``_extract_base_list`` as the
+  class and struct branches do.
+- go.py: ``_extract_interface_embeddings`` lists an interface's
+  single-term ``type_elem`` children (``GBase``, ``io.Reader`` as
+  ``Reader``), unqualified like struct embedding; a type-set constraint
+  (``~int | string``) is not an embedding.
+
+End to end (``hypergumbo survey`` on the items' fixtures): ``extends
+IChild -> IBase`` plus ``implements Impl -> IChild`` and the
+``dispatches_to IBase.M -> Impl.M`` that now hangs off it; ``extends
+GChild -> GBase``. Red: both interfaces had ``meta`` None.
+
+The type-hierarchy linker's docstring said these two hops emit no edge
+at all; corrected. The signature-axis registry cites two C# sites by
+line; they moved with the insertion and the citations follow.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
