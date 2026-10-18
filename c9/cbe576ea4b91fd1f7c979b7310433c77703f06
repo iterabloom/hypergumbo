@@ -1,0 +1,25 @@
+Original commit body from f1beb986925dfb00c4c12a736bac01d1d9a56098:
+
+Three defects the module docstring had been stating as known gaps:
+
+- ``f[x_] := ...``: the left-hand side is a ``call`` node in the grammar,
+  so every definition emitted a ``calls`` edge from the file to the
+  function it defines. A call on the left-hand side of the nearest
+  enclosing ``:=`` / ``=`` (the head, a pattern inside it ``f[g[x_]]``, a
+  Part target) now emits nothing.
+- Every call edge started at the file node. It now starts at the
+  ``function`` symbol of the nearest definition whose body contains it,
+  by the definition node's position (``symbols_at``); a variable
+  assignment on the way up is walked past; a top-level call keeps the
+  file. Dedup is per (source, callee) instead of per (file, callee).
+- ``.m`` files that ``classify_dot_m_file`` labels Wolfram were never
+  analyzed: ``find_wolfram_files`` existed with no caller. It is now the
+  analyzer's ``_find_source_files``; MATLAB and Objective-C ``.m`` files
+  stay with their own analyzers, which apply the same classifier.
+
+Red on dev: ``f[x_] := x + 1`` yields ``calls file -> f``; a Wolfram
+``.m`` yields no symbols. Six tests pin the new behaviour, including a
+resolved call to a project definition, which the self-call from the
+definition head had been the only thing covering.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
