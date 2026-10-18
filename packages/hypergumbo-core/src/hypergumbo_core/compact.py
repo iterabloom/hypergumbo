@@ -1630,7 +1630,7 @@ def select_by_tokens(
         # role on ``meta["framework_role"]``).
         eligible_symbols = [
             s for s in eligible_symbols
-            if not is_excluded_kind(s.kind, s.meta)
+            if not is_excluded_kind(s.kind, s.meta, language=s.language)
         ]
     if exclude_tests:
         eligible_symbols = [
@@ -1929,7 +1929,7 @@ def format_tiered_behavior_map(
     # filter ~225 lines above.
     eligible_symbols = [
         s for s in symbols
-        if not is_excluded_kind(s.kind, s.meta)
+        if not is_excluded_kind(s.kind, s.meta, language=s.language)
         and not _is_test_node(s.path, s.meta)
         and not _is_example_path(s.path)
         and not is_external_boundary(s)

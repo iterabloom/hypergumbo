@@ -1721,6 +1721,23 @@ class TestSelectByTokensFiltering:
         assert "function" in included_kinds
         assert "dependency" not in included_kinds
 
+    def test_keeps_a_cobol_section_but_drops_a_markdown_heading(self):
+        """INV-siza: a COBOL section is a PERFORM target, a markdown section is
+        a heading. Both are ``kind="section"``; only the heading is excluded."""
+        cobol = make_symbol("REPORT-SECTION", path="src/bank.cob", kind="section",
+                            language="cobol")
+        heading = make_symbol("Usage", path="README.md", kind="section",
+                              language="markdown")
+        caller = make_symbol("MAIN-PARA", path="src/bank.cob", kind="paragraph",
+                             language="cobol")
+        edges = [make_edge(caller.id, cobol.id), make_edge(caller.id, heading.id)]
+
+        result = select_by_tokens([cobol, heading, caller], edges, target_tokens=5000)
+
+        included = {s.id for s in result.included.symbols}
+        assert cobol.id in included
+        assert heading.id not in included
+
     def test_excludes_test_paths(self):
         """Symbols from test files are excluded."""
         test_sym = make_symbol("test_helper", path="tests/test_utils.py")

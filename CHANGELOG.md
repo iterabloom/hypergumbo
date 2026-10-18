@@ -20,6 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **COBOL sections and paragraphs, and the PERFORM edges between them, are in the default view**: `section` is filtered only for markdown, rst, LaTeX, INI, KDL and Blade, in the noise filter and in compact output, and `paragraph` (COBOL-only) not at all (INV-siza).
 - **Two runs finishing together no longer fail each other over cache eviction**: each run writes its own partial archive, a candidate a concurrent run already took is skipped and left out of this run's "Soft-deleted" summary (as is crash residue, which is hard-deleted), and end-of-run housekeeping can only warn, never turn a finished run into exit 1 (INV-durin).
 - **`--exclude` is part of the results-cache key**: `survey repo -e lib` no longer replaces the plain survey that `search`, `explain` and the other read commands answer from (WI-tisuj).
 - **C# interface inheritance and Go interface embedding now produce `extends` edges**: `interface IChild : IBase` and `type GChild interface { GBase; ... }` record their bases like classes and structs do (WI-ruzid, WI-gutas).
