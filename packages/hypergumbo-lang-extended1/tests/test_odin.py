@@ -344,3 +344,44 @@ f :: proc(x: int) -> int {
         for s in result.symbols:
             if s.kind != "function":
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestOdinMemberCallEmitsOneEdge:
+    """INV-ridat: ``obj.method(args)`` is one call. The grammar nests the
+    ``call_expression`` inside the ``member_expression``, and both handlers
+    used to fire, so ``fmt.println(..)`` yielded ``fmt.println`` AND a
+    spurious bare ``println``."""
+
+    def test_qualified_call_yields_a_single_edge(self, tmp_path: Path) -> None:
+        (tmp_path / "m.odin").write_text(
+            'package main\n\nimport "core:fmt"\n\n'
+            'main :: proc() {\n    fmt.println("hi")\n}\n'
+        )
+
+        result = analyze_odin(tmp_path)
+
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(calls) == 1, [e.dst for e in calls]
+        assert "fmt.println" in calls[0].dst
+
+    def test_plain_call_still_resolves(self, tmp_path: Path) -> None:
+        (tmp_path / "p.odin").write_text(
+            "package main\n\nhelper :: proc() {}\n\n"
+            "main :: proc() {\n    helper()\n}\n"
+        )
+
+        result = analyze_odin(tmp_path)
+
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(calls) == 1
+        assert calls[0].dst.endswith(":helper:function") or ":helper:" in calls[0].dst
+
+    def test_plain_call_to_an_unknown_procedure_is_an_unresolved_edge(self, tmp_path: Path) -> None:
+        (tmp_path / "u.odin").write_text(
+            "package main\n\nmain :: proc() {\n    nothere()\n}\n"
+        )
+
+        result = analyze_odin(tmp_path)
+
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert [e.dst for e in calls] == ["odin:external:0-0:nothere:unresolved"]
