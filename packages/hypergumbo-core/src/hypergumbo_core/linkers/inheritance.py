@@ -32,6 +32,15 @@ How It Works
    the tree at all: this linker has no import context, and retrying such a
    base's last segment bound Python's ``unittest.TestCase`` to Django's own
    ``TestCase`` (WI-ratid).
+   A QUALIFIED base (``System.Exception``, ``std::exception``, ``io.Writer``,
+   ``java.util.ArrayList<T>``) binds its last segment only to an in-tree
+   candidate whose ``qualified_name`` is the written base or ends with it
+   (``_qualifier_fit``, WI-pivap); candidates with no qualified name keep the
+   name binding. When every candidate records one and none fits, the base is
+   external, with the written qualifier as its module
+   (``_qualified_external_edge``). Not handled here: a BARE base imported
+   through a namespace / package import (C# ``using System;``, PHP ``use``,
+   Groovy / Scala imports), which needs import context this linker lacks.
 5. Also emits ``includes`` edges (evidence_type=ast_includes) from
    ``included_modules`` metadata for Ruby mixins (WI-hatip), resolving module
    names via a dedicated module-name map
@@ -51,7 +60,7 @@ import re
 import time
 from typing import TYPE_CHECKING
 
-from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
+from ..ir import PASS_VERSION, AnalysisRun, Edge, ExternalRef, Symbol, make_pass_id
 from ..symbol_kinds import abstract_type_kind_names, type_like_kind_names
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
@@ -383,6 +392,92 @@ def _external_base_edge(
     )
 
 
+def _qualifier_fits(candidate: Symbol, qualified_base: str) -> bool | None:
+    """Whether ``candidate`` can be the class ``qualified_base`` names.
+
+    ``None`` when the candidate records no ``qualified_name`` (unknown).
+    Separators are compared as one (``a::b::C`` and ``a.b.C``).
+
+    The two names fit when either ends with the other on a segment boundary,
+    because producers disagree on what ``qualified_name`` holds: C#, Java,
+    Kotlin, Go and C++ include the namespace / package
+    (``MyApp.Errors.Exception``), Python the in-module qualname
+    (``TestCase``, ``OrderSerializer.Meta``). A namespace-qualified candidate
+    is thereby checked against the qualifier (``System.Exception`` fits
+    neither way), and a module-relative one keeps the name binding a dotted
+    Python base always had (``pkg.testcases.TestCase`` ends with ``TestCase``).
+    """
+    if not candidate.qualified_name:
+        return None
+    qualified = candidate.qualified_name.replace("::", ".")
+    written = qualified_base.replace("::", ".")
+    return (
+        qualified == written
+        or qualified.endswith("." + written)
+        or written.endswith("." + qualified)
+    )
+
+
+def _qualifier_fit(
+    base_name: str,
+    last: str,
+    class_by_name: dict[str, list[Symbol]],
+    interface_by_name: dict[str, list[Symbol]],
+) -> tuple[list[Symbol], list[Symbol]] | None:
+    """The class / interface candidates a qualified base's last segment may bind.
+
+    WI-pivap mechanism B. ``System.Exception`` used to bind any in-tree
+    ``Exception``. Candidates whose qualified name fits the written base are
+    kept; failing those, candidates that record NO qualified name (the
+    pre-WI-pivap name binding, kept where the producer cannot be checked).
+    ``None`` -- the base is external -- when candidates exist and every one
+    records a qualified name that does not fit. With no candidates at all the
+    lists come back empty and the usual external fallback applies.
+    """
+    found: list[tuple[str, Symbol]] = [
+        ("class", c) for c in class_by_name.get(last, ())
+    ] + [("interface", c) for c in interface_by_name.get(last, ())]
+    if not found:
+        return [], []
+    verdicts = [(kind, c, _qualifier_fits(c, base_name)) for kind, c in found]
+    keep = [(k, c) for k, c, v in verdicts if v is True]
+    if not keep:
+        keep = [(k, c) for k, c, v in verdicts if v is None]
+    if not keep:
+        return None
+    return (
+        [c for k, c in keep if k == "class"],
+        [c for k, c in keep if k == "interface"],
+    )
+
+
+def _qualified_external_edge(
+    sym: Symbol, base_name: str, last: str, run: AnalysisRun,
+) -> Edge:
+    """An unresolved ``extends`` edge to a qualified base no in-tree class fits.
+
+    The qualifier is the module (``System``, ``std``, ``io``, ``java.util``):
+    unlike the bare-name ``external`` sentinel, here it is written at the site.
+    """
+    language = sym.language or ""
+    sep = "::" if "::" in base_name else "."
+    qualifier = base_name[: -(len(sep) + len(last))]
+    return Edge.create(
+        src=sym.id,
+        dst=f"{language}:{qualifier}:0-0:{last}:unresolved",
+        edge_type="extends",
+        line=sym.span.start_line if sym.span else 0,
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+        evidence_type="ast_extends",
+        is_resolved=False,
+        dst_ref=ExternalRef(lang=language, module_path=qualifier, name=last),
+        # derived-from consumed-none: the base name comes from the source
+        #   symbol's meta, and no in-tree candidate fits its qualifier
+        derived_from=[sym.id],
+    )
+
+
 def _create_inheritance_edges(
     symbols: list[Symbol],
     class_by_name: dict[str, list[Symbol]],
@@ -518,9 +613,24 @@ def _create_inheritance_edges(
             edge_type = None
             is_fallback = False
 
+            # WI-pivap: a QUALIFIED base's last segment may only bind an
+            # in-tree candidate the qualifier fits (see _qualifier_fit).
+            iface_lookup, class_lookup = interface_by_name, class_by_name
+            if len(lookup_names) > 1:
+                last = lookup_names[-1]
+                fitted = _qualifier_fit(
+                    base_name, last, class_by_name, interface_by_name,
+                )
+                if fitted is None:
+                    edges.append(_qualified_external_edge(sym, base_name, last, run))
+                    seen_base_names_by_src.setdefault(sym.id, set()).add(last)
+                    continue
+                class_lookup = {**class_by_name, last: fitted[0]}
+                iface_lookup = {**interface_by_name, last: fitted[1]}
+
             for lookup_name in lookup_names:
                 resolved = resolve_target_symbol(
-                    lookup_name, sym, interface_by_name,
+                    lookup_name, sym, iface_lookup,
                 )
                 if resolved is not None:
                     target_sym, is_fallback = resolved
@@ -531,7 +641,7 @@ def _create_inheritance_edges(
                 if rust_kind_discipline:
                     continue
                 resolved = resolve_target_symbol(
-                    lookup_name, sym, class_by_name,
+                    lookup_name, sym, class_lookup,
                 )
                 if resolved is not None:
                     target_sym, is_fallback = resolved

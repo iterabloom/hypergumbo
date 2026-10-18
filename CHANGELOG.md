@@ -21,6 +21,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Fixed
 
 - **An imported external base class is no longer bound to an in-repo class of the same name** in Java, Kotlin and JS/TS: `import junit.framework.TestCase; class T extends TestCase` and `import { Component } from 'react'` get an external edge instead of a wrong `extends` (WI-pivap, analyzer half).
+- **A qualified base (`System.Exception`, `std::exception`, `io.Writer`, `java.util.ArrayList<T>`) binds only an in-repo class its qualifier fits**, otherwise it is external; C++ classes now record their namespace-qualified name (WI-pivap, linker half).
 - **C# dispatch is decided per method**: a base member reaches a subclass's member only when that member is an `override`, so a concrete base's `virtual`/`override` pair is now linked and `new` or same-named methods are not; `static` members never dispatch in C#, Java, C++, Swift or Dart (WI-digaj, C# half).
 - **C++ dispatch follows `virtual`**: classes record which members are virtual, `override` or `static` from their in-class declarations, so a concrete base's virtual reaches its overrides (also through a non-overriding middle class) while non-virtual name hiding and statics get no edge (WI-digaj, C++ half).
 - **WebSocket events and HTTP URLs named by a constant resolve to its value**: `const EVENT = 'chat'; emit(EVENT)` reaches `on('chat')` and `fetch(API_URL)` reaches its route; an identifier whose value is unknown no longer matches a string or route of the same text (WI-luhod).

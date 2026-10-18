@@ -1005,6 +1005,10 @@ def _extract_symbols_from_tree(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "class"),
                     name=name,
                     kind="class",
+                    # WI-pivap: the namespace-qualified name lets the core
+                    # inheritance linker check a qualified base's qualifier
+                    # (``std::exception`` is not ``mylib::exception``).
+                    qualified_name="::".join([*c_family_scope_chain(node, source), name]),
                     modifiers=class_modifiers,
                     language="cpp",
                     path=str(file_path),
@@ -1057,6 +1061,7 @@ def _extract_symbols_from_tree(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "struct"),
                     name=name,
                     kind="struct",
+                    qualified_name="::".join([*c_family_scope_chain(node, source), name]),
                     language="cpp",
                     path=str(file_path),
                     span=Span(

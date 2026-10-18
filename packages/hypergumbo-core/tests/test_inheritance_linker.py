@@ -1658,3 +1658,77 @@ class TestAnalyzerClassifiedExternalBase:
         edge = self._analyzer_external("p:Mixed", "unittest", "TestCase", True)
         out = self._run([mixed, in_tree_tc, helper], [edge])
         assert [(e.src, e.dst) for e in out] == [("p:Mixed", "p:Helper")]
+
+
+class TestQualifiedBaseMustMatchItsQualifier:
+    """WI-pivap mechanism B: a QUALIFIED base (``System.Exception``,
+    ``std::exception``, ``io.Writer``, ``java.util.ArrayList<String>``) was
+    retried by its last segment with no check of the qualifier, so it bound
+    whatever in-tree class shared that segment. Now an in-tree candidate is
+    taken only if its ``qualified_name`` is the written base or ends with it;
+    when every candidate records a qualified name and none fits, the base is
+    external (an unresolved edge whose module is the qualifier). A candidate
+    with no qualified name keeps the name binding (bias: a wrong external
+    verdict would drop a real edge)."""
+
+    @staticmethod
+    def _sym(sym_id: str, name: str, lang: str, kind: str = "class",
+             qualified: str | None = None, bases: list[str] | None = None) -> Symbol:
+        return Symbol(
+            id=sym_id, name=name, kind=kind, language=lang, path=f"/r/{name}.{lang}",
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run", qualified_name=qualified,
+            meta={"base_classes": bases} if bases else None,
+        )
+
+    def _run(self, symbols: list[Symbol]) -> list[Edge]:
+        ctx = LinkerContext(repo_root=Path("/"), symbols=symbols, edges=[])
+        return link_inheritance(ctx).edges
+
+    def test_csharp_system_exception_is_not_the_in_repo_exception(self) -> None:
+        mine = self._sym("cs:Exc", "Exception", "csharp", qualified="MyApp.Errors.Exception")
+        e = self._sym("cs:E", "E", "csharp", qualified="MyApp.E", bases=["System.Exception"])
+        f = self._sym("cs:F", "F", "csharp", qualified="MyApp.F", bases=["Errors.Exception"])
+        out = {x.src: x for x in self._run([mine, e, f])}
+        assert not out["cs:E"].is_resolved
+        assert out["cs:E"].dst == "csharp:System:0-0:Exception:unresolved"
+        assert (out["cs:E"].dst_ref.module_path, out["cs:E"].dst_ref.name) == ("System", "Exception")
+        assert out["cs:F"].is_resolved and out["cs:F"].dst == "cs:Exc", "a fitting qualifier binds"
+
+    def test_go_and_java_qualified_bases(self) -> None:
+        writer = self._sym("go:W", "Writer", "go", kind="interface", qualified="m.Writer")
+        x = self._sym("go:X", "X", "go", kind="struct", qualified="m.X", bases=["io.Writer"])
+        alist = self._sym("j:AL", "ArrayList", "java", qualified="org.acme.ArrayList")
+        y = self._sym("j:Y", "Y", "java", qualified="org.acme.Y",
+                      bases=["java.util.ArrayList<String>"])
+        out = {e.src: e for e in self._run([writer, x, alist, y])}
+        assert out["go:X"].dst == "go:io:0-0:Writer:unresolved"
+        assert out["j:Y"].dst == "java:java.util:0-0:ArrayList:unresolved"
+
+    def test_a_candidate_without_a_qualified_name_still_binds(self) -> None:
+        bare = self._sym("cs:Exc", "Exception", "csharp", qualified=None)
+        e = self._sym("cs:E", "E", "csharp", qualified="MyApp.E", bases=["System.Exception"])
+        out = self._run([bare, e])
+        assert [(x.src, x.dst, x.is_resolved) for x in out] == [("cs:E", "cs:Exc", True)]
+
+
+def test_cpp_std_exception_is_not_the_in_repo_namesake(tmp_path: Path) -> None:
+    """End to end: the cpp analyzer records a class's namespace-qualified name
+    (WI-pivap), so ``std::exception`` is no longer bound to ``mylib::exception``
+    while ``mylib::exception`` still is."""
+    import json
+
+    from hypergumbo_core.cli import run_behavior_map
+
+    (tmp_path / "e.cpp").write_text(
+        "namespace mylib { class exception {}; }\n"
+        "class E : public std::exception {};\n"
+        "class F : public mylib::exception {};\n"
+    )
+    out = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+    data = json.loads(out.read_text())
+    names = {n["id"]: n["name"] for n in data["nodes"]}
+    ext = {names.get(e["src"]): e["dst"] for e in data["edges"] if e["type"] == "extends"}
+    assert ext["E"].startswith("cpp:std:0-0:exception:"), ext["E"]
+    assert names.get(ext["F"]) == "exception", ext["F"]
