@@ -247,3 +247,79 @@ class TestWolframCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestWolframDefinitionsAreNotCalls:
+    """INV-kafir: the left-hand side of ``f[x_] := ...`` is a ``call`` node in
+    the grammar, but a definition is not a call; and a call is anchored on
+    the definition whose body contains it, else on the file."""
+
+    def test_definition_heads_emit_no_call_edge(self, tmp_path: Path) -> None:
+        make_wolfram_file(tmp_path, "Defs.wl", "f[x_] := x + 1\nh[z_] := z\nq[x_] = x\n")
+
+        result = analyze_wolfram(tmp_path)
+
+        assert {s.name for s in result.symbols if s.kind == "function"} == {"f", "h", "q"}
+        assert [e for e in result.edges if e.edge_type == "calls"] == []
+
+    def test_pattern_calls_inside_a_definition_head_are_not_calls(self, tmp_path: Path) -> None:
+        make_wolfram_file(tmp_path, "Pat.wl", "f[g[x_]] := Sin[x]\n")
+
+        result = analyze_wolfram(tmp_path)
+
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert [e.dst.split(":")[3] for e in calls] == ["Sin"]
+
+    def test_call_in_a_body_is_anchored_on_the_definition(self, tmp_path: Path) -> None:
+        make_wolfram_file(tmp_path, "Body.wl", "g[x_] := Sin[x]\n")
+
+        result = analyze_wolfram(tmp_path)
+
+        by_id = {s.id: s for s in result.symbols}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(calls) == 1
+        assert (by_id[calls[0].src].kind, by_id[calls[0].src].name) == ("function", "g")
+        assert calls[0].dst == "wolfram:builtin:0-0:Sin:function"
+
+    def test_top_level_call_is_anchored_on_the_file(self, tmp_path: Path) -> None:
+        make_wolfram_file(tmp_path, "Top.wl", "data = Map[f, myList]\n")
+
+        result = analyze_wolfram(tmp_path)
+
+        by_id = {s.id: s for s in result.symbols}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(calls) == 1
+        assert by_id[calls[0].src].kind == "file"
+
+    def test_same_callee_from_two_definitions_is_two_edges(self, tmp_path: Path) -> None:
+        make_wolfram_file(tmp_path, "Two.wl", "a[x_] := Sin[x]\nb[x_] := Sin[x]\n")
+
+        result = analyze_wolfram(tmp_path)
+
+        by_id = {s.id: s for s in result.symbols}
+        srcs = sorted(by_id[e.src].name for e in result.edges if e.edge_type == "calls")
+        assert srcs == ["a", "b"]
+
+
+class TestWolframDotMFilesAreAnalyzed:
+    """INV-kafir: a ``.m`` file ``classify_dot_m_file`` labels Wolfram is
+    analyzed; a MATLAB or Objective-C ``.m`` is left to its own analyzer."""
+
+    def test_wolfram_classified_dot_m_file_yields_symbols(self, tmp_path: Path) -> None:
+        make_wolfram_file(tmp_path, "math.m", "square[x_] := x^2\n")
+        make_wolfram_file(tmp_path, "func.m", "function y = func(x)\n    y = x * 2;\nend\n")
+
+        result = analyze_wolfram(tmp_path)
+
+        functions = {(s.path, s.name) for s in result.symbols if s.kind == "function"}
+        assert functions == {("math.m", "square")}
+        assert not any(s.path == "func.m" for s in result.symbols)
+
+    def test_call_to_a_project_definition_resolves_to_it(self, tmp_path: Path) -> None:
+        make_wolfram_file(tmp_path, "Res.wl", "helper[x_] := x\nmain[x_] := helper[x]\n")
+
+        result = analyze_wolfram(tmp_path)
+
+        by_id = {s.id: s for s in result.symbols}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert [(by_id[e.src].name, by_id[e.dst].name) for e in calls] == [("main", "helper")]
