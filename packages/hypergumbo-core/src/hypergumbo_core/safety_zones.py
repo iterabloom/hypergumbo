@@ -72,6 +72,7 @@ What this pattern does NOT do:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 # The repo_inspection zone below is built on this; see its section header.
 import subprocess  # nosec B404
@@ -197,7 +198,9 @@ def cache_write_bytes(path: Path, data: bytes) -> None:
     path.write_bytes(data)
 
 
-def cache_rmtree(path: Path, zone_root: Path | None = None) -> None:
+def cache_rmtree(
+    path: Path, zone_root: Path | None = None, *, missing_ok: bool = False
+) -> None:
     """Recursively delete a cache directory under ``~/.cache/hypergumbo/``.
 
     SAFETY ZONE: ``user_cache``. Used by ``cmd_cache_clear`` to evict
@@ -216,10 +219,24 @@ def cache_rmtree(path: Path, zone_root: Path | None = None) -> None:
     operating in rather than a second, independently-derived one. Omitting
     it falls back to the XDG-derived default — a caller that forgets is
     still guarded, just against the default zone.
+
+    ``missing_ok`` is for trees another process may be removing at the same
+    time (INV-durin: two runs evicting together). A ``FileNotFoundError`` then
+    means the other process removed that part first; the walk is retried until
+    nothing is left, which terminates because nothing adds to a tree that is
+    being reclaimed. Any other error still propagates.
     """
     _safety_zone_barrier()
     _require_within_zone(path, zone_root or _cache_zone_root(), "user_cache")
-    shutil.rmtree(path)
+    while True:
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
+            if not missing_ok:
+                raise
+            if not os.path.lexists(path):
+                return
 
 
 def cache_write_zip(

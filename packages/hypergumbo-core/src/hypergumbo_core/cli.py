@@ -4322,8 +4322,11 @@ def _collect_evictable_entries(
     return entries, residue
 
 
-def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> None:
+def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> bool:
     """Soft-delete one cache entry: zip it into the two folders, then remove it.
+
+    Returns True when this process moved the entry out of the live cache, False
+    when a concurrent run got there first.
 
     WHY SOFT DELETE RATHER THAN ``rm``. The cache lives under the user's
     ``$HOME``, and an automatic irreversible delete there is a different kind
@@ -4355,7 +4358,8 @@ def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> None:
     another's half-written file), and a ``FileNotFoundError`` at the zip, at
     the partial's publication or at the entry's rename means the other run
     got there first: this one stops on that entry, with nothing to undo, and
-    its stale partial is swept by :func:`_prune_soft_deleted`.
+    its stale partial is swept by :func:`_prune_soft_deleted`. It returns False
+    so the caller does not report the other run's eviction as its own.
     """
     stem = f"{repo}__{entry_path.name}"
     files = [f for f in sorted(entry_path.rglob("*")) if f.is_file()]
@@ -4382,7 +4386,7 @@ def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> None:
         try:
             cache_write_zip(partial, entry_path, members, zone_root=cache_dir)
         except FileNotFoundError:
-            return  # a concurrent evictor removed the entry mid-zip
+            return False  # a concurrent evictor removed the entry mid-zip
         staged.append((partial, final))
     for partial, final in staged:
         try:
@@ -4392,12 +4396,14 @@ def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> None:
 
     scratch = entry_path.parent / (_EVICTION_SCRATCH_PREFIX + entry_path.name)
     if scratch.exists():  # pragma: no cover - prior residue at the same name
-        cache_rmtree(scratch, zone_root=cache_dir)  # pragma: no cover
+        cache_rmtree(scratch, zone_root=cache_dir, missing_ok=True)  # pragma: no cover
     try:
         cache_rename(entry_path, scratch, zone_root=cache_dir)
     except FileNotFoundError:
-        return  # a concurrent evictor already moved it away
-    cache_rmtree(scratch, zone_root=cache_dir)
+        return False  # a concurrent evictor already moved it away
+    # A peer may sweep our scratch dir as residue while we remove it.
+    cache_rmtree(scratch, zone_root=cache_dir, missing_ok=True)
+    return True
 
 
 def _prune_soft_deleted(cache_dir: Path, *, dry_run: bool = False) -> int:
@@ -4525,20 +4531,27 @@ def _maybe_evict_cache(
 
     reclaimed = 0
     evicted = 0
+    # ``gone`` drives the cap check; ``reclaimed`` / ``evicted`` are what THIS
+    # run soft-deleted, which is all the summary may claim (INV-durin).
+    gone = 0
     # Residue is already-orphaned data that only still occupies disk, so no
-    # policy question arises and nothing is worth archiving.
+    # policy question arises and nothing is worth archiving. It counts toward
+    # the cap but not toward the summary: it is hard-deleted, not recoverable,
+    # and it may be a peer's in-flight scratch that the peer reports.
     for path in residue:
         size = _get_dir_size(path)
         if not dry_run:
-            cache_rmtree(path, zone_root=cache_dir)
-        reclaimed += size
-        evicted += 1
+            cache_rmtree(path, zone_root=cache_dir, missing_ok=True)
+        gone += size
 
     for entry in candidates:
-        if total - reclaimed <= cap:
+        if total - gone <= cap:
             break
-        if not dry_run:
-            _archive_entry(Path(entry["path"]), str(entry["repo"]), cache_dir)
+        gone += int(entry["size"])
+        if not dry_run and not _archive_entry(
+            Path(entry["path"]), str(entry["repo"]), cache_dir
+        ):
+            continue
         reclaimed += int(entry["size"])
         evicted += 1
 

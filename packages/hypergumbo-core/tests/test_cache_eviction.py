@@ -314,12 +314,12 @@ def test_the_archive_is_complete_before_the_original_is_touched(
     observed: list[bool] = []
     real_rmtree = cli.cache_rmtree
 
-    def _watch(path, zone_root=None):
+    def _watch(path, zone_root=None, **kw):
         # At the moment the original is being destroyed, the archive must
         # already be complete and at its final name.
         surveys = cache_dir / cli._SOFT_DELETE_SURVEYS_DIR
         observed.append(any(surveys.glob("*.zip")))
-        return real_rmtree(path, zone_root=zone_root)
+        return real_rmtree(path, zone_root=zone_root, **kw)
 
     monkeypatch.setattr(cli, "cache_rmtree", _watch)
     cli._maybe_evict_cache(cache_dir)
@@ -770,6 +770,78 @@ def test_partial_archives_are_per_process(monkeypatch, cache_dir):
         assert f".{os.getpid()}." in partial.name, partial.name
         assert partial.name.endswith(cli._ARCHIVE_PARTIAL_SUFFIX), partial.name
     assert not list(cache_dir.rglob("*" + cli._ARCHIVE_PARTIAL_SUFFIX))
+
+
+def _the_other_run_archives(monkeypatch, victim):
+    """Make a concurrent evictor take ``victim`` just before this run zips it."""
+    import shutil
+
+    real_zip = cli.cache_write_zip
+
+    def _zip(partial, entry_path, members, zone_root=None):
+        if entry_path == victim and victim.exists():
+            shutil.rmtree(victim)
+        return real_zip(partial, entry_path, members, zone_root=zone_root)
+
+    monkeypatch.setattr(cli, "cache_write_zip", _zip)
+
+
+def test_an_entry_another_run_moved_is_not_reported_as_ours(monkeypatch, capsys, cache_dir):
+    """The summary says what THIS run moved. Measured before the fix: four runs
+    racing over seven entries each printed 'Soft-deleted 133.5 MB (7 stale
+    entries)'."""
+    old = _two_entries_over_cap(monkeypatch, cache_dir)
+    _the_other_run_archives(monkeypatch, old)
+    assert cli._maybe_evict_cache(cache_dir) == 0
+    captured = capsys.readouterr()
+    assert "Soft-deleted" not in captured.out + captured.err
+
+
+def test_an_entry_another_run_moved_still_counts_toward_the_cap(monkeypatch, cache_dir):
+    """The other run's eviction did shrink the cache, so this run must not
+    evict a further entry to make up bytes it never had to reclaim."""
+    monkeypatch.setenv("HYPERGUMBO_CACHE_MAX_GB", str(7000 / (1024 ** 3)))
+    _make_entry(cache_dir, "r", "s3", size=3000, age_seconds=10_000)
+    middle = _make_entry(cache_dir, "r", "s2", size=3000, age_seconds=50_000)
+    oldest = _make_entry(cache_dir, "r", "s1", size=3000, age_seconds=99_000)
+    _the_other_run_archives(monkeypatch, oldest)
+    cli._maybe_evict_cache(cache_dir)
+    assert middle.exists(), "evicted to cover bytes the other run reclaimed"
+
+
+def test_a_scratch_dir_a_peer_removes_first_is_still_our_eviction(monkeypatch, capsys, cache_dir):
+    """Measured on the live race: a peer that sees our ``.evicting-`` dir
+    removes it as residue, and our own rmtree then met a missing path, so the
+    pass ended in a housekeeping warning and our summary was never printed."""
+    import shutil
+
+    old = _two_entries_over_cap(monkeypatch, cache_dir)
+    real_rename = cli.cache_rename
+
+    def _peer_sweeps_scratch(src, dst, zone_root=None):
+        real_rename(src, dst, zone_root=zone_root)
+        if src == old:
+            shutil.rmtree(dst)
+
+    monkeypatch.setattr(cli, "cache_rename", _peer_sweeps_scratch)
+    assert cli._maybe_evict_cache(cache_dir) == 3000
+    captured = capsys.readouterr()
+    assert "Soft-deleted" in captured.out + captured.err
+
+
+def test_residue_is_reclaimed_but_not_reported_as_soft_deleted(monkeypatch, capsys, cache_dir):
+    """Residue is hard-deleted, never zipped, and may be a peer's in-flight
+    scratch whose eviction that peer reports. Claiming it as 'Soft-deleted ...
+    Recoverable (zipped)' was false on both counts."""
+    monkeypatch.setenv("HYPERGUMBO_CACHE_MAX_GB", str(10 / (1024 ** 3)))
+    _make_entry(cache_dir, "r", "newest", size=10, age_seconds=10)
+    scratch = _make_entry(cache_dir, "r", "s1", size=5000, age_seconds=99_000)
+    leftover = scratch.parent / (cli._EVICTION_SCRATCH_PREFIX + "s1")
+    scratch.rename(leftover)
+    assert cli._maybe_evict_cache(cache_dir) == 0
+    assert not leftover.exists()
+    captured = capsys.readouterr()
+    assert "Soft-deleted" not in captured.out + captured.err
 
 
 def test_housekeeping_failure_is_a_warning_not_a_failed_run(monkeypatch, capsys, tmp_path):
