@@ -1,0 +1,16 @@
+Original commit body from 29b882111f43d8a2a1ae6538298efee9ec09b7d5:
+
+`section` and `paragraph` were in the kind-only noise set as document
+structure, so every COBOL PROCEDURE DIVISION callable, and every PERFORM
+edge between them, was dropped from the default view: a two-section,
+four-paragraph program came out as program + data with 0 edges.
+
+- noise_filter: `section` is noise only for its document producers
+  (markdown, rst, latex, ini, kdl, blade); `paragraph`, emitted by COBOL
+  alone, is not noise. A classification test makes every module that
+  emits `section` declare which side it is on.
+- selection.filters.is_excluded_kind takes `language`; compact's two
+  selection paths and the symbols table pass it, so compact output keeps
+  COBOL sections too. With no language the kind-only answer stands.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
