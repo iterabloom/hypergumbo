@@ -135,11 +135,10 @@ def _extends_admits_dispatch(
     * **child abstract** — interface-extends-interface. Callers of the parent
       interface's method dispatch to whatever concrete type satisfies the
       child. Both endpoints are abstract here, so this arm and the next agree.
-      No deny-list analyzer emits such a hop as ``extends`` on the fixtures
-      measured for WI-nizug: C# ``interface IB : IA`` and Go interface
-      embedding emit no edge at all (WI-ruzid, WI-gutas), and Rust
-      supertraits (``trait Solid: Shape``) emit none either. The arm is kept
-      for the producers those items will add.
+      C# ``interface IB : IA`` and Go interface embedding reach this arm
+      since WI-ruzid / WI-gutas: their analyzers record the bases and the
+      inheritance linker emits the ``extends`` hop. Rust supertraits
+      (``trait Solid: Shape``) still emit no edge.
     * **parent abstract** (WI-nizug) — an abstract-base hierarchy:
       ``class Square : public Shape`` (C++) or ``class Square : Shape`` (C#)
       with ``Shape`` abstract. The hop is ``extends: Square -> Shape`` and
