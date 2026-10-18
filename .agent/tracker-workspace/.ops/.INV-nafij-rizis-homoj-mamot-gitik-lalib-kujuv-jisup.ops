@@ -21,3 +21,18 @@
     fields:  # 4d7b
       statement: "A call edge's src is the callable whose body contains the call, found by position in the call's own file (the INV-midag rule)."  # 4d7b
       root_cause: "The caller is the enclosing fn_define's NAME (~L104-116), looked up repo-wide (~L280). Pass 2 re-walks the file into a throwaway FileAnalysis (~L352-355); the calls Pass 1 stores in _pending_calls (~L337, ~L360) are never read and keep growing."  # 4d7b
+- op: update  # be28
+  at: '2026-10-18T00:10:18Z'  # be28
+  by: agent  # be28
+  actor: jgstern_agent  # be28
+  clock: 2  # be28
+  nonce: be28  # be28
+  set:  # be28
+    status: satisfied  # be28
+- op: discuss  # 38a6
+  at: '2026-10-18T00:10:18Z'  # 38a6
+  by: agent  # 38a6
+  actor: jgstern_agent  # 38a6
+  clock: 3  # 38a6
+  nonce: 38a6  # 38a6
+  message: "Satisfied in PR #1702 (dev ac651f01d5). llvm_ir.py: the caller is the define at the call's recorded position (symbols_at); the callee is this file's define when it has one, the registry otherwise, and a local declare does not pre-empt another file's define. The never-read _pending_calls store is gone: Pass 1 extracts symbols only, Pass 2 collects calls (_collect_calls). Behavioral evidence: test_llvm_ir.py::TestLlvmIrEnclosingByPosition — two files each defining @foo keep their own calls (before: a.ll's foo -> b.ll's helper); @helper defined in both files binds to the same file's; a call to a function defined nowhere is dropped; the existing declare-in-main/define-in-utils case still resolves to the define."  # 38a6

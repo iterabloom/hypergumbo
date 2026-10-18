@@ -19,3 +19,18 @@
     pr_ref:  # f191
     description: "The 2026-10-05/06 docstring audit reproduced the same defect in three analyzers, each filed: INV-razus (tlaplus.py resolver.lookup(enclosing_name)), INV-musij (zig.py resolver.lookup(qualified_name) for the enclosing fn), INV-nafij (llvm_ir.py resolver.lookup(caller_name)); and the cobol analogue for PERFORM targets, INV-lutaj. A grep for the shape found one more not yet reproduced: agda.py ~L417 'enclosing_result = resolver.lookup(enclosing_name)' (same structure as tlaplus). Earlier fixes of this family went one language at a time (Pony WI-rokus, Pascal WI-darik, CUDA WI-fohuh; INV-midag for the base helper). Proposal: (1) fix all five by finding the enclosing definition by position in the current file (the base analyzer's helper); (2) add a shrink-only gate that flags resolver.lookup(...) whose argument is an enclosing/caller name in packages/hypergumbo-lang-*/src, plus a shared two-file same-name fixture every analyzer runs (two files each defining the same callable, each calling a different helper; assert each call's src is in its own file). Grep used: resolver\\.lookup\\((enclosing|caller|current_func|func_name|enclosing_name|qualified_name|caller_name) -- most hits are legitimate CALLEE lookups; only the five above resolve the CALLER."  # f191
     fields: {}  # f191
+- op: update  # f029
+  at: '2026-10-18T00:10:19Z'  # f029
+  by: agent  # f029
+  actor: jgstern_agent  # f029
+  clock: 2  # f029
+  nonce: f029  # f029
+  set:  # f029
+    status: done  # f029
+- op: discuss  # 3cce
+  at: '2026-10-18T00:10:19Z'  # 3cce
+  by: agent  # 3cce
+  actor: jgstern_agent  # 3cce
+  clock: 3  # 3cce
+  nonce: 3cce  # 3cce
+  message: "Done in PR #1702 (dev ac651f01d5) as one family: zig, llvm_ir and cobol take the CALLER by position (symbol_declared_by / symbols_at); tlaplus, agda and cobol bind a referenced TARGET in the same file (or program) before the repo-wide resolver; each of the five analyzers gained a two-file same-name fixture. INV-musij, INV-nafij, INV-razus, INV-lutaj closed with it. NOT done, deliberately: (1) the proposed regex gate on resolver.lookup(<caller-ish name>) — on dev it matches 13 sites of which 11 are legitimate CALLEE lookups (glsl, r_lang, dart, wgsl, wolfram, csharp, lua, perl, js_ts, c, elixir), so it would be a baseline of waivers rather than a gate; (2) the shared two-file fixture 'every analyzer runs' needs a per-language snippet for each of ~60 analyzers — split out as its own item (see the WI filed right after this note). The structural guard stays the position-keyed helper, now used by 32 analyzers."  # 3cce

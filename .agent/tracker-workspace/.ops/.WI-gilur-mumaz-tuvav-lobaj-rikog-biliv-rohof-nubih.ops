@@ -1,0 +1,22 @@
+- op: create  # dca0
+  at: '2026-10-18T00:10:19Z'  # dca0
+  by: agent  # dca0
+  actor: jgstern_agent  # dca0
+  clock: 1  # dca0
+  nonce: dca0  # dca0
+  data:  # dca0
+    kind: work_item  # dca0
+    title: "Shared two-file same-name fixture every analyzer runs: two files each defining the same callable, each calling a different helper; assert each call's src is in its own file (WI-kosar part 2)"  # dca0
+    status: todo_soft  # dca0
+    priority: 3  # dca0
+    parent:  # dca0
+    tags:  # dca0
+    - analysis_quality  # dca0
+    - call_resolution  # dca0
+    - testing  # dca0
+    isbefore: []  # dca0
+    duplicate_of: []  # dca0
+    not_duplicate_of: []  # dca0
+    pr_ref:  # dca0
+    description: "Split from WI-kosar-sanoz-gojif-foruv-pupul-kusil-kavot-zidut on 2026-10-17 (PR #1702 fixed the five known members and gave each its own fixture). The general guard the item asked for is a parametrised harness over every registered analyzer with a minimal per-language two-file snippet (file A: callable F calling helperA; file B: callable F calling helperB) asserting that every calls/references edge whose src is F has src.path == dst.path. Needs ~60 language snippets; analyzers that fail it on first run are new members of the family and get their own INV. The regex-on-variable-name gate was evaluated and rejected (11 of 13 hits are legitimate callee lookups), so this harness is the enforced shape."  # dca0
+    fields: {}  # dca0
