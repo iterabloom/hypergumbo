@@ -1,0 +1,23 @@
+Original commit body from f9630401b621ff5d4d1e102975994f6e92dc110b:
+
+C++ half of WI-digaj. The keywords that decide C++ dispatch exist only
+on the in-class declaration: an out-of-line definition (int
+Square::area() {...}, usually in a .cc apart from the header) repeats
+no virtual / override / static. So:
+
+- cpp: class / struct symbols record meta virtual_members (declared
+  virtual, override or final), override_members (override / final) and
+  static_members, read from the class body; a member defined inline
+  also carries its keywords as modifiers. Three new symbol_meta keys.
+- type_hierarchy: cpp leaves NO_VIRTUAL_EXTENDS_LANGUAGES; a pair
+  dispatches when the member is virtual in the parent or any ancestor
+  (C++'s implicit virtual), or is the parent's pure virtual, or the
+  child declares it override / final; never when static on either side.
+
+On a header + .cc fixture: a concrete base's virtual reaches its
+overrides, also through a non-overriding middle class and through
+keyword-less implicit overrides; non-virtual name hiding and statics
+(the shape of the 11 grpc false positives this item measured) get none.
+Not checked: same-name overloads with differing signatures.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
