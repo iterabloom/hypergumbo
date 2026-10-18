@@ -179,6 +179,7 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream.import_bound_bases import external_base_edge, external_import_fqn
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     JAVA_LANG_SYSTEM_FIELDS,
     KOTLIN_SHADOWED_JAVA_LANG,
@@ -2508,6 +2509,11 @@ def _resolve_base_class_kotlin(
     if not candidates:
         return None
 
+    # WI-pivap: a base the file imports from a package no in-repo class lives
+    # in is external, however many in-repo namesakes there are.
+    if external_import_fqn(base_name, child_sym, candidates_by_name, sym_file_imports):
+        return None
+
     if len(candidates) == 1:
         return candidates[0]
 
@@ -2607,7 +2613,20 @@ def _extract_inheritance_edges(
                     edge_type = "extends"
                     base_sym = class_sym
                 else:
-                    continue  # External type, no edge
+                    # WI-pivap: an imported base with in-repo namesakes but no
+                    # in-repo class of its qualified name is external. Its
+                    # clause is not recorded, so it is labelled ``extends``,
+                    # as the core linker labels external bases.
+                    ext = external_import_fqn(
+                        base_name, sym, {**class_by_name, **interface_by_name},
+                        sym_file_imports,
+                    ) if base_name in class_by_name or base_name in interface_by_name else None
+                    if ext is not None:
+                        edges.append(external_base_edge(
+                            sym, ext, "extends",
+                            sym.span.start_line if sym.span else 0, PASS_ID, run,
+                        ))
+                    continue  # External type
 
             edge = Edge.create(
                 src=sym.id,
