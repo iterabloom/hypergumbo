@@ -5,9 +5,13 @@ This analyzer uses tree-sitter to parse Wolfram Language files and extract:
 - Function definitions (``f[x_] := ...``, and ``f[x_] = ...`` too)
 - Variable assignments (Set =), including ones inside a function body, which
   become file-level variables
-- Function calls, as edges from the FILE node (not the enclosing function),
-  one per callee name per file; a callee found nowhere gets a
-  ``wolfram:builtin:0-0:<name>:function`` id
+- Function calls, as edges from the definition whose body contains the call
+  (by the definition's position; a top-level call starts at the file node),
+  one per callee name per source; a callee found nowhere gets a
+  ``wolfram:builtin:0-0:<name>:function`` id. The head of a definition
+  (``f[x_]`` in ``f[x_] := ...``) is a ``call`` node in the grammar but is
+  not a call, nor is anything else on an assignment's left-hand side
+  (INV-kafir).
 - Import statements (calls to Get, Needs, Import)
 
 Wolfram Language (also known as Mathematica) is a symbolic programming language
@@ -40,10 +44,10 @@ Wolfram Language Considerations
 - Package names end with backtick (`)
 - Comments use (* ... *)
 
-Known gaps: the left-hand side of a definition (``f[x_] := ...``) is itself a
-call node, so every definition also yields a ``calls`` edge to the function it
-defines; and ``.m`` files are not analyzed (``*.m`` is not in the file
-patterns, and ``find_wolfram_files`` has no caller).
+Files: ``.wl``, ``.wls``, ``.nb``, and the ``.m`` files that
+``classify_dot_m_file`` labels Wolfram (``find_wolfram_files`` is the
+analyzer's file discovery; ``.m`` is shared with MATLAB and Objective-C, whose
+analyzers apply the same classifier).
 
 Definitions and identity (INV-kagib, WI-tusad)
 ----------------------------------------------
@@ -94,6 +98,8 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_symbol_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -347,6 +353,41 @@ def _extract_symbols_from_file(
     return symbols
 
 
+def _assignment_operator(node: "tree_sitter.Node") -> "Optional[tree_sitter.Node]":
+    """The ``:=`` / ``=`` child of a ``binary`` node, else None."""
+    if node.type != "binary":
+        return None
+    return next((c for c in node.children if c.type in (":=", "=")), None)
+
+
+def _on_assignment_lhs(node: "tree_sitter.Node") -> bool:
+    """Whether ``node`` sits on the left-hand side of the nearest enclosing
+    ``:=`` / ``=``: a definition head ``f[x_]``, a pattern inside it
+    ``f[g[x_]]``, a Part target ``a[[1]]``. None of those is a call."""
+    current = node.parent
+    while current is not None:
+        op_node = _assignment_operator(current)
+        if op_node is not None:
+            return node.end_byte <= op_node.start_byte
+        current = current.parent
+    return False
+
+
+def _enclosing_definition(
+    node: "tree_sitter.Node", decl_index: dict[tuple[int, int], Symbol],
+) -> Optional[Symbol]:
+    """The ``function`` symbol of the nearest definition whose body contains
+    ``node``, by the definition node's position; None at top level. A
+    ``variable`` assignment on the way up is walked past."""
+    current = node.parent
+    while current is not None:
+        sym = symbol_declared_by(current, decl_index)
+        if sym is not None and sym.kind == "function":
+            return sym
+        current = current.parent
+    return None
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -365,11 +406,12 @@ def _extract_edges_from_file(
     """
     edges: list[Edge] = []
     file_id = make_file_id("wolfram", file_path)
+    decl_index = symbols_at(file_symbols)
     seen_calls: set[str] = set()
 
     for node in iter_tree(tree.root_node):
         # Look for function calls
-        if node.type == "call":
+        if node.type == "call" and not _on_assignment_lhs(node):
             # First child should be the function name
             func_name_node = find_child_by_type(node, "symbol")
             if func_name_node:
@@ -396,8 +438,11 @@ def _extract_edges_from_file(
                                 )
                                 edges.append(edge)
                     else:
-                        # Regular function call
-                        call_key = f"{file_id}->{func_name}"
+                        # Regular function call, from the definition whose
+                        # body holds it, else from the file.
+                        enclosing = _enclosing_definition(node, decl_index)
+                        src_id = enclosing.id if enclosing is not None else file_id
+                        call_key = f"{src_id}->{func_name}"
                         if call_key not in seen_calls:
                             seen_calls.add(call_key)
                             # Check if it's a known symbol
@@ -409,7 +454,7 @@ def _extract_edges_from_file(
                                 target_id = f"wolfram:builtin:0-0:{func_name}:function"
 
                             edge = Edge.create(
-                                src=file_id,
+                                src=src_id,
                                 dst=target_id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
@@ -450,10 +495,15 @@ class WolframAnalyzer(TreeSitterAnalyzer):
         resolver: "NameResolver",
     ) -> list[Edge]:
         """Extract import and call edges from a Wolfram file."""
-        # Use the resolver that was built from global_symbols
         return _extract_edges_from_file(
-            tree, source, rel_path, [], resolver, run.execution_id,
+            tree, source, rel_path, self.file_symbols(local_symbols),
+            resolver, run.execution_id,
         )
+
+    def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
+        """``.wl`` / ``.wls`` / ``.nb``, plus the ``.m`` files whose content
+        is Wolfram rather than MATLAB or Objective-C."""
+        yield from find_wolfram_files(repo_root)
 
 
 _analyzer = WolframAnalyzer()
