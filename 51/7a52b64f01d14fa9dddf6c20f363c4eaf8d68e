@@ -1,0 +1,36 @@
+Original commit body from 0fc41b54fa9c259fb58b3cc141ea077563b9dc71:
+
+cpp.py stamped EVERY unresolved call with the file's angle includes
+only. The module filter refuses a row whose header is not in the stamp
+and the coverage gate's ALL-expansion (INV-zimud) reads it as the
+complete set of homes, so `#include <cstdint>` + `#include "util.h"`
+(util.h includes <cstdio>) stamped fopen(p, "w") as cstdint and
+NO-FSWRITE read CONFIRMED; a file with only `#include "net.h"` left
+send() on the skipped placeholder (NO-NET-SEND CONFIRMED).
+
+cpp now takes include_closure's stamp, as c.py has since INV-zikul,
+WITHOUT the names of in-repo headers reached only transitively
+(IncludeClosure.stamp(transitive_in_repo=False)): such a header is
+still read, so the system headers it pulls in stay; its own name
+matches no catalogue row and can only have been reached through a
+direct in-repo include whose name stays. Ported from the measured
+prototype (~/hypergumbo_lab_notebook/decontend/run_10032026/zikul).
+
+The prototype's two open design questions:
+(a) SIZE. Transitive in-repo names were 65% of the stamp's characters.
+    behavior map on modsecurity: dev 15.2 MB, full closure 35.2 MB
+    (x2.31), trimmed 18.2 MB (x1.19).
+(b) LINKER. method-call-recovery recovers 0 edges on modsecurity on
+    today's dev (the prototype's 4 lost edges no longer exist), so there
+    is no loss and the linker is UNCHANGED. Widening it to stamped member
+    calls was tried: 13 new recoveries, at least 3 wrong (op.evaluate on
+    an Operator bound to RuleWithActions::evaluate), so not taken.
+
+Verdicts (verify-claims), dev vs full vs trimmed: full and trimmed are
+IDENTICAL on every claim of modsecurity and whisper.cpp; every move
+from dev is toward more findings. modsecurity NO-FSWRITE 19 -> 25,
+NO-SUBPROC 2 -> 3. whisper.cpp NO-FSWRITE 204 -> 282, NO-FSREAD 151 ->
+157, NO-SUBPROC 14 -> 15, host-secret-no-host-fs 13 -> 24,
+host-secret-no-logging 14 -> 20, untrusted-input-no-host-fs 3 -> 4.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
