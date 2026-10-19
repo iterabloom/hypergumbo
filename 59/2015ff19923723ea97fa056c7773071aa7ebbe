@@ -1,0 +1,25 @@
+Original commit body from 7c58b2a4e092ddf2eac334e525e71c4abaf885fd:
+
+c.py drew every dispatches_to edge (static-array table and designated-
+initializer ops struct) and every dispatch_table reference from a
+kind=variable id for the table, but emitted no such symbol, so the src
+named no node.
+
+The table is now emitted as a variable symbol, by that same id and with
+a stable_id, once it holds a function (a data-only array is no node).
+CAnalyzer collects them per file in Pass 2. An array of function
+POINTERS (`static int (*cmds[])(int) = { f }`), the idiomatic spelling,
+is now detected through its function / parenthesized / pointer
+declarator wrappers; the detector wanted a bare array_declarator.
+
+Measured against dev, dangling dispatches_to srcs (edge_source.
+unemitted_edge_sources): crun 94 -> 0, redis 505 -> 0, tmate 129 -> 0.
+redis gains 4 dispatches_to and 19 dispatch_table references from
+function-pointer arrays. Through run_behavior_map on crun the edges
+were not just masked but DROPPED: 0 dispatches_to edges in the map on
+dev, 94 now, and 5 fewer external_symbol nodes.
+
+test_c_call_anchor pinned the dangling src by equality for this fix to
+update; it now asserts none.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
