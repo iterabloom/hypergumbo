@@ -481,6 +481,13 @@ WALK_BLOCKED_NO_SOURCE_CALL_LINE: str = "no_source_call_line"
 WALK_BLOCKED_NO_SINK_CALL_LINE: str = "no_sink_call_line"
 WALK_BLOCKED_SOURCE_NOT_TRACKED: str = "source_not_tracked"
 WALK_BLOCKED_SINK_BEFORE_SOURCE: str = "sink_before_source"
+#: WI-jusoj (a): the sink is called ON the source's line, so it can CONTAIN the
+#: source as an argument (``requests.post(url, headers={"A": os.environ["K"]})``)
+#: and no line-ordered walk can adjudicate it. NOT ``sink_before_source``,
+#: whose rows INV-muhij keeps from carrying a verdict alone: a same-line row
+#: keeps carrying it, because "the sink is not after the source" was never
+#: evidence that the source's value does not reach it.
+WALK_BLOCKED_SOURCE_LINE_SINK: str = "sink_on_source_line"
 
 WALK_BLOCKERS: frozenset[str] = frozenset({
     WALK_BLOCKED_CROSS_FUNCTION,
@@ -488,6 +495,7 @@ WALK_BLOCKERS: frozenset[str] = frozenset({
     WALK_BLOCKED_NO_SINK_CALL_LINE,
     WALK_BLOCKED_SOURCE_NOT_TRACKED,
     WALK_BLOCKED_SINK_BEFORE_SOURCE,
+    WALK_BLOCKED_SOURCE_LINE_SINK,
 })
 
 WALK_VERDICT_CONFIRMED: str = "confirmed"
@@ -4760,8 +4768,15 @@ class EscapeSite(NamedTuple):
 #:   clause L4). An EXTRACTION gap again, and the one no coverage predicate can
 #:   reach: the omission is INSIDE a covered extent. Go's grouped
 #:   ``var ( msg = cwd )`` and Python's ``c[key] = 1`` are the measured shapes.
+#: * ``call_beside_source`` — the SOURCE line also calls something no summary
+#:   says terminates (WI-jusoj b): ``n = acc.push(process.env.K)`` seeds ``n``
+#:   while the secret goes into ``acc``. The seed line was a starting point and
+#:   never a use line, so what else it did with the value was invisible; it is
+#:   now asked the question every use line is (``call_beside_heir``'s). Only
+#:   ever turns ``False`` into ``None``.
 ESCAPE_REASONS = frozenset(
     {
+        "call_beside_source",
         "source_undefined",
         "definition_unrecorded",
         "call_beside_heir",
@@ -4795,6 +4810,7 @@ def _ddg_taint_reaches(
     unaccounted: AbstractSet[str] | None = None,
     seed_variables: AbstractSet[str] | None = None,
     reached: list[tuple[str, int]] | None = None,
+    source_line_escapes: AbstractSet[int] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -4954,6 +4970,10 @@ def _ddg_taint_reaches(
             never ``False`` on that account.
         reached: Optional out-param. On ``True``, the ``(variable, line)``
             whose use at a target line decided it. Purely observational.
+        source_line_escapes: Source lines on which some OTHER call does not
+            terminate (:func:`_source_line_escapes`): the value may have gone
+            into it, so each is an escape (WI-jusoj b). ``None`` keeps the old
+            seed-only behaviour.
 
     Returns:
         True if a tainted value is used at a line where the sink is called;
@@ -4982,6 +5002,10 @@ def _ddg_taint_reaches(
                 )
             continue
         frontier.extend((var, line) for var in sorted(seeds))
+        if line in (source_line_escapes or ()):
+            escaped = True
+            if escape_sites is not None:
+                escape_sites.append(EscapeSite(symbol_id, line, "call_beside_source"))
 
     while frontier:
         var, line = frontier.pop()
@@ -5296,6 +5320,18 @@ def _use_site_terminates(
     callees = callees_at.get((symbol_id, use_line))
     if not callees:
         return False
+    return _callees_terminate(callees, summaries, credited_user_summaries)
+
+
+def _callees_terminate(
+    callees: AbstractSet[str],
+    summaries: Mapping[str, "FunctionSummary"] | None,
+    credited_user_summaries: set[str] | None = None,
+) -> bool:
+    """Every one of ``callees`` consumes the value and stops (see
+    :func:`_use_site_terminates`, whose all-or-nothing rule this is)."""
+    if not summaries:
+        return False
     for qualified in callees:
         summary = summaries.get(qualified)
         # ADR-0061 ruling 2 (WI-tigud): a COMMUNITY summary never closes a
@@ -5326,6 +5362,55 @@ def _use_site_terminates(
     return True
 
 
+def _constructs_receiver_of(callee: str, source_callee: str) -> bool:
+    """Whether ``callee`` constructs the type ``source_callee`` is a method of.
+
+    ``python:cryptography.fernet:0-0:Fernet`` builds the receiver of
+    ``python:cryptography.fernet.Fernet:0-0:decrypt``: the source's module slot
+    names its receiver type, and the construction names that type as
+    ``<module>.<name>``.
+    """
+    source_parts = source_callee.split(":")
+    parts = callee.split(":")
+    if len(source_parts) < 4 or len(parts) < 4:
+        return False
+    return bool(source_parts[1]) and f"{parts[1]}.{parts[-2]}" == source_parts[1]
+
+
+def _source_line_escapes(
+    caller: str,
+    source_callee: str,
+    source_lines: Sequence[int],
+    calls_at: Mapping[tuple[str, int], AbstractSet[str]],
+    edge_keys: Mapping[tuple[str, str], AbstractSet[str]],
+    summaries: Mapping[str, "FunctionSummary"] | None,
+) -> frozenset[int]:
+    """The source lines on which another call may take the value (WI-jusoj b).
+
+    ``n = acc.push(process.env.K)``: the walk seeds ``n``, but the secret went
+    into ``acc``. Every OTHER call on a source line is asked what a use line's
+    calls are asked: it closes the branch only if a summary says it terminates.
+    A call with no catalogue key (an unresolved ``acc.push``) is unknown and
+    keeps the line open, as an uncatalogued callee does at a use line.
+
+    NOT a call that builds the source's own RECEIVER: in
+    ``pt = Fernet(key).decrypt(ct)`` the ``Fernet`` construction is evaluated
+    before ``decrypt`` and cannot hold its result
+    (:func:`_constructs_receiver_of`). Counting it withdrew the same-function
+    sanitizer credit WI-fasub earns for encrypt-then-write.
+    """
+    lines: set[int] = set()
+    for line in source_lines:
+        for callee in calls_at.get((caller, line), ()):
+            if callee == source_callee or _constructs_receiver_of(callee, source_callee):
+                continue
+            keys = edge_keys.get((caller, callee))
+            if not keys or not _callees_terminate(set(keys), summaries):
+                lines.add(line)
+                break
+    return frozenset(lines)
+
+
 class _WalkIndexes(NamedTuple):
     """The indexes the §3a walk reads, built once per language run."""
 
@@ -5336,6 +5421,10 @@ class _WalkIndexes(NamedTuple):
     inherits: dict[tuple[str, int, str], set[str]]
     summaries: dict[str, "FunctionSummary"]
     io_names: frozenset[str]
+    #: (caller, callee) -> the catalogue keys of those call edges (WI-jusoj b).
+    edge_keys: dict[tuple[str, str], set[str]]
+    #: (caller, line) -> every callee a taint call edge reaches there.
+    calls_at: dict[tuple[str, int], set[str]]
 
 
 def _walk_indexes(
@@ -5394,8 +5483,13 @@ def _walk_indexes(
     # does not mean one line.
     call_lines: dict[tuple[str, str], list[int]] = defaultdict(list)
     callee_names: dict[tuple[str, int], set[str]] = defaultdict(set)
+    edge_keys: dict[tuple[str, str], set[str]] = defaultdict(set)
+    calls_at: dict[tuple[str, int], set[str]] = defaultdict(set)
     for edge in call_edges:
         sites = _edge_call_sites(edge)
+        if sites and _is_taint_call_edge(edge):
+            for site in sites:
+                calls_at[(edge.get("src", ""), site)].add(edge.get("dst", ""))
         if sites:
             call_lines[(edge.get("src", ""), edge.get("dst", ""))].extend(sites)
             # (function, line) → the QUALIFIED names called there, for §4.
@@ -5410,6 +5504,7 @@ def _walk_indexes(
             qualified = _catalogue_key_for_edge(edge)
             if qualified:
                 src_id = edge.get("src", "")
+                edge_keys[(src_id, edge.get("dst", ""))].add(qualified)
                 for site in sites:
                     callee_names[(src_id, site)].add(qualified)
 
@@ -5471,6 +5566,7 @@ def _walk_indexes(
     }
     return _WalkIndexes(
         ddg_uses, defs_at, call_lines, callee_names, inherits, summaries, _io_names,
+        edge_keys, calls_at,
     )
 
 
@@ -5542,7 +5638,7 @@ def propagate_taint_ddg(
     analyzed = ddg_symbols or set()
 
     (ddg_uses, defs_at, call_lines, callee_names, inherits, summaries,
-     _io_names) = _walk_indexes(
+     _io_names, edge_keys, calls_at) = _walk_indexes(
         ddg_edges, call_edges, stmt_defuse, language, include_community,
         function_summaries,
     )
@@ -5828,7 +5924,11 @@ def propagate_taint_ddg(
                 elif not source_tracked:
                     blocked_by = WALK_BLOCKED_SOURCE_NOT_TRACKED
                 elif not sink_after_source:
-                    blocked_by = WALK_BLOCKED_SINK_BEFORE_SOURCE
+                    blocked_by = (
+                        WALK_BLOCKED_SOURCE_LINE_SINK
+                        if set(sink_call_lines) & set(source_call_lines)
+                        else WALK_BLOCKED_SINK_BEFORE_SOURCE
+                    )
                 if sink_call_lines and source_tracked and sink_after_source:
                     # ADJUDICATING, NOT CONFIRM-ONLY (WI-kabif, granted
                     # 2026-09-02). ``None`` (escaped) and ``False``
@@ -5865,6 +5965,11 @@ def propagate_taint_ddg(
                         credited_user_summaries=credited_user_summaries,
                         unaccounted=(unaccounted_names or {}).get(source_fn),
                         seed_variables=entry_seeds,
+                        # WI-jusoj (b): the source line is a use line too.
+                        source_line_escapes=_source_line_escapes(
+                            caller_id, source_callee_id, source_call_lines,
+                            calls_at, edge_keys, summaries,
+                        ),
                     )
                     adjudicated = walk_result is True
 
@@ -5931,6 +6036,10 @@ def propagate_taint_ddg(
                                 unaccounted_names or {}
                             ).get(source_fn),
                             seed_variables=entry_seeds,
+                            source_line_escapes=_source_line_escapes(
+                                caller_id, source_callee_id, source_call_lines,
+                                calls_at, edge_keys, summaries,
+                            ),
                         ) is False
                         # INV-pojib: THIS ARM DECIDES THE SAME-FUNCTION SHAPE,
                         # and it is the arm the measured repro went through --
