@@ -7634,13 +7634,6 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         # the helper's callers.
                         return_spans=ddg_returns,
                     ))
-                    unfollowed_escapes.extend(find_unfollowed_escapes(
-                        ddg_edges, lang_edges, lang_sources,
-                        ambiguous_names=lang_ambiguous, language=lang,
-                        stmt_defuse=stmt_defuse,
-                        include_community=not getattr(
-                            args, "no_default_overlays", False),
-                    ))
                 else:
                     taint_findings.extend(propagate_taint_structural(
                         lang_edges, lang_sources, lang_sinks, lang_sans,
@@ -7653,6 +7646,24 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         include_community=not getattr(
                             args, "no_default_overlays", False),
                     ))
+                # INV-nohob: where a source value leaves through a construct
+                # taint does not follow -- run on BOTH arms, because a construct
+                # on the source line needs no walk (a plain ``g = getenv(..)``
+                # leaves the function with no DDG edge at all).
+                unfollowed_escapes.extend(find_unfollowed_escapes(
+                    ddg_edges or [], lang_edges, lang_sources,
+                    ambiguous_names=lang_ambiguous, language=lang,
+                    stmt_defuse=stmt_defuse,
+                    include_community=not getattr(
+                        args, "no_default_overlays", False),
+                    # INV-nohob 3/3: a plain assignment into memory the
+                    # function does not own has no call to stamp.
+                    store_lines={
+                        n["id"]: n["meta"]["non_local_store_lines"]
+                        for n in behavior_map.get("nodes", [])
+                        if (n.get("meta") or {}).get("non_local_store_lines")
+                    },
+                ))
             from .function_summaries import load_function_summaries
             from .taint import withheld_community_summaries
             withheld_summaries = withheld_community_summaries(
