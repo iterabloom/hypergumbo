@@ -20,6 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Ruby resolves a constant through its enclosing module**: `Orchestrator.call` inside `module TestData` reaches `class TestData::Orchestrator` instead of being reported external (WI-gomup).
 - **An imported external base class is no longer bound to an in-repo class of the same name** in Java, Kotlin and JS/TS: `import junit.framework.TestCase; class T extends TestCase` and `import { Component } from 'react'` get an external edge instead of a wrong `extends` (WI-pivap, analyzer half).
 - **A qualified base (`System.Exception`, `std::exception`, `io.Writer`, `java.util.ArrayList<T>`) binds only an in-repo class its qualifier fits**, otherwise it is external; C++ classes now record their namespace-qualified name (WI-pivap, linker half).
 - **A bare base imported through `use` / `import` / `using` is checked against that import** in PHP, Groovy, Scala and C#, instead of binding any in-repo class of the same name; PHP `\Foo\Bar` bases are no longer dropped (WI-pivap).
