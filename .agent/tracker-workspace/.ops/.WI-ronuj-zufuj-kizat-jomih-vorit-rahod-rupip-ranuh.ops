@@ -1,0 +1,22 @@
+- op: create  # 71b9
+  at: '2026-10-19T18:16:32Z'  # 71b9
+  by: agent  # 71b9
+  actor: jgstern_agent  # 71b9
+  clock: 1  # 71b9
+  nonce: 71b9  # 71b9
+  data:  # 71b9
+    kind: work_item  # 71b9
+    title: "C taint: an argument in a project function's variadic tail reaches the sink its va_list is written to (va_start(ap, fmt); vfprintf(fp, fmt, ap))"  # 71b9
+    status: todo_hard  # 71b9
+    priority: 3  # 71b9
+    parent:  # 71b9
+    tags:  # 71b9
+    - c  # 71b9
+    - taint  # 71b9
+    - analysis_quality  # 71b9
+    isbefore: []  # 71b9
+    duplicate_of: []  # 71b9
+    not_duplicate_of: []  # 71b9
+    pr_ref:  # 71b9
+    description: "Trackerized from INV-nohob (owner, 2026-10-19). One of four constructs C taint does not follow; INV-nohob's disclosure withholds the clean verdict meanwhile.\n\nWHAT. A tainted argument passed in a C project function's VARIADIC tail (`...`) does not reach a sink the function reaches through va_list. torsocks' log_print(const char *fmt, ...) (src/common/log.c) va_starts an ap and writes it with a vfprintf-family call to the log file / stderr; the password DBG passes arrives in the variadic tail. c_def_use does not connect the `...` parameter to `va_list ap` / va_start(ap, fmt), so the interprocedural walk has no parameter to carry the taint to.\n\nFIX DIRECTION (not designed): treat a variadic parameter as one pseudo-parameter that every argument at or after its position maps to; va_start(ap, last) defines ap from it; the v*printf family (vfprintf, vsnprintf, vprintf, vsyslog ...) uses ap as a data argument. Check the catalogue rows for the v* family exist and carry the right boundary.\n\nDONE WHEN: a fixture `void log_print(const char *fmt, ...) { va_list ap; va_start(ap, fmt); vfprintf(stderr, fmt, ap); va_end(ap); }` + log_print(\"%s\", getenv(\"PASS\")) reads violated on a host_secret -> logging claim. With the macro item, torsocks' host-secret-no-logging should then read violated. When it lands, narrow INV-nohob's disclosure for varargs."  # 71b9
+    fields: {}  # 71b9
