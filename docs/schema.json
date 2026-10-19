@@ -1853,6 +1853,12 @@
             "type_name": {
               "description": "GraphQL resolver edge: the schema type the resolver serves."
             },
+            "unfollowed_construct": {
+              "description": "INV-nohob: the construct at this call site through which a value leaves where taint can follow it, stamped by c.py: 'out_parameter_call' (the callee writes through a pointer parameter), 'non_local_store' (a copy-family call whose destination is the caller's pointer parameter or a name the caller does not declare), 'macro_call' (a function-like macro, whose expansion the call graph does not see) or 'variadic_call' (arguments in a project function's `...` tail). Read by taint.find_unfollowed_escapes: a source value the walk finds reaching such a site withholds every clean verdict on the source's label. PER CALL SITE: one callee is an out-parameter call from one site and a plain call from none other, but a macro or a copy target varies by site."
+            },
+            "unfollowed_construct_values": {
+              "description": "Every distinct ``unfollowed_construct`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``unfollowed_construct`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). A site that carried no ``unfollowed_construct`` is listed as ``null``, sorted first and never capped away, so one site's value cannot read as every site's (INV-rajak). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
+            },
             "url_path": {
               "description": "URL / route path on a protocol-boundary edge (e.g. a WebSocket endpoint path, or a cross-language WS client\u2192server route). Distinct from ``channel`` (the dataflow conduit/topic) per WI-pozom."
             },

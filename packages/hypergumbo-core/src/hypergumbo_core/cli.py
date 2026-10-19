@@ -7247,6 +7247,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
     credited_user_summaries: set[str] = set()
+    # INV-nohob: source values the walk saw leave through a construct taint
+    # does not follow; a clean verdict on their label is withheld. Function
+    # scope for the same reason as the set above.
+    unfollowed_escapes: list[Any] = []
     # WI-tigud: the community TERMINATING summaries this run's call graph
     # calls -- the walk does not let them close a branch, and the violated
     # verdicts say so. Run-scoped, like ``credited_user_summaries``.
@@ -7506,7 +7510,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             # and dst differ in language) are handled by language-pair
             # linkers separately; this taint pass focuses on
             # within-language flow.
-            from .taint import propagate_taint_ddg
+            from .taint import find_unfollowed_escapes, propagate_taint_ddg
             from .taint_refine import refine_external_edges
             # Only languages the taint catalog actually covers for this
             # repo are worth walking; the adapter intersects that with the
@@ -7629,6 +7633,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         # INV-komoj: a source a helper RETURNS is lifted into
                         # the helper's callers.
                         return_spans=ddg_returns,
+                    ))
+                    unfollowed_escapes.extend(find_unfollowed_escapes(
+                        ddg_edges, lang_edges, lang_sources,
+                        ambiguous_names=lang_ambiguous, language=lang,
+                        stmt_defuse=stmt_defuse,
+                        include_community=not getattr(
+                            args, "no_default_overlays", False),
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(
@@ -7759,6 +7770,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         blind_opaque_sites=_blind_opaque,
         blind_by_source_taint=blind_by_source_taint,
         sink_zone_gaps=sink_zone_gaps,
+        unfollowed_escapes=unfollowed_escapes,
         # INV-faput: the SHIPPED catalogue rows a repo-supplied row replaced.
         # Read off the catalogue here because this is the last point that
         # still knows — the displaced rows are gone from every structure the

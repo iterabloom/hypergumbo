@@ -185,6 +185,7 @@ from .io_boundary import (
     call_site_attr_carriers,
     call_site_modes,
     call_site_target_kinds,
+    call_site_unfollowed_constructs,
     read_boundary_for_target_kind,
     strip_redundant_module_qualifier,
     target_kind_discriminated_primitives,
@@ -4400,6 +4401,97 @@ def propagate_taint_structural(
     )
 
 
+class UnfollowedEscape(NamedTuple):
+    """A source value the walk saw leave through a construct taint does not follow.
+
+    INV-nohob. ``construct`` is the producer's ``unfollowed_construct`` stamp
+    (c.py: ``out_parameter_call``, ``non_local_store``, ``macro_call``,
+    ``variadic_call``); ``site_line`` is the call it was reached at, in
+    ``source_symbol``, the function the source is read in.
+    """
+
+    taint_label: str
+    source_symbol: str
+    source: str
+    site_line: int
+    construct: str
+
+
+def find_unfollowed_escapes(
+    ddg_edges: list[DdgEdge],
+    call_edges: list[dict[str, Any]],
+    sources: list[TaintSource],
+    *,
+    ambiguous_names: frozenset[str] = frozenset(),
+    language: str = "",
+    stmt_defuse: dict[
+        str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]
+    ] | None = None,
+    include_community: bool = True,
+    function_summaries: dict[str, "FunctionSummary"] | None = None,
+) -> list[UnfollowedEscape]:
+    """Every source value the §3a walk sees reach a call site an analyzer
+    stamped ``unfollowed_construct`` (INV-nohob).
+
+    WHY A SEPARATE PASS. :func:`propagate_taint_ddg` asks whether a source
+    reaches a SINK, and a flow it cannot construct leaves no finding at all.
+    When the value leaves through a construct neither the walk nor the call
+    graph follows -- torsocks copies its getenv'd SOCKS5 password into a global
+    through ``conf_file_set_socks5_pass(password, &tsocks_config)`` and sends it
+    from another function -- the absence of a finding is ignorance, and
+    ``verify_claims`` must not read it as a clean answer. This pass runs the
+    SAME walk (same indexes, :func:`_walk_indexes`) with the stamped call lines
+    of the source's own function as its targets, so "the value reaches the
+    construct" means exactly what "the value reaches a sink" means elsewhere.
+
+    ONLY ``True`` COUNTS. A walk that escapes for an unrelated reason is a
+    pre-existing gap with its own disclosure, and pooling it here would
+    withhold every verdict in a function with any stamped call. A construct
+    called ON a source line (``strcpy(g, getenv("K"))``) is reached by
+    construction -- the source defines no variable for the walk to seed.
+
+    Per SOURCE SITE, not per flow: the result names where each label's value
+    was lost, and the caller withholds every clean verdict on that label.
+    """
+    if not ddg_edges or not sources:
+        return []
+    constructs: dict[str, dict[int, str]] = defaultdict(dict)
+    for edge in call_edges:
+        kinds = [k for k in call_site_unfollowed_constructs(edge.get("meta")) if k]
+        if kinds:
+            for line in _edge_call_sites(edge):
+                constructs[edge.get("src", "")].setdefault(line, kinds[0])
+    if not constructs:
+        return []
+    ix = _walk_indexes(
+        ddg_edges, call_edges, stmt_defuse, language, include_community,
+        function_summaries,
+    )
+    escapes: list[UnfollowedEscape] = []
+    for caller, callee, src in find_source_callers(
+        call_edges, sources, ambiguous_names, language,
+    ):
+        sites = constructs.get(caller)
+        if not sites:
+            continue
+        source_lines = sorted(set(ix.call_lines.get((caller, callee), [])))
+        hit = next((line for line in sorted(sites) if line in source_lines), None)
+        if hit is None:
+            reached: list[tuple[str, int]] = []
+            if _ddg_taint_reaches(
+                caller, source_lines, sorted(sites), ix.ddg_uses,
+                ix.callee_names, ix.summaries,
+                defs_at=ix.defs_at, inherits=ix.inherits, reached=reached,
+            ) is True:
+                hit = reached[0][1]
+        if hit is not None:
+            escapes.append(UnfollowedEscape(
+                src.taint_label, caller, _qualify(src.module, src.name),
+                hit, sites[hit],
+            ))
+    return escapes
+
+
 def _reachability_past_sanitizers(
     seed_id: str,
     taint_label: str,
@@ -5223,73 +5315,30 @@ def _use_site_terminates(
     return True
 
 
-def propagate_taint_ddg(
+class _WalkIndexes(NamedTuple):
+    """The indexes the §3a walk reads, built once per language run."""
+
+    ddg_uses: dict[tuple[str, str, int], set[int]]
+    defs_at: dict[tuple[str, int], set[str]]
+    call_lines: dict[tuple[str, str], list[int]]
+    callee_names: dict[tuple[str, int], set[str]]
+    inherits: dict[tuple[str, int, str], set[str]]
+    summaries: dict[str, "FunctionSummary"]
+    io_names: frozenset[str]
+
+
+def _walk_indexes(
     ddg_edges: list[DdgEdge],
     call_edges: list[dict[str, Any]],
-    sources: list[TaintSource],
-    sinks: list[TaintSink],
-    sanitizers: list[TaintSanitizer],
-    ddg_symbols: set[str] | None = None,
-    ambiguous_names: frozenset[str] = frozenset(),
-    language: str = "",
-    function_summaries: dict[str, "FunctionSummary"] | None = None,
     stmt_defuse: dict[
         str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]
-    ] | None = None,
-    forfeit_refutation: set[str] | None = None,
-    credited_user_summaries: set[str] | None = None,
-    refuted_flows: list["TaintFlowFinding"] | None = None,
-    unaccounted_names: Mapping[str, AbstractSet[str]] | None = None,
-    include_community: bool = True,
-    return_spans: Mapping[str, Sequence[ReturnSpan]] | None = None,
-) -> list[TaintFlowFinding]:
-    """DDG-backed taint-flow propagation with mixed-coverage analysis.
-
-    When DDG (data dependence graph) edges are available for a function,
-    taint propagation uses variable-level precision instead of symbol-level
-    BFS. For functions without DDG data, structural reachability bridges
-    the gap.
-
-    Algorithm (ADR-0017 §3a):
-    1. Identify taint source call sites from call_edges.
-    2. For source functions with DDG data: walk forward through DDG edges
-       to see which variables carry taint.
-    3. At call sites within DDG-analyzed functions, check if the callee
-       is a sanitizer (transforms taint) or a sink (reports finding).
-    4. For functions without DDG data on the path, fall back to structural
-       reachability.
-
-    Mixed-coverage verdict (ADR-0017 §3c-3d):
-    - If source AND sink functions both have DDG data: ``confidence="precise"``
-    - If either lacks DDG data: ``confidence="approximate"``
-    - Structural-only findings (no DDG anywhere): fall back entirely to
-      ``propagate_taint_structural()``.
-
-    Args:
-        ddg_edges: DdgEdge objects from ``solve_reaching_defs()``.
-        call_edges: Edge dicts with "src", "dst", "type" keys.
-        sources: Taint source definitions.
-        sinks: Taint sink definitions.
-        sanitizers: Taint sanitizer definitions.
-        ddg_symbols: Set of symbol IDs that have DDG analysis data.
-            Functions in this set use DDG-precision; others use structural.
-        ambiguous_names: Short names the catalog flags as ambiguous; a bare
-            ambiguous callee with no usable module hint is not matched to a
-            source/sink (WI-razol).
-        return_spans: Each function's own return-statement line spans. With
-            them a source whose value a function returns -- called on a
-            return statement, or reaching one by the §3a walk -- is lifted
-            into that function's callers (INV-komoj,
-            :func:`_lift_returned_sources`).
-
-    Returns:
-        List of TaintFlowFinding objects.
-    """
-    if not ddg_edges or not sources or not sinks:
-        return []
-
-    analyzed = ddg_symbols or set()
-
+    ] | None,
+    language: str,
+    include_community: bool,
+    function_summaries: dict[str, "FunctionSummary"] | None,
+) -> _WalkIndexes:
+    """Build the walk's indexes (shared by :func:`propagate_taint_ddg` and
+    :func:`find_unfollowed_escapes`, so the two cannot read the DDG differently)."""
     # Forward index for the §3a walk: (function, def line) → lines that use
     # the value defined there.
     #
@@ -5409,6 +5458,83 @@ def propagate_taint_ddg(
     summaries = {
         k: v for k, v in function_summaries.items() if k == v.function
     }
+    return _WalkIndexes(
+        ddg_uses, defs_at, call_lines, callee_names, inherits, summaries, _io_names,
+    )
+
+
+def propagate_taint_ddg(
+    ddg_edges: list[DdgEdge],
+    call_edges: list[dict[str, Any]],
+    sources: list[TaintSource],
+    sinks: list[TaintSink],
+    sanitizers: list[TaintSanitizer],
+    ddg_symbols: set[str] | None = None,
+    ambiguous_names: frozenset[str] = frozenset(),
+    language: str = "",
+    function_summaries: dict[str, "FunctionSummary"] | None = None,
+    stmt_defuse: dict[
+        str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]
+    ] | None = None,
+    forfeit_refutation: set[str] | None = None,
+    credited_user_summaries: set[str] | None = None,
+    refuted_flows: list["TaintFlowFinding"] | None = None,
+    unaccounted_names: Mapping[str, AbstractSet[str]] | None = None,
+    include_community: bool = True,
+    return_spans: Mapping[str, Sequence[ReturnSpan]] | None = None,
+) -> list[TaintFlowFinding]:
+    """DDG-backed taint-flow propagation with mixed-coverage analysis.
+
+    When DDG (data dependence graph) edges are available for a function,
+    taint propagation uses variable-level precision instead of symbol-level
+    BFS. For functions without DDG data, structural reachability bridges
+    the gap.
+
+    Algorithm (ADR-0017 §3a):
+    1. Identify taint source call sites from call_edges.
+    2. For source functions with DDG data: walk forward through DDG edges
+       to see which variables carry taint.
+    3. At call sites within DDG-analyzed functions, check if the callee
+       is a sanitizer (transforms taint) or a sink (reports finding).
+    4. For functions without DDG data on the path, fall back to structural
+       reachability.
+
+    Mixed-coverage verdict (ADR-0017 §3c-3d):
+    - If source AND sink functions both have DDG data: ``confidence="precise"``
+    - If either lacks DDG data: ``confidence="approximate"``
+    - Structural-only findings (no DDG anywhere): fall back entirely to
+      ``propagate_taint_structural()``.
+
+    Args:
+        ddg_edges: DdgEdge objects from ``solve_reaching_defs()``.
+        call_edges: Edge dicts with "src", "dst", "type" keys.
+        sources: Taint source definitions.
+        sinks: Taint sink definitions.
+        sanitizers: Taint sanitizer definitions.
+        ddg_symbols: Set of symbol IDs that have DDG analysis data.
+            Functions in this set use DDG-precision; others use structural.
+        ambiguous_names: Short names the catalog flags as ambiguous; a bare
+            ambiguous callee with no usable module hint is not matched to a
+            source/sink (WI-razol).
+        return_spans: Each function's own return-statement line spans. With
+            them a source whose value a function returns -- called on a
+            return statement, or reaching one by the §3a walk -- is lifted
+            into that function's callers (INV-komoj,
+            :func:`_lift_returned_sources`).
+
+    Returns:
+        List of TaintFlowFinding objects.
+    """
+    if not ddg_edges or not sources or not sinks:
+        return []
+
+    analyzed = ddg_symbols or set()
+
+    (ddg_uses, defs_at, call_lines, callee_names, inherits, summaries,
+     _io_names) = _walk_indexes(
+        ddg_edges, call_edges, stmt_defuse, language, include_community,
+        function_summaries,
+    )
 
     # Index sinks and sanitizers by name (same as structural) — a list per
     # name so _lookup_named_entry can disambiguate by module/ambiguity.

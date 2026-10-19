@@ -2890,6 +2890,15 @@ def write_boundary_for_target_kind(kind: Optional[str]) -> tuple[bool, Optional[
     return _boundary_for_target_kind(kind, "write")
 
 
+def call_site_unfollowed_constructs(
+    edge_meta: Optional[Mapping[str, Any]],
+) -> tuple[Optional[str], ...]:
+    """Every ``unfollowed_construct`` stamp among an edge's collapsed call
+    sites (INV-nohob), read the one way :func:`call_site_modes` reads
+    ``io_mode``. ``None`` is a site with no stamp."""
+    return _call_site_values(edge_meta, "unfollowed_construct")
+
+
 def call_site_target_kinds(
     edge_meta: Optional[Mapping[str, Any]],
 ) -> tuple[Optional[str], ...]:

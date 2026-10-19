@@ -18,6 +18,14 @@ This analyzer uses tree-sitter-c to parse C files and extract:
   (*cmds[])(int) = { f }``) is found through its function / parenthesized /
   pointer declarator wrappers.
 - stdio global references (stdout/stderr/stdin) as module_attr_ref edges
+- ``meta.unfollowed_construct`` on a call site through which taint cannot
+  follow a value (INV-nohob): ``out_parameter_call`` (the callee writes
+  through a pointer parameter, a pass-1 fact per function), ``non_local_store``
+  (a copy-family call into the caller's pointer parameter or a name it does
+  not declare), ``macro_call`` (a function-like macro the file's include
+  closure defines) and ``variadic_call`` (arguments in a project function's
+  ``...`` tail). ``taint.find_unfollowed_escapes`` withholds a clean verdict
+  whose source value reaches one.
 
 The analyzer also extracts function signatures (``_extract_c_signature``)
 and applies ADR-0015 Tier 1 dataflow annotation to the resulting edges.
@@ -99,7 +107,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Mapping, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
@@ -345,6 +353,158 @@ def _function_pointer_targets(
             if name in declared:
                 _add(name, _function_named_by(right, source))
     return {name: found for name, found in targets.items() if found}
+
+
+#: Calls that write their FIRST argument (the destination): the copy family
+#: (INV-nohob). A tainted value copied into a pointer parameter or a global
+#: leaves the function's own variables, where the walk does not follow it.
+_C_COPY_INTO_FIRST_ARG = frozenset({
+    "strcpy", "strncpy", "strlcpy", "stpcpy", "stpncpy", "strcat", "strncat",
+    "strlcat", "memcpy", "memmove", "sprintf", "snprintf", "vsprintf",
+    "vsnprintf", "wcscpy", "wcsncpy",
+})
+
+#: Expression wrappers between a destination and the variable it is rooted at.
+_C_ROOT_WRAPPERS = {
+    "field_expression": "argument",
+    "subscript_expression": "argument",
+    "pointer_expression": "argument",
+    "cast_expression": "value",
+}
+
+
+def _c_expression_root(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The variable an lvalue-ish expression is rooted at: ``c`` for
+    ``c->f.g[i]``, ``*c``, ``&c``, ``(c)``, ``(char *)c``; else None."""
+    current: Optional["tree_sitter.Node"] = node
+    while current is not None and current.type != "identifier":
+        if current.type == "parenthesized_expression":
+            current = current.named_children[0] if current.named_children else None
+        elif current.type in _C_ROOT_WRAPPERS:
+            current = current.child_by_field_name(_C_ROOT_WRAPPERS[current.type])
+        else:
+            return None
+    return node_text(current, source) if current is not None else None
+
+
+def _c_parameters(definition: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The ``parameter_list`` of a ``function_definition``."""
+    declarator = definition.child_by_field_name("declarator")
+    while declarator is not None and declarator.type != "function_declarator":
+        declarator = declarator.child_by_field_name("declarator")
+    return declarator.child_by_field_name("parameters") if declarator is not None else None
+
+
+def _c_parameter_names(
+    definition: "tree_sitter.Node", source: bytes,
+) -> tuple[set[str], set[str]]:
+    """``(pointer parameters, value parameters)`` of a definition, by name.
+    An array parameter (``char buf[]``) is a pointer."""
+    pointers: set[str] = set()
+    values: set[str] = set()
+    params = _c_parameters(definition)
+    for param in params.named_children if params is not None else []:
+        declarator = param.child_by_field_name("declarator")
+        name = _c_declarator_name(declarator, source) if declarator is not None else None
+        if name is None:
+            continue
+        if declarator is not None and declarator.type in ("pointer_declarator", "array_declarator"):
+            pointers.add(name)
+        else:
+            values.add(name)
+    return pointers, values
+
+
+def _c_copy_destination_root(call: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The variable a copy-family call writes into, else None."""
+    function = call.child_by_field_name("function")
+    if function is None or function.type != "identifier" or (
+        node_text(function, source) not in _C_COPY_INTO_FIRST_ARG
+    ):
+        return None
+    args = call.child_by_field_name("arguments")
+    first = args.named_children[0] if args is not None and args.named_children else None
+    return _c_expression_root(first, source) if first is not None else None
+
+
+def _c_function_facts(
+    definition: "tree_sitter.Node", source: bytes,
+) -> tuple[bool, Optional[int]]:
+    """``(writes through a pointer parameter, fixed arity if variadic)`` (INV-nohob).
+
+    A write THROUGH a pointer parameter is an assignment whose target is
+    rooted at it but is not the bare name (``c->f = v``, ``*c = v``,
+    ``c[i] = v`` -- ``c = v`` only re-points the local copy), or a copy-family
+    call whose destination is rooted at it.
+    """
+    pointers, _values = _c_parameter_names(definition, source)
+    params = _c_parameters(definition)
+    variadic = (
+        sum(1 for c in params.named_children if c.type == "parameter_declaration")
+        if params is not None and any(c.type == "variadic_parameter" for c in params.children)
+        else None
+    )
+    body = definition.child_by_field_name("body")
+    writes = False
+    for node in iter_tree(body) if body is not None and pointers else []:
+        if node.type == "assignment_expression":
+            left = node.child_by_field_name("left")
+            writes = (
+                left is not None and left.type != "identifier"
+                and _c_expression_root(left, source) in pointers
+            )
+        elif node.type == "call_expression":
+            writes = _c_copy_destination_root(node, source) in pointers
+        if writes:
+            break
+    return writes, variadic
+
+
+def _c_locals(definition: "tree_sitter.Node", source: bytes) -> set[str]:
+    """The names a definition's body declares."""
+    names: set[str] = set()
+    body = definition.child_by_field_name("body")
+    for node in iter_tree(body) if body is not None else []:
+        if node.type == "declaration":
+            for child in node.children:
+                if child.type in ("identifier", "init_declarator", "pointer_declarator", "array_declarator"):
+                    name = _c_declarator_name(child, source)
+                    if name is not None:
+                        names.add(name)
+    return names
+
+
+def _c_stores_non_locally(call: "tree_sitter.Node", source: bytes) -> bool:
+    """Whether a copy-family call writes memory its function does not own:
+    through a pointer parameter, or into a name the function does not declare
+    (a global, an ``extern``)."""
+    root = _c_copy_destination_root(call, source)
+    if root is None:
+        return False
+    definition = call.parent
+    while definition is not None and definition.type != "function_definition":
+        definition = definition.parent
+    if definition is None:
+        return True
+    pointers, values = _c_parameter_names(definition, source)
+    return root in pointers or (
+        root not in values and root not in _c_locals(definition, source)
+    )
+
+
+def _unfollowed_call_kind(
+    call: "tree_sitter.Node", callee_facts: Optional[tuple[bool, Optional[int]]],
+) -> Optional[str]:
+    """``out_parameter_call`` / ``variadic_call`` for a call to an analysed
+    project function, from its pass-1 facts (INV-nohob); else None."""
+    if callee_facts is None:
+        return None
+    writes, variadic = callee_facts
+    if writes:
+        return "out_parameter_call"
+    args = call.child_by_field_name("arguments")
+    count = len(args.named_children) if args is not None else 0
+    return "variadic_call" if variadic is not None and count > variadic else None
 
 
 def _get_c_parser() -> Optional["tree_sitter.Parser"]:
@@ -670,6 +830,7 @@ def _extract_edges(
     table_symbols: list[Symbol] | None = None,
     file_stable_id: str = "",
     include_closure: IncludeClosure | None = None,
+    function_facts: Mapping[str, tuple[bool, Optional[int]]] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed C tree (pass 2).
 
@@ -749,6 +910,10 @@ def _extract_edges(
     visible_headers = include_closure.stamp(file_path, source)
     # INV-nohob: what each function-pointer variable of this file holds.
     pointer_targets = _function_pointer_targets(tree.root_node, source)
+    # INV-nohob's disclosure: the function-like macros a call here can be a use
+    # of, and each analysed function's facts (pass 1).
+    visible_macros = include_closure.visible_macros(file_path, source)
+    facts = function_facts or {}
     _include_hint = ",".join(visible_headers) if visible_headers else None
     # Imported here, as ``_c_ambiguous_names`` imports the catalogue loader.
     from hypergumbo_core.io_boundary import declared_by_an_included_header
@@ -799,6 +964,11 @@ def _extract_edges(
                             origin_run_id=run.execution_id,
                             evidence_type="ast_call_direct",
                         )
+                        _unfollowed = _unfollowed_call_kind(
+                            node, facts.get(lookup_result.symbol.id),
+                        )
+                        if _unfollowed is not None:
+                            edge.meta = {**(edge.meta or {}), "unfollowed_construct": _unfollowed}
                         edges.append(edge)
                     elif callee_name in pointer_targets:
                         # INV-nohob: a call through a pointer variable the file
@@ -858,11 +1028,22 @@ def _extract_edges(
                             and callee_name in _c_ambiguous_names()
                             else "external"
                         )
-                        edges.append(make_unresolved_edge(
+                        _edge = make_unresolved_edge(
                             "c", current_function.id, callee_name,
                             node.start_point[0] + 1, PASS_ID, run.execution_id,
                             module_hint=_hint,
-                        ))
+                        )
+                        # INV-nohob: a macro's expansion and a copy into memory
+                        # the function does not own are where the walk loses
+                        # a value; taint withholds a clean verdict on them.
+                        _unfollowed = (
+                            "macro_call" if callee_name in visible_macros
+                            else "non_local_store" if _c_stores_non_locally(node, source)
+                            else None
+                        )
+                        if _unfollowed is not None:
+                            _edge.meta = {**(_edge.meta or {}), "unfollowed_construct": _unfollowed}
+                        edges.append(_edge)
 
                 # Callback argument detection: bare identifiers in the
                 # argument list that resolve to known functions are likely
@@ -1653,6 +1834,8 @@ class CAnalyzer(TreeSitterAnalyzer):
     _table_symbols: Optional[list[Symbol]] = None
     #: INV-zikul: the run's include graph, live only inside ``analyze()``.
     _include_closure: Optional[IncludeClosure] = None
+    #: INV-nohob: each analysed function's pass-1 facts, by symbol id.
+    _function_facts: Optional[dict[str, tuple[bool, Optional[int]]]] = None
 
     def extract_symbols_from_file(
         self,
@@ -1724,6 +1907,7 @@ class CAnalyzer(TreeSitterAnalyzer):
             table_symbols=self._table_symbols,
             file_stable_id=self._file_anchor(rel_path),
             include_closure=self._include_closure,
+            function_facts=self._function_facts,
         )
         _emit_stdio_identifier_refs(tree, source, file_path, run, edges)
         return edges
@@ -1764,6 +1948,7 @@ class CAnalyzer(TreeSitterAnalyzer):
         source_files = find_c_files(repo_root)
 
         file_analyses: dict[Path, tuple[FileAnalysis, dict[str, str]]] = {}
+        function_facts: dict[str, tuple[bool, Optional[int]]] = {}
         files_analyzed = 0
         files_skipped = 0
 
@@ -1788,6 +1973,10 @@ class CAnalyzer(TreeSitterAnalyzer):
                 tree, source, source_file, rel_path, run,
             )
             populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)
+            # INV-nohob: what the call sites into each function need (pass 2).
+            for _sym_id, _node in analysis.node_for_symbol.items():
+                if _node.type == "function_definition":
+                    function_facts[_sym_id] = _c_function_facts(_node, source)
             # Auto-compute shape_id for symbols with nodes (ADR-0014 §1)
             if analysis.node_for_symbol:
                 sym_by_id = {s.id: s for s in analysis.symbols}
@@ -1811,6 +2000,7 @@ class CAnalyzer(TreeSitterAnalyzer):
         resolver = self.resolver_class(global_symbols)
         # INV-zikul: one include graph per run, so each header is read once.
         self._include_closure = IncludeClosure(repo_root)
+        self._function_facts = function_facts
 
         for source_file, (analysis, import_aliases) in file_analyses.items():
             all_symbols.extend(analysis.symbols)
@@ -1836,6 +2026,7 @@ class CAnalyzer(TreeSitterAnalyzer):
         self._current_file_symbols = None
         self._table_symbols = None
         self._include_closure = None
+        self._function_facts = None
 
         # Deduplicate: remove declaration-only symbols when a definition
         # exists for the same function name.  Declarations in headers produce

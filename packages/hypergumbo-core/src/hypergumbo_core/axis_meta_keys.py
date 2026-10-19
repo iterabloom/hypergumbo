@@ -608,6 +608,26 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # of them were emitted by bash.py while unregistered, so nothing could
     # have known to union them on collapse.
     # ------------------------------------------------------------------
+    MetaKeySpec("unfollowed_construct", AXIS_EDGE_META,
+                "INV-nohob: the construct at this call site through which "
+                "a value leaves where taint can follow it, stamped by c.py: "
+                "'out_parameter_call' (the callee writes through a pointer "
+                "parameter), 'non_local_store' (a copy-family call whose "
+                "destination is the caller's pointer parameter or a name the "
+                "caller does not declare), 'macro_call' (a function-like "
+                "macro, whose expansion the call graph does not see) or "
+                "'variadic_call' (arguments in a project function's `...` "
+                "tail). Read by taint.find_unfollowed_escapes: a source value "
+                "the walk finds reaching such a site withholds every clean "
+                "verdict on the source's label. PER CALL SITE: one callee is "
+                "an out-parameter call from one site and a plain call from "
+                "none other, but a macro or a copy target varies by site.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "c.py is the only writer, in its pass-2 call arm; "
+                    "taint.find_unfollowed_escapes is the only reader."
+                )),
     MetaKeySpec("io_target_kind", AXIS_EDGE_META,
                 "What KIND of thing a call site's I/O target is, where the "
                 "catalogue row cannot tell: 'host_path' (a place in a "
