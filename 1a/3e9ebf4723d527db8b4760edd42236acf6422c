@@ -1,0 +1,30 @@
+Original commit body from fac14b66de8dc4187761cc8d219fdb4446f1ef9a:
+
+perl.py's method_call_expression arm looked a method on an EXPRESSION
+invocant ($obj->m, shift->m, Pkg->new->m) up by short name across every
+package, so a repo sub named `get` captured HTTP::Tiny->new->get($u),
+and emitted nothing outside a sub.
+
+The invocant is now typed where the file states it: Pkg->new (only
+`new` constructs; DBI->connect returns a handle), a scalar assigned
+one, and the method invocant -- $self/$this/$class taken by shift or as
+the first of @_, or a bare shift->m outside main -- as the enclosing
+package. A typed call resolves like a class-method call with
+call_construct=method; an untyped one gets the honest
+perl:external:0-0:<m>:unresolved method edge (WI-johib's rule). Top-level
+calls are attributed to the file.
+
+The invocant is typed by NAME: typing by shape (any first shift / @_)
+was measured to type a plain function's first argument, a second shift
+and a $SIG{__DIE__} handler's argument as the enclosing package
+(postgresql: 311 edges moved onto the wrong package; 5 after).
+
+Measured against dev (frozen corpus, perl files): resolved calls
+postgresql +7,363 / -581, virtualbox +959 / -744, git +34 / -173. The
+removed edges are receiver-blind binds; 554 / 551 / 122 of them are now
+external method edges. A 15-edge sample of the new resolutions was all
+correct. Two tests pinned the old short-name binding (test_perl's
+method-call test, test_perl_class_method's out-of-scope pin) and now
+assert the typed / unresolved result.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
