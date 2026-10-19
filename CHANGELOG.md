@@ -20,6 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **C++'s `#include` stamp names every header a file can see**, as C's does since INV-zikul, so `fopen(p, "w")` behind a quoted `"util.h"` is no longer an examined negative (NO-FSWRITE read `confirmed`); in-repo names reached only transitively are left out (map x1.19 on modsecurity instead of x2.31, identical verdicts). whisper.cpp NO-FSWRITE 204 -> 282 chains (INV-valom).
 - **C's `#include` stamp names every header a file can see**, quoted and transitive, not just its own angle includes, so a real `send()` reached through `"net.h"` is no longer an examined negative (NO-NET-SEND read `confirmed`); torsocks' 4 production `send`/`recv`/`connect` calls now classify, crun +7 fs_write chains (INV-zikul).
 - **Python HTTP responses and connected sockets are network-input sources**: `urlopen(url).read()`, `opener.open(url).read()` and `socket.create_connection(...).recv()` piped into a shell now read `violated` (was `confirmed_with_caveats`); `http.client.HTTPResponse` reads are `net_recv` and a member call on a typed receiver is typed from its signature row. django +17, superset +6 crossings, none lost (WI-tumol).
 - **Python bare-name calls no longer bind same-named methods** (`open(...)` -> `ContentFile.open`, an imported `check_password(...)` -> `AbstractBaseUser.check_password`): methods are keyed by qualified name only; django 82 -> 0 such edges, 67 now reaching the right function or builtin (WI-barip).

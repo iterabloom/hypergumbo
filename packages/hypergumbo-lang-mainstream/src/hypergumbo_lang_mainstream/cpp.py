@@ -83,10 +83,12 @@ Call-edge details:
   (``declared_by_an_included_header``). It is emitted unresolved with the
   include-set module hint, so a same-named shim elsewhere in the repo does
   not capture a libc/STL call.
-- **Unresolved module hint**: when the file has system ``#include``
-  headers, the hint is the comma-joined include set, prefixed with ``std``
-  when the call names ``std::`` or, for an unqualified call, the file has
-  ``using namespace std`` (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
+- **Unresolved module hint**: when the file has any ``#include``, the hint
+  is the comma-joined set of headers it can see -- its own includes, quoted
+  and angled, and everything a header found in the repository includes,
+  transitively (``include_closure``, INV-zikul) -- prefixed with ``std``
+  when the call names ``std::`` or the file has ``using namespace std``
+  (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
   Member calls carry ``call_construct="method"``.
 - **Scope** (INV-fabih): every stable_id's qualified-name slot holds the
   enclosing namespaces and classes the name does not already spell
@@ -164,6 +166,7 @@ from hypergumbo_core.analyze.c_family import (
 from hypergumbo_core.analyze.edge_source import mark_stand_in
 from hypergumbo_lang_mainstream.c import c_family_is_not_a_call
 from hypergumbo_lang_mainstream.header_owner import headers_owned_by
+from hypergumbo_lang_mainstream.include_closure import IncludeClosure
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -1734,6 +1737,7 @@ def _extract_edges_from_tree(
     *,
     file_symbols: list[Symbol],
     callables_by_name: dict[str, list[Symbol]],
+    include_closure: IncludeClosure | None = None,
 ) -> list[Edge]:
     """Extract include, call, and instantiation edges from a parsed tree.
 
@@ -1752,6 +1756,9 @@ def _extract_edges_from_tree(
             name-picked callee is re-chosen from by arity (WI-hilum). Required;
             outside ``analyze()`` there is no run index and the caller passes
             ``{}``, which leaves every name's pick as it is.
+        include_closure: The run's include graph
+            (``CppAnalyzer._include_closure``). Without one the file's own
+            directory stands in for the repository.
     """
     if namespace_aliases is None:
         namespace_aliases = {}  # pragma: no cover - always passed by caller
@@ -1766,25 +1773,28 @@ def _extract_edges_from_tree(
     # instead of being dropped.
     file_anchor = file_anchor_symbol("cpp", str(file_path), PASS_ID, run.execution_id)
 
-    # WI-rupik / WI-mafik: pre-collect system #include headers so the
-    # unresolved-call emit path can attribute calls to the file's
-    # include set. Without this, ``std::printf(...)`` after
-    # ``#include <cstdio>`` produces a dst with no header context.
-    system_includes: list[str] = []
+    # WI-rupik / WI-mafik: the headers this file can see, so the
+    # unresolved-call emit path can attribute calls to them. Without this,
+    # ``std::printf(...)`` after ``#include <cstdio>`` produces a dst with no
+    # header context.
+    #
+    # INV-zikul: EVERY header the file can see, not its own angle includes.
+    # The coverage gate reads the slot as the complete list of a call's
+    # possible homes (INV-zimud), so a header left out is a false all-clear:
+    # ``<cstdint>`` + ``"util.h"`` (which includes ``<cstdio>``) stamped
+    # ``fopen(p, "w")`` as ``cstdint``, the module filter refused the stdio
+    # row, cstdint is granted, and NO-FSWRITE read CONFIRMED. Same mechanism
+    # as c.py; see ``include_closure`` for what an unfound header contributes.
+    if include_closure is None:
+        include_closure = IncludeClosure(file_path.parent)
+    visible_headers = include_closure.stamp(file_path, source, transitive_in_repo=False)
     from hypergumbo_core.io_boundary import declared_by_an_included_header
     # WI-bapuk: `using namespace std;` makes an UNQUALIFIED `getline(cin, s)`
     # resolvable in std, which is the spelling teaching code and competitive
     # C++ actually use. Collected file-wide, exactly as the includes are.
     using_namespaces: list[str] = []
     for _n in iter_tree(tree.root_node):
-        if _n.type == "preproc_include":
-            _sys_lib = _find_child_by_type(_n, "system_lib_string")
-            if _sys_lib:
-                # Strip surrounding angle brackets: ``<cstdio>`` → ``cstdio``.
-                _hdr = _node_text(_sys_lib, source).strip("<>")
-                if _hdr:
-                    system_includes.append(_hdr)
-        elif _n.type == "using_declaration":
+        if _n.type == "using_declaration":
             _kids = [c.type for c in _n.children]
             if "namespace" in _kids:
                 _ident = _find_child_by_type(_n, "identifier")
@@ -2157,7 +2167,7 @@ def _extract_edges_from_tree(
                             and "::" not in callee_name
                             and _sym.path != _caller_path
                             and declared_by_an_included_header(
-                                "cpp", short_name, system_includes,
+                                "cpp", short_name, visible_headers,
                             )
                         )
                         if (
@@ -2203,7 +2213,7 @@ def _extract_edges_from_tree(
                                     n for n in using_namespaces
                                     if n in _CPP_CATALOGUE_NAMESPACES
                                 )
-                            # ONLY when the file HAS system includes. With none,
+                            # ONLY when the file HAS includes. With none,
                             # the slot stays the `external` SENTINEL, and that
                             # sentinel is load-bearing: it is what enables
                             # `lookup_with_module`'s SHORT-NAME FALLBACK. Naming
@@ -2220,8 +2230,8 @@ def _extract_edges_from_tree(
                             # changing the module slot changes every dst string
                             # and so the diff key itself moved.
                             _slots = (
-                                _slots + list(system_includes)
-                                if system_includes else []
+                                _slots + list(visible_headers)
+                                if visible_headers else []
                             )
                             _target_kind = _cpp_stream_target_kind(
                                 node, source, callee_name,
@@ -2666,6 +2676,8 @@ class CppAnalyzer(TreeSitterAnalyzer):
     #: Pass 2 sees an overload set where ``global_symbols`` keeps one per name.
     _prototypes: Optional[dict[str, list[list[dict[str, Any]]]]] = None
     _callables_by_name: Optional[dict[str, list[Symbol]]] = None
+    #: INV-zikul: the run's include graph, live only inside ``analyze()``.
+    _include_closure: Optional[IncludeClosure] = None
 
     def analyze(
         self, repo_root: Path, max_files: Optional[int] = None,
@@ -2673,11 +2685,13 @@ class CppAnalyzer(TreeSitterAnalyzer):
         """Run the base two-pass analysis with fresh overload indexes."""
         self._prototypes = {}
         self._callables_by_name = {}
+        self._include_closure = IncludeClosure(repo_root)
         try:
             return super().analyze(repo_root, max_files)
         finally:
             self._prototypes = None
             self._callables_by_name = None
+            self._include_closure = None
 
     def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
         """Yield C++ files (headers before sources for declaration ordering)."""
@@ -2753,6 +2767,7 @@ class CppAnalyzer(TreeSitterAnalyzer):
             field_type_registry=getattr(self, "_field_type_registry", None),
             file_symbols=self.file_symbols(local_symbols),
             callables_by_name=self._callables_by_name or {},
+            include_closure=self._include_closure,
         )
 
     def get_import_aliases(

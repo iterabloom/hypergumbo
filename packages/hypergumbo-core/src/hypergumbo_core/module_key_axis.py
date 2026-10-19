@@ -262,7 +262,8 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
         axis=AXIS_UNCERTAINTY,
         description=(
             "A comma-joined SET of candidate modules -- cpp joins every "
-            "#include in the file, because a call in that unit could come "
+            "header the unit can see (c.py does the same for an ambiguous "
+            "libc name), because a call in that unit could come "
             "from any of them, and since WI-bapuk PREPENDS the namespace a "
             "`std::`-qualified call names (or, for an unqualified call, a "
             "`using namespace` the file declares), because that is another "
@@ -281,13 +282,15 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=2230,
+                line=2240,
                 anchor='module_hint = ",".join(_slots)',
                 note=(
-                    "The file's entire #include set joined into one slot, "
-                    "with the namespace the call names prepended (WI-bapuk). "
-                    "The slot is left at the `external` SENTINEL when the "
-                    "file has no system includes -- naming a namespace there "
+                    "Every header the file can see (its own includes, quoted "
+                    "and angled, and what in-repo headers include, "
+                    "transitively: include_closure, INV-zikul) joined into "
+                    "one slot, with the namespace the call names prepended "
+                    "(WI-bapuk). The slot is left at the `external` SENTINEL "
+                    "when the file has no includes -- naming a namespace there "
                     "would switch off lookup_with_module's short-name "
                     "fallback and DELETE classifications that depend on it."
                 ),
