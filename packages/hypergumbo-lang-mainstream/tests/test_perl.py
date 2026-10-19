@@ -320,11 +320,14 @@ sub main {
         # method call $obj->helper() should create edge to helper
         assert len(call_edges) >= 1
 
-        # main should call helper via method call
+        # ``$obj`` is a SomeClass, so ``$obj->helper()`` is SomeClass's
+        # method; the same-named sub in main is NOT it (WI-mugir: it used
+        # to bind by short name).
         main_sym = next(s for s in result.symbols if s.name == "main")
         helper_sym = next(s for s in result.symbols if s.name == "helper")
         edge_pairs = [(e.src, e.dst) for e in call_edges]
-        assert (main_sym.id, helper_sym.id) in edge_pairs
+        assert (main_sym.id, helper_sym.id) not in edge_pairs
+        assert (main_sym.id, "perl:SomeClass:0-0:helper:unresolved") in edge_pairs
 
 
 class TestPerlSignatureExtraction:
