@@ -51,7 +51,12 @@ How It Works
    - Pass 2: Detect calls and resolve against global symbol registry.
      A call in no method is anchored on the class or module whose body
      holds it (``_SCOPE_BODY_NODES``), else on the file (INV-bamij).
-     In ``_try_receiver_call``, a constant receiver the project declares
+     In ``_try_receiver_call``, a RELATIVE constant receiver is tried
+     through the call site's lexical nesting first, innermost out, as
+     Ruby's ``Module.nesting`` does (``Orchestrator`` inside
+     ``module TestData`` is ``TestData::Orchestrator`` when that is
+     declared compactly; ``_lexical_nesting``, WI-gomup). A constant
+     receiver the project declares
      but whose class lacks the method yields an unresolved edge carrying
      ``receiver_type_hint`` (``enclosing_class`` for ``.new`` ->
      ``#initialize``) so the ``inherited_calls`` linker can walk its
@@ -2246,6 +2251,38 @@ def _extract_included_modules(
     return modules
 
 
+def _lexical_nesting(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """``Module.nesting`` at ``node``: the enclosing modules / classes as full
+    lexical paths, innermost first (WI-gomup).
+
+    ``module A; module B`` gives ``["A::B", "A"]``. A compact ``class A::C``
+    is ONE level whose name is ``A::C`` -- Ruby does not add ``A`` to the
+    nesting -- so inside it the nesting is ``["A::C"]``. Positional: read off
+    the call site's ancestors, never looked up by name.
+    """
+    names: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type in ("module", "class"):
+            name_node = current.child_by_field_name("name")
+            if name_node is not None:
+                names.append(node_text(name_node, source).lstrip(":"))
+        current = current.parent
+    names.reverse()  # outermost first
+    return ["::".join(names[: i + 1]) for i in range(len(names) - 1, -1, -1)]
+
+
+def _nested_candidates(
+    receiver_node: "tree_sitter.Node", receiver_class: str, source: bytes,
+) -> list[str]:
+    """The names Ruby tries for a RELATIVE constant before the top level:
+    each lexical nesting level qualifying it (WI-gomup). ``::X`` is absolute
+    and gets none."""
+    if receiver_class.startswith("::"):
+        return []
+    return [f"{level}::{receiver_class}" for level in _lexical_nesting(receiver_node, source)]
+
+
 def _try_receiver_call(
     receiver_node: "tree_sitter.Node",
     method_name: str,
@@ -2322,7 +2359,10 @@ def _try_receiver_call(
         # uses the unambiguous root-namespace prefix idiom common in Rails
         # background jobs (e.g. chatwoot's
         # ``::Instagram::MessageText.new(...).perform``).
-        candidates = [receiver_class.lstrip(":")]
+        candidates = [
+            *_nested_candidates(receiver_node, receiver_class, source),
+            receiver_class.lstrip(":"),
+        ]
         if receiver_node.type == "scope_resolution" and short_name and short_name != receiver_class:
             candidates.append(short_name)
         for candidate in candidates:
@@ -2405,8 +2445,16 @@ def _try_receiver_call(
     # function used to end with had been resolving that shape by accident.
     # A class DECLARED with the prefix (``class ::Foo::Bar``) keeps it in its
     # symbol names, so the literal spelling is still tried second.
-    candidates = [receiver_class.lstrip(":")]
-    if receiver_class != candidates[0]:
+    # WI-gomup: a RELATIVE constant is tried through the call site's lexical
+    # nesting first, innermost out (``Orchestrator`` inside ``module TestData``
+    # is ``TestData::Orchestrator`` when that is declared), as Ruby's
+    # ``Module.nesting`` lookup does. Only exact registered keys match, so a
+    # nesting level that declares no such constant falls through.
+    candidates = [
+        *_nested_candidates(receiver_node, receiver_class, source),
+        receiver_class.lstrip(":"),
+    ]
+    if receiver_class not in candidates:
         candidates.append(receiver_class)
     if receiver_node.type == "scope_resolution" and short_name and short_name != receiver_class:
         candidates.append(short_name)
