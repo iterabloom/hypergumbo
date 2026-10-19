@@ -65,6 +65,18 @@ Call-edge details:
   DIFFERENT class's method on weak evidence is withheld
   (``defer_bare_method_call``, INV-fahub) and emitted unresolved with
   ``enclosing_class``.
+- **Explicit receivers** (WI-lamij): ``impl_->Generate()`` / ``m.Forward()`` is
+  a call on a VALUE. Its receiver is typed where the source declares it -- a
+  local or parameter of the enclosing function, else a field of the caller's
+  class (``class_field_types``, which unwraps ``unique_ptr<T>`` / ``T*``); a
+  smart pointer's own ``.`` member is not the pointee's
+  (``_cpp_receiver_class``). A typed call binds ``T::m``, or, for a project
+  class that does not declare ``m``, an unresolved edge with
+  ``receiver_type_hint`` the inherited_calls linker walks. An untyped one
+  never takes the enclosing class as its hint, a same-file short-name hit or
+  an ``enclosing_class`` stamp: those are implicit-``this`` evidence, and the
+  pimpl idiom (``X::Generate`` forwarding to ``impl_->Generate``) turned them
+  into a false SELF-call -- 990 sites on sherpa-onnx.
 - **Included-header primitives**: a free, unqualified call whose resolved
   target is defined in another file is not bound when the I/O catalogue says
   one of the file's system ``#include`` headers declares that name
@@ -1523,6 +1535,67 @@ def _cpp_classify_stream_text(text: str) -> Optional[str]:
     return None
 
 
+#: Declarator wrappers between a declaration and the name it declares.
+_CPP_NAME_DECLARATOR_WRAPPERS = frozenset({
+    "init_declarator", "pointer_declarator", "reference_declarator",
+    "function_declarator",
+})
+
+
+def _cpp_declared_name(declarator: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The identifier a declarator declares, through ``*`` / ``&`` / ``= v`` /
+    the most-vexing-parse ``function_declarator`` (``std::ifstream in(p)``)."""
+    node: Optional["tree_sitter.Node"] = declarator
+    while node is not None and node.type in _CPP_NAME_DECLARATOR_WRAPPERS:
+        node = node.child_by_field_name("declarator") or next(
+            (c for c in node.named_children
+             if c.type == "identifier" or c.type in _CPP_NAME_DECLARATOR_WRAPPERS),
+            None)
+    return _node_text(node, source) if node is not None and node.type == "identifier" else None
+
+
+def _cpp_declared_type_node(
+    node: "tree_sitter.Node", source: bytes, name: str, *, parameters: bool,
+) -> Optional["tree_sitter.Node"]:
+    """The type node of *name*'s nearest declaration before *node* in the
+    enclosing function, then (``parameters``) of the parameter so named."""
+    function = node.parent
+    while function is not None and function.type != "function_definition":
+        function = function.parent
+    if function is None:
+        return None
+    use_line = node.start_point[0]
+    best_line = -1
+    best: Optional["tree_sitter.Node"] = None
+    body = function.child_by_field_name("body")
+    stack = [body] if body is not None else []
+    while stack:
+        cur = stack.pop()
+        stack.extend(cur.children)
+        if cur.type != "declaration":
+            continue
+        if cur.start_point[0] > use_line or cur.start_point[0] < best_line:
+            continue
+        declared = [
+            _cpp_declared_name(child, source)
+            for index, child in enumerate(cur.children)
+            if cur.field_name_for_child(index) == "declarator"
+        ]
+        if name in declared:
+            best, best_line = cur.child_by_field_name("type"), cur.start_point[0]
+    if best is not None or not parameters:
+        return best
+    declarator = function.child_by_field_name("declarator")
+    while declarator is not None and declarator.type != "function_declarator":
+        declarator = declarator.child_by_field_name("declarator")
+    params = declarator.child_by_field_name("parameters") if declarator is not None else None
+    for param in params.named_children if params is not None else []:
+        inner = param.child_by_field_name("declarator")
+        if inner is not None and _cpp_declared_name(inner, source) == name:
+            return param.child_by_field_name("type")
+    return None
+
+
 def _cpp_declared_type_kind(
     node: "tree_sitter.Node", source: bytes, name: str,
 ) -> Optional[str]:
@@ -1539,51 +1612,84 @@ def _cpp_declared_type_kind(
     (``std::istream& is``) answers nothing: an istream may be a file, a pipe or
     a buffer, and INV-zumin's rule is one answer per call site or none.
     """
-    body = None
-    current = node.parent
-    while current is not None:
-        if current.type == "function_definition":
-            body = current.child_by_field_name("body")
-            break
-        current = current.parent
-    if body is None:
+    type_node = _cpp_declared_type_node(node, source, name, parameters=False)
+    if type_node is None:
         return None
-    use_line = node.start_point[0]
-    best_line = -1
-    best: Optional[str] = None
-    stack = [body]
-    while stack:
-        cur = stack.pop()
-        stack.extend(cur.children)
-        if cur.type != "declaration":
-            continue
-        if cur.start_point[0] > use_line or cur.start_point[0] < best_line:
-            continue
-        type_node = cur.child_by_field_name("type")
-        if type_node is None:  # pragma: no cover - a declaration always has one
-            continue
-        declared = None
-        for child in cur.children:
-            if child.type == "function_declarator":
-                ident = _find_child_by_type(child, "identifier")
-                if ident is not None:
-                    declared = _node_text(ident, source)
-            elif child.type == "init_declarator":
-                ident = child.child_by_field_name("declarator")
-                if ident is not None:
-                    declared = _node_text(ident, source)
-            elif child.type == "identifier":
-                declared = _node_text(child, source)
-        if declared != name:
-            continue
-        short = _cpp_short_type(_node_text(type_node, source))
-        if short in _CPP_PATH_STREAM_TYPES:
-            best, best_line = "host_path", cur.start_point[0]
-        elif short in _CPP_MEMORY_STREAM_TYPES:
-            best, best_line = "in_memory", cur.start_point[0]
-        else:
-            best, best_line = None, cur.start_point[0]
-    return best
+    short = _cpp_short_type(_node_text(type_node, source))
+    if short in _CPP_PATH_STREAM_TYPES:
+        return "host_path"
+    if short in _CPP_MEMORY_STREAM_TYPES:
+        return "in_memory"
+    return None
+
+
+#: Smart pointers: ``->`` reaches the pointee, ``.`` the pointer itself.
+_CPP_SMART_POINTERS = frozenset({"unique_ptr", "shared_ptr", "weak_ptr", "auto_ptr"})
+
+
+def _cpp_class_of_type(
+    type_node: "tree_sitter.Node", source: bytes, *, arrow: bool,
+) -> Optional[str]:
+    """The class a declared type names for a member call made with ``->``
+    (``arrow``) or ``.`` (WI-lamij): ``Model`` for ``Model`` / ``ns::Model`` /
+    ``Model*``; the pointee of a smart pointer reached by ``->``; None for a
+    smart pointer's own ``.`` member, ``auto`` or a primitive."""
+    if type_node.type == "type_identifier":
+        return _node_text(type_node, source)
+    if type_node.type == "qualified_identifier":
+        name = type_node.child_by_field_name("name")
+        return _cpp_class_of_type(name, source, arrow=arrow) if name is not None else None
+    if type_node.type == "template_type":
+        outer = type_node.child_by_field_name("name")
+        outer_name = _node_text(outer, source) if outer is not None else ""
+        if outer_name not in _CPP_SMART_POINTERS:
+            return outer_name or None
+        args = type_node.child_by_field_name("arguments")
+        desc = _find_child_by_type(args, "type_descriptor") if args is not None else None
+        pointee = desc.child_by_field_name("type") if desc is not None else None
+        return (
+            _cpp_class_of_type(pointee, source, arrow=False)
+            if arrow and pointee is not None else None
+        )
+    return None
+
+
+def _cpp_owner_class(
+    node: "tree_sitter.Node", source: bytes, function: Optional[Symbol],
+) -> Optional[str]:
+    """The class a member function belongs to: the class body it sits in, or,
+    defined out of line (``int Tts::Run()``), the qualifier of its name."""
+    enclosing = _get_enclosing_class(node, source)
+    if enclosing is not None:
+        return enclosing
+    if function is not None and function.kind == "method" and "::" in function.name:
+        return function.name.rsplit("::", 1)[0].rsplit("::", 1)[-1]
+    return None
+
+
+def _cpp_receiver_class(
+    call: "tree_sitter.Node",
+    source: bytes,
+    owner_class: Optional[str],
+    field_types: dict[str, dict[str, str]],
+) -> Optional[str]:
+    """The class an explicit receiver is declared as, or None (WI-lamij).
+
+    A local or parameter of the enclosing function first (C++'s own scoping),
+    then a field of the caller's class from ``class_field_types``, which
+    already unwraps ``unique_ptr<T>`` / ``T*`` to ``T``.
+    """
+    function = call.child_by_field_name("function")
+    receiver = function.child_by_field_name("argument") if function is not None else None
+    if function is None or receiver is None or receiver.type != "identifier":
+        return None
+    operator = function.child_by_field_name("operator")
+    arrow = operator is not None and _node_text(operator, source) == "->"
+    name = _node_text(receiver, source)
+    declared = _cpp_declared_type_node(call, source, name, parameters=True)
+    if declared is not None:
+        return _cpp_class_of_type(declared, source, arrow=arrow)
+    return field_types.get(owner_class, {}).get(name) if owner_class else None
 
 
 def _cpp_stream_target_kind(
@@ -1879,11 +1985,55 @@ def _extract_edges_from_tree(
                                     ))
                                     chain_resolved = True
 
+                    # WI-lamij: ``impl_->Generate()`` / ``model_.Forward()`` is
+                    # a call on a VALUE, not on implicit ``this``: it must not
+                    # take the enclosing class as its path hint, a same-file
+                    # short-name hit, or an ``enclosing_class`` stamp.
+                    explicit = _explicit_receiver(node)
                     if chain_resolved:
                         pass  # Skip normal resolution
                     else:
                         # Try to resolve: look for short name first
                         short_name = callee_name.split("::")[-1] if "::" in callee_name else callee_name
+
+                        # WI-lamij: a receiver whose declaration names a class
+                        # resolves on that class -- its own member, or, for a
+                        # project class that does not declare it, an
+                        # unresolved edge the inherited_calls linker walks
+                        # the bases from (receiver_type_hint).
+                        _receiver_class = (
+                            _cpp_receiver_class(
+                                node, source,
+                                _cpp_owner_class(node, source, current_function),
+                                field_type_registry or {},
+                            )
+                            if explicit else None
+                        )
+                        _member = (
+                            global_symbols.get(f"{_receiver_class}::{short_name}")
+                            if _receiver_class else None
+                        )
+                        _receiver_sym = global_symbols.get(_receiver_class) if _receiver_class else None
+                        if _member is not None and _member.kind in ("function", "method"):
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=_member.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="ast_call",
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                meta={"call_construct": "method", "receiver": "declared_type"},
+                            ))
+                            chain_resolved = True
+                        elif _receiver_sym is not None and _receiver_sym.kind in ("class", "struct"):
+                            edges.append(make_unresolved_edge(
+                                "cpp", current_function.id, short_name,
+                                node.start_point[0] + 1, PASS_ID, run.execution_id,
+                                receiver_type_hint=_receiver_class,
+                                call_construct="method",
+                            ))
+                            chain_resolved = True
 
                         # STL method guard: when the call is a member call
                         # (obj.method()) and the method name is a common STL
@@ -1904,7 +2054,7 @@ def _extract_edges_from_tree(
                             else:
                                 # Use explicit namespace as path_hint
                                 path_hint = ns_prefix
-                        elif current_function.kind == "method":
+                        elif current_function.kind == "method" and not explicit:
                             # Same-class preference: bare call like Initialize()
                             # inside a class method — use the enclosing class
                             # as path_hint so the resolver prefers same-class
@@ -1918,7 +2068,7 @@ def _extract_edges_from_tree(
                     # before short name to avoid collisions when multiple classes
                     # define the same method name.
                     _local_callee = None
-                    if not chain_resolved:
+                    if not chain_resolved and not explicit:
                         if path_hint and f"{path_hint}::{short_name}" in local_symbols:
                             _local_callee = local_symbols[f"{path_hint}::{short_name}"]
                         elif short_name in local_symbols:
@@ -1961,7 +2111,8 @@ def _extract_edges_from_tree(
                         # magnet defers to the inherited_calls Site-1 walker via an
                         # unresolved edge stamped with ``enclosing_class`` (INV-nogof
                         # withhold-not-pick-first + INV-nilud linker-owns-resolution).
-                        _enclosing_type = _get_enclosing_class(node, source)
+                        _enclosing_type = (
+                            None if explicit else _get_enclosing_class(node, source))
                         # INV-nizom: the ONE fact that separates a real POSIX
                         # ``wait()`` from ``std::future::wait()`` once the
                         # receiver type is unknown. ``is_member_call`` is

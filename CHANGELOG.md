@@ -20,6 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **C++ member calls on an explicit receiver resolve on its declared type** (`impl_->Generate()`, `Model m; m.Forward()`), never by short name or as implicit `this`: false self-calls on sherpa-onnx 994 -> 41, grpc 1,531 -> 336, whisper.cpp 328 -> 147, modsecurity 101 -> 15 (WI-lamij).
 - **Perl method calls on a value resolve on its type** (`my $ua = Pkg->new; $ua->get`, `$self->m`, `Pkg->new->m`), not by short name across packages; untyped invocants get an unresolved method edge and top-level calls are attributed to the file: postgresql +7,363 resolved, virtualbox +959, git +34 (WI-mugir).
 - **Scala `println` / `Console` writes are logging** (`println(secret)` read `confirmed` against a never-logs claim): new `scala.Predef` / `scala.Console` rows and `Console.err` typed as the stderr stream; +179 logging findings on sbt, +20 gatling, +10 lila, none lost (WI-tunul).
 - **Scala parameterless calls and Kotlin synthetic getters emit edges** (`Runtime.getRuntime.availableProcessors`, `proc.inputStream`) where a row says the library declares the method: +150 edges on sbt, +7 on gatling, none lost (WI-bojud-sator).
