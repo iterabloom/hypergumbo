@@ -84,6 +84,10 @@ unchanged; widening it to stamped member calls was tried and recovered
 guesses (``op.evaluate`` on an ``Operator`` bound to another class's
 ``evaluate``).
 
+``visible_macros`` answers the same walk's other question for ``c.py``
+(INV-nohob): which function-like macros a call in the file can be a use of --
+those it defines and those every repository header it reaches defines.
+
 WHAT THIS DOES NOT DO. It does not read system headers (they are outside the
 repository; the catalogue describes what each one declares). It does not
 evaluate ``#if``. It does not follow a header reached only through a system
@@ -112,6 +116,12 @@ INCLUDABLE_PATTERNS: tuple[str, ...] = (
     "*.tcc", "*.tpp", "*.def", "*.c", "*.cc", "*.cpp", "*.cxx",
 )
 
+#: A FUNCTION-like macro: the name is followed by ``(`` with no space between
+#: (C11 6.10.3p3); ``#define LEVEL (3)`` is object-like and is not one.
+_FUNCTION_LIKE_MACRO = re.compile(
+    rb"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)\(", re.MULTILINE,
+)
+
 _DIRECTIVE = re.compile(
     rb'^[ \t]*#[ \t]*include(?:_next)?[ \t]*(<[^>\r\n]+>|"[^"\r\n]+")',
     re.MULTILINE,
@@ -134,6 +144,11 @@ def include_directives(source: bytes) -> list[tuple[str, bool]]:
     return out
 
 
+def function_like_macros(source: bytes) -> set[str]:
+    """The function-like macros ``source`` defines (INV-nohob)."""
+    return {m.decode("ascii") for m in _FUNCTION_LIKE_MACRO.findall(source)}
+
+
 class IncludeClosure:
     """The include graph of one repository for one analysis run.
 
@@ -149,6 +164,7 @@ class IncludeClosure:
         self._root = _absolute(repo_root)
         self._by_basename: dict[str, list[Path]] | None = None
         self._directives: dict[Path, list[tuple[str, bool]]] = {}
+        self._macros: dict[Path, set[str]] = {}
 
     def stamp(
         self, file_path: Path, source: bytes, *, transitive_in_repo: bool = True,
@@ -196,6 +212,42 @@ class IncludeClosure:
                     (target, h, q, depth + 1) for h, q in self._read(target)
                 )
         return names
+
+    def visible_macros(self, file_path: Path, source: bytes) -> set[str]:
+        """The function-like macros a call in ``file_path`` can be a use of:
+        those it defines and those every repository header it reaches
+        defines (INV-nohob). A macro from a system header is not here -- the
+        repository does not hold its text."""
+        names = function_like_macros(source)
+        current = _absolute(file_path)
+        visited: set[Path] = {current}
+        queue: deque[tuple[Path, str, bool, int]] = deque(
+            (current, header, quoted, 1)
+            for header, quoted in include_directives(source)
+        )
+        while queue:
+            including, header, quoted, depth = queue.popleft()
+            if depth > MAX_INCLUDE_DEPTH:
+                continue
+            for target in self._resolve(including, header, quoted):
+                if target in visited:
+                    continue
+                visited.add(target)
+                names |= self._macros_of(target)
+                queue.extend(
+                    (target, h, q, depth + 1) for h, q in self._read(target)
+                )
+        return names
+
+    def _macros_of(self, header: Path) -> set[str]:
+        cached = self._macros.get(header)
+        if cached is None:
+            try:
+                cached = function_like_macros(header.read_bytes())
+            except OSError:  # pragma: no cover - read just succeeded in _read's caller
+                cached = set()
+            self._macros[header] = cached
+        return cached
 
     def _read(self, header: Path) -> list[tuple[str, bool]]:
         cached = self._directives.get(header)
