@@ -1,0 +1,31 @@
+Original commit body from 2fc06ff467a57672af50836a966f5ba9df49f36a:
+
+py.py registered every METHOD in the flat, last-write-wins
+symbol_by_name under its BARE short name. Case 1 (a bare call `foo()`)
+reads that table, so `open(self.name)` bound ContentFile.open (hiding a
+builtin read from io-boundary and taint), and a method overwrote a
+same-named module function outright. Python scoping cannot reach a
+method from a function body: a class body is not an enclosing scope.
+
+Methods are now keyed by their qualified name (Class.method) only. The
+consumers that read the bare key with a qualified-name check migrate to
+the qualified key: the single-file property-getter fallback and
+@Registry.register. A decorator defined earlier in the same class body
+(@deco inside class A), which the live class namespace does reach, is
+asked for as A.deco first. Side effect: single-file extract_nodes now
+resolves `x.helper()` on `x: Foo` directly (Case 2c's local_symbols
+lookup of Foo.helper hits).
+
+Measured against dev, resolved calls edges to a method from a line
+calling the name with no receiver (the item's metric): django 82 -> 0.
+The 82 lost edges were all such binds; 46 now reach the right module
+function (an imported check_password, construct_change_message) and 21
+the builtin (set, tuple). feast: 3 lost, 3 retargeted to the module
+function. Self-analysis: 46 lost, 44 retargeted. pretix not measured
+(no source copy here).
+
+Tests: the _resolve_property_getter unit tests and
+test_typed_receiver_direct_method_gets_hint encoded the short-name key;
+they now assert the qualified-key contract.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
