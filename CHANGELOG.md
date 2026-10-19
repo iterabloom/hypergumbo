@@ -20,6 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Python HTTP responses and connected sockets are network-input sources**: `urlopen(url).read()`, `opener.open(url).read()` and `socket.create_connection(...).recv()` piped into a shell now read `violated` (was `confirmed_with_caveats`); `http.client.HTTPResponse` reads are `net_recv` and a member call on a typed receiver is typed from its signature row. django +17, superset +6 crossings, none lost (WI-tumol).
 - **Python bare-name calls no longer bind same-named methods** (`open(...)` -> `ContentFile.open`, an imported `check_password(...)` -> `AbstractBaseUser.check_password`): methods are keyed by qualified name only; django 82 -> 0 such edges, 67 now reaching the right function or builtin (WI-barip).
 - **C dispatch tables are emitted as variable symbols** and arrays of function pointers (`static int (*cmds[])(int) = { f }`) are detected, so `dispatches_to` edges no longer start at a node that does not exist: dangling sources crun 94, redis 505, tmate 129 -> 0; crun's map gains its 94 dispatch edges (WI-dirij).
 - **C++ member calls on an explicit receiver resolve on its declared type** (`impl_->Generate()`, `Model m; m.Forward()`), never by short name or as implicit `this`: false self-calls on sherpa-onnx 994 -> 41, grpc 1,531 -> 336, whisper.cpp 328 -> 147, modsecurity 101 -> 15 (WI-lamij).

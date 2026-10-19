@@ -282,7 +282,11 @@ called. An instance's methods live at their own slots, and this entry does not
 claim them. `urllib.request.OpenerDirector` has its own: `open` and `error`
 are rowed net_send and the class is declared complete (WI-dibit), and
 `build_opener()`'s result reaches it through the library_signatures row
-`urllib.request.build_opener: urllib.request.OpenerDirector`.
+`urllib.request.build_opener: urllib.request.OpenerDirector`. What `urlopen`
+and `OpenerDirector.open` hand back for an http(s) URL is typed
+`http.client.HTTPResponse` by the same rows, and that class's reads are rowed
+net_recv with its surface declared complete (WI-tumol): the send is where the
+request crosses, the read is where the response does.
 
 **Measured.** `scripts/check-self-claims --minimal` with `Request` deleted and
 the module declared: 18 claims unchanged (`confirmed_with_caveats`). A

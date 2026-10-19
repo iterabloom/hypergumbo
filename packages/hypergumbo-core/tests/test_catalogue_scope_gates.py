@@ -401,6 +401,11 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             # WI-kanor: `os._wrap_close` is the class os.popen() returns,
             # defined in CPython's Lib/os.py.
             "os._wrap_close",
+            # WI-tumol: the class urlopen() / OpenerDirector.open() /
+            # HTTPConnection.getresponse() return for http(s) (CPython's
+            # Lib/http/client.py); its module's connection classes are
+            # admitted above.
+            "http.client.HTTPResponse",
         }),
     ),
     "rust": Scope(
