@@ -20,6 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Ruby records the calls it used to drop**: `obj.write` on an untyped receiver, implicit-self calls (`params`, `current_user`) told apart from local variables by Ruby's own scoping rule, `self.m`, `super`, ambiguous names and direct recursion (WI-misir).
 - **Ruby resolves a constant through its enclosing module**: `Orchestrator.call` inside `module TestData` reaches `class TestData::Orchestrator` instead of being reported external (WI-gomup).
 - **An imported external base class is no longer bound to an in-repo class of the same name** in Java, Kotlin and JS/TS: `import junit.framework.TestCase; class T extends TestCase` and `import { Component } from 'react'` get an external edge instead of a wrong `extends` (WI-pivap, analyzer half).
 - **A qualified base (`System.Exception`, `std::exception`, `io.Writer`, `java.util.ArrayList<T>`) binds only an in-repo class its qualifier fits**, otherwise it is external; C++ classes now record their namespace-qualified name (WI-pivap, linker half).
