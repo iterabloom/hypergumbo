@@ -23,3 +23,10 @@
     fields:  # 1878
       statement: "A taint claim reads clean only if every flow from a catalogued source to a catalogued sink of its zone is either reported or disclosed as unfollowed; a source stored into a global or a struct field by a callee and read by another function, and a sink reached through a function pointer or a logging macro, are flows."  # 1878
       root_cause: "Not diagnosed. Candidates seen in torsocks: the def/use model does not carry taint through a global struct field written by a callee (conf_file_set_socks5_pass(password, &tsocks_config)); the call graph does not follow the send_data function pointer to send_data_impl; DBG(...) is an unexpanded macro, emitted as c:external:0-0:DBG. Until INV-zikul the coverage gate withheld these verdicts for an unrelated reason (incomplete include stamps), which hid the gap."  # 1878
+- op: discuss  # b87d
+  at: '2026-10-19T18:14:49Z'  # b87d
+  by: agent  # b87d
+  actor: jgstern_agent  # b87d
+  clock: 2  # b87d
+  nonce: b87d  # b87d
+  message: "Progress, 1 of 3 mechanisms: PR (dev 3e7538b5b5) makes a call through a C function-pointer variable reach the function it holds (static ssize_t (*send_data)(...) = send_data_impl). torsocks: all 12 send_data / recv_data calls now reach the _impl functions; redis 20. Fixture getenv -> send_data(...) now reads violated. NOT yet fixed: torsocks' host-secret-no-network still reads clean, because the password reaches the send only through the global tsocks_config a callee stores it into. Plan (owner-approved 2026-10-19): the next PR is a DISCLOSURE that withholds a C taint clean when a source's value reaches a construct the walk does not follow (a store into non-local memory, a function-like macro call, a project varargs parameter). Actually following each construct is filed as separate items."  # b87d

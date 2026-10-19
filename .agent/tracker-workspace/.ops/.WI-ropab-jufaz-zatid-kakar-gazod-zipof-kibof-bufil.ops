@@ -1,0 +1,22 @@
+- op: create  # 9357
+  at: '2026-10-19T18:16:27Z'  # 9357
+  by: agent  # 9357
+  actor: jgstern_agent  # 9357
+  clock: 1  # 9357
+  nonce: '9357'  # 9357
+  data:  # 9357
+    kind: work_item  # 9357
+    title: "C call graph and taint: a call to a function-like macro expands to the calls in its body, recursively and across headers, with argument positions mapped (torsocks DBG -> _ERRMSG -> __tsocks_print -> log_print)"  # 9357
+    status: todo_hard  # 9357
+    priority: 3  # 9357
+    parent:  # 9357
+    tags:  # 9357
+    - c  # 9357
+    - taint  # 9357
+    - analysis_quality  # 9357
+    isbefore: []  # 9357
+    duplicate_of: []  # 9357
+    not_duplicate_of: []  # 9357
+    pr_ref:  # 9357
+    description: "Trackerized from INV-nohob (owner, 2026-10-19). One of four constructs C taint does not follow; INV-nohob's disclosure withholds the clean verdict meanwhile.\n\nWHAT. A call to a C function-like macro is emitted as an unresolved call to the macro's NAME (c:external:0-0:DBG), so neither the call graph nor taint reaches what the macro expands to. torsocks logs the SOCKS5 password with DBG(\"Socks5 username %s and password %s sent successfully\", user, pass) (src/common/socks5.c:333). DBG is a CHAIN of function-like macros in src/common/log.h:\n  DBG(fmt, args...)  -> _ERRMSG(\"DEBUG\", MSGDEBUG, fmt, ## args)\n  _ERRMSG(msg, type, fmt, args...) -> __tsocks_print(type, msg \"...\" fmt \"...\", ## args)\n  __tsocks_print(level, fmt, args...) -> do { if (level != MSGNONE && level <= tsocks_loglevel) { log_print(fmt, ## args); } } while (0)\n\nFIX DIRECTION (not designed): an index of every function-like macro the run sees (preproc_function_def: name, parameters, body text), found through the include closure (include_closure.py), expanded recursively with a depth and cycle bound; a call to the macro becomes calls to the functions its body calls, with the argument positions mapped through each parameter substitution (`## args` / __VA_ARGS__ to the variadic tail). Skip keywords (if/while/sizeof/do) and the macro's own parameters.\n\nDONE WHEN: a fixture `#define DBG(fmt, ...) fprintf(stderr, fmt, __VA_ARGS__)` + DBG(\"%s\", getenv(\"PASS\")) reads violated on a host_secret -> logging claim, and torsocks' DBG call sites get calls edges to log_print. The torsocks logging flow ALSO needs the varargs item (log_print's body). When it lands, narrow INV-nohob's disclosure for macro calls."  # 9357
+    fields: {}  # 9357

@@ -1,0 +1,22 @@
+- op: create  # a236
+  at: '2026-10-19T18:16:16Z'  # a236
+  by: agent  # a236
+  actor: jgstern_agent  # a236
+  clock: 1  # a236
+  nonce: a236  # a236
+  data:  # a236
+    kind: work_item  # a236
+    title: "C taint: a value a callee writes through a pointer parameter (set_pass(p, &g_conf) -> c->pass = v) taints the caller's argument after the call (out-parameter summary)"  # a236
+    status: todo_hard  # a236
+    priority: 2  # a236
+    parent:  # a236
+    tags:  # a236
+    - c  # a236
+    - taint  # a236
+    - analysis_quality  # a236
+    isbefore: []  # a236
+    duplicate_of: []  # a236
+    not_duplicate_of: []  # a236
+    pr_ref:  # a236
+    description: "Trackerized from INV-nohob (owner, 2026-10-19: \"trackerize actually following the flow through each construct\"). One of four constructs C taint does not follow; INV-nohob's disclosure withholds the clean verdict meanwhile.\n\nWHAT. A C callee writes a parameter's value through ANOTHER pointer parameter, and the caller's object is never tainted:\n\n    static void set_pass(const char *v, struct conf *c) { strncpy(c->pass, v, 63); }\n    void init(void) { char *p = getenv(\"PASS\"); set_pass(p, &g_conf); }   // g_conf.pass is now the secret\n\ntorsocks: conf_file_set_socks5_pass(password, &tsocks_config) (src/lib/torsocks.c:125 -> src/common/config-file.c) copies the getenv'd SOCKS5 password into the global; the getpid/time username takes the same path in config-file.c:528-534 (snprintf(config->conf_file.socks5_username, ...)).\n\nFIX DIRECTION (not designed): an out-parameter summary per C function. When a param-tainted value is written through a pointer param (`*c = v`, `c->f = v`, `strncpy(c->f, v, n)` / memcpy / snprintf with a catalogued copy semantics), the caller's argument (`&g_conf`, a local `&s`) is defined as tainted after the call. c_def_use already records `s->f = e` as a mutation of the root `s`, intraprocedurally.\n\nDONE WHEN: the fixture above with `send(fd, g_conf.pass, 8, 0)` IN THE SAME function as init reads violated (a local out-param case: `struct conf c; set_pass(p, &c); send(fd, c.pass, ...)`). The cross-function global half is its sibling item (global state). When both land, narrow INV-nohob's disclosure for this construct.\nFixtures: /tmp is ephemeral; reconstruct from this text. Related: INV-komoj (a source RETURNED from a helper), distinct."  # a236
+    fields: {}  # a236
