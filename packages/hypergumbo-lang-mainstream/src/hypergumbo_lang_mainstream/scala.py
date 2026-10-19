@@ -377,6 +377,18 @@ _SCALA_IMPLICIT_IMPORT_TYPES = frozenset({
     "Exception", "Error", "Thread", "Class", "Object", "Tuple2", "Function1",
 })
 
+#: The objects ``scala._`` puts in scope with no import, by simple name
+#: (WI-tunul). scala imports ``java.lang._``, then ``scala._``, then
+#: ``Predef._``, so ``Console.println(k)`` is ``scala.Console``'s and a bare
+#: ``println(k)`` is ``scala.Predef``'s unless something nearer binds the name.
+_SCALA_IMPLICIT_OBJECTS: "dict[str, str]" = {
+    "Console": "scala.Console", "Predef": "scala.Predef",
+}
+
+#: ``scala.Console``'s stream VALUES: the process's own stdout / stderr, the
+#: PrintStreams ``System.out`` / ``System.err`` hold by default.
+_SCALA_CONSOLE_STREAMS = frozenset({"out", "err"})
+
 #: The type-node kinds a declared Scala type can take. ``type_identifier`` is
 #: the bare one every extraction site used to look for exclusively; the other
 #: two were invisible, which cost the hint entirely (WI-pokam).
@@ -652,6 +664,21 @@ def _inline_qualified_owner(
     with its own roots (INV-dupol).
     """
     return inline_qualified_owner(path, callee_name, bound, roots=_INLINE_QUALIFIED_ROOTS)
+
+
+def _scala_static_owner(
+    name: str, import_aliases: "dict[str, str]", *, is_project_type: bool,
+) -> "str | None":
+    """:func:`static_owner_module` for scala: the file's import, java.lang's
+    closed list, then the objects ``scala._`` imports implicitly (WI-tunul).
+    A project type or an import of the name keeps its own answer."""
+    owner = static_owner_module(
+        name, import_aliases, shadowed=SCALA_SHADOWED_JAVA_LANG,
+        is_project_type=is_project_type,
+    )
+    if owner is None and not is_project_type and name not in import_aliases:
+        owner = _SCALA_IMPLICIT_OBJECTS.get(name)
+    return owner
 
 
 def _qualify_scala_receiver(
@@ -2313,8 +2340,8 @@ class _ScalaReceiverTyper:
         """The qualified path a library row would key ``owner`` under, or ``None``."""
         if "." in owner:
             return owner
-        return static_owner_module(
-            owner, self._import_aliases, shadowed=SCALA_SHADOWED_JAVA_LANG,
+        return _scala_static_owner(
+            owner, self._import_aliases,
             is_project_type=_is_project_type(
                 owner, self._global_symbols, self._import_aliases,
                 self._file_packages, self._project_packages),
@@ -2425,6 +2452,28 @@ def _extract_edges_from_file(
             is_local=is_local,
         )
 
+    def _bare_console_at(at: "tree_sitter.Node", *, is_local: bool) -> bool:
+        """Whether a bare ``Console`` at ``at`` is ``scala.Console`` (WI-tunul)."""
+        return not is_local and _scala_static_owner(
+            "Console", import_aliases,
+            is_project_type=_is_project_type(
+                "Console", global_symbols,
+                import_aliases if _applies("Console", at) else None,
+                file_packages, project_packages),
+        ) == "scala.Console"
+
+    def _std_output_at(receiver: str, at: "tree_sitter.Node") -> bool:
+        """Whether a call's receiver is the process's stdout / stderr: java's
+        ``System.out`` / ``.err`` (WI-rabum) or ``Console.out`` / ``.err``."""
+        spelled = "".join(receiver.split())
+        head, _, stream = spelled.rpartition(".")
+        if stream in _SCALA_CONSOLE_STREAMS and head in ("Console", "scala.Console"):
+            return head == "scala.Console" or _bare_console_at(
+                at, is_local="Console" in var_types)
+        return is_std_output_receiver(
+            receiver, bare_system_is_java_lang=_bare_system_at(
+                at, is_local="System" in var_types))
+
     for node in iter_tree(tree.root_node):
         if node.type == "import_declaration":
             identifiers = [child for child in node.children if child.type == "identifier"]
@@ -2534,10 +2583,8 @@ def _extract_edges_from_file(
                             # every complex-receiver call in Scala.
                             callee_node = ids[0]
                             _value = field_node.child_by_field_name("value")
-                            if _value is not None and is_std_output_receiver(
-                                node_text(_value, source),
-                                bare_system_is_java_lang=_bare_system_at(
-                                    node, is_local="System" in var_types),
+                            if _value is not None and _std_output_at(
+                                node_text(_value, source), node,
                             ):
                                 receiver_type = PRINT_STREAM_TYPE
                                 stdio_receiver = True
@@ -2733,9 +2780,8 @@ def _extract_edges_from_file(
                             # call, and its owner is the module. Only the file's
                             # import or java.lang's closed list names one, so
                             # WI-sigog's "a path the file declares" still holds.
-                            else static_owner_module(
+                            else _scala_static_owner(
                                 receiver_name or "", import_aliases,
-                                shadowed=SCALA_SHADOWED_JAVA_LANG,
                                 is_project_type=_is_project_type(
                                     receiver_name or "", global_symbols,
                                     import_aliases if _applies(receiver_name or "", node) else None,
@@ -2930,8 +2976,14 @@ def _extract_edges_from_file(
     # (``System.currentTimeMillis``) from being recorded as a field read.
     emit_module_attribute_refs(
         tree.root_node, source,
-        java_lang_system_aliases(
-            bare_system_is_java_lang=_bare_system_at(tree.root_node, is_local=False)),
+        {
+            **java_lang_system_aliases(
+                bare_system_is_java_lang=_bare_system_at(tree.root_node, is_local=False)),
+            # WI-tunul: scala.Console's ``out`` / ``err`` / ``in`` are rowed too.
+            "scala.Console": "scala.Console",
+            **({"Console": "scala.Console"}
+               if _bare_console_at(tree.root_node, is_local=False) else {}),
+        },
         file_anchor, "scala", edges,
         node_kinds=("field_expression",),
         object_field_names=("value",),

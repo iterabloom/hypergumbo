@@ -186,9 +186,17 @@ class TestTheWholeClassIsSmallAndKnown:
         """Sized rather than assumed: slash-path literals naming a shipped
         source appear in a handful of files, which is what makes this gate
         cheap. If this number grows a lot, the hop-2 breadth is worth
-        re-measuring rather than inherited."""
+        re-measuring rather than inherited.
+
+        THE BOUND IS ON THE HOP-2 SURFACE, the source and script citers: each
+        one contributes every test that names IT. A TEST citer selects only
+        itself, so it costs one file and is not breadth. Counting both against
+        one bound failed once the ``# covers:`` declarations smart-test reads
+        (a test naming the source it covers) passed 40 -- measured 2026-10-19:
+        47 citers, 15 of them sources or scripts, 32 tests."""
         sources = _shipped_sources()
-        citers = set()
+        source_citers = set()
+        test_citers = set()
         for candidate in (
             list(REPO_ROOT.glob("packages/*/src/**/*.py"))
             + list(REPO_ROOT.glob("packages/*/tests/*.py"))
@@ -198,10 +206,13 @@ class TestTheWholeClassIsSmallAndKnown:
             text = candidate.read_text(encoding="utf-8", errors="ignore")
             for literal in sources:
                 if literal in text and not candidate.as_posix().endswith(literal):
-                    citers.add(candidate.name)
+                    relative = candidate.relative_to(REPO_ROOT).as_posix()
+                    is_test = relative.startswith("tests/") or "/tests/" in relative
+                    (test_citers if is_test else source_citers).add(candidate.name)
                     break
-        assert 1 <= len(citers) <= 40, sorted(citers)
-        assert "module_key_axis.py" in citers
+        assert 1 <= len(source_citers) <= 40, sorted(source_citers)
+        assert "module_key_axis.py" in source_citers
+        assert test_citers, "the covers declarations and direct citers are tests"
 
 
 def test_this_file_is_not_itself_a_citer() -> None:
