@@ -275,6 +275,78 @@ def _array_declarator_of(node: "tree_sitter.Node") -> Optional["tree_sitter.Node
     return current if current is not None and current.type == "array_declarator" else None
 
 
+def _function_pointer_name(declarator: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The variable a function-POINTER declarator declares, else None.
+
+    ``(*name)(args)`` parses as function_declarator -> parenthesized_declarator
+    -> pointer_declarator -> identifier; a plain function prototype has no
+    parenthesized pointer and is not one.
+    """
+    if declarator.type != "function_declarator":
+        return None
+    inner = declarator.child_by_field_name("declarator")
+    if inner is None or inner.type != "parenthesized_declarator":
+        return None
+    pointer = next((c for c in inner.named_children if c.type == "pointer_declarator"), None)
+    name = pointer.child_by_field_name("declarator") if pointer is not None else None
+    return node_text(name, source) if name is not None and name.type == "identifier" else None
+
+
+def _function_named_by(value: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """``f`` for a value ``f`` or ``&f``, else None."""
+    if value.type == "pointer_expression":
+        operand = value.child_by_field_name("argument")
+        if operand is None or not node_text(value, source).lstrip().startswith("&"):
+            return None
+        value = operand
+    return node_text(value, source) if value.type == "identifier" else None
+
+
+def _function_pointer_targets(
+    root: "tree_sitter.Node", source: bytes,
+) -> dict[str, list[str]]:
+    """Each function-pointer variable of the file -> the names it is given (INV-nohob).
+
+    A declaration initialising one (``int (*p)(int) = f;``, file scope or
+    local) and an assignment to a declared one (``p = f;`` / ``p = &f;``)
+    each add their right-hand name. Several are all kept: the call through the
+    pointer may reach any of them. A pointer declared without a known value (a
+    parameter, an ``extern``) has no entry. Names are file-wide, as the call
+    arm's own lookup is.
+    """
+    declared: set[str] = set()
+    targets: dict[str, list[str]] = {}
+
+    def _add(name: str, target: Optional[str]) -> None:
+        if target is not None and target not in targets.setdefault(name, []):
+            targets[name].append(target)
+
+    for node in iter_tree(root):
+        if node.type == "init_declarator":
+            declarator = node.child_by_field_name("declarator")
+            value = node.child_by_field_name("value")
+            name = _function_pointer_name(declarator, source) if declarator is not None else None
+            if name is not None:
+                declared.add(name)
+                if value is not None:
+                    _add(name, _function_named_by(value, source))
+        elif node.type == "declaration":
+            for child in node.children:
+                name = _function_pointer_name(child, source)
+                if name is not None:
+                    declared.add(name)
+    for node in iter_tree(root):
+        if node.type != "assignment_expression":
+            continue
+        left = node.child_by_field_name("left")
+        right = node.child_by_field_name("right")
+        if left is not None and right is not None and left.type == "identifier":
+            name = node_text(left, source)
+            if name in declared:
+                _add(name, _function_named_by(right, source))
+    return {name: found for name, found in targets.items() if found}
+
+
 def _get_c_parser() -> Optional["tree_sitter.Parser"]:
     """Get tree-sitter parser for C."""
     try:
@@ -675,6 +747,8 @@ def _extract_edges(
     if include_closure is None:
         include_closure = IncludeClosure(file_path.parent)
     visible_headers = include_closure.stamp(file_path, source)
+    # INV-nohob: what each function-pointer variable of this file holds.
+    pointer_targets = _function_pointer_targets(tree.root_node, source)
     _include_hint = ",".join(visible_headers) if visible_headers else None
     # Imported here, as ``_c_ambiguous_names`` imports the catalogue loader.
     from hypergumbo_core.io_boundary import declared_by_an_included_header
@@ -726,6 +800,51 @@ def _extract_edges(
                             evidence_type="ast_call_direct",
                         )
                         edges.append(edge)
+                    elif callee_name in pointer_targets:
+                        # INV-nohob: a call through a pointer variable the file
+                        # initialises or assigns calls what it holds -- every
+                        # one of them, when it is given several. A held name is
+                        # resolved as a direct call to it would be, WI-rimon's
+                        # rule included: jemalloc's fallback
+                        # ``pthread_create_fptr = pthread_create`` holds libc's
+                        # pthread_create, not an in-repo one.
+                        # A held name that is neither (a parameter, ``NULL``)
+                        # calls nothing we can name; with no held name left the
+                        # call keeps its unresolved edge.
+                        held = pointer_targets[callee_name]
+                        _before_held = len(edges)
+                        for target in held:
+                            _sym = resolver.lookup(target, caller_path=_caller_path).symbol
+                            _libc = declared_by_an_included_header("c", target, visible_headers)
+                            if _sym is not None and _sym.kind == "function" and not (
+                                _sym.path != _caller_path and _libc
+                            ):
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=_sym.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    resolution_score=1.0 / len(held),
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="function_pointer",
+                                ))
+                            elif _libc:
+                                edges.append(make_unresolved_edge(
+                                    "c", current_function.id, target,
+                                    node.start_point[0] + 1, PASS_ID, run.execution_id,
+                                    module_hint=(
+                                        _include_hint
+                                        if _include_hint and target in _c_ambiguous_names()
+                                        else "external"
+                                    ),
+                                ))
+                        if len(edges) == _before_held:
+                            edges.append(make_unresolved_edge(
+                                "c", current_function.id, callee_name,
+                                node.start_point[0] + 1, PASS_ID, run.execution_id,
+                                module_hint="external",
+                            ))
                     else:
                         # WI-lajus: the include set is the module evidence.
                         # Semantics is "this call could be from any of the
