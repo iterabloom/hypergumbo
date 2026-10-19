@@ -26,8 +26,11 @@ Call-edge details:
 
 - **Include-set module hint**: an unresolved call (no in-repo definition)
   whose name is in the C catalogue's ``ambiguous_names`` (send, recv, read,
-  write, open, close, ...) gets ``module_hint`` set to the file's
-  comma-joined system ``#include`` headers, so the catalogue can match it.
+  write, open, close, ...) gets ``module_hint`` set to the comma-joined
+  headers the file can see: its own ``#include`` lines, quoted and angled,
+  and everything a header found in the repository includes, transitively
+  (``include_closure``, INV-zikul). The catalogue matches the call through
+  any of them, and the coverage gate needs every one enumerated.
   Other unresolved calls keep the ``external`` hint; stamping them too was
   measured to lose matches, because a hint disables the short-name fallback.
 - **I/O stamps**: ``stamp_io_mode_from_call`` records a literal mode
@@ -123,6 +126,7 @@ from hypergumbo_core.analyze.edge_source import anchor_in_definitions, mark_stan
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 from hypergumbo_lang_mainstream.header_owner import headers_owned_by
+from hypergumbo_lang_mainstream.include_closure import IncludeClosure
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
 )
@@ -593,6 +597,7 @@ def _extract_edges(
     file_symbols: list[Symbol] | None = None,
     table_symbols: list[Symbol] | None = None,
     file_stable_id: str = "",
+    include_closure: IncludeClosure | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed C tree (pass 2).
 
@@ -606,6 +611,8 @@ def _extract_edges(
     define functions with the same name; the function that uses a dispatch
     table is found the same way. ``local_symbols`` is consulted only when
     ``file_symbols`` is omitted, to rebuild this file's declaration list.
+    ``include_closure`` is the run's include graph; without one (a direct
+    call) the file's own directory stands in for the repository.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     if resolver is None:  # pragma: no cover - defensive
@@ -656,17 +663,19 @@ def _extract_edges(
     # _module_hint_candidates (INV-funuf) already splits the slot on commas and
     # normalises ``stdio.h`` to the ``stdio`` spelling c.yaml declares. C --
     # whose catalogue cpp INHERITS -- was the only one not supplying it.
-    system_includes: list[str] = []
-    for _n in iter_tree(tree.root_node):
-        if _n.type == "preproc_include":
-            for _child in _n.children:
-                if _child.type != "system_lib_string":
-                    continue
-                # Strip the angle brackets: ``<unistd.h>`` -> ``unistd.h``.
-                _hdr = node_text(_child, source).strip("<>")
-                if _hdr and _hdr not in system_includes:
-                    system_includes.append(_hdr)
-    _include_hint = ",".join(system_includes) if system_includes else None
+    #
+    # INV-zikul: THE SET IS EVERY HEADER THE FILE CAN SEE, not its own angle
+    # includes. The coverage gate reads this slot as the COMPLETE list of the
+    # call's possible homes (INV-zimud's ALL), so a header left out is a false
+    # all-clear, not partial evidence: ``<errno.h>`` + ``"net.h"`` (which
+    # includes ``<sys/socket.h>``) stamped a real ``send()`` as ``errno.h``,
+    # and NO-NET-SEND read CONFIRMED. Quoted includes and everything an
+    # in-repo header reaches are in it now; see ``include_closure`` for what
+    # an unfound or unread header contributes (its name, never nothing).
+    if include_closure is None:
+        include_closure = IncludeClosure(file_path.parent)
+    visible_headers = include_closure.stamp(file_path, source)
+    _include_hint = ",".join(visible_headers) if visible_headers else None
     # Imported here, as ``_c_ambiguous_names`` imports the catalogue loader.
     from hypergumbo_core.io_boundary import declared_by_an_included_header
 
@@ -702,7 +711,7 @@ def _extract_edges(
                         and not (
                             lookup_result.symbol.path != _caller_path
                             and declared_by_an_included_header(
-                                "c", callee_name, system_includes,
+                                "c", callee_name, visible_headers,
                             )
                         )
                     ):
@@ -1523,6 +1532,8 @@ class CAnalyzer(TreeSitterAnalyzer):
     #: WI-dirij: the current file's dispatch-table variables, filled by Pass 2
     #: (``analyze`` sets a list per file; None collects nothing).
     _table_symbols: Optional[list[Symbol]] = None
+    #: INV-zikul: the run's include graph, live only inside ``analyze()``.
+    _include_closure: Optional[IncludeClosure] = None
 
     def extract_symbols_from_file(
         self,
@@ -1593,6 +1604,7 @@ class CAnalyzer(TreeSitterAnalyzer):
             file_symbols=self.file_symbols(local_symbols),
             table_symbols=self._table_symbols,
             file_stable_id=self._file_anchor(rel_path),
+            include_closure=self._include_closure,
         )
         _emit_stdio_identifier_refs(tree, source, file_path, run, edges)
         return edges
@@ -1678,6 +1690,8 @@ class CAnalyzer(TreeSitterAnalyzer):
         all_symbols: list[Symbol] = []
         all_edges: list[Edge] = []
         resolver = self.resolver_class(global_symbols)
+        # INV-zikul: one include graph per run, so each header is read once.
+        self._include_closure = IncludeClosure(repo_root)
 
         for source_file, (analysis, import_aliases) in file_analyses.items():
             all_symbols.extend(analysis.symbols)
@@ -1702,6 +1716,7 @@ class CAnalyzer(TreeSitterAnalyzer):
             all_symbols.extend(self._table_symbols)
         self._current_file_symbols = None
         self._table_symbols = None
+        self._include_closure = None
 
         # Deduplicate: remove declaration-only symbols when a definition
         # exists for the same function name.  Declarations in headers produce
