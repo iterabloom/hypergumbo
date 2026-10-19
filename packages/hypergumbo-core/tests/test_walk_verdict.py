@@ -156,6 +156,7 @@ def test_the_blockers_are_declared_in_one_place():
         WALK_BLOCKED_NO_SINK_CALL_LINE,
         WALK_BLOCKED_NO_SOURCE_CALL_LINE,
         WALK_BLOCKED_SINK_BEFORE_SOURCE,
+        WALK_BLOCKED_SOURCE_LINE_SINK,
         WALK_BLOCKED_SOURCE_NOT_TRACKED,
         WALK_BLOCKERS,
     )
@@ -165,6 +166,7 @@ def test_the_blockers_are_declared_in_one_place():
         WALK_BLOCKED_NO_SINK_CALL_LINE,
         WALK_BLOCKED_SOURCE_NOT_TRACKED,
         WALK_BLOCKED_SINK_BEFORE_SOURCE,
+        WALK_BLOCKED_SOURCE_LINE_SINK,
     })
 
 
