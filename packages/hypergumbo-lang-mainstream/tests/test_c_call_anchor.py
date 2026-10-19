@@ -174,12 +174,9 @@ static int tbl[] = { helper };
 int MAC2(user)(int i) { return tbl[i]; }
 """)
     result = analyze_c(tmp_path)
-    # The one dangling src is the dispatch-table VARIABLE (``tbl``), which c.py
-    # does not emit as a symbol: WI-dirij-norod-pugup-sasoh-satab-lubut-tahap-jupuz,
-    # pinned by equality so its fix has to update this line.
-    assert {
-        (e.edge_type, e.line) for e in unemitted_edge_sources(result.symbols, result.edges)
-    } == {("dispatches_to", 17)}
+    # No dangling src: the dispatch-table VARIABLES (``tbl``, ``cmds``) are
+    # emitted as symbols since WI-dirij.
+    assert unemitted_edge_sources(result.symbols, result.edges) == []
     names = {s.name for s in result.symbols if s.kind == "function"}
     assert not names & {"TEST_BEGIN", "test_x", "MAC", "inner", "MAC2", "user"}, names
     by_id = {s.id: s for s in result.symbols}
