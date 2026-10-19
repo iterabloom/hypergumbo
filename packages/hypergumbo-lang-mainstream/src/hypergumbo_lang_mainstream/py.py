@@ -38,7 +38,11 @@ Analysis proceeds in two passes for cross-file resolution:
 
 **Pass 2 - Edge Extraction:**
 - Walk AST to find function/method call sites
-- Resolve callees using local symbols first, then imports
+- Resolve callees using local symbols first, then imports. Methods sit in the
+  local table under their QUALIFIED name (``Class.method``) only: a bare-name
+  call cannot reach a method (a class body is not an enclosing scope), and a
+  bare key bound ``open(...)`` / ``list(...)`` to same-named methods and
+  overwrote same-named module functions (WI-barip)
 - Detect ``self.method()`` calls from the OWN body of the class ``self``
   denotes, found by POSITION per code block -- the innermost frame binding
   ``self`` must be a non-static method (``_self_receiver_class_id`` over
@@ -3585,11 +3589,17 @@ def _extract_file_analysis(
                         ),
                     )
                     symbols.append(method_symbol)
-                    # The flat bare-name write. It no longer answers
-                    # ``self.method()`` (WI-kutal: Case 2a reads
-                    # ``methods_by_class_id`` below); it is retained for the
-                    # other consumers of symbol_by_name.
-                    symbol_by_name[item.name] = method_symbol
+                    # WI-barip: keyed by the QUALIFIED name (``Class.method``),
+                    # never the bare one. A bare-name call ``open(...)`` reads
+                    # this table (Case 1), and Python scoping cannot reach a
+                    # method from a function body -- a class body is not an
+                    # enclosing scope -- so the bare write bound builtins and
+                    # module functions to same-named methods (django 56
+                    # sites, pretix 28) and overwrote a same-named module
+                    # function outright. ``self.method()`` reads
+                    # ``methods_by_class_id`` (WI-kutal); the getter and
+                    # decorator lookups read this qualified key.
+                    symbol_by_name[method_symbol.name] = method_symbol
                     # WI-jafat CHANGE A: also register the method under its AST
                     # node id (collision-immune, mirroring the FunctionDef path
                     # below). Without this, caller resolution in _extract_edges
@@ -4047,9 +4057,8 @@ def _resolve_property_getter(
     if sym_by_path_name is not None:
         getter = sym_by_path_name.get((class_symbol.path, qualified_name))
     if getter is None:
-        cand = local_symbols.get(attr_name)
-        if cand is not None and cand.name == qualified_name:
-            getter = cand
+        # Methods are keyed by qualified name in ``local_symbols`` (WI-barip).
+        getter = local_symbols.get(qualified_name)
     if getter is None or getter.kind != "method":
         return None
     for dec in (getter.meta or {}).get("decorators", []):
@@ -6863,6 +6872,7 @@ def _extract_edges(
 
     def _resolve_decorator_target(
         decorator: ast.expr,
+        owner_class: str | None = None,
     ) -> Symbol | None:
         """Resolve the target of a decorator expression to a Symbol.
 
@@ -6880,8 +6890,13 @@ def _extract_edges(
         # Simple name: @decorator or @dataclass
         if isinstance(decorator, ast.Name):
             name = decorator.id
-            # Check local symbols
-            symbol = local_symbols.get(name)
+            # WI-barip: a decorator defined earlier in the SAME class body
+            # (``def deco(f)`` then ``@deco``) is reached: the class body's
+            # namespace is live while it executes. Methods are keyed by
+            # qualified name, so it is asked for as ``Class.deco`` first.
+            symbol = (
+                local_symbols.get(f"{owner_class}.{name}") if owner_class else None
+            ) or local_symbols.get(name)
             if symbol:
                 return symbol
             # Check imports (with suffix matching)
@@ -6897,11 +6912,10 @@ def _extract_edges(
                 receiver_name = decorator.value.id
                 attr_name = decorator.attr
 
-                # Check if receiver is a local class (e.g., @Registry.register)
-                # Methods are stored with short name as key, so look up attr_name
-                # and verify it's a method of the receiver class
-                symbol = local_symbols.get(attr_name)
-                if symbol and symbol.name == f"{receiver_name}.{attr_name}":
+                # Check if receiver is a local class (e.g., @Registry.register):
+                # methods are keyed by qualified name (WI-barip).
+                symbol = local_symbols.get(f"{receiver_name}.{attr_name}")
+                if symbol:
                     return symbol
 
                 # Check if receiver is an imported module (with suffix matching)
@@ -6919,7 +6933,11 @@ def _extract_edges(
     ) -> None:
         """Create decorated_by edges for each decorator on a symbol."""
         for decorator in decorator_list:
-            decorator_symbol = _resolve_decorator_target(decorator)
+            decorator_symbol = _resolve_decorator_target(
+                decorator,
+                decorated_symbol.name.rsplit(".", 1)[0]
+                if decorated_symbol.kind == "method" else None,
+            )
 
             # Get the line number from the decorator itself
             line = getattr(decorator, "lineno", 0)

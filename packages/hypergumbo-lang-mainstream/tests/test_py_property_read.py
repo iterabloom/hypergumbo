@@ -280,13 +280,13 @@ class TestResolvePropertyGetterUnit:
             meta=meta,
         )
 
-    def test_property_getter_via_short_name(self) -> None:
-        # extract_nodes keys methods by SHORT name; the getter's .name is the
-        # qualified 'C.val', matching this class.
+    def test_property_getter_via_qualified_name(self) -> None:
+        # extract_nodes keys methods by QUALIFIED name (WI-barip; it was the
+        # short name), so the getter is found as 'C.val'.
         cls = self._sym("C", "class")
         getter = self._sym("C.val", "method", decorators=[{"name": "property"}])
         assert (
-            _resolve_property_getter(cls, "val", {"val": getter}, None) is getter
+            _resolve_property_getter(cls, "val", {"C.val": getter}, None) is getter
         )
 
     def test_property_getter_via_path_name_index(self) -> None:
@@ -311,7 +311,7 @@ class TestResolvePropertyGetterUnit:
         )
         pg_index = {("pkg/m.py", "C.val"): getter}
         assert _resolve_property_getter(
-            cls, "val", {"val": setter}, {("pkg/m.py", "C.val"): setter}, pg_index,
+            cls, "val", {"C.val": setter}, {("pkg/m.py", "C.val"): setter}, pg_index,
         ) is getter
 
     def test_property_getter_index_miss_falls_through(self) -> None:
@@ -319,19 +319,19 @@ class TestResolvePropertyGetterUnit:
         # local_symbols / (path, qualified) resolution (no early return).
         cls = self._sym("C", "class")
         getter = self._sym("C.val", "method", decorators=[{"name": "property"}])
-        assert _resolve_property_getter(cls, "val", {"val": getter}, None, {}) is getter
+        assert _resolve_property_getter(cls, "val", {"C.val": getter}, None, {}) is getter
 
     def test_short_name_hit_on_wrong_class_returns_none(self) -> None:
         # A same-short-name getter belonging to a DIFFERENT class (D.val) must
-        # not be credited to C — the qualified-name guard rejects it.
+        # not be credited to C: it is keyed 'D.val', not 'C.val'.
         cls = self._sym("C", "class")
         other = self._sym("D.val", "method", decorators=[{"name": "property"}])
-        assert _resolve_property_getter(cls, "val", {"val": other}, None) is None
+        assert _resolve_property_getter(cls, "val", {"D.val": other}, None) is None
 
     def test_plain_method_not_property_returns_none(self) -> None:
         cls = self._sym("C", "class")
         getter = self._sym("C.val", "method", decorators=[{"name": "staticmethod"}])
-        assert _resolve_property_getter(cls, "val", {"val": getter}, None) is None
+        assert _resolve_property_getter(cls, "val", {"C.val": getter}, None) is None
 
     def test_missing_getter_returns_none(self) -> None:
         cls = self._sym("C", "class")
@@ -340,17 +340,17 @@ class TestResolvePropertyGetterUnit:
     def test_non_method_kind_returns_none(self) -> None:
         cls = self._sym("C", "class")
         field = self._sym("C.val", "field", decorators=[{"name": "property"}])
-        assert _resolve_property_getter(cls, "val", {"val": field}, None) is None
+        assert _resolve_property_getter(cls, "val", {"C.val": field}, None) is None
 
     def test_meta_none_returns_none(self) -> None:
         cls = self._sym("C", "class")
         getter = self._sym("C.val", "method", decorators=None)
-        assert _resolve_property_getter(cls, "val", {"val": getter}, None) is None
+        assert _resolve_property_getter(cls, "val", {"C.val": getter}, None) is None
 
     def test_non_dict_decorator_entry_skipped(self) -> None:
         cls = self._sym("C", "class")
         getter = self._sym("C.val", "method", decorators=["property"])
-        assert _resolve_property_getter(cls, "val", {"val": getter}, None) is None
+        assert _resolve_property_getter(cls, "val", {"C.val": getter}, None) is None
 
 
 class TestCollectCallFuncAttrIds:
