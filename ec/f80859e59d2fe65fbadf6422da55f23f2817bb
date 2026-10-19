@@ -1,0 +1,22 @@
+Original commit body from 7c55d2865ed4a022ed234a263c8e8f2000991c78:
+
+WI-napaf gave a receiverless call that resolves nowhere the external
+placeholder; these sibling shapes stayed silent:
+
+- untyped variable receiver (obj.write): external placeholder with
+  call_construct=method, as js (WI-nasuf), python, java, go do;
+- implicit-self sends parsed as a bare identifier (current_user,
+  params, puts), also as a call receiver or a [] object: told from a
+  local read by Ruby's own lexical rule (_is_ruby_local: a parameter,
+  block parameter, rescue / for variable or earlier assignment in the
+  scope; a block's bindings visible only inside it), which replaces the
+  parameters-only guard (and its now-unused helper);
+- self.m(...): binds the enclosing class's own method;
+- a name 3+ classes define (AMB-METHOD) and super / super(...): an
+  unresolved edge with enclosing_class (the superclass for super) for
+  the inherited-calls linker, the owner as module, never "external"
+  (WI-napaf's rule: the name is the project's); K#go -> Base#go now
+  resolves through the linker;
+- direct recursion: the self edge, as python and java emit it.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
