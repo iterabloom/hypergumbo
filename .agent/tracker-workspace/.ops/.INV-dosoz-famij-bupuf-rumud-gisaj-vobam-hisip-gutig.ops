@@ -1,0 +1,24 @@
+- op: create  # 2d17
+  at: '2026-10-19T02:38:01Z'  # 2d17
+  by: agent  # 2d17
+  actor: jgstern_agent  # 2d17
+  clock: 1  # 2d17
+  nonce: 2d17  # 2d17
+  data:  # 2d17
+    kind: invariant  # 2d17
+    title: "ruby: declarations nested in module/class BLOCKS are registered under their short names (module A; class X -> 'X'), so A::X and A::B::X collide and a full-path reference misses"  # 2d17
+    status: violated  # 2d17
+    priority: 2  # 2d17
+    parent:  # 2d17
+    tags:  # 2d17
+    - ruby  # 2d17
+    - call_graph  # 2d17
+    - analysis_quality  # 2d17
+    isbefore: []  # 2d17
+    duplicate_of: []  # 2d17
+    not_duplicate_of: []  # 2d17
+    pr_ref:  # 2d17
+    description: "FOUND 2026-10-18 while fixing WI-gomup (PR #1723), on dev 201819e560.\n\nWHAT. The Ruby analyzer registers a class, module or method declared INSIDE a `module`/`class` block under its SHORT name, while a compact declaration keeps its full path:\n\n    module A\n      class X; def self.run; end; end\n      module B\n        class X; def self.run; end; end\n        def self.go; X.run; end\n      end\n    end\n    class A::C; def self.go; end; end\n\nanalyze_ruby symbols: class 'X' (twice), method 'X.run' (twice), module 'B', method 'B.go', but class 'A::C' and method 'A::C.go'. So `A::X` and `A::B::X` share the name `X` and their `run` methods share `X.run`; the call `X.run` in `B.go` resolved to one `X.run` (which one depends on registration order), with no way to tell A::B::X.run (what Ruby calls) from A::X.run.\n\nCONSEQUENCE. Same-named nested classes in different namespaces collide in the name registry (last write wins), so calls, inheritance and receiver typing can bind the wrong one; and a reference to a nested class by its full path (`A::B::X.run`) does not match the short key. Not measured on a corpus repo -- frequency unknown (Rails apps nest Admin::UsersController / Api::V1::UsersController etc. routinely, which is the shape that would collide).\n\nFIX SHAPE (not built). Register block-nested declarations under their full lexical path (the same _lexical_nesting WI-gomup added), keeping the short name only as a fallback key, and update the consumers that rely on short names. Needs a check of every place ruby.py builds or reads a symbol name (call resolution, inheritance meta, inherited_calls linker, stable ids -- a name change moves stable ids)."  # 2d17
+    fields:  # 2d17
+      statement: "A Ruby class, module or method is identified by its full lexical path whether it is declared in a block (module A; class X) or compactly (class A::X); two same-named declarations in different namespaces never share a name."  # 2d17
+      root_cause: "ruby.py names a block-nested declaration by its own name only (class 'X', method 'X.run' inside module A), while a compact declaration keeps its written path ('A::C'); the name registry is keyed by those names, so nested namesakes collide (last write wins)."  # 2d17
