@@ -17,7 +17,7 @@ miss emits the unresolved edge the function-call arm already emits for
 ``LWP::Simple::get()``: ``perl:<Pkg>:0-0:<m>:unresolved``, with the package as
 the module slot (ADR-0051's owner path), and ``call_construct="function"``
 because the call is made on the module itself (ADR-0059). An invocant that is
-an expression (``$obj->m``) is unchanged: its type is unknown here.
+an expression (``$obj->m``) is WI-mugir's (test_perl_expression_invocant.py).
 """
 
 from __future__ import annotations
@@ -147,13 +147,14 @@ def test_a_top_level_class_method_call_is_attributed_to_the_file(
     }, _dsts(calls, "file")
 
 
-def test_a_receiver_expression_keeps_the_short_name_lookup(tmp_path: Path) -> None:
-    """Out of scope (a variable's type is unknown here): ``$obj->helper``
-    still binds by short name, as test_perl's method-call test pins."""
+def test_an_untyped_receiver_expression_is_not_bound_by_short_name(tmp_path: Path) -> None:
+    """``$o`` is a plain function's first argument, whose type is unknown, so
+    ``$o->helper`` is NOT main's ``helper``; it used to bind by short name
+    (WI-mugir, test_perl_expression_invocant.py)."""
     (tmp_path / "a.pl").write_text(
         "sub helper { 1 }\nsub go { my $o = shift; $o->helper(); }\n")
     dsts = {e.dst for e in analyze_perl(tmp_path).edges if e.edge_type == "calls"}
-    assert dsts == {_sub_id("helper", 1)}, dsts
+    assert dsts == {"perl:external:0-0:helper:unresolved"}, dsts
 
 
 def _run(argv: list[str], cache: Path, monkeypatch: pytest.MonkeyPatch) -> str:
