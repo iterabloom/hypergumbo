@@ -123,6 +123,25 @@ ambiguous_names:
 # ---------------------------------------------------------------------------
 # Scala stdlib I/O
 # ---------------------------------------------------------------------------
+# WI-tunul: the process's own stdout / stderr is logging (audit-findings
+# 0021), as java.yaml's java.lang.System out / err and PrintStream rows say.
+# scala had no stdio rows, so a bare println(secret) -- the commonest stdout
+# write in scala -- matched nothing and a never-logs claim read confirmed.
+logging:
+  - module: scala.Predef
+    functions: [println, print, printf]
+    notes: >-
+      Imported into every compilation unit (scala._, then Predef._), so the
+      source calls them bare; they write Console.out. Function-kind: called
+      with no owner, or on the object Predef (ADR-0059).
+  - module: scala.Console
+    functions: [println, print, printf]
+    attributes: [out, err]
+    notes: >-
+      scala.Console is visible without an import (scala._). Its writers go to
+      Console.out; Console.out / Console.err are the process's streams (the
+      PrintStreams System.out / System.err hold by default), read as values.
+
 ipc_recv:
   - module: scala.sys.process.ProcessBuilder
     methods: [lineStream, lazyLines]
@@ -132,6 +151,11 @@ ipc_recv:
       call is a transfer as well as a launch. `ProcessBuilder.run` stays
       launch-only -- it hands back a Process handle. This is the same
       simultaneity `Process.apply` already declares one row over.
+  - module: scala.Console
+    attributes: [in]
+    notes: >-
+      WI-tunul: the reader on the process's standard input, as java.lang.System
+      in is. Read as a value.
   - module: scala.io.StdIn
     functions: [readLine, readInt, readDouble, readFloat, readLong, readBoolean, readChar, readShort, readByte, readf]
     notes: >-
