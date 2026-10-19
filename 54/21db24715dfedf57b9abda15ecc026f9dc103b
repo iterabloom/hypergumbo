@@ -1,0 +1,24 @@
+Original commit body from de2812496ed8259aeb8a6b589d7844bed5fe443e:
+
+scala.yaml had no stdio rows, so a bare println(secret) -- the commonest
+stdout write in scala -- matched nothing and a never-logs-a-secret claim
+read `confirmed` with no caveat.
+
+- scala.yaml: logging rows for scala.Predef println/print/printf and
+  scala.Console println/print/printf + attributes out/err; ipc_recv for
+  Console.in.
+- scala.py: _scala_static_owner adds the objects scala._ imports
+  implicitly (Console, Predef) after the import and java.lang's list; a
+  project type or an import of the name keeps its own answer.
+  Console.out/err receivers are typed java.io.PrintStream with
+  io_target_kind std_stream, as System.out/err are (WI-rabum), and read
+  as values they are module_attr_refs on scala.Console.
+- tests/test_citation_gate_tests.py: the citation-family size bound now
+  applies to the hop-2 surface (source/script citers, 15) instead of all
+  citers (47, over the 40 bound on dev already): a test citer -- e.g. a
+  `# covers:` declaration -- selects only itself.
+
+Measured against dev (classified findings): sbt +179 logging, gatling
++20, lila +10; 0 lost, every addition logging.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
