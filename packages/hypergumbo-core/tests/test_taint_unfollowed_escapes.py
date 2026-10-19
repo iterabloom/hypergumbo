@@ -88,6 +88,17 @@ def test_no_escape_when_the_value_does_not_reach_the_stamp() -> None:
     ) == []
 
 
+def test_a_stamp_in_another_function_is_not_this_source_s() -> None:
+    """The source's own function holds no stamped call; one in another
+    function cannot be where THIS value was lost."""
+    other = "c:src/other.c:1-5:other:function"
+    assert find_unfollowed_escapes(
+        _ddg(("p", 2, 4)),
+        [_call(_GETENV, 2), _call(_SET, 3, "out_parameter_call", src=other)],
+        SOURCES, language="c",
+    ) == []
+
+
 def test_an_escaped_walk_is_not_an_escape_here() -> None:
     """A walk that returns None (the value went somewhere untracked for some
     OTHER reason) has its own disclosures; pooling it would withhold every
