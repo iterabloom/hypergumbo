@@ -156,3 +156,98 @@ def test_js_specifier_rules_on_unreadable_manifests(tmp_path: Path) -> None:
         assert not _bare_specifier_is_external("./x", root / "a.ts", index)
         assert _bare_specifier_is_external("node:fs", root / "a.ts", index)
         assert _bare_specifier_is_external("fs/promises", root / "a.ts", index)
+
+
+# --- Bare bases bound through namespace / package imports (core linker) ------
+#
+# PHP, Groovy and Scala record which import each BARE base came through
+# (``meta["base_class_imports"]``); C# records the namespaces visible in the
+# file (``meta["visible_namespaces"]``). The core inheritance linker checks the
+# base against them, so an external class is not bound to an in-repo namesake.
+
+
+def _extends_by_name(tmp_path: Path, files: dict[str, str]) -> dict[str, str]:
+    for name, text in files.items():
+        (tmp_path / name).write_text(text)
+    out = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+    data = json.loads(out.read_text())
+    names = {n["id"]: n["name"] for n in data["nodes"]}
+    return {
+        names[e["src"]]: (names.get(e["dst"], e["dst"]) if not e["dst"].endswith(
+            ":external_symbol") else e["dst"])
+        for e in data["edges"] if e["type"] == "extends" and e["src"] in names
+    }
+
+
+def test_php_use_bound_base(tmp_path: Path) -> None:
+    ext = _extends_by_name(tmp_path, {
+        "Model.php": "<?php\nnamespace App\\Support;\nclass Model {}\n",
+        "User.php": "<?php\nnamespace App;\nuse Illuminate\\Database\\Eloquent\\Model;\n"
+                    "class User extends Model {}\n",
+        "Post.php": "<?php\nnamespace App;\nuse App\\Support\\Model as Base;\n"
+                    "class Post extends Base {}\n",
+    })
+    assert ext["User"].startswith("php:Illuminate\\Database\\Eloquent:0-0:Model:")
+    assert ext["Post"] == "Model", "an aliased in-repo import still binds"
+
+
+def test_groovy_import_bound_base(tmp_path: Path) -> None:
+    ext = _extends_by_name(tmp_path, {
+        "Script.groovy": "package org.acme\nclass Script {}\n",
+        "T.groovy": "package org.acme.app\nimport groovy.lang.Script\nclass T extends Script {}\n",
+        "U.groovy": "package org.acme.app\nimport org.acme.Script\nclass U extends Script {}\n",
+    })
+    assert ext["T"].startswith("groovy:groovy.lang:0-0:Script:")
+    assert ext["U"] == "Script"
+
+
+def test_scala_import_bound_base(tmp_path: Path) -> None:
+    ext = _extends_by_name(tmp_path, {
+        "Actor.scala": "package org.acme\nclass Actor\n",
+        "T.scala": "package org.acme.app\nimport akka.actor.Actor\nclass T extends Actor\n",
+        "U.scala": "package org.acme.app\nimport org.acme.Actor\nclass U extends Actor\n",
+    })
+    assert ext["T"].startswith("scala:akka.actor:0-0:Actor:")
+    assert ext["U"] == "Actor"
+
+
+def test_csharp_bare_base_and_visible_namespaces(tmp_path: Path) -> None:
+    ext = _extends_by_name(tmp_path, {
+        "Ex.cs": "namespace MyApp.Errors { public class Exception {} }\n"
+                 "namespace MyApp.Errors { public interface IThing {} }\n",
+        "E.cs": "using System;\nnamespace MyApp { class E : Exception {} }\n",
+        "F.cs": "using MyApp.Errors;\nnamespace MyApp { class F : Exception {} }\n",
+        "G.cs": "namespace MyApp.Errors.Sub { class G : Exception {} }\n",
+        "H.cs": "using Ex = MyApp.Errors.Exception;\nnamespace Other { class H : Ex {} }\n",
+        "I.cs": "using static System.Math;\nnamespace Other { interface IOther : IThing {} }\n",
+    })
+    assert ext["E"].startswith("csharp:external:0-0:Exception:")
+    assert ext["F"] == "Exception", "a using'd namespace is visible"
+    assert ext["G"] == "Exception", "an enclosing namespace is visible"
+    assert ext["H"] == "Exception", "a using alias names one type"
+    assert ext["IOther"].startswith("csharp:external:0-0:IThing:"), (
+        "using static imports members, not types")
+
+
+def test_groovy_wildcard_import_binds_no_single_name(tmp_path: Path) -> None:
+    """``import groovy.lang.*`` names no class, so the bare base keeps the
+    name binding (no positive evidence it is external)."""
+    ext = _extends_by_name(tmp_path, {
+        "Script.groovy": "package org.acme\nclass Script {}\n",
+        "W.groovy": "package org.acme.app\nimport groovy.lang.*\nclass W extends Script {}\n",
+    })
+    assert ext["W"] == "Script"
+
+
+def test_scala_trait_base_and_enum_qualified_name(tmp_path: Path) -> None:
+    from hypergumbo_lang_mainstream.scala import analyze_scala
+
+    ext = _extends_by_name(tmp_path, {
+        "Actor.scala": "package org.acme\ntrait Actor\n",
+        "R.scala": "package org.acme.app\nimport akka.actor.Actor\ntrait R extends Actor\n",
+        "Color.scala": "package org.acme\nenum Color:\n  case Red, Green\n",
+    })
+    assert ext["R"].startswith("scala:akka.actor:0-0:Actor:")
+    enums = [s for s in analyze_scala(tmp_path).symbols if s.kind == "enum"]
+    assert [s.qualified_name for s in enums] == ["org.acme.Color"]

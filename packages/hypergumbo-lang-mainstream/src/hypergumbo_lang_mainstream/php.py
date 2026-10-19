@@ -1105,6 +1105,7 @@ def _extract_symbols(
         line_span=end_line - 1 + 1,
     )
     symbols.append(module_symbol)
+    use_aliases = _extract_use_aliases(tree, source)
 
     for node in iter_tree(tree.root_node):
         # Function declarations
@@ -1165,7 +1166,18 @@ def _extract_symbols(
 
                 # Extract base classes and interfaces
                 base_classes = _extract_base_classes_php(node, source)
-                meta = {"base_classes": base_classes} if base_classes else None
+                meta: dict[str, object] | None = (
+                    {"base_classes": base_classes} if base_classes else None
+                )
+                # WI-pivap: which ``use`` each BARE base came through, so the
+                # inheritance linker checks it as that qualified name rather
+                # than binding any in-repo class of the same short name.
+                base_imports = {
+                    b: use_aliases[b] for b in base_classes
+                    if "\\" not in b and b in use_aliases
+                }
+                if meta is not None and base_imports:
+                    meta["base_class_imports"] = base_imports
 
                 container_kind = _PHP_CONTAINER_KINDS[node.type]
                 symbol = Symbol(
