@@ -1,0 +1,36 @@
+Original commit body from a14342690caebbb4e1a1ed2d66ead4967b7b8ea0:
+
+c.py stamped an unresolved ambiguous libc call (send, recv, read, ...)
+with the file's ANGLE includes only. The coverage gate's ALL-expansion
+(INV-zimud) reads that stamp as the complete set of the call's homes,
+so a header reached through a quoted include or transitively was a
+false all-clear: `#include <errno.h>` + `#include "net.h"` (which
+includes <sys/socket.h>) stamped a real send() as errno.h, and
+NO-NET-SEND read CONFIRMED with no caveat.
+
+New include_closure.IncludeClosure: one include graph per run. The
+stamp is every header the file includes, quoted or angled, plus
+everything a header found in the repository includes, breadth-first,
+each named as written. An unfound / unread / past-depth header keeps
+its name (never nothing); several repository candidates are all read
+(every resolution error only ADDS a header). c.py uses it for the stamp
+and for WI-rimon's included-header test.
+
+Ported from the uncommitted draft in ~/hg_wt/zikul (that worktree is
+left untouched); the only conflicts were WI-dirij's additive c.py
+lines. cpp.py is unchanged: INV-valom.
+
+Measured against today's dev (verify-claims):
+- the item's repro: cq1 (<errno.h> + "net.h") confirmed -> violated;
+  cq2 ("net.h" only) confirmed -> violated; control cq3 (<proj/net.h>,
+  in-repo) inconclusive -> violated.
+- torsocks: 6 taint claims inconclusive -> confirmed_with_caveats. On
+  dev they were withheld only by 4 production calls (send x2, recv,
+  connect in src/lib/sendto.c and src/common/socks5.c) whose stamp
+  omitted sys/socket.h; those now classify net_send / net_recv. All 34
+  calls still unclassified are under tests/ (excluded as
+  non-production). NO-NET-SEND / NO-NET-RECV stay violated.
+- crun: NO-FSWRITE 306 -> 313 chains, NO-FSREAD 251 -> 253. tmate: no
+  move. (Matches the draft's own A/B on its older base.)
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
