@@ -73,10 +73,16 @@ is named but not read, which is the absent case above.
 
 WHO USES IT. ``c.py``, for the stamp on an ambiguous libc name and for
 WI-rimon's "a header this unit includes declares the call" test. ``cpp.py``
-stamps EVERY unresolved call with its own angle includes and has the same
-false all-clear, but wiring this in there was measured to grow the survey
-2.55x on modsecurity and to cost the method-call recovery linker the calls
-it resolves only from the placeholder slot, so it is a separate item.
+(INV-valom), which stamps EVERY unresolved call, not only ambiguous names,
+and so had the same false all-clear wider. It asks for the stamp WITHOUT the
+names of in-repo headers reached only transitively (``transitive_in_repo``):
+with them the behavior map grew 2.31x on modsecurity, without them 1.19x,
+and every verdict on modsecurity and whisper.cpp was identical either way.
+The method-call recovery linker the first prototype measured losing four
+calls to recovers none of those sites on the current tree, so it is
+unchanged; widening it to stamped member calls was tried and recovered
+guesses (``op.evaluate`` on an ``Operator`` bound to another class's
+``evaluate``).
 
 WHAT THIS DOES NOT DO. It does not read system headers (they are outside the
 repository; the catalogue describes what each one declares). It does not
@@ -144,12 +150,26 @@ class IncludeClosure:
         self._by_basename: dict[str, list[Path]] | None = None
         self._directives: dict[Path, list[tuple[str, bool]]] = {}
 
-    def stamp(self, file_path: Path, source: bytes) -> list[str]:
+    def stamp(
+        self, file_path: Path, source: bytes, *, transitive_in_repo: bool = True,
+    ) -> list[str]:
         """Every header ``file_path`` can see, as written, deduplicated.
 
         The file's own includes come first, in source order, then the
         headers they reach, breadth-first. Empty only when the file has no
         ``#include`` that names a header.
+
+        ``transitive_in_repo=False`` (cpp, INV-valom) leaves out the name of a
+        header that is reached only TRANSITIVELY and is found in the
+        repository. Such a header is still READ, so every system header it
+        pulls in stays in the stamp. Its own name answers neither question
+        the stamp is asked: it matches no catalogue row (the ANY), and it can
+        only have been reached through an in-repo header the file includes
+        DIRECTLY -- the walk follows found files only -- whose name stays and
+        stands for project code at the coverage gate (the ALL). It was 65% of
+        the stamp's characters on modsecurity, where cpp stamps EVERY
+        unresolved call, not only ambiguous names; verdicts with and without
+        it were identical on modsecurity and whisper.cpp.
         """
         names: list[str] = []
         seen_names: set[str] = set()
@@ -161,12 +181,14 @@ class IncludeClosure:
         )
         while queue:
             including, header, quoted, depth = queue.popleft()
-            if header not in seen_names:
+            targets = (
+                self._resolve(including, header, quoted)
+                if depth <= MAX_INCLUDE_DEPTH else []
+            )
+            if header not in seen_names and (transitive_in_repo or depth == 1 or not targets):
                 seen_names.add(header)
                 names.append(header)
-            if depth > MAX_INCLUDE_DEPTH:
-                continue
-            for target in self._resolve(including, header, quoted):
+            for target in targets:
                 if target in visited:
                     continue
                 visited.add(target)
