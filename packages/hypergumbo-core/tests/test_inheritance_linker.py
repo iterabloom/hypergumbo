@@ -1732,3 +1732,60 @@ def test_cpp_std_exception_is_not_the_in_repo_namesake(tmp_path: Path) -> None:
     ext = {names.get(e["src"]): e["dst"] for e in data["edges"] if e["type"] == "extends"}
     assert ext["E"].startswith("cpp:std:0-0:exception:"), ext["E"]
     assert names.get(ext["F"]) == "exception", ext["F"]
+
+
+class TestBareImportedBases:
+    """WI-pivap, the bare half: a base written BARE but bound by an import
+    (PHP ``use``, Groovy / Scala ``import``) is checked as the qualified name
+    the import gives it (``meta["base_class_imports"]``); a C# bare base is
+    checked against the namespaces visible in its file (its own namespace
+    chain and its ``using`` directives, ``meta["visible_namespaces"]``)."""
+
+    _sym = staticmethod(TestQualifiedBaseMustMatchItsQualifier._sym)
+
+    def _run(self, symbols: list[Symbol]) -> list[Edge]:
+        ctx = LinkerContext(repo_root=Path("/"), symbols=symbols, edges=[])
+        return link_inheritance(ctx).edges
+
+    def test_an_import_bound_bare_base_is_checked_as_its_import(self) -> None:
+        mine = self._sym("php:M", "Model", "php", qualified="App\\Support\\Model")
+        user = self._sym("php:U", "User", "php", qualified="App\\User", bases=["Model"])
+        user.meta["base_class_imports"] = {"Model": "Illuminate\\Database\\Eloquent\\Model"}
+        mine2 = self._sym("php:M2", "Model", "php", qualified="App\\Support\\Model")
+        post = self._sym("php:P", "Post", "php", qualified="App\\Post", bases=["Model"])
+        post.meta["base_class_imports"] = {"Model": "App\\Support\\Model"}
+        out = {e.src: e for e in self._run([mine, user]) + self._run([mine2, post])}
+        assert out["php:U"].dst == "php:Illuminate\\Database\\Eloquent:0-0:Model:unresolved"
+        assert out["php:P"].dst == "php:M2", "an import of the in-repo class still binds"
+
+    def test_a_php_backslash_qualified_base_is_looked_up(self) -> None:
+        """Before, a ``\\Foo\\Bar`` base was dropped entirely: the linker split
+        only on ``.`` and ``::``."""
+        mine = self._sym("php:B", "Bar", "php", qualified="Foo\\Bar")
+        k = self._sym("php:K", "K", "php", qualified="App\\K", bases=["\\Foo\\Bar"])
+        ext = self._sym("php:X", "X", "php", qualified="App\\X", bases=["\\Vendor\\Bar"])
+        out = {e.src: e for e in self._run([mine, k, ext])}
+        assert out["php:K"].dst == "php:B"
+        assert out["php:X"].dst == "php:\\Vendor:0-0:Bar:unresolved"
+
+    def test_a_csharp_bare_base_is_checked_against_visible_namespaces(self) -> None:
+        mine = self._sym("cs:Exc", "Exception", "csharp", qualified="MyApp.Errors.Exception")
+        e = self._sym("cs:E", "E", "csharp", qualified="MyApp.E", bases=["Exception"])
+        e.meta["visible_namespaces"] = ["MyApp", "System"]
+        f = self._sym("cs:F", "F", "csharp", qualified="MyApp.Errors.Sub.F", bases=["Exception"])
+        f.meta["visible_namespaces"] = ["MyApp.Errors.Sub", "MyApp.Errors", "MyApp"]
+        out = {x.src: x for x in self._run([mine, e, f])}
+        assert not out["cs:E"].is_resolved, "MyApp.Errors is not visible from namespace MyApp"
+        assert out["cs:E"].dst == "csharp:external:0-0:Exception:unresolved"
+        assert out["cs:F"].dst == "cs:Exc", "an enclosing namespace's type is visible"
+
+    def test_without_the_hints_the_name_binding_stands(self) -> None:
+        mine = self._sym("cs:Exc", "Exception", "csharp", qualified="MyApp.Errors.Exception")
+        e = self._sym("cs:E", "E", "csharp", qualified="MyApp.E", bases=["Exception"])
+        assert [(x.src, x.dst) for x in self._run([mine, e])] == [("cs:E", "cs:Exc")]
+
+    def test_visible_namespaces_rule_nothing_out_without_qualified_names(self) -> None:
+        bare = self._sym("cs:Exc", "Exception", "csharp", qualified=None)
+        e = self._sym("cs:E", "E", "csharp", qualified="MyApp.E", bases=["Exception"])
+        e.meta["visible_namespaces"] = ["MyApp", "System"]
+        assert [(x.src, x.dst) for x in self._run([bare, e])] == [("cs:E", "cs:Exc")]

@@ -38,9 +38,12 @@ How It Works
    (``_qualifier_fit``, WI-pivap); candidates with no qualified name keep the
    name binding. When every candidate records one and none fits, the base is
    external, with the written qualifier as its module
-   (``_qualified_external_edge``). Not handled here: a BARE base imported
-   through a namespace / package import (C# ``using System;``, PHP ``use``,
-   Groovy / Scala imports), which needs import context this linker lacks.
+   (``_qualified_external_edge``). A BARE base gets the same check when its
+   analyzer recorded the import it came through (``meta["base_class_imports"]``:
+   PHP ``use``, Groovy / Scala imports, C# ``using`` aliases), and a C# bare
+   base is checked against ``meta["visible_namespaces"]`` (its namespace chain
+   and ``using`` namespaces; ``_namespace_fit``). PHP ``\\Foo\\Bar`` bases
+   are split on ``\\`` (they were dropped before).
 5. Also emits ``includes`` edges (evidence_type=ast_includes) from
    ``included_modules`` metadata for Ruby mixins (WI-hatip), resolving module
    names via a dedicated module-name map
@@ -315,8 +318,8 @@ def _canonical_base_name(base_name: str) -> tuple[str, bool]:
     ``("TestCase", True)``, ``Generic[T]`` -> ``("Generic", False)``.
     """
     stripped = base_name.split("<")[0].split("[")[0]
-    is_qualified = ("." in stripped) or ("::" in stripped)
-    return re.split(r"::|\.", stripped)[-1], is_qualified
+    is_qualified = ("." in stripped) or ("::" in stripped) or ("\\" in stripped)
+    return re.split(r"::|\.|\\", stripped)[-1], is_qualified
 
 
 def _external_base_edge(
@@ -392,6 +395,41 @@ def _external_base_edge(
     )
 
 
+def _dotted(name: str) -> str:
+    """One separator for ``::``, ``\\`` (PHP) and ``.``; a PHP leading ``\\``
+    (the global namespace) dropped."""
+    return name.replace("::", ".").replace("\\", ".").lstrip(".")
+
+
+def _namespace_fit(
+    name: str,
+    visible: list[str],
+    class_by_name: dict[str, list[Symbol]],
+    interface_by_name: dict[str, list[Symbol]],
+) -> tuple[list[Symbol], list[Symbol]] | None:
+    """The candidates a C# BARE base can bind, by namespace visibility (WI-pivap).
+
+    ``using System; class E : Exception`` names ``System.Exception`` or a type
+    of the file's own namespace chain, never ``MyApp.Errors.Exception`` from
+    ``namespace MyApp``. Candidates whose namespace (the qualified name minus
+    its last segment) is visible are kept. If any candidate records no
+    qualified name, nothing can be ruled out and every candidate is kept;
+    ``None`` -- external -- when all record one and none is visible.
+    """
+    classes = class_by_name.get(name, [])
+    interfaces = interface_by_name.get(name, [])
+    candidates = [*classes, *interfaces]
+    if not candidates or any(not c.qualified_name for c in candidates):
+        return classes, interfaces
+    seen = set(visible)
+
+    def is_visible(c: Symbol) -> bool:
+        return _dotted(c.qualified_name or "").rpartition(".")[0] in seen
+
+    kept = ([c for c in classes if is_visible(c)], [c for c in interfaces if is_visible(c)])
+    return kept if kept[0] or kept[1] else None
+
+
 def _qualifier_fits(candidate: Symbol, qualified_base: str) -> bool | None:
     """Whether ``candidate`` can be the class ``qualified_base`` names.
 
@@ -409,8 +447,8 @@ def _qualifier_fits(candidate: Symbol, qualified_base: str) -> bool | None:
     """
     if not candidate.qualified_name:
         return None
-    qualified = candidate.qualified_name.replace("::", ".")
-    written = qualified_base.replace("::", ".")
+    qualified = _dotted(candidate.qualified_name)
+    written = _dotted(qualified_base)
     return (
         qualified == written
         or qualified.endswith("." + written)
@@ -460,8 +498,13 @@ def _qualified_external_edge(
     unlike the bare-name ``external`` sentinel, here it is written at the site.
     """
     language = sym.language or ""
-    sep = "::" if "::" in base_name else "."
-    qualifier = base_name[: -(len(sep) + len(last))]
+    if base_name == last:
+        # A bare base no visible namespace holds: which ``using`` supplies it
+        # is not known, so the ``external`` sentinel module is used.
+        qualifier = "external"
+    else:
+        sep = next(s for s in ("::", "\\", ".") if s in base_name)
+        qualifier = base_name[: -(len(sep) + len(last))]
     return Edge.create(
         src=sym.id,
         dst=f"{language}:{qualifier}:0-0:{last}:unresolved",
@@ -471,9 +514,12 @@ def _qualified_external_edge(
         origin_run_id=run.execution_id,
         evidence_type="ast_extends",
         is_resolved=False,
-        dst_ref=ExternalRef(lang=language, module_path=qualifier, name=last),
-        # derived-from consumed-none: the base name comes from the source
-        #   symbol's meta, and no in-tree candidate fits its qualifier
+        dst_ref=(
+            None if qualifier == "external"
+            else ExternalRef(lang=language, module_path=qualifier, name=last)
+        ),
+        # derived-from endpoints: the dst is a minted external placeholder named
+        #   by the source's meta; no in-tree candidate fits its qualifier
         derived_from=[sym.id],
     )
 
@@ -595,6 +641,9 @@ def _create_inheritance_edges(
                 lookup_names.append(base_name.split(".")[-1])
             if "::" in base_name:
                 lookup_names.append(base_name.split("::")[-1])
+            if "\\" in base_name:
+                # PHP ``\Foo\Bar`` (WI-pivap: dropped before this split).
+                lookup_names.append(base_name.split("\\")[-1])
 
             # Try to find the target symbol.
             #
@@ -614,19 +663,39 @@ def _create_inheritance_edges(
             is_fallback = False
 
             # WI-pivap: a QUALIFIED base's last segment may only bind an
-            # in-tree candidate the qualifier fits (see _qualifier_fit).
+            # in-tree candidate the qualifier fits (see _qualifier_fit). A BARE
+            # base the analyzer recorded as import-bound is checked as the
+            # import's qualified name; a C# bare base against the namespaces
+            # visible in its file (_namespace_fit).
             iface_lookup, class_lookup = interface_by_name, class_by_name
-            if len(lookup_names) > 1:
+            hints = sym.meta or {}
+            imported = (hints.get("base_class_imports") or {}).get(base_name)
+            if imported and len(lookup_names) == 1:
+                # An alias (PHP ``use X\\Y as Z``) names the import's class.
+                lookup_names = [_dotted(imported).rpartition(".")[2]]
+            if len(lookup_names) > 1 or imported:
                 last = lookup_names[-1]
+                written: str = base_name if len(lookup_names) > 1 else str(imported)
                 fitted = _qualifier_fit(
-                    base_name, last, class_by_name, interface_by_name,
+                    written, last, class_by_name, interface_by_name,
                 )
                 if fitted is None:
-                    edges.append(_qualified_external_edge(sym, base_name, last, run))
+                    edges.append(_qualified_external_edge(sym, written, last, run))
                     seen_base_names_by_src.setdefault(sym.id, set()).add(last)
                     continue
                 class_lookup = {**class_by_name, last: fitted[0]}
                 iface_lookup = {**interface_by_name, last: fitted[1]}
+            elif hints.get("visible_namespaces"):
+                fitted = _namespace_fit(
+                    base_name, hints["visible_namespaces"],
+                    class_by_name, interface_by_name,
+                )
+                if fitted is None:
+                    edges.append(_qualified_external_edge(sym, base_name, base_name, run))
+                    seen_base_names_by_src.setdefault(sym.id, set()).add(base_name)
+                    continue
+                class_lookup = {**class_by_name, base_name: fitted[0]}
+                iface_lookup = {**interface_by_name, base_name: fitted[1]}
 
             for lookup_name in lookup_names:
                 resolved = resolve_target_symbol(

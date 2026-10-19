@@ -997,6 +997,19 @@ def _extract_symbols_from_file(
     # apart, and looks a member up by the simple name
     # (:meth:`_ScalaReceiverTyper.symbol_type_name`).
     import_hints = _extract_import_hints(tree, source)
+    # WI-pivap: the package-qualified name of a class / trait / enum, which the
+    # inheritance linker checks an imported or qualified base against.
+    file_package = _scala_file_package(tree.root_node, source) or ""
+
+    def _type_qualified_name(node: "tree_sitter.Node", name: str) -> str:
+        return ".".join(p for p in (file_package, _scala_scope_chain(node, source, name)) if p)
+
+    def _base_imports(base_classes: list[str]) -> dict[str, str]:
+        """The import each BARE base came through (WI-pivap)."""
+        return {
+            b: import_hints[b] for b in base_classes
+            if "." not in b and b in import_hints
+        }
 
     def _qualified(name: str) -> str:
         return name if "." in name else import_hints.get(name, name)
@@ -1178,6 +1191,8 @@ def _extract_symbols_from_file(
                 class_meta: dict[str, object] = {}
                 if base_classes:
                     class_meta["base_classes"] = base_classes
+                    if _base_imports(base_classes):
+                        class_meta["base_class_imports"] = _base_imports(base_classes)
                 if annotations:
                     class_meta["decorators"] = annotations
 
@@ -1186,6 +1201,7 @@ def _extract_symbols_from_file(
                     name=type_name,
                     kind="class",
                     language="scala",
+                    qualified_name=_type_qualified_name(node, type_name),
                     path=str(file_path),
                     span=Span(
                         start_line=start_line,
@@ -1249,13 +1265,18 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 base_classes = _extract_extends_clause(node, source)
-                meta = {"base_classes": base_classes} if base_classes else None
+                trait_meta: dict[str, object] | None = (
+                    {"base_classes": base_classes} if base_classes else None
+                )
+                if trait_meta is not None and _base_imports(base_classes):
+                    trait_meta["base_class_imports"] = _base_imports(base_classes)
 
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "trait"),
                     name=type_name,
                     kind="trait",
                     language="scala",
+                    qualified_name=_type_qualified_name(node, type_name),
                     path=str(file_path),
                     span=Span(
                         start_line=start_line,
@@ -1269,7 +1290,7 @@ def _extract_symbols_from_file(
                         kind="trait", lang="scala", path=file_path, name=type_name,
                         scope=_scala_scope(node, source),
                     ),
-                    meta=meta,
+                    meta=trait_meta,
                     modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
@@ -1299,6 +1320,7 @@ def _extract_symbols_from_file(
                     name=type_name,
                     kind="enum",
                     language="scala",
+                    qualified_name=_type_qualified_name(node, type_name),
                     path=str(file_path),
                     span=Span(
                         start_line=start_line,

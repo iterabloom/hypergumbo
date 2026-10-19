@@ -883,6 +883,9 @@
             "annotations": {
               "description": "Java / Kotlin / Python decorator-equivalent annotations on a Symbol. Distinct from ``decorators`` (Python-style) where the syntax carries different semantics."
             },
+            "base_class_imports": {
+              "description": "Class Symbols (php, groovy, scala, csharp alias usings): for each BARE base in ``base_classes`` bound by a single-type import, the import's qualified name. The inheritance linker checks the base as that name instead of binding any in-repo class of the same short name (WI-pivap)."
+            },
             "base_classes": {
               "description": "List of base-class names on class / interface Symbols. Used by framework_patterns to identify Django Model, SQLAlchemy Base, etc."
             },
@@ -1053,6 +1056,9 @@
             },
             "visibility_signal": {
               "description": "Which signal determined the canonical ``Symbol.visibility`` level (INV-jusot) \u2014 one of 'language_modifier' (an explicit ``modifiers`` term or the legacy Apex/Clojure ``meta['visibility']``), 'name_convention' (Python leading-underscore), or 'default' (public). Provenance for the computed visibility field; set by the finalize visibility pass. Replaces the retired ``meta['visibility']`` key, whose language-syntactic value is now folded into the typed ``Symbol.visibility`` field (the meta key collided with the field under the cross-axis hygiene test)."
+            },
+            "visible_namespaces": {
+              "description": "csharp class / interface Symbols with bases: the namespaces a bare base can come from -- the enclosing namespace chain, the ``using`` namespaces and the global namespace (``\"\"``). The inheritance linker keeps only candidates of a visible namespace (WI-pivap)."
             }
           }
         },

@@ -2844,5 +2844,7 @@ class TestCSharpInterfaceInheritance:
         result = analyze_csharp(tmp_path)
 
         by_name = {s.name: s for s in result.symbols if s.kind == "interface"}
-        assert by_name["IChild"].meta == {"base_classes": ["IBase", "IDisposable"]}
+        assert by_name["IChild"].meta["base_classes"] == ["IBase", "IDisposable"]
+        # WI-pivap: plus the namespaces a bare base may come from (global here).
+        assert by_name["IChild"].meta["visible_namespaces"] == [""]
         assert by_name["ILeaf"].meta is None

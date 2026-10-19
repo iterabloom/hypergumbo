@@ -1099,6 +1099,18 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "List of base-class names on class / interface "
                 "Symbols. Used by framework_patterns to identify "
                 "Django Model, SQLAlchemy Base, etc."),
+    MetaKeySpec("base_class_imports", AXIS_SYMBOL_META,
+                "Class Symbols (php, groovy, scala, csharp alias usings): for "
+                "each BARE base in ``base_classes`` bound by a single-type "
+                "import, the import's qualified name. The inheritance linker "
+                "checks the base as that name instead of binding any in-repo "
+                "class of the same short name (WI-pivap)."),
+    MetaKeySpec("visible_namespaces", AXIS_SYMBOL_META,
+                "csharp class / interface Symbols with bases: the namespaces a "
+                "bare base can come from -- the enclosing namespace chain, "
+                "the ``using`` namespaces and the global namespace (``\"\"``). "
+                "The inheritance linker keeps only candidates of a visible "
+                "namespace (WI-pivap)."),
     MetaKeySpec("virtual_members", AXIS_SYMBOL_META,
                 "cpp class / struct Symbols: sorted names of member functions "
                 "virtual IN this class (declared ``virtual``, ``override`` or "

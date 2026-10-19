@@ -347,6 +347,49 @@ def normalize_groovy_signature(
     )
 
 
+def _groovy_package(tree: "tree_sitter.Tree", source: bytes) -> str:
+    """The file's ``package`` name, or ``""`` (WI-pivap)."""
+    for child in tree.root_node.children:
+        if child.type == "package_declaration":
+            name = find_child_by_type(child, "scoped_identifier") or find_child_by_type(
+                child, "identifier",
+            )
+            if name is not None:
+                return str(node_text(name, source))
+    return ""
+
+
+def _groovy_type_imports(tree: "tree_sitter.Tree", source: bytes) -> dict[str, str]:
+    """Single-type imports: the name each binds (its alias, else its last
+    segment) -> the fully qualified class. Wildcard imports bind no single
+    name and are skipped (WI-pivap)."""
+    bound: dict[str, str] = {}
+    for node in tree.root_node.children:
+        if node.type != "import_declaration":
+            continue
+        path = find_child_by_type(node, "scoped_identifier")
+        if path is None or find_child_by_type(node, "asterisk") is not None:
+            continue
+        full = node_text(path, source)
+        alias = None
+        seen_as = False
+        for child in node.children:
+            if child.type == "as":
+                seen_as = True
+            elif seen_as and child.type == "identifier":
+                alias = node_text(child, source)
+        bound[alias or full.rsplit(".", 1)[-1]] = full
+    return bound
+
+
+def _groovy_qualified_name(
+    package: str, node: "tree_sitter.Node", source: bytes, name: str,
+) -> str:
+    """``package.Outer.Name``: what the inheritance linker checks an imported
+    or qualified base against (WI-pivap)."""
+    return ".".join(p for p in (package, *_groovy_scope(node, source), name) if p)
+
+
 def _extract_import_aliases(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -422,6 +465,8 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
         # make_typed_stable_id's containing slot so same-name methods/functions in
         # different files hash distinctly.
         file_stable_id = make_file_stable_id("groovy", normalize_path(rel_path))
+        package = _groovy_package(tree, source)
+        type_imports = _groovy_type_imports(tree, source)
 
         for node in iter_tree(tree.root_node):
             # Class declaration
@@ -439,6 +484,13 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     meta: dict[str, object] | None = {}
                     if base_classes:
                         meta["base_classes"] = base_classes
+                        # WI-pivap: the import each bare base came through.
+                        base_imports = {
+                            b: type_imports[b] for b in base_classes
+                            if "." not in b and b in type_imports
+                        }
+                        if base_imports and meta is not None:
+                            meta["base_class_imports"] = base_imports
                     if annotations:
                         meta["decorators"] = annotations
                     if not meta:
@@ -449,6 +501,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         name=class_name,
                         kind="class",
                         language="groovy",
+                        qualified_name=_groovy_qualified_name(package, node, source, class_name),
                         path=str(file_path),
                         span=Span(
                             start_line=start_line,
@@ -484,6 +537,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         name=iface_name,
                         kind="interface",
                         language="groovy",
+                        qualified_name=_groovy_qualified_name(package, node, source, iface_name),
                         path=str(file_path),
                         span=Span(
                             start_line=start_line,
@@ -520,6 +574,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         name=trait_name,
                         kind="trait",
                         language="groovy",
+                        qualified_name=_groovy_qualified_name(package, node, source, trait_name),
                         path=str(file_path),
                         span=Span(
                             start_line=start_line,
@@ -549,6 +604,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         name=enum_name,
                         kind="enum",
                         language="groovy",
+                        qualified_name=_groovy_qualified_name(package, node, source, enum_name),
                         path=str(file_path),
                         span=Span(
                             start_line=start_line,
