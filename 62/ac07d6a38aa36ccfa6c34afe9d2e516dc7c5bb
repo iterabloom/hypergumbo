@@ -1,0 +1,24 @@
+Original commit body from fff84f80396c83a0bd530ada31fe3012e9543dbb:
+
+Last part of WI-pivap: a base written BARE but bound through a
+namespace / package import bound any in-repo class of the same short
+name, because the core linker has no import context.
+
+- Analyzers record the hint: meta base_class_imports (bare base ->
+  the import's qualified name) for PHP use, Groovy / Scala single-type
+  imports and C# using aliases; meta visible_namespaces for C# (the
+  enclosing namespace chain, the using namespaces, the global one).
+- Groovy and Scala classes / traits / enums (Groovy interfaces too)
+  record a package-qualified qualified_name, which they lacked.
+- Linker: an import-bound bare base goes through the qualifier check
+  (an alias looks up the import's class); a C# bare base keeps only
+  candidates of a visible namespace (_namespace_fit); PHP \Foo\Bar
+  bases are split on \ (they were dropped before).
+- Two symbol_meta keys registered (spec 59 -> 61).
+
+Examples: use Illuminate\...\Model; class User extends Model,
+import groovy.lang.Script, import akka.actor.Actor and using System;
+class E : Exception (from namespace MyApp) no longer bind the in-repo
+Model / Script / Actor / MyApp.Errors.Exception.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
