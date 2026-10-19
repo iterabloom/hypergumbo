@@ -22,3 +22,25 @@
     fields:  # 3ebc
       statement: "A C call the I/O catalogue cannot classify is an examined negative only if every header it could have come from is enumerated; a header reached through a quoted include, or transitively through any include, is one it could have come from."  # 3ebc
       root_cause: "c.py (WI-lajus) stamps only the file's angle-bracket includes (system_lib_string) and stamps the skipped 'external' placeholder when there are none; the coverage gate's ALL-expansion (INV-zimud) treats that partial list as the complete set of homes, and classification refuses the call because no listed header names it."  # 3ebc
+- op: update  # 441b
+  at: '2026-10-19T15:35:05Z'  # 441b
+  by: agent  # 441b
+  actor: jgstern_agent  # 441b
+  clock: 2  # 441b
+  nonce: 441b  # 441b
+  set:  # 441b
+    status: satisfied  # 441b
+- op: discuss  # 368c
+  at: '2026-10-19T15:35:05Z'  # 368c
+  by: agent  # 368c
+  actor: jgstern_agent  # 368c
+  clock: 3  # 368c
+  nonce: 368c  # 368c
+  message: "Fixed in PR (dev 601fee315b).\n\nBehavioral evidence: the item's own repro, re-run on merged dev with `hypergumbo verify-claims` (claim: boundary net_send, must_not_exist).\n  cq1  net.h: #include <sys/socket.h>; main.c: #include <errno.h> / #include \"net.h\" / send(...)  -> violated (1 chain); was CONFIRMED rc 0\n  cq2  main.c with only #include \"net.h\"                                                       -> violated (1); was CONFIRMED rc 0\n  cq3  control, #include <errno.h> / #include <proj/net.h> (in-repo)                           -> violated (1); was inconclusive\nThe before-verdicts were also re-measured on a dev worktree in the same session; they matched the item's.\nProduction-path tests: test_c_include_closure.py.\n\nFix: new include_closure.IncludeClosure, one include graph per run. The stamp on an ambiguous libc call is every header the file includes, quoted or angled, plus everything an in-repo header includes, transitively, each named as written.\n- An unfound, unread or past-depth header keeps its name.\n- When an include matches several in-repo files, all of them are read.\n- A resolution error can only ADD a header.\nc.py uses it for the stamp and for WI-rimon's included-header test.\n\nCorpus, verify-claims against today's dev:\n- torsocks: 6 taint claims moved inconclusive -> confirmed_with_caveats. On dev they were withheld only by 4 production calls: send x2, recv and connect in src/lib/sendto.c and src/common/socks5.c. Their stamps omitted sys/socket.h, and those calls now classify net_send / net_recv. All 34 calls still unclassified are under tests/, which is excluded as non-production. NO-NET-SEND and NO-NET-RECV stay violated. This move is toward clean, but it is earned: the calls are now classified, not vouched for by omission.\n- crun: NO-FSWRITE 306 -> 313 chains, NO-FSREAD 251 -> 253.\n- tmate: no move.\n\nPorted from the uncommitted draft in ~/hg_wt/zikul; the worktree was left untouched. The C++ half is INV-valom."  # 368c
+- op: discuss  # 13b9
+  at: '2026-10-19T17:03:07Z'  # 13b9
+  by: agent  # 13b9
+  actor: jgstern_agent  # 13b9
+  clock: 4  # 13b9
+  nonce: 13b9  # 13b9
+  message: "CORRECTION to my closure note. I wrote that torsocks' 6 taint claims moving inconclusive -> confirmed_with_caveats was 'earned: the calls are now classified, not vouched for by omission'. The first half is true. The 4 production send/recv/connect calls do now classify correctly. The conclusion is wrong. INV-nohob (filed 2026-10-04 from this same A/B) shows by reading the code that at least three of those verdicts are FALSE CLEANS: host-secret-no-network, host-description-no-network and host-secret-no-logging. The SOCKS5 password from getenv is copied into the global tsocks_config by a callee and sent through the send_data function pointer; the getpid/time username takes the same path; the password is logged via the DBG macro. C taint follows none of these. INV-zikul did not cause the taint gaps, but it removed the unrelated withholding that hid them, so on dev since 601fee315b torsocks reads clean on claims that are false. The fix is INV-nohob, which is next in the queue. INV-zikul's own invariant (the stamp names every possible home) still holds; the status stays satisfied."  # 13b9
