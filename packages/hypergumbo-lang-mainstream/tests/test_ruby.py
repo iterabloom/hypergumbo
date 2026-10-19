@@ -2653,9 +2653,11 @@ end
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should NOT match the top-level process function
         # because obj is a variable receiver with unknown type
+        # WI-misir: the send is recorded with the ``external`` placeholder
+        # (unknown receiver type), but never bound to the top-level process.
         process_edges = [
             e for e in call_edges
-            if "run" in e.src and "process" in e.dst
+            if "run" in e.src and "process" in e.dst and e.is_resolved
         ]
         assert len(process_edges) == 0, (
             f"Variable-receiver call 'obj.process' should NOT match top-level "
