@@ -159,3 +159,10 @@ def test_a_function_s_store_lines_are_targets_with_or_without_ddg() -> None:
         store_lines={_FN: [5]},
     )
     assert [(e.site_line, e.construct) for e in later] == [(5, "non_local_store")]
+
+
+def test_no_sources_means_no_escapes() -> None:
+    """A language whose catalogue derives no source has nothing to lose."""
+    assert find_unfollowed_escapes(
+        _ddg(("p", 2, 4)), [_call(_SET, 4, "macro_call")], [], language="c",
+    ) == []
