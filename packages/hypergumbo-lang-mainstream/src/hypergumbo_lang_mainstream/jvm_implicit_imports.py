@@ -82,11 +82,26 @@ record. The spellings, the type, the stamp, the shadow rule
 (:func:`bare_system_is_java_lang`) and the attribute map the shared
 ``emit_module_attribute_refs`` is handed (:func:`java_lang_system_aliases`)
 live here, so the three analyzers cannot drift apart on them.
+
+A MEMBER ACCESS WITH NO ARGUMENT LIST IS A CALL ONLY WHERE A ROW SAYS SO
+(WI-bojud-sator). scala calls a parameterless method without parentheses
+(``Runtime.getRuntime.availableProcessors``) and kotlin reads a Java getter as a
+synthetic property (``proc.inputStream``), so neither parses as a call and no
+edge existed for any receiver typing to reach. The grammar cannot tell that
+access from a FIELD read (``System.out``) or a ``val``, so
+:func:`is_known_library_method` admits it only where the library is KNOWN to
+declare a method there: a library-signature row (``Runtime.getRuntime``) or a
+``function`` / ``method`` io_primitives row (``Runtime.availableProcessors``).
+An ``attribute`` row is a field. An owner no row names adds nothing, which is
+the old behaviour, so a constant is never recorded as a call.
 """
 from __future__ import annotations
 
 from collections.abc import Container
+from functools import lru_cache
 from typing import Final
+
+from hypergumbo_core.library_signatures import load_library_signatures
 
 #: The package JLS 7.3 imports into every compilation unit.
 IMPLICIT_IMPORT_PACKAGE: Final[str] = "java.lang"
@@ -323,3 +338,21 @@ def java_lang_system_aliases(*, bare_system_is_java_lang: bool) -> dict[str, str
     if bare_system_is_java_lang:
         aliases["System"] = JAVA_LANG_SYSTEM
     return aliases
+
+
+@lru_cache(maxsize=None)
+def _catalogued_callables(lang: str) -> frozenset[str]:
+    """``<module>.<name>`` of every function / method io_primitives row."""
+    from hypergumbo_core.io_boundary import load_catalog
+
+    return frozenset(
+        f"{p.module}.{p.name}" for p in load_catalog(lang).primitives
+        if p.kind in ("function", "method")
+    )
+
+
+def is_known_library_method(lang: str, qualified: str) -> bool:
+    """Whether a row says the library declares a METHOD at ``qualified``
+    (``java.lang.Runtime.availableProcessors``), so an access with no argument
+    list there is a call, not a field read (WI-bojud-sator)."""
+    return qualified in load_library_signatures(lang) or qualified in _catalogued_callables(lang)

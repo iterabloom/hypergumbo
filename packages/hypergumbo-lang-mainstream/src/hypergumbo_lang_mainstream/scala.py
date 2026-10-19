@@ -149,6 +149,7 @@ from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     STD_STREAM_TARGET_KIND,
     bare_system_is_java_lang,
     inline_qualified_owner,
+    is_known_library_method,
     is_std_output_receiver,
     java_lang_system_aliases,
     static_owner_module,
@@ -626,6 +627,19 @@ def _inline_path(value: "tree_sitter.Node", source: bytes) -> "str | None":
         return None
     parts.append(node_text(node, source))
     return ".".join(reversed(parts))
+
+
+def _is_parameterless_call_site(access: "tree_sitter.Node") -> bool:
+    """Whether a ``field_expression`` stands alone: not a call's callee (that
+    call is its own edge), not under a type application, not assigned to."""
+    parent = access.parent
+    if parent is None:  # pragma: no cover - an expression always has a parent
+        return False
+    if parent.type in ("call_expression", "generic_function"):
+        return parent.child_by_field_name("function") != access
+    if parent.type == "assignment_expression":
+        return parent.child_by_field_name("left") != access
+    return True
 
 
 def _inline_qualified_owner(
@@ -2289,6 +2303,12 @@ class _ScalaReceiverTyper:
             queue.extend((sym.meta or {}).get("base_classes", []) if sym is not None else [])
         return None
 
+    def library_member_owner(self, value: "tree_sitter.Node") -> "str | None":
+        """The qualified library path a member access on ``value`` is looked up
+        under -- the owner :meth:`_member` asks the rows with -- or ``None``."""
+        owner = self._owner(value)
+        return self._library_owner(owner) if owner is not None else None
+
     def _library_owner(self, owner: str) -> "str | None":
         """The qualified path a library row would key ``owner`` under, or ``None``."""
         if "." in owner:
@@ -2841,6 +2861,31 @@ def _extract_edges_from_file(
                                 ),
                                 enclosing_class=enclosing_type,
                             ))
+
+        # WI-bojud-sator: a parameterless call written without parentheses
+        # (``Runtime.getRuntime.availableProcessors``, ``System.currentTimeMillis``)
+        # parses as a member access, not a call_expression, and emitted nothing.
+        # Only an access the library is KNOWN to declare as a method counts: the
+        # same node is a field read (``System.out``) or a ``val`` everywhere else.
+        elif node.type == "field_expression" and _is_parameterless_call_site(node):
+            value = node.child_by_field_name("value")
+            field = node.child_by_field_name("field")
+            accessed = node_text(field, source) if field is not None else ""
+            owner = typer.library_member_owner(value) if value is not None else None
+            if owner is None and value is not None and (path := _inline_path(value, source)):
+                owner = _inline_qualified_owner(
+                    path, accessed, bound=set(var_types) | set(import_aliases))
+            if owner is not None and is_known_library_method("scala", f"{owner}.{accessed}"):
+                edges.append(make_unresolved_edge(
+                    "scala",
+                    (
+                        _get_enclosing_function(node, source, decl_index)
+                        or enclosing_declared_symbol(node, decl_index, _TYPE_BODY_NODES)
+                        or file_anchor
+                    ).id,
+                    accessed, node.start_point[0] + 1, PASS_ID, run_id,
+                    module_hint=owner, call_construct="method",
+                ))
 
         # Scala eta-expansion: ``transform _`` produces a postfix_expression
         # whose second child is identifier("_").  This is a first-class
