@@ -1,0 +1,32 @@
+Original commit body from 8738b209d9f4e06d67b068f8baa66bc0cd99d33d:
+
+torsocks sends every SOCKS5 message through
+`static ssize_t (*send_data)(...) = send_data_impl;` then
+`send_data(fd, buf, n)`. The call was emitted as the unresolved name
+send_data, so the call graph stopped at the caller and taint never
+reached the send() inside send_data_impl: a secret sent that way read
+CONFIRMED.
+
+c.py now collects each function-pointer variable the file initialises
+(file scope or local) or assigns (`p = f` / `p = &f`), and a call
+through it emits a `calls` edge to every function it holds
+(evidence_type function_pointer, score 1/N for N held names). A held
+name is resolved as a direct call to it would be, WI-rimon's rule
+included: a name an included header declares is libc's even when the
+repository defines one, and gets the unresolved libc edge. A held
+name that is no function (a parameter, `*slot`) names nothing; a
+pointer holding only such names, or never assigned (a parameter),
+keeps its unresolved edge.
+
+Measured against dev: torsocks 12 calls resolved (every send_data /
+recv_data -> send_data_impl / recv_data_impl), redis 20 (zmalloc's OOM
+handler, jemalloc's junk callbacks, pthread_create_fptr), crun 0, tmate
+0; each replaces the unresolved edge, nothing else changes. The
+fixture's getenv -> send_data(...) secret now reads violated.
+
+INV-nohob's other two mechanisms are separate PRs: the DBG macro chain
+(function-like macros wrapping log_print) and the global struct a
+callee stores the secret into. Until the latter lands, torsocks'
+host-secret-no-network still reads clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
