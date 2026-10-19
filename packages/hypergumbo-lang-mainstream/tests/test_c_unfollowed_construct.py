@@ -21,9 +21,15 @@ Following each one is filed separately (WI-nulam, WI-zitul, WI-ropab,
 WI-ronuj); this is the disclosure.
 """
 # covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/c.py
+# covers: packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/include_closure.py
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 from pathlib import Path
+
+import pytest
 
 from hypergumbo_lang_mainstream.c import analyze_c
 
@@ -93,6 +99,40 @@ def test_a_copy_into_non_local_memory(tmp_path: Path) -> None:
     assert stamps[("local_only", "strcpy")] is None
 
 
+def test_a_destination_s_root_through_parentheses_and_a_call_result(tmp_path: Path) -> None:
+    """``strcpy((g_buf), v)`` is rooted at ``g_buf``; ``strcpy(get_buf(), v)``
+    is rooted at no variable, so it is not stamped."""
+    stamps = _stamps(tmp_path, {"m.c": (
+        "#include <string.h>\n"
+        "char g_buf[64];\n"
+        "char *get_buf(void);\n"
+        "void a(const char *v) {\n"
+        "  strcpy((g_buf), v);\n"
+        "}\n"
+        "void b(const char *v) {\n"
+        "  strcpy(get_buf(), v);\n"
+        "}\n"
+    )})
+    assert stamps[("a", "strcpy")] == "non_local_store"
+    assert stamps[("b", "strcpy")] is None
+
+
+def test_visible_macros_survive_a_cycle_and_stop_at_the_depth_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hypergumbo_lang_mainstream import include_closure as ic
+
+    (tmp_path / "a.h").write_text('#include "b.h"\n#define FROM_A(x) x\n')
+    (tmp_path / "b.h").write_text('#include "a.h"\n#include "c.h"\n#define FROM_B(x) x\n')
+    (tmp_path / "c.h").write_text("#define FROM_C(x) x\n")
+    main = tmp_path / "m.c"
+    main.write_text('#include "a.h"\n')
+    assert ic.IncludeClosure(tmp_path).visible_macros(main, main.read_bytes()) == {
+        "FROM_A", "FROM_B", "FROM_C"}
+    monkeypatch.setattr(ic, "MAX_INCLUDE_DEPTH", 1)
+    assert ic.IncludeClosure(tmp_path).visible_macros(main, main.read_bytes()) == {"FROM_A"}
+
+
 def test_a_function_like_macro_the_file_can_see(tmp_path: Path) -> None:
     stamps = _stamps(tmp_path, {
         "log.h": "#define DBG(fmt, args...) log_print(fmt, ## args)\n#define LEVEL 3\n",
@@ -128,11 +168,7 @@ def test_arguments_in_a_project_variadic_tail(tmp_path: Path) -> None:
 
 # --- the verdict: a value lost through one of them is not a clean answer ------
 
-import contextlib  # noqa: E402
-import io  # noqa: E402
-import json  # noqa: E402
 
-import pytest  # noqa: E402
 
 _CLAIMS = """\
 claims:

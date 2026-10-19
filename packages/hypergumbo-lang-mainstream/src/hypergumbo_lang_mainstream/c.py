@@ -484,7 +484,7 @@ def _c_stores_non_locally(call: "tree_sitter.Node", source: bytes) -> bool:
     definition = call.parent
     while definition is not None and definition.type != "function_definition":
         definition = definition.parent
-    if definition is None:
+    if definition is None:  # pragma: no cover - a call outside any function is a misparse (c_family_is_not_a_call)
         return True
     pointers, values = _c_parameter_names(definition, source)
     return root in pointers or (
