@@ -16,7 +16,7 @@ This analyzer uses tree-sitter to parse Scala files and extract:
 - Function call relationships
 - Import statements
 - Annotations/decorators (into symbol meta["decorators"], for functions, methods, classes, and val/var fields)
-- Inheritance: extends/with base classes and traits (into symbol meta["base_classes"], for classes and traits)
+- Inheritance: extends/with base classes and traits (into symbol meta["base_classes"], for classes, traits and objects)
 
 Modifiers (access/abstract/final/sealed/override/implicit/lazy/case) are
 captured on Symbol.modifiers, and parameter/variable types -- declared, or
@@ -49,6 +49,13 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      path, so a LIBRARY owner (its import, an inline path, or java.lang) is
      asked under that path first: ``Runtime.getRuntime().exec(c)`` reaches
      the ``subprocess`` row (WI-jubim).
+   - A call on a bare PROJECT object or companion (``Factory.make()``) is
+     looked up as ``Name.member`` where Scala binds the name -- the same
+     file, an explicit import that fits the symbol, or the caller's own
+     package (``_project_object_binding``, WI-kipol) -- among every symbol
+     of that name (``_symbols_by_name``), not the name-keyed registry's one.
+     A visible object without the member stamps ``receiver_type_hint`` for
+     the inherited-calls linker; anything else stays unresolved.
    - An explicit import outranks a same-named project symbol in another
      package: the bind is refused when no reading of the import (absolute
      or relative to a package or object in scope) can name that symbol.
@@ -410,6 +417,66 @@ def _is_project_type(
     if imported is None or not _import_names_elsewhere(sym, imported, file_packages, import_aliases):
         return True
     return _import_names_project_path(imported, project_packages)
+
+
+def _scala_package_of(path: str, file_packages: "dict[str, _ScalaFile] | None") -> "str | None":
+    """The package an analysed file declares, ``None`` when unknown."""
+    info = file_packages.get(path) if file_packages else None
+    return info.package if info is not None else None
+
+
+def _visible_from(
+    sym: Symbol,
+    caller_path: str,
+    imported: "str | None",
+    file_packages: "dict[str, _ScalaFile] | None",
+    import_aliases: "dict[str, str]",
+) -> bool:
+    """Whether Scala binds a bare type name at ``caller_path`` to ``sym``
+    (WI-kipol): the same file; an explicit import whose path fits the symbol
+    (WI-tipoh's reading); or, with no import, the caller's own package. A
+    wildcard import is not recorded, so a symbol only it would bring in is not
+    shown visible -- the bias is to leave a call unresolved, not misbound."""
+    if sym.path == caller_path:
+        return True
+    if imported:
+        return not _import_names_elsewhere(sym, imported, file_packages, import_aliases)
+    caller_package = _scala_package_of(caller_path, file_packages)
+    return caller_package is not None and _scala_package_of(sym.path, file_packages) == caller_package
+
+
+def _project_object_binding(
+    name: str,
+    member: str,
+    caller_path: str,
+    local_symbols: dict[str, Symbol],
+    symbols_by_name: "dict[str, list[Symbol]] | None",
+    imported: "str | None",
+    file_packages: "dict[str, _ScalaFile] | None",
+    import_aliases: "dict[str, str]",
+) -> "tuple[bool, Symbol | None]":
+    """``(visible, member)`` for ``Name.member()`` on a bare project object or
+    companion (WI-kipol).
+
+    Every symbol of the qualified name is a candidate (``symbols_by_name``, so
+    a same-named ``Name.member`` in another package does not hide the right
+    one, as it would in the name-keyed registry); the first Scala would bind
+    wins. With no visible member but a visible ``Name``, the member may be
+    inherited: ``visible`` lets the caller hint the type for the linker.
+    """
+    local = local_symbols.get(f"{name}.{member}")
+    if local is not None:
+        return True, local
+    index = symbols_by_name or {}
+    for candidate in index.get(f"{name}.{member}", ()):
+        if _visible_from(candidate, caller_path, imported, file_packages, import_aliases):
+            return True, candidate
+    visible = any(
+        t.kind in ("class", "object", "trait")
+        and _visible_from(t, caller_path, imported, file_packages, import_aliases)
+        for t in index.get(name, ())
+    )
+    return visible, None
 
 
 def _package_readings(file_packages: "dict[str, _ScalaFile]") -> "frozenset[str]":
@@ -1231,12 +1298,23 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 modifiers = _extract_modifiers_scala(node)
+                # WI-kipol: an object's ``extends`` / ``with`` bases too, as
+                # classes and traits record theirs. ``object Factory extends
+                # Base`` had no inheritance edge, so a call on the object to an
+                # inherited member could never be walked to ``Base``.
+                object_bases = _extract_extends_clause(node, source)
+                object_meta: dict[str, object] | None = None
+                if object_bases:
+                    object_meta = {"base_classes": object_bases}
+                    if _base_imports(object_bases):
+                        object_meta["base_class_imports"] = _base_imports(object_bases)
 
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "object"),
                     name=type_name,
                     kind="object",
                     language="scala",
+                    meta=object_meta,
                     path=str(file_path),
                     span=Span(
                         start_line=start_line,
@@ -2275,6 +2353,7 @@ def _extract_edges_from_file(
     project_packages: "frozenset[str]" = frozenset(),
     method_return_type_registry: "dict[str, str] | None" = None,
     element_registry: "dict[str, str] | None" = None,
+    symbols_by_name: "dict[str, list[Symbol]] | None" = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2452,6 +2531,41 @@ def _extract_edges_from_file(
 
                     # Type-qualified resolution: receiver.method() → Type.method
                     edge_added = False
+                    # WI-kipol: a call on a bare PROJECT object or companion
+                    # (``Factory.make()``) was left external with no hint. A
+                    # capitalised receiver that no local binds and that is a
+                    # project type is looked up as ``Name.member`` -- only where
+                    # Scala binds the name (_project_object_binding).
+                    object_hint: "str | None" = None
+                    if (
+                        receiver_type is None and receiver_name
+                        and receiver_name[:1].isupper()
+                        and receiver_name not in var_types
+                        and _is_project_type(
+                            receiver_name, global_symbols,
+                            import_aliases if _applies(receiver_name, node) else None,
+                            file_packages, project_packages)
+                    ):
+                        visible, member = _project_object_binding(
+                            receiver_name, callee_name, file_path, local_symbols,
+                            symbols_by_name,
+                            import_aliases.get(receiver_name) if _applies(receiver_name, node) else None,
+                            file_packages, import_aliases,
+                        )
+                        if member is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=member.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="ast_call",
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                meta={"call_construct": "function"},
+                            ))
+                            edge_added = True
+                        elif visible:
+                            object_hint = receiver_name
                     # A stdio receiver's type is the JDK's, never a project
                     # type's that happens to share its simple name.
                     if receiver_type and not stdio_receiver:
@@ -2526,6 +2640,10 @@ def _extract_edges_from_file(
                             gate_meta["io_target_kind"] = STD_STREAM_TARGET_KIND
                         elif receiver_type:
                             gate_meta["receiver_type_hint"] = typer.symbol_type_name(receiver_type)
+                        elif object_hint:
+                            # WI-kipol: the object is visible but declares no such
+                            # member; the inherited-calls linker walks its parents.
+                            gate_meta["receiver_type_hint"] = object_hint
                         # WI-sigog / INV-linub L3: the receiver TYPE this branch
                         # has just inferred must also reach the MODULE SLOT, not
                         # only ``meta``. The two slots answer different questions
@@ -2796,6 +2914,9 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
     #: :func:`_package_readings` of ``_file_packages``, built on the first file of
     #: Pass 2, when every package is known.
     _project_packages: "Optional[frozenset[str]]" = None
+    #: Every symbol of this run by name, same-named ones in other packages kept
+    #: side by side (WI-kipol). Reset by :meth:`analyze`.
+    _symbols_by_name: "Optional[dict[str, list[Symbol]]]" = None
     #: ``<Owner>.<member>`` -> the element type of the container it returns, for
     #: this run only (WI-gokop). Reset by :meth:`analyze`.
     _element_types: "Optional[dict[str, str]]" = None
@@ -2826,9 +2947,13 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
     ) -> None:
         """Register symbol by qualified name only.
 
-        The ``NameResolver`` suffix index handles short-name lookups.
+        The ``NameResolver`` suffix index handles short-name lookups. Every
+        symbol is also kept by name in ``_symbols_by_name`` (WI-kipol), where a
+        same-named one in another package does not replace it.
         """
         global_symbols[symbol.name] = symbol
+        if self._symbols_by_name is not None:
+            self._symbols_by_name.setdefault(symbol.name, []).append(symbol)
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -2847,6 +2972,7 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
             project_packages=self._project_package_readings(),
             method_return_type_registry=self._method_return_type_registry,
             element_registry=self._element_types,
+            symbols_by_name=self._symbols_by_name,
         )
 
     def _project_package_readings(self) -> "frozenset[str]":
@@ -2862,6 +2988,7 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
         """
         self._file_packages = {}
         self._project_packages = None
+        self._symbols_by_name = {}
         self._element_types = {}
         return super().analyze(repo_root, max_files)
 

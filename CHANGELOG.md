@@ -20,6 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Scala resolves calls on project objects and companions** (`Factory.make()`) where Scala itself would bind the name: +1,678 resolved calls on sbt and +1,172 on lila, none lost; objects now record their base classes (WI-kipol).
 - **Ruby records the calls it used to drop**: `obj.write` on an untyped receiver, implicit-self calls (`params`, `current_user`) told apart from local variables by Ruby's own scoping rule, `self.m`, `super`, ambiguous names and direct recursion (WI-misir).
 - **Ruby resolves a constant through its enclosing module**: `Orchestrator.call` inside `module TestData` reaches `class TestData::Orchestrator` instead of being reported external (WI-gomup).
 - **An imported external base class is no longer bound to an in-repo class of the same name** in Java, Kotlin and JS/TS: `import junit.framework.TestCase; class T extends TestCase` and `import { Component } from 'react'` get an external edge instead of a wrong `extends` (WI-pivap, analyzer half).
