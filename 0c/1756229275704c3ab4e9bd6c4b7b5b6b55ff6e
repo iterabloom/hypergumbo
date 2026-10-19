@@ -1,0 +1,32 @@
+Original commit body from 85c9cd93e8ea3909b5d3b1577754236aeffef30a:
+
+The ADR-0017 s3a walk treated the source's line as a starting point and
+never as a use site, so what else the line did with the value was
+invisible. Both directions were false all-clears:
+
+(a) A sink ON the source's line -- `resp = requests.post(url,
+    headers={"A": os.environ["T"]})`, `fetch(url, {headers: {A:
+    process.env.T}})` -- was classified sink_before_source
+    (`sink_after_source` was `any(sink > source)`), and INV-muhij's rule
+    kept the row from carrying a verdict: inconclusive /
+    confirmed_with_caveats. New blocker `sink_on_source_line`: the walk
+    still cannot adjudicate it, but the row carries the verdict.
+    sink_before_source and ADR-0052 are unchanged (owner).
+(b) A non-sink consumer on the source's line -- `n =
+    acc.push(process.env.K)` -- was no escape: the walk followed n,
+    exhausted and REMOVED the flow while the secret went into acc. Every
+    OTHER call on a source line is now asked the use-line question
+    (_source_line_escapes; _callees_terminate is the shared all-or-
+    nothing rule); one no summary says terminates is an escape
+    (`call_beside_source`). This can only turn False into None. A call
+    that builds the source's own RECEIVER (`Fernet(key).decrypt(ct)`)
+    is excluded: it runs before the source and cannot hold its result,
+    and counting it withdrew WI-fasub's same-function sanitizer credit.
+
+Measured: the four filed shapes (JS fetch, Python requests.post,
+Python typed sock.sendall, JS acc.push) read violated; on dev they read
+confirmed_with_caveats / inconclusive. Corpus A/B (verify-claims, dev vs
+branch) on apollo-server, beads, feast, superset: no verdict and no
+evidence count moved. Not checked: other languages' shapes of (b).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
