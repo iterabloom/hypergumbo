@@ -11,7 +11,12 @@ This analyzer uses tree-sitter-c to parse C files and extract:
 - Dispatch tables from static-array and designated-struct initializers
   (dispatches_to edges), plus a ``references`` edge with
   ``meta.ref_construct="dispatch_table"`` from each function whose body
-  names a static-array dispatch table to that table
+  names a static-array dispatch table to that table. The table is emitted
+  as a ``kind=variable`` symbol by the id those edges use, once it holds a
+  function (WI-dirij): before, the src named no node and every such edge
+  was dropped from the map. An array of function POINTERS (``static int
+  (*cmds[])(int) = { f }``) is found through its function / parenthesized /
+  pointer declarator wrappers.
 - stdio global references (stdout/stderr/stdin) as module_attr_ref edges
 
 The analyzer also extracts function signatures (``_extract_c_signature``)
@@ -245,6 +250,25 @@ def _extract_c_signature(
             sig += f" {return_type}"
 
     return sig
+
+
+#: Declarator wrappers between an ``init_declarator`` and the array a dispatch
+#: table declares (WI-dirij): ``(*cmds[])(int)`` nests all three.
+_C_TABLE_WRAPPERS = frozenset({
+    "function_declarator", "parenthesized_declarator", "pointer_declarator",
+})
+
+
+def _array_declarator_of(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The ``array_declarator`` a declarator declares, through function,
+    parenthesized and pointer wrappers; None for anything else."""
+    current: Optional["tree_sitter.Node"] = node
+    while current is not None and current.type in _C_TABLE_WRAPPERS:
+        current = current.child_by_field_name("declarator") or next(
+            (c for c in current.named_children
+             if c.type == "array_declarator" or c.type in _C_TABLE_WRAPPERS),
+            None)
+    return current if current is not None and current.type == "array_declarator" else None
 
 
 def _get_c_parser() -> Optional["tree_sitter.Parser"]:
@@ -567,8 +591,13 @@ def _extract_edges(
     resolver: NameResolver | None = None,
     local_symbols: dict[str, Symbol] | None = None,
     file_symbols: list[Symbol] | None = None,
+    table_symbols: list[Symbol] | None = None,
+    file_stable_id: str = "",
 ) -> list[Edge]:
     """Extract edges from a parsed C tree (pass 2).
+
+    ``table_symbols`` receives the dispatch-table variables the edges are drawn
+    from (WI-dirij); ``file_stable_id`` is their stable_id anchor, as Pass 1's.
 
     Uses global symbol registry to resolve cross-file references.
     Identifies the enclosing function by position through
@@ -809,20 +838,53 @@ def _extract_edges(
         if sym.kind == "function"
     }
     dispatch_tables: dict[str, str] = {}  # variable name -> stable ID
+    # WI-dirij: the table each dispatches_to edge starts at, emitted once it
+    # holds a function (a data-only array is no node), by the edges' own id.
+    emitted_tables: dict[str, Symbol] = {}
+
+    def _table_symbol(declarator: "tree_sitter.Node", name: str) -> str:
+        line = declarator.start_point[0] + 1
+        table_id = make_symbol_id("c", str(file_path), line, line, name, "variable")
+        if table_symbols is not None and table_id not in emitted_tables:
+            symbol = Symbol(
+                id=table_id,
+                name=name,
+                kind="variable",
+                language="c",
+                path=str(file_path),
+                span=Span(
+                    start_line=line, end_line=line,
+                    start_col=declarator.start_point[1], end_col=declarator.end_point[1],
+                ),
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                stable_id=_analyzer.compute_stable_id(
+                    declarator, kind="variable", name=name,
+                    qualified_name=_block_scope(declarator, source, name),
+                    file_stable_id=file_stable_id,
+                ),
+            )
+            emitted_tables[table_id] = symbol
+            table_symbols.append(symbol)
+        return table_id
+
     for node in iter_tree(tree.root_node):
         if node.type != "init_declarator":
             continue
         # Must be inside a declaration (not inside a function body)
         if not node.parent or node.parent.type != "declaration":
             continue  # pragma: no cover - defensive
-        # Look for array declarator with initializer list
+        # Look for array declarator with initializer list. WI-dirij: through
+        # the wrappers an array of function POINTERS adds --
+        # ``static int (*cmds[])(int)`` is function_declarator ->
+        # parenthesized_declarator -> pointer_declarator -> array_declarator.
         array_decl = None
         init_list = None
         for child in node.children:
-            if child.type == "array_declarator":
-                array_decl = child
-            elif child.type == "initializer_list":
+            if child.type == "initializer_list":
                 init_list = child
+            elif array_decl is None:
+                array_decl = _array_declarator_of(child)
         if array_decl is None or init_list is None:
             continue
 
@@ -840,6 +902,7 @@ def _extract_edges(
         array_src_id = make_symbol_id(
             "c", str(file_path), array_line, array_line, array_name, "variable",
         )
+        array_node = node
 
         # Scan nested initializer lists for identifiers that match functions
         seen_funcs: set[str] = set()
@@ -856,6 +919,7 @@ def _extract_edges(
             if lookup_result.symbol.kind != "function":
                 continue
             seen_funcs.add(ident_name)
+            _table_symbol(array_node, array_name)
             edges.append(Edge.create(
                 src=array_src_id,
                 dst=lookup_result.symbol.id,
@@ -903,10 +967,7 @@ def _extract_edges(
                 break
         if not var_name:
             continue  # pragma: no cover — init_declarator has identifier
-        var_line = grandparent.start_point[0] + 1
-        var_src_id = make_symbol_id(
-            "c", str(file_path), var_line, var_line, var_name, "variable",
-        )
+        var_src_id = _table_symbol(grandparent, var_name)
         field_name = node_text(field_des, source).lstrip(".")
         edges.append(Edge.create(
             src=var_src_id,
@@ -1459,6 +1520,9 @@ class CAnalyzer(TreeSitterAnalyzer):
     lang = "c"
     file_patterns: ClassVar[list[str]] = ["*.h", "*.c"]
     grammar_module = "tree_sitter_c"
+    #: WI-dirij: the current file's dispatch-table variables, filled by Pass 2
+    #: (``analyze`` sets a list per file; None collects nothing).
+    _table_symbols: Optional[list[Symbol]] = None
 
     def extract_symbols_from_file(
         self,
@@ -1527,6 +1591,8 @@ class CAnalyzer(TreeSitterAnalyzer):
             tree, source, file_path, run, global_symbols, resolver,
             local_symbols=local_symbols,
             file_symbols=self.file_symbols(local_symbols),
+            table_symbols=self._table_symbols,
+            file_stable_id=self._file_anchor(rel_path),
         )
         _emit_stdio_identifier_refs(tree, source, file_path, run, edges)
         return edges
@@ -1623,6 +1689,7 @@ class CAnalyzer(TreeSitterAnalyzer):
             # which keeps ONE of an #ifdef/#else pair, so the other's calls were
             # anchored to it and, once found by position, dropped.
             self._current_file_symbols = analysis.symbols
+            self._table_symbols = []
             edges = self.extract_edges_from_file(
                 tree, source, source_file, rel_path,
                 analysis.symbol_by_name, global_symbols, run,
@@ -1632,7 +1699,9 @@ class CAnalyzer(TreeSitterAnalyzer):
             if _df_config is not None:
                 annotate_dataflow(edges, tree, source, _df_config)
             all_edges.extend(edges)
+            all_symbols.extend(self._table_symbols)
         self._current_file_symbols = None
+        self._table_symbols = None
 
         # Deduplicate: remove declaration-only symbols when a definition
         # exists for the same function name.  Declarations in headers produce

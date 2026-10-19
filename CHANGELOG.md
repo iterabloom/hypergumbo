@@ -20,6 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **C dispatch tables are emitted as variable symbols** and arrays of function pointers (`static int (*cmds[])(int) = { f }`) are detected, so `dispatches_to` edges no longer start at a node that does not exist: dangling sources crun 94, redis 505, tmate 129 -> 0; crun's map gains its 94 dispatch edges (WI-dirij).
 - **C++ member calls on an explicit receiver resolve on its declared type** (`impl_->Generate()`, `Model m; m.Forward()`), never by short name or as implicit `this`: false self-calls on sherpa-onnx 994 -> 41, grpc 1,531 -> 336, whisper.cpp 328 -> 147, modsecurity 101 -> 15 (WI-lamij).
 - **Perl method calls on a value resolve on its type** (`my $ua = Pkg->new; $ua->get`, `$self->m`, `Pkg->new->m`), not by short name across packages; untyped invocants get an unresolved method edge and top-level calls are attributed to the file: postgresql +7,363 resolved, virtualbox +959, git +34 (WI-mugir).
 - **Scala `println` / `Console` writes are logging** (`println(secret)` read `confirmed` against a never-logs claim): new `scala.Predef` / `scala.Console` rows and `Console.err` typed as the stderr stream; +179 logging findings on sbt, +20 gatling, +10 lila, none lost (WI-tunul).
