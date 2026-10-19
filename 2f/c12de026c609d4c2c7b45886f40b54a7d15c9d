@@ -1,0 +1,18 @@
+Original commit body from df8d45a0a45477b93fb51aca6d06d1f1a38ba115:
+
+Scala calls a parameterless method without parentheses
+(Runtime.getRuntime.availableProcessors, System.currentTimeMillis) and
+Kotlin reads a Java getter as a property (proc.inputStream). Neither
+parsed as a call, so no edge existed for receiver typing to reach.
+
+The grammar cannot tell such an access from a field read (System.out),
+so it counts as a call only where a library-signature row or a
+function/method io_primitives row says the owner declares that method
+(jvm_implicit_imports.is_known_library_method). Kotlin tries getX / isX
+(and an isX property's own name).
+
+Measured against dev: sbt +150 calls edges, gatling +7, okhttp +1,
+detekt 0; none lost. gatling ActorSystem.scala:36 and sbt
+EvaluateTask.scala:223 now emit getRuntime + availableProcessors.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
