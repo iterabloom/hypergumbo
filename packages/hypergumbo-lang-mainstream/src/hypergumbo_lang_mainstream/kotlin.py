@@ -188,6 +188,7 @@ from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     bare_system_is_java_lang,
     imported_elsewhere,
     inline_qualified_owner,
+    is_known_library_method,
     is_std_output_receiver,
     java_lang_system_aliases,
     kotlin_import_path,
@@ -1759,6 +1760,40 @@ def _extract_edges_from_file(
             owner = library_returns.get(f"{owner}.{link}")
         return owner
 
+    def _synthetic_getter(nav: "tree_sitter.Node") -> tuple[str, str] | None:
+        """``(owner, getter)`` when a property read is a known Java getter call.
+
+        WI-bojud-sator: kotlin reads ``getInputStream()`` as ``.inputStream``
+        (and ``isEmpty()`` as ``.isEmpty``), so the read parses as a
+        ``navigation_expression`` and emitted no edge, while the rows are keyed
+        by the Java method. The owner is the type the file establishes for the
+        receiver -- a typed local, a library call chain, or another such getter
+        -- and the read counts only where a row says that owner declares the
+        getter (:func:`is_known_library_method`), so a field or a kotlin
+        property adds nothing.
+        """
+        named = [c for c in nav.children if c.is_named]
+        if len(named) != 2 or named[1].type != "identifier":  # pragma: no cover - grammar guard
+            return None
+        receiver, prop = named[0], node_text(named[1], source)
+        owner: str | None = None
+        if receiver.type == "call_expression":
+            owner = _library_call_type(receiver)
+        elif receiver.type == "identifier" and node_text(receiver, source) in var_types:
+            owner = _kt_receiver_module(var_types[node_text(receiver, source)], imports)
+        elif receiver.type == "navigation_expression":
+            inner = _synthetic_getter(receiver)
+            owner = None if inner is None else library_returns.get(".".join(inner))
+        if owner is None:
+            return None
+        cap = prop[:1].upper() + prop[1:]
+        names = [f"get{cap}", f"is{cap}"]
+        if prop.startswith("is") and prop[2:3].isupper():
+            names.insert(0, prop)
+        getter = next(
+            (g for g in names if is_known_library_method("kotlin", f"{owner}.{g}")), None)
+        return None if getter is None else (owner, getter)
+
     def _emit_navigation_receiver_call(
         receiver: "tree_sitter.Node", method_name: str, line: int,
         *, this_property: str | None,
@@ -2414,6 +2449,21 @@ def _extract_edges_from_file(
             has_double_colon = any(
                 not c.is_named and c.type == "::" for c in node.children
             )
+            parent = node.parent
+            if not has_double_colon and not (
+                parent is not None and parent.type in ("call_expression", "assignment")
+                and parent.children[0] == node
+            ) and (getter := _synthetic_getter(node)) is not None:
+                edges.append(make_unresolved_edge(
+                    "kotlin",
+                    (
+                        _get_enclosing_function(node, source, decl_index)
+                        or enclosing_declared_symbol(node, decl_index, _TYPE_BODY_NODES)
+                        or file_anchor
+                    ).id,
+                    getter[1], node.start_point[0] + 1, PASS_ID, run.execution_id,
+                    module_hint=getter[0], call_construct="method",
+                ))
             if has_double_colon:
                 current_function = _get_enclosing_function(
                     node, source, decl_index,
