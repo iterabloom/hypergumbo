@@ -1,0 +1,31 @@
+Original commit body from 43b8d703227659a428b8f8a66f82b6730dd4f6c5:
+
+`impl_->Generate(a, b)` took local_symbols["Generate"] -- whichever
+same-file method of ANY class registered last -- and, inside a method,
+the enclosing class as its path hint. The pimpl idiom (X::Generate
+forwarding to impl_->Generate) became a false SELF-call: 990 sites on
+sherpa-onnx. INV-fahub's defer gate ran only on the global path.
+
+An explicit receiver other than `this` is now typed where the source
+declares it: a local or parameter of the enclosing function, else a
+field of the caller's class (class_field_types, which unwraps
+unique_ptr<T> / T*). A smart pointer's own `.` member is not the
+pointee's. A typed call binds T::m, or for a project class that does
+not declare m, an unresolved edge with receiver_type_hint for the
+inherited_calls linker. An untyped one never takes the enclosing class
+as path hint, a same-file short-name hit, or an enclosing_class stamp.
+_cpp_declared_type_kind now shares the new declaration walker.
+
+Measured against dev, sites where src == dst: sherpa-onnx 994 -> 41,
+grpc 1,531 -> 336, whisper.cpp 328 -> 147, modsecurity 101 -> 15. Of
+the lost resolved edges most were retargeted (sherpa 2,073 of 2,194;
+12/12 sampled correct); untyped receivers (auto locals, range-for
+variables) give up their short-name binds (grpc 6,570, sherpa 121).
+test_cpp_overload_arity's pimpl test pinned the wrong edge as "the
+name's pick"; it now asserts the call binds no X overload.
+
+Not fixed here: methods of a class declared with a qualified name
+(`class OnlineStream::Impl { ... }`) are registered bare, which leaves
+10 explicit-receiver self-calls on sherpa-onnx (filed separately).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
