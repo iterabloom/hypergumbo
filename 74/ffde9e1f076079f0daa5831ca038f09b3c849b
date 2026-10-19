@@ -1,0 +1,25 @@
+Original commit body from abfbde0c44a7ff37c60a4ee797a5dc934c1bdec8:
+
+Factory.make() on a project object was left scala:external with no
+hint: the receiver is not a variable, and the static-owner slot names
+no project type by design.
+
+- A capitalised receiver that no local binds and that is a project type
+  is looked up as Name.member among EVERY symbol of that name
+  (_symbols_by_name, filled in register_symbol), so a same-named member
+  in another package does not hide the right one as it does in the
+  name-keyed registry. It binds only where Scala binds the name: the
+  same file, an explicit import that fits (WI-tipoh's reading), or the
+  caller's own package; otherwise it stays unresolved.
+- A visible object without the member stamps receiver_type_hint; the
+  inherited-calls linker now indexes object kinds too, and Scala objects
+  record their extends/with bases (they had none), so an inherited
+  member resolves (Factory extends Base -> Base.make).
+
+Measured (Scala analyzer, before/after): sbt resolved calls 10,795 ->
+12,473 (+1,678, 0 lost), unhinted external 21,600 -> 19,565; lila
+17,138 -> 18,310 (+1,172, 0 lost), 59,514 -> 57,175. Of lila's new edges
+to an owner declared in 2+ files, 101 of 113 bind within the caller's
+file/package and 12 through a fitting explicit import.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
