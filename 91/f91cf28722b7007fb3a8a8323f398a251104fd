@@ -1,0 +1,5 @@
+Original commit body from 16bcc8bf43d3a539cf0353ae306e14d95e808560:
+
+CI's per-package coverage found lines only another package's tests reached: find_unfollowed_escapes' skip for a source whose function holds no stamped call, the parenthesized and call-result destination roots, and visible_macros' cycle and depth-bound branches. A copy call outside any function is a misparse and is marked no-cover.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
