@@ -1,0 +1,5 @@
+Original commit body from d4df48cfe6be69d5ceedb5725130d523c6192dd1:
+
+CI's affected-test selection did not run the CLI tests that reached it locally; the scan's own test file now covers every line of it.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
