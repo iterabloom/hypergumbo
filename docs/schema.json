@@ -994,6 +994,9 @@
             "module_system": {
               "description": "Module system on synthetic file-shape Symbols (e.g. 'esm', 'commonjs'). Fold residue for the ``module_file`` \u2192 ``file`` migration per audit-findings 0005."
             },
+            "non_local_store_lines": {
+              "description": "c function Symbols: sorted source lines where the function ASSIGNS memory it does not own -- a name it does not declare (a global, an extern) or anything reached through a pointer parameter. A list of ints, present only when non-empty. taint.find_unfollowed_escapes reads them as targets like an unfollowed_construct call site, so a source value assigned there withholds a clean verdict (INV-nohob)."
+            },
             "override": {
               "description": "True if the method overrides a superclass / interface method. Set by analyzers that parse ``override`` / ``@Override`` keywords."
             },

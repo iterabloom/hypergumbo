@@ -4429,6 +4429,7 @@ def find_unfollowed_escapes(
     ] | None = None,
     include_community: bool = True,
     function_summaries: dict[str, "FunctionSummary"] | None = None,
+    store_lines: Mapping[str, Sequence[int]] | None = None,
 ) -> list[UnfollowedEscape]:
     """Every source value the §3a walk sees reach a call site an analyzer
     stamped ``unfollowed_construct`` (INV-nohob).
@@ -4452,15 +4453,25 @@ def find_unfollowed_escapes(
 
     Per SOURCE SITE, not per flow: the result names where each label's value
     was lost, and the caller withholds every clean verdict on that label.
+
+    ``store_lines`` adds the lines a function ASSIGNS memory it does not own
+    (C's ``meta.non_local_store_lines``) as ``non_local_store`` targets: the
+    same loss as a copy-family call, with no call to stamp (INV-nohob 3/3).
     """
-    if not ddg_edges or not sources:
+    if not sources:
         return []
+    # NO DDG IS NOT NO ANSWER: a construct ON a source line is reached without
+    # a walk (``g = getenv("K")`` defines nothing a later use could follow), so
+    # a function the walk has no edges for still reports it.
     constructs: dict[str, dict[int, str]] = defaultdict(dict)
     for edge in call_edges:
         kinds = [k for k in call_site_unfollowed_constructs(edge.get("meta")) if k]
         if kinds:
             for line in _edge_call_sites(edge):
                 constructs[edge.get("src", "")].setdefault(line, kinds[0])
+    for symbol_id, lines in (store_lines or {}).items():
+        for line in lines:
+            constructs[symbol_id].setdefault(line, "non_local_store")
     if not constructs:
         return []
     ix = _walk_indexes(

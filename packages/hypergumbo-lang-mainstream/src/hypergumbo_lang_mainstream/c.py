@@ -25,7 +25,9 @@ This analyzer uses tree-sitter-c to parse C files and extract:
   not declare), ``macro_call`` (a function-like macro the file's include
   closure defines) and ``variadic_call`` (arguments in a project function's
   ``...`` tail). ``taint.find_unfollowed_escapes`` withholds a clean verdict
-  whose source value reaches one.
+  whose source value reaches one. A plain ASSIGNMENT into such memory is not
+  a call, so it is recorded on the function instead:
+  ``meta.non_local_store_lines``.
 
 The analyzer also extracts function signatures (``_extract_c_signature``)
 and applies ADR-0015 Tier 1 dataflow annotation to the resulting edges.
@@ -472,6 +474,34 @@ def _c_locals(definition: "tree_sitter.Node", source: bytes) -> set[str]:
                     if name is not None:
                         names.add(name)
     return names
+
+
+def _c_non_local_store_lines(definition: "tree_sitter.Node", source: bytes) -> list[int]:
+    """The lines where a definition ASSIGNS memory it does not own (INV-nohob 3/3).
+
+    A name the function does not declare (``g = v``, ``g.f = v``: a global or
+    an ``extern``), or anything reached THROUGH a pointer parameter (``c->f =
+    v``, ``*c = v``, ``c[i] = v``). Not a local (static ones included: their
+    storage outlives the call but no other function names it), a value
+    parameter, or a pointer parameter re-pointed (``c = v``).
+    """
+    pointers, values = _c_parameter_names(definition, source)
+    owned = values | _c_locals(definition, source)
+    body = definition.child_by_field_name("body")
+    lines: list[int] = []
+    for node in iter_tree(body) if body is not None else []:
+        if node.type != "assignment_expression":
+            continue
+        left = node.child_by_field_name("left")
+        root = _c_expression_root(left, source) if left is not None else None
+        if root is None or root in owned:
+            continue
+        if root in pointers and left is not None and left.type == "identifier":
+            continue
+        line = node.start_point[0] + 1
+        if line not in lines:
+            lines.append(line)
+    return lines
 
 
 def _c_stores_non_locally(call: "tree_sitter.Node", source: bytes) -> bool:
@@ -1973,10 +2003,18 @@ class CAnalyzer(TreeSitterAnalyzer):
                 tree, source, source_file, rel_path, run,
             )
             populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)
-            # INV-nohob: what the call sites into each function need (pass 2).
+            # INV-nohob: what the call sites into each function need (pass 2),
+            # and the lines where each one stores into memory it does not own.
+            _by_id = {s.id: s for s in analysis.symbols}
             for _sym_id, _node in analysis.node_for_symbol.items():
                 if _node.type == "function_definition":
                     function_facts[_sym_id] = _c_function_facts(_node, source)
+                    _stores = _c_non_local_store_lines(_node, source)
+                    if _stores and _sym_id in _by_id:
+                        _by_id[_sym_id].meta = {
+                            **(_by_id[_sym_id].meta or {}),
+                            "non_local_store_lines": _stores,
+                        }
             # Auto-compute shape_id for symbols with nodes (ADR-0014 §1)
             if analysis.node_for_symbol:
                 sym_by_id = {s.id: s for s in analysis.symbols}

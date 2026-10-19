@@ -169,8 +169,12 @@ copied into a global and sent from another function, and its pid/time
 username is written into a pointer parameter; `host-secret-no-network`,
 `host-secret-no-logging` and `host-description-no-network` read
 `confirmed_with_caveats` and are now `inconclusive`. crun, tmate and redis
-moved no verdict. A plain assignment to a global (`g = p;`) is not a call and
-is not stamped yet.
+moved no verdict. A plain ASSIGNMENT into such memory (`g_secret = p;`,
+`c->pass = p;` through a pointer parameter) is not a call, so each C function
+records its own such lines instead (`meta.non_local_store_lines`) and they are
+read the same way: `g_secret = getenv("K")` in one function and a send of
+`g_secret` from another reads `inconclusive`, not `confirmed`. On crun, tmate
+and redis about 29% of functions record one; no verdict there moved.
 
 Following the value through each construct is separate work (out-parameter
 summaries, cross-function global state, macro expansion, variadic tails).

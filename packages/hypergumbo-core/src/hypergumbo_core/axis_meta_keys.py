@@ -1131,6 +1131,14 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "the ``using`` namespaces and the global namespace (``\"\"``). "
                 "The inheritance linker keeps only candidates of a visible "
                 "namespace (WI-pivap)."),
+    MetaKeySpec("non_local_store_lines", AXIS_SYMBOL_META,
+                "c function Symbols: sorted source lines where the function "
+                "ASSIGNS memory it does not own -- a name it does not declare "
+                "(a global, an extern) or anything reached through a pointer "
+                "parameter. A list of ints, present only when non-empty. "
+                "taint.find_unfollowed_escapes reads them as targets like an "
+                "unfollowed_construct call site, so a source value assigned "
+                "there withholds a clean verdict (INV-nohob)."),
     MetaKeySpec("virtual_members", AXIS_SYMBOL_META,
                 "cpp class / struct Symbols: sorted names of member functions "
                 "virtual IN this class (declared ``virtual``, ``override`` or "

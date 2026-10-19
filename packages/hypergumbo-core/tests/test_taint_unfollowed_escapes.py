@@ -143,3 +143,19 @@ def test_other_labels_findings_and_test_sources_do_not_withhold() -> None:
         _verdict("confirmed"), "host_secret", [in_test], False).verdict == "confirmed"
     assert _withhold_for_unfollowed_escapes(
         _verdict("confirmed"), "host_secret", [in_test], True).verdict == "inconclusive"
+
+
+def test_a_function_s_store_lines_are_targets_with_or_without_ddg() -> None:
+    """C's ``meta.non_local_store_lines`` (INV-nohob 3/3): ``g = getenv("K")``
+    is reached on the source line with NO DDG edge at all, and a later
+    ``g = p`` is reached by the walk."""
+    on_source_line = find_unfollowed_escapes(
+        [], [_call(_GETENV, 2)], SOURCES, language="c", store_lines={_FN: [2]},
+    )
+    assert [(e.site_line, e.construct) for e in on_source_line] == [(2, "non_local_store")]
+    later = find_unfollowed_escapes(
+        _ddg(("p", 2, 5)), [_call(_GETENV, 2)], SOURCES, language="c",
+        stmt_defuse={_FN: [(2, ("p",), ()), (5, ("g",), ("p",))]},
+        store_lines={_FN: [5]},
+    )
+    assert [(e.site_line, e.construct) for e in later] == [(5, "non_local_store")]
