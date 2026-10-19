@@ -26,3 +26,18 @@
   clock: 2  # 4171
   nonce: '4171'  # 4171
   message: "A live instance from WI-rabum-zatur-rufav-busol-lurop-gisur-zojif-gidun: with a project `object out { def println(x: String): Unit = {} }`, `out.println(k)` emits scala:external:0-0:println:unresolved (no hint), so a never-logs-a-secret claim reads confirmed_with_caveats (untyped_receiver at that println) before and after WI-rabum. Pinned as a control (verdict in confirmed / confirmed_with_caveats) in packages/hypergumbo-lang-mainstream/tests/test_jvm_stdio_writes.py::test_a_secret_handed_to_a_user_out_is_not_logged[scala]; if this item lands and the call resolves, that control should tighten to confirmed."  # 4171
+- op: update  # 058f
+  at: '2026-10-19T04:59:30Z'  # 058f
+  by: agent  # 058f
+  actor: jgstern_agent  # 058f
+  clock: 3  # 058f
+  nonce: 058f  # 058f
+  set:  # 058f
+    status: done  # 058f
+- op: discuss  # 00ae
+  at: '2026-10-19T04:59:30Z'  # 00ae
+  by: agent  # 00ae
+  actor: jgstern_agent  # 00ae
+  clock: 4  # 00ae
+  nonce: 00ae  # 00ae
+  message: "Fixed in PR #1725 (dev 74ffde9e1f). scala.py: a capitalised receiver that no local binds and that _is_project_type accepts is looked up as Name.member among EVERY symbol of that name (_symbols_by_name, filled in register_symbol -- so a same-named member in another package no longer hides the right one, the WI-niriz name-keyed collision), and binds only where Scala binds the name (_project_object_binding/_visible_from): same file, an explicit import that fits the symbol (WI-tipoh's _import_names_elsewhere reading), or -- with no import -- the caller's own package; anything else (unrelated package, wildcard-only import) stays unresolved. A visible object without the member stamps receiver_type_hint; inherited_calls now indexes kind 'object', and Scala objects record their extends/with base_classes (they had none), so Factory extends Base -> Base.make resolves through the linker. MEASURED (analyze_scala before = origin/dev worktree, after = branch; no linkers): sbt resolved calls 10,795 -> 12,473 (+1,678 new, 0 lost; by binding 1,083 same package / 437 explicit import / 158 same file), un-hinted external method calls 21,600 -> 19,565; lila 17,138 -> 18,310 (+1,172, 0 lost; 547 / 479 / 146), 59,514 -> 57,175. The item's collision risk: of lila's new edges whose owner name is declared in 2+ files, 101 of 113 bind within the caller's file/package and 12 via a fitting explicit import (no new edge targets an Env object; those calls are on instances). Production-path tests: test_scala_project_object_calls.py (same file, same package, explicit import, unrelated-package refusal, inherited member via the linker, object bases). The WI-rabum control (project object out, out.println) is unchanged: a lowercase receiver is outside this rule, so test_jvm_stdio_writes keeps its confirmed_with_caveats bound -- a lowercase project object stays unresolved, NOT fixed here."  # 00ae
