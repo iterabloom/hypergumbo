@@ -1,0 +1,16 @@
+Original commit body from c8691b5f4c34360c80b5d7ebb52660d29e18f609:
+
+Ruby resolves a relative constant through Module.nesting before the top
+level, so Orchestrator inside module TestData is TestData::Orchestrator.
+_try_receiver_call tried only the name as written, and a class declared
+compactly (class TestData::Orchestrator) is registered only under its
+full name, so the in-repo call fell to constant_external (chatwoot
+lib/test_data.rb).
+
+_lexical_nesting reads the call site's enclosing module / class nodes
+(positional, innermost first; a compact class A::C is one level, as in
+Ruby), and _nested_candidates puts each nesting-qualified name ahead of
+the written one, in the method lookup and in the .new -> #initialize
+path. Only exact registered keys match; an absolute ::X gets none.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
