@@ -1,0 +1,34 @@
+Original commit body from 3b82629125bea87ca662868bc6ba21df39f17224:
+
+urlopen(url).read(), build_opener().open(url).read() and
+socket.create_connection(...).recv() piped into a shell read
+confirmed_with_caveats on an untrusted_input -> subprocess claim (a
+false clean): nothing typed the response or the socket, and
+http.client.HTTPResponse carried no row.
+
+- library_signatures/python.yaml: urlopen / OpenerDirector.open /
+  HTTP(S)Connection.getresponse -> http.client.HTTPResponse (the http(s)
+  type; addinfourl for file:/data:/ftp: is deliberately not typed), and
+  socket.create_connection -> socket.socket.
+- py.py: a member called on a TYPED receiver is typed from its signature
+  row (_member_return_type), not only when the row preserves the type;
+  a `with` item derived from a typed receiver is typed the same way.
+- io_primitives/python.yaml: HTTPResponse's read family, header / url /
+  status accessors and begin are net_recv; its 28-member public surface
+  is enumerated (module_completeness), and the scope gate admits it as
+  CPython's Lib/http/client.py.
+
+Ported from the unmerged draft 206e733d13 (branch jgstern-agent/fix/tumol,
+2026-10-05). That draft also carried WI-patit (`returns_handle`, opener
+sends stay clean), which is DELIBERATELY EXCLUDED here: it is a separate
+item whose ruling is recorded only as an agent-relayed note, and the two
+halves are independent (WI-dibit's opener pin test is unchanged).
+
+Measured against dev: the three repro shapes go confirmed_with_caveats
+-> violated through verify-claims. Classified crossings, A/B: django +17
+(HTTPResponse read 11, getheader 5, info 1), superset +6, feast 0; none
+lost. 16 of 16 sampled sites are real HTTP response reads (django's
+TemplateCommand.download, test-client getresponse() reads, superset's
+report fetches).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
