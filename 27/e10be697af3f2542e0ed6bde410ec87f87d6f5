@@ -1,0 +1,11 @@
+Original commit body from b5d83678df608d8983998913ae3475400a4e05f9:
+
+Adds the 2026-10-20 row to the calibration table (70-file pool: 47
+drifted, 2/10 flagged, 20/30 rolling, 25/30 most-changed; blind
+re-review found drift in 2 of 5 "matches"), its footnote, and the run's
+lessons, including batching tracker adds so each one does not trigger
+its own auto-sync PR.
+
+Approved by the human owner in session.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
