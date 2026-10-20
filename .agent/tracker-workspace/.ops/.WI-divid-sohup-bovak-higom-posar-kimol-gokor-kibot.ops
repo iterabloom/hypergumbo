@@ -20,3 +20,12 @@
     pr_ref:  # 2d9b
     description: "Found by the 2026-10-20 docstring-staleness audit (verifier reproduced). The module docstring says a class, struct or interface records its base list in `meta[\"base_classes\"]`. `_extract_base_list` is called only in the class (~L944) and interface (~L1002) branches; the struct_declaration branch (~L1041-1077) passes no meta. Repro: `namespace N { interface IBase {} struct S : IBase { public void Go() {} } }` -> `struct S` meta None. Fix: call `_extract_base_list` / `_csharp_base_hints` in the struct arm too. Related: WI-kajoh (records emit no symbol)."  # 2d9b
     fields: {}  # 2d9b
+- op: update  # e1d5
+  at: '2026-10-20T09:13:47Z'  # e1d5
+  by: agent  # e1d5
+  actor: jgstern_agent  # e1d5
+  clock: 2  # e1d5
+  nonce: e1d5  # e1d5
+  set: {}  # e1d5
+  add:  # e1d5
+    not_duplicate_of: [WI-palul-jiruz-porum-sigaj-lupub-lajug-pikuz-fugiz]  # e1d5
