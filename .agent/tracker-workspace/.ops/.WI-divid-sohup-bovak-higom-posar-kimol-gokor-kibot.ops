@@ -1,0 +1,22 @@
+- op: create  # 2d9b
+  at: '2026-10-20T09:06:03Z'  # 2d9b
+  by: agent  # 2d9b
+  actor: jgstern_agent  # 2d9b
+  clock: 1  # 2d9b
+  nonce: 2d9b  # 2d9b
+  data:  # 2d9b
+    kind: work_item  # 2d9b
+    title: "csharp: a struct's base list is not recorded -- struct S : IBase gets no meta.base_classes, so no extends edge and no dispatch"  # 2d9b
+    status: todo_hard  # 2d9b
+    priority: 3  # 2d9b
+    parent:  # 2d9b
+    tags:  # 2d9b
+    - docstring_audit  # 2d9b
+    - analyzer  # 2d9b
+    - csharp  # 2d9b
+    isbefore: []  # 2d9b
+    duplicate_of: []  # 2d9b
+    not_duplicate_of: []  # 2d9b
+    pr_ref:  # 2d9b
+    description: "Found by the 2026-10-20 docstring-staleness audit (verifier reproduced). The module docstring says a class, struct or interface records its base list in `meta[\"base_classes\"]`. `_extract_base_list` is called only in the class (~L944) and interface (~L1002) branches; the struct_declaration branch (~L1041-1077) passes no meta. Repro: `namespace N { interface IBase {} struct S : IBase { public void Go() {} } }` -> `struct S` meta None. Fix: call `_extract_base_list` / `_csharp_base_hints` in the struct arm too. Related: WI-kajoh (records emit no symbol)."  # 2d9b
+    fields: {}  # 2d9b
