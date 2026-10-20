@@ -16,56 +16,56 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`ci-debug --actions` reads GitHub Actions**: runs, job status, logs and artifacts, read-only.
 - **A release gate on observed I/O**: `scripts/io-manifest` traces the CLI under `strace` on six pinned repositories. A new write, program launch or network connection fails the release ([`docs/io-manifest/expected.txt`](docs/io-manifest/expected.txt)).
-- **A per-PR I/O catalogue check** (`scripts/check-claims-coverage`, ~30 s): shipped code that calls an unclassifiable module fails the PR, not the twice-daily cron.
+- **A per-PR I/O catalogue check** (`scripts/check-claims-coverage`, ~30 s): shipped code that calls a module the catalogue does not cover fails its PR, rather than the twice-daily run.
 
 ### Changed
 
-- **Compact's default view leaves out test code**, as the centrality view already did.
-- **The twice-daily self-map is built with the scip-python backend**, for receiver typing. Its gate fails if the backend contributed nothing.
+- **`hypergumbo compact` leaves out test code by default**, as the centrality view already did.
+- **CI's twice-daily self-analysis uses the scip-python backend** for receiver typing, and fails if that backend contributed nothing.
 
 ### Removed
 
-- **Three functions only tests called**: `resolve_arbitration_policy`, `write_boundary_for_target_kind`, `build_interface_impl_map`.
+- **Three functions nothing but tests called**: `resolve_arbitration_policy`, `write_boundary_for_target_kind`, `build_interface_impl_map`.
 
 ### Fixed
 
 #### Taint analysis
 
 - **Secrets returned without `return` reach the caller's sink**: Rust tail expressions and JS/TS arrow expression bodies.
-- **The source's own line is examined**: a sink wrapping the source, or another call taking its value, no longer loses the flow.
-- **A switch or match with no matching arm falls through**, so a definition before it still reaches later code.
-- **C verdicts are withheld when a secret leaves untracked**: through a pointer parameter, a global, a function-like macro or a variadic argument.
-- **C calls through a function-pointer variable reach the function it holds.**
-- **C and C++ `#include` stamps name every visible header**, quoted and transitive, so calls behind a project header are classified.
+- **A secret read on the same line as a sink, or passed to another call there, is no longer reported clean**, e.g. `requests.post(url, headers={"A": os.environ["T"]})`.
+- **Taint passes through a `switch` or `match` when no arm matches**, so a definition before it still reaches later code.
+- **C gives no verdict when a secret leaves through something taint does not follow**: a pointer parameter, a global, a function-like macro or a variadic argument.
+- **C and C++ calls declared behind a project header are classified**: a file's headers now include quoted and transitively included ones, not only `<...>` includes.
 - **Python HTTP responses and connected sockets are network-input sources.**
 
 #### Calls, types and inheritance
 
-- **Python bare-name calls no longer bind same-named methods** (`open(...)` → `ContentFile.open`).
+- **Python bare-name calls no longer bind same-named methods**: `open(...)` no longer resolves to `ContentFile.open`.
 - **C++ and Perl member calls resolve on the receiver's type**, not by short name.
+- **C calls through a function-pointer variable reach the function it holds.**
 - **Scala and Kotlin**: calls on project objects and companions resolve; parameterless JDK calls and Kotlin synthetic getters emit edges; `println` and `Console` writes are logging.
-- **Ruby records the calls it dropped** (untyped receivers, implicit `self`, `super`, recursion) and resolves constants through the enclosing module.
-- **C dispatch tables are variable symbols**, so `dispatches_to` edges no longer start at a missing node; arrays of function pointers are detected.
-- **A base class binds only the in-repo class its import or qualifier names**, in Java, Kotlin, JS/TS, PHP, Groovy, Scala, C# and C++; any other base is external.
-- **C# and C++ dispatch is decided per method**: `override` and `virtual` link; name hiding and statics do not.
+- **Ruby emits the calls it used to drop** (untyped receivers, implicit `self`, `super`, recursion) and resolves constants through the enclosing module.
+- **C dispatch tables are variable symbols**, so `dispatches_to` edges no longer start at a missing node; arrays of function pointers count as dispatch tables.
+- **A base class links to an in-repo class only when an import or qualifier names that class**, in Java, Kotlin, JS/TS, PHP, Groovy, Scala, C# and C++; otherwise it is external.
+- **C# and C++ dispatch is decided per method**: `override` and `virtual` create dispatch links; hidden names and statics do not.
 - **C# interface inheritance and Go interface embedding produce `extends` edges.**
 - **WebSocket events and HTTP URLs named by a constant resolve to its value.**
-- **D skips GCC dependency files; Hack reads `<?hh` `.php` files, which PHP skips.**
 - **Smaller per-language fixes**:
+  - D no longer parses GCC dependency files; `.php` files starting with `<?hh` are analysed as Hack, not PHP.
   - Swift subscripts are not calls.
-  - Wolfram definition heads are not calls, and `.m` files are analysed.
+  - The left side of a Wolfram definition is not a call, and Wolfram `.m` files are analysed.
   - Odin's `obj.method()` is one edge.
   - Zig, LLVM IR, COBOL, TLA+ and Agda attribute each call to the right definition.
   - COBOL sections and paragraphs stay in the default view.
 
 #### scip-python backend (opt-in)
 
-- **It indexes the analysed repository**: it had indexed an empty scratch directory. It also runs on trees outside git and names the fix for a node heap exhaustion.
-- **Edges two producers corroborate no longer fail the confidence-band validator.**
+- **It indexes the analysed repository**, not an empty scratch directory. It also runs on trees outside git, and says how to fix Node running out of heap.
+- **Edges that scip-python and the built-in analyzer both find no longer fail confidence validation.**
 
 #### Cache, release and CI
 
-- **Concurrent runs no longer fail each other over cache eviction**; housekeeping can only warn.
+- **Concurrent runs no longer fail each other over cache eviction**; cache cleanup can only warn.
 - **`--exclude` is part of the results-cache key.**
 - **A GitHub Release attaches every asset or fails**; the SBOM describes the shipped wheels.
 - **`.hypergumbo-examples/` is gitignored automatically.**
@@ -73,7 +73,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Documentation
 
-- Module docstrings: 16 corrected, 5 extended (staleness audit).
+- Module docstrings: 53 corrected, 16 extended (two staleness audits).
 - README names the files `survey --out` writes beside its output.
 - ADR-0004 point 7 names both rows that consult git; ARCHITECTURE.md regenerated.
 

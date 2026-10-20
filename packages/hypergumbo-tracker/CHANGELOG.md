@@ -20,7 +20,7 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Documentation
 
-- **Module docstrings corrected in seven modules** (`cli`, `configure`, `field_keys`, `journal`, `protected_config`, `serve`, `setup`). False claims removed include a top-level `rename` command and an auto-sync threshold of 50 (it is 80).
+- **Module docstrings corrected in eight modules** (`cli`, `configure`, `field_keys`, `journal`, `protected_config`, `serve`, `serve_webauthn`, `setup`) and extended in `sync`. False claims removed include a top-level `rename` command and an auto-sync threshold of 50 (it is 80).
 
 ## [0.10.0] - 2026-10-14
 
