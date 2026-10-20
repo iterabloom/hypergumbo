@@ -60,6 +60,13 @@ and its ``source_returned_by`` are unioned and carried as sorted tuples beside
 ``collapsed_flow_count``; every other scalar is the first member's. ``ddg``
 findings pass through unchanged, since the walk earned their per-pair claim.
 
+:func:`find_unfollowed_escapes` runs the same §3a walk with a different target
+set: the source function's call lines an analyzer stamped
+``unfollowed_construct``, and C's non-local store lines. It reports each
+source value that reaches a construct taint does not follow, and
+verify-claims withholds every clean verdict on that label, since a missing
+finding there is ignorance, not an all-clear.
+
 Which Pairs Count
 -----------------
 Upstream of the §3a walk, both propagators share gates that decide what counts

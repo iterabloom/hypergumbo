@@ -42,7 +42,10 @@ extract:
   canonical name) gets an unresolved edge (confidence 0.5) with an
   ``ExternalRef`` ``dst_ref`` when an import names its module, else to the
   ``external`` placeholder with none; a base imported from a relative path
-  emits nothing
+  emits nothing. A base imported from a package shown external (a Node core
+  module, or a registry dependency a ``package.json`` declares and the repo
+  does not define; ``_bare_specifier_is_external``) gets that unresolved
+  edge even when a project class/interface shares its name
 - Decorator application: ``decorated_by`` (edges); an unresolved or
   non-callable decorator gets an unresolved ``decorated_by`` edge to
   ``typescript:unresolved:0-0:<name>:unresolved``

@@ -77,6 +77,14 @@ constructor; each row's fully-qualified answer is the owner of the next link,
 and the first link no row answers ends the walk untyped. A local bound to
 such a chain takes the row's answer ahead of the chain-root constructor.
 
+Synthetic getters. A property read that is Kotlin's spelling of a Java
+getter (``p.inputStream`` for ``getInputStream()``, ``.isEmpty`` for
+``isEmpty()``) emits an unresolved ``call_construct: method`` edge to that
+getter, the owner in the module slot (``_synthetic_getter``), when the file
+establishes the receiver's owner -- a typed local, a library call chain, or
+another such getter -- and a library-signature row says that owner declares
+it; a field or a Kotlin property adds nothing.
+
 Other receiver shapes. An untyped receiver spelled as a TYPE
 (``System.getenv(k)``, ``Files.readAllBytes(p)``) is a static call whose
 module slot is the owner that ``jvm_implicit_imports.static_owner_module``

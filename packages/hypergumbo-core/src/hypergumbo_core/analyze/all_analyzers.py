@@ -7,12 +7,17 @@ analyze/registry.py (ADR-0012 Step 1) — ``get_analyzers`` /
 the *orchestrator*: ``run_all_analyzers`` runs the registered analyzers via a
 parallel ``ThreadPoolExecutor`` dispatch, stamps the config fingerprint,
 filters by file presence, runs the file-symbol / anchor synthesis passes,
-normalizes paths, dedups edges, and merges the dependency manifest — so it is
-not a pure facade. Each analyzer runs inside ``_run_costed`` on its pool
-worker, which reads the pass's own-thread CPU time there (WI-nuvam: wall time
-under the pool overlaps and inflates with contention, see ``pass_clock``) and
-hands the cost to ``collect_analyzer_result`` to stamp before serialization.
-An analyzer that raises is recorded as a crashed pass and the run continues
+normalizes paths, backfills missing ``stable_id`` values
+(``populate_kind_stable_ids``), dedups edges, and merges the dependency
+manifest — so it is not a pure facade. Each analyzer runs inside
+``_run_costed`` on its pool worker, which reads the pass's own-thread CPU time
+there (WI-nuvam: wall time under the pool overlaps and inflates with
+contention, see ``pass_clock``) and hands the cost to
+``collect_analyzer_result``, the per-pass chokepoint that stamps it with the
+emitted-count counters and silence reason before serialization, backfills
+``Symbol.origin_run_id``, and accounts for every pass as an AnalysisRun or a
+skip (synthesizing a run, with a warning, for a producer that emitted output
+without one). An analyzer that raises is recorded as a crashed pass and the run continues
 (§17 fail-open) -- except a ``CatalogueError``, a catalogue file that does not
 parse, which would fail identically on every run and is re-raised for the CLI
 to report with exit 2. It provides the stable import points used by cli.py and

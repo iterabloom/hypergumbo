@@ -77,6 +77,14 @@ test runner. So ``production_source_files`` includes the repository's Python
 scripts, found by ``.py`` suffix or by a Python shebang since the gates are
 extensionless. They vote as referencers only -- their own functions are not
 under ``packages/*/src`` and are never in the cohort.
+
+THE MAP MUST CARRY THE TYPING IT CLAIMS. The Woodpecker full-suite map is
+built with the scip-python backend, whose preconditions (the opt-in, the
+binary on ``PATH``) fail silently into the plain map.
+``pass_contribution_problem`` lets the gate's ``--require-pass`` refuse a map
+in which the named pass was skipped, never ran, or emitted nothing, and
+``typed_method_call_share`` reports how many Python method calls that pass
+actually typed.
 """
 from __future__ import annotations
 

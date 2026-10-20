@@ -3,6 +3,8 @@
 
 This analyzer uses tree-sitter to parse Wolfram Language files and extract:
 - Function definitions (``f[x_] := ...``, and ``f[x_] = ...`` too)
+- Delayed values (``f := ...`` on a bare symbol), as a ``function`` with no
+  parameters, one symbol per assignment
 - Variable assignments (Set =), including ones inside a function body, which
   become file-level variables
 - Function calls, as edges from the definition whose body contains the call

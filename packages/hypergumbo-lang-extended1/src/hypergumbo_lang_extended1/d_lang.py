@@ -29,7 +29,14 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract module, function, method, struct, class, interface, enum,
    field and variable symbols
-2. Pass 2: Extract import edges and call edges using NameResolver
+2. Pass 2: Extract import edges and call edges using NameResolver.
+   Callables register under both ``<file_stem>.<name>`` and the bare name; a
+   bare call prefers symbols from imported modules, a module-qualified call
+   through an import alias resolves against that module, and UFCS template
+   calls (``arr.map!(...)``) are recovered from ``property_expression``.
+   Functions nested inside another function's body stay out of the resolver
+   index, and each call is credited to its enclosing declaration by position,
+   not by name.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the D-specific extraction
