@@ -22,20 +22,29 @@ because the bugs they guard against live in shell scripts. Subprocess
 tests don't contribute to Python coverage, but the shell scripts aren't
 coverage-instrumented either — the tests document and gate behavior.
 
-Safety: each test uses a unique tmp_path so the kill-script's ``pgrep``
-fallback (which is scoped by session_id) cannot accidentally kill the
-user's real watcher running on the host.
+Safety: every session id here comes from :func:`_unique_sid`. The
+launcher's and the kill script's ``pgrep`` fallbacks kill any
+``sync-transcript.sh`` ON THE MACHINE whose session-id argument matches,
+whatever repo it belongs to, so a unique tmp_path protects nothing. Two
+tests sharing a literal id can run at once on two xdist workers, and then
+one test's launch kills the other's watcher (WI-zomif: the two
+TestLauncherNamesTheOwner tests both used ``"launch-owner"``, and
+"launcher did not start a watcher" reproduced 8/8 with the launches 50 ms
+apart). The random suffix also keeps the sweeps off the user's real watcher.
 """
 
 # covers: .agent/hooks/_shared/*transcript*
 
 from __future__ import annotations
 
+import ast
 import gzip
 import os
+import re
 import shutil
 import subprocess
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -47,6 +56,16 @@ KILL_SCRIPT = SHARED_DIR / "kill-transcript-sync.sh"
 LAUNCH_SCRIPT = SHARED_DIR / "launch-transcript-sync.sh"
 SYNC_SCRIPT = SHARED_DIR / "sync-transcript.sh"
 ROTATE_SCRIPT = SHARED_DIR / "rotate-on-session-end.sh"
+
+
+def _unique_sid(base: str) -> str:
+    """A session id no other test, worker or real session can share (WI-zomif).
+
+    The readable *base* stays as the prefix, so ``startswith`` checks on
+    derived names (``crashed-*`` archive dirs) still hold. The suffix uses
+    only characters ``sanitize_session_id`` keeps.
+    """
+    return f"{base}-{uuid.uuid4().hex[:12]}"
 
 
 def _proc_alive(pid: int) -> bool:
@@ -168,7 +187,7 @@ class TestKillScript:
 
         proc = subprocess.Popen(["sleep", "60"])
         try:
-            session_id = "test-session-A"
+            session_id = _unique_sid("test-session-A")
             (agent_dir / f".transcript-sync.{session_id}.pid").write_text(
                 str(proc.pid)
             )
@@ -190,7 +209,7 @@ class TestKillScript:
         whose third positional argument equals SESSION_ID and kills it."""
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir()
-        session_id = "test-session-pgrep-fallback"
+        session_id = _unique_sid("test-session-pgrep-fallback")
         expected_dest = str(
             agent_dir / f".current_session_transcript.{session_id}.jsonl"
         )
@@ -229,7 +248,7 @@ class TestKillScript:
         """
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir()
-        sibling_sid = "session-sibling"
+        sibling_sid = _unique_sid("session-sibling")
         sibling_dest = str(
             agent_dir / f".current_session_transcript.{sibling_sid}.jsonl"
         )
@@ -245,7 +264,7 @@ class TestKillScript:
             # Try to kill a DIFFERENT session in the same repo. Sibling
             # must survive.
             result = subprocess.run(
-                ["bash", str(KILL_SCRIPT), str(tmp_path), "session-other"],
+                ["bash", str(KILL_SCRIPT), str(tmp_path), _unique_sid("session-other")],
                 capture_output=True, text=True,
             )
             assert result.returncode == 0, result.stderr
@@ -270,7 +289,7 @@ class TestKillScript:
 
         repo_b = tmp_path / "repo_b"
         (repo_b / ".agent").mkdir(parents=True)
-        repo_b_sid = "repo-b-session"
+        repo_b_sid = _unique_sid("repo-b-session")
         repo_b_dest = str(
             repo_b / ".agent"
             / f".current_session_transcript.{repo_b_sid}.jsonl"
@@ -288,7 +307,7 @@ class TestKillScript:
             result = subprocess.run(
                 [
                     "bash", str(KILL_SCRIPT),
-                    str(repo_a), "repo-a-session",
+                    str(repo_a), _unique_sid("repo-a-session"),
                 ],
                 capture_output=True, text=True,
             )
@@ -307,7 +326,7 @@ class TestKillScript:
         (tmp_path / ".agent").mkdir()
 
         result = subprocess.run(
-            ["bash", str(KILL_SCRIPT), str(tmp_path), "no-such-session"],
+            ["bash", str(KILL_SCRIPT), str(tmp_path), _unique_sid("no-such-session")],
             capture_output=True, text=True,
         )
         assert result.returncode == 0, result.stderr
@@ -331,7 +350,7 @@ class TestLaunchScript:
         agent_dir = tmp_path / ".agent"
         new_src = tmp_path / "new-src.jsonl"
         new_src.touch()
-        session_id = "launch-test-A"
+        session_id = _unique_sid("launch-test-A")
 
         try:
             env = os.environ.copy()
@@ -374,7 +393,7 @@ class TestLaunchScript:
 
         # Session A's "live watcher" — fake but indistinguishable from a
         # real one to pgrep, with its per-session PID file recorded.
-        a_sid = "session-A"
+        a_sid = _unique_sid("session-A")
         a_dest = str(
             agent_dir / f".current_session_transcript.{a_sid}.jsonl"
         )
@@ -386,7 +405,7 @@ class TestLaunchScript:
         )
 
         # Session B starts via the real launch script
-        b_sid = "session-B"
+        b_sid = _unique_sid("session-B")
         b_src = tmp_path / "b-src.jsonl"
         b_src.touch()
 
@@ -446,7 +465,7 @@ class TestLaunchScript:
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir(exist_ok=True)
 
-        sid = "compaction-doubled-session"
+        sid = _unique_sid("compaction-doubled-session")
         src = tmp_path / "src.jsonl"
         src.touch()
         dest_str = str(
@@ -508,7 +527,7 @@ class TestLaunchScript:
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir(exist_ok=True)
 
-        sid = "no-pid-file-session"
+        sid = _unique_sid("no-pid-file-session")
         src = tmp_path / "src.jsonl"
         src.touch()
         dest_str = str(
@@ -577,7 +596,7 @@ class TestCrashedSessionOrphan:
 
         # Seed a "crashed" session: write a current file, an injection
         # history file, and a stale PID file pointing to a dead PID.
-        crashed_sid = "crashed-session-X"
+        crashed_sid = _unique_sid("crashed-session-X")
         crashed_dest = (
             agent_dir / f".current_session_transcript.{crashed_sid}.jsonl"
         )
@@ -596,7 +615,7 @@ class TestCrashedSessionOrphan:
 
         # Now launch a different session — its orphan sweep should archive
         # the crashed session's files.
-        live_sid = "live-session-Y"
+        live_sid = _unique_sid("live-session-Y")
         live_src = tmp_path / "live-src.jsonl"
         live_src.touch()
 
@@ -664,7 +683,7 @@ class TestCrashedSessionOrphan:
         agent_dir.mkdir(exist_ok=True)
 
         # Live sibling session
-        sibling_sid = "live-sibling"
+        sibling_sid = _unique_sid("live-sibling")
         sibling_dest = (
             agent_dir / f".current_session_transcript.{sibling_sid}.jsonl"
         )
@@ -677,7 +696,7 @@ class TestCrashedSessionOrphan:
         ).write_text(str(sibling_proc.pid))
 
         # Launch a different session
-        new_sid = "new-session"
+        new_sid = _unique_sid("new-session")
         new_src = tmp_path / "new-src.jsonl"
         new_src.touch()
 
@@ -729,7 +748,7 @@ class TestRotateOnSessionEnd:
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir()
 
-        sid = "session-first"
+        sid = _unique_sid("session-first")
         cur_tr = agent_dir / f".current_session_transcript.{sid}.jsonl"
         cur_tr.write_text('{"type":"user_message","content":"hello"}\n')
         cur_inj = agent_dir / f".current_injection_history.{sid}.jsonl"
@@ -772,7 +791,7 @@ class TestRotateOnSessionEnd:
         old_last_inj.write_text('{"event_id":"old","selected":[]}\n')
 
         # New session's current
-        sid = "session-second"
+        sid = _unique_sid("session-second")
         cur_tr = agent_dir / f".current_session_transcript.{sid}.jsonl"
         cur_tr.write_text('{"type":"user_message","content":"new"}\n')
 
@@ -815,7 +834,7 @@ class TestRotateOnSessionEnd:
             '{"event_id":"two-ago","selected":[]}\n'
         )
 
-        sid = "session-third"
+        sid = _unique_sid("session-third")
         cur_tr = agent_dir / f".current_session_transcript.{sid}.jsonl"
         cur_tr.write_text('{"type":"user_message","content":"current"}\n')
 
@@ -863,7 +882,7 @@ class TestRotateOnSessionEnd:
 
         # Session whose current file is empty (e.g., user opened CLI but
         # never sent a message)
-        sid = "empty-session"
+        sid = _unique_sid("empty-session")
         cur_tr = agent_dir / f".current_session_transcript.{sid}.jsonl"
         cur_tr.touch()
 
@@ -896,7 +915,7 @@ class TestRotateOnSessionEnd:
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir()
 
-        sid = "session-cleanup"
+        sid = _unique_sid("session-cleanup")
         cur_tr = agent_dir / f".current_session_transcript.{sid}.jsonl"
         cur_tr.write_text('{"type":"x"}\n')
 
@@ -989,7 +1008,7 @@ class TestSyncTranscript:
 
         src = tmp_path / "src.jsonl"
         src.write_text("")
-        sid = "sync-test-A"
+        sid = _unique_sid("sync-test-A")
         dest = agent_dir / f".current_session_transcript.{sid}.jsonl"
         pid_file = agent_dir / f".transcript-sync.{sid}.pid"
 
@@ -1028,7 +1047,7 @@ class TestSyncTranscript:
 
         src = tmp_path / "src.jsonl"
         src.write_text("")
-        sid = "sync-test-trap"
+        sid = _unique_sid("sync-test-trap")
         dest = agent_dir / f".current_session_transcript.{sid}.jsonl"
         pid_file = agent_dir / f".transcript-sync.{sid}.pid"
 
@@ -1107,7 +1126,7 @@ class TestSyncTranscript:
 
         src = tmp_path / "src.jsonl"
         src.write_text('{"type":"user","message":"hello"}\n')
-        sid = "sync-backoff"
+        sid = _unique_sid("sync-backoff")
         dest = agent_dir / f".current_session_transcript.{sid}.jsonl"
 
         env = os.environ.copy()
@@ -1145,7 +1164,7 @@ class TestSyncTranscript:
 
         src = tmp_path / "src.jsonl"
         src.write_text('{"type":"user","message":"first"}\n')
-        sid = "sync-degraded"
+        sid = _unique_sid("sync-degraded")
         dest = agent_dir / f".current_session_transcript.{sid}.jsonl"
 
         env = os.environ.copy()
@@ -1242,8 +1261,9 @@ def _wait_for_file(path: Path, timeout: float = 20.0) -> bool:
 class TestWatcherOutlivesSession:
     def _start_watcher(
         self, tmp_path: Path, bindir: Path, *, src_exists: bool = True,
-        extra_env: dict[str, str] | None = None, sid: str = "owner-test",
+        extra_env: dict[str, str] | None = None, sid: str | None = None,
     ) -> tuple[subprocess.Popen, Path]:
+        sid = sid or _unique_sid("owner-test")
         shared = _isolate_shared_scripts(tmp_path)
         agent_dir = tmp_path / ".agent"
         src = tmp_path / "src.jsonl"
@@ -1398,7 +1418,7 @@ class TestLauncherNamesTheOwner:
         bindir = _fake_inotifywait_timeout(tmp_path, log)
         src = tmp_path / "src.jsonl"
         src.write_text('{"type":"user","message":"hello"}\n')
-        sid = "launch-owner"
+        sid = _unique_sid("launch-owner")
         env = os.environ.copy()
         env["PATH"] = f"{bindir}:{env['PATH']}"
         env["REPO_ROOT"] = str(tmp_path)
@@ -1458,7 +1478,7 @@ class TestKillScriptReapsChildren:
         shared = _isolate_shared_scripts(tmp_path)
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir(exist_ok=True)
-        sid = "kill-children"
+        sid = _unique_sid("kill-children")
         child_pid_file = tmp_path / "child.pid"
         fake_dir = tmp_path / "fake-bin"
         fake_dir.mkdir(exist_ok=True)
@@ -1492,3 +1512,35 @@ class TestKillScriptReapsChildren:
                     os.kill(int(child_pid_file.read_text().strip()), 9)
                 except (OSError, ValueError):
                     pass
+
+
+_SID_NAME = re.compile(r"(session_id|sid|\w+_sid)")
+
+
+def test_no_session_id_in_this_file_is_a_bare_literal() -> None:
+    """Every session id goes through ``_unique_sid`` (WI-zomif).
+
+    Assignments to ``sid`` / ``session_id`` / ``*_sid``, and parameter
+    defaults with those names, may not be string literals: a literal shared
+    by two tests is what let one test's launcher kill the other's watcher.
+    """
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    offenders = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            pairs = [(t, node.value) for t in node.targets]
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            args = node.args.args + node.args.kwonlyargs
+            defaults = [None] * (len(node.args.args) - len(node.args.defaults))
+            defaults += node.args.defaults + node.args.kw_defaults
+            pairs = [(a, d) for a, d in zip(args, defaults, strict=True) if d is not None]
+        else:
+            continue
+        for target, value in pairs:
+            name = getattr(target, "id", None) or getattr(target, "arg", None)
+            if (
+                name and _SID_NAME.fullmatch(name)
+                and isinstance(value, ast.Constant) and isinstance(value.value, str)
+            ):
+                offenders.append(f"line {value.lineno}: {name} = {value.value!r}")
+    assert offenders == [], "use _unique_sid(...):\n  " + "\n  ".join(offenders)
