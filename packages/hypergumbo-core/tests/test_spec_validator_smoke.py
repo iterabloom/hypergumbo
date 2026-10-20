@@ -2540,6 +2540,19 @@ def test_confidence_range_mixed_origin_keeps_the_band() -> None:
     assert len(_confidence_violations(_call_edge(0.9, ["graphql-linker", "python"]))) == 1
 
 
+
+def test_confidence_range_skips_a_corroborated_edge() -> None:
+    """INV-pijij. The merge pass folds two producers' ``ast_call_direct`` /
+    ``scip`` edges into one at the CORROBORATION level (ADR-0057 s13): its
+    confidence is declared not to be either pathway's value, so the band of
+    the evidence_type it kept says nothing about it. A scip-enabled self-map
+    carried 109,622 such edges, every one reported out of band."""
+    edge = _call_edge(0.95, ["python", "scip"])
+    edge.confidence_source = "corroborated"
+    assert _confidence_violations(edge) == []
+    # The same value without the corroboration provenance is still judged.
+    assert len(_confidence_violations(_call_edge(0.95, ["python", "scip"]))) == 1
+
 # ----------------------------------------------------------------------
 # INV-vokak — route-marker single-home coherence check
 # ----------------------------------------------------------------------
