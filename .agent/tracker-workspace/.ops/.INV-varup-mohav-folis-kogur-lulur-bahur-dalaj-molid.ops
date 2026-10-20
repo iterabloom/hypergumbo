@@ -22,3 +22,10 @@
     fields:  # a2cc
       statement: "A C++ class OR struct whose body declares a pure virtual member carries modifiers=['abstract'], as cpp.py's docstring and _cpp_has_pure_virtual's docstring state."  # a2cc
       root_cause: "Only the class_specifier arm calls _cpp_has_pure_virtual; the struct_specifier arm sets no modifiers although it emits the same pure-virtual method symbols."  # a2cc
+- op: discuss  # 0360
+  at: '2026-10-20T09:12:10Z'  # 0360
+  by: agent  # 0360
+  actor: jgstern_agent  # 0360
+  clock: 2  # 0360
+  nonce: '0360'  # 0360
+  message: "Re-confirmed 2026-10-20 by the docstring audit (verifier repro): struct S { virtual void f() = 0; } -> struct S modifiers [], its method S::f ['public','virtual','abstract']; class C with the same member -> ['abstract']. cpp.py's docstring left stating the intent."  # 0360
