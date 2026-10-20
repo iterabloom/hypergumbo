@@ -1,0 +1,16 @@
+Original commit body from 17cf754cb50173e0a3a8e7a79c7484fe932a834b:
+
+Main changelog: 2,032 -> 619 words, at the released 9.1.0 granularity.
+One bullet per effect; the ~40 Fixed bullets grouped under four area
+subheads (taint, calls/types/inheritance, scip-python, cache/release/CI);
+tracker IDs and per-repo before/after counts stripped (they stay in the
+commit messages and the tracker). New Changed and Removed sections for
+the compact default view, the scip-python self-map and the three
+retired test-only functions.
+
+Tracker changelog: entries condensed to one or two sentences.
+
+Completeness: every non-test commit since the previous audit
+(05c4fee9e7) is represented; no entry needed relocating.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
