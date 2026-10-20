@@ -14,61 +14,67 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
-- **`ci-debug --actions` reads GitHub Actions**, where the release workflow runs: `runs`, `status` (jobs, steps, durations), `logs` and `artifact`. Read-only. Logs and artifacts arrive through a redirect to a storage host, which is followed only when that host is in `ALLOWED_WEBSITES.md`; otherwise the command names it and exits 3. GitHub's numbered results-storage hosts are listed for exactly that purpose (`productionresultssa*.blob.core.windows.net`, one `*` per label).
-- **A release now fails when the installed CLI is seen doing I/O it did not do last release.** `scripts/io-manifest` runs `hypergumbo` over six pinned repositories under `strace` and reduces every write, delete, rename, program launch and connection attempt to a short manifest ([`docs/io-manifest/expected.txt`](docs/io-manifest/expected.txt)). A new line, a write into the analysed repository or a network connection fails the release. Unlike the two static gates, this one sees what dependencies and C extensions do.
-- **A PR now fails when shipped code calls a module the I/O catalogue cannot classify** (`scripts/check-claims-coverage`, ~30 s), rather than the twice-daily cron hours later.
+- **`ci-debug --actions` reads GitHub Actions**: runs, job status, logs and artifacts, read-only.
+- **A release gate on observed I/O**: `scripts/io-manifest` traces the CLI under `strace` on six pinned repositories. A new write, program launch or network connection fails the release ([`docs/io-manifest/expected.txt`](docs/io-manifest/expected.txt)).
+- **A per-PR I/O catalogue check** (`scripts/check-claims-coverage`, ~30 s): shipped code that calls an unclassifiable module fails the PR, not the twice-daily cron.
+
+### Changed
+
+- **Compact's default view leaves out test code**, as the centrality view already did.
+- **The twice-daily self-map is built with the scip-python backend**, for receiver typing. Its gate fails if the backend contributed nothing.
+
+### Removed
+
+- **Three functions only tests called**: `resolve_arbitration_policy`, `write_boundary_for_target_kind`, `build_interface_impl_map`.
 
 ### Fixed
 
-- **A secret a helper returns without a `return` statement reaches its caller's sink**: Rust's tail expression (`fn get() -> String { env::var("TOOL").unwrap() }`) and a JS/TS arrow's expression body (`() => process.env.TOOL`) are return spans for the INV-komoj lift, so `Command::new(get())` / `cp.exec(get())` read `violated` like their `return` twins (WI-sodoj).
-- **The opt-in scip-python backend indexes the analysed repository**: it passed the project positionally, which scip-python 0.6.6 ignores, so every run indexed an empty scratch directory and the backend added nothing; it now passes `--cwd` and a `--project-version` (without one, a tree outside git crashed the indexer). An empty index of a tree with Python in it reads `unreported`, not a routine silence, and a node heap exhaustion names `NODE_OPTIONS=--max-old-space-size` (WI-nijod).
-- **Production functions only tests called are wired or retired**: the id-construction lint now runs the public `id_template_problem` / `edge_template_problem` the tests pin (it ran private twins), and the io-primitive catalogue loader takes each kind from `kind_for_yaml_section` in one loop over the registered sections (it had three copy-pasted loops with the constants written in); `resolve_arbitration_policy`, `write_boundary_for_target_kind` and `build_interface_impl_map` are removed. The test-only-reachability baseline shrinks by 8 keys (WI-mifup).
-- **A corroborated edge is not judged against its pathway's confidence band**: the validator reported every edge two producers agreed on (confidence at the declared corroboration level, ADR-0057 §13) as out of band for the evidence type it kept — 109,622 `cross_field` notes on a scip-python-enabled self-map, now 0 (INV-pijij).
-- **The full-suite self-map is built with receiver typing**: the cron's `self-tree-validation` step opts in to the scip-python backend (9,435 of 9,619 Python method calls typed on the self-tree, the prerequisite for gating methods), waits for the other heavy steps so its ~10 GB peak has the VM to itself, and the test-only-reachability gate's new `--require-pass scip_python` fails the step if the backend silently did not contribute (WI-losig).
-- **A switch / match with no matching arm falls through in the CFG**: a definition killed in every arm of a switch without a default now still reaches the code after it (`t := source(); switch x { case 1: t = "c" }; sink(t)`), so reaching definitions are no longer removed in the direction that can manufacture a walk refutation (WI-sozob).
-- **The taint walk examines the source's own line**: a sink that contains the source (`requests.post(url, headers={"A": os.environ["T"]})`, `fetch(url, {headers: {A: process.env.T}})`) is no longer misread as `sink_before_source` and withheld, and another call on the source's line (`acc.push(process.env.K)`) keeps a flow the walk used to remove. All four filed shapes now read `violated` (WI-jusoj).
-- **A secret ASSIGNED into a C global or through a pointer parameter withholds the taint verdict too** (`g_secret = getenv("K")`, then a send from another function, read `confirmed`): each C function records its non-local store lines (INV-nohob, 3 of 3).
-- **A C taint verdict is withheld when the secret leaves through a construct taint does not follow** (a callee writing through a pointer parameter, a copy into a global or pointer parameter, a function-like macro, a variadic tail): torsocks' `host-secret-no-network`, `host-secret-no-logging` and `host-description-no-network` read `confirmed_with_caveats` and now read `inconclusive`; crun, tmate, redis unchanged (INV-nohob, 2 of 3).
-- **C calls through a function-pointer variable reach the function it holds** (`static int (*send_data)(...) = send_impl; send_data(fd, buf, n)`), so taint follows torsocks' SOCKS5 sends: torsocks 12, redis 20 calls resolved (INV-nohob, 1 of 3).
-- **C++'s `#include` stamp names every header a file can see**, as C's does since INV-zikul, so `fopen(p, "w")` behind a quoted `"util.h"` is no longer an examined negative (NO-FSWRITE read `confirmed`); in-repo names reached only transitively are left out (map x1.19 on modsecurity instead of x2.31, identical verdicts). whisper.cpp NO-FSWRITE 204 -> 282 chains (INV-valom).
-- **C's `#include` stamp names every header a file can see**, quoted and transitive, not just its own angle includes, so a real `send()` reached through `"net.h"` is no longer an examined negative (NO-NET-SEND read `confirmed`); torsocks' 4 production `send`/`recv`/`connect` calls now classify, crun +7 fs_write chains (INV-zikul).
-- **Python HTTP responses and connected sockets are network-input sources**: `urlopen(url).read()`, `opener.open(url).read()` and `socket.create_connection(...).recv()` piped into a shell now read `violated` (was `confirmed_with_caveats`); `http.client.HTTPResponse` reads are `net_recv` and a member call on a typed receiver is typed from its signature row. django +17, superset +6 crossings, none lost (WI-tumol).
-- **Python bare-name calls no longer bind same-named methods** (`open(...)` -> `ContentFile.open`, an imported `check_password(...)` -> `AbstractBaseUser.check_password`): methods are keyed by qualified name only; django 82 -> 0 such edges, 67 now reaching the right function or builtin (WI-barip).
-- **C dispatch tables are emitted as variable symbols** and arrays of function pointers (`static int (*cmds[])(int) = { f }`) are detected, so `dispatches_to` edges no longer start at a node that does not exist: dangling sources crun 94, redis 505, tmate 129 -> 0; crun's map gains its 94 dispatch edges (WI-dirij).
-- **C++ member calls on an explicit receiver resolve on its declared type** (`impl_->Generate()`, `Model m; m.Forward()`), never by short name or as implicit `this`: false self-calls on sherpa-onnx 994 -> 41, grpc 1,531 -> 336, whisper.cpp 328 -> 147, modsecurity 101 -> 15 (WI-lamij).
-- **Perl method calls on a value resolve on its type** (`my $ua = Pkg->new; $ua->get`, `$self->m`, `Pkg->new->m`), not by short name across packages; untyped invocants get an unresolved method edge and top-level calls are attributed to the file: postgresql +7,363 resolved, virtualbox +959, git +34 (WI-mugir).
-- **Scala `println` / `Console` writes are logging** (`println(secret)` read `confirmed` against a never-logs claim): new `scala.Predef` / `scala.Console` rows and `Console.err` typed as the stderr stream; +179 logging findings on sbt, +20 gatling, +10 lila, none lost (WI-tunul).
-- **Scala parameterless calls and Kotlin synthetic getters emit edges** (`Runtime.getRuntime.availableProcessors`, `proc.inputStream`) where a row says the library declares the method: +150 edges on sbt, +7 on gatling, none lost (WI-bojud-sator).
-- **Scala resolves calls on project objects and companions** (`Factory.make()`) where Scala itself would bind the name: +1,678 resolved calls on sbt and +1,172 on lila, none lost; objects now record their base classes (WI-kipol).
-- **Ruby records the calls it used to drop**: `obj.write` on an untyped receiver, implicit-self calls (`params`, `current_user`) told apart from local variables by Ruby's own scoping rule, `self.m`, `super`, ambiguous names and direct recursion (WI-misir).
-- **Ruby resolves a constant through its enclosing module**: `Orchestrator.call` inside `module TestData` reaches `class TestData::Orchestrator` instead of being reported external (WI-gomup).
-- **An imported external base class is no longer bound to an in-repo class of the same name** in Java, Kotlin and JS/TS: `import junit.framework.TestCase; class T extends TestCase` and `import { Component } from 'react'` get an external edge instead of a wrong `extends` (WI-pivap, analyzer half).
-- **A qualified base (`System.Exception`, `std::exception`, `io.Writer`, `java.util.ArrayList<T>`) binds only an in-repo class its qualifier fits**, otherwise it is external; C++ classes now record their namespace-qualified name (WI-pivap, linker half).
-- **A bare base imported through `use` / `import` / `using` is checked against that import** in PHP, Groovy, Scala and C#, instead of binding any in-repo class of the same name; PHP `\Foo\Bar` bases are no longer dropped (WI-pivap).
-- **C# dispatch is decided per method**: a base member reaches a subclass's member only when that member is an `override`, so a concrete base's `virtual`/`override` pair is now linked and `new` or same-named methods are not; `static` members never dispatch in C#, Java, C++, Swift or Dart (WI-digaj, C# half).
-- **C++ dispatch follows `virtual`**: classes record which members are virtual, `override` or `static` from their in-class declarations, so a concrete base's virtual reaches its overrides (also through a non-overriding middle class) while non-virtual name hiding and statics get no edge (WI-digaj, C++ half).
-- **WebSocket events and HTTP URLs named by a constant resolve to its value**: `const EVENT = 'chat'; emit(EVENT)` reaches `on('chat')` and `fetch(API_URL)` reaches its route; an identifier whose value is unknown no longer matches a string or route of the same text (WI-luhod).
-- **Compact's default view no longer fills up with test code**: the connectivity path drops test-path symbols and the edges they originate, as the centrality path already did (express at 400 nodes: 248 test-path to 0; production nodes unchanged on seven maps) (WI-zitag).
-- **COBOL sections and paragraphs, and the PERFORM edges between them, are in the default view**: `section` is filtered only for markdown, rst, LaTeX, INI, KDL and Blade, in the noise filter and in compact output, and `paragraph` (COBOL-only) not at all (INV-siza).
-- **Two runs finishing together no longer fail each other over cache eviction**: each run writes its own partial archive, a candidate a concurrent run already took is skipped and left out of this run's "Soft-deleted" summary (as is crash residue, which is hard-deleted), and end-of-run housekeeping can only warn, never turn a finished run into exit 1 (INV-durin).
-- **`--exclude` is part of the results-cache key**: `survey repo -e lib` no longer replaces the plain survey that `search`, `explain` and the other read commands answer from (WI-tisuj).
-- **C# interface inheritance and Go interface embedding now produce `extends` edges**: `interface IChild : IBase` and `type GChild interface { GBase; ... }` record their bases like classes and structs do (WI-ruzid, WI-gutas).
-- **Swift: a subscript (`xs[0]`, `r.headers["age"]`) is no longer emitted as a call** to a field, a parameter or a same-named free function (WI-dimad).
-- **Wolfram: a definition's head is not a call, a call is anchored on the definition that contains it, and Wolfram `.m` files are analyzed** (INV-kafir).
-- **Odin: `obj.method(args)` is one call edge**, not that plus a spurious bare `method` edge (INV-ridat).
-- **Zig, LLVM IR and COBOL anchor a call on the declaration that contains it, by position; TLA+, Agda and COBOL bind a referenced name in the same file before the repo** (WI-kosar family: INV-musij, INV-nafij, INV-razus, INV-lutaj). Two files defining a same-named function no longer have one's calls credited to the other's, a COBOL section header now updates the caller, and a `PERFORM` binds inside the performing program.
-- **A GitHub Release now gets every file, or the job fails and says which are missing.** Assets upload one at a time with retries and the attached set is verified by name; re-running the job repairs an incomplete release. `v7.0.0` and `v9.1.0` had each been left incomplete by one transient upload error. The SBOM now describes the shipped wheels and their resolved dependencies instead of the build tooling, and `SHA256SUMS` covers it.
-- **`.hypergumbo-examples/` cannot be committed by accident**: hypergumbo writes a `.gitignore` inside it, and this repository's root `.gitignore` lists it too.
-- **The self-claims gate is green again**: `threading.Event`, the progress heartbeat's stop flag, is declared in the Python catalogue as having no I/O surface; all 18 verdicts are unchanged.
-- **The test-only-reachability gate counts callers under `scripts/`**, so a function used only by a repository script no longer fails the cron as test-only.
-- **`generate-architecture --check` no longer counts tracker auto-sync commits** toward its 30-commit staleness window.
+#### Taint analysis
+
+- **Secrets returned without `return` reach the caller's sink**: Rust tail expressions and JS/TS arrow expression bodies.
+- **The source's own line is examined**: a sink wrapping the source, or another call taking its value, no longer loses the flow.
+- **A switch or match with no matching arm falls through**, so a definition before it still reaches later code.
+- **C verdicts are withheld when a secret leaves untracked**: through a pointer parameter, a global, a function-like macro or a variadic argument.
+- **C calls through a function-pointer variable reach the function it holds.**
+- **C and C++ `#include` stamps name every visible header**, quoted and transitive, so calls behind a project header are classified.
+- **Python HTTP responses and connected sockets are network-input sources.**
+
+#### Calls, types and inheritance
+
+- **Python bare-name calls no longer bind same-named methods** (`open(...)` → `ContentFile.open`).
+- **C++ and Perl member calls resolve on the receiver's type**, not by short name.
+- **Scala and Kotlin**: calls on project objects and companions resolve; parameterless JDK calls and Kotlin synthetic getters emit edges; `println` and `Console` writes are logging.
+- **Ruby records the calls it dropped** (untyped receivers, implicit `self`, `super`, recursion) and resolves constants through the enclosing module.
+- **C dispatch tables are variable symbols**, so `dispatches_to` edges no longer start at a missing node; arrays of function pointers are detected.
+- **A base class binds only the in-repo class its import or qualifier names**, in Java, Kotlin, JS/TS, PHP, Groovy, Scala, C# and C++; any other base is external.
+- **C# and C++ dispatch is decided per method**: `override` and `virtual` link; name hiding and statics do not.
+- **C# interface inheritance and Go interface embedding produce `extends` edges.**
+- **WebSocket events and HTTP URLs named by a constant resolve to its value.**
+- **Smaller per-language fixes**:
+  - Swift subscripts are not calls.
+  - Wolfram definition heads are not calls, and `.m` files are analysed.
+  - Odin's `obj.method()` is one edge.
+  - Zig, LLVM IR, COBOL, TLA+ and Agda attribute each call to the right definition.
+  - COBOL sections and paragraphs stay in the default view.
+
+#### scip-python backend (opt-in)
+
+- **It indexes the analysed repository**: it had indexed an empty scratch directory. It also runs on trees outside git and names the fix for a node heap exhaustion.
+- **Edges two producers corroborate no longer fail the confidence-band validator.**
+
+#### Cache, release and CI
+
+- **Concurrent runs no longer fail each other over cache eviction**; housekeeping can only warn.
+- **`--exclude` is part of the results-cache key.**
+- **A GitHub Release attaches every asset or fails**; the SBOM describes the shipped wheels.
+- **`.hypergumbo-examples/` is gitignored automatically.**
+- **CI gates**: the self-claims gate is green again; test-only reachability counts callers under `scripts/`; `generate-architecture --check` ignores tracker syncs.
 
 ### Documentation
 
-- ARCHITECTURE.md regenerated.
 - Module docstrings: 16 corrected, 5 extended (staleness audit).
-- ADR-0004 point 7 now names both rows that consult git.
-- README names the files `survey --out` writes beside its output, and the flags that suppress them.
+- README names the files `survey --out` writes beside its output.
+- ADR-0004 point 7 names both rows that consult git; ARCHITECTURE.md regenerated.
 
 ## [9.1.0] - 2026-10-16
 
