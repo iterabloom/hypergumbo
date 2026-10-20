@@ -36,6 +36,13 @@ WHAT THESE TESTS PIN.
   self-tree-validation would hide the reachability verdict (and the reverse).
   Both are run with their exit codes captured; the step fails if either failed.
 
+* RECEIVER TYPING (WI-losig): the map is built with the scip-python backend
+  (opted in through the step's environment, the pinned producer installed),
+  the gate is told to ``--require-pass scip_python`` so a silent fallback to
+  the plain map fails, and the step waits for every other step that starts
+  after the grammar build -- its ~10 GB peak needs the 16 GB VM to itself --
+  carrying the one when-clause that still runs it on their failure.
+
 NOT PINNED HERE: whether the Woodpecker cron actually fires, or the gate's own
 logic (``packages/hypergumbo-core/tests/test_test_only_reachability.py``). The
 ``/bin/sh -e`` emulation is this file's model of the runner; it was not checked
@@ -148,11 +155,17 @@ def test_the_map_building_step_invokes_the_gate_on_its_own_map() -> None:
     )
 
 
+#: The one when-clause the step may carry (WI-losig): it waits for the other
+#: heavy steps, and Woodpecker otherwise runs a step only while the workflow
+#: has succeeded so far, so without it a red test suite skips both ratchets.
+_EVERY_OUTCOME = [{"status": ["success", "failure"]}]
+
+
 def test_the_gate_step_is_unconditional_and_cannot_ignore_failure() -> None:
     step = _steps()[_map_step()[0]]
-    assert not step.get("when"), (
-        "the step running the test-only-reachability gate grew a when-clause; "
-        "it must run on every cron firing"
+    assert step.get("when") in (None, _EVERY_OUTCOME), (
+        "the step running the test-only-reachability gate grew a when-clause "
+        f"that can skip it ({step.get('when')}); it must run on every cron firing"
     )
     assert step.get("failure") != "ignore", (
         "the gate step is `failure: ignore` -- a red ratchet would block nothing"
@@ -202,3 +215,51 @@ def test_a_failed_map_build_fails_the_step(tmp_path: Path) -> None:
     rc, _, calls = _run_step(tmp_path, map_rc=1)
     assert rc != 0
     assert not _gate_calls(calls), calls
+
+
+# ----------------------------------------------------------------------
+# WI-losig -- the map is built with receiver typing, alone on the VM
+# ----------------------------------------------------------------------
+
+
+def test_the_map_is_built_with_the_scip_python_backend() -> None:
+    """Opted in for this step only, through the environment, with the pinned
+    producer installed and the heap V8 needs for this tree."""
+    from hypergumbo_core.backend_selection import SCIP_PYTHON_ENV_VAR, TRUTHY_VALUES
+    from hypergumbo_core.scip_python_install import (
+        SCIP_PYTHON_NPM_PACKAGE,
+        SCIP_PYTHON_PINNED_VERSION,
+    )
+
+    _name, commands = _map_step()
+    step = _steps()[_name]
+    env = step.get("environment") or {}
+    assert str(env.get(SCIP_PYTHON_ENV_VAR, "")).lower() in TRUTHY_VALUES, env
+    assert "--max-old-space-size=" in str(env.get("NODE_OPTIONS", "")), env
+    before = commands[:commands.index(_tail_from_map_build(commands)[0])]
+    assert any(
+        f"npm install -g {SCIP_PYTHON_NPM_PACKAGE}@{SCIP_PYTHON_PINNED_VERSION}" in c
+        for c in before
+    ), before
+    assert any("-e packages/hypergumbo-lang-scip-python" in c for c in before), before
+
+
+def test_the_gate_requires_the_backend_to_have_contributed() -> None:
+    """Both preconditions fail silently into the plain map, so the gate is
+    told to check the map for the pass and exit 1 without it."""
+    gate = _gate_calls(_tail_from_map_build(_map_step()[1]))
+    assert gate and all("--require-pass scip_python" in c for c in gate), gate
+
+
+def test_the_map_step_has_the_vm_to_itself() -> None:
+    """~10 GB summed peak on a 16 GB VM: every other step that starts after
+    the grammar build is one this step waits for."""
+    name, _ = _map_step()
+    steps = _steps()
+    waits_for = set(steps[name].get("depends_on") or [])
+    concurrent = {
+        other for other, step in steps.items()
+        if other != name and "build-grammars" in (step.get("depends_on") or [])
+    }
+    assert concurrent and concurrent <= waits_for, (concurrent, waits_for)
+

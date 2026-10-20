@@ -41,7 +41,9 @@ from hypergumbo_core.test_only_reachability import (
     find_test_only_symbols,
     gated_cohort,
     load_baseline,
+    pass_contribution_problem,
     production_source_files,
+    typed_method_call_share,
 )
 
 PROD = "packages/p/src/p/mod.py"
@@ -499,3 +501,49 @@ class TestAgainstTheLiveTree:
         ]:
             symbol = TestOnlySymbol("x", name, "function", f"{core}/{module}.py")
             assert demotion_reason(symbol, refs) == DEMOTION_CROSS_MODULE, name
+
+
+
+class TestTheMapCarriesReceiverTyping:
+    """WI-losig: the CI self-map is built with the scip-python backend so a
+    method reference resolves to its owning type (WI-mifag's prerequisite).
+    An opt-in that silently falls back to the plain map would leave the gate
+    reading a map the step claims is typed, so the gate can REQUIRE the pass."""
+
+    def test_a_pass_that_ran_and_emitted_is_no_problem(self) -> None:
+        data = {"analysis_runs": [{"pass": "scip_python", "nodes_emitted": 5}]}
+        assert pass_contribution_problem(data, "scip_python") is None
+
+    def test_a_skipped_pass_names_its_reason(self) -> None:
+        data = {"limits": {"skipped_passes": [{
+            "pass": "scip_python", "reason": "scip-python backend not enabled",
+            "silence_reason": "backend_disabled",
+        }]}, "analysis_runs": []}
+        problem = pass_contribution_problem(data, "scip_python")
+        assert problem is not None and "backend_disabled" in problem
+
+    def test_a_missing_or_empty_pass_is_a_problem(self) -> None:
+        assert "did not run" in str(pass_contribution_problem({}, "scip_python"))
+        empty = {"analysis_runs": [{
+            "pass": "scip_python", "nodes_emitted": 0, "silence_reason": "unreported",
+        }]}
+        assert "unreported" in str(pass_contribution_problem(empty, "scip_python"))
+
+    def test_the_typed_share_counts_python_method_calls_carrying_the_origin(self) -> None:
+        nodes = [
+            {"id": "m1", "language": "python", "kind": "method"},
+            {"id": "m2", "language": "python", "kind": "method"},
+            {"id": "f", "language": "python", "kind": "function"},
+            {"id": "jm", "language": "java", "kind": "method"},
+        ]
+        edges = [
+            {"type": "calls", "dst": "m1", "origin": ["python", "scip"]},
+            {"type": "calls", "dst": "m2", "origin": ["python"]},
+            {"type": "calls", "dst": "f", "origin": ["scip"]},
+            {"type": "calls", "dst": "jm", "origin": ["scip"]},
+            {"type": "references", "dst": "m1", "origin": ["scip"]},
+            {"type": "calls", "dst": "m1", "origin": "python"},
+            {"type": "calls", "dst": "m2", "origin": "scip"},
+            {"type": "calls", "dst": "m2"},
+        ]
+        assert typed_method_call_share(nodes, edges) == (2, 5)

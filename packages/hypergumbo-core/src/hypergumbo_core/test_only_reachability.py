@@ -367,3 +367,53 @@ def compare_to_baseline(
     """
     current = {s.key for s in symbols}
     return sorted(current - baseline), sorted(baseline - current)
+
+
+def pass_contribution_problem(data: Mapping[str, Any], pass_id: str) -> str | None:
+    """Why ``pass_id`` contributed nothing to the map ``data``, or ``None``.
+
+    WI-losig: the full-suite self-map is built with the scip-python backend so
+    a method reference resolves to its owning type. Both of the backend's
+    preconditions (the opt-in, the binary on ``PATH``) fail SILENTLY into the
+    plain map, and so did WI-nijod's wrong ``cwd`` for as long as the backend
+    existed. A gate told to require the pass therefore checks the map itself:
+    a skip record, no run record, and a run that emitted nothing are each a
+    map the step did not ask for.
+    """
+    for skipped in (data.get("limits") or {}).get("skipped_passes") or []:
+        if skipped.get("pass") == pass_id:
+            return (f"{pass_id} was skipped: {skipped.get('reason')} "
+                    f"({skipped.get('silence_reason')})")
+    runs = [r for r in data.get("analysis_runs") or [] if r.get("pass") == pass_id]
+    if not runs:
+        return f"{pass_id} has no analysis_runs record: it did not run"
+    if not any(r.get("nodes_emitted") for r in runs):
+        return (f"{pass_id} ran and emitted nothing "
+                f"(silence_reason {runs[0].get('silence_reason')})")
+    return None
+
+
+def typed_method_call_share(
+    nodes: Iterable[Mapping[str, Any]], edges: Iterable[Mapping[str, Any]],
+    *, origin: str = "scip",
+) -> tuple[int, int]:
+    """``(typed, total)`` over Python ``calls`` edges whose target is a method.
+
+    Typed means ``origin`` is among the edge's producers: the receiver was
+    resolved by type, not by the bare last-name component the syntax arm uses
+    -- the property WI-mifag needs before methods can be gated. Measured on
+    the self-tree (2026-10-20): 9,435 of 9,619.
+    """
+    methods = {
+        n["id"] for n in nodes
+        if n.get("language") == "python" and n.get("kind") == "method"
+    }
+    calls = [e for e in edges if e.get("type") == "calls" and e.get("dst") in methods]
+    typed = sum(1 for e in calls if origin in _origins(e))
+    return typed, len(calls)
+
+
+def _origins(edge: Mapping[str, Any]) -> list[str]:
+    """``Edge.origin`` as a list: one producer serialises as a bare string."""
+    origin = edge.get("origin") or []
+    return [origin] if isinstance(origin, str) else list(origin)
