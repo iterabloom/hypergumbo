@@ -1,0 +1,22 @@
+- op: create  # 128f
+  at: '2026-10-20T02:00:07Z'  # 128f
+  by: agent  # 128f
+  actor: jgstern_agent  # 128f
+  clock: 1  # 128f
+  nonce: 128f  # 128f
+  data:  # 128f
+    kind: work_item  # 128f
+    title: "A Python lambda bound to a name is not lifted: get = lambda: os.environ['K'] reads clean"  # 128f
+    status: todo_hard  # 128f
+    priority: 3  # 128f
+    parent:  # 128f
+    tags:  # 128f
+    - taint  # 128f
+    - analysis_quality  # 128f
+    - python  # 128f
+    isbefore: []  # 128f
+    duplicate_of: []  # 128f
+    not_duplicate_of: []  # 128f
+    pr_ref:  # 128f
+    description: "FOUND while fixing WI-sodoj (PR #1744). ddg_build.return_statement_spans now treats a lambda's body as its return span (test_ddg_expression_body_returns.py::test_a_python_lambda_body_is_a_return), but the Python lift still never fires:\n\n    get = lambda: os.environ[\"TOOL\"]\n    def run():\n        subprocess.run(get(), shell=True)\n\nverify-claims (host_secret -> subprocess) reads confirmed_with_caveats on dev dbeef1ab2a; the same helper written as `def get(): return os.environ[\"TOOL\"]` reads violated. Repro: /tmp/claude-1002/tn/sd/py_lambda + /tmp/claude-1002/tn/sd/c.yaml (ephemeral; the four lines above are the whole fixture).\n\nWHY (two halves, both unverified beyond reading the code):\n1. The py analyzer emits `get = lambda: ...` as a VARIABLE symbol, not a function, so `get()` resolves to no function and has no summary to lift.\n2. The python LanguageDdgSpec lists no `lambda` in function_node_types, so no DDG is built for the lambda body and the source inside it has no symbol to belong to.\n\nWHAT TO DO. Decide whether a name-bound lambda is a function symbol (kind function, span = the lambda), so the call resolves and the lift's existing return span applies; add lambda to the python DDG spec. JS `const f = () => ...` already works (js_arrow violated), so compare with how the JS analyzer names an arrow bound to a const."  # 128f
+    fields: {}  # 128f

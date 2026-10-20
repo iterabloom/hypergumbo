@@ -19,3 +19,18 @@
     pr_ref:  # 7d66
     description: "FOUND 2026-10-04 while fixing WI-faful (branch jgstern-agent/fix/losod), reproduced on the base c1dd831558 too. CfgBuilder._process_switch adds no edge for \"no case matched\": the scrutinee block's only successors are the arms, so in a switch with no default arm a definition killed in every arm does not reach the code after the switch.\n\nRepro (Go; Python `match` behaves the same):\n    t := source()\n    switch x {\n    case 1:\n        t = \"c\"\n    }\n    sink(t)\nreaching definitions give only (\"t\", 6, 8): the source's t (line 3) never reaches sink(t) (line 8), though it does whenever x != 1.\n\nDIRECTION: the missing path REMOVES reaching definitions, which is the direction that can manufacture a walk False (removal since WI-kabif). Here the source_tracked guard happens to stop the walk (t at line 3 has no uses at all, so not_attempted); with any other use of t before the switch the walk would run, exhaust and refute a real flow. Not measured on a corpus.\n\nFix shape: a fall-through fringe edge from the scrutinee when no arm is a default. Which arm is a default is per grammar (Go default_case, Java/TS/C `default`, Python `case _`), and Rust match / Java switch expressions are exhaustive, so an always-on fall-through edge is the conservative choice (adds paths, so it can only produce FEWER Falses); WI-faful added the edge only for a switch with no recognised arm at all."  # 7d66
     fields: {}  # 7d66
+- op: update  # a209
+  at: '2026-10-20T00:57:03Z'  # a209
+  by: agent  # a209
+  actor: jgstern_agent  # a209
+  clock: 2  # a209
+  nonce: a209  # a209
+  set:  # a209
+    status: done  # a209
+- op: discuss  # fee8
+  at: '2026-10-20T00:57:03Z'  # fee8
+  by: agent  # fee8
+  actor: jgstern_agent  # fee8
+  clock: 3  # fee8
+  nonce: fee8  # fee8
+  message: "Fixed in PR (dev 01c9793843). Behavioral evidence on merged dev: the item's Go repro (t := source(); switch x { case 1: t = \"c\" }; sink(t)) now gives reaching definitions {(t,3,8), (t,6,8)}. Before the fix only (t,6,8) existed: the source's t never reached sink(t). The Python match twin is the same: (t,2,6) and (t,5,6). Both are in test_cfg_switch_fallthrough.py (2 passed). Fix: CfgBuilder._process_switch gives the scrutinee an always-on 'no case matched' fall-through edge. It is conservative: an exhaustive switch gains a path that never runs, which only ADDS definitions, so the walk can only refute less. WI-faful's no-recognised-arm edge is subsumed. Corpus, verify-claims vs dev: beads (Go) and feast (Python) moved no verdict, evidence count or analysis-method count. Not measured: Java/C/TS default-less switches on a corpus."  # fee8
