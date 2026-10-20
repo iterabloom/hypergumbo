@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 from textual.app import App
+from tui_pilot import click as _click
 from textual.widgets import Button, Input, Static
 
 from hypergumbo_tracker.id_matching import build_item_id_pattern
@@ -216,7 +217,7 @@ class TestItemNavModalBackForward:
             # Jump to second item via action.
             screen.action_jump_to_item("WI-hunof-damud")
             await pilot.pause()
-            await pilot.click("#nav-back")
+            await _click(pilot, "#nav-back")
             await pilot.pause()
             header = app.screen.query_one("#nav-header", Static)
             assert "WI-lusab-baril" in _static_text(header)
@@ -231,9 +232,9 @@ class TestItemNavModalBackForward:
             await _wait_for_modal(pilot, app)
             screen.action_jump_to_item("WI-hunof-damud")
             await pilot.pause()
-            await pilot.click("#nav-back")
+            await _click(pilot, "#nav-back")
             await pilot.pause()
-            await pilot.click("#nav-forward")
+            await _click(pilot, "#nav-forward")
             await pilot.pause()
             header = app.screen.query_one("#nav-header", Static)
             assert "WI-hunof-damud" in _static_text(header)
