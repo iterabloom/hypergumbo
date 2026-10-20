@@ -1,0 +1,13 @@
+Original commit body from ef213bbf80bc9947edda0a3449cb6de4f6b75632:
+
+The severity-C findings of the 2026-10-20 staleness audit: functionality
+present in the code that the module docstring never mentions, confirmed
+by default-REJECT verifiers. 15 additions in 12 files (c, scala, kotlin,
+groovy, js_ts, taint, test_only_reachability, all_analyzers,
+function_summaries, d_lang, wolfram, tracker sync).
+
+The edits shifted lines under five line citations; re-anchored:
+module_key_axis MODULE_KEY_NOTIONS (js_ts x2) and signature_axis
+LEGACY_VALUE_PARSERS (kotlin x2, js_ts x1). ARCHITECTURE.md regenerated.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
