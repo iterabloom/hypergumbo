@@ -1,0 +1,21 @@
+Original commit body from d3acbf01d3971edc0a44a9f5fc7dd4ca6c200996:
+
+#1779 added tests/test_no_committed_dependency_pins.py without a
+`# covers:` marker. Its name maps to no top-level source, so
+test_top_level_test_map's ratchet (test_no_new_unreachable_top_level_tests
+and test_the_exempt_list_is_empty...) has been red on dev since it merged:
+#1779's CI selected only the new test, not the ratchet. Found while
+running smart-test for the WI-zomif branch.
+
+The marker declares `*requirements*.txt`, which the route-parity
+fixtures match. Lockfile globs cannot be declared:
+test_no_declared_glob_has_rotted rejects a glob matching no tracked
+file, and keeping that set empty is this test's purpose. So per-PR CI
+selects it on a requirements change; a newly committed lockfile is
+caught by the full-suite cron, which runs every root test. The header
+says so.
+
+tests/test_top_level_test_map.py: 51 passed with the change. The
+ratchet file is added to this PR's manifest so CI runs it.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
