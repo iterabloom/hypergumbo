@@ -52,9 +52,15 @@ Re-record (3 s) rather than edit: create the crate above, run
 
 2. AARDVARK-DNS — the crate every ADR-0057 measurement was taken on, committed
    under ``aardvark_dns/crate/`` (upstream containers/aardvark-dns at commit
-   ``4444d90fee``, Apache-2.0, ``LICENSE`` retained; ``src/``, ``build.rs``,
-   ``Cargo.toml`` and ``Cargo.lock`` only) beside the ``index.scip`` that
+   ``4444d90fee``, Apache-2.0, ``LICENSE`` retained; ``src/``, ``build.rs``
+   and ``Cargo.toml`` only) beside the ``index.scip`` that
    ``rust-analyzer scip <crate>`` emitted for it on 2026-09-18 in 6.3 s.
+   The recording was made with upstream's ``Cargo.lock`` at that commit,
+   which pins the dependency versions the index's external monikers name
+   (``hickory-proto 0.25.2``, ``tokio 1.49.0``, ...). The lockfile is not
+   committed: nothing here builds the crate or reads it, and its old pins
+   drew Dependabot alerts. ``aardvark_dns/README.md`` gives its URL and
+   SHA-256 for re-recording.
    The index is committed RAW (protobuf, 428 KB) because that is the byte
    stream production hands to ``translate_scip_to_hg``; the one edit is
    ``metadata.project_root``, rewritten from the recording machine's absolute
@@ -85,9 +91,10 @@ Re-record (3 s) rather than edit: create the crate above, run
    pass (WI-kokiz) must reproduce.
 
 Re-record either fixture rather than editing it: the crate is at
-``aardvark_dns/crate``; run ``rust-analyzer scip <crate>`` from an empty
-directory, normalise ``project_root``, replace ``index.scip``, and update the
-counts here and the producer version above.
+``aardvark_dns/crate``; restore upstream's ``Cargo.lock`` into it (README
+has the URL and hash), run ``rust-analyzer scip <crate>`` from an empty
+directory, normalise ``project_root``, replace ``index.scip``, update the
+counts here and the producer version above, and delete the lockfile again.
 """
 from __future__ import annotations
 
