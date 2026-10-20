@@ -9,18 +9,18 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Removed
 
-- **The unshipped web-frontend scaffold** (`packages/htrac-frontend`): never built, tested or shipped, and the source of most of the repository's Dependabot alerts. ADR-0019 no longer claims it shipped; the frontend is re-scoped to a Yjs-backed tracker document, BlockSuite dropped.
+- **The unshipped web-frontend scaffold** (`packages/htrac-frontend`), the source of most Dependabot alerts. ADR-0019 re-scopes the frontend to a Yjs-backed tracker document.
 - **`htrac serve --background`**, which never daemonized; `--stop` and `--status` are unchanged.
 
 ### Fixed
 
-- **`htrac serve` denies every route except `/health` by default.**
-- **Duress handler failures now warn and never propagate.**
-- **`htrac setup` checks for the token sync actually uses.** That is `HG_GITHUB_TOKEN` for a GitHub origin and `FORGEJO_TOKEN` for a Forgejo one. The check used to accept only `FORGEJO_TOKEN`. It warned on a correctly configured GitHub repository and passed one that would fail to sync. Pruning superseded sync branches likewise sent the GitHub token to Forgejo when both were set.
+- **`htrac serve` denies every route except `/health` by default.** `create_app` takes an `authenticate` callable; without one, requests get 401 and `/ws` is closed.
+- **Duress handler failures warn the operator and never reach the client.**
+- **`htrac setup` checks for the token sync actually uses**: `HG_GITHUB_TOKEN` for a GitHub origin, `FORGEJO_TOKEN` for Forgejo. Branch pruning no longer sends the GitHub token to Forgejo.
 
 ### Documentation
 
-- **Module docstrings corrected in seven modules** (`cli`, `configure`, `field_keys`, `journal`, `protected_config`, `serve`, `setup`), four of them also extended. Among the false claims removed: a top-level `rename` command, an auto-sync threshold of 50 (it is 80) and a config-write retry that does not exist.
+- **Module docstrings corrected in seven modules** (`cli`, `configure`, `field_keys`, `journal`, `protected_config`, `serve`, `setup`). False claims removed include a top-level `rename` command and an auto-sync threshold of 50 (it is 80).
 
 ## [0.10.0] - 2026-10-14
 
