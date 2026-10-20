@@ -20,3 +20,18 @@
     pr_ref:  # d83a
     description: "FOUND 2026-10-04 by INV-komoj (branch jgstern-agent/fix/komoj). The return lift (ADR-0017 §4c, taint._lift_returned_sources) decides \"this function returns the source's value\" from the function's own RETURN STATEMENTS (ddg_build.return_statement_spans). A callable with no return statement returns its value anyway when its body is an expression, and there the lift sees nothing, so the false all-clear INV-komoj fixed persists:\n\n- rust tail expression: fn get() -> String { env::var(\"TOOL\").unwrap() } with Command::new(get()) -> confirmed_with_caveats (the explicit `return env::var(..).unwrap();` twin reads violated, ddg confirmed). Rust's idiomatic return form, so this is most Rust helpers.\n- javascript/typescript arrow expression body: const get = () => process.env.TOOL; cp.exec(get()) -> confirmed_with_caveats (the `function get() { return process.env.TOOL; }` twin reads violated).\n- python lambda (not measured).\n\nA SECOND, distinct shape the lift also leaves open: a value the §3a walk loses before the return (escaped: `d = {}; d[\"k\"] = os.getenv(\"K\"); return d`) lifts nothing, by design (lifting on ignorance would seed every caller of every pass-through function). Not measured on the corpus.\n\nFixtures: scratchpad komoj/lx/{rs_tail,rs_return,js_arrow,js_return}. Per-language work: rust needs the body's trailing expression (block's last child without `;`) treated as a return span; js/ts need an arrow_function whose body is not a statement_block treated as one return span. Both are ddg_build.return_statement_spans changes."  # d83a
     fields: {}  # d83a
+- op: update  # 0f95
+  at: '2026-10-20T02:01:24Z'  # 0f95
+  by: agent  # 0f95
+  actor: jgstern_agent  # 0f95
+  clock: 2  # 0f95
+  nonce: 0f95  # 0f95
+  set:  # 0f95
+    status: done  # 0f95
+- op: discuss  # a55b
+  at: '2026-10-20T02:01:24Z'  # a55b
+  by: agent  # a55b
+  actor: jgstern_agent  # a55b
+  clock: 3  # a55b
+  nonce: a55b  # a55b
+  message: "Fixed in PR #1744 (dev dbeef1ab2a). ddg_build.return_statement_spans now gives an expression body (JS/TS arrow without a block, python lambda) one return span over the body, and a Rust block's tail expression a return span (cfg_nodes/rust.yaml block_tail_returns: true; statements/items ending the block do not count). BEHAVIORAL REPRO, re-run on merged dev with verify-claims host_secret -> subprocess: rs_tail (fn get() -> String { env::var(\"TOOL\").unwrap() }) violated, was confirmed_with_caveats; js_arrow (const get = () => process.env.TOOL) violated, was confirmed_with_caveats; the explicit-return controls rs_return/js_return stay violated. A/B on real repos: aardvark-dns and apollo-server moved nothing; ripgrep host-secret-no-host-fs 3 -> 8 rows and host-secret-no-logging 1 -> 2 (new rows are lifted sources from tail-expression helpers, e.g. config.rs args() RIPGREP_CONFIG_PATH), and no verdict changed. NOT DONE: the Python lambda still reads confirmed_with_caveats because the analyzer emits a name-bound lambda as a variable and the python DDG spec has no lambda; filed as WI-rosun."  # a55b
