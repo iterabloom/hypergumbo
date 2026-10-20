@@ -220,7 +220,8 @@ def test_a_call_on_another_object_is_not_rechosen(tmp_path: Path) -> None:
     """The pimpl idiom: ``X::Generate(a, b)`` forwards to
     ``impl_->Generate(a, b)``. With no receiver type the name lookup picked X's
     overloads, and the one matching the arity is the CALLER: re-choosing by
-    arity would draw a false self-call. Such a call keeps the name's pick."""
+    arity would draw a false self-call. Since WI-lamij the receiver is typed
+    (``impl_`` is an ``Impl*``), so the call binds no X overload at all."""
     (tmp_path / "x.cpp").write_text("""\
 class X {
  public:
@@ -243,8 +244,8 @@ int X::Generate(int a) const {
         for e in result.edges
         if e.edge_type == "calls" and e.dst in by_id and e.line in (9, 12)
     }
-    assert set(edges) == {9, 12}, edges  # reach
-    assert edges[9] == (8, 11), edges  # the name's pick, unchanged
+    assert 12 in edges, edges  # reach
+    assert 9 not in edges, edges  # ``impl_->``: not X's, so no project edge
     assert edges[12] == (11, 8), edges  # ``this->``: the receiver is known
 
 

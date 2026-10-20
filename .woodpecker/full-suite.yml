@@ -134,19 +134,47 @@ steps:
   # executes these commands with a stub `python` to pin all of that.
   # Invoked via `python -m hypergumbo_core` (the bare `hypergumbo` console script
   # lives in the meta-package this step doesn't install).
+  #
+  # RECEIVER TYPING (WI-losig). The map is built with the scip-python backend
+  # (pyright via SCIP), so a Python method reference resolves to its owning
+  # type: WI-mifag cannot gate methods without it. On the self-tree 2026-10-20
+  # it typed 9,435 of 9,619 Python method calls. Opted in for THIS step only,
+  # via the environment: a repo-level .hypergumbo.toml would change every local
+  # run and the self-claims gate's pinned verdicts. pyright executes nothing
+  # from the analysed tree (ADR-0045 ruling 5), unlike rust-analyzer.
+  #  • Cost, measured locally: map 8m47s (plain 5m32s), summed process-tree
+  #    peak 10.3 GB (plain 3.9 GB). V8's default heap aborts at 4.2 GB, hence
+  #    NODE_OPTIONS. The CI VM has 16 GB, so this step must not share it with
+  #    the other heavy steps: it waits for test-all-packages and
+  #    self-claims-gate, and runs on their FAILURE too (a red test suite must
+  #    not skip both ratchets: Woodpecker otherwise runs a step only while the
+  #    workflow has succeeded so far).
+  #  • Both of the backend's preconditions (opt-in, binary on PATH) fail
+  #    silently into the plain map, so the reachability gate is told to
+  #    --require-pass scip_python and exits 1 when the pass contributed nothing.
+  #  • scip-python 0.6.6 is the version every recorded fixture was produced
+  #    with (scip_python_install.SCIP_PYTHON_PINNED_VERSION). Bookworm's nodejs
+  #    is 18; the package was published with node 16 and declares no engines.
   - name: self-tree-validation
     image: python:3.11-bookworm
-    depends_on: [build-grammars]
+    depends_on: [build-grammars, test-all-packages, self-claims-gate]
+    when:
+      - status: [success, failure]
+    environment:
+      HYPERGUMBO_SCIP_PYTHON: "1"
+      NODE_OPTIONS: "--max-old-space-size=9000"
     commands:
+      - apt-get update && apt-get install -y --no-install-recommends nodejs npm
+      - npm install -g @sourcegraph/scip-python@0.6.6
       - pip install --upgrade pip && pip install jsonschema
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-scip-python -e "packages/hypergumbo-tracker[dev]"
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
       - python -m hypergumbo_core run . --out /tmp/self-tree.json
       - |
         stv=0
         python scripts/check-self-tree-validation /tmp/self-tree.json .ci/self-tree-validation-baselines.json || stv=$?
         tor=0
-        python scripts/check-test-only-reachability --map /tmp/self-tree.json || tor=$?
+        python scripts/check-test-only-reachability --map /tmp/self-tree.json --require-pass scip_python || tor=$?
         if [ "$tor" = "2" ]; then
           echo "WARNING: test-only-reachability skipped (exit 2: infrastructure, not a regression)"
           tor=0

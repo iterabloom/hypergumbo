@@ -2,10 +2,13 @@
 """Tests for the discovery module."""
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.discovery import (
     DEFAULT_EXCLUDES,
     classify_dot_d_file,
     classify_dot_m_file,
+    classify_dot_php_file,
     find_files,
     find_non_test_files,
     is_excluded,
@@ -539,6 +542,27 @@ class TestClassifyDotDFile:
         f = tmp_path / "api.di"
         f.write_text("module api;\nvoid process();\n")
         assert classify_dot_d_file(f) == "d"
+
+
+class TestClassifyDotPhpFile:
+    """A .php file is Hack when it opens with ``<?hh`` (WI-riziv / INV-pobap)."""
+
+    @pytest.mark.parametrize(("content", "expected"), [
+        ("<?hh\nfunction f(): int { return 1; }", "hack"),
+        ("<?hh // strict\nclass A {}", "hack"),
+        ("#!/usr/bin/env hhvm\n<?hh\nfunction main(): void {}", "hack"),
+        ("<?php\necho 'x';", "php"),
+        ("<html><?php echo 1; ?></html>", "php"),
+        ("#!/usr/bin/env php\n<?php\necho 1;", "php"),
+        ("", "php"),
+    ])
+    def test_header(self, tmp_path: Path, content: str, expected: str) -> None:
+        f = tmp_path / "x.php"
+        f.write_text(content)
+        assert classify_dot_php_file(f) == expected
+
+    def test_unreadable_file_is_php(self, tmp_path: Path) -> None:
+        assert classify_dot_php_file(tmp_path / "missing.php") == "php"
 
 
 class TestFindFilesMaxFileBytes:

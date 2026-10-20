@@ -6,9 +6,10 @@ of hypergumbo :class:`~hypergumbo_core.ir.Symbol` objects. It is
 intentionally narrow: no I/O, no byte decoding, no edge emission. The
 caller is expected to have already decoded wire bytes with
 ``scip_pb2.Index().ParseFromString(buf)`` (or to have built an Index
-object directly, as the tests do). Edge emission (``Occurrence`` refs
-→ ``calls``, ``Relationship`` → ``implements`` / ``has_type``) lives in
-a sibling module and is the subject of Slice C.
+object directly, as the tests do). Edge emission lives in two sibling
+modules: :mod:`.edges` (Slice C) turns ``Relationship`` entries into
+``implements`` / ``references``, and :mod:`.calls` (Slice D) turns
+``Occurrence`` refs into ``calls`` or ``references``.
 
 Why this is a thin glue layer:
 
@@ -18,6 +19,11 @@ Why this is a thin glue layer:
   :mod:`hypergumbo_core.scip.descriptor`. We reuse it unchanged.
 * The hypergumbo ``Symbol`` dataclass is already the downstream IR for
   every analyzer; this module just fills the same fields.
+* Kind comes from the producer's ``SymbolInformation.kind`` when it maps to
+  a registered kind (``_SCIP_KIND_MAP``), else from the descriptor chain
+  (WI-gapup / ADR-0057 §7; see the comment block above
+  ``symbol_information_kind_values``). An empty ``Document.language`` falls
+  back to the file extension (WI-nanom).
 * A SCIP ``Document`` is self-contained (its ``symbols`` list names
   everything the ``occurrences`` list refers to), so the translator is
   one linear pass over ``index.documents`` with a tiny
@@ -65,9 +71,9 @@ Edge cases intentionally handled by skip rather than raise:
   free: it needs a canonical ``{lang}:{path}:{span}:{name}:{kind}`` id
   minted from the SCIP symbol, not the raw descriptor.
 
-  Consequence, stated plainly: unlike the ~69 ``:unresolved`` dst sites
-  in the tree-sitter analyzers, a Rust call into a dependency or the
-  stdlib produces no edge at all under this backend. Tracked as
+  Consequence, stated plainly: unlike the tree-sitter analyzers, which
+  emit an ``:unresolved`` dst for such a call, a Rust call into a
+  dependency or the stdlib produces no edge at all under this backend. Tracked as
   WI-gojum sub-component 1 ("external calls recorded accurately"),
   parked by the owner 2026-07-19 pending ADR-0012 Steps 2-3.
 * Malformed SCIP symbol strings (``parse_scip_symbol`` raises) — skipped

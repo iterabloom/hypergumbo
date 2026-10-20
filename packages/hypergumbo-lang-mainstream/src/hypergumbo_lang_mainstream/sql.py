@@ -5,7 +5,9 @@ This analyzer uses tree-sitter to parse SQL files and extract:
 - Table definitions (CREATE TABLE)
 - View definitions (CREATE VIEW)
 - Function definitions (CREATE FUNCTION)
-- Procedure definitions (CREATE PROCEDURE)
+- Procedure definitions (CREATE PROCEDURE): not extracted, because the
+  pinned tree-sitter-sql 0.3.x has no ``create_procedure`` node (the
+  statement parses as ERROR), so that branch never fires
 - Trigger definitions (CREATE TRIGGER)
 - Index definitions (CREATE INDEX)
 - Foreign key reference relationships
@@ -16,7 +18,7 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract tables, views, functions, procedures, triggers, indexes (fingerprints stamped later by the central post-pass, not here)
+1. Pass 1: Extract tables, views, functions, triggers, indexes (fingerprints stamped later by the central post-pass, not here)
 2. Pass 2: Extract foreign key reference edges using NameResolver
 
 The base class handles grammar checking, parser creation, file discovery,
@@ -31,7 +33,8 @@ A CREATE FUNCTION records its arguments in ``meta["parameters"]``
 Why This Design
 ---------------
 - TreeSitterAnalyzer eliminates boilerplate orchestration code
-- Optional dependency keeps base install lightweight
+- tree-sitter-sql is a required dependency of hypergumbo-lang-mainstream;
+  the empty-result path above is the base class's defensive fallback
 - Uses tree-sitter-sql package for grammar
 - Two-pass allows cross-file reference resolution
 - SQL-specific: tables, views, functions, triggers are first-class symbols
@@ -51,7 +54,6 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
 )
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -68,8 +70,11 @@ PASS_ID = make_pass_id("sql")
 
 
 def find_sql_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all SQL files in the repository."""
-    yield from find_files(repo_root, ["*.sql"])
+    """Yield all SQL files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _find_children_by_type(node: "tree_sitter.Node", type_name: str) -> list["tree_sitter.Node"]:  # pragma: no cover

@@ -9,14 +9,25 @@ How It Works
 ------------
 1. ``load_function_summaries()`` reads YAML files declaring taint-flow summaries
    for stdlib and framework functions whose source code is not analyzed.
+   Three tiers merge by provenance (ADR-0047 ruling 10, ADR-0061 rulings 2-3),
+   each file's ``provenance:`` line asked before its directory: built-in rows
+   load first; ``provenance: community`` rows only add a name no built-in
+   holds and are stamped ``community`` (they never close a branch); rows from
+   the user's ``function_summaries.d`` (read only for the default directory)
+   load last, win on collision and are stamped ``user_supplied``.
+   ``include_community=False`` (``--no-default-overlays``) drops the community
+   tier. Each dotted name is also indexed under its last component when that
+   short name is free.
 
 2. ``FunctionSummary`` objects describe parameter-to-return flow, parameter
    mutation flow, sanitization effects, and callback propagation.
 
-3. The taint solver uses summaries at call sites: when a tainted variable
-   is passed as an argument, the summary determines whether the taint
-   propagates to the return value, mutates another parameter, or is
-   sanitized.
+3. The taint walk consults summaries at call sites for one question
+   (``taint._summary_terminates``): does every callee on the line consume the
+   tainted value and stop -- a ``side_effect`` summary with no return,
+   receiver, callback or sanitizer flow? If so the branch closes. Propagation
+   through ``param_to_return`` / ``param_to_self``, sanitizer relabelling and
+   callback flow are declared in the schema but not applied by the solver.
 
 4. Functions without summaries are treated as UNKNOWN, not as propagating.
    :func:`get_default_summary` expresses the conservative shape (every
@@ -24,6 +35,9 @@ How It Works
    applying it would make an empty catalogue change behaviour, which is the
    opposite of what an empty catalogue should do. The one production consumer
    is ``taint._summary_terminates``, a terminate/don't-terminate test.
+
+5. :func:`infer_summary` infers ``param_to_return`` from DDG edges
+   (ADR-0017 §4a). It has no production caller yet.
 
 YAML Format
 -----------

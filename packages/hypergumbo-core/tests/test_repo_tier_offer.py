@@ -181,6 +181,26 @@ def test_writing_twice_does_not_clobber_an_edit(tmp_path) -> None:
     assert first[0] not in second
 
 
+def test_the_tree_ignores_itself(tmp_path) -> None:
+    """A dot prefix does not keep a directory out of ``git add .``. A
+    ``.gitignore`` holding ``*`` does, and it travels with the tree, so it
+    also covers a checkout older than this repository's root ``.gitignore``
+    entry and a ``~/hypergumbo`` that is not this repository at all."""
+    dest = tmp_path / "d"
+    written = write_repo_tier_examples(dest)
+    ignore = dest / ".gitignore"
+    assert ignore in written
+    assert ignore.read_text(encoding="utf-8").split() == ["*"]
+
+
+def test_this_checkout_ignores_the_tree_at_its_root() -> None:
+    """The root ``.gitignore`` is the fix for a current clone at ~/hypergumbo;
+    the nested one above is the fallback for every other checkout."""
+    root = Path(__file__).resolve().parents[3]
+    lines = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert ".hypergumbo-examples/" in lines
+
+
 # ------------------------------------------------------------- the offer ----
 
 def test_accepting_writes_and_records(env, home, capsys) -> None:

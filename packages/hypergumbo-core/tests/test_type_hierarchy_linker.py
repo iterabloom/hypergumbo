@@ -1294,10 +1294,9 @@ class TestPerLanguageConcreteExtendsDispatch:
     def test_cpp_concrete_extends_does_not_dispatch(self) -> None:
         """C++ inheritance without `virtual` is statically resolved.
 
-        Pessimistic default: until per-method virtual tracking lands,
-        C++ extends must not produce dispatches_to. False negatives on
-        truly virtual methods are preferable to the false-positive flood
-        observed for non-virtual methods (which dominate most C++ code).
+        Decided per method since WI-digaj: these fixture classes record no
+        ``virtual_members`` and their methods no ``virtual`` modifier, so no
+        pair dispatches.
         """
         edges = self._run_concrete_extends("cpp")
         assert edges == [], (
@@ -1314,7 +1313,8 @@ class TestPerLanguageConcreteExtendsDispatch:
         )
 
     def test_csharp_concrete_extends_does_not_dispatch(self) -> None:
-        """C# is pessimistic until virtual/override keyword tracking lands."""
+        """C# dispatch through a class parent needs ``override`` on the child
+        method (WI-digaj); these fixture methods carry no modifiers."""
         edges = self._run_concrete_extends("csharp")
         assert edges == [], (
             f"C# concrete extends must not produce dispatches_to edges; "
@@ -1391,6 +1391,53 @@ class TestPerLanguageConcreteExtendsDispatch:
             "Python (default-allow) must still produce dispatches_to "
             "via concrete extends"
         )
+
+    @pytest.mark.parametrize(("lang", "dispatches"), [
+        ("java", False), ("csharp", False), ("cpp", False),
+        # A static member does dispatch here: JS ``this.f()`` inside a static
+        # method and Python classmethods reach the subclass's override.
+        ("javascript", True), ("python", True),
+    ])
+    def test_static_methods_dispatch_only_where_statics_are_late_bound(
+        self, lang: str, dispatches: bool,
+    ) -> None:
+        """WI-digaj: in C#, Java and C++ a static member is statically bound,
+        so a same-named static in a subclass hides rather than overrides. That
+        is not true in every language, so the guard is per language."""
+        ext = {"java": "java", "csharp": "cs", "cpp": "cpp",
+               "javascript": "js", "python": "py"}[lang]
+        sep = "::" if lang == "cpp" else "."
+
+        def typ(name: str, mods: list[str]) -> tuple[Symbol, Symbol]:
+            path = f"/app/{name}.{ext}"
+            cls = Symbol(
+                id=f"{lang}:{path}:1-50:{name}:class", name=name, kind="class",
+                language=lang, path=path, origin=f"{lang}-v1", origin_run_id="test",
+                span=Span(start_line=1, end_line=50, start_col=0, end_col=1),
+                modifiers=mods,
+            )
+            meth = Symbol(
+                id=f"{lang}:{path}:10-15:{name}{sep}make:method",
+                name=f"{name}{sep}make", kind="method", language=lang, path=path,
+                origin=f"{lang}-v1", origin_run_id="test",
+                span=Span(start_line=10, end_line=15, start_col=0, end_col=1),
+                modifiers=["public", "static"],
+            )
+            return cls, meth
+
+        parent, parent_m = typ("Base", ["abstract"])
+        child, child_m = typ("Kid", [])
+        edge = Edge.create(
+            src=child.id, dst=parent.id, edge_type="extends", line=1,
+            origin="inheritance-linker", evidence_type="ast_extends",
+            origin_run_id="test",
+        )
+        result = link_type_hierarchy(LinkerContext(
+            repo_root="/app", symbols=[parent, parent_m, child, child_m],
+            edges=[edge],
+        ))
+        got = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert bool(got) is dispatches, [(e.src, e.dst) for e in got]
 
     def test_extends_with_unknown_src_symbol_defaults_to_allow(self) -> None:
         """An extends edge whose src symbol is not in the symbol list
@@ -1489,6 +1536,15 @@ class TestAbstractParentAdmitsDispatch:
         child_kind = "class" if lang in ("cpp", "csharp") else "struct"
         parent, parent_m = self._type(lang, "Shape", parent_kind, parent_mods)
         child, child_m = self._type(lang, "Square", child_kind, [])
+        if lang == "csharp":
+            # C# requires ``override`` to implement an abstract member, and the
+            # per-method rule reads it (WI-digaj).
+            child_m.modifiers = ["public", "override"]
+        if lang == "cpp" and "abstract" in parent_mods:
+            # The cpp analyzer emits an abstract class's pure virtual with
+            # these modifiers (``_emit_cpp_pure_virtual``); the per-method rule
+            # reads ``virtual`` off it (WI-digaj).
+            parent_m.modifiers = ["public", "virtual", "abstract"]
         edge = Edge.create(
             src=child.id, dst=parent.id, edge_type="extends", line=1,
             origin="inheritance-linker", evidence_type="ast_extends",
@@ -1522,27 +1578,72 @@ class TestAbstractParentAdmitsDispatch:
         assert [(e.src, e.dst) for e in edges] == [(parent_m.id, child_m.id)]
 
     @pytest.mark.parametrize(("lang", "parent_kind"), [
-        ("cpp", "class"), ("csharp", "class"), ("go", "struct"), ("rust", "struct"),
+        ("cpp", "class"), ("go", "struct"), ("rust", "struct"),
     ])
     def test_concrete_parent_still_denied(self, lang: str, parent_kind: str) -> None:
         """Control: the same fixture with a concrete parent emits nothing."""
         edges, _, _ = self._dispatches(lang, parent_kind, [])
         assert edges == []
 
+    def test_cpp_ancestry_walk_survives_a_diamond(self) -> None:
+        """WI-digaj: the implicit-virtual walk visits a shared ancestor once.
+        ``D : B, C`` with ``B : A`` and ``C : A``, nothing virtual anywhere, so
+        ``D::g -> E::g`` (E : D) is name hiding, not dispatch."""
+        def cls(name: str) -> Symbol:
+            return Symbol(
+                id=f"cpp:/app/{name}.h:1-50:{name}:class", name=name, kind="class",
+                language="cpp", path=f"/app/{name}.h", origin="cpp-v1",
+                origin_run_id="test",
+                span=Span(start_line=1, end_line=50, start_col=0, end_col=1),
+            )
+
+        def meth(owner: str) -> Symbol:
+            return Symbol(
+                id=f"cpp:/app/{owner}.h:10-15:{owner}::g:method", name=f"{owner}::g",
+                kind="method", language="cpp", path=f"/app/{owner}.h",
+                origin="cpp-v1", origin_run_id="test",
+                span=Span(start_line=10, end_line=15, start_col=0, end_col=1),
+            )
+
+        classes = {n: cls(n) for n in "ABCDE"}
+        edges = [
+            Edge.create(
+                src=classes[c].id, dst=classes[p].id, edge_type="extends", line=1,
+                origin="inheritance-linker", evidence_type="ast_extends",
+                origin_run_id="test",
+            )
+            for c, p in (("B", "A"), ("C", "A"), ("D", "B"), ("D", "C"), ("E", "D"))
+        ]
+        result = link_type_hierarchy(LinkerContext(
+            repo_root="/app",
+            symbols=[*classes.values(), meth("D"), meth("E")],
+            edges=edges,
+        ))
+        assert [e for e in result.edges if e.edge_type == "dispatches_to"] == []
+
+    def test_csharp_concrete_parent_dispatches_to_an_override(self) -> None:
+        """C# left the hop deny-list (WI-digaj): a concrete base's member that
+        the child overrides is a virtual dispatch, the common C# shape."""
+        edges, parent_m, child_m = self._dispatches("csharp", "class", [])
+        assert [(e.src, e.dst) for e in edges] == [(parent_m.id, child_m.id)]
+
     def test_predicate_reads_parent(self) -> None:
-        """The predicate itself: child concrete, parent abstract -> admit."""
+        """The predicate itself: child concrete, parent abstract -> admit.
+
+        Go is the deny-list language here: C# and C++ left the list in
+        WI-digaj (decided per method instead), so the predicate admits every
+        hop for them."""
         assert _extends_admits_dispatch(
-            "cpp", "class", [], parent_kind="class", parent_modifiers=["abstract"],
-        )
-        assert _extends_admits_dispatch(
-            "csharp", "class", (), parent_kind="interface",
+            "go", "struct", [], parent_kind="interface",
         )
         assert not _extends_admits_dispatch(
-            "cpp", "class", [], parent_kind="class", parent_modifiers=[],
+            "go", "struct", [], parent_kind="struct", parent_modifiers=[],
         )
         # No parent known (an unresolved external base) -> child test alone.
-        assert not _extends_admits_dispatch("cpp", "class", [])
-        assert _extends_admits_dispatch("cpp", "interface", [])
+        assert not _extends_admits_dispatch("go", "struct", [])
+        assert _extends_admits_dispatch("go", "interface", [])
+        assert _extends_admits_dispatch("cpp", "class", [])
+        assert _extends_admits_dispatch("csharp", "class", [])
 
     def test_unresolved_external_parent_still_denied(self) -> None:
         """A parent with no in-tree symbol cannot be shown abstract.
@@ -1551,9 +1652,9 @@ class TestAbstractParentAdmitsDispatch:
         targets for external bases; with no symbol to read, the gate keeps
         the deny-list verdict rather than guessing.
         """
-        child, child_m = self._type("cpp", "Square", "class", [])
+        child, child_m = self._type("go", "Square", "struct", [])
         edge = Edge.create(
-            src=child.id, dst="cpp:external:0-0:Shape:unresolved",
+            src=child.id, dst="go:external:0-0:Shape:unresolved",
             edge_type="extends", line=1, origin="inheritance-linker",
             evidence_type="ast_extends", origin_run_id="test",
         )
@@ -1596,6 +1697,39 @@ class TestAbstractBaseDispatchEndToEnd:
         # Control: concrete-extends-concrete stays under the deny-list.
         assert ("Plain::f", "PlainKid::f") not in pairs
 
+    def test_cpp_dispatch_is_decided_per_method(self, tmp_path: Any) -> None:
+        """WI-digaj, C++ half: the class symbol (from the header) records which
+        members are virtual / override / static, because the out-of-line
+        definitions in the ``.cc`` carry none of those keywords."""
+        (tmp_path / "shape.h").write_text(
+            "class Shape {\n public:\n  virtual int area() = 0;\n  virtual int peri();\n"
+            "  int describe();\n  static Shape* Create();\n};\n"
+            "class Square : public Shape {\n public:\n  int area() override;\n"
+            "  int peri() override;\n  int describe();\n  static Shape* Create();\n};\n"
+            "class Plain {\n public:\n  virtual int f() { return 0; }\n  int g() { return 0; }\n};\n"
+            "class Mid : public Plain {\n public:\n  int g() { return 1; }\n};\n"
+            "class Leaf : public Mid {\n public:\n  int f() override { return 2; }\n"
+            "  int g() { return 2; }\n};\n"
+            "class Deep : public Plain {\n public:\n  int f() { return 3; }\n};\n"
+            "class Deeper : public Deep {\n public:\n  int f() { return 4; }\n};\n"
+        )
+        pairs = self._dispatch_names(
+            tmp_path, "shape.cc",
+            '#include "shape.h"\n'
+            "int Shape::peri() { return 0; }\nint Shape::describe() { return 0; }\n"
+            "Shape* Shape::Create() { return nullptr; }\n"
+            "int Square::area() { return 1; }\nint Square::peri() { return 1; }\n"
+            "int Square::describe() { return 1; }\nShape* Square::Create() { return nullptr; }\n",
+        )
+        assert ("Shape::area", "Square::area") in pairs, "pure virtual"
+        assert ("Shape::peri", "Square::peri") in pairs, "out-of-line virtual"
+        assert ("Plain::f", "Leaf::f") in pairs, "concrete base, through a non-overriding middle"
+        assert ("Deep::f", "Deeper::f") in pairs, "implicitly virtual: Plain::f is virtual"
+        assert ("Shape::describe", "Square::describe") not in pairs, "non-virtual name hiding"
+        assert ("Shape::Create", "Square::Create") not in pairs, "static never dispatches"
+        assert ("Plain::g", "Mid::g") not in pairs
+        assert ("Mid::g", "Leaf::g") not in pairs
+
     def test_csharp_abstract_base(self, tmp_path: Any) -> None:
         pairs = self._dispatch_names(
             tmp_path, "S.cs",
@@ -1606,6 +1740,32 @@ class TestAbstractBaseDispatchEndToEnd:
         )
         assert ("Shape.Area", "Square.Area") in pairs
         assert ("Base2.F", "Kid2.F") not in pairs
+
+    def test_csharp_dispatch_is_decided_per_method(self, tmp_path: Any) -> None:
+        """WI-digaj: C# records ``override`` / ``new`` / ``static`` per method,
+        so a class-parent pair dispatches exactly when the child method
+        overrides. Before, the gate was per HOP: name-hiding methods across an
+        abstract base got an edge, and a CONCRETE base's virtual/override pair
+        (the common C# shape) got none."""
+        pairs = self._dispatch_names(
+            tmp_path, "S.cs",
+            "abstract class Shape { public abstract int Area();"
+            " public int Describe() { return 0; } public static int Make() { return 1; } }\n"
+            "class Square : Shape { public override int Area() { return 1; }"
+            " public new int Describe() { return 2; } public static int Make() { return 3; } }\n"
+            "class Fancy : Square { public override int Area() { return 2; } }\n"
+            "class Base { public virtual int F() { return 0; } public int G() { return 0; } }\n"
+            "class Kid : Base { public override int F() { return 1; } public int G() { return 1; } }\n"
+            "interface IRun { void Run(); }\n"
+            "class Runner : IRun { public void Run() {} }\n",
+        )
+        assert ("Shape.Area", "Square.Area") in pairs
+        assert ("Shape.Area", "Fancy.Area") in pairs, "concrete middle hop now admitted"
+        assert ("Base.F", "Kid.F") in pairs, "concrete base virtual/override"
+        assert ("IRun.Run", "Runner.Run") in pairs, "interface members need no override"
+        assert ("Shape.Describe", "Square.Describe") not in pairs, "`new` hides"
+        assert ("Shape.Make", "Square.Make") not in pairs, "static never dispatches"
+        assert ("Base.G", "Kid.G") not in pairs, "non-virtual name hiding"
 
 
 class TestCloseParentToChildrenTransitively:

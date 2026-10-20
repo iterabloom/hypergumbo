@@ -116,7 +116,7 @@ class RateLimiter:
         return time.time() >= state.last_failure_at + delay
 
     def is_locked(self, credential_id: str) -> bool:
-        """Check if a credential is permanently locked."""
+        """Check if a credential is locked (until a restart or ``record_success``)."""
         state = self._state.get(credential_id)
         return state is not None and state.locked
 

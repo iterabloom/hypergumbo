@@ -1,0 +1,38 @@
+- op: create  # 97af
+  at: '2026-10-17T09:11:09Z'  # 97af
+  by: agent  # 97af
+  actor: jgstern_agent  # 97af
+  clock: 1  # 97af
+  nonce: 97af  # 97af
+  data:  # 97af
+    kind: invariant  # 97af
+    title: "htrac setup check 22 demands FORGEJO_TOKEN even for a github origin, where sync requires HG_GITHUB_TOKEN"  # 97af
+    status: violated  # 97af
+    priority: 2  # 97af
+    parent:  # 97af
+    tags:  # 97af
+    - tracker  # 97af
+    - docstring_audit  # 97af
+    isbefore: []  # 97af
+    duplicate_of: []  # 97af
+    not_duplicate_of: []  # 97af
+    pr_ref:  # 97af
+    description: "Invariant: `htrac setup` check 22 (`_check_sync_prerequisites`, packages/hypergumbo-tracker/src/hypergumbo_tracker/setup.py ~2739-2784) accepts the token that `htrac sync` actually requires for the repository's origin.\n\nViolated today: the check looks only for FORGEJO_TOKEN. `sync.py` (~1248-1256, ~1302-1305) accepts HG_GITHUB_TOKEN and requires it for a github.com origin, which this repository has.\n\nRepro (docstring-staleness audit 2026-10-17, verifier run): a temp repo with a github origin and only `HG_GITHUB_TOKEN` in `.env`; `_check_sync_prerequisites` returns `warn ... FORGEJO_TOKEN not found`. So setup warns on a correctly configured repo and would pass a github repo that has only a Forgejo token.\n\nRelated: INV-zofog (forge entry scripts reading FORGEJO_TOKEN directly instead of resolving the token by forge). The module docstring (line ~36) describes the current FORGEJO_TOKEN-only behaviour accurately and was left unchanged; update it with the fix to \"the origin's forge token (HG_GITHUB_TOKEN for github, FORGEJO_TOKEN for forgejo)\"."  # 97af
+    fields:  # 97af
+      statement: "htrac setup's sync-prerequisite check accepts the forge token htrac sync requires for the repository's origin"  # 97af
+      root_cause: "_check_sync_prerequisites looks only for FORGEJO_TOKEN; sync.py resolves HG_GITHUB_TOKEN for github origins"  # 97af
+- op: update  # f444
+  at: '2026-10-17T19:06:01Z'  # f444
+  by: agent  # f444
+  actor: jgstern_agent  # f444
+  clock: 2  # f444
+  nonce: f444  # f444
+  set:  # f444
+    status: satisfied  # f444
+- op: discuss  # b755
+  at: '2026-10-17T19:06:01Z'  # b755
+  by: agent  # b755
+  actor: jgstern_agent  # b755
+  clock: 3  # b755
+  nonce: b755  # b755
+  message: "Fixed in PR #1692 (69fc8d9db3). Root cause: setup check 22 kept its own token rule (FORGEJO_TOKEN only) instead of sync's per-forge rule. Fix: one table, sync.FORGE_TOKEN_VARS (github->HG_GITHUB_TOKEN, forgejo->FORGEJO_TOKEN), read by preflight, prune and check 22 with sync's .env parser and messages. Behavioral evidence, re-running the filed repro on merged code: temp repo, origin https://github.com/o/r.git, .env with only HG_GITHUB_TOKEN, both vars unset in the environment -> _check_sync_prerequisites returns 'ok | Sync prerequisites met'; same .env with a codeberg origin -> 'warn | ... FORGEJO_TOKEN not found in .env or environment (required for the forgejo origin)'. Pinned by TestSyncSetupCheckForgeToken (incl. a check-vs-sync agreement test over every backend/token pair). Analogue fixed in the same PR: prune_superseded_sync_branches took HG_GITHUB_TOKEN first on every forge and ignored os.environ (TestPruneTokenFollowsTheOrigin). Related, not covered: INV-zofog (forge entry scripts)."  # b755

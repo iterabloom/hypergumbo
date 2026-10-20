@@ -30,7 +30,8 @@ WHAT IS FORBIDDEN IS NOT THE F-STRING, IT IS THE UNGRAMMATICAL ID. A synthetic
 linker stand-in has no source span and legitimately writes ``0-0`` by hand;
 14 of the 40 hand-built templates are conformant and stay. Banning the spelling
 would have deleted those for nothing and taught authors to route around the
-check. So the rule is ADR-0036's grammar applied to the TEMPLATE:
+check. So the rule for ``Symbol(id=...)`` is ADR-0036's grammar applied to
+the TEMPLATE:
 
     {lang}:{path}:{start}-{end}:{name}:{kind}
 
@@ -38,6 +39,14 @@ parsed from the right (``span, name, kind = parts[-3:]``) because the path slot
 is the only one allowed to contain colons. A slot filled by an interpolation is
 OPAQUE and is not judged — the check refuses to invent a verdict it has no
 evidence for, which is why ``python:{}:1-1:{}:{}`` passes.
+
+EDGE IDS GET THEIR OWN RULE. WI-vodin asked for ``Edge.id`` to meet the node
+grammar. Measured, that premise is false: all 18,283 apollo-server edge ids
+are content digests. So ``Edge(id=...)`` is judged, through the same three
+hops, against ``edge:sha256:<16hex>`` (:func:`edge_template_problem`). For
+both constructors, an id built by a ``+`` chain is reported as
+``concatenated_id``, because a concatenation cannot be checked against
+either grammar.
 
 WHAT IT FOUND ON ITS FIRST RUN, and the reason this is INV-kurup's class rather
 than hygiene: 26 of the 40 templates produce ids that hypergumbo's OWN runtime
@@ -128,13 +137,14 @@ def _show(field: str) -> str:
     return repr(field.replace(_PH, "{}"))
 
 
-def _skeleton_of(node: ast.JoinedStr) -> str:
+def _template_of(node: ast.JoinedStr) -> str:
+    """The f-string as the classifiers read it: each interpolation ``{}``."""
     parts: list[str] = []
     for value in node.values:
         if isinstance(value, ast.Constant) and isinstance(value.value, str):
             parts.append(value.value)
         else:
-            parts.append(_PH)
+            parts.append("{}")
     return "".join(parts)
 
 
@@ -206,10 +216,12 @@ def _problems_in_file(path: Path) -> list[tuple[int, str]]:
             if not isinstance(node, ast.Call):
                 continue
             callee = _callee_name(node)
+            # The public classifiers, so the rule the tests pin is the rule
+            # the lint runs (WI-mifup: it ran private skeleton twins).
             if callee in _NODE_ID_CONSTRUCTORS:
-                classify = _skeleton_problem
+                classify = id_template_problem
             elif callee in _EDGE_ID_CONSTRUCTORS:
-                classify = _edge_skeleton_problem
+                classify = edge_template_problem
             else:
                 continue
             for keyword in node.keywords:
@@ -222,20 +234,11 @@ def _problems_in_file(path: Path) -> list[tuple[int, str]]:
     return sorted(found.items())
 
 
-def _edge_skeleton_problem(skeleton: str) -> str | None:
-    if _EDGE_ID_RE.match(skeleton):
-        return None
-    return (
-        f"non_canonical_edge_id ({_show(skeleton)}) — the grammar is "
-        "edge:sha256:<16hex>"
-    )
-
-
 def _problem_of(
     expr: ast.expr, classify: "Callable[[str], str | None]",
 ) -> str | None:
     if isinstance(expr, ast.JoinedStr):
-        return classify(_skeleton_of(expr))
+        return classify(_template_of(expr))
     if isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Add):
         return (
             "concatenated_id — a '+' chain cannot be checked against the "

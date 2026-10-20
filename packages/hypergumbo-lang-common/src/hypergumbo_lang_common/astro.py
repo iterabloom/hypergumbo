@@ -69,7 +69,6 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -93,8 +92,11 @@ PASS_ID = make_pass_id("astro")
 
 
 def find_astro_files(repo_root: Path) -> list[Path]:
-    """Find all Astro component files in the repository, excluding vendor dirs."""
-    return sorted(find_files(repo_root, ["*.astro"]))
+    """Find all Astro component files in the repository, excluding vendor dirs.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    return sorted(_analyzer._find_source_files(repo_root))
 
 
 

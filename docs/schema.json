@@ -883,6 +883,9 @@
             "annotations": {
               "description": "Java / Kotlin / Python decorator-equivalent annotations on a Symbol. Distinct from ``decorators`` (Python-style) where the syntax carries different semantics."
             },
+            "base_class_imports": {
+              "description": "Class Symbols (php, groovy, scala, csharp alias usings): for each BARE base in ``base_classes`` bound by a single-type import, the import's qualified name. The inheritance linker checks the base as that name instead of binding any in-repo class of the same short name (WI-pivap)."
+            },
             "base_classes": {
               "description": "List of base-class names on class / interface Symbols. Used by framework_patterns to identify Django Model, SQLAlchemy Base, etc."
             },
@@ -991,8 +994,14 @@
             "module_system": {
               "description": "Module system on synthetic file-shape Symbols (e.g. 'esm', 'commonjs'). Fold residue for the ``module_file`` \u2192 ``file`` migration per audit-findings 0005."
             },
+            "non_local_store_lines": {
+              "description": "c function Symbols: sorted source lines where the function ASSIGNS memory it does not own -- a name it does not declare (a global, an extern) or anything reached through a pointer parameter. A list of ints, present only when non-empty. taint.find_unfollowed_escapes reads them as targets like an unfollowed_construct call site, so a source value assigned there withholds a clean verdict (INV-nohob)."
+            },
             "override": {
               "description": "True if the method overrides a superclass / interface method. Set by analyzers that parse ``override`` / ``@Override`` keywords."
+            },
+            "override_members": {
+              "description": "cpp class / struct Symbols: sorted names of member functions declared ``override`` / ``final`` in this class, which proves the base member is virtual (WI-digaj)."
             },
             "package_ecosystem": {
               "description": "Package-manager ecosystem on package-shaped Symbols (e.g. 'npm', 'composer'). Fold residue for the ``npm_package`` / ``composer_package`` \u2192 ``package`` migration per audit-findings 0005."
@@ -1030,6 +1039,9 @@
             "static": {
               "description": "True on static method / field Symbols. Affects method-call resolution (no implicit ``self`` receiver)."
             },
+            "static_members": {
+              "description": "cpp class / struct Symbols: sorted names of member functions declared ``static`` in this class; a static member never dispatches (WI-digaj)."
+            },
             "tags": {
               "description": "Free-form tag list for analyzer-specific annotations not (yet) elevated to a named meta key. Use sparingly \u2014 sustained use of a tag is an ADR-0024 promotion signal."
             },
@@ -1042,8 +1054,14 @@
             "virtual": {
               "description": "True on virtual / abstract method Symbols. Distinct from ``override`` (a virtual method may or may not also override)."
             },
+            "virtual_members": {
+              "description": "cpp class / struct Symbols: sorted names of member functions virtual IN this class (declared ``virtual``, ``override`` or ``final``), read from the in-class declarations because an out-of-line definition repeats no keyword. type_hierarchy reads it per method (WI-digaj)."
+            },
             "visibility_signal": {
               "description": "Which signal determined the canonical ``Symbol.visibility`` level (INV-jusot) \u2014 one of 'language_modifier' (an explicit ``modifiers`` term or the legacy Apex/Clojure ``meta['visibility']``), 'name_convention' (Python leading-underscore), or 'default' (public). Provenance for the computed visibility field; set by the finalize visibility pass. Replaces the retired ``meta['visibility']`` key, whose language-syntactic value is now folded into the typed ``Symbol.visibility`` field (the meta key collided with the field under the cross-axis hygiene test)."
+            },
+            "visible_namespaces": {
+              "description": "csharp class / interface Symbols with bases: the namespaces a bare base can come from -- the enclosing namespace chain, the ``using`` namespaces and the global namespace (``\"\"``). The inheritance linker keeps only candidates of a visible namespace (WI-pivap)."
             }
           }
         },
@@ -1566,16 +1584,16 @@
               "description": "Every distinct ``env_var`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``env_var`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). A site that carried no ``env_var`` is listed as ``null``, sorted first and never capped away, so one site's value cannot read as every site's (INV-rajak). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
             },
             "event": {
-              "description": "Event name a websocket or Phoenix Channels event_publishes edge carries."
+              "description": "Event name a websocket or Phoenix Channels event_publishes edge carries. On a websocket edge it is the joined event VALUE, or None when only identifiers were compared (then see ``event_identifier``; WI-luhod)."
             },
             "event_identifier": {
-              "description": "Event-sourcing-linker analogue of ``topic_identifier``: the identifier a publish / subscribe site wrote in place of an event-name string, or the identifier an identifier-join compared. ``event_name`` then holds the event VALUE, or ``None`` when the identifier could not be resolved (WI-misod)."
+              "description": "Event-sourcing-linker analogue of ``topic_identifier``: the identifier a publish / subscribe site wrote in place of an event-name string, or the identifier an identifier-join compared. ``event_name`` then holds the event VALUE, or ``None`` when the identifier could not be resolved (WI-misod). On a websocket edge: the identifier an identifier-join compared, with ``event`` None (WI-luhod)."
             },
             "event_name": {
               "description": "event_sourcing event_publishes edge: the event VALUE the publisher and subscriber were joined on, or None when only identifiers were compared (then see ``event_identifier``)."
             },
             "event_type": {
-              "description": "websocket event_publishes edge: 'literal' or 'variable', how the event name was written at the two ends."
+              "description": "websocket event_publishes edge: what the sender/receiver join compared (``_name_args`` join kind: 'literal', 'constant' or 'unresolved')."
             },
             "events": {
               "description": "Svelte component edge: the event names the tag listens to (``on:<event>``)."
@@ -1838,11 +1856,17 @@
             "type_name": {
               "description": "GraphQL resolver edge: the schema type the resolver serves."
             },
+            "unfollowed_construct": {
+              "description": "INV-nohob: the construct at this call site through which a value leaves where taint can follow it, stamped by c.py: 'out_parameter_call' (the callee writes through a pointer parameter), 'non_local_store' (a copy-family call whose destination is the caller's pointer parameter or a name the caller does not declare), 'macro_call' (a function-like macro, whose expansion the call graph does not see) or 'variadic_call' (arguments in a project function's `...` tail). Read by taint.find_unfollowed_escapes: a source value the walk finds reaching such a site withholds every clean verdict on the source's label. PER CALL SITE: one callee is an out-parameter call from one site and a plain call from none other, but a macro or a copy target varies by site."
+            },
+            "unfollowed_construct_values": {
+              "description": "Every distinct ``unfollowed_construct`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``unfollowed_construct`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). A site that carried no ``unfollowed_construct`` is listed as ``null``, sorted first and never capped away, so one site's value cannot read as every site's (INV-rajak). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
+            },
             "url_path": {
               "description": "URL / route path on a protocol-boundary edge (e.g. a WebSocket endpoint path, or a cross-language WS client\u2192server route). Distinct from ``channel`` (the dataflow conduit/topic) per WI-pozom."
             },
             "url_type": {
-              "description": "HTTP client->route edge: 'literal' or 'variable', how the client's URL was written (a string literal, or a variable the linker folded)."
+              "description": "HTTP client->route edge: how the client's URL was written -- 'literal' (a string), 'constant' (an identifier resolved to a same-file module-scope string), 'variable' (a template literal folded to a prefix). Client symbols may also carry 'unresolved' (an identifier whose URL is unknown; never route-matched, WI-luhod)."
             },
             "view_name": {
               "description": "Route->handler edge (Django): the view the URL pattern named."

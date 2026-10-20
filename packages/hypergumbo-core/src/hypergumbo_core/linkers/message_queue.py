@@ -3,8 +3,8 @@
 
 This linker detects message queue patterns across multiple languages and creates
 ``event_publishes`` edges carrying ``meta['channel_kind']='queue'``. The bespoke
-``message_publish`` / ``message_subscribe`` types were folded onto the canonical
-type by ADR-0023 §6 Phase 3.
+``message_queue`` edge type was folded onto the canonical type by ADR-0023 §6
+Phase 3 (audit-findings 0002).
 
 ``depends_on`` is EMPTY because this linker consumes no pass output (WI-zujan).
 Its entry point is ``link_message_queues(root: Path)``: it takes the repository
@@ -32,6 +32,8 @@ Kafka:
 - producer.produce(topic_var, msg) -> publisher (variable topic)
 - consumer.subscribe(['topic']) -> subscriber
 - @KafkaListener(topics="topic") -> subscriber (Java/Spring)
+- .send({ topic: 'topic' | topicVar, ... }) -> publisher; .subscribe({ topic: ... })
+  -> subscriber (JS/TS kafkajs)
 
 Kafka (Java/Spring):
 - kafkaTemplate.send('topic', msg) -> publisher
@@ -64,12 +66,13 @@ A topic is written as a string literal or as an identifier. The shared
 Publishers join subscribers on the topic VALUE (confidence 0.9) when both
 values are known. When either side is unresolved they join only on an equal
 IDENTIFIER (``variable_match``, confidence 0.65) -- an identifier's text is never
-compared with a topic string. Edge ``topic_type`` labels the JOIN
+compared with a topic string. Each confidence is 0.1 lower when publisher and
+subscriber are in different languages. Edge ``topic_type`` labels the JOIN
 (literal / constant / unresolved); symbol ``topic_type`` labels the SITE.
 
 How It Works
 ------------
-1. Find all source files (Python, JavaScript, TypeScript, Java)
+1. Find non-test source files (Python, JavaScript, TypeScript, Java)
 2. Scan each file for message queue patterns using regex
 3. Extract topic literals, resolving identifiers to same-file string constants
 4. Create symbols for producers and consumers

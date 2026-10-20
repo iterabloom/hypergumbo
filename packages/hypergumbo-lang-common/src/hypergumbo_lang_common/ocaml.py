@@ -76,7 +76,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
@@ -105,8 +104,11 @@ PASS_ID = make_pass_id("ocaml")
 
 
 def find_ocaml_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all OCaml files in the repository."""
-    yield from find_files(repo_root, ["*.ml"])
+    """Yield all OCaml files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _get_type_name(node: "tree_sitter.Node", source: bytes) -> str:

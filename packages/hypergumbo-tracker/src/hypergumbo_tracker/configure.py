@@ -2,9 +2,11 @@
 """Interactive CLI config editor for hypergumbo tracker.
 
 Provides ``run_configure(root)`` which walks the human user through
-each section of config.yaml (statuses, kinds, stop_hook, tags,
+each section of config.yaml (statuses, kinds, stop_hook, well_known_tags,
 actor_resolution, lamport_branches), validates the result, shows a
-diff summary, and writes with 0444 enforcement.
+diff summary, asks for a y/N confirmation, and writes with 0444
+enforcement. When a workspace ``tracker-workspace/config.yaml`` exists it
+offers to overwrite and re-lock that file with the same content too.
 
 Human-only: agents are rejected at the top of run_configure().
 
@@ -20,8 +22,9 @@ governance problem.
 Design rationale:
 - Uses stdin prompts for each section, with Enter-to-skip for no-ops.
 - Loads both template (baseline) and existing config (current state).
-- Validates via _parse_config_dict() before writing — bad configs are
-  rejected with an error message and the user can retry.
+- Validates via _parse_config_dict() before writing — a bad config is
+  rejected with an error message and nothing is written; the editor exits,
+  so retrying means running it again.
 - After writing, config_lock() sets 0444.
 """
 

@@ -545,6 +545,15 @@ def return_statement_spans(
     return_types = frozenset(getattr(mapping, "return_statements", None) or ())
     if not return_types:
         return []
+    # WI-sodoj: an EXPRESSION body is its own return value -- a JS / TS arrow
+    # ``() => process.env.TOOL``, a Python ``lambda: os.environ["K"]``. It has
+    # no return statement and returns the value anyway.
+    if body_node.type not in _STATEMENT_BLOCK_NODE_TYPES:
+        return [ReturnStatement(
+            body_node.start_point[0] + 1, body_node.end_point[0] + 1,
+            (_identifiers_in(body_node, source),),
+        )]
+    spans_from_tail = _block_tail_return(body_node, mapping, source)
     scopes = (
         _NESTED_SCOPE_NODE_TYPES
         | spec.function_node_types
@@ -563,7 +572,40 @@ def return_statement_spans(
         if node.type in scopes:
             continue
         stack.extend(reversed(node.children))
-    return spans
+    return spans + spans_from_tail
+
+
+#: The node types a function body that is a STATEMENT LIST takes. Any other
+#: body is an expression whose value the callable returns (WI-sodoj).
+_STATEMENT_BLOCK_NODE_TYPES = frozenset({
+    "block", "statement_block", "compound_statement", "function_body",
+    "constructor_body", "class_body",
+})
+
+
+def _block_tail_return(block: Any, mapping: Any, source: bytes) -> list[ReturnStatement]:
+    """The block's TAIL EXPRESSION as a return, where the language returns it.
+
+    WI-sodoj. Rust returns a block's last expression when it carries no ``;``:
+    ``fn get() -> String { env::var("TOOL").unwrap() }`` is its idiomatic
+    return, so most Rust helpers had no return statement for the INV-komoj
+    lift to see. A language opts in with ``block_tail_returns: true`` in its
+    cfg mapping. The tail is the last named child that is not a statement
+    (``*_statement``, ``*_declaration``, ``*_item``) -- in tree-sitter-rust a
+    ``;`` makes an ``expression_statement``. Comments are skipped.
+    """
+    if not getattr(mapping, "block_tail_returns", False):
+        return []
+    children = [c for c in block.named_children if "comment" not in c.type]
+    if not children:
+        return []
+    tail = children[-1]
+    if tail.type.endswith(("_statement", "_declaration", "_item")):
+        return []
+    return [ReturnStatement(
+        tail.start_point[0] + 1, tail.end_point[0] + 1,
+        (_identifiers_in(tail, source),),
+    )]
 
 
 def _solve_one_function(

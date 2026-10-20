@@ -88,7 +88,8 @@ Any verdict may carry a structured ``caveats`` list of dicts (``kind``,
 ``entries``, prose ``detail``). The text renderer prints each dict's
 ``detail`` and the JSON emits the dict, so both disclose the same text. Most
 writers go through ``_merge_caveat``, which folds a repeated kind into one
-entry; the two ``CAVEAT_USER_SUPPLIED_SANITIZER`` writers append directly.
+entry; the two ``CAVEAT_USER_SUPPLIED_SANITIZER`` writers and the three
+violated-path writers (each kind at most once) append directly.
 On a clean
 verdict a non-empty list makes it ``confirmed_with_caveats``;
 ``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_WITHHELD_COMMUNITY_SANITIZER`` and
@@ -196,7 +197,12 @@ How It Works
    non-boundary zones (ADR-0060) passes through ``_apply_sink_zone_gap``:
    a present language with no sink in the zone withholds a clean verdict, and
    declared unreached shapes qualify it with ``CAVEAT_UNREACHED_SINK_SHAPES``
-   (INV-pivam). Then ``_disclose_scoped_blindness`` names the set-aside
+   (INV-pivam). Next, a clean taint verdict whose label a source value
+   was seen leaving through an ``unfollowed_construct`` call site
+   (``taint.find_unfollowed_escapes``) is withheld by
+   ``_withhold_for_unfollowed_escapes`` (INV-nohob), so when both fire the
+   withheld reason is the sink-zone gap's. Then ``_disclose_scoped_blindness``
+   names the set-aside
    languages in ``details``. Last, ``_disclose_untraced_vouch`` appends to a confirming
    verdict's ``details`` the modules that only an overlay's
    ``module_completeness`` grant vouched for, whose source was not traced;
@@ -893,6 +899,45 @@ def _apply_sink_zone_gap(verdict: ClaimVerdict, gap: SinkZoneGap) -> ClaimVerdic
             ),
         }),
     )
+
+
+def _withhold_for_unfollowed_escapes(
+    verdict: ClaimVerdict,
+    label: str,
+    escapes: Sequence[Any],
+    include_non_production: bool,
+) -> ClaimVerdict:
+    """Withhold a clean taint verdict whose label's value was lost (INV-nohob).
+
+    ``escapes`` are :class:`taint.UnfollowedEscape` records: a source of
+    ``label`` the walk saw reach a construct neither it nor the call graph
+    follows (a callee writing through a pointer parameter, a copy into memory
+    the function does not own, a function-like macro, a variadic tail). No
+    finding came of it, and that absence is ignorance, so a clean verdict is
+    withheld rather than qualified -- torsocks' getenv'd SOCKS5 password
+    reaches the network through exactly such a path, and the claim read
+    ``confirmed_with_caveats``. Scoped like flows: a non-production source
+    counts only under ``include_non_production``. ``violated`` and
+    ``inconclusive`` are untouched.
+    """
+    if verdict.verdict not in CONFIRMING_VERDICTS:
+        return verdict
+    lost = sorted({
+        f"{e.construct} at {_symbol_path_slot(e.source_symbol)}:{e.site_line} "
+        f"({e.source})"
+        for e in escapes
+        if e.taint_label == label and (
+            include_non_production
+            or symbol_source_scope(e.source_symbol) == SOURCE_SCOPE_PRODUCTION
+        )
+    })
+    if not lost:
+        return verdict
+    return _require_coverage_to_confirm(verdict, (
+        f"{label} data leaves through {len(lost)} construct(s) the taint walk "
+        f"does not follow ({_render_capped_names(lost)}), so where it goes "
+        f"was never examined"
+    ))
 
 
 def is_choice_shaped_source(primitive: str) -> bool:
@@ -6801,6 +6846,7 @@ def verify_claims(
     withheld_community_summaries: "Sequence[str]" = (),
     blind_by_source_taint: Mapping[str, ScopedBlindness] | None = None,
     sink_zone_gaps: Mapping[tuple[str, str], SinkZoneGap] | None = None,
+    unfollowed_escapes: Sequence[Any] = (),
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -6829,6 +6875,10 @@ def verify_claims(
         sink_zone_gaps: Per ``(source_taint, prohibited_sink_zone)``, what the
             claim's sink zone cannot see in the languages present (INV-pivam);
             applied after the coverage gate by :func:`_apply_sink_zone_gap`.
+        unfollowed_escapes: :class:`taint.UnfollowedEscape` records from
+            :func:`taint.find_unfollowed_escapes`; a clean taint verdict whose
+            label has one is withheld (INV-nohob,
+            :func:`_withhold_for_unfollowed_escapes`).
 
     Returns:
         List of ClaimVerdict objects, one per claim.
@@ -6868,6 +6918,10 @@ def verify_claims(
             gap = sink_zone_gaps.get((tf.source_taint, tf.prohibited_sink_zone))
             if gap is not None:
                 verdict = _apply_sink_zone_gap(verdict, gap)
+        if tf is not None and unfollowed_escapes:
+            verdict = _withhold_for_unfollowed_escapes(
+                verdict, tf.source_taint, unfollowed_escapes, include_non_production,
+            )
         if scoped is not None and claim.constraint_taint_flow is not None:
             verdict = _disclose_scoped_blindness(
                 verdict, claim.constraint_taint_flow.source_taint, scoped,

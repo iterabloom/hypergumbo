@@ -27,7 +27,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0016](0016-io-boundary-analysis.md) | I/O Boundary Analysis and Security Claim Verification | Accepted | 2026-03-18 |
 | [0017](0017-taint-zone-dataflow.md) | Taint-Zone Dataflow Analysis | Partially superseded by ADR-0037, ADR-0038 | 2026-03-22 |
 | [0018](0018-transcript-sync-and-playbook-injection.md) | Vendor-Agnostic Transcript Sync and LLM-Driven Playbook Injection | Accepted | 2026-03-29 |
-| [0019](0019-remote-access-transport.md) | Remote Access Transport | Accepted — Part A server side implemented (tracker v0.2.0); native client absent; Part B not started | 2026-03-30 |
+| [0019](0019-remote-access-transport.md) | Remote Access Transport | Accepted — amended 2026-10-17: Part A server side implemented (tracker v0.2.0); web frontend re-scoped to a Yjs-backed document (BlockSuite dropped), not built; native client absent; Part B not started | 2026-03-30 |
 | [0020](0020-tui-screenshot-annotation-and-inline-preview.md) | TUI Screenshot Annotation and Inline Preview | Accepted — partially implemented: Part 1 (annotation) shipped in tracker v0.2.0; Part 2 (inline preview) not wired | 2026-03-30 |
 | [0021](0021-tracker-federation.md) | Tracker Federation | Proposed | 2026-03-30 |
 | [0022](0022-language-profile-registry.md) | Per-Language Configuration Surface and Language Profile Registry | Partially superseded by own evolution (by-language half deferred) | 2026-04-10 |

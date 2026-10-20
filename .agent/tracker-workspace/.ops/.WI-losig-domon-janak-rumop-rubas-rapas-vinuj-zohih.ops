@@ -29,3 +29,25 @@
   clock: 2  # 1cd1
   nonce: 1cd1  # 1cd1
   message: "FOR WHOEVER IMPLEMENTS THIS: INV-hokin's branch (jgstern-agent/fix/hokin, local, cfd14717a0) changes the step this item edits. .woodpecker/full-suite.yml self-tree-validation now runs scripts/check-test-only-reachability on /tmp/self-tree.json in a multi-line command after the map build, and tests/test_check_test_only_reachability_ci_wiring.py executes that step's commands from the `-m hypergumbo_core run` line on with a stub `python`. Adding `--backend scip-python` or an env var to the map-build line keeps the test working. A new command before the map build (npm install) is outside what the test executes. A new `python ...` call after the map build makes the stub exit 97 and the test go red, by design. Also: the baseline was re-frozen in 71f327c4bc from a NON-scip map. Building with receiver typing will move the cohort."  # 1cd1
+- op: discuss  # e7b7
+  at: '2026-10-20T03:20:04Z'  # e7b7
+  by: agent  # e7b7
+  actor: jgstern_agent  # e7b7
+  clock: 3  # e7b7
+  nonce: e7b7  # e7b7
+  message: "2026-10-19 measurement, and the decision this now needs. (1) Opting in did NOTHING until WI-nijod (PR #1746): the backend indexed an empty scratch dir; on dev before it, the backend-enabled self-map was node-for-node identical to the plain one (61,431 / 244,545). Fixed now. (2) COST on the whole repo (1,712 .py files): scip-python alone is 306 s and 8.4 GB RSS, and needs NODE_OPTIONS=--max-old-space-size>=~9000 (the default V8 heap aborts at 4.2 GB after 170 s). The plain map is 5m16s / 3.9 GB. A full run with the backend holds both (~12+ GB peak, est.); on this 22 GB dev box Claude Code killed that run for low system memory, so the backend-enabled map, its scip-pass record, and how far each gate's cohort moves were NOT measured. (3) Facts already settled: the gate dependency (INV-hokin port) is live in .woodpecker/full-suite.yml; registry.npmjs.org is agent-allowlisted but the CI runner's own network and memory were NOT checked. DECISION FOR THE OWNER: the Woodpecker runner's memory budget for the self-tree-validation step (>= ~13 GB with the backend), or scope scip-python to production sources (--target-only, not yet exposed by invoke.py), which shrinks cost but leaves test callers untyped."  # e7b7
+- op: update  # 7417
+  at: '2026-10-20T07:35:27Z'  # 7417
+  by: agent  # 7417
+  actor: jgstern_agent  # 7417
+  clock: 4  # 7417
+  nonce: '7417'  # 7417
+  set:  # 7417
+    status: done  # 7417
+- op: discuss  # 4806
+  at: '2026-10-20T07:35:27Z'  # 4806
+  by: agent  # 4806
+  actor: jgstern_agent  # 4806
+  clock: 5  # 4806
+  nonce: '4806'  # 4806
+  message: "Fixed in PR #1750 (d17a67451d). full-suite.yml self-tree-validation now installs scip-python 0.6.6 + node, builds the self-map with HYPERGUMBO_SCIP_PYTHON=1 and NODE_OPTIONS=--max-old-space-size=9000, runs whatever earlier steps did (status: [success, failure]), and the reachability gate gets --require-pass scip_python, which exits 1 'FAIL: the map lacks …' when the backend did not contribute. Behavioral evidence (local whole-tree build of this repo): plain map 5m32s / 3.9 GB peak, 0 of 7,973 Python method calls typed; scip map 8m47s / 10.3 GB peak summed RSS, scip_python pass 55,281 nodes / 301,695 edges, 9,435 of 9,619 method calls typed (98.1%). On that map: stv matrix {} exit 0; reachability gated cohort 293, identical keys to the baseline. Tests: 3 wiring tests in tests/test_check_test_only_reachability_ci_wiring.py fail on the old YAML and pass on the new one. NOT yet verified: a live cron firing (apt/npm reachability from the CI VM and the real peak on the 16 GB VM); the first 01:00/13:00 UTC run will show it."  # 4806

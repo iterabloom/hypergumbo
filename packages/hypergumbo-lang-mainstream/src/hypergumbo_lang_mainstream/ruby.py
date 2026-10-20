@@ -35,7 +35,8 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
 - AMB-METHOD guard: when 3 or more method symbols share a bare call's
   short name (``method_candidates``), the call resolves only within the
   caller's own class
-- Method parameter filtering to prevent bare-identifier false positives
+- Local-binding filtering (``_is_ruby_local``): a bare identifier bound
+  earlier in its scope is a read, not a call
 
 If tree-sitter with Ruby support is not installed, the analyzer
 gracefully degrades: it emits a ``UserWarning`` and returns a skipped
@@ -51,7 +52,12 @@ How It Works
    - Pass 2: Detect calls and resolve against global symbol registry.
      A call in no method is anchored on the class or module whose body
      holds it (``_SCOPE_BODY_NODES``), else on the file (INV-bamij).
-     In ``_try_receiver_call``, a constant receiver the project declares
+     In ``_try_receiver_call``, a RELATIVE constant receiver is tried
+     through the call site's lexical nesting first, innermost out, as
+     Ruby's ``Module.nesting`` does (``Orchestrator`` inside
+     ``module TestData`` is ``TestData::Orchestrator`` when that is
+     declared compactly; ``_lexical_nesting``, WI-gomup). A constant
+     receiver the project declares
      but whose class lacks the method yields an unresolved edge carrying
      ``receiver_type_hint`` (``enclosing_class`` for ``.new`` ->
      ``#initialize``) so the ``inherited_calls`` linker can walk its
@@ -62,9 +68,20 @@ How It Works
      the owner path ADR-0051 asks for; WI-surar). A receiverless call
      (``puts "x"``, ``has_many :posts``) to a name no project symbol
      carries yields ``ruby:external:0-0:<name>:unresolved`` (WI-napaf,
-     python's INV-foluz residual shape); a bare ``identifier`` stays
-     unrecorded, since without a local-variable scope walk it cannot be
-     told from a variable read.
+     python's INV-foluz residual shape). A bare ``identifier`` -- also a
+     call's receiver and a ``[]`` object (``current_user.name``,
+     ``params[:id]``) -- is a send to ``self`` unless Ruby's lexical rule
+     makes it a LOCAL (a parameter, block parameter, rescue / ``for``
+     variable or an earlier assignment in the scope; ``_is_ruby_local``),
+     and takes the same placeholder when unresolved (WI-misir). Also since
+     WI-misir: an untyped variable receiver gets the ``external``
+     placeholder with ``call_construct: method``; ``self.m(...)`` binds the
+     enclosing class's method; a name 3+ method symbols share, and
+     ``super``, are recorded with an ``enclosing_class`` (the superclass
+     for ``super``) and that owner as the module, for the inherited-calls
+     linker -- ``external`` only when no owner is known (a top-level
+     caller, or ``super`` with no declared superclass); direct recursion
+     emits its self edge.
      Each file's edges are then annotated with dataflow access modes
      (ADR-0015 Tier 1, ``_annotate_dataflow``).
    - Passes 2b / 2c / 2d and 3, plus a post-pass inheritance sweep
@@ -72,8 +89,9 @@ How It Works
 5. Track variable types from constructor/factory calls (``var = Class.new``)
    to resolve ``var.method`` → ``Class#method`` (``ast_call`` evidence
    carrying ``meta["resolution_quality"] = "typed_receiver"``)
-6. Filter method parameters from bare-identifier handler to prevent
-   false-positive edges from parameter references
+6. Skip bare identifiers that Ruby's lexical rule makes LOCALS
+   (parameters, block parameters, rescue / ``for`` variables, earlier
+   assignments)
 
 Why This Design
 ---------------
@@ -392,32 +410,177 @@ def _is_nested_in_method(node: "tree_sitter.Node") -> bool:
     return False
 
 
-def _get_enclosing_method_params(
-    node: "tree_sitter.Node",
+# WI-misir: Ruby's own rule for telling a local-variable read from a
+# no-argument implicit-self call, which tree-sitter-ruby parses as the same
+# bare ``identifier``: a name is a LOCAL iff a parameter, block parameter,
+# rescue / for variable or assignment binds it earlier in the same scope. A
+# ``def`` / ``class`` / ``module`` starts a fresh scope; a block sees its outer
+# scope, and what a block binds is visible only inside that block.
+_RUBY_SCOPE_ROOTS = frozenset({
+    "method", "singleton_method", "class", "module", "singleton_class", "program",
+})
+_RUBY_BLOCK_SCOPES = frozenset({"block", "do_block", "lambda"})
+_RUBY_PARAM_PARENTS = frozenset({
+    "method_parameters", "lambda_parameters", "block_parameters",
+    "splat_parameter", "hash_splat_parameter", "block_parameter",
+    "destructured_parameter",
+})
+_RUBY_LHS_PARENTS = frozenset({
+    "left_assignment_list", "destructured_left_assignment", "rest_assignment",
+})
+
+
+def _ruby_binds(ident: "tree_sitter.Node") -> bool:
+    """Whether this ``identifier`` IS a binding site (it introduces a local)."""
+    parent = ident.parent
+    if parent is None:  # pragma: no cover - an identifier always has a parent
+        return False
+    kind = parent.type
+    if kind in ("assignment", "operator_assignment"):
+        return parent.child_by_field_name("left") == ident
+    if kind in ("optional_parameter", "keyword_parameter"):
+        return parent.child_by_field_name("name") == ident
+    if kind == "for":
+        return parent.child_by_field_name("pattern") == ident
+    return kind in _RUBY_PARAM_PARENTS or kind in _RUBY_LHS_PARENTS or kind == "exception_variable"
+
+
+def _ruby_scope_bindings(
+    root: "tree_sitter.Node", source: bytes,
+) -> list[tuple[str, int, int, int]]:
+    """``(name, at, visible_from, visible_to)`` for each binding in ``root``'s
+    scope, not descending into nested scopes."""
+    found: list[tuple[str, int, int, int]] = []
+    stack = list(root.children)
+    while stack:
+        node = stack.pop()
+        if node.type in _RUBY_SCOPE_ROOTS:
+            continue
+        if node.type == "identifier" and _ruby_binds(node):
+            visible = (root.start_byte, root.end_byte)
+            if node.parent is not None and node.parent.type != "method_parameters":
+                ancestor: "tree_sitter.Node | None" = node.parent
+                while ancestor is not None and ancestor != root:
+                    if ancestor.type in _RUBY_BLOCK_SCOPES:
+                        visible = (ancestor.start_byte, ancestor.end_byte)
+                        break
+                    ancestor = ancestor.parent
+            found.append((node_text(node, source), node.start_byte, *visible))
+        stack.extend(node.children)
+    return found
+
+
+def _is_ruby_local(
+    ident: "tree_sitter.Node",
     source: bytes,
-) -> set[str]:
-    """Extract parameter names from the enclosing method definition.
+    cache: dict[tuple[int, int], list[tuple[str, int, int, int]]],
+) -> bool:
+    """Whether a bare ``identifier`` reads a LOCAL (WI-misir; see above)."""
+    root = ident.parent
+    while root is not None and root.type not in _RUBY_SCOPE_ROOTS:
+        root = root.parent
+    if root is None:  # pragma: no cover - the program node encloses everything
+        return False
+    key = (root.start_byte, root.end_byte)
+    if key not in cache:
+        cache[key] = _ruby_scope_bindings(root, source)
+    name, at = node_text(ident, source), ident.start_byte
+    return any(
+        n == name and bound <= at and lo <= at < hi
+        for n, bound, lo, hi in cache[key]
+    )
 
-    Walks up the tree to find the nearest ``method`` or ``singleton_method``
-    node, then collects all ``identifier`` children of the ``method_parameters``
-    child.  Handles simple params, keyword params, and splat params.
 
-    Returns the set of bare parameter names (without ``*``, ``**``, ``&``, or
-    ``:`` prefixes).
-    """
-    current = node.parent
-    while current is not None:
-        if current.type in ("method", "singleton_method"):
-            params_node = find_child_by_type(current, "method_parameters")
-            if params_node is None:
-                return set()
-            names: set[str] = set()
-            for param in iter_tree(params_node):
-                if param.type == "identifier":
-                    names.add(node_text(param, source))
-            return names
-        current = current.parent
-    return set()  # pragma: no cover - defensive
+def _method_short_name(method: Symbol) -> str:
+    """``K#go`` / ``K.go`` -> ``go``."""
+    name = str(method.name)
+    for sep in ("#", "."):
+        if sep in name:
+            return name.rsplit(sep, 1)[1]
+    return name
+
+
+def _superclass_of(class_name: Optional[str], global_symbols: dict[str, Symbol]) -> Optional[str]:
+    """The superclass a ``class K < Base`` declares, from its symbol's meta."""
+    if not class_name:
+        return None
+    sym = global_symbols.get(class_name)
+    bases = (sym.meta or {}).get("base_classes") if sym is not None else None
+    return bases[0] if bases else None
+
+
+def _super_edge(
+    current_method: Symbol,
+    enc_class: Optional[str],
+    global_symbols: dict[str, Symbol],
+    line: int,
+    run_id: str,
+) -> Edge:
+    """``super`` / ``super(...)``: a call to the enclosing method's name, from
+    the PARENT class (WI-misir). The superclass rides as ``enclosing_class``,
+    so the inherited-calls linker's walk starts there; with no declared
+    superclass the owner is unknown and the hint is omitted."""
+    parent = _superclass_of(enc_class, global_symbols)
+    return make_unresolved_edge(
+        lang="ruby",
+        src_id=current_method.id,
+        callee_name=_method_short_name(current_method),
+        line=line,
+        pass_id=PASS_ID,
+        run_id=run_id,
+        # The owner is the parent, never "external": the method is the
+        # project's (or its gem parent's), and ``external`` would let a Kernel
+        # catalogue row of the same short name match it.
+        module_hint=parent or "external",
+        enclosing_class=parent,
+        call_construct="method",
+    )
+
+
+def _emit_self_send(
+    callee_name: str,
+    current_method: Symbol,
+    enc_class: Optional[str],
+    local_symbols: dict[str, Symbol],
+    line: int,
+    edges: list[Edge],
+    run_id: str,
+) -> None:
+    """A send to ``self`` (``self.m(...)``, or a bare name 3+ classes define):
+    bind the enclosing class's own method, else record the call with that
+    class as ``enclosing_class`` for the inherited-calls linker (WI-misir).
+    Never binds another class's method of the same name."""
+    callee = _resolve_bare_call_class_aware(callee_name, enc_class, local_symbols)
+    if (
+        callee is not None and callee.kind == "method"
+        and enc_class is not None and _symbol_belongs_to_class(callee, enc_class)
+    ):
+        edges.append(Edge.create(
+            src=current_method.id,
+            dst=callee.id,
+            edge_type="calls",
+            line=line,
+            evidence_type="ast_call",
+            resolution_score=_RUBY_SAME_CLASS_GRADE,
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            meta={"call_construct": "method", "receiver": "self"},
+        ))
+        return
+    edges.append(make_unresolved_edge(
+        lang="ruby",
+        src_id=current_method.id,
+        callee_name=callee_name,
+        line=line,
+        pass_id=PASS_ID,
+        run_id=run_id,
+        # The project's own name: its owner is the enclosing class, not
+        # "external" (which would short-name-match a Kernel row; WI-napaf).
+        module_hint=enc_class or "external",
+        enclosing_class=enc_class,
+        call_construct="method",
+    ))
+
 
 
 def _enclosing_class_from_method(method: Symbol) -> Optional[str]:
@@ -2246,6 +2409,38 @@ def _extract_included_modules(
     return modules
 
 
+def _lexical_nesting(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """``Module.nesting`` at ``node``: the enclosing modules / classes as full
+    lexical paths, innermost first (WI-gomup).
+
+    ``module A; module B`` gives ``["A::B", "A"]``. A compact ``class A::C``
+    is ONE level whose name is ``A::C`` -- Ruby does not add ``A`` to the
+    nesting -- so inside it the nesting is ``["A::C"]``. Positional: read off
+    the call site's ancestors, never looked up by name.
+    """
+    names: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type in ("module", "class"):
+            name_node = current.child_by_field_name("name")
+            if name_node is not None:
+                names.append(node_text(name_node, source).lstrip(":"))
+        current = current.parent
+    names.reverse()  # outermost first
+    return ["::".join(names[: i + 1]) for i in range(len(names) - 1, -1, -1)]
+
+
+def _nested_candidates(
+    receiver_node: "tree_sitter.Node", receiver_class: str, source: bytes,
+) -> list[str]:
+    """The names Ruby tries for a RELATIVE constant before the top level:
+    each lexical nesting level qualifying it (WI-gomup). ``::X`` is absolute
+    and gets none."""
+    if receiver_class.startswith("::"):
+        return []
+    return [f"{level}::{receiver_class}" for level in _lexical_nesting(receiver_node, source)]
+
+
 def _try_receiver_call(
     receiver_node: "tree_sitter.Node",
     method_name: str,
@@ -2322,7 +2517,10 @@ def _try_receiver_call(
         # uses the unambiguous root-namespace prefix idiom common in Rails
         # background jobs (e.g. chatwoot's
         # ``::Instagram::MessageText.new(...).perform``).
-        candidates = [receiver_class.lstrip(":")]
+        candidates = [
+            *_nested_candidates(receiver_node, receiver_class, source),
+            receiver_class.lstrip(":"),
+        ]
         if receiver_node.type == "scope_resolution" and short_name and short_name != receiver_class:
             candidates.append(short_name)
         for candidate in candidates:
@@ -2405,8 +2603,16 @@ def _try_receiver_call(
     # function used to end with had been resolving that shape by accident.
     # A class DECLARED with the prefix (``class ::Foo::Bar``) keeps it in its
     # symbol names, so the literal spelling is still tried second.
-    candidates = [receiver_class.lstrip(":")]
-    if receiver_class != candidates[0]:
+    # WI-gomup: a RELATIVE constant is tried through the call site's lexical
+    # nesting first, innermost out (``Orchestrator`` inside ``module TestData``
+    # is ``TestData::Orchestrator`` when that is declared), as Ruby's
+    # ``Module.nesting`` lookup does. Only exact registered keys match, so a
+    # nesting level that declares no such constant falls through.
+    candidates = [
+        *_nested_candidates(receiver_node, receiver_class, source),
+        receiver_class.lstrip(":"),
+    ]
+    if receiver_class not in candidates:
         candidates.append(receiver_class)
     if receiver_node.type == "scope_resolution" and short_name and short_name != receiver_class:
         candidates.append(short_name)
@@ -2670,6 +2876,8 @@ def _extract_edges_from_file(
         else list({s.id: s for s in local_symbols.values()}.values()))
     _caller_path = str(file_path)
     edges: list[Edge] = []
+    # WI-misir: per-scope local bindings, computed once per scope.
+    local_scope_cache: dict[tuple[int, int], list[tuple[str, int, int, int]]] = {}
     file_id = make_file_id("ruby", str(file_path))
     # The anchor of last resort for a call in no method, class or module.
     file_anchor = file_anchor_symbol("ruby", str(file_path), PASS_ID, run_id)
@@ -2775,7 +2983,25 @@ def _extract_edges_from_file(
                     if current_method is not None:
                         # Try receiver-qualified resolution first
                         receiver_node = node.child_by_field_name("receiver")
-                        if receiver_node is not None and _try_receiver_call(
+                        enc_class = _enclosing_class_from_method(current_method)
+                        if method_node.type == "super":
+                            # WI-misir: ``super(...)`` calls the PARENT's method
+                            # of the enclosing method's name. The superclass is
+                            # the ``enclosing_class`` hint, so the inherited-calls
+                            # linker walks from there.
+                            edges.append(_super_edge(
+                                current_method, enc_class, global_symbols,
+                                node.start_point[0] + 1, run_id,
+                            ))
+                        elif receiver_node is not None and receiver_node.type == "self":
+                            # WI-misir: ``self.helper(...)`` is a send to the
+                            # enclosing class, resolved as a bare call is.
+                            _emit_self_send(
+                                callee_name, current_method, enc_class,
+                                local_symbols, node.start_point[0] + 1,
+                                edges, run_id,
+                            )
+                        elif receiver_node is not None and _try_receiver_call(
                             receiver_node, callee_name, source,
                             current_method, global_symbols, resolver,
                             node.start_point[0] + 1, edges, run_id,
@@ -2817,28 +3043,49 @@ def _extract_edges_from_file(
                                         origin_run_id=run_id,
                                         meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
                                     ))
-                            # else: variable receiver with unknown type — no edge
-                            # (avoids false positives from bare-name matching)
-                        # AMB-METHOD guard: skip bare-call resolution when
-                        # 3+ classes define the same method name.
+                            else:
+                                # WI-misir: a variable receiver of unknown type
+                                # still CALLS something; record the send with the
+                                # ``external`` placeholder and ``call_construct:
+                                # method``, as javascript (WI-nasuf), python,
+                                # java, go and the rest do. Not bound by name.
+                                edges.append(make_unresolved_edge(
+                                    lang="ruby",
+                                    src_id=current_method.id,
+                                    callee_name=callee_name,
+                                    line=node.start_point[0] + 1,
+                                    pass_id=PASS_ID,
+                                    run_id=run_id,
+                                    call_construct="method",
+                                ))
+                        # AMB-METHOD guard: when 3+ classes define the name, only
+                        # the enclosing class's own method may bind; otherwise the
+                        # call is recorded with its enclosing class, which the
+                        # inherited-calls linker walks (WI-misir: it was silent).
                         elif len(_mc.get(callee_name, ())) >= 3:
-                            pass
+                            _emit_self_send(
+                                callee_name, current_method, enc_class,
+                                local_symbols, node.start_point[0] + 1,
+                                edges, run_id,
+                            )
                         # Check local symbols (bare calls only, no receiver)
                         elif callee_name in local_symbols:
                             callee = local_symbols[callee_name]
-                            # Skip self-referential edges (e.g., logger method
-                            # calling Postal.logger where method name matches)
-                            if callee.id != current_method.id:
-                                edges.append(Edge.create(
-                                    src=current_method.id,
-                                    dst=callee.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="ast_call",
-                                    origin=PASS_ID,
-                                    origin_run_id=run_id,
-                                    meta={"call_construct": "method"},
-                                ))
+                            # WI-misir: a receiverless send naming the enclosing
+                            # method is direct recursion -- a real call, emitted
+                            # as python and java emit it. (The receiver case this
+                            # guard once covered, ``Postal.logger`` inside
+                            # ``logger``, goes through _try_receiver_call.)
+                            edges.append(Edge.create(
+                                src=current_method.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="ast_call",
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                meta={"call_construct": "method"},
+                            ))
                         # Check global symbols via resolver (bare calls only)
                         elif receiver_node is None:
                             # Use require hints for disambiguation
@@ -2898,25 +3145,47 @@ def _extract_edges_from_file(
                                     run_id=run_id,
                                 ))
 
+        # WI-misir: a bare ``super`` (no parentheses) is its own node; the
+        # parenthesised form is a ``call`` whose method is ``super`` (above).
+        elif node.type == "super":
+            parent = node.parent
+            if parent is not None and parent.type == "call" and (
+                parent.child_by_field_name("method") == node
+            ):
+                continue
+            current_method = _get_enclosing_method(node, source, decl_index)
+            if current_method is not None:
+                edges.append(_super_edge(
+                    current_method, _enclosing_class_from_method(current_method),
+                    global_symbols, node.start_point[0] + 1, run_id,
+                ))
+
         # Detect bare method calls (identifier nodes that are method names)
         # Skip identifiers that are part of a call/method_call - those are handled above
         elif node.type == "identifier":
-            # If parent is a call-related node, skip (already handled by call handler)
-            if node.parent is not None and node.parent.type in (
-                "call", "method_call", "element_reference", "scope_resolution"
+            # A call's METHOD name is the call arm's. Its RECEIVER and an
+            # element reference's OBJECT are bare identifiers like any other
+            # (``current_user.name``, ``params[:id]``; WI-misir), as is
+            # nothing that names a definition (``def name``, ``alias``).
+            parent = node.parent
+            if parent is not None and (
+                (parent.type in ("call", "method_call", "scope_resolution")
+                 and not (parent.type == "call"
+                          and parent.child_by_field_name("receiver") == node))
+                or (parent.type == "element_reference"
+                    and parent.child_by_field_name("object") != node)
+                or parent.type in ("method", "singleton_method", "alias", "undef")
             ):
                 continue
             current_method = _get_enclosing_method(node, source, decl_index)
             if current_method is not None:
                 callee_name = node_text(node, source)
 
-                # Skip identifiers that match method parameter names.
-                # In Ruby, ``def initialize(ip); @ip = ip; end`` — the
-                # second ``ip`` is a parameter reference, not a method call.
-                # Without this guard, ``ip`` would match any ``ip`` method
-                # in the codebase via bare-name lookup.
-                method_params = _get_enclosing_method_params(node, source)
-                if callee_name in method_params:
+                # WI-misir: a LOCAL (a parameter, block parameter, rescue
+                # variable or an earlier assignment in the scope) is a read,
+                # not a send. This replaces the parameters-only guard, which
+                # left every other local free to bind a same-named method.
+                if _is_ruby_local(node, source, local_scope_cache):
                     continue
 
                 # Class-aware resolution: extract enclosing class/module
@@ -2938,15 +3207,28 @@ def _extract_edges_from_file(
                 )
 
                 if callee is not None:
-                    if callee.kind == "method" and callee.id != current_method.id:
+                    # WI-misir: ``callee == current_method`` is direct
+                    # recursion, a real call (python and java emit it).
+                    if callee.kind == "method":
                         # Same-class match gets higher confidence
                         same_class = (
                             enclosing_class is not None
                             and _symbol_belongs_to_class(callee, enclosing_class)
                         )
-                        # AMB-METHOD: skip cross-class matches when ambiguous
+                        # AMB-METHOD: a cross-class match is not bound; the
+                        # call is recorded with its enclosing class (WI-misir).
                         if ambiguous and not same_class:
-                            pass
+                            edges.append(make_unresolved_edge(
+                                lang="ruby",
+                                src_id=current_method.id,
+                                callee_name=callee_name,
+                                line=node.start_point[0] + 1,
+                                pass_id=PASS_ID,
+                                run_id=run_id,
+                                module_hint=enclosing_class or "external",
+                                enclosing_class=enclosing_class,
+                                call_construct="method",
+                            ))
                         else:
                             grade = (
                                 _RUBY_SAME_CLASS_GRADE if same_class
@@ -2969,7 +3251,7 @@ def _extract_edges_from_file(
                     lookup_result = resolver.lookup(callee_name, path_hint=path_hint, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         callee = lookup_result.symbol
-                        if callee.kind == "method" and callee.id != current_method.id:
+                        if callee.kind == "method":
                             edges.append(Edge.create(
                                 src=current_method.id,
                                 dst=callee.id,
@@ -2983,6 +3265,33 @@ def _extract_edges_from_file(
                                 origin_run_id=run_id,
                                 meta={"call_construct": "method", "receiver": "bare"},
                             ))
+                    elif not lookup_result.found:
+                        # WI-misir: a non-local bare name no project symbol
+                        # carries is an implicit-self send to an unknown owner
+                        # (``params``, ``current_user``, ``puts``): WI-napaf's
+                        # ``external`` placeholder, as for the call form.
+                        edges.append(make_unresolved_edge(
+                            lang="ruby",
+                            src_id=current_method.id,
+                            callee_name=callee_name,
+                            line=node.start_point[0] + 1,
+                            pass_id=PASS_ID,
+                            run_id=run_id,
+                        ))
+                else:
+                    # AMB-METHOD with no same-class candidate: recorded with
+                    # the enclosing class, not bound (WI-misir).
+                    edges.append(make_unresolved_edge(
+                        lang="ruby",
+                        src_id=current_method.id,
+                        callee_name=callee_name,
+                        line=node.start_point[0] + 1,
+                        pass_id=PASS_ID,
+                        run_id=run_id,
+                        module_hint=enclosing_class or "external",
+                        enclosing_class=enclosing_class,
+                        call_construct="method",
+                    ))
 
         # Hash literal function references: {on_success: my_callback}
         # AST: pair → hash_key_symbol : identifier

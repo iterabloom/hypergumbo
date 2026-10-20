@@ -38,7 +38,11 @@ Analysis proceeds in two passes for cross-file resolution:
 
 **Pass 2 - Edge Extraction:**
 - Walk AST to find function/method call sites
-- Resolve callees using local symbols first, then imports
+- Resolve callees using local symbols first, then imports. Methods sit in the
+  local table under their QUALIFIED name (``Class.method``) only: a bare-name
+  call cannot reach a method (a class body is not an enclosing scope), and a
+  bare key bound ``open(...)`` / ``list(...)`` to same-named methods and
+  overwrote same-named module functions (WI-barip)
 - Detect ``self.method()`` calls from the OWN body of the class ``self``
   denotes, found by POSITION per code block -- the innermost frame binding
   ``self`` must be a non-static method (``_self_receiver_class_id`` over
@@ -89,12 +93,14 @@ Detected Patterns
   io-boundaries and taint can match it. See ``_receiver_type`` (the single
   receiver predicate), ``_external_constructor_type`` (binding-checked against
   imports), ``EXTERNAL_CONSTRUCTOR_TYPES`` (derived from the I/O catalogue) and
-  ``TYPE_PRESERVING_MEMBERS`` (members whose result keeps the receiver's type).
-  A library FACTORY types its result from its signature row
-  (``w = csv.writer(f)`` -> ``_csv.Writer``, ``urllib.request.build_opener``;
-  ``_library_producer_type``, WI-kozaj), and a dotted field path is a receiver
-  of its own: ``self.conn`` typed in ``__init__``, and ``svc.conn`` /
-  ``self.svc.conn`` one hop through a project-class field (INV-mumov)
+  ``_member_return_type`` (a member's declared return type on a typed receiver,
+  from ``library_signatures``, WI-tumol; ``TYPE_PRESERVING_MEMBERS`` is the
+  subset that keeps the receiver's type). A library FACTORY types its result
+  from its signature row (``w = csv.writer(f)`` -> ``_csv.Writer``,
+  ``urllib.request.build_opener``; ``_library_producer_type``, WI-kozaj), and a
+  dotted field path is a receiver of its own: ``self.conn`` typed in
+  ``__init__``, and ``svc.conn`` / ``self.svc.conn`` one hop through a
+  project-class field (INV-mumov)
 - Scope of an import: ``imports`` / ``module_imports`` are file-scoped maps, so
   each call site reads them narrowed by ``ScopeStack.value_shadowed()`` -- a
   parameter or local named like an import (``def f(socket): socket.socket(h)``)
@@ -153,13 +159,13 @@ the same dual-output pattern.
 ID Schemes
 ----------
 - **stable_id**: sha256 over the v6 tuple, anchored on the file-anchored
-  ``containing_stable_id`` (ADR-0035 §2). Functions and methods with a normalizable
+  ``containing_stable_id`` (ADR-0035 §1). Functions and methods with a normalizable
   signature use the typed tier (``make_typed_stable_id``: kind, normalized signature,
   visibility, decorators, ``name``, ``qualified_name``); the untyped fallback hashes
   kind, param count, arity flags, decorators, ``name``, ``qualified_name`` and
   ``occurrence_index``. Both tiers are chosen in one place,
   ``python_callable_stable_id``, which ``jupyter.py`` also calls for a notebook's
-  functions. It does NOT survive a rename or a move: both the name and
+  functions. It does NOT survive a rename or a move (ADR-0035 §2): both the name and
   the containing file feed the hash. Use ``fingerprint`` to join a symbol across a
   rename (INV-zudob).
 - **shape_id**: sha256 of AST structure (control flow, nesting).
@@ -3585,11 +3591,17 @@ def _extract_file_analysis(
                         ),
                     )
                     symbols.append(method_symbol)
-                    # The flat bare-name write. It no longer answers
-                    # ``self.method()`` (WI-kutal: Case 2a reads
-                    # ``methods_by_class_id`` below); it is retained for the
-                    # other consumers of symbol_by_name.
-                    symbol_by_name[item.name] = method_symbol
+                    # WI-barip: keyed by the QUALIFIED name (``Class.method``),
+                    # never the bare one. A bare-name call ``open(...)`` reads
+                    # this table (Case 1), and Python scoping cannot reach a
+                    # method from a function body -- a class body is not an
+                    # enclosing scope -- so the bare write bound builtins and
+                    # module functions to same-named methods (django 56
+                    # sites, pretix 28) and overwrote a same-named module
+                    # function outright. ``self.method()`` reads
+                    # ``methods_by_class_id`` (WI-kutal); the getter and
+                    # decorator lookups read this qualified key.
+                    symbol_by_name[method_symbol.name] = method_symbol
                     # WI-jafat CHANGE A: also register the method under its AST
                     # node id (collision-immune, mirroring the FunctionDef path
                     # below). Without this, caller resolution in _extract_edges
@@ -4047,9 +4059,8 @@ def _resolve_property_getter(
     if sym_by_path_name is not None:
         getter = sym_by_path_name.get((class_symbol.path, qualified_name))
     if getter is None:
-        cand = local_symbols.get(attr_name)
-        if cand is not None and cand.name == qualified_name:
-            getter = cand
+        # Methods are keyed by qualified name in ``local_symbols`` (WI-barip).
+        getter = local_symbols.get(qualified_name)
     if getter is None or getter.kind != "method":
         return None
     for dec in (getter.meta or {}).get("decorators", []):
@@ -6710,6 +6721,20 @@ def _extract_edges(
                         and isinstance(item.context_expr, ast.Call)
                     ):
                         ext_module = _external_constructor_module(item.context_expr)
+                        if ext_module is None:
+                            # WI-tumol: a context manager DERIVED from a typed
+                            # receiver -- ``with opener.open(url) as resp:``,
+                            # the idiom django's TemplateCommand.download uses
+                            # -- types the name the same way the assignment
+                            # branch types ``resp = opener.open(url)``:
+                            # constructor first, then the signature-row
+                            # derivation. ``__enter__`` is taken to return the
+                            # object itself, the assumption the constructor
+                            # form above already makes.
+                            ext_module = _derived_receiver_module(
+                                item.context_expr, external_var_types,
+                                _external_constructor_module, _manager_root,
+                            )
                         if ext_module is not None:
                             external_var_types[item.optional_vars.id] = ext_module
 
@@ -6863,6 +6888,7 @@ def _extract_edges(
 
     def _resolve_decorator_target(
         decorator: ast.expr,
+        owner_class: str | None = None,
     ) -> Symbol | None:
         """Resolve the target of a decorator expression to a Symbol.
 
@@ -6880,8 +6906,13 @@ def _extract_edges(
         # Simple name: @decorator or @dataclass
         if isinstance(decorator, ast.Name):
             name = decorator.id
-            # Check local symbols
-            symbol = local_symbols.get(name)
+            # WI-barip: a decorator defined earlier in the SAME class body
+            # (``def deco(f)`` then ``@deco``) is reached: the class body's
+            # namespace is live while it executes. Methods are keyed by
+            # qualified name, so it is asked for as ``Class.deco`` first.
+            symbol = (
+                local_symbols.get(f"{owner_class}.{name}") if owner_class else None
+            ) or local_symbols.get(name)
             if symbol:
                 return symbol
             # Check imports (with suffix matching)
@@ -6897,11 +6928,10 @@ def _extract_edges(
                 receiver_name = decorator.value.id
                 attr_name = decorator.attr
 
-                # Check if receiver is a local class (e.g., @Registry.register)
-                # Methods are stored with short name as key, so look up attr_name
-                # and verify it's a method of the receiver class
-                symbol = local_symbols.get(attr_name)
-                if symbol and symbol.name == f"{receiver_name}.{attr_name}":
+                # Check if receiver is a local class (e.g., @Registry.register):
+                # methods are keyed by qualified name (WI-barip).
+                symbol = local_symbols.get(f"{receiver_name}.{attr_name}")
+                if symbol:
                     return symbol
 
                 # Check if receiver is an imported module (with suffix matching)
@@ -6919,7 +6949,11 @@ def _extract_edges(
     ) -> None:
         """Create decorated_by edges for each decorator on a symbol."""
         for decorator in decorator_list:
-            decorator_symbol = _resolve_decorator_target(decorator)
+            decorator_symbol = _resolve_decorator_target(
+                decorator,
+                decorated_symbol.name.rsplit(".", 1)[0]
+                if decorated_symbol.kind == "method" else None,
+            )
 
             # Get the line number from the decorator itself
             line = getattr(decorator, "lineno", 0)
@@ -7761,14 +7795,15 @@ def _derived_receiver_module(
     ``p.write_text(x)`` degrades to the ``external`` placeholder.
 
     Recursive on the receiver, so a chain works whether it is written as one expression
-    (``d / "a" / "b"``) or several statements. Only :data:`TYPE_PRESERVING_MEMBERS` rows
-    propagate — see that table for why default-deny here is a measurement rather than a
-    precaution, and why the type is compared by exact string.
+    (``d / "a" / "b"``) or several statements. Only members with a
+    ``library_signatures`` row propagate (:func:`_member_return_type`), each to the
+    type its row declares -- the receiver's own type for a preserving row such as
+    pathlib's, another type for ``OpenerDirector.open`` (WI-tumol). Default-deny: a
+    member with no row types nothing.
 
-    Returns ``None`` for every shape that is not an allowlisted derivation of a
-    known-typed receiver, which includes numeric ``a / b`` (no hint on the root),
-    ``os.path.join`` (a module function, not a receiver derivation), and every member
-    that returns something other than the receiver's type.
+    Returns ``None`` for every shape that is not a rowed derivation of a known-typed
+    receiver, which includes numeric ``a / b`` (no hint on the root), ``os.path.join``
+    (a module function, not a receiver derivation), and every member with no row.
 
     ``ctor_type`` resolves a CONSTRUCTOR CALL used as the chain's root —
     ``Path(raw) / "out.txt"`` rather than ``d / "out.txt"``. Measured at 82 of 294
@@ -7776,9 +7811,8 @@ def _derived_receiver_module(
     share of the shape rather than a rounding error. It is a parameter instead of a
     direct call because the resolver needs this file's per-file import maps, which live
     in an enclosing scope; passing ``None`` keeps the pure-derivation behaviour for any
-    caller that has no import context. The :data:`TYPE_PRESERVING_MEMBERS` allowlist
-    still gates which members propagate, so widening the ROOT does not widen the
-    propagation rule.
+    caller that has no import context. The signature rows still gate which members
+    propagate, so widening the ROOT does not widen the propagation rule.
 
     ``manager_root`` (WI-gulaz) is the same kind of parameter for the Django
     manager root: the per-block :class:`_DjangoReceiverOracle` that knows
@@ -7975,11 +8009,10 @@ def _library_producer_type(qualified: str | None) -> str | None:
     ``OpenerDirector.open`` row. Moving a factory's row to the executor is a
     Ruling 3 removal and still needs its finding-level A/B.
 
-    WHAT IT DOES NOT DO. A MEMBER row whose return type differs from its owner
-    (``sqlite3.Connection.cursor: sqlite3.Cursor``) types the result of a call
-    ``sqlite3.Connection.cursor(conn)`` written on the class itself, not of
-    ``conn.cursor()`` on a typed receiver: propagation through a receiver is
-    :data:`TYPE_PRESERVING_MEMBERS`'s rule, and it stays type-preserving only.
+    A MEMBER row answers here for a call written on the class itself
+    (``sqlite3.Connection.cursor(conn)``) and, through
+    :func:`_member_return_type`, for ``conn.cursor()`` on a typed receiver
+    (WI-tumol): one row, both spellings.
     """
     if qualified is None:
         return None
@@ -8152,12 +8185,23 @@ def _preserved_receiver_type(
     ctor_type: Callable[[ast.Call], "str | None"] | None = None,
     manager_root: Callable[[ast.expr], "str | None"] | None = None,
 ) -> str | None:
-    """``member``'s return type when invoked on ``receiver``, if it is the same type.
+    """``member``'s return type when invoked on ``receiver``, from its signature row.
 
     The type question is delegated to :func:`_receiver_type`; what stays here is the
     PROPAGATION rule, which is a separate decision — widening which receivers carry a
-    type must not widen which members preserve it, so :data:`TYPE_PRESERVING_MEMBERS`
-    gates this half and nothing else.
+    type must not widen which members propagate one, so the signature rows
+    (:func:`_member_return_type`) gate this half and nothing else.
+
+    WI-tumol widened the rule from "the SAME type" to "the type the row declares".
+    It admitted only rows whose value equals their owner
+    (:data:`TYPE_PRESERVING_MEMBERS`), so a member returning ANOTHER type lost the
+    type at that hop even though its row said what it was: ``opener.open(url)``
+    returns an ``http.client.HTTPResponse`` (``urllib.request.OpenerDirector.open``
+    row), and ``resp.read()`` -- the call where the far side's bytes reach the
+    program -- arrived as ``python:external:0-0:read``. A type-preserving row is
+    the special case whose value is its owner, so pathlib's chains are unchanged.
+    The Django manager ROOT below stays on the preserving subset: it types no
+    receiver, only the result of a QuerySet-returning member on the marker.
     """
     hint = _receiver_type(receiver, external_var_types, ctor_type, manager_root)
     if hint is None:
@@ -8181,7 +8225,21 @@ def _preserved_receiver_type(
         ):
             return DJANGO_ORM_MODULE
         return None
-    return hint if member in TYPE_PRESERVING_MEMBERS.get(hint, ()) else None
+    return _member_return_type(hint, member)
+
+
+def _member_return_type(owner: str, member: str) -> str | None:
+    """WI-tumol: the type ``owner.member`` returns, read from its signature row.
+
+    The receiver-hop twin of :func:`_library_producer_type`, and the same row: a
+    member's key is its qualified name (``sqlite3.Connection.cursor``), so the
+    question "what does ``conn.cursor()`` return when ``conn`` is a
+    ``sqlite3.Connection``?" is ``_library_producer_type("sqlite3.Connection.cursor")``.
+    Read at call time for the same reason (a user-channel row takes effect in
+    the run that loads it). A member with no row returns ``None``: the safe
+    direction, the receiver stays untyped.
+    """
+    return _library_producer_type(f"{owner}.{member}")
 
 
 def _binding_checked_type_hint(

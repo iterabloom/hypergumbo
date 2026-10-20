@@ -22,3 +22,18 @@
     fields:  # c062
       statement: "A C++ call the I/O catalogue cannot classify is an examined negative only if every header it could have come from is enumerated; a header reached through a quoted include, or transitively through any include, is one it could have come from."  # c062
       root_cause: "cpp.py stamps every unresolved call with the file's angle-bracket includes only (WI-rupik); the module filter refuses a row whose header is not in that list, and the coverage gate's ALL-expansion (INV-zimud) treats the partial list as the complete set of homes. INV-zikul fixed the same mechanism in c.py only."  # c062
+- op: update  # 55ee
+  at: '2026-10-19T17:03:06Z'  # 55ee
+  by: agent  # 55ee
+  actor: jgstern_agent  # 55ee
+  clock: 2  # 55ee
+  nonce: 55ee  # 55ee
+  set:  # 55ee
+    status: satisfied  # 55ee
+- op: discuss  # a35e
+  at: '2026-10-19T17:03:07Z'  # a35e
+  by: agent  # a35e
+  actor: jgstern_agent  # a35e
+  clock: 3  # a35e
+  nonce: a35e  # a35e
+  message: "Fixed in PR #1736 (dev 517a52b64f).\n\nBehavioral evidence, the item's repro re-run on merged dev with `hypergumbo verify-claims`:\n  pq4  util.h: #include <cstdio>; main.cpp: #include <cstdint> / #include \"util.h\" / fopen(p, \"w\"); fputs  -> NO-FSWRITE violated (2 chains); was CONFIRMED\n  pq2  net.h: #include <sys/socket.h>; main.cpp: #include \"net.h\" / send(...)                           -> NO-NET-SEND violated (1); was CONFIRMED\n(The cross-claims stay confirmed: pq2 writes no file, pq4 sends nothing.) Production-path tests: test_cpp_include_closure.py.\n\nFix: cpp takes include_closure's stamp, as c.py does since INV-zikul, WITHOUT the names of in-repo headers reached only transitively (stamp(transitive_in_repo=False)). Those headers are still read, so the system headers they pull in stay in the stamp.\n\nThe two design questions:\n(a) SIZE. Transitive in-repo names were 65% of the stamp's characters on modsecurity. Behavior map: dev 15.2 MB; full closure 35.2 MB (x2.31); trimmed 18.2 MB (x1.19).\n(b) LINKER. method-call-recovery recovers 0 edges on modsecurity on today's dev. The prototype's 4 lost edges no longer exist, so there is nothing to lose, and the linker is UNCHANGED. Widening it to stamped member calls was tried: 13 new recoveries, at least 3 wrong (op.evaluate on an Operator bound to RuleWithActions::evaluate). Not taken.\n\nVerdict A/B (verify-claims, frozen copies), dev vs full vs trimmed: full and trimmed are IDENTICAL on every claim of modsecurity and whisper.cpp, and every move from dev is toward more findings.\n  modsecurity: NO-FSWRITE 19 -> 25, NO-SUBPROC 2 -> 3.\n  whisper.cpp: NO-FSWRITE 204 -> 282, NO-FSREAD 151 -> 157, NO-SUBPROC 14 -> 15, host-secret-no-host-fs 13 -> 24, host-secret-no-logging 14 -> 20, untrusted-input-no-host-fs 3 -> 4."  # a35e

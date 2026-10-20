@@ -20,3 +20,18 @@
     fields:  # 06e9
       statement: "A definition is not a call; and a file the analyzer claims (classify_dot_m_file labels it wolfram) is analyzed."  # 06e9
       root_cause: "The left-hand side f[x_] of := / = is itself a call node, and the call walk (~L274-313) does not skip the definition head. file_patterns is ['*.wl','*.wls','*.nb'] (~L333); find_wolfram_files (~L76) would handle .m but nothing calls it and _find_source_files is not overridden."  # 06e9
+- op: update  # b7fc
+  at: '2026-10-18T01:41:49Z'  # b7fc
+  by: agent  # b7fc
+  actor: jgstern_agent  # b7fc
+  clock: 2  # b7fc
+  nonce: b7fc  # b7fc
+  set:  # b7fc
+    status: satisfied  # b7fc
+- op: discuss  # 4c7f
+  at: '2026-10-18T01:41:49Z'  # 4c7f
+  by: agent  # 4c7f
+  actor: jgstern_agent  # 4c7f
+  clock: 3  # 4c7f
+  nonce: 4c7f  # 4c7f
+  message: "Satisfied in PR #1705 (dev c9cbe576ea). wolfram.py: a call on the left-hand side of the nearest enclosing := / = (a definition head, a pattern inside it, a Part target) emits no edge; a call is anchored on the function symbol of the definition whose body contains it (by position), else the file; dedup is per (source, callee); .m files go through find_wolfram_files as the analyzer's _find_source_files. Behavioral evidence (test_wolfram.py::TestWolframDefinitionsAreNotCalls, ::TestWolframDotMFilesAreAnalyzed): before the fix 'f[x_] := x + 1 / h[z_] := z / q[x_] = x' produced calls file -> f, h, q and a Wolfram-classified math.m produced no symbols; after, no calls edge from those three, g[x_] := Sin[x] gives one edge g -> builtin Sin, main[x_] := helper[x] resolves main -> helper, and math.m yields its 'square' function while a MATLAB func.m yields nothing."  # 4c7f

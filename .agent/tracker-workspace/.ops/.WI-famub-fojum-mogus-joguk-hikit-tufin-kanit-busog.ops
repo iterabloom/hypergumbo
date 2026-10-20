@@ -1,0 +1,36 @@
+- op: create  # d2b9
+  at: '2026-10-17T04:04:10Z'  # d2b9
+  by: agent  # d2b9
+  actor: jgstern_agent  # d2b9
+  clock: 1  # d2b9
+  nonce: d2b9  # d2b9
+  data:  # d2b9
+    kind: work_item  # d2b9
+    title: "test-only-reachability gate cannot see repository scripts: production_source_files globs packages/*/src only, so confidence_sites' four functions (called from scripts/check-confidence-sites) fail the cron full-suite as test-only"  # d2b9
+    status: todo_hard  # d2b9
+    priority: 2  # d2b9
+    parent:  # d2b9
+    tags:  # d2b9
+    - ci_infrastructure  # d2b9
+    - analysis_quality  # d2b9
+    isbefore: []  # d2b9
+    duplicate_of: []  # d2b9
+    not_duplicate_of: []  # d2b9
+    pr_ref:  # d2b9
+    description: "## Symptom (cron full-suite, dev @ f7c93e494e, 2026-10-16 18:33 EDT, pipeline 4872)\n`self-tree-validation` step fails via `check-test-only-reachability`:\n```\nFAIL: 4 function(s) are newly reachable only from their own tests:\n  + packages/hypergumbo-core/src/hypergumbo_core/confidence_sites.py::baseline_document\n  + packages/hypergumbo-core/src/hypergumbo_core/confidence_sites.py::compare_to_baseline\n  + packages/hypergumbo-core/src/hypergumbo_core/confidence_sites.py::load_baseline\n  + packages/hypergumbo-core/src/hypergumbo_core/confidence_sites.py::scan_tree\nWire it to production or retire it. The baseline is shrink-only and may not be raised to accommodate this.\n```\n## Root cause (structural, not dead code)\nThose four functions ARE wired to production: `scripts/check-confidence-sites` (pre-commit + CI gate shipped in the 9.1.0 cycle) imports and calls them. But `hypergumbo_core/test_only_reachability.py::production_source_files` is `root.glob(\"packages/*/src/**/*.py\")` -- repository scripts are extensionless, so a call from `scripts/*` is invisible to the gate and the only visible callers are the tests. `check_id_construction.py` sits in `.ci/test-only-reachability-baseline.json` for exactly the same reason (its production caller is `scripts/check-id-construction`). Any future `scripts/check-*` backed by a core module will trip this gate on its first cron.\n## Fix (general)\nTreat repository scripts as production sources: in `production_source_files`, add files directly under `scripts/` whose first line is a Python shebang (and `scripts/**/*.py`), and let `collect_production_references` scan them. Then the four `confidence_sites` functions are production-reachable, the `check_id_construction` entries fall out of the cohort, and the baseline SHRINKS (allowed; rewrite it with `--write-baseline`, which needs a self-analysis map). Alternative if scripts must stay out of the map: a `script_entry` set-aside reason computed from an AST scan of `scripts/*` imports, alongside the existing `carries_a_decorator` / `dispatch_binding` / `not_gated_kind` set-asides.\n## Done when\nCron full-suite `self-tree-validation` is green on dev; baseline rewritten (smaller); a unit test pins that a function called only from a shebang script under `scripts/` is not test-only."  # d2b9
+    fields: {}  # d2b9
+- op: update  # a82a
+  at: '2026-10-17T07:04:36Z'  # a82a
+  by: agent  # a82a
+  actor: jgstern_agent  # a82a
+  clock: 2  # a82a
+  nonce: a82a  # a82a
+  set:  # a82a
+    status: done  # a82a
+- op: discuss  # 9c02
+  at: '2026-10-17T07:04:36Z'  # 9c02
+  by: agent  # 9c02
+  actor: jgstern_agent  # 9c02
+  clock: 3  # 9c02
+  nonce: 9c02  # 9c02
+  message: "Fixed in PR #1684 (dev 416315836b). production_source_files now also returns the repository's Python scripts (.py at any depth under scripts/, or a Python shebang); they vote as referencers only, _is_production still admits only packages/*/src symbols. Behavioural evidence on a fresh self-map built at 8bc23ede1d with the CI command (python -m hypergumbo_core run . --out ...): OLD production set (385 files) -> gated 340, new 4 = the four confidence_sites functions, gone 0, i.e. the cron failure reproduced; NEW set (481 files, 96 scripts) -> gated 301, new 0, gone 35. Baseline rewritten from that map with --write-baseline: 35 keys removed, 0 added (check_id_construction x3 and unregistered_edge_meta_keys among them). Added cost: one ast.parse pass over 96 scripts, ~0.15 s, cron-only. Tests: TestRepositoryScriptsAreProductionCallers (5) + live-tree test_the_scripts_gates_are_production_callers. Residual: the cron self-tree-validation step itself has not fired since the merge; the next full-suite run is the confirmation (its sibling self-claims-gate is fixed by INV-konad / PR #1685)."  # 9c02

@@ -53,10 +53,26 @@ arm, a class-method call outside any sub is attributed to the file.
 Before this, the arm looked ``m`` up by short name: an undeclared ``m``
 emitted no edge at all (``File::Spec->catfile``), and a declared one bound
 whatever package declared it (git: ``SVN::Pool->new`` -> ``Git::new``;
-postgresql: ``IO::Socket::INET->new`` -> ``LdapServer::new``). An invocant
-that is an expression (``$ua->get``, ``shift->m``, ``Pkg->new->get``) still
-takes that short-name lookup: its package is the value's type, which this
-analyzer does not infer.
+postgresql: ``IO::Socket::INET->new`` -> ``LdapServer::new``).
+
+Calls on a value (WI-mugir)
+---------------------------
+An invocant that is an EXPRESSION (``$ua->get``, ``shift->m``,
+``Pkg->new->get``) is a value, and its package is the value's type. The type is
+taken only where the file states it: ``Pkg->new`` (the constructor; another
+class method returns whatever it returns), a scalar assigned one, and the
+method invocant -- ``$self`` / ``$this`` / ``$class`` taken by ``shift`` or as
+the first of ``@_``, or a bare ``shift->m`` outside ``main`` -- which is the
+enclosing package. A typed call resolves like a class-method call, stamped
+``call_construct="method"``; an untyped one gets the honest
+``perl:external:0-0:<m>:unresolved`` method edge. It used to bind any
+package's ``m`` by short name, so a repo ``get`` captured
+``HTTP::Tiny->new->get($u)``. Outside any sub the call is attributed to the
+file, as the other two call arms are.
+
+The invocant is typed by NAME, not by shape, because the shape does not say a
+sub is a method (see ``_INVOCANT_NAMES``). A dynamic (``$o->$m``) or qualified
+(``$o->Other::m``) method name keeps the qualified lookup.
 """
 
 from __future__ import annotations
@@ -79,7 +95,6 @@ from hypergumbo_core.analyze.base import (
     symbol_declared_by,
     symbols_at,
 )
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -92,8 +107,11 @@ PASS_ID = make_pass_id("perl")
 
 
 def find_perl_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Perl files in the repository."""
-    yield from find_files(repo_root, ["*.pl", "*.pm", "*.t"])
+    """Yield all Perl files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _find_children_by_type(
@@ -215,6 +233,61 @@ def _invocant_package(
     ):
         return _get_current_package(call, source)
     return None
+
+
+def _constructed_package(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """``Pkg`` for ``Pkg->new(...)``, the constructor call, else None (WI-mugir).
+
+    Only ``new``: another class method (``DBI->connect``) returns whatever it
+    returns -- a ``DBI::db`` handle, not a ``DBI`` -- so naming the class as
+    the value's type there would put a present-but-wrong owner in the slot.
+    """
+    if node.type != "method_call_expression":
+        return None
+    method = find_child_by_type(node, "method")
+    if method is None or node_text(method, source) != "new":
+        return None
+    return _invocant_package(node, source)
+
+
+def _is_method_invocant(node: "tree_sitter.Node", source: bytes) -> bool:
+    """Whether ``node`` takes the invocant: ``shift`` / ``shift @_`` (WI-mugir)."""
+    if node.type != "func1op_call_expression":
+        return False
+    spelled = "".join(node_text(node, source).split()).replace("(", "").replace(")", "")
+    return spelled in ("shift", "shift@_")
+
+
+#: The names Perl's method idiom gives the invocant (``my $self = shift``).
+#: The invocant is typed by NAME because the shape alone does not say a sub is
+#: a method: measured on postgresql and virtualbox, ``my ($node, ...) = @_`` /
+#: ``my $proxy = shift`` in a plain function, a second ``shift`` after
+#: ``$self``'s, and a ``$SIG{__DIE__}`` handler's ``my ($e) = @_`` were each
+#: typed as the enclosing package and moved hundreds of correct edges onto it.
+_INVOCANT_NAMES = frozenset({"self", "this", "class"})
+
+
+def _in_anonymous_sub(node: "tree_sitter.Node") -> bool:
+    """Whether ``node``'s nearest enclosing sub is an anonymous one, whose
+    ``@_`` is its own caller's arguments, not the method's."""
+    current = node.parent
+    while current is not None:
+        if current.type == "anonymous_subroutine_expression":
+            return True
+        if current.type == "subroutine_declaration_statement":
+            return False
+        current = current.parent
+    return False  # pragma: no cover - asked only of a node inside a named sub
+
+
+def _scalar_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """``x`` for a ``$x`` node, else None."""
+    if node.type != "scalar":
+        return None
+    varname = find_child_by_type(node, "varname")
+    return node_text(varname, source) if varname is not None else None
 
 
 def _package_unresolved_edge(
@@ -433,6 +506,29 @@ class PerlAnalyzer(TreeSitterAnalyzer):
         # name (the rel_path the Pass 1 emitter stamped) for top-level
         # call attribution.
         module_symbol: Symbol | None = global_symbols.get(rel_path)
+        # WI-mugir: the package a scalar holds, per (enclosing sub id or ""
+        # for the file, name). ``None`` records an assignment of something
+        # untyped, so a sub's own rebinding is not read through to a
+        # same-named file lexical.
+        scalar_types: dict[tuple[str, str], Optional[str]] = {}
+
+        def _invocant_type(invocant: "tree_sitter.Node", sub: Optional[Symbol]) -> Optional[str]:
+            """The package an expression invocant's value is, when the file says."""
+            if _is_method_invocant(invocant, source):
+                # A bare ``shift->m`` is the method idiom outside ``main``;
+                # in a script's plain function it is the first argument.
+                package = _get_current_package(invocant, source)
+                return package if (
+                    sub and package != "main" and not _in_anonymous_sub(invocant)
+                ) else None
+            constructed = _constructed_package(invocant, source)
+            if constructed is not None:
+                return constructed
+            name = _scalar_name(invocant, source)
+            if name is None:
+                return None
+            key = (sub.id if sub else "", name)
+            return scalar_types[key] if key in scalar_types else scalar_types.get(("", name))
 
         for node in iter_tree(tree.root_node):
             # Handle use statements
@@ -522,6 +618,34 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                                         node.start_point[0] + 1, PASS_ID, run_id,
                                     ))
 
+            # WI-mugir: ``my $ua = Pkg->new``, ``my $self = shift``,
+            # ``my ($self, ...) = @_`` type the scalar; any other assignment
+            # to it untypes it.
+            elif node.type == "assignment_expression" and node.children:
+                lhs, rhs = node.children[0], node.children[-1]
+                scalars = (
+                    [c for c in lhs.children if c.type == "scalar"]
+                    if lhs.type == "variable_declaration" else [lhs]
+                )
+                is_list = any(c.type == "(" for c in lhs.children)
+                sub = _find_enclosing_function_perl(node, decl_index)
+                first = _scalar_name(scalars[0], source) if scalars else None
+                takes_invocant = (
+                    sub is not None and first in _INVOCANT_NAMES
+                    and not _in_anonymous_sub(node)
+                    and (node_text(rhs, source).replace(" ", "") == "@_" if is_list
+                         else _is_method_invocant(rhs, source))
+                )
+                typed: Optional[str] = (
+                    _get_current_package(node, source) if takes_invocant
+                    else None if is_list else _constructed_package(rhs, source)
+                )
+                for index, scalar in enumerate(scalars):
+                    name = _scalar_name(scalar, source)
+                    if name is not None:
+                        scalar_types[(sub.id if sub else "", name)] = (
+                            typed if index == 0 else None)
+
             # Handle method calls (arrow operator)
             elif node.type == "method_call_expression":
                 method_node = find_child_by_type(node, "method")
@@ -541,7 +665,28 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                             caller.id, package, method_name,
                             node.start_point[0] + 1, global_symbols, run_id,
                         ))
+                elif _PERL_METHOD_IDENTIFIER.fullmatch(method_name):
+                    # WI-mugir: an EXPRESSION invocant resolves on its type,
+                    # never on the short name across packages (module docstring).
+                    sub = _find_enclosing_function_perl(node, decl_index)
+                    caller = sub or module_symbol
+                    owner = _invocant_type(node.children[0], sub)
+                    if caller and owner is not None:
+                        edges.append(self._class_method_edge(
+                            caller.id, owner, method_name,
+                            node.start_point[0] + 1, global_symbols, run_id,
+                            call_construct="method",
+                        ))
+                    elif caller:
+                        edges.append(make_unresolved_edge(
+                            "perl", caller.id, method_name,
+                            node.start_point[0] + 1, PASS_ID, run_id,
+                            call_construct="method",
+                        ))
                 else:
+                    # A dynamic (``$o->$m``) or qualified (``$o->Other::m``,
+                    # ``SUPER::m``) method name: the qualified name is looked
+                    # up as written.
                     caller = _find_enclosing_function_perl(
                         node, decl_index,
                     )
@@ -572,8 +717,14 @@ class PerlAnalyzer(TreeSitterAnalyzer):
         line: int,
         global_symbols: dict[str, Symbol],
         run_id: str,
+        *,
+        call_construct: str = "function",
     ) -> Edge:
         """The edge for ``package->method_name``: ``package``'s own sub, or its external edge.
+
+        ``call_construct`` is ``function`` for a call on the package itself
+        (``Pkg->m``) and ``method`` for one on a value of it (``$obj->m``,
+        WI-mugir), per ADR-0059.
 
         The registry is keyed by qualified name (``register_symbol``), and a
         ``main`` sub by its bare name, so the exact key is the whole lookup:
@@ -593,11 +744,11 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                 origin_run_id=run_id,
                 evidence_type="ast_call",
                 confidence=0.85,
-                meta={"call_construct": "function"},
+                meta={"call_construct": call_construct},
             )
         return _package_unresolved_edge(
             caller_id, package, method_name, line, run_id,
-            call_construct="function",
+            call_construct=call_construct,
         )
 
 

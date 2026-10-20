@@ -1,0 +1,29 @@
+- op: create  # 03d3
+  at: '2026-10-17T03:23:11Z'  # 03d3
+  by: agent  # 03d3
+  actor: jgstern_agent  # 03d3
+  clock: 1  # 03d3
+  nonce: 03d3  # 03d3
+  data:  # 03d3
+    kind: work_item  # 03d3
+    title: "htrac-frontend: @xyflow/react read-only graph of isbefore/parent edges from the live Y.Doc, with awareness highlights"  # 03d3
+    status: todo_soft  # 03d3
+    priority: 4  # 03d3
+    parent:  # 03d3
+    tags:  # 03d3
+    - frontend  # 03d3
+    - yjs  # 03d3
+    - someday  # 03d3
+    isbefore: []  # 03d3
+    duplicate_of: []  # 03d3
+    not_duplicate_of: []  # 03d3
+    pr_ref:  # 03d3
+    description: "## What\nA read-only `@xyflow/react` (MIT, 12.12) graph view in packages/htrac-frontend rendering items as nodes and `isbefore` / parent relationships as edges, sourced from the live Y.Doc over the sync endpoint (item D), with awareness highlights (nodes other clients are currently viewing). This is the tracker's \"edgeless\" view -- the structured-graph half of what ADR-0019 originally imagined BlockSuite's edgeless mode doing -- and the natural view for the `isbefore` chains the trackerize playbook produces.\n## Scope\nRead-only. Layout: dagre/elk via xyflow examples or manual layering by priority; filter by tag/status; click a node to open its item. No editing of relationships from the graph (that stays CLI/op-only per the ADR).\n## Done when\nGraph renders the live tracker, updates within one sync round-trip of a CLI `update --add-isbefore`, and shows another client's awareness highlight. Typechecks and builds locally.\n## Context\n~/hypergumbo_lab_notebook/notebookjournal_10162026_2318.md section 4."  # 03d3
+    fields: {}  # 03d3
+- op: discuss  # 67a5
+  at: '2026-10-17T03:47:43Z'  # 67a5
+  by: agent  # 67a5
+  actor: jgstern_agent  # 67a5
+  clock: 2  # 67a5
+  nonce: 67a5  # 67a5
+  message: "Scaffold note 2026-10-16: the Lit scaffold in packages/htrac-frontend is being removed (owner decision; see WI-popal). This view starts from a fresh React scaffold (Vite + React), since BlockNote, @xyflow/react and Excalidraw are all React; the old ws-client.ts / service worker are recoverable from git history if useful."  # 67a5

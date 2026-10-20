@@ -8,13 +8,14 @@ iOS/macOS app; the server never binds to 0.0.0.0.
 
 How It Works
 ------------
-``create_app(tracker_set=ts)`` returns a Starlette application wired to
-the given TrackerSet. API routes delegate to TrackerSet methods and serialize
-results via ``_item_to_dict``. If no TrackerSet is provided, API routes
-return HTTP 503 and ``/ws`` sends an error and closes. The shipped
-``htrac serve`` path (``run_server``) calls ``create_app()`` with no
-TrackerSet, so only ``/health`` answers there today; a wired TrackerSet
-is reachable only by calling ``create_app(tracker_set=...)`` directly.
+``create_app(tracker_set=ts, authenticate=fn)`` returns a Starlette
+application wired to the given TrackerSet. API routes delegate to TrackerSet
+methods and serialize results via ``_item_to_dict``. If no TrackerSet is
+provided, authenticated API requests get HTTP 503 and an authenticated
+``/ws`` gets an error and a close. The shipped ``htrac serve`` path
+(``run_server``) calls ``create_app()`` with neither a TrackerSet nor an
+authenticator; a wired TrackerSet is reachable only by calling
+``create_app(tracker_set=..., authenticate=...)`` directly.
 
 When a TrackerSet is wired, the app's lifespan starts a ``watchfiles``
 watcher on the canonical, workspace and stealth ``.ops`` directories; any
@@ -22,9 +23,25 @@ change (a CLI or TUI write) broadcasts a fresh ``state_snapshot`` to every
 connected WebSocket client. ``create_app(static_dir=...)`` optionally mounts
 a static frontend build at ``/`` after the API and WebSocket routes.
 
-PID file management supports ``--background``, ``--stop``, and ``--status``
-flags: ``write_pid_file`` / ``read_pid_file`` / ``remove_pid_file`` handle
-the lifecycle, and ``stop_server`` sends SIGTERM to a running instance.
+Every route except ``/health`` and the static mount is guarded by
+``authenticate(conn) -> bool`` (WI-hopip): ``create_app`` wraps each one in a
+loop, so a route added to the list is guarded without anyone remembering to.
+A request it does not accept gets 401; a WebSocket is closed with 1008 before
+it is accepted. With no authenticator every guarded request is denied, and an
+authenticator that raises counts as a no -- the server fails closed, so the
+change that wires a TrackerSet into ``run_server`` cannot publish the write
+API by forgetting auth. The static mount is public on purpose: it holds the
+frontend build (and so the login page), not tracker data. The login flow
+itself (``serve_password`` / ``serve_webauthn`` / ``serve_sessions``) is not
+wired yet, so ``run_server`` answers only ``/health``.
+
+PID file management supports ``--stop`` and ``--status``: the foreground
+server writes its PID file on start (``write_pid_file`` / ``read_pid_file`` /
+``remove_pid_file`` handle the lifecycle) and ``stop_server`` sends SIGTERM to
+a running instance. There is no daemon mode: a ``--background`` flag was
+declared for months without anything reading it (WI-robug), so it was removed
+rather than implemented; run the server under systemd, tmux or ``nohup`` if
+it must outlive the shell.
 
 Why This Design
 ---------------
@@ -43,10 +60,10 @@ import os
 import signal
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from starlette.applications import Starlette
-from starlette.requests import Request
+from starlette.requests import HTTPConnection, Request
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
@@ -58,6 +75,9 @@ if TYPE_CHECKING:
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7380  # "htrac" on a phone keypad: 4-8-7-2-2 → 7380
 PID_FILENAME = "htrac-serve.pid"
+_WS_POLICY_VIOLATION = 1008
+
+Authenticator = Callable[[HTTPConnection], bool]
 
 # Module-level state set by create_app()
 _start_time: float = time.monotonic()
@@ -395,6 +415,41 @@ async def stop_watcher() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Authentication gate
+# ---------------------------------------------------------------------------
+
+
+def _accepts(authenticate: Authenticator | None, conn: HTTPConnection) -> bool:
+    """True only when an authenticator exists and says yes; a raise is a no."""
+    if authenticate is None:
+        return False
+    try:
+        return authenticate(conn) is True
+    except Exception:
+        return False
+
+
+def _guard(route: Route | WebSocketRoute, authenticate: Authenticator | None) -> Route | WebSocketRoute:
+    """Return ``route`` with its endpoint behind ``authenticate``."""
+    endpoint = route.endpoint
+    if isinstance(route, WebSocketRoute):
+        async def guarded_ws(websocket: WebSocket) -> None:
+            if not _accepts(authenticate, websocket):
+                await websocket.close(code=_WS_POLICY_VIOLATION)
+                return
+            await endpoint(websocket)
+
+        return WebSocketRoute(route.path, guarded_ws)
+
+    async def guarded(request: Request) -> Any:
+        if not _accepts(authenticate, request):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return await endpoint(request)
+
+    return Route(route.path, guarded, methods=sorted(route.methods or ()))
+
+
+# ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
 
@@ -403,15 +458,20 @@ def create_app(
     *,
     tracker_set: TrackerSet | None = None,
     static_dir: Path | None = None,
+    authenticate: Authenticator | None = None,
 ) -> Starlette:
     """Create the Starlette application with routes.
 
     Args:
         tracker_set: Optional TrackerSet to wire into the API routes.
-            If None, API routes return 503 but /health still works.
-        static_dir: Optional path to a directory of static files (BlockSuite
-            frontend build output). Mounted at ``/`` as a fallback after all
+            If None, authenticated API requests get 503; /health still works.
+        static_dir: Optional path to a directory of static files (a built
+            web frontend; none ships today, see ADR-0019). Mounted at ``/`` as a fallback after all
             API/WebSocket routes. If None, no static files are served.
+        authenticate: Called with each request or WebSocket on every route
+            but ``/health`` and the static mount; anything but ``True`` (or a
+            raise) is a 401 / a 1008 close. If None, every such request is
+            denied.
 
     Returns a configured Starlette app. Does not start the server;
     use ``run_server()`` for that.
@@ -431,8 +491,7 @@ def create_app(
         if tracker_set is not None:
             await stop_watcher()
 
-    routes = [
-        Route("/health", _health, methods=["GET"]),
+    guarded: list[Route | WebSocketRoute] = [
         Route("/api/items", _api_list_items, methods=["GET"]),
         Route("/api/items", _api_add_item, methods=["POST"]),
         Route("/api/items/{item_id}", _api_get_item, methods=["GET"]),
@@ -441,6 +500,8 @@ def create_app(
         Route("/api/ready", _api_ready, methods=["GET"]),
         WebSocketRoute("/ws", _ws_handler),
     ]
+    routes: list[Route | WebSocketRoute | Mount] = [Route("/health", _health, methods=["GET"])]
+    routes.extend(_guard(r, authenticate) for r in guarded)
     if static_dir is not None and static_dir.is_dir():
         routes.append(Mount("/", app=StaticFiles(directory=str(static_dir), html=True)))
     return Starlette(routes=routes, lifespan=lifespan)

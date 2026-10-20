@@ -158,10 +158,9 @@ from .axis_meta_keys import write_meta_key
 from .construction import construction_calls
 from .edge_types import is_grpc_rpc_implementation
 from .io_primitive_kinds import (
-    KIND_ATTRIBUTE,
-    KIND_FUNCTION,
-    KIND_METHOD,
+    YAML_SECTIONS,
     called_on_a_named_owner,
+    kind_for_yaml_section,
     reached_through_an_instance,
     read_not_called,
 )
@@ -1656,48 +1655,31 @@ class IoBoundaryCatalog:
                     language, module, _row_names, entry.get("resource_naming")
                 )
 
-                for func_name in entry.get("functions", []):
-                    primitives.append(IoPrimitive(
-                        boundary=boundary,
-                        module=module,
-                        name=func_name,
-                        kind=KIND_FUNCTION,
-                        notes=notes,
-                        simultaneous=simultaneous,
-                        boundary_ruling=boundary_ruling,
-                        abstains_to=abstains_to,
-                        requires_target_kind=requires_target_kind,
-                        resource_naming_args=_naming.get(func_name, (None, None, False))[0],
-                        content_args=_naming.get(func_name, (None, None, False))[1],
-                        resource_is_danger=_naming.get(func_name, (None, None, False))[2],
-                    ))
-                for method_name in entry.get("methods", []):
-                    primitives.append(IoPrimitive(
-                        boundary=boundary,
-                        module=module,
-                        name=method_name,
-                        kind=KIND_METHOD,
-                        notes=notes,
-                        simultaneous=simultaneous,
-                        boundary_ruling=boundary_ruling,
-                        abstains_to=abstains_to,
-                        requires_target_kind=requires_target_kind,
-                        resource_naming_args=_naming.get(method_name, (None, None, False))[0],
-                        content_args=_naming.get(method_name, (None, None, False))[1],
-                        resource_is_danger=_naming.get(method_name, (None, None, False))[2],
-                    ))
-                for attr_name in entry.get("attributes", []):
-                    primitives.append(IoPrimitive(
-                        boundary=boundary,
-                        module=module,
-                        name=attr_name,
-                        kind=KIND_ATTRIBUTE,
-                        notes=notes,
-                        simultaneous=simultaneous,
-                        boundary_ruling=boundary_ruling,
-                        abstains_to=abstains_to,
-                        requires_target_kind=requires_target_kind,
-                    ))
+                # One loop over the registered sections, each kind from the
+                # registry (WI-mifup: three copy-pasted loops with the KIND_*
+                # constant written in meant a new section loaded nothing).
+                # Naming is a CALL's: an attribute is read, not called.
+                for section in YAML_SECTIONS:
+                    kind = kind_for_yaml_section(section)
+                    for name in entry.get(section, []):
+                        resource_args, content_args, danger = (
+                            (None, None, False) if read_not_called(kind)
+                            else _naming.get(name, (None, None, False))
+                        )
+                        primitives.append(IoPrimitive(
+                            boundary=boundary,
+                            module=module,
+                            name=name,
+                            kind=kind,
+                            notes=notes,
+                            simultaneous=simultaneous,
+                            boundary_ruling=boundary_ruling,
+                            abstains_to=abstains_to,
+                            requires_target_kind=requires_target_kind,
+                            resource_naming_args=resource_args,
+                            content_args=content_args,
+                            resource_is_danger=danger,
+                        ))
 
         primitives = _apply_abstention_targets(language, primitives)
         # WI-suhug: a primitive gated in BOTH directions is refused here, at
@@ -2885,9 +2867,13 @@ def read_boundary_for_target_kind(kind: Optional[str]) -> tuple[bool, Optional[s
     return _boundary_for_target_kind(kind, "read")
 
 
-def write_boundary_for_target_kind(kind: Optional[str]) -> tuple[bool, Optional[str]]:
-    """``(known, boundary)`` for a WRITE at ``kind``; see :func:`_boundary_for_target_kind`."""
-    return _boundary_for_target_kind(kind, "write")
+def call_site_unfollowed_constructs(
+    edge_meta: Optional[Mapping[str, Any]],
+) -> tuple[Optional[str], ...]:
+    """Every ``unfollowed_construct`` stamp among an edge's collapsed call
+    sites (INV-nohob), read the one way :func:`call_site_modes` reads
+    ``io_mode``. ``None`` is a site with no stamp."""
+    return _call_site_values(edge_meta, "unfollowed_construct")
 
 
 def call_site_target_kinds(

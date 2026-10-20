@@ -95,3 +95,10 @@
   clock: 10  # 245e
   nonce: 245e  # 245e
   message: "Re-scoped: the item's own 2026-07-13 discussion already flagged the default-map framing as needing correction; confirmed at HEAD (analyzer emits file+section; repro 47 file/1075 section). Corrected statement + root_cause to the genuine --include-docs link-resolution residual (synthetic <external> targets, no path canonicalization, no linker) that keeps it violated."  # 245e
+- op: discuss  # 1053
+  at: '2026-10-17T02:12:24Z'  # 1053
+  by: agent  # 1053
+  actor: jgstern_agent  # 1053
+  clock: 11  # 1053
+  nonce: '1053'  # 1053
+  message: "Fresh repro 2026-10-16, hypergumbo 9.1.0, external repo /tmp/pf-prelim (55 .md files): `run --include-docs` emits 4,764 section / 1,166 code_block / 55 link nodes and 21 markdown `references` edges — 0 resolved, 21 unresolved. All 21 targets are sibling files in the same directory (manual-test-checklists.md, what-not-needed.md, milestone-definitions.md, 7 each), i.e. the simplest relative-link case, and each resolves to a synthetic <external> rather than the existing `markdown:<path>:1-1:file:file` node. Still violated."  # 1053

@@ -25,7 +25,7 @@ names a local binding at one call site; ``resp`` is not where ``read`` is
 defined. That is the same cut ADR-0023 made for ``Edge.edge_type`` -- properties
 of an endpoint are queried from the endpoint, not smuggled into the label -- and
 the receiver's type already has a home in ``Edge.meta["receiver_type_hint"]``
-(stamped by nine analyzers, read by neither ``io_boundary`` nor ``taint``;
+(stamped by ten analyzers, read by neither ``io_boundary`` nor ``taint``;
 WI-monul).
 
 WHY THIS IS A STRUCTURAL-POLICY AXIS RATHER THAN A REGISTRY OF VALUES. Module
@@ -66,10 +66,11 @@ bugs. Over 65,187 external refs on a 21-repo, 10-language cold cohort, 7.8% of
 slots are not a single module identity.
 
 The producer surface says the same thing in a different way: 54 ``ExternalRef``
-construction sites across 22 analyzers, and the local feeding ``module_path`` is
+construction sites across 22 analyzers when this axis was declared (2026-09-01),
+and the local feeding ``module_path`` is
 variously ``path_hint``, ``module_hint``, ``module_name``, ``mod``, ``hint``,
 ``ns``, ``pkg``, ``receiver_name``, ``wildcard_module`` and the literal
-``"redirect"``. No two analyzers call the thing the same name.
+``"redirect"``. The analyzers do not agree on what to call the thing.
 
 SCOPE: THIS DECLARES, IT DOES NOT MIGRATE. Nothing here changes what any
 analyzer emits. ``external_symbol`` node ids embed the module slot
@@ -163,7 +164,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=2587,
+                line=2604,
                 anchor="module_path=path_hint",
                 note=(
                     "The CORRECT shape, kept as the contrast case: the hint "
@@ -236,7 +237,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=2516,
+                line=2533,
                 anchor="_module = _external_type or import_aliases.get(callee_name)",
                 note=(
                     "WAS the conflation in its purest form, and the single "
@@ -262,7 +263,8 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
         axis=AXIS_UNCERTAINTY,
         description=(
             "A comma-joined SET of candidate modules -- cpp joins every "
-            "#include in the file, because a call in that unit could come "
+            "header the unit can see (c.py does the same for an ambiguous "
+            "libc name), because a call in that unit could come "
             "from any of them, and since WI-bapuk PREPENDS the namespace a "
             "`std::`-qualified call names (or, for an unqualified call, a "
             "`using namespace` the file declares), because that is another "
@@ -281,13 +283,15 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=1958,
+                line=2243,
                 anchor='module_hint = ",".join(_slots)',
                 note=(
-                    "The file's entire #include set joined into one slot, "
-                    "with the namespace the call names prepended (WI-bapuk). "
-                    "The slot is left at the `external` SENTINEL when the "
-                    "file has no system includes -- naming a namespace there "
+                    "Every header the file can see (its own includes, quoted "
+                    "and angled, and what in-repo headers include, "
+                    "transitively: include_closure, INV-zikul) joined into "
+                    "one slot, with the namespace the call names prepended "
+                    "(WI-bapuk). The slot is left at the `external` SENTINEL "
+                    "when the file has no includes -- naming a namespace there "
                     "would switch off lookup_with_module's short-name "
                     "fallback and DELETE classifications that depend on it."
                 ),
@@ -346,7 +350,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=7421,
+                line=7531,
                 anchor='"process": "process",',
                 note=(
                     "The identity mapping that puts a global's own name into "
@@ -358,7 +362,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=1025,
+                line=1115,
                 anchor="JS_KNOWN_GLOBALS",
                 note=(
                     "The globals treated as addressable owners — 11 as of "

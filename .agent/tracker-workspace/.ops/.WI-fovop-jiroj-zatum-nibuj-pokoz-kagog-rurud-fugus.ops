@@ -1,0 +1,21 @@
+- op: create  # 1eec
+  at: '2026-10-20T18:22:49Z'  # 1eec
+  by: agent  # 1eec
+  actor: jgstern_agent  # 1eec
+  clock: 1  # 1eec
+  nonce: 1eec  # 1eec
+  data:  # 1eec
+    kind: work_item  # 1eec
+    title: "V and Verilog both analyze every .v file: no content disambiguation for the shared extension"  # 1eec
+    status: todo_hard  # 1eec
+    priority: 3  # 1eec
+    parent:  # 1eec
+    tags:  # 1eec
+    - analyzer  # 1eec
+    - discovery  # 1eec
+    isbefore: []  # 1eec
+    duplicate_of: []  # 1eec
+    not_duplicate_of: []  # 1eec
+    pr_ref:  # 1eec
+    description: "Found while fixing WI-riziv (PR #1771). VAnalyzer (v_lang.py, file_patterns ['*.v']) and the Verilog analyzer (find_verilog_files: *.v, *.vh, *.sv, *.svh) both claim .v, and neither disambiguates by content, unlike .m (classify_dot_m_file), .d (classify_dot_d_file) and .php (classify_dot_php_file).\nRepro: r/counter.v = 'module counter(input clk, output reg [3:0] q); always @(posedge clk) q <= q + 1; endmodule', r/main.v = 'module main / fn add(a int, b int) int { return a + b } / fn main() { println(add(1, 2)) }'. analyze_v(r).run.files_analyzed == 2 and analyze_verilog_files(r).run.files_analyzed == 2: each parses the other language's file. In this repro neither emitted wrong symbols (V: add, main from main.v; Verilog: counter from counter.v). I have not checked larger files for spurious symbols or edges, and have not checked whether the profile counts each file under both languages.\nSuggested fix: a classify_dot_v_file in discovery.py (V: 'fn ', 'module main', ':='; Verilog: 'module x(' with 'endmodule', 'always @', 'input'/'output'), applied by both analyzers' discovery and registered as each one's find_files."  # 1eec
+    fields: {}  # 1eec

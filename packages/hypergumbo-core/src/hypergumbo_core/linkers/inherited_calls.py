@@ -956,7 +956,9 @@ def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
     class_ids_by_name: dict[str, list[str]] = {}
     class_symbols: dict[str, Symbol] = {}
     for s in ctx.symbols:
-        if s.kind in ("class", "struct", "module", "interface", "trait", "protocol"):
+        # ``object`` (WI-kipol): a Scala / Kotlin singleton is a type a call
+        # names directly (``Factory.make()``), and inherits like any class.
+        if s.kind in ("class", "struct", "module", "interface", "trait", "protocol", "object"):
             class_ids_by_name.setdefault(s.name, []).append(s.id)
             class_symbols[s.id] = s
     # WI-hiziz (D1): C3 needs left-to-right base order, but a qualified in-tree

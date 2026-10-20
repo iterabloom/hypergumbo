@@ -2,7 +2,7 @@
 """Tests for the htrac serve skeleton (Starlette/uvicorn server).
 
 The serve module provides a Starlette application with a /health endpoint,
-PID file management for --background/--stop/--status, and uvicorn integration.
+PID file management for --stop/--status, and uvicorn integration.
 Bind to 127.0.0.1 only for security (external access via Tor/native app).
 """
 from __future__ import annotations
@@ -14,15 +14,17 @@ from unittest.mock import patch
 
 import pytest
 
+from ._serve_auth import allow_all
+
 
 class TestCreateApp:
     """Tests for Starlette app creation and health endpoint."""
 
     def test_create_app_returns_starlette_app(self) -> None:
-        """create_app() returns a Starlette application."""
+        """create_app(authenticate=allow_all) returns a Starlette application."""
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         # Starlette apps have a .routes attribute
         assert hasattr(app, "routes")
 
@@ -32,7 +34,7 @@ class TestCreateApp:
 
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         client = TestClient(app)
         response = client.get("/health")
         assert response.status_code == 200
@@ -45,7 +47,7 @@ class TestCreateApp:
 
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         client = TestClient(app)
         response = client.get("/health")
         data = response.json()
@@ -58,14 +60,14 @@ class TestCreateApp:
 
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         client = TestClient(app)
         response = client.get("/nonexistent")
         assert response.status_code == 404
 
 
 class TestPidFile:
-    """Tests for PID file management (--background/--stop/--status)."""
+    """Tests for PID file management (--stop/--status)."""
 
     def test_write_pid_file(self, tmp_path: Path) -> None:
         """write_pid_file creates a file with the current PID."""
@@ -212,7 +214,6 @@ class TestCmdServe:
             command="serve",
             stop=False,
             status=True,
-            background=False,
             port=None,
             json=False,
             tracker_root_resolved=str(tmp_path),
@@ -232,7 +233,6 @@ class TestCmdServe:
             command="serve",
             stop=True,
             status=False,
-            background=False,
             port=None,
             json=False,
             tracker_root_resolved=str(tmp_path),
@@ -253,7 +253,6 @@ class TestCmdServe:
             command="serve",
             stop=False,
             status=True,
-            background=False,
             port=None,
             json=True,
             tracker_root_resolved=str(tmp_path),
@@ -384,7 +383,6 @@ class TestCmdServeForegound:
             command="serve",
             stop=False,
             status=False,
-            background=False,
             port=9999,
             json=False,
             tracker_root_resolved=str(tmp_path),
@@ -409,7 +407,6 @@ class TestCmdServeForegound:
             command="serve",
             stop=False,
             status=False,
-            background=False,
             port=None,
             json=False,
             tracker_root_resolved=str(tmp_path),
@@ -440,7 +437,6 @@ class TestCmdServeForegound:
             command="serve",
             stop=True,
             status=False,
-            background=False,
             port=None,
             json=False,
             tracker_root_resolved=str(tmp_path),
@@ -469,7 +465,6 @@ class TestCmdServeForegound:
             command="serve",
             stop=False,
             status=True,
-            background=False,
             port=None,
             json=False,
             tracker_root_resolved=str(tmp_path),
@@ -495,7 +490,6 @@ class TestCmdServeForegound:
             command="serve",
             stop=False,
             status=True,
-            background=False,
             port=None,
             json=False,
             tracker_root_resolved=str(tmp_path),

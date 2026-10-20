@@ -186,7 +186,10 @@ class TestPruneAction:
 
         seen: dict[str, list] = {"closed": [], "deleted": []}
         monkeypatch.setattr(sync_mod, "_load_env", lambda _r: {"HG_GITHUB_TOKEN": "t"})
-        monkeypatch.setattr(sync_mod, "_detect_api_base", lambda _r: "https://api/x")
+        monkeypatch.setattr(
+            sync_mod, "_detect_api_base",
+            lambda _r: "https://api.github.com/repos/o/r",
+        )
         monkeypatch.setattr(sync_mod, "_find_open_pr", lambda *a, **k: (42, "sha"))
         monkeypatch.setattr(
             sync_mod, "_close_pr",
@@ -459,6 +462,72 @@ class TestCredentialsCanBeSupplied:
             repo, dry_run=False, api_base="https://supplied", token="TOK",
         )
         assert used == {"api": "https://supplied", "token": "TOK"}
+
+
+class TestPruneTokenFollowsTheOrigin:
+    """INV-zulin analogue: prune presents the origin's forge token, not
+    whichever of the two happens to be set. It used to take HG_GITHUB_TOKEN
+    first on every forge, so a Forgejo repository with both tokens sent the
+    GitHub PAT to Codeberg, and an environment-only token was never seen."""
+
+    @pytest.mark.parametrize("api_base,expected", [
+        ("https://api.github.com/repos/o/r", "ghp"),
+        ("https://codeberg.org/api/v1/repos/o/r", "cb"),
+    ])
+    def test_token_matches_backend(
+        self,
+        repo: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        api_base: str,
+        expected: str,
+    ) -> None:
+        import hypergumbo_tracker.sync as sync_mod
+
+        used: list[str] = []
+        monkeypatch.setattr(
+            sync_mod, "_load_env",
+            lambda _r: {"HG_GITHUB_TOKEN": "ghp", "FORGEJO_TOKEN": "cb"},
+        )
+        monkeypatch.setattr(sync_mod, "_detect_api_base", lambda _r: api_base)
+        monkeypatch.setattr(sync_mod, "_find_open_pr", lambda *a, **k: None)
+        monkeypatch.setattr(
+            sync_mod, "_delete_remote_branch",
+            lambda _a, t, _b: used.append(t) or True,
+        )
+        monkeypatch.setattr(
+            sync_mod, "find_superseded_sync_branches",
+            lambda *a, **k: ["tracker-sync/x"],
+        )
+        monkeypatch.setattr(sync_mod, "_git", lambda *a, **k: _ok())
+
+        sync_mod.prune_superseded_sync_branches(repo, dry_run=False)
+        assert used == [expected]
+
+    def test_environment_token_is_used(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import hypergumbo_tracker.sync as sync_mod
+
+        used: list[str] = []
+        monkeypatch.setenv("HG_GITHUB_TOKEN", "from_env")
+        monkeypatch.setattr(sync_mod, "_load_env", lambda _r: {})
+        monkeypatch.setattr(
+            sync_mod, "_detect_api_base",
+            lambda _r: "https://api.github.com/repos/o/r",
+        )
+        monkeypatch.setattr(sync_mod, "_find_open_pr", lambda *a, **k: None)
+        monkeypatch.setattr(
+            sync_mod, "_delete_remote_branch",
+            lambda _a, t, _b: used.append(t) or True,
+        )
+        monkeypatch.setattr(
+            sync_mod, "find_superseded_sync_branches",
+            lambda *a, **k: ["tracker-sync/x"],
+        )
+        monkeypatch.setattr(sync_mod, "_git", lambda *a, **k: _ok())
+
+        sync_mod.prune_superseded_sync_branches(repo, dry_run=False)
+        assert used == ["from_env"]
 
 
 class TestPruneCannotFailASync:

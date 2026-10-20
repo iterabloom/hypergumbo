@@ -62,8 +62,9 @@ alongside it. This is what lets a catalogued method-kind I/O primitive be
 reached through a typed receiver — see ADR-0051 for why the module slot
 must name the static owner path and never the variable. Function-scoped
 ``var_types`` shadowing keeps a rebound name from leaking its old type
-across scopes — for declared and constructor bindings; a binding from a
-resolved call's return type is written file-wide, outside that scoping.
+across scopes — for a local's declared, constructor and library-call
+bindings; parameter and constructor-parameter types, and a binding from a
+resolved call's return type, are written file-wide, outside that scoping.
 
 Library return types (WI-jubim). A receiver that is the VALUE a library
 call returns -- ``Runtime.getRuntime().exec(c)``, or ``val r =
@@ -75,6 +76,14 @@ named by the file's import or java.lang, an inline JDK path, or a
 constructor; each row's fully-qualified answer is the owner of the next link,
 and the first link no row answers ends the walk untyped. A local bound to
 such a chain takes the row's answer ahead of the chain-root constructor.
+
+Synthetic getters. A property read that is Kotlin's spelling of a Java
+getter (``p.inputStream`` for ``getInputStream()``, ``.isEmpty`` for
+``isEmpty()``) emits an unresolved ``call_construct: method`` edge to that
+getter, the owner in the module slot (``_synthetic_getter``), when the file
+establishes the receiver's owner -- a typed local, a library call chain, or
+another such getter -- and a library-signature row says that owner declares
+it; a field or a Kotlin property adds nothing.
 
 Other receiver shapes. An untyped receiver spelled as a TYPE
 (``System.getenv(k)``, ``Files.readAllBytes(p)``) is a static call whose
@@ -110,9 +119,10 @@ edge.
 
 Call sources and the ambiguity guard. A call that sits in no function (a
 top-level ``val`` initialiser or lambda, a ``by lazy`` block, a class or
-object body) is drawn from the enclosing class, object or companion
-declaration (``_TYPE_BODY_NODES``) and, failing that, from the file anchor
-symbol. A bare ``helper()`` call whose name 3 or more project methods share
+object body) is drawn from the enclosing class or object declaration
+(``_TYPE_BODY_NODES``; a ``companion object`` has no symbol of its own, so
+its body's calls are drawn from the class) and, failing that, from the file
+anchor symbol. A bare ``helper()`` call whose name 3 or more project methods share
 is dropped with no edge (the AMB-METHOD guard,
 ``ListNameResolver(..., ambiguity_threshold=3)``). The guard runs before the
 same-file lookup, so a same-file function of that name is dropped too.
@@ -179,6 +189,7 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream.import_bound_bases import external_base_edge, external_import_fqn
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     JAVA_LANG_SYSTEM_FIELDS,
     KOTLIN_SHADOWED_JAVA_LANG,
@@ -187,6 +198,7 @@ from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     bare_system_is_java_lang,
     imported_elsewhere,
     inline_qualified_owner,
+    is_known_library_method,
     is_std_output_receiver,
     java_lang_system_aliases,
     kotlin_import_path,
@@ -1758,6 +1770,40 @@ def _extract_edges_from_file(
             owner = library_returns.get(f"{owner}.{link}")
         return owner
 
+    def _synthetic_getter(nav: "tree_sitter.Node") -> tuple[str, str] | None:
+        """``(owner, getter)`` when a property read is a known Java getter call.
+
+        WI-bojud-sator: kotlin reads ``getInputStream()`` as ``.inputStream``
+        (and ``isEmpty()`` as ``.isEmpty``), so the read parses as a
+        ``navigation_expression`` and emitted no edge, while the rows are keyed
+        by the Java method. The owner is the type the file establishes for the
+        receiver -- a typed local, a library call chain, or another such getter
+        -- and the read counts only where a row says that owner declares the
+        getter (:func:`is_known_library_method`), so a field or a kotlin
+        property adds nothing.
+        """
+        named = [c for c in nav.children if c.is_named]
+        if len(named) != 2 or named[1].type != "identifier":  # pragma: no cover - grammar guard
+            return None
+        receiver, prop = named[0], node_text(named[1], source)
+        owner: str | None = None
+        if receiver.type == "call_expression":
+            owner = _library_call_type(receiver)
+        elif receiver.type == "identifier" and node_text(receiver, source) in var_types:
+            owner = _kt_receiver_module(var_types[node_text(receiver, source)], imports)
+        elif receiver.type == "navigation_expression":
+            inner = _synthetic_getter(receiver)
+            owner = None if inner is None else library_returns.get(".".join(inner))
+        if owner is None:
+            return None
+        cap = prop[:1].upper() + prop[1:]
+        names = [f"get{cap}", f"is{cap}"]
+        if prop.startswith("is") and prop[2:3].isupper():
+            names.insert(0, prop)
+        getter = next(
+            (g for g in names if is_known_library_method("kotlin", f"{owner}.{g}")), None)
+        return None if getter is None else (owner, getter)
+
     def _emit_navigation_receiver_call(
         receiver: "tree_sitter.Node", method_name: str, line: int,
         *, this_property: str | None,
@@ -2413,6 +2459,21 @@ def _extract_edges_from_file(
             has_double_colon = any(
                 not c.is_named and c.type == "::" for c in node.children
             )
+            parent = node.parent
+            if not has_double_colon and not (
+                parent is not None and parent.type in ("call_expression", "assignment")
+                and parent.children[0] == node
+            ) and (getter := _synthetic_getter(node)) is not None:
+                edges.append(make_unresolved_edge(
+                    "kotlin",
+                    (
+                        _get_enclosing_function(node, source, decl_index)
+                        or enclosing_declared_symbol(node, decl_index, _TYPE_BODY_NODES)
+                        or file_anchor
+                    ).id,
+                    getter[1], node.start_point[0] + 1, PASS_ID, run.execution_id,
+                    module_hint=getter[0], call_construct="method",
+                ))
             if has_double_colon:
                 current_function = _get_enclosing_function(
                     node, source, decl_index,
@@ -2506,6 +2567,11 @@ def _resolve_base_class_kotlin(
     """
     candidates = candidates_by_name.get(base_name)
     if not candidates:
+        return None
+
+    # WI-pivap: a base the file imports from a package no in-repo class lives
+    # in is external, however many in-repo namesakes there are.
+    if external_import_fqn(base_name, child_sym, candidates_by_name, sym_file_imports):
         return None
 
     if len(candidates) == 1:
@@ -2607,7 +2673,20 @@ def _extract_inheritance_edges(
                     edge_type = "extends"
                     base_sym = class_sym
                 else:
-                    continue  # External type, no edge
+                    # WI-pivap: an imported base with in-repo namesakes but no
+                    # in-repo class of its qualified name is external. Its
+                    # clause is not recorded, so it is labelled ``extends``,
+                    # as the core linker labels external bases.
+                    ext = external_import_fqn(
+                        base_name, sym, {**class_by_name, **interface_by_name},
+                        sym_file_imports,
+                    ) if base_name in class_by_name or base_name in interface_by_name else None
+                    if ext is not None:
+                        edges.append(external_base_edge(
+                            sym, ext, "extends",
+                            sym.span.start_line if sym.span else 0, PASS_ID, run,
+                        ))
+                    continue  # External type
 
             edge = Edge.create(
                 src=sym.id,

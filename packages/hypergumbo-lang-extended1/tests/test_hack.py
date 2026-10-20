@@ -454,3 +454,13 @@ class Box {
         for s in result.symbols:
             if s.kind not in ("function", "method"):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+def test_analyzer_reads_php_files_with_hh_header(tmp_path: Path) -> None:
+    """INV-pobap: discovery is find_hack_files, so a <?hh .php file is analyzed."""
+    make_hack_file(tmp_path, "src/a.php", "<?hh\nfunction foo(): int { return 1; }")
+    make_hack_file(tmp_path, "src/b.hack", "<?hh\nfunction bar(): int { return 1; }")
+    make_hack_file(tmp_path, "src/c.php", "<?php\nfunction baz() { return 1; }")
+    result = analyze_hack(tmp_path)
+    names = {(s.name, s.path) for s in result.symbols if s.kind == "function"}
+    assert names == {("foo", "src/a.php"), ("bar", "src/b.hack")}

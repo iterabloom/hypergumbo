@@ -106,7 +106,8 @@ class TestLoadDuressHandler:
         """Returns NullDuressHandler when file doesn't exist."""
         from hypergumbo_tracker.serve_duress import NullDuressHandler, load_duress_handler
 
-        handler = load_duress_handler("/nonexistent/path/duress.py")
+        with pytest.warns(UserWarning, match="duress handler .*duress.py.* not loaded"):
+            handler = load_duress_handler("/nonexistent/path/duress.py")
         assert isinstance(handler, NullDuressHandler)
 
     def test_load_returns_null_on_non_python_file(self, tmp_path: Path) -> None:
@@ -116,7 +117,8 @@ class TestLoadDuressHandler:
         bin_file = tmp_path / "duress.bin"
         bin_file.write_bytes(b"\x00\x01\x02\x03")
 
-        handler = load_duress_handler(str(bin_file))
+        with pytest.warns(UserWarning, match="not a Python file"):
+            handler = load_duress_handler(str(bin_file))
         assert isinstance(handler, NullDuressHandler)
 
     def test_load_returns_null_on_bad_module(self, tmp_path: Path) -> None:
@@ -126,8 +128,27 @@ class TestLoadDuressHandler:
         bad_file = tmp_path / "bad_duress.py"
         bad_file.write_text("x = 42\n")
 
-        handler = load_duress_handler(str(bad_file))
+        with pytest.warns(UserWarning, match="no module-level 'handler'"):
+            handler = load_duress_handler(str(bad_file))
         assert isinstance(handler, NullDuressHandler)
+
+    def test_a_module_that_raises_on_import_warns(self, tmp_path: Path) -> None:
+        """A configured handler that fails to load is not silently replaced
+        by the no-op: the operator believes duress is armed (WI-hopip)."""
+        from hypergumbo_tracker.serve_duress import NullDuressHandler, load_duress_handler
+
+        broken = tmp_path / "broken_duress.py"
+        broken.write_text("raise ValueError('typo')\n")
+        with pytest.warns(UserWarning, match="ValueError: typo"):
+            handler = load_duress_handler(str(broken))
+        assert isinstance(handler, NullDuressHandler)
+
+    def test_no_configured_path_is_silent(self, recwarn: pytest.WarningsRecorder) -> None:
+        from hypergumbo_tracker.serve_duress import load_duress_handler
+
+        load_duress_handler(None)
+        load_duress_handler("")
+        assert not recwarn.list
 
 
 class TestWithTimeoutEnforcement:
@@ -160,3 +181,18 @@ class TestWithTimeoutEnforcement:
 
         result = await call_on_duress_login(FastHandler(), {}, {}, timeout=1.0)
         assert result is True
+
+    @pytest.mark.asyncio
+    async def test_a_handler_that_raises_does_not_escape(self) -> None:
+        """A raise would fail the duress login where a normal one succeeds --
+        telling the attacker which password they used (WI-hopip)."""
+        from hypergumbo_tracker.serve_duress import call_on_duress_login
+
+        class RaisingHandler:
+            async def on_duress_login(self, session, context):
+                raise ValueError("alert endpoint down")
+            def filter_response(self, session, response):
+                return response
+
+        result = await call_on_duress_login(RaisingHandler(), {}, {}, timeout=1.0)
+        assert result is False

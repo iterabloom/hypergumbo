@@ -1,0 +1,24 @@
+- op: create  # 2f94
+  at: '2026-10-17T03:24:11Z'  # 2f94
+  by: agent  # 2f94
+  actor: jgstern_agent  # 2f94
+  clock: 1  # 2f94
+  nonce: 2f94  # 2f94
+  data:  # 2f94
+    kind: work_item  # 2f94
+    title: "tracker live doc: erase-by-author via the out-of-doc pseudonymous token map (PlazaFlow §4.8 rehearsal), measuring orphan fragments"  # 2f94
+    status: todo_soft  # 2f94
+    priority: 4  # 2f94
+    parent:  # 2f94
+    tags:  # 2f94
+    - tracker  # 2f94
+    - yjs  # 2f94
+    - plazaflow  # 2f94
+    - security  # 2f94
+    - someday  # 2f94
+    isbefore: []  # 2f94
+    duplicate_of: []  # 2f94
+    not_duplicate_of: []  # 2f94
+    pr_ref:  # 2f94
+    description: "## What\nImplement and measure erase-by-author over the live Y.Doc: given a set of pseudonymous tokens resolved from one `by:` identity, remove that author's contributions from the live-editable fields (discussion Y.Text runs, description text) and verify the remaining document stays well-formed. This rehearses PlazaFlow spec v1.2 §4.8 (attribution and erasure) in the tracker: the token map lives outside the shared doc, so content readers cannot resolve authorship, but a moderator holding the map can erase.\n## Measure\n- Orphan fragments (PlazaFlow §4.8.6): other authors' text inserted inside the erased author's runs survives anchored to tombstones -- count and report them.\n- Whether erasure must also emit tracker ops (the ops log keeps the durable history; the ADR decides whether erasure is a live-doc-only operation or also a `discuss_summarize`/redaction op).\n## Done when\nA test erases one of three authors from a co-edited discussion and asserts the other two authors' text is intact, the erased author's is gone, and the orphan count is reported. Findings go to the lab notebook.\n## Context\n~/hypergumbo_lab_notebook/notebookjournal_10162026_2318.md section 3c (the \"no sidecar\" leak) and section 4."  # 2f94
+    fields: {}  # 2f94

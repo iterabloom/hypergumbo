@@ -39,7 +39,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -62,8 +61,11 @@ PASS_ID = make_pass_id("verilog")
 
 
 def find_verilog_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Verilog/SystemVerilog files in the repository."""
-    yield from find_files(repo_root, ["*.v", "*.sv", "*.vh", "*.svh"])
+    """Yield all Verilog/SystemVerilog files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _extract_module_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:

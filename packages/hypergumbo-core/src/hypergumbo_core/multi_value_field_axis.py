@@ -27,8 +27,9 @@ be one of:
   space is the legal set returned by the axis's all-names function.
   ``language`` and ``pass-id`` are derived from the analyzer/linker
   catalog (:func:`hypergumbo_core.catalog`); the rest live in dedicated
-  registry modules (``*_types.py`` / ``*_origins.py`` / ``*_axis.py``,
-  plus ``entrypoints.py`` and ``visibility.py``).
+  registry modules (``*_types.py`` / ``*_origins.py`` / ``*_axis.py`` /
+  ``*_kinds.py``, plus ``entrypoints.py``, ``visibility.py`` and
+  ``pass_silence.py``).
   The ``protocol-origin`` axis (ADR-0031) covers
   ``Symbol.protocol_origin`` values for synthetic stand-ins emitted by
   linkers that detect protocol patterns (Kafka, WebSocket, IPC, WASM,

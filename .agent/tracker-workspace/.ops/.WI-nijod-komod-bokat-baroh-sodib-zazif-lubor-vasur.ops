@@ -1,0 +1,54 @@
+- op: create  # 7399
+  at: '2026-10-20T02:11:29Z'  # 7399
+  by: agent  # 7399
+  actor: jgstern_agent  # 7399
+  clock: 1  # 7399
+  nonce: '7399'  # 7399
+  data:  # 7399
+    kind: work_item  # 7399
+    title: "scip-python backend indexes an empty scratch dir: invoke passes the project positionally, which scip-python 0.6.6 ignores (it indexes --cwd)"  # 7399
+    status: todo_hard  # 7399
+    priority: 1  # 7399
+    parent:  # 7399
+    tags:  # 7399
+    - scip  # 7399
+    - multi_fidelity  # 7399
+    - analysis_quality  # 7399
+    - receiver_typing  # 7399
+    isbefore: []  # 7399
+    duplicate_of: []  # 7399
+    not_duplicate_of: []  # 7399
+    pr_ref:  # 7399
+    description: "FOUND 2026-10-19 while implementing WI-losig (measuring a scip-python self-map). The scip-python backend has never indexed the analysed repository through hypergumbo.\n\nFACTS (scip-python 0.6.6, the pinned version):\n- invoke.run_scip_python_index runs `scip-python index <project> --project-name N --output <scratch>/index.scip` with the subprocess cwd set to a fresh scratch directory.\n- scip-python 0.6.6 takes NO positional project argument (`scip-python index --help`: options only; the project is `--cwd <path>`, default the process cwd). It silently ignores the positional and indexes its cwd: the run log says \"Indexing <scratch dir>\", \"Total Project Files 0\", exits 0 and writes a 72-75 byte index.\n- So every opted-in run indexes the empty scratch directory. On dev (whole hypergumbo repo, HYPERGUMBO_SCIP_PYTHON=1, binary on PATH): the scip_python pass ran 2.3 s, emitted 0 nodes, and the map was node-for-node identical to the plain map (61,431 nodes / 244,545 edges both).\n- The analyzer saw it -- it warns \"produced no symbols ... despite .py files being present\" -- but recorded silence_reason no_candidate_construct, which is ROUTINE (counted, not named, in the [passes] summary line), so the pass looked like it ran clean.\n- Why the tests missed it: test_scip_python_invoke.py pins the argv (it pinned the broken one) through an injected runner; the recorded fixtures were produced outside invoke.py.\n\nFIX: pass `--cwd <project>` (output stays an absolute path in the scratch dir, so the project is not written to); an empty index on a repo with .py files is `unreported` (CANNOT-DETERMINE), not a routine silence.\n\nSECOND GAP, same measurement: with --cwd fixed, indexing the whole repo (1,722 .py files) aborts in node with \"FatalProcessOutOfMemory\" after 170 s at 4.2 GB RSS (default V8 heap). Being measured with a larger heap; record the result here."  # 7399
+    fields: {}  # 7399
+- op: update  # a1ae
+  at: '2026-10-20T02:11:35Z'  # a1ae
+  by: agent  # a1ae
+  actor: jgstern_agent  # a1ae
+  clock: 2  # a1ae
+  nonce: a1ae  # a1ae
+  set: {}  # a1ae
+  add:  # a1ae
+    isbefore: [WI-losig-domon-janak-rumop-rubas-rapas-vinuj-zohih]  # a1ae
+- op: discuss  # 1dc4
+  at: '2026-10-20T02:34:46Z'  # 1dc4
+  by: agent  # 1dc4
+  actor: jgstern_agent  # 1dc4
+  clock: 3  # 1dc4
+  nonce: 1dc4  # 1dc4
+  message: "MEASURED: (1) with --cwd and NODE_OPTIONS=--max-old-space-size=9000, scip-python indexes the whole hypergumbo tree: 1,712 project files, 306 s, 8.4 GB RSS, 131 MB index. (2) A THIRD defect found on a small non-git project: with no --project-version scip-python reads the git revision, and outside a git checkout it crashes on the first module (TypeError in ScipSymbol.normalizeNameOrVersion, exit 1). The recorded fixtures were produced with '--project-version 0.1.0' from inside the project, which is why they worked. (3) The full hypergumbo run with the fixed backend on the whole repo (Python ~3.9 GB + node ~8.4 GB) was stopped by Claude Code for low system memory on this 22 GB machine; not re-run. Fix scope on branch jgstern-agent/fix/nijod-scip-python-cwd: --cwd, constant --project-version 0, empty-index-on-a-Python-tree = unreported, OOM message names NODE_OPTIONS. The heap LIMIT is left to the user (it is memory on their machine)."  # 1dc4
+- op: update  # a355
+  at: '2026-10-20T03:19:53Z'  # a355
+  by: agent  # a355
+  actor: jgstern_agent  # a355
+  clock: 4  # a355
+  nonce: a355  # a355
+  set:  # a355
+    status: done  # a355
+- op: discuss  # 96f0
+  at: '2026-10-20T03:19:53Z'  # 96f0
+  by: agent  # 96f0
+  actor: jgstern_agent  # 96f0
+  clock: 5  # 96f0
+  nonce: 96f0  # 96f0
+  message: "Fixed in PR #1746 (dev 1d26944212). invoke now runs 'scip-python index --cwd <project> --project-name N --project-version 0 --output <scratch>/index.scip'; an empty index of a tree with .py files reads silence_reason=unreported instead of the routine no_candidate_construct; a node heap exhaustion names NODE_OPTIONS=--max-old-space-size. BEHAVIORAL REPRO with the real scip-python 0.6.6 binary, HYPERGUMBO_SCIP_PYTHON=1, on a 3-function non-git project (Shape/Square.area/total): before (dev dbeef1ab2a) the scip_python pass emitted 0 nodes, silence_reason no_candidate_construct; after, on merged dev, 5 nodes / 5 edges, silence_reason None, and total -> Square.area carries origin [python, scip]. Whole-repo cost measured with the binary directly: 1,712 files, 306 s, 8.4 GB RSS with --max-old-space-size=9000 (default heap aborts at 4.2 GB). NOT MEASURED: a complete whole-repo hypergumbo run with the backend (stopped for low system memory on this 22 GB machine) -- that is WI-losig's to settle."  # 96f0

@@ -149,6 +149,37 @@ rare in Go.
 `dataflow_coverage` publishes capability per **language**. This limit is
 per-**flow** and applies to every language equally.
 
+### A value the walk loses through an unfollowed construct withholds the verdict
+
+A taint verdict that finds no flow is clean only if the analysis followed the
+value wherever it went. Some constructs carry it where neither the §3a walk
+nor the call graph goes. An analyzer can stamp such a call site
+`unfollowed_construct`; when the walk sees a source's value reach one, every
+clean verdict on that source's **label** reads `inconclusive`, naming the
+sites. The scope is the label, not the claim's zone: where the value went is
+exactly what is unknown. A non-production source counts only under
+`--include-non-production-sources`, as a flow from it would.
+
+C stamps four (INV-nohob): a call to a project function that writes through a
+pointer parameter (`set_pass(p, &g_conf)`), a copy into memory the function
+does not own (`snprintf(config->user, ...)`, `strcpy(g_buf, p)`), a call to a
+function-like macro the file can see (`DBG(...)`), and arguments in a project
+function's `...` tail. Measured on torsocks: its getenv'd SOCKS5 password is
+copied into a global and sent from another function, and its pid/time
+username is written into a pointer parameter; `host-secret-no-network`,
+`host-secret-no-logging` and `host-description-no-network` read
+`confirmed_with_caveats` and are now `inconclusive`. crun, tmate and redis
+moved no verdict. A plain ASSIGNMENT into such memory (`g_secret = p;`,
+`c->pass = p;` through a pointer parameter) is not a call, so each C function
+records its own such lines instead (`meta.non_local_store_lines`) and they are
+read the same way: `g_secret = getenv("K")` in one function and a send of
+`g_secret` from another reads `inconclusive`, not `confirmed`. On crun, tmate
+and redis about 29% of functions record one; no verdict there moved.
+
+Following the value through each construct is separate work (out-parameter
+summaries, cross-function global state, macro expansion, variadic tails).
+When one lands, its construct stops withholding.
+
 ### A partially parsed file is read from the parser's error recovery, and no verdict consults it
 
 When tree-sitter cannot parse part of a file, the analysis carries on from its

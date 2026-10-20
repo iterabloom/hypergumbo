@@ -2231,3 +2231,55 @@ class TestErrorNodeTypeRecoveryUnderTheCurrentGrammar:
         ]
         assert recovered, [(s.name, s.kind) for s in result.symbols]
         assert recovered[0].span.start_line == 1
+
+
+class TestSwiftSubscriptsAreNotCalls:
+    """WI-dimad: tree-sitter-swift parses a subscript ``xs[0]`` /
+    ``r.headers["age"]`` as a ``call_expression`` whose ``value_arguments``
+    open with ``[``. A subscript is a member access, not a call: it used to
+    emit a call edge to a FIELD, to a parameter, or a resolved phantom call
+    to an unrelated free function of the same name."""
+
+    def test_subscript_on_a_field_emits_no_call(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "a.swift").write_text(
+            "struct Response { var headers: [String: String] = [:] }\n"
+            'func f(r: Response) -> String? { return r.headers["age"] }\n'
+        )
+
+        result = analyze_swift(tmp_path)
+
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert not any("headers" in e.dst for e in calls), [e.dst for e in calls]
+
+    def test_subscript_on_a_parameter_named_like_a_free_function_emits_no_call(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "b.swift").write_text(
+            "func data() -> Int { 1 }\n"
+            "func f(xs: [Int], data: [Int]) -> Int {\n"
+            "    let a = xs[0]\n"
+            "    let b = data[1]\n"
+            "    return a + b\n"
+            "}\n"
+        )
+
+        result = analyze_swift(tmp_path)
+
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        assert calls == [], [e.dst for e in calls]
+
+    def test_call_nested_in_a_subscript_receiver_is_still_a_call(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "c.swift").write_text(
+            "func make() -> [Int] { [1] }\n"
+            "func f() -> Int { return make()[0] }\n"
+        )
+
+        result = analyze_swift(tmp_path)
+
+        by_id = {s.id: s for s in result.symbols}
+        calls = [(by_id[e.src].name, by_id.get(e.dst, e.dst)) for e in result.edges if e.edge_type == "calls"]
+        assert [(src, getattr(dst, "name", dst)) for src, dst in calls] == [("f", "make")]

@@ -14,17 +14,19 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 - Pass 1: Parse all files, extract all symbols into global registry
-- Pass 2: Detect calls and resolve against global symbol registry (it re-walks
-  the file for its calls; the calls Pass 1 collects are not read)
+- Pass 2: Walk the file for its ``call`` instructions and resolve them
 
-A call edge is emitted only when both ends are in the registry: a call to a
-function the repository does not define is dropped. The caller is the
-enclosing ``define``, taken by name and looked up in the repo-wide registry.
+A call edge is emitted only when both ends are known: a call to a name the
+repository neither defines nor declares is dropped. The caller is the
+``define`` that contains the instruction, found by POSITION in this file (the
+``define``'s start, looked up in a ``symbols_at`` index; INV-nafij, WI-kosar).
+The callee is this file's ``define`` of that name when there is one, else
+whatever the repo-wide registry holds under the name, which may be a
+``declare``. Before, both ends went through the registry by bare name, so two
+files defining ``@foo`` had one file's calls credited to the other's.
 
-Known gaps: two files defining a same-named function can have one file's calls
-credited to the other's (the caller is found by name, not position); and an
-indirect call (``call void %fp(ptr @g)``) is credited to the first ``@name`` in
-the instruction, here the argument ``@g``.
+Known gap: an indirect call (``call void %fp(ptr @g)``) is credited to the
+first ``@name`` in the instruction, here the argument ``@g``.
 
 Identity (WI-tusad): a ``define`` (kind ``function``) and a ``declare`` (kind
 ``declaration``) record their typed parameters in ``meta["parameters"]``
@@ -58,7 +60,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.overload_arity import (
@@ -67,11 +68,13 @@ from hypergumbo_core.overload_arity import (
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
     make_symbol_id,
     node_text,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -84,8 +87,11 @@ PASS_ID = make_pass_id("llvm_ir")
 
 
 def find_llvm_ir_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all LLVM IR files in the repository."""
-    yield from find_files(repo_root, ["*.ll"])
+    """Yield all LLVM IR files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _get_function_name(header_node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -122,19 +128,15 @@ def _get_call_target(call_node: "tree_sitter.Node", source: bytes) -> str | None
     return None  # pragma: no cover - defensive fallback
 
 
-def _find_enclosing_function(
-    node: "tree_sitter.Node", source: bytes
-) -> str | None:
-    """Find the name of the function containing this node."""
+def _enclosing_define(node: "tree_sitter.Node") -> "tree_sitter.Node | None":
+    """The ``fn_define`` node containing ``node``; its start position is the
+    key of the function symbol Pass 1 emitted from it."""
     current = node.parent
     while current is not None:
         if current.type == "fn_define":
-            # Find function_header child
-            for child in current.children:
-                if child.type == "function_header":
-                    return _get_function_name(child, source)
+            return current
         current = current.parent
-    return None  # pragma: no cover - defensive fallback
+    return None  # pragma: no cover - a call instruction sits in a define
 
 
 def _extract_arguments(header_node: "tree_sitter.Node", source: bytes) -> str:
@@ -192,16 +194,16 @@ def _get_return_type(header_node: "tree_sitter.Node", source: bytes) -> str | No
     return None  # pragma: no cover - defensive fallback
 
 
+#: A call site: the enclosing ``define``'s (start_line, start_col), the callee
+#: name, and the instruction's line and column.
+CallSite = tuple[tuple[int, int], str, int, int]
+
+
 def _extract_symbols_from_tree(
     tree: "tree_sitter.Tree", source: bytes, rel_path: str,
     run_id: str, analysis: FileAnalysis,
-) -> list[tuple[str, str, int, int]]:
-    """Extract symbols and call sites from a single LLVM IR file.
-
-    Returns a list of call tuples: (caller_name, callee_name, line, col).
-    """
-    calls: list[tuple[str, str, int, int]] = []
-
+) -> None:
+    """Extract the symbols of a single LLVM IR file into ``analysis``."""
     for node in iter_tree(tree.root_node):
         if node.type == "fn_define":
             # Function definition
@@ -314,58 +316,69 @@ def _extract_symbols_from_tree(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
 
-        elif node.type == "instruction_call":
-            # Function call
-            caller = _find_enclosing_function(node, source)
-            callee = _get_call_target(node, source)
-            if caller and callee:
-                calls.append((
-                    caller,
-                    callee,
-                    node.start_point[0] + 1,
-                    node.start_point[1],
-                ))
 
+
+def _collect_calls(tree: "tree_sitter.Tree", source: bytes) -> list[CallSite]:
+    """Every ``call`` instruction of the file with the position of the
+    ``define`` that contains it."""
+    calls: list[CallSite] = []
+    for node in iter_tree(tree.root_node):
+        if node.type != "instruction_call":
+            continue
+        define = _enclosing_define(node)
+        callee = _get_call_target(node, source)
+        if define is not None and callee:
+            calls.append((
+                (define.start_point[0] + 1, define.start_point[1]),
+                callee,
+                node.start_point[0] + 1,
+                node.start_point[1],
+            ))
     return calls
 
 
 def _resolve_calls(
-    all_calls: list[tuple[str, str, int, int]],
+    all_calls: list[CallSite],
     resolver: NameResolver,
     run_id: str,
+    decl_index: SymbolsAt,
+    local_symbols: dict[str, Symbol],
 ) -> list[Edge]:
     """Resolve call sites to known symbols (pass 2).
 
-    Creates edges for calls where both caller and callee are in the registry.
-    Uses NameResolver for flexible symbol lookup with confidence tracking.
+    The caller is the symbol at the enclosing ``define``'s position. The callee
+    is this file's ``define`` of that name when it has one (exact), else
+    whatever the repo-wide resolver finds; a ``declare`` in this file is a
+    promise that the definition is elsewhere, so it does not pre-empt another
+    file's ``define``. A call with either end unknown is dropped.
     """
     edges: list[Edge] = []
 
-    for caller_name, callee_name, line, _col in all_calls:
-        caller_result = resolver.lookup(caller_name)
-        callee_result = resolver.lookup(callee_name)
-
-        if caller_result.found and callee_result.found:
-            caller_sym = caller_result.symbol
+    for caller_pos, callee_name, line, _col in all_calls:
+        caller_sym = decl_index.get(caller_pos)
+        if caller_sym is None:
+            continue  # pragma: no cover - every define is emitted in Pass 1
+        callee_sym = local_symbols.get(callee_name)
+        if callee_sym is not None and callee_sym.kind == "function":
+            resolution_score = resolver.CONFIDENCE_EXACT
+        else:
+            callee_result = resolver.lookup(callee_name)
             callee_sym = callee_result.symbol
-            assert caller_sym is not None
-            assert callee_sym is not None
-            # ADR-0039 ruling 6: the weaker of the two resolver grades
-            # interpolates in the ast_call_direct band.
-            resolution_score = min(
-                caller_result.confidence, callee_result.confidence
-            )
-            edge = Edge.create(
-                src=caller_sym.id,
-                dst=callee_sym.id,
-                edge_type="calls",
-                line=line,
-                resolution_score=resolution_score,
-                origin=PASS_ID,
-                origin_run_id=run_id,
-                evidence_type="ast_call_direct",
-            )
-            edges.append(edge)
+            if callee_sym is None:
+                continue
+            # ADR-0039 ruling 6: the resolver's grade interpolates in the
+            # ast_call_direct band.
+            resolution_score = callee_result.confidence
+        edges.append(Edge.create(
+            src=caller_sym.id,
+            dst=callee_sym.id,
+            edge_type="calls",
+            line=line,
+            resolution_score=resolution_score,
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            evidence_type="ast_call_direct",
+        ))
 
     return edges
 
@@ -386,21 +399,11 @@ class LlvmIrAnalyzer(TreeSitterAnalyzer):
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str, run: "AnalysisRun",
     ) -> FileAnalysis:
-        """Extract symbols from a single LLVM IR file.
-
-        Also stores call tuples in import_aliases under a special key
-        for later retrieval in the edge pass.
-        """
+        """Extract symbols from a single LLVM IR file."""
         analysis = FileAnalysis()
-        calls = _extract_symbols_from_tree(
+        _extract_symbols_from_tree(
             tree, source, rel_path, run.execution_id, analysis,
         )
-        # Store calls for pass 2 via import_aliases (a dict[str, str] hack:
-        # we serialize the calls list as a string keyed by "__calls__")
-        # Instead, we store them in the analysis object's symbol_by_name under
-        # a special key. The base class passes symbol_by_name to extract_edges.
-        # We'll use a different approach: store calls in a module-level dict.
-        _pending_calls[id(tree)] = calls
         return analysis
 
     def extract_edges_from_file(
@@ -410,20 +413,13 @@ class LlvmIrAnalyzer(TreeSitterAnalyzer):
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:
-        """Extract call edges from a single LLVM IR file.
-
-        Uses NameResolver for cross-file symbol lookup.
-        """
-        # Re-extract calls from this file's tree (since base class re-parses)
-        calls = _extract_symbols_from_tree(
-            tree, source, rel_path, run.execution_id,
-            FileAnalysis(),  # dummy - we only need the calls
+        """Extract call edges from a single LLVM IR file."""
+        decl_index = symbols_at(self.file_symbols(local_symbols))
+        return _resolve_calls(
+            _collect_calls(tree, source), resolver, run.execution_id,
+            decl_index, local_symbols,
         )
-        return _resolve_calls(calls, resolver, run.execution_id)
 
-
-# Module-level storage for call tuples between passes
-_pending_calls: dict[int, list[tuple[str, str, int, int]]] = {}
 
 _analyzer = LlvmIrAnalyzer()
 

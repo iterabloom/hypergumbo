@@ -1,0 +1,13 @@
+# Corpus for scripts/io-manifest: six small, real repositories, pinned by commit.
+# Format: name owner/repo sha [slice=<entry>]
+# Chosen for spread across language, ecosystem and kind of program, and for
+# a plain `hypergumbo sketch` under 45 s each. `slice=` additionally runs
+# `survey` and `slice --entry <entry>` on that repository, exercising the
+# --out write path. Changing a pin changes the expected manifest only if the
+# CLI's I/O changes; re-pin and re-run `io-manifest run` to confirm.
+full-stack-fastapi-template  fastapi/full-stack-fastapi-template    63f167d4625c71d49a0391c2532a2f30d426b3d7 slice=backend/app/main.py   # Python FastAPI + TypeScript React + Compose
+git-bug                      git-bug/git-bug                        7468b3793fbf1eeef4637d91291494fd8454ae7c   # Go CLI + GraphQL + React web UI
+ripgrep                      BurntSushi/ripgrep                     0a88cccd5188074de96f54a4b6b44a63971ac157   # Rust CLI, Cargo workspace
+okhttp                       square/okhttp                          2ea8dc55a234cea410b2e4f26b36cb367cc98f4a   # Kotlin + Java library, Gradle
+postal                       postalserver/postal                    b7e5232e077b3c9b7a999dcb6676fba0ec61458e   # Ruby on Rails application, HAML views
+crun                         containers/crun                        e0a6f43ffd97874abf95e9df3518585439e6beda   # C container runtime, autotools, Python tests

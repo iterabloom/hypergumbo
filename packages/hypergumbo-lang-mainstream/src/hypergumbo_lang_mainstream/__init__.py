@@ -24,7 +24,7 @@ language spec.
 See `docs/LANGUAGES.md` for the authoritative inventory.
 """
 
-__version__ = "9.1.0"
+__version__ = "9.2.0"
 
 # Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
 # Importing each module triggers the @register_analyzer decorator within it.

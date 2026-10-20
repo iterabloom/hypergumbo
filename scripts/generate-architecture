@@ -120,6 +120,52 @@ def get_commit_count() -> int | None:
     return None
 
 
+#: The auto-sync's ``tracker: N files (M ops) -- ...`` and the ``tracker:``
+#: conventional prefix AGENTS.md mandates for tracker-only changes, with an
+#: optional scope (``tracker(workspace): ...``). ``fix(tracker): ...`` is code.
+_TRACKER_SUBJECT = re.compile(r"^tracker(\([^)]*\))?:")
+
+
+def count_tracker_only_commits(n: int) -> int:
+    """How many of the ``n`` most recent commits are tracker-only commits.
+
+    Those commits move no code, so they must not age docs/ARCHITECTURE.md:
+    on 2026-10-16 an afternoon of tracker filing produced 34 auto-sync commits
+    on ``dev`` with zero code commits between them, and a doc regenerated that
+    morning failed the 30-commit window on the very next PR. Git failures count
+    as zero so the check degrades to the plain distance rather than erroring.
+    """
+    if n <= 0:
+        return 0
+    try:
+        result = subprocess.run(
+            ["git", "log", f"-n{n}", "--format=%s"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+        )
+    except Exception:
+        return 0
+    if result.returncode != 0:
+        return 0
+    return sum(1 for line in result.stdout.splitlines() if _TRACKER_SUBJECT.match(line))
+
+
+def staleness_distance(recorded_count: int) -> tuple[int, int, int]:
+    """``(raw, tracker_only, effective)`` commits since the doc was generated.
+
+    ``raw`` is ``current_count - recorded_count`` (rebase-stable, see
+    ``get_commit_count``); ``effective`` subtracts the tracker-only commits
+    among those ``raw`` most recent ones and is what the window applies to.
+    """
+    current_count = get_commit_count()
+    if current_count is None:
+        raise RuntimeError("could not count commits (git rev-list failed)")
+    raw = current_count - recorded_count
+    tracker_only = count_tracker_only_commits(raw)
+    return raw, tracker_only, raw - tracker_only
+
+
 def get_hypergumbo_version() -> str:
     """Get the hypergumbo package version from pyproject.toml.
 
@@ -1613,17 +1659,19 @@ def main() -> int:
         count_match = re.search(r"commit_count:\s+(\d+)", content)
         if count_match:
             recorded_count = int(count_match.group(1))
-            current_count = get_commit_count()
-            if current_count is None:
-                print("ERROR: could not count commits (git rev-list failed)")
+            try:
+                raw, tracker_only, distance = staleness_distance(recorded_count)
+            except RuntimeError as exc:
+                print(f"ERROR: {exc}")
                 return 1
-            distance = current_count - recorded_count
+            note = (f" ({raw} including {tracker_only} tracker-only commit(s), not counted)"
+                    if tracker_only else "")
             if distance <= RECENT_COMMIT_WINDOW:
                 print(f"OK: docs/ARCHITECTURE.md was generated {distance} commit(s) "
-                      f"ago (window {RECENT_COMMIT_WINDOW})")
+                      f"ago (window {RECENT_COMMIT_WINDOW}){note}")
                 return 0
             print(f"ERROR: docs/ARCHITECTURE.md is out of date: generated {distance} "
-                  f"commits ago, exceeds the {RECENT_COMMIT_WINDOW}-commit window")
+                  f"commits ago{note}, exceeds the {RECENT_COMMIT_WINDOW}-commit window")
             print("Run: ./scripts/generate-architecture")
             return 1
 

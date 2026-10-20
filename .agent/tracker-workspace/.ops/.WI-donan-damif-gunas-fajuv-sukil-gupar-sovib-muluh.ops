@@ -18,3 +18,17 @@
     pr_ref:  # c595
     description: "FOUND 2026-09-24 while writing WI-mapor's fixtures. Scheme, fennel and janet emit NO calls edge for a call inside a nested definition.\n\nFixture (each language's own spelling): `(define (outer1) (define (inner) (one)) (inner))`. On dev, the calls at the nested definitions' bodies are absent: no edge at all, so reach fails, and WI-mapor had to fall back to a top-level redefinition to reach anything. The top-level shape anchors correctly (verified, pinned in the gate files).\n\nNOT INVESTIGATED: whether the nested definition gets no symbol, or its calls are dropped because the enclosing lookup finds no symbol for it and returns None. Both would lose the call. The outer function's calls to `(inner)` may be missing too.\n\nASKED: find which. If the nested definition has no symbol, a call inside it should still go to the outermost function that contains it, which is the rule js_ts and elixir already use. Assert reach on the nested fixture in each of the three languages."  # c595
     fields: {}  # c595
+- op: discuss  # 8a70
+  at: '2026-10-20T09:11:23Z'  # 8a70
+  by: agent  # 8a70
+  actor: jgstern_agent  # 8a70
+  clock: 2  # 8a70
+  nonce: 8a70  # 8a70
+  message: "2026-10-20 docstring audit, verifier repro: a second scheme shape with the same effect. A variable define bound to a lambda drops its calls: the variable-define branch of _extract_scheme_edges returns without walking the value, and the call has no enclosing function symbol, so (define f (lambda (y) (helper y))) emits no edge to helper. (Separate defect filed as WI-furid? no -- see the let-binding item: let pairs emitted as calls.)"  # 8a70
+- op: discuss  # 9dd9
+  at: '2026-10-20T09:14:40Z'  # 9dd9
+  by: agent  # 9dd9
+  actor: jgstern_agent  # 9dd9
+  clock: 3  # 9dd9
+  nonce: 9dd9  # 9dd9
+  message: "Correction to my previous entry's last sentence: the separate defect (let binding pairs emitted as calls) is WI-vapip, not WI-furid (that one is the SQL CREATE PROCEDURE item). The lambda-bound define shape belongs here."  # 9dd9

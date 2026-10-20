@@ -11,6 +11,11 @@ This analyzer uses tree-sitter to parse Groovy files and extract:
   hashed their emitted nearest-owner name (``Inner.go``) and types the
   backstop's bare-name table key, so two nested ``class Inner`` tied; types
   now mint ``overload_arity.scoped_table_stable_id``
+- Inheritance metadata for the inheritance linker: a class's
+  ``base_classes`` (extends and implements, generics stripped) and
+  ``base_class_imports`` (the single-type import each bare base came
+  through), and a package-qualified ``qualified_name`` on every type
+- Annotations as ``meta.decorators`` on classes and methods
 - Function call relationships
 - Import statements
 
@@ -28,7 +33,7 @@ How It Works
 Uses the TreeSitterAnalyzer base class for two-pass orchestration:
 1. extract_symbols_from_file: extracts classes, interfaces, enums, methods, functions
 2. get_import_aliases: extracts 'import X as Y' aliases for path_hint disambiguation
-3. register_symbol: registers each symbol by its qualified name (the NameResolver suffix index handles short-name lookups for cross-file resolution)
+3. register_symbol: registers each symbol under its own name (``Foo``, or ``Foo.bar`` for a method), not a type's package-qualified ``qualified_name`` (the NameResolver suffix index handles short-name lookups for cross-file resolution)
 4. extract_edges_from_file: resolves import statements and function/method calls
 
 Call resolution in ``extract_edges_from_file`` adds three guards:
@@ -57,7 +62,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
@@ -93,9 +97,11 @@ PASS_ID = make_pass_id("groovy")
 def find_groovy_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Groovy files in the repository.
 
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+
     Includes both .groovy files and .gradle build files.
     """
-    yield from find_files(repo_root, ["*.groovy", "*.gradle"])
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def is_groovy_tree_sitter_available() -> bool:
@@ -347,6 +353,49 @@ def normalize_groovy_signature(
     )
 
 
+def _groovy_package(tree: "tree_sitter.Tree", source: bytes) -> str:
+    """The file's ``package`` name, or ``""`` (WI-pivap)."""
+    for child in tree.root_node.children:
+        if child.type == "package_declaration":
+            name = find_child_by_type(child, "scoped_identifier") or find_child_by_type(
+                child, "identifier",
+            )
+            if name is not None:
+                return str(node_text(name, source))
+    return ""
+
+
+def _groovy_type_imports(tree: "tree_sitter.Tree", source: bytes) -> dict[str, str]:
+    """Single-type imports: the name each binds (its alias, else its last
+    segment) -> the fully qualified class. Wildcard imports bind no single
+    name and are skipped (WI-pivap)."""
+    bound: dict[str, str] = {}
+    for node in tree.root_node.children:
+        if node.type != "import_declaration":
+            continue
+        path = find_child_by_type(node, "scoped_identifier")
+        if path is None or find_child_by_type(node, "asterisk") is not None:
+            continue
+        full = node_text(path, source)
+        alias = None
+        seen_as = False
+        for child in node.children:
+            if child.type == "as":
+                seen_as = True
+            elif seen_as and child.type == "identifier":
+                alias = node_text(child, source)
+        bound[alias or full.rsplit(".", 1)[-1]] = full
+    return bound
+
+
+def _groovy_qualified_name(
+    package: str, node: "tree_sitter.Node", source: bytes, name: str,
+) -> str:
+    """``package.Outer.Name``: what the inheritance linker checks an imported
+    or qualified base against (WI-pivap)."""
+    return ".".join(p for p in (package, *_groovy_scope(node, source), name) if p)
+
+
 def _extract_import_aliases(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -422,6 +471,8 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
         # make_typed_stable_id's containing slot so same-name methods/functions in
         # different files hash distinctly.
         file_stable_id = make_file_stable_id("groovy", normalize_path(rel_path))
+        package = _groovy_package(tree, source)
+        type_imports = _groovy_type_imports(tree, source)
 
         for node in iter_tree(tree.root_node):
             # Class declaration
@@ -439,6 +490,13 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     meta: dict[str, object] | None = {}
                     if base_classes:
                         meta["base_classes"] = base_classes
+                        # WI-pivap: the import each bare base came through.
+                        base_imports = {
+                            b: type_imports[b] for b in base_classes
+                            if "." not in b and b in type_imports
+                        }
+                        if base_imports and meta is not None:
+                            meta["base_class_imports"] = base_imports
                     if annotations:
                         meta["decorators"] = annotations
                     if not meta:
@@ -449,6 +507,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         name=class_name,
                         kind="class",
                         language="groovy",
+                        qualified_name=_groovy_qualified_name(package, node, source, class_name),
                         path=str(file_path),
                         span=Span(
                             start_line=start_line,
@@ -484,6 +543,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         name=iface_name,
                         kind="interface",
                         language="groovy",
+                        qualified_name=_groovy_qualified_name(package, node, source, iface_name),
                         path=str(file_path),
                         span=Span(
                             start_line=start_line,
@@ -520,6 +580,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         name=trait_name,
                         kind="trait",
                         language="groovy",
+                        qualified_name=_groovy_qualified_name(package, node, source, trait_name),
                         path=str(file_path),
                         span=Span(
                             start_line=start_line,
@@ -549,6 +610,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         name=enum_name,
                         kind="enum",
                         language="groovy",
+                        qualified_name=_groovy_qualified_name(package, node, source, enum_name),
                         path=str(file_path),
                         span=Span(
                             start_line=start_line,
@@ -687,7 +749,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
         symbol: Symbol,
         global_symbols: dict,
     ) -> None:
-        """Register symbol by qualified name only.
+        """Register symbol under its own name only.
 
         The ``NameResolver`` suffix index handles short-name lookups.
         """

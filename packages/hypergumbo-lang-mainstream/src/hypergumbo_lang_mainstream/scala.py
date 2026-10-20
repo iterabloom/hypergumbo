@@ -16,7 +16,7 @@ This analyzer uses tree-sitter to parse Scala files and extract:
 - Function call relationships
 - Import statements
 - Annotations/decorators (into symbol meta["decorators"], for functions, methods, classes, and val/var fields)
-- Inheritance: extends/with base classes and traits (into symbol meta["base_classes"], for classes and traits)
+- Inheritance: extends/with base classes and traits (into symbol meta["base_classes"], for classes, traits and objects)
 
 Modifiers (access/abstract/final/sealed/override/implicit/lazy/case) are
 captured on Symbol.modifiers, and parameter/variable types -- declared, or
@@ -49,14 +49,25 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      path, so a LIBRARY owner (its import, an inline path, or java.lang) is
      asked under that path first: ``Runtime.getRuntime().exec(c)`` reaches
      the ``subprocess`` row (WI-jubim).
+   - A call on a bare PROJECT object or companion (``Factory.make()``) is
+     looked up as ``Name.member`` where Scala binds the name -- the same
+     file, an explicit import that fits the symbol, or the caller's own
+     package (``_project_object_binding``, WI-kipol) -- among every symbol
+     of that name (``_symbols_by_name``), not the name-keyed registry's one.
+     A visible object without the member stamps ``receiver_type_hint`` for
+     the inherited-calls linker; anything else stays unresolved.
    - An explicit import outranks a same-named project symbol in another
      package: the bind is refused when no reading of the import (absolute
      or relative to a package or object in scope) can name that symbol.
      Imports inside a block or body apply only within it.
    - A method call not resolved in-file becomes an unresolved edge rather
      than a short-name guess; the ``ExternalRef`` module slot carries the
-     receiver's import-qualified type, or the imported owner of a static
-     call such as ``Files.readAllBytes``. One- and two-letter callee
+     receiver's type when the file qualifies it (an import, or an inline
+     ``java.io.File``), else the owner of a static call: the file's import
+     (``Files.readAllBytes``), java.lang's closed list (``System.getenv``),
+     ``scala._``'s implicit ``Console`` / ``Predef`` unless a project type or
+     an import binds the name, or a fully-qualified inline path under
+     ``scala`` / ``java`` / ``javax``. One- and two-letter callee
      names (usually lambda parameters) take a confidence penalty on
      short-name binds.
    - A bare call that matches a DIFFERENT class's method only by short name
@@ -65,12 +76,21 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      resolves when the method is inherited (INV-fahub).
    - A call in no function is anchored on the class/object/trait/enum whose
      body holds it (``_TYPE_BODY_NODES``), else on the file (INV-bamij).
+   - A parameterless call written without parentheses
+     (``Runtime.getRuntime.availableProcessors``) parses as a member access;
+     it becomes an unresolved ``method`` call edge on its library owner only
+     when a library row declares that member a method
+     (``is_known_library_method``). Any other bare member access emits no
+     call edge.
    - ``System.err.println(k)`` is a call on ``java.io.PrintStream`` stamped
      ``io_target_kind: std_stream`` (java.yaml's PrintStream rows require
      it), and ``System.out`` / ``.err`` / ``.in`` read as values become
      ``module_attr_ref`` edges through the shared
      ``emit_module_attribute_refs`` (WI-rabum, java's WI-dorus / WI-lozug).
-     Only ``java.lang.System``'s three FIELDS are attributes: scala writes
+     ``scala.Console`` (bare ``Console`` unless a project type or an import
+     binds the name) is treated the same: ``Console.err.println(k)`` is a
+     std-stream call and ``Console.out`` / ``.err`` / ``.in`` are attribute
+     reads. Only those three stream FIELDS are attributes: scala writes
      ``System.currentTimeMillis`` without parentheses, and that is a call.
 
 Identity (WI-tusad): every stable_id hashes the FULL chain of enclosing
@@ -106,7 +126,6 @@ from collections.abc import Container
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Final, Iterator, NamedTuple, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -142,6 +161,7 @@ from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     STD_STREAM_TARGET_KIND,
     bare_system_is_java_lang,
     inline_qualified_owner,
+    is_known_library_method,
     is_std_output_receiver,
     java_lang_system_aliases,
     static_owner_module,
@@ -178,8 +198,11 @@ def _short_name_penalty(name: str) -> float:
 
 
 def find_scala_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Scala files in the repository."""
-    yield from find_files(repo_root, ["*.scala"])
+    """Yield all Scala files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _extract_extends_clause(node: "tree_sitter.Node", source: bytes) -> list[str]:
@@ -369,6 +392,18 @@ _SCALA_IMPLICIT_IMPORT_TYPES = frozenset({
     "Exception", "Error", "Thread", "Class", "Object", "Tuple2", "Function1",
 })
 
+#: The objects ``scala._`` puts in scope with no import, by simple name
+#: (WI-tunul). scala imports ``java.lang._``, then ``scala._``, then
+#: ``Predef._``, so ``Console.println(k)`` is ``scala.Console``'s and a bare
+#: ``println(k)`` is ``scala.Predef``'s unless something nearer binds the name.
+_SCALA_IMPLICIT_OBJECTS: "dict[str, str]" = {
+    "Console": "scala.Console", "Predef": "scala.Predef",
+}
+
+#: ``scala.Console``'s stream VALUES: the process's own stdout / stderr, the
+#: PrintStreams ``System.out`` / ``System.err`` hold by default.
+_SCALA_CONSOLE_STREAMS = frozenset({"out", "err"})
+
 #: The type-node kinds a declared Scala type can take. ``type_identifier`` is
 #: the bare one every extraction site used to look for exclusively; the other
 #: two were invisible, which cost the hint entirely (WI-pokam).
@@ -410,6 +445,66 @@ def _is_project_type(
     if imported is None or not _import_names_elsewhere(sym, imported, file_packages, import_aliases):
         return True
     return _import_names_project_path(imported, project_packages)
+
+
+def _scala_package_of(path: str, file_packages: "dict[str, _ScalaFile] | None") -> "str | None":
+    """The package an analysed file declares, ``None`` when unknown."""
+    info = file_packages.get(path) if file_packages else None
+    return info.package if info is not None else None
+
+
+def _visible_from(
+    sym: Symbol,
+    caller_path: str,
+    imported: "str | None",
+    file_packages: "dict[str, _ScalaFile] | None",
+    import_aliases: "dict[str, str]",
+) -> bool:
+    """Whether Scala binds a bare type name at ``caller_path`` to ``sym``
+    (WI-kipol): the same file; an explicit import whose path fits the symbol
+    (WI-tipoh's reading); or, with no import, the caller's own package. A
+    wildcard import is not recorded, so a symbol only it would bring in is not
+    shown visible -- the bias is to leave a call unresolved, not misbound."""
+    if sym.path == caller_path:
+        return True
+    if imported:
+        return not _import_names_elsewhere(sym, imported, file_packages, import_aliases)
+    caller_package = _scala_package_of(caller_path, file_packages)
+    return caller_package is not None and _scala_package_of(sym.path, file_packages) == caller_package
+
+
+def _project_object_binding(
+    name: str,
+    member: str,
+    caller_path: str,
+    local_symbols: dict[str, Symbol],
+    symbols_by_name: "dict[str, list[Symbol]] | None",
+    imported: "str | None",
+    file_packages: "dict[str, _ScalaFile] | None",
+    import_aliases: "dict[str, str]",
+) -> "tuple[bool, Symbol | None]":
+    """``(visible, member)`` for ``Name.member()`` on a bare project object or
+    companion (WI-kipol).
+
+    Every symbol of the qualified name is a candidate (``symbols_by_name``, so
+    a same-named ``Name.member`` in another package does not hide the right
+    one, as it would in the name-keyed registry); the first Scala would bind
+    wins. With no visible member but a visible ``Name``, the member may be
+    inherited: ``visible`` lets the caller hint the type for the linker.
+    """
+    local = local_symbols.get(f"{name}.{member}")
+    if local is not None:
+        return True, local
+    index = symbols_by_name or {}
+    for candidate in index.get(f"{name}.{member}", ()):
+        if _visible_from(candidate, caller_path, imported, file_packages, import_aliases):
+            return True, candidate
+    visible = any(
+        t.kind in ("class", "object", "trait")
+        and _visible_from(t, caller_path, imported, file_packages, import_aliases)
+        for t in index.get(name, ())
+    )
+    return visible, None
 
 
 def _package_readings(file_packages: "dict[str, _ScalaFile]") -> "frozenset[str]":
@@ -561,6 +656,19 @@ def _inline_path(value: "tree_sitter.Node", source: bytes) -> "str | None":
     return ".".join(reversed(parts))
 
 
+def _is_parameterless_call_site(access: "tree_sitter.Node") -> bool:
+    """Whether a ``field_expression`` stands alone: not a call's callee (that
+    call is its own edge), not under a type application, not assigned to."""
+    parent = access.parent
+    if parent is None:  # pragma: no cover - an expression always has a parent
+        return False
+    if parent.type in ("call_expression", "generic_function"):
+        return parent.child_by_field_name("function") != access
+    if parent.type == "assignment_expression":
+        return parent.child_by_field_name("left") != access
+    return True
+
+
 def _inline_qualified_owner(
     path: str, callee_name: str, bound: Container[str],
 ) -> "str | None":
@@ -571,6 +679,21 @@ def _inline_qualified_owner(
     with its own roots (INV-dupol).
     """
     return inline_qualified_owner(path, callee_name, bound, roots=_INLINE_QUALIFIED_ROOTS)
+
+
+def _scala_static_owner(
+    name: str, import_aliases: "dict[str, str]", *, is_project_type: bool,
+) -> "str | None":
+    """:func:`static_owner_module` for scala: the file's import, java.lang's
+    closed list, then the objects ``scala._`` imports implicitly (WI-tunul).
+    A project type or an import of the name keeps its own answer."""
+    owner = static_owner_module(
+        name, import_aliases, shadowed=SCALA_SHADOWED_JAVA_LANG,
+        is_project_type=is_project_type,
+    )
+    if owner is None and not is_project_type and name not in import_aliases:
+        owner = _SCALA_IMPLICIT_OBJECTS.get(name)
+    return owner
 
 
 def _qualify_scala_receiver(
@@ -997,6 +1120,19 @@ def _extract_symbols_from_file(
     # apart, and looks a member up by the simple name
     # (:meth:`_ScalaReceiverTyper.symbol_type_name`).
     import_hints = _extract_import_hints(tree, source)
+    # WI-pivap: the package-qualified name of a class / trait / enum, which the
+    # inheritance linker checks an imported or qualified base against.
+    file_package = _scala_file_package(tree.root_node, source) or ""
+
+    def _type_qualified_name(node: "tree_sitter.Node", name: str) -> str:
+        return ".".join(p for p in (file_package, _scala_scope_chain(node, source, name)) if p)
+
+    def _base_imports(base_classes: list[str]) -> dict[str, str]:
+        """The import each BARE base came through (WI-pivap)."""
+        return {
+            b: import_hints[b] for b in base_classes
+            if "." not in b and b in import_hints
+        }
 
     def _qualified(name: str) -> str:
         return name if "." in name else import_hints.get(name, name)
@@ -1178,6 +1314,8 @@ def _extract_symbols_from_file(
                 class_meta: dict[str, object] = {}
                 if base_classes:
                     class_meta["base_classes"] = base_classes
+                    if _base_imports(base_classes):
+                        class_meta["base_class_imports"] = _base_imports(base_classes)
                 if annotations:
                     class_meta["decorators"] = annotations
 
@@ -1186,6 +1324,7 @@ def _extract_symbols_from_file(
                     name=type_name,
                     kind="class",
                     language="scala",
+                    qualified_name=_type_qualified_name(node, type_name),
                     path=str(file_path),
                     span=Span(
                         start_line=start_line,
@@ -1215,12 +1354,23 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 modifiers = _extract_modifiers_scala(node)
+                # WI-kipol: an object's ``extends`` / ``with`` bases too, as
+                # classes and traits record theirs. ``object Factory extends
+                # Base`` had no inheritance edge, so a call on the object to an
+                # inherited member could never be walked to ``Base``.
+                object_bases = _extract_extends_clause(node, source)
+                object_meta: dict[str, object] | None = None
+                if object_bases:
+                    object_meta = {"base_classes": object_bases}
+                    if _base_imports(object_bases):
+                        object_meta["base_class_imports"] = _base_imports(object_bases)
 
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "object"),
                     name=type_name,
                     kind="object",
                     language="scala",
+                    meta=object_meta,
                     path=str(file_path),
                     span=Span(
                         start_line=start_line,
@@ -1249,13 +1399,18 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 base_classes = _extract_extends_clause(node, source)
-                meta = {"base_classes": base_classes} if base_classes else None
+                trait_meta: dict[str, object] | None = (
+                    {"base_classes": base_classes} if base_classes else None
+                )
+                if trait_meta is not None and _base_imports(base_classes):
+                    trait_meta["base_class_imports"] = _base_imports(base_classes)
 
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "trait"),
                     name=type_name,
                     kind="trait",
                     language="scala",
+                    qualified_name=_type_qualified_name(node, type_name),
                     path=str(file_path),
                     span=Span(
                         start_line=start_line,
@@ -1269,7 +1424,7 @@ def _extract_symbols_from_file(
                         kind="trait", lang="scala", path=file_path, name=type_name,
                         scope=_scala_scope(node, source),
                     ),
-                    meta=meta,
+                    meta=trait_meta,
                     modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
@@ -1299,6 +1454,7 @@ def _extract_symbols_from_file(
                     name=type_name,
                     kind="enum",
                     language="scala",
+                    qualified_name=_type_qualified_name(node, type_name),
                     path=str(file_path),
                     span=Span(
                         start_line=start_line,
@@ -2189,12 +2345,18 @@ class _ScalaReceiverTyper:
             queue.extend((sym.meta or {}).get("base_classes", []) if sym is not None else [])
         return None
 
+    def library_member_owner(self, value: "tree_sitter.Node") -> "str | None":
+        """The qualified library path a member access on ``value`` is looked up
+        under -- the owner :meth:`_member` asks the rows with -- or ``None``."""
+        owner = self._owner(value)
+        return self._library_owner(owner) if owner is not None else None
+
     def _library_owner(self, owner: str) -> "str | None":
         """The qualified path a library row would key ``owner`` under, or ``None``."""
         if "." in owner:
             return owner
-        return static_owner_module(
-            owner, self._import_aliases, shadowed=SCALA_SHADOWED_JAVA_LANG,
+        return _scala_static_owner(
+            owner, self._import_aliases,
             is_project_type=_is_project_type(
                 owner, self._global_symbols, self._import_aliases,
                 self._file_packages, self._project_packages),
@@ -2253,6 +2415,7 @@ def _extract_edges_from_file(
     project_packages: "frozenset[str]" = frozenset(),
     method_return_type_registry: "dict[str, str] | None" = None,
     element_registry: "dict[str, str] | None" = None,
+    symbols_by_name: "dict[str, list[Symbol]] | None" = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2303,6 +2466,28 @@ def _extract_edges_from_file(
                 file_packages, project_packages),
             is_local=is_local,
         )
+
+    def _bare_console_at(at: "tree_sitter.Node", *, is_local: bool) -> bool:
+        """Whether a bare ``Console`` at ``at`` is ``scala.Console`` (WI-tunul)."""
+        return not is_local and _scala_static_owner(
+            "Console", import_aliases,
+            is_project_type=_is_project_type(
+                "Console", global_symbols,
+                import_aliases if _applies("Console", at) else None,
+                file_packages, project_packages),
+        ) == "scala.Console"
+
+    def _std_output_at(receiver: str, at: "tree_sitter.Node") -> bool:
+        """Whether a call's receiver is the process's stdout / stderr: java's
+        ``System.out`` / ``.err`` (WI-rabum) or ``Console.out`` / ``.err``."""
+        spelled = "".join(receiver.split())
+        head, _, stream = spelled.rpartition(".")
+        if stream in _SCALA_CONSOLE_STREAMS and head in ("Console", "scala.Console"):
+            return head == "scala.Console" or _bare_console_at(
+                at, is_local="Console" in var_types)
+        return is_std_output_receiver(
+            receiver, bare_system_is_java_lang=_bare_system_at(
+                at, is_local="System" in var_types))
 
     for node in iter_tree(tree.root_node):
         if node.type == "import_declaration":
@@ -2413,10 +2598,8 @@ def _extract_edges_from_file(
                             # every complex-receiver call in Scala.
                             callee_node = ids[0]
                             _value = field_node.child_by_field_name("value")
-                            if _value is not None and is_std_output_receiver(
-                                node_text(_value, source),
-                                bare_system_is_java_lang=_bare_system_at(
-                                    node, is_local="System" in var_types),
+                            if _value is not None and _std_output_at(
+                                node_text(_value, source), node,
                             ):
                                 receiver_type = PRINT_STREAM_TYPE
                                 stdio_receiver = True
@@ -2430,6 +2613,41 @@ def _extract_edges_from_file(
 
                     # Type-qualified resolution: receiver.method() → Type.method
                     edge_added = False
+                    # WI-kipol: a call on a bare PROJECT object or companion
+                    # (``Factory.make()``) was left external with no hint. A
+                    # capitalised receiver that no local binds and that is a
+                    # project type is looked up as ``Name.member`` -- only where
+                    # Scala binds the name (_project_object_binding).
+                    object_hint: "str | None" = None
+                    if (
+                        receiver_type is None and receiver_name
+                        and receiver_name[:1].isupper()
+                        and receiver_name not in var_types
+                        and _is_project_type(
+                            receiver_name, global_symbols,
+                            import_aliases if _applies(receiver_name, node) else None,
+                            file_packages, project_packages)
+                    ):
+                        visible, member = _project_object_binding(
+                            receiver_name, callee_name, file_path, local_symbols,
+                            symbols_by_name,
+                            import_aliases.get(receiver_name) if _applies(receiver_name, node) else None,
+                            file_packages, import_aliases,
+                        )
+                        if member is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=member.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="ast_call",
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                meta={"call_construct": "function"},
+                            ))
+                            edge_added = True
+                        elif visible:
+                            object_hint = receiver_name
                     # A stdio receiver's type is the JDK's, never a project
                     # type's that happens to share its simple name.
                     if receiver_type and not stdio_receiver:
@@ -2504,6 +2722,10 @@ def _extract_edges_from_file(
                             gate_meta["io_target_kind"] = STD_STREAM_TARGET_KIND
                         elif receiver_type:
                             gate_meta["receiver_type_hint"] = typer.symbol_type_name(receiver_type)
+                        elif object_hint:
+                            # WI-kipol: the object is visible but declares no such
+                            # member; the inherited-calls linker walks its parents.
+                            gate_meta["receiver_type_hint"] = object_hint
                         # WI-sigog / INV-linub L3: the receiver TYPE this branch
                         # has just inferred must also reach the MODULE SLOT, not
                         # only ``meta``. The two slots answer different questions
@@ -2573,9 +2795,8 @@ def _extract_edges_from_file(
                             # call, and its owner is the module. Only the file's
                             # import or java.lang's closed list names one, so
                             # WI-sigog's "a path the file declares" still holds.
-                            else static_owner_module(
+                            else _scala_static_owner(
                                 receiver_name or "", import_aliases,
-                                shadowed=SCALA_SHADOWED_JAVA_LANG,
                                 is_project_type=_is_project_type(
                                     receiver_name or "", global_symbols,
                                     import_aliases if _applies(receiver_name or "", node) else None,
@@ -2702,6 +2923,31 @@ def _extract_edges_from_file(
                                 enclosing_class=enclosing_type,
                             ))
 
+        # WI-bojud-sator: a parameterless call written without parentheses
+        # (``Runtime.getRuntime.availableProcessors``, ``System.currentTimeMillis``)
+        # parses as a member access, not a call_expression, and emitted nothing.
+        # Only an access the library is KNOWN to declare as a method counts: the
+        # same node is a field read (``System.out``) or a ``val`` everywhere else.
+        elif node.type == "field_expression" and _is_parameterless_call_site(node):
+            value = node.child_by_field_name("value")
+            field = node.child_by_field_name("field")
+            accessed = node_text(field, source) if field is not None else ""
+            owner = typer.library_member_owner(value) if value is not None else None
+            if owner is None and value is not None and (path := _inline_path(value, source)):
+                owner = _inline_qualified_owner(
+                    path, accessed, bound=set(var_types) | set(import_aliases))
+            if owner is not None and is_known_library_method("scala", f"{owner}.{accessed}"):
+                edges.append(make_unresolved_edge(
+                    "scala",
+                    (
+                        _get_enclosing_function(node, source, decl_index)
+                        or enclosing_declared_symbol(node, decl_index, _TYPE_BODY_NODES)
+                        or file_anchor
+                    ).id,
+                    accessed, node.start_point[0] + 1, PASS_ID, run_id,
+                    module_hint=owner, call_construct="method",
+                ))
+
         # Scala eta-expansion: ``transform _`` produces a postfix_expression
         # whose second child is identifier("_").  This is a first-class
         # reference to the function, not a call.
@@ -2745,8 +2991,14 @@ def _extract_edges_from_file(
     # (``System.currentTimeMillis``) from being recorded as a field read.
     emit_module_attribute_refs(
         tree.root_node, source,
-        java_lang_system_aliases(
-            bare_system_is_java_lang=_bare_system_at(tree.root_node, is_local=False)),
+        {
+            **java_lang_system_aliases(
+                bare_system_is_java_lang=_bare_system_at(tree.root_node, is_local=False)),
+            # WI-tunul: scala.Console's ``out`` / ``err`` / ``in`` are rowed too.
+            "scala.Console": "scala.Console",
+            **({"Console": "scala.Console"}
+               if _bare_console_at(tree.root_node, is_local=False) else {}),
+        },
         file_anchor, "scala", edges,
         node_kinds=("field_expression",),
         object_field_names=("value",),
@@ -2774,6 +3026,9 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
     #: :func:`_package_readings` of ``_file_packages``, built on the first file of
     #: Pass 2, when every package is known.
     _project_packages: "Optional[frozenset[str]]" = None
+    #: Every symbol of this run by name, same-named ones in other packages kept
+    #: side by side (WI-kipol). Reset by :meth:`analyze`.
+    _symbols_by_name: "Optional[dict[str, list[Symbol]]]" = None
     #: ``<Owner>.<member>`` -> the element type of the container it returns, for
     #: this run only (WI-gokop). Reset by :meth:`analyze`.
     _element_types: "Optional[dict[str, str]]" = None
@@ -2804,9 +3059,13 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
     ) -> None:
         """Register symbol by qualified name only.
 
-        The ``NameResolver`` suffix index handles short-name lookups.
+        The ``NameResolver`` suffix index handles short-name lookups. Every
+        symbol is also kept by name in ``_symbols_by_name`` (WI-kipol), where a
+        same-named one in another package does not replace it.
         """
         global_symbols[symbol.name] = symbol
+        if self._symbols_by_name is not None:
+            self._symbols_by_name.setdefault(symbol.name, []).append(symbol)
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -2825,6 +3084,7 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
             project_packages=self._project_package_readings(),
             method_return_type_registry=self._method_return_type_registry,
             element_registry=self._element_types,
+            symbols_by_name=self._symbols_by_name,
         )
 
     def _project_package_readings(self) -> "frozenset[str]":
@@ -2840,6 +3100,7 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
         """
         self._file_packages = {}
         self._project_packages = None
+        self._symbols_by_name = {}
         self._element_types = {}
         return super().analyze(repo_root, max_files)
 

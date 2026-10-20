@@ -42,7 +42,10 @@ extract:
   canonical name) gets an unresolved edge (confidence 0.5) with an
   ``ExternalRef`` ``dst_ref`` when an import names its module, else to the
   ``external`` placeholder with none; a base imported from a relative path
-  emits nothing
+  emits nothing. A base imported from a package shown external (a Node core
+  module, or a registry dependency a ``package.json`` declares and the repo
+  does not define; ``_bare_specifier_is_external``) gets that unresolved
+  edge even when a project class/interface shares its name
 - Decorator application: ``decorated_by`` (edges); an unresolved or
   non-callable decorator gets an unresolved ``decorated_by`` edge to
   ``typescript:unresolved:0-0:<name>:unresolved``
@@ -197,6 +200,7 @@ Why This Design
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 import warnings
@@ -890,6 +894,92 @@ def _find_package_root(file_path: Path) -> Path | None:
             return current
         current = current.parent
     return None
+
+
+# Node core modules: an import of one is external, with no manifest needed.
+_NODE_CORE_MODULES = frozenset({
+    "assert", "async_hooks", "buffer", "child_process", "cluster", "console",
+    "constants", "crypto", "dgram", "diagnostics_channel", "dns", "domain",
+    "events", "fs", "http", "http2", "https", "inspector", "module", "net",
+    "os", "path", "perf_hooks", "process", "punycode", "querystring",
+    "readline", "repl", "stream", "string_decoder", "timers", "tls",
+    "trace_events", "tty", "url", "util", "v8", "vm", "wasi",
+    "worker_threads", "zlib",
+})
+
+# A dependency whose version spec points INTO the repo, not at a registry.
+_IN_REPO_DEP_PROTOCOLS = ("workspace:", "file:", "link:", "portal:")
+
+
+def _js_package_name(specifier: str) -> str:
+    """``@scope/pkg/sub`` -> ``@scope/pkg``; ``pkg/sub`` -> ``pkg``."""
+    parts = specifier.split("/")
+    return "/".join(parts[:2]) if specifier.startswith("@") else parts[0]
+
+
+class _JsPackageIndex:
+    """``package.json`` facts for the import-bound-base test (WI-pivap):
+    per package root its declared dependencies, and the set of package NAMES
+    the repo itself defines (workspace packages are in-repo)."""
+
+    def __init__(self, file_paths: "list[Path]") -> None:
+        self._deps: dict[Path, dict[str, str]] = {}
+        self.in_repo_names: set[str] = set()
+        for path in file_paths:
+            root = _find_package_root(path)
+            while root is not None and root not in self._deps:
+                self._deps[root] = self._read(root)
+                root = _find_package_root(root.parent) if root.parent != root else None
+
+    def _read(self, root: Path) -> dict[str, str]:
+        try:
+            data = json.loads((root / "package.json").read_text(errors="ignore"))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        if isinstance(data.get("name"), str):
+            self.in_repo_names.add(data["name"])
+        deps: dict[str, str] = {}
+        for key in ("dependencies", "devDependencies", "peerDependencies"):
+            section = data.get(key)
+            if isinstance(section, dict):
+                deps.update({k: str(v) for k, v in section.items()})
+        return deps
+
+    def declared(self, file_path: Path, package: str) -> str | None:
+        """The version spec the nearest declaring package.json gives ``package``."""
+        root = _find_package_root(file_path)
+        while root is not None:
+            spec = self._deps.get(root, {}).get(package)
+            if spec is not None:
+                return spec
+            root = _find_package_root(root.parent) if root.parent != root else None
+        return None
+
+
+def _bare_specifier_is_external(
+    specifier: str, file_path: Path, index: _JsPackageIndex,
+) -> bool:
+    """True only on POSITIVE evidence that ``specifier`` names an external
+    package (WI-pivap): a Node core module, or a package the importing
+    package.json declares from a registry that the repo does not define.
+
+    A relative path, a workspace package, or an undeclared bare specifier (a
+    tsconfig path alias such as ``@/models`` looks exactly like one) is not
+    shown external, and keeps the name resolution.
+    """
+    if specifier.startswith((".", "/")):
+        return False
+    if specifier.startswith("node:"):
+        return True
+    package = _js_package_name(specifier)
+    if package in _NODE_CORE_MODULES:
+        return True
+    if package in index.in_repo_names:
+        return False
+    spec = index.declared(file_path, package)
+    return spec is not None and not spec.startswith(_IN_REPO_DEP_PROTOCOLS)
 
 
 def _same_package_candidate(
@@ -2953,6 +3043,40 @@ def _extract_inheritance_edges(
                         n.split("<")[0].split(".")[-1] for n in impls
                     )
 
+    package_index = _JsPackageIndex([pf.path for pf in parsed_files])
+
+    def external_edge(sym: Symbol, base_name: str, canonical: str, raw_module: str | None) -> Edge:
+        sym_path = sym.path or ""
+        # An interface's bases are all ``extends`` bases (WI-kalug); the
+        # implements-clause map is keyed by (path, name) and a merged
+        # ``class Foo implements Bar`` must not relabel ``interface Foo
+        # extends Bar``.
+        is_impl = sym.kind == "class" and base_name in implements_by_class.get(
+            (sym_path, sym.name), set()
+        )
+        edge_type = "implements" if is_impl else "extends"
+        lang = sym.language
+        if raw_module:
+            module_hint = _normalize_import_module_hint(raw_module)
+            dst_ref: ExternalRef | None = ExternalRef(
+                lang=lang, module_path=module_hint, name=canonical,
+            )
+        else:
+            module_hint = "external"
+            dst_ref = None
+        return Edge.create(
+            src=sym.id,
+            dst=f"{lang}:{module_hint}:0-0:{canonical}:unresolved",
+            edge_type=edge_type,
+            line=sym.span.start_line if sym.span else 0,
+            confidence=0.5,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type=f"ast_{edge_type}",
+            is_resolved=False,
+            dst_ref=dst_ref,
+        )
+
     for sym in symbols:
         if sym.kind not in ("class", "interface"):
             continue
@@ -2969,6 +3093,28 @@ def _extract_inheritance_edges(
             # to recover its namespace-import module; resolve on the member name.
             qualifier = de_generic.split(".")[0] if "." in de_generic else None
             base_name = de_generic.split(".")[-1] if "." in de_generic else de_generic
+
+            # WI-pivap: a base imported from an EXTERNAL package (react, a Node
+            # core module) is external even when the repo defines a class of
+            # the same name; resolving by name first bound ``import {Component}
+            # from 'react'`` to the repo's own ``Component``.
+            ni = named_imports_by_path.get(sym_path, {})
+            nsi = namespace_imports_by_path.get(sym_path, {})
+            raw_module = (
+                ni.get(base_name)
+                or nsi.get(base_name)
+                or (nsi.get(qualifier) if qualifier else None)
+            )
+            if (
+                raw_module
+                and (base_name in classes_by_name or base_name in interfaces_by_name)
+                and _bare_specifier_is_external(raw_module, Path(sym_path), package_index)
+            ):
+                canonical = named_import_originals_by_path.get(
+                    sym_path, {}
+                ).get(base_name, base_name)
+                edges.append(external_edge(sym, base_name, canonical, raw_module))
+                continue
 
             # Resolve against project classes and interfaces (disambiguated).
             base_sym = _resolve_base_class_js(
@@ -3001,16 +3147,9 @@ def _extract_inheritance_edges(
                         edges.append(_resolved_inheritance_edge(sym, *picked, run))
                         continue
 
-                # Module hint: named import of the member, else a default/
-                # namespace import of the member, else the namespace qualifier
-                # (``React`` in ``React.Component``).
-                ni = named_imports_by_path.get(sym_path, {})
-                nsi = namespace_imports_by_path.get(sym_path, {})
-                raw_module = (
-                    ni.get(base_name)
-                    or nsi.get(base_name)
-                    or (nsi.get(qualifier) if qualifier else None)
-                )
+                # Module hint (``raw_module``, above): named import of the
+                # member, else a default/namespace import of the member, else
+                # the namespace qualifier (``React`` in ``React.Component``).
                 # A base imported from a RELATIVE path is intra-repo (a local
                 # file whose symbol was not extracted), NOT a library — drop it
                 # rather than mislabel it as external.
@@ -3018,36 +3157,7 @@ def _extract_inheritance_edges(
                     raw_module.startswith("./") or raw_module.startswith("../")
                 ):
                     continue
-
-                # An interface's bases are all ``extends`` bases (WI-kalug); the
-                # implements-clause map is keyed by (path, name) and a merged
-                # ``class Foo implements Bar`` must not relabel ``interface Foo
-                # extends Bar``.
-                is_impl = sym.kind == "class" and base_name in implements_by_class.get(
-                    (sym_path, sym.name), set()
-                )
-                edge_type = "implements" if is_impl else "extends"
-                lang = sym.language
-                if raw_module:
-                    module_hint = _normalize_import_module_hint(raw_module)
-                    dst_ref: ExternalRef | None = ExternalRef(
-                        lang=lang, module_path=module_hint, name=canonical,
-                    )
-                else:
-                    module_hint = "external"
-                    dst_ref = None
-                edges.append(Edge.create(
-                    src=sym.id,
-                    dst=f"{lang}:{module_hint}:0-0:{canonical}:unresolved",
-                    edge_type=edge_type,
-                    line=sym.span.start_line if sym.span else 0,
-                    confidence=0.5,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    evidence_type=f"ast_{edge_type}",
-                    is_resolved=False,
-                    dst_ref=dst_ref,
-                ))
+                edges.append(external_edge(sym, base_name, canonical, raw_module))
 
     return edges
 

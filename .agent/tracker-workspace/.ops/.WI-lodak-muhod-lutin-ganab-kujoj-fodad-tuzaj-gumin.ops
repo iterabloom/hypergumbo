@@ -1,0 +1,22 @@
+- op: create  # 535a
+  at: '2026-10-20T09:05:13Z'  # 535a
+  by: agent  # 535a
+  actor: jgstern_agent  # 535a
+  clock: 1  # 535a
+  nonce: 535a  # 535a
+  data:  # 535a
+    kind: work_item  # 535a
+    title: "starlark: depends_on edges point at a label string, never at the target node -- target_ids is threaded through and read by nothing"  # 535a
+    status: todo_hard  # 535a
+    priority: 3  # 535a
+    parent:  # 535a
+    tags:  # 535a
+    - docstring_audit  # 535a
+    - analyzer  # 535a
+    - starlark  # 535a
+    isbefore: []  # 535a
+    duplicate_of: []  # 535a
+    not_duplicate_of: []  # 535a
+    pr_ref:  # 535a
+    description: "Found by the 2026-10-20 docstring-staleness audit (verifier reproduced). starlark.py ~L325 builds `dst=f\"starlark:{ctx.rel_path}:{dep}\"` from the raw deps label, which never equals a target Symbol id (`starlark:<path>:<s>-<e>:<name>:target`), even for a same-package `\":lib\"` dep. `target_ids` is written (~L316) and passed along (~L490/518/546) but never read; no linker rewrites starlark depends_on dsts. So every depends_on edge dangles. Fix: resolve `:name` (and `//pkg:name` when the BUILD file is in the repo) through target_ids. Docstring \"Dependency edges between targets\" left stating the intent."  # 535a
+    fields: {}  # 535a

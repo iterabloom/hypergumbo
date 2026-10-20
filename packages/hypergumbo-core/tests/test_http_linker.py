@@ -443,7 +443,7 @@ class TestScanJavaScriptFile:
         assert len(calls) == 1
         assert calls[0].method == "GET"
         assert calls[0].url == "apiUrl"
-        assert calls[0].url_type == "variable"
+        assert calls[0].url_type == "unresolved"
 
     def test_angularjs_http_config_object(self):
         """Detects AngularJS $http({method: 'GET', url: '/api/users'})."""
@@ -769,8 +769,9 @@ class TestVariableUrlPatterns:
         calls = _scan_python_file(Path("test.py"), code)
         assert len(calls) == 1
         assert calls[0].method == "GET"
-        assert calls[0].url == "API_URL"
-        assert calls[0].url_type == "variable"
+        # WI-luhod: a same-file module-scope constant resolves to its value.
+        assert calls[0].url == "/api/users"
+        assert calls[0].url_type == "constant"
 
     def test_python_requests_with_literal(self):
         """Verifies literal URLs have url_type='literal'."""
@@ -793,7 +794,7 @@ class TestVariableUrlPatterns:
         assert len(calls) == 1
         assert calls[0].method == "POST"
         assert calls[0].url == "config.api_url"
-        assert calls[0].url_type == "variable"
+        assert calls[0].url_type == "unresolved"
 
     def test_js_fetch_with_variable(self):
         """Detects fetch(API_URL) with variable URL."""
@@ -804,8 +805,8 @@ class TestVariableUrlPatterns:
         calls = _scan_javascript_file(Path("test.js"), code)
         assert len(calls) == 1
         assert calls[0].method == "GET"
-        assert calls[0].url == "API_URL"
-        assert calls[0].url_type == "variable"
+        assert calls[0].url == "/api/users"
+        assert calls[0].url_type == "constant"
 
     def test_js_fetch_with_literal(self):
         """Verifies literal URLs have url_type='literal'."""
@@ -826,8 +827,26 @@ class TestVariableUrlPatterns:
         calls = _scan_javascript_file(Path("test.js"), code)
         assert len(calls) == 1
         assert calls[0].method == "GET"
-        assert calls[0].url == "API_ENDPOINT"
-        assert calls[0].url_type == "variable"
+        assert calls[0].url == "/api/users"
+        assert calls[0].url_type == "constant"
+
+    def test_go_const_url_resolves(self):
+        code = dedent('''
+            const usersURL = "/api/users"
+            func f() { http.Get(usersURL) }
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert [(c.url, c.url_type) for c in calls] == [("/api/users", "constant")]
+
+    def test_java_static_final_url_resolves(self):
+        code = dedent('''
+            class Client {
+                private static final String USERS = "/api/users";
+                void f() { restTemplate.getForObject(USERS, String.class); }
+            }
+        ''')
+        calls = _scan_java_file(Path("Client.java"), code)
+        assert [(c.url, c.url_type) for c in calls] == [("/api/users", "constant")]
 
     def test_js_axios_with_dotted_variable(self):
         """Detects axios.post(config.apiUrl) with dotted variable."""
@@ -838,7 +857,7 @@ class TestVariableUrlPatterns:
         assert len(calls) == 1
         assert calls[0].method == "POST"
         assert calls[0].url == "config.apiUrl"
-        assert calls[0].url_type == "variable"
+        assert calls[0].url_type == "unresolved"
 
     def test_symbol_includes_url_type(self, tmp_path):
         """Verifies url_type is included in symbol meta."""
@@ -848,14 +867,11 @@ class TestVariableUrlPatterns:
         result = link_http(tmp_path, [])
 
         assert len(result.symbols) == 1
-        assert result.symbols[0].meta["url_type"] == "variable"
+        assert result.symbols[0].meta["url_type"] == "unresolved"
 
-    def test_edge_includes_url_type(self, tmp_path):
-        """Verifies url_type is included in edge meta."""
-        client_file = tmp_path / "client.js"
-        client_file.write_text("fetch(API_URL);")
-
-        route_symbol = Symbol(
+    @staticmethod
+    def _route(tmp_path, path):
+        return Symbol(
             id="server.js::getUsers",
             name="getUsers",
             kind="function",
@@ -863,16 +879,35 @@ class TestVariableUrlPatterns:
             span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
             language="javascript",
             stable_id="sha256:abc123",
-            meta={
-                "concepts": [{"concept": "route", "path": "API_URL", "method": "GET"}]
-            },
+            meta={"concepts": [{"concept": "route", "path": path, "method": "GET"}]},
         )
 
-        result = link_http(tmp_path, [route_symbol])
+    def test_a_constant_url_resolves_and_matches_its_route(self, tmp_path):
+        """WI-luhod: ``const API_URL = '/api/users'; fetch(API_URL)`` is a
+        request to ``/api/users``. Before the fix the identifier text was
+        route-matched, so it reached no route."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text("const API_URL = '/api/users';\nfetch(API_URL);\n")
+
+        result = link_http(tmp_path, [self._route(tmp_path, "/api/users")])
 
         assert len(result.edges) == 1
-        assert result.edges[0].meta["url_type"] == "variable"
-        assert result.edges[0].confidence == 0.65
+        assert result.edges[0].meta["url_type"] == "constant"
+        assert result.edges[0].meta["url_path"] == "/api/users"
+        assert result.edges[0].confidence == 0.9
+
+    def test_an_unresolved_identifier_is_not_route_matched(self, tmp_path):
+        """An identifier whose value is unknown has no path to match. Before the
+        fix its TEXT was matched, so a route whose path was that text joined."""
+        client_file = tmp_path / "client.js"
+        client_file.write_text("fetch(API_URL);")
+
+        result = link_http(tmp_path, [self._route(tmp_path, "API_URL")])
+
+        assert result.edges == []
+        assert result.symbols[0].meta["url_type"] == "unresolved"
+        assert result.symbols[0].meta["url_path"] is None
+        assert result.symbols[0].meta["raw_url"] == "API_URL"
 
     def test_literal_url_higher_confidence(self, tmp_path):
         """Verifies literal URLs have higher confidence than variables."""
@@ -1339,7 +1374,7 @@ class TestScanGoFile:
         calls = _scan_go_file(Path("main.go"), code)
         assert len(calls) == 1
         assert calls[0].url == "apiURL"
-        assert calls[0].url_type == "variable"
+        assert calls[0].url_type == "unresolved"
 
     def test_http_get_with_literal(self):
         """Verifies literal URLs have url_type='literal'."""
@@ -1551,7 +1586,7 @@ class TestScanRubyFile:
         calls = _scan_ruby_file(Path("client.rb"), code)
         assert len(calls) == 1
         assert calls[0].url == "api_url"
-        assert calls[0].url_type == "variable"
+        assert calls[0].url_type == "unresolved"
 
     def test_multiple_calls(self):
         """Detects multiple Ruby HTTP calls in one file."""
@@ -1750,7 +1785,7 @@ class TestScanJavaFile:
         calls = _scan_java_file(Path("Client.java"), code)
         assert len(calls) == 1
         assert calls[0].url == "apiUrl"
-        assert calls[0].url_type == "variable"
+        assert calls[0].url_type == "unresolved"
 
     def test_multiple_calls(self):
         """Detects multiple Java HTTP calls in one file."""

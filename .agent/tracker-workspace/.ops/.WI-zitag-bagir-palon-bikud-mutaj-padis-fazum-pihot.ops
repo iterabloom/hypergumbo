@@ -17,3 +17,25 @@
     pr_ref:  # 1bfe
     description: "Found while measuring WI-fadab-nusol-hutum-susot-vogil-papor-gakop-zajor (branch jgstern-agent/fix/fadab, 2026-10-01).\n\ncompact's DEFAULT (connectivity) path applies neither half of the WI-zulij population policy to its BRIDGE picks: no production_edges (test-sourced edges still count) and no test-path clause. WI-fadab narrowed the SEEDS to key symbols and removed external-boundary nodes; it deliberately left bridges unfiltered because a file node can be the only thing joining two islands. That argument covers non-key KINDS (file, target). It does not obviously cover symbols declared in TEST FILES, which are not bridges of the production graph.\n\nMEASURED (production entry point format_compact_behavior_map(connectivity_aware=True), WI-fadab branch, K=400, the 07-17 bakeoff maps + a self-analysis map): emitted nodes that fail is_key_symbol only because of is_test_path --\n  express          225 of 400\n  spring-petclinic  90 of 336\n  apollo-server     67 of 400\n  self-analysis      9 of 400 (+3 test_ names)\nThe test-path symbols arrive as bridge picks (they are not seeds after WI-fadab). At K=10 the remaining non-key nodes across the 8 bakeoff maps are 9: 5 file bridge picks, 2 function (apollo-server) and 2 method (SwiftyJSON); the function/method ones fail is_key_symbol on a non-kind clause (test path, test_ name or supply-chain tier 4) -- which clause was NOT checked individually.\n\nOPEN QUESTION, needs its own A/B against WI-zulij's numbers (isolated-node rate, components, containment): drop test-path symbols from the connectivity population (and apply production_edges), or only exclude them as bridge picks? Removing them may re-strand seeds whose only in-repo neighbours are tests; WI-fadab's anchor pick would then have no neighbour to take."  # 1bfe
     fields: {}  # 1bfe
+- op: update  # 8929
+  at: '2026-10-18T09:46:48Z'  # 8929
+  by: agent  # 8929
+  actor: jgstern_agent  # 8929
+  clock: 2  # 8929
+  nonce: '8929'  # 8929
+  set:  # 8929
+    status: done  # 8929
+- op: discuss  # f255
+  at: '2026-10-18T09:46:48Z'  # f255
+  by: agent  # f255
+  actor: jgstern_agent  # f255
+  clock: 3  # f255
+  nonce: f255  # f255
+  message: "Fixed in PR #1714 (dev a18e886229). OPEN QUESTION ANSWERED with an A/B/C on the seven 2026-07-17 deep maps (pretix skipped, 142 MB) at K in {10,100,400}: A = old code, B = test-path symbols out of the population but all edges kept (refuse them only as picks), C = test-path symbols out AND test-sourced edges dropped (the WI-zulij policy). B and C both emit 0 test-path nodes; where they emit fewer nodes than A, the shortfall equals A's test-path count exactly (SwiftyJSON 305-203=102, petclinic 336-145=191, zoxide 231-5=226), so no production node is lost; isolated nodes and components within +-1 either way, containment held in every cell, so the feared seed stranding did not appear. B and C picked the same nodes to within 4% at every budget. Chose C: no new hook, same production_edges order rule the centrality path uses. CODE: format_compact_behavior_map's connectivity branch now runs production_edges(symbols, edges) on the unfiltered list, then drops test-path symbols with the external-boundary placeholders. VERIFIED ON MERGED DEV (same harness, production entry point format_compact_behavior_map(connectivity_aware=True), K=400): test-path nodes express 248/400 -> 0/400, SwiftyJSON 203/305 -> 0/102, spring-petclinic 145/336 -> 0/191, apollo-server 77/400 -> 0/400, caddy 10/400 -> 0/400, zoxide 5/231 -> 0/226, sherpa-csharp 0 -> 0; shipped code equals measured C in 21/21 cells. Production-path tests: test_compact.py::TestConnectivityDefaultPopulation::test_a_test_file_symbol_is_not_a_bridge and ::test_calls_from_tests_do_not_rank_bridge_picks (both red before). Tables: ~/hypergumbo_lab_notebook/notebookjournal_10182026_0445.md. NOT measured: the self-analysis map the item cites (9/400) -- a self-run needs owner OK -- and pretix."  # f255
+- op: discuss  # ed3f
+  at: '2026-10-19T00:00:45Z'  # ed3f
+  by: agent  # ed3f
+  actor: jgstern_agent  # ed3f
+  clock: 4  # ed3f
+  nonce: ed3f  # ed3f
+  message: "RE-MEASURED on the self-analysis map (deferred at closure; owner lifted the big-repo rule 2026-10-18): hypergumbo run on this repo at dev 8001c9f1da (325 s wall), then the same harness (format_compact_behavior_map(connectivity_aware=True), K in {10,100,400}): test-path nodes 0/10, 0/100, 0/400 (the item measured 9/400 plus 3 test_ names on the WI-fadab branch); isolated 0 at every K; containment held. Components 1 / 19 / 19."  # ed3f

@@ -31,10 +31,10 @@ start from a real node. Reference edges are deduplicated per
 (enclosing, referenced) pair, at confidence 0.80.
 
 The enclosing operator/theorem/assumption of a reference is the symbol its
-definition node declares, found by POSITION in this file. Known gap: the
-referenced name is resolved through the repo-wide resolver by bare name, so
-when two specs define a same-named operator, a reference can be aimed at the
-other spec's symbol.
+definition node declares, found by POSITION in this file. The referenced name
+binds, in order, a LET-local operator in scope, a definition of THIS spec by
+bare name, and only then the repo-wide resolver (INV-razus, WI-kosar): before,
+``Bar == Init`` in spec B could be aimed at spec A's ``Init``.
 
 Identity (WI-tusad): operators record their parameters in
 ``meta["parameters"]`` (an identifier or a higher-order ``G(_, _)``
@@ -375,6 +375,14 @@ def _extract_edges_from_file(
             sym = symbol_declared_by(node, decl_index)
             if sym is not None:
                 local_ops[_operator_scope_chain(node, source, sym.name)] = sym
+    # This spec's own definitions by bare name, LET-locals excluded (they are
+    # reached through ``local_ops`` and are invisible outside their LET), so a
+    # reference binds THIS spec's ``Init`` before another spec's.
+    local_ids = {s.id for s in local_ops.values()}
+    module_ops: dict[str, Symbol] = {}
+    for declared in file_symbols:
+        if declared.kind != "file" and declared.id not in local_ids:
+            module_ops.setdefault(declared.name, declared)
 
     # Walk operator_definition, theorem, assumption nodes for body references
     for node in iter_tree(tree.root_node):
@@ -401,6 +409,8 @@ def _extract_edges_from_file(
                 continue
 
             target = _local_operator(local_ops, node, source, enclosing_name, ref_name)
+            if target is None:
+                target = module_ops.get(ref_name)
             if target is None:
                 target = resolver.lookup(ref_name).symbol
             if target is not None:

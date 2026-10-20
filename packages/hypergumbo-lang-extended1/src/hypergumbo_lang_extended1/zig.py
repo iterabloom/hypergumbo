@@ -13,9 +13,12 @@ Implementation approach:
 
 Calls: an import alias (``const m = @import("m")``) is passed as a path hint;
 a weak method match is deferred to an unresolved edge carrying
-``enclosing_class`` (``defer_bare_method_call``); a callee found nowhere gets a
-``zig:<caller file>:0-0:<name>:function`` placeholder at 0.6. Builtin calls are
-not filtered. Fields and variables are not registered for call resolution.
+``enclosing_class`` (``defer_bare_method_call``); a callee found nowhere gets
+an unresolved ``zig:<caller file>:0-0:<name>:function`` placeholder at the
+``ast_call_direct`` unresolved confidence (0.5). Builtins (``@intCast``,
+``@as``) parse as ``builtin_function``, not ``call_expression``, so they never
+become call edges; only ``@import`` is read, as an import. Fields and
+variables are not registered for call resolution.
 
 Identity (WI-tusad): every symbol is qualified, for hashing, by the full chain
 of containers and functions enclosing it (``A.Inner.run``; the emitted name
@@ -30,10 +33,14 @@ Inner = struct`` shared one bare-name table key, so deleting the first moved
 the second's id); top-level ones keep their values. Variables (module level
 only) keep the backstop's table formula.
 
-Known gaps: a call's enclosing function is looked up by name through the
-repo-wide resolver, so two files defining a same-named function can have a
-call credited to the other file's; and an ``@import`` bound by a
-``variable_declaration`` emits its import edge twice, once from each branch.
+The enclosing function of a call is the ``function_declaration`` that
+contains it, found by POSITION in this file (``symbol_declared_by``;
+INV-musij, WI-kosar). Before, it was looked up by name through the repo-wide
+resolver, which handed back whichever same-named function registered last,
+so two files defining ``run`` had one file's calls credited to the other's.
+
+Known gap: an ``@import`` bound by a ``variable_declaration`` emits its import
+edge twice, once from each branch.
 
 Uses TreeSitterAnalyzer base class for two-pass orchestration.
 The base class handles grammar checking, parser creation, file discovery,
@@ -54,18 +61,20 @@ Zig grammar key patterns:
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING, ClassVar
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     ExternalRef,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     defer_bare_method_call,
     find_child_by_type,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -81,10 +90,11 @@ PASS_ID = make_pass_id("zig")
 
 
 def find_zig_files(root: Path) -> Iterator[Path]:
-    """Find all Zig files in the given directory."""
-    for path in find_files(root, ["*.zig"]):
-        if path.is_file():
-            yield path
+    """Find all Zig files in the given directory.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(root)
 
 
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -475,10 +485,15 @@ def _extract_edges_from_tree(
     resolver: "NameResolver",
     run: "AnalysisRun",
     import_aliases: Optional[dict[str, str]] = None,
+    decl_index: Optional[SymbolsAt] = None,
 ) -> dict[str, str]:
     """Extract edges from an AST using iterative traversal.
 
     This avoids nested function closure issues with loop variables.
+
+    ``decl_index`` maps a declaration's start position to its symbol
+    (``symbols_at`` over this file's symbols); it is how a call finds the
+    function that contains it. Without one, no call has an enclosing function.
 
     Returns a dict of import aliases (var_name -> module_path) for path_hint resolution.
     In Zig, imports look like: const std = @import("std");
@@ -486,6 +501,8 @@ def _extract_edges_from_tree(
     """
     if import_aliases is None:
         import_aliases = {}
+    if decl_index is None:
+        decl_index = {}
 
     # Stack: (node, container_name, current_function_sym)
     stack: list[tuple["tree_sitter.Node", Optional[str], Optional[Symbol]]] = [
@@ -498,20 +515,10 @@ def _extract_edges_from_tree(
         if node.type == "function_declaration":
             name = _get_function_name(node, source)
             if name:
-                # Check if method
-                is_method = False
-                params_node = find_child_by_type(node, "parameters")
-                if params_node:
-                    for param in params_node.children:
-                        if param.type == "parameter":
-                            param_id = find_child_by_type(param, "identifier")
-                            if param_id and node_text(param_id, source) == "self":
-                                is_method = True
-                                break
-
-                qualified_name = f"{container}.{name}" if (container and is_method) else name
-                lookup_result = resolver.lookup(qualified_name)
-                func_sym = lookup_result.symbol if lookup_result.found else None
+                # The declaration's own symbol, by position: Pass 1 emitted it
+                # from this same node, so its start identifies it exactly where
+                # a name does not (two structs' ``go``, two files' ``run``).
+                func_sym = symbol_declared_by(node, decl_index)
 
                 # Process children with updated function context
                 for child in reversed(node.children):
@@ -732,8 +739,10 @@ class ZigAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract import and call edges from a Zig file."""
         edges: list[Edge] = []
+        decl_index = symbols_at(self.file_symbols(local_symbols))
         _extract_edges_from_tree(
-            tree.root_node, source, rel_path, edges, resolver, run, import_aliases
+            tree.root_node, source, rel_path, edges, resolver, run, import_aliases,
+            decl_index=decl_index,
         )
         return edges
 

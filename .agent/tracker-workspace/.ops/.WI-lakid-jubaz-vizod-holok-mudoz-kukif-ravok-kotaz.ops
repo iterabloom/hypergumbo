@@ -1,0 +1,39 @@
+- op: create  # ea14
+  at: '2026-10-17T03:19:27Z'  # ea14
+  by: agent  # ea14
+  actor: jgstern_agent  # ea14
+  clock: 1  # ea14
+  nonce: ea14  # ea14
+  data:  # ea14
+    kind: work_item  # ea14
+    title: "tracker: project compiled state into a Y.Doc (pycrdt) and keep it live from ops-file changes (read side, minimal deltas, deterministic)"  # ea14
+    status: todo_hard  # ea14
+    priority: 4  # ea14
+    parent:  # ea14
+    tags:  # ea14
+    - tracker  # ea14
+    - yjs  # ea14
+    isbefore: []  # ea14
+    duplicate_of: []  # ea14
+    not_duplicate_of: []  # ea14
+    pr_ref:  # ea14
+    description: "## What\nBuild a Y.Doc (pycrdt) from the compiled tracker state and keep it current as ops land, per the shape decided in the live-document ADR (item A of this set). Read side only; no writes back to the tracker.\n## How\n- Reuse serve.py's existing `watchfiles` loop (`_watch_ops_files`, which today rebroadcasts a full `state_snapshot`) to trigger incremental re-projection: diff the recompiled state against the doc and apply only the changed fields inside one Yjs transaction, so remote clients see minimal deltas rather than a full replace.\n- Deterministic mapping: two processes projecting the same ops must converge to identical doc content (test: project in two fresh docs, compare state vectors/encoded updates after the same op sequence).\n- Mark projection-origin transactions (Yjs transaction origin) so the write-back bridge can ignore them (idempotence).\n## Done when\nUnit tests: snapshot -> doc -> snapshot round trip is lossless for the live-editable fields; applying one `update` op produces a one-field delta; convergence test passes. Coverage 100% per repo rule.\n## Context\n~/hypergumbo_lab_notebook/notebookjournal_10162026_2318.md section 4 (proposed item). Python binding: pycrdt 0.14.9 (y-py is unmaintained)."  # ea14
+    fields: {}  # ea14
+- op: update  # 950f
+  at: '2026-10-17T03:28:32Z'  # 950f
+  by: agent  # 950f
+  actor: jgstern_agent  # 950f
+  clock: 2  # 950f
+  nonce: 950f  # 950f
+  set: {}  # 950f
+  add:  # 950f
+    isbefore: [WI-rudat-sotuh-gopos-duhup-julop-fofuj-gujug-zisog]  # 950f
+- op: update  # 937a
+  at: '2026-10-17T03:29:19Z'  # 937a
+  by: agent  # 937a
+  actor: jgstern_agent  # 937a
+  clock: 3  # 937a
+  nonce: 937a  # 937a
+  set: {}  # 937a
+  add:  # 937a
+    isbefore: [WI-vojil-patas-hubob-tirar-nigol-lulor-ponah-virir]  # 937a

@@ -20,3 +20,37 @@
     pr_ref:  # 187b
     description: "The self-audit (docs/hypergumbo.claims.yaml + docs/hypergumbo-self-catalog/, gated by scripts/check-self-claims, published in SECURITY.md) covers hypergumbo-core's CLI only: its sources are the core cmd_* handlers. hypergumbo-tracker appears only as a \"dev zone\" SINK (claims assert the analysis commands never reach tracker code). Nothing audits the tracker package as a product, although it ships on PyPI (`htrac`): `htrac serve` (Starlette/uvicorn HTTP + WebSocket server with a write API), `sync` (git branch/commit/push, GitHub/Forgejo API), `tui`, the CLI, the stop hook, embeddings.\n\nAdd tracker self-claims in the same machinery: declare the htrac entry points (serve handlers, sync, tui, CLI subcommands) as sources; state per-entry-point claims (e.g. CLI/tui: writes only under the tracker dirs and journal, no network; sync: network only to the configured forge, subprocess only git; serve: binds only to the configured address, every mutating route requires an authenticated session); extend the snapshot (docs/hypergumbo.claims.expected.json) and SECURITY.md generation; make check-self-claims cover it. Expect `violated` on serve until WI-hopip lands (serve.py's write API has no auth; the auth modules are imported by nothing) -- record that verdict honestly rather than waiting. Owner request 2026-10-07 (comfort installing hypergumbo on a personal daily-driver machine and recommending it)."  # 187b
     fields: {}  # 187b
+- op: update  # d500
+  at: '2026-10-17T03:35:32Z'  # d500
+  by: agent  # d500
+  actor: jgstern_agent  # d500
+  clock: 2  # d500
+  nonce: d500  # d500
+  set: {}  # d500
+  add:  # d500
+    isbefore: [WI-pufun-vohuf-bimuh-rigon-mamij-tokas-hamun-rosub]  # d500
+- op: update  # ba1a
+  at: '2026-10-17T03:37:22Z'  # ba1a
+  by: agent  # ba1a
+  actor: jgstern_agent  # ba1a
+  clock: 3  # ba1a
+  nonce: ba1a  # ba1a
+  set: {}  # ba1a
+  add:  # ba1a
+    isbefore: [WI-fujus-nojaz-pomoz-kinid-jutot-jolom-bisus-gazam]  # ba1a
+- op: update  # 1d42
+  at: '2026-10-17T03:38:14Z'  # 1d42
+  by: agent  # 1d42
+  actor: jgstern_agent  # 1d42
+  clock: 4  # 1d42
+  nonce: 1d42  # 1d42
+  set: {}  # 1d42
+  add:  # 1d42
+    isbefore: [WI-kinab-zunas-gozat-musan-hivoj-rural-sosuf-pinur]  # 1d42
+- op: discuss  # 7850
+  at: '2026-10-17T03:44:54Z'  # 7850
+  by: agent  # 7850
+  actor: jgstern_agent  # 7850
+  clock: 5  # 7850
+  nonce: '7850'  # 7850
+  message: "Owner ruling 2026-10-16: do this BEFORE any frontend work -- it is the hypergumbo-native answer to 'is the tracker safe to run' and would track WI-hopip mechanically (a claim 'serve's write API requires auth' is VIOLATED today). isbefore edges added to the frontend experiment items WI-fujus-nojaz-pomoz-kinid-jutot-jolom-bisus-gazam and WI-kinab-zunas-gozat-musan-hivoj-rural-sosuf-pinur."  # 7850

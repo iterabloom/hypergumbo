@@ -66,7 +66,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -102,12 +101,11 @@ def is_pascal_tree_sitter_available() -> bool:
 
 
 def find_pascal_files(root: Path) -> Iterator[Path]:
-    """Find all Pascal files in the given directory."""
-    extensions = ("*.pas", "*.pp", "*.dpr", "*.lpr")
-    for ext in extensions:
-        for path in find_files(root, [ext]):
-            if path.is_file():
-                yield path
+    """Find all Pascal files in the given directory.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(root)
 
 
 

@@ -12,12 +12,16 @@
 # `import csv; csv.writer(f)`, `import csv as c; c.writer(f)` and
 # `from csv import writer; writer(f)` all resolve to `csv.writer`. VALUE: the
 # returned type, spelled as the io_primitives rows spell the module slot.
-# Two consumers in py.py read these rows, and they answer different questions:
+# Two questions in py.py read these rows:
 #   * _library_producer_type (WI-kozaj): what does a CALL to this callee
 #     return? Types `w = csv.writer(f)` so `w.writerow(row)` reaches the
 #     _csv.Writer rows. Any row, member or factory.
-#   * TYPE_PRESERVING_MEMBERS: which members keep a typed RECEIVER's type
-#     across a chain? Only rows whose value equals their owner.
+#   * _member_return_type (WI-tumol): what does a MEMBER called on a typed
+#     receiver return? `resp = opener.open(url)` types `resp` from
+#     `urllib.request.OpenerDirector.open`; a row whose value equals its owner
+#     (pathlib's) is the special case that keeps the receiver's type, and
+#     TYPE_PRESERVING_MEMBERS is that subset, still read for the Django
+#     manager root.
 #
 # NOT here: EXTERNAL_CONSTRUCTOR_TYPES, which is catalogue-DERIVED from the
 # io_primitives method rows and answers "what does sqlite3.connect() CONSTRUCT".
@@ -56,6 +60,22 @@ signatures:
   # which io_primitives rows net_send; this row is what lets `opener =
   # build_opener(); opener.open(url, data)` reach it.
   urllib.request.build_opener: urllib.request.OpenerDirector
+  # WI-tumol: what the sends hand back. urlopen and OpenerDirector.open are
+  # net_send (the response is a consequence of the send) and return a HANDLE;
+  # the far side's bytes arrive where it is READ, which io_primitives rows
+  # net_recv on http.client.HTTPResponse. The type is SCHEME-dependent: an
+  # http/https URL returns http.client.HTTPResponse (python 3.12, checked in a
+  # test against a loopback server); a file:, ftp: or data: URL returns
+  # urllib.response.addinfourl, which is NOT typed here -- one value per row,
+  # and the network case is the one a receive row is about. getresponse is
+  # the http.client spelling of the same handle.
+  urllib.request.urlopen: http.client.HTTPResponse
+  urllib.request.OpenerDirector.open: http.client.HTTPResponse
+  http.client.HTTPConnection.getresponse: http.client.HTTPResponse
+  http.client.HTTPSConnection.getresponse: http.client.HTTPResponse
+  # WI-tumol: a FUNCTION returning a connected socket.socket, whose recv /
+  # sendall rows are where the bytes cross.
+  socket.create_connection: socket.socket
   # WI-kanor: os.popen hands back a pipe to the child, not its output; the
   # read through it (os._wrap_close.read) is where the child's bytes cross.
   os.popen: os._wrap_close

@@ -431,36 +431,14 @@ def extract_bindings_from_source(root: Path) -> list[DIBinding]:
 # Interface → implementation map from symbol metadata
 # ---------------------------------------------------------------------------
 
-def build_interface_impl_map(
-    symbols: list[Symbol],
-    edges: list[Edge],
-) -> dict[str, list[Symbol]]:
-    """Build map of interface name → implementing class symbols.
-
-    Uses ``implements`` edges and ``extends`` edges (when the parent is an
-    interface-kind symbol) to discover implementations.
-
-    Args:
-        symbols: All symbols.
-        edges: All edges.
-
-    Returns:
-        Dict mapping interface short name to list of implementing class Symbols.
-    """
-    result: dict[str, list[Symbol]] = defaultdict(list)
-    for iface_sym, impl_sym, _edge in _iter_interface_impls(symbols, edges):
-        result[iface_sym.name].append(impl_sym)
-    return dict(result)
-
-
 def _iter_interface_impls(
     symbols: list[Symbol],
     edges: list[Edge],
 ) -> Iterator[tuple[Symbol, Symbol, Edge]]:
     """``(interface, implementation, edge)`` for each edge that relates them.
 
-    The one reading of the graph behind :func:`build_interface_impl_map`,
-    exposed with the edge so a heuristic binding can say what it consumed.
+    The one reading of the graph, yielded with the edge so a heuristic
+    binding can say what it consumed.
     """
     sym_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
     for edge in edges:

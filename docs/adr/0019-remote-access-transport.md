@@ -3,7 +3,7 @@
 
 Date: 2026-03-30
 Revised: 2026-04-03 (native app replaces Orbot+Safari for Part A)
-Status: Accepted — Part A server side IMPLEMENTED and shipped in hypergumbo-tracker v0.2.0 (2026-04-04): `htrac serve` (Starlette + uvicorn on 127.0.0.1), the WebAuthn/FIDO2 + bcrypt + duress auth stack, the BlockSuite web frontend (`packages/htrac-frontend/`), WebSocket live sync, and the Tor onion-service deployment recipe (`docs/DEPLOYMENT.md`). The Part A native iOS/macOS client is NOT in this repo. Part B (WireGuard, STUN/TURN, shared Rust core, embedded `arti`, Tauri desktop, federation) is not started
+Status: Accepted — amended 2026-10-17 (web frontend re-scoped; BlockSuite dropped). Part A server side IMPLEMENTED and shipped in hypergumbo-tracker v0.2.0 (2026-04-04): `htrac serve` (Starlette + uvicorn on 127.0.0.1), the WebAuthn/FIDO2 + bcrypt + duress auth stack, WebSocket live sync, and the Tor onion-service deployment recipe (`docs/DEPLOYMENT.md`). The web frontend is NOT implemented: `packages/htrac-frontend/` was a two-commit Lit scaffold that imported no BlockSuite, was never built in CI or shipped in a wheel, and was removed on 2026-10-17; `run_server()` still builds the app without a TrackerSet or a frontend (WI-hopip). The Part A native iOS/macOS client is NOT in this repo. Part B (WireGuard, STUN/TURN, shared Rust core, embedded `arti`, Tauri desktop, federation) is not started
 
 ## Phasing
 
@@ -20,7 +20,7 @@ The core value proposition: see what agents are doing from a phone, over Tor.
 | Client | Native iOS/macOS app | Minimal Swift shell (~500-800 LOC) + `WKWebView` |
 | Auth | Face ID + YubiKey + password | `LAContext` (biometric), `ASAuthorizationSecurityKeyCredentialProvider` (FIDO2), `bcrypt` (password) |
 | Duress | Duress module | User-implemented `DuressHandler` Protocol |
-| Frontend | BlockSuite web app | Document editor + infinite canvas/whiteboard, served as static assets |
+| Frontend | Yjs-backed tracker document (ADR-0062 / WI-tofog) with BlockNote discussion and @xyflow/react graph views | Projected from the ops log, served as static assets; re-scoped 2026-10-17, not yet built |
 | Live sync | WebSocket | Typed JSON messages, `state_snapshot` on connect, events on change |
 | File watching | `watchfiles` | Detects CLI/TUI writes, pushes to WebSocket clients |
 | Localhost proxy | In-app HTTP proxy | Swift `URLSession` routes through Orbot VPN (or SOCKS); `WKWebView` connects to `localhost` |
@@ -28,7 +28,7 @@ The core value proposition: see what agents are doing from a phone, over Tor.
 
 Part A auth is **three-factor** (Face ID + YubiKey + password) plus duress detection. A native app is required because Safari does not treat `.onion` origins as secure contexts — WebAuthn's browser API (`navigator.credentials`) requires HTTPS or `localhost`. The native `AuthenticationServices` framework bypasses this restriction entirely, and a localhost proxy gives `WKWebView` a secure context for service workers and WebSocket.
 
-**Why BlockSuite for the MVP frontend:** BlockSuite is heavier than a minimal read-only dashboard would require. It is chosen deliberately: the operator plans to use BlockSuite in a separate project and wants to build working knowledge of the framework in a lower-stakes context first. The htrac frontend serves as that learning vehicle. The investment pays forward.
+**Why not BlockSuite (re-decided 2026-10-17):** BlockSuite was chosen in April 2026 as a learning vehicle for a separate project. Its standalone npm line has published nothing substantive since 0.22.4 (2025-07-01); the `toeverything/blocksuite` repository's `main` carries only bot PRs since 2025-07-07, and the code continues only inside the AFFiNE monorepo (0.27.x), so there is nothing left to learn that transfers. What does transfer is **Yjs**. The frontend is therefore a Yjs document projected from the tracker's ops log — the ops log stays the durable, authoritative layer and the Y.Doc is the live multi-writer buffer (ADR-0062, WI-tofog) — with BlockNote for discussion text and @xyflow/react for the `isbefore`/parent graph (WI-fujus, WI-kinab), which makes React the application framework. tldraw was considered for a canvas and excluded: its licence requires a production License Key with runtime environment detection, incompatible with AGPL. Evidence and the full trade-off are in WI-pupod's discussion (2026-10-16).
 
 ### Part B (stretch goals)
 
@@ -338,7 +338,7 @@ What the attacker **cannot** do without the YubiKey:
 | `WKWebView` | Renders the BlockSuite frontend from `http://localhost:<port>` (secure context) |
 | `WKHTTPCookieStore` | Injects session cookie from native auth flow into `WKWebView` |
 
-The app is a single universal binary (iPhone + iPad + macOS via Catalyst or native macOS target). Screen adaptation is handled by the BlockSuite frontend's responsive CSS: full canvas workspace on iPad/macOS, triage-optimized on iPhone.
+The app is a single universal binary (iPhone + iPad + macOS via Catalyst or native macOS target). Screen adaptation is handled by the web frontend's responsive CSS: full canvas workspace on iPad/macOS, triage-optimized on iPhone.
 
 **Tor routing in Part A:** The app does not embed a Tor client. It relies on Orbot (iOS) or a local Tor SOCKS proxy (macOS) to route traffic. On iOS, Orbot runs as a VPN — all app traffic (or per-app if configured) routes through Tor automatically. On macOS, the localhost proxy can be configured to use a SOCKS5 proxy (`127.0.0.1:9050` from a local Tor daemon). This is a pragmatic choice: embedding `arti` (Rust Tor client) requires cross-compilation infrastructure and FFI discipline that Part B's shared Rust core handles properly. Part A avoids that complexity.
 
@@ -350,7 +350,7 @@ The UI is a **web frontend** — a single codebase of HTML/CSS/JS/TypeScript wit
 
 **Web frontend (shared across all platforms) [Part A]:**
 
-- Built on **BlockSuite** — the engine behind AFFiNE, providing both a block-based document editor (Notion-like) and an infinite canvas/whiteboard ("edgeless mode") in one framework. Native persistence format is Yjs (CRDT), which gives offline-first and eventual sync over WebSocket for free.
+- Built on **Yjs**: the tracker state is projected into a Y.Doc (the ops log remains the durable layer; ADR-0062), edited through BlockNote (discussion text) and viewed through @xyflow/react (the dependency graph). Offline-first and eventual sync over WebSocket come from Yjs; attribution uses a pseudonymous per-change token resolved outside the shared document.
 - Served as static assets by `htrac serve` (or bundled with the native shells in Part B)
 - Connects to `htrac serve` via WebSocket for real-time state sync
 - Edgeless mode for diagramming, annotation, spatial layout; block mode for structured discussion, checklists, code
@@ -567,7 +567,7 @@ systemd
 - **Duress module distribution:** Users need guidance on writing effective handlers without that guidance itself becoming a roadmap for attackers. Consider a separate, access-controlled document or in-person knowledge transfer rather than public docs.
 - **Session continuity across transport switch.** Resolved: the local proxy architecture eliminates this concern. `WKWebView` always connects to `localhost` — the proxy handles transport switches transparently. Cookie domain is always `localhost`, so session cookies survive transport changes.
 - **Biometric fallback [Part A].** If the device doesn't have Face ID (older iPhone, iPad without TrueDepth, macOS without Touch ID), should the app accept Touch ID? Passcode? Or refuse to run? Recommendation: accept any `LAPolicy.deviceOwnerAuthenticationWithBiometrics` result, which covers both Face ID and Touch ID. Do not fall back to passcode — that weakens the biometric factor to a knowledge factor. On macOS without Touch ID, this factor is unavailable — the app should warn and proceed with two-factor (YubiKey + password) rather than refuse to run.
-- **Web frontend framework choice.** Resolved: **BlockSuite** — provides both block-based document editing and infinite canvas/whiteboard in one framework, backed by Yjs CRDTs. Gives offline-first and eventual sync over WebSocket for free. No separate application framework needed (React, Svelte, etc.) — BlockSuite is the application framework.
+- **Web frontend framework choice.** Resolved 2026-04 as BlockSuite; **re-decided 2026-10-17**: BlockSuite's npm line is dormant, so the frontend is a Yjs-backed tracker document with BlockNote and @xyflow/react views, and React is the application framework (ADR-0062, WI-tofog, WI-fujus, WI-kinab).
 - **Tauri on Linux without WebKitGTK.** Some headless Linux servers (where `htrac serve` runs) may not have WebKitGTK. The Tauri desktop app is a *client* — it runs on the user's desktop machine, not on the server VM. But if someone wants to run the desktop client on the same Linux box via X forwarding, WebKitGTK becomes a dependency. Clarify that the Tauri app is for desktop client machines, not servers.
 - **App Store review for Tor.** Apple has historically been cautious about apps that embed Tor functionality. Part A avoids this entirely — the app does not embed Tor; it relies on Orbot (already in the App Store) for routing. Part B embeds `arti` via the shared Rust core, which would face review. The app should frame Tor as a privacy/connectivity feature, not an anonymity tool. The STUN reflector + WireGuard as primary data path (with Tor as fallback) may help the review narrative. For personal use, TestFlight distribution avoids App Store review entirely.
 - **Orbot availability (Part A).** Part A depends on Orbot being installed and active for iOS Tor routing. If Orbot is removed from the App Store or the user doesn't want to install it, the macOS path (local Tor daemon + SOCKS proxy) still works. An alternative on iOS would be to embed a minimal Tor client — but that pulls in Part B complexity. For Part A, Orbot is an accepted external dependency.

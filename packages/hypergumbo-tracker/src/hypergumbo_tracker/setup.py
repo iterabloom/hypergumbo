@@ -4,14 +4,17 @@
 Runs a sequence of checks that inspect the tracker's operational state,
 auto-fix what can be fixed, and report advisory diagnostics for the rest.
 Auto-fix covers directory creation, gitattributes (both the tracker-local
-and repo-root files), config copy, config ownership and permissions, group
+and repo-root files), .gitignore entries, config.yaml.template creation,
+config copy, config ownership and permissions, group
 permissions, ``core.sharedRepository``, the textconv driver,
 ``safe.directory``, the wrapper shim, the managed AGENTS.md block, and
 ``core.hooksPath``.
 
 Each check returns a CheckResult with status ok/fixed/warn/error. The wizard
-is idempotent: running it twice with no changes between runs produces all
-"ok" results. That claim was FALSE for config.yaml until 2026-09-12 — check
+is idempotent: running it twice with no changes between runs produces no
+"fixed" result on the second run (advisory warnings, such as the
+host-protected-config opt-in, persist until a human acts on them). That claim
+was FALSE for config.yaml until 2026-09-12 — check
 #10b set it to 0444 and check #12's group sweep put group-write straight back,
 so both reported "fixed" forever and the file settled at 0464. Two checks that
 disagree about one file cannot converge; ``_MODE_MANAGED_FILENAMES`` is the
@@ -23,7 +26,7 @@ reads, validates or reports on config MUST resolve it through
 :func:`authoritative_config`; otherwise the wizard inspects and edits a decoy,
 which is a worse failure than no wizard because it looks like it worked.
 
-The check sequence covers three areas:
+The check sequence covers four areas:
 1. **Core infrastructure** (checks 1-15): directory structure, git plumbing,
    config validation, ownership, home traversability, group permissions,
    textconv driver, data integrity.
@@ -32,7 +35,8 @@ The check sequence covers three areas:
    state validity. NOT read-only — the wrapper-shim, AGENTS.md-block and
    ``core.hooksPath`` checks all write to the repo and return
    ``status="fixed"``.
-3. **Sync prerequisites** (check 22): remote origin, FORGEJO_TOKEN,
+3. **Sync prerequisites** (check 22): remote origin, the token sync needs
+   for its forge (HG_GITHUB_TOKEN for github, FORGEJO_TOKEN for forgejo),
    git identity — advisory check for ``htrac sync`` workflow.
 4. **Install provenance** (check 23): who can modify the running tracker
    code. Advisory, and an accident guard rather than a security control —
@@ -40,7 +44,12 @@ The check sequence covers three areas:
 
 Entry point: ``run_setup(root, repo_root, *, with_policy_template=False)``
 returns a list of CheckResult; the keyword drives policy-template scaffolding.
-The CLI handler in cli.py formats and prints them.
+``format_results`` and ``results_to_json`` (both in this module) render them;
+the ``setup`` handler in cli.py prints the result. ``generate_human_shim(root)``
+prints a copy-paste command block for the human when the agent declines to
+continue. ``config_lock`` / ``config_unlock`` (0444 / 0644; they raise
+``OwnershipTransferRefused`` internally and swallow it) are shared with
+configure.py, migration.py and cli.py.
 """
 
 from __future__ import annotations
@@ -68,6 +77,14 @@ from hypergumbo_tracker.models import (
     resolve_actor,
 )
 from hypergumbo_tracker.store import _find_git_dir
+from hypergumbo_tracker.sync import (
+    NO_FORGE_TOKEN_MESSAGE,
+    _load_env,
+    api_base_from_url,
+    forge_backend,
+    forge_token,
+    missing_forge_token_message,
+)
 from hypergumbo_tracker.validation import ValidationResult, validate_all
 
 
@@ -241,7 +258,7 @@ class CheckResult:
 
 
 # ---------------------------------------------------------------------------
-# Tracker concept definitions for AGENTS.md scanning (check #16)
+# Tracker concept definitions for AGENTS.md scanning (check #17)
 # ---------------------------------------------------------------------------
 
 TRACKER_CONCEPTS: dict[str, dict[str, Any]] = {
@@ -1822,7 +1839,7 @@ def _check_shared_repository(root: Path, repo_root: Path | None) -> CheckResult:
     )
 
 def _check_ops_writable(root: Path) -> CheckResult:
-    """Check #12: Verify .ops/ directories are writable."""
+    """Check #13: Verify .ops/ directories are writable."""
     ops_dirs = [
         root / "tracker" / ".ops",
         root / "tracker-workspace" / ".ops",
@@ -1949,7 +1966,7 @@ def _verify_textconv_runs(repo_root: Path | None, ops_file: Path) -> str | None:
 
 
 def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
-    """Check #13: Git textconv driver for .ops files.
+    """Check #14: Git textconv driver for .ops files.
 
     When running as the human user in a repo owned by the agent user,
     git may block access due to safe.directory restrictions. The wizard
@@ -2099,7 +2116,7 @@ def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
 
 
 def _check_existing_data(root: Path) -> CheckResult:
-    """Check #14: Validate existing .ops files if any exist."""
+    """Check #15: Validate existing .ops files if any exist."""
     # Check if any .ops files exist
     ops_dirs = [
         root / "tracker" / ".ops",
@@ -2163,7 +2180,7 @@ def _check_existing_data(root: Path) -> CheckResult:
 
 
 # ---------------------------------------------------------------------------
-# Part 2: Agentic infrastructure (read-only, advisory)
+# Part 2: Agentic infrastructure (writes: wrapper shim, AGENTS.md block, core.hooksPath)
 # ---------------------------------------------------------------------------
 
 
@@ -2226,7 +2243,7 @@ def _install_shim(path: Path, content: str) -> str | None:
 
 
 def _check_tracker_wrapper(repo_root: Path | None) -> CheckResult:
-    """Check #15: Install scripts/tracker and scripts/tracker-textconv shims.
+    """Check #16: Install scripts/tracker and scripts/tracker-textconv shims.
 
     Auto-creates missing shims and fixes permissions on existing ones.
     """
@@ -2270,7 +2287,7 @@ def _check_agents_md(
     *,
     with_policy_template: bool = False,
 ) -> CheckResult:
-    """Check #16: Inject/update managed tracker-governance block in AGENTS.md.
+    """Check #17: Inject/update managed tracker-governance block in AGENTS.md.
 
     If AGENTS.md exists with delimiters: replaces content between them.
     If AGENTS.md exists without delimiters: inserts block at a Tracker heading
@@ -2374,7 +2391,7 @@ def _check_agents_md(
 
 
 def _check_stop_hook(repo_root: Path | None) -> CheckResult:
-    """Check #17: Check if stop hooks reference tracker commands."""
+    """Check #18: Check if stop hooks reference tracker commands."""
     if repo_root is None:
         return CheckResult(
             name="stop_hook",
@@ -2437,7 +2454,7 @@ def _check_stop_hook(repo_root: Path | None) -> CheckResult:
 
 
 def _check_precommit_hook(repo_root: Path | None) -> CheckResult:
-    """Check #18: Check if pre-commit hook references tracker validate."""
+    """Check #19: Check if pre-commit hook references tracker validate."""
     if repo_root is None:
         return CheckResult(
             name="precommit_hook",
@@ -2563,7 +2580,7 @@ def _check_hooks_path(repo_root: Path | None) -> CheckResult:
 
 
 def _check_autonomous_mode(repo_root: Path | None) -> CheckResult:
-    """Check #19: Cross-check autonomous mode config and loop sentinel.
+    """Check #20: Cross-check autonomous mode config and loop sentinel.
 
     Verifies that AUTONOMOUS_MODE.txt (if present) has a recognized value
     and that the .agent/LOOP sentinel is consistent with the mode setting.
@@ -2636,7 +2653,7 @@ def _check_autonomous_mode(repo_root: Path | None) -> CheckResult:
 
 
 def _check_reflection_state(repo_root: Path | None) -> CheckResult:
-    """Check #20: Validate stop hook state file schema and freshness.
+    """Check #21: Validate stop hook state file schema and freshness.
 
     Reads stop_hook_state.json (hook-written only, post-INV-jofaf-facet-2).
     Parses the file, checks that it has the expected keys, validates the
@@ -2741,7 +2758,11 @@ def _check_sync_prerequisites(
     Advisory check (status is ``ok`` or ``warn``, never ``error``) since
     sync is an optional workflow.  Verifies:
     1. Remote ``origin`` exists.
-    2. ``FORGEJO_TOKEN`` present in ``.env`` or environment.
+    2. The token sync presents to the origin's forge is present in ``.env``
+       or the environment: ``HG_GITHUB_TOKEN`` for github, ``FORGEJO_TOKEN``
+       for forgejo (``sync.FORGE_TOKEN_VARS``). Its ``.env`` parser and
+       messages are sync's own, so the check and sync cannot disagree. With
+       no origin, either token satisfies this half.
     3. Git identity configured (``user.name``, ``user.email``).
     """
     if repo_root is None:
@@ -2752,6 +2773,7 @@ def _check_sync_prerequisites(
         )
 
     problems: list[str] = []
+    origin_url = ""
 
     # 1. Remote origin
     try:
@@ -2764,24 +2786,22 @@ def _check_sync_prerequisites(
         )
         if remote_result.returncode != 0:
             problems.append("No remote 'origin' configured")
+        else:
+            origin_url = remote_result.stdout.strip()
     except FileNotFoundError:  # pragma: no cover — git always available in CI
         problems.append("git not found")
 
-    # 2. FORGEJO_TOKEN
-    has_token = bool(os.environ.get("FORGEJO_TOKEN"))
-    if not has_token:
-        # Check .env file
-        env_path = repo_root / ".env"
-        if env_path.is_file():
-            content = env_path.read_text()
-            for line in content.splitlines():
-                if line.strip().startswith("FORGEJO_TOKEN="):
-                    value = line.strip().split("=", 1)[1].strip()
-                    if value:
-                        has_token = True
-                    break
-    if not has_token:
-        problems.append("FORGEJO_TOKEN not found in .env or environment")
+    # 2. The origin's forge token
+    env_vars = _load_env(repo_root)
+    api_base = api_base_from_url(origin_url) if origin_url else ""
+    if origin_url and not api_base:
+        problems.append("Could not parse a forge API URL from remote 'origin'")
+    if api_base:
+        backend = forge_backend(api_base)
+        if not forge_token(backend, env_vars):
+            problems.append(missing_forge_token_message(backend))
+    elif not (forge_token("github", env_vars) or forge_token("forgejo", env_vars)):
+        problems.append(NO_FORGE_TOKEN_MESSAGE)
 
     # 3. Git identity
     if not problems or "git not found" not in problems:

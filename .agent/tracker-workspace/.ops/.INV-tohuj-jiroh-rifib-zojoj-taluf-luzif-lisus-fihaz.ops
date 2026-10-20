@@ -1,0 +1,24 @@
+- op: create  # 2f48
+  at: '2026-10-19T10:51:39Z'  # 2f48
+  by: agent  # 2f48
+  actor: jgstern_agent  # 2f48
+  clock: 1  # 2f48
+  nonce: 2f48  # 2f48
+  data:  # 2f48
+    kind: invariant  # 2f48
+    title: "cpp: methods defined in the body of a class declared with a qualified name (class OnlineStream::Impl { }) are registered bare, so a member forward binds to the method itself"  # 2f48
+    status: violated  # 2f48
+    priority: 2  # 2f48
+    parent:  # 2f48
+    tags:  # 2f48
+    - cpp  # 2f48
+    - call_graph  # 2f48
+    - analysis_quality  # 2f48
+    isbefore: []  # 2f48
+    duplicate_of: []  # 2f48
+    not_duplicate_of: []  # 2f48
+    pr_ref:  # 2f48
+    description: "Found while closing WI-lamij, 2026-10-19 (dev 261c7921d2).\n\nA member function defined inside the body of a class declared with a QUALIFIED name -- the out-of-line nested-class definition the pimpl idiom uses:\n\n  class OnlineStream::Impl {\n    void AcceptWaveform(int n) { feat_extractor_.AcceptWaveform(n); }\n    FeatureExtractor feat_extractor_;\n  };\n\nis registered as bare `AcceptWaveform` (kind method), with no owner. The class itself is named `Impl`.\n\nConsequences, through analyze_cpp on a 9-line fixture:\n1. `feat_extractor_.AcceptWaveform(n)` binds to the method ITSELF (src == dst). The resolver's exact short-name match on the bare name passes INV-fahub's defer gate: the name has no `::`, so it has no owner.\n2. WI-lamij's receiver typing cannot reach the field. `_cpp_owner_class` finds no class: `_get_enclosing_class` reads only a direct `type_identifier` child of class_specifier, and this one's name is a `qualified_identifier`. The function name has no qualifier either.\n\nMeasured on sherpa-onnx: 10 of the 41 self-call sites left after WI-lamij are this shape (e.g. sherpa-onnx/csrc/online-stream.cc:26). They are pimpl Impl classes whose methods forward to a member.\n\nRoot cause to check: the symbol pass's class-name extraction for class_specifier / struct_specifier with a qualified_identifier name, plus _get_enclosing_class. The method should be `OnlineStream::Impl::AcceptWaveform`, or `Impl::AcceptWaveform` per the existing short-class naming. INV-fabih's scope slot may need the outer `OnlineStream` too.\nNOT measured: grpc / whisper.cpp / modsecurity counts of the shape."  # 2f48
+    fields:  # 2f48
+      statement: "Every member function defined inside a class body is registered under its owning class, including when the class is declared with a qualified name (class A::B { ... })."  # 2f48
+      root_cause: "Class-name extraction and _get_enclosing_class read only a direct type_identifier child of class_specifier; a qualified_identifier name yields no class, so its methods get no owner."  # 2f48

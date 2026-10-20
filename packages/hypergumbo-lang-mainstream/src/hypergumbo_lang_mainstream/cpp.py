@@ -6,7 +6,14 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Struct declarations
 - Base classes: a class or struct with a base list records it in
   ``meta["base_classes"]`` (``_extract_base_classes_cpp``) for the
-  inheritance linker
+  inheritance linker, and ``meta["virtual_members"]`` /
+  ``["override_members"]`` / ``["static_members"]`` (``_cpp_member_dispatch_meta``,
+  WI-digaj): the member-function names declared ``virtual`` (or
+  ``override`` / ``final``), ``override`` / ``final``, and ``static`` in the
+  class body. These keywords exist only on the in-class declaration, never
+  on an out-of-line definition, so the class carries them for
+  ``type_hierarchy``; a member DEFINED inline also carries its own as
+  ``modifiers``
 - Enum declarations
 - Function definitions (standalone and class methods)
 - Pure-virtual methods, which carry ``modifiers=[visibility, "virtual",
@@ -53,21 +60,38 @@ Call-edge details:
 - **Member calls**: ``this->a->b()`` is resolved through class field types
   (``_resolve_cpp_field_chain``). A member call whose method name is in
   ``_CPP_STL_METHODS`` (``v.clear()``) is not resolved against project
-  symbols and emits no call edge, unless the ``this->`` field chain
-  (``_resolve_cpp_field_chain``) types its receiver. A bare call whose only match is a
+  symbols by name and emits no call edge, unless its receiver is typed --
+  by the ``this->`` field chain or by a declared receiver type (see
+  **Explicit receivers**). A bare call whose only match is a
   DIFFERENT class's method on weak evidence is withheld
   (``defer_bare_method_call``, INV-fahub) and emitted unresolved with
   ``enclosing_class``.
+- **Explicit receivers** (WI-lamij): ``impl_->Generate()`` / ``m.Forward()`` is
+  a call on a VALUE. Its receiver is typed where the source declares it -- a
+  local or parameter of the enclosing function, else a field of the caller's
+  class (``class_field_types``, which unwraps ``unique_ptr<T>`` / ``T*``); a
+  smart pointer's own ``.`` member is not the pointee's
+  (``_cpp_receiver_class``). A typed call binds ``T::m``, or, for a project
+  class that does not declare ``m``, an unresolved edge with
+  ``receiver_type_hint`` the inherited_calls linker walks. An untyped one
+  never takes the enclosing class as its hint, a same-file short-name hit or
+  an ``enclosing_class`` stamp: those are implicit-``this`` evidence, and the
+  pimpl idiom (``X::Generate`` forwarding to ``impl_->Generate``) turned them
+  into a false SELF-call -- 990 sites on sherpa-onnx.
 - **Included-header primitives**: a free, unqualified call whose resolved
   target is defined in another file is not bound when the I/O catalogue says
   one of the file's system ``#include`` headers declares that name
   (``declared_by_an_included_header``). It is emitted unresolved with the
   include-set module hint, so a same-named shim elsewhere in the repo does
   not capture a libc/STL call.
-- **Unresolved module hint**: when the file has system ``#include``
-  headers, the hint is the comma-joined include set, prefixed with ``std``
-  when the call names ``std::`` or, for an unqualified call, the file has
-  ``using namespace std`` (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
+- **Unresolved module hint**: when the file has any ``#include``, the hint
+  is the comma-joined set of headers it can see -- its own includes, quoted
+  and angled, and everything a header found in the repository includes,
+  transitively (``include_closure``, INV-zikul), less the names of in-repo
+  headers reached only transitively, which are read but not named
+  (``transitive_in_repo=False``) -- prefixed with ``std``
+  when the call names ``std::`` or the file has ``using namespace std``
+  (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
   Member calls carry ``call_construct="method"``.
 - **Scope** (INV-fabih): every stable_id's qualified-name slot holds the
   enclosing namespaces and classes the name does not already spell
@@ -145,6 +169,7 @@ from hypergumbo_core.analyze.c_family import (
 from hypergumbo_core.analyze.edge_source import mark_stand_in
 from hypergumbo_lang_mainstream.c import c_family_is_not_a_call
 from hypergumbo_lang_mainstream.header_owner import headers_owned_by
+from hypergumbo_lang_mainstream.include_closure import IncludeClosure
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -752,6 +777,112 @@ def _cpp_is_static(decl_node: "tree_sitter.Node", source: bytes) -> bool:
     )
 
 
+# Declarator wrappers a member function's ``function_declarator`` can sit
+# inside: ``Shape* Create()`` and ``const Shape& self()`` wrap it once.
+_CPP_DECLARATOR_WRAPPERS = frozenset({"pointer_declarator", "reference_declarator"})
+
+
+def _cpp_member_function_declarator(
+    member: "tree_sitter.Node",
+) -> Optional["tree_sitter.Node"]:
+    """The ``function_declarator`` of a member declaration or definition, or
+    None for a data member."""
+    for child in member.children:
+        node: Optional["tree_sitter.Node"] = child
+        while node is not None and node.type in _CPP_DECLARATOR_WRAPPERS:
+            node = next(
+                (c for c in node.children
+                 if c.type == "function_declarator" or c.type in _CPP_DECLARATOR_WRAPPERS),
+                None,
+            )
+        if node is not None and node.type == "function_declarator":
+            return node
+    return None
+
+
+def _cpp_member_keywords(
+    member: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, set[str]]]:
+    """``(name, keywords)`` for a member function, keywords drawn from
+    ``virtual`` / ``override`` / ``final`` / ``static``; None for a data member.
+
+    WI-digaj: these keywords exist only on the in-class declaration. An
+    out-of-line definition (``int Square::area() { ... }``) repeats none of
+    them, so they are read here, from the class body.
+    """
+    declarator = _cpp_member_function_declarator(member)
+    if declarator is None or not declarator.named_children:
+        return None
+    name = _node_text(declarator.named_children[0], source).strip()
+    keywords: set[str] = set()
+    if any(c.type == "virtual" for c in member.children):
+        keywords.add("virtual")
+    for spec in declarator.children:
+        if spec.type == "virtual_specifier":
+            keywords.add(_node_text(spec, source).strip())
+    if _cpp_is_static(member, source):
+        keywords.add("static")
+    return name, keywords
+
+
+def _cpp_member_dispatch_meta(
+    type_node: "tree_sitter.Node", source: bytes,
+) -> dict[str, list[str]]:
+    """Per-class member-dispatch facts for ``type_hierarchy`` (WI-digaj).
+
+    ``virtual_members``: names that are virtual IN this class (declared
+    ``virtual``, ``override`` or ``final``). ``override_members``: names
+    declared ``override`` / ``final``, which proves the base's member is
+    virtual too. ``static_members``: names declared ``static``. Recorded on the
+    class because the header that holds the class is the one place the
+    keywords are written. Empty lists are omitted.
+    """
+    body = _find_child_by_type(type_node, "field_declaration_list")
+    virtual: set[str] = set()
+    overrides: set[str] = set()
+    static: set[str] = set()
+    for member in body.children if body is not None else ():
+        if member.type not in ("field_declaration", "function_definition"):
+            continue
+        found = _cpp_member_keywords(member, source)
+        if found is None:
+            continue
+        name, keywords = found
+        if keywords & {"virtual", "override", "final"}:
+            virtual.add(name)
+        if keywords & {"override", "final"}:
+            overrides.add(name)
+        if "static" in keywords:
+            static.add(name)
+    facts = {
+        "virtual_members": sorted(virtual),
+        "override_members": sorted(overrides),
+        "static_members": sorted(static),
+    }
+    return {key: names for key, names in facts.items() if names}
+
+
+def _cpp_type_meta(
+    base_classes: list[str], type_node: "tree_sitter.Node", source: bytes,
+) -> Optional[dict[str, Any]]:
+    """A class / struct symbol's meta: its bases and its member-dispatch facts."""
+    meta: dict[str, Any] = {}
+    if base_classes:
+        meta["base_classes"] = base_classes
+    meta.update(_cpp_member_dispatch_meta(type_node, source))
+    return meta or None
+
+
+def _cpp_inline_member_modifiers(
+    definition: "tree_sitter.Node", source: bytes,
+) -> list[str]:
+    """Keywords on a member function DEFINED inside its class body (WI-digaj)."""
+    if definition.parent is None or definition.parent.type != "field_declaration_list":
+        return []
+    found = _cpp_member_keywords(definition, source)
+    return sorted(found[1]) if found is not None else []
+
+
 def _emit_cpp_field_symbols(
     analysis: "FileAnalysis",
     type_node: "tree_sitter.Node",
@@ -879,7 +1010,7 @@ def _extract_symbols_from_tree(
 
                 # Extract base classes for inheritance linker
                 base_classes = _extract_base_classes_cpp(node, source)
-                meta = {"base_classes": base_classes} if base_classes else None
+                meta = _cpp_type_meta(base_classes, node, source)
 
                 # A cpp class declaring a pure virtual IS abstract. Recorded in
                 # modifiers, where the shared type-family predicate reads it —
@@ -892,6 +1023,10 @@ def _extract_symbols_from_tree(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "class"),
                     name=name,
                     kind="class",
+                    # WI-pivap: the namespace-qualified name lets the core
+                    # inheritance linker check a qualified base's qualifier
+                    # (``std::exception`` is not ``mylib::exception``).
+                    qualified_name="::".join([*c_family_scope_chain(node, source), name]),
                     modifiers=class_modifiers,
                     language="cpp",
                     path=str(file_path),
@@ -938,12 +1073,13 @@ def _extract_symbols_from_tree(
 
                 # Extract base classes for inheritance linker
                 base_classes = _extract_base_classes_cpp(node, source)
-                meta = {"base_classes": base_classes} if base_classes else None
+                meta = _cpp_type_meta(base_classes, node, source)
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "struct"),
                     name=name,
                     kind="struct",
+                    qualified_name="::".join([*c_family_scope_chain(node, source), name]),
                     language="cpp",
                     path=str(file_path),
                     span=Span(
@@ -1108,6 +1244,9 @@ def _extract_symbols_from_tree(
                     origin_run_id=run.execution_id,
                     signature=signature,
                     meta=fn_meta,
+                    # WI-digaj: an inline in-class definition carries its own
+                    # virtual / override / final / static keywords.
+                    modifiers=_cpp_inline_member_modifiers(node, source),
                     # INV-loguk: analytical fields for C++ functions/methods.
                     line_span=end_line - start_line + 1,
                     cyclomatic_complexity=compute_cyclomatic_complexity(
@@ -1402,6 +1541,67 @@ def _cpp_classify_stream_text(text: str) -> Optional[str]:
     return None
 
 
+#: Declarator wrappers between a declaration and the name it declares.
+_CPP_NAME_DECLARATOR_WRAPPERS = frozenset({
+    "init_declarator", "pointer_declarator", "reference_declarator",
+    "function_declarator",
+})
+
+
+def _cpp_declared_name(declarator: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The identifier a declarator declares, through ``*`` / ``&`` / ``= v`` /
+    the most-vexing-parse ``function_declarator`` (``std::ifstream in(p)``)."""
+    node: Optional["tree_sitter.Node"] = declarator
+    while node is not None and node.type in _CPP_NAME_DECLARATOR_WRAPPERS:
+        node = node.child_by_field_name("declarator") or next(
+            (c for c in node.named_children
+             if c.type == "identifier" or c.type in _CPP_NAME_DECLARATOR_WRAPPERS),
+            None)
+    return _node_text(node, source) if node is not None and node.type == "identifier" else None
+
+
+def _cpp_declared_type_node(
+    node: "tree_sitter.Node", source: bytes, name: str, *, parameters: bool,
+) -> Optional["tree_sitter.Node"]:
+    """The type node of *name*'s nearest declaration before *node* in the
+    enclosing function, then (``parameters``) of the parameter so named."""
+    function = node.parent
+    while function is not None and function.type != "function_definition":
+        function = function.parent
+    if function is None:
+        return None
+    use_line = node.start_point[0]
+    best_line = -1
+    best: Optional["tree_sitter.Node"] = None
+    body = function.child_by_field_name("body")
+    stack = [body] if body is not None else []
+    while stack:
+        cur = stack.pop()
+        stack.extend(cur.children)
+        if cur.type != "declaration":
+            continue
+        if cur.start_point[0] > use_line or cur.start_point[0] < best_line:
+            continue
+        declared = [
+            _cpp_declared_name(child, source)
+            for index, child in enumerate(cur.children)
+            if cur.field_name_for_child(index) == "declarator"
+        ]
+        if name in declared:
+            best, best_line = cur.child_by_field_name("type"), cur.start_point[0]
+    if best is not None or not parameters:
+        return best
+    declarator = function.child_by_field_name("declarator")
+    while declarator is not None and declarator.type != "function_declarator":
+        declarator = declarator.child_by_field_name("declarator")
+    params = declarator.child_by_field_name("parameters") if declarator is not None else None
+    for param in params.named_children if params is not None else []:
+        inner = param.child_by_field_name("declarator")
+        if inner is not None and _cpp_declared_name(inner, source) == name:
+            return param.child_by_field_name("type")
+    return None
+
+
 def _cpp_declared_type_kind(
     node: "tree_sitter.Node", source: bytes, name: str,
 ) -> Optional[str]:
@@ -1418,51 +1618,84 @@ def _cpp_declared_type_kind(
     (``std::istream& is``) answers nothing: an istream may be a file, a pipe or
     a buffer, and INV-zumin's rule is one answer per call site or none.
     """
-    body = None
-    current = node.parent
-    while current is not None:
-        if current.type == "function_definition":
-            body = current.child_by_field_name("body")
-            break
-        current = current.parent
-    if body is None:
+    type_node = _cpp_declared_type_node(node, source, name, parameters=False)
+    if type_node is None:
         return None
-    use_line = node.start_point[0]
-    best_line = -1
-    best: Optional[str] = None
-    stack = [body]
-    while stack:
-        cur = stack.pop()
-        stack.extend(cur.children)
-        if cur.type != "declaration":
-            continue
-        if cur.start_point[0] > use_line or cur.start_point[0] < best_line:
-            continue
-        type_node = cur.child_by_field_name("type")
-        if type_node is None:  # pragma: no cover - a declaration always has one
-            continue
-        declared = None
-        for child in cur.children:
-            if child.type == "function_declarator":
-                ident = _find_child_by_type(child, "identifier")
-                if ident is not None:
-                    declared = _node_text(ident, source)
-            elif child.type == "init_declarator":
-                ident = child.child_by_field_name("declarator")
-                if ident is not None:
-                    declared = _node_text(ident, source)
-            elif child.type == "identifier":
-                declared = _node_text(child, source)
-        if declared != name:
-            continue
-        short = _cpp_short_type(_node_text(type_node, source))
-        if short in _CPP_PATH_STREAM_TYPES:
-            best, best_line = "host_path", cur.start_point[0]
-        elif short in _CPP_MEMORY_STREAM_TYPES:
-            best, best_line = "in_memory", cur.start_point[0]
-        else:
-            best, best_line = None, cur.start_point[0]
-    return best
+    short = _cpp_short_type(_node_text(type_node, source))
+    if short in _CPP_PATH_STREAM_TYPES:
+        return "host_path"
+    if short in _CPP_MEMORY_STREAM_TYPES:
+        return "in_memory"
+    return None
+
+
+#: Smart pointers: ``->`` reaches the pointee, ``.`` the pointer itself.
+_CPP_SMART_POINTERS = frozenset({"unique_ptr", "shared_ptr", "weak_ptr", "auto_ptr"})
+
+
+def _cpp_class_of_type(
+    type_node: "tree_sitter.Node", source: bytes, *, arrow: bool,
+) -> Optional[str]:
+    """The class a declared type names for a member call made with ``->``
+    (``arrow``) or ``.`` (WI-lamij): ``Model`` for ``Model`` / ``ns::Model`` /
+    ``Model*``; the pointee of a smart pointer reached by ``->``; None for a
+    smart pointer's own ``.`` member, ``auto`` or a primitive."""
+    if type_node.type == "type_identifier":
+        return _node_text(type_node, source)
+    if type_node.type == "qualified_identifier":
+        name = type_node.child_by_field_name("name")
+        return _cpp_class_of_type(name, source, arrow=arrow) if name is not None else None
+    if type_node.type == "template_type":
+        outer = type_node.child_by_field_name("name")
+        outer_name = _node_text(outer, source) if outer is not None else ""
+        if outer_name not in _CPP_SMART_POINTERS:
+            return outer_name or None
+        args = type_node.child_by_field_name("arguments")
+        desc = _find_child_by_type(args, "type_descriptor") if args is not None else None
+        pointee = desc.child_by_field_name("type") if desc is not None else None
+        return (
+            _cpp_class_of_type(pointee, source, arrow=False)
+            if arrow and pointee is not None else None
+        )
+    return None
+
+
+def _cpp_owner_class(
+    node: "tree_sitter.Node", source: bytes, function: Optional[Symbol],
+) -> Optional[str]:
+    """The class a member function belongs to: the class body it sits in, or,
+    defined out of line (``int Tts::Run()``), the qualifier of its name."""
+    enclosing = _get_enclosing_class(node, source)
+    if enclosing is not None:
+        return enclosing
+    if function is not None and function.kind == "method" and "::" in function.name:
+        return function.name.rsplit("::", 1)[0].rsplit("::", 1)[-1]
+    return None
+
+
+def _cpp_receiver_class(
+    call: "tree_sitter.Node",
+    source: bytes,
+    owner_class: Optional[str],
+    field_types: dict[str, dict[str, str]],
+) -> Optional[str]:
+    """The class an explicit receiver is declared as, or None (WI-lamij).
+
+    A local or parameter of the enclosing function first (C++'s own scoping),
+    then a field of the caller's class from ``class_field_types``, which
+    already unwraps ``unique_ptr<T>`` / ``T*`` to ``T``.
+    """
+    function = call.child_by_field_name("function")
+    receiver = function.child_by_field_name("argument") if function is not None else None
+    if function is None or receiver is None or receiver.type != "identifier":
+        return None
+    operator = function.child_by_field_name("operator")
+    arrow = operator is not None and _node_text(operator, source) == "->"
+    name = _node_text(receiver, source)
+    declared = _cpp_declared_type_node(call, source, name, parameters=True)
+    if declared is not None:
+        return _cpp_class_of_type(declared, source, arrow=arrow)
+    return field_types.get(owner_class, {}).get(name) if owner_class else None
 
 
 def _cpp_stream_target_kind(
@@ -1507,6 +1740,7 @@ def _extract_edges_from_tree(
     *,
     file_symbols: list[Symbol],
     callables_by_name: dict[str, list[Symbol]],
+    include_closure: IncludeClosure | None = None,
 ) -> list[Edge]:
     """Extract include, call, and instantiation edges from a parsed tree.
 
@@ -1525,6 +1759,9 @@ def _extract_edges_from_tree(
             name-picked callee is re-chosen from by arity (WI-hilum). Required;
             outside ``analyze()`` there is no run index and the caller passes
             ``{}``, which leaves every name's pick as it is.
+        include_closure: The run's include graph
+            (``CppAnalyzer._include_closure``). Without one the file's own
+            directory stands in for the repository.
     """
     if namespace_aliases is None:
         namespace_aliases = {}  # pragma: no cover - always passed by caller
@@ -1539,25 +1776,28 @@ def _extract_edges_from_tree(
     # instead of being dropped.
     file_anchor = file_anchor_symbol("cpp", str(file_path), PASS_ID, run.execution_id)
 
-    # WI-rupik / WI-mafik: pre-collect system #include headers so the
-    # unresolved-call emit path can attribute calls to the file's
-    # include set. Without this, ``std::printf(...)`` after
-    # ``#include <cstdio>`` produces a dst with no header context.
-    system_includes: list[str] = []
+    # WI-rupik / WI-mafik: the headers this file can see, so the
+    # unresolved-call emit path can attribute calls to them. Without this,
+    # ``std::printf(...)`` after ``#include <cstdio>`` produces a dst with no
+    # header context.
+    #
+    # INV-zikul: EVERY header the file can see, not its own angle includes.
+    # The coverage gate reads the slot as the complete list of a call's
+    # possible homes (INV-zimud), so a header left out is a false all-clear:
+    # ``<cstdint>`` + ``"util.h"`` (which includes ``<cstdio>``) stamped
+    # ``fopen(p, "w")`` as ``cstdint``, the module filter refused the stdio
+    # row, cstdint is granted, and NO-FSWRITE read CONFIRMED. Same mechanism
+    # as c.py; see ``include_closure`` for what an unfound header contributes.
+    if include_closure is None:
+        include_closure = IncludeClosure(file_path.parent)
+    visible_headers = include_closure.stamp(file_path, source, transitive_in_repo=False)
     from hypergumbo_core.io_boundary import declared_by_an_included_header
     # WI-bapuk: `using namespace std;` makes an UNQUALIFIED `getline(cin, s)`
     # resolvable in std, which is the spelling teaching code and competitive
     # C++ actually use. Collected file-wide, exactly as the includes are.
     using_namespaces: list[str] = []
     for _n in iter_tree(tree.root_node):
-        if _n.type == "preproc_include":
-            _sys_lib = _find_child_by_type(_n, "system_lib_string")
-            if _sys_lib:
-                # Strip surrounding angle brackets: ``<cstdio>`` → ``cstdio``.
-                _hdr = _node_text(_sys_lib, source).strip("<>")
-                if _hdr:
-                    system_includes.append(_hdr)
-        elif _n.type == "using_declaration":
+        if _n.type == "using_declaration":
             _kids = [c.type for c in _n.children]
             if "namespace" in _kids:
                 _ident = _find_child_by_type(_n, "identifier")
@@ -1758,11 +1998,55 @@ def _extract_edges_from_tree(
                                     ))
                                     chain_resolved = True
 
+                    # WI-lamij: ``impl_->Generate()`` / ``model_.Forward()`` is
+                    # a call on a VALUE, not on implicit ``this``: it must not
+                    # take the enclosing class as its path hint, a same-file
+                    # short-name hit, or an ``enclosing_class`` stamp.
+                    explicit = _explicit_receiver(node)
                     if chain_resolved:
                         pass  # Skip normal resolution
                     else:
                         # Try to resolve: look for short name first
                         short_name = callee_name.split("::")[-1] if "::" in callee_name else callee_name
+
+                        # WI-lamij: a receiver whose declaration names a class
+                        # resolves on that class -- its own member, or, for a
+                        # project class that does not declare it, an
+                        # unresolved edge the inherited_calls linker walks
+                        # the bases from (receiver_type_hint).
+                        _receiver_class = (
+                            _cpp_receiver_class(
+                                node, source,
+                                _cpp_owner_class(node, source, current_function),
+                                field_type_registry or {},
+                            )
+                            if explicit else None
+                        )
+                        _member = (
+                            global_symbols.get(f"{_receiver_class}::{short_name}")
+                            if _receiver_class else None
+                        )
+                        _receiver_sym = global_symbols.get(_receiver_class) if _receiver_class else None
+                        if _member is not None and _member.kind in ("function", "method"):
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=_member.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="ast_call",
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                meta={"call_construct": "method", "receiver": "declared_type"},
+                            ))
+                            chain_resolved = True
+                        elif _receiver_sym is not None and _receiver_sym.kind in ("class", "struct"):
+                            edges.append(make_unresolved_edge(
+                                "cpp", current_function.id, short_name,
+                                node.start_point[0] + 1, PASS_ID, run.execution_id,
+                                receiver_type_hint=_receiver_class,
+                                call_construct="method",
+                            ))
+                            chain_resolved = True
 
                         # STL method guard: when the call is a member call
                         # (obj.method()) and the method name is a common STL
@@ -1783,7 +2067,7 @@ def _extract_edges_from_tree(
                             else:
                                 # Use explicit namespace as path_hint
                                 path_hint = ns_prefix
-                        elif current_function.kind == "method":
+                        elif current_function.kind == "method" and not explicit:
                             # Same-class preference: bare call like Initialize()
                             # inside a class method — use the enclosing class
                             # as path_hint so the resolver prefers same-class
@@ -1797,7 +2081,7 @@ def _extract_edges_from_tree(
                     # before short name to avoid collisions when multiple classes
                     # define the same method name.
                     _local_callee = None
-                    if not chain_resolved:
+                    if not chain_resolved and not explicit:
                         if path_hint and f"{path_hint}::{short_name}" in local_symbols:
                             _local_callee = local_symbols[f"{path_hint}::{short_name}"]
                         elif short_name in local_symbols:
@@ -1840,7 +2124,8 @@ def _extract_edges_from_tree(
                         # magnet defers to the inherited_calls Site-1 walker via an
                         # unresolved edge stamped with ``enclosing_class`` (INV-nogof
                         # withhold-not-pick-first + INV-nilud linker-owns-resolution).
-                        _enclosing_type = _get_enclosing_class(node, source)
+                        _enclosing_type = (
+                            None if explicit else _get_enclosing_class(node, source))
                         # INV-nizom: the ONE fact that separates a real POSIX
                         # ``wait()`` from ``std::future::wait()`` once the
                         # receiver type is unknown. ``is_member_call`` is
@@ -1885,7 +2170,7 @@ def _extract_edges_from_tree(
                             and "::" not in callee_name
                             and _sym.path != _caller_path
                             and declared_by_an_included_header(
-                                "cpp", short_name, system_includes,
+                                "cpp", short_name, visible_headers,
                             )
                         )
                         if (
@@ -1931,7 +2216,7 @@ def _extract_edges_from_tree(
                                     n for n in using_namespaces
                                     if n in _CPP_CATALOGUE_NAMESPACES
                                 )
-                            # ONLY when the file HAS system includes. With none,
+                            # ONLY when the file HAS includes. With none,
                             # the slot stays the `external` SENTINEL, and that
                             # sentinel is load-bearing: it is what enables
                             # `lookup_with_module`'s SHORT-NAME FALLBACK. Naming
@@ -1948,8 +2233,8 @@ def _extract_edges_from_tree(
                             # changing the module slot changes every dst string
                             # and so the diff key itself moved.
                             _slots = (
-                                _slots + list(system_includes)
-                                if system_includes else []
+                                _slots + list(visible_headers)
+                                if visible_headers else []
                             )
                             _target_kind = _cpp_stream_target_kind(
                                 node, source, callee_name,
@@ -2394,6 +2679,8 @@ class CppAnalyzer(TreeSitterAnalyzer):
     #: Pass 2 sees an overload set where ``global_symbols`` keeps one per name.
     _prototypes: Optional[dict[str, list[list[dict[str, Any]]]]] = None
     _callables_by_name: Optional[dict[str, list[Symbol]]] = None
+    #: INV-zikul: the run's include graph, live only inside ``analyze()``.
+    _include_closure: Optional[IncludeClosure] = None
 
     def analyze(
         self, repo_root: Path, max_files: Optional[int] = None,
@@ -2401,11 +2688,13 @@ class CppAnalyzer(TreeSitterAnalyzer):
         """Run the base two-pass analysis with fresh overload indexes."""
         self._prototypes = {}
         self._callables_by_name = {}
+        self._include_closure = IncludeClosure(repo_root)
         try:
             return super().analyze(repo_root, max_files)
         finally:
             self._prototypes = None
             self._callables_by_name = None
+            self._include_closure = None
 
     def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
         """Yield C++ files (headers before sources for declaration ordering)."""
@@ -2481,6 +2770,7 @@ class CppAnalyzer(TreeSitterAnalyzer):
             field_type_registry=getattr(self, "_field_type_registry", None),
             file_symbols=self.file_symbols(local_symbols),
             callables_by_name=self._callables_by_name or {},
+            include_closure=self._include_closure,
         )
 
     def get_import_aliases(

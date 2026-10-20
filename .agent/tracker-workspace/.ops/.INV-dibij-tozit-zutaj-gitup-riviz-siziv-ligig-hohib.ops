@@ -1,0 +1,24 @@
+- op: create  # 9e45
+  at: '2026-10-19T07:15:02Z'  # 9e45
+  by: agent  # 9e45
+  actor: jgstern_agent  # 9e45
+  clock: 1  # 9e45
+  nonce: '9e45'  # 9e45
+  data:  # 9e45
+    kind: invariant  # 9e45
+    title: "a receiver declared with a bare java.lang type (p: Process) gets no module slot in scala's call arm or kotlin, so p.getInputStream() reaches no catalogue row; scala's parameterless arm qualifies the same receiver"  # 9e45
+    status: violated  # 9e45
+    priority: 2  # 9e45
+    parent:  # 9e45
+    tags:  # 9e45
+    - scala  # 9e45
+    - kotlin  # 9e45
+    - io_boundary  # 9e45
+    isbefore: []  # 9e45
+    duplicate_of: []  # 9e45
+    not_duplicate_of: []  # 9e45
+    pr_ref:  # 9e45
+    description: "Found while closing WI-bojud-sator (PR #1726), 2026-10-19.\n\nA receiver DECLARED with a bare java.lang type (`p: Process`, no import -- none is needed, JLS 7.3) gets no module in the edge's slot, so its calls reach no catalogue row. Probe on dev 2fc12de026 through analyze_scala / analyze_kotlin:\n\n  scala  def s(p: Process) = p.getInputStream()   -> scala:external:0-0:getInputStream  (receiver_type_hint=Process)\n  scala  def t(p: Process) = p.getInputStream     -> scala:java.lang.Process:0-0:getInputStream   <- SAME receiver, qualified\n  kotlin fun u(p: Process) = p.getInputStream()   -> kotlin:external:0-0:getInputStream (receiver_type_hint=Process)\n  kotlin fun v(p: Process) = p.inputStream        -> NO edge\n  kotlin fun w(p: java.lang.Process) = p.getInputStream() -> kotlin:java.lang.Process:0-0:getInputStream (control)\n\nScala disagrees with ITSELF: the call arm qualifies a typed receiver with `_qualify_scala_receiver` (the file's import or an inline dotted path only), while the receiver typer's `_library_owner` -- which the parameterless arm and `_member` use -- also takes java.lang's closed list through `static_owner_module`. Kotlin's `_kt_receiver_module` declines java.lang on purpose; its docstring argues \"a declared type the file forgot to import is not java.lang's\". For a name ON the closed list JAVA_LANG_TYPES that premise does not hold: there is no import to forget, and the shadows (a project type, an import of another `Process`, kotlin.* / scala._ names) are exactly what `static_owner_module`'s `is_project_type` / `shadowed` arguments already exclude.\n\nNOT measured: the corpus count of typed-receiver calls with a bare java.lang declared type (sbt / lila / okhttp / detekt), and how many catalogue rows that reaches. NOT checked: java's own analyzer on the same shape (expected fine: INV-suril / INV-hahak)."  # 9e45
+    fields:  # 9e45
+      statement: "A call on a receiver whose declared type is a bare java.lang closed-list name, with no shadow in scope, carries that java.lang path in its module slot, consistently across every arm of an analyzer."  # 9e45
+      root_cause: "_qualify_scala_receiver and _kt_receiver_module accept only an import or an inline dotted path for a declared type; scala's receiver typer (_library_owner) also accepts java.lang's closed list, so the two scala arms disagree."  # 9e45

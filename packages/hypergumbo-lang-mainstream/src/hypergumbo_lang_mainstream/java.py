@@ -115,11 +115,14 @@ How It Works
    - Pass 2: Detect calls/inheritance, resolve against global symbol
      registry, attach canonical ``dst_ref`` for cross-translation-unit
      edges
-4. Detect method calls, inheritance, and instantiation patterns. Calls on
-   inherited methods or typed receivers that do not resolve locally are emitted
-   unresolved with ``enclosing_class`` / ``receiver_type_hint`` /
-   ``inherited_field_receiver`` hints; the
-   Tier-2 ``inherited_calls`` linker walks the hierarchy and resolves them.
+4. Detect method calls, inheritance, and instantiation patterns. A
+   ``this.m()`` / bare ``m()`` call that does not resolve on the enclosing
+   class is emitted unresolved with an ``enclosing_class`` hint, and a
+   typed-receiver or inherited-field call is emitted unresolved with a
+   ``receiver_type_hint`` / ``inherited_field_receiver`` hint even when
+   ``<Type>.<method>`` is a project symbol; the Tier-2
+   ``inherited_calls`` linker walks the hierarchy and resolves them. A
+   static ``ClassName.m()`` call resolves here (``ast_call_static``).
    A resolved call, ``new`` or ``::new`` target is dropped when the file
    imports a different class of that simple name, or when a bare name would
    reach a nested type from another file (``_is_import_class_mismatch``;
@@ -198,6 +201,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
+from hypergumbo_lang_mainstream.import_bound_bases import external_base_edge, external_import_fqn
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     IMPLICIT_IMPORT_PACKAGE,
     JAVA_LANG_TYPES,
@@ -2313,6 +2317,18 @@ def _is_import_class_mismatch(
     return True
 
 
+def _java_external_base(
+    base_name: str,
+    src_sym: Symbol,
+    class_by_name: dict[str, list[Symbol]] | None,
+    sym_file_imports: dict[str, dict[str, str]] | None,
+) -> str | None:
+    """The imported FQN of an external base, or None (WI-pivap)."""
+    if class_by_name is None or sym_file_imports is None:
+        return None
+    return external_import_fqn(base_name, src_sym, class_by_name, sym_file_imports)
+
+
 def _resolve_base_class_java(
     base_name: str,
     child_sym: Symbol,
@@ -2341,6 +2357,11 @@ def _resolve_base_class_java(
     """
     candidates = class_by_name.get(base_name)
     if not candidates:
+        return None
+
+    # WI-pivap: a base the file imports from a package no in-repo class lives
+    # in is external, however many in-repo namesakes there are.
+    if external_import_fqn(base_name, child_sym, class_by_name, sym_file_imports):
         return None
 
     if len(candidates) == 1:
@@ -2675,7 +2696,15 @@ def _extract_edges(
                                         )
                                     elif parent_name in class_symbols:
                                         dst_sym = class_symbols[parent_name]
-                                    if dst_sym is not None and dst_sym.id != src_sym.id:
+                                    ext = _java_external_base(
+                                        parent_name, src_sym, class_by_name, sym_file_imports,
+                                    )
+                                    if ext is not None:
+                                        edges.append(external_base_edge(
+                                            src_sym, ext, "extends",
+                                            child.start_point[0] + 1, PASS_ID, run,
+                                        ))
+                                    elif dst_sym is not None and dst_sym.id != src_sym.id:
                                         edge = Edge.create(
                                             src=src_sym.id,
                                             dst=dst_sym.id,
@@ -2708,7 +2737,15 @@ def _extract_edges(
                                                 )
                                             elif iface_name in class_symbols:
                                                 dst_sym = class_symbols[iface_name]
-                                            if dst_sym is not None and dst_sym.id != src_sym.id:
+                                            ext = _java_external_base(
+                                                iface_name, src_sym, class_by_name, sym_file_imports,
+                                            )
+                                            if ext is not None:
+                                                edges.append(external_base_edge(
+                                                    src_sym, ext, "implements",
+                                                    type_node.start_point[0] + 1, PASS_ID, run,
+                                                ))
+                                            elif dst_sym is not None and dst_sym.id != src_sym.id:
                                                 edge = Edge.create(
                                                     src=src_sym.id,
                                                     dst=dst_sym.id,
@@ -4049,7 +4086,13 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
                                         parent_name, src_sym,
                                         class_by_name, sym_file_imports,
                                     )
-                                if dst_sym is None and parent_name in class_symbols:  # pragma: no cover
+                                if (
+                                    dst_sym is None
+                                    and parent_name in class_symbols
+                                    and not (src_sym is not None and _java_external_base(
+                                        parent_name, src_sym, class_by_name, sym_file_imports,
+                                    ))
+                                ):  # pragma: no cover
                                     dst_sym = class_symbols[parent_name]
                                 if dst_sym is not None:
                                     global_class_parents[current] = dst_sym.name

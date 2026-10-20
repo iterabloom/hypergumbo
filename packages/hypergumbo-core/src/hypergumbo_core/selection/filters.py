@@ -59,6 +59,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from ..noise_filter import _NOISE_SECTION_LANGUAGES
 from ..paths import is_test_file
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, types only
@@ -121,7 +122,7 @@ EXCLUDED_KINDS = frozenset({
     "keyframes",        # CSS @keyframes animation definitions
     "media",            # CSS @media query blocks
     "font_face",        # CSS @font-face declarations
-    "section",          # markdown headings (inflate centrality over code)
+    "section",          # document headings; COBOL's are callables (INV-siza)
     "code_block",       # markdown fenced code blocks
     "link",             # markdown links
 })
@@ -141,7 +142,12 @@ EXCLUDED_FRAMEWORK_ROLES = frozenset({
 })
 
 
-def is_excluded_kind(kind: str, meta: Optional[Dict[str, Any]] = None) -> bool:
+def is_excluded_kind(
+    kind: str,
+    meta: Optional[Dict[str, Any]] = None,
+    *,
+    language: Optional[str] = None,
+) -> bool:
     """Dual-shape predicate for ``EXCLUDED_KINDS`` (WI-jukav slice 2).
 
     Forward-compatible across ADR-0027 §"Phase 3" Wave 5 framework_role
@@ -163,6 +169,10 @@ def is_excluded_kind(kind: str, meta: Optional[Dict[str, Any]] = None) -> bool:
     Args:
         kind: Symbol's ``kind`` field.
         meta: Symbol's ``meta`` dict (or ``None`` if no meta).
+        language: Symbol's ``language``. ``section`` is a heading in the
+            document languages and a callable in COBOL (INV-siza), so a
+            known language outside ``noise_filter._NOISE_SECTION_LANGUAGES``
+            keeps its sections; ``None`` keeps the kind-only answer.
 
     Returns:
         ``True`` iff the symbol should be excluded by selection /
@@ -172,6 +182,8 @@ def is_excluded_kind(kind: str, meta: Optional[Dict[str, Any]] = None) -> bool:
     in shape — the slice 1 idiom for SYNTHETIC_FRAMEWORK_ROLES — applied here to
     the slice 2 at-risk surface.
     """
+    if kind == "section" and language is not None:
+        return language in _NOISE_SECTION_LANGUAGES
     if kind in EXCLUDED_KINDS:
         return True
     if kind in {"function", "method"} and meta:

@@ -210,6 +210,30 @@ class TestTheThreeHops:
         assert "non_canonical_edge_id" in drift[0]
 
 
+class TestOneClassifier:
+    """WI-mifup: the lint judged ids through private skeleton classifiers, so
+    ``id_template_problem`` / ``edge_template_problem`` -- the ones every test
+    above exercises -- were not what ``scripts/check-id-construction`` ran.
+    The lint now asks the public classifiers, with the id as a ``{}`` template."""
+
+    def test_the_lint_asks_the_public_classifiers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import hypergumbo_core.check_id_construction as mod
+
+        seen: list[str] = []
+        monkeypatch.setattr(mod, "id_template_problem", lambda t: seen.append(t) or "node-verdict")
+        monkeypatch.setattr(mod, "edge_template_problem", lambda t: seen.append(t) or "edge-verdict")
+        root = _write(tmp_path, '''
+            def f(path, digest):
+                Symbol(id=f"lang:{path}:1-2:n:function")
+                return Edge(id=f"edge:sha256:{digest}")
+        ''')
+        drift = find_id_construction_drift(root)
+        assert seen == ["lang:{}:1-2:n:function", "edge:sha256:{}"]
+        assert [d.split(" — ", 1)[1] for d in drift] == ["node-verdict", "edge-verdict"]
+
+
 class TestTheLiveTree:
     def test_live_tree_passes(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]

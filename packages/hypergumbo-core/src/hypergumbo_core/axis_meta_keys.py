@@ -30,7 +30,7 @@ Axis taxonomy
   (``entrypoints.Entrypoint``, not an ``ir.py`` dataclass). Example:
   ``evidence_type`` (WI-rukam — the Entrypoint analog of the
   ``Edge.evidence_type`` inference-pathway axis, nested under ``meta``
-  so the Entrypoint record keeps a 4-field typed core). The value
+  rather than added as a typed field on ``Entrypoint``). The value
   vocabularies live as single-source frozensets in ``entrypoints.py``
   (``ENTRYPOINT_SOURCES`` / ``ENTRYPOINT_EVIDENCE_TYPES``).
 
@@ -608,6 +608,26 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # of them were emitted by bash.py while unregistered, so nothing could
     # have known to union them on collapse.
     # ------------------------------------------------------------------
+    MetaKeySpec("unfollowed_construct", AXIS_EDGE_META,
+                "INV-nohob: the construct at this call site through which "
+                "a value leaves where taint can follow it, stamped by c.py: "
+                "'out_parameter_call' (the callee writes through a pointer "
+                "parameter), 'non_local_store' (a copy-family call whose "
+                "destination is the caller's pointer parameter or a name the "
+                "caller does not declare), 'macro_call' (a function-like "
+                "macro, whose expansion the call graph does not see) or "
+                "'variadic_call' (arguments in a project function's `...` "
+                "tail). Read by taint.find_unfollowed_escapes: a source value "
+                "the walk finds reaching such a site withholds every clean "
+                "verdict on the source's label. PER CALL SITE: one callee is "
+                "an out-parameter call from one site and a plain call from "
+                "none other, but a macro or a copy target varies by site.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "c.py is the only writer, in its pass-2 call arm; "
+                    "taint.find_unfollowed_escapes is the only reader."
+                )),
     MetaKeySpec("io_target_kind", AXIS_EDGE_META,
                 "What KIND of thing a call site's I/O target is, where the "
                 "catalogue row cannot tell: 'host_path' (a place in a "
@@ -1099,6 +1119,40 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "List of base-class names on class / interface "
                 "Symbols. Used by framework_patterns to identify "
                 "Django Model, SQLAlchemy Base, etc."),
+    MetaKeySpec("base_class_imports", AXIS_SYMBOL_META,
+                "Class Symbols (php, groovy, scala, csharp alias usings): for "
+                "each BARE base in ``base_classes`` bound by a single-type "
+                "import, the import's qualified name. The inheritance linker "
+                "checks the base as that name instead of binding any in-repo "
+                "class of the same short name (WI-pivap)."),
+    MetaKeySpec("visible_namespaces", AXIS_SYMBOL_META,
+                "csharp class / interface Symbols with bases: the namespaces a "
+                "bare base can come from -- the enclosing namespace chain, "
+                "the ``using`` namespaces and the global namespace (``\"\"``). "
+                "The inheritance linker keeps only candidates of a visible "
+                "namespace (WI-pivap)."),
+    MetaKeySpec("non_local_store_lines", AXIS_SYMBOL_META,
+                "c function Symbols: sorted source lines where the function "
+                "ASSIGNS memory it does not own -- a name it does not declare "
+                "(a global, an extern) or anything reached through a pointer "
+                "parameter. A list of ints, present only when non-empty. "
+                "taint.find_unfollowed_escapes reads them as targets like an "
+                "unfollowed_construct call site, so a source value assigned "
+                "there withholds a clean verdict (INV-nohob)."),
+    MetaKeySpec("virtual_members", AXIS_SYMBOL_META,
+                "cpp class / struct Symbols: sorted names of member functions "
+                "virtual IN this class (declared ``virtual``, ``override`` or "
+                "``final``), read from the in-class declarations because an "
+                "out-of-line definition repeats no keyword. type_hierarchy "
+                "reads it per method (WI-digaj)."),
+    MetaKeySpec("override_members", AXIS_SYMBOL_META,
+                "cpp class / struct Symbols: sorted names of member functions "
+                "declared ``override`` / ``final`` in this class, which proves "
+                "the base member is virtual (WI-digaj)."),
+    MetaKeySpec("static_members", AXIS_SYMBOL_META,
+                "cpp class / struct Symbols: sorted names of member functions "
+                "declared ``static`` in this class; a static member never "
+                "dispatches (WI-digaj)."),
     MetaKeySpec("parent_base_classes", AXIS_SYMBOL_META,
                 "Transitive ancestor base classes on class Symbols. "
                 "Populated by the type_hierarchy linker."),
@@ -1312,7 +1366,9 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "identifier a publish / subscribe site wrote in place of an "
                 "event-name string, or the identifier an identifier-join "
                 "compared. ``event_name`` then holds the event VALUE, or "
-                "``None`` when the identifier could not be resolved (WI-misod)."),
+                "``None`` when the identifier could not be resolved (WI-misod). "
+                "On a websocket edge: the identifier an identifier-join "
+                "compared, with ``event`` None (WI-luhod)."),
     MetaKeySpec("queue_type", AXIS_EDGE_META,
                 "Message-queue family/pattern that produced a publish/subscribe "
                 "edge, from the message_queue linker's queue classification."),
@@ -1508,9 +1564,12 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "function's name as the route declared it."),
     # -- protocol linkers
     MetaKeySpec("url_type", AXIS_EDGE_META,
-                "HTTP client->route edge: 'literal' or 'variable', how the "
-                "client's URL was written (a string literal, or a variable "
-                "the linker folded)."),
+                "HTTP client->route edge: how the client's URL was written -- "
+                "'literal' (a string), 'constant' (an identifier resolved to a "
+                "same-file module-scope string), 'variable' (a template literal "
+                "folded to a prefix). Client symbols may also carry "
+                "'unresolved' (an identifier whose URL is unknown; never "
+                "route-matched, WI-luhod)."),
     MetaKeySpec("operation_type", AXIS_EDGE_META,
                 "GraphQL client edge: the operation type ('query', "
                 "'mutation', 'subscription'), or None when the document did "
@@ -1551,10 +1610,13 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "'variable' or 'unresolved')."),
     MetaKeySpec("event", AXIS_EDGE_META,
                 "Event name a websocket or Phoenix Channels event_publishes "
-                "edge carries."),
+                "edge carries. On a websocket edge it is the joined event "
+                "VALUE, or None when only identifiers were compared (then see "
+                "``event_identifier``; WI-luhod)."),
     MetaKeySpec("event_type", AXIS_EDGE_META,
-                "websocket event_publishes edge: 'literal' or 'variable', how "
-                "the event name was written at the two ends."),
+                "websocket event_publishes edge: what the sender/receiver join "
+                "compared (``_name_args`` join kind: 'literal', 'constant' or "
+                "'unresolved')."),
     MetaKeySpec("event_name", AXIS_EDGE_META,
                 "event_sourcing event_publishes edge: the event VALUE the "
                 "publisher and subscriber were joined on, or None when only "

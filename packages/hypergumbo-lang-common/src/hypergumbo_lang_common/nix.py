@@ -54,7 +54,6 @@ import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -80,8 +79,11 @@ PASS_ID = make_pass_id("nix")
 
 
 def find_nix_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Nix files in the repository."""
-    yield from find_files(repo_root, ["*.nix"])
+    """Yield all Nix files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def is_nix_tree_sitter_available() -> bool:

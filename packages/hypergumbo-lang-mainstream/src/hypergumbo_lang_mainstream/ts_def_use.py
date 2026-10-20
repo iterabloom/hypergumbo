@@ -8,9 +8,12 @@ JavaScript is a first-class registration here, not an incidental beneficiary:
 the extractor is registered under both ``typescript`` and ``javascript``, and
 this module registers a ``LanguageDdgSpec`` for each, walking every extension
 ``taxonomy.LANGUAGES`` files under that language (WI-fovus).
-Each spec declares the function-node types the DDG walk will enter — currently
-``function_declaration`` alone, which is the scope limit that decides how much
-of a file the data-dependence graph can see.
+Each spec declares the callable node types the DDG walk will enter —
+``function_declaration`` and ``method_definition`` (named and kinded by
+``js_ts.py``'s ``jsts_method_name`` / ``jsts_method_kind``), plus the
+binding-named ``arrow_function`` / ``function_expression`` / ``function`` /
+``generator_function``, walked under the analyzer's own id — the scope
+limit that decides how much of a file the data-dependence graph can see.
 
 Handles core patterns:
 

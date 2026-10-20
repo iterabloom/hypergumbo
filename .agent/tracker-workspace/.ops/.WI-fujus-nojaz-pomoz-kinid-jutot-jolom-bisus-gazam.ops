@@ -1,0 +1,29 @@
+- op: create  # a77b
+  at: '2026-10-17T03:22:12Z'  # a77b
+  by: agent  # a77b
+  actor: jgstern_agent  # a77b
+  clock: 1  # a77b
+  nonce: a77b  # a77b
+  data:  # a77b
+    kind: work_item  # a77b
+    title: "htrac-frontend: BlockNote discussion view bound to an item's Y.Text (React island); reads via Yjs sync, writes via the op bridge"  # a77b
+    status: todo_soft  # a77b
+    priority: 4  # a77b
+    parent:  # a77b
+    tags:  # a77b
+    - frontend  # a77b
+    - yjs  # a77b
+    - someday  # a77b
+    isbefore: []  # a77b
+    duplicate_of: []  # a77b
+    not_duplicate_of: []  # a77b
+    pr_ref:  # a77b
+    description: "## What\nA BlockNote (`@blocknote/core` + `@blocknote/react`, MPL-2.0, Yjs-native via y-prosemirror) editor bound to an item's discussion/notes Y.Text in the live Y.Doc, mounted as a React island inside the existing Lit scaffold in packages/htrac-frontend (or a React page, if the scaffold moves to React -- Excalidraw/BlockNote/xyflow are all React). Reads arrive via the Yjs sync endpoint (item D); writes persist only through the op bridge (item C), so an edit becomes a `discuss` op with attribution.\n## Why BlockNote\nClosest maintained equivalent of BlockSuite's block/page mode (0.56.0, 2026-10-14) now that the BlockSuite npm line is dormant (last publish 2025-07-01). It peers on both `yjs ^13.6` and `@y/y ^14-rc`; follow the ADR's version choice.\n## Done when\nTwo clients co-edit a discussion draft and the committed text appears in the ops log as a `discuss` op by the right author; the view degrades to read-only when the bridge is unavailable. Frontend typechecks and builds (no CI runs the frontend today -- state that in the PR and run it locally).\n## Context\n~/hypergumbo_lab_notebook/notebookjournal_10162026_2318.md section 4."  # a77b
+    fields: {}  # a77b
+- op: discuss  # 720c
+  at: '2026-10-17T03:46:46Z'  # 720c
+  by: agent  # 720c
+  actor: jgstern_agent  # 720c
+  clock: 2  # 720c
+  nonce: 720c  # 720c
+  message: "Scaffold note 2026-10-16: the Lit scaffold in packages/htrac-frontend is being removed (owner decision; see WI-popal). This view starts from a fresh React scaffold (Vite + React), since BlockNote, @xyflow/react and Excalidraw are all React; the old ws-client.ts / service worker are recoverable from git history if useful."  # 720c

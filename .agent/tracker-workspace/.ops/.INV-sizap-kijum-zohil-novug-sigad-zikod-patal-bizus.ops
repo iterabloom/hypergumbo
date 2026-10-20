@@ -28,3 +28,18 @@
   clock: 2  # 12cd
   nonce: 12cd  # 12cd
   message: "Re-observed 2026-10-13 on dev 4c213ee87c (WI-tusad B7): hypergumbo run on a 2-program COBOL file (bank.cob, 6 paragraphs, 2 sections, 8 data items) emits 0 paragraph/section nodes in the default view (2 program + 8 data + file); with --include-docs all 8 appear with producer stable_ids. The analyzer emits them (analyze_cobol: 4 paragraph + 2 section symbols); noise_filter._NOISE_SYMBOL_KINDS drops them. B7 gave them producer ids (program/section chain) so they are ready once the filter stops dropping them."  # 12cd
+- op: update  # 2493
+  at: '2026-10-18T08:41:37Z'  # 2493
+  by: agent  # 2493
+  actor: jgstern_agent  # 2493
+  clock: 3  # 2493
+  nonce: '2493'  # 2493
+  set:  # 2493
+    status: satisfied  # 2493
+- op: discuss  # 075f
+  at: '2026-10-18T08:41:37Z'  # 075f
+  by: agent  # 075f
+  actor: jgstern_agent  # 075f
+  clock: 4  # 075f
+  nonce: 075f  # 075f
+  message: "Fixed in PR #1713 (dev 09e1c69a3a). noise_filter: 'section' is noise only for its document producers (_NOISE_SECTION_LANGUAGES = markdown, rst, latex, ini, kdl, blade); 'paragraph' (emitted by cobol alone) is no longer noise. Same homonym at a second stage: selection.filters.is_excluded_kind dropped 'section' kind-only from compact output (select_by_tokens, format_tiered_behavior_map) and the symbols table; it now takes language= and the three call sites pass it (no language -> old kind-only answer). Guard: test_every_section_producer_is_classified fails if a module starts emitting kind='section' without being classified; test_paragraph_has_one_producer_and_it_is_a_callable fails if a non-COBOL producer of 'paragraph' appears. LIVE REPRO (hypergumbo run on a one-program COBOL file with 2 sections, 4 paragraphs, PERFORM DEPOSIT-PARA and PERFORM REPORT-SECTION, plus a README.md heading): on dev 629588ff98 (before) the default view had program BANK + data WS-BALANCE and 0 calls edges; on dev 09e1c69a3a it has both sections and the three paragraphs that carry code, with calls MAIN-PARA->DEPOSIT-PARA and MAIN-PARA->REPORT-SECTION, and the README heading is still dropped. Production-path tests: hypergumbo-lang-extended1/tests/test_cobol_default_view.py (run_behavior_map; COBOL procedures + PERFORM edges present, a KDL section still dropped) and test_compact.py::test_keeps_a_cobol_section_but_drops_a_markdown_heading (fails with the compact language pass reverted). NOT re-measured: the filed 2-program bank.cob fixture from the 2026-10-13 note, which was not kept; the shape (paragraph/section kinds dropped by kind) is the one the fixture above exercises. Not changed: KEY_SYMBOL_KINDS (the key-symbol allowlist for sketch ranking) does not list section/paragraph, so COBOL procedures are not key-symbol candidates; that is a ranking-policy question, not this filter."  # 075f

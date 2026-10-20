@@ -6,7 +6,8 @@ the analysed repository. Its parts mirror ``hypergumbo_lang_rust_analyzer``:
 
 - ``invoke.py`` shells out to ``scip-python index`` to produce a SCIP blob.
 - ``translate.py`` turns that blob into ``(symbols, edges)`` through the
-  shared importer, plus the one thing the Rust arm never did: external
+  shared importer, plus two things the Rust arm never needed: it drops the
+  PARAMETER and META symbols the syntax arm never models, and external
   callees keep the receiver's MODULE.
 - ``gate.py`` answers "did the user ask?" — flag > environment > config
   tiers (a preference, ADR-0045 ruling 5) — and whether the binary is there.
@@ -23,7 +24,7 @@ from hypergumbo_lang_scip_python.invoke import (
 )
 from hypergumbo_lang_scip_python.translate import translate_scip_python_to_hg
 
-__version__ = "9.1.0"
+__version__ = "9.2.0"
 
 #: Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
 ANALYZER_MODULES = [

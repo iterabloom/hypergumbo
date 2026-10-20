@@ -37,3 +37,36 @@
   clock: 3  # 02a7
   nonce: 02a7  # 02a7
   message: "P0/P1 SWEEP 2026-08-17, dev 11a240f83d. THIS ITEM NEEDS AN OWNER RULING AND HAS\nNEVER HAD ONE. Surfacing rather than editing, because nothing here is mine to decide.\n\nWHAT THE SWEEP FOUND. This is the only P1 in the tracker with zero discussion entries\nand no activity since it was filed on 2026-05-24 — 85 days. Its status is\nneeds_human_review, which means it is NOT in tracker ready, so no agent session will\never pick it up on its own. It is not blocked by a dependency and it is not parked with\na re-open trigger; it is simply parked at a priority that claims it is urgent while\nsitting in a status that guarantees nothing happens.\n\nWHY THAT COMBINATION IS THE PROBLEM. P1 next to INV-lupav (P0) and seven live taint /\nio-boundary invariants asserts this epic is comparably urgent. Nothing in the last 85\ndays has treated it that way, and the declared next focus is analysis quality. So the\npriority field is currently carrying a claim the project is not acting on, which is the\nsame failure mode WI-nazos exists to prevent for INV-zogud: a hold asserted in one place\nand contradicted by the queue.\n\nSCOPE, FOR THE RULING. ADR-0019 Part A is a large multi-component build — htrac serve\n(Python/Starlette), a Tor onion service, a native iOS/macOS app in Swift, four-factor\nauth, a BlockSuite web frontend, and WebSocket live sync. Several of those are outside\nevery skill this project has otherwise exercised, and the Swift app in particular is not\nsomething the current CI can build or test.\n\nTHREE OPTIONS, none of which I have taken:\n  (a) DEMOTE to P3/P4 and leave it needs_human_review — records that it is real but not\n      competing with the analysis-quality queue.\n  (b) PARK as wont_do + someday with a named re-open trigger, the same shape the four\n      performance items got on 2026-08-17. Keeps the design, stops it reading as active.\n  (c) KEEP AT P1 and say what makes it urgent — in which case it needs decomposing into\n      buildable sub-items, because as a single epic it is not actionable.\n\nI did not pick one. If it is (a) or (b) I can apply it in a minute."  # 02a7
+- op: update  # f743
+  at: '2026-10-17T03:41:15Z'  # f743
+  by: agent  # f743
+  actor: jgstern_agent  # f743
+  clock: 4  # f743
+  nonce: f743  # f743
+  set:  # f743
+    status: todo_soft  # f743
+    priority: 3  # f743
+  add:  # f743
+    tags: [someday]  # f743
+- op: discuss  # 3320
+  at: '2026-10-17T03:41:15Z'  # 3320
+  by: agent  # 3320
+  actor: jgstern_agent  # 3320
+  clock: 5  # 3320
+  nonce: '3320'  # 3320
+  message: "Owner ruling 2026-10-16: re-scoped (frontend = Yjs-backed tracker document + BlockNote/xyflow views; see WI-tofog-lumat-daram-fijih-fosij-judik-muzid-lafar), parked at P3/todo_soft/someday with the RE-OPEN TRIGGER written in the description, WI-tisaf and WI-dakag folded in as checklist lines. ADR-0019 correction and removal of the unshipped Lit scaffold follow in PRs."  # 3320
+- op: update  # 6dbb
+  at: '2026-10-17T03:49:13Z'  # 6dbb
+  by: agent  # 6dbb
+  actor: jgstern_agent  # 6dbb
+  clock: 6  # 6dbb
+  nonce: 6dbb  # 6dbb
+  set:  # 6dbb
+    description: "Epic for ADR-0019 Part A — remote access to hypergumbo-tracker from a phone over Tor. Core value: see what agents are doing from a phone. Components: htrac serve (Python/Starlette), Tor onion service, native iOS/macOS app (Swift), four-factor auth, BlockSuite web frontend, WebSocket live sync. See docs/adr/0019-remote-access-transport.md.\n\n---\n## Re-scoped and parked (owner ruling 2026-10-16)\n\n**Frontend row changed.** \"BlockSuite web app\" is replaced by **a Yjs-backed tracker document with BlockNote (discussion) and @xyflow/react (isbefore/parent graph) views** -- see WI-tofog-lumat-daram-fijih-fosij-judik-muzid-lafar (ADR-0062, the live-document layer) and its dependents WI-fujus-nojaz-pomoz-kinid-jutot-jolom-bisus-gazam, WI-kinab-zunas-gozat-musan-hivoj-rural-sosuf-pinur. Reason: BlockSuite's standalone npm line has been dormant since 2025-07-01 (last publish 0.22.4; the toeverything/blocksuite repo's main has only bot PRs since 2025-07-07; the code lives on only inside the AFFiNE monorepo at 0.27.x), so the \"learning vehicle\" rationale in ADR-0019 no longer has an object. What transfers to the separate project is Yjs. Evidence: ~/hypergumbo_lab_notebook/notebookjournal_10162026_2318.md.\n\n**ADR-0019 corrected** in a docs PR (status line no longer claims the web frontend was implemented and shipped; the frontend row and \"Why BlockSuite\" updated). The Lit scaffold in packages/htrac-frontend is being removed (it imported no BlockSuite, was never built in CI or shipped, and carried the Dependabot lockfile); WI-popal closes with it.\n\n**Folded in from WI-tisaf and WI-dakag** (closed wont_do as placeholders; this epic carries their checklist):\n- [ ] iOS/macOS native shell (Swift, ~500-800 LOC): LAContext (Face ID/Touch ID), ASAuthorizationSecurityKeyCredentialProvider (FIDO2 YubiKey), native password field, localhost HTTP proxy (URLSession -> Orbot/SOCKS), WKWebView rendering the htrac web frontend from localhost, WKHTTPCookieStore for session-cookie injection; universal binary (iPhone + iPad + macOS). Requires iOS expertise. ADR-0019 §Part A iOS/macOS shell.\n- [ ] Xcode project, signing, provisioning profiles; TestFlight distribution for personal use (avoids App Store review); universal binary target. Requires an Apple Developer account ($99/year). ADR-0019 §Costs.\n\n**Preconditions already filed:** WI-hopip (serve's write API has no auth) and WI-sunan (self-claims covering htrac as a product) precede any frontend work.\n\n**RE-OPEN TRIGGER:** (a) a second human user of the tracker exists (two-user mode, INV-hivog, in real use beyond the owner), or (b) the live-document experiment (WI-tofog-lumat-daram-fijih-fosij-judik-muzid-lafar and dependents) ships and someone wants it reachable off 127.0.0.1. Until then this sits at P3 / todo_soft / someday."  # 6dbb
+- op: discuss  # 2064
+  at: '2026-10-17T05:16:04Z'  # 2064
+  by: agent  # 2064
+  actor: jgstern_agent  # 2064
+  clock: 7  # 2064
+  nonce: '2064'  # 2064
+  message: "Landed 2026-10-17: PR #1681 corrected ADR-0019 (status line, frontend row, rationale paragraph, Part A bullet, open question, index row) and removed the unshipped Lit scaffold; PR #1680 removed the dead 'htrac serve --background' flag (WI-robug done); PR #1679 made generate-architecture --check ignore tracker-only commits. Experiment items filed: WI-tofog (ADR-0062) -> WI-lakid, WI-rudat, WI-vojil -> WI-fujus, WI-kinab, WI-divug, WI-pufun; WI-hopip and WI-sunan precede the frontend items."  # 2064

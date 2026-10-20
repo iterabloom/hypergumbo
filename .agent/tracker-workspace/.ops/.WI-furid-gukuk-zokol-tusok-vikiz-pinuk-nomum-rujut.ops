@@ -1,0 +1,22 @@
+- op: create  # 4fec
+  at: '2026-10-20T09:08:31Z'  # 4fec
+  by: agent  # 4fec
+  actor: jgstern_agent  # 4fec
+  clock: 1  # 4fec
+  nonce: 4fec  # 4fec
+  data:  # 4fec
+    kind: work_item  # 4fec
+    title: "sql: CREATE PROCEDURE is never extracted -- the pinned tree-sitter-sql 0.3.x has no create_procedure node, so the branch is dead"  # 4fec
+    status: todo_hard  # 4fec
+    priority: 3  # 4fec
+    parent:  # 4fec
+    tags:  # 4fec
+    - docstring_audit  # 4fec
+    - analyzer  # 4fec
+    - sql  # 4fec
+    isbefore: []  # 4fec
+    duplicate_of: []  # 4fec
+    not_duplicate_of: []  # 4fec
+    pr_ref:  # 4fec
+    description: "Found by the 2026-10-20 docstring-staleness audit (verifier reproduced). tree-sitter-sql~=0.3.11 has no `create_procedure` node kind; `CREATE PROCEDURE foo() LANGUAGE plpgsql AS $$ BEGIN END $$;` parses as ERROR nodes. The `create_procedure` branch (~L360-388) is entirely `# pragma: no cover` and can never fire; a scratch file with a table, FK table, index, trigger and procedure yields no procedure symbol. Options: extract procedures from the ERROR-recovered tokens / a text fallback, or drop the branch and the docstring claim. Docstring updated in the audit PR to say procedures are not extracted."  # 4fec
+    fields: {}  # 4fec

@@ -1,0 +1,40 @@
+- op: create  # 9781
+  at: '2026-10-17T03:20:25Z'  # 9781
+  by: agent  # 9781
+  actor: jgstern_agent  # 9781
+  clock: 1  # 9781
+  nonce: '9781'  # 9781
+  data:  # 9781
+    kind: work_item  # 9781
+    title: "tracker: translate permitted live Y.Doc edits into Store ops (update/discuss) with pseudonymous attribution; never write .ops directly"  # 9781
+    status: todo_hard  # 9781
+    priority: 4  # 9781
+    parent:  # 9781
+    tags:  # 9781
+    - tracker  # 9781
+    - yjs  # 9781
+    - security  # 9781
+    isbefore: []  # 9781
+    duplicate_of: []  # 9781
+    not_duplicate_of: []  # 9781
+    pr_ref:  # 9781
+    description: "## What\nTranslate permitted edits made in the live Y.Doc by remote clients into tracker ops through the normal `TrackerSet`/`Store` API (update, discuss), carrying attribution. The bridge must never write .ops files directly: validation, locks, edit-mode windows and the journal all apply because the ops go through the same code path as the CLI.\n## Rules (from the live-document ADR, item A)\n- Only fields the ADR marks live-editable are accepted; edits to op-only fields (status, priority, tags, parent, isbefore, locks) are rejected and the authoritative value is re-projected so the client converges back.\n- Attribution: the Yjs transaction's pseudonymous token is resolved to a `by:` identity via the out-of-doc resolution table; unknown tokens are refused (no anonymous ops).\n- Idempotence: transactions whose origin is the projection (item B) are ignored; an op emitted by the bridge must not re-trigger the bridge when its projection lands.\n- Conflict: a CLI op and a live edit on the same field -- the op wins; the live edit is either re-applied as a new op (if still valid) or dropped with an awareness notice. Decide and test both branches.\n## Done when\nTests cover: accepted edit -> op appears in the ops log with the right `by:`; rejected field -> client state converges back; projection-origin transaction ignored; CLI-vs-live conflict on one field. Coverage 100%.\n## Context\n~/hypergumbo_lab_notebook/notebookjournal_10162026_2318.md section 4."  # 9781
+    fields: {}  # 9781
+- op: update  # a07f
+  at: '2026-10-17T03:30:18Z'  # a07f
+  by: agent  # a07f
+  actor: jgstern_agent  # a07f
+  clock: 2  # a07f
+  nonce: a07f  # a07f
+  set: {}  # a07f
+  add:  # a07f
+    isbefore: [WI-fujus-nojaz-pomoz-kinid-jutot-jolom-bisus-gazam]  # a07f
+- op: update  # 56cd
+  at: '2026-10-17T03:32:51Z'  # 56cd
+  by: agent  # 56cd
+  actor: jgstern_agent  # 56cd
+  clock: 3  # 56cd
+  nonce: 56cd  # 56cd
+  set: {}  # 56cd
+  add:  # 56cd
+    isbefore: [WI-divug-misob-buhoh-toloh-janam-fisod-hopih-lorom]  # 56cd

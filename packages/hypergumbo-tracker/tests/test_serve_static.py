@@ -6,6 +6,8 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
+from ._serve_auth import allow_all
+
 
 class TestStaticFiles:
     """Tests for static file serving."""
@@ -18,7 +20,7 @@ class TestStaticFiles:
         static_dir.mkdir()
         (static_dir / "index.html").write_text("<html><body>htrac</body></html>")
 
-        app = create_app(static_dir=static_dir)
+        app = create_app(static_dir=static_dir, authenticate=allow_all)
         client = TestClient(app)
         resp = client.get("/")
         assert resp.status_code == 200
@@ -33,7 +35,7 @@ class TestStaticFiles:
         (static_dir / "index.html").write_text("<html></html>")
         (static_dir / "app.js").write_text("console.log('hello');")
 
-        app = create_app(static_dir=static_dir)
+        app = create_app(static_dir=static_dir, authenticate=allow_all)
         client = TestClient(app)
         resp = client.get("/app.js")
         assert resp.status_code == 200
@@ -47,7 +49,7 @@ class TestStaticFiles:
         static_dir.mkdir()
         (static_dir / "index.html").write_text("<html></html>")
 
-        app = create_app(static_dir=static_dir)
+        app = create_app(static_dir=static_dir, authenticate=allow_all)
         client = TestClient(app)
         resp = client.get("/health")
         assert resp.status_code == 200
@@ -57,7 +59,7 @@ class TestStaticFiles:
         """App works without static_dir."""
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         client = TestClient(app)
         resp = client.get("/health")
         assert resp.status_code == 200
@@ -66,7 +68,7 @@ class TestStaticFiles:
         """Non-existent static_dir is silently ignored."""
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app(static_dir=tmp_path / "nonexistent")
+        app = create_app(static_dir=tmp_path / "nonexistent", authenticate=allow_all)
         client = TestClient(app)
         resp = client.get("/health")
         assert resp.status_code == 200

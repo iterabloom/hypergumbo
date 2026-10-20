@@ -1,0 +1,51 @@
+- op: create  # 08a7
+  at: '2026-10-17T03:18:39Z'  # 08a7
+  by: agent  # 08a7
+  actor: jgstern_agent  # 08a7
+  clock: 1  # 08a7
+  nonce: 08a7  # 08a7
+  data:  # 08a7
+    kind: work_item  # 08a7
+    title: "ADR-0062: tracker live-document layer -- Yjs as the live buffer over the ops log (durable layer); decides doc shape, authority, attribution tokens, transport, Yjs 13 vs 14"  # 08a7
+    status: todo_hard  # 08a7
+    priority: 3  # 08a7
+    parent:  # 08a7
+    tags:  # 08a7
+    - tracker  # 08a7
+    - yjs  # 08a7
+    - plazaflow  # 08a7
+    - adr_0019  # 08a7
+    - developer_experience  # 08a7
+    isbefore: []  # 08a7
+    duplicate_of: []  # 08a7
+    not_duplicate_of: []  # 08a7
+    pr_ref:  # 08a7
+    description: "## Decision to write down (as docs/adr/0062-*.md)\nA live-document layer for the tracker: a Yjs document (CRDT) that is a **projection of, and an edit buffer over, the ops log** -- never a replacement for it. The ops log (.ops files, flock, Lamport clocks, journal; ADR-0013) stays the durable, authoritative layer; the Y.Doc is the live, multi-writer buffer. This is the same split PlazaFlow's spec draws (\"Git is the durability layer, the CRDT is the live collaboration buffer\"), and the experiment is the PlazaFlow v0.1-v0.2 rehearsal (sync, persistence, awareness; encryption later) with the BlockSuite dependency removed -- what transfers is Yjs, per ~/hypergumbo_lab_notebook/notebookjournal_10162026_2318.md section 4.\n\n## What the ADR must decide\n1. Y.Doc shape: items as Y.Map<id, Y.Map of fields>; discussion as Y.Array of Y.Map entries whose body is a Y.Text; which fields are live-editable in the doc (candidates: discussion drafts, description, title) vs op-only (status, priority, tags, parent, isbefore, locks, edit-mode -- these keep going through Store ops so validation and governance apply).\n2. Authority on conflict: an op's projection always wins; a live edit becomes real only when the bridge emits an op (see the write-back item).\n3. Attribution: every live change carries a **pseudonymous token** (Yjs clientID or per-session id); the token -> author (`by:`) resolution table is kept OUT of the shared doc. Rehearses PlazaFlow §4.8/§12.1 (attribution withheld from content readers) and avoids the leak PlazaFlow's §4.8.2 had.\n4. Awareness schema: {item_id in view, client label, kind: human|agent}.\n5. Transport: y-protocols sync + awareness over a WebSocket on `htrac serve` (localhost-only) vs a sidecar `y-websocket` process for the experiment. Python binding: pycrdt (0.14.9, maintained) -- y-py (0.6.2) is unmaintained. Yjs 13.6 vs 14 (`@y/*` RCs) must be chosen explicitly.\n6. Security posture and non-goals: 127.0.0.1 only until WI-hopip (serve auth) and WI-sunan (tracker self-claims) land; not multi-repo; not a replacement for `tracker sync`.\n## Inputs\nADR-0013, ADR-0019 (as re-scoped 2026-10-16), INV-hivog (two-user mode -- the existing multi-user seam), serve.py's watchfiles loop and state_snapshot broadcast, store.py op kinds (create, update, discuss, discuss_summarize, lock, unlock, reconcile, edit-mode-on/off). PlazaFlow spec (codeberg.org/iterabloom/pf-prelim): v0.1 §3.2/§6.2 (y-websocket + y-webrtc as scaffolding), v1.2 §4.8 (attribution model), v0.2 encryption.\n## Done when\nThe ADR is merged with the six decisions recorded and a one-paragraph \"why not BlockSuite\" (dormant since 2025-07; see the notebook entry) so it is not relitigated."  # 08a7
+    fields: {}  # 08a7
+- op: update  # d2f8
+  at: '2026-10-17T03:26:02Z'  # d2f8
+  by: agent  # d2f8
+  actor: jgstern_agent  # d2f8
+  clock: 2  # d2f8
+  nonce: d2f8  # d2f8
+  set: {}  # d2f8
+  add:  # d2f8
+    isbefore: [WI-lakid-jubaz-vizod-holok-mudoz-kukif-ravok-kotaz]  # d2f8
+- op: update  # 4566
+  at: '2026-10-17T03:26:58Z'  # 4566
+  by: agent  # 4566
+  actor: jgstern_agent  # 4566
+  clock: 3  # 4566
+  nonce: '4566'  # 4566
+  set: {}  # 4566
+  add:  # 4566
+    isbefore: [WI-rudat-sotuh-gopos-duhup-julop-fofuj-gujug-zisog]  # 4566
+- op: update  # 4102
+  at: '2026-10-17T03:27:45Z'  # 4102
+  by: agent  # 4102
+  actor: jgstern_agent  # 4102
+  clock: 4  # 4102
+  nonce: '4102'  # 4102
+  set: {}  # 4102
+  add:  # 4102
+    isbefore: [WI-vojil-patas-hubob-tirar-nigol-lulor-ponah-virir]  # 4102

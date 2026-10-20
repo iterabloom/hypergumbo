@@ -35,9 +35,10 @@ A plain call resolves its callee by name through the registry, else it gets
 an unresolved edge; a qualified ``module.func(...)`` call always gets an
 unresolved edge named ``module.func``. Calls outside a procedure are dropped.
 
-Known gap: the grammar nests the ``call_expression`` inside the
-``member_expression``, so ``obj.method(args)`` currently yields two call
-edges, one for ``obj.method`` and one for the inner ``method`` call.
+The grammar nests the ``call_expression`` of ``obj.method(args)`` inside the
+``member_expression``; only the member branch emits an edge for it, so the
+call yields one ``module.func`` edge, not that plus a bare ``method`` one
+(INV-ridat).
 """
 
 from __future__ import annotations
@@ -45,7 +46,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -69,10 +69,11 @@ PASS_ID = make_pass_id("odin")
 
 
 def find_odin_files(root: Path) -> Iterator[Path]:
-    """Find all Odin files in the given directory."""
-    for path in find_files(root, ["*.odin"]):
-        if path.is_file():
-            yield path
+    """Find all Odin files in the given directory.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(root)
 
 
 
@@ -314,8 +315,14 @@ def _extract_edges_recursive(
                     edges.append(edge)
 
     elif node.type == "call_expression":
-        # Find the enclosing function
-        caller_id = _find_enclosing_function(node, rel_path)
+        # ``obj.method(args)`` nests this node inside a ``member_expression``,
+        # whose branch below emits the one ``module.func`` edge for it; a
+        # second, bare ``method`` edge from here was INV-ridat.
+        parent = node.parent
+        if parent is not None and parent.type == "member_expression":
+            caller_id = None
+        else:
+            caller_id = _find_enclosing_function(node, rel_path)
         if caller_id:
             # Get the callee name
             callee_name = None

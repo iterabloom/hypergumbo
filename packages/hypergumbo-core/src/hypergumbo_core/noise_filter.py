@@ -7,30 +7,43 @@ scaffolding. The decision lives here — as a module-level, unit-testable pure
 predicate — rather than as a closure inside ``run_survey`` (which made every
 branch reachable only through a full survey integration run).
 
-Four static branches (documentation/config kinds; CSS-family ``variable``
+Five static branches (documentation/config kinds; CSS-family ``variable``
 custom-properties; config-language ``table`` section headers; declaration-only
-``property`` producers) plus one axis-refined branch for ``entry_role=script``
-file symbols.
+``property`` producers; document-language ``section`` headings) plus one
+axis-refined branch for ``entry_role=script`` file symbols.
+
+**``section`` and ``paragraph`` were dropped in every language (INV-siza).**
+Both sat in the kind-only set as documentation structure. They are that in
+markdown, rst, LaTeX, INI, KDL and Blade, but COBOL emits both for PROCEDURE
+DIVISION callables, the targets of PERFORM. A COBOL program came out of the
+default view with its program and data items and no procedures, and with no
+call edges, since Phase D drops every edge whose src or dst is noise.
+``section`` is now noise only for the document producers; ``paragraph``, which
+nothing but COBOL emits, is not noise at all. Compact's ``is_excluded_kind``
+applies the same scope to ``section``.
 
 **``property`` is a homonym too (WI-tisom).** It sat in the blanket set labelled
 "CSS structural", but no CSS analyzer has ever emitted it: css.py and scss.py
 had no ``kind="property"`` when the entry was added (commit 4eab1afde7) and have
-none now. Its real producers are five analyzers:
+none now. Its real producers are five analyzers, plus core's SCIP importer
+(``Property`` in any language, which passes through):
 - swift: a computed property, a callable with a body;
 - C#: a property with get/set bodies;
 - ``.properties``: a config key;
 - QML: a property declaration;
 - objective-c: a bodyless ``@property``.
 So the default view dropped every swift and C# property. It also dropped every
-call edge from them, since an edge whose src is gone is dropped at finalize.
+call edge from them, since Phase D drops every edge whose src or dst is a
+noise symbol.
 Measured with analyze_swift on five swift repos:
 - 3,323 property symbols;
 - 12,552 call edges out of them (Alamofire 206, swift-composable-architecture 9,765);
 - 364 edges into them.
 The declaration-only producers carried 0 edges on 8 repos (4 objective-c, 1 QML,
 3 ``.properties``, 91,695 symbols). They stay noise; swift and C# do not. C#
-carried 0 edges as well, because its analyzer credits no call in an accessor
-(WI-binap). That is an analyzer gap, not a reason to hide the declaration.
+carried 0 edges as well, because its analyzer then credited no call in an
+accessor (WI-binap, since fixed). That was an analyzer gap, not a reason to
+hide the declaration.
 
 **The ``entry_role=script`` split (WI-papag).** A single predicate
 (``kind=="file" and entry_role=="script"``) conflated two genuinely different
@@ -69,13 +82,13 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 # Documentation / config / CSS-structural kinds that are degree-0 in behavior
 # maps. ADR-0027 Phase-2 audit (WI-jukav): all members are AXIS_PENDING
 # (build/config-shape, domain long-tail) or AXIS_LANGUAGE_CONSTRUCT
-# (``property`` / ``label`` / ``paragraph`` per audit-findings 0006/0007); none
+# (``property`` / ``label`` per audit-findings 0006/0007); none
 # is scheduled for a Phase-3 fold/rename, so the noise-filtering semantics are
 # forward-compatible.
 _NOISE_SYMBOL_KINDS = frozenset({
     # Documentation / config
-    "section", "table_array", "code_block",
-    "link", "paragraph", "label",
+    "table_array", "code_block",
+    "link", "label",
     "setting",
     # CSS structural (degree-0 in behavior maps)
     "class_selector", "id_selector", "rule_set",
@@ -105,6 +118,13 @@ _NOISE_TABLE_LANGUAGES = frozenset({"toml", "ini", "properties"})
 # module that emits the kind to be classified here, one way or the other.
 _NOISE_PROPERTY_LANGUAGES = frozenset({"properties", "qml", "objc"})
 
+# INV-siza: ``kind="section"`` is a heading or config header in the document
+# languages and a PERFORM-able callable in COBOL, so only the document producers
+# are noise. ``paragraph`` (COBOL's other callable, and emitted by nothing
+# else) is not noise at all. ``test_every_section_producer_is_classified``
+# requires every module that emits the kind to be classified here.
+_NOISE_SECTION_LANGUAGES = frozenset({"markdown", "rst", "latex", "ini", "kdl", "blade"})
+
 
 def is_noise_symbol(sym: "Symbol") -> bool:
     """Return True if ``sym`` is default-view noise (dropped when not
@@ -117,6 +137,8 @@ def is_noise_symbol(sym: "Symbol") -> bool:
     if sym.kind == "table" and sym.language in _NOISE_TABLE_LANGUAGES:
         return True
     if sym.kind == "property" and sym.language in _NOISE_PROPERTY_LANGUAGES:
+        return True
+    if sym.kind == "section" and sym.language in _NOISE_SECTION_LANGUAGES:
         return True
     # WI-papag: entry_role=script is two populations (see module docstring).
     # Filter the bare npm run-script (no entry_point); exempt the

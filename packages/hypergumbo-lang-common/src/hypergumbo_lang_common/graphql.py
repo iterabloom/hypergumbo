@@ -25,7 +25,8 @@ Why This Design
 - TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-graphql package for grammar (grammar_module)
-- GraphQL-specific: types, fields, queries, mutations are first-class
+- GraphQL-specific: type definitions, operations, fragments and directives
+  are first-class; fields are not extracted as symbols
 - Useful for API schema analysis and documentation generation
 - Identity (ADR-0035, WI-tusad): ``input`` / ``scalar`` / ``union`` types,
   directives, fragments and operations mint
@@ -49,7 +50,6 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
 )
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
@@ -62,8 +62,11 @@ PASS_ID = make_pass_id("graphql")
 
 
 def find_graphql_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all GraphQL files in the repository."""
-    yield from find_files(repo_root, ["*.graphql", "*.gql"])
+    """Yield all GraphQL files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:  # pragma: no cover

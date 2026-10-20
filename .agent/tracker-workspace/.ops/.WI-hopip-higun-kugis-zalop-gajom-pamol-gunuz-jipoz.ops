@@ -36,3 +36,45 @@
   clock: 3  # bd8d
   nonce: bd8d  # bd8d
   message: "2026-10-10 docstring audit, two latent defects in serve_duress for when the auth modules are wired: (1) call_on_duress_login catches only asyncio.TimeoutError (~145), so a handler that raises propagates ValueError; (2) load_duress_handler silently returns the no-op handler on any import error or missing path, with no warning. Also serve_auth_config (AuthConfig.from_dict) has no production caller and load_config ignores the auth section. Docstrings now say these modules are unwired."  # bd8d
+- op: update  # 585f
+  at: '2026-10-17T03:34:41Z'  # 585f
+  by: agent  # 585f
+  actor: jgstern_agent  # 585f
+  clock: 4  # 585f
+  nonce: 585f  # 585f
+  set: {}  # 585f
+  add:  # 585f
+    isbefore: [WI-pufun-vohuf-bimuh-rigon-mamij-tokas-hamun-rosub]  # 585f
+- op: update  # ef88
+  at: '2026-10-17T03:39:07Z'  # ef88
+  by: agent  # ef88
+  actor: jgstern_agent  # ef88
+  clock: 5  # ef88
+  nonce: ef88  # ef88
+  set: {}  # ef88
+  add:  # ef88
+    isbefore: [WI-fujus-nojaz-pomoz-kinid-jutot-jolom-bisus-gazam]  # ef88
+- op: update  # 01c4
+  at: '2026-10-17T03:40:11Z'  # 01c4
+  by: agent  # 01c4
+  actor: jgstern_agent  # 01c4
+  clock: 6  # 01c4
+  nonce: 01c4  # 01c4
+  set: {}  # 01c4
+  add:  # 01c4
+    isbefore: [WI-kinab-zunas-gozat-musan-hivoj-rural-sosuf-pinur]  # 01c4
+- op: update  # fe83
+  at: '2026-10-20T07:54:47Z'  # fe83
+  by: agent  # fe83
+  actor: jgstern_agent  # fe83
+  clock: 7  # fe83
+  nonce: fe83  # fe83
+  set:  # fe83
+    status: done  # fe83
+- op: discuss  # 5f53
+  at: '2026-10-20T07:54:47Z'  # 5f53
+  by: agent  # 5f53
+  actor: jgstern_agent  # 5f53
+  clock: 8  # 5f53
+  nonce: 5f53  # 5f53
+  message: "Fixed in PR #1751 (666bb1f70b). Structural fix: serve.create_app takes authenticate(conn)->bool and wraps every route but /health and the static mount in a loop, so the safe state is the default -- whoever wires the TrackerSet into run_server (WI-pupod) cannot publish the write API by forgetting auth; no authenticator / False / a raise all deny (401, WS close 1008). Re-ran the filed repro: with a TrackerSet wired and no auth, POST /api/items now returns 401 {'error': 'Unauthorized'} (was 201) and the tracker holds 0 items; GET /health 200. The requested test exists: test_serve_auth_gate.py enumerates the app's own Route/WebSocketRoute objects and asserts each non-/health one rejects an unauthenticated request (so a future route is covered automatically). Duress: call_on_duress_login returns False when the handler raises (test_a_handler_that_raises_does_not_escape), load_duress_handler warns UserWarning naming file + reason when a configured path fails to load (4 tests), and an unset path stays silent. NOT done here, and still owed by WI-pupod: the login flow itself (serve_password/webauthn/sessions → an authenticator), and AuthConfig/load_config's auth section, which still has no production caller. The serve_password lockout docstring claims were already corrected in the 10-10 audit; is_locked's 'permanently' docstring was fixed here."  # 5f53

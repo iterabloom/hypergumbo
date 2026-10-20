@@ -80,7 +80,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -124,8 +123,11 @@ _UNSIGNED_PRODUCER_KINDS = frozenset({
 
 
 def find_dart_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Dart files in the repository."""
-    yield from find_files(repo_root, ["*.dart"])
+    """Yield all Dart files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _find_next_sibling_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:

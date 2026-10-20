@@ -90,7 +90,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -117,8 +116,11 @@ PASS_ID = make_pass_id("agda")
 
 
 def find_agda_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Agda files in the repository."""
-    yield from find_files(repo_root, ["*.agda", "*.lagda", "*.lagda.md"])
+    """Yield all Agda files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _make_module_id(module_name: str) -> str:
@@ -430,6 +432,19 @@ def _extract_renamings(
     return aliases
 
 
+def _reference_target(
+    ref_name: str, file_by_name: dict[str, Symbol], resolver: "NameResolver",
+) -> tuple[Optional[Symbol], float]:
+    """The symbol a reference to ``ref_name`` binds, with its match grade:
+    this file's definition of that name (exact) before the repo-wide
+    resolver's answer."""
+    own = file_by_name.get(ref_name)
+    if own is not None:
+        return own, resolver.CONFIDENCE_EXACT
+    result = resolver.lookup(ref_name)
+    return result.symbol, result.confidence
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -511,6 +526,12 @@ def _extract_edges_from_file(
     # to, found by scope chain in this file (INV-kagib): ``run`` in module A and
     # ``run`` in module B are both ``run`` to a repo-wide name lookup.
     decl_index = symbols_at(file_symbols)
+    # This file's definitions by name, so a reference binds THIS file's ``Nat``
+    # before another file's (WI-kosar); first declared wins a duplicate.
+    file_by_name: dict[str, Symbol] = {}
+    for declared in file_symbols:
+        if declared.kind not in ("file", "module"):
+            file_by_name.setdefault(declared.name, declared)
     by_chain: dict[str, Symbol] = {}
     for node in iter_tree(tree.root_node):
         if node.type == "function":
@@ -555,14 +576,14 @@ def _extract_edges_from_file(
             ref_name = node_text(rhs_child, source).strip()
             if not ref_name or ref_name == enclosing_name:
                 continue
-            ref_result = resolver.lookup(ref_name)
-            if ref_result.symbol:
-                pair = (enclosing.id, ref_result.symbol.id)
+            target, confidence = _reference_target(ref_name, file_by_name, resolver)
+            if target is not None:
+                pair = (enclosing.id, target.id)
                 if pair not in seen_ref_pairs:
                     seen_ref_pairs.add(pair)
                     edges.append(Edge.create(
                         src=enclosing.id,
-                        dst=ref_result.symbol.id,
+                        dst=target.id,
                         edge_type="references",
                         evidence_type="reference",
                         line=rhs_child.start_point[0] + 1,
@@ -571,7 +592,7 @@ def _extract_edges_from_file(
                         # ADR-0039 ruling 6: the resolver's grade interpolates in
                         # the reference band (it was 0.80 for a definition body and
                         # 0.75 for a type signature, whatever the match quality).
-                        resolution_score=ref_result.confidence,
+                        resolution_score=confidence,
                     ))
 
     return edges, import_aliases

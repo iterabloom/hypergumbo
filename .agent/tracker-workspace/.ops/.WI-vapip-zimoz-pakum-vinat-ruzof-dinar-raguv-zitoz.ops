@@ -1,0 +1,22 @@
+- op: create  # 7a46
+  at: '2026-10-20T09:07:41Z'  # 7a46
+  by: agent  # 7a46
+  actor: jgstern_agent  # 7a46
+  clock: 1  # 7a46
+  nonce: 7a46  # 7a46
+  data:  # 7a46
+    kind: work_item  # 7a46
+    title: "scheme/racket: let binding pairs are emitted as calls -- (let ((z 1)) ...) mints a calls edge to unresolved:z"  # 7a46
+    status: todo_hard  # 7a46
+    priority: 3  # 7a46
+    parent:  # 7a46
+    tags:  # 7a46
+    - docstring_audit  # 7a46
+    - analyzer  # 7a46
+    - scheme  # 7a46
+    isbefore: []  # 7a46
+    duplicate_of: []  # 7a46
+    not_duplicate_of: []  # 7a46
+    pr_ref:  # 7a46
+    description: "Found by the 2026-10-20 docstring-staleness audit (verifier reproduced). `_extract_scheme_edges` treats every non-special-form list as a call, including the children of a let/let*/letrec binding list, so `(define (g) (let ((z 1)) (helper z)))` yields g -> scheme:unresolved:z beside g -> helper. Racket has the same defect for parenthesised bindings; square-bracket bindings `[z 1]` are not affected. Fix: skip the binding list of let-family forms (walk only each binding's init expression)."  # 7a46
+    fields: {}  # 7a46

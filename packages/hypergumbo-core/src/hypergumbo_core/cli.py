@@ -53,10 +53,10 @@ this order:
    resolved (``resolve_deferred_symbol_refs``) and every id and path is made
    repo-relative (``_relativize_ir_paths``).
 2. **Producer merge** (ADR-0057 §3, ``merge_producer_records``): when two
-   producers analyzed the same declarations (tree-sitter ``rust`` and the
-   SCIP ``rust_analyzer`` arm), their records fold into one symbol per
-   declaration. A producer with no merge declaration is refused, not passed
-   through.
+   producers analyzed the same declarations (tree-sitter ``rust`` with the
+   SCIP ``rust_analyzer`` arm, or ``python`` with ``scip_python``), their
+   records fold into one symbol per declaration. A producer with no merge
+   declaration is refused, not passed through.
 3. **Framework enrichment** (ADR-3aaa): ``refine_frameworks`` checks
    manifest-detected frameworks against import edges, ``enrich_symbols``
    attaches YAML-pattern concepts (route, model, ...), and
@@ -136,7 +136,8 @@ any is ``confirmed_with_caveats`` and none of the above.
 ``dead-code-maybe`` is implemented here too (``cmd_dead_code_maybe`` and its
 helpers ``production_callables``, ``_bfs_reachable`` and
 ``_compute_cross_language_hits``): production callables minus a BFS over
-``_REACHABILITY_EDGE_TYPES`` from the ``--seeds`` set (plus ``view_func``
+``_REACHABILITY_EDGE_TYPES`` edges plus a class-to-initializer hop for each
+constructed class, from the ``--seeds`` set (plus ``view_func``
 dispatch handlers), after which three false-positive demoters drop symbols in
 generated files, methods reached by inheritance dispatch, and candidates
 whose name appears in at least ``--cross-lang-threshold`` other-language
@@ -151,8 +152,11 @@ Why This Design
   they reload it via ``survey_io.load_substrate`` and, where they need IR
   objects, rehydrate it with ``Symbol.from_dict`` / ``Edge.from_dict``
   (``_edge_from_dict`` is a thin wrapper), and ``_get_or_run_analysis`` runs a
-  survey first on a cache miss. ``dead-code-maybe`` is the exception to the
-  rehydration: it builds its entrypoint-detection Symbols by hand from seven
+  survey first on a cache miss. There are two exceptions to the rehydration.
+  ``io-boundaries`` and ``verify-claims`` rebuild edges through a six-field
+  facade (``_rehydrate_io_boundary_edges``) that keeps ``is_resolved`` and
+  ``dst_ref`` for the boundary classifier. ``dead-code-maybe`` builds its
+  entrypoint-detection Symbols by hand from seven
   fields (dropping ``supply_chain_tier`` and ``modifiers``), and only its
   edges go through ``Edge.from_dict``. ``sketch`` is the exception to the
   reload: the CLI reads a survey only with ``--input``; otherwise
@@ -689,7 +693,10 @@ def _discover_input_file(repo_root: Path) -> Optional[Path]:
     Returns:
         Path to a survey artifact if found, None otherwise.
     """
-    # First, check cache directory (where 'hypergumbo survey' saves by default)
+    # First, check cache directory (where 'hypergumbo survey' saves by
+    # default). Read commands take no ``--exclude``, so this is the plain
+    # key: a survey run with ``-e`` lives under its own key and is never
+    # what a read command finds (WI-tisuj).
     try:
         from .sketch_embeddings import _get_results_cache_dir
 
@@ -1145,10 +1152,11 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         else:
             print("README Extraction Debug: No README found", file=sys.stderr)
 
-    # Get cache directory for artifact discovery
+    # Get cache directory for artifact discovery (under the key this run's
+    # excludes select, WI-tisuj)
     from .sketch_embeddings import _get_results_cache_dir
     try:
-        cache_dir = _get_results_cache_dir(repo_root)
+        cache_dir = _get_results_cache_dir(repo_root, extra_excludes=extra_excludes)
     except Exception:  # pragma: no cover - cache discovery errors
         cache_dir = None
 
@@ -1435,9 +1443,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Eviction never touches the entry this run just wrote — it is both the
     # newest for its repo and inside the grace period, which are two
     # independent reasons to skip it.
-    _cache_base = _get_cache_base()
-    _maybe_evict_cache(_cache_base)
-    _maybe_honk_cache(_cache_base)
+    _housekeep_cache(_get_cache_base())
 
     return 0
 
@@ -4320,8 +4326,11 @@ def _collect_evictable_entries(
     return entries, residue
 
 
-def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> None:
+def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> bool:
     """Soft-delete one cache entry: zip it into the two folders, then remove it.
+
+    Returns True when this process moved the entry out of the live cache, False
+    when a concurrent run got there first.
 
     WHY SOFT DELETE RATHER THAN ``rm``. The cache lives under the user's
     ``$HOME``, and an automatic irreversible delete there is a different kind
@@ -4345,6 +4354,16 @@ def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> None:
     can never be read as a cache hit and is reclaimed next run. At no point can
     a half-deleted directory sit at its state-hash name and serve a truncated
     survey as a cache hit.
+
+    TWO RUNS AT ONCE (INV-durin). Nothing serialises evictors: two runs that
+    finish together over the cap collect the same candidates, and the loser
+    meets a path the winner already archived and removed. So each run writes
+    its own ``.partial`` (the pid is in the name; one run must never publish
+    another's half-written file), and a ``FileNotFoundError`` at the zip, at
+    the partial's publication or at the entry's rename means the other run
+    got there first: this one stops on that entry, with nothing to undo, and
+    its stale partial is swept by :func:`_prune_soft_deleted`. It returns False
+    so the caller does not report the other run's eviction as its own.
     """
     stem = f"{repo}__{entry_path.name}"
     files = [f for f in sorted(entry_path.rglob("*")) if f.is_file()]
@@ -4363,21 +4382,32 @@ def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> None:
         dest_dir = cache_dir / folder
         cache_mkdir(dest_dir, parents=True, exist_ok=True)
         final = dest_dir / f"{stem}.zip"
-        partial = dest_dir / f"{stem}.zip{_ARCHIVE_PARTIAL_SUFFIX}"
+        partial = dest_dir / f"{stem}.zip.{os.getpid()}{_ARCHIVE_PARTIAL_SUFFIX}"
         # Through the zone wrapper, never a bare ZipFile here: the discipline
         # gate matches fs-write primitives by NAME, and it is right to — a
         # syntactic check cannot tell a path-backed ZipFile from an in-memory
         # one, and the wrapper is what makes the zone-barrier sanitizer apply.
-        cache_write_zip(partial, entry_path, members, zone_root=cache_dir)
+        try:
+            cache_write_zip(partial, entry_path, members, zone_root=cache_dir)
+        except FileNotFoundError:
+            return False  # a concurrent evictor removed the entry mid-zip
         staged.append((partial, final))
     for partial, final in staged:
-        cache_rename(partial, final, zone_root=cache_dir)
+        try:
+            cache_rename(partial, final, zone_root=cache_dir)
+        except FileNotFoundError:
+            continue  # our partial was swept as stale by a concurrent run
 
     scratch = entry_path.parent / (_EVICTION_SCRATCH_PREFIX + entry_path.name)
     if scratch.exists():  # pragma: no cover - prior residue at the same name
-        cache_rmtree(scratch, zone_root=cache_dir)  # pragma: no cover
-    cache_rename(entry_path, scratch, zone_root=cache_dir)
-    cache_rmtree(scratch, zone_root=cache_dir)
+        cache_rmtree(scratch, zone_root=cache_dir, missing_ok=True)  # pragma: no cover
+    try:
+        cache_rename(entry_path, scratch, zone_root=cache_dir)
+    except FileNotFoundError:
+        return False  # a concurrent evictor already moved it away
+    # A peer may sweep our scratch dir as residue while we remove it.
+    cache_rmtree(scratch, zone_root=cache_dir, missing_ok=True)
+    return True
 
 
 def _prune_soft_deleted(cache_dir: Path, *, dry_run: bool = False) -> int:
@@ -4423,6 +4453,21 @@ def _prune_soft_deleted(cache_dir: Path, *, dry_run: bool = False) -> int:
             total -= size
             freed += size
     return freed
+
+
+def _housekeep_cache(cache_base: Path) -> None:
+    """End-of-run cache bounding (WI-sidin) and size notice.
+
+    Housekeeping never fails a finished run (INV-durin): by the time this is
+    called every artifact is written, so an exception here -- a race with a
+    concurrent evictor, a permissions change under ``~/.cache`` -- is reported
+    on stderr and the command still exits 0.
+    """
+    try:
+        _maybe_evict_cache(cache_base)
+        _maybe_honk_cache(cache_base)
+    except Exception as exc:  # best-effort by contract (INV-durin)
+        print(f"Warning: cache housekeeping skipped: {exc}", file=sys.stderr)
 
 
 def _maybe_evict_cache(
@@ -4490,20 +4535,27 @@ def _maybe_evict_cache(
 
     reclaimed = 0
     evicted = 0
+    # ``gone`` drives the cap check; ``reclaimed`` / ``evicted`` are what THIS
+    # run soft-deleted, which is all the summary may claim (INV-durin).
+    gone = 0
     # Residue is already-orphaned data that only still occupies disk, so no
-    # policy question arises and nothing is worth archiving.
+    # policy question arises and nothing is worth archiving. It counts toward
+    # the cap but not toward the summary: it is hard-deleted, not recoverable,
+    # and it may be a peer's in-flight scratch that the peer reports.
     for path in residue:
         size = _get_dir_size(path)
         if not dry_run:
-            cache_rmtree(path, zone_root=cache_dir)
-        reclaimed += size
-        evicted += 1
+            cache_rmtree(path, zone_root=cache_dir, missing_ok=True)
+        gone += size
 
     for entry in candidates:
-        if total - reclaimed <= cap:
+        if total - gone <= cap:
             break
-        if not dry_run:
-            _archive_entry(Path(entry["path"]), str(entry["repo"]), cache_dir)
+        gone += int(entry["size"])
+        if not dry_run and not _archive_entry(
+            Path(entry["path"]), str(entry["repo"]), cache_dir
+        ):
+            continue
         reclaimed += int(entry["size"])
         evicted += 1
 
@@ -5306,7 +5358,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         # override an EXPLICIT `--kind file` / `--kind variable`. Suppress the
         # pre-filter only when the user did not ask for this exact kind; the
         # `--kind` mismatch filter below still hides everything else.
-        if is_excluded_kind(kind, node.get("meta")) and not (
+        if is_excluded_kind(kind, node.get("meta"), language=lang or None) and not (
             args.kind and kind == args.kind
         ):
             continue
@@ -7199,6 +7251,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
     credited_user_summaries: set[str] = set()
+    # INV-nohob: source values the walk saw leave through a construct taint
+    # does not follow; a clean verdict on their label is withheld. Function
+    # scope for the same reason as the set above.
+    unfollowed_escapes: list[Any] = []
     # WI-tigud: the community TERMINATING summaries this run's call graph
     # calls -- the walk does not let them close a branch, and the violated
     # verdicts say so. Run-scoped, like ``credited_user_summaries``.
@@ -7458,7 +7514,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             # and dst differ in language) are handled by language-pair
             # linkers separately; this taint pass focuses on
             # within-language flow.
-            from .taint import propagate_taint_ddg
+            from .taint import find_unfollowed_escapes, propagate_taint_ddg
             from .taint_refine import refine_external_edges
             # Only languages the taint catalog actually covers for this
             # repo are worth walking; the adapter intersects that with the
@@ -7594,6 +7650,24 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         include_community=not getattr(
                             args, "no_default_overlays", False),
                     ))
+                # INV-nohob: where a source value leaves through a construct
+                # taint does not follow -- run on BOTH arms, because a construct
+                # on the source line needs no walk (a plain ``g = getenv(..)``
+                # leaves the function with no DDG edge at all).
+                unfollowed_escapes.extend(find_unfollowed_escapes(
+                    ddg_edges or [], lang_edges, lang_sources,
+                    ambiguous_names=lang_ambiguous, language=lang,
+                    stmt_defuse=stmt_defuse,
+                    include_community=not getattr(
+                        args, "no_default_overlays", False),
+                    # INV-nohob 3/3: a plain assignment into memory the
+                    # function does not own has no call to stamp.
+                    store_lines={
+                        n["id"]: n["meta"]["non_local_store_lines"]
+                        for n in behavior_map.get("nodes", [])
+                        if (n.get("meta") or {}).get("non_local_store_lines")
+                    },
+                ))
             from .function_summaries import load_function_summaries
             from .taint import withheld_community_summaries
             withheld_summaries = withheld_community_summaries(
@@ -7711,6 +7785,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         blind_opaque_sites=_blind_opaque,
         blind_by_source_taint=blind_by_source_taint,
         sink_zone_gaps=sink_zone_gaps,
+        unfollowed_escapes=unfollowed_escapes,
         # INV-faput: the SHIPPED catalogue rows a repo-supplied row replaced.
         # Read off the catalogue here because this is the last point that
         # still knows — the displaced rows are gone from every structure the
@@ -12604,7 +12679,7 @@ def run_survey(
     # Default to cache directory if no explicit output path provided
     if out_path is None:
         from .sketch_embeddings import _get_results_cache_dir
-        cache_dir = _get_results_cache_dir(repo_root)
+        cache_dir = _get_results_cache_dir(repo_root, extra_excludes=extra_excludes)
         out_path = cache_dir / CANONICAL_SURVEY_FILENAME
 
     generated_files: list[Path] = []

@@ -1,0 +1,22 @@
+- op: create  # 8ec1
+  at: '2026-10-19T18:16:21Z'  # 8ec1
+  by: agent  # 8ec1
+  actor: jgstern_agent  # 8ec1
+  clock: 1  # 8ec1
+  nonce: 8ec1  # 8ec1
+  data:  # 8ec1
+    kind: work_item  # 8ec1
+    title: "C taint: a global variable or global struct field written with a tainted value in one function is a source where another function reads it (cross-function global state)"  # 8ec1
+    status: todo_hard  # 8ec1
+    priority: 2  # 8ec1
+    parent:  # 8ec1
+    tags:  # 8ec1
+    - c  # 8ec1
+    - taint  # 8ec1
+    - analysis_quality  # 8ec1
+    isbefore: []  # 8ec1
+    duplicate_of: []  # 8ec1
+    not_duplicate_of: []  # 8ec1
+    pr_ref:  # 8ec1
+    description: "Trackerized from INV-nohob (owner, 2026-10-19). One of four constructs C taint does not follow; INV-nohob's disclosure withholds the clean verdict meanwhile.\n\nWHAT. A C global variable, or a field of a global struct, written with a tainted value in one function and read in another, carries no taint across the functions:\n\n    char *g_secret;\n    void init(void) { g_secret = getenv(\"PASS\"); }\n    void go(int fd) { send(fd, g_secret, 8, 0); }        // reads confirmed today\n\ntorsocks: the global tsocks_config holds the SOCKS5 password and username (stored in config-file.c via conf_file_set_socks5_pass / snprintf), later read by socks5_send_user_pass_request's callers and sent through send_data (src/common/socks5.c:325).\n\nFIX DIRECTION (not designed): a run-wide \"tainted global\" set: a def of a file-scope (or extern) variable or of a field of one, from a tainted value, marks the global; a use of it in any function is a source occurrence for the flow walk. The sensitivity choices to make: field-sensitive or whole-struct, and whether an ordering across functions is required (the call graph does not say init runs before go).\n\nDONE WHEN: the fixture above reads violated, and the torsocks pair (with the out-parameter item) makes host-secret-no-network violated on torsocks (frozen copy: ~/hypergumbo_lab_notebook/decontend/run_10032026/zikul/frozen_src/torsocks). When it lands, narrow INV-nohob's disclosure for this construct."  # 8ec1
+    fields: {}  # 8ec1

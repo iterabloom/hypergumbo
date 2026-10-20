@@ -406,6 +406,13 @@ def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
     registered linkers is judged against the spec §12 linker range
     (0.40-0.95), not against the analyzer band of the evidence_type it
     declares. An edge with any analyzer among its origins keeps the band.
+
+    INV-pijij: an edge whose ``confidence_source`` is ``corroborated`` is not
+    judged at all. Two distinct pathways reached it, and its confidence is the
+    declared corroboration level (ADR-0057 s13, configurable under
+    ``[merge]``), by definition not on the band of the evidence_type the merge
+    kept. Before this, a scip-enabled self-map reported every one of its
+    109,622 corroborated edges out of band.
     """
     from hypergumbo_core.catalog import all_linker_pass_ids
     from hypergumbo_core.confidence import (
@@ -420,6 +427,8 @@ def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
         ev = getattr(edge, "evidence_type", None)
         conf = getattr(edge, "confidence", None)
         if ev is None or conf is None:
+            continue
+        if getattr(edge, "confidence_source", None) == "corroborated":
             continue
         origin = getattr(edge, "origin", None) or []
         origins = [origin] if isinstance(origin, str) else list(origin)

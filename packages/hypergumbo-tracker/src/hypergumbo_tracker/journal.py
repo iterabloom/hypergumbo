@@ -41,10 +41,21 @@ lines. For the current format this is *equivalent* to a line-level union:
 ``store._serialize_op`` stamps a per-op ``# <nonce>`` comment on every non-empty
 line (with scalar folding disabled via ``width=sys.maxsize``), so every line is
 unique to its op and a line-level dedup never collides. Op-block is chosen as
-the single canonical restore primitive so the journal and the ``do_sync`` /
-``do_merge`` restorers share *one* implementation — not because the line-level
-union corrupts the real format (it does not). The journal is the durable source
-all of them read from.
+the canonical restore primitive so the journal restore (:func:`recover`) and
+``do_sync``'s ``sync._union_restore_ops`` share *one* implementation — not
+because the line-level union corrupts the real format (it does not). The bash
+``do_merge`` restorer (``_ops_union_restore_file`` in
+``scripts/lib/forgejo-api.sh``) still uses a line-level ``awk`` union, which is
+equivalent for the current format for the same reason. The journal is the
+durable source the Python restorers read from.
+
+The module also owns the recovery-suppression lock (WI-pohir, WI-gokuv):
+``do_sync`` and ``auto-pr`` hold an flock on ``.git/tracker-recover-disabled``
+(:class:`RecoverSuppressionLock`) during their own git operations, so the
+githooks skip :func:`recover` and cannot restore an uncommitted op as an
+untracked file mid-merge. Because it is a lock rather than a flag, a killed
+holder releases it; :func:`recover_suppression_status` reports whether
+suppression is live, and whether it is orphaned, for the CLI warning.
 """
 from __future__ import annotations
 

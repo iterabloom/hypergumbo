@@ -1,0 +1,48 @@
+- op: create  # d482
+  at: '2026-10-17T04:04:15Z'  # d482
+  by: agent  # d482
+  actor: jgstern_agent  # d482
+  clock: 1  # d482
+  nonce: d482  # d482
+  data:  # d482
+    kind: invariant  # d482
+    title: "Self-claims drift on dev: 18 claims flipped confirmed_with_caveats -> inconclusive with every opaque_boundary caveat gone (cron full-suite f7c93e49)"  # d482
+    status: violated  # d482
+    priority: 2  # d482
+    parent:  # d482
+    tags:  # d482
+    - security  # d482
+    - verify_claims  # d482
+    - ci_infrastructure  # d482
+    isbefore: []  # d482
+    duplicate_of: []  # d482
+    not_duplicate_of: []  # d482
+    pr_ref:  # d482
+    description: "## Symptom (cron full-suite, dev @ f7c93e494e, 2026-10-16 18:33 EDT, pipeline 4872)\n`self-claims-gate` fails: `check-self-claims-drift: SELF-CLAIM DRIFT` with 36 changed lines = 18 claims whose verdict flipped `confirmed_with_caveats -> inconclusive`, and in EVERY one the `opaque_boundary` caveat disappeared while the other caveats stayed. Affected: `{add-extras,build-grammars,install-embeddings,install-gitleaks,install-rust-analyzer,runtime-cli}-no-{dev-zone,host-fs,install-artifact}` (the full list is in the pipeline log). Snapshot: docs/hypergumbo.claims.expected.json (18 claims, all confirmed_with_caveats as of the 9.1.0 release).\n## Why it matters\n`opaque_boundary` is the caveat verify-claims attaches when a flow crosses a subprocess launch it cannot see inside (ADR-0016). All of them vanishing at once means the analysis no longer recognises the launch sites (`safety_zones.repo_inspect_*`, the pip/rustup/gitleaks subprocess wrappers) as launches on these flows -- and then cannot reach a verdict. That is either an analysis regression (the launch list ADR-0016 says the qualification \"rests entirely on\" being complete is no longer found) or an input change, not a security improvement. The gate is doing its job; SECURITY.md's published claims are currently not reproducible on dev.\n## Not yet known\nWhich change caused it. The previous full-suite verdict is >40 commits back (ci-debug cron-status shows only the latest per workflow); between the last known-green nightly leg (ea77558c, 01:01) and f7c93e49 lie the 9.1.0 release commits (confidence_model v2.2 / SCHEMA_VERSION bump #1635, release 9.1.0 f463872548), #1643 (repo_tier_offer .gitignore), the ARCHITECTURE regen, and ~34 tracker syncs. CI installs fresh dependency versions each run (failing run: tree-sitter 0.25.2, tree-sitter-language-pack 0.13.0) -- compare with the last green run's `Successfully installed` line. Diagnosis needs one local `scripts/check-self-claims` run (hypergumbo on itself, ~5 min; owner approval required for big-repo runs) and a bisect over those few code commits.\n## Done when\nRoot cause named; either the analysis regression is fixed and the snapshot is unchanged, or the drift is understood and the snapshot updated with the rationale recorded here (closure-evidence discipline: cite the re-run output)."  # d482
+    fields:  # d482
+      statement: "scripts/check-self-claims on dev reproduces docs/hypergumbo.claims.expected.json exactly: every published claim keeps its recorded verdict and caveat set, so SECURITY.md's claims are reproducible from the tree they describe."  # d482
+      root_cause: "Unknown as of 2026-10-17. All 18 flips lose the opaque_boundary caveat at once, so verify-claims no longer recognises the subprocess launch sites on these flows; candidates are the 9.1.0 analysis changes (confidence_model v2.2) or a fresh-install dependency version change in CI. Needs one local check-self-claims run plus a bisect over the few code commits since the last green full-suite."  # d482
+- op: update  # 6b6d
+  at: '2026-10-17T07:04:36Z'  # 6b6d
+  by: agent  # 6b6d
+  actor: jgstern_agent  # 6b6d
+  clock: 2  # 6b6d
+  nonce: 6b6d  # 6b6d
+  set:  # 6b6d
+    status: satisfied  # 6b6d
+    fields:  # 6b6d
+      root_cause: "49aea53b93 (feat(progress): heartbeat) added self._stop = threading.Event() to run_status.py, reached from every CLI entry point through self._stop.wait(interval). Receiver typing names that call threading.Event.wait; module_io_is_enumerated matches EXACTLY, so python.yaml's threading grant does not reach the class, and one uncatalogued name sets qualifying_only=False for all 18 claims at once -- the WI-jabus shape (4d0933b10c), fourth recorded instance. Not an input change: the Successfully-installed lines of the last green run (d4e11b41, 2026-10-14 20:01 EDT) and the first red (b61a205e, 2026-10-15 05:51 EDT) are identical (tree-sitter 0.25.2, language-pack 0.13.0)."  # 6b6d
+- op: discuss  # 0a92
+  at: '2026-10-17T07:04:36Z'  # 0a92
+  by: agent  # 0a92
+  actor: jgstern_agent  # 0a92
+  clock: 3  # 0a92
+  nonce: 0a92  # 0a92
+  message: "SATISFIED by PR #1685 (dev f18f16d9c7): a dated module_completeness entry for threading.Event in io_primitives/python.yaml (set/clear/is_set/wait are in-process). Evidence, the item's own repro re-run locally on the fixed tree with check-self-claims' exact invocation (python -m hypergumbo_core verify-claims . --claims docs/hypergumbo.claims.yaml --json --minimal): rc 3, 18/18 confirmed_with_caveats, opaque_boundary present on all 18, no 'could not classify' clause; scripts/check-self-claims-drift <run> docs/hypergumbo.claims.expected.json -> 'OK -- 18 claims unchanged (18 confirmed_with_caveats)', exit 0. Before the fix, the same command on 8bc23ede1d reproduced CI's 36-line drift exactly, and the verdict detail named the blocker: 'calls into 1 module(s) that the I/O catalog could not classify (threading.Event)'. The snapshot was not touched. Residual: the cron self-claims-gate has not fired since the merge; the next full-suite run is the on-CI confirmation. Observation for the owner, not filed: this is the fourth time a newly typed class-qualified stdlib receiver flipped all 18 claims, and detection is bounded by the 12 h cron since the per-PR arm was removed."  # 0a92
+- op: discuss  # 2168
+  at: '2026-10-17T07:52:35Z'  # 2168
+  by: agent  # 2168
+  actor: jgstern_agent  # 2168
+  clock: 4  # 2168
+  nonce: '2168'  # 2168
+  message: "Follow-up: this was the fourth instance of INV-jojog's shape. PR #1686 (dev aa3d0053fd) added the per-PR guard that item asked for; removing this item's threading.Event entry now fails a PR in ~40 s naming the module, instead of surfacing on the next cron."  # 2168

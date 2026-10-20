@@ -3,7 +3,8 @@
 
 This linker detects WebSocket patterns in JavaScript/TypeScript and Python code.
 It emits three canonical edge types: ``event_publishes`` (emitter → listener),
-``references`` (client → server endpoint) and ``calls`` (the cross-language
+``references`` (declaring file → the endpoint symbol it declares, for client
+and server endpoints alike) and ``calls`` (the cross-language
 client → server bridge). The bespoke ``message_send`` / ``message_receive``
 types this module once emitted were folded away by ADR-0023 §6; the arrows
 below name the ROLE a matched site plays, not an edge type.
@@ -29,12 +30,16 @@ Django Channels (Python):
 - channel_layer.send('channel', message) -> send-site
 - channel_layer.send(channel_var, message) -> send-site (variable channel)
 - channel_layer.group_send('group', message) -> send-site
-- async for message in websocket.receive() -> receive-site
+- async_to_sync(channel_layer.send|group_send)('channel', msg) -> send-site
+  (bare ``channel_layer`` only)
+- class X(WebsocketConsumer) (any base containing ``WebsocketConsumer``) ->
+  endpoint (event = class name)
 
 FastAPI / Starlette WebSocket (Python):
 - @app.websocket('/path') -> endpoint
 - WebSocketRoute('/path', endpoint) -> endpoint
-- websocket.receive_json() / receive_text() -> receive-site
+- websocket.receive() / receive_json() / receive_text() -> receive-site
+  (``async for message in websocket.receive()`` lands here, tagged ``fastapi``)
 - websocket.send_json() / send_text() -> send-site
 - websocket.accept() -> endpoint
 
@@ -45,24 +50,37 @@ NOT detected, despite having a compiled pattern or an obvious spelling:
   ``DJANGO_CONSUMER_SEND`` is compiled but never applied.
 - Django Channels routing — ``DJANGO_CHANNELS_ROUTE`` is compiled but never
   applied. The one decorator pattern that does run is
-  ``@<app>.websocket(...)``, and it is tagged ``fastapi``.
+  ``@<app>.websocket(...)``, and it is tagged ``fastapi``; edges'
+  ``framework_dispatch`` becomes ``starlette`` when starlette but not fastapi
+  is a declared Python dependency (WI-fizir).
 
 Event Detection Strategy
 ------------------------
-Patterns can use either string literals or variables for event names:
-- Literal: socket.emit('user-login', data) -> exact event 'user-login'
-- Variable: socket.emit(EVENT_NAME, data) -> variable name 'EVENT_NAME'
+An event name is written either as a string or as an identifier, and is
+classified by the shared ``_name_args`` helpers (WI-luhod, after WI-misod):
+- Literal: socket.emit('user-login', data) -> event 'user-login'
+- Constant: socket.emit(EVENT, data) with ``const EVENT = 'user-login'`` at
+  module scope in the same file -> event 'user-login' (identifier kept)
+- Unresolved: socket.emit(EVENT, data) where EVENT is imported, a parameter,
+  or dotted (``config.event``) -> the event is NOT known; the identifier is
+  kept as the site's event (``event_type='unresolved'``) and joins only on
+  identifier
 
-For variable-based events, we use heuristic matching:
-- If emitter uses `LOGIN_EVENT` and listener uses `LOGIN_EVENT`, link them
-- Confidence is lower for variable-based matches (0.65 vs 0.85)
+Senders join receivers on the event VALUE when both are known (0.85), and on
+the IDENTIFIER only when at least one side is unresolved (0.65,
+``variable_match``), so an identifier's text is never matched against another
+site's string. Before WI-luhod the raw identifier was the grouping key:
+``on(EVENT)`` never reached ``emit('user-login')``, and ``emit(chat)`` with
+``chat`` a parameter reached ``on('chat')``.
 
 How It Works
 ------------
-1. Find all JavaScript/TypeScript/Python files in the repository
+1. Find non-test JavaScript/TypeScript (plus .vue/.svelte) and Python files
 2. Scan each file for WebSocket patterns using regex
 3. Extract event names (literals) or variable names from patterns
-4. Create edges linking files with matching events/variables
+4. Create ``event_publishes`` edges between distinct files whose send/receive
+   sites share an event or variable name, skipping generic ``message`` pairs
+   where both sides are fastapi/native
 5. Create connection-handler symbols with ``kind="function"`` and
    ``meta['framework_role']='websocket_endpoint'`` (the ADR-0027 fold —
    there is no ``websocket_endpoint`` symbol kind)
@@ -97,6 +115,14 @@ from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..taxonomy import JS_TS_LANGUAGES, extension_globs
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import js_ts_language_from_path, language_from_path, read_masked_source
+from ._name_args import (
+    KIND_LITERAL,
+    NAME_ARG_RE,
+    ConstantResolver,
+    NameArg,
+    name_arg_from_match,
+    pair_by_name,
+)
 
 PASS_ID = make_pass_id("websocket-linker")
 
@@ -110,7 +136,13 @@ class WebSocketPattern:
     line: int  # Line number in source
     file_path: str  # Source file path
     pattern_type: str  # 'socketio', 'native', 'ws', 'fastapi', 'django_channels'
-    event_type: str = "literal"  # 'literal' or 'variable'
+    event_type: str = KIND_LITERAL  # 'literal' | 'constant' | 'unresolved'
+    event_identifier: str | None = None  # identifier written at the site, if any
+
+    @property
+    def arg(self) -> NameArg:
+        """The site's event as a :class:`NameArg` (WI-luhod)."""
+        return NameArg(self.event, self.event_type, self.event_identifier)
 
 
 @dataclass
@@ -122,39 +154,38 @@ class WebSocketLinkResult:
     run: AnalysisRun | None = None
 
 
-# ============================================================================
-# Common patterns for variable detection (shared with MQ/IPC linker pattern)
-# ============================================================================
-
-# Identifier pattern: matches variable names, constants, and simple attribute access
-_IDENTIFIER = r"[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*"
-
-# Event argument pattern: matches either a string literal OR an identifier
-# Group 1: string literal content (if literal)
-# Group 2: identifier/variable name (if variable)
-_EVENT_ARG = rf"(?:['\"]([^'\"]+)['\"]|({_IDENTIFIER}))"
+# Event argument (shared, ``_name_args``): a string literal (group 1) OR an
+# identifier (group 2) -- EVENT, eventName, config.event.
+_EVENT_ARG = NAME_ARG_RE
 
 
-def _extract_event_from_match(match: re.Match[str], literal_group: int, var_group: int) -> tuple[str, str]:
-    """Extract event and event_type from a regex match.
+def _named_site(
+    match: re.Match[str],
+    resolver: ConstantResolver,
+    *,
+    type: str,
+    file_path: Path,
+    line: int,
+    pattern_type: str,
+) -> WebSocketPattern:
+    """A send / receive / endpoint site whose event is the match's name argument.
 
-    Args:
-        match: Regex match object
-        literal_group: Group index for string literal content
-        var_group: Group index for variable name
-
-    Returns:
-        tuple of (event_value, event_type) where event_type is 'literal' or 'variable'
+    WI-luhod: an identifier bound to a same-file module-scope string constant
+    resolves to that string; any other identifier stays ``unresolved`` and keeps
+    only its text, so it is never compared with another site's string.
     """
-    literal = match.group(literal_group)
-    variable = match.group(var_group)
-
-    if literal:
-        return (literal, "literal")
-    elif variable:
-        return (variable, "variable")
-    else:
-        return ("unknown", "variable")  # pragma: no cover
+    arg = name_arg_from_match(match, 1, 2, resolver)
+    if type == "receive" and arg.value == "connection":
+        type = "endpoint"
+    return WebSocketPattern(
+        type=type,
+        event=arg.label,
+        line=line,
+        file_path=str(file_path),
+        pattern_type=pattern_type,
+        event_type=arg.kind,
+        event_identifier=arg.identifier,
+    )
 
 
 # Regex patterns for WebSocket detection
@@ -405,31 +436,19 @@ def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
                 return i
         return len(lines)
 
-    # Socket.io emit (message_send)
-    # Groups: 1=literal event, 2=variable event
-    for match in SOCKETIO_EMIT_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match, 1, 2)
-        patterns.append(WebSocketPattern(
-            type="send",
-            event=event_name,
-            line=get_line_number(match.start()),
-            file_path=str(file_path),
-            pattern_type="socketio",
-            event_type=event_type,
-        ))
+    resolver = ConstantResolver(content, js_ts_language_from_path(file_path))
 
-    # Socket.io on (message_receive)
-    # Groups: 1=literal event, 2=variable event
+    # Socket.io emit (send-site) and on (receive-site; ``connection`` is the
+    # endpoint).
+    for match in SOCKETIO_EMIT_PATTERN.finditer(content):
+        patterns.append(_named_site(
+            match, resolver, type="send", file_path=file_path,
+            line=get_line_number(match.start()), pattern_type="socketio",
+        ))
     for match in SOCKETIO_ON_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match, 1, 2)
-        ws_type = "endpoint" if event_name == "connection" else "receive"
-        patterns.append(WebSocketPattern(
-            type=ws_type,
-            event=event_name,
-            line=get_line_number(match.start()),
-            file_path=str(file_path),
-            pattern_type="socketio",
-            event_type=event_type,
+        patterns.append(_named_site(
+            match, resolver, type="receive", file_path=file_path,
+            line=get_line_number(match.start()), pattern_type="socketio",
         ))
 
     # Native WebSocket constructor (literal-quoted URL)
@@ -445,8 +464,8 @@ def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
         ))
 
     # WI-zolot: Native WebSocket constructor with template-string URL.
-    # The TS client at packages/htrac-frontend/src/ws-client.ts builds the
-    # URL as ``${proto}//${location.host}/ws`` — backticks, with the route
+    # A TS client typically builds the URL as
+    # ``${proto}//${location.host}/ws`` — backticks, with the route
     # path as a trailing literal. We extract that trailing path so the
     # cross-language bridge edge has something to match the server's route
     # declaration against.
@@ -484,18 +503,11 @@ def _detect_patterns(file_path: Path) -> list[WebSocketPattern]:
                 event_type="literal",
             ))
 
-    # ws package on patterns
-    # Groups: 1=literal event, 2=variable event
+    # ws package on patterns (``connection`` is the endpoint)
     for match in WS_ON_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match, 1, 2)
-        ws_type = "endpoint" if event_name == "connection" else "receive"
-        patterns.append(WebSocketPattern(
-            type=ws_type,
-            event=event_name,
-            line=get_line_number(match.start()),
-            file_path=str(file_path),
-            pattern_type="ws",
-            event_type=event_type,
+        patterns.append(_named_site(
+            match, resolver, type="receive", file_path=file_path,
+            line=get_line_number(match.start()), pattern_type="ws",
         ))
 
     # WebSocket send (no specific event, generic message)
@@ -595,31 +607,15 @@ def _detect_python_patterns(file_path: Path) -> list[WebSocketPattern]:
             event_type="literal",
         ))
 
-    # Django Channels: channel_layer.send/group_send
-    # Groups: 1=literal channel, 2=variable channel
-    for match in DJANGO_CHANNEL_SEND.finditer(content):
-        channel, event_type = _extract_event_from_match(match, 1, 2)
-        patterns.append(WebSocketPattern(
-            type="send",
-            event=channel,
-            line=get_line_number(match.start()),
-            file_path=str(file_path),
-            pattern_type="django_channels",
-            event_type=event_type,
-        ))
-
-    # Django Channels: async_to_sync(channel_layer.send)
-    # Groups: 1=literal channel, 2=variable channel
-    for match in DJANGO_ASYNC_SEND.finditer(content):
-        channel, event_type = _extract_event_from_match(match, 1, 2)
-        patterns.append(WebSocketPattern(
-            type="send",
-            event=channel,
-            line=get_line_number(match.start()),
-            file_path=str(file_path),
-            pattern_type="django_channels",
-            event_type=event_type,
-        ))
+    # Django Channels: channel_layer.send/group_send, and the
+    # async_to_sync(channel_layer.send) spelling.
+    resolver = ConstantResolver(content, "python")
+    for pattern in (DJANGO_CHANNEL_SEND, DJANGO_ASYNC_SEND):
+        for match in pattern.finditer(content):
+            patterns.append(_named_site(
+                match, resolver, type="send", file_path=file_path,
+                line=get_line_number(match.start()), pattern_type="django_channels",
+            ))
 
     # Django Channels: WebsocketConsumer class (literal class names)
     for match in DJANGO_WEBSOCKET_CONSUMER.finditer(content):
@@ -738,22 +734,9 @@ def link_websocket(
             # is structurally unreachable in production; keep as defense.
             pattern.file_path = normed
 
-    # Group patterns by event for matching
-    sends: dict[str, list[WebSocketPattern]] = {}
-    receives: dict[str, list[WebSocketPattern]] = {}
-    endpoints: list[WebSocketPattern] = []
-
-    for pattern in all_patterns:
-        if pattern.type == "send":
-            if pattern.event not in sends:
-                sends[pattern.event] = []
-            sends[pattern.event].append(pattern)
-        elif pattern.type == "receive":
-            if pattern.event not in receives:
-                receives[pattern.event] = []
-            receives[pattern.event].append(pattern)
-        elif pattern.type == "endpoint":
-            endpoints.append(pattern)
+    sends = [p for p in all_patterns if p.type == "send"]
+    receives = [p for p in all_patterns if p.type == "receive"]
+    endpoints = [p for p in all_patterns if p.type == "endpoint"]
 
     # ADR-0027 Phase 3 / audit-findings 0013: Symbol.kind="websocket_endpoint"
     # is a framework-role leak (Test 4: mechanism vs. category). Fold to the
@@ -797,12 +780,8 @@ def link_websocket(
 
     # Collect all files involved in WebSocket messaging for file symbol creation
     files_with_patterns: dict[str, str] = {}  # file_path -> pattern_type
-    for patterns_list in sends.values():
-        for pat in patterns_list:
-            files_with_patterns[pat.file_path] = pat.pattern_type
-    for patterns_list in receives.values():
-        for pat in patterns_list:
-            files_with_patterns[pat.file_path] = pat.pattern_type
+    for pat in sends + receives:
+        files_with_patterns[pat.file_path] = pat.pattern_type
     for ep in endpoints:
         files_with_patterns[ep.file_path] = ep.pattern_type
 
@@ -841,75 +820,78 @@ def link_websocket(
     # NxM combinatorial explosion without meaningful semantic signal.
     _GENERIC_PROTOCOL_TYPES = frozenset(("fastapi", "native"))
 
-    # Create edges linking senders to receivers with matching events
+    # Create edges linking senders to receivers with matching events.
+    # WI-luhod: the shared ``pair_by_name`` joins on the event VALUE when both
+    # are known (a literal, or a same-file constant resolved to its string) and
+    # on the IDENTIFIER only when one side is unresolved -- never an
+    # identifier's text against another site's string.
     edges: list[Edge] = []
-    for event, send_patterns in sends.items():
-        if event in receives:
-            for send_pat in send_patterns:
-                for recv_pat in receives[event]:
-                    # Don't link same file to itself for simple patterns
-                    if send_pat.file_path == recv_pat.file_path:
-                        continue
-                    # Skip generic protocol send/receive (no named event).
-                    # FastAPI/native websocket.send_*/receive_* are raw
-                    # WebSocket operations—not named events like Socket.io
-                    # emit/on or Django Channels typed messages.
-                    if (
-                        event == "message"
-                        and send_pat.pattern_type in _GENERIC_PROTOCOL_TYPES
-                        and recv_pat.pattern_type in _GENERIC_PROTOCOL_TYPES
-                    ):
-                        continue
-                    # Confidence depends on whether events are literal or variable
-                    is_variable_match = (
-                        send_pat.event_type == "variable" or recv_pat.event_type == "variable"
-                    )
-                    confidence = 0.65 if is_variable_match else 0.85
-                    # ADR-0028 Phase 3 / audit-findings 0014: f"{pattern_type}_emit"
-                    # leaked framework identity into evidence_type. Fold to canonical
-                    # ast_call_direct + meta["framework_dispatch"]=<framework_name>.
-                    # The variable_match branch keeps its Cluster A canonical.
-                    evidence_type = "variable_match" if is_variable_match else "ast_call_direct"
-                    # Pass linker-specific meta via Edge.create's meta= kwarg
-                    # so Edge.create merges it with the dataflow fields —
-                    # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
-                    # WebSocket sender→receiver via channel is publish-
-                    # family shape; "websocket" is the channel kind.
-                    # Canonical 'event_publishes' +
-                    # meta['channel_kind']='websocket'. Pass meta via
-                    # Edge.create's meta= kwarg so it merges with
-                    # dataflow fields (assigning edge.meta afterward
-                    # would wipe the dataflow meta fields — INV-forim).
-                    edge = Edge.create(
-                        src=_make_file_id(
-                            _language_for_file(send_pat.file_path, send_pat.pattern_type),
-                            send_pat.file_path,
-                        ),
-                        dst=_make_file_id(
-                            _language_for_file(recv_pat.file_path, recv_pat.pattern_type),
-                            recv_pat.file_path,
-                        ),
-                        edge_type="event_publishes",
-                        line=send_pat.line,
-                        evidence_type=evidence_type,
-                        confidence=confidence,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        access_mode="write",
-                        channel=event,
-                        meta={
-                            "channel_kind": "websocket",
-                            "event": event,
-                            "event_type": "variable" if is_variable_match else "literal",
-                            "framework_dispatch": _resolve_ws_framework(
-                                send_pat.pattern_type, declared_python_deps
-                            ),
-                        },
-                        # derived-from consumed-none: a file scan; both file ids are computed from
-                        #   paths, not read
-                        derived_from=[],
-                    )
-                    edges.append(edge)
+    for send_pat, recv_pat, join in pair_by_name(
+        sends, receives, lambda p: p.arg, lambda p: p.arg,
+    ):
+        # Don't link same file to itself for simple patterns
+        if send_pat.file_path == recv_pat.file_path:
+            continue
+        # Skip generic protocol send/receive (no named event).
+        # FastAPI/native websocket.send_*/receive_* are raw
+        # WebSocket operations—not named events like Socket.io
+        # emit/on or Django Channels typed messages.
+        if (
+            join.value == "message"
+            and send_pat.pattern_type in _GENERIC_PROTOCOL_TYPES
+            and recv_pat.pattern_type in _GENERIC_PROTOCOL_TYPES
+        ):
+            continue
+        # Confidence depends on what the join compared: values
+        # (exact event) or identifiers (heuristic).
+        is_variable_match = not join.on_value
+        confidence = 0.65 if is_variable_match else 0.85
+        # ADR-0028 Phase 3 / audit-findings 0014: f"{pattern_type}_emit"
+        # leaked framework identity into evidence_type. Fold to canonical
+        # ast_call_direct + meta["framework_dispatch"]=<framework_name>.
+        # The variable_match branch keeps its Cluster A canonical.
+        evidence_type = "variable_match" if is_variable_match else "ast_call_direct"
+        # Pass linker-specific meta via Edge.create's meta= kwarg
+        # so Edge.create merges it with the dataflow fields —
+        # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
+        # WebSocket sender→receiver via channel is publish-
+        # family shape; "websocket" is the channel kind.
+        # Canonical 'event_publishes' +
+        # meta['channel_kind']='websocket'. Pass meta via
+        # Edge.create's meta= kwarg so it merges with
+        # dataflow fields (assigning edge.meta afterward
+        # would wipe the dataflow meta fields — INV-forim).
+        edge = Edge.create(
+            src=_make_file_id(
+                _language_for_file(send_pat.file_path, send_pat.pattern_type),
+                send_pat.file_path,
+            ),
+            dst=_make_file_id(
+                _language_for_file(recv_pat.file_path, recv_pat.pattern_type),
+                recv_pat.file_path,
+            ),
+            edge_type="event_publishes",
+            line=send_pat.line,
+            evidence_type=evidence_type,
+            confidence=confidence,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            access_mode="write",
+            channel=join.channel,
+            meta={
+                "channel_kind": "websocket",
+                "event": join.value,
+                "event_type": join.kind,
+                "event_identifier": join.identifier,
+                "framework_dispatch": _resolve_ws_framework(
+                    send_pat.pattern_type, declared_python_deps
+                ),
+            },
+            # derived-from consumed-none: a file scan; both file ids are computed from
+            #   paths, not read
+            derived_from=[],
+        )
+        edges.append(edge)
 
     # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid): WebSocket
     # endpoint connections declare connectivity (file → endpoint

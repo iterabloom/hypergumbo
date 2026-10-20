@@ -1,13 +1,23 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Shell-out wrapper for ``scip-python index`` (WI-nanom).
 
-``scip-python index <project> --project-name NAME --output FILE`` writes a
-SCIP index for a Python project; pyright resolves the project's own
+``scip-python index --cwd <project> --project-name NAME --project-version 0
+--output FILE`` writes a SCIP index for a Python project; pyright resolves the project's own
 modules and whatever is importable from the invoking interpreter's
 environment (so a project analysed inside its own virtualenv gets its
 dependencies typed too). It executes NOTHING from the project — static
 inference only — which is why this backend's opt-in is a preference and
 not a trust grant.
+
+The project goes in ``--cwd``. scip-python 0.6.6 takes no positional
+project: handed one, it ignores it, indexes its own working directory and
+exits 0 -- and the subprocess runs in a scratch directory, so until WI-nijod
+every run indexed that empty directory ("Total Project Files 0") and
+returned a valid, empty index. The version is a constant: left out, it is
+the project's git revision, and outside a git checkout the indexer crashes
+on the first module (``normalizeNameOrVersion``). Nothing downstream reads
+it -- translation keys on the descriptors -- and a constant keeps symbol
+strings identical from one commit to the next.
 
 :func:`run_scip_python_index` confirms the binary resolves, runs it with
 stdout/stderr captured and a timeout, and returns the index bytes. Failure
@@ -24,6 +34,14 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from hypergumbo_core.scip_python_install import SCIP_PYTHON_BINARY
+
+
+#: V8's fatal-error text when the heap limit is reached. The default limit
+#: (~4 GB) is too small for a large project: hypergumbo's own tree (1,712
+#: files) aborted at 4.2 GB RSS and indexed in 306 s at 8.4 GB with
+#: ``--max-old-space-size=9000`` (WI-nijod). The limit is the user's to set --
+#: it is memory on their machine -- so the failure names the knob instead.
+_NODE_HEAP_EXHAUSTED = b"JavaScript heap out of memory"
 
 
 class ScipPythonError(Exception):
@@ -77,8 +95,9 @@ def run_scip_python_index(
         )
     output = cwd / "index.scip"
     argv = [
-        resolved, "index", str(project),
+        resolved, "index", "--cwd", str(project),
         "--project-name", project_name,
+        "--project-version", "0",
         "--output", str(output),
     ]
     run = runner if runner is not None else subprocess.run
@@ -92,9 +111,14 @@ def run_scip_python_index(
             f"scip-python index timed out after {timeout_sec:.0f}s on {project}", stderr,
         ) from exc
     if completed.returncode != 0:
+        stderr = completed.stderr or b""
+        hint = (
+            "; node ran out of heap -- raise it with NODE_OPTIONS=--max-old-space-size=<MB>"
+            if _NODE_HEAP_EXHAUSTED in stderr else ""
+        )
         raise ScipPythonInvocationFailed(
-            f"scip-python index exited {completed.returncode} on {project}",
-            completed.stderr or b"", returncode=completed.returncode,
+            f"scip-python index exited {completed.returncode} on {project}{hint}",
+            stderr, returncode=completed.returncode,
         )
     if not output.is_file():
         raise ScipPythonNoOutput(

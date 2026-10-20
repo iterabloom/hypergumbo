@@ -2,9 +2,9 @@
 """Protocol linker: HTTP client-server for detecting cross-language API calls.
 
 This linker detects HTTP client calls (fetch, axios, AngularJS $http, jQuery $.ajax,
-requests, OpenAPI clients, RestClient, HTTParty, Faraday, Net::HTTP, RestTemplate,
-Retrofit, and Elm's ``Http`` module) and links them to server route handlers
-detected by language analyzers.
+OpenAPI clients, requests, httpx, Go net/http, RestClient, HTTParty, Faraday,
+Net::HTTP, RestTemplate, Retrofit, and Elm ``Http`` / ``Utils.Api`` calls) and links
+them to server route handlers detected by language analyzers.
 
 Two URL shapes get special handling beyond the literal case. JS/TS template
 literals are folded to a comparable path before matching, so
@@ -12,9 +12,11 @@ literals are folded to a comparable path before matching, so
 parameter. A template literal that stops at an unresolved slot, or is not
 anchored at ``/``, keeps its literal prefix as url_type="variable"; if that
 prefix has 2 or more path segments it falls back to prefix matching against
-known routes. A bare-identifier URL (``fetch(API_URL)``) is recorded as a
-client symbol at 0.65, but the constant is not substituted and the URL is
-not matched to a route.
+known routes. A bare-identifier URL (``fetch(API_URL)``) goes through the
+shared ``_name_args`` resolver (WI-luhod): bound to a same-file module-scope
+string constant, it becomes that URL (url_type="constant") and is matched like
+a literal; otherwise it is url_type="unresolved", recorded as a client symbol
+with no ``url_path``, and never matched -- its text is not a path.
 
 Detected Client Patterns
 ------------------------
@@ -71,12 +73,17 @@ Elm (``_scan_elm_file``):
   Utils.Api.get url ... - let-bound fold (``_find_elm_let_bound_url_calls``);
   identifier items become ``{name}`` placeholders
 
-Variable URL Detection
-----------------------
-URLs stored in variables are detected with lower confidence (0.65 vs 0.9;
-cross-language matches sit at 0.8):
-- const API_URL = '/api/users'; fetch(API_URL) -> detected with url_type="variable"
-- Direct literal URLs have url_type="literal" and higher confidence
+Identifier URL Detection
+------------------------
+- const API_URL = '/api/users'; fetch(API_URL) -> url '/api/users',
+  url_type="constant", matched and scored as a literal (0.9; 0.8
+  cross-language). Python, JS/TS, Java ``static final String`` and Go
+  ``const`` resolve; Ruby has no resolver rules, so its identifiers stay
+  unresolved.
+- fetch(API_URL) with API_URL imported, a parameter or dotted
+  (``config.apiUrl``) -> url_type="unresolved": a client symbol, no route edge.
+  Before WI-luhod the identifier TEXT was route-matched.
+- A template literal folded to a prefix -> url_type="variable", 0.65.
 
 Server Route Matching
 ---------------------
@@ -106,8 +113,9 @@ Why This Design
 - Regex-based client detection is fast and portable
 - Route matching handles common parameterization patterns
 - Symbols for client calls enable slice traversal from either end
-- Variable URL detection records calls whose URL is a constant or variable
-  (as client symbols; non-template constants are not resolved to a route)
+- Identifier URLs are resolved by the same resolver the message-queue, IPC,
+  event-sourcing and websocket linkers use, so a constant means the same
+  thing in all five
 """
 
 from __future__ import annotations
@@ -135,6 +143,7 @@ from ..url_folding import (
 )
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 from ._text_filters import js_ts_language_from_path, read_masked_source
+from ._name_args import KIND_UNRESOLVED, ConstantResolver, name_arg_from_match
 
 PASS_ID = make_pass_id("http-linker")
 
@@ -148,7 +157,11 @@ class HttpClientCall:
     line: int  # Line number in source
     file_path: str  # Source file path
     language: str  # Source language
-    url_type: str = "literal"  # "literal" or "variable"
+    # "literal" (a string at the site), "constant" (an identifier bound to a
+    # same-file module-scope string, resolved), "unresolved" (any other bare
+    # identifier: the URL is NOT known), or "variable" (a template literal
+    # folded to a literal prefix).
+    url_type: str = "literal"
 
 
 @dataclass
@@ -446,21 +459,28 @@ _ELM_URL_CALL_TEMPLATE = (
 _ELM_LET_CALL_WINDOW = 800
 
 
-def _extract_url_from_match(match: re.Match, literal_group: int = 1, var_group: int = 2) -> tuple[str, str]:
+def _extract_url_from_match(
+    match: re.Match,
+    literal_group: int = 1,
+    var_group: int = 2,
+    resolver: ConstantResolver | None = None,
+) -> tuple[str, str]:
     """Extract URL and url_type from a regex match.
 
     The _URL_ARG pattern captures:
     - Group literal_group: string literal (e.g., '/api/users')
-    - Group var_group: variable identifier (e.g., API_URL, config.apiUrl)
+    - Group var_group: identifier (e.g., API_URL, config.apiUrl)
+
+    WI-luhod: an identifier is resolved by the shared ``_name_args`` resolver
+    (same-file module-scope string constant -> ``constant``, its value as the
+    URL); anything else is ``unresolved`` and keeps the identifier text, which
+    ``link_http`` never route-matches.
 
     Returns:
-        Tuple of (url, url_type) where url_type is "literal" or "variable".
+        Tuple of (url, url_type): ``literal``, ``constant`` or ``unresolved``.
     """
-    literal = match.group(literal_group)
-    if literal:
-        return literal, "literal"
-    variable = match.group(var_group)
-    return variable, "variable"
+    arg = name_arg_from_match(match, literal_group, var_group, resolver)
+    return arg.label, arg.kind
 
 
 def _extract_module_constants(content: str) -> dict[str, str]:
@@ -474,6 +494,13 @@ def _extract_module_constants(content: str) -> dict[str, str]:
 
     Numeric, object, array, and function-call RHS values are ignored — only
     plain string literals can be safely folded into URL templates.
+
+    Deliberately NOT replaced by ``_name_args.ConstantResolver`` (considered in
+    WI-luhod, which moved bare-identifier URLs onto it): template folding needs
+    a name -> value map for every slot at once, and this extractor's rule (any
+    top-level single-line string binding) is the one WI-sijoh measured. The
+    resolver also rejects names rebound anywhere in the file; adopting it here
+    would change template matching without a measurement behind the change.
     """
     return {
         m.group(1): m.group(2)
@@ -676,11 +703,12 @@ def _find_source_files(root: Path) -> Iterator[Path]:
 def _scan_python_file(file_path: Path, content: str) -> list[HttpClientCall]:
     """Scan a Python file for HTTP client calls."""
     calls: list[HttpClientCall] = []
+    resolver = ConstantResolver(content, "python")  # WI-luhod
 
     for match in PYTHON_REQUESTS_PATTERN.finditer(content):
         method = match.group(1).upper()
         # Groups: 1=method, 2=literal URL, 3=variable URL
-        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3, resolver=resolver)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
@@ -700,6 +728,7 @@ def _scan_python_file(file_path: Path, content: str) -> list[HttpClientCall]:
 def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]:
     """Scan a JavaScript/TypeScript file for HTTP client calls."""
     calls: list[HttpClientCall] = []
+    resolver = ConstantResolver(content, js_ts_language_from_path(file_path))  # WI-luhod
 
     # Module-scope string consts used for template-literal folding (WI-sijoh).
     # Extracted once per file; reused for every fetch/axios template below.
@@ -767,7 +796,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
             continue
 
         # Groups: 1=literal URL, 2=variable URL
-        url, url_type = _extract_url_from_match(match, literal_group=1, var_group=2)
+        url, url_type = _extract_url_from_match(match, literal_group=1, var_group=2, resolver=resolver)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
@@ -785,7 +814,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
     for match in JS_AXIOS_PATTERN.finditer(content):
         method = match.group(1).upper()
         # Groups: 1=method, 2=literal URL, 3=variable URL
-        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3, resolver=resolver)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
@@ -841,7 +870,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
     for match in JS_ANGULARJS_HTTP_PATTERN.finditer(content):
         method = match.group(1).upper()
         # Groups: 1=method, 2=literal URL, 3=variable URL
-        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3, resolver=resolver)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
@@ -897,7 +926,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
     for match in JS_JQUERY_SHORTHAND_PATTERN.finditer(content):
         method = match.group(1).upper()
         # Groups: 1=method, 2=literal URL, 3=variable URL
-        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3, resolver=resolver)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
@@ -961,12 +990,13 @@ def _scan_go_file(file_path: Path, content: str) -> list[HttpClientCall]:
     - http.NewRequestWithContext(ctx, "METHOD", "url", body) — with context
     """
     calls: list[HttpClientCall] = []
+    resolver = ConstantResolver(content, "go")  # WI-luhod
 
     # http.Get/Post/Head("url")
     for match in GO_HTTP_SIMPLE_PATTERN.finditer(content):
         method = match.group(1).upper()
         # Groups: 1=method name, 2=literal URL, 3=variable URL
-        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3, resolver=resolver)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
@@ -984,7 +1014,7 @@ def _scan_go_file(file_path: Path, content: str) -> list[HttpClientCall]:
     for match in GO_HTTP_NEW_REQUEST_PATTERN.finditer(content):
         method = match.group(1).upper()
         # Groups: 1=method, 2=literal URL, 3=variable URL
-        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3, resolver=resolver)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
@@ -1002,7 +1032,7 @@ def _scan_go_file(file_path: Path, content: str) -> list[HttpClientCall]:
     for match in GO_HTTP_NEW_REQUEST_CTX_PATTERN.finditer(content):
         method = match.group(1).upper()
         # Groups: 1=method, 2=literal URL, 3=variable URL
-        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3, resolver=resolver)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
@@ -1027,12 +1057,13 @@ def _scan_ruby_file(file_path: Path, content: str) -> list[HttpClientCall]:
     - Net::HTTP: Net::HTTP.get/post_form/get_response(URI("url")) pattern
     """
     calls: list[HttpClientCall] = []
+    resolver = ConstantResolver(content, "ruby")  # WI-luhod
 
     # RestClient/HTTParty/Faraday.method("url")
     for match in RUBY_HTTP_LIB_PATTERN.finditer(content):
         method = match.group(1).upper()
         # Groups: 1=method, 2=literal URL, 3=variable URL
-        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3, resolver=resolver)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
@@ -1093,12 +1124,13 @@ def _scan_java_file(file_path: Path, content: str) -> list[HttpClientCall]:
     - Retrofit: @GET/@POST/@PUT/@DELETE/@PATCH annotations
     """
     calls: list[HttpClientCall] = []
+    resolver = ConstantResolver(content, "java")  # WI-luhod
 
     # RestTemplate method calls (getForObject, postForEntity, delete, put, etc.)
     for match in JAVA_REST_TEMPLATE_PATTERN.finditer(content):
         method_name = match.group(1).lower()
         # Groups: 1=method name, 2=literal URL, 3=variable URL
-        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3, resolver=resolver)
         line_num = content[: match.start()].count("\n") + 1
 
         http_method = _REST_TEMPLATE_METHOD_MAP.get(method_name, "GET")
@@ -1117,7 +1149,7 @@ def _scan_java_file(file_path: Path, content: str) -> list[HttpClientCall]:
     # RestTemplate.exchange("url", HttpMethod.METHOD, ...)
     for match in JAVA_REST_TEMPLATE_EXCHANGE_PATTERN.finditer(content):
         # Groups: 1=literal URL, 2=variable URL, 3=HTTP method
-        url, url_type = _extract_url_from_match(match, literal_group=1, var_group=2)
+        url, url_type = _extract_url_from_match(match, literal_group=1, var_group=2, resolver=resolver)
         http_method = match.group(3).upper()
         line_num = content[: match.start()].count("\n") + 1
 
@@ -1382,7 +1414,10 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
         ),
         meta={
             "http_method": call.method,
-            "url_path": _extract_path_from_url(call.url) or call.url,
+            "url_path": (
+                None if call.url_type == KIND_UNRESOLVED
+                else _extract_path_from_url(call.url) or call.url
+            ),
             "raw_url": call.url,
             "url_type": call.url_type,
             "framework_role": "http_client",
@@ -1460,6 +1495,12 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
         client_symbol.origin = [PASS_ID]
         client_symbol.origin_run_id = run.execution_id
         symbols.append(client_symbol)
+
+        # WI-luhod: an unresolved identifier's URL is not known, and its text
+        # is not a path; matching it against routes is what joined
+        # ``fetch(API_URL)`` to a route literally named ``API_URL``.
+        if call.url_type == KIND_UNRESOLVED:
+            continue
 
         # Try to match to a route symbol
         call_path = _extract_path_from_url(call.url)

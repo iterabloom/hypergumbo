@@ -1,0 +1,49 @@
+- op: create  # 38a0
+  at: '2026-10-17T03:21:13Z'  # 38a0
+  by: agent  # 38a0
+  actor: jgstern_agent  # 38a0
+  clock: 1  # 38a0
+  nonce: 38a0  # 38a0
+  data:  # 38a0
+    kind: work_item  # 38a0
+    title: "serve: Yjs sync + awareness endpoint (y-protocols over WebSocket), hard-bound to 127.0.0.1, beside the state_snapshot channel"  # 38a0
+    status: todo_hard  # 38a0
+    priority: 4  # 38a0
+    parent:  # 38a0
+    tags:  # 38a0
+    - tracker_serve  # 38a0
+    - server  # 38a0
+    - yjs  # 38a0
+    isbefore: []  # 38a0
+    duplicate_of: []  # 38a0
+    not_duplicate_of: []  # 38a0
+    pr_ref:  # 38a0
+    description: "## What\nA Yjs sync + awareness endpoint on `htrac serve` (Starlette), speaking the y-protocols sync and awareness messages over a WebSocket route beside the existing `/ws` state_snapshot/command channel, serving the projected Y.Doc (item B). Bound to 127.0.0.1 only; the binding is hard-coded, not a flag, until WI-hopip (serve write-API auth) and WI-sunan (tracker self-claims) land.\n## How\n- One room per tracker root. Server side via pycrdt's sync helpers; client side via `y-websocket` 3.1.0 (Yjs 13) or `@y/websocket` (Yjs 14) -- match the ADR's Yjs-version decision.\n- Awareness payload per the ADR: {item_id in view, client label, kind}. Expose \"who is looking at WI-x\" to the TUI/CLI later; for now assert it round-trips between two clients.\n- Alternative acceptable for the first spike: run `npx y-websocket` as a sidecar and have serve only project the doc; record which was chosen.\n## Done when\nTwo browser clients (Playwright) connected to the endpoint converge after concurrent edits to a live-editable field, see each other's awareness, and the endpoint refuses non-loopback binds. serve.py docstring updated. Coverage 100%.\n## Context\n~/hypergumbo_lab_notebook/notebookjournal_10162026_2318.md section 4. Security: WI-hopip documents that serve's write API currently has no auth -- this endpoint must not widen that."  # 38a0
+    fields: {}  # 38a0
+- op: update  # 4698
+  at: '2026-10-17T03:31:12Z'  # 4698
+  by: agent  # 4698
+  actor: jgstern_agent  # 4698
+  clock: 2  # 4698
+  nonce: '4698'  # 4698
+  set: {}  # 4698
+  add:  # 4698
+    isbefore: [WI-fujus-nojaz-pomoz-kinid-jutot-jolom-bisus-gazam]  # 4698
+- op: update  # 1570
+  at: '2026-10-17T03:32:02Z'  # 1570
+  by: agent  # 1570
+  actor: jgstern_agent  # 1570
+  clock: 3  # 1570
+  nonce: '1570'  # 1570
+  set: {}  # 1570
+  add:  # 1570
+    isbefore: [WI-kinab-zunas-gozat-musan-hivoj-rural-sosuf-pinur]  # 1570
+- op: update  # 38b6
+  at: '2026-10-17T03:33:51Z'  # 38b6
+  by: agent  # 38b6
+  actor: jgstern_agent  # 38b6
+  clock: 4  # 38b6
+  nonce: 38b6  # 38b6
+  set: {}  # 38b6
+  add:  # 38b6
+    isbefore: [WI-pufun-vohuf-bimuh-rigon-mamij-tokas-hamun-rosub]  # 38b6

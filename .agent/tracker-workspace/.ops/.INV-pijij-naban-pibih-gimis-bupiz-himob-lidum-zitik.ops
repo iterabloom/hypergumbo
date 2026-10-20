@@ -1,0 +1,48 @@
+- op: create  # 100b
+  at: '2026-10-20T04:39:38Z'  # 100b
+  by: agent  # 100b
+  actor: jgstern_agent  # 100b
+  clock: 1  # 100b
+  nonce: 100b  # 100b
+  data:  # 100b
+    kind: invariant  # 100b
+    title: "The WI-nurun confidence band flags every corroborated edge: 109,622 cross_field|info on a scip-enabled self-map"  # 100b
+    status: violated  # 100b
+    priority: 1  # 100b
+    parent:  # 100b
+    tags:  # 100b
+    - multi_fidelity  # 100b
+    - validation  # 100b
+    - scip  # 100b
+    isbefore: []  # 100b
+    duplicate_of: []  # 100b
+    not_duplicate_of: []  # 100b
+    pr_ref:  # 100b
+    description: "FOUND 2026-10-20 building a scip-python-enabled self-map for WI-losig (the first time the backend ran on a real tree, after WI-nijod).\n\nFACTS. With HYPERGUMBO_SCIP_PYTHON=1, the merge pass corroborates 109,622 edges the ast-python arm and the scip arm both produced: origin [python, scip], confidence_source 'corroborated', confidence 0.95 (CORROBORATED_CONFIDENCE, ADR-0057 s5/s13), evidence_type kept as the incumbent's (ast_call_direct 67,471; ast_call 35,227; ast_name_read 6,924). spec_validator's WI-nurun band check reports EVERY one as cross_field|info \"Edge.confidence 0.95 for evidence_type 'ast_call_direct' is outside the derived band [0.5, 0.85] -- the per-emitter value no longer tracks the inference pathway\". All 109,622 flagged edges are confidence_source=corroborated (counted).\n\nWHY THE VALIDATOR IS THE WRONG SIDE. ir.py's confidence_source docstring: corroborated means two DISTINCT pathways reached the edge, \"so confidence is the declared corroboration level ... not either producer's value\". The band describes ONE pathway's value; a corroborated confidence is by definition not on it. The level is configurable ([merge] corroborated_confidence), so the validator cannot pin it to the constant either.\n\nCONSEQUENCE. scripts/check-self-tree-validation on that map: exit 1, \"cross_field|info: 109622 > baseline 0\". The ratchet is shrink-only, so WI-losig (backend-enabled CI self-map) cannot land on the shared map until this is fixed. Every user who opts in to the backend also gets ~110k spurious info violations in validation_report.\n\nFIX: the band check skips an edge whose confidence_source is corroborated."  # 100b
+    fields:  # 100b
+      statement: "The spec validator's per-evidence_type confidence band applies only to a confidence that came from that pathway; an edge whose confidence_source is corroborated is not judged against it."  # 100b
+      root_cause: "spec_validator's band check predates corroboration (ADR-0057 s13) and checks every edge with an evidence_type and a confidence, regardless of confidence_source."  # 100b
+- op: update  # 3a74
+  at: '2026-10-20T04:39:43Z'  # 3a74
+  by: agent  # 3a74
+  actor: jgstern_agent  # 3a74
+  clock: 2  # 3a74
+  nonce: 3a74  # 3a74
+  set: {}  # 3a74
+  add:  # 3a74
+    isbefore: [WI-losig-domon-janak-rumop-rubas-rapas-vinuj-zohih]  # 3a74
+- op: update  # 0ba1
+  at: '2026-10-20T05:40:47Z'  # 0ba1
+  by: agent  # 0ba1
+  actor: jgstern_agent  # 0ba1
+  clock: 3  # 0ba1
+  nonce: 0ba1  # 0ba1
+  set:  # 0ba1
+    status: satisfied  # 0ba1
+- op: discuss  # b472
+  at: '2026-10-20T05:40:47Z'  # b472
+  by: agent  # b472
+  actor: jgstern_agent  # b472
+  clock: 4  # b472
+  nonce: b472  # b472
+  message: "Fixed in PR 1749 (dev f9240ffd78). spec_validator._check_confidence_range skips confidence_source=corroborated. BEHAVIORAL, production path: a fresh scip-python-enabled self-map of merged dev (HYPERGUMBO_SCIP_PYTHON=1, NODE_OPTIONS=--max-old-space-size=9000; 8m47s, summed tree peak 10.3 GB): scripts/check-self-tree-validation -> 'self-tree violation matrix: {}', 'OK: self-tree validation within baselines.', exit 0. Before the fix the same build gave exit 1, 'cross_field|info: 109622 > baseline 0'. Unit: test_confidence_range_skips_a_corroborated_edge (a non-corroborated 0.95 ast_call_direct edge is still flagged)."  # b472

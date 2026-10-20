@@ -3,7 +3,7 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v9.1.0
+- Released **tool** is at: v9.2.0
 - Released **schema** is at: v0.20.15
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
@@ -11,6 +11,73 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 > **Looking for the reader-friendly summary?** See **[docs/RELEASE-NOTES-9.X.md](docs/RELEASE-NOTES-9.X.md)** for the audience-organized release notes of the current line — each opens with a TL;DR naming the breaking changes. Earlier lines: [8.x](docs/RELEASE-NOTES-8.X.md), [7.x](docs/RELEASE-NOTES-7.X.md), [6.x](docs/RELEASE-NOTES-6.X.md), [5.x](docs/RELEASE-NOTES-5.X.md). This file is the **implementer log**: structured, mechanism-level entries per release.
 
 ## [Unreleased]
+
+## [9.2.0] - 2026-10-20
+
+### Added
+
+- **`ci-debug --actions` reads GitHub Actions**: runs, job status, logs and artifacts, read-only.
+- **A release gate on observed I/O**: `scripts/io-manifest` traces the CLI under `strace` on six pinned repositories. A new write, program launch or network connection fails the release ([`docs/io-manifest/expected.txt`](docs/io-manifest/expected.txt)).
+- **A per-PR I/O catalogue check** (`scripts/check-claims-coverage`, ~30 s): shipped code that calls a module the catalogue does not cover fails its PR, rather than the twice-daily run.
+
+### Changed
+
+- **`hypergumbo compact` leaves out test code by default**, as the centrality view already did.
+- **CI's twice-daily self-analysis uses the scip-python backend** for receiver typing, and fails if that backend contributed nothing.
+
+### Removed
+
+- **Three functions nothing but tests called**: `resolve_arbitration_policy`, `write_boundary_for_target_kind`, `build_interface_impl_map`.
+
+### Fixed
+
+#### Taint analysis
+
+- **Secrets returned without `return` reach the caller's sink**: Rust tail expressions and JS/TS arrow expression bodies.
+- **A secret read on the same line as a sink, or passed to another call there, is no longer reported clean**, e.g. `requests.post(url, headers={"A": os.environ["T"]})`.
+- **Taint passes through a `switch` or `match` when no arm matches**, so a definition before it still reaches later code.
+- **C gives no verdict when a secret leaves through something taint does not follow**: a pointer parameter, a global, a function-like macro or a variadic argument.
+- **C and C++ calls declared behind a project header are classified**: a file's headers now include quoted and transitively included ones, not only `<...>` includes.
+- **Python HTTP responses and connected sockets are network-input sources.**
+
+#### Calls, types and inheritance
+
+- **Python bare-name calls no longer bind same-named methods**: `open(...)` no longer resolves to `ContentFile.open`.
+- **C++ and Perl member calls resolve on the receiver's type**, not by short name.
+- **C calls through a function-pointer variable reach the function it holds.**
+- **Scala and Kotlin**: calls on project objects and companions resolve; parameterless JDK calls and Kotlin synthetic getters emit edges; `println` and `Console` writes are logging.
+- **Ruby emits the calls it used to drop** (untyped receivers, implicit `self`, `super`, recursion) and resolves constants through the enclosing module.
+- **C dispatch tables are variable symbols**, so `dispatches_to` edges no longer start at a missing node; arrays of function pointers count as dispatch tables.
+- **A base class links to an in-repo class only when an import or qualifier names that class**, in Java, Kotlin, JS/TS, PHP, Groovy, Scala, C# and C++; otherwise it is external.
+- **C# and C++ dispatch is decided per method**: `override` and `virtual` create dispatch links; hidden names and statics do not.
+- **C# interface inheritance and Go interface embedding produce `extends` edges.**
+- **WebSocket events and HTTP URLs named by a constant resolve to its value.**
+- **Smaller per-language fixes**:
+  - D no longer parses GCC dependency files; `.php` files starting with `<?hh` are analysed as Hack, not PHP.
+  - Swift subscripts are not calls.
+  - The left side of a Wolfram definition is not a call, and Wolfram `.m` files are analysed.
+  - Odin's `obj.method()` is one edge.
+  - Zig, LLVM IR, COBOL, TLA+ and Agda attribute each call to the right definition.
+  - COBOL sections and paragraphs stay in the default view.
+
+#### scip-python backend (opt-in)
+
+- **It indexes the analysed repository**, not an empty scratch directory. It also runs on trees outside git, and says how to fix Node running out of heap.
+- **Edges that scip-python and the built-in analyzer both find no longer fail confidence validation.**
+
+#### Cache, release and CI
+
+- **Concurrent runs no longer fail each other over cache eviction**; cache cleanup can only warn.
+- **`--exclude` is part of the results-cache key.**
+- **A GitHub Release attaches every asset or fails**; the SBOM describes the shipped wheels.
+- **`.hypergumbo-examples/` is gitignored automatically.**
+- **CI gates**: the self-claims gate is green again; test-only reachability counts callers under `scripts/`; `generate-architecture --check` ignores tracker syncs.
+
+### Documentation
+
+- Module docstrings: 53 corrected, 16 extended (two staleness audits).
+- README names the files `survey --out` writes beside its output.
+- ADR-0004 point 7 names both rows that consult git; ARCHITECTURE.md regenerated.
 
 ## [9.1.0] - 2026-10-16
 
@@ -2624,6 +2691,7 @@ Initial public release with comprehensive static analysis capabilities.
 
 | Version | Date       | Highlights                                                   |
 | ------- | ---------- | ------------------------------------------------------------ |
+| 9.2.0 | 2026-10-20 | `compact` leaves out test code by default; fewer false taint all-clears (same-line sinks, C escapes, transitive headers); calls resolve more precisely in eight languages; base classes bind only to the in-repo class an import names; each `.php` file analysed as PHP or Hack, not both |
 | 9.1.0 | 2026-10-16 | Summaries count your own code; analysed vendored code disclosed; git submodules skipped by default; edge confidence from evidence bands (`confidence_model` v2.2); Structure tree LOC column; surveys find `requirements/*.txt` and `conf/*.routes` |
 | 9.0.0 | 2026-10-14 | `stable_id_scheme` v9: deleting a symbol moves no other id; catalogue tiers (only `builtin` rows clear a flow, in-repo catalogue data opt-in); installed dependency source skipped by default (`--trace-deps`); calls bind to the declaration in scope in five languages |
 | 8.1.0   | 2026-09-25 | Calls credited to their enclosing function by position (25 analyzers); receiver typing in 10 languages; opt-in scip-python backend merged per record (ADR-0057); `is_exported` can be `null`; taint useful precision 24.1% → 30.9% |
@@ -2659,7 +2727,8 @@ Initial public release with comprehensive static analysis capabilities.
 | 0.6.0   | 2025-12-29 | Lean, Wolfram, Agda analyzers; release automation            |
 | 0.5.0   | 2025-12-26 | Initial release: 32 analyzers, 12 linkers                    |
 
-[Unreleased]: https://github.com/iterabloom/hypergumbo/compare/v9.1.0...HEAD
+[Unreleased]: https://github.com/iterabloom/hypergumbo/compare/v9.2.0...HEAD
+[9.2.0]: https://github.com/iterabloom/hypergumbo/compare/v6.1.0...v9.2.0
 [9.1.0]: https://github.com/iterabloom/hypergumbo/compare/v9.0.0...v9.1.0
 [9.0.0]: https://github.com/iterabloom/hypergumbo/compare/v8.1.0...v9.0.0
 [8.1.0]: https://github.com/iterabloom/hypergumbo/compare/v8.0.0...v8.1.0

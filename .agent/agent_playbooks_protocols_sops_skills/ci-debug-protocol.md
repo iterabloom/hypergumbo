@@ -25,6 +25,18 @@ When CI fails but tests pass locally, use `./scripts/ci-debug`:
 
 # Analyze tree-sitter dependencies (finds missing packages)
 ./scripts/ci-debug analyze-deps
+
+# GitHub Actions (WI-pubur). Only the release workflow runs there; everything
+# above reads Woodpecker. `--actions` may go anywhere on the line. Read-only.
+./scripts/ci-debug runs --actions release.yml      # recent runs, incl. workflow_dispatch dry runs
+./scripts/ci-debug status --actions <run-id>       # jobs, steps, conclusions, durations
+./scripts/ci-debug logs --actions <run-id> [job]   # one job's log; default: the first failed job
+./scripts/ci-debug artifact --actions <run-id> <name> <new-empty-dir>
+# Logs and artifacts are served through a redirect to a storage host. The
+# command follows it only when that host is listed in ALLOWED_WEBSITES.md;
+# otherwise it names the host and exits 3. Adding a host is an owner decision
+# (the allowlist says so) — ask, with domain and rationale, rather than route
+# around it with gh or curl.
 ```
 
 **`auto-pr` exit-code recovery.** When `./scripts/auto-pr` exits non-zero:
@@ -37,7 +49,7 @@ When CI fails but tests pass locally, use `./scripts/ci-debug`:
 **Scenario B (CI stuck after timeout).** Do NOT accumulate more changes to git-tracked hypergumbo code. Run `./scripts/ci-debug status` once per hour (manually, not in a loop). When CI recovers, use `./scripts/merge-pr <PR_NUM>` to merge. It is fine to wait.
 
 **CI workflow topology:**
-- **`ci.yml`**: Fast per-PR check (smart-test on changed packages). Gates merge. **The self-claim drift gate is NOT here** — it was removed from the per-PR pipeline on 2026-08-30 (owner decision) once it became the critical path at ~14 min, against the 3m49s its move into that pipeline was justified on. A self-claim regression is therefore no longer merge-blocking; it surfaces on the next full-suite cron, up to ~12h later.
+- **`ci.yml`**: Fast per-PR check (smart-test on changed packages). Gates merge. **The self-claim drift gate is NOT here** — it was removed from the per-PR pipeline on 2026-08-30 (owner decision) once it became the critical path at ~14 min, against the 3m49s its move into that pipeline was justified on. A self-claim regression is therefore no longer merge-blocking; it surfaces on the next full-suite cron, up to ~12h later. **One shape is merge-blocking again (INV-jojog, 2026-10-17):** the `claims-coverage` step runs `scripts/check-claims-coverage` (~30 s: the python analyzer over the shipped roots, then `verify_claims`' own coverage decision) and fails a PR whose shipped code calls a module the I/O catalogue can neither row nor enumerate — the shape behind four of the five self-claims reds since 09-03. Its exit 1 prints the module and the remedy (a dated `module_completeness` entry at the exact slot); exit 2 is infrastructure.
 - **`full-suite.yml`**: Periodic validation (twice daily at 01:00 and 13:00 UTC + manual dispatch). **Now the ONLY arm of the self-claim drift gate.** Its six steps collapse into one aggregate commit status on GitHub, so a drift verdict reads as "full-suite is red" there — `ci-debug cron-status` finds the verdict wherever it landed AND names each step's own verdict beneath it (`OK` / `FAIL` / `ERR` / `SKIP`), so attribution needs no log fetch and a sibling sitting red no longer masks this gate (INV-bozid, both halves). Use `ci-debug logs <step>` for the transcript of the step it names. The per-gate workflow-file split (remedy (a)) is only needed if a gate ever wants its own GitHub check context. Runs all packages in parallel. Does NOT trigger on push to dev — with 20+ merges/day and singleton concurrency, the queue never clears. Stop-the-line fires from scheduled runs, so there may be a delay between a breaking merge and the andon cord — this is expected, not a bug.
 - **`nightly.yml`**: Runs at 5:30 AM UTC. Multi-Python matrix (3.10–3.13) and integration tests, so release.yml can skip them when the release SHA was already covered. **It publishes ONE COMMIT STATUS PER MATRIX LEG** — `ci/woodpecker/cron/nightly/1` … `/4`, and no bare `.../nightly` context. This line previously named the contexts `nightly/test-matrix` / `nightly/integration-tests` and claimed "`ci-debug status` works for nightly runs too"; both were false and are corrected here (INV-bozid). `status` renders HEAD only, and a nightly verdict lands on whatever commit was tip at 5:30 — use **`ci-debug cron-status`**, which finds it wherever it is and names the failing leg. Measured the day that landed: leg 1 was FAILING sixteen commits back and `status` said nothing about it.
 - **`release.yml`**: Triggered by version tag push or manual dispatch. Security audit is a hard gate before publish. Test-matrix and integration-tests are deferred: if nightly already covered the SHA they're skipped, otherwise they run post-publish as verification.

@@ -18,6 +18,10 @@ This analyzer uses tree-sitter to parse C# files and extract:
   (INV-fabih: two nested ``class Inner``, or two in sibling namespace blocks,
   shared one bare-name table key, so deleting the first moved the second's
   ids). A file-scoped namespace is single per file and not in the chain.
+- A class, struct or interface records its base list in
+  ``meta["base_classes"]``; the inheritance linker turns it into ``extends``
+  / ``implements`` edges (WI-ruzid: interfaces recorded none, so
+  ``interface IChild : IBase`` produced no edge at all).
   The emitted ``qualified_name`` carries every enclosing namespace, the
   file-scoped one included (``A.B.C.Go``, ``N.M.K``; it kept the innermost
   block namespace only).
@@ -45,7 +49,8 @@ How It Works
 2. If not available, return skipped result (not an error)
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls, instantiations, and resolve against global symbol registry
+   - Pass 2: Detect calls, instantiations, using directives and method-group
+     references, and resolve against global symbol registry
      - A call the registry cannot place (a framework call such as
        ``File.ReadAllText``), or one withheld by the 3+-candidate ambiguity
        guard, is still emitted as an unresolved edge; its module slot is the
@@ -64,7 +69,8 @@ How It Works
        enclosing type (``_CSHARP_TYPE_BODY_NODES``), else on the file
        (INV-bamij). An object creation or method-group reference there is
        still dropped.
-4. Detect using directives and object creations
+4. Annotate each file's edges with ADR-0015 dataflow access modes
+5. Post-pass over all symbols: turn attribute metadata into ``decorated_by`` edges
 
 Why This Design
 ---------------
@@ -818,6 +824,55 @@ def _extract_base_list(node: "tree_sitter.Node", source: bytes) -> list[str]:
     return base_classes
 
 
+def _csharp_using_scope(
+    tree: "tree_sitter.Tree", source: bytes,
+) -> tuple[list[str], dict[str, str]]:
+    """``(namespaces, type_aliases)`` a file's ``using`` directives bring in.
+
+    WI-pivap. ``using System;`` / ``using System.IO;`` import a NAMESPACE, so a
+    bare base names a type of one of them (or of the file's own namespace
+    chain); ``using Alias = X.Y.Z;`` names one type. ``using static`` imports
+    members, not types, and is skipped.
+    """
+    namespaces: list[str] = []
+    aliases: dict[str, str] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type != "using_directive":
+            continue
+        if any(c.type == "static" for c in node.children):
+            continue
+        target = find_child_by_type(node, "qualified_name") or None
+        if any(c.type == "=" for c in node.children):
+            alias = find_child_by_type(node, "identifier")
+            if alias is not None and target is not None:
+                aliases[node_text(alias, source)] = node_text(target, source)
+            continue
+        if target is None:
+            target = find_child_by_type(node, "identifier")
+        if target is not None:
+            namespaces.append(node_text(target, source))
+    return namespaces, aliases
+
+
+def _csharp_base_hints(
+    base_classes: list[str], ns_name: str | None,
+    using_namespaces: list[str], using_aliases: dict[str, str],
+) -> dict[str, object]:
+    """Meta the inheritance linker reads to check a BARE base (WI-pivap):
+    ``visible_namespaces`` (the enclosing namespace chain, the ``using``
+    namespaces and the global namespace) and ``base_class_imports`` (a base
+    written as a ``using`` alias)."""
+    chain = (ns_name or "").split(".") if ns_name else []
+    visible = [".".join(chain[:i]) for i in range(len(chain), 0, -1)]
+    hints: dict[str, object] = {
+        "visible_namespaces": [*visible, *using_namespaces, ""],
+    }
+    imports = {b: using_aliases[b] for b in base_classes if b in using_aliases}
+    if imports:
+        hints["base_class_imports"] = imports
+    return hints
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -854,6 +909,7 @@ def _extract_symbols_from_file(
 
     # Extract using aliases for disambiguation
     using_aliases = _extract_using_aliases(tree, source)
+    using_namespaces, using_type_aliases = _csharp_using_scope(tree, source)
 
     analysis = FileAnalysis(import_aliases=using_aliases)
 
@@ -899,6 +955,10 @@ def _extract_symbols_from_file(
 
                 class_modifiers = _extract_modifiers(node)
                 ns_name = _get_csharp_enclosing_namespace(node, source)
+                if meta is not None and base_classes:
+                    meta.update(_csharp_base_hints(
+                        base_classes, ns_name, using_namespaces, using_type_aliases,
+                    ))
                 cls_ancestors = _get_csharp_class_ancestors(node, source)
                 symbol = Symbol(
                     id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "class"),
@@ -938,6 +998,10 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 iface_modifiers = _extract_modifiers(node)
+                # WI-ruzid: ``interface IChild : IBase`` records its bases as
+                # a class does; the inheritance linker turns an interface
+                # source's bases into ``extends`` edges (WI-kalug).
+                iface_bases = _extract_base_list(node, source)
                 ns_name = _get_csharp_enclosing_namespace(node, source)
                 cls_ancestors = _get_csharp_class_ancestors(node, source)
                 symbol = Symbol(
@@ -961,6 +1025,12 @@ def _extract_symbols_from_file(
                         scope=_csharp_scope(node, source),
                     ),
                     modifiers=iface_modifiers,
+                    meta={
+                        "base_classes": iface_bases,
+                        **_csharp_base_hints(
+                            iface_bases, ns_name, using_namespaces, using_type_aliases,
+                        ),
+                    } if iface_bases else None,
                     line_span=end_line - start_line + 1,
                     is_exported="public" in iface_modifiers,
                     qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, name),

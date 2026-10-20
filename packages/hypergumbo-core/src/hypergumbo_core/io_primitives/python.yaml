@@ -710,6 +710,21 @@ net_recv:
     methods: [retrbinary, retrlines]
   - module: asyncio.StreamReader
     methods: [read, readline, readexactly, readuntil]
+  - module: http.client.HTTPResponse
+    methods: [read, read1, readinto, readinto1, readline, readlines, peek, getheader, getheaders, info, geturl, getcode, begin]
+    notes: >-
+      WI-tumol. The object urlopen / OpenerDirector.open /
+      HTTPConnection.getresponse hand back for an http(s) URL
+      (library_signatures rows). Those calls are net_send and return a HANDLE
+      (ADR-0049 Ruling 4); this is where the program RECEIVES what the far side
+      chose (Ruling 1). The read family returns body bytes read from the socket
+      at the call (readinto / readinto1 fill the caller's buffer and return a
+      count, socket.socket.recv_into's shape). getheader / getheaders / info /
+      geturl / getcode return the status line, headers and post-redirect URL
+      the far side sent, parsed by begin() inside the send; begin itself
+      (rarely called directly) reads them off the socket into the object's
+      attributes. `resp.status` / `resp.headers` are attribute reads and
+      `for line in resp:` is no call: neither is reached by a row.
 
 # ADR-0049 DEFERRED CROSSINGS. The call ARRANGES a crossing whose data arrives
 # in a scope it does not name; net_listen mints no taint and shadows net_recv,
@@ -1927,6 +1942,19 @@ module_completeness:
       callable's own, reached through its own edges. Rowing the executor would
       attribute every worker's crossing to the scheduler. shutdown joins
       threads.
+  - module: threading.Event
+    completeness: complete
+    retrieved: "2026-10-17"
+    notes: >-
+      INV-konad, the fourth recorded instance of the WI-jabus shape. An
+      in-process flag: set / clear / is_set flip a boolean under a Condition,
+      and wait(timeout) blocks on that Condition -- time passes, nothing
+      crosses. The `threading` entry above already covers the module;
+      exact matching is why the class must be said separately. Reached from
+      every CLI entry point since 49aea53b93, as run_status.py's heartbeat
+      stop flag (`self._stop.wait(interval)`), which is what turned one
+      untyped receiver into the unknown that withheld all 18 self-claims
+      (cron full-suite from 2026-10-15 05:51 EDT).
   - module: urllib.request.Request
     completeness: complete
     retrieved: "2026-09-14"
@@ -1946,6 +1974,21 @@ module_completeness:
       object), close (a `pass` kept for backwards
       compatibility, as is BaseHandler.close). `addheaders` is an attribute and is never a call. The
       constructor is covered by the urllib.request slot's own entry above.
+  - module: http.client.HTTPResponse
+    completeness: complete
+    retrieved: "2026-10-04"
+    notes: >-
+      WI-tumol. The 28 public members (python 3.12, introspected: `[n for n in
+      dir(http.client.HTTPResponse) if not n.startswith('_')]`). ROWED
+      net_recv: read, read1, readinto, readinto1, readline, readlines, peek,
+      getheader, getheaders, info, geturl, getcode, begin. NO CROSSING OF THEIR
+      OWN: close (releases the connection; descriptor lifecycle, as
+      socket.close), isclosed / fileno / isatty / readable / seekable /
+      writable (report state), flush (flushes the READ buffer of the socket
+      file, which has nothing to send), detach / seek / tell / truncate /
+      write / writelines (io.BufferedIOBase defaults raising
+      UnsupportedOperation on this read-only stream), closed (a property, not
+      a call).
   - module: subprocess.Popen
     completeness: complete
     retrieved: "2026-09-14"

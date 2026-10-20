@@ -60,6 +60,13 @@ and its ``source_returned_by`` are unioned and carried as sorted tuples beside
 ``collapsed_flow_count``; every other scalar is the first member's. ``ddg``
 findings pass through unchanged, since the walk earned their per-pair claim.
 
+:func:`find_unfollowed_escapes` runs the same §3a walk with a different target
+set: the source function's call lines an analyzer stamped
+``unfollowed_construct``, and C's non-local store lines. It reports each
+source value that reaches a construct taint does not follow, and
+verify-claims withholds every clean verdict on that label, since a missing
+finding there is ignorance, not an all-clear.
+
 Which Pairs Count
 -----------------
 Upstream of the §3a walk, both propagators share gates that decide what counts
@@ -120,13 +127,14 @@ a walk branch; ``withheld_community_summaries`` names the ones the run calls.
 Catalog Format
 --------------
 Sources, sinks, and sanitizers use YAML files following patterns established
-by the IO primitive catalogs (ADR-0016). See ``taint_sources/`` and
-``taint_sanitizers/`` directories alongside this module, or project-local
-catalogs provided via ``--taint-sources``, etc. Built-in sinks are derived
-automatically from ``io_primitives/*.yaml`` — every write-side IO primitive
-becomes an ``untrusted`` sink in a zone determined by its boundary category
-(see :data:`AUTO_SINK_ZONE_MAP` below). Project-local sink overrides flow
-through the ``--taint-sinks`` CLI flag.
+by the IO primitive catalogs (ADR-0016). See the ``taint_sources/``,
+``taint_sanitizers/`` and ``taint_sinks/`` directories alongside this
+module, or project-local catalogs provided via ``--taint-sources``, etc.
+Built-in I/O sinks are derived automatically from ``io_primitives/*.yaml``
+— every write-side IO primitive becomes an ``untrusted`` sink in a zone
+determined by its boundary category (see :data:`AUTO_SINK_ZONE_MAP` below);
+``taint_sinks/`` ships only ADR-0060's non-boundary sinks (below).
+Project-local sink overrides flow through the ``--taint-sinks`` CLI flag.
 
 Built-in sources are auto-derived the same way: every primitive whose
 boundary is a key of :data:`AUTO_SOURCE_LABEL_MAP` (``env_read``,
@@ -185,6 +193,7 @@ from .io_boundary import (
     call_site_attr_carriers,
     call_site_modes,
     call_site_target_kinds,
+    call_site_unfollowed_constructs,
     read_boundary_for_target_kind,
     strip_redundant_module_qualifier,
     target_kind_discriminated_primitives,
@@ -480,6 +489,13 @@ WALK_BLOCKED_NO_SOURCE_CALL_LINE: str = "no_source_call_line"
 WALK_BLOCKED_NO_SINK_CALL_LINE: str = "no_sink_call_line"
 WALK_BLOCKED_SOURCE_NOT_TRACKED: str = "source_not_tracked"
 WALK_BLOCKED_SINK_BEFORE_SOURCE: str = "sink_before_source"
+#: WI-jusoj (a): the sink is called ON the source's line, so it can CONTAIN the
+#: source as an argument (``requests.post(url, headers={"A": os.environ["K"]})``)
+#: and no line-ordered walk can adjudicate it. NOT ``sink_before_source``,
+#: whose rows INV-muhij keeps from carrying a verdict alone: a same-line row
+#: keeps carrying it, because "the sink is not after the source" was never
+#: evidence that the source's value does not reach it.
+WALK_BLOCKED_SOURCE_LINE_SINK: str = "sink_on_source_line"
 
 WALK_BLOCKERS: frozenset[str] = frozenset({
     WALK_BLOCKED_CROSS_FUNCTION,
@@ -487,6 +503,7 @@ WALK_BLOCKERS: frozenset[str] = frozenset({
     WALK_BLOCKED_NO_SINK_CALL_LINE,
     WALK_BLOCKED_SOURCE_NOT_TRACKED,
     WALK_BLOCKED_SINK_BEFORE_SOURCE,
+    WALK_BLOCKED_SOURCE_LINE_SINK,
 })
 
 WALK_VERDICT_CONFIRMED: str = "confirmed"
@@ -4400,6 +4417,108 @@ def propagate_taint_structural(
     )
 
 
+class UnfollowedEscape(NamedTuple):
+    """A source value the walk saw leave through a construct taint does not follow.
+
+    INV-nohob. ``construct`` is the producer's ``unfollowed_construct`` stamp
+    (c.py: ``out_parameter_call``, ``non_local_store``, ``macro_call``,
+    ``variadic_call``); ``site_line`` is the call it was reached at, in
+    ``source_symbol``, the function the source is read in.
+    """
+
+    taint_label: str
+    source_symbol: str
+    source: str
+    site_line: int
+    construct: str
+
+
+def find_unfollowed_escapes(
+    ddg_edges: list[DdgEdge],
+    call_edges: list[dict[str, Any]],
+    sources: list[TaintSource],
+    *,
+    ambiguous_names: frozenset[str] = frozenset(),
+    language: str = "",
+    stmt_defuse: dict[
+        str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]
+    ] | None = None,
+    include_community: bool = True,
+    function_summaries: dict[str, "FunctionSummary"] | None = None,
+    store_lines: Mapping[str, Sequence[int]] | None = None,
+) -> list[UnfollowedEscape]:
+    """Every source value the §3a walk sees reach a call site an analyzer
+    stamped ``unfollowed_construct`` (INV-nohob).
+
+    WHY A SEPARATE PASS. :func:`propagate_taint_ddg` asks whether a source
+    reaches a SINK, and a flow it cannot construct leaves no finding at all.
+    When the value leaves through a construct neither the walk nor the call
+    graph follows -- torsocks copies its getenv'd SOCKS5 password into a global
+    through ``conf_file_set_socks5_pass(password, &tsocks_config)`` and sends it
+    from another function -- the absence of a finding is ignorance, and
+    ``verify_claims`` must not read it as a clean answer. This pass runs the
+    SAME walk (same indexes, :func:`_walk_indexes`) with the stamped call lines
+    of the source's own function as its targets, so "the value reaches the
+    construct" means exactly what "the value reaches a sink" means elsewhere.
+
+    ONLY ``True`` COUNTS. A walk that escapes for an unrelated reason is a
+    pre-existing gap with its own disclosure, and pooling it here would
+    withhold every verdict in a function with any stamped call. A construct
+    called ON a source line (``strcpy(g, getenv("K"))``) is reached by
+    construction -- the source defines no variable for the walk to seed.
+
+    Per SOURCE SITE, not per flow: the result names where each label's value
+    was lost, and the caller withholds every clean verdict on that label.
+
+    ``store_lines`` adds the lines a function ASSIGNS memory it does not own
+    (C's ``meta.non_local_store_lines``) as ``non_local_store`` targets: the
+    same loss as a copy-family call, with no call to stamp (INV-nohob 3/3).
+    """
+    if not sources:
+        return []
+    # NO DDG IS NOT NO ANSWER: a construct ON a source line is reached without
+    # a walk (``g = getenv("K")`` defines nothing a later use could follow), so
+    # a function the walk has no edges for still reports it.
+    constructs: dict[str, dict[int, str]] = defaultdict(dict)
+    for edge in call_edges:
+        kinds = [k for k in call_site_unfollowed_constructs(edge.get("meta")) if k]
+        if kinds:
+            for line in _edge_call_sites(edge):
+                constructs[edge.get("src", "")].setdefault(line, kinds[0])
+    for symbol_id, lines in (store_lines or {}).items():
+        for line in lines:
+            constructs[symbol_id].setdefault(line, "non_local_store")
+    if not constructs:
+        return []
+    ix = _walk_indexes(
+        ddg_edges, call_edges, stmt_defuse, language, include_community,
+        function_summaries,
+    )
+    escapes: list[UnfollowedEscape] = []
+    for caller, callee, src in find_source_callers(
+        call_edges, sources, ambiguous_names, language,
+    ):
+        sites = constructs.get(caller)
+        if not sites:
+            continue
+        source_lines = sorted(set(ix.call_lines.get((caller, callee), [])))
+        hit = next((line for line in sorted(sites) if line in source_lines), None)
+        if hit is None:
+            reached: list[tuple[str, int]] = []
+            if _ddg_taint_reaches(
+                caller, source_lines, sorted(sites), ix.ddg_uses,
+                ix.callee_names, ix.summaries,
+                defs_at=ix.defs_at, inherits=ix.inherits, reached=reached,
+            ) is True:
+                hit = reached[0][1]
+        if hit is not None:
+            escapes.append(UnfollowedEscape(
+                src.taint_label, caller, _qualify(src.module, src.name),
+                hit, sites[hit],
+            ))
+    return escapes
+
+
 def _reachability_past_sanitizers(
     seed_id: str,
     taint_label: str,
@@ -4657,8 +4776,15 @@ class EscapeSite(NamedTuple):
 #:   clause L4). An EXTRACTION gap again, and the one no coverage predicate can
 #:   reach: the omission is INSIDE a covered extent. Go's grouped
 #:   ``var ( msg = cwd )`` and Python's ``c[key] = 1`` are the measured shapes.
+#: * ``call_beside_source`` — the SOURCE line also calls something no summary
+#:   says terminates (WI-jusoj b): ``n = acc.push(process.env.K)`` seeds ``n``
+#:   while the secret goes into ``acc``. The seed line was a starting point and
+#:   never a use line, so what else it did with the value was invisible; it is
+#:   now asked the question every use line is (``call_beside_heir``'s). Only
+#:   ever turns ``False`` into ``None``.
 ESCAPE_REASONS = frozenset(
     {
+        "call_beside_source",
         "source_undefined",
         "definition_unrecorded",
         "call_beside_heir",
@@ -4692,6 +4818,7 @@ def _ddg_taint_reaches(
     unaccounted: AbstractSet[str] | None = None,
     seed_variables: AbstractSet[str] | None = None,
     reached: list[tuple[str, int]] | None = None,
+    source_line_escapes: AbstractSet[int] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -4851,6 +4978,10 @@ def _ddg_taint_reaches(
             never ``False`` on that account.
         reached: Optional out-param. On ``True``, the ``(variable, line)``
             whose use at a target line decided it. Purely observational.
+        source_line_escapes: Source lines on which some OTHER call does not
+            terminate (:func:`_source_line_escapes`): the value may have gone
+            into it, so each is an escape (WI-jusoj b). ``None`` keeps the old
+            seed-only behaviour.
 
     Returns:
         True if a tainted value is used at a line where the sink is called;
@@ -4879,6 +5010,10 @@ def _ddg_taint_reaches(
                 )
             continue
         frontier.extend((var, line) for var in sorted(seeds))
+        if line in (source_line_escapes or ()):
+            escaped = True
+            if escape_sites is not None:
+                escape_sites.append(EscapeSite(symbol_id, line, "call_beside_source"))
 
     while frontier:
         var, line = frontier.pop()
@@ -5193,6 +5328,18 @@ def _use_site_terminates(
     callees = callees_at.get((symbol_id, use_line))
     if not callees:
         return False
+    return _callees_terminate(callees, summaries, credited_user_summaries)
+
+
+def _callees_terminate(
+    callees: AbstractSet[str],
+    summaries: Mapping[str, "FunctionSummary"] | None,
+    credited_user_summaries: set[str] | None = None,
+) -> bool:
+    """Every one of ``callees`` consumes the value and stops (see
+    :func:`_use_site_terminates`, whose all-or-nothing rule this is)."""
+    if not summaries:
+        return False
     for qualified in callees:
         summary = summaries.get(qualified)
         # ADR-0061 ruling 2 (WI-tigud): a COMMUNITY summary never closes a
@@ -5221,6 +5368,214 @@ def _use_site_terminates(
             if summary is not None and getattr(summary, "user_supplied", False):
                 credited_user_summaries.add(qualified)
     return True
+
+
+def _constructs_receiver_of(callee: str, source_callee: str) -> bool:
+    """Whether ``callee`` constructs the type ``source_callee`` is a method of.
+
+    ``python:cryptography.fernet:0-0:Fernet`` builds the receiver of
+    ``python:cryptography.fernet.Fernet:0-0:decrypt``: the source's module slot
+    names its receiver type, and the construction names that type as
+    ``<module>.<name>``.
+    """
+    source_parts = source_callee.split(":")
+    parts = callee.split(":")
+    if len(source_parts) < 4 or len(parts) < 4:
+        return False
+    return bool(source_parts[1]) and f"{parts[1]}.{parts[-2]}" == source_parts[1]
+
+
+def _source_line_escapes(
+    caller: str,
+    source_callee: str,
+    source_lines: Sequence[int],
+    calls_at: Mapping[tuple[str, int], AbstractSet[str]],
+    edge_keys: Mapping[tuple[str, str], AbstractSet[str]],
+    summaries: Mapping[str, "FunctionSummary"] | None,
+) -> frozenset[int]:
+    """The source lines on which another call may take the value (WI-jusoj b).
+
+    ``n = acc.push(process.env.K)``: the walk seeds ``n``, but the secret went
+    into ``acc``. Every OTHER call on a source line is asked what a use line's
+    calls are asked: it closes the branch only if a summary says it terminates.
+    A call with no catalogue key (an unresolved ``acc.push``) is unknown and
+    keeps the line open, as an uncatalogued callee does at a use line.
+
+    NOT a call that builds the source's own RECEIVER: in
+    ``pt = Fernet(key).decrypt(ct)`` the ``Fernet`` construction is evaluated
+    before ``decrypt`` and cannot hold its result
+    (:func:`_constructs_receiver_of`). Counting it withdrew the same-function
+    sanitizer credit WI-fasub earns for encrypt-then-write.
+    """
+    lines: set[int] = set()
+    for line in source_lines:
+        for callee in calls_at.get((caller, line), ()):
+            if callee == source_callee or _constructs_receiver_of(callee, source_callee):
+                continue
+            keys = edge_keys.get((caller, callee))
+            if not keys or not _callees_terminate(set(keys), summaries):
+                lines.add(line)
+                break
+    return frozenset(lines)
+
+
+class _WalkIndexes(NamedTuple):
+    """The indexes the §3a walk reads, built once per language run."""
+
+    ddg_uses: dict[tuple[str, str, int], set[int]]
+    defs_at: dict[tuple[str, int], set[str]]
+    call_lines: dict[tuple[str, str], list[int]]
+    callee_names: dict[tuple[str, int], set[str]]
+    inherits: dict[tuple[str, int, str], set[str]]
+    summaries: dict[str, "FunctionSummary"]
+    io_names: frozenset[str]
+    #: (caller, callee) -> the catalogue keys of those call edges (WI-jusoj b).
+    edge_keys: dict[tuple[str, str], set[str]]
+    #: (caller, line) -> every callee a taint call edge reaches there.
+    calls_at: dict[tuple[str, int], set[str]]
+
+
+def _walk_indexes(
+    ddg_edges: list[DdgEdge],
+    call_edges: list[dict[str, Any]],
+    stmt_defuse: dict[
+        str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]
+    ] | None,
+    language: str,
+    include_community: bool,
+    function_summaries: dict[str, "FunctionSummary"] | None,
+) -> _WalkIndexes:
+    """Build the walk's indexes (shared by :func:`propagate_taint_ddg` and
+    :func:`find_unfollowed_escapes`, so the two cannot read the DDG differently)."""
+    # Forward index for the §3a walk: (function, def line) → lines that use
+    # the value defined there.
+    #
+    # Keyed on ``symbol_id``, NOT ``def_block``. Block ids are function-local —
+    # ``bb_5`` occurs in every function — so once edges from a whole repo are
+    # aggregated into one list a block id identifies nothing. The predecessor
+    # of this index was keyed ``(def_block, variable)`` and compared a block id
+    # against a symbol id, which cannot match; it was also never read.
+    #
+    # KEYED ON THE VARIABLE AS WELL AS THE LINE (INV-sadah). The first version
+    # keyed `(symbol_id, def_line)` and discarded `DdgEdge.variable`, which
+    # merged the use-sets of every variable defined on one line. Measured on a
+    # real fixture: `keep = str(server); path = name` emits
+    # `keep def@7 -> use@9` and `path def@7 -> use@8`, and the merged entry
+    # `def_line 7 -> {8, 9}` let a walk carrying the taint in `server` inherit
+    # `path`'s use of the sink at line 8 — stamping "precise" on a data
+    # dependence that does not exist.
+    #
+    # Lines are still HALF the key because that is what makes the index
+    # composable with call sites: a call edge records the LINE it occurs on, so
+    # "is the tainted value an argument here" stays a set membership test.
+    ddg_uses: dict[tuple[str, str, int], set[int]] = defaultdict(set)
+    defs_at: dict[tuple[str, int], set[str]] = defaultdict(set)
+    for ddg_edge in ddg_edges:
+        ddg_uses[
+            (ddg_edge.symbol_id, ddg_edge.variable, ddg_edge.def_line)
+        ].add(ddg_edge.use_line)
+        defs_at[(ddg_edge.symbol_id, ddg_edge.def_line)].add(ddg_edge.variable)
+
+    # (symbol, line, consumed variable) -> variables that inherit from it.
+    #
+    # Variable-keying alone does NOT fix the conflation, and this is the half
+    # that does. `path` genuinely IS defined at line 7, so separating the index
+    # entries still leaves "which variable defined here inherits from
+    # `server`?" unanswered — and the edge set cannot answer it. The statement's
+    # own defines/uses can: `keep = str(server)` consumes `server`,
+    # `path = name` does not.
+    # (caller, callee) → every line that call occurs on. A caller may invoke
+    # the same callee more than once, and a flow is real if the taint reaches
+    # ANY of those call sites, so this is a list rather than a single line.
+    # ``_edge_call_sites`` owns the parse — see its docstring for why one edge
+    # does not mean one line.
+    call_lines: dict[tuple[str, str], list[int]] = defaultdict(list)
+    callee_names: dict[tuple[str, int], set[str]] = defaultdict(set)
+    edge_keys: dict[tuple[str, str], set[str]] = defaultdict(set)
+    calls_at: dict[tuple[str, int], set[str]] = defaultdict(set)
+    for edge in call_edges:
+        sites = _edge_call_sites(edge)
+        if sites and _is_taint_call_edge(edge):
+            for site in sites:
+                calls_at[(edge.get("src", ""), site)].add(edge.get("dst", ""))
+        if sites:
+            call_lines[(edge.get("src", ""), edge.get("dst", ""))].extend(sites)
+            # (function, line) → the QUALIFIED names called there, for §4.
+            # This is the index `meta.call_lines` exists to make possible:
+            # "which callee is invoked at line U" was unanswerable for every
+            # call site but the first while one edge carried one line.
+            #
+            # Through the PROVENANCE GATE, not `_qualified_callee` directly:
+            # this index feeds a lookup against SHIPPED stdlib summaries, and a
+            # resolved first-party callee whose key collides with one must not
+            # be allowed to close a branch (WI-zumud).
+            qualified = _catalogue_key_for_edge(edge)
+            if qualified:
+                src_id = edge.get("src", "")
+                edge_keys[(src_id, edge.get("dst", ""))].add(qualified)
+                for site in sites:
+                    callee_names[(src_id, site)].add(qualified)
+
+    # INV-fumod: a definition does NOT inherit taint across an I/O boundary.
+    #
+    # Built AFTER ``callee_names`` because it now asks a question about the
+    # defining line's callee, and the two indexes were previously built in the
+    # opposite order for no reason but history.
+    #
+    # THE RULE, and it is the 0001 rubric's own tie-break made executable:
+    # *taint flows through in-program computation, not through an external
+    # resource selected by the tainted value*. An I/O primitive's return value
+    # comes from the OTHER SIDE of the boundary — a handle on a resource the
+    # argument merely NAMED, or bytes the argument merely ADDRESSED — so it is
+    # not a computation on that argument.
+    #
+    # MEASURED, with a control that discriminates. `out = open(args.outfile,
+    # "w"); out.write("a constant banner")` reported TWO findings, `open` and
+    # `file.write`, where only the first is earned: nothing tainted is written.
+    # The control `out = open("/tmp/fixed.txt", "w"); out.write(args.payload)`
+    # reports `file.write` and MUST keep reporting it — there the tainted value
+    # reaches the write's own argument. The tool was already internally
+    # inconsistent about this, naming `open` correctly and then crediting the
+    # handle as well, which is what INV-fumod's statement calls out.
+    #
+    # DERIVED FROM THE CATALOGUE, NOT CURATED. Every I/O primitive is already
+    # enumerated per language; a hand-written list of "opening" calls would be
+    # the second home for that fact and would be wrong the moment a row is
+    # added. It costs nothing in recall where the far side is itself a source:
+    # `resp = requests.get(url)` stops inheriting `url`'s label and instead
+    # carries `untrusted_input` from the net_recv row, which is the more
+    # accurate statement of what `resp` holds.
+    _io_names = _io_primitive_names(language, include_community)
+    inherits: dict[tuple[str, int, str], set[str]] = defaultdict(set)
+    for sym_id, statements in (stmt_defuse or {}).items():
+        for line, defines, uses in statements:
+            if not defines:
+                continue
+            if callee_names[(sym_id, line)] & _io_names:
+                continue
+            for used in uses:
+                inherits[(sym_id, line, used)].update(defines)
+
+    # ADR-0017 §4b declared summaries, QUALIFIED KEYS ONLY.
+    # ``load_function_summaries`` also indexes every entry under its bare last
+    # component (``console.log`` → ``log``); an entry is its own qualified key
+    # exactly when the key equals ``summary.function``, so this filter drops
+    # the alias index without re-deriving what the loader parsed. The aliases
+    # are dangerous here specifically: a false "this callee terminates the
+    # taint" removes a real finding, and ``log`` / ``map`` / ``filter`` /
+    # ``parse`` collide with almost anything.
+    if function_summaries is None:
+        from .function_summaries import load_function_summaries
+        function_summaries = load_function_summaries(
+            include_community=include_community,
+        )
+    summaries = {
+        k: v for k, v in function_summaries.items() if k == v.function
+    }
+    return _WalkIndexes(
+        ddg_uses, defs_at, call_lines, callee_names, inherits, summaries, _io_names,
+        edge_keys, calls_at,
+    )
 
 
 def propagate_taint_ddg(
@@ -5290,125 +5645,11 @@ def propagate_taint_ddg(
 
     analyzed = ddg_symbols or set()
 
-    # Forward index for the §3a walk: (function, def line) → lines that use
-    # the value defined there.
-    #
-    # Keyed on ``symbol_id``, NOT ``def_block``. Block ids are function-local —
-    # ``bb_5`` occurs in every function — so once edges from a whole repo are
-    # aggregated into one list a block id identifies nothing. The predecessor
-    # of this index was keyed ``(def_block, variable)`` and compared a block id
-    # against a symbol id, which cannot match; it was also never read.
-    #
-    # KEYED ON THE VARIABLE AS WELL AS THE LINE (INV-sadah). The first version
-    # keyed `(symbol_id, def_line)` and discarded `DdgEdge.variable`, which
-    # merged the use-sets of every variable defined on one line. Measured on a
-    # real fixture: `keep = str(server); path = name` emits
-    # `keep def@7 -> use@9` and `path def@7 -> use@8`, and the merged entry
-    # `def_line 7 -> {8, 9}` let a walk carrying the taint in `server` inherit
-    # `path`'s use of the sink at line 8 — stamping "precise" on a data
-    # dependence that does not exist.
-    #
-    # Lines are still HALF the key because that is what makes the index
-    # composable with call sites: a call edge records the LINE it occurs on, so
-    # "is the tainted value an argument here" stays a set membership test.
-    ddg_uses: dict[tuple[str, str, int], set[int]] = defaultdict(set)
-    defs_at: dict[tuple[str, int], set[str]] = defaultdict(set)
-    for ddg_edge in ddg_edges:
-        ddg_uses[
-            (ddg_edge.symbol_id, ddg_edge.variable, ddg_edge.def_line)
-        ].add(ddg_edge.use_line)
-        defs_at[(ddg_edge.symbol_id, ddg_edge.def_line)].add(ddg_edge.variable)
-
-    # (symbol, line, consumed variable) -> variables that inherit from it.
-    #
-    # Variable-keying alone does NOT fix the conflation, and this is the half
-    # that does. `path` genuinely IS defined at line 7, so separating the index
-    # entries still leaves "which variable defined here inherits from
-    # `server`?" unanswered — and the edge set cannot answer it. The statement's
-    # own defines/uses can: `keep = str(server)` consumes `server`,
-    # `path = name` does not.
-    # (caller, callee) → every line that call occurs on. A caller may invoke
-    # the same callee more than once, and a flow is real if the taint reaches
-    # ANY of those call sites, so this is a list rather than a single line.
-    # ``_edge_call_sites`` owns the parse — see its docstring for why one edge
-    # does not mean one line.
-    call_lines: dict[tuple[str, str], list[int]] = defaultdict(list)
-    callee_names: dict[tuple[str, int], set[str]] = defaultdict(set)
-    for edge in call_edges:
-        sites = _edge_call_sites(edge)
-        if sites:
-            call_lines[(edge.get("src", ""), edge.get("dst", ""))].extend(sites)
-            # (function, line) → the QUALIFIED names called there, for §4.
-            # This is the index `meta.call_lines` exists to make possible:
-            # "which callee is invoked at line U" was unanswerable for every
-            # call site but the first while one edge carried one line.
-            #
-            # Through the PROVENANCE GATE, not `_qualified_callee` directly:
-            # this index feeds a lookup against SHIPPED stdlib summaries, and a
-            # resolved first-party callee whose key collides with one must not
-            # be allowed to close a branch (WI-zumud).
-            qualified = _catalogue_key_for_edge(edge)
-            if qualified:
-                src_id = edge.get("src", "")
-                for site in sites:
-                    callee_names[(src_id, site)].add(qualified)
-
-    # INV-fumod: a definition does NOT inherit taint across an I/O boundary.
-    #
-    # Built AFTER ``callee_names`` because it now asks a question about the
-    # defining line's callee, and the two indexes were previously built in the
-    # opposite order for no reason but history.
-    #
-    # THE RULE, and it is the 0001 rubric's own tie-break made executable:
-    # *taint flows through in-program computation, not through an external
-    # resource selected by the tainted value*. An I/O primitive's return value
-    # comes from the OTHER SIDE of the boundary — a handle on a resource the
-    # argument merely NAMED, or bytes the argument merely ADDRESSED — so it is
-    # not a computation on that argument.
-    #
-    # MEASURED, with a control that discriminates. `out = open(args.outfile,
-    # "w"); out.write("a constant banner")` reported TWO findings, `open` and
-    # `file.write`, where only the first is earned: nothing tainted is written.
-    # The control `out = open("/tmp/fixed.txt", "w"); out.write(args.payload)`
-    # reports `file.write` and MUST keep reporting it — there the tainted value
-    # reaches the write's own argument. The tool was already internally
-    # inconsistent about this, naming `open` correctly and then crediting the
-    # handle as well, which is what INV-fumod's statement calls out.
-    #
-    # DERIVED FROM THE CATALOGUE, NOT CURATED. Every I/O primitive is already
-    # enumerated per language; a hand-written list of "opening" calls would be
-    # the second home for that fact and would be wrong the moment a row is
-    # added. It costs nothing in recall where the far side is itself a source:
-    # `resp = requests.get(url)` stops inheriting `url`'s label and instead
-    # carries `untrusted_input` from the net_recv row, which is the more
-    # accurate statement of what `resp` holds.
-    _io_names = _io_primitive_names(language, include_community)
-    inherits: dict[tuple[str, int, str], set[str]] = defaultdict(set)
-    for sym_id, statements in (stmt_defuse or {}).items():
-        for line, defines, uses in statements:
-            if not defines:
-                continue
-            if callee_names[(sym_id, line)] & _io_names:
-                continue
-            for used in uses:
-                inherits[(sym_id, line, used)].update(defines)
-
-    # ADR-0017 §4b declared summaries, QUALIFIED KEYS ONLY.
-    # ``load_function_summaries`` also indexes every entry under its bare last
-    # component (``console.log`` → ``log``); an entry is its own qualified key
-    # exactly when the key equals ``summary.function``, so this filter drops
-    # the alias index without re-deriving what the loader parsed. The aliases
-    # are dangerous here specifically: a false "this callee terminates the
-    # taint" removes a real finding, and ``log`` / ``map`` / ``filter`` /
-    # ``parse`` collide with almost anything.
-    if function_summaries is None:
-        from .function_summaries import load_function_summaries
-        function_summaries = load_function_summaries(
-            include_community=include_community,
-        )
-    summaries = {
-        k: v for k, v in function_summaries.items() if k == v.function
-    }
+    (ddg_uses, defs_at, call_lines, callee_names, inherits, summaries,
+     _io_names, edge_keys, calls_at) = _walk_indexes(
+        ddg_edges, call_edges, stmt_defuse, language, include_community,
+        function_summaries,
+    )
 
     # Index sinks and sanitizers by name (same as structural) — a list per
     # name so _lookup_named_entry can disambiguate by module/ambiguity.
@@ -5691,7 +5932,11 @@ def propagate_taint_ddg(
                 elif not source_tracked:
                     blocked_by = WALK_BLOCKED_SOURCE_NOT_TRACKED
                 elif not sink_after_source:
-                    blocked_by = WALK_BLOCKED_SINK_BEFORE_SOURCE
+                    blocked_by = (
+                        WALK_BLOCKED_SOURCE_LINE_SINK
+                        if set(sink_call_lines) & set(source_call_lines)
+                        else WALK_BLOCKED_SINK_BEFORE_SOURCE
+                    )
                 if sink_call_lines and source_tracked and sink_after_source:
                     # ADJUDICATING, NOT CONFIRM-ONLY (WI-kabif, granted
                     # 2026-09-02). ``None`` (escaped) and ``False``
@@ -5728,6 +5973,11 @@ def propagate_taint_ddg(
                         credited_user_summaries=credited_user_summaries,
                         unaccounted=(unaccounted_names or {}).get(source_fn),
                         seed_variables=entry_seeds,
+                        # WI-jusoj (b): the source line is a use line too.
+                        source_line_escapes=_source_line_escapes(
+                            caller_id, source_callee_id, source_call_lines,
+                            calls_at, edge_keys, summaries,
+                        ),
                     )
                     adjudicated = walk_result is True
 
@@ -5794,6 +6044,10 @@ def propagate_taint_ddg(
                                 unaccounted_names or {}
                             ).get(source_fn),
                             seed_variables=entry_seeds,
+                            source_line_escapes=_source_line_escapes(
+                                caller_id, source_callee_id, source_call_lines,
+                                calls_at, edge_keys, summaries,
+                            ),
                         ) is False
                         # INV-pojib: THIS ARM DECIDES THE SAME-FUNCTION SHAPE,
                         # and it is the arm the measured repro went through --

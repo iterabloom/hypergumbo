@@ -18,12 +18,15 @@ owner refused it. Asking instead "does every DIRECT CALLER of this symbol live
 in a test module" catches all of them and is immune to the seeding.
 
 FUNCTIONS ONLY, AND THE REASON IS MEASURED RATHER THAN STYLISTIC. The cohort
-splits 585 functions / 204 methods on the self-tree, and the method half cannot
-be adjudicated today: a method's identity in the call graph is its SHORT name,
-so ``Store.add`` is indistinguishable from ``set.add`` and ``Pattern.matches``
-scores hundreds of hits off ``re``'s ``.matches``. Deciding a method needs
-receiver typing, which is WI-nanom's open work -- pyright/SCIP under ADR-0012
-multi-fidelity coexistence. It is NOT INV-linub's, which this docstring claimed
+splits 585 functions / 204 methods on the self-tree, and the method half could
+not be adjudicated when the gate shipped: a method's identity in the syntax-only
+call graph is its SHORT name, so ``Store.add`` is indistinguishable from
+``set.add`` and ``Pattern.matches`` scores hundreds of hits off ``re``'s
+``.matches``. Deciding a method needs receiver typing, which WI-nanom shipped as
+the scip-python backend (pyright/SCIP under ADR-0012 multi-fidelity
+coexistence), and the Woodpecker full-suite map is now built with it. That is
+the call-graph half only; the demotion arm below is still blind. It is NOT
+INV-linub's, which this docstring claimed
 until 2026-09-09: that class is about a catalogued I/O sink reaching its
 CATALOGUE entry through the F3 gate, where this needs FIRST-PARTY method
 resolution in the call graph. Same capability, different consumer, and closing
@@ -61,6 +64,27 @@ AST, NOT GREP, AND THAT CHOICE HAS ALREADY PAID. A grep proxy once scored
 COMMENT in ``taint.py`` reading "``infer_summary`` still has zero production
 callers". Prose about deadness counted as evidence of life. This module collects
 ``ast.Name`` loads and ``ast.Attribute`` accesses, so a comment cannot vote.
+
+REPOSITORY SCRIPTS VOTE TOO (WI-famub). The first cut scanned ``packages/*/src``
+alone, and the map it reads is built from the same tree -- so a core module
+whose only production caller is a ``scripts/check-*`` gate had, as far as the
+gate could see, only its tests. ``check_id_construction`` was baselined for it;
+``confidence_sites`` failed the cron the day its gate shipped; a 2026-10-14
+commit ratified ``unregistered_edge_meta_keys`` into the baseline for the same
+reason and counted 37 keys of that shape already there. A ``scripts/`` gate is
+production in the only sense this module cares about: it is run, and not by a
+test runner. So ``production_source_files`` includes the repository's Python
+scripts, found by ``.py`` suffix or by a Python shebang since the gates are
+extensionless. They vote as referencers only -- their own functions are not
+under ``packages/*/src`` and are never in the cohort.
+
+THE MAP MUST CARRY THE TYPING IT CLAIMS. The Woodpecker full-suite map is
+built with the scip-python backend, whose preconditions (the opt-in, the
+binary on ``PATH``) fail silently into the plain map.
+``pass_contribution_problem`` lets the gate's ``--require-pass`` refuse a map
+in which the named pass was skipped, never ran, or emitted nothing, and
+``typed_method_call_share`` reports how many Python method calls that pass
+actually typed.
 """
 from __future__ import annotations
 
@@ -185,9 +209,43 @@ def collect_production_references(
     return refs
 
 
+def _has_python_shebang(path: Path) -> bool:
+    """Whether the file's first line hands it to a Python interpreter."""
+    try:
+        with path.open("rb") as fh:
+            first = fh.readline(256)
+    except OSError:
+        return False
+    return first.startswith(b"#!") and b"python" in first
+
+
+def repository_script_files(root: Path) -> list[Path]:
+    """Python under ``scripts/``: ``.py`` at any depth, or a Python shebang.
+
+    Repository gates are extensionless executables (``scripts/check-*``), so
+    a suffix glob cannot find them; the shebang is what names them Python.
+    ``__pycache__`` is skipped rather than read for a shebang it cannot have.
+    """
+    scripts = root / "scripts"
+    if not scripts.is_dir():
+        return []
+    found = [
+        path for path in scripts.rglob("*")
+        if "__pycache__" not in path.parts and path.is_file()
+        and (path.suffix == ".py" or _has_python_shebang(path))
+    ]
+    return sorted(found)
+
+
 def production_source_files(root: Path) -> list[Path]:
-    """Every shipped module: ``packages/*/src/**/*.py``, sorted for determinism."""
-    return sorted(root.glob("packages/*/src/**/*.py"))
+    """Every file production can call FROM, sorted for determinism.
+
+    The shipped modules, ``packages/*/src/**/*.py``, and the repository's own
+    Python scripts (see the module docstring on why scripts vote). Scripts are
+    REFERENCERS only: ``_is_production`` still admits just ``packages/*/src``
+    symbols to the gated cohort, so a script's own functions are never judged.
+    """
+    return sorted(root.glob("packages/*/src/**/*.py")) + repository_script_files(root)
 
 
 def _is_production(path: str) -> bool:
@@ -320,3 +378,53 @@ def compare_to_baseline(
     """
     current = {s.key for s in symbols}
     return sorted(current - baseline), sorted(baseline - current)
+
+
+def pass_contribution_problem(data: Mapping[str, Any], pass_id: str) -> str | None:
+    """Why ``pass_id`` contributed nothing to the map ``data``, or ``None``.
+
+    WI-losig: the full-suite self-map is built with the scip-python backend so
+    a method reference resolves to its owning type. Both of the backend's
+    preconditions (the opt-in, the binary on ``PATH``) fail SILENTLY into the
+    plain map, and so did WI-nijod's wrong ``cwd`` for as long as the backend
+    existed. A gate told to require the pass therefore checks the map itself:
+    a skip record, no run record, and a run that emitted nothing are each a
+    map the step did not ask for.
+    """
+    for skipped in (data.get("limits") or {}).get("skipped_passes") or []:
+        if skipped.get("pass") == pass_id:
+            return (f"{pass_id} was skipped: {skipped.get('reason')} "
+                    f"({skipped.get('silence_reason')})")
+    runs = [r for r in data.get("analysis_runs") or [] if r.get("pass") == pass_id]
+    if not runs:
+        return f"{pass_id} has no analysis_runs record: it did not run"
+    if not any(r.get("nodes_emitted") for r in runs):
+        return (f"{pass_id} ran and emitted nothing "
+                f"(silence_reason {runs[0].get('silence_reason')})")
+    return None
+
+
+def typed_method_call_share(
+    nodes: Iterable[Mapping[str, Any]], edges: Iterable[Mapping[str, Any]],
+    *, origin: str = "scip",
+) -> tuple[int, int]:
+    """``(typed, total)`` over Python ``calls`` edges whose target is a method.
+
+    Typed means ``origin`` is among the edge's producers: the receiver was
+    resolved by type, not by the bare last-name component the syntax arm uses
+    -- the property WI-mifag needs before methods can be gated. Measured on
+    the self-tree (2026-10-20): 9,435 of 9,619.
+    """
+    methods = {
+        n["id"] for n in nodes
+        if n.get("language") == "python" and n.get("kind") == "method"
+    }
+    calls = [e for e in edges if e.get("type") == "calls" and e.get("dst") in methods]
+    typed = sum(1 for e in calls if origin in _origins(e))
+    return typed, len(calls)
+
+
+def _origins(edge: Mapping[str, Any]) -> list[str]:
+    """``Edge.origin`` as a list: one producer serialises as a bare string."""
+    origin = edge.get("origin") or []
+    return [origin] if isinstance(origin, str) else list(origin)

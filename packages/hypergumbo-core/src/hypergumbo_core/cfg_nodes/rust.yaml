@@ -40,6 +40,10 @@ loop:
 break_statement: [break_expression]
 continue_statement: [continue_expression]
 return_statement: [return_expression]
+# WI-sodoj: a block's last expression without `;` is its value, and a
+# function body's is what it returns -- Rust's idiomatic return. The taint
+# return lift (ddg_build.return_statement_spans) reads it as a return span.
+block_tail_returns: true
 
 early_return:
   - node_type: try_expression

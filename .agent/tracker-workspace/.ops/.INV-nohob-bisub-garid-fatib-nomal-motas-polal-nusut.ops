@@ -23,3 +23,46 @@
     fields:  # 1878
       statement: "A taint claim reads clean only if every flow from a catalogued source to a catalogued sink of its zone is either reported or disclosed as unfollowed; a source stored into a global or a struct field by a callee and read by another function, and a sink reached through a function pointer or a logging macro, are flows."  # 1878
       root_cause: "Not diagnosed. Candidates seen in torsocks: the def/use model does not carry taint through a global struct field written by a callee (conf_file_set_socks5_pass(password, &tsocks_config)); the call graph does not follow the send_data function pointer to send_data_impl; DBG(...) is an unexpanded macro, emitted as c:external:0-0:DBG. Until INV-zikul the coverage gate withheld these verdicts for an unrelated reason (incomplete include stamps), which hid the gap."  # 1878
+- op: discuss  # b87d
+  at: '2026-10-19T18:14:49Z'  # b87d
+  by: agent  # b87d
+  actor: jgstern_agent  # b87d
+  clock: 2  # b87d
+  nonce: b87d  # b87d
+  message: "Progress, 1 of 3 mechanisms: PR (dev 3e7538b5b5) makes a call through a C function-pointer variable reach the function it holds (static ssize_t (*send_data)(...) = send_data_impl). torsocks: all 12 send_data / recv_data calls now reach the _impl functions; redis 20. Fixture getenv -> send_data(...) now reads violated. NOT yet fixed: torsocks' host-secret-no-network still reads clean, because the password reaches the send only through the global tsocks_config a callee stores it into. Plan (owner-approved 2026-10-19): the next PR is a DISCLOSURE that withholds a C taint clean when a source's value reaches a construct the walk does not follow (a store into non-local memory, a function-like macro call, a project varargs parameter). Actually following each construct is filed as separate items."  # b87d
+- op: discuss  # df29
+  at: '2026-10-19T18:17:44Z'  # df29
+  by: agent  # df29
+  actor: jgstern_agent  # df29
+  clock: 3  # df29
+  nonce: df29  # df29
+  message: "Trackerized per owner (2026-10-19): actually following each construct is filed as WI-nulam (out-parameter: a callee writing through a pointer param), WI-zitul (cross-function global state), WI-ropab (function-like macro expansion) and WI-ronuj (variadic tail -> va_list sink). This item continues with the DISCLOSURE."  # df29
+- op: discuss  # eee0
+  at: '2026-10-19T18:22:21Z'  # eee0
+  by: agent  # eee0
+  actor: jgstern_agent  # eee0
+  clock: 4  # eee0
+  nonce: eee0  # eee0
+  message: "DESIGN for the disclosure PR. Four unfollowed-site kinds, stamped by c.py on CALL edges as meta unfollowed_construct (a new edge-meta key):\n- out_parameter_call: a call to a project function that writes through one of its pointer params. A pass-1 summary per function: an assignment rooted at a pointer param, or a copy-family call (strcpy/strlcpy/strncpy/memcpy/snprintf...) whose destination roots at one.\n- non_local_store: a copy-family call whose destination roots at the caller's own pointer param or a file-scope variable.\n- macro_call: an unresolved call whose name is a function-like macro the file can see (its include closure).\n- variadic_call: a call to a variadic project function with arguments in its ... tail.\ntaint (propagate_taint_ddg): from each source site, the existing three-valued walk runs with the stamped call lines of that function as pseudo-sinks. A reached site is an unfollowed escape for the source's label. verify_claims: a taint claim on that label that would read clean reads INCONCLUSIVE, with a caveat naming the sites. The scope is per label, not per zone, because where the value went is unknown.\ntorsocks, by reading: the password reaches conf_file_set_socks5_pass(password, &tsocks_config), whose body does strlcpy(config->...socks5_password, password) -> out_parameter_call. The username is snprintf(config->conf_file.socks5_username, ..., pid, now) with config a pointer param -> non_local_store. A plain assignment store (g = v;) is not a call and is a later PR."  # eee0
+- op: discuss  # 1000
+  at: '2026-10-19T20:36:30Z'  # 1000
+  by: agent  # 1000
+  actor: jgstern_agent  # 1000
+  clock: 5  # 1000
+  nonce: '1000'  # 1000
+  message: "Progress, 2 of 3: the DISCLOSURE is merged (PR #1740, dev 715cef9165 + 91f91cf287). c.py stamps edge meta unfollowed_construct on four call-site kinds: out_parameter_call, non_local_store (copy-family), macro_call and variadic_call. taint.find_unfollowed_escapes runs the §3a walk from each source site to those sites. verify_claims withholds a clean verdict whose label escaped.\nBehavioral evidence: hypergumbo verify-claims on torsocks (frozen copy) on merged dev:\n- host-secret-no-network: inconclusive (was confirmed_with_caveats). Names torsocks.c:143 and :171, the out_parameter_call conf_file_set_socks5_user/pass(..., &tsocks_config), and :311, a macro_call.\n- host-secret-no-logging: inconclusive (was confirmed_with_caveats), same sites.\n- host-description-no-network: inconclusive (was confirmed_with_caveats). Names config-file.c:532, the non_local_store snprintf(config->...) of getpid / time.\ncrun, tmate and redis moved no verdict.\nSTATUS STAYS violated: a PLAIN assignment to non-local memory (g = getenv(..); c->f = v / *c = v through a pointer param, in the source's own function) is not a call and is not stamped. That is PR 3, next."  # 1000
+- op: update  # 9866
+  at: '2026-10-19T22:37:34Z'  # 9866
+  by: agent  # 9866
+  actor: jgstern_agent  # 9866
+  clock: 6  # 9866
+  nonce: '9866'  # 9866
+  set:  # 9866
+    status: satisfied  # 9866
+- op: discuss  # 1b58
+  at: '2026-10-19T22:37:35Z'  # 1b58
+  by: agent  # 1b58
+  actor: jgstern_agent  # 1b58
+  clock: 7  # 1b58
+  nonce: 1b58  # 1b58
+  message: "SATISFIED after three PRs: #(fptr) dev 3e7538b5b5; #1740 dev 715cef9165 + 91f91cf287; #1741 dev 61e61b9055 + 2315eab1bd.\n\nBehavioral evidence: `hypergumbo verify-claims` on merged dev. Claims: SECRET-NO-NET (host_secret -> network) and SECRET-NO-LOG (host_secret -> logging). Every filed shape is now either REPORTED or DISCLOSED.\n  direct: getenv -> send in one function   -> NO-NET violated (reported); NO-LOG confirmed, correct: nothing logs\n  helper: getenv -> send through a helper  -> NO-NET violated (reported)\n  fptr: send through `static int (*send_data)(..) = send_impl`  -> NO-NET violated. REPORTED: a call through a function-pointer variable now reaches the function it holds.\n  global: a callee copies the secret into a global struct (set_pass(p, &g_conf) -> strncpy(c->pass, v)), sent from another function -> NO-NET / NO-LOG inconclusive (disclosed: out_parameter_call)\n  macro: DBG(..) function-like macro over fprintf(stderr, ..)  -> NO-NET / NO-LOG inconclusive (disclosed: macro_call)\n  plain store: g_secret = getenv(..) in one function, send(fd, g_secret) in another  -> NO-NET / NO-LOG inconclusive (disclosed: non_local_store via meta.non_local_store_lines)\n  torsocks (frozen copy): host-secret-no-network, host-secret-no-logging, host-description-no-network -> all inconclusive (were confirmed_with_caveats). The reasons name torsocks.c:143 / :171 (conf_file_set_socks5_user/pass(.., &tsocks_config)), torsocks.c:311 (macro) and config-file.c:532 (snprintf(config->..) of getpid/time).\nCorpus, verify-claims vs dev for each PR: crun, tmate and redis moved no verdict. No over-withholding was measured. The plain-store recording fires on about 29% of their functions.\n\nWhat the fix is: a call-graph fix for function pointers, and a DISCLOSURE for the rest, per owner direction (2026-10-19). The invariant's statement is met: the flow is \"reported or disclosed as unfollowed\". Actually FOLLOWING the disclosed constructs is filed as WI-nulam (out-parameter summaries), WI-zitul (cross-function global state), WI-ropab (macro expansion) and WI-ronuj (variadic tails). When one lands, its construct stops withholding.\n\nNot covered, stated rather than implied:\n- C only. cpp/objc have the same constructs and are not stamped.\n- A store through an ALIAS of a pointer parameter (q = c; q->f = v) is not recorded."  # 1b58

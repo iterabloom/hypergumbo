@@ -20,3 +20,25 @@
     pr_ref:  # 471d
     description: "Found by the 2026-10-14 docstring-staleness audit (serve.py review, verifier v3). serve.py's module docstring and the CLI help both promise a daemon mode; nothing implements it.\n\nEvidence (as of b0c9ee1872):\n- packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py declares `--background` on `htrac serve` with help \"Daemonize and write PID file\" (~cli.py:3029-3031).\n- `_cmd_serve` (~cli.py:2469-2506) handles `args.stop` and `args.status` and never reads `args.background`. A grep of the tracker package finds no other reference, and `git log -S\"args.background\" -- packages/hypergumbo-tracker` is empty: it was never wired.\n- `serve.run_server` always runs uvicorn in the foreground and writes the PID file unconditionally.\n\nRepro (described by the verifier, not run because it blocks): `htrac serve --background` should return at once with a daemon running. Observed: it prints \"Starting htrac serve on 127.0.0.1:7380\" and blocks in the foreground exactly like `htrac serve`.\n\nThe serve.py docstring line \"PID file management supports --background, --stop, and --status\" was left unchanged on purpose: it states the intent, and the code is what is wrong. Fix either by daemonizing (fork/setsid, or re-exec detached, then write the PID file from the child) or by removing the flag and the docstring claim together."  # 471d
     fields: {}  # 471d
+- op: discuss  # be05
+  at: '2026-10-17T03:43:59Z'  # be05
+  by: agent  # be05
+  actor: jgstern_agent  # be05
+  clock: 2  # be05
+  nonce: be05  # be05
+  message: "Owner ruling 2026-10-16: remove the --background flag and the docstring/README promise rather than implement daemonization (serve is not about to be used). PR to follow; this item closes with the removal."  # be05
+- op: update  # d0c3
+  at: '2026-10-17T04:31:12Z'  # d0c3
+  by: agent  # d0c3
+  actor: jgstern_agent  # d0c3
+  clock: 3  # d0c3
+  nonce: d0c3  # d0c3
+  set:  # d0c3
+    status: done  # d0c3
+- op: discuss  # b2f8
+  at: '2026-10-17T04:31:12Z'  # b2f8
+  by: agent  # b2f8
+  actor: jgstern_agent  # b2f8
+  clock: 4  # b2f8
+  nonce: b2f8  # b2f8
+  message: "Fixed in PR #1680 (dev @ 2e6629cc1d rebased): --background removed from the serve parser (cli.py), the serve.py docstring now states there is no daemon mode and how to keep the server alive past the shell, README example and the eight background=False test fixtures dropped, tracker CHANGELOG entry added. Behavioural evidence: 'htrac serve --help' no longer lists --background; the affected slice (36 files, 2,314 tests) passed at 100% coverage; the owner ruled on 2026-10-16 to remove rather than implement."  # b2f8

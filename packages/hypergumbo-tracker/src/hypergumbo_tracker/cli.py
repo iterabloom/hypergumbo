@@ -5,11 +5,11 @@ Provides the full argparse CLI for tracker operations and the git textconv
 driver for rendering .ops files as readable text.
 
 Entry points:
-- main(): Primary CLI with 41 top-level subcommands, grouped by what they
+- main(): Primary CLI with 43 top-level subcommands, grouped by what they
   touch:
 
   - **Items:** add, update, delete, show, list, ready, log, discuss, deps,
-    batch, rename
+    batch
   - **Field and item locking:** lock, unlock, freeze, unfreeze
   - **Tier movement:** promote, demote, stealth, unstealth
   - **Messages:** check-messages, delete-msg, undelete-msg, edit-msg-text
@@ -17,7 +17,8 @@ Entry points:
   - **Edit mode:** edit-mode (on / off / status) — the WI-zonur family that
     suspends auto-sync while a human edits
   - **Integrity and recovery:** validate, repair-drift, cache-rebuild,
-    reconcile-reset, recover
+    reconcile-reset, reconcile (flush pending ops, fast-forward, restore the
+    journal), recover (deprecated: the journal-only part of reconcile)
   - **Sync and setup:** sync, init, setup, fork-setup, migrate
   - **Surfaces:** tui, serve, textconv
   - **Agent governance:** count-todos, hash-todos, guidance
@@ -33,6 +34,12 @@ Design rationale:
 - --tracker-root global option defaults to .agent/ (nearest ancestor).
 - Exit codes: 0 = success, 1 = user error, 2 = internal error.
 - TUI subcommand launches Textual app (requires textual optional dep).
+- Auto-sync lives here: after a successful command in _MUTATION_COMMANDS (or
+  a ``tags`` editorial verb), main() calls _maybe_auto_sync(). It syncs once
+  pending ops exceed the threshold, waits for an in-flight auto-pr
+  (.git/PR_PENDING), and stops retrying after failures via a
+  .git/TRACKER_SYNC_FAILED circuit breaker. --no-auto-sync disables it;
+  ``tui`` runs its own sync only when it changed data.
 
 See ADR-0013 for the full design specification.
 """
@@ -3026,10 +3033,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Start web server for remote access (requires starlette, uvicorn)",
     )
     p_serve.add_argument(
-        "--background", action="store_true",
-        help="Daemonize and write PID file",
-    )
-    p_serve.add_argument(
         "--stop", action="store_true",
         help="Stop a running serve process",
     )
@@ -3409,7 +3412,7 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
     """Check if pending tracker ops exceed the threshold and trigger sync.
 
     Reads the threshold from ``TRACKER_AUTO_SYNC_THRESHOLD`` env var
-    (default: 50, 0 = disabled).  Runs ``preflight_check()`` and
+    (default: ``AUTO_SYNC_DEFAULT_THRESHOLD``, 80; 0 = disabled).  Runs ``preflight_check()`` and
     ``do_sync()`` if the threshold is exceeded.  All output goes to stderr
     to preserve ``--json`` stdout.  Exceptions are caught and logged — this
     function never raises.

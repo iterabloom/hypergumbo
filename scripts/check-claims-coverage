@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""INV-jojog per-PR guard: can the shipped tree's self-claims still be qualified?
+
+Runs the python analyzer over the packaging-declared source roots and asks
+verify_claims' own coverage decision -- the logic lives in
+``hypergumbo_core.claims_coverage_guard`` so the package's tests cover it; this
+file is argument handling and exit codes. ~30-60 s, no behaviour map, no
+grammar build: the python grammar is a wheel dependency of lang-mainstream.
+
+WHY A GUARD AND NOT THE GATE. scripts/check-self-claims compares eighteen
+verdicts against the recorded snapshot and needs the full map (~17 min cold);
+its per-PR arm was removed for that cost on 2026-08-30, so a regression now
+surfaces on the twice-daily cron. Four of the five drift incidents since were
+one shape -- a shipped call into a module the catalogue could not classify --
+and that shape is decidable from the python analyzer's edges alone. This is the
+cheap arm for that shape; everything else the gate checks still waits for the
+cron (module docstring of claims_coverage_guard has the list).
+
+EXIT CODES, the mypy ratchet's contract: an infrastructure failure is not a
+regression, and conflating them is how a gate gets switched off.
+
+    0   qualifiable: coverage complete, or qualified by launch sites alone
+    1   WITHHELD: the cron's self-claims-gate will fail on this tree
+    2   infrastructure: core or the python analyzer not importable, claims
+        file missing. Warn and continue.
+
+Usage:
+    scripts/check-claims-coverage [--repo PATH] [--claims PATH]
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "packages/hypergumbo-core/src"))
+
+REMEDY = """\
+A module the I/O catalogue can neither row nor enumerate withholds every
+self-claim verdict on the next cron (confirmed_with_caveats -> inconclusive,
+opaque_boundary dropped). Row the call's I/O if it crosses a boundary; if its
+surface is in-process, add a DATED module_completeness entry at the EXACT slot
+named above (matching is exact: `threading` does not vouch for
+`threading.Event`) -- stdlib in
+packages/hypergumbo-core/src/hypergumbo_core/io_primitives/python.yaml,
+third-party in docs/io-primitives-overlays/hypergumbo-self.yaml.
+Precedents: WI-jabus (4d0933b10c), INV-jojog (1abf3e4348), INV-konad (f18f16d9c7)."""
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--repo", default=str(ROOT), help="repository root")
+    ap.add_argument("--claims", default=str(ROOT / "docs/hypergumbo.claims.yaml"),
+                    help="claims file whose extra_catalogs overlays to load")
+    opts = ap.parse_args(argv)
+
+    claims = Path(opts.claims)
+    if not claims.is_file():
+        print(f"check-claims-coverage: no claims file at {claims}; skipping "
+              f"(infrastructure, not a regression)", file=sys.stderr)
+        return 2
+    try:
+        from hypergumbo_core.claims_coverage_guard import run_guard
+    except ImportError as exc:  # pragma: no cover - needs a broken install
+        print(f"check-claims-coverage: hypergumbo_core not importable ({exc}); "
+              f"INFRASTRUCTURE failure (exit 2), not a regression.", file=sys.stderr)
+        return 2
+
+    print("check-claims-coverage: analysing the shipped tree with the python "
+          "analyzer ...", file=sys.stderr)
+    try:
+        report = run_guard(Path(opts.repo), claims)
+    except KeyError as exc:
+        print(f"check-claims-coverage: {exc}; the python analyzer is not "
+              f"registered (hypergumbo-lang-mainstream not installed?). "
+              f"INFRASTRUCTURE failure (exit 2), not a regression.", file=sys.stderr)
+        return 2
+
+    cov = report.coverage
+    print(f"shipped files: {report.files}   edges: {report.edges}   "
+          f"{report.seconds:.1f}s")
+    if cov.opaque_sites:
+        print(f"opaque launch sites (qualify, never withhold): "
+              f"{', '.join(cov.opaque_sites)}")
+    if report.qualifiable:
+        print("\n✓ the shipped tree's self-claims are qualifiable")
+        return 0
+    print(f"\nFAIL: the self-claims verdicts would be WITHHELD on this tree.\n"
+          f"  {cov.reason}\n\n{REMEDY}", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

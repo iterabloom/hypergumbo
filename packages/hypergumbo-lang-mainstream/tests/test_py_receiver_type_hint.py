@@ -83,13 +83,12 @@ class TestReceiverTypeHintEmission:
         assert len(edges) == 1
         assert "receiver_type_hint" not in (edges[0].meta or {})
 
-    def test_typed_receiver_direct_method_gets_hint(self, tmp_path: Path) -> None:
-        # Even when ``helper`` IS directly on the inferred type, single-file
-        # ``extract_nodes`` cannot resolve it (methods are keyed by short name
-        # in local_symbols; sym_by_path_name is unpopulated), so the call
-        # reaches the final else and gets the hint. The full pipeline then
-        # resolves it via the linker (see
-        # TestNohamRecallEndToEnd.test_typed_receiver_instance_method_resolves).
+    def test_typed_receiver_direct_method_resolves(self, tmp_path: Path) -> None:
+        # When ``helper`` IS directly on the inferred type, single-file
+        # ``extract_nodes`` resolves it: Case 2c asks ``local_symbols`` for
+        # ``Foo.helper``, the key methods are registered under since WI-barip.
+        # (Before, methods were keyed by short name, the lookup missed and the
+        # call took the hinted unresolved edge for the linker to resolve.)
         src = (
             "class Foo:\n"
             "    def helper(self):\n"
@@ -98,9 +97,10 @@ class TestReceiverTypeHintEmission:
             "    return x.helper()\n"
         )
         res = _analyze(tmp_path, src)
-        edges = _method_call_edges(res, "helper")
-        assert len(edges) == 1
-        assert (edges[0].meta or {}).get("receiver_type_hint") == "Foo"
+        assert _method_call_edges(res, "helper") == []
+        names = {s.id: s.name for s in res.symbols}
+        assert [names.get(e.dst) for e in res.edges
+                if e.edge_type == "calls" and names.get(e.src) == "f"] == ["Foo.helper"]
 
 
 class TestReceiverHintScopeGuard:

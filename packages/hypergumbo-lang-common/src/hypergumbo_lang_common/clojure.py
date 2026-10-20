@@ -110,8 +110,11 @@ _CLOJURE_CALLABLE_KINDS: frozenset[str] = frozenset({"function", "macro", "metho
 
 
 def find_clojure_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Clojure files in the repository."""
-    yield from find_files(repo_root, ["*.clj", "*.cljs", "*.cljc", "*.edn"])
+    """Yield all Clojure files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 

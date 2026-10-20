@@ -70,7 +70,6 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
 )
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -119,8 +118,11 @@ _FORTRAN_DECLARATOR_WRAPPERS = frozenset({
 
 
 def find_fortran_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Fortran files in the repository."""
-    yield from find_files(repo_root, FORTRAN_EXTENSIONS)
+    """Yield all Fortran files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:

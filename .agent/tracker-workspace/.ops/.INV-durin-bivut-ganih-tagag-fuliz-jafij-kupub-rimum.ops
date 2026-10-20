@@ -1,0 +1,46 @@
+- op: create  # aab3
+  at: '2026-10-17T23:04:14Z'  # aab3
+  by: agent  # aab3
+  actor: jgstern_agent  # aab3
+  clock: 1  # aab3
+  nonce: aab3  # aab3
+  data:  # aab3
+    kind: invariant  # aab3
+    title: "post-run cache eviction has no inter-process guard: two concurrent runs over the cap race on the .evicting-/.zip.partial renames and the loser exits 1 with an internal FileNotFoundError after writing every artifact"  # aab3
+    status: violated  # aab3
+    priority: 2  # aab3
+    parent:  # aab3
+    tags:  # aab3
+    - cache  # aab3
+    - cli  # aab3
+    - concurrency  # aab3
+    isbefore: []  # aab3
+    duplicate_of: []  # aab3
+    not_duplicate_of: []  # aab3
+    pr_ref:  # aab3
+    description: "FOUND 2026-10-17 on dev 38f6c90533 while re-verifying tracker items with five fixture-scale `hypergumbo survey` runs in parallel (two independent sub-agents hit it; logs under the session scratchpad, verify-B2/*/survey.log).\n\nWHAT. A run that has already written every artifact exits 1 with `hypergumbo: internal error: FileNotFoundError: [Errno 2] ... results/<state> -> results/.evicting-<state>` (three runs) or `... soft-deleted-surveys/<repo>__<state>.zip.partial -> ....zip` (one run). A sequential re-run exits 0 with identical output. The cache was at 5.0 GB, i.e. at the WI-sidin cap, so every run was evicting.\n\nMECHANISM. cli.py `_maybe_evict_cache` runs at the end of every analysis run (call at cli.py:1439) with no inter-process lock. Two concurrent runs over the cap collect the same candidate list; the first renames an entry to its `.evicting-` scratch name and removes it; the second's `cache_rename(entry_path, scratch)` in `_archive_entry` (cli.py:~4379) raises FileNotFoundError, and so can its `cache_rename(partial, final)` when both processes staged the same `.zip.partial`. Nothing in `_archive_entry` / `_maybe_evict_cache` catches it, so it reaches the top-level handler and the user sees \"This is a bug\" and a non-zero exit for a run whose outputs are complete.\n\nVIOLATED INVARIANT. Cache maintenance after a run is best-effort housekeeping: it must never turn a successful run into a failed one, and concurrent runs over the cap must not fail each other. (WI-sidin's docstring argues crash-safety for ONE interrupted process; it does not consider two live ones.)\n\nREPRO. With ~/.cache/hypergumbo at or over the cap, run `hypergumbo survey <fixture-a> --out a.json & hypergumbo survey <fixture-b> --out b.json & wait` on two tiny fixtures; one of the two exits 1 with the FileNotFoundError above. Four parallel runs reproduced it in four of four.\n\nFIX SHAPE. (1) Take a non-blocking exclusive lock (flock on `<cache>/.evict.lock`) around the eviction pass and skip the pass when another process holds it, the way smart-test guards itself (WI-sinap). (2) Independently, treat FileNotFoundError on the entry rename and on the partial->final rename as \"already evicted by someone else\" and continue, so the pass is tolerant even without the lock. (3) Wrap the whole post-run housekeeping call so that any exception there is reported as a warning, not as an internal error, once the artifacts are written. Add a two-process test for (2) and a unit test that a raised FileNotFoundError in `_archive_entry` does not change the run's exit code."  # aab3
+    fields:  # aab3
+      statement: "Post-run cache housekeeping is best-effort: a run whose artifacts are written never exits non-zero because of eviction, and concurrent runs over the cap never fail each other."  # aab3
+      root_cause: "cli.py _maybe_evict_cache runs at the end of every run (cli.py:1439) with no inter-process lock; two processes collect the same candidates, and the second's cache_rename to the .evicting- scratch name (or of the shared .zip.partial) raises FileNotFoundError, which _archive_entry does not catch, so it surfaces as 'internal error' exit 1."  # aab3
+- op: update  # 4b53
+  at: '2026-10-18T05:24:11Z'  # 4b53
+  by: agent  # 4b53
+  actor: jgstern_agent  # 4b53
+  clock: 2  # 4b53
+  nonce: 4b53  # 4b53
+  set:  # 4b53
+    status: satisfied  # 4b53
+- op: discuss  # d228
+  at: '2026-10-18T05:24:11Z'  # d228
+  by: agent  # d228
+  actor: jgstern_agent  # d228
+  clock: 3  # d228
+  nonce: d228  # d228
+  message: "Fixed in PR #1710 (dev 629588ff98). Partial archives are per-process (<stem>.zip.<pid>.partial); _archive_entry treats FileNotFoundError on the zip, the partial->final rename and the entry->.evicting- rename as the other run's job and skips; cmd_run calls _housekeep_cache, which turns any housekeeping exception into a stderr warning. Fix-shape item (1), the flock, was NOT done: (2)+(3) make the pass tolerant without it, and a lock would only serialize work the tolerant path already handles. LIVE RE-RUN OF THE FILED REPRO (isolated XDG_CACHE_HOME, HYPERGUMBO_CACHE_MAX_GB=0.001, seeded with 8 x 20 MB entries of one repo aged 3-10 days, then 4 parallel 'hypergumbo survey' runs on tiny fixtures, 3 rounds): pre-fix df2aef43b5 = 9 of 12 runs exit 1 with 'internal error: FileNotFoundError ... results/state0 -> results/.evicting-state0'; post-fix dev = 0 of 12 non-zero, eviction ran in all 12. Production-path test: test_cache_eviction.py::test_run_exits_zero_when_eviction_raises (cli.main(['run', ...]) with eviction raising -> exit 0 + warning), plus three tests that remove the entry / partial / scratch target mid-pass. RESIDUAL found by this re-run: each racing run's summary counts entries another run moved (round 1: four runs each reported 'Soft-deleted 133.5 MB (7 stale entries)' when 7 entries existed in total). Follow-up PR next: count only what this process archived."  # d228
+- op: discuss  # 9dcb
+  at: '2026-10-18T07:35:42Z'  # 9dcb
+  by: agent  # 9dcb
+  actor: jgstern_agent  # 9dcb
+  clock: 4  # 9dcb
+  nonce: 9dcb  # 9dcb
+  message: "Follow-up merged in PR #1712 (dev 8fd8c4ac00) for the residual the closure re-run found, plus one more race that re-run exposed. (1) _archive_entry returns whether THIS process moved the entry; the summary counts only those, while the cap check still counts an entry a peer took. (2) A peer sweeping our .evicting- dir as residue made our rmtree raise, ending the pass in a housekeeping warning: cache_rmtree(missing_ok=True) now finishes a tree another process is removing (retries until nothing is left; other errors still raise). (3) Residue is hard-deleted and may be a peer's in-flight scratch, so it counts toward the cap but not toward the 'Soft-deleted ... Recoverable (zipped)' summary. LIVE RE-RUN of the filed repro on the follow-up branch (same harness, 5 rounds x 4 parallel surveys): 0 of 20 runs non-zero, 0 housekeeping warnings, and the runs' reported entries sum to exactly 7 (the seeded count) in every round; before (1)+(2) round 3 summed to 6 with two 'housekeeping skipped: ... .evicting-state2' warnings, and before (1) four runs each claimed all 7. (PR #1711 carried the same commit; its pytest step was killed at 73% with zero failures after a 40-min queue behind the nightly matrix, so it was closed and re-opened as #1712.)"  # 9dcb
