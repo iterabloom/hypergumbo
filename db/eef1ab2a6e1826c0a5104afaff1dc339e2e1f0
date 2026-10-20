@@ -1,0 +1,31 @@
+Original commit body from c02a9537caf24cc281b515f15fe4df80d2e7d514:
+
+INV-komoj's return lift (ADR-0017 s4c) reads a helper's RETURN
+STATEMENTS (ddg_build.return_statement_spans). Two common forms have
+none and return their value anyway, so a secret handed back that way
+was a false all-clear:
+
+- Rust's tail expression, its idiomatic return:
+  `fn get() -> String { env::var("TOOL").unwrap() }` +
+  `Command::new(get())` read confirmed_with_caveats; the `return ...;`
+  twin read violated. New cfg-mapping key `block_tail_returns` (rust:
+  true): a body block's last named child that is not a statement
+  (`*_statement` / `*_declaration` / `*_item`) is a return span.
+- An expression body: `const get = () => process.env.TOOL` +
+  `cp.exec(get())` read confirmed_with_caveats. A body whose node is not
+  a statement block is its own return span (also covers a Python
+  lambda's body, but see below).
+
+Measured against dev (verify-claims): the filed rust_tail and js_arrow
+shapes read violated. Corpus: aardvark-dns and apollo-server moved
+nothing; ripgrep's two already-violated claims gained rows
+(host-secret-no-host-fs 3 -> 8, host-secret-no-logging 1 -> 2), each a
+source its tail-expression helpers return: config.rs args()'s
+RIPGREP_CONFIG_PATH, gitignore.rs's env-derived excludes paths.
+
+NOT covered: a Python lambda bound to a name (`get = lambda:
+os.environ["K"]`) still reads confirmed_with_caveats. The py analyzer
+emits `get` as a variable and the python DDG spec walks no lambda, so no
+return span applies; filed separately.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
