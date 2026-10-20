@@ -62,8 +62,9 @@ alongside it. This is what lets a catalogued method-kind I/O primitive be
 reached through a typed receiver — see ADR-0051 for why the module slot
 must name the static owner path and never the variable. Function-scoped
 ``var_types`` shadowing keeps a rebound name from leaking its old type
-across scopes — for declared and constructor bindings; a binding from a
-resolved call's return type is written file-wide, outside that scoping.
+across scopes — for a local's declared, constructor and library-call
+bindings; parameter and constructor-parameter types, and a binding from a
+resolved call's return type, are written file-wide, outside that scoping.
 
 Library return types (WI-jubim). A receiver that is the VALUE a library
 call returns -- ``Runtime.getRuntime().exec(c)``, or ``val r =
@@ -110,9 +111,10 @@ edge.
 
 Call sources and the ambiguity guard. A call that sits in no function (a
 top-level ``val`` initialiser or lambda, a ``by lazy`` block, a class or
-object body) is drawn from the enclosing class, object or companion
-declaration (``_TYPE_BODY_NODES``) and, failing that, from the file anchor
-symbol. A bare ``helper()`` call whose name 3 or more project methods share
+object body) is drawn from the enclosing class or object declaration
+(``_TYPE_BODY_NODES``; a ``companion object`` has no symbol of its own, so
+its body's calls are drawn from the class) and, failing that, from the file
+anchor symbol. A bare ``helper()`` call whose name 3 or more project methods share
 is dropped with no edge (the AMB-METHOD guard,
 ``ListNameResolver(..., ambiguity_threshold=3)``). The guard runs before the
 same-file lookup, so a same-file function of that name is dropped too.

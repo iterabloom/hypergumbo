@@ -27,7 +27,8 @@ The tree-sitter-d parser handles .d and .di (interface) files.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract module, function, struct, class, interface symbols
+1. Pass 1: Extract module, function, method, struct, class, interface, enum,
+   field and variable symbols
 2. Pass 2: Extract import edges and call edges using NameResolver
 
 The base class handles grammar checking, parser creation, file discovery,

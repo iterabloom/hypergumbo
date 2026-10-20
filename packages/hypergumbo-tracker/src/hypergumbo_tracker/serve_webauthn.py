@@ -6,18 +6,23 @@ the WebAuthn protocol. Credential storage is in-memory (invalidated on restart).
 
 How It Works
 ------------
-``WebAuthnManager`` wraps the ``webauthn`` library to generate registration
-and authentication challenges, store credentials, and verify responses.
+``WebAuthnManager`` generates registration and authentication challenges
+(``secrets.token_bytes``) and the option dicts the browser passes to
+``navigator.credentials.create()`` / ``.get()``, and keeps credentials in
+memory. It does not verify responses: the ``webauthn`` package is a
+declared dependency, but nothing imports it yet.
 
 Registration flow:
 1. ``generate_registration_options()`` → JSON options (challenge, RP info, user info)
 2. Client performs WebAuthn ceremony with hardware key
-3. ``verify_registration()`` validates the attestation response
+3. Not implemented: nothing verifies the attestation response;
+   ``store_credential()`` records a credential without checking it
 
 Authentication flow:
 1. ``generate_authentication_options()`` → JSON options (challenge, allowed credentials)
 2. Client performs WebAuthn ceremony with hardware key
-3. ``verify_authentication()`` validates the assertion response
+3. Not implemented: nothing verifies the assertion response;
+   ``get_pending_challenge()`` returns the challenge a verifier would check
 
 Why This Design
 ---------------
@@ -26,8 +31,8 @@ Why This Design
   entry point yet (``htrac setup`` does not register credentials), and
   nothing outside this module constructs a ``WebAuthnManager`` -- the serve
   auth modules are not wired into ``serve.py`` (WI-hopip).
-- The ``webauthn`` library handles the cryptographic verification.
-- Challenges are stored per-manager for verification (single-user server).
+- Response verification is not implemented; the pending challenge is kept
+  per-manager (single-user server) for a verifier to check against.
 """
 from __future__ import annotations
 

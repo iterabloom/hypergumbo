@@ -115,11 +115,14 @@ How It Works
    - Pass 2: Detect calls/inheritance, resolve against global symbol
      registry, attach canonical ``dst_ref`` for cross-translation-unit
      edges
-4. Detect method calls, inheritance, and instantiation patterns. Calls on
-   inherited methods or typed receivers that do not resolve locally are emitted
-   unresolved with ``enclosing_class`` / ``receiver_type_hint`` /
-   ``inherited_field_receiver`` hints; the
-   Tier-2 ``inherited_calls`` linker walks the hierarchy and resolves them.
+4. Detect method calls, inheritance, and instantiation patterns. A
+   ``this.m()`` / bare ``m()`` call that does not resolve on the enclosing
+   class is emitted unresolved with an ``enclosing_class`` hint, and a
+   typed-receiver or inherited-field call is emitted unresolved with a
+   ``receiver_type_hint`` / ``inherited_field_receiver`` hint even when
+   ``<Type>.<method>`` is a project symbol; the Tier-2
+   ``inherited_calls`` linker walks the hierarchy and resolves them. A
+   static ``ClassName.m()`` call resolves here (``ast_call_static``).
    A resolved call, ``new`` or ``::new`` target is dropped when the file
    imports a different class of that simple name, or when a bare name would
    reach a nested type from another file (``_is_import_class_mismatch``;

@@ -15,7 +15,8 @@ Implementation approach:
 - stable_ids hash every enclosing ``namespace eval`` (INV-fabih); a proc's id
   name slot and ``meta.namespace`` carry every one too (``a::inner::go``,
   Tcl's own name), where they kept the innermost only (WI-tusad scheme bump).
-  The hashed name stays ``inner::go`` beside the chain, so ids did not move
+  The hashed name stays ``inner::go`` beside the chain, so stable_ids did
+  not move.
 
 Key constructs extracted:
 - procedure: proc name {args} {body}

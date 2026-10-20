@@ -62,8 +62,12 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      Imports inside a block or body apply only within it.
    - A method call not resolved in-file becomes an unresolved edge rather
      than a short-name guess; the ``ExternalRef`` module slot carries the
-     receiver's import-qualified type, or the imported owner of a static
-     call such as ``Files.readAllBytes``. One- and two-letter callee
+     receiver's type when the file qualifies it (an import, or an inline
+     ``java.io.File``), else the owner of a static call: the file's import
+     (``Files.readAllBytes``), java.lang's closed list (``System.getenv``),
+     ``scala._``'s implicit ``Console`` / ``Predef`` unless a project type or
+     an import binds the name, or a fully-qualified inline path under
+     ``scala`` / ``java`` / ``javax``. One- and two-letter callee
      names (usually lambda parameters) take a confidence penalty on
      short-name binds.
    - A bare call that matches a DIFFERENT class's method only by short name

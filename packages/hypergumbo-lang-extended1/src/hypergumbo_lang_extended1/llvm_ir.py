@@ -16,13 +16,14 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 - Pass 1: Parse all files, extract all symbols into global registry
 - Pass 2: Walk the file for its ``call`` instructions and resolve them
 
-A call edge is emitted only when both ends are known: a call to a function the
-repository does not define is dropped. The caller is the ``define`` that
-contains the instruction, found by POSITION in this file (``symbol_declared_by``
-over ``symbols_at``; INV-nafij, WI-kosar). The callee is this file's ``define``
-or ``declare`` of that name when there is one, else the repo-wide registry's.
-Before, both ends went through the registry by bare name, so two files defining
-``@foo`` had one file's calls credited to the other's.
+A call edge is emitted only when both ends are known: a call to a name the
+repository neither defines nor declares is dropped. The caller is the
+``define`` that contains the instruction, found by POSITION in this file (the
+``define``'s start, looked up in a ``symbols_at`` index; INV-nafij, WI-kosar).
+The callee is this file's ``define`` of that name when there is one, else
+whatever the repo-wide registry holds under the name, which may be a
+``declare``. Before, both ends went through the registry by bare name, so two
+files defining ``@foo`` had one file's calls credited to the other's.
 
 Known gap: an indirect call (``call void %fp(ptr @g)``) is credited to the
 first ``@name`` in the instruction, here the argument ``@g``.

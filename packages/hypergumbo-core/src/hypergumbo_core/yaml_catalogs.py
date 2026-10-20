@@ -4,10 +4,10 @@
 Hypergumbo's analysis pipeline reads several categories of YAML data alongside
 the Python source: framework patterns for symbol enrichment, per-language I/O
 primitive catalogs and their community overlays, dataflow classification
-rules, CFG node mappings, taint sources / sanitizers, per-language function
-summaries, URL-folding rules, and library signatures. Each lives in its own
-subdirectory of this package and is indexed here; most have their own loader
-(``io_boundary`` and ``taint`` each serve two families) and most name a
+rules, CFG node mappings, taint sources / sanitizers / sinks, per-language
+function summaries, URL-folding rules, and library signatures. Each lives in
+its own subdirectory of this package and is indexed here; most have their own
+loader (``io_boundary`` serves two families and ``taint`` three) and most name a
 governing ADR (``adr`` is optional). This module is the single index over all
 of them.
 
@@ -15,8 +15,9 @@ Why this exists. The catalog set grew organically — ``frameworks/`` landed in
 the initial pattern-system work, ``io_primitives/`` landed with ADR-0016, the
 ``dataflow_patterns/`` + ``cfg_nodes/`` + ``taint_*`` + ``function_summaries/``
 family landed across ADR-0015 / ADR-0017, and ADR-0047 added the user-channel
-and community-overlay families. With eleven registered directories holding 180
-YAML files there is no longer a single place to enumerate them. Without a
+and community-overlay families. With eleven registered directories holding
+well over a hundred YAML files (``enumerate_catalogs`` gives the live count)
+there is no longer a single place to enumerate them. Without a
 registry, new categories drift in and out of documentation, generate-architecture
 counted only ``frameworks/``, and there was no drift-detection equivalent to the
 canonical-registry / drift-linter pattern used for ``Edge.edge_type`` /

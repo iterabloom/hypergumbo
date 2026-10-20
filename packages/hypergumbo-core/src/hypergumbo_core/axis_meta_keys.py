@@ -30,7 +30,7 @@ Axis taxonomy
   (``entrypoints.Entrypoint``, not an ``ir.py`` dataclass). Example:
   ``evidence_type`` (WI-rukam — the Entrypoint analog of the
   ``Edge.evidence_type`` inference-pathway axis, nested under ``meta``
-  so the Entrypoint record keeps a 4-field typed core). The value
+  rather than added as a typed field on ``Entrypoint``). The value
   vocabularies live as single-source frozensets in ``entrypoints.py``
   (``ENTRYPOINT_SOURCES`` / ``ENTRYPOINT_EVIDENCE_TYPES``).
 

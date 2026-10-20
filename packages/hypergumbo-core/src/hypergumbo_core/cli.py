@@ -53,10 +53,10 @@ this order:
    resolved (``resolve_deferred_symbol_refs``) and every id and path is made
    repo-relative (``_relativize_ir_paths``).
 2. **Producer merge** (ADR-0057 §3, ``merge_producer_records``): when two
-   producers analyzed the same declarations (tree-sitter ``rust`` and the
-   SCIP ``rust_analyzer`` arm), their records fold into one symbol per
-   declaration. A producer with no merge declaration is refused, not passed
-   through.
+   producers analyzed the same declarations (tree-sitter ``rust`` with the
+   SCIP ``rust_analyzer`` arm, or ``python`` with ``scip_python``), their
+   records fold into one symbol per declaration. A producer with no merge
+   declaration is refused, not passed through.
 3. **Framework enrichment** (ADR-3aaa): ``refine_frameworks`` checks
    manifest-detected frameworks against import edges, ``enrich_symbols``
    attaches YAML-pattern concepts (route, model, ...), and
@@ -136,7 +136,8 @@ any is ``confirmed_with_caveats`` and none of the above.
 ``dead-code-maybe`` is implemented here too (``cmd_dead_code_maybe`` and its
 helpers ``production_callables``, ``_bfs_reachable`` and
 ``_compute_cross_language_hits``): production callables minus a BFS over
-``_REACHABILITY_EDGE_TYPES`` from the ``--seeds`` set (plus ``view_func``
+``_REACHABILITY_EDGE_TYPES`` edges plus a class-to-initializer hop for each
+constructed class, from the ``--seeds`` set (plus ``view_func``
 dispatch handlers), after which three false-positive demoters drop symbols in
 generated files, methods reached by inheritance dispatch, and candidates
 whose name appears in at least ``--cross-lang-threshold`` other-language
@@ -151,8 +152,11 @@ Why This Design
   they reload it via ``survey_io.load_substrate`` and, where they need IR
   objects, rehydrate it with ``Symbol.from_dict`` / ``Edge.from_dict``
   (``_edge_from_dict`` is a thin wrapper), and ``_get_or_run_analysis`` runs a
-  survey first on a cache miss. ``dead-code-maybe`` is the exception to the
-  rehydration: it builds its entrypoint-detection Symbols by hand from seven
+  survey first on a cache miss. There are two exceptions to the rehydration.
+  ``io-boundaries`` and ``verify-claims`` rebuild edges through a six-field
+  facade (``_rehydrate_io_boundary_edges``) that keeps ``is_resolved`` and
+  ``dst_ref`` for the boundary classifier. ``dead-code-maybe`` builds its
+  entrypoint-detection Symbols by hand from seven
   fields (dropping ``supply_chain_tier`` and ``modifiers``), and only its
   edges go through ``Edge.from_dict``. ``sketch`` is the exception to the
   reload: the CLI reads a survey only with ``--input``; otherwise

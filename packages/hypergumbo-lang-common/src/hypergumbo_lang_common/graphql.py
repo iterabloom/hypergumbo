@@ -25,7 +25,8 @@ Why This Design
 - TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-graphql package for grammar (grammar_module)
-- GraphQL-specific: types, fields, queries, mutations are first-class
+- GraphQL-specific: type definitions, operations, fragments and directives
+  are first-class; fields are not extracted as symbols
 - Useful for API schema analysis and documentation generation
 - Identity (ADR-0035, WI-tusad): ``input`` / ``scalar`` / ``union`` types,
   directives, fragments and operations mint

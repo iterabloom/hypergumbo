@@ -49,7 +49,8 @@ How It Works
 2. If not available, return skipped result (not an error)
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls, instantiations, and resolve against global symbol registry
+   - Pass 2: Detect calls, instantiations, using directives and method-group
+     references, and resolve against global symbol registry
      - A call the registry cannot place (a framework call such as
        ``File.ReadAllText``), or one withheld by the 3+-candidate ambiguity
        guard, is still emitted as an unresolved edge; its module slot is the
@@ -68,7 +69,8 @@ How It Works
        enclosing type (``_CSHARP_TYPE_BODY_NODES``), else on the file
        (INV-bamij). An object creation or method-group reference there is
        still dropped.
-4. Detect using directives and object creations
+4. Annotate each file's edges with ADR-0015 dataflow access modes
+5. Post-pass over all symbols: turn attribute metadata into ``decorated_by`` edges
 
 Why This Design
 ---------------

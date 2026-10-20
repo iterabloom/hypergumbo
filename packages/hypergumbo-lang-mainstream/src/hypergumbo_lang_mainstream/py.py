@@ -159,13 +159,13 @@ the same dual-output pattern.
 ID Schemes
 ----------
 - **stable_id**: sha256 over the v6 tuple, anchored on the file-anchored
-  ``containing_stable_id`` (ADR-0035 §2). Functions and methods with a normalizable
+  ``containing_stable_id`` (ADR-0035 §1). Functions and methods with a normalizable
   signature use the typed tier (``make_typed_stable_id``: kind, normalized signature,
   visibility, decorators, ``name``, ``qualified_name``); the untyped fallback hashes
   kind, param count, arity flags, decorators, ``name``, ``qualified_name`` and
   ``occurrence_index``. Both tiers are chosen in one place,
   ``python_callable_stable_id``, which ``jupyter.py`` also calls for a notebook's
-  functions. It does NOT survive a rename or a move: both the name and
+  functions. It does NOT survive a rename or a move (ADR-0035 §2): both the name and
   the containing file feed the hash. Use ``fingerprint`` to join a symbol across a
   rename (INV-zudob).
 - **shape_id**: sha256 of AST structure (control flow, nesting).
