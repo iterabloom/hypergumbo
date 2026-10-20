@@ -83,6 +83,13 @@
 # Python
 - pypi.org
 - files.pythonhosted.org
+# The Python community forum. RATIONALE: PyPI and the PSF publish packaging
+# security notices here first. The 2026-10-20 eMudhra/emSign CA notice gave
+# the fixed pip, certifi and uv versions that the dev environment needed, and
+# reading it took a one-off owner approval (owner approval 2026-10-20).
+# SCOPE LIMIT, stated rather than left implicit: read-only GET of public
+# topics. No account, no login, no posting or replying.
+- discuss.python.org
 # Rust
 - crates.io
 - docs.rs
