@@ -42,3 +42,18 @@
   clock: 4  # 8da2
   nonce: 8da2  # 8da2
   message: "Family item: WI-riziv."  # 8da2
+- op: update  # 39c5
+  at: '2026-10-20T18:22:48Z'  # 39c5
+  by: agent  # 39c5
+  actor: jgstern_agent  # 39c5
+  clock: 5  # 39c5
+  nonce: 39c5  # 39c5
+  set:  # 39c5
+    status: satisfied  # 39c5
+- op: discuss  # 7191
+  at: '2026-10-20T18:22:49Z'  # 7191
+  by: agent  # 7191
+  actor: jgstern_agent  # 7191
+  clock: 6  # 7191
+  nonce: '7191'  # 7191
+  message: "Fixed in PR #1771 (via WI-riziv). Re-ran the filed repro on dev after merge: src/a.php='<?hh function foo(): int' + src/b.hack='<?hh function bar(): int' -> analyze_hack symbols [('bar','src/b.hack'), ('foo','src/a.php')] (was bar only); analyze_php on the same tree analyzes 0 files, so the Hack file is not parsed twice. Production-path test: test_hack.py::test_analyzer_reads_php_files_with_hh_header. The guard test_discovery_helper_wiring.py rejects a helper production never calls."  # 7191

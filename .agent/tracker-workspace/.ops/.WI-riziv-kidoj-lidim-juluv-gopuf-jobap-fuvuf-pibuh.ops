@@ -20,3 +20,18 @@
     pr_ref:  # d029
     description: "Found by the 2026-10-20 docstring-staleness audit. Family of INV-pobap. Several analyzers define a `find_<lang>_files` helper that filters or sniffs files, but the analyzer class does not override `_find_source_files`, so the base default (`find_files(repo_root, self.file_patterns)`) runs and the helper is called only by tests.\nCONFIRMED (verifier repro): d_lang.py `find_d_files` filters GCC `-MMD` dependency files with `classify_dot_d_file`; nothing calls it, so a dir with `main.d` = \"main.o: main.c foo.h\" plus `app.d` gives `run.files_analyzed == 2` (the dependency file is parsed as D). hack.py: INV-pobap.\nCANDIDATES, NOT VERIFIED (no non-test caller found by grep over packages/, scripts/, .agent/hooks/, .github/, .woodpecker/; helper body contains a filter): apex, bibtex, bitbake, fennel, gleam, haxe, janet, jsonnet, kdl, odin, pascal, prisma, sparql, tcl, twig, v_lang, zig. For each: does the helper's filter differ from what base discovery yields? If yes, wire it via `_find_source_files`; if no, delete the helper. Structural fix candidate: make `_find_source_files` the single discovery hook and have a test assert no module-level `find_*_files` exists without being the analyzer's discovery."  # d029
     fields: {}  # d029
+- op: update  # 671d
+  at: '2026-10-20T18:22:48Z'  # 671d
+  by: agent  # 671d
+  actor: jgstern_agent  # 671d
+  clock: 2  # 671d
+  nonce: 671d  # 671d
+  set:  # 671d
+    status: done  # 671d
+- op: discuss  # 6738
+  at: '2026-10-20T18:22:48Z'  # 6738
+  by: agent  # 6738
+  actor: jgstern_agent  # 6738
+  clock: 3  # 6738
+  nonce: '6738'  # 6738
+  message: "Fixed in PR #1771. Checked all 61 unwired find_*_files helpers (59 test-only, plus fortran and verilog, whose helper fed only the profile count). Only D's and Hack's filtered differently from the analyzer; clojure's helper also differed in the other direction (it returned .edn files the analyzer skips). D: DAnalyzer._find_source_files -> find_d_files, also registered as D's find_files for the profile. Hack: HackAnalyzer._find_source_files -> find_hack_files; the <?hh sniff moved to discovery.classify_dot_php_file, which find_php_files also applies, so PHP skips Hack files. The other 59 delegate to _analyzer._find_source_files. Guard: packages/hypergumbo-core/tests/test_discovery_helper_wiring.py fails on any helper that is neither called by production code nor delegating. Behavioral evidence (live repro on dev after merge): dir with main.d='main.o: main.c foo.h' + app.d='module app; void run() {}' -> analyze_d run.files_analyzed == 1 (was 2), symbols only from app.d, _detect_languages()['d'].files == 1. Production-path tests: test_d.py::TestDiscoveryIsTheHelper, test_php.py::TestFindPhpFiles::test_skips_hack_files. Smart-test: 22,233 passed, 5 failed; the 5 were fixed (3 line citations re-anchored, the clojure .edn test updated, my PHP test's path assertion), and those 5 files re-run with plain pytest: 191 passed. CI passed before merge."  # 6738
