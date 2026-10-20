@@ -100,7 +100,11 @@ class TestSuccess:
         )
         assert result.skipped is False and result.run is not None and result.symbols == []
         assert logged and "produced no symbols" in logged[0]
-        assert result.run.silence_reason  # the pass ran and says what it saw
+        # Not ``no_candidate_construct``: that says the files were read and held
+        # nothing, and it is routine, so the [passes] line never names it. An
+        # index with no symbols for a tree with Python in it is CANNOT-DETERMINE
+        # (WI-nijod: every run indexed an empty scratch dir and looked clean).
+        assert result.run.silence_reason == UNREPORTED
 
     def test_the_default_warning_channel_is_a_user_warning(self, tmp_path: Path) -> None:
         with pytest.warns(UserWarning, match="did not run"):
