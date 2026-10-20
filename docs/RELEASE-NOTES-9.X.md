@@ -74,6 +74,103 @@ partial-install warnings name the right package.
 
 `SCHEMA_VERSION` advances 0.20.14 → 0.20.15 (additive).
 
+**9.2.0 is a fix release with two changed defaults.** No output field,
+schema version or confidence model changes. Two things can change what you
+see:
+
+1. **`hypergumbo compact` leaves out test code by default**, as the
+   centrality view already did. Its connectivity picks had let in test
+   files that join two entrypoints in the call graph.
+2. **Some taint verdicts become less clean, correctly.** A secret read on
+   the same line as a sink is no longer an all-clear, and C gives no verdict
+   when a secret leaves through a pointer parameter, a global, a
+   function-like macro or a variadic argument, none of which taint follows.
+
+Also in 9.2.0: calls resolve more precisely in Python, C++, Perl, Ruby,
+Scala, Kotlin, C# and C, and base classes link to an in-repo class only when
+an import or qualifier names it. Each `.php` file is now analysed as either
+PHP or Hack, not both, and D skips GCC dependency files.
+
+`SCHEMA_VERSION` stays at 0.20.15.
+
+---
+
+## Unreleased
+
+> No `SCHEMA_VERSION`, `confidence_model`, `stable_id_scheme` or `--json`
+> envelope version changes.
+
+### At a glance
+
+- **`hypergumbo compact` leaves out test code by default.** Its
+  connectivity step adds nodes that join otherwise separate parts of the
+  graph, and a test that calls two entrypoints was enough to join them: at
+  400 nodes, test files had been 248 of express's and 203 of SwiftyJSON's 305.
+  Those picks now come from production code only; no production node is
+  lost.
+- **Taint analysis reports fewer false all-clears.**
+  - A secret read on the same line as a sink is caught, for example
+    `requests.post(url, headers={"A": os.environ["T"]})`. So is a secret
+    passed to another call on that line.
+  - A secret a function returns without `return` (a Rust tail expression, a
+    JS/TS arrow-function body) reaches the caller's sink.
+  - A `switch` or `match` with no matching arm no longer stops the flow.
+  - C: when a secret leaves through a pointer parameter, a global, a
+    function-like macro or a variadic argument, the claim gets no verdict
+    instead of a clean one. Calls through a function-pointer variable reach
+    the function it holds.
+  - C and C++ calls declared behind a project header (`#include "net.h"`
+    that includes `<sys/socket.h>`) are classified.
+  - Python HTTP responses and connected sockets are network-input sources.
+- **Calls resolve to the right target more often.**
+  - Python: a bare-name call such as `open(...)` no longer binds to a
+    same-named method.
+  - C++ and Perl: member calls resolve on the receiver's type, not by short
+    name.
+  - Ruby: calls on untyped receivers, implicit `self` and `super` produce an
+    edge (to an external or unresolved target when nothing in the repository
+    matches) instead of none, and constants resolve through the enclosing
+    module.
+  - Scala and Kotlin: calls on project objects and companions resolve.
+  - C# and C++: dispatch is decided per method (`override` and `virtual`
+    link, hidden names and statics do not).
+- **A base class links to an in-repo class only when an import or qualifier
+  names that class**, in Java, Kotlin, JS/TS, PHP, Groovy, Scala, C# and C++.
+  Any other base is external, where it used to bind to whichever in-repo
+  class shared its name.
+
+### For JSON consumers
+
+- No fields are added, removed or renamed.
+- `compact` output has fewer nodes when the repository has tests.
+- C dispatch tables are `variable` symbols, so `dispatches_to` edges start
+  at a node that exists. C# interface inheritance and Go interface embedding
+  produce `extends` edges.
+
+### Fixes
+
+- **Each `.php` file is analysed once**: one that starts with `<?hh` is Hack,
+  every other is PHP. Hack files had been parsed by the PHP analyzer only,
+  and the Hack analyzer had never read them.
+- **D skips GCC dependency files** (`gcc -MMD` output that shares the `.d`
+  extension), in the analysis and in the language breakdown.
+- **`--exclude` is part of the results-cache key.** A survey run with
+  `-e lib` had overwritten the cached survey without it, so a later
+  `hypergumbo search` answered from the excluded one.
+- **Concurrent runs no longer fail each other** over cache eviction.
+- **The opt-in scip-python backend indexes the analysed repository** (it had
+  indexed an empty scratch directory), runs on trees outside git, and its
+  edges that the built-in analyzer also found no longer fail confidence
+  validation.
+- **`.hypergumbo-examples/` is gitignored automatically.**
+- Smaller fixes in Swift, Wolfram, Odin, Zig, LLVM IR, COBOL, TLA+ and Agda;
+  the changelog lists them.
+
+### Known limitations
+
+- The V and Verilog analyzers both read every `.v` file, with no content
+  check to tell the two languages apart (WI-fovop).
+
 ---
 
 ## 9.1.0 — 2026-10-16
