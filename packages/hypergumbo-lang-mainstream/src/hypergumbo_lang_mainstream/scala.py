@@ -76,12 +76,21 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      resolves when the method is inherited (INV-fahub).
    - A call in no function is anchored on the class/object/trait/enum whose
      body holds it (``_TYPE_BODY_NODES``), else on the file (INV-bamij).
+   - A parameterless call written without parentheses
+     (``Runtime.getRuntime.availableProcessors``) parses as a member access;
+     it becomes an unresolved ``method`` call edge on its library owner only
+     when a library row declares that member a method
+     (``is_known_library_method``). Any other bare member access emits no
+     call edge.
    - ``System.err.println(k)`` is a call on ``java.io.PrintStream`` stamped
      ``io_target_kind: std_stream`` (java.yaml's PrintStream rows require
      it), and ``System.out`` / ``.err`` / ``.in`` read as values become
      ``module_attr_ref`` edges through the shared
      ``emit_module_attribute_refs`` (WI-rabum, java's WI-dorus / WI-lozug).
-     Only ``java.lang.System``'s three FIELDS are attributes: scala writes
+     ``scala.Console`` (bare ``Console`` unless a project type or an import
+     binds the name) is treated the same: ``Console.err.println(k)`` is a
+     std-stream call and ``Console.out`` / ``.err`` / ``.in`` are attribute
+     reads. Only those three stream FIELDS are attributes: scala writes
      ``System.currentTimeMillis`` without parentheses, and that is a call.
 
 Identity (WI-tusad): every stable_id hashes the FULL chain of enclosing

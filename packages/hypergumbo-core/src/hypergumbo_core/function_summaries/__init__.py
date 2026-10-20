@@ -9,6 +9,15 @@ How It Works
 ------------
 1. ``load_function_summaries()`` reads YAML files declaring taint-flow summaries
    for stdlib and framework functions whose source code is not analyzed.
+   Three tiers merge by provenance (ADR-0047 ruling 10, ADR-0061 rulings 2-3),
+   each file's ``provenance:`` line asked before its directory: built-in rows
+   load first; ``provenance: community`` rows only add a name no built-in
+   holds and are stamped ``community`` (they never close a branch); rows from
+   the user's ``function_summaries.d`` (read only for the default directory)
+   load last, win on collision and are stamped ``user_supplied``.
+   ``include_community=False`` (``--no-default-overlays``) drops the community
+   tier. Each dotted name is also indexed under its last component when that
+   short name is free.
 
 2. ``FunctionSummary`` objects describe parameter-to-return flow, parameter
    mutation flow, sanitization effects, and callback propagation.
@@ -26,6 +35,9 @@ How It Works
    applying it would make an empty catalogue change behaviour, which is the
    opposite of what an empty catalogue should do. The one production consumer
    is ``taint._summary_terminates``, a terminate/don't-terminate test.
+
+5. :func:`infer_summary` infers ``param_to_return`` from DDG edges
+   (ADR-0017 §4a). It has no production caller yet.
 
 YAML Format
 -----------

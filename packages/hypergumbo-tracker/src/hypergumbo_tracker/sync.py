@@ -21,6 +21,11 @@ Design:
   (Gitea/Codeberg, ``/api/v1/repos``). The ``forgejo_*`` field names on
   the config object are kept for backwards compatibility and carry the
   resolved backend's credentials either way.
+- ``FORGE_TOKEN_VARS`` maps each backend to its token (``HG_GITHUB_TOKEN``
+  for github, ``FORGEJO_TOKEN`` for forgejo; not interchangeable).
+  ``forge_backend()``, ``forge_token()``, ``api_base_from_url()`` and the
+  missing-token messages are shared by preflight, the superseded-branch prune
+  and ``htrac setup`` check 22, so all three resolve credentials the same way.
 - The sync gate file (``.git/TRACKER_SYNC_PENDING``) provides mutual
   exclusion with ``auto-pr`` (which uses ``.git/PR_PENDING``).  The gate
   is held via ``fcntl.flock`` on an open file descriptor, which the OS

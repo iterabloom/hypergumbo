@@ -11,6 +11,11 @@ This analyzer uses tree-sitter to parse Groovy files and extract:
   hashed their emitted nearest-owner name (``Inner.go``) and types the
   backstop's bare-name table key, so two nested ``class Inner`` tied; types
   now mint ``overload_arity.scoped_table_stable_id``
+- Inheritance metadata for the inheritance linker: a class's
+  ``base_classes`` (extends and implements, generics stripped) and
+  ``base_class_imports`` (the single-type import each bare base came
+  through), and a package-qualified ``qualified_name`` on every type
+- Annotations as ``meta.decorators`` on classes and methods
 - Function call relationships
 - Import statements
 

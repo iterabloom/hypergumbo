@@ -34,6 +34,18 @@ and applies ADR-0015 Tier 1 dataflow annotation to the resulting edges.
 
 Call-edge details:
 
+- **An included header outranks another file's definition**: a call whose
+  name a header the file can see declares (``declared_by_an_included_header``,
+  asked of the C catalogue) is not captured by a same-named definition in
+  another file -- that is an interposer or platform shim of the same
+  contract -- so it stays the unresolved libc call. A definition in the
+  calling file still wins.
+- **Calls through a function-pointer variable**: a call ``p()`` through a
+  pointer the file initialises or assigns (``int (*p)(int) = f;``,
+  ``p = &f;``) is a ``calls`` edge (``evidence_type="function_pointer"``) to
+  every function it is given, each scored ``1/n``; a held name the rule above
+  gives to libc is an unresolved edge, and with no nameable target the call
+  keeps its own unresolved edge.
 - **Include-set module hint**: an unresolved call (no in-repo definition)
   whose name is in the C catalogue's ``ambiguous_names`` (send, recv, read,
   write, open, close, ...) gets ``module_hint`` set to the comma-joined
