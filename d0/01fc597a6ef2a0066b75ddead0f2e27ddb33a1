@@ -1,0 +1,18 @@
+Original commit body from 58443d33434a41e48c8f4f174d0d5a38a17535a2:
+
+Dependabot alerts on every pinned version in any manifest on the default
+branch, fixture or not. The aardvark-dns fixture's Cargo.lock drew five
+alerts for a crate the repo never builds; #1778 removed it. This guard
+keeps the next fixture from doing the same: a tracked file fails if its
+name is a lockfile (Cargo.lock, package-lock.json, go.sum, uv.lock, ...)
+or if it is a requirements*.txt with an exact == pin, unless listed in
+ALLOWED with a reason (empty today).
+
+Checked red: with the deleted Cargo.lock restored, the live test fails
+and names its path; green on the current tree. Unit cases cover a
+lockfile anywhere, exact-pin vs range vs comment in requirements files,
+and declaring manifests (pyproject, go.mod, Cargo.toml) staying out of
+scope. Version pins inside go.mod / pom.xml / Gemfile are not covered,
+as the module docstring states; no fixture of those kinds pins today.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
