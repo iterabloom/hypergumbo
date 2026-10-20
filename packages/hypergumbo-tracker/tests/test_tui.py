@@ -34,6 +34,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from tui_pilot import click as _click
 
 from hypergumbo_tracker.models import (
     CompiledItem,
@@ -2642,13 +2643,17 @@ async def _wait_for_modal(
        is a green tick over a hole -- the same note this repo writes about a
        skip that can be reached by a typo. It now raises, naming what it waited
        for and for how long.
-    2. IT WAITS FOR LAYOUT, NOT MERE PRESENCE. ``pilot.click(selector)``
-       resolves the widget's screen region and synthesises a mouse event at its
-       centre; a widget that is in the DOM but not yet laid out has a zero-sized
-       region, so the click lands nowhere and no button is pressed -- which is
-       exactly the observed symptom. Presence is necessary and not sufficient,
-       and this is the same presence-is-not-reachability distinction the
-       io-boundary work keeps paying for.
+    2. IT WAITS FOR THE DIALOG'S SIZE, NOT MERE PRESENCE. A widget in the
+       DOM but not laid out has a zero-sized region, and a click there lands
+       nowhere. Presence is necessary and not sufficient, the same
+       presence-is-not-reachability distinction the io-boundary work keeps
+       paying for.
+
+    A sized dialog is still not a clickable one (WI-mumos): on a starved run
+    the dialog has a size while its buttons report a region where hit-testing
+    finds the dialog itself. That gap is closed at the click, not here --
+    ``tui_pilot.click`` waits until the target is what the compositor finds
+    at the click point, then checks the click landed.
     """
     from textual.css.query import NoMatches
 
@@ -2711,7 +2716,7 @@ class TestDiscussScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#discuss-input").value = "Hello there"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result == "Hello there"
 
@@ -2720,7 +2725,7 @@ class TestDiscussScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -2738,7 +2743,7 @@ class TestDiscussScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -2751,7 +2756,7 @@ class TestConfirmScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#yes")
+            await _click(pilot, "#yes")
             await _wait_for_dismissal(app)
             assert app._result is True
 
@@ -2760,7 +2765,7 @@ class TestConfirmScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#no")
+            await _click(pilot, "#no")
             await _wait_for_dismissal(app)
             assert app._result is False
 
@@ -2817,7 +2822,7 @@ class TestTierMoveScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -2835,7 +2840,7 @@ class TestTierMoveScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -2844,7 +2849,7 @@ class TestTierMoveScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result == "demote"
 
@@ -2859,7 +2864,7 @@ class TestNewItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#title-input").value = "New Test Item"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["title"] == "New Test Item"
@@ -2871,7 +2876,7 @@ class TestNewItemScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -2880,7 +2885,7 @@ class TestNewItemScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -2892,7 +2897,7 @@ class TestNewItemScreenUnit:
             app.screen.query_one("#title-input").value = "Test"
             app.screen.query_one("#priority-input").value = "not-a-number"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["priority"] == 2
@@ -2914,7 +2919,7 @@ class TestNewItemScreenUnit:
             app.screen.query_one("#title-input").value = "With Desc"
             app.screen.query_one("#desc-input").value = "A description"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["description"] == "A description"
@@ -2943,7 +2948,7 @@ class TestEditItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#title-input").value = "Changed Title"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["set_fields"]["title"] == "Changed Title"
@@ -2958,7 +2963,7 @@ class TestEditItemScreenUnit:
             sel = app.screen.query_one("#status-select", Sel)
             sel.value = "in_progress"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["set_fields"]["status"] == "in_progress"
@@ -3044,7 +3049,7 @@ class TestEditItemScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3054,7 +3059,7 @@ class TestEditItemScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 40)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3066,7 +3071,7 @@ class TestEditItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#tags-input").value = "quality, new_tag"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert "new_tag" in app._result["add_fields"]["tags"]
@@ -3079,7 +3084,7 @@ class TestEditItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#tags-input").value = ""
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert "quality" in app._result["remove_fields"]["tags"]
@@ -3092,7 +3097,7 @@ class TestEditItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#priority-input").value = "5"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["set_fields"]["priority"] == 5
@@ -3105,7 +3110,7 @@ class TestEditItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#priority-input").value = "abc"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3127,7 +3132,7 @@ class TestEditItemScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#desc-input").value = "New description"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["set_fields"]["description"] == "New description"
@@ -3143,7 +3148,7 @@ class TestParentScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#parent-input").value = "NEW-PARENT"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result == "NEW-PARENT"
 
@@ -3154,7 +3159,7 @@ class TestParentScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#parent-input").value = ""
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result == ""
 
@@ -3163,7 +3168,7 @@ class TestParentScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3187,7 +3192,7 @@ class TestBeforeScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#add-input").value = "NEW-1, NEW-2"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["add"] == ["NEW-1", "NEW-2"]
@@ -3199,7 +3204,7 @@ class TestBeforeScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#remove-input").value = "EXISTING-1"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["remove"] == ["EXISTING-1"]
@@ -3209,7 +3214,7 @@ class TestBeforeScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3218,7 +3223,7 @@ class TestBeforeScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3304,7 +3309,7 @@ class TestWaitForDismissalHelper:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             monkeypatch.setattr(textual.pilot.Pilot, "pause", _one_event_loop_tick)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await pilot.pause()
             assert app._result == "NOT_SET"
             assert await _wait_for_dismissal(app) is None
@@ -3319,7 +3324,7 @@ class TestWaitForDismissalHelper:
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
             monkeypatch.setattr(textual.pilot.Pilot, "pause", _one_event_loop_tick)
-            await pilot.click(button)
+            await _click(pilot, button)
             assert await _wait_for_dismissal(app) is None
 
     async def test_it_raises_when_nothing_dismisses_the_modal(self) -> None:
@@ -3328,6 +3333,65 @@ class TestWaitForDismissalHelper:
             await _wait_for_modal(pilot, app)
             with pytest.raises(AssertionError, match="was never dismissed"):
                 await _wait_for_dismissal(app, timeout=0.2)
+
+
+async def _instant_idle(*args: Any, **kwargs: Any) -> None:
+    """A ``wait_for_idle`` that returns at once: the loaded-run model, faithfully.
+
+    Unlike :func:`_one_event_loop_tick`, which replaces all of
+    ``Pilot.pause``, this leaves the rest of ``pause`` running
+    (``_wait_for_screen`` before, ``_on_timer_update`` after), which is what
+    a loaded box does: only the idle check is fooled.
+    """
+    await asyncio.sleep(0)
+
+
+class TestClickWhenClickable:
+    """Click a button only once it is what the compositor finds there (WI-mumos).
+
+    Nightly 979a6c11 failed ``test_it_returns_the_result_under_the_one_tick_model
+    [#submit]`` with "modal was never dismissed within 30.0s": the click had
+    landed on ``#modal-dialog``, because ``_wait_for_modal`` returns when the
+    dialog has a size, before its buttons are where hit-testing finds them.
+    """
+
+    async def test_the_starved_model_reaches_the_hazard(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """REACH: under the model a plain ``pilot.click`` misses the button.
+
+        Without this the test below could pass on a model that starves
+        nothing, and it would prove nothing about loaded runs.
+        """
+        import textual.pilot
+
+        monkeypatch.setattr(textual.pilot, "wait_for_idle", _instant_idle)
+        app = _ModalTestApp(LockScreen("ID-1", set()))
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            assert await pilot.click("#cancel") is False
+            with pytest.raises(AssertionError, match="was never dismissed"):
+                await _wait_for_dismissal(app, timeout=0.5)
+
+    @pytest.mark.parametrize("button", ["#cancel", "#submit"])
+    async def test_it_lands_under_the_starved_model(
+        self, monkeypatch: pytest.MonkeyPatch, button: str,
+    ) -> None:
+        import textual.pilot
+
+        monkeypatch.setattr(textual.pilot, "wait_for_idle", _instant_idle)
+        app = _ModalTestApp(LockScreen("ID-1", set()))
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await _click(pilot, button)
+            assert await _wait_for_dismissal(app) is None
+
+    async def test_it_raises_when_the_target_never_becomes_clickable(self) -> None:
+        app = _ModalTestApp(LockScreen("ID-1", set()))
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            with pytest.raises(AssertionError, match="was not clickable"):
+                await _click(pilot, "#no-such-button", timeout=0.2)
 
 
 class TestLockScreenUnit:
@@ -3340,7 +3404,7 @@ class TestLockScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#lock-input").value = "status, priority"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert set(app._result["lock"]) == {"status", "priority"}
@@ -3352,7 +3416,7 @@ class TestLockScreenUnit:
             await _wait_for_modal(pilot, app)
             app.screen.query_one("#unlock-input").value = "status"
             await pilot.pause()
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is not None
             assert app._result["unlock"] == ["status"]
@@ -3362,7 +3426,7 @@ class TestLockScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#submit")
+            await _click(pilot, "#submit")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3371,7 +3435,7 @@ class TestLockScreenUnit:
         app = _ModalTestApp(screen)
         async with app.run_test(size=(70, 20)) as pilot:
             await _wait_for_modal(pilot, app)
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await _wait_for_dismissal(app)
             assert app._result is None
 
@@ -3512,7 +3576,7 @@ class TestDiscussKeybinding:
                 modal_input = app.screen.query_one("#discuss-input")
                 modal_input.value = "Test discussion"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_discuss.assert_called_once_with(item_id, "Test discussion")
@@ -3527,7 +3591,7 @@ class TestDiscussKeybinding:
             with patch.object(tracker_set, "discuss") as mock_discuss:
                 app.action_discuss()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock_discuss.assert_not_called()
 
@@ -3547,7 +3611,7 @@ class TestDiscussKeybinding:
                 modal_input = app.screen.query_one("#discuss-input")
                 modal_input.value = "Test"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 # Error notification shown (no crash)
@@ -3569,7 +3633,7 @@ class TestDiscussKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#discuss-input").value = "Test"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
     async def test_discuss_not_found_error(
@@ -3589,7 +3653,7 @@ class TestDiscussKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#discuss-input").value = "Test"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -3623,7 +3687,7 @@ class TestDiscussClearKeybinding:
             with patch.object(tracker_set, "discuss") as mock_discuss:
                 app.action_discuss_clear()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#yes")
+                await _click(pilot, "#yes")
                 await pilot.pause()
                 await pilot.pause()
                 mock_discuss.assert_called_once_with(
@@ -3639,7 +3703,7 @@ class TestDiscussClearKeybinding:
             with patch.object(tracker_set, "discuss") as mock_discuss:
                 app.action_discuss_clear()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#no")
+                await _click(pilot, "#no")
                 await pilot.pause()
                 mock_discuss.assert_not_called()
 
@@ -3657,7 +3721,7 @@ class TestDiscussClearKeybinding:
             ):
                 app.action_discuss_clear()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#yes")
+                await _click(pilot, "#yes")
                 await pilot.pause()
 
     async def test_clear_not_found_error(
@@ -3674,7 +3738,7 @@ class TestDiscussClearKeybinding:
             ):
                 app.action_discuss_clear()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#yes")
+                await _click(pilot, "#yes")
                 await pilot.pause()
 
 
@@ -3707,7 +3771,7 @@ class TestTierMoveKeybinding:
             with patch.object(tracker_set, "promote") as mock_promote:
                 app.action_tier_move()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 # The mock should have been called (the item is workspace
@@ -3724,7 +3788,7 @@ class TestTierMoveKeybinding:
             with patch.object(tracker_set, "promote") as mock:
                 app.action_tier_move()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock.assert_not_called()
 
@@ -3749,7 +3813,7 @@ class TestTierMoveKeybinding:
             ):
                 app.action_tier_move()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
     async def test_tier_move_human_authority_error(
@@ -3769,7 +3833,7 @@ class TestTierMoveKeybinding:
             ):
                 app.action_tier_move()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -3797,7 +3861,7 @@ class TestNewItemKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#title-input").value = "Brand New Item"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_add.assert_called_once()
@@ -3813,7 +3877,7 @@ class TestNewItemKeybinding:
             with patch.object(tracker_set, "add") as mock_add:
                 app.action_new_item()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock_add.assert_not_called()
 
@@ -3831,7 +3895,7 @@ class TestNewItemKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#title-input").value = "Bad Item"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -3867,7 +3931,7 @@ class TestEditItemKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#title-input").value = "Changed Title"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_update.assert_called_once()
@@ -3881,7 +3945,7 @@ class TestEditItemKeybinding:
             with patch.object(tracker_set, "update") as mock_update:
                 app.action_edit_item()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock_update.assert_not_called()
 
@@ -3901,7 +3965,7 @@ class TestEditItemKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#title-input").value = "New Title"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -3922,7 +3986,7 @@ class TestEditItemKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#title-input").value = "New Title"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 # App should still be running (no crash)
                 assert app.is_running
@@ -3966,7 +4030,7 @@ class TestSetParentKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#parent-input").value = "PARENT-ID"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_update.assert_called_once()
@@ -3987,7 +4051,7 @@ class TestSetParentKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#parent-input").value = ""
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_update.assert_called_once()
@@ -4003,7 +4067,7 @@ class TestSetParentKeybinding:
             with patch.object(tracker_set, "update") as mock_update:
                 app.action_set_parent()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock_update.assert_not_called()
 
@@ -4024,7 +4088,7 @@ class TestSetParentKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#parent-input").value = "X"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -4064,7 +4128,7 @@ class TestEditBeforeKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#add-input").value = "ID-1, ID-2"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_update.assert_called_once()
@@ -4090,7 +4154,7 @@ class TestEditBeforeKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#remove-input").value = "OLD-ID"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_update.assert_called_once()
@@ -4108,7 +4172,7 @@ class TestEditBeforeKeybinding:
             with patch.object(tracker_set, "update") as mock_update:
                 app.action_edit_before()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock_update.assert_not_called()
 
@@ -4129,7 +4193,7 @@ class TestEditBeforeKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#add-input").value = "X"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -4162,7 +4226,7 @@ class TestLockKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#lock-input").value = "status"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_lock.assert_called_once()
@@ -4178,7 +4242,7 @@ class TestLockKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#unlock-input").value = "priority"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_unlock.assert_called_once()
@@ -4196,7 +4260,7 @@ class TestLockKeybinding:
                 app.screen.query_one("#lock-input").value = "status"
                 app.screen.query_one("#unlock-input").value = "priority"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
                 await pilot.pause()
                 mock_lock.assert_called_once()
@@ -4211,7 +4275,7 @@ class TestLockKeybinding:
             with patch.object(tracker_set, "lock") as mock_lock:
                 app.action_toggle_lock()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#cancel")
+                await _click(pilot, "#cancel")
                 await pilot.pause()
                 mock_lock.assert_not_called()
 
@@ -4231,7 +4295,7 @@ class TestLockKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#lock-input").value = "status"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
     async def test_unlock_not_found_error(
@@ -4250,7 +4314,7 @@ class TestLockKeybinding:
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#unlock-input").value = "status"
                 await pilot.pause()
-                await pilot.click("#submit")
+                await _click(pilot, "#submit")
                 await pilot.pause()
 
 
@@ -4747,7 +4811,7 @@ class TestRepairDriftKeybinding:
                  patch.object(tracker_set, "repair_drift") as mock_repair:
                 app.action_repair_drift()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#yes")
+                await _click(pilot, "#yes")
                 await pilot.pause()
                 await pilot.pause()
                 mock_repair.assert_called_once()
@@ -4765,7 +4829,7 @@ class TestRepairDriftKeybinding:
                  patch.object(tracker_set, "repair_drift") as mock_repair:
                 app.action_repair_drift()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#no")
+                await _click(pilot, "#no")
                 await pilot.pause()
                 mock_repair.assert_not_called()
 
@@ -4787,7 +4851,7 @@ class TestRepairDriftKeybinding:
                  ):
                 app.action_repair_drift()
                 await _wait_for_modal(pilot, app)
-                await pilot.click("#yes")
+                await _click(pilot, "#yes")
                 await pilot.pause()
 
     async def test_repair_drift_no_item_warns(self, tmp_path: Path) -> None:
@@ -5798,7 +5862,7 @@ class TestInlineChat:
             with patch.object(
                 tracker_set, "discuss", wraps=tracker_set.discuss,
             ) as mock_discuss:
-                await pilot.click("#chat-send")
+                await _click(pilot, "#chat-send")
                 await pilot.pause()
                 await pilot.pause()
                 mock_discuss.assert_called_once_with(
@@ -5818,7 +5882,7 @@ class TestInlineChat:
         async with app.run_test(size=(160, 45)) as pilot:
             await _wait_for_std_table(pilot, app)
             with patch.object(tracker_set, "discuss") as mock_discuss:
-                await pilot.click("#chat-send")
+                await _click(pilot, "#chat-send")
                 await pilot.pause()
                 mock_discuss.assert_not_called()
 
@@ -5836,7 +5900,7 @@ class TestInlineChat:
             text_area = app.query_one("#chat-input", TextArea)
             text_area.load_text("test message")
             await pilot.pause()
-            await pilot.click("#chat-send")
+            await _click(pilot, "#chat-send")
             await pilot.pause()
             # No crash; warning notification shown
 
@@ -5858,7 +5922,7 @@ class TestInlineChat:
                 tracker_set, "discuss",
                 side_effect=PermissionError("read-only"),
             ):
-                await pilot.click("#chat-send")
+                await _click(pilot, "#chat-send")
                 await pilot.pause()
                 await pilot.pause()
                 # Error notification shown, no crash
@@ -5911,7 +5975,7 @@ class TestInlineChat:
                 tracker_set, "discuss",
                 side_effect=LockedFieldError("discussion locked"),
             ):
-                await pilot.click("#chat-send")
+                await _click(pilot, "#chat-send")
                 await pilot.pause()
                 await pilot.pause()
                 # No crash; error notification shown
@@ -8552,7 +8616,8 @@ class TestFilterPanel:
             assert line_for_first is not None
             first_key = app._filter_entries[0][0]
             initial_hidden = set(app._hidden_statuses) | set(app._hidden_tags)
-            await pilot.click(
+            await _click(
+                pilot,
                 "#std-filter-content", offset=(2, line_for_first),
             )
             await pilot.pause()
@@ -8578,7 +8643,7 @@ class TestFilterPanel:
             await pilot.pause()
             initial_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
             # Line 0 is the "Filters Active" header — not in mapping
-            await pilot.click("#std-filter-content", offset=(2, 0))
+            await _click(pilot, "#std-filter-content", offset=(2, 0))
             await pilot.pause()
             after_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
             assert initial_hidden == after_hidden
@@ -8672,7 +8737,8 @@ class TestFilterPanel:
             initial_hidden = set(app._hidden_statuses) | set(app._hidden_tags)
             initial_hide_tagged = app._hide_tagged
             # Wide mode uses #filter-panel-content
-            await pilot.click(
+            await _click(
+                pilot,
                 "#filter-panel-content", offset=(2, beyond_9_line),
             )
             await pilot.pause()
@@ -8786,7 +8852,7 @@ class TestDisambiguateScreen:
             for _ in range(20):
                 await pilot.pause()
             # Click Cancel button via pilot
-            await pilot.click("#cancel")
+            await _click(pilot, "#cancel")
             await pilot.pause()
             assert result_holder == [None]
 
