@@ -1,0 +1,16 @@
+Original commit body from 3d1cb55916f35d65fbaa03ad2eee9670db06bcf4:
+
+Writing tasks prepare-release gates on:
+- docs/RELEASE-NOTES-9.X.md: a TL;DR paragraph and an "## Unreleased"
+  section for 9.2.0 (no schema, confidence-model or stable_id changes;
+  compact's test-code default and the taint verdicts that get less clean
+  are the two things that change what a user sees).
+- CHANGELOG.md Version History: the "| Unreleased |" row.
+
+Tracker changelog: a "Breaking and contract changes" heading for 0.11.0.
+create_app's default-deny moves there from Fixed, reworded to say who it
+breaks (callers of create_app(tracker_set=...)); `htrac serve` itself
+never wired a TrackerSet and goes from 503 to 401. --background's
+removal moves there from Removed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
