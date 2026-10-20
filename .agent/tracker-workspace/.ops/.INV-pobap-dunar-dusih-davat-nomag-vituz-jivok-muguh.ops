@@ -35,3 +35,10 @@
   clock: 3  # 7f4e
   nonce: 7f4e  # 7f4e
   message: "Re-confirmed 2026-10-20 by the docstring audit (verifier repro: a.php '<?hh function foo()' + b.hack -> analyze_hack yields only b.hack's bar). The same shape is confirmed in d_lang.py (find_d_files' .d dependency-file filter is never called) and filed as a family item with ~16 unverified candidates."  # 7f4e
+- op: discuss  # 8da2
+  at: '2026-10-20T09:15:29Z'  # 8da2
+  by: agent  # 8da2
+  actor: jgstern_agent  # 8da2
+  clock: 4  # 8da2
+  nonce: 8da2  # 8da2
+  message: "Family item: WI-riziv."  # 8da2
