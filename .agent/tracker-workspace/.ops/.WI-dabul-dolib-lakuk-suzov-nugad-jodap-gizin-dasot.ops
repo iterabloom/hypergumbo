@@ -1,0 +1,22 @@
+- op: create  # 8389
+  at: '2026-10-20T09:10:16Z'  # 8389
+  by: agent  # 8389
+  actor: jgstern_agent  # 8389
+  clock: 1  # 8389
+  nonce: '8389'  # 8389
+  data:  # 8389
+    kind: work_item  # 8389
+    title: "llvm_ir: which callee a call binds depends on file order when one file declares @f and another defines it (the registry is last-wins by name)"  # 8389
+    status: todo_hard  # 8389
+    priority: 3  # 8389
+    parent:  # 8389
+    tags:  # 8389
+    - docstring_audit  # 8389
+    - analyzer  # 8389
+    - llvm_ir  # 8389
+    isbefore: []  # 8389
+    duplicate_of: []  # 8389
+    not_duplicate_of: []  # 8389
+    pr_ref:  # 8389
+    description: "Found by the 2026-10-20 docstring-staleness audit (verifier reproduced in four scratch dirs). `_resolve_calls` short-circuits only on a local symbol of kind function; a local `declare` (kind declaration) falls through to the repo-wide registry, which is last-wins by bare name (analyze/base.py ~L4069). So when a.ll declares @puts and def.ll defines it, main -> puts resolves to def.ll's define if a.ll registers first, and to a.ll's own declaration otherwise: output differs across checkouts. Fix: LlvmIrAnalyzer.register_symbol must not let a declaration overwrite a function of the same name."  # 8389
+    fields: {}  # 8389
