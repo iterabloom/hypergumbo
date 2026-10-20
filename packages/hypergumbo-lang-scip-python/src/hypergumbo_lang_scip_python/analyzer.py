@@ -19,7 +19,11 @@ with ``backend_disabled``, so the orchestrator records an honest
 writes no index, the corresponding pass-silence code travels with the skip
 (``dependency_unavailable`` / ``pass_crashed`` / ``unreported``) — the same
 discrimination WI-luvud gave the Rust arm. A completed run that produced
-nothing is NOT a skip: the pass ran, and says so.
+nothing is NOT a skip: the pass ran, and says so -- as ``unreported`` when
+the tree holds Python, since an empty index of a Python project says the
+indexer saw no files, not that the files held nothing (WI-nijod: every run
+indexed an empty scratch directory, and ``no_candidate_construct``, a
+routine silence, hid it).
 """
 from __future__ import annotations
 
@@ -117,7 +121,9 @@ def analyze_python_with_scip_impl(
             f"scip-python backend produced no symbols for {repo_root} despite .py "
             f"files being present — likely a project scip-python could not index.",
         )
-    run.silence_reason = silence_reason_for_candidates(symbols)
+        run.silence_reason = UNREPORTED
+    else:
+        run.silence_reason = silence_reason_for_candidates(symbols)
     return AnalysisResult(run=run, symbols=symbols, edges=edges)
 
 

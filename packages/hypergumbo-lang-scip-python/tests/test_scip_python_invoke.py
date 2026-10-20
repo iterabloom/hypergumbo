@@ -45,7 +45,13 @@ def test_a_successful_run_returns_the_index_bytes_and_the_argv_is_pinned(tmp_pat
     project.mkdir()
     out = run_scip_python_index(project, cwd=tmp_path, project_name="proj", which=_found, runner=runner)
     assert out == b"\x00scip"
-    assert seen["argv"] == ["/fake/bin/scip-python", "index", str(project), "--project-name", "proj",
+    # The project travels as ``--cwd``: scip-python 0.6.6 takes no positional
+    # project and silently indexes its own working directory -- the scratch dir,
+    # which is empty -- when handed one. And the version is given: left out,
+    # it is read from git, and outside a git checkout the indexer crashes on
+    # the first module (WI-nijod).
+    assert seen["argv"] == ["/fake/bin/scip-python", "index", "--cwd", str(project),
+                            "--project-name", "proj", "--project-version", "0",
                             "--output", str(tmp_path / "index.scip")]
     assert seen["kwargs"]["cwd"] == str(tmp_path) and seen["kwargs"]["timeout"] == 900.0
 
@@ -69,3 +75,19 @@ def test_a_timeout_is_an_invocation_failure(tmp_path: Path) -> None:
 def test_exit_zero_without_an_index_is_no_output(tmp_path: Path) -> None:
     with pytest.raises(ScipPythonNoOutput, match="wrote no"):
         run_scip_python_index(tmp_path, cwd=tmp_path, which=_found, runner=lambda argv, **kw: _Completed())
+
+
+def test_a_node_heap_exhaustion_names_the_remedy(tmp_path: Path) -> None:
+    """V8's default heap (~4 GB) is too small for a large project: indexing
+    hypergumbo itself (1,712 files) aborted at 4.2 GB RSS and finished with an
+    8 GB heap (WI-nijod). The crash is an exit code 134 and a V8 trace; the
+    message says what to set."""
+    oom = b"FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory"
+    with pytest.raises(ScipPythonInvocationFailed, match="NODE_OPTIONS=--max-old-space-size") as excinfo:
+        run_scip_python_index(tmp_path, cwd=tmp_path, which=_found,
+                              runner=lambda argv, **kw: _Completed(returncode=134, stderr=oom))
+    assert excinfo.value.returncode == 134 and excinfo.value.stderr == oom
+    with pytest.raises(ScipPythonInvocationFailed) as other:
+        run_scip_python_index(tmp_path, cwd=tmp_path, which=_found,
+                              runner=lambda argv, **kw: _Completed(returncode=1, stderr=b"boom"))
+    assert "NODE_OPTIONS" not in str(other.value)
