@@ -1,0 +1,44 @@
+Original commit body from 906f31f864f2f1a92cd464ec9c092cb24af2df70:
+
+The test-only-reachability gate's first live run (INV-hokin) surfaced
+8 production functions with no production caller. Each was read and
+adjudicated:
+
+WIRED
+- check_id_construction.id_template_problem / edge_template_problem:
+  the lint (scripts/check-id-construction) judged ids through private
+  skeleton twins (_skeleton_problem, _edge_skeleton_problem), so the
+  classifiers every test pins were not the ones the lint ran. The lint
+  now hands each id, as a {} template, to the public classifiers;
+  _edge_skeleton_problem is gone. Pinned by a spy test.
+- io_primitive_kinds.kind_for_yaml_section: the catalogue loader had
+  one copy-pasted loop per section with KIND_FUNCTION / KIND_METHOD /
+  KIND_ATTRIBUTE written in, so a new registered section would load
+  nothing. One loop over YAML_SECTIONS, kind from the registry; naming
+  args apply to called kinds only (as before: attributes never had
+  them).
+
+RETIRED
+- arbitration.resolve_arbitration_policy: the CLI loads the config
+  once (_load_config_or_exit) and calls policy_from_config; the
+  wrapper's docstring named a consumer that takes a different path.
+  Its tests now go through the CLI's composition; spec updated.
+- io_boundary.write_boundary_for_target_kind: the write direction is
+  consumed through _boundary_for_target_kind(kind, "write") by
+  boundary selection; every write boundary maps to a sink zone, so a
+  sink-side twin of the source mint gate would never refuse.
+- di_resolution.build_interface_impl_map: the linker reads
+  _iter_interface_impls; the tests keep the map as a local helper.
+
+KEPT (designed consumer is a test, INV-hokin's ruled class)
+- registry.get_analyzer: a registry lookup 48 test sites use;
+  WI-juzig removed its production use on purpose (lookup by NAME was
+  the bug).
+- python_stdlib_versions.in_window: the per-interpreter window check
+  the module docstring names the scope-gate test as consumer of.
+
+Baseline: 301 -> 293 keys. The 6 above plus run_analyzer and
+find_wolfram_files, which the gate reported as no longer test-only
+on a dev self-map (2026-10-19).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
