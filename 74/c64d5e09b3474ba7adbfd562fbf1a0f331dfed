@@ -1,0 +1,25 @@
+Original commit body from 3a03c65435799b180ca735ce3f79fdc2611b943d:
+
+The recorded rust-analyzer fixture carried upstream aardvark-dns's
+Cargo.lock, and its pins drew five Dependabot alerts on the default
+branch: hickory-proto 0.25.2 (GHSA-3v94-mw7p-v465, which has no patched
+release, and GHSA-q2qq-hmj6-3wpp), bytes 1.10.1 (GHSA-434x-w66g-qw3r),
+time 0.3.44 (GHSA-r6v5-fh4h-64xc) and rand 0.9.2 (GHSA-cq8v-f236-94qc).
+Nothing here builds the crate. The fixture tests run the tree-sitter
+Rust analyzer over the .rs files only, discovery excludes Cargo.lock as
+a generated lock file, and the wheel never shipped recorded/. Bumping
+the pins could not clear the hickory-proto advisory and would have
+desynced the lock from the recorded index.
+
+The lock still matters for one thing: index.scip's external monikers
+name the versions it resolved (hickory-proto 0.25.2, tokio 1.49.0, ...),
+so a re-record without it would change them. Upstream's Cargo.lock at
+4444d90fee is byte-identical to the deleted one, so the README now gives
+its URL and SHA-256 and the re-record steps restore it, then delete it
+again. The README commands were run once and the hash check passes.
+
+All 13 test files that reference the fixture pass without the file (422
+tests); they are added to the CI manifest because the slicer selects
+none of them for a lockfile-only change.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
