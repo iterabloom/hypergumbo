@@ -20,6 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **A switch / match with no matching arm falls through in the CFG**: a definition killed in every arm of a switch without a default now still reaches the code after it (`t := source(); switch x { case 1: t = "c" }; sink(t)`), so reaching definitions are no longer removed in the direction that can manufacture a walk refutation (WI-sozob).
 - **The taint walk examines the source's own line**: a sink that contains the source (`requests.post(url, headers={"A": os.environ["T"]})`, `fetch(url, {headers: {A: process.env.T}})`) is no longer misread as `sink_before_source` and withheld, and another call on the source's line (`acc.push(process.env.K)`) keeps a flow the walk used to remove. All four filed shapes now read `violated` (WI-jusoj).
 - **A secret ASSIGNED into a C global or through a pointer parameter withholds the taint verdict too** (`g_secret = getenv("K")`, then a send from another function, read `confirmed`): each C function records its non-local store lines (INV-nohob, 3 of 3).
 - **A C taint verdict is withheld when the secret leaves through a construct taint does not follow** (a callee writing through a pointer parameter, a copy into a global or pointer parameter, a function-like macro, a variadic tail): torsocks' `host-secret-no-network`, `host-secret-no-logging` and `host-description-no-network` read `confirmed_with_caveats` and now read `inconclusive`; crun, tmate, redis unchanged (INV-nohob, 2 of 3).

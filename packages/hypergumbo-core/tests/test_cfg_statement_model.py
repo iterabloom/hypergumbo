@@ -214,7 +214,8 @@ class TestGoHeaders:
         scrutinee = cfg.blocks[cfg.entry_block]
         assert [s.code_snippet for s in scrutinee.statements] == ["x := g(a)", "h(x)"]
         # Only the real case is an arm: neither header part became one.
-        assert [e.edge_type for e in scrutinee.successors] == ["case"]
+        # One arm, plus the "no case matched" fall-through (WI-sozob).
+        assert [e.edge_type for e in scrutinee.successors] == ["case", "always"]
         snippets = [s.code_snippet for s in _stmts(cfg)]
         assert snippets.count("h(x)") == 1 and "g" not in snippets
 
@@ -368,7 +369,8 @@ class TestControlFlowInsideAValue:
         assert "identifier" not in types and "integral_type" not in types
         decl = _block_of(cfg, "int r = switch")
         scrutinee = cfg.blocks[cfg.entry_block]
-        assert [e.edge_type for e in scrutinee.successors] == ["case", "case"]
+        # Two arms, plus the "no case matched" fall-through (WI-sozob).
+        assert [e.edge_type for e in scrutinee.successors] == ["case", "case", "always"]
         # Both arms flow into the declaration, which flows on to the use.
         for arm_edge in scrutinee.successors:
             assert decl.id in _reachable(cfg, arm_edge.target_block)
@@ -582,8 +584,9 @@ class TestSwitchArms:
             "}\n"
         ))
         assert _block_of(cfg, "after()").id in _reachable(cfg, cfg.entry_block)
+        # Two arms, plus the "no case matched" fall-through (WI-sozob).
         assert [e.edge_type for e in cfg.blocks[cfg.entry_block].successors] == [
-            "case", "case",
+            "case", "case", "always",
         ]
 
     def test_a_switch_with_no_recognised_arm_still_falls_through(self) -> None:
