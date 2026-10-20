@@ -25,3 +25,10 @@
   clock: 2  # 8a70
   nonce: 8a70  # 8a70
   message: "2026-10-20 docstring audit, verifier repro: a second scheme shape with the same effect. A variable define bound to a lambda drops its calls: the variable-define branch of _extract_scheme_edges returns without walking the value, and the call has no enclosing function symbol, so (define f (lambda (y) (helper y))) emits no edge to helper. (Separate defect filed as WI-furid? no -- see the let-binding item: let pairs emitted as calls.)"  # 8a70
+- op: discuss  # 9dd9
+  at: '2026-10-20T09:14:40Z'  # 9dd9
+  by: agent  # 9dd9
+  actor: jgstern_agent  # 9dd9
+  clock: 3  # 9dd9
+  nonce: 9dd9  # 9dd9
+  message: "Correction to my previous entry's last sentence: the separate defect (let binding pairs emitted as calls) is WI-vapip, not WI-furid (that one is the SQL CREATE PROCEDURE item). The lambda-bound define shape belongs here."  # 9dd9
