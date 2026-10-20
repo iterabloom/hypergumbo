@@ -26,3 +26,10 @@
   clock: 2  # b410
   nonce: b410  # b410
   message: "BEARS ON THIS ROW (from WI-ruhul-kujah-sasar-mofov-mohoh-gotis-soron-fazun, branch jgstern-agent/fix/ruhul, local, not merged):\n\nTestBeforeScreenUnit::test_empty_submit_returns_none now reads its result through `_wait_for_dismissal(app)` instead of `pilot.pause()` then `app._result`, like all 41 modal unit tests that assert a dismissal result. Under a one-tick `Pilot.pause` model (Textual's `wait_for_idle` judges idle from CPU time, which a loaded or descheduled worker starves), the old click-then-one-pause read returns the 'NOT_SET' sentinel 8 of 8 times for #cancel and #submit on LockScreen (scratch script); the new wait returns the result.\n\nWhat this does NOT establish for this row: its filed observation was ORDER dependence under pytest-randomly with -p no:randomly passing, and the seed was lost. A load/timing mechanism and an order mechanism can both produce that report (an order that places the test after a heavy neighbour is also a loaded moment), but I have not reproduced this row's failure, and an order-dependent state leak, if one exists, is not addressed by this change."  # b410
+- op: discuss  # 5d33
+  at: '2026-10-20T23:07:13Z'  # 5d33
+  by: agent  # 5d33
+  actor: jgstern_agent  # 5d33
+  clock: 3  # 5d33
+  nonce: 5d33  # 5d33
+  message: "LIKELY THE SAME MECHANISM AS WI-mumos, not proven for the original failure (its seed was lost). Under Textual's wait_for_idle patched to return at once, applied to the whole of test_tui.py, TestBeforeScreenUnit::test_empty_submit_returns_none FAILED on unmodified dev (with every other LockScreen/BeforeScreen unit test) and PASSES after PR #1782, which waits for the target to be hit-testable before clicking. An order-dependent failure is what a load-dependent lost click looks like when the shuffle changes which tests run alongside it. Left open: closing needs the original order-dependence repro, which the item says is unrecoverable."  # 5d33
