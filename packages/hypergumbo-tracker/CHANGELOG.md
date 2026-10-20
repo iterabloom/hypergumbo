@@ -7,14 +7,17 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Breaking and contract changes
+
+- **`create_app` denies every route except `/health` unless given an `authenticate` callable**: requests get 401 and `/ws` is closed. Code that called `create_app(tracker_set=...)` must now pass one. `htrac serve`, which wires neither, answers 401 where it answered 503.
+- **`htrac serve --background` is removed**: it never daemonized. `--stop` and `--status` are unchanged.
+
 ### Removed
 
 - **The unshipped web-frontend scaffold** (`packages/htrac-frontend`), the source of most Dependabot alerts. ADR-0019 re-scopes the frontend to a Yjs-backed tracker document.
-- **`htrac serve --background`**, which never daemonized; `--stop` and `--status` are unchanged.
 
 ### Fixed
 
-- **`htrac serve` denies every route except `/health` by default.** `create_app` takes an `authenticate` callable; without one, requests get 401 and `/ws` is closed.
 - **Duress handler failures warn the operator and never reach the client.**
 - **`htrac setup` checks for the token sync actually uses**: `HG_GITHUB_TOKEN` for a GitHub origin, `FORGEJO_TOKEN` for Forgejo. Branch pruning no longer sends the GitHub token to Forgejo.
 
