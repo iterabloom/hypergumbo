@@ -1,0 +1,24 @@
+Original commit body from f453d52b9774fb66e301dc9e325d754a98b452f2:
+
+CfgBuilder._process_switch gave the scrutinee block no "no case
+matched" edge: its only successors were the arms, so in a switch with
+no default a definition killed in every arm did not reach the code
+after it. `t := source(); switch x { case 1: t = "c" }; sink(t)` had
+reaching definitions {("t", 6, 8)} only -- the source's t vanished,
+which REMOVES reaching definitions, the direction that can manufacture
+a walk False (and, since WI-kabif, delete a real flow).
+
+The scrutinee now ALWAYS has a fall-through fringe edge. Recognising a
+default arm is per grammar (Go default_case, Java/C default, Python
+case _), and the edge an exhaustive switch gains never runs, so it only
+ADDS definitions -- the conservative side, as the item prescribed.
+WI-faful's no-recognised-arm edge is subsumed.
+
+Tests: the Go switch and Python match repros (core, defines/uses set by
+hand so no language extractor is needed). Three statement-model tests
+pinned the scrutinee's successor list to the arms alone; they now
+include the fall-through. Measured against dev (verify-claims): beads
+(Go) and feast (Python) moved no verdict, evidence count or
+analysis-method count.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
