@@ -50,7 +50,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -117,12 +116,11 @@ JSONNET_BUILTINS = frozenset({
 
 
 def find_jsonnet_files(repo_root: Path) -> list[Path]:
-    """Find all Jsonnet files in the repository."""
-    patterns = ["**/*.jsonnet", "**/*.libsonnet"]
-    files = []
-    for pattern in patterns:
-        files.extend(find_files(repo_root, [pattern]))
-    return sorted(set(files))
+    """Find all Jsonnet files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    return sorted(_analyzer._find_source_files(repo_root))
 
 
 def _is_builtin(name: str) -> bool:

@@ -38,12 +38,15 @@ How It Works
 1. Check if tree-sitter and tree-sitter-php are available
 2. If not available, warn and return a result with ``skipped=True`` and
    ``skip_reason_code=DEPENDENCY_UNAVAILABLE`` (no PHP analysis)
-3. Three-pass analysis:
+3. Find files with ``find_php_files``, which is also the profile's PHP
+   count: every .php file except those ``classify_dot_php_file`` reads as
+   Hack (a ``<?hh`` header), which the Hack analyzer takes instead
+4. Three-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry, then
      apply the ADR-0015 automatic dataflow annotation to the edges
    - Pass 3: Extract usage contexts and emit Laravel route Symbols
-4. Detect function calls, method calls, static calls, and instantiation
+5. Detect function calls, method calls, static calls, and instantiation
 
 Why This Design
 ---------------
@@ -65,7 +68,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
+from hypergumbo_core.discovery import classify_dot_php_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
@@ -135,8 +138,10 @@ LARAVEL_API_RESOURCE_EXCLUDED_ACTIONS: frozenset[str] = frozenset(
 
 
 def find_php_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all PHP files in the repository."""
-    yield from find_files(repo_root, ["*.php"])
+    """Yield the repository's .php files, except Hack's (a ``<?hh`` header)."""
+    for path in find_files(repo_root, ["*.php"]):
+        if classify_dot_php_file(path) == "php":
+            yield path
 
 
 def _is_php_tree_sitter_available_legacy() -> bool:  # pragma: no cover - replaced by TreeSitterAnalyzer
@@ -1741,7 +1746,7 @@ def is_php_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("php")
+@register_analyzer("php", find_files=find_php_files)
 def analyze_php(repo_root: Path) -> AnalysisResult:
     """Analyze all PHP files in a repository."""
     return _analyzer.analyze(repo_root)

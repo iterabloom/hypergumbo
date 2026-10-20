@@ -57,7 +57,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -88,8 +87,11 @@ def is_cobol_tree_sitter_available() -> bool:
 
 
 def find_cobol_files(repo_root: Path) -> Iterator[Path]:
-    """Find all COBOL files in the repository."""
-    yield from find_files(repo_root, ["*.cob", "*.cbl", "*.cobol", "*.cpy"])
+    """Find all COBOL files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _extract_text(node: "tree_sitter.Node", source_bytes: bytes) -> str:

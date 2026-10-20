@@ -46,7 +46,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -117,10 +116,11 @@ def _extract_base_classes_apex(node: "tree_sitter.Node") -> list[str]:
 
 
 def find_apex_files(repo_root: Path) -> list[Path]:
-    """Find all Apex files in the repository."""
-    cls_files = list(find_files(repo_root, ["*.cls"]))
-    trigger_files = list(find_files(repo_root, ["*.trigger"]))
-    return sorted(cls_files + trigger_files)
+    """Find all Apex files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    return sorted(_analyzer._find_source_files(repo_root))
 
 
 # ---------------------------------------------------------------------------

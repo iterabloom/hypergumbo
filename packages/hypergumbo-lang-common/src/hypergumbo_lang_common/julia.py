@@ -71,7 +71,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -106,8 +105,11 @@ PASS_ID = make_pass_id("julia")
 
 
 def find_julia_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Julia files in the repository."""
-    yield from find_files(repo_root, ["*.jl"])
+    """Yield all Julia files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _get_enclosing_module(node: "tree_sitter.Node", source: bytes) -> Optional[str]:

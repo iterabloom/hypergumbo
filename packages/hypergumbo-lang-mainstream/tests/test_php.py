@@ -39,6 +39,19 @@ class TestFindPhpFiles:
         assert len(files) == 1
         assert files[0].name == "app.php"
 
+    def test_skips_hack_files(self, tmp_path: Path) -> None:
+        """A <?hh .php file is Hack's, so PHP neither analyzes nor counts it (WI-riziv)."""
+        from hypergumbo_core.profile import _detect_languages
+        from hypergumbo_lang_mainstream.php import analyze_php, find_php_files
+
+        (tmp_path / "app.php").write_text("<?php\nfunction app() {}\n")
+        (tmp_path / "hack.php").write_text("<?hh\nfunction hh(): int { return 1; }\n")
+
+        assert [f.name for f in find_php_files(tmp_path)] == ["app.php"]
+        result = analyze_php(tmp_path)
+        assert {Path(s.path).name for s in result.symbols} == {"app.php"}
+        assert _detect_languages(tmp_path)["php"].files == 1
+
 
 class TestPhpTreeSitterAvailability:
     """Tests for tree-sitter-php availability checking."""

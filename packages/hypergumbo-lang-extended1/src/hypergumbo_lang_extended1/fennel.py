@@ -40,7 +40,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -67,10 +66,11 @@ def is_fennel_tree_sitter_available() -> bool:
 
 
 def find_fennel_files(root: Path) -> Iterator[Path]:
-    """Find all Fennel files in the given directory."""
-    for path in find_files(root, ["*.fnl"]):
-        if path.is_file():
-            yield path
+    """Find all Fennel files in the given directory.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(root)
 
 
 

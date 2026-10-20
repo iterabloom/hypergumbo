@@ -49,7 +49,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -111,11 +110,13 @@ LUAU_BUILTINS = frozenset({
 def find_luau_files(repo_root: Path) -> list[Path]:
     """Find all Luau (.luau) files in the repository.
 
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+
     Only processes .luau files (Roblox's typed Lua variant).
     Vanilla .lua files are handled exclusively by the lua-v1 analyzer
     to avoid duplicate symbol extraction.
     """
-    return sorted(find_files(repo_root, ["*.luau"]))
+    return sorted(_analyzer._find_source_files(repo_root))
 
 
 def _extract_params(node: "tree_sitter.Node") -> list[str]:

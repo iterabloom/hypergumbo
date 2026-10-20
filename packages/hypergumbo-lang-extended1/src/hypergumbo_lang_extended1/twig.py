@@ -66,7 +66,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -88,11 +87,11 @@ PASS_ID = make_pass_id("twig")
 
 
 def find_twig_files(repo_root: Path) -> list[Path]:
-    """Find all Twig template files in the repository."""
-    files: list[Path] = []
-    files.extend(find_files(repo_root, ["*.twig"]))
-    files.extend(find_files(repo_root, ["*.html.twig"]))
-    return sorted(set(files))
+    """Find all Twig template files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    return sorted(_analyzer._find_source_files(repo_root))
 
 
 def is_twig_tree_sitter_available() -> bool:

@@ -32,7 +32,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -53,11 +52,11 @@ PASS_ID = make_pass_id("bibtex")
 
 
 def find_bibtex_files(repo_root: Path) -> list[Path]:
-    """Find all BibTeX bibliography files in the repository."""
-    files: list[Path] = []
-    files.extend(find_files(repo_root, ["*.bib"]))
-    files.extend(find_files(repo_root, ["*.bibtex"]))
-    return sorted(set(files))
+    """Find all BibTeX bibliography files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    return sorted(_analyzer._find_source_files(repo_root))
 
 
 def is_bibtex_tree_sitter_available() -> bool:

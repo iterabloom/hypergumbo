@@ -98,7 +98,6 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
 )
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -148,8 +147,11 @@ def _is_callback(symbol: Symbol) -> bool:
 
 
 def find_erlang_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Erlang files in the repository."""
-    yield from find_files(repo_root, ["*.erl", "*.hrl"])
+    """Yield all Erlang files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 

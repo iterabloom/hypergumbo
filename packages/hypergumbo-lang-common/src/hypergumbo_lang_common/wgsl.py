@@ -61,7 +61,6 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import declared_arity_stable_id
@@ -78,8 +77,11 @@ WGSL_EXTENSIONS = ["*.wgsl"]
 
 
 def find_wgsl_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all WGSL files in the repository."""
-    yield from find_files(repo_root, WGSL_EXTENSIONS)
+    """Yield all WGSL files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
