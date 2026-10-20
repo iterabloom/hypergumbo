@@ -12,6 +12,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Removed
+
+- **The aardvark-dns test fixture's `Cargo.lock`**: never built, it drew five Dependabot alerts. Its README pins the upstream copy for re-recording.
+
 ## [9.2.0] - 2026-10-20
 
 ### Added
