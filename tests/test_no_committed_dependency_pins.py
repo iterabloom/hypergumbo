@@ -24,6 +24,14 @@ kinds pin nothing; add them here if that changes. The repository's own
 ``pyproject.toml`` ranges are its real dependencies, so they are out of
 scope by design.
 """
+
+# covers: *requirements*.txt
+#
+# Lockfile globs cannot be declared: test_top_level_test_map rejects a glob
+# that matches no tracked file, and keeping that set empty is this test's job.
+# So per-PR CI selects this test for a requirements change only; a newly
+# committed lockfile is caught by the full-suite cron, which runs every root test.
+
 from __future__ import annotations
 
 import re
