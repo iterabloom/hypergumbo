@@ -57,7 +57,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -99,8 +98,11 @@ PONY_BUILTINS = frozenset({
 
 
 def find_pony_files(repo_root: Path) -> list[Path]:
-    """Find all Pony files in the repository."""
-    return sorted(find_files(repo_root, ["*.pony"]))
+    """Find all Pony files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    return sorted(_analyzer._find_source_files(repo_root))
 
 
 def is_pony_tree_sitter_available() -> bool:

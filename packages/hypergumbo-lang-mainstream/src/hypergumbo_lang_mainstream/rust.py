@@ -118,7 +118,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyzer_disclosure import SUPPRESSED_METHOD_NAMES
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
 )
@@ -192,8 +191,11 @@ AXUM_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options",
 
 
 def find_rust_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Rust files in the repository."""
-    yield from find_files(repo_root, ["*.rs"])
+    """Yield all Rust files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:

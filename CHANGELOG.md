@@ -50,6 +50,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **C# and C++ dispatch is decided per method**: `override` and `virtual` link; name hiding and statics do not.
 - **C# interface inheritance and Go interface embedding produce `extends` edges.**
 - **WebSocket events and HTTP URLs named by a constant resolve to its value.**
+- **D skips GCC dependency files; Hack reads `<?hh` `.php` files, which PHP skips.**
 - **Smaller per-language fixes**:
   - Swift subscripts are not calls.
   - Wolfram definition heads are not calls, and `.m` files are analysed.

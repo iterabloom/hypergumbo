@@ -126,7 +126,6 @@ from collections.abc import Container
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Final, Iterator, NamedTuple, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -199,8 +198,11 @@ def _short_name_penalty(name: str) -> float:
 
 
 def find_scala_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Scala files in the repository."""
-    yield from find_files(repo_root, ["*.scala"])
+    """Yield all Scala files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _extract_extends_clause(node: "tree_sitter.Node", source: bytes) -> list[str]:

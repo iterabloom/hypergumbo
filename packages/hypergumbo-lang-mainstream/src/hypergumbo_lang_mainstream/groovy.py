@@ -62,7 +62,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
@@ -98,9 +97,11 @@ PASS_ID = make_pass_id("groovy")
 def find_groovy_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Groovy files in the repository.
 
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+
     Includes both .groovy files and .gradle build files.
     """
-    yield from find_files(repo_root, ["*.groovy", "*.gradle"])
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def is_groovy_tree_sitter_available() -> bool:

@@ -261,15 +261,14 @@ class TestFindClojureFiles:
         assert len(files) == 1
         assert files[0].name == "core.clj"
 
-    def test_edn_in_find_but_skipped_in_analysis(self, tmp_path: Path) -> None:
-        """Test .edn files are found but skipped during symbol extraction."""
+    def test_edn_is_neither_found_nor_analyzed(self, tmp_path: Path) -> None:
+        """.edn data files are skipped; find_clojure_files is the analyzer's discovery (WI-riziv)."""
         (tmp_path / "config.edn").write_text("{:port 8080}")
         (tmp_path / "core.clj").write_text("(ns app.core)\n(def x 1)")
 
         files = list(find_clojure_files(tmp_path))
         names = [f.name for f in files]
-        assert "config.edn" in names
-        assert "core.clj" in names
+        assert names == ["core.clj"]
 
         # But analysis should skip EDN for symbols
         result = analyze_clojure(tmp_path)

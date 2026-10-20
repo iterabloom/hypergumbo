@@ -68,7 +68,6 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
 )
 from hypergumbo_core.analyze.c_family import c_family_parameters, c_family_scope_chain
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, nested_qualified_name, node_declared_arity_stable_id,
@@ -85,8 +84,11 @@ PASS_ID = make_pass_id("hlsl")
 
 
 def find_hlsl_files(repo_root: Path) -> Iterator[Path]:
-    """Find all HLSL files in the repository."""
-    yield from find_files(repo_root, ["*.hlsl", "*.hlsli", "*.fx"])
+    """Find all HLSL files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _find_enclosing_function_hlsl(

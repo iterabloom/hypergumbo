@@ -63,7 +63,6 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.c_family import (
     c_family_parameter_list, c_family_parameters,
 )
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, declared_arity, declared_arity_stable_id,
@@ -83,8 +82,11 @@ GLSL_EXTENSIONS = ["*.vert", "*.frag", "*.glsl", "*.geom", "*.tesc", "*.tese", "
 
 
 def find_glsl_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all GLSL files in the repository."""
-    yield from find_files(repo_root, GLSL_EXTENSIONS)
+    """Yield all GLSL files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:

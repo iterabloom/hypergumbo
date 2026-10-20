@@ -61,7 +61,6 @@ Zig grammar key patterns:
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING, ClassVar
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -91,10 +90,11 @@ PASS_ID = make_pass_id("zig")
 
 
 def find_zig_files(root: Path) -> Iterator[Path]:
-    """Find all Zig files in the given directory."""
-    for path in find_files(root, ["*.zig"]):
-        if path.is_file():
-            yield path
+    """Find all Zig files in the given directory.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(root)
 
 
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:

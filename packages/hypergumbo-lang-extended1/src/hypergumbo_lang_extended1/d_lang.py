@@ -38,9 +38,11 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    index, and each call is credited to its enclosing declaration by position,
    not by name.
 
-The base class handles grammar checking, parser creation, file discovery,
-and result assembly. This module provides only the D-specific extraction
-logic.
+The base class handles grammar checking, parser creation and result
+assembly. Discovery is ``find_d_files``, for the analyzer and (through
+``register_analyzer(find_files=...)``) for the profile's D file count: it
+drops the GCC ``-MMD`` dependency files that share the ``.d`` extension,
+which the base class's ``file_patterns`` glob parsed as D source.
 
 Why This Design
 ---------------
@@ -801,14 +803,19 @@ class DAnalyzer(TreeSitterAnalyzer):
     - Import-scope path hints for bare call disambiguation
     - UFCS template call detection
 
-    The base class handles grammar checking, parser creation, file discovery,
-    timing, and result assembly. This subclass overrides register_symbol to
-    use module-qualified names, and uses a custom resolver setup.
+    The base class handles grammar checking, parser creation, timing, and
+    result assembly. This subclass overrides _find_source_files to skip GCC
+    dependency files, register_symbol to use module-qualified names, and
+    uses a custom resolver setup.
     """
 
     lang = "d"
     file_patterns: ClassVar[list[str]] = ["*.d", "*.di"]
     language_pack_name = "d"
+
+    def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
+        """D source and interface files, without GCC dependency files."""
+        yield from find_d_files(repo_root)
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -980,7 +987,7 @@ def is_d_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("d")
+@register_analyzer("d", find_files=find_d_files)
 def analyze_d(repo_root: Path) -> AnalysisResult:
     """Analyze D language files in a repository.
 

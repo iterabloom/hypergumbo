@@ -57,7 +57,6 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
 )
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
@@ -73,11 +72,13 @@ PASS_ID = make_pass_id("hcl")
 def find_hcl_files(root: Path) -> list[Path]:
     """Find all HCL/Terraform files in a directory tree, excluding vendor dirs.
 
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+
     Identifies files by extensions:
     - .tf: Terraform configuration
     - .hcl: Generic HCL (Packer, Consul, etc.)
     """
-    return list(find_files(root, ["*.tf", "*.hcl"]))
+    return sorted(_analyzer._find_source_files(root))
 
 
 def _find_all_children_by_type(

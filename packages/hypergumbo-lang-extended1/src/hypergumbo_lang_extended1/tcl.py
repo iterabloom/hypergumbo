@@ -29,7 +29,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -53,11 +52,11 @@ PASS_ID = make_pass_id("tcl")
 
 
 def find_tcl_files(root: Path) -> Iterator[Path]:
-    """Find all Tcl files in the given directory."""
-    for ext in ("*.tcl", "*.tk"):
-        for path in find_files(root, [ext]):
-            if path.is_file():
-                yield path
+    """Find all Tcl files in the given directory.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(root)
 
 
 

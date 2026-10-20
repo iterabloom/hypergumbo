@@ -772,3 +772,27 @@ class Box {
         for s in result.symbols:
             if s.kind not in ("function", "method"):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestDiscoveryIsTheHelper:
+    """The analyzer and the profile both enumerate through find_d_files (WI-riziv).
+
+    find_d_files' GCC dependency-file filter used to be test-only: the
+    analyzer's discovery was the base ``*.d`` glob, so ``gcc -MMD`` output
+    was parsed as D source and counted as D in the profile.
+    """
+
+    def _repo(self, tmp_path: Path) -> Path:
+        (tmp_path / "main.d").write_text("main.o: main.c foo.h\n")
+        (tmp_path / "app.d").write_text("module app;\n\nvoid run() {}\n")
+        return tmp_path
+
+    def test_dependency_file_is_not_analyzed(self, tmp_path: Path) -> None:
+        result = analyze_d(self._repo(tmp_path))
+        assert result.run.files_analyzed == 1
+        assert {s.path for s in result.symbols} == {"app.d"}
+
+    def test_profile_does_not_count_dependency_file(self, tmp_path: Path) -> None:
+        from hypergumbo_core.profile import _detect_languages
+
+        assert _detect_languages(self._repo(tmp_path))["d"].files == 1

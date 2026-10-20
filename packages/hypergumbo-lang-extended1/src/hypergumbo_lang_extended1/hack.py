@@ -11,9 +11,11 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 - Pass 1: Collect symbols (namespaces, classes, interfaces, traits, functions, methods)
 - Pass 2: Extract edges (function calls, method calls, static calls)
 
-The base class handles grammar checking, parser creation, file discovery,
-and result assembly. This module provides only the Hack-specific extraction
-logic.
+The base class handles grammar checking, parser creation and result
+assembly. Discovery is ``find_hack_files``: ``.hack``/``.hh`` plus every .php
+file ``classify_dot_php_file`` reads as Hack (a ``<?hh`` header), which the
+PHP analyzer skips in turn. The base class's ``file_patterns`` glob would miss
+those .php files, and did (INV-pobap).
 
 Symbol Types
 ------------
@@ -32,9 +34,9 @@ Edge Types
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
+from hypergumbo_core.discovery import classify_dot_php_file, find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -86,21 +88,12 @@ HACK_BUILTINS = frozenset({
 
 def find_hack_files(repo_root: Path) -> list[Path]:
     """Find all Hack files in the repository."""
-    patterns = ["**/*.hack", "**/*.hh"]
-    files = []
-    for pattern in patterns:
-        files.extend(find_files(repo_root, [pattern]))
-
-    # Also check .php files for <?hh header
-    for php_file in find_files(repo_root, ["*.php"]):
-        try:
-            content = php_file.read_text(errors="ignore")[:50]
-            if content.startswith("<?hh"):
-                files.append(php_file)
-        except Exception:  # pragma: no cover
-            pass
-
-    return sorted(set(files))
+    files = set(find_files(repo_root, ["*.hack", "*.hh"]))
+    files.update(
+        p for p in find_files(repo_root, ["*.php"])
+        if classify_dot_php_file(p) == "hack"
+    )
+    return sorted(files)
 
 
 def _is_builtin(name: str) -> bool:
@@ -487,6 +480,10 @@ class HackAnalyzer(TreeSitterAnalyzer):
     lang = "hack"
     file_patterns: ClassVar[list[str]] = ["*.hack", "*.hh"]
     language_pack_name = "hack"
+
+    def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
+        """Hack files, including .php files with a ``<?hh`` header."""
+        yield from find_hack_files(repo_root)
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,

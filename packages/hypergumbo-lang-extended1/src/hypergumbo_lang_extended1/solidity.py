@@ -51,7 +51,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
@@ -115,8 +114,11 @@ _BODY_BEARING_CALLABLE_KINDS: frozenset[str] = (
 
 
 def find_solidity_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Solidity files in the repository."""
-    yield from find_files(repo_root, ["*.sol"])
+    """Yield all Solidity files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:

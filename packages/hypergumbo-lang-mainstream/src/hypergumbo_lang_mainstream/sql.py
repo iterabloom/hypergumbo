@@ -54,7 +54,6 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
 )
-from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -71,8 +70,11 @@ PASS_ID = make_pass_id("sql")
 
 
 def find_sql_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all SQL files in the repository."""
-    yield from find_files(repo_root, ["*.sql"])
+    """Yield all SQL files in the repository.
+
+    The analyzer's own discovery (``_find_source_files``), so the two cannot drift.
+    """
+    yield from _analyzer._find_source_files(repo_root)
 
 
 def _find_children_by_type(node: "tree_sitter.Node", type_name: str) -> list["tree_sitter.Node"]:  # pragma: no cover
