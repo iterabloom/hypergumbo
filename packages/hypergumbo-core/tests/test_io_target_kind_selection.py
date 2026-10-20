@@ -34,13 +34,13 @@ from hypergumbo_core.io_boundary import (
     IoPrimitive,
     _READ_TARGET_KIND_BOUNDARY,
     _WRITE_TARGET_KIND_BOUNDARY,
+    _boundary_for_target_kind,
     classify_call,
     _narrow_by_target_kind,
     _target_kind_discriminated_keys,
     _target_kind_gated_directions,
     load_catalog,
     resolve_target_kind_across_sites,
-    write_boundary_for_target_kind,
 )
 
 
@@ -323,10 +323,10 @@ class TestTheWriteDirection:
             assert resolve_target_kind_across_sites(
                 [kind], direction="write",
             ) is None
-            assert write_boundary_for_target_kind(kind) == (True, None)
+            assert _boundary_for_target_kind(kind, "write") == (True, None)
 
     def test_an_unknown_kind_is_unknown_in_both_directions(self) -> None:
-        assert write_boundary_for_target_kind("unresolved") == (False, None)
+        assert _boundary_for_target_kind("unresolved", "write") == (False, None)
         assert resolve_target_kind_across_sites(
             ["host_path", "unresolved"], direction="write",
         ) is None

@@ -310,3 +310,33 @@ class TestScalaProcessLaunchIsReachable:
         was arm B1, which gave up those 8."""
         hit = load_catalog("scala").lookup_with_module("Process", "external")
         assert hit is not None and hit.module == self._MODULE
+
+
+def test_the_loader_takes_each_kind_from_the_section_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WI-mifup: ``kind_for_yaml_section`` had no production caller -- the
+    loader carried one copy-pasted loop per section with the ``KIND_*``
+    constant written in -- so the registry it guards was not the load path.
+    The loader now walks :data:`YAML_SECTIONS` and asks it for each kind."""
+    import hypergumbo_core.io_boundary as io_boundary
+    from hypergumbo_core.io_boundary import IoBoundaryCatalog
+
+    asked: list[str] = []
+
+    def spy(section: str) -> str:
+        asked.append(section)
+        return kind_for_yaml_section(section)
+
+    monkeypatch.setattr(io_boundary, "kind_for_yaml_section", spy)
+    catalog = IoBoundaryCatalog._from_dict({
+        "language": "probe", "status": "in_progress",
+        "fs_read": [{
+            "module": "m",
+            "functions": ["f"], "methods": ["g"], "attributes": ["a"],
+        }],
+    })
+    assert asked == list(YAML_SECTIONS)
+    assert {(p.name, p.kind) for p in catalog.primitives} == {
+        ("f", KIND_FUNCTION), ("g", KIND_METHOD), ("a", KIND_ATTRIBUTE),
+    }

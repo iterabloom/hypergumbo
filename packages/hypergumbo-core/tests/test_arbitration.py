@@ -39,10 +39,14 @@ from hypergumbo_core.arbitration import (
     AttributeException,
     BuiltinExceptionError,
     policy_from_config,
-    resolve_arbitration_policy,
     validate_builtin_exceptions,
 )
-from hypergumbo_core.user_config import ConfigError, LayeredConfig
+from hypergumbo_core.user_config import ConfigError, LayeredConfig, load_layered_config
+
+
+def resolve_arbitration_policy(*, repo_root: Path, environ: dict) -> ArbitrationPolicy:
+    """The path the CLI takes: ONE loaded config, expressed as a policy."""
+    return policy_from_config(load_layered_config(repo_root=repo_root, environ=environ))
 
 
 def _noop(repo_root: Any) -> AnalysisResult:  # pragma: no cover - never called
