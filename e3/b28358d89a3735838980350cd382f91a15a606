@@ -1,0 +1,35 @@
+Original commit body from 6ab5410f177ed37383af1e91e03786e376f1ea41:
+
+61 analyzer modules defined a module-level find_<lang>_files helper that
+no production code called: the analyzer enumerated with the base
+find_files(repo_root, self.file_patterns), so the helper was a second
+definition only tests ran. Two carried filters production never applied:
+
+- D: find_d_files drops GCC -MMD dependency files, but DAnalyzer parsed
+  them as D source, and the profile counted them as D. DAnalyzer now
+  enumerates through find_d_files, and it is registered as D's
+  find_files for the profile.
+- Hack (INV-pobap): find_hack_files sniffs .php files for a <?hh header,
+  but HackAnalyzer never read them. HackAnalyzer now enumerates through
+  it. The sniff moves to discovery.classify_dot_php_file, which PHP's
+  find_php_files also applies, so a Hack file is no longer parsed by
+  both analyzers; it is registered as PHP's find_files for the profile.
+
+The other 59 (57 test-only plus fortran and verilog, whose helper fed
+only the profile count) now delegate to the analyzer's own
+_find_source_files, so a helper and its analyzer cannot drift. One had:
+find_clojure_files returned .edn data files the analyzer skips; its
+test now asserts the production behavior.
+
+test_discovery_helper_wiring.py enforces the rule for helpers added
+later: a find_*_files helper is called by production code, or it
+delegates to an analyzer's _find_source_files. Being passed only as
+register_analyzer(find_files=...) does not count.
+
+Re-anchors three citations the edits shifted: module_key_axis swift
+2602->2604 and 2531->2533, signature_axis dart 891->893.
+
+Found while checking WI-riziv: V and Verilog both claim *.v with no
+content disambiguation; filed separately.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
