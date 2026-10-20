@@ -1,0 +1,33 @@
+Original commit body from a6a0b563bab864daf68c18a9a8613daf0e414660:
+
+WI-mifag (gate METHODS in the test-only-reachability ratchet) needs a
+self-map in which a method reference resolves to its owning type. The
+scip-python backend (WI-nanom) provides that, opt-in, and the cron's
+map build never opted in.
+
+.woodpecker/full-suite.yml self-tree-validation now:
+- installs nodejs/npm (bookworm), @sourcegraph/scip-python@0.6.6 (the
+  pinned fixture version) and hypergumbo-lang-scip-python;
+- opts in for this step only via its environment
+  (HYPERGUMBO_SCIP_PYTHON=1, NODE_OPTIONS=--max-old-space-size=9000:
+  V8's default heap aborts at 4.2 GB on this tree);
+- waits for test-all-packages and self-claims-gate (summed peak 10.3 GB
+  measured locally; the CI VM has 16 GB, owner 2026-10-20) and runs on
+  their failure too (when: status [success, failure]), so a red suite
+  does not skip both ratchets;
+- runs the reachability gate with --require-pass scip_python: both of
+  the backend's preconditions fail silently into the plain map, so a
+  map the pass did not contribute to exits 1.
+
+Measured on dev (after WI-nijod #1746 and INV-pijij), whole tree:
+plain map 5m32s / 3.9 GB, backend map 8m47s / 10.3 GB summed; the
+scip_python pass emitted 55,281 nodes; Python method calls typed 9,435
+of 9,619 (98.1%; 0 on the plain map). Per consumer of the shared map:
+check-self-tree-validation matrix {} (exit 0, no re-baseline);
+reachability gated cohort 293 keys, identical to the baseline (no
+re-freeze: functions do not move; methods are WI-mifag's).
+
+NOT VERIFIED: a live Woodpecker run (the runner's apt/npm network and
+real memory peak); the first cron firing is that check.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
