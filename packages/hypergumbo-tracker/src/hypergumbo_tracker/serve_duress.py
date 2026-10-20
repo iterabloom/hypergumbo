@@ -27,6 +27,16 @@ How It Works
 configured. ``load_duress_handler()`` loads a handler from a file path.
 ``call_on_duress_login()`` wraps the async call with timeout enforcement.
 
+Both fail quiet toward the client and loud toward the operator (WI-hopip).
+A handler that raises in ``on_duress_login`` is reported as not completed
+(``False``) rather than propagated: a raise would fail the duress login where
+a normal login succeeds, telling the attacker which password they typed. A
+configured handler file that cannot be loaded (missing, not Python, raising on
+import, no ``handler``) still falls back to ``NullDuressHandler`` so the server
+starts, but with a ``UserWarning`` naming the file and the reason -- silently,
+the operator would believe duress was armed when it was a no-op. No path
+configured is the normal case and is silent.
+
 Why This Design
 ---------------
 - Deliberately underspecified: the attacker cannot predict duress behavior
@@ -45,6 +55,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import sys
+import warnings
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -108,7 +119,8 @@ def load_duress_handler(module_path: str | None) -> DuressHandler:
         module_path: Path to the Python file, or None/empty for default.
 
     Returns:
-        The loaded handler, or NullDuressHandler on any error.
+        The loaded handler, or NullDuressHandler on any error -- with a
+        ``UserWarning`` when a path was given.
     """
     if not module_path:
         return NullDuressHandler()
@@ -116,18 +128,28 @@ def load_duress_handler(module_path: str | None) -> DuressHandler:
     try:
         spec = importlib.util.spec_from_file_location("_duress_handler", module_path)
         if spec is None or spec.loader is None:
-            return NullDuressHandler()
+            return _not_loaded(module_path, "not a Python file")
         mod = importlib.util.module_from_spec(spec)
         sys.modules["_duress_handler"] = mod
         spec.loader.exec_module(mod)
         handler = getattr(mod, "handler", None)
         if handler is None:
-            return NullDuressHandler()
+            return _not_loaded(module_path, "no module-level 'handler'")
         return handler
-    except Exception:
-        return NullDuressHandler()
+    except Exception as exc:
+        return _not_loaded(module_path, f"{type(exc).__name__}: {exc}")
     finally:
         sys.modules.pop("_duress_handler", None)
+
+
+def _not_loaded(module_path: str, reason: str) -> NullDuressHandler:
+    warnings.warn(
+        f"duress handler {module_path} not loaded ({reason}); "
+        "duress logins will do nothing",
+        UserWarning,
+        stacklevel=3,
+    )
+    return NullDuressHandler()
 
 
 async def call_on_duress_login(
@@ -139,7 +161,8 @@ async def call_on_duress_login(
 ) -> bool:
     """Call handler.on_duress_login with timeout enforcement.
 
-    Returns True if the call completed within timeout, False if timed out.
+    Returns True if the call completed within timeout, False if it timed
+    out or raised (a raise must not reach the client; see the module docstring).
     The timeout bounds, but does not eliminate, the timing difference
     between duress and normal logins (normal logins are not padded).
     """
@@ -149,5 +172,5 @@ async def call_on_duress_login(
             timeout=timeout,
         )
         return True
-    except asyncio.TimeoutError:
+    except Exception:  # asyncio.TimeoutError included
         return False

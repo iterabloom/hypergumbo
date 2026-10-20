@@ -15,6 +15,8 @@ import pytest
 from hypergumbo_tracker.models import Tier
 from hypergumbo_tracker.trackerset import TrackerSet
 
+from ._serve_auth import allow_all
+
 
 def _make_tracker(tmp_path: Path) -> TrackerSet:
     """Create a minimal TrackerSet for testing."""
@@ -264,7 +266,7 @@ class TestLifespanIntegration:
         from starlette.testclient import TestClient
 
         ts = _make_tracker(tmp_path)
-        app = serve_mod.create_app(tracker_set=ts)
+        app = serve_mod.create_app(tracker_set=ts, authenticate=allow_all)
 
         old_task = serve_mod._watcher_task
         serve_mod._watcher_task = None

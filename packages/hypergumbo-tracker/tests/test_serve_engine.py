@@ -16,6 +16,8 @@ from hypergumbo_tracker.models import Tier
 from hypergumbo_tracker.store import Store
 from hypergumbo_tracker.trackerset import TrackerSet
 
+from ._serve_auth import allow_all
+
 
 def _make_tracker(tmp_path: Path) -> TrackerSet:
     """Create a minimal TrackerSet in tmp_path for testing."""
@@ -50,7 +52,7 @@ def _make_client(tmp_path: Path) -> tuple[TestClient, TrackerSet]:
     from hypergumbo_tracker.serve import create_app
 
     ts = _make_tracker(tmp_path)
-    app = create_app(tracker_set=ts)
+    app = create_app(tracker_set=ts, authenticate=allow_all)
     return TestClient(app), ts
 
 
@@ -221,7 +223,7 @@ class TestAppWithoutTracker:
         """GET /api/items returns 503 when no TrackerSet configured."""
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()  # No tracker_set
+        app = create_app(authenticate=allow_all)  # No tracker_set
         client = TestClient(app)
         resp = client.get("/api/items")
         assert resp.status_code == 503
@@ -230,7 +232,7 @@ class TestAppWithoutTracker:
         """GET /api/ready returns 503 when no TrackerSet configured."""
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         client = TestClient(app)
         resp = client.get("/api/ready")
         assert resp.status_code == 503
@@ -239,7 +241,7 @@ class TestAppWithoutTracker:
         """GET /api/items/{id} returns 503 when no TrackerSet configured."""
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         client = TestClient(app)
         resp = client.get("/api/items/some-id")
         assert resp.status_code == 503
@@ -248,7 +250,7 @@ class TestAppWithoutTracker:
         """POST /api/items returns 503 when no TrackerSet configured."""
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         client = TestClient(app)
         resp = client.post("/api/items", json={"kind": "work_item", "title": "x"})
         assert resp.status_code == 503
@@ -257,7 +259,7 @@ class TestAppWithoutTracker:
         """POST /api/items/{id}/update returns 503 when no TrackerSet configured."""
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         client = TestClient(app)
         resp = client.post("/api/items/some-id/update", json={"status": "done"})
         assert resp.status_code == 503
@@ -266,7 +268,7 @@ class TestAppWithoutTracker:
         """POST /api/items/{id}/discuss returns 503 when no TrackerSet configured."""
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         client = TestClient(app)
         resp = client.post("/api/items/some-id/discuss", json={"message": "hi"})
         assert resp.status_code == 503

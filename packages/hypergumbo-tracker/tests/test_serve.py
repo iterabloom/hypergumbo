@@ -14,15 +14,17 @@ from unittest.mock import patch
 
 import pytest
 
+from ._serve_auth import allow_all
+
 
 class TestCreateApp:
     """Tests for Starlette app creation and health endpoint."""
 
     def test_create_app_returns_starlette_app(self) -> None:
-        """create_app() returns a Starlette application."""
+        """create_app(authenticate=allow_all) returns a Starlette application."""
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         # Starlette apps have a .routes attribute
         assert hasattr(app, "routes")
 
@@ -32,7 +34,7 @@ class TestCreateApp:
 
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         client = TestClient(app)
         response = client.get("/health")
         assert response.status_code == 200
@@ -45,7 +47,7 @@ class TestCreateApp:
 
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         client = TestClient(app)
         response = client.get("/health")
         data = response.json()
@@ -58,7 +60,7 @@ class TestCreateApp:
 
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()
+        app = create_app(authenticate=allow_all)
         client = TestClient(app)
         response = client.get("/nonexistent")
         assert response.status_code == 404
