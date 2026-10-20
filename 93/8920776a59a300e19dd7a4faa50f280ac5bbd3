@@ -1,0 +1,22 @@
+Original commit body from 61721ff9aec3d4f2d76086286faf571b6dc99a83:
+
+Pool: 70 files -- the 10 the co-change scan flagged, the 30-file rolling
+read (never reviewed) and the 30 most-changed files since the 2026-10-17
+audit. 47 drifted (lower bound): 2 of 10 flagged, 20 of 30 rolling, 25 of
+30 changed. 82 first-pass findings, all confirmed by default-REJECT
+verifiers (3 re-graded), plus 10 the verifiers added; a blind re-review
+of 5 first-pass "matches" found drift in 2 (setup.py, include_closure.py).
+
+This commit applies the A, B and D findings (false claims, wrong names,
+minor numbers) in 40 files. The C findings (silent omissions, 12 files)
+follow in a separate PR. Findings that are code defects keep the
+docstring stating the intended behaviour and are filed: WI-tular,
+WI-lodak, WI-divid, WI-riziv, WI-vapip, WI-nomuh, WI-dabul; SQL's dead
+CREATE PROCEDURE branch (WI-furid) is the one case where the docstring
+now says what the code does.
+
+Also: signature_axis LEGACY_VALUE_PARSERS (4 rows) and module_key_axis
+MODULE_KEY_NOTIONS (1 row) re-anchored after the edits shifted lines;
+ARCHITECTURE.md regenerated; 70 reviews recorded in the ledger.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
