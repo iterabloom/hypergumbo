@@ -1,0 +1,22 @@
+- op: create  # d029
+  at: '2026-10-20T09:06:51Z'  # d029
+  by: agent  # d029
+  actor: jgstern_agent  # d029
+  clock: 1  # d029
+  nonce: d029  # d029
+  data:  # d029
+    kind: work_item  # d029
+    title: "language analyzers whose find_<lang>_files applies a filter discovery never calls: D parses GCC .d dependency files as D source; Hack skips <?hh .php (INV-pobap); ~16 more unverified"  # d029
+    status: todo_hard  # d029
+    priority: 2  # d029
+    parent:  # d029
+    tags:  # d029
+    - docstring_audit  # d029
+    - analyzer  # d029
+    - discovery  # d029
+    isbefore: []  # d029
+    duplicate_of: []  # d029
+    not_duplicate_of: []  # d029
+    pr_ref:  # d029
+    description: "Found by the 2026-10-20 docstring-staleness audit. Family of INV-pobap. Several analyzers define a `find_<lang>_files` helper that filters or sniffs files, but the analyzer class does not override `_find_source_files`, so the base default (`find_files(repo_root, self.file_patterns)`) runs and the helper is called only by tests.\nCONFIRMED (verifier repro): d_lang.py `find_d_files` filters GCC `-MMD` dependency files with `classify_dot_d_file`; nothing calls it, so a dir with `main.d` = \"main.o: main.c foo.h\" plus `app.d` gives `run.files_analyzed == 2` (the dependency file is parsed as D). hack.py: INV-pobap.\nCANDIDATES, NOT VERIFIED (no non-test caller found by grep over packages/, scripts/, .agent/hooks/, .github/, .woodpecker/; helper body contains a filter): apex, bibtex, bitbake, fennel, gleam, haxe, janet, jsonnet, kdl, odin, pascal, prisma, sparql, tcl, twig, v_lang, zig. For each: does the helper's filter differ from what base discovery yields? If yes, wire it via `_find_source_files`; if no, delete the helper. Structural fix candidate: make `_find_source_files` the single discovery hook and have a test assert no module-level `find_*_files` exists without being the analyzer's discovery."  # d029
+    fields: {}  # d029
