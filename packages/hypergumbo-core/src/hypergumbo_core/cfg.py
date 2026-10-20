@@ -471,6 +471,8 @@ class CfgNodeMapping:
     break_statements: list[str] = field(default_factory=list)
     continue_statements: list[str] = field(default_factory=list)
     return_statements: list[str] = field(default_factory=list)
+    #: WI-sodoj: the language returns a block's tail expression (Rust).
+    block_tail_returns: bool = False
     try_catch: list[TryCatchMapping] = field(default_factory=list)
     early_return: list[EarlyReturnMapping] = field(default_factory=list)
     context_manager: list[ContextManagerMapping] = field(default_factory=list)
@@ -755,6 +757,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         break_statements=data.get("break_statement", []),
         continue_statements=data.get("continue_statement", []),
         return_statements=data.get("return_statement", []),
+        block_tail_returns=bool(data.get("block_tail_returns", False)),
         try_catch=try_catch,
         early_return=early_return,
         context_manager=context_manager,
