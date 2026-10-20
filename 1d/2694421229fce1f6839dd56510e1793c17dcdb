@@ -1,0 +1,29 @@
+Original commit body from 0a3833057a99285bcc32f97ea5320844aaea024c:
+
+The opt-in scip-python backend (WI-nanom) never indexed the repository
+it was asked to analyse:
+
+- invoke ran `scip-python index <project> ...` from a scratch cwd.
+  scip-python 0.6.6 takes no positional project; it silently ignores
+  one and indexes its cwd, so every run indexed the empty scratch dir
+  ("Total Project Files 0"), exited 0 and returned a valid empty index.
+  On dev the whole-repo self-map with the backend opted in was
+  node-for-node identical to the plain map (61,431 / 244,545). Now
+  `--cwd <project>`.
+- Without `--project-version` the indexer reads the git revision and,
+  outside a git checkout, crashes on the first module
+  (normalizeNameOrVersion). The recorded fixtures were produced with
+  `--project-version 0.1.0`, which is why they worked. Now a constant
+  "0": translation keys on descriptors only.
+- The empty index read `no_candidate_construct`, a ROUTINE silence the
+  [passes] line counts but never names. An empty index of a tree with
+  Python in it is now `unreported`.
+- A node heap exhaustion (V8's ~4 GB default; the whole hypergumbo tree
+  aborted at 4.2 GB and indexed 1,712 files in 306 s at 8.4 GB with
+  --max-old-space-size=9000) names NODE_OPTIONS in the failure message.
+
+Evidence (real binary, 0.6.6): a 3-function non-git project opted in
+-- dev: scip_python 0 nodes, no_candidate_construct; branch: 5 nodes,
+5 edges, and `total -> Square.area` carries origin [python, scip].
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
