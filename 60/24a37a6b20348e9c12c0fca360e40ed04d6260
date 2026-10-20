@@ -1,0 +1,34 @@
+Original commit body from 78518cd5bfa200637df72447980efbb380b27b0c:
+
+The full-suite cron at b0ad48d0 went red on
+TestLauncherNamesTheOwner::test_owner_pid_falls_back_to_first_non_shell_ancestor
+("launcher did not start a watcher"), the flake WI-zomif filed in
+September as load-sensitive. Load was not the cause. Both tests in that
+class launched with the literal session id "launch-owner", in separate
+tmp_path sandboxes, and xdist can run them at once on two workers.
+launch-transcript-sync.sh's Phase 2 pgrep fallback (and
+kill-transcript-sync.sh's, which matches identically) kills every
+sync-transcript.sh on the machine whose session-id argument matches,
+with no repo scoping, so the second launch killed the first test's
+watcher, its EXIT trap removed the pid file, and the 20 s wait expired.
+
+Reproduced outside pytest: two sandbox copies of .agent/hooks/_shared
+with a fake inotifywait, launch A then B 50 ms later with the same id:
+A's pid file never appeared in 8/8 iterations, on two runs. Same
+stagger with different ids: 0/8. Simultaneous, 20, 100 and 200 ms
+staggers: 0 each, a narrow window, which is why it read as a flake.
+
+Every session id in the file now comes from _unique_sid(base), the
+readable base plus a random hex suffix, including the two helpers'
+defaults and three ids written inline in kill calls (28 sites). A new
+test fails if a sid / session_id / *_sid assignment or parameter
+default is a bare string literal again; checked red by restoring
+"launch-owner". The module docstring's Safety paragraph claimed a
+unique tmp_path scoped the pgrep fallback; it does not, and now says so.
+All 31 tests in the file pass.
+
+Not changed: the scripts themselves still sweep machine-wide by session
+id. Real session ids are UUIDs, so only tests collide; scoping the
+sweeps to REPO_ROOT would be a .agent/** change for owner approval.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
