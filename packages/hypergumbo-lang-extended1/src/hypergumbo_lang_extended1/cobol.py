@@ -18,8 +18,9 @@ Pass 1 (Symbol Extraction):
 Pass 2 (Edge Extraction):
 - PERFORM edges: PERFORM paragraph-name statements
 - CALL edges: CALL "program-name" statements
-- Both carry the resolver's confidence scaled by 0.85; a target found nowhere
-  still gets an edge, via ``make_unresolved_edge``.
+- Both carry the resolver's match grade as ``resolution_score``, interpolated
+  inside the ``ast_perform`` / ``ast_call`` band (ADR-0039 ruling 6); a target
+  found nowhere still gets an edge, via ``make_unresolved_edge``.
 - The caller is the paragraph or section whose header last preceded the
   statement, taken by the header's POSITION (``symbol_declared_by``); paragraph
   and section symbols span only their header line.

@@ -120,13 +120,14 @@ a walk branch; ``withheld_community_summaries`` names the ones the run calls.
 Catalog Format
 --------------
 Sources, sinks, and sanitizers use YAML files following patterns established
-by the IO primitive catalogs (ADR-0016). See ``taint_sources/`` and
-``taint_sanitizers/`` directories alongside this module, or project-local
-catalogs provided via ``--taint-sources``, etc. Built-in sinks are derived
-automatically from ``io_primitives/*.yaml`` — every write-side IO primitive
-becomes an ``untrusted`` sink in a zone determined by its boundary category
-(see :data:`AUTO_SINK_ZONE_MAP` below). Project-local sink overrides flow
-through the ``--taint-sinks`` CLI flag.
+by the IO primitive catalogs (ADR-0016). See the ``taint_sources/``,
+``taint_sanitizers/`` and ``taint_sinks/`` directories alongside this
+module, or project-local catalogs provided via ``--taint-sources``, etc.
+Built-in I/O sinks are derived automatically from ``io_primitives/*.yaml``
+— every write-side IO primitive becomes an ``untrusted`` sink in a zone
+determined by its boundary category (see :data:`AUTO_SINK_ZONE_MAP` below);
+``taint_sinks/`` ships only ADR-0060's non-boundary sinks (below).
+Project-local sink overrides flow through the ``--taint-sinks`` CLI flag.
 
 Built-in sources are auto-derived the same way: every primitive whose
 boundary is a key of :data:`AUTO_SOURCE_LABEL_MAP` (``env_read``,

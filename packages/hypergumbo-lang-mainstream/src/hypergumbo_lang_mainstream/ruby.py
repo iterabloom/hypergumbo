@@ -35,7 +35,8 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
 - AMB-METHOD guard: when 3 or more method symbols share a bare call's
   short name (``method_candidates``), the call resolves only within the
   caller's own class
-- Method parameter filtering to prevent bare-identifier false positives
+- Local-binding filtering (``_is_ruby_local``): a bare identifier bound
+  earlier in its scope is a read, not a call
 
 If tree-sitter with Ruby support is not installed, the analyzer
 gracefully degrades: it emits a ``UserWarning`` and returns a skipped
@@ -75,10 +76,12 @@ How It Works
      and takes the same placeholder when unresolved (WI-misir). Also since
      WI-misir: an untyped variable receiver gets the ``external``
      placeholder with ``call_construct: method``; ``self.m(...)`` binds the
-     enclosing class's method; a name 3+ classes define, and ``super``,
-     are recorded with an ``enclosing_class`` (the superclass for
-     ``super``) and that owner -- never ``external`` -- as the module, for
-     the inherited-calls linker; direct recursion emits its self edge.
+     enclosing class's method; a name 3+ method symbols share, and
+     ``super``, are recorded with an ``enclosing_class`` (the superclass
+     for ``super``) and that owner as the module, for the inherited-calls
+     linker -- ``external`` only when no owner is known (a top-level
+     caller, or ``super`` with no declared superclass); direct recursion
+     emits its self edge.
      Each file's edges are then annotated with dataflow access modes
      (ADR-0015 Tier 1, ``_annotate_dataflow``).
    - Passes 2b / 2c / 2d and 3, plus a post-pass inheritance sweep
@@ -86,8 +89,9 @@ How It Works
 5. Track variable types from constructor/factory calls (``var = Class.new``)
    to resolve ``var.method`` → ``Class#method`` (``ast_call`` evidence
    carrying ``meta["resolution_quality"] = "typed_receiver"``)
-6. Filter method parameters from bare-identifier handler to prevent
-   false-positive edges from parameter references
+6. Skip bare identifiers that Ruby's lexical rule makes LOCALS
+   (parameters, block parameters, rescue / ``for`` variables, earlier
+   assignments)
 
 Why This Design
 ---------------

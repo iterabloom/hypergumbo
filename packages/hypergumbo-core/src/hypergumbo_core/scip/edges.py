@@ -28,9 +28,8 @@ Scope pinned in Slice C:
 
 * Per WI-zakub §1, rust-analyzer leaves ``relationships`` empty; its
   trait-dispatch information lives inside the SCIP symbol string's
-  descriptor chain. This module does not reconstruct those — that's
-  the rust-analyzer-specific descriptor decoder planned as a sibling
-  module in the ``hypergumbo-lang-rust-analyzer`` package (WI-duzul).
+  descriptor chain. Nothing reconstructs those yet: WI-duzul closed
+  without a decoder for the ``impl#[T][Trait]method()`` suffix.
 
 Edge direction convention:
 
@@ -81,8 +80,9 @@ Symbol resolution:
 
 By default the shim emits Edges with ``src`` / ``dst`` set to the raw
 SCIP symbol strings. Callers are expected to resolve those against the
-Slice B output's ``Symbol.stable_id`` field (which also holds the raw
-SCIP string) to produce fully-qualified hypergumbo IDs. A caller-
+Slice B output's ``Symbol.meta["scip_symbol"]`` (the raw SCIP string;
+``stable_id`` holds its sha256) to produce hypergumbo ``Symbol.id``
+values. A caller-
 provided ``resolve_symbol`` callable remaps either endpoint; if it
 returns ``None`` for either endpoint, the Edge is dropped rather than
 emitted with a partial / raw endpoint. This matches the same-pass-

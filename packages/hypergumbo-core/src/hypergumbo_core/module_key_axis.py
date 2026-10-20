@@ -25,7 +25,7 @@ names a local binding at one call site; ``resp`` is not where ``read`` is
 defined. That is the same cut ADR-0023 made for ``Edge.edge_type`` -- properties
 of an endpoint are queried from the endpoint, not smuggled into the label -- and
 the receiver's type already has a home in ``Edge.meta["receiver_type_hint"]``
-(stamped by nine analyzers, read by neither ``io_boundary`` nor ``taint``;
+(stamped by ten analyzers, read by neither ``io_boundary`` nor ``taint``;
 WI-monul).
 
 WHY THIS IS A STRUCTURAL-POLICY AXIS RATHER THAN A REGISTRY OF VALUES. Module
@@ -66,10 +66,11 @@ bugs. Over 65,187 external refs on a 21-repo, 10-language cold cohort, 7.8% of
 slots are not a single module identity.
 
 The producer surface says the same thing in a different way: 54 ``ExternalRef``
-construction sites across 22 analyzers, and the local feeding ``module_path`` is
+construction sites across 22 analyzers when this axis was declared (2026-09-01),
+and the local feeding ``module_path`` is
 variously ``path_hint``, ``module_hint``, ``module_name``, ``mod``, ``hint``,
 ``ns``, ``pkg``, ``receiver_name``, ``wildcard_module`` and the literal
-``"redirect"``. No two analyzers call the thing the same name.
+``"redirect"``. The analyzers do not agree on what to call the thing.
 
 SCOPE: THIS DECLARES, IT DOES NOT MIGRATE. Nothing here changes what any
 analyzer emits. ``external_symbol`` node ids embed the module slot
@@ -282,7 +283,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=2240,
+                line=2243,
                 anchor='module_hint = ",".join(_slots)',
                 note=(
                     "Every header the file can see (its own includes, quoted "

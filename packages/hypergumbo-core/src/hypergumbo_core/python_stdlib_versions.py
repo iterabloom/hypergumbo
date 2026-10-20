@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Which top-level modules are Python standard library on SOME supported
-interpreter but not all of them.
+"""Top-level modules that are stdlib on some supported Python but not all.
 
 WHY THIS EXISTS (WI-gisan, WI-jojuz). "Is ``M`` the standard library?" has a
-different answer on each Python. ``tomllib`` joined in 3.11 (PEP 680);
-``distutils``, ``imp``, ``asyncore``, ``asynchat`` and ``smtpd`` left in 3.12;
-the PEP 594 batch and ``lib2to3`` left in 3.13. Two places answered the
-question from ONE interpreter, and each answer moved with it:
+different answer on each Python. ``tomllib`` joined in 3.11 (PEP 680) and
+``binhex`` left in 3.11; ``distutils``, ``imp``, ``asyncore``, ``asynchat`` and
+``smtpd`` left in 3.12; the rest of the PEP 594 batch and ``lib2to3`` left in
+3.13. Two places answered the question from ONE interpreter, and each answer
+moved with it:
 
 * ``io_primitives/python.yaml``'s ``stdlib_modules`` was generated from 3.12
   alone, so ``import distutils`` in a 3.10 project was stamped

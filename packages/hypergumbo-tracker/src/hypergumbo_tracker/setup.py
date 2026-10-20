@@ -11,8 +11,10 @@ permissions, ``core.sharedRepository``, the textconv driver,
 ``core.hooksPath``.
 
 Each check returns a CheckResult with status ok/fixed/warn/error. The wizard
-is idempotent: running it twice with no changes between runs produces all
-"ok" results. That claim was FALSE for config.yaml until 2026-09-12 — check
+is idempotent: running it twice with no changes between runs produces no
+"fixed" result on the second run (advisory warnings, such as the
+host-protected-config opt-in, persist until a human acts on them). That claim
+was FALSE for config.yaml until 2026-09-12 — check
 #10b set it to 0444 and check #12's group sweep put group-write straight back,
 so both reported "fixed" forever and the file settled at 0464. Two checks that
 disagree about one file cannot converge; ``_MODE_MANAGED_FILENAMES`` is the

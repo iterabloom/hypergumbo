@@ -13,9 +13,12 @@ Implementation approach:
 
 Calls: an import alias (``const m = @import("m")``) is passed as a path hint;
 a weak method match is deferred to an unresolved edge carrying
-``enclosing_class`` (``defer_bare_method_call``); a callee found nowhere gets a
-``zig:<caller file>:0-0:<name>:function`` placeholder at 0.6. Builtin calls are
-not filtered. Fields and variables are not registered for call resolution.
+``enclosing_class`` (``defer_bare_method_call``); a callee found nowhere gets
+an unresolved ``zig:<caller file>:0-0:<name>:function`` placeholder at the
+``ast_call_direct`` unresolved confidence (0.5). Builtins (``@intCast``,
+``@as``) parse as ``builtin_function``, not ``call_expression``, so they never
+become call edges; only ``@import`` is read, as an import. Fields and
+variables are not registered for call resolution.
 
 Identity (WI-tusad): every symbol is qualified, for hashing, by the full chain
 of containers and functions enclosing it (``A.Inner.run``; the emitted name

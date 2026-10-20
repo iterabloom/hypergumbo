@@ -8,7 +8,8 @@ each analyzer.
 
 How It Works
 ------------
-1. Finds class/interface/struct/trait symbols with base_classes metadata (for
+1. Finds type-like symbols (``type_like_kind_names()``: class, interface,
+   struct, trait, protocol, enum, record, ...) with base_classes metadata (for
    extends/implements) and class/module symbols with included_modules metadata
    (for includes)
 2. For each base class name, looks up the target symbol
@@ -34,9 +35,10 @@ How It Works
    ``TestCase`` (WI-ratid).
    A QUALIFIED base (``System.Exception``, ``std::exception``, ``io.Writer``,
    ``java.util.ArrayList<T>``) binds its last segment only to an in-tree
-   candidate whose ``qualified_name`` is the written base or ends with it
-   (``_qualifier_fit``, WI-pivap); candidates with no qualified name keep the
-   name binding. When every candidate records one and none fits, the base is
+   candidate whose ``qualified_name`` equals the written base or either ends
+   with the other on a segment boundary (``_qualifier_fit``, WI-pivap); when
+   none fits, candidates with no qualified name keep the name binding. When
+   every candidate records one and none fits, the base is
    external, with the written qualifier as its module
    (``_qualified_external_edge``). A BARE base gets the same check when its
    analyzer recorded the import it came through (``meta["base_class_imports"]``:

@@ -5,7 +5,7 @@ This analyzer uses tree-sitter to parse VHDL files and extract:
 - Entity declarations
 - Architecture definitions
 - Package declarations
-- Component declarations (inside an architecture)
+- Component declarations (in an architecture or a package)
 
 If tree-sitter-vhdl is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -38,7 +38,9 @@ Why This Design
   entity it implements and a component by the architecture declaring it
   (``top/rtl``), so ``architecture rtl of a`` and ``architecture rtl of b``
   in one file are two symbols that the floor key ``(kind, path, name)``
-  nulled. Entities and packages are library units, unique by name.
+  nulled. Entities and packages are library units, unique by name. A
+  component declared in a package gets no scope, so same-named components in
+  two packages of one file tie.
 """
 from __future__ import annotations
 

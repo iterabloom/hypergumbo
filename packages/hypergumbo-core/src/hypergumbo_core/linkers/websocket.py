@@ -63,6 +63,8 @@ classified by the shared ``_name_args`` helpers (WI-luhod, after WI-misod):
   module scope in the same file -> event 'user-login' (identifier kept)
 - Unresolved: socket.emit(EVENT, data) where EVENT is imported, a parameter,
   or dotted (``config.event``) -> the event is NOT known; the identifier is
+  kept as the site's event (``event_type='unresolved'``) and joins only on
+  identifier
 
 Senders join receivers on the event VALUE when both are known (0.85), and on
 the IDENTIFIER only when at least one side is unresolved (0.65,

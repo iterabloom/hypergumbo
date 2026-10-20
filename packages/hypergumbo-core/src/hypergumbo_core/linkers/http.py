@@ -2,9 +2,9 @@
 """Protocol linker: HTTP client-server for detecting cross-language API calls.
 
 This linker detects HTTP client calls (fetch, axios, AngularJS $http, jQuery $.ajax,
-requests, OpenAPI clients, RestClient, HTTParty, Faraday, Net::HTTP, RestTemplate,
-Retrofit, and Elm's ``Http`` module) and links them to server route handlers
-detected by language analyzers.
+OpenAPI clients, requests, httpx, Go net/http, RestClient, HTTParty, Faraday,
+Net::HTTP, RestTemplate, Retrofit, and Elm ``Http`` / ``Utils.Api`` calls) and links
+them to server route handlers detected by language analyzers.
 
 Two URL shapes get special handling beyond the literal case. JS/TS template
 literals are folded to a comparable path before matching, so

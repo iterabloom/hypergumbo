@@ -28,7 +28,7 @@ How It Works
 Uses the TreeSitterAnalyzer base class for two-pass orchestration:
 1. extract_symbols_from_file: extracts classes, interfaces, enums, methods, functions
 2. get_import_aliases: extracts 'import X as Y' aliases for path_hint disambiguation
-3. register_symbol: registers each symbol by its qualified name (the NameResolver suffix index handles short-name lookups for cross-file resolution)
+3. register_symbol: registers each symbol under its own name (``Foo``, or ``Foo.bar`` for a method), not a type's package-qualified ``qualified_name`` (the NameResolver suffix index handles short-name lookups for cross-file resolution)
 4. extract_edges_from_file: resolves import statements and function/method calls
 
 Call resolution in ``extract_edges_from_file`` adds three guards:
@@ -743,7 +743,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
         symbol: Symbol,
         global_symbols: dict,
     ) -> None:
-        """Register symbol by qualified name only.
+        """Register symbol under its own name only.
 
         The ``NameResolver`` suffix index handles short-name lookups.
         """

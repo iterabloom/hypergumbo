@@ -18,12 +18,15 @@ owner refused it. Asking instead "does every DIRECT CALLER of this symbol live
 in a test module" catches all of them and is immune to the seeding.
 
 FUNCTIONS ONLY, AND THE REASON IS MEASURED RATHER THAN STYLISTIC. The cohort
-splits 585 functions / 204 methods on the self-tree, and the method half cannot
-be adjudicated today: a method's identity in the call graph is its SHORT name,
-so ``Store.add`` is indistinguishable from ``set.add`` and ``Pattern.matches``
-scores hundreds of hits off ``re``'s ``.matches``. Deciding a method needs
-receiver typing, which is WI-nanom's open work -- pyright/SCIP under ADR-0012
-multi-fidelity coexistence. It is NOT INV-linub's, which this docstring claimed
+splits 585 functions / 204 methods on the self-tree, and the method half could
+not be adjudicated when the gate shipped: a method's identity in the syntax-only
+call graph is its SHORT name, so ``Store.add`` is indistinguishable from
+``set.add`` and ``Pattern.matches`` scores hundreds of hits off ``re``'s
+``.matches``. Deciding a method needs receiver typing, which WI-nanom shipped as
+the scip-python backend (pyright/SCIP under ADR-0012 multi-fidelity
+coexistence), and the Woodpecker full-suite map is now built with it. That is
+the call-graph half only; the demotion arm below is still blind. It is NOT
+INV-linub's, which this docstring claimed
 until 2026-09-09: that class is about a catalogued I/O sink reaching its
 CATALOGUE entry through the F3 gate, where this needs FIRST-PARTY method
 resolution in the call graph. Same capability, different consumer, and closing

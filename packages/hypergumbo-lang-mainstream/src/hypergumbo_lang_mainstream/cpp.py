@@ -60,8 +60,9 @@ Call-edge details:
 - **Member calls**: ``this->a->b()`` is resolved through class field types
   (``_resolve_cpp_field_chain``). A member call whose method name is in
   ``_CPP_STL_METHODS`` (``v.clear()``) is not resolved against project
-  symbols and emits no call edge, unless the ``this->`` field chain
-  (``_resolve_cpp_field_chain``) types its receiver. A bare call whose only match is a
+  symbols by name and emits no call edge, unless its receiver is typed --
+  by the ``this->`` field chain or by a declared receiver type (see
+  **Explicit receivers**). A bare call whose only match is a
   DIFFERENT class's method on weak evidence is withheld
   (``defer_bare_method_call``, INV-fahub) and emitted unresolved with
   ``enclosing_class``.
@@ -86,7 +87,9 @@ Call-edge details:
 - **Unresolved module hint**: when the file has any ``#include``, the hint
   is the comma-joined set of headers it can see -- its own includes, quoted
   and angled, and everything a header found in the repository includes,
-  transitively (``include_closure``, INV-zikul) -- prefixed with ``std``
+  transitively (``include_closure``, INV-zikul), less the names of in-repo
+  headers reached only transitively, which are read but not named
+  (``transitive_in_repo=False``) -- prefixed with ``std``
   when the call names ``std::`` or the file has ``using namespace std``
   (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
   Member calls carry ``call_construct="method"``.

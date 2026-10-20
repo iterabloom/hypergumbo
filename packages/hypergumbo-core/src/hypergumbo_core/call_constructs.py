@@ -67,9 +67,9 @@ itself or with no owner):
 * ``constructor`` -> None. A construction reaches the TYPE, not a row of it.
   Whether a row names the constructor is a question about the NAME, which the
   gate's second route answers (``Command::new`` is a function-kind row). Mapping
-  it to ``function`` would let Kotlin's ``File(path)`` satisfy ``java.io.File``,
-  a module that also declares function rows, and that constructor-but-no-
-  method-call shape is exactly the blind-language signal the gate exists for.
+  it to ``function`` would let a bare construction satisfy any module that also
+  declares function rows, and that constructor-but-no-method-call shape is
+  exactly the blind-language signal the gate exists for.
 
 A value missing from the table maps to ``None`` too: an undeclared construct is
 no evidence the catalogue could match, so it cannot satisfy the gate.

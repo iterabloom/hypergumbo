@@ -20,9 +20,9 @@ The linker identifies this project's CLI by unioning, across EVERY
 repo root — that was WI-gadus, which made the linker structurally blind on
 any monorepo whose root manifest declares no scripts):
 1. [project.scripts] entries from each pyproject.toml
-2. [project.name] as fallback
+2. [project.name] (always included, alongside any scripts)
 3. console_scripts / entry_points from each setup.py
-4. Matching both hyphenated and underscored variants
+4. The distribution name's underscored variant (``my-app`` -> ``my_app``)
 
 The union over-selects rather than under-selects: a workspace that vendors a
 package named after a common binary will claim that binary's call sites.
@@ -31,7 +31,9 @@ Matching Strategy
 -----------------
 1. Extract executable and subcommand from subprocess call
 2. Check if executable matches this project's CLI name
-3. Match subcommand to CLI command symbols (concept="command")
+3. Match subcommand to a handler: a concept="command" symbol, an argparse
+   ``add_parser``/``set_defaults(func=...)`` handler, or a public
+   method of a ``fire.Fire(<Class>)`` target
 4. Create subprocess_calls edges linking caller to command handler
 
 Language Scope (WI-gopok)
@@ -58,8 +60,11 @@ coincidence. No maturin-bin repository was found in the corpus to measure.
 Confidence Scores
 -----------------
 - 0.85: Literal command list with matching project CLI and subcommand
+- 0.80: python -m invocation (slightly less certain)
 - 0.70: Variable command list (can't verify statically)
-- 0.65: python -m invocation (slightly less certain)
+- 0.50: Any of the above when several command handlers share the
+  subcommand name (the lowest-id candidate is picked and the edge
+  carries ``disambiguation_fallback``)
 
 Why This Design
 ---------------

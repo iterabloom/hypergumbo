@@ -88,7 +88,8 @@ Any verdict may carry a structured ``caveats`` list of dicts (``kind``,
 ``entries``, prose ``detail``). The text renderer prints each dict's
 ``detail`` and the JSON emits the dict, so both disclose the same text. Most
 writers go through ``_merge_caveat``, which folds a repeated kind into one
-entry; the two ``CAVEAT_USER_SUPPLIED_SANITIZER`` writers append directly.
+entry; the two ``CAVEAT_USER_SUPPLIED_SANITIZER`` writers and the three
+violated-path writers (each kind at most once) append directly.
 On a clean
 verdict a non-empty list makes it ``confirmed_with_caveats``;
 ``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_WITHHELD_COMMUNITY_SANITIZER`` and
@@ -192,15 +193,16 @@ How It Works
    For a taint claim whose source label only a project catalogue declares,
    ``blind_by_source_taint`` substitutes a per-label ``ScopedBlindness``
    that ignores no-catalogue languages the label cannot start in (WI-rusil).
-   Straight after the gate, a clean taint verdict whose label a source value
-   was seen leaving through an ``unfollowed_construct`` call site
-   (``taint.find_unfollowed_escapes``) is withheld by
-   ``_withhold_for_unfollowed_escapes`` (INV-nohob). Also after the gate, a
-   taint claim over one of ``taint_sinks/``'s
+   Straight after the gate, a taint claim over one of ``taint_sinks/``'s
    non-boundary zones (ADR-0060) passes through ``_apply_sink_zone_gap``:
    a present language with no sink in the zone withholds a clean verdict, and
    declared unreached shapes qualify it with ``CAVEAT_UNREACHED_SINK_SHAPES``
-   (INV-pivam). Then ``_disclose_scoped_blindness`` names the set-aside
+   (INV-pivam). Next, a clean taint verdict whose label a source value
+   was seen leaving through an ``unfollowed_construct`` call site
+   (``taint.find_unfollowed_escapes``) is withheld by
+   ``_withhold_for_unfollowed_escapes`` (INV-nohob), so when both fire the
+   withheld reason is the sink-zone gap's. Then ``_disclose_scoped_blindness``
+   names the set-aside
    languages in ``details``. Last, ``_disclose_untraced_vouch`` appends to a confirming
    verdict's ``details`` the modules that only an overlay's
    ``module_completeness`` grant vouched for, whose source was not traced;

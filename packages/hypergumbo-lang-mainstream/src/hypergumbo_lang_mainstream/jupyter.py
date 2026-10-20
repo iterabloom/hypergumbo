@@ -12,7 +12,8 @@ How It Works
 3. Extract code cell sources in document order
 4. Preprocess each cell: strip line magics (%), cell magics (%%), shell (!)
    and help (?) commands while preserving line count for accurate spans
-5. Concatenate cells with blank-line separators (preserving line offsets)
+5. Concatenate cells with newline separators (a cell that ends in a newline
+   is followed by a blank line); spans are lines of the concatenated source
 6. Parse concatenated source with ast.parse
 7. Walk AST to extract symbols and call edges: functions (nested ones
    included) and classes; a method is emitted once, by its class, as
@@ -49,7 +50,8 @@ Limitations
 - Non-Python kernels (R, Julia, etc.) are skipped
 - Cell magics (%%sql, %%bash) replace the entire cell body with blanks
 - Cross-file resolution between notebooks and .py modules is not attempted
-- LOC counting uses raw .ipynb file size (includes JSON structure and outputs)
+- LOC counts non-blank lines of the raw .ipynb text (includes JSON structure
+  and outputs)
 """
 from __future__ import annotations
 

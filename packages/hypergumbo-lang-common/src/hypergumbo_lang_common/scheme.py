@@ -11,7 +11,10 @@ Implementation approach:
 - Uses TreeSitterAnalyzer base class for grammar checking and parser creation
 - Two-pass analysis: First pass collects all symbols and attaches docstrings
   (via populate_docstrings_from_tree); second pass extracts call edges
-- Handles Scheme-specific constructs like define, lambda, let
+- ``define`` is the only binding form extracted. ``lambda``, ``let`` and the
+  other special forms (plus the names in ``_BUILTINS``) are only kept out of
+  call edges and produce no symbol, so ``(define f (lambda (x) ...))`` is a
+  variable.
 
 Key constructs extracted:
 - (define (name args) body) - function definitions

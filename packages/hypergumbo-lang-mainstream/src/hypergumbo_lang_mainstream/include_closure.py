@@ -68,7 +68,7 @@ reads as having none.
 BOUNDS. Each header is read once per run, and a translation unit's walk
 visits each header once (a visited set by resolved path). That is what makes
 include cycles and include guards harmless: a guarded re-include is the same
-file. The depth is bounded by :data:`MAX_INCLUDE_DEPTH`. A header at the bound
+file. The depth is bounded by :data:`MAX_INCLUDE_DEPTH`. A header past the bound
 is named but not read, which is the absent case above.
 
 WHO USES IT. ``c.py``, for the stamp on an ambiguous libc name and for

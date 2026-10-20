@@ -34,8 +34,9 @@ Matching strategy
    ``False`` / ``None`` / numbers / strings), lambdas, and call
    expressions (``func=make_handler()``) are skipped — only a bare
    (possibly dotted) identifier names a statically-known handler.
-3. Resolve the identifier via ``ctx.find_symbols_by_name`` (last
-   component for dotted names) among PYTHON symbols only -- the
+3. Resolve the identifier via ``ctx.find_symbols_by_name`` (a dotted
+   name is tried whole, then by its last component if the whole name
+   matches nothing) among PYTHON symbols only -- the
    identifier is a binding in the registering module's scope, so a
    same-named Go / JS / Ruby symbol is a name coincidence (WI-gopok) --
    keep only callable symbol kinds

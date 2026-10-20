@@ -11,23 +11,29 @@ Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 1. Uses tree-sitter-vue grammar from tree-sitter-language-pack
 2. Extracts component structure (template, script, style)
 3. Identifies component references and directive usage
-4. Parses script section for component exports
+4. Parses the script section (regex) for ``.vue`` component imports and
+   Options-API ``props``
 
 Symbols Extracted
 -----------------
-- **Components**: Imported components used in template (capitalized tags)
 - **Directives**: Vue directives (v-if, v-for, v-model, @click, :prop)
 - **Slots**: Named and default slot definitions
-- **Props**: Component props definitions
+- **Props**: Options-API ``props`` definitions (array or object syntax)
+- **Style blocks**: one ``style_block`` per ``<style>``, recording
+  ``scoped`` / ``module`` / ``lang``
 
 Note: Methods and computed properties are NOT extracted here. The JS/TS
 tree-sitter analyzer handles ``<script>`` sections with full tree-sitter
-precision, emitting these as ``language="javascript"`` symbols. Duplicating
+precision, emitting these as ``language="javascript"`` (or ``"typescript"``
+for ``lang="ts"``) symbols. Duplicating
 them here with regex would create orphaned ``language="vue"`` symbols.
 
 Edges Extracted
 ---------------
-- **imports**: Links component usage to imported component paths
+- **imports**: from the .vue file to each component its template uses
+  (capitalized tags, or hyphenated tags that are not HTML or Vue
+  built-ins); resolved to the imported ``.vue`` path when the script
+  imports it, otherwise an unresolved dangling component target
   (ADR-0023 §6 folded the former `imports_component` type into
   canonical `imports`)
 
@@ -47,7 +53,7 @@ Why This Design
 - Vue uses single-file components with three sections
 - Understanding component hierarchy reveals app architecture
 - Directive usage shows data binding and event patterns
-- Method/computed extraction helps understand component logic
+- Props and slots describe the component's public interface
 """
 
 from __future__ import annotations
