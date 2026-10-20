@@ -1,0 +1,20 @@
+Original commit body from cec08b2a4aae3ea744d60812ce3a05de318dbe42:
+
+serve.py's write API (POST /api/items, .../update, .../discuss) and /ws
+carried no auth check, so the change that wires a TrackerSet into
+run_server (ADR-0019 Part A) would have published an unauthenticated
+write API. create_app now takes authenticate(conn) -> bool and wraps
+every route but /health and the static mount in a loop, so a route
+added later is guarded without anyone remembering to. No authenticator,
+False, or a raise all deny: 401 for HTTP, close 1008 for /ws.
+
+serve_duress: call_on_duress_login now returns False when the handler
+raises (a raise would fail the duress login where a normal one succeeds,
+telling the attacker which password they used), and load_duress_handler
+warns when a configured handler file cannot be loaded instead of
+silently arming the no-op.
+
+Tests enumerate the app's own routes; existing serve tests pass an
+allow-all authenticator from tests/_serve_auth.py.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
