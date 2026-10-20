@@ -1,0 +1,17 @@
+Original commit body from 087b740080c0b06df48bb608b29fd3e51e50b6d4:
+
+spec_validator._check_confidence_range (WI-nurun) checks an edge's
+confidence against the derived band of its evidence_type. The merge
+pass's corroboration (ADR-0057 s13) sets confidence to the declared
+corroboration level (0.95 by default, configurable under [merge]) and
+keeps the incumbent's evidence_type, so every edge two producers agreed
+on read as out of band. ir.py defines confidence_source=corroborated as
+"not either producer's value": the band does not apply.
+
+Measured on the first scip-python-enabled self-map (after WI-nijod):
+109,622 cross_field|info notes, every one confidence_source=corroborated
+(ast_call_direct 67,471, ast_call 35,227, ast_name_read 6,924), and
+check-self-tree-validation exit 1 (109622 > baseline 0). The fixed check
+over the same map's 352,232 edges: 0.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
