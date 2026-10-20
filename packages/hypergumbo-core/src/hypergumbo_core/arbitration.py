@@ -175,16 +175,3 @@ def policy_from_config(config: "LayeredConfig") -> ArbitrationPolicy:
             else config.merge_superseded_stub_rank_factor
         ),
     )
-
-
-def resolve_arbitration_policy(
-    *, repo_root: Path, environ: Optional[Mapping[str, str]] = None,
-) -> ArbitrationPolicy:
-    """Load both ADR-0045 preference tiers and express them as a policy.
-
-    Raises :class:`~.user_config.ConfigError` for a bad ``[merge]`` key,
-    naming the file — the CLI turns that into exit 2 with the reason.
-    """
-    from .user_config import load_layered_config
-
-    return policy_from_config(load_layered_config(repo_root=repo_root, environ=environ))

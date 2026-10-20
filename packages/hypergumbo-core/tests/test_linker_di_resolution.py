@@ -15,7 +15,7 @@ from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers.di_resolution import (
     PASS_ID,
     DIBinding,
-    build_interface_impl_map,
+    _iter_interface_impls,
     extract_bindings_from_source,
     link_di_resolution,
     resolve_bindings,
@@ -995,8 +995,16 @@ class TestPassId:
         assert PASS_ID == "di-resolution-linker"
 
 
+def build_interface_impl_map(symbols: list[Symbol], edges: list[Edge]) -> dict[str, list[Symbol]]:
+    """Interface name -> implementations, as the linker reads them."""
+    result: dict[str, list[Symbol]] = {}
+    for iface, impl, _edge in _iter_interface_impls(symbols, edges):
+        result.setdefault(iface.name, []).append(impl)
+    return result
+
+
 class TestBuildInterfaceImplMap:
-    """Tests for the interface-to-impl map builder."""
+    """Tests for the interface-to-impl reading of the graph."""
 
     def test_empty_symbols(self) -> None:
         result = build_interface_impl_map([], [])
