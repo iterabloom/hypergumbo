@@ -1795,7 +1795,8 @@ class CfgBuilder:
         """Process a switch/match construct.
 
         Creates a scrutinee block, then edges to each case/arm. The fringe
-        is the union of all arms' fringes.
+        is the union of all arms' fringes PLUS a fall-through from the
+        scrutinee: "no case matched" leaves the switch (WI-sozob).
         """
         mapping = self._mapping.get_switch(node.type)
         if mapping is None:
@@ -1852,13 +1853,20 @@ class CfgBuilder:
                     ))
                     fringe.extend(arm_partial.fringe)
 
-        if not scrutinee_block.successors:
-            # No arm the mapping recognises produced a statement. Control still
-            # leaves the switch: without this edge the fringe was EMPTY and
-            # every statement after the switch was unreachable from the entry
-            # -- what a Java arrow-form ``switch`` did before ``switch_rule``
-            # was mapped (WI-faful).
-            fringe.append(_FringeEdge(source_block=scrutinee_block.id, edge_type="always"))
+        # "NO CASE MATCHED" LEAVES THE SWITCH, ALWAYS (WI-sozob). Without this
+        # edge the scrutinee's only successors were the arms, so in a switch
+        # with no default a definition killed in EVERY arm did not reach the
+        # code after it -- the source's ``t`` vanished from ``sink(t)`` after
+        # ``switch x { case 1: t = "c" }`` -- which REMOVES reaching
+        # definitions, the direction that manufactures a walk ``False``.
+        # Always on rather than "only when no arm is a default": recognising a
+        # default is per grammar (Go ``default_case``, Java / C ``default``,
+        # Python ``case _``), and the edge an exhaustive switch gains never
+        # runs, so it only ADDS definitions -- the conservative side. With no
+        # recognised arm at all it is the only exit, which is what kept a Java
+        # arrow-form switch's continuation reachable before ``switch_rule``
+        # was mapped (WI-faful).
+        fringe.append(_FringeEdge(source_block=scrutinee_block.id, edge_type="always"))
 
         return _PartialCfg(
             entry_block=scrutinee_block.id,
