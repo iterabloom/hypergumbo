@@ -28,3 +28,10 @@
   clock: 2  # 03af
   nonce: 03af  # 03af
   message: "Re-confirmed 2026-10-16 (docstring audit verifier): repro with a.php (<?hh header) + b.hack -> analyze_hack emits only b.hack's symbol. git log -S shows the production caller find_hack_files(self.repo_root) was removed in cfd3132756 (Phase 3 extended1 TreeSitterAnalyzer migration), so this is a regression, not never-landed. Docstring left stating the intent."  # 03af
+- op: discuss  # 7f4e
+  at: '2026-10-20T09:12:58Z'  # 7f4e
+  by: agent  # 7f4e
+  actor: jgstern_agent  # 7f4e
+  clock: 3  # 7f4e
+  nonce: 7f4e  # 7f4e
+  message: "Re-confirmed 2026-10-20 by the docstring audit (verifier repro: a.php '<?hh function foo()' + b.hack -> analyze_hack yields only b.hack's bar). The same shape is confirmed in d_lang.py (find_d_files' .d dependency-file filter is never called) and filed as a family item with ~16 unverified candidates."  # 7f4e
