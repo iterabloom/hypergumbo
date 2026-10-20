@@ -17,6 +17,8 @@ from starlette.testclient import TestClient
 from hypergumbo_tracker.models import Tier
 from hypergumbo_tracker.trackerset import TrackerSet
 
+from ._serve_auth import allow_all
+
 
 def _make_tracker(tmp_path: Path) -> TrackerSet:
     """Create a minimal TrackerSet for testing."""
@@ -49,7 +51,7 @@ def _make_ws_client(tmp_path: Path) -> tuple[TestClient, TrackerSet]:
     from hypergumbo_tracker.serve import create_app
 
     ts = _make_tracker(tmp_path)
-    app = create_app(tracker_set=ts)
+    app = create_app(tracker_set=ts, authenticate=allow_all)
     return TestClient(app), ts
 
 
@@ -218,7 +220,7 @@ class TestWebSocketWithoutTracker:
         """WebSocket sends error and closes when no TrackerSet."""
         from hypergumbo_tracker.serve import create_app
 
-        app = create_app()  # No tracker_set
+        app = create_app(authenticate=allow_all)  # No tracker_set
         client = TestClient(app)
         with client.websocket_connect("/ws") as ws:
             msg = ws.receive_json()

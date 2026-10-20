@@ -14,6 +14,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Fixed
 
+- **`htrac serve` denies every route except `/health` by default.**
+- **Duress handler failures now warn and never propagate.**
 - **`htrac setup` checks for the token sync actually uses.** That is `HG_GITHUB_TOKEN` for a GitHub origin and `FORGEJO_TOKEN` for a Forgejo one. The check used to accept only `FORGEJO_TOKEN`. It warned on a correctly configured GitHub repository and passed one that would fail to sync. Pruning superseded sync branches likewise sent the GitHub token to Forgejo when both were set.
 
 ### Documentation
