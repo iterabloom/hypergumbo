@@ -1,0 +1,22 @@
+- op: create  # c155
+  at: '2026-10-20T09:04:25Z'  # c155
+  by: agent  # c155
+  actor: jgstern_agent  # c155
+  clock: 1  # c155
+  nonce: c155  # c155
+  data:  # c155
+    kind: work_item  # c155
+    title: "starlark: a call through a load alias never resolves -- load_aliases keeps only the source file and the lookup uses the alias, not the loaded name"  # c155
+    status: todo_hard  # c155
+    priority: 3  # c155
+    parent:  # c155
+    tags:  # c155
+    - docstring_audit  # c155
+    - analyzer  # c155
+    - starlark  # c155
+    isbefore: []  # c155
+    duplicate_of: []  # c155
+    not_duplicate_of: []  # c155
+    pr_ref:  # c155
+    description: "Found by the 2026-10-20 docstring-staleness audit (verifier reproduced). starlark.py ~L275 stores only `ctx.load_aliases[alias] = source_file` and drops the original name; ~L423-430 looks up `original_name = target_name`, i.e. the alias (`cr` for `load(\"//x:defs.bzl\", cr = \"custom_rule\")`). That is never a registered symbol name, so `cr(...)` resolves to `starlark:external:cr:function` instead of the loaded `custom_rule`. The module docstring and `_extract_starlark_edges` docstring both claim load aliases are used as path hints for cross-file resolution. Fix: keep (label, original_name) per alias, look up the original name, normalise the label to a path fragment for the hint. Docstring left stating the intent."  # c155
+    fields: {}  # c155
