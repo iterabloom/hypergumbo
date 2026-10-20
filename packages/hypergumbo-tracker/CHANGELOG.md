@@ -7,6 +7,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-20
+
 ### Breaking and contract changes
 
 - **`create_app` denies every route except `/health` unless given an `authenticate` callable**: requests get 401 and `/ws` is closed. Code that called `create_app(tracker_set=...)` must now pass one. `htrac serve`, which wires neither, answers 401 where it answered 503.
