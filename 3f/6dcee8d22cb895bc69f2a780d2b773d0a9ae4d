@@ -1,0 +1,46 @@
+Original commit body from 75adcf5448595f3d974f73a765c59054e530b83c:
+
+Nightly 979a6c11 leg 3 (py3.12) failed
+TestWaitForDismissalHelper::test_it_returns_the_result_under_the_one_tick_model[#submit]:
+"modal was never dismissed within 30.0s ... screen=LockScreen,
+result='NOT_SET'". Thirty seconds with no dismissal is not slowness:
+the click never pressed a button.
+
+_wait_for_modal returns once #modal-dialog has a size. On a starved
+run (Textual 7.5.0's wait_for_idle returning at once, WI-ruhul's load
+model) a LockScreen's buttons then report region row 16 while
+get_widget_at() there finds the Vertical #modal-dialog; the settled
+layout puts them on row 13. Pilot.click posts its events at the stale
+point, they land on the dialog, no Button.Pressed fires, and the
+modal is never dismissed. Pilot.click returns False when that happens,
+and no test checked it. The layout settles after about 0.05 s of wall
+clock, about 150 starved pauses, so no tick-count bound covers it.
+
+New tests/tui_pilot.click(pilot, widget, offset) waits, sleeping real
+time with asyncio.sleep so a test that patches Pilot.pause cannot
+starve it, until the target is the widget at the exact point Pilot will
+click (region.offset + offset), then clicks and raises naming the
+target and what was under the point if the click did not land. All 81
+pilot.click sites in test_tui.py and the 3 in test_item_nav_modal.py go
+through it. _wait_for_modal's docstring no longer claims it waits for
+layout.
+
+TestClickWhenClickable pins it under the faithful model (wait_for_idle
+patched to one sleep(0), the rest of pause() intact): a plain
+pilot.click on #cancel returns False and nothing dismisses (REACH);
+the helper lands on #cancel and #submit; it raises for a target that
+never becomes clickable.
+
+Whole-suite check with that model applied to every test via a scratch
+pytest plugin, test_tui.py + test_item_nav_modal.py:
+  unmodified dev: 20 failed. 11 are modal click tests: all of
+    TestLockScreenUnit and TestBeforeScreenUnit (including
+    test_empty_submit_returns_none, WI-balap's "order-dependent" test)
+    and all three TestWaitForDismissalHelper tests.
+  this change:    9 failed, none of them a click (no "not clickable" /
+    "did not land"); all 9 also fail on dev. They are chain-highlight,
+    detail-panel and scroll-offset tests that read state after a pause,
+    the WI-zolin family, and are left for it.
+Unstarved: 580 passed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
