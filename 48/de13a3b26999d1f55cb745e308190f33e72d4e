@@ -1,0 +1,19 @@
+Original commit body from cbecb197d69d4b7fc23b816031b158ee2aa7cad5:
+
+Phase 0: no misplaced entries in either changelog.
+
+Phase 1 (range 4a61e0be98..HEAD, 4 commits): the two docstring-audit
+PRs had no entry. Main docs line 16/5 -> 53 corrected, 16 extended
+(37 + 11 from this run, counting only files whose docstring changed,
+not the registry line re-anchors); tracker line adds serve_webauthn and
+sync. The discovery fix's entry already existed.
+
+Phase 2: plain-language rewrites of entries that leaned on internal
+vocabulary ("#include stamps", "unclassifiable module", "corroborate",
+"the source's own line", "verdicts are withheld", "binds"), each
+checked against its commit body. The D/Hack discovery fix moves from
+"Calls, types and inheritance" to the per-language list, and the C
+function-pointer fix from taint to calls. Main Unreleased bullets:
+651 words over 63 commits.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
