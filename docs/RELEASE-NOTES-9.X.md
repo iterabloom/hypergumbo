@@ -95,7 +95,7 @@ PHP or Hack, not both, and D skips GCC dependency files.
 
 ---
 
-## Unreleased
+## 9.2.0 — 2026-10-20
 
 > No `SCHEMA_VERSION`, `confidence_model`, `stable_id_scheme` or `--json`
 > envelope version changes.

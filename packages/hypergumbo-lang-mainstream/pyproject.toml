@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hypergumbo-lang-mainstream"
-version = "9.1.0"
+version = "9.2.0"
 description = "Mainstream language analyzers for hypergumbo"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,7 +24,7 @@ dependencies = [
   # `except ModuleNotFoundError: import tomli` fallbacks in this package
   # degrade silently (returning None) instead of parsing.
   'tomli~=2.0; python_version < "3.11"',
-  "hypergumbo-core==9.1.0",
+  "hypergumbo-core==9.2.0",
   # yaml_ansible.find_ansible_files composes YAML to tell a playbook from
   # other YAML (WI-jifog); imported directly, so declared directly.
   "pyyaml~=6.0.3",
