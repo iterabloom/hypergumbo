@@ -89,6 +89,23 @@ available in both cases: a dependence the walk FINDS is real.
 A plain data variable (``var logger = log.New(...)``) is indexed but holds no
 body, so it is never walked: the index admits the kind, the hook decides.
 
+Module Code (WI-nilir)
+----------------------
+Code at module scope -- a Python module body, a JS/TS program's top level --
+is anchored by the analyzer on the FILE pseudo-symbol
+(``python:app.py:1-1:file:file``). A spec that names its root node type in
+``module_node_types`` has that root walked as one more function under the file
+id, so a flow written at module scope is adjudicated like the same lines in a
+function, where before it was decided by call-graph reachability alone.
+
+The module's top-level ``def`` / ``function`` / ``class`` are its nested
+functions: may-run regions, never statements in sequence (the cfg mappings'
+``nested_function``), so a class attribute does not kill the module name it
+shadows and a method's ``if`` is not module control flow. Module names are
+globals, and a top-level function is usually DEFINED before the code that reads
+the secret it uses; "Nested Functions Read Late" is what keeps that flow from
+being refuted.
+
 Nested Functions Read Late (WI-lokok)
 -------------------------------------
 The CFG hangs a nested function's body off its definition as a region that
@@ -137,7 +154,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional, Sequence, cast
 
-from .analyze.base import make_symbol_id
+from .analyze.base import make_file_id, make_symbol_id
 from .taxonomy import extension_globs, grammar_for_path
 
 logger = logging.getLogger(__name__)
@@ -185,6 +202,11 @@ class LanguageDdgSpec:
         bound_anchor_kinds: Symbol kinds, beyond the callable ones, that the
             analyzer anchors such a binding's calls on (Go: ``variable``).
             Admitted into :func:`analyzer_symbol_index` for this language only.
+        module_node_types: The root node types whose top-level code the
+            language's analyzer anchors on the FILE pseudo-symbol (python
+            ``module``, javascript/typescript ``program``). The root is walked
+            as one more function under that file id (WI-nilir); see "Module
+            Code". Empty means module code is not walked.
         file_globs: ``rglob`` patterns for source files, or ``None`` (the
             default) for the extensions ``taxonomy.LANGUAGES`` declares for
             ``language`` -- the list discovery classifies files by and the
@@ -201,6 +223,7 @@ class LanguageDdgSpec:
     bound_callable_node_types: frozenset[str] = frozenset()
     bound_bodies_for: Optional[Callable[[Any, bytes], list[Any]]] = None
     bound_anchor_kinds: frozenset[str] = frozenset()
+    module_node_types: frozenset[str] = frozenset()
     file_globs: Optional[tuple[str, ...]] = None
 
     def globs(self) -> tuple[str, ...]:
@@ -831,10 +854,38 @@ def _walk_language(
         tree = parser.parse(source)
         rel_path = path.relative_to(repo_root).as_posix()
         refine_ctx = _refine_context(spec, tree, source)
+        root = tree.root_node
+        if root.type in spec.module_node_types and _has_module_call(root, mapping):
+            _solve_one_function(
+                root, root, source, spec, make_file_id(spec.language, rel_path),
+                out, deps, mapping, refine_ctx,
+            )
         _walk_functions(
             tree.root_node, source, spec, rel_path, out, deps, mapping, refine_ctx,
             analyzer_symbols,
         )
+
+
+def _has_module_call(root: Any, mapping: Any) -> bool:
+    """Whether any call in ``root`` sits outside every nested function.
+
+    Only such a call is anchored on the file pseudo-symbol, so a module with
+    none -- definitions and imports only, the common library file -- has no
+    finding the module walk could adjudicate, and walking it would store a
+    file key no analyzer symbol answers to. A language that declares no
+    ``call_node_types`` cannot be asked, and is walked.
+    """
+    call_types = frozenset(mapping.call_node_types or ())
+    if not call_types:
+        return True
+    stack = list(root.named_children)
+    while stack:
+        node = stack.pop()
+        if node.type in call_types:
+            return True
+        if mapping.get_nested_function(node.type) is None:
+            stack.extend(node.named_children)
+    return False
 
 
 def _refine_context(spec: LanguageDdgSpec, tree: Any, source: bytes) -> dict[str, Any]:
@@ -950,6 +1001,7 @@ register_ddg_language(LanguageDdgSpec(
     language="python",
     file_globs=("*.py",),
     function_node_types=frozenset({"function_definition"}),
+    module_node_types=frozenset({"module"}),
     name_for=_python_function_name,
     kind_for=_python_symbol_kind,
     refine=_python_refine,

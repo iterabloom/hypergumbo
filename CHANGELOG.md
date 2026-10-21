@@ -24,6 +24,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`build_opener().open(url)` with no secret is no longer a leak**, matching `urlopen(url)`. The opener's proxy-environment read is still classified.
 - **`n = acc.push(secret)` then `fetch(acc[0])` is reported**: a call with no catalogue entry no longer lets the walk remove the flow.
 - **A closure defined before the secret it reads carries it**: `function setup() { u += k }` above `const k = …` no longer hides the flow.
+- **Module-level code is walked like a function body**: Python and JS/TS top-level flows are confirmed or removed, not decided by reachability alone.
 
 ## [9.2.0] - 2026-10-20
 

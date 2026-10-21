@@ -543,6 +543,10 @@ _JSTS_BOUND_CALLABLE_NODE_TYPES = frozenset({
     "arrow_function", "function_expression", "function", "generator_function",
 })
 
+# WI-nilir: top-level code is anchored on the file pseudo-symbol and walked
+# under it (ddg_build's "Module Code").
+_JSTS_MODULE_NODE_TYPES = frozenset({"program"})
+
 # WI-fovus: neither spec names a glob. Each walks every extension
 # ``taxonomy.LANGUAGES`` files under its language -- javascript ``.js`` /
 # ``.mjs`` / ``.cjs`` / ``.jsx``, typescript ``.ts`` / ``.tsx`` / ``.mts`` /
@@ -559,6 +563,7 @@ _JSTS_BOUND_CALLABLE_NODE_TYPES = frozenset({
 register_ddg_language(LanguageDdgSpec(
     language="typescript",
     function_node_types=_JSTS_FUNCTION_NODE_TYPES,
+    module_node_types=_JSTS_MODULE_NODE_TYPES,
     name_for=_jsts_callable_name,
     kind_for=_jsts_callable_kind,
     bound_callable_node_types=_JSTS_BOUND_CALLABLE_NODE_TYPES,
@@ -568,6 +573,7 @@ register_ddg_language(LanguageDdgSpec(
 register_ddg_language(LanguageDdgSpec(
     language="javascript",
     function_node_types=_JSTS_FUNCTION_NODE_TYPES,
+    module_node_types=_JSTS_MODULE_NODE_TYPES,
     name_for=_jsts_callable_name,
     kind_for=_jsts_callable_kind,
     bound_callable_node_types=_JSTS_BOUND_CALLABLE_NODE_TYPES,
