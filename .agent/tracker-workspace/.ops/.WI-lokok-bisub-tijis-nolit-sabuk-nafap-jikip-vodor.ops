@@ -20,3 +20,18 @@
     pr_ref:  # 0b9c
     description: "FOUND 2026-10-21 while sizing WI-nilir, on dev e926fc1045.\n\nA nested function that reads a variable assigned AFTER the nested function is defined gets no DDG edge from that assignment, because reaching definitions follow CFG order and the nested body is a may-run region hung off its definition (WI-faful). The closure reads the variable's value at CALL time. So the walk sees the secret's only use as the terminating console.log, exhausts, and REMOVES the flow.\n\nRepro (verify-claims, claim host_secret -> network):\n    function main() {\n      let u = \"http://x/\";\n      function setup() { u = u + k; }\n      const k = process.env.K;\n      console.log(k.length);\n      setup();\n      fetch(u);\n    }\ndev: SECRET-NET verdict=confirmed, no evidence (walk main [4] -> [7] = False). The value reaches fetch at run time.\nSame body with setup defined after k: ddg_mixed/escaped (k(4) -> uses 6,7 inside the closure). Python twin (box[\"u\"] += k in a nested def defined before k): ddg_mixed/escaped on dev, for an unrelated reason (the subscript), so not a measured false clean in Python.\n\nInvariant: every definition of a variable that a nested function reads reaches that read in the DDG, or the variable is unaccounted (the walk may not refute a walk carrying it).\n\nFix shape: after the solve, for each nested-function region in the body, each variable read in it and each definition of that variable OUTSIDE the region: no DDG edge from that definition into the region means the read is one the DDG cannot place -> add the variable to unaccounted_names (INV-lupav L4, variable granularity). Bears on WI-nilir: at module scope top-level defs usually precede the module code they read (py: def setup(): global URL; URL += K ... K = getenv(); setup(); get(URL)), so module-scope refutation is unsound without this."  # 0b9c
     fields: {}  # 0b9c
+- op: update  # 8303
+  at: '2026-10-21T20:12:39Z'  # 8303
+  by: agent  # 8303
+  actor: jgstern_agent  # 8303
+  clock: 2  # 8303
+  nonce: '8303'  # 8303
+  set:  # 8303
+    status: done  # 8303
+- op: discuss  # 0cc0
+  at: '2026-10-21T20:12:40Z'  # 0cc0
+  by: agent  # 0cc0
+  actor: jgstern_agent  # 0cc0
+  clock: 3  # 0cc0
+  nonce: 0cc0  # 0cc0
+  message: "Fixed in PR #1792 (dev 646557ef77). Root cause: a nested function's body is a may-run region at its definition (WI-faful), so reaching definitions never connected a definition placed AFTER it. cfg.late_capture_edges adds an edge from each such definition to each read of the name in the nested function, except reads after the nested function's own binding of the name. Repro re-run on merged dev with the shipped CLI (verify-claims, claim host_secret -> network, the filed app.js): exit 1, SECRET-NET verdict=violated, evidence [(ddg, confirmed)]; before: confirmed, no evidence. Corpus 10 repos (flask-restful, gin, coredns, Tone.js, fastapi, buildah, dash.js, django, spring-petclinic, ripgrep): 0 verdicts, 0 evidence tuples moved; 1 of 3566 walk results None->True (buildah RemoveImages; real flow through appendError, checked by hand). Known over-approximation left: a nested function's PARAMETERS are not counted as its own binding. Record: ~/hypergumbo_lab_notebook/notebookjournal_10212026_nilir.md."  # 0cc0

@@ -1,0 +1,23 @@
+- op: create  # ed83
+  at: '2026-10-21T23:13:44Z'  # ed83
+  by: agent  # ed83
+  actor: jgstern_agent  # ed83
+  clock: 1  # ed83
+  nonce: ed83  # ed83
+  data:  # ed83
+    kind: work_item  # ed83
+    title: "DDG never walks Go package-level var initialisers or Java static/field initialisers, so their flows are decided by reachability alone (WI-nilir residual)"  # ed83
+    status: todo_hard  # ed83
+    priority: 3  # ed83
+    parent:  # ed83
+    tags:  # ed83
+    - taint  # ed83
+    - ddg  # ed83
+    - go  # ed83
+    - java  # ed83
+    isbefore: []  # ed83
+    duplicate_of: []  # ed83
+    not_duplicate_of: []  # ed83
+    pr_ref:  # ed83
+    description: "FOUND 2026-10-21 closing WI-nilir (PR #1793, dev 91ac39f2d4). WI-nilir walks Python and JS/TS module roots as one DDG body under the file pseudo-symbol. Two languages still have code that runs outside every function and that the DDG walk never sees, so a source->sink flow there is decided by reachability alone (structural / ddg_mixed), never confirmed or removed:\n\n1. Go package-level initialisers: `var _ = f(os.Getenv(\"K\"))`, `var x = http.Get(...)`. gin carries 3 such calls (measured in the WI-nilir census). The Go analyzer anchors the call on the file; the DDG has no body for it. Go's `func init()` is an ordinary function and is already walked.\n2. Java static initialisers and field initialisers: `static { ... }` and `private String u = System.getenv(\"K\") + ...`. The calls are anchored on the class (INV-bamij); the DDG walks only method bodies.\n\nFix shape: each language spec in ddg_build gains the root/initialiser node types WI-nilir added as `module_node_types`, solved under the symbol the analyzer anchors the call on (file for Go, class for Java), gated like `_has_module_call`. Key-agreement guard: the test_ddg_*_symbol_keys suites (the DDG must invent no key the analyzer never produces).\n\nRepro to write first: a Go fixture `var u = \"http://x/\" + os.Getenv(\"K\")` + `var _ = http.Get(u)` and the Java static-block twin, both under verify-claims SECRET-NET; both read violated today with analysis_method structural, and should read ddg/confirmed."  # ed83
+    fields: {}  # ed83

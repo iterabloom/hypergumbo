@@ -34,3 +34,18 @@
   clock: 3  # ed5b
   nonce: ed5b  # ed5b
   message: "Status check 2026-10-20: still open on dev 2760e4010b. Every LanguageDdgSpec function_node_types is still function-only (python function_definition, rust function_item, go function/method_declaration, c function_definition, java/ts callable sets), so a module-level, static-block or class-body statement gets no CFG/DDG. Its blocker in the owner's sequence (WI-losod) merged in PR #1469."  # ed5b
+- op: update  # 7ce5
+  at: '2026-10-21T23:13:14Z'  # 7ce5
+  by: agent  # 7ce5
+  actor: jgstern_agent  # 7ce5
+  clock: 4  # 7ce5
+  nonce: 7ce5  # 7ce5
+  set:  # 7ce5
+    status: done  # 7ce5
+- op: discuss  # 4452
+  at: '2026-10-21T23:13:15Z'  # 4452
+  by: agent  # 4452
+  actor: jgstern_agent  # 4452
+  clock: 5  # 4452
+  nonce: '4452'  # 4452
+  message: "Fixed in PR #1793 (dev 91ac39f2d4). Python/JS/TS module roots are solved as one DDG body under make_file_id(lang, path), gated on a call outside nested functions; Python class_definition is a nested region so class attributes stop killing module names. Repro on merged dev, verify-claims SECRET-NET: js_mod_flow exit 1, violated [(file -> fetch, ddg, confirmed)]; py_mod_flow exit 1, violated [(file -> requests.get, ddg, confirmed)]; js_mod_noflow exit 0, confirmed, evidence []; py_class_shadow violated [(ddg, confirmed)]. Corpus (10 repos, A=646557ef77): 0 verdicts moved; 7 findings relabelled structural->ddg (Tone.js 4, django 3); +1 real django finding getenv->f.write in scripts/do_django_release.py; new walks None 15 / True 9 / False 0; django 269->307s. RESIDUALS, not covered: Go top-level var _ = ... initialisers (3 calls on gin); Java static/field initialisers; Python class-body calls, which emit no calls edge at all (WI-muzav-nugak; py_class_flow still reads confirmed [])."  # 4452
