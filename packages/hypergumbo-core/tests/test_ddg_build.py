@@ -361,6 +361,7 @@ class TestBindingsThatHoldCallables:
             "solve_reaching_defs": lambda cfg: result,
             "uncovered_semantic_lines": lambda *a: frozenset(),
             "unaccounted_names": lambda cfg, body, src: frozenset({body}),
+            "late_capture_edges": lambda *a: [],
         }
         for body in (1, 2):
             _solve_one_function(None, body, b"", spec, "s", out, deps, None, {})
