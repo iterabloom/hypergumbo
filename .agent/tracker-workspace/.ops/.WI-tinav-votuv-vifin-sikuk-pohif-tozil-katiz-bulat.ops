@@ -1,0 +1,22 @@
+- op: create  # 2196
+  at: '2026-10-21T00:38:47Z'  # 2196
+  by: agent  # 2196
+  actor: jgstern_agent  # 2196
+  clock: 1  # 2196
+  nonce: '2196'  # 2196
+  data:  # 2196
+    kind: work_item  # 2196
+    title: "s3a walk: a USE line whose call result is an heir (n = acc.push(t)) follows the heir and never asks where the call took the value, so the flow is removed: false clean in JS and Python (WI-jusoj (b) and WI-votom hole 2 on a use line, call-result shape)"  # 2196
+    status: todo_hard  # 2196
+    priority: 2  # 2196
+    parent:  # 2196
+    tags:  # 2196
+    - taint  # 2196
+    - adr_0017  # 2196
+    - analysis_quality  # 2196
+    isbefore: []  # 2196
+    duplicate_of: []  # 2196
+    not_duplicate_of: []  # 2196
+    pr_ref:  # 2196
+    description: "FOUND 2026-10-20 while re-checking WI-tozar's CONTAINED ONLY rule; reproduced on dev 2760e4010b with the shipped CLI.\n\nREPRO (hypergumbo verify-claims, claim host_secret must not reach network):\n    function send(url) {\n      const acc = [];\n      const t = process.env.API_KEY;\n      const n = acc.push(t);     // the secret goes into acc; n is the new length\n      console.log(n);\n      fetch(url + acc[0]);       // acc is sent\n    }\n-> confirmed_with_caveats (no evidence): a FALSE CLEAN. Python `n = acc.append(t)` followed by `sock.sendall(acc[0].encode())` -> confirmed_with_caveats too.\nCONTROL: the same program without the heir (`acc.push(t);` as a statement) -> violated, ddg_mixed / escaped.\n\nMECHANISM (as far as checked). On a use line that DEFINES an heir from the value, the walk follows the heir (n) and, when n's chain exhausts at console.log/print, returns an earned False that removes the flow. It does not ask the use-line escape question of the call that produced the heir (acc.push, no catalogue key, so unknown -> must keep the branch open).\n- WI-jusoj (0c17562292) added that question for OTHER calls on the SOURCE's own line (_source_line_escapes, call_beside_source). It does not reach a later use line.\n- WI-votom hole 2 (PR #220) fixed followed=True closing a dual-role statement for `acc.append(x); y = x` (heir from a separate statement on the line), not for a heir that IS the call's result.\n\nWHY IT MATTERS. It is the false-clean direction, and the shape is ordinary: `n = list.push(v)`, `ok = q.put(v)`, `r = cache.set(k, v)` with the container later sent. It also blocks relaxing WI-tozar's CONTAINED ONLY rule: with escaping nested bindings defined, `acc.push(k = t)` on a use line goes violated -> confirmed_with_caveats the same way (pinned by test_nested_assignment_defines.py::test_a_binding_whose_value_escapes_on_a_use_line_does_not_seed_a_removal).\n\nFIX DIRECTION. Ask every call on a use line that is not known to terminate (the _callees_terminate rule) the escape question even when the line defines a tracked heir, as _source_line_escapes does for the source line; the two should share one rule. Then WI-tozar's CONTAINED ONLY restriction can be re-measured for removal.\n\nNOT CHECKED: Go, Java, C, Rust; how many corpus findings take this route. Fixtures: ~/hypergumbo_lab_notebook/tozar_10202026/fx/{js,py}_plain_useline*, notebook notebookjournal_10202026_tozar.md."  # 2196
+    fields: {}  # 2196

@@ -34,3 +34,17 @@
   clock: 3  # e1d8
   nonce: e1d8  # e1d8
   message: "OWNER RULING 2026-10-04: OPENER SENDS STAY CLEAN. A handle constructor's own configuration read (build_opener's proxy-environment read) is not data sent through the handle. The receiver must not carry it into OpenerDirector.open/error (ADR-0049 Ruling 4 shape), matching plain urlopen(url), which does the same proxy read and stays clean. The current behaviour (every opener send carries an environment->network flow; pinned by a test from WI-dibit, PR #1433) is to be changed and its pin test updated. Corpus instances: django and superset (see WI-dibit's note)."  # e1d8
+- op: discuss  # 2563
+  at: '2026-10-20T23:40:26Z'  # 2563
+  by: agent  # 2563
+  actor: jgstern_agent  # 2563
+  clock: 4  # 2563
+  nonce: '2563'  # 2563
+  message: "Status check 2026-10-20: still open. WI-tumol was ported to dev as e1b4e10b7c from draft 206e733d13 (branch jgstern-agent/fix/tumol), and that port deliberately left out this item's half (returns_handle; opener sends stay clean) because the 2026-10-04 ruling is recorded only as an agent-relayed note. So the only copy of the work is 206e733d13 in worktree ~/hg_wt/tumol, and test_urllib_opener_send_surface.py still pins the opener-send flow. Owner re-confirmation of the ruling is being requested in session before implementation."  # 2563
+- op: discuss  # 32b3
+  at: '2026-10-20T23:45:33Z'  # 32b3
+  by: agent  # 32b3
+  actor: jgstern_agent  # 32b3
+  clock: 5  # 32b3
+  nonce: 32b3  # 32b3
+  message: "OWNER RE-CONFIRMED 2026-10-20 in session: 'ruling stands'. Opener sends stay clean. A handle constructor's own configuration read (build_opener / ProxyHandler / URLopener / FancyURLopener / xml.dom.getDOMImplementation) is classified but taints nothing. getproxies* stay ordinary transfer sources. Live baseline on dev 2760e4010b (verify-claims, host_secret -> network): build_opener().open(url) with no secret is violated with source build_opener; urlopen(url) is clean; build_opener(ProxyHandler()).open(url) is violated with build_opener + ProxyHandler; a real API_KEY passed as data is violated with os.environ + build_opener; getproxies -> ProxyHandler(p) is violated with getproxies + build_opener + ProxyHandler. Plan: port only the patit hunks of 206e733d13 onto origin/dev, flip WI-dibit's pin test, test the interaction with INV-komoj's return lift (taint.py _lift_returned_sources also reads return_tainted), state in ADR-0049 that this is not a deferred crossing (Ruling 2 clause 3 does not apply), re-run django/superset A/B. Order: after WI-tozar."  # 32b3

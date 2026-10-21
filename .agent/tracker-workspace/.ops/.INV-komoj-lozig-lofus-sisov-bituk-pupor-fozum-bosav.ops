@@ -46,3 +46,10 @@
   clock: 4  # 6412
   nonce: '6412'  # 6412
   message: "Partial fix merged in PR #1469 (stage 9a). A function whose return statement carries a source's value now makes each caller's invocation of it a source site, decided by the existing reachability, DDG walk and collapse; a multi-value return seeds only the result position carrying the value. Behavioural evidence (komoj.md fixtures): the filed Python and Go helper shapes move from confirmed_with_caveats/inconclusive to violated, matching their inline twins; controls (constant return, return inside a nested function, os.path.exists(os.getenv(..)), caller returning only err) stay clean. Integration fix: the lift's walk is spelled 'is True' so the INV-lupav guard sees it collapsed. Status set to pending_validation, NOT satisfied: the general statement still fails for Rust tail expressions and JS/TS arrow expression bodies (WI-sodoj, P2) and Go '_, err := get()' (WI-sitaf, P3). Corpus A/B (branch run): podman-compose and runc verdicts inconclusive -> violated (runc is a false positive via call-reachability rows): tagged awaits_bakeoff_validation."  # 6412
+- op: discuss  # 8bd2
+  at: '2026-10-20T23:40:25Z'  # 8bd2
+  by: agent  # 8bd2
+  actor: jgstern_agent  # 8bd2
+  clock: 5  # 8bd2
+  nonce: 8bd2  # 8bd2
+  message: "Status check 2026-10-20 (owner sequence stage 9 resumed). Of the two residuals named when this went pending_validation, WI-sodoj is done (dbeef1ab2a: an expression-bodied helper - Rust tail expression, JS/TS arrow body - is lifted). WI-sitaf is still open and re-confirmed on dev 2760e4010b: go_def_use drops '_' (go_def_use.py _BLANK), so '_, err := get()' defines ('err',) against arity 2 and taint._received_seeds falls back to seeding every variable. Stays pending_validation: WI-sitaf, plus the awaits_bakeoff_validation tag (runc/podman-compose corpus claims)."  # 8bd2
