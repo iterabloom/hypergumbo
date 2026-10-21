@@ -1,0 +1,26 @@
+Original commit body from 295d38a997de177459176b0d8b019bed7871c94c:
+
+WI-tozar shipped CONTAINED ONLY: `h(w := src())`, `acc.push(k = t)`, a
+receiver, a return or a container literal stayed a USE of the name. The
+reason was the walk: on a line that defined an heir it followed the heir and
+did not ask where the line's call took the value, so the definition gave it
+a seed it could exhaust, and `acc.push(k = t); console.log(k.length);
+fetch(url + acc[0])` read confirmed_with_caveats. WI-jusoj asks that
+question on the source's line and WI-tinav (PR #1789) on every use line, so
+the binding is now what it is at run time, a definition.
+
+`_Scope` drops to (conditional, in_closure) with `binds` derived;
+escaping(), tested(), _TRANSPARENT_TYPES, _RETURNED and Python's if_clause
+branch are removed, each a no-op once an escape keeps the binding.
+
+Evidence:
+- The two consequence guards (the escape at the binding's own line and on a
+  later use line, Python and JS) stay `violated` with the binding defined.
+- Fixtures: the source-line escape cases go ddg_mixed/not_attempted
+  (source_not_tracked) -> ddg_mixed/escaped; the receiver case reads
+  ddg/confirmed. A helper returning a nested binding of the secret is
+  unchanged (violated) in Python and JS.
+- Corpus vs merged dev (flask-restful, Tone.js, fastapi, dash.js, django;
+  7 claims): 0 verdicts, 0 evidence tuples, 0 of 554 walk results moved.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
