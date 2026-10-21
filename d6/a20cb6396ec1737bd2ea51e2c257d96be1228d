@@ -1,0 +1,41 @@
+Original commit body from 3cd76605c181c92fda2a8978bcb5d9e14ed40301:
+
+build_opener() reads the *_proxy variables (its default ProxyHandler
+calls getproxies()), so it is rowed env_read and auto-derives a
+host_secret source. That source tainted the returned OpenerDirector, and
+taint carries a sink's receiver, so every opener.open(url) read violated
+on host_secret -> network with no secret in any argument, while
+urlopen(url), which does the same read, read clean.
+
+Owner ruling (2026-10-04, re-confirmed 2026-10-20): opener sends stay
+clean. A handle constructor's own configuration read is not data sent
+through the handle (ADR-0049 Ruling 4).
+
+- io_primitives rows may declare `returns_handle: true`, inbound
+  boundaries only, validated at load. The crossing stays classified;
+  the derived TaintSource carries return_tainted=False.
+- find_source_callers mints nothing for a caller-seeded source that
+  taints neither its return nor an argument (_taints_a_value). A
+  callee-seeded source names an entry point and always mints.
+- Marked: urllib.request ProxyHandler, build_opener, URLopener,
+  FancyURLopener, xml.dom.getDOMImplementation. getproxies* return the
+  mapping and keep minting.
+- ADR-0049 records the ruling and states this is not a deferred
+  crossing, so Ruling 2's opacity gate does not apply. WI-dibit's pin
+  test now asserts the ruled behaviour.
+
+Ported from the patit half of parked draft 206e733d13 (its WI-tumol half
+landed as e1b4e10b7c). INV-komoj's return lift also reads
+return_tainted, so a helper returning build_opener() lifts nothing;
+tested, with a control that a helper returning os.environ still lifts.
+
+Measured (verify-claims, host_secret -> network): build_opener().open
+and build_opener(ProxyHandler()).open with no secret go violated ->
+confirmed; a secret sent as data stays violated with os.environ as its
+only source; getproxies() -> ProxyHandler(p) stays violated through
+getproxies. Corpus A/B, dev vs branch, 7 claims, every corpus repo
+calling one of the five constructors (pytorch tools/linter, django,
+superset): 5 flows removed, 0 added, 0 verdicts moved. All five removed
+flows are rooted in build_opener / ProxyHandler, none carries a secret.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
