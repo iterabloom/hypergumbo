@@ -165,9 +165,11 @@ from .io_primitive_kinds import (
     read_not_called,
 )
 from .io_boundary_types import (
+    DIRECTION_INBOUND,
     all_io_boundary_names,
     catalog_declarable_names,
     disclosed_only_names,
+    find_io_boundary,
     opacity_names,
 )
 from .ir import symbol_name_slot, symbol_path_slot
@@ -916,6 +918,38 @@ class IoPrimitive:
     discriminator and 12 declaring nothing — and no consumer or reviewer
     could tell C's deliberately-undecidable ``unistd.write`` from haskell's
     ``newTVar``, which is declared ``[db_read, db_write]`` and is neither."""
+    returns_handle: bool = False
+    """The call crosses this boundary AT THE CALL but returns a HANDLE, not the
+    data it read (ADR-0049 Ruling 4, the Handle-constructor shape) -- WI-patit.
+
+    ``urllib.request.build_opener()`` is the case. It reads the ``*_proxy``
+    environment variables (its default ``ProxyHandler`` calls ``getproxies()``),
+    so it is rowed ``env_read`` and the read is classified here, at the call:
+    ``io-boundaries`` and a ``must_not_exist: env_read`` claim still see it. But
+    what it hands its caller is an ``OpenerDirector``, and the owner ruled
+    (2026-10-04) that a handle constructor's own configuration read is not data
+    sent through the handle: OPENER SENDS STAY CLEAN, as ``urlopen(url)`` --
+    which performs the same proxy read -- always was. Before this field the
+    auto-derived ``host_secret`` source tainted the returned opener, and since
+    taint models a sink's RECEIVER as a carrier, every ``opener.open(url)`` was
+    a ``host_secret -> network`` flow with no secret in any argument.
+
+    CONSEQUENCE, IN ONE PLACE. ``taint._derive_auto_imports_from_io_primitives``
+    derives this row's ``TaintSource`` with ``return_tainted=False``, and
+    ``taint.find_source_callers`` mints nothing for a source that taints neither
+    its return value nor an argument. The boundary itself is untouched.
+
+    NOT the deferred-crossing shapes ADR-0049 discloses through ``net_listen``
+    / ``db_compose``: there the crossing has NOT happened yet (the data arrives
+    later, at a read of the handle). Here it HAS happened and its content stays
+    inside the handle. A receive handle (``bufio.NewReader``, ``sys.stdin``)
+    keeps minting until the separate handle-constructor ruling ADR-0049 leaves
+    open is taken; nothing marks it.
+
+    Inbound boundaries only, refused at load elsewhere: the field qualifies what
+    a READ hands back, and on a write-direction row it would derive nothing
+    while reading as a ruling.
+    """
 
     @property
     def qualified_name(self) -> str:
@@ -1654,6 +1688,10 @@ class IoBoundaryCatalog:
                 _naming = _validate_resource_naming(
                     language, module, _row_names, entry.get("resource_naming")
                 )
+                returns_handle = _validate_returns_handle(
+                    language, module, boundary, _row_names,
+                    entry.get("returns_handle", False),
+                )
 
                 # One loop over the registered sections, each kind from the
                 # registry (WI-mifup: three copy-pasted loops with the KIND_*
@@ -1676,6 +1714,7 @@ class IoBoundaryCatalog:
                             boundary_ruling=boundary_ruling,
                             abstains_to=abstains_to,
                             requires_target_kind=requires_target_kind,
+                            returns_handle=returns_handle,
                             resource_naming_args=resource_args,
                             content_args=content_args,
                             resource_is_danger=danger,
@@ -3342,6 +3381,38 @@ def suppresses_resource_naming_finding(primitive: "IoPrimitive") -> bool:
     if primitive.resource_is_danger:
         return False
     return primitive.content_args == []
+
+
+def _validate_returns_handle(
+    language: str,
+    module_name: str,
+    boundary: str,
+    row_names: Sequence[str],
+    value: object,
+) -> bool:
+    """Validate a row's ``returns_handle`` marker (WI-patit) and return it.
+
+    Two silent failure modes are refused, as ``boundary_ruling`` and
+    ``abstains_to`` refuse theirs: a non-boolean (``returns_handle: "yes"``
+    would be truthy and read as a ruling nobody checked), and the marker on a
+    row whose boundary is not INBOUND -- it qualifies what a READ hands back, so
+    on a write-direction row it would change nothing while reading as a ruling.
+    The direction is the registry's (:mod:`io_boundary_types`), not a list here.
+    """
+    if not isinstance(value, bool):
+        raise ValueError(
+            f"{language}: {module_name}.{list(row_names)} declares "
+            f"returns_handle={value!r}; expected true or false.",
+        )
+    if not value:
+        return False
+    if getattr(find_io_boundary(boundary), "direction", None) != DIRECTION_INBOUND:
+        raise ValueError(
+            f"{language}: {module_name}.{list(row_names)} declares "
+            f"returns_handle under {boundary!r}, which is not an inbound "
+            f"boundary; the marker qualifies what a READ returns.",
+        )
+    return True
 
 
 def _validate_resource_naming(
