@@ -24,11 +24,10 @@ The extractor handles Python-specific patterns:
 - Comprehension: ``for x in items`` → defines [x], uses [items]
 - Return/yield: ``return expr`` → uses from expr
 - Delete: ``del x`` → defines [x] (treated as killing the definition)
-- Nested binding: a walrus (``if (m := g()):``) or a chained target
-  (``x = y = e``) defines its name when its value stays CONTAINED in the
-  statement -- weakly (define + use) where it may not run, not at all where
-  its value escapes into a call, a receiver, a container or a return. The
-  rule and its reasons are on :class:`_Collector` (WI-tozar).
+- Nested binding: a walrus (``if (m := g()):``, ``h(m := g())``) or a
+  chained target (``x = y = e``) defines its name -- weakly (define + use)
+  where it may not run, not at all inside a closure. The rule and its
+  reasons are on :class:`_Collector` (WI-tozar).
 
 Scope Tracking
 --------------
@@ -84,44 +83,31 @@ _COMPREHENSION_TYPES = frozenset({
 #: the lambda's local. Walked for uses only (what they capture is read).
 _CLOSURE_TYPES = frozenset({"lambda", "function_definition", "class_definition"})
 
-#: Expressions that hand their operands' value on to their OWN consumer and
-#: nowhere else: ``(m := g()) > 0`` is compared, ``(m := g()) + 1`` feeds
-#: whatever consumes the sum. A binding under these is as contained as its
-#: parent is (see "Contained" in :class:`_Collector`).
-_TRANSPARENT_TYPES = frozenset({
-    "parenthesized_expression", "comparison_operator", "boolean_operator",
-    "not_operator", "binary_operator", "unary_operator",
-})
-
-
 class _Collector:
     """One expression's uses and nested bindings, in evaluation order.
 
     THE JAVA/C RULE (WI-tozar): a binding nested inside an expression -- a
-    walrus in a condition or on a right-hand side, the inner target of
-    ``x = y = e`` -- DEFINES its target. Before this the walk below read a
-    walrus target as a use, so ``if (t := src()): sink(t)`` had no definition
-    of ``t`` and the walk fell back to ``ddg_mixed`` / ``not_attempted``.
+    walrus in a condition, on a right-hand side or in a call's arguments, the
+    inner target of ``x = y = e`` -- DEFINES its target. Before this the walk
+    below read a walrus target as a use, so ``if (t := src()): sink(t)`` had
+    no definition of ``t`` and the walk fell back to ``ddg_mixed`` /
+    ``not_attempted``.
 
-    Three refinements Java's walker does not make:
+    WHERE THE VALUE ALSO GOES DOES NOT MATTER, and that is a ruling the walk
+    earned. ``h(w := src())`` both binds ``w`` and hands the value to ``h``;
+    it shipped as a USE (CONTAINED ONLY) because the §3a walk followed an heir
+    on such a line without asking where the call took the value, so the
+    definition gave it a seed it could exhaust: ``acc.push(k = t);
+    console.log(k.length); fetch(url + acc[0])`` read
+    ``confirmed_with_caveats`` (measured 2026-10-20). WI-jusoj asks that
+    question on the source's line and WI-tinav on every use line, so the
+    binding is now what it is at run time, a definition. Measured 2026-10-21
+    with the restriction removed: that shape and its Python twin stay
+    ``violated``, and five Python/JS repos moved no verdict, evidence tuple
+    or walk result.
 
-    - CONTAINED ONLY. The binding defines its target only when its value goes
-      nowhere but a TEST (an ``if`` / ``while`` condition, a comprehension
-      filter) or ANOTHER BINDING on the same statement (``x = y = e``,
-      ``y = (z := e) + 1``), through operators that pass a value on and
-      nothing else. Passed as a call argument (``h(w := src())``), used as a
-      receiver (``(t := src()).encode()``), returned, or put in a container,
-      the value also goes somewhere the walk does not follow: when a line
-      both defines an heir and hands the value to a call, the §3a walk
-      follows the heir and does not ask where the call took the value.
-      Defining the binding there gives the walk a seed it can exhaust, and
-      turns a reported flow into a removal. WI-jusoj closed that for the
-      SOURCE's own line, but not for a later use line: with escaping bindings
-      defined, ``t = process.env.K; acc.push(k = t); console.log(k.length);
-      fetch(url + acc[0])`` went ``violated`` -> ``confirmed_with_caveats``
-      (measured 2026-10-20). The plain ``n = acc.push(t)`` reads the same
-      false clean with no nested binding at all; that hole is the walk's
-      (WI-tinav). Until it is closed, such a binding stays a USE.
+    Two refinements Java's walker does not make:
+
     - CONDITIONAL = a WEAK update. A binding that may not execute (the right
       operand of ``and`` / ``or``, a branch of ``a if c else b``, anything in
       a comprehension) is recorded as a define AND a use of the name, the way
@@ -148,8 +134,8 @@ class _Collector:
     def walk(self, node: Any, scope: Optional["_Scope"] = None) -> None:
         """Collect uses from ``node`` and the bindings nested in it.
 
-        ``scope`` describes where ``node``'s VALUE goes; the default is a
-        statement root, whose value is a test or is discarded.
+        ``scope`` is where ``node`` sits (see :class:`_Scope`); the default
+        is a statement root.
         """
         here = scope or _ROOT
         kind = node.type
@@ -162,8 +148,7 @@ class _Collector:
 
         if kind == "call":
             # The function part of a call is not a 'use' of a variable
-            # (unless it's a variable holding a callable). Everything a call
-            # receives -- receiver and arguments -- leaves the statement.
+            # (unless it's a variable holding a callable).
             func_node = node.child_by_field_name("function")
             args_node = node.child_by_field_name("arguments")
             if func_node:
@@ -172,11 +157,11 @@ class _Collector:
                 if func_node.type == "attribute":
                     obj = func_node.child_by_field_name("object")
                     if obj:
-                        self.walk(obj, here.escaping())
+                        self.walk(obj, here)
                 elif func_node.type != "identifier":
-                    self.walk(func_node, here.escaping())
+                    self.walk(func_node, here)
             if args_node:
-                self.walk(args_node, here.escaping())
+                self.walk(args_node, here)
             return
 
         if kind == "named_expression":
@@ -200,7 +185,7 @@ class _Collector:
                 # (and index), as Java models every field write and as this
                 # subtree read before it was a binding. (A statement-level
                 # ``self.a = v`` keeps its older, strong reading.)
-                self.walk(left, here.escaping())
+                self.walk(left, here)
                 if here.binds:
                     self.defines.extend(names)
             else:
@@ -214,9 +199,8 @@ class _Collector:
             return
 
         if kind == "conditional_expression":
-            # ``body if test else alternative``: only the test always runs, and
-            # its value is consumed by the choice. The grammar names none of
-            # the three, so position decides.
+            # ``body if test else alternative``: only the test always runs.
+            # The grammar names none of the three, so position decides.
             seen_if = seen_else = False
             for child in node.children:
                 if child.type == "if":
@@ -225,59 +209,47 @@ class _Collector:
                     seen_else = True
                 elif child.is_named:
                     is_test = seen_if and not seen_else
-                    self.walk(child, here.tested() if is_test else here.maybe())
-            return
-
-        if kind == "if_clause":
-            # A comprehension filter: its value is a test.
-            for child in node.named_children:
-                self.walk(child, here.tested())
+                    self.walk(child, here if is_test else here.maybe())
             return
 
         if kind in _CLOSURE_TYPES:
             inner = here.closure()
         elif kind in _COMPREHENSION_TYPES:
-            inner = here.escaping().maybe()
-        elif kind in _TRANSPARENT_TYPES:
-            inner = here
+            inner = here.maybe()
         else:
-            inner = here.escaping()
+            inner = here
         for child in node.children:
             if child.is_named:
                 self.walk(child, inner)
 
 
 class _Scope:
-    """Where a subexpression's value goes, as far as a nested binding cares.
+    """Where a nested binding sits, as far as its definition cares.
 
-    ``binds``: a binding here defines its target (False once the value
-    escapes the statement, or inside a closure). ``conditional``: it may not
-    execute. Immutable; each narrowing returns a new scope.
+    ``conditional``: it may not execute (a weak update). ``in_closure``: it
+    binds the closure's local, not this statement's, so it defines nothing
+    here. Immutable; each narrowing returns a new scope.
     """
 
-    __slots__ = ("binds", "conditional", "in_closure")
+    __slots__ = ("conditional", "in_closure")
 
-    def __init__(self, binds: bool, conditional: bool, in_closure: bool) -> None:
-        self.binds = binds
+    def __init__(self, conditional: bool, in_closure: bool) -> None:
         self.conditional = conditional
         self.in_closure = in_closure
 
-    def escaping(self) -> "_Scope":
-        return _Scope(False, self.conditional, self.in_closure)
+    @property
+    def binds(self) -> bool:
+        """A binding here defines its target."""
+        return not self.in_closure
 
     def maybe(self) -> "_Scope":
-        return _Scope(self.binds, True, self.in_closure)
-
-    def tested(self) -> "_Scope":
-        """A value consumed by a test: contained again, unless in a closure."""
-        return _Scope(not self.in_closure, self.conditional, self.in_closure)
+        return _Scope(True, self.in_closure)
 
     def closure(self) -> "_Scope":
-        return _Scope(False, self.conditional, True)
+        return _Scope(self.conditional, True)
 
 
-_ROOT = _Scope(binds=True, conditional=False, in_closure=False)
-_RETURNED = _ROOT.escaping()
+_ROOT = _Scope(conditional=False, in_closure=False)
 
 
 def _collect_pattern_names(node: Any, source: bytes) -> list[str]:
@@ -385,7 +357,7 @@ def _handle_return(node: Any, source: bytes) -> DefUseResult:
     collector = _Collector(source)
     for child in node.children:
         if child.is_named:
-            collector.walk(child, _RETURNED)
+            collector.walk(child, _ROOT)
     return DefUseResult(defines=collector.defines, uses=collector.uses)
 
 
