@@ -21,6 +21,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Taint analysis
 
 - **A Python walrus or JS/TS nested assignment defines its variable**, so `if (t := os.environ["K"])` and `while ((m = re.exec(s)) !== null)` are walked precisely.
+- **`build_opener().open(url)` with no secret is no longer a leak**, matching `urlopen(url)`. The opener's proxy-environment read is still classified.
 
 ## [9.2.0] - 2026-10-20
 

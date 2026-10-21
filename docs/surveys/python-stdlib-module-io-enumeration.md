@@ -267,9 +267,9 @@ classes, 18 functions), then each hit read by hand. A class is judged by its
 | `localhost`, `thishost` | net_recv | **new**. `gethostbyname` / `gethostbyname_ex`: the DNS rule, WI-dozul |
 | `getproxies`, `getproxies_environment` | env_read | **new**. Read `*_proxy` from `os.environ` |
 | `proxy_bypass`, `proxy_bypass_environment` | env_read | **new**. Read `no_proxy` |
-| `ProxyHandler` | env_read | **new**. `proxies=None` (the default) calls `getproxies()` |
-| `build_opener` | env_read | **new**. It always adds a default `ProxyHandler()` |
-| `URLopener`, `FancyURLopener` | env_read | **new**. `__init__` calls `getproxies()`; both are deprecated |
+| `ProxyHandler` | env_read | **new**. `proxies=None` (the default) calls `getproxies()`. `returns_handle` (WI-patit): the read taints no returned value |
+| `build_opener` | env_read | **new**. It always adds a default `ProxyHandler()`. `returns_handle` (WI-patit) |
+| `URLopener`, `FancyURLopener` | env_read | **new**. `__init__` calls `getproxies()`; both are deprecated. `returns_handle` (WI-patit) |
 | `urlcleanup` | fs_write | **new**. Unlinks `urlretrieve`'s temporary files |
 | `Request` | none | builds a value. **Its net_send row is DELETED** |
 | `OpenerDirector`, `install_opener` | none | a container, and a global assignment |
@@ -287,6 +287,14 @@ and `OpenerDirector.open` hand back for an http(s) URL is typed
 `http.client.HTTPResponse` by the same rows, and that class's reads are rowed
 net_recv with its surface declared complete (WI-tumol): the send is where the
 request crosses, the read is where the response does.
+
+**The constructors' own proxy read is not a source of what they return**
+(WI-patit, owner ruling 2026-10-04, re-confirmed 2026-10-20). `ProxyHandler`,
+`build_opener`, `URLopener` and `FancyURLopener` stay env_read, so the read is
+classified at the call, but each returns a handle (ADR-0049 Ruling 4) and
+carries `returns_handle: true`: its `host_secret` source taints no returned
+value. So `build_opener().open(url)` is clean exactly as `urlopen(url)` is,
+while `getproxies()`, which returns the mapping, keeps minting.
 
 **Measured.** `scripts/check-self-claims --minimal` with `Request` deleted and
 the module declared: 18 claims unchanged (`confirmed_with_caveats`). A

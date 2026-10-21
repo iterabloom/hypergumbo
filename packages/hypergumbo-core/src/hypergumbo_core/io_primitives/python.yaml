@@ -1094,20 +1094,37 @@ subprocess:
 
 env_read:
   - module: urllib.request
-    functions: [getproxies, getproxies_environment, proxy_bypass, proxy_bypass_environment, ProxyHandler, build_opener, URLopener, FancyURLopener]
+    functions: [getproxies, getproxies_environment, proxy_bypass, proxy_bypass_environment]
     notes: >-
-      WI-bakik. Each reads the *_proxy / no_proxy environment variables:
-      getproxies* directly, proxy_bypass* for no_proxy, ProxyHandler() when
-      `proxies` is None (the default), build_opener() because it always adds a
-      default ProxyHandler, and the deprecated URLopener / FancyURLopener in
-      __init__. A ProxyHandler given an explicit mapping reads nothing; the row
-      cannot see the argument and over-approximates that one call shape.
+      WI-bakik. Each reads the *_proxy / no_proxy environment variables and
+      RETURNS what it read: getproxies* the proxy mapping, proxy_bypass* a
+      bool computed from no_proxy. So each mints host_secret at its result.
+  - module: urllib.request
+    functions: [ProxyHandler, build_opener, URLopener, FancyURLopener]
+    returns_handle: true
+    notes: >-
+      WI-bakik / WI-patit. Each reads the *_proxy variables at the call --
+      ProxyHandler() when `proxies` is None (the default), build_opener()
+      because it always adds a default ProxyHandler, the deprecated URLopener /
+      FancyURLopener in __init__ -- and returns a HANDLE that holds the
+      configuration, not the data (ADR-0049 Ruling 4). Owner ruling 2026-10-04, re-confirmed 2026-10-20:
+      a handle constructor's own configuration read is not data sent through
+      the handle, so `build_opener().open(url)` stays clean exactly as
+      `urlopen(url)` (which does the same read) is; `returns_handle` keeps the
+      read classified here and taints no returned value. A ProxyHandler given
+      an explicit mapping reads nothing; the row cannot see the argument and
+      over-approximates that one call shape.
   - module: sysconfig
     functions: [get_platform]
     notes: "2026-09-06 WI-dupok: reads os.environ (MACOSX_DEPLOYMENT_TARGET and friends)."
   - module: xml.dom
     functions: [getDOMImplementation]
-    notes: "2026-09-06 WI-dupok: consults os.environ (PYTHON_DOM) to pick an implementation."
+    returns_handle: true
+    notes: >-
+      2026-09-06 WI-dupok: consults os.environ (PYTHON_DOM) to pick an
+      implementation. WI-patit: it returns that implementation OBJECT
+      (Lib/xml/dom/domreg.py), never the variable's value, so it is a handle
+      constructor under ADR-0049 Ruling 4 and taints no returned value.
   - module: os.environ
     functions: [get, keys, items, values, copy]
     notes: "INV-ponad slot family: a method call on the mapping carries os.environ as its module slot, where the parent's attribute row cannot reach. The mutation half sits under env_write. `functions:`, NOT `methods:` - the analyzer emits these attribute-chain calls with NO method construct (call_construct=None on every one in the self-survey), and a methods: kind starves the method-starvation gate exactly as tokenizers.Tokenizer did (its own row carries the same lesson)."

@@ -227,7 +227,14 @@ class TaintSource:
             ``module_attr_ref`` edges emitted by the language analyzer
             (WI-guhok for Python; WI-gapam follow-up for tree-sitter langs).
         return_tainted: Whether the return (or read) value is tainted.
+            ``False`` with no ``argument_tainted`` means the call taints NO
+            value, and :func:`find_source_callers` mints nothing for it
+            (WI-patit): the io_primitives ``returns_handle`` marker derives it
+            for a handle constructor whose own configuration read is not data
+            it hands back (``urllib.request.build_opener``).
         argument_tainted: Indices of arguments that become tainted (optional).
+            Not modelled separately: a source declaring any keeps minting at
+            the call, whatever ``return_tainted`` says.
         start_at: BFS seed origin. Default ``"caller"`` (original semantics)
             seeds at the function that *calls* a source — appropriate for
             value-tainting sources like ``os.environ.get`` or
@@ -2160,6 +2167,10 @@ def _derive_auto_imports_from_io_primitives(
                     module=prim.module,
                     name=prim.name,
                     kind=prim.kind,
+                    # WI-patit: a handle constructor's own read (ADR-0049
+                    # Ruling 4) is classified at the call but taints nothing
+                    # the call returns; see IoPrimitive.returns_handle.
+                    return_tainted=not prim.returns_handle,
                     requires_target_kind=gated_boundary,
                     abstention_fallback=is_fallback,
                     # The map above is many-to-one: net_recv, ipc_recv and
@@ -3601,6 +3612,13 @@ def find_source_callers(
     Siblings sharing the matched label (``unistd.read`` derives
     ``untrusted_input`` from both ``net_recv`` and ``ipc_recv``) stay one
     source, as before.
+
+    A SOURCE THAT TAINTS NO VALUE MINTS NOTHING (WI-patit). The primitive is
+    still CHOSEN as before -- so a same-named row cannot take its place -- and
+    then dropped when :func:`_taints_a_value` says the call hands its caller
+    nothing tainted. INV-komoj's return lift (:func:`_lift_returned_sources`)
+    reads the same field for the same reason: a source whose return is not its
+    value is never lifted into a caller either.
     """
     by_callee = _build_callee_index(sources)
     by_primitive: dict[tuple[str, str, str], list[TaintSource]] = defaultdict(list)
@@ -3633,7 +3651,8 @@ def find_source_callers(
         )
         if not matched:
             continue
-        callers.append((edge["src"], edge["dst"], matched))
+        if _taints_a_value(matched):
+            callers.append((edge["src"], edge["dst"], matched))
         key = (matched.module, matched.name, matched.kind)
         for index in sibling_indexes.get(key, ()):
             sibling = _match_propagation_entry(
@@ -3643,13 +3662,32 @@ def find_source_callers(
                 io_target_kinds=io_target_kinds,
                 edge_meta=edge.get("meta"),
             )
-            if sibling and sibling.taint_label != matched.taint_label:
+            if (sibling and sibling.taint_label != matched.taint_label
+                    and _taints_a_value(sibling)):
                 callers.append((edge["src"], edge["dst"], sibling))
 
     # INV-sukoh: one expression, one flow. ``os.environ.get(...)`` emits an
     # attribute-reference edge AND a call edge, so the parent row and its own
     # slot-family row both match the single read.
     return subsume_slot_family_parents(callers)
+
+
+def _taints_a_value(source: TaintSource) -> bool:
+    """Does a call to ``source`` hand its caller a tainted value? (WI-patit)
+
+    ``False`` only for a CALLER-seeded source declaring that its return value
+    is untainted AND naming no tainted argument. Argument taint has no carrier
+    of its own in either propagator, so a source naming one keeps minting at
+    the call: the conservative reading, since refusing it would silence a
+    declared source. A callee-seeded source (``start_at: callee``) names an
+    entry point, not a returned value, so ``return_tainted`` says nothing about
+    it and it always mints.
+    """
+    return (
+        source.return_tainted
+        or bool(source.argument_tainted)
+        or not _seeds_at_caller(source)
+    )
 
 
 def subsume_slot_family_parents(

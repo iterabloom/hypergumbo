@@ -167,6 +167,25 @@ the two largest shapes, and Setup + Blocking serve loop together are under
 half the family.** The row counts are the register's, over the three
 boundaries adjudicated to completion.
 
+**A handle constructor's own configuration read mints no value (owner,
+2026-10-04, re-confirmed 2026-10-20; WI-patit).** Some constructors READ at the
+call -- `build_opener`, `ProxyHandler`, `URLopener` read the `*_proxy`
+variables, `xml.dom.getDOMImplementation` reads `PYTHON_DOM` -- and keep what
+they read inside the handle they return. The read is a real crossing at that
+call and stays classified (`env_read`), but the handle is not data: what the
+constructor read is not data sent through the handle, so a send through it
+carries no flow from that read, exactly as `urlopen(url)`, which performs the
+same read internally, never did. The row declares `returns_handle: true`; its
+auto-derived source taints no returned value and mints nothing. This is not a
+deferred crossing either: no data arrives later in a scope the program enters,
+because the crossing is complete at the call and its content never reaches
+program code. So Ruling 2's disclosure boundary, and its opacity gate (clause
+3), do not apply, and the row is not withheld from `confirmed`. Nor is this the
+receive-handle question above (`bufio.NewReader`, `sys.stdin`), where the
+crossing has not happened yet at the constructor: those rows are unmarked. A
+function that RETURNS what it read (`getproxies()`) is a transfer and keeps
+minting.
+
 `accept` is not a member of the family and never was. WI-dosov had this right
 in Haskell; the shipped Go rows carry `Accept` alongside `Socket`/`Bind`/
 `Listen` as if they were the same thing, and they are not.
