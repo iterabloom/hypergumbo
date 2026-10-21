@@ -1,0 +1,30 @@
+Original commit body from cfc6980bbee4cf442c27e04650b5aadf561c19c9:
+
+`t = getenv(); n = acc.push(t); log(n); send(acc[0])` was a false clean in
+JS and Python: the walk followed the heir `n`, a terminating `log` closed it,
+and the walk returned False, which removes the flow, while the secret went
+into `acc`.
+
+The use line WAS asked the escape question, but the walk's per-line call
+index (`_WalkIndexes.callee_names`) held only calls with a catalogue key. An
+unresolved `acc.push` and every resolved first-party call (WI-zumud gate)
+were absent, so the line read as "no call at this line at all", the one
+permitting case that skips the question. The no-heir branch had the same
+hole: `log(acc.push(t))` read as all-terminating.
+
+A taint call edge with no catalogue key now adds UNCATALOGUED_CALL to the
+index at its sites. No summary is keyed by it, so it never closes a branch:
+the rule `_source_line_escapes` already applied to the source's own line
+(WI-jusoj b). One index fix covers all four walk sites. Direction: only
+False -> None, so findings can only be kept, never removed.
+
+Evidence:
+- Fixtures (verify-claims, host_secret -> network): JS `n = acc.push(t)`
+  and Python `n = acc.append(t)` confirmed_with_caveats -> violated
+  (ddg_mixed/escaped), matching the no-heir control.
+- Corpus A/B (flask-restful, gin, coredns, Tone.js, fastapi, buildah,
+  dash.js, django; 7 claims): 0 verdicts, 0 evidence tuples moved. An
+  uncapped census of every walk call: 0 of 3538 results moved; False occurs
+  once in that corpus and has no uncatalogued use-line call.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
