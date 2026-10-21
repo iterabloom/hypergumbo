@@ -29,3 +29,25 @@
   clock: 2  # 9bb3
   nonce: 9bb3  # 9bb3
   message: "Status check 2026-10-20: still open on dev 2760e4010b. No def/use extractor handles tree-sitter named_expression (grep over packages/*/src finds none), so a walrus target is still a use only. Unmerged work exists: worktree ~/hg_wt/tozar, local branch jgstern-agent/fix/tozar, own commit f2171d3b86 (python named_expression + JS/TS nested assignment_expression define their target), last targeted run 481 passed with coverage OK; corpus A/B was in progress in ~/hypergumbo_lab_notebook/decontend/run_10032026/tozar/, no report. The branch sits on the pre-rebase stage-8b base c1dd831558: integrate by cherry-picking f2171d3b86 onto origin/dev only (git cherry shows it is not on dev). Expect overlap with WI-losod's *_def_use.py edits, which are on dev."  # 9bb3
+- op: update  # b911
+  at: '2026-10-21T00:54:20Z'  # b911
+  by: agent  # b911
+  actor: jgstern_agent  # b911
+  clock: 3  # b911
+  nonce: b911  # b911
+  set:  # b911
+    status: done  # b911
+- op: discuss  # 2358
+  at: '2026-10-21T00:54:20Z'  # 2358
+  by: agent  # 2358
+  actor: jgstern_agent  # 2358
+  clock: 4  # 2358
+  nonce: '2358'  # 2358
+  message: "Fixed in PR #1786 (dev da6bd588fc), ported from parked f2171d3b86 onto 2760e4010b. Behavioral evidence, re-run on merged dev with the shipped CLI (hypergumbo verify-claims, host_secret -> network): python 'if (t := os.environ[\"API_KEY\"]): sock.sendall(t.encode())' -> violated, ddg / confirmed (dev before: ddg_mixed / not_attempted, source_not_tracked), equal to its two-statement twin; JS 'while ((m = re.exec(k)) !== null) fetch(... + m[0])' -> violated, ddg / confirmed (before: ddg_mixed / escaped). Production-path tests: packages/hypergumbo-lang-mainstream/tests/test_nested_assignment_defines.py (CFG + def/use as ddg_build builds them, plus verify-claims verdict tests). Corpus A/B dev vs branch, 7 claims, Tone.js / dash.js / django / transformers: 0 verdicts and 0 evidence tuples moved (transformers' three host_secret claims cap evidence at 100). CONTAINED ONLY re-measured after WI-jusoj: relaxing it turns a JS use-line escape (acc.push(k = t) with acc sent) into a false clean, so the rule stays, with a regression test; the underlying walk hole is filed as WI-tinav (P2), which also reads clean with no nested binding (n = acc.push(t)). Record: ~/hypergumbo_lab_notebook/notebookjournal_10202026_tozar.md. Residuals already filed: WI-ruhuv (Java/C), WI-sosal (Rust block expressions)."  # 2358
+- op: discuss  # 5fc5
+  at: '2026-10-21T10:11:16Z'  # 5fc5
+  by: agent  # 5fc5
+  actor: jgstern_agent  # 5fc5
+  clock: 5  # 5fc5
+  nonce: 5fc5  # 5fc5
+  message: "FOLLOW-UP MERGED, PR #1790 (dev e926fc1045): WI-tozar's CONTAINED ONLY rule removed. A Python walrus / JS-TS nested assignment now defines its target wherever its value also goes (call argument, receiver, return, container); still weak where it may not run, still a use inside a closure. Its only reason was the walk hole WI-tinav closed (PR #1789). Evidence on merged dev, shipped CLI: the two consequence guards (escape at the binding's own line and on a later use line, Python + JS) stay violated with the binding defined; JS acc.push(k = t) ... fetch(url + acc[0]) -> violated [env -> fetch, ddg_mixed/escaped]. Corpus vs merged dev (flask-restful, Tone.js, fastapi, dash.js, django; 7 claims): 0 verdicts, 0 evidence tuples, 0 of 554 walk results moved. Notebook: notebookjournal_10212026_tinav.md."  # 5fc5

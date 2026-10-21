@@ -48,3 +48,18 @@
   clock: 5  # 32b3
   nonce: 32b3  # 32b3
   message: "OWNER RE-CONFIRMED 2026-10-20 in session: 'ruling stands'. Opener sends stay clean. A handle constructor's own configuration read (build_opener / ProxyHandler / URLopener / FancyURLopener / xml.dom.getDOMImplementation) is classified but taints nothing. getproxies* stay ordinary transfer sources. Live baseline on dev 2760e4010b (verify-claims, host_secret -> network): build_opener().open(url) with no secret is violated with source build_opener; urlopen(url) is clean; build_opener(ProxyHandler()).open(url) is violated with build_opener + ProxyHandler; a real API_KEY passed as data is violated with os.environ + build_opener; getproxies -> ProxyHandler(p) is violated with getproxies + build_opener + ProxyHandler. Plan: port only the patit hunks of 206e733d13 onto origin/dev, flip WI-dibit's pin test, test the interaction with INV-komoj's return lift (taint.py _lift_returned_sources also reads return_tainted), state in ADR-0049 that this is not a deferred crossing (Ruling 2 clause 3 does not apply), re-run django/superset A/B. Order: after WI-tozar."  # 32b3
+- op: update  # ed0c
+  at: '2026-10-21T02:16:11Z'  # ed0c
+  by: agent  # ed0c
+  actor: jgstern_agent  # ed0c
+  clock: 6  # ed0c
+  nonce: ed0c  # ed0c
+  set:  # ed0c
+    status: done  # ed0c
+- op: discuss  # 04ec
+  at: '2026-10-21T02:16:11Z'  # 04ec
+  by: agent  # 04ec
+  actor: jgstern_agent  # 04ec
+  clock: 7  # 04ec
+  nonce: 04ec  # 04ec
+  message: "Fixed in PR #1788 (dev d6a20cb639) per the owner's ruling (2026-10-04, re-confirmed 2026-10-20): opener sends stay clean. Behavioral evidence, re-run on merged dev with the shipped CLI (hypergumbo verify-claims, host_secret -> network): build_opener().open('https://example.com/status') -> confirmed (dev before: violated, one flow build_opener -> OpenerDirector.open); build_opener(ProxyHandler()).open(url) -> confirmed (before: violated); urlopen(url) -> confirmed (unchanged, the twin now agrees). Controls: a secret sent as data through the opener stays violated with os.environ as the only source (before: os.environ + build_opener); getproxies() -> ProxyHandler(p) -> open stays violated through getproxies only. Production-path tests: test_handle_constructor_config_read.py (row key validation, shipped rows, minting rule incl. callee-seeded exemption, verify-claims surface incl. a helper returning build_opener() and a helper returning os.environ) and WI-dibit's pin test, now asserting the ruled behaviour. Mechanism: io_primitives returns_handle (inbound only) -> TaintSource.return_tainted=False -> find_source_callers mints nothing for a caller-seeded source that taints no value. Corpus A/B, 7 claims, every corpus repo calling one of the five constructors (pytorch tools/linter/adapters, django, superset): 5 flows removed, 0 added, 0 verdicts moved; all five rooted in build_opener/ProxyHandler, none carrying a secret. Record: ~/hypergumbo_lab_notebook/notebookjournal_10202026_tozar.md, data ~/hypergumbo_lab_notebook/patit_10202026/."  # 04ec
