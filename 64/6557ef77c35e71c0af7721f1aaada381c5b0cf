@@ -1,0 +1,19 @@
+Original commit body from 173b8c796f74ef0ab7299b4e6bbb05791758954a:
+
+`function setup() { u = u + k; }` written before `const k = process.env.K`
+and called after it puts the secret into `u`, and `fetch(u)` sends it. The
+nested body is a may-run region hung off its definition (WI-faful) and
+reaching definitions follow CFG order, so `k` had no edge into `setup`: the
+walk saw the secret die at `console.log` and removed the flow (false clean).
+
+cfg.late_capture_edges, run after each solve, adds an edge from every
+definition placed after a nested function to each read of that name inside
+it, except a read that follows the nested function's own binding of the
+name. Edges only add paths: a walk can lose a False, never gain one.
+
+Fixtures: the filed repro confirmed -> violated (ddg/confirmed); three more
+closure shapes go to ddg/confirmed. Corpus (10 repos, py/js/ts/go/java/rust):
+0 verdicts, 0 evidence tuples moved; 1 of 3566 walk results None -> True
+(buildah RemoveImages, a real flow through appendError).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
