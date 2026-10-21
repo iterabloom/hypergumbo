@@ -4965,6 +4965,10 @@ def _ddg_taint_reaches(
         source_lines: Lines where the taint source is called.
         sink_lines: Lines where the sink is called.
         ddg_uses: ``(symbol_id, variable, def_line) -> {use_line, ...}``.
+        callees_at: ``(symbol_id, line) -> {catalogue key, ...}`` for EVERY
+            call at that line; a call with no key is
+            :data:`UNCATALOGUED_CALL` (WI-tinav). An index that omits a call
+            makes its line read as calling less than it does.
         unaccounted: Variable names this function's def/use extractor left
             unaccounted at some statement that mentions them
             (``cfg.unaccounted_names``). Popping one escapes: the DDG's picture
@@ -5202,7 +5206,11 @@ def _ddg_taint_reaches(
                 # callee shape nobody has modelled reads as "ask the question"
                 # instead of "assume it is fine":
                 #   1. no call at this line at all — a pure rebinding, so the
-                #      heir really is the value's only exit; and
+                #      heir really is the value's only exit. "No call" is read
+                #      off an index that holds every taint call, catalogued or
+                #      not: ``n = acc.push(x)`` is a call whose result is the
+                #      heir, and it read as a rebinding while the index held
+                #      only catalogued names (WI-tinav); and
                 #   2. a catalogued callee that consumes and discards, which
                 #      is exactly what ``_use_site_terminates`` decides.
                 #
@@ -5457,6 +5465,11 @@ def _source_line_escapes(
     return frozenset(lines)
 
 
+#: The walk's per-line call index entry for a call with no catalogue key
+#: (WI-tinav). Not a name any summary is keyed by, so it never terminates.
+UNCATALOGUED_CALL: Final[str] = "<uncatalogued call>"
+
+
 class _WalkIndexes(NamedTuple):
     """The indexes the §3a walk reads, built once per language run."""
 
@@ -5547,12 +5560,21 @@ def _walk_indexes(
             # this index feeds a lookup against SHIPPED stdlib summaries, and a
             # resolved first-party callee whose key collides with one must not
             # be allowed to close a branch (WI-zumud).
+            #
+            # A TAINT CALL WITH NO KEY IS STILL A CALL (WI-tinav). Leaving it
+            # out made the index say fewer calls happen at a line than do: a
+            # use line ``n = acc.push(t)`` read as "no call at all", the one
+            # case the walk lets skip the escape question, and
+            # ``log(acc.push(t))`` read as all-terminating. The marker is no
+            # summary's key, so it never closes a branch -- the rule
+            # ``_source_line_escapes`` applies to the source's own line.
             qualified = _catalogue_key_for_edge(edge)
+            src_id = edge.get("src", "")
             if qualified:
-                src_id = edge.get("src", "")
                 edge_keys[(src_id, edge.get("dst", ""))].add(qualified)
+            if qualified or _is_taint_call_edge(edge):
                 for site in sites:
-                    callee_names[(src_id, site)].add(qualified)
+                    callee_names[(src_id, site)].add(qualified or UNCATALOGUED_CALL)
 
     # INV-fumod: a definition does NOT inherit taint across an I/O boundary.
     #
