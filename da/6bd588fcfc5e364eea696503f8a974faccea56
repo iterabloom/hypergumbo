@@ -1,0 +1,51 @@
+Original commit body from 1866c33743cda7d8694938dbce3ade21c44f2c1d:
+
+The Python and JS/TS def/use extractors recorded a binding nested inside an
+expression -- a walrus in a condition, `while ((m = re.exec(s)) !== null)`,
+the inner target of `x = y = e`, `const a = (b = e)`, `i++` -- as a USE and
+never as a definition, so the reaching-def solver had nothing to chain from:
+`if (t := os.environ["K"]): sock.sendall(t)` read ddg_mixed / not_attempted
+where the same flow as two statements read ddg / confirmed. Java and C already
+defined such targets.
+
+Both extractors now walk every expression with one collector that owns the
+rule (statement-level assignments go through it too), with three refinements
+the Java/C walkers do not make:
+
+- CONTAINED ONLY. A nested binding defines its target only when its value
+  goes to a test or to another binding on the same statement. Passed to a
+  call, used as a receiver, returned or stored in a container, it stays a use:
+  the s3a walk seeds on the source line's definitions and never examines that
+  line itself, so defining `k` in `acc.push(k = process.env.K)` let the walk
+  exhaust on `console.log(k.length)` and REMOVE the flow through `acc`
+  (measured: violated -> confirmed_with_caveats). Filed as its own item.
+- CONDITIONAL = WEAK. A binding under `and`/`or`/`&&`/`||`/`??`, a ternary
+  branch, a comprehension, an optional call chain or `??=` is a define AND a
+  use, so the earlier value still reaches what follows when it is skipped.
+- A binding in a closure (lambda, arrow, nested function, class body) stays a
+  use. A NESTED field write (`x = this.b = v`) mutates its receiver: weak, the
+  receiver read. Statement-level `this.a = v` / `self.a = v` are unchanged.
+
+Not changed: the CfgBuilder, loop/if-header INIT clauses (WI-losod), the Java,
+C, Rust and Go extractors (residuals filed).
+
+Addresses WI-tozar-lorav-lusuf-rogak-joras-tivoz-runuj-ritat.
+
+Re-checked on dev 2760e4010b, 2026-10-20 (ported from the parked draft
+f2171d3b86, branch jgstern-agent/fix/tozar). WI-jusoj has since made the
+s3a walk examine the source's own line, which was the stated reason for
+CONTAINED ONLY. Relaxing the rule was measured: the source-line escape
+stays violated, but the same escape on a later USE line
+(`t = env; acc.push(k = t); ...; fetch(url + acc[0])`) reads
+confirmed_with_caveats in JavaScript. The rule stays; its rationale now
+names that hole, and a regression test pins the use-line shape (it fails
+with the rule relaxed). The plain `n = acc.push(t)` on a use line is the
+same false clean with no nested binding; it is filed as WI-tinav.
+
+Fixtures (verify-claims, host_secret -> network): the walrus goes
+ddg_mixed/not_attempted -> ddg/confirmed, equal to its two-statement
+twin; the JS regex loop ddg_mixed/escaped -> ddg/confirmed. Corpus A/B,
+dev vs branch, 7 claims on Tone.js, dash.js, django, transformers: no
+verdict and no evidence tuple moved.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
