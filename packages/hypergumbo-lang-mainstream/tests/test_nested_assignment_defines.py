@@ -8,16 +8,8 @@ definition to chain from: ``if (t := os.environ["K"]): sock.sendall(t)`` read
 ``ddg_mixed`` / ``not_attempted`` where the same flow written as two statements
 read ``ddg`` / ``confirmed``. Java and C (one walker over every expression)
 already defined such targets; these tests hold Python and JS/TS to the same
-rule, plus the three refinements the rule needs in these languages:
+rule, plus the two refinements the rule needs in these languages:
 
-* CONTAINED ONLY. The binding defines only when its value goes nowhere but a
-  test or another binding on the same statement. Passed to a call, used as a
-  receiver, returned or stored in a container, the value ALSO goes somewhere
-  the walk does not follow (on a line that defines an heir it follows the
-  heir, not the call), and a definition there turned a reported leak into a
-  removal. Those stay uses, as they were. WI-jusoj closed the hole on the
-  source's own line; it is still open on a later use line, which is why the
-  rule stays (see the two escape tests below).
 * A binding that may NOT execute (the right operand of ``and`` / ``&&`` /
   ``||`` / ``??``, a ternary branch, a comprehension, an optional call chain)
   is a WEAK update: the name is defined AND used, so a value assigned before
@@ -25,6 +17,13 @@ rule, plus the three refinements the rule needs in these languages:
   refute a flow that runs whenever the branch is skipped.
 * A binding inside a closure (``lambda``, an arrow, a nested function) is the
   closure's, not this statement's: it stays a use, as it was before.
+
+A binding whose value ALSO goes into a call, a receiver, a return or a
+container defines too. It shipped as a use there (CONTAINED ONLY): the walk
+followed an heir on such a line without asking where the call took the value,
+so a definition turned a reported leak into a removal. WI-jusoj asks on the
+source's line and WI-tinav on every use line, and the two escape tests below
+are what that rule was kept for; they now hold with the binding defined.
 
 Every case is built on the production path (``cfg.build_function_cfg`` +
 ``cfg.populate_def_use_for_cfg`` after the registry is filled), and each
@@ -87,7 +86,7 @@ def _py(line: str) -> str:
 
 #: (statement, the snippet the CFG records it under, strong defines, weak defines)
 _PY_CASES = [
-    # The item's probe statements whose value is contained.
+    # The item's probe statements.
     ("if (m := g(n)) > 0:", "(m := g(n)) > 0", ["m"], []),
     ("while (k := g(n)):", "(k := g(n))", ["k"], []),
     ("y = (z := g(n)) + 1", "y = (z", ["z", "y"], []),
@@ -104,6 +103,14 @@ _PY_CASES = [
     # PEP 572: a comprehension filter's walrus binds in the ENCLOSING function,
     # and runs once per element -- possibly never.
     ("ys = [q for v in xs if (q := g(v))]", "ys = [q", ["ys"], ["q"]),
+    # Wherever else the value goes -- a call, a receiver, a return, a
+    # container -- the binding happens all the same.
+    ("h(w := g(n))", "h(w", ["w"], []),
+    ("with open(c := g(n)) as fh:", "open(c", ["c", "fh"], []),
+    ("return (r := g(n))", "return (r", ["r"], []),
+    ("(t := g(n)).encode()", "(t := g(n)).encode", ["t"], []),
+    ("d = {'k': (m := g(n))}", "d = {", ["m", "d"], []),
+    ("ys = [(q := g(v)) for v in xs]", "ys = [(q", ["ys"], ["q"]),
 ]
 
 
@@ -120,25 +127,6 @@ def test_python_nested_binding_defines(
     for name in weak:
         # A binding that may not run keeps the previous value alive.
         assert name in stmt.uses, stmt
-
-
-#: (statement, snippet, what IS defined) -- the walrus's value leaves the statement.
-_PY_ESCAPING = [
-    ("h(w := g(n))", "h(w", []),
-    ("with open(c := g(n)) as fh:", "open(c", ["fh"]),
-    ("return (r := g(n))", "return (r", []),
-    ("(t := g(n)).encode()", "(t := g(n)).encode", []),
-    ("ys = [(q := g(v)) for v in xs]", "ys = [(q", ["ys"]),
-    ("d = {'k': (m := g(n))}", "d = {", ["d"]),
-]
-
-
-@pytest.mark.parametrize(("line", "snippet", "defined"), _PY_ESCAPING)
-def test_python_escaping_binding_stays_a_use(line: str, snippet: str, defined: list[str]) -> None:
-    stmt = _statement("python", _py(line), snippet)
-    assert stmt.defines == defined, stmt
-    walrus = line.split(":=")[0].rsplit("(", 1)[-1].strip()
-    assert walrus in stmt.uses, stmt  # accounted for, exactly as before
 
 
 @pytest.mark.parametrize(("line", "snippet", "defined", "read"), [
@@ -178,7 +166,7 @@ def test_python_top_level_assignment_is_unchanged() -> None:
 # --------------------------------------------------------------------------
 
 _JS_CASES = [
-    # The item's probe statements whose value is contained.
+    # The item's probe statements.
     ("if ((m = g(n)) > 0) { s(m); }", "((m = g(n)) > 0)", ["m"], []),
     ("y = (m = g(n)) + 1;", "y = (m", ["m", "y"], []),
     # The standard regex-iteration loop.
@@ -201,6 +189,18 @@ _JS_CASES = [
     ("y = flag || (m = g(n));", "y = flag ||", ["y"], ["m"]),
     ("y = flag ?? (m = g(n));", "y = flag ??", ["y"], ["m"]),
     ("y = flag ? (a = g(n)) : (b = g(n));", "y = flag ?", ["y"], ["a", "b"]),
+    # Wherever else the value goes -- a call, a receiver, a return, a
+    # container -- the binding happens all the same.
+    ("h(m = g(n));", "h(m", ["m"], []),
+    ("acc.push(m = g(n));", "acc.push", ["m"], []),
+    ("(m = g(n)).trim();", "(m = g(n)).trim", ["m"], []),
+    ("return (m = g(n));", "return (m", ["m"], []),
+    ("const a = [m = g(n)];", "const a", ["m", "a"], []),
+    ("const a = { k: (m = g(n)) };", "const a", ["m", "a"], []),
+    ("h(flag || (m = g(n)));", "h(flag", [], ["m"]),
+    ("o?.f(m = g(n));", "o?.f", [], ["m"]),
+    # ``data[...] = 1`` mutates ``data``, so it is read as well as defined.
+    ("data[m = g(n)] = 1;", "data[m", ["m"], ["data"]),
 ]
 
 
@@ -220,8 +220,8 @@ def test_jsts_nested_binding_defines(
 
 @pytest.mark.parametrize(("line", "defined"), [
     ("i++;", ["i"]), ("--i;", ["i"]), ("x ??= i++;", ["i", "x"]),
-    # An index escapes into the lookup: not contained, still read.
-    ("h(a[i++]);", []),
+    # Inside a call's argument it is still a write of ``i``.
+    ("h(a[i++]);", ["i"]),
 ])
 def test_jsts_update_expression_defines_and_reads(line: str, defined: list[str]) -> None:
     """``i++`` writes ``i`` from its own value: a define that is also a use."""
@@ -235,7 +235,7 @@ def test_jsts_update_expression_defines_and_reads(line: str, defined: list[str])
     # A nested write INTO an object mutates it: weak, the object stays read.
     ("x = this.b = g(n);", "x = this", ["this", "x"], ["this", "n"]),
     ("x = o.p = g(n);", "x = o", ["o", "x"], ["o", "n"]),
-    ("h(o.p = g(n));", "h(o", [], ["o", "n"]),
+    ("h(o.p = g(n));", "h(o", ["o"], ["o", "n"]),
     # The statement-level write keeps its older, strong reading.
     ("this.b = g(n);", "this.b", ["this"], ["n"]),
 ])
@@ -257,24 +257,6 @@ def test_jsts_logical_assignment_right_side_may_not_run() -> None:
     stmt = _statement("javascript", "function f(n, x) {\n  x ??= (m = g(n));\n}\n", "x ??=")
     assert sorted(stmt.defines) == ["m", "x"]
     assert {"m", "x"} <= set(stmt.uses)
-
-
-@pytest.mark.parametrize(("line", "snippet", "defined"), [
-    ("h(m = g(n));", "h(m", []),
-    ("acc.push(m = g(n));", "acc.push", []),
-    ("h(flag || (m = g(n)));", "h(flag", []),
-    ("o?.f(m = g(n));", "o?.f", []),
-    ("(m = g(n)).trim();", "(m = g(n)).trim", []),
-    ("return (m = g(n));", "return (m", []),
-    ("const a = [m = g(n)];", "const a", ["a"]),
-    ("const a = { k: (m = g(n)) };", "const a", ["a"]),
-    ("data[m = g(n)] = 1;", "data[m", ["data"]),
-])
-def test_jsts_escaping_binding_stays_a_use(line: str, snippet: str, defined: list[str]) -> None:
-    stmt = _statement("javascript", "function f(n, flag, o, acc, data) {\n  " + line + "\n}\n",
-                      snippet)
-    assert stmt.defines == defined, stmt
-    assert "m" in stmt.uses, stmt  # accounted for, exactly as before
 
 
 @pytest.mark.parametrize("line", [
@@ -400,9 +382,9 @@ _ESCAPES_AT_ITS_OWN_LINE = {
 }
 
 
-#: The same escape on a USE line rather than the source's line. WI-jusoj's
-#: source-line escape check does not reach it: with escaping bindings
-#: defined, the JavaScript case read ``confirmed_with_caveats`` (2026-10-20).
+#: The same escape on a USE line rather than the source's line. With the
+#: binding defined and before WI-tinav, the JavaScript case read
+#: ``confirmed_with_caveats`` (2026-10-20).
 _ESCAPES_ON_A_USE_LINE = {
     "python": (
         "app.py",
@@ -425,8 +407,8 @@ def test_a_binding_whose_value_also_escapes_does_not_seed_a_removal(
 ) -> None:
     """The secret goes into ``acc`` AND ``k`` on one line; ``acc`` is sent. The
     walk follows only the line's definitions, so a definition of ``k`` here
-    let it exhaust on ``console.log`` and REMOVE the leak (JavaScript went
-    ``violated`` -> ``confirmed_with_caveats`` with that definition)."""
+    let it exhaust on ``console.log`` and REMOVE the leak until WI-jusoj
+    asked where the line's other call took the value."""
     name, text = _ESCAPES_AT_ITS_OWN_LINE[language]
     got = _verdict(tmp_path, monkeypatch, name, text)
     assert got["verdict"] == "violated", got
@@ -438,9 +420,9 @@ def test_a_binding_whose_value_escapes_on_a_use_line_does_not_seed_a_removal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, language: str,
 ) -> None:
     """``acc.push(k = t)``: the secret goes into ``acc`` and ``k`` on a line
-    after the source, and ``acc`` is sent. This is the case that keeps the
-    CONTAINED ONLY rule: a definition of ``k`` here lets the walk follow ``k``,
-    exhaust on ``console.log`` and remove the leak."""
+    after the source, and ``acc`` is sent. The walk follows the definition of
+    ``k`` to ``console.log``; WI-tinav makes it ask where ``acc.push`` took the
+    value too, so the leak is kept."""
     name, text = _ESCAPES_ON_A_USE_LINE[language]
     got = _verdict(tmp_path, monkeypatch, name, text)
     assert got["verdict"] == "violated", got
