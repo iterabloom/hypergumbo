@@ -1,0 +1,21 @@
+Original commit body from 9d1fe60a1589698ce702a03afa89d499c2be30e0:
+
+Python and JS/TS top-level statements were never handed to the DDG walk,
+so a module-scope source->sink flow was decided by reachability alone
+(structural / ddg_mixed). The module root is now solved as one body under
+make_file_id(lang, path), gated on the module containing a call outside
+nested functions so modules without code add no key. Python class bodies
+become nested-function regions so class attributes stop killing module
+names.
+
+Fixtures: 28-case A/B, module flows js/ts/py -> ddg/confirmed, dead
+module secret -> no evidence.
+Corpus (10 repos, A=646557ef77): 0 verdicts moved; Tone.js 4 and django 3
+findings relabelled structural -> ddg; +1 real django finding
+(getenv -> f.write in scripts/do_django_release.py). New walks: None 15,
+True 9, False 0. Cost: django 269->307s, others +4-12%.
+
+Residuals: Go `var _ = ...`, Java static/field initializers, Python
+class-body calls (WI-muzav-nugak).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
