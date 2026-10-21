@@ -91,3 +91,9 @@ atomic_statement:
 nested_function:
   - node_type: function_definition
     body_child: "field:body"
+  # A class body runs once, where it is written, but its bindings are CLASS
+  # attributes, not this scope's names: inlined, `u = "x"` in a class killed the
+  # module's `u` (WI-nilir). A may-run region keeps what it reads and lets
+  # nothing it binds kill an outer definition.
+  - node_type: class_definition
+    body_child: "field:body"
