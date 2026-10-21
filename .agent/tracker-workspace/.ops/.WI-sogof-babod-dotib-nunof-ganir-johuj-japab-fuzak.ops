@@ -27,3 +27,10 @@
   clock: 2  # 5453
   nonce: '5453'  # 5453
   message: "BEARS ON THIS ITEM (found 2026-10-04 while working WI-binap, the C# half of the same \"declaration kind missing from the enclosing set\" family). Reproduced on analyze_swift (base 2a98abb55d):\n\n    class A {\n        var watched: Int = 0 {\n            didSet { _ = helper() }      // line 8\n        }\n        deinit { _ = helper2() }         // line 11\n        ...\n    }\n    calls: A(class) -> A.helper  line 8    (willSet/didSet observer: A.watched exists as kind=field and spans the observer, but is not in the callable set)\n           A(class) -> A.helper2 line 11   (deinit: no symbol, as init has none)\n\nComputed properties, get/set accessors and subscripts are already credited correctly (A.twice / A.full / A.subscript(i:)). So the swift residual of this family is: init (this item), deinit, and property observers. Not measured on a corpus."  # 5453
+- op: discuss  # 135a
+  at: '2026-10-20T23:40:26Z'  # 135a
+  by: agent  # 135a
+  actor: jgstern_agent  # 135a
+  clock: 3  # 135a
+  nonce: 135a  # 135a
+  message: "Status check 2026-10-20: still open on dev 2760e4010b. On a fixture with struct Builder { init() { self.root = helper() }; deinit { cleanup() } }, hypergumbo run emits no init or deinit symbol, and the helper()/cleanup() calls are anchored on Builder:struct. (swift.py's _SWIFT_SCOPE_NODES lists init_declaration/deinit_declaration for receiver typing only.) Unmerged work: worktree ~/hg_wt/sogof, local branch jgstern-agent/fix/sogof, own commits b02b95091d (init/deinit symbols) and 17c23c0c37 (module_key_axis pins), on base c6b299a052. Cherry-pick only those two onto origin/dev. Recompute the swift.py module_key_axis pins by anchor, because 17c23c0c37's numbers predate later swift.py edits, and run test_module_key_axis explicitly. Last run on the branch: 43 targeted tests, no coverage verdict."  # 135a

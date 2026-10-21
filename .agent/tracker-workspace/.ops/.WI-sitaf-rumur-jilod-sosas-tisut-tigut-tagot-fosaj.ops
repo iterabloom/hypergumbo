@@ -20,3 +20,10 @@
     pr_ref:  # 041e
     description: "FOUND 2026-10-04/05 by INV-komoj (branch jgstern-agent/fix/komoj). The ADR-0017 §3a walk seeds EVERY variable a source call line defines (defs_at). INV-komoj's return lift asks that walk \"does the value reach a return statement\". So `x, err := helper()` followed by `return fmt.Errorf(\"..: %w\", err)` made the function \"return the value\", and the lift climbed every Go error chain above a source. Measured with `err` dropped from the return walk's seeds: runc walk-based lifts 39 -> 26, buildah 85 -> 59.\n\nINV-komoj closes the common case structurally. ddg_build records the identifiers in each result position of a return statement, and the lift records the positions the value occupies. The caller is then seeded only on the variables its call defines at those positions (taint._received_seeds), using the order stmt_defuse keeps.\n\nTHE RESIDUAL is the arity mismatch. Go's def/use extractor drops the blank identifier, so `_, err := get()` defines (\"err\",) against an arity of 2. The seeds then fall back to every variable, so `err` is tainted again and the chain climbs. The same fallback applies when a statement on the call line defines a different number of variables for any other reason.\n\nFix direction: record the left-hand side's positions including blanks. For example, the extractor could emit a placeholder for `_`, or the CFG statement could carry the LHS arity. Then `_received_seeds` can map positions exactly. Not a name rule on `err`.\n\nNot measured: how many corpus lifts take the fallback path."  # 041e
     fields: {}  # 041e
+- op: discuss  # c2f1
+  at: '2026-10-20T23:40:27Z'  # c2f1
+  by: agent  # c2f1
+  actor: jgstern_agent  # c2f1
+  clock: 2  # c2f1
+  nonce: c2f1  # c2f1
+  message: "Status check 2026-10-20: still open on dev 2760e4010b. go_def_use.py still drops the blank identifier (_BLANK at lines 114/146/211), and taint._received_seeds still requires len(defines) == arity before mapping positions, else returns None (seed everything)."  # c2f1
