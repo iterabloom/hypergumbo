@@ -89,6 +89,18 @@ available in both cases: a dependence the walk FINDS is real.
 A plain data variable (``var logger = log.New(...)``) is indexed but holds no
 body, so it is never walked: the index admits the kind, the hook decides.
 
+Nested Functions Read Late (WI-lokok)
+-------------------------------------
+The CFG hangs a nested function's body off its definition as a region that
+may run there (WI-faful), and reaching definitions follow CFG order. A closure
+reads what it captures when it RUNS, though, so ``function setup() { u = u +
+k; }`` written before ``const k = process.env.K`` and called after it does put
+the secret into ``u``, and the solve has no edge for it. After each solve
+:func:`cfg.late_capture_edges` adds one from every definition placed after a
+nested function to each read of that name inside it. The edges are a may
+relation and only add paths: a walk over them can lose a ``False``, never
+gain one.
+
 Return Statements (INV-komoj)
 -----------------------------
 Taint follows a value a function RETURNS into that function's callers, and
@@ -633,6 +645,11 @@ def _solve_one_function(
         return
     if result.bailed_out:
         return
+    # WI-lokok: a nested function reads what it captures when it runs, so a
+    # definition placed after it reaches its reads too. See "Nested Functions".
+    result.ddg_edges.extend(deps["late_capture_edges"](
+        cfg, body_node, mapping, result.ddg_edges,
+    ))
     if result.ddg_edges:
         out.ddg_edges.extend(result.ddg_edges)
         out.ddg_symbols.add(sym_id)
@@ -703,6 +720,7 @@ def build_repo_ddg(
 
         from .cfg import (
             build_function_cfg,
+            late_capture_edges,
             load_cfg_mapping,
             populate_def_use_for_cfg,
             solve_reaching_defs,
@@ -718,6 +736,7 @@ def build_repo_ddg(
         "solve_reaching_defs": solve_reaching_defs,
         "uncovered_semantic_lines": uncovered_semantic_lines,
         "unaccounted_names": unaccounted_names,
+        "late_capture_edges": late_capture_edges,
     }
 
     parsers = _ParserCache(tree_sitter, get_language)

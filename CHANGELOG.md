@@ -23,6 +23,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A Python walrus or JS/TS nested assignment defines its variable**, call arguments included, so `if (t := os.environ["K"])` and `while ((m = re.exec(s)) !== null)` are walked precisely.
 - **`build_opener().open(url)` with no secret is no longer a leak**, matching `urlopen(url)`. The opener's proxy-environment read is still classified.
 - **`n = acc.push(secret)` then `fetch(acc[0])` is reported**: a call with no catalogue entry no longer lets the walk remove the flow.
+- **A closure defined before the secret it reads carries it**: `function setup() { u += k }` above `const k = …` no longer hides the flow.
 
 ## [9.2.0] - 2026-10-20
 

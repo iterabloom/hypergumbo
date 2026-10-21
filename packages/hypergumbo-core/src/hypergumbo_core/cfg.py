@@ -105,6 +105,7 @@ The rest of the dataflow pipeline over a built CFG also lives here:
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Literal, Optional, Protocol, runtime_checkable
@@ -1254,10 +1255,11 @@ class CfgBuilder:
         - the repeat edge lets a binding made late in the body reach a use
           early in it, as a callback invoked twice does.
 
-        What it does not model: a closure that runs only AFTER a later
-        statement redefines a captured variable sees only the value at its
-        creation. Returns the region's fringe (empty when the body is empty or
-        absent, in which case nothing is attached).
+        What the region alone does not model: a closure that runs AFTER a later
+        statement redefines a captured variable reads the later value.
+        :func:`late_capture_edges` adds those edges after the solve (WI-lokok).
+        Returns the region's fringe (empty when the body is empty or absent, in
+        which case nothing is attached).
         """
         mapping = self._mapping.get_nested_function(function.type)
         body = self._find_child(function, mapping.body_child) if mapping else None
@@ -2517,6 +2519,104 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
                         break
 
     return result
+
+
+def late_capture_edges(
+    cfg: FunctionCfg,
+    body_node: Any,
+    mapping: CfgNodeMapping,
+    edges: list[DdgEdge],
+) -> list[DdgEdge]:
+    """Edges from a definition AFTER a nested function into its reads (WI-lokok).
+
+    A nested function reads what it captures when it RUNS, which is any time
+    after it is defined. The CFG hangs its body off the definition as a region
+    that may run there (WI-faful), so reaching definitions connect only the
+    definitions BEFORE it:
+
+        function setup() { u = u + k; }   // reads k
+        const k = process.env.K;          // no edge into setup
+        setup(); fetch(u);
+
+    The walk then saw the secret go only where the enclosing function used it
+    and removed a flow that runs. This returns, for each read of a name inside
+    a nested function, an edge from every definition of that name placed after
+    the function's end and outside every nested function -- the definitions the
+    solve could not have connected. A definition before the function is left to
+    the solve, which already kills the ones overwritten in between. A read that
+    follows the nested function's own binding of the name reads that binding,
+    not the enclosing one, and gets no edge: buildah's callbacks declare their
+    own ``err``, and linking the outer ``err`` to them confirmed walks through
+    a value the callback never saw.
+
+    May, not must: the closure might never run after the definition. That only
+    adds paths, so a walk over the result can turn ``False`` into ``True`` or
+    ``None`` and never the reverse.
+
+    Args:
+        cfg: The function's CFG, after :func:`populate_def_use_for_cfg`.
+        body_node: The tree-sitter node the CFG was built from.
+        mapping: The language's mapping; its ``nested_function`` types say
+            what a nested function is.
+        edges: The solve's edges, so an existing one is not duplicated.
+    """
+    regions: list[tuple[tuple[int, int], tuple[int, int]]] = []
+    stack = list(reversed(body_node.named_children))
+    while stack:
+        node = stack.pop()
+        if mapping.get_nested_function(node.type) is not None:
+            regions.append((node.start_point, node.end_point))
+        else:
+            stack.extend(reversed(node.named_children))
+    if not regions:
+        return []
+
+    def region_of(stmt: CfgStatement) -> Optional[int]:
+        at = (stmt.line - 1, stmt.col)
+        for i, (start, end) in enumerate(regions):
+            if start <= at < end:
+                return i
+        return None
+
+    statements = [
+        (block.id, stmt, region_of(stmt))
+        for block in cfg.blocks.values() for stmt in block.statements
+    ]
+    # Where each nested function first binds a name of its own: Go's
+    # ``output, err := ...`` in a callback, a JS ``let``, a Python local. A read
+    # after that is of the function's own value, so it gets no late edge.
+    bound_at: dict[tuple[int, str], tuple[int, int]] = {}
+    for _block, stmt, region in statements:
+        if region is None:
+            continue
+        at = (stmt.line - 1, stmt.col)
+        for var in stmt.defines:
+            bound_at[(region, var)] = min(at, bound_at.get((region, var), at))
+    reads: dict[str, list[tuple[int, str, int]]] = defaultdict(list)
+    outside: list[tuple[str, str, CfgStatement]] = []
+    for block_id, stmt, region in statements:
+        if region is None:
+            outside.extend((var, block_id, stmt) for var in stmt.defines)
+            continue
+        at = (stmt.line - 1, stmt.col)
+        for var in stmt.uses:
+            if bound_at.get((region, var), at) < at:
+                continue
+            reads[var].append((region, block_id, stmt.line))
+    have = {(e.variable, e.def_line, e.use_line) for e in edges}
+    out: list[DdgEdge] = []
+    for var, def_block, stmt in outside:
+        for region, use_block, use_line in reads.get(var, ()):
+            if (stmt.line - 1, stmt.col) < regions[region][1]:
+                continue
+            if (var, stmt.line, use_line) in have:
+                continue
+            have.add((var, stmt.line, use_line))
+            out.append(DdgEdge(
+                variable=var, def_block=def_block, def_line=stmt.line,
+                use_block=use_block, use_line=use_line, symbol_id=cfg.symbol_id,
+            ))
+    return out
 
 
 # ---------------------------------------------------------------------------
