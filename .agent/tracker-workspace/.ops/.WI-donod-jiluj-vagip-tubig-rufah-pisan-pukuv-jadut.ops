@@ -1,0 +1,22 @@
+- op: create  # ca43
+  at: '2026-10-22T05:12:18Z'  # ca43
+  by: agent  # ca43
+  actor: jgstern_agent  # ca43
+  clock: 1  # ca43
+  nonce: ca43  # ca43
+  data:  # ca43
+    kind: work_item  # ca43
+    title: "a user I/O overlay rewrites the merged catalogue status to in_progress and drops stdlib_provenance, flagging every external_potential chain dst_classification_unreliable"  # ca43
+    status: todo_hard  # ca43
+    priority: 3  # ca43
+    parent:  # ca43
+    tags:  # ca43
+    - io_boundary  # ca43
+    - catalogue  # ca43
+    - concept_audit_20261021  # ca43
+    isbefore: []  # ca43
+    duplicate_of: []  # ca43
+    not_duplicate_of: []  # ca43
+    pr_ref:  # ca43
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F4, agent read: io_boundary.py:2186 rewrites an overlay's status to in_progress to pass validation; merge (:1574) and the community-only restore (:2479-2482) let it become the merged status; :4250 then flags dst_classification_unreliable on every external_potential chain. Pinned by tests/test_default_overlays.py:302-316 as 'a separate question'. Fix: an overlay never lowers the base catalogue's status/provenance."  # ca43
+    fields: {}  # ca43
