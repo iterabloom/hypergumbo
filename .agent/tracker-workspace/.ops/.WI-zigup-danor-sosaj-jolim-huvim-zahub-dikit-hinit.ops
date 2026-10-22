@@ -1,0 +1,22 @@
+- op: create  # 3280
+  at: '2026-10-22T19:36:20Z'  # 3280
+  by: agent  # 3280
+  actor: jgstern_agent  # 3280
+  clock: 1  # 3280
+  nonce: '3280'  # 3280
+  data:  # 3280
+    kind: work_item  # 3280
+    title: "rust: module-level const is emitted as kind variable, not the registry's const kind (needs its own stable-id scheme bump)"  # 3280
+    status: todo_hard  # 3280
+    priority: 3  # 3280
+    parent:  # 3280
+    tags:  # 3280
+    - rust  # 3280
+    - analysis_quality  # 3280
+    - stable_id  # 3280
+    isbefore: []  # 3280
+    duplicate_of: []  # 3280
+    not_duplicate_of: []  # 3280
+    pr_ref:  # 3280
+    description: "FOUND by WI-gapup (WI-bamar discussion, 2026-09-19) and left NOT DONE by WI-bamar's fix (b7b25f0041, commit body: \"realigning module-level const from variable to the registry's constant kind ... must ride a scheme bump of its own\").\n\nWHAT. rust.py emits kind=\"variable\" for a module-level `const` item (15 on the recorded aardvark-dns fixture, packages/hypergumbo-lang-rust-analyzer/recorded/). The symbol-kind registry defines `const` (\"Const declaration (C / C++ / Rust / JS const)\"), and the SCIP arm declares `constant`. It is the only kind disagreement left between the arms on paired records (15 of 150 after WI-bamar).\n\nWHY ITS OWN SCHEME BUMP. The kind is hashed into stable_id (make_typed_stable_id), so changing it changes every const's stable_id. That needs the stable-id scheme version bumped and the migration note recorded, as WI-banod's v10 bump did for the config-family analyzers. Riding WI-banod's v10 was not done: that branch was suite-tested without it.\n\nFIX SHAPE. In rust.py's item walk (the const_item arm next to static_item / let), emit kind \"const\" (the registry value; check which of `const` / `constant` the registry and the other analyzers actually use before choosing, since the SCIP arm's `constant` may be its own vocabulary). Bump the scheme, re-measure the agreement instrument (not hand-edit), and update docs/audits/0019's table.\n\nACCEPTANCE. A unit test: `pub const N: u32 = 1;` at module level gives one Symbol of the registry's const kind. The recorded agreement instrument shows 0 kind disagreements on paired records. Scheme version bumped, with the change named in its migration note.\n\nNOT CHECKED: whether any consumer branches on kind == \"variable\" for Rust consts (dead-code, slice anchoring); whether `static` should also move off `variable`."  # 3280
+    fields: {}  # 3280

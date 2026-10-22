@@ -77,3 +77,18 @@
   clock: 9  # dac8
   nonce: dac8  # dac8
   message: "SCOPE CLARIFICATION (no status change) -- T1 is BOTH ids for the same five sites, not just stable_id.\n\nWhile draining INV-dulah's doc/config-family node.id limbs (PR #78, dev d0e45ce33b), the five T1 sites were re-verified live: bitbake.py 192/302/342/382 + bibtex.py 125 -- exactly the set WI-talos Ruling 3 enumerates, independently reached by grepping for hand-rolled id f-strings across all analyzers.\n\nThe finding worth recording: those five set 'stable_id = symbol_id'. The composite node.id IS their stable identity, so the node.id grammar fix and the stable_id fix are THE SAME EDIT and cannot be sequenced apart. That is precisely why PR #78 folded ini/requirements/properties (whose stable_id already came from make_doc_stable_id, independent of node.id, so their node.id was safe to correct now) while deliberately leaving bitbake/bibtex alone -- touching their node.id would have changed stable_id and falsified v9's unqualified digest-compatibility claim.\n\nSo T1 remains blocked on the RELEASE boundary per Ruling 3, and its scope should be read as 'node.id AND stable_id for these five sites', which is a single change rather than two."  # dac8
+- op: update  # bcfe
+  at: '2026-10-22T20:35:59Z'  # bcfe
+  by: agent  # bcfe
+  actor: jgstern_agent  # bcfe
+  clock: 10  # bcfe
+  nonce: bcfe  # bcfe
+  set:  # bcfe
+    status: done  # bcfe
+- op: discuss  # 481e
+  at: '2026-10-22T20:35:59Z'  # 481e
+  by: agent  # 481e
+  actor: jgstern_agent  # 481e
+  clock: 11  # 481e
+  nonce: 481e  # 481e
+  message: "T1 residual fixed in ad925ef6d5 (merged to dev): stable-id scheme v9 -> v10, its own bump as the owner decided on 2026-07-29 (WI-talos). BitBake variable/task/python_task/addtask now take scoped_stable_id (kind, language, path, name) instead of copying the node id. New gate test_every_fixture_stable_id_is_canonical fails any fixture stable_id that is not sha256:<16hex>, in every language. LIVE REPRO on dev 498e687205, hypergumbo run . --include-docs on recipes/foo.bb (SUMMARY = \"demo\", do_compile(), addtask do_deploy, python do_patchit()) plus refs.bib (@article{knuth74}). Exit 0, survey stable_id_scheme hypergumbo-stableid-v10. variable SUMMARY sha256:cad6ab85e77d0464, task do_compile sha256:963ed08e1717e93e, addtask do_deploy sha256:42c858d5118745d9, python_task do_patchit sha256:967bc254dbd1c9fb, bibtex entry knuth74 sha256:53382523ce261ee0. All match sha256:<16hex>, and none equals its node id (which stays bitbake:recipes/foo.bb:0-0:<name>:<kind>). Before the fix each stable_id was the node id. bibtex was already canonical on dev before this change. Not covered: BitBake's line-less 0-0 node ids are unchanged (out of scope here)."  # 481e

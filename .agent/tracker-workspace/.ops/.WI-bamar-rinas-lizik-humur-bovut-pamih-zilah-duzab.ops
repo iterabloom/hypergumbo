@@ -27,3 +27,18 @@
   clock: 2  # 88a4
   nonce: 88a4  # 88a4
   message: "RELATED, found by WI-gapup: on the same fixture rust.py emits kind=\"variable\" for module-level `const` items (15 on aardvark-dns) while the registry defines `const` (\"Const declaration (C / C++ / Rust / JS const)\") and the SCIP arm now declares `constant`. That is the ONLY kind disagreement left between the arms on paired records (15 of 148). When this row adds `type_item` / `static_item`, consider aligning `const_item` to the registry's `const` in the same change (rust.py:1423-1437 emits all three shapes as `variable`) — a measured, registry-backed refinement of the incumbent, not a change to match SCIP."  # 88a4
+- op: update  # 8a86
+  at: '2026-10-22T19:36:20Z'  # 8a86
+  by: agent  # 8a86
+  actor: jgstern_agent  # 8a86
+  clock: 3  # 8a86
+  nonce: 8a86  # 8a86
+  set:  # 8a86
+    status: done  # 8a86
+- op: discuss  # 2282
+  at: '2026-10-22T19:36:20Z'  # 2282
+  by: agent  # 2282
+  actor: jgstern_agent  # 2282
+  clock: 4  # 2282
+  nonce: '2282'  # 2282
+  message: "Fixed in 061c0ab705 (merged to dev; PR #1817 was closed unmerged as superseded after its rebase conflicted with WI-dabug's CHANGELOG/manifest, and the change was rebuilt on dev as -r2). A module-level type_item is now kind type_alias with the aliased type as its signature and a typed stable_id. An impl's associated type is excluded (const rule). static_item was already emitted (WI-jusus). The DNSBACKEND static the item lists is function-local, excluded by that rule, so the recorded pairing goes 148 -> 150 of 169, not the 151 the item predicted. LIVE REPRO on dev 1613d1fec1, hypergumbo run . on a crate with pub type AardvarkResult<T>, type ThreadHandleMap<Ip>, pub static COUNTER, pub const N, an impl Iterator with type Item = u32, and a fn-local static. Exit 0. Rust nodes: type_alias AardvarkResult@1 (sig Result<T, String>), type_alias ThreadHandleMap@2, variable COUNTER@3, variable N@4, struct S, method S::next, function f. No node for Item or LOCAL. The const-kind realignment from the 09-19 discussion is NOT done (the kind is hashed into stable_id). Filed separately."  # 2282
