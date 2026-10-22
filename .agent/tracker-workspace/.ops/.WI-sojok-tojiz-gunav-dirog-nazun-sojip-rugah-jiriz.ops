@@ -1,0 +1,23 @@
+- op: create  # 3294
+  at: '2026-10-22T05:14:23Z'  # 3294
+  by: agent  # 3294
+  actor: jgstern_agent  # 3294
+  clock: 1  # 3294
+  nonce: '3294'  # 3294
+  data:  # 3294
+    kind: work_item  # 3294
+    title: "empty-zone gate covers only the ADR-0060 zones: a claim on a zone with no sinks for the language (database in go/c/cpp/haskell/rust, host_env in 8 languages, ipc on JVM) is not withheld for that reason"  # 3294
+    status: todo_hard  # 3294
+    priority: 3  # 3294
+    parent:  # 3294
+    tags:  # 3294
+    - verify_claims  # 3294
+    - taint  # 3294
+    - io_boundary  # 3294
+    - concept_audit_20261021  # 3294
+    isbefore: []  # 3294
+    duplicate_of: []  # 3294
+    not_duplicate_of: []  # 3294
+    pr_ref:  # 3294
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6, agent read (verdict effect NOT traced): cli.py:6774-6775 checks emptiness only for code_execution / dom_injection; its docstring premise (6753-6756) says the no-catalogue gate covers I/O zones, but that gate counts sinks per LANGUAGE (7466-7468). Measured zero-sink zones while the language has a catalogue: database (c, cpp, go, haskell, rust); host_env (c, cpp, go, java, kotlin, scala, objc, swift); ipc (java, kotlin, scala). Input: the shipped untrusted-input-no-database claim (docs/example-claims/generic-taint-claims.yaml:77-87) on a Go repo -- first check whether another gate already withholds it."  # 3294
+    fields: {}  # 3294
