@@ -1,0 +1,13 @@
+Original commit body from 9818a5268d4d6a10cbee518bc4d068ea7515bf7b:
+
+Audit #19, pinned to dev e9215548f6, over the 683 commits since the
+IoPrimitive.kind audit. Records the audit state (recorded with --force:
+the write-up lives in a notebook subfolder the recorder does not scan),
+appends the playbook Examples entry, and adds a sixth producer-emit shape
+to Step 4.5 (a string method on an AST node type, pony.py:327).
+
+Findings, owner verdicts and the 19 filed items (tag
+concept_audit_20261021) are in the lab notebook write-up. Governance
+change approved by the owner on 2026-10-22.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
