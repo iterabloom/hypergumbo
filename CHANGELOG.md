@@ -33,6 +33,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Swift initialisers and deinitialisers are symbols**: `T(...)` lands on the `init` it runs; init bodies' calls are credited to it.
 - **Swift construction-call meta is enumerable again**: literal keys restore the meta-key gate.
 - **Import and build-target edges from json, make, jsonnet, astro, svelte and Cargo manifests have well-formed destinations**, so none becomes an `<unknown>` node.
+- **gRPC linker node ids use the node's own language and kind**, so they pass the id round-trip check.
 
 ## [9.2.0] - 2026-10-20
 

@@ -95,7 +95,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..discovery import find_files, find_non_test_files
-from ..analyze.base import make_route_symbol
+from ..analyze.base import make_route_symbol, make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..overload_arity import pass_minted_stable_id
 from ..paths import to_relative_path
@@ -453,9 +453,36 @@ def _scan_ts_file(file_path: Path, content: str) -> list[GrpcPattern]:
     return patterns
 
 
-def _make_symbol_id(file_path: str, line: int, name: str, kind: str) -> str:
-    """Generate unique symbol ID."""
-    return f"grpc:{file_path}:{line}-{line}:{name}:{kind}"
+#: ADR-0027 Phase 3 / audit-findings 0013 (WI-nitil): each gRPC pattern type
+#: folds to a canonical Cluster A construct plus ``meta["framework_role"]``:
+#: ``interface`` for the proto service declaration, ``class`` for a server-side
+#: implementation, ``function`` for a client-side call site.
+_PATTERN_FOLDS: dict[str, tuple[str, str]] = {
+    "service": ("grpc_service", "interface"),
+    "servicer": ("grpc_servicer", "class"),
+    "registration": ("grpc_servicer", "class"),
+    "stub": ("grpc_stub", "function"),
+    "client": ("grpc_client", "function"),
+    "server": ("grpc_server", "class"),
+}
+
+
+def _make_symbol_id(pattern: "GrpcPattern") -> str:
+    """The node id of the symbol this linker mints for *pattern*.
+
+    WI-fotad: ADR-0036 Ruling 2 puts ``node.kind`` in the kind slot and the
+    node's own language in the language slot; this linker used to put the
+    framework role and the literal ``grpc`` there. The role is kept as a
+    name-segment suffix, as the websocket linker does (INV-dulah), so a
+    servicer and a registration of one service at one line, or a node this
+    linker mints and the analyzer's own node for the same declaration, keep
+    distinct ids.
+    """
+    role, kind = _PATTERN_FOLDS[pattern.type]
+    return make_symbol_id(
+        pattern.language, pattern.file_path, pattern.line, pattern.line,
+        f"{pattern.service_name}-{role}", kind,
+    )
 
 
 # Regex to find "type <Name> struct {" declarations.
@@ -738,35 +765,18 @@ def link_grpc(
     stubs: list[GrpcPattern] = []
     servicers: list[GrpcPattern] = []
 
-    # ADR-0027 Phase 3 / audit-findings 0013 (WI-nitil): framework-role
-    # leak. Each gRPC kind folds to a canonical Cluster A construct
-    # (`interface` for the proto service declaration, `class` for
-    # server-side implementation classes, `function` for client-side
-    # call sites) plus meta["framework_role"]=<value>. The
-    # framework-role string remains the disambiguator in the Symbol ID
-    # so cross-PR identity is stable.
+    # The framework role stays the disambiguator in the id's NAME segment
+    # (see ``_make_symbol_id``), so cross-PR identity is stable.
     for pattern in all_patterns:
-        if pattern.type == "service":
-            framework_role = "grpc_service"
-            canonical_kind = "interface"
-        elif pattern.type in ("servicer", "registration"):
-            framework_role = "grpc_servicer"
-            canonical_kind = "class"
+        if pattern.type not in _PATTERN_FOLDS:  # pragma: no cover
+            continue
+        framework_role, canonical_kind = _PATTERN_FOLDS[pattern.type]
+        if pattern.type in ("servicer", "registration", "server"):
             servicers.append(pattern)
         elif pattern.type in ("stub", "client"):
-            framework_role = "grpc_stub" if pattern.type == "stub" else "grpc_client"
-            canonical_kind = "function"
             stubs.append(pattern)
-        elif pattern.type == "server":
-            framework_role = "grpc_server"
-            canonical_kind = "class"
-            servicers.append(pattern)
-        else:  # pragma: no cover
-            continue
 
-        symbol_id = _make_symbol_id(
-            pattern.file_path, pattern.line, pattern.service_name, framework_role
-        )
+        symbol_id = _make_symbol_id(pattern)
         sym_meta: dict[str, object] = {"framework_role": framework_role}
         # WI-patiz: grpc_service symbols carry proto_package so the
         # route->service lookup can disambiguate cross-package short-name
@@ -832,14 +842,8 @@ def link_grpc(
             stubs_with_servicer.add(id(stub))
             servicer = servicer_by_name[normalized]
 
-            stub_id = _make_symbol_id(
-                stub.file_path, stub.line, stub.service_name,
-                "grpc_stub" if stub.type == "stub" else "grpc_client"
-            )
-            servicer_id = _make_symbol_id(
-                servicer.file_path, servicer.line, servicer.service_name,
-                "grpc_servicer" if servicer.type in ("servicer", "registration") else "grpc_server"
-            )
+            stub_id = _make_symbol_id(stub)
+            servicer_id = _make_symbol_id(servicer)
 
             # ADR-0023 §6 Phase 3 (WI-vumum-juvil): gRPC is a wire
             # protocol, not a relationship. The fold target is
@@ -880,10 +884,7 @@ def link_grpc(
         if not proto_candidates:
             continue
 
-        stub_id = _make_symbol_id(
-            stub.file_path, stub.line, stub.service_name,
-            "grpc_stub" if stub.type == "stub" else "grpc_client",
-        )
+        stub_id = _make_symbol_id(stub)
 
         # Cross-package short-name collisions (two .proto files declare
         # ``service Foo`` in different packages) drop to disambiguation
