@@ -28,3 +28,18 @@
   nonce: c7ad  # c7ad
   set:  # c7ad
     status: in_progress  # c7ad
+- op: update  # a792
+  at: '2026-10-22T00:33:48Z'  # a792
+  by: agent  # a792
+  actor: jgstern_agent  # a792
+  clock: 3  # a792
+  nonce: a792  # a792
+  set:  # a792
+    status: done  # a792
+- op: discuss  # c4e5
+  at: '2026-10-22T00:33:48Z'  # c4e5
+  by: agent  # c4e5
+  actor: jgstern_agent  # c4e5
+  clock: 4  # c4e5
+  nonce: c4e5  # c4e5
+  message: "Fixed in PR #1795 (dev 4106c29e42). A class body's own statements (defs/nested classes excluded) are walked like module code under the innermost class, looked up by AST node id (class_symbol_by_node_id threaded through FileAnalysis; Django's same-named Meta classes no longer collide); scope = enclosing function's LEGB chain + a class-body frame. Filed repro on merged dev: 'class C: k = os.environ[\"K\"]; requests.get(\"http://x/\" + k)' under verify-claims SECRET-NET -> exit 1, violated [(C:class -> requests.get, structural, unavailable)] (was confirmed, evidence [] -- the false all-clear). Production-path tests: test_py_class_body_calls.py (5). Corpus verify-claims (flask-restful, fastapi, django; 21 claims): 0 verdicts/evidence/walks moved. Edges: django +8359 (6451 calls, 1477 instantiates, 305 references, 126 module_attr_ref), fastapi +218, flask-restful +6; decorated_by unchanged. NOT COVERED: the walk is 'unavailable' because the DDG has no body under the class id -- folded into WI-hofad."  # c4e5
