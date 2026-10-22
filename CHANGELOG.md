@@ -38,6 +38,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **WebAssembly load edges start at the loading file's node**, and the WASM import and module stand-ins' ids carry their node kind.
 - **React JSX references start at the component that renders the tag**, at its line, not at a fabricated id no node carried.
 - **A Dockerfile variable is one symbol per build stage**: a re-declared `ENV` or `ARG` no longer duplicates it, and `ENV A=1 B=2` declares both.
+- **Rust `type` aliases are symbols** (`type_alias`), so a slice or dead-code query can name them.
 
 ## [9.2.0] - 2026-10-20
 

@@ -116,7 +116,7 @@ def _read_crate_file(path: str) -> bytes | None:
 
 class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
     def test_pairing_under_the_declared_rule(self) -> None:
-        """148 of 169, none ambiguous. The rule, spelled out once so the
+        """150 of 169, none ambiguous (148 before WI-bamar's type aliases). The rule, spelled out once so the
         merge pass has a reference to reproduce: same path, equal declared
         name keys, SCIP token line inside the tree-sitter item span."""
         incumbent, scip_anchor = _anchors()
@@ -159,10 +159,10 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
             "unpaired_type_alias": unpaired["type_alias"],
             "unpaired_variable": unpaired["variable"],
         } == AARDVARK_DNS_PAIRING
-        # The three non-namespace leftovers are constructs the tree-sitter arm
-        # emits no Symbol for (two `type` aliases, one `static`) — an incumbent
-        # gap (WI-bamar), not a disagreement between the anchors.
-        assert sorted(unpaired_names) == ["AardvarkResult", "DNSBACKEND", "ThreadHandleMap"]
+        # The one non-namespace leftover is a `static` inside a function body,
+        # which the tree-sitter arm emits no Symbol for by its module-level
+        # rule; the two `type` aliases pair since WI-bamar.
+        assert sorted(unpaired_names) == ["DNSBACKEND"]
         # WI-gapup: the SCIP arm reads the producer's declared kind, so the
         # paired records agree on kind except for `const` items, where SCIP's
         # `constant` is the more precise claim and stays a contest.
@@ -299,7 +299,7 @@ class TestTheHarnessRunsWhatASurveyRunsBeforeTheMerge:
     pass. While the harness skipped that step, the tree-sitter arm's 10
     structs, 3 enums and 1 trait reached the merge with no ``stable_id``.
     The committed 0019 table then read 14 one-sided to ``rust_analyzer``,
-    which a live survey of this crate does not reproduce (0 / 148 / 0 / 0)."""
+    which a live survey of this crate does not reproduce (0 / 150 / 0 / 0)."""
 
     def test_the_declaration_kinds_carry_the_backstop_id(self) -> None:
         from hypergumbo_core.analyze.base import make_declaration_stable_id
@@ -318,7 +318,7 @@ class TestTheHarnessRunsWhatASurveyRunsBeforeTheMerge:
 
 class TestTheMergePassOnBothArms:
     """WI-kokiz's acceptance, on committed input: the pass folds exactly the
-    148 declarations the anchors pair, leaves the 21 SCIP-only records and
+    150 declarations the anchors pair, leaves the 21 SCIP-only records and
     no tree-sitter-only record, stamps both producers on every merged
     record, and rewires the edges so the 121 shared call sites collapse."""
 
@@ -340,7 +340,7 @@ class TestTheMergePassOnBothArms:
     def test_merged_records_carry_the_provenance_slot(self) -> None:
         """WI-binis: every merged record says who holds each value. On this
         producer pair the span (token vs item) and stable_id (moniker hash vs
-        rust.py's) are contested on all 148; kind on the 15 const items."""
+        rust.py's) are contested on all 150; kind on the 15 const items."""
         symbols, edges, runs = _both_arms()
         merge_producer_records(symbols, edges, runs)
         merged = [s for s in symbols if s.origin == ["rust", "scip"]]
@@ -440,7 +440,7 @@ class TestTheAgreementInstrumentOnBothArms:
         # existed, WI-pofih; the true carried value was `true`.)
         assert by_attr["is_exported"].shapes == []
         assert (by_attr["is_exported"].agree, by_attr["is_exported"].disagree) == (0, 0)
-        assert by_attr["is_exported"].only == {"rust": 148, "rust_analyzer": 0}
+        assert by_attr["is_exported"].only == {"rust": 150, "rust_analyzer": 0}
 
     def test_a_kind_preference_for_scip_moves_exactly_the_kind_row(self) -> None:
         """WI-hukuf on the recorded fixture: prefer the SCIP arm for `kind`
