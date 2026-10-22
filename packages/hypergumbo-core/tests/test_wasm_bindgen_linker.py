@@ -948,3 +948,43 @@ class TestTheImportStandInCarriesTheHostFileLanguage:
         result = link_wasm_bindgen(tmp_path, [_make_js_sym("main", path=str(ts_file))], [rust_sym])
         assert result.edges
         assert result.edges[0].src.split(":", 1)[0] == "typescript"
+
+
+class TestIdsMeetTheGraph:
+    """WI-vojur: the wasm-load ``imports`` edge started at
+    ``<lang>:<path>:0-0:file:file``, a shadow of the canonical ``1-1`` file
+    node, so it dangled. The import and module stand-ins also put a role in
+    the kind slot (``wasm_import`` / ``wasm_module`` for kinds ``import`` /
+    ``module``), which ADR-0036 Ruling 2 forbids."""
+
+    def test_the_wasm_load_edge_starts_at_the_file_node(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_core.ir import AnalysisRun, PASS_VERSION
+        from hypergumbo_core.linkers.wasm_bindgen import _create_wasm_load_edges
+
+        js_file = tmp_path / "worker.ts"
+        js_file.write_text("import wasmUrl from 'url:codecs/rotate/rotate.wasm';\n")
+        js_sym = _make_js_sym("worker", str(js_file))
+        run = AnalysisRun.create(pass_id="test", version=PASS_VERSION)
+        edges, _symbols = _create_wasm_load_edges(tmp_path, [js_sym], run)
+        assert [e.src for e in edges] == [make_file_id("typescript", str(js_file))]
+
+    def test_every_stand_in_id_round_trips(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.registry import LinkerContext, run_linker
+        from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+        import hypergumbo_core.linkers.wasm_bindgen  # registers the linker
+
+        rust_sym = _make_rust_sym("greet", annotations=[{"name": "wasm_bindgen"}])
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text(
+            "import { greet } from './pkg/my_module';\n"
+            "import wasmUrl from 'url:codecs/rotate/rotate.wasm';\n"
+        )
+        js_sym = _make_js_sym("main", path=str(ts_file))
+        result = run_linker(
+            "wasm-bindgen-linker",
+            LinkerContext(repo_root=tmp_path, symbols=[js_sym, rust_sym]),
+        )
+        assert {s.kind for s in result.symbols} == {"import", "module"}
+        assert _check_id_roundtrip(result.symbols) == []

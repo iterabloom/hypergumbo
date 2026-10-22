@@ -53,6 +53,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..analyze.base import make_file_id, make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -271,7 +272,13 @@ def link_wasm_bindgen(
 
             # WI-dovog: the importing file's language, not a literal.
             host_language = js_ts_language_from_path(Path(rel_path))
-            src_id = f"{host_language}:{rel_path}:0-0:{import_name}:wasm_import"
+            # ADR-0036 Ruling 2 (WI-vojur): the kind slot is the node's kind,
+            # ``import``; the role it used to carry stays a name-segment suffix
+            # (the websocket linker's INV-dulah shape) so the stand-in never
+            # collides with an analyzer ``import`` node of the same name.
+            src_id = make_symbol_id(
+                host_language, rel_path, 0, 0, f"{import_name}-wasm_import", "import",
+            )
 
             # Create synthetic Symbol node for the wasm import so the
             # slicer's BFS can traverse through it. Without this node,
@@ -399,6 +406,9 @@ def _create_wasm_load_edges(
     the WASM module.
     """
     edges: list[Edge] = []
+    # WI-vojur: the file node each loading file already has, so the edge
+    # starts at it rather than at a shadow id.
+    file_ids_by_path = {s.path: s.id for s in ts_js_symbols if s.kind == "file"}
     symbols: list[Symbol] = []
     seen_paths: set[str] = set()
     seen_wasm_refs: set[tuple[str, str]] = set()
@@ -424,7 +434,11 @@ def _create_wasm_load_edges(
             seen_wasm_refs.add(dedup_key)
 
             # Create synthetic WASM module symbol
-            wasm_module_id = f"wasm:{wasm_ref}:0-0:module:wasm_module"
+            # Kind slot = node.kind (ADR-0036 Ruling 2, WI-vojur). The ``wasm``
+            # language slot stays: the module has no host discovery language,
+            # and the slot of a host-less synthetic is ADR-0036's deferred
+            # chokepoint question (make_synthetic_symbol_identity, 5b).
+            wasm_module_id = f"wasm:{wasm_ref}:0-0:module:module"
 
             if wasm_module_id not in {s.id for s in symbols}:
                 # ADR-0031 Class B: WASM module synthetic — has no host
@@ -449,14 +463,11 @@ def _create_wasm_load_edges(
                 ))
 
             # Create an ``imports`` edge (meta.framework_dispatch=
-            # "wasm_instantiate") from the JS file to the WASM module
-            rel_path = sym.path
-            try:
-                rel_path = str(Path(sym.path).relative_to(repo_root))
-            except ValueError:
-                pass
-
-            src_id = f"{sym.language}:{rel_path}:0-0:file:file"
+            # "wasm_instantiate") from the JS file to the WASM module.
+            # WI-vojur: from the file's own node -- the canonical ``1-1``
+            # id on the path the file's symbols carry -- not the ``0-0``
+            # shadow on a re-relativised path, which matched no node.
+            src_id = file_ids_by_path.get(sym.path) or make_file_id(sym.language, sym.path)
             # ADR-0023 §6 Phase 3 (WI-mifor-vabul): wasm_load is a
             # file→module relationship (not a call), parallel to module
             # imports. Fold to canonical 'imports'; the dst's
