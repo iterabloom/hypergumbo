@@ -394,20 +394,48 @@ class TestLinkReactComponents:
         assert len(result.edges) == 1
         assert str(other_dir) in result.edges[0].src
 
-    def test_src_id_format(self, tmp_path: Path) -> None:
+    def test_the_src_is_the_component_that_renders_the_tag(self, tmp_path: Path) -> None:
+        """WI-gulud: the src was a fabricated ``...:<Name>:jsx_usage`` id no
+        node carried. It is the enclosing component, at the tag's line."""
         from hypergumbo_core.linkers.react_component import link_react_components
 
         button_sym = _make_js_sym("Button", path="src/Button.tsx")
         app_file = tmp_path / "src" / "App.tsx"
         app_file.parent.mkdir(parents=True, exist_ok=True)
-        app_file.write_text("<Button />")
+        app_file.write_text("\n<Button />")
         app_sym = _make_js_sym("App", path=str(app_file))
 
         result = link_react_components(tmp_path, [app_sym, button_sym])
-        assert len(result.edges) == 1
-        assert result.edges[0].src.startswith("typescript:")
-        assert "Button" in result.edges[0].src
-        assert "jsx_usage" in result.edges[0].src
+        assert [(e.src, e.line) for e in result.edges] == [(app_sym.id, 2)]
+
+    def test_a_tag_outside_every_function_starts_at_the_file_node(
+        self, tmp_path: Path,
+    ) -> None:
+        """A top-level ``root.render(<App />)`` has no enclosing component; the
+        edge starts at the file's own node, in the file's own language."""
+        from hypergumbo_core.analyze.base import make_file_id
+        from hypergumbo_core.linkers.react_component import link_react_components
+
+        app_sym = _make_js_sym("App", path="src/App.jsx", language="javascript")
+        index = tmp_path / "index.jsx"
+        index.write_text("\n" * 20 + "root.render(<App />)\n")
+        helper = _make_js_sym("helper", path=str(index), language="javascript")
+
+        result = link_react_components(tmp_path, [helper, app_sym])
+        assert [e.src for e in result.edges] == [make_file_id("javascript", str(index))]
+
+    def test_an_existing_file_node_is_the_fallback_src(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.react_component import link_react_components
+
+        app_sym = _make_js_sym("App", path="src/App.tsx")
+        index = tmp_path / "index.tsx"
+        index.write_text("root.render(<App />)\n")
+        file_node = Symbol(
+            id=f"typescript:{index}:1-1:file:file", name="file", kind="file",
+            language="typescript", path=str(index), span=Span(1, 1, 0, 0),
+        )
+        result = link_react_components(tmp_path, [file_node, app_sym])
+        assert [e.src for e in result.edges] == [file_node.id]
 
 
 class TestReactComponentRegistry:
