@@ -35,6 +35,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Import and build-target edges from json, make, jsonnet, astro, svelte and Cargo manifests have well-formed destinations**, so none becomes an `<unknown>` node.
 - **gRPC linker node ids use the node's own language and kind**, so they pass the id round-trip check.
 - **Swift/Objective-C bridging edges and nodes meet the graph**: bridging-header imports start at the header's file node, and linker ids carry `swift` and the node's kind.
+- **WebAssembly load edges start at the loading file's node**, and the WASM import and module stand-ins' ids carry their node kind.
 
 ## [9.2.0] - 2026-10-20
 
