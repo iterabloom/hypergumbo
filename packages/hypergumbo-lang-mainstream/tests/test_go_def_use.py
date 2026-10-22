@@ -11,6 +11,7 @@ zero DDG edges — while every unit test below would have passed.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -101,6 +102,20 @@ class TestShortVarDeclaration:
         r = _extract(_wrap("_, err := do(x)"))
         assert r.defines == ["err"]
         assert "x" in r.uses
+
+    def test_blank_identifier_keeps_its_position_as_none(self) -> None:
+        """WI-sitaf: the return lift reads the left side by position; the
+        blank's slot binds nothing, so it is ``None``, never a name."""
+        assert _extract(_wrap("_, err := do(x)")).targets == [None, "err"]
+        assert _extract(_wrap("v, _ = do(x)")).targets == ["v", None]
+
+    def test_no_blank_reports_no_positions(self) -> None:
+        # ``defines`` already lists the left side in order.
+        assert _extract(_wrap("a, b := split(s)")).targets is None
+
+    def test_a_target_naming_no_variable_reports_no_positions(self) -> None:
+        # ``*p`` binds no name, so there is nothing to put in its slot.
+        assert _extract(_wrap("*p, _ = do(x)")).targets is None
 
     def test_channel_receive(self) -> None:
         r = _extract(_wrap("got := <-ch"))
@@ -300,6 +315,27 @@ class TestGoDdgEndToEnd:
         ]
         assert len(populated) >= 2
         assert any("secret" in s.defines for s in populated)
+
+    def test_the_repo_ddg_keeps_positions_apart_from_defines(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-sitaf: the positional left side reaches ``stmt_targets``, and
+        ``stmt_defuse`` keeps only the variables bound -- ``_`` in defines was
+        an heir and a seed with no definition (concept audit 2026-10-21)."""
+        from hypergumbo_core.ddg_build import build_repo_ddg
+
+        (tmp_path / "main.go").write_text(
+            "package main\n\nfunc get() (string, error) { return \"\", nil }\n\n"
+            "func main() {\n\t_, err := get()\n\tuse(err)\n}\n"
+        )
+        result = build_repo_ddg(tmp_path, languages=("go",))
+        (main_id,) = [k for k in result.stmt_targets if k.endswith(":main:function")]
+        assert result.stmt_targets[main_id] == [(6, (None, "err"))]
+        assert all(
+            "_" not in defines and None not in defines
+            for statements in result.stmt_defuse.values()
+            for _line, defines, _uses in statements
+        )
 
     def test_unrelated_variables_produce_no_edge(self) -> None:
         """Non-vacuity in the other direction: the solver is not

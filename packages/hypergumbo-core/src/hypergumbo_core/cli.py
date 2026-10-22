@@ -6564,6 +6564,7 @@ def _build_ddg_for_verify_claims(
     set[str],
     dict[str, frozenset[str]],
     dict[str, list["ReturnStatement"]],
+    dict[str, list[tuple[int, tuple[Optional[str], ...]]]],
 ]:
     """Build aggregated DDG edges + symbol set + receiver hints for taint analysis.
 
@@ -6621,7 +6622,7 @@ def _build_ddg_for_verify_claims(
         # The fail-closed default lives at the point of USE (a function absent
         # from the set only qualifies because it was checked and covered), not
         # here, where the whole analysis is absent rather than incomplete.
-        return [], set(), {}, {}, set(), {}, {}
+        return [], set(), {}, {}, set(), {}, {}, {}
 
     available = registered_ddg_languages()
     if candidate_languages is None:
@@ -6642,6 +6643,7 @@ def _build_ddg_for_verify_claims(
         result.forfeit_refutation,
         result.unaccounted_names,
         result.return_spans,
+        result.stmt_targets,
     )
 
 
@@ -7521,7 +7523,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             # languages that have a registered DDG spec.
             (
                 ddg_edges, ddg_symbols, hints_by_caller, stmt_defuse,
-                ddg_forfeits, ddg_unaccounted, ddg_returns,
+                ddg_forfeits, ddg_unaccounted, ddg_returns, ddg_targets,
             ) = _build_ddg_for_verify_claims(
                 repo_root, sorted(per_lang_sinks), behavior_map.get("nodes", []),
             )
@@ -7637,6 +7639,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         # INV-komoj: a source a helper RETURNS is lifted into
                         # the helper's callers.
                         return_spans=ddg_returns,
+                        stmt_targets=ddg_targets,
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(

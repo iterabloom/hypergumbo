@@ -138,7 +138,10 @@ position, in order (``stmt_defuse`` keeps that order), so the lift can seed
 the caller on ``name`` alone. Without it every variable a multi-value call
 defines is seeded, and a Go caller that propagates the helper's ``err``
 "returns the value" -- which, lifted again, climbs every error chain above a
-source.
+source. ``defines`` drops Go's blank, so a statement the extractor reports by
+position also lands in ``stmt_targets`` (``_, err := get()`` -> ``(None,
+"err")``, WI-sitaf), where the lift reads a value received into the blank as
+received by nothing.
 
 Refinement Hook
 ---------------
@@ -295,6 +298,18 @@ class RepoDdg:
     #: already carries them — ``populate_def_use_for_cfg`` fills them in one
     #: line above where this is collected, and they were simply discarded.
     stmt_defuse: dict[str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]] = field(
+        default_factory=dict,
+    )
+    #: ``symbol_id -> [(line, targets), ...]`` for each statement whose
+    #: def/use extractor reported its left-hand side BY POSITION
+    #: (``CfgStatement.targets``; ``None`` marks a slot that binds nothing).
+    #: WI-sitaf. Kept apart from ``stmt_defuse`` on purpose: every consumer
+    #: of a statement's ``defines`` reads its entries as variables, and Go's
+    #: blank ``_`` is none -- folded in, it became an heir with no recorded
+    #: use and a seed with no definition, two false ``escaped`` walks (concept
+    #: audit 2026-10-21, F1). Only the return lift's received-position seeds
+    #: read this. Collected on the same terms as ``stmt_defuse``.
+    stmt_targets: dict[str, list[tuple[int, tuple[Optional[str], ...]]]] = field(
         default_factory=dict,
     )
     #: Symbol ids whose §3a walk may NOT return ``False`` (WI-joluk).
@@ -695,6 +710,14 @@ def _solve_one_function(
         # body's edges stayed in ``ddg_edges``.
         if stmts:
             out.stmt_defuse.setdefault(sym_id, []).extend(stmts)
+        positional = [
+            (s.line, tuple(s.targets))
+            for block in cfg.blocks.values()
+            for s in block.statements
+            if s.targets is not None
+        ]
+        if positional:
+            out.stmt_targets.setdefault(sym_id, []).extend(positional)
         # INV-lupav L4. Collected on the same terms as ``stmt_defuse`` and for
         # the same reason: a function with no edges is never walked, and the
         # empty answer this returns for an unpopulated CFG would be a lie about
