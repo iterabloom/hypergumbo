@@ -235,7 +235,7 @@ import Header from './Header.astro';
 """)
         result = analyze_astro(tmp_path)
         # Component-ref `imports` Edge (Cluster F audit-findings 0011, origin="test", origin_run_id="test") has
-        # meta.component_name and dst=import_path. WI-kunag adds a separate
+        # meta.component_name and dst=the module-import id of import_path. WI-kunag adds a separate
         # frontmatter `imports` Edge whose meta carries import_name; this
         # test still asserts the component-ref edge specifically.
         comp_edges = [
@@ -243,7 +243,8 @@ import Header from './Header.astro';
             if e.edge_type == "imports" and (e.meta or {}).get("component_name") == "Header"
         ]
         assert len(comp_edges) == 1
-        assert comp_edges[0].dst == "./Header.astro"
+        # WI-bufar-pokam: the canonical module-import id, not the bare path.
+        assert comp_edges[0].dst == "astro:./Header.astro:0-0:module:module"
 
     def test_component_ref_without_import(self, tmp_path: Path) -> None:
         """Unresolved component ref (no import) emits a dangling component

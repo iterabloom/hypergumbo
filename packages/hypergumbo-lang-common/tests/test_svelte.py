@@ -86,7 +86,8 @@ class TestAnalyzeSvelte:
             None,
         )
         assert edge is not None
-        assert edge.dst == "./Button.svelte"
+        # WI-bufar-pokam: the canonical module-import id, not the bare path.
+        assert edge.dst == "svelte:./Button.svelte:0-0:module:module"
         # Cluster F per audit-findings 0011: edge src is now the file id.
         assert edge.src == "svelte:App.svelte:1-1:file:file"
 

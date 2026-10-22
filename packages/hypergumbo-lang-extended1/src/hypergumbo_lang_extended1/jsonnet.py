@@ -53,11 +53,13 @@ from typing import TYPE_CHECKING, ClassVar, Optional
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
-    FileAnalysis,
-    TreeSitterAnalyzer,
     ancestor_labels,
+    FileAnalysis,
     find_child_by_type,
+    make_file_id,
+    make_module_import_dst,
     make_symbol_id,
+    TreeSitterAnalyzer,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import nested_qualified_name
@@ -266,8 +268,8 @@ def _extract_symbols_recursive(
     elif node.type == "import":
         # Cluster E sub-case (b) FOLD-clean-drop per audit-findings 0010:
         # the per-import Symbol was redundant with the imports Edge emitted
-        # by ``_extract_edges_recursive`` (src=jsonnet:{rel_path}:file,
-        # dst=jsonnet:import:{import_path} — both endpoints are independent
+        # by ``_extract_edges_recursive`` (src=the file node, dst=the
+        # canonical module-import id — both endpoints are independent
         # of any dropped Symbol id). Producer now emits only the Edge.
         pass
 
@@ -310,7 +312,7 @@ def _extract_edges_recursive(
                 dst = f"jsonnet:unresolved:0-0:{call_name}:unresolved"
 
             edge = Edge.create(
-                src=f"jsonnet:{rel_path}:file",
+                src=make_file_id("jsonnet", rel_path),
                 dst=dst,
                 edge_type="calls",
                 line=line,
@@ -332,9 +334,12 @@ def _extract_edges_recursive(
                         break
 
         if import_path:
+            # WI-bufar-pokam: both endpoints were 3-slot ids that fell to
+            # finalize's ``<unknown>`` fallback; the file node and the
+            # canonical module-import shape now.
             edge = Edge.create(
-                src=f"jsonnet:{rel_path}:file",
-                dst=f"jsonnet:import:{import_path}",
+                src=make_file_id("jsonnet", rel_path),
+                dst=make_module_import_dst("jsonnet", import_path),
                 edge_type="imports",
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,

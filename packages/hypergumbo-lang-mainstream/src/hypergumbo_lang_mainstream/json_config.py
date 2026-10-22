@@ -49,7 +49,9 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult, TreeSitterAnalyzer, make_manifest_target_dst, make_symbol_id,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id, scoped_table_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
@@ -357,7 +359,8 @@ def _process_bin(
                 edges.append(
                     Edge.create(
                         src=symbol_id,
-                        dst=target,
+                        dst=make_manifest_target_dst(rel_path, target, "javascript"),
+                        meta={"target_path": target},
                         edge_type="defines_target",
                         evidence_type="build_target_main",
                         line=start_line,
@@ -412,7 +415,8 @@ def _process_bin(
                     edges.append(
                         Edge.create(
                             src=symbol_id,
-                            dst=target,
+                            dst=make_manifest_target_dst(rel_path, target, "javascript"),
+                            meta={"target_path": target},
                             edge_type="defines_target",
                             evidence_type="build_target_main",
                             line=start_line,
@@ -478,7 +482,8 @@ def _process_main_entry(
     edges.append(
         Edge.create(
             src=symbol_id,
-            dst=target,
+            dst=make_manifest_target_dst(rel_path, target, "javascript"),
+            meta={"target_path": target},
             edge_type="defines_target",
             evidence_type="build_target_main",
             line=start_line,
@@ -595,7 +600,8 @@ def _process_exports(
             edges.append(
                 Edge.create(
                     src=symbol_id,
-                    dst=target,
+                    dst=make_manifest_target_dst(rel_path, target, "javascript"),
+                    meta={"target_path": target},
                     edge_type="defines_target",
                     evidence_type="build_target_main",
                     line=start_line,
@@ -655,7 +661,8 @@ def _process_exports(
         edges.append(
             Edge.create(
                 src=symbol_id,
-                dst=target,
+                dst=make_manifest_target_dst(rel_path, target, "javascript"),
+                meta={"target_path": target},
                 edge_type="defines_target",
                 evidence_type="build_target_main",
                 line=start_line,

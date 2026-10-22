@@ -58,12 +58,13 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
-    TreeSitterAnalyzer,
     ancestor_labels,
     iter_tree,
     make_file_id,
     make_symbol_id,
     node_text,
+    sanitize_id_name_segment,
+    TreeSitterAnalyzer,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
@@ -278,8 +279,14 @@ def _process_make_tree(
                                 dst_id = target_registry[prereq.lower()]
                                 confidence = 0.90
                             else:
-                                # External file or unresolved target
-                                dst_id = f"makefile:external:{prereq}:target"
+                                # External file or unresolved target. A
+                                # 5-slot id (WI-bufar-pokam): the 4-slot
+                                # ``makefile:external:<prereq>:target`` fell
+                                # to finalize's ``<unknown>`` path fallback.
+                                dst_id = make_symbol_id(
+                                    "makefile", prereq, 0, 0,
+                                    sanitize_id_name_segment(prereq), "target",
+                                )
                                 confidence = 0.70
 
                             edge = Edge.create(
