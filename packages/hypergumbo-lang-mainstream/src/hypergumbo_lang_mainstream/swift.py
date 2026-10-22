@@ -751,10 +751,14 @@ def _is_subscript(call: "tree_sitter.Node", source: bytes) -> bool:
     return args is not None and source[args.start_byte:args.start_byte + 1] == b"["
 
 
-#: The node types a parameter's or a property's declared TYPE parses as.
+#: The node types a parameter's declared TYPE parses as. ``some P``, ``any P``
+#: and ``P & Q`` are read too: a parameter whose type is not read is assumed
+#: able to take a trailing closure, which admitted ``init(_ r: some Reducer)``
+#: beside the closure inits for TCA's ``Reduce { ... }``.
 _SWIFT_TYPE_NODES: frozenset[str] = frozenset({
     "user_type", "array_type", "dictionary_type",
     "optional_type", "tuple_type", "function_type",
+    "opaque_type", "existential_type", "protocol_composition_type",
 })
 
 
