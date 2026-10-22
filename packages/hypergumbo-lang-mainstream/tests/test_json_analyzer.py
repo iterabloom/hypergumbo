@@ -157,7 +157,9 @@ def test_bin_creates_defines_target_edge(tmp_path):
 
     target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
     assert len(target_edges) >= 1
-    assert target_edges[0].dst == "bin/cli.js"
+    assert target_edges[0].meta["target_path"] == "bin/cli.js"
+    # WI-bufar-pokam: the dst is the target file's node id; the path rides in meta.
+    assert target_edges[0].dst == "javascript:bin/cli.js:1-1:file:file"
 
 
 def test_bin_string_creates_defines_target_edge(tmp_path):
@@ -172,7 +174,7 @@ def test_bin_string_creates_defines_target_edge(tmp_path):
 
     target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
     assert len(target_edges) >= 1
-    assert target_edges[0].dst == "src/main.js"
+    assert target_edges[0].meta["target_path"] == "src/main.js"
 
 
 def test_analyze_package_json_dependency_edges(tmp_path):
@@ -395,7 +397,7 @@ def test_package_json_main_creates_defines_target_edge(tmp_path):
 
     target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
     assert len(target_edges) >= 1
-    main_edge = next((e for e in target_edges if e.dst == "src/main.js"), None)
+    main_edge = next((e for e in target_edges if e.meta["target_path"] == "src/main.js"), None)
     assert main_edge is not None
 
     # Should also create a main_entry symbol
@@ -416,7 +418,7 @@ def test_package_json_main_no_name_uses_default(tmp_path):
 
     target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
     assert len(target_edges) >= 1
-    assert target_edges[0].dst == "index.js"
+    assert target_edges[0].meta["target_path"] == "index.js"
 
 
 def test_package_json_main_missing_no_edge(tmp_path):
@@ -485,7 +487,7 @@ def test_package_json_exports_string_creates_defines_target_edge(tmp_path):
     assert export_syms[0].meta["path"] == "./src/index.js"
 
     target_edges = [e for e in result.edges if e.edge_type == "defines_target"]
-    assert any(e.dst == "src/index.js" for e in target_edges)
+    assert any(e.meta["target_path"] == "src/index.js" for e in target_edges)
 
 
 def test_package_json_exports_conditional_resolves_best_path(tmp_path):
