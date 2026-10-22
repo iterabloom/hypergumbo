@@ -3,11 +3,13 @@
 
 This linker scans JavaScript/TypeScript (JSX/TSX) files for component usage
 in JSX expressions and creates ``references`` edges (tagged
-``meta.ref_construct="jsx"``, ``evidence_type="jsx_element"``) from the file
-doing the rendering to the rendered child component. The source is not the
-enclosing component: it is a per-file synthetic id
-``typescript:<rel_path>:0-0:<ComponentName>:jsx_usage`` (no symbol is emitted
-for it, and ``line`` is 0).
+``meta.ref_construct="jsx"``, ``evidence_type="jsx_element"``) from the code
+doing the rendering to the rendered child component. The source is the
+innermost function, method or class enclosing the JSX tag (the edge says
+"this component renders that one"), or the file's own node for a tag outside
+every one of them, and ``line`` is the tag's line (WI-gulud). It used to be a
+fabricated ``typescript:<rel_path>:0-0:<ComponentName>:jsx_usage`` id that no
+node carried, with ``typescript`` hard-coded whatever the file's language.
 
 How It Works
 ------------
@@ -22,8 +24,8 @@ Two-phase detection:
 2. **Scan for JSX usage**: Scan JS/TS source files for JSX element tags
    (``<ComponentName``) and match them against the component map. For each
    match, create a ``references`` edge (``meta.ref_construct="jsx"``) from the
-   file's synthetic ``jsx_usage`` id to the target component, deduplicated per
-   (file, component name).
+   enclosing symbol to the target component, deduplicated per (source,
+   component name).
 
 Why This Design
 ---------------
@@ -41,6 +43,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..analyze.base import make_file_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -172,6 +175,24 @@ def _resolve_component_with_fallback(
     return (min(pool, key=lambda c: c.id), True)
 
 
+def _scan_file_for_jsx_usages(file_path: Path) -> list[tuple[str, int]]:
+    """Every JSX component usage in a JS/TS file, as ``(name, 1-based line)``.
+
+    PascalCase component names only; React built-ins are filtered out.
+    """
+    try:
+        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
+    except OSError:  # pragma: no cover - defensive for I/O errors
+        return []
+
+    usages: list[tuple[str, int]] = []
+    for match in _JSX_COMPONENT_PATTERN.finditer(content):
+        component_name = match.group(1)
+        if component_name not in _REACT_BUILTINS:
+            usages.append((component_name, content.count("\n", 0, match.start()) + 1))
+    return usages
+
+
 def _scan_file_for_jsx_components(
     file_path: Path,
 ) -> list[str]:
@@ -180,18 +201,35 @@ def _scan_file_for_jsx_components(
     Returns a list of PascalCase component names found in JSX expressions.
     Filters out React built-in components.
     """
-    try:
-        content = read_masked_source(file_path, encoding="utf-8", errors="replace")
-    except OSError:  # pragma: no cover - defensive for I/O errors
-        return []
+    return [name for name, _line in _scan_file_for_jsx_usages(file_path)]
 
-    names: list[str] = []
-    for match in _JSX_COMPONENT_PATTERN.finditer(content):
-        component_name = match.group(1)
-        if component_name not in _REACT_BUILTINS:
-            names.append(component_name)
 
-    return names
+#: The symbol kinds a JSX usage is credited to, innermost first (WI-gulud).
+_RENDERER_KINDS: frozenset[str] = frozenset({"function", "method", "class"})
+
+
+def _rendering_symbol_id(
+    file_symbols: list[Symbol], path: str, language: str, line: int,
+) -> str:
+    """The id of the code that renders a JSX tag at *line* (WI-gulud).
+
+    The innermost function / method / class whose span contains the line
+    (ties broken by id, so the choice is deterministic), else the file's own
+    node: the run's file symbol for the path when an analyzer emitted one,
+    else ``make_file_id(language, path)``.
+    """
+    enclosing = [
+        (s.span.end_line - s.span.start_line, s.id)
+        for s in file_symbols
+        if s.kind in _RENDERER_KINDS and s.span is not None
+        and s.span.start_line <= line <= s.span.end_line
+    ]
+    if enclosing:
+        return min(enclosing)[1]
+    for s in file_symbols:
+        if s.kind == "file":
+            return s.id
+    return make_file_id(language, path)
 
 
 def link_react_components(
@@ -206,8 +244,8 @@ def link_react_components(
 
     Returns:
         ReactComponentLinkResult with ``references`` edges
-        (``meta.ref_construct="jsx"``) from per-file synthetic ``jsx_usage``
-        ids to component definitions.
+        (``meta.ref_construct="jsx"``) from the symbol rendering each JSX tag
+        to the component definition.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -220,31 +258,25 @@ def link_react_components(
         run.duration_ms = int((time.time() - start_time) * 1000)
         return ReactComponentLinkResult(edges=[], run=run)
 
-    # Phase 2: Collect unique JS/TS file paths
-    seen_paths: set[str] = set()
-    file_paths: list[Path] = []
+    # Phase 2: Collect unique JS/TS file paths, with each file's symbols
+    symbols_by_path: dict[str, list[Symbol]] = {}
     for sym in js_ts_symbols:
         if sym.language not in ("javascript", "typescript"):
             continue
-        if sym.path in seen_paths:
-            continue
-        seen_paths.add(sym.path)
-
-        file_path = Path(sym.path)
-        if not file_path.is_absolute():
-            file_path = repo_root / file_path
-        file_paths.append(file_path)
+        symbols_by_path.setdefault(sym.path, []).append(sym)
 
     # Phase 3: Match JSX usage to component definitions
-    seen_edges: set[tuple[str, str]] = set()  # (file_path, component_name)
+    seen_edges: set[tuple[str, str]] = set()  # (source id, component_name)
 
-    for file_path in file_paths:
+    for sym_path, file_symbols in symbols_by_path.items():
+        file_path = Path(sym_path)
+        if not file_path.is_absolute():
+            file_path = repo_root / file_path
         if not file_path.exists():
             continue
+        language = file_symbols[0].language or "typescript"
 
-        jsx_components = _scan_file_for_jsx_components(file_path)
-
-        for comp_name in jsx_components:
+        for comp_name, usage_line in _scan_file_for_jsx_usages(file_path):
             # Handle dotted names: <Ns.Component> → look up "Component"
             simple_name = comp_name.rsplit(".", 1)[-1] if "." in comp_name else comp_name
             resolved = _resolve_component_with_fallback(
@@ -261,18 +293,11 @@ def link_react_components(
             ):
                 continue
 
-            dedup_key = (str(file_path), comp_name)
+            src_id = _rendering_symbol_id(file_symbols, sym_path, language, usage_line)
+            dedup_key = (src_id, comp_name)
             if dedup_key in seen_edges:
                 continue
             seen_edges.add(dedup_key)
-
-            rel_path = str(file_path)
-            try:
-                rel_path = str(file_path.relative_to(repo_root))
-            except ValueError:
-                pass
-
-            src_id = f"typescript:{rel_path}:0-0:{comp_name}:jsx_usage"
 
             # INV-zuhub: simple-name fallback edges carry conf <= 0.5
             # and the disambiguation_fallback flag.
@@ -287,15 +312,15 @@ def link_react_components(
                 src=src_id,
                 dst=target_sym.id,
                 edge_type="references",
-                line=0,
+                line=usage_line,
                 confidence=confidence,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="jsx_element",
                 meta=edge_meta,
-                # derived-from endpoints: the src is a fabricated usage id; the component is joined
-                #   by JSX tag name
-                derived_from=[target_sym.id],
+                # derived-from endpoints: the src is the enclosing symbol found by position; the
+                #   component is joined by JSX tag name
+                derived_from=[src_id, target_sym.id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
