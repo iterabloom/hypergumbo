@@ -1,0 +1,32 @@
+Original commit body from 6bcf92410fab0caa350d321d774a52baff9afc05:
+
+INV-komoj seeds a lifted caller only on the variables its call binds at the
+result positions the value occupies. Go's def/use extractor drops the
+blank, so `_, err := get()` bound ("err",) against an arity of two, the
+position rule could not read it, and the fallback seeded err -- which the
+caller returns, so the lift climbed the error chain.
+
+The first cut (#1797, reverted by #1799) put `_` into stmt_defuse's
+defines as a placeholder; the 2026-10-21 concept audit found two consumers
+reading it as a variable (false violated on `_, err := get();
+fmt.Println(err)` and `s, _ := tok.(string)`). This one keeps them apart:
+
+- DefUseResult/CfgStatement.targets: the left-hand side by position, None
+  for a slot that binds nothing; Go's short-var and assignment handlers
+  report it when a blank is present and every other target names exactly
+  one variable.
+- RepoDdg.stmt_targets carries those positions to propagate_taint_ddg;
+  stmt_defuse's defines stay the variables bound.
+- _received_seeds reads positions where present and returns an EMPTY set
+  only when every call line was read and every received slot is a blank;
+  the walk reads that as "carries nothing", never as source_undefined.
+
+CLI (host_secret -> subprocess): the two audit shapes stay exit 3; the
+WI-sitaf repro (wrap: `_, err := get(); return "ls", err`) goes from a
+false violated to exit 3. Corpus A/B (dev f02ac77359; runc, gin, coredns,
+buildah): 0 verdicts moved; buildah walks None 1238 -> 1204, True 1635 ->
+1524, False 1 -> 21 (each new False a value received into a blank);
+host-secret-no-network evidence 91 -> 79; the other three repos' walks
+identical.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
