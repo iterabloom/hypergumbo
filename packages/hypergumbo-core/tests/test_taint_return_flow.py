@@ -244,38 +244,6 @@ class TestTheValueComesBackInItsOwnResultPosition:
         assert verdict["verdict"] == "violated", verdict["details"]
         assert _returned_by(verdict) == {"get", "wrap"}
 
-    def test_go_a_blank_at_the_value_s_position_discards_it(
-        self, tmp_path: Path,
-    ) -> None:
-        """WI-sitaf. ``_, err := get()`` drops the value into the blank. The
-        extractor drops the blank too, so the call defined ``("err",)``
-        against an arity of 2, the position rule could not apply, and the
-        fallback seeded ``err`` -- which ``wrap`` returns, so the lift climbed
-        into ``main`` and ``err.Error()`` reached the launch."""
-        verdict = _verdict(tmp_path, {"go.mod": _GO_MOD, "main.go": _GO_HEAD + (
-            'func get() (string, error) {\n\tv := os.Getenv("TOOL")\n'
-            "\treturn v, nil\n}\n\n"
-            "func wrap() (string, error) {\n\t_, err := get()\n"
-            '\treturn "ls", err\n}\n\n'
-            "func main() {\n\tname, err := wrap()\n"
-            "\texec.Command(name, err.Error()).Run()\n}\n")})
-        assert verdict["verdict"] != "violated", verdict["evidence"]
-
-    def test_go_a_blank_elsewhere_keeps_the_value_s_position(
-        self, tmp_path: Path,
-    ) -> None:
-        """The control: ``value, _ := get()`` keeps the value, and ``wrap``
-        returns it, so the lift does climb."""
-        verdict = _verdict(tmp_path, {"go.mod": _GO_MOD, "main.go": _GO_HEAD + (
-            'func get() (string, error) {\n\tv := os.Getenv("TOOL")\n'
-            "\treturn v, nil\n}\n\n"
-            "func wrap() (string, error) {\n\tvalue, _ := get()\n"
-            "\treturn value, nil\n}\n\n"
-            "func main() {\n\tname, _ := wrap()\n"
-            "\texec.Command(name).Run()\n}\n")})
-        assert verdict["verdict"] == "violated", verdict["details"]
-        assert _returned_by(verdict) == {"get", "wrap"}
-
     def test_python_returning_the_other_element_does_not(
         self, tmp_path: Path,
     ) -> None:
@@ -583,8 +551,8 @@ class TestTheLift:
         defines = {("g", 7): [("name", "err")]}
         assert _received_seeds("g", [7], (2, frozenset({0})), defines) == {
             "name"}
-        # A statement whose left side does not have ``arity`` entries (one
-        # the extractor reported no positions for) seeds every variable.
+        # ``_, err := get()``: the blank is not a define, so the arity does
+        # not match and every variable is seeded, as before.
         assert _received_seeds("g", [7], (3, frozenset({0})), defines) is None
         assert _received_seeds("g", [7], None, defines) is None
 

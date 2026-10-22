@@ -170,32 +170,6 @@ def _names_from_expression_list(node: Any, source: bytes) -> list[str]:
     return names
 
 
-def _positional_targets(node: Any, source: bytes) -> list[str] | None:
-    """An ``expression_list`` target by POSITION, the blank kept as ``_`` (WI-sitaf).
-
-    The return lift maps a callee's result positions onto the variables its
-    call defines, and ``defines`` drops the blank, so ``_, err := get()``
-    lists one name against an arity of two. ``None`` -- keep ``defines`` --
-    unless a blank is present and every other target names exactly one
-    variable: a target that names none (``*p``) has no name to put in its
-    slot, and guessing one would move the seed.
-    """
-    targets: list[str] = []
-    blank = False
-    for child in node.children:
-        if not child.is_named:
-            continue
-        if child.type == "identifier" and _node_text(child, source) == _BLANK:
-            targets.append(_BLANK)
-            blank = True
-            continue
-        names = _collect_pattern_names(child, source)
-        if len(names) != 1:
-            return None
-        targets.append(names[0])
-    return targets if blank else None
-
-
 @register_def_use_extractor("go")
 class GoDefUseExtractor:
     """Extracts variable definitions and uses from Go tree-sitter AST nodes."""
@@ -216,8 +190,7 @@ def _handle_short_var_declaration(node: Any, source: bytes) -> DefUseResult:
     right = node.child_by_field_name("right")
     defines = _names_from_expression_list(left, source) if left is not None else []
     uses = _collect_identifiers(right, source) if right is not None else []
-    targets = _positional_targets(left, source) if left is not None else None
-    return DefUseResult(defines=defines, uses=uses, targets=targets)
+    return DefUseResult(defines=defines, uses=uses)
 
 
 def _handle_spec_declaration(node: Any, source: bytes) -> DefUseResult:
@@ -265,8 +238,7 @@ def _handle_assignment_statement(node: Any, source: bytes) -> DefUseResult:
 
     if right is not None:
         uses.extend(_collect_identifiers(right, source))
-    targets = _positional_targets(left, source) if left is not None else None
-    return DefUseResult(defines=defines, uses=uses, targets=targets)
+    return DefUseResult(defines=defines, uses=uses)
 
 
 def _handle_inc_dec_statement(node: Any, source: bytes) -> DefUseResult:
