@@ -375,6 +375,30 @@ class TestTheMergePassOnBothArms:
         assert callables and any(s.span.end_line > s.span.start_line for s in callables)
         assert all("scip_symbol" in (s.meta or {}) for s in merged)
         assert all(s.origin_run_id == runs[-1]["execution_id"] for s in merged)
+        assert all("item_span" not in (s.meta or {}) for s in symbols)  # the carrier is spent
+
+    def test_a_scip_only_record_is_spanned_over_its_item(self) -> None:
+        """INV-lodum on committed input: of the 19 SCIP-only records, the
+        three whose Definition encloses more than its name (two inline
+        ``mod tests`` and the function-local ``static DNSBACKEND``) take the
+        recorded ``enclosing_range``; the 16 file-level modules, whose name
+        already spans the file, are unchanged."""
+        symbols, edges, runs = _both_arms()
+        report = merge_producer_records(symbols, edges, runs)
+        left = [s for s in symbols if s.origin == ["scip"]]
+        assert len(left) == AARDVARK_DNS_PAIRING["scip_definitions"] - AARDVARK_DNS_PAIRING["paired"]
+        assert sorted(
+            (s.path, s.name, s.span.start_line, s.span.end_line) for s in left if s.id in report.respanned
+        ) == [
+            ("src/server/serve.rs", "DNSBACKEND", 289, 291),
+            ("src/server/serve.rs", "tests", 488, 619),
+            ("src/test/test.rs", "tests", 3, 476),
+        ]
+        assert len(report.respanned) == 3
+        # Rewired like a fold: the references reach the new ids, none the old.
+        old = {before for before, after in report.id_remap.items() if after in report.respanned}
+        assert sum(1 for e in edges if {e.src, e.dst} & set(report.respanned)) == 12
+        assert [e for e in edges if {e.src, e.dst} & old] == []
 
     def test_shared_call_sites_are_folded_and_corroborated(self) -> None:
         """WI-kokiz folds the endpoints; WI-binis folds the agreeing edges in

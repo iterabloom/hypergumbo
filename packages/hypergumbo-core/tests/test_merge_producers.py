@@ -701,3 +701,72 @@ class TestAProducerContributesOnlyWhatItObserved:
         with pytest.raises(MergeDeclarationError, match="signature"):
             MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN,
                         observes=("signature",))
+
+
+_ITEM = {"start_line": 3, "end_line": 9, "start_col": 0, "end_col": 1}
+
+
+class TestATokenRecordTheMergeDoesNotFoldTakesItsItemExtent:
+    """INV-lodum: a SCIP-only leftover keeps no partner span to fold into, so
+    it takes the item extent its producer recorded in ``meta["item_span"]``;
+    the id is re-minted from it (ADR-0036) and every reference is rewired.
+    Pairing ran first, on the token span, so the anchor is not disturbed."""
+
+    def _leftover(self) -> Symbol:
+        return _sym("tests", "namespace", 4, 4, run=RUN_SCIP, origin="scip",
+                    meta={"scip_symbol": "pkg/tests/", "item_span": dict(_ITEM)})
+
+    def test_the_leftover_is_respanned_and_its_id_reminted(self) -> None:
+        leftover = self._leftover()
+        symbols = [_incumbent_method(), _scip_method(), leftover]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        [respanned] = [s for s in symbols if s.name == "tests"]
+        assert (respanned.span.start_line, respanned.span.end_line) == (3, 9)
+        assert respanned.id == "python:pkg/mod.py:3-9:tests:namespace"
+        assert respanned.meta == {"scip_symbol": "pkg/tests/"}  # the carrier is consumed
+        assert respanned.origin == ["scip"] and respanned.origin_run_id == RUN_SCIP
+
+    def test_edges_and_contexts_follow_the_new_id(self) -> None:
+        leftover = self._leftover()
+        old = leftover.id
+        edges = [_edge(old, "python:pkg/mod.py:1-1:x:function", origin="scip")]
+        contexts = [UsageContext(id="uc1", kind="call", context_name="f", symbol_ref=old,
+                                 position="args[0]", metadata={}, path="pkg/mod.py",
+                                 span=Span(4, 4, 0, 1))]
+        report = merge_producer_records([leftover], edges, [dict(r) for r in RUNS],
+                                        usage_contexts=contexts)
+        new = "python:pkg/mod.py:3-9:tests:namespace"
+        assert edges[0].src == new and edges[0].edge_key is None
+        assert contexts[0].symbol_ref == new
+        assert report.id_remap == {old: new} and report.respanned == [new]
+
+    def test_it_applies_when_only_one_producer_emitted(self) -> None:
+        """A single producer merges nothing and appends no run, but its
+        record's span is still the item's."""
+        runs = [dict(r) for r in RUNS]
+        symbols = [self._leftover()]
+        report = merge_producer_records(symbols, [], runs)
+        assert report.merged == [] and report.run is None
+        assert (symbols[0].span.start_line, symbols[0].span.end_line) == (3, 9)
+
+    def test_a_merged_record_drops_the_carrier(self) -> None:
+        scip = _scip_method()
+        scip.meta = {**(scip.meta or {}), "item_span": {"start_line": 14, "end_line": 17,
+                                                         "start_col": 4, "end_col": 5}}
+        symbols = [_incumbent_method(), scip]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        [merged] = symbols
+        assert "item_span" not in merged.meta
+        assert (merged.span.start_line, merged.span.end_line) == (14, 17)
+
+    def test_an_item_extent_that_would_collide_keeps_the_token_span(self) -> None:
+        """The re-minted id naming a record already present means the pairing
+        left these two unfolded (ambiguity); taking the span would make one id
+        name two records, so the token span stays and the carrier is dropped."""
+        leftover = self._leftover()
+        occupant = _sym("tests", "namespace", 3, 9, run=RUN_LINKER, origin="containment-linker")
+        symbols = [leftover, occupant]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert (leftover.span.start_line, leftover.span.end_line) == (4, 4)
+        assert leftover.id == "python:pkg/mod.py:4-4:tests:namespace"
+        assert "item_span" not in leftover.meta and report.respanned == []

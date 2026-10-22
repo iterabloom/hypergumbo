@@ -43,6 +43,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **React JSX references start at the component that renders the tag**, at its line, not at a fabricated id no node carried.
 - **A Dockerfile variable is one symbol per build stage**: a re-declared `ENV` or `ARG` no longer duplicates it, and `ENV A=1 B=2` declares both.
 - **Rust `type` aliases are symbols** (`type_alias`), so a slice or dead-code query can name them.
+- **SCIP-only symbols span their whole item**, not the name token (rust-analyzer: inline `mod`s, local statics).
 - **CSS `@import` edges reach the survey**: they start at the file node and land on the imported file's node when the repository has it.
 
 ## [9.2.0] - 2026-10-20

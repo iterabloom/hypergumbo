@@ -222,7 +222,7 @@ This runs BEFORE the same-site rule and stamps the same two `meta` keys, which t
 
 - WI-zapuk — SCIP edges carry the target-kind-derived edge type (§7, first prerequisite; the role bits the row named are all zero on the recorded producer). **Landed.**
 - WI-gapup — SCIP `kind` from the producer's declaration, else the descriptor chain (§7, second prerequisite). **Landed.**
-- WI-kokiz — the merge pass (§3); INV-lodum's cure lands here for every merged record (SCIP-only leftovers keep their token span). **Landed.**
+- WI-kokiz — the merge pass (§3); INV-lodum's cure lands here for every merged record. **Landed.** A SCIP-only leftover takes the item extent its producer carried in `meta["item_span"]` (the Definition's `enclosing_range`, when it differs from the name token) after pairing, so the token anchor is undisturbed; its id is re-minted and rewired like a fold (INV-lodum, 3 of 19 leftovers on aardvark-dns).
 - WI-binis — attribute-level provenance slot + arbitration property + schema bump (§1, §4, §6), and §13's `corroborated` source, combining rule and `CONFIDENCE_MODEL` v2.1. **Landed.**
 - WI-hukuf — the `config.toml` arbitration default (§5). **Landed:** `arbitration.ArbitrationPolicy` / `[merge]`; built-in unchanged, exception table empty by measurement (0019), citation-gated.
 - WI-hohuh — producer contract: merge anchor, measured authority, `executes_analysed_code` on one surface; the pass refuses the undeclared (§10). Blocks WI-kokiz. **Landed.**

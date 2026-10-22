@@ -45,8 +45,8 @@ from attributes, so the merged attributes give the merged id — which
 coincides with the incumbent's exactly when incumbent-first arbitration
 leaves every identity attribute the incumbent's); the ITEM span (the
 INV-lodum cure for every merged record — a SCIP record spanned over its
-name token is folded into the item the incumbent spanned; SCIP-only
-leftovers keep their token span); ``origin`` = both producers' pass ids,
+name token is folded into the item the incumbent spanned; a leftover is
+covered below); ``origin`` = both producers' pass ids,
 incumbent first; ``meta`` = the union, the incumbent winning a key both
 set, so the SCIP moniker (``scip_symbol``) survives on the merged record;
 ``origin_run_id`` = this pass's run, since this pass emitted the record as
@@ -101,6 +101,20 @@ with one producer present is untouched: a tree-sitter-only run is
 byte-identical before and after, and no AnalysisRun is appended for a pass
 that folded nothing (the file-symbol synthesizer's convention; whether a
 no-op pass gets a run is the ADR-0056 question the owner reserved).
+
+A LEFTOVER'S SPAN (INV-lodum). A token-anchored record the pass did not fold
+has no partner item to take, but its producer may have observed the item
+too: the SCIP shim carries the Definition's ``enclosing_range`` in
+``meta["item_span"]`` when it differs from the token. After pairing — which
+ran on the token, so the declared anchor is undisturbed — such a record
+takes that span, its id is re-minted from it (ADR-0036) and rewired like a
+fold (:attr:`MergeReport.respanned`), whether or not its language had a
+second producer. The carrier is dropped from every record, folded or not:
+it is the producer's input to this pass, not an attribute. One refusal: an
+extent whose re-minted id already names a record keeps the token span, since
+taking it would make one id name two records. The record keeps its own
+``origin_run_id``: the producer observed both extents, and this pass only
+chose between them.
 """
 from __future__ import annotations
 
@@ -117,6 +131,7 @@ from ..ir import (
     PASS_VERSION,
     AnalysisRun,
     Edge,
+    Span,
     Symbol,
     UsageContext,
     _absorb_call_site,
@@ -189,6 +204,8 @@ class MergeReport:
     corroborated: int = 0
     #: partial external identity keys absorbed by a complete one (§15)
     external_folds: int = 0
+    #: ids of unfolded records that took their producer's item extent (INV-lodum)
+    respanned: List[str] = field(default_factory=list)
     run: Optional[AnalysisRun] = None
 
 
@@ -401,6 +418,7 @@ def _merge_one(
     # meta: union, incumbent wins a key both set.
     meta: Dict[str, Any] = dict(other.meta or {})
     meta.update(incumbent.meta or {})
+    meta.pop("item_span", None)  # the producer's input, spent: the record has the item span
     merged.meta = meta or None
     # origin: both producers, incumbent first (INV-jidat: pass ids that contributed).
     origins = list(incumbent.origin if isinstance(incumbent.origin, list) else [incumbent.origin])
@@ -424,6 +442,34 @@ def _merge_one(
         candidates={attr: _candidates(attr, members, observed_by) for attr in TRACKED_ATTRIBUTES},
     )
     return merged, record
+
+
+def _take_item_extents(symbols: List[Symbol], report: MergeReport) -> None:
+    """Span every unfolded record carrying ``meta["item_span"]`` over it.
+
+    See "A LEFTOVER'S SPAN" in the module docstring. Replaces each such
+    record in ``symbols`` with a copy whose span and id are the item's and
+    records the id change in ``report.id_remap`` for the caller's rewiring;
+    a record whose re-minted id is already taken keeps its span and loses
+    only the carrier.
+    """
+    taken = {s.id for s in symbols}
+    for index, symbol in enumerate(symbols):
+        if not symbol.meta or "item_span" not in symbol.meta:
+            continue
+        kept: Dict[str, Any] = dict(symbol.meta or {})
+        extent = kept.pop("item_span")
+        symbol.meta = kept or None  # the carrier is spent, whichever span the record keeps
+        span = Span(start_line=extent["start_line"], end_line=extent["end_line"],
+                    start_col=extent["start_col"], end_col=extent["end_col"])
+        new_id = make_symbol_id(symbol.language or "", symbol.path,
+                                span.start_line, span.end_line, symbol.name, symbol.kind)
+        if new_id in taken:
+            continue
+        symbols[index] = replace(symbol, id=new_id, span=span)
+        taken.add(new_id)
+        report.id_remap[symbol.id] = new_id
+        report.respanned.append(new_id)
 
 
 def _fold_edges(
@@ -739,6 +785,7 @@ def merge_producer_records(
         symbols[:] = [
             replacement.get(id(s), s) for s in symbols if id(s) not in dropped
         ]
+    _take_item_extents(symbols, report)
     remap = report.id_remap
     for edge in edges:
         changed = False

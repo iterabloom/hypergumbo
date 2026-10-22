@@ -35,6 +35,15 @@ Offset and indexing conventions pinned here:
   as ``[start_line, start_col, end_col]`` (single-line span) or
   ``[start_line, start_col, end_line, end_col]`` (multi-line span).
   Any other length is a malformed input and raises ``ValueError``.
+* ``Symbol.span`` is the Definition occurrence's ``range`` — the NAME
+  token, which is the anchor both SCIP backends declare
+  (``SPAN_ROLE_TOKEN``) and the merge pass pairs on. When the emitter also
+  gives an ``enclosing_range`` that differs (rust-analyzer: the whole
+  item), that extent rides in ``meta["item_span"]`` (1-indexed, same
+  fields as a ``Span``). Re-spanning here would break the pairing; the
+  merge pass instead applies it to a record it does not fold, and drops
+  it from one it does (INV-lodum). A malformed ``enclosing_range`` counts
+  as absent, not as fatal: unlike ``range``, nothing is lost without it.
 * SCIP lines are 0-indexed; hypergumbo :class:`~hypergumbo_core.ir.Span`
   lines are 1-indexed. The ``+1`` rewrite happens here so downstream
   sketch/slice/rank code never sees a 0-indexed line number.
@@ -113,7 +122,7 @@ Edge cases intentionally handled by skip rather than raise:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ..analyze.base import _short_sha256, make_symbol_id
 from ..ir import Span, Symbol
@@ -280,6 +289,28 @@ def _span_from_range(range_array: "list[int]") -> Span:
     )
 
 
+def _item_span(occ: Any, token: Span) -> Optional[Dict[str, int]]:
+    """The item extent to carry in ``meta["item_span"]``, or None.
+
+    None when the emitter gave no ``enclosing_range``, a malformed one, or
+    one equal to the token span (rust-analyzer's file-level modules: the
+    "name" already spans the file). ``occ`` is typed ``Any`` for the same
+    reason as in :mod:`.calls` (no stubs for the generated module).
+    """
+    if not len(occ.enclosing_range):
+        return None
+    try:
+        item = _span_from_range(list(occ.enclosing_range))
+    except ValueError:
+        return None
+    if item == token:
+        return None
+    return {
+        "start_line": item.start_line, "end_line": item.end_line,
+        "start_col": item.start_col, "end_col": item.end_col,
+    }
+
+
 def _resolve_language(doc: scip_pb2.Document) -> str:
     """Normalize ``Document.language`` to a lowercase hypergumbo language.
 
@@ -394,6 +425,10 @@ def scip_index_to_symbols(index: scip_pb2.Index) -> List[Symbol]:
                 # parser accepts an empty backtick-quoted name). Unmeasured.
                 continue
             span = _span_from_range(list(occ.range))
+            meta = _build_meta(sym_info)
+            item = _item_span(occ, span)
+            if item is not None:
+                meta["item_span"] = item
             sid = make_symbol_id(
                 lang, doc.relative_path, span.start_line, span.end_line, name, kind
             )
@@ -414,7 +449,7 @@ def scip_index_to_symbols(index: scip_pb2.Index) -> List[Symbol]:
                     # every document — which is one of the two reasons they are
                     # filtered above rather than hashed here.
                     stable_id=_short_sha256(sym_info.symbol),
-                    meta=_build_meta(sym_info),
+                    meta=meta,
                 )
             )
     return out
