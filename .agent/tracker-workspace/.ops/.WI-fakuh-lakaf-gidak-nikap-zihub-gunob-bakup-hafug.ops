@@ -1,0 +1,22 @@
+- op: create  # 4cea
+  at: '2026-10-22T05:11:03Z'  # 4cea
+  by: agent  # 4cea
+  actor: jgstern_agent  # 4cea
+  clock: 1  # 4cea
+  nonce: 4cea  # 4cea
+  data:  # 4cea
+    kind: work_item  # 4cea
+    title: "dead-code and test reachability disagree on anchors: module-init calls read dead under --seeds entrypoints, three test-only consumers give three answers"  # 4cea
+    status: todo_hard  # 4cea
+    priority: 2  # 4cea
+    parent:  # 4cea
+    tags:  # 4cea
+    - dead_code  # 4cea
+    - call_graph  # 4cea
+    - concept_audit_20261021  # 4cea
+    isbefore: []  # 4cea
+    duplicate_of: []  # 4cea
+    not_duplicate_of: []  # 4cea
+    pr_ref:  # 4cea
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F3. Verified through the production CLI on devref e9215548f6: lib.py 'def build_registry(): ...; REGISTRY = build_registry(); def run(): return REGISTRY' imported by main.py (if __name__ == '__main__': lib.run()) -> 'dead-code-maybe --seeds entrypoints' reports build_registry dead (it runs at import). Default --seeds production hides it (exported API seeded). Agent probe (not re-checked): test_only_reachability.py:268-289 (any src in a test path is a test caller) vs dead-code's test bucket cli.py:9395 and sketch coverage sketch.py:5345 (function/method seeds only) disagree on one fixture (CASES = build_cases() at test-module level; a test-class-body call). Fix shape: an anchor is reached when its container is (file: imported/executed; class body: its module imported; Java static init: class used; field initializer: class constructed), one shared rule for all three consumers."  # 4cea
+    fields: {}  # 4cea

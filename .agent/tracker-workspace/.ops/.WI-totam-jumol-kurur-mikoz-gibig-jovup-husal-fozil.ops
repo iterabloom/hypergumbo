@@ -1,0 +1,22 @@
+- op: create  # eb37
+  at: '2026-10-22T05:11:14Z'  # eb37
+  by: agent  # eb37
+  actor: jgstern_agent  # eb37
+  clock: 1  # eb37
+  nonce: eb37  # eb37
+  data:  # eb37
+    kind: work_item  # eb37
+    title: "anchor kinds unregistered or missing from kind sets: pony emits actor/primitive via node.type.replace; slice _CONTAINER_KINDS lacks object/actor/program/variable/record; JS anchors a class-field initializer on the file"  # eb37
+    status: todo_hard  # eb37
+    priority: 3  # eb37
+    parent:  # eb37
+    tags:  # eb37
+    - symbol_kind  # eb37
+    - call_graph  # eb37
+    - concept_audit_20261021  # eb37
+    isbefore: []  # eb37
+    duplicate_of: []  # eb37
+    not_duplicate_of: []  # eb37
+    pr_ref:  # eb37
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F3, agent probe/read: pony.py:327 kind = node.type.replace('_definition','') -> 'actor', 'primitive' not in all_symbol_kind_names() (a SIXTH producer-emit shape for the audit playbook's Step 4.5: string method on an AST node type); slice.py:635-638 _CONTAINER_KINDS lacks object, actor, program, variable, record; type_like_kind_names() omits module, actor, program; JS anchors class-field initializer 'p = helper()' on the FILE while py/java/kotlin/swift/csharp anchor class-body code on the class. Check whether a later pass normalises the pony kinds before fixing."  # eb37
+    fields: {}  # eb37

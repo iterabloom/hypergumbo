@@ -1,0 +1,23 @@
+- op: create  # cf3f
+  at: '2026-10-22T05:11:09Z'  # cf3f
+  by: agent  # cf3f
+  actor: jgstern_agent  # cf3f
+  clock: 1  # cf3f
+  nonce: cf3f  # cf3f
+  data:  # cf3f
+    kind: work_item  # cf3f
+    title: "reverse slice and structural taint walk instantiates -> class -> class-body calls, though constructing a subclass never runs its base's class body"  # cf3f
+    status: todo_hard  # cf3f
+    priority: 3  # cf3f
+    parent:  # cf3f
+    tags:  # cf3f
+    - slice  # cf3f
+    - taint  # cf3f
+    - call_graph  # cf3f
+    - concept_audit_20261021  # cf3f
+    isbefore: []  # cf3f
+    duplicate_of: []  # cf3f
+    not_duplicate_of: []  # cf3f
+    pr_ref:  # cf3f
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F3, agent probe only (needs a production-CLI repro): Python 'class C: x = helper()', 'class Sub(C): pass', 'def make(): Sub()' -> reverse slice of helper contains C, Sub, make, app.py (slice.py:751, 808); taint structural arm (taint.py:3277-3297, 5857-5859) reports f -> C() -> C's class body os.system; INV-putug's narrowing (taint.py:2849) covers dispatches_to out of a type, not calls. Fix depends on F3a's 'when does the anchored code run' contract: a Python class body runs at import, not at construction; a Java/Swift field initializer runs at construction."  # cf3f
+    fields: {}  # cf3f
