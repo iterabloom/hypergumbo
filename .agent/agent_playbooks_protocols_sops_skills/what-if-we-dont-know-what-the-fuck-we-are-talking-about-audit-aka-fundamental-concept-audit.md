@@ -248,8 +248,15 @@ producer" or "this fold target is correct" must check:
    by the analyzer module before being read out at emit time. WI-nubuv
    ext C (todo_soft) is the structural backstop.
 
+6. **String method on an AST node type.** `kind=node.type.replace(
+   "_definition", "")` derives the emitted value from the grammar's node
+   name, so the value never appears as a literal anywhere in the analyzer.
+   `pony.py:327` emits `actor` and `primitive` this way, neither of them a
+   registered kind (concept audit 2026-10-22). Grep for `.type.replace(`,
+   `.type.removesuffix(` and `.type.split(` near `kind=`.
+
 The producer-emit shapes above are the *known* miss categories for
-this codebase as of 2026-05-07. New languages or analyzer styles can
+this codebase as of 2026-10-22 (shape 6 added that day). New languages or analyzer styles can
 introduce new shapes; treat the list as a checklist seed, not as
 exhaustive. When you find a sixth shape during an audit, append it
 here with a file:line example.
@@ -1126,6 +1133,50 @@ runs can find prior work:
   write-up: `~/hypergumbo_lab_notebook/concept-audit-io-primitive-kind_09232026.md`.
 
 (Future audits append here.)
+
+- **2026-10-22 — vocabulary since the last audit (`vocabulary-since-0923`).**
+  Trigger: cadence (683 commits against a threshold of 72). Owner-requested,
+  pinned to merged dev `e9215548f6` so in-flight work could proceed, with
+  findings reconciled against later commits afterwards. Method: six read-only
+  sub-agents on one pinned worktree, with no tracker, git, smart-test or corpus
+  runs. Five each took one TERM across every consumer, not one subsystem. The
+  sixth was neutral and got no hypothesis. The orchestrator re-checked the
+  highest-impact claims itself. **Confirmed in five of six families.** The
+  neutral agent's top nominee (catalogue trust/tier/provenance) was the
+  family one primed agent had, and both agents reached the same three defects
+  independently, which is the cross-check that design was for.
+
+  The lesson worth carrying is that the audit's first silent bug was the
+  orchestrator's own merge from the day before. WI-sitaf put Go's blank `_`
+  into `stmt_defuse`'s "defines" slot as a positional placeholder. Two
+  consumers read it as a variable: `inherits` made it an heir with no
+  recorded use, and the received-position seed read `{"_"}` as an untracked
+  source. `_, err := get(); fmt.Println(err)` and `s, _ := tok.(string)`
+  turned from exit 3 into a false `violated`. The fix's own corpus A/B had
+  not caught it, because the cohort's verdicts were already `violated` with
+  evidence capped at 100, so new false rows were invisible. Reverted first,
+  then refixed with positions in their own channel.
+
+  Other confirmed findings:
+  - finalize re-derives every `evidence_derived` confidence, erasing ADR-0039
+    ruling 6's resolver interpolation on every published resolved edge;
+  - `calls.src` has no written contract, although anchors (file, type, Go
+    variable) are mandated, so the magnet pass, dead code and test-only
+    reachability each read an anchor differently;
+  - catalogue tier code calls a command-line-named in-repo file `in_repo`
+    against ADR-0061 ruling 1;
+  - `slice --io-boundary` reads only the scalar boundary;
+  - a caveat counts names as "rows".
+
+  Owner verdicts are recorded per family in the write-up, plus one owner
+  decision: argv mints `untrusted_input` as well, and `document.cookie`
+  moves to browser storage keeping `host_secret`, measured first. Also new:
+  a SIXTH producer-emit shape for Step 4.5, a string method applied to an
+  AST node type (`pony.py:327`, `node.type.replace("_definition", "")`).
+
+  Filed: 19 items tagged `concept_audit_20261021`, and WI-sitaf reopened.
+  Full write-up:
+  `~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md`.
 
 ## Relationship to other playbooks
 
