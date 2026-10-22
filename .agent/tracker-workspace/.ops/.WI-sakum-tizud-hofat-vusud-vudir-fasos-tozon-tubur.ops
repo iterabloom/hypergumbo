@@ -1,0 +1,22 @@
+- op: create  # 2e11
+  at: '2026-10-22T05:10:05Z'  # 2e11
+  by: agent  # 2e11
+  actor: jgstern_agent  # 2e11
+  clock: 1  # 2e11
+  nonce: '2e11'  # 2e11
+  data:  # 2e11
+    kind: work_item  # 2e11
+    title: "finalize re-derives every evidence_derived edge confidence from (evidence_type, is_resolved), erasing ADR-0039 ruling 6's resolution_score interpolation on every published resolved edge"  # 2e11
+    status: todo_hard  # 2e11
+    priority: 2  # 2e11
+    parent:  # 2e11
+    tags:  # 2e11
+    - confidence  # 2e11
+    - adr_0039  # 2e11
+    - concept_audit_20261021  # 2e11
+    isbefore: []  # 2e11
+    duplicate_of: []  # 2e11
+    not_duplicate_of: []  # 2e11
+    pr_ref:  # 2e11
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F2, verified by reading. Edge.create(resolution_score=...) interpolates in the band and stamps confidence_source='evidence_derived' (ir.py:1099-1113); finalize.py:445 calls _rederive_confidence_from_verdict (:665-700), which resets every evidence_derived edge to derive_confidence(evidence_type, is_resolved) and re-mirrors rank_score. Agent repro (C function pointer, fp=f1; if(c) fp=f2; fp(1)): score 0.5 -> created 0.575 -> published 0.85. INV-fazim (2026-08-08) predates ruling 6 (2026-10-15). Recommended verdict FIX (owner already decided ruling 6): keep the score on the edge and re-derive WITH it; drop it only when finalize flips the edge to unresolved (ruling 6: a score on an unresolved edge is meaningless). Repro first through the production CLI; then count changed confidences on a corpus repo."  # 2e11
+    fields: {}  # 2e11

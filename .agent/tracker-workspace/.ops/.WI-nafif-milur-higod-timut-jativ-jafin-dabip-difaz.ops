@@ -1,0 +1,22 @@
+- op: create  # 4d32
+  at: '2026-10-22T05:10:15Z'  # 4d32
+  by: agent  # 4d32
+  actor: jgstern_agent  # 4d32
+  clock: 1  # 4d32
+  nonce: 4d32  # 4d32
+  data:  # 4d32
+    kind: work_item  # 4d32
+    title: "receiver_blind_magnets treats a class-anchored call to the class's own method as cross-owner (owner_of(class name) is None) and finalize demotes it"  # 4d32
+    status: todo_hard  # 4d32
+    priority: 2  # 4d32
+    parent:  # 4d32
+    tags:  # 4d32
+    - call_graph  # 4d32
+    - dead_code  # 4d32
+    - concept_audit_20261021  # 4d32
+    isbefore: []  # 4d32
+    duplicate_of: []  # 4d32
+    not_duplicate_of: []  # 4d32
+    pr_ref:  # 4d32
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F3, verified by reading receiver_blind_magnets.py:247-251 (src_owner = owner_of(src.name) is None for a type anchor named 'P', so the same-class exemption never applies) + agent probe: Java/C# class P { static int Parse(String s); static int X = Parse(\"1\"); } -> the class-anchored edge to P.Parse is demoted by finalize.py:409 to java:external:0-0:Parse:unresolved; the same call from a method is kept. Fix: an anchor of kind type owns itself (owner = its own name). Repro through the production CLI first."  # 4d32
+    fields: {}  # 4d32
