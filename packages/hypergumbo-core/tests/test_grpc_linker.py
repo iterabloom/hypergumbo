@@ -2742,3 +2742,54 @@ class TestLinkerMintedSymbolsCarryAStableId:
             owner=PASS_ID, kind="class", lang="python", path="svc.py", name="S",
             scope=("grpc_servicer",),
         )
+
+
+class TestIdSlotsMatchTheNode:
+    """WI-fotad: ADR-0036 Ruling 2 (the kind slot is ``node.kind``) and the
+    language-slot rule (``discovery_language or language``). The linker minted
+    ``grpc:<path>:<line>:<Service>:grpc_service``: a framework role in the kind
+    slot and a protocol name in the language slot. The role stays in
+    ``meta.framework_role`` and, as the websocket linker does (INV-dulah), as
+    a name-segment suffix so two roles at one line keep distinct ids."""
+
+    def test_every_minted_id_round_trips_to_its_node(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.grpc import link_grpc
+        from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+
+        (tmp_path / "svc.proto").write_text(
+            'syntax = "proto3";\npackage demo;\n'
+            "service S {\n  rpc Get (Req) returns (Res);\n}\n"
+            "service T {\n  rpc Put (Req) returns (Res);\n}\n"
+        )
+        (tmp_path / "server.py").write_text(
+            "import grpc\nfrom generated import svc_pb2_grpc\n\n"
+            "class SServicer(svc_pb2_grpc.SServicer):\n"
+            "    def Get(self, request, context):\n        return None\n"
+        )
+        (tmp_path / "client.py").write_text(
+            "import grpc\nfrom generated import svc_pb2_grpc\n\n"
+            "channel = grpc.insecure_channel('localhost:50051')\n"
+            "stub = svc_pb2_grpc.SStub(channel)\n"
+        )
+        result = link_grpc(tmp_path)
+        assert {(s.meta or {}).get("framework_role") for s in result.symbols} >= {
+            "grpc_service", "grpc_servicer", "grpc_stub",
+        }
+        kinds = set(all_symbol_kind_names())
+        # The pattern symbols. RPC route stand-ins come from make_route_symbol,
+        # whose language fields this linker leaves None by a documented choice.
+        minted = [
+            s for s in result.symbols
+            if str((s.meta or {}).get("framework_role", "")).startswith("grpc_")
+        ]
+        assert minted
+        for sym in minted:
+            lang_slot, kind_slot = sym.id.split(":")[0], sym.id.rsplit(":", 1)[-1]
+            assert kind_slot == sym.kind, sym.id
+            assert kind_slot in kinds, sym.id
+            assert lang_slot == sym.language, sym.id
+        # The stub still reaches its servicer, by the ids the symbols carry.
+        ids = {s.id for s in result.symbols}
+        grpc_calls = [e for e in result.edges if (e.meta or {}).get("protocol") == "grpc"]
+        assert grpc_calls
+        assert all(e.src in ids and e.dst in ids for e in grpc_calls)
