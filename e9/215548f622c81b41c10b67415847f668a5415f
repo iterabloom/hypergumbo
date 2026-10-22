@@ -1,0 +1,23 @@
+Original commit body from 20dd0dc9b3826e068a3d5acb67bd15dfd659727f:
+
+INV-komoj seeds a caller only on the variables its call defines at the
+result positions the returned value occupies. Go's def/use extractor drops
+the blank identifier, so `_, err := get()` defined ("err",) against an
+arity of two, the position rule could not apply, and the fallback seeded
+every variable -- err included, which the caller returns, so the lift
+climbed the error chain.
+
+DefUseResult and CfgStatement gain `targets`, the left-hand side by
+position with the blank kept as `_`; Go's short-var and assignment
+handlers report it when a blank is present and every other target names
+exactly one variable (`*p, _ = f()` keeps the fallback). stmt_defuse uses
+it where present, so the received position maps exactly and a value that
+lands in the blank seeds nothing.
+
+Corpus A/B (dev e3ea9db6c9; runc, gin, coredns, buildah): 0 verdicts
+moved; buildah walks 2874 -> 2749 (e.g. mkcw.go `imageID, _, _, err :=`
+no longer seeds imageID and err), host-secret-no-network evidence 91 ->
+79 with shorter source_returned_by chains; runc, gin, coredns unchanged.
+Not covered: `var _, err = f()` declarations.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
