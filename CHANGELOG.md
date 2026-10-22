@@ -37,6 +37,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Swift/Objective-C bridging edges and nodes meet the graph**: bridging-header imports start at the header's file node, and linker ids carry `swift` and the node's kind.
 - **WebAssembly load edges start at the loading file's node**, and the WASM import and module stand-ins' ids carry their node kind.
 - **React JSX references start at the component that renders the tag**, at its line, not at a fabricated id no node carried.
+- **Rust `type` aliases are symbols** (`type_alias`), so a slice or dead-code query can name them.
 
 ## [9.2.0] - 2026-10-20
 

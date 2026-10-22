@@ -77,17 +77,18 @@ Re-record (3 s) rather than edit: create the crate above, run
    Under the ADR-0057 §10 anchors as declared on 2026-09-18 (tree-sitter:
    last ``::`` segment over the item span; SCIP: name as emitted over the
    identifier token), the live tree-sitter arm run on ``crate/`` pairs
-   **148 of the 169** SCIP definitions with exactly one record each and
-   none ambiguously; the 21 unpaired are the 18 module namespaces (no
-   tree-sitter counterpart by design), 2 ``type`` aliases (``AardvarkResult``,
-   ``ThreadHandleMap``; SCIP kind ``type_alias`` since WI-gapup) and 1
-   ``static`` item (``DNSBACKEND``, ``variable``) — three constructs the
-   tree-sitter arm emits no Symbol for at all (WI-bamar), an incumbent gap,
-   not an anchor defect — :data:`AARDVARK_DNS_PAIRING` pins it, and
+   **150 of the 169** SCIP definitions with exactly one record each and
+   none ambiguously; the 19 unpaired are the 18 module namespaces (no
+   tree-sitter counterpart by design) and 1 ``static`` item (``DNSBACKEND``,
+   ``variable``), a static inside a function body, which the tree-sitter arm
+   emits no Symbol for by its module-level rule. The 2 ``type`` aliases
+   (``AardvarkResult``, ``ThreadHandleMap``) were unpaired until WI-bamar
+   (2026-10-22) gave them ``type_alias`` Symbols, 148 -> 150.
+   :data:`AARDVARK_DNS_PAIRING` pins it, and
    :data:`AARDVARK_DNS_AGREEMENT_TALLY` pins that the paired records agree on
-   ``kind`` 133 times out of 148. ADR-0057 §3 cites 138 of 169 from
+   ``kind`` 135 times out of 150. ADR-0057 §3 cites 138 of 169 from
    a scratch-script measurement on 2026-09-18; the committed rule and the
-   committed input give 148, and the committed number is the one the merge
+   committed input gave 148 (150 since WI-bamar), and the committed number is the one the merge
    pass (WI-kokiz) must reproduce.
 
 Re-record either fixture rather than editing it: the crate is at
@@ -221,14 +222,14 @@ AARDVARK_DNS_COUNTS: Final[dict[str, int]] = {
 #: What the declared anchors pair on the committed input (see docstring).
 AARDVARK_DNS_PAIRING: Final[dict[str, int]] = {
     "scip_definitions": 169,
-    "paired": 148,
+    "paired": 150,
     "ambiguous": 0,
     "unpaired_namespace": 18,
-    "unpaired_type_alias": 2,
+    "unpaired_type_alias": 0,
     "unpaired_variable": 1,
 }
 
-#: On the 148 paired records, how often the two arms say the same ``kind``.
+#: On the 150 paired records, how often the two arms say the same ``kind``.
 #: (Named without the word "kind": the axis-drift collector reads any
 #: identifier containing it as a Symbol.kind value set, and these are counters.)
 #: (WI-gapup: the SCIP arm reads the producer's declared kind). The 15
@@ -238,18 +239,18 @@ AARDVARK_DNS_PAIRING: Final[dict[str, int]] = {
 #: is the more precise one, so the contest is left to arbitration rather than
 #: shaped away. Statics agree (``variable`` on both).
 AARDVARK_DNS_AGREEMENT_TALLY: Final[dict[str, int]] = {
-    "paired": 148,
-    "agree": 133,
+    "paired": 150,
+    "agree": 135,
     "disagree": 15,
     "disagree_constant_vs_variable": 15,
-    # WI-binis, the provenance slot on the 148 merged records: ``span`` is
+    # WI-binis, the provenance slot on the 150 merged records: ``span`` is
     # contested (token vs item) on all but the 2 unit enum variants, whose
     # tree-sitter span IS the bare name; ``stable_id`` is contested (moniker
-    # hash vs rust.py's) on all 148 -- no pair shares an id (INV-dolud). This
+    # hash vs rust.py's) on all 150 -- no pair shares an id (INV-dolud). This
     # read 134 while the harness skipped the kind backstop: the 14 struct/enum/
     # trait records had no incumbent value to contest (WI-paluk).
-    "span_alternatives": 146,
-    "stable_id_alternatives": 148,
+    "span_alternatives": 148,
+    "stable_id_alternatives": 150,
 }
 
 #: The SCIP arm's occurrence edges on the recording and their tree-sitter
@@ -302,38 +303,39 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
 # two-arm artifact — the merge pass, edge dedup, the resolution verdict and
 # supersession, as `_two_arm_artifact()` in test_recorded_fixtures builds it.
 # These are the numbers in docs/audits/0019-backend-agreement-rust-aardvark-dns.md.
-# Pairing per Symbol category: every one of the 148 paired records has both
+# Pairing per Symbol category: every one of the 150 paired records has both
 # producers; the 21 SCIP-only records are the namespaces, the two `type`
 # aliases and the one `static` (WI-bamar) the tree-sitter arm emits nothing for.
 AARDVARK_DNS_PAIRED_PER_CATEGORY = {
-    "enum": 3, "field": 38, "function": 52, "method": 27, "struct": 10, "trait": 1, "variable": 17,
+    "enum": 3, "field": 38, "function": 52, "method": 27, "struct": 10, "trait": 1,
+    "type_alias": 2, "variable": 17,
 }
-AARDVARK_DNS_SCIP_ONLY_PER_CATEGORY = {"namespace": 18, "type_alias": 2, "variable": 1}
-# Per attribute over the 148 paired records: (agree, disagree, rust only, rust_analyzer only).
+AARDVARK_DNS_SCIP_ONLY_PER_CATEGORY = {"namespace": 18, "variable": 1}
+# Per attribute over the 150 paired records: (agree, disagree, rust only, rust_analyzer only).
 # `name`: the 38 fields and 27 methods tree-sitter qualifies as `Type::member`
 # and SCIP emits bare — the anchors' name_key folds them, the carried scalar
 # keeps the incumbent's form. `is_exported`: one-sided to the incumbent on all
-# 148 — `rust.py` computes exportedness for every item it emits (`"pub" in
+# 150 — `rust.py` computes exportedness for every item it emits (`"pub" in
 # modifiers`) and the SCIP arm computes none, so since INV-kubup its records
 # carry no value at all rather than a `False` that read as a measurement. `span`: the
 # item/token role split of §10, by construction. `stable_id`: disagrees on all
-# 148, because the arms hash different things. tree-sitter uses the typed id, or the
+# 150, because the arms hash different things. tree-sitter uses the typed id, or the
 # orchestrator's declaration backstop for struct/enum/trait (WI-rihob); SCIP uses
 # `sha256(moniker)`, and its parity reassignment abstains (INV-dolud, WI-gojum). It read
 # 134 / 14-one-sided while the harness skipped the backstop a survey runs before the
-# merge (WI-paluk); a live survey reads 0 / 148 / 0 / 0. The one-sided rust-only columns
+# merge (WI-paluk); a live survey reads 0 / 150 / 0 / 0. The one-sided rust-only columns
 # are attributes the SCIP translation never fills (signature, docstring, modifiers,
 # qualified_name).
 AARDVARK_DNS_ATTRIBUTE_AGREEMENT = {
     "docstring": (0, 0, 63, 0),
-    "is_exported": (0, 0, 148, 0),
-    "kind": (133, 15, 0, 0),
-    "modifiers": (0, 0, 35, 0),
-    "name": (83, 65, 0, 0),
-    "qualified_name": (0, 0, 148, 0),
-    "signature": (0, 0, 125, 0),
-    "span": (2, 146, 0, 0),
-    "stable_id": (0, 148, 0, 0),
+    "is_exported": (0, 0, 150, 0),
+    "kind": (135, 15, 0, 0),
+    "modifiers": (0, 0, 36, 0),
+    "name": (85, 65, 0, 0),
+    "qualified_name": (0, 0, 150, 0),
+    "signature": (0, 0, 127, 0),
+    "span": (2, 148, 0, 0),
+    "stable_id": (0, 150, 0, 0),
 }
 # Per (edge type, resolved) after the fold: (both producers, rust only, rust_analyzer only).
 # The 93 "both" calls are the corroborated edges; the incumbent emits no
