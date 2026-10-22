@@ -1,0 +1,15 @@
+Original commit body from f6e1cccb04f4384b517ae380fcb67043d7012f22:
+
+WI-sogof's _constructed returned an extra-meta dict that two call sites
+splatted into Edge.create(meta={..., **_extra}). The meta-key gate
+(meta_key_coherence) cannot enumerate a dict returned through a tuple, so
+test_unenumerable_writes_are_exactly_the_acknowledged_ones went red on dev.
+smart-test did not select that whole-tree gate for a swift.py change, so
+the PR's CI did not see it.
+
+_constructed now returns whether the init choice was ambiguous; each call
+site builds its meta with literal keys, the pattern the explicit-init site
+already uses. module_key_axis line pins move with the edit (3056 -> 3064,
+2979 -> 2981). A cross-file test covers the resolver-path ambiguous branch.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
