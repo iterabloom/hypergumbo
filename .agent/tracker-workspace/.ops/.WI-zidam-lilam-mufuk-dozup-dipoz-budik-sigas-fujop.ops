@@ -1,0 +1,23 @@
+- op: create  # 3427
+  at: '2026-10-22T05:13:28Z'  # 3427
+  by: agent  # 3427
+  actor: jgstern_agent  # 3427
+  clock: 1  # 3427
+  nonce: '3427'  # 3427
+  data:  # 3427
+    kind: work_item  # 3427
+    title: "argv mints untrusted_input as well as host_secret, and document.cookie moves to browser storage keeping its host_secret label -- measure before shipping (owner-approved 2026-10-22)"  # 3427
+    status: todo_hard  # 3427
+    priority: 3  # 3427
+    parent:  # 3427
+    tags:  # 3427
+    - taint  # 3427
+    - io_boundary  # 3427
+    - catalogue  # 3427
+    - concept_audit_20261021  # 3427
+    isbefore: []  # 3427
+    duplicate_of: []  # 3427
+    not_duplicate_of: []  # 3427
+    pr_ref:  # 3427
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6. OWNER DECISION 2026-10-22: 'yes' to: command-line arguments count as both host_secret and untrusted_input (the launcher chose them, as it chose stdin, which is ipc_recv / untrusted_input per ADR-0050); document.cookie moves from env_read to browser storage (medium reading of ADR-0050) but keeps its host_secret label on the row. Measure first, as WI-lanos: pre-register PLAN (cohort chosen by argv / cookie call-site density across languages: python sys.argv, go os.Args, node process.argv, rust std::env::args, js document.cookie), BEFORE/AFTER arms on dev, seeded sample of added situations judged on ADR-0046's two axes, then the owner rules on the delta. Depends on F6a (axiom amendment) for the cookie half."  # 3427
+    fields: {}  # 3427

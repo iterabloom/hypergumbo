@@ -1,0 +1,23 @@
+- op: create  # e22a
+  at: '2026-10-22T05:13:23Z'  # e22a
+  by: agent  # e22a
+  actor: jgstern_agent  # e22a
+  clock: 1  # e22a
+  nonce: e22a  # e22a
+  data:  # e22a
+    kind: work_item  # e22a
+    title: "ADR-0050's axiom is applied three ways (medium, content, chooser); amend it to MEDIUM and fix the rows that contradict it (Unix-domain sockets are ipc in C, net in go/node/python asyncio)"  # e22a
+    status: todo_hard  # e22a
+    priority: 3  # e22a
+    parent:  # e22a
+    tags:  # e22a
+    - io_boundary  # e22a
+    - adr_0050  # e22a
+    - catalogue  # e22a
+    - concept_audit_20261021  # e22a
+    isbefore: []  # e22a
+    duplicate_of: []  # e22a
+    not_duplicate_of: []  # e22a
+    pr_ref:  # e22a
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6, agent read. ADR-0050 section 1 axiom 'what data crosses ... in which direction' + its own 'logging names a medium' (io_boundary_types.py:327-329) vs elixir.yaml:251-254 / erlang.yaml:315 / javascript.yaml:296,303 ('env_read means may carry a credential' -> document.cookie and document.location as env_read) vs navigation_read's chooser definition (:400-415). Recommended verdict DOCUMENT (owner-endorsed 2026-10-22): amend ADR-0050 section 1 to say the value names the MEDIUM. Then rows: ipc_send's definition includes 'a local socket' (io_boundary_types.py:221-224) and C rows AF_UNIX there (c.yaml:168-174, 263) but go net.DialUnix is net_send (go.yaml:262), ListenUnix net_listen, python asyncio.start_unix_server net_listen (python.yaml:749), node net.Socket IPC path net_send. Also swift.yaml:182 'argv is env_read in every catalogue' (go rows no os.Args). The argv / cookie label change is its own measured item."  # e22a
+    fields: {}  # e22a

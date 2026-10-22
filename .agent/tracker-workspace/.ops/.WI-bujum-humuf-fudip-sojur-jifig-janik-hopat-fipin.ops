@@ -1,0 +1,22 @@
+- op: create  # e562
+  at: '2026-10-22T05:13:17Z'  # e562
+  by: agent  # e562
+  actor: jgstern_agent  # e562
+  clock: 1  # e562
+  nonce: e562  # e562
+  data:  # e562
+    kind: work_item  # e562
+    title: "rename walk verdicts confirmed/unconfirmed to reached/refuted: today a run prints 'all CONFIRMED' (claim holds) beside 'walk confirmed 3' (a secret reached a sink)"  # e562
+    status: todo_hard  # e562
+    priority: 3  # e562
+    parent:  # e562
+    tags:  # e562
+    - verify_claims  # e562
+    - schema  # e562
+    - concept_audit_20261021  # e562
+    isbefore: []  # e562
+    duplicate_of: []  # e562
+    not_duplicate_of: []  # e562
+    pr_ref:  # e562
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F5, homonym (leakage test 2): walk 'confirmed' = taint reached the sink; claim 'confirmed' = no flow found; printed side by side (cli.py:7945 vs dataflow_scope.py:543-547). Owner told 2026-10-22, did not object (FYI item). verify-claims JSON envelope bump; update every reader (dataflow_scope.count_walk_verdicts, scripts/bakeoff-*, docs/VERIFY-CLAIMS-SCOPE.md, ADR-0052's breakdown list) and keep reading the old names from cached artifacts if any consumer loads them."  # e562
+    fields: {}  # e562
