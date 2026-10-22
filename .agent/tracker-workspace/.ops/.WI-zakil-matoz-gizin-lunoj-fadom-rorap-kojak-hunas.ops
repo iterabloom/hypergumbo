@@ -1,0 +1,22 @@
+- op: create  # 4738
+  at: '2026-10-22T05:12:24Z'  # 4738
+  by: agent  # 4738
+  actor: jgstern_agent  # 4738
+  clock: 1  # 4738
+  nonce: '4738'  # 4738
+  data:  # 4738
+    kind: work_item  # 4738
+    title: "choice_shaped_source caveat counts distinct source NAMES but says 'evidence rows', and tests the witness source_primitive instead of the source_primitives set"  # 4738
+    status: todo_hard  # 4738
+    priority: 3  # 4738
+    parent:  # 4738
+    tags:  # 4738
+    - verify_claims  # 4738
+    - taint  # 4738
+    - concept_audit_20261021  # 4738
+    isbefore: []  # 4738
+    duplicate_of: []  # 4738
+    not_duplicate_of: []  # 4738
+    pr_ref:  # 4738
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F5. Verified by reading verify_claims.py:6577-6581 (_choice_sources = sorted set of terminal names) vs :6624 ('{len(_choice_sources)} of this claim's evidence rows'): three rows rooted at socket.accept -> '1 of ...'. Agent probe: the comprehension tests v.source_primitive (the witness), not the authoritative source_primitives set (taint.py:743-767), so a collapsed (accept, recv) row with witness recv gets no caveat -- member-order dependent. NOTE: jgstern-agent/fix/lanos changes is_choice_shaped_source's signature; coordinate."  # 4738
+    fields: {}  # 4738

@@ -1,0 +1,23 @@
+- op: create  # 735e
+  at: '2026-10-22T05:12:07Z'  # 735e
+  by: agent  # 735e
+  actor: jgstern_agent  # 735e
+  clock: 1  # 735e
+  nonce: 735e  # 735e
+  data:  # 735e
+    kind: work_item  # 735e
+    title: "three rules decide a catalogue file is builtin, and DefaultOverlay.provenance is declared free-text 'never parsed' though it is parsed as the two-value tier enum"  # 735e
+    status: todo_hard  # 735e
+    priority: 3  # 735e
+    parent:  # 735e
+    tags:  # 735e
+    - catalogue  # 735e
+    - adr_0061  # 735e
+    - axis  # 735e
+    - concept_audit_20261021  # 735e
+    isbefore: []  # 735e
+    duplicate_of: []  # 735e
+    not_duplicate_of: []  # 735e
+    pr_ref:  # 735e
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F4, agent read (two agents independently): builtin is decided by == 'builtin' (taint.py:2328), by 'not community' (verify_claims.py:2309-2312, taint.py:2520), and by path-or-line (io_boundary.py:2455); they agree today only because CI forces every shipped file to declare. DefaultOverlay.provenance '# axis: free-text ... never parsed' (io_boundary.py:2224) is compared as an enum by declares_community (yaml_catalogs.py:288); the runtime validator checks non-empty only (io_boundary.py:2255). PROVENANCE_BUILTIN constant unreferenced (yaml_catalogs.py:278). Fix: one is_builtin predicate, a bounded-enum axis declaration, the validator rejects other values. Also: supply-chain tier 1 doubles as an 'unclassified' sentinel when supply_chain_reason is empty (cli.py:12014-12017, analyze/base.py:1914-1917) although supply_chain_reason is declared never-branch-on free text (ir.py:727) -- make 'unclassified' explicit."  # 735e
+    fields: {}  # 735e
