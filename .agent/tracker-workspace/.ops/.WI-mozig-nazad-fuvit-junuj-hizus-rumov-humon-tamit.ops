@@ -1,0 +1,22 @@
+- op: create  # f473
+  at: '2026-10-22T05:14:28Z'  # f473
+  by: agent  # f473
+  actor: jgstern_agent  # f473
+  clock: 1  # f473
+  nonce: f473  # f473
+  data:  # f473
+    kind: work_item  # f473
+    title: "overriding one label of a two-label source row drops both labels (override key has no label), disclosed only on claims naming the lost label"  # f473
+    status: todo_hard  # f473
+    priority: 3  # f473
+    parent:  # f473
+    tags:  # f473
+    - taint  # f473
+    - catalogue  # f473
+    - concept_audit_20261021  # f473
+    isbefore: []  # f473
+    duplicate_of: []  # f473
+    not_duplicate_of: []  # f473
+    pr_ref:  # f473
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6, agent read: taint.py:2246-2253 keys the override on (module, name, kind) without the label, so a user source row for document.location removes both its host_secret and untrusted_input auto-sources; disclosure only on claims naming the lost label (verify_claims.py:5995-5999). Related name collision: IoPrimitive.requires_target_kind holds a target kind (std_stream, io_boundary.py:844) while TaintSource/TaintSink.requires_target_kind holds a BOUNDARY (taint.py:2153-2157, 2174, 2206, compared 1228-1233); TaintSink.requires_mode also holds a boundary (2190-2192) -- rename the taint-side fields."  # f473
+    fields: {}  # f473

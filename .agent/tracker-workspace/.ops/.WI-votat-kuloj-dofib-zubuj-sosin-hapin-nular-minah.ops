@@ -1,0 +1,22 @@
+- op: create  # 14da
+  at: '2026-10-22T05:14:17Z'  # 14da
+  by: agent  # 14da
+  actor: jgstern_agent  # 14da
+  clock: 1  # 14da
+  nonce: 14da  # 14da
+  data:  # 14da
+    kind: work_item  # 14da
+    title: "slice --io-boundary filters on the scalar meta.io_boundary, so a multi-boundary call (Popen.communicate, execSync, navigation_read rows) is invisible to the boundary it is listed second for"  # 14da
+    status: todo_hard  # 14da
+    priority: 3  # 14da
+    parent:  # 14da
+    tags:  # 14da
+    - slice  # 14da
+    - io_boundary  # 14da
+    - concept_audit_20261021  # 14da
+    isbefore: []  # 14da
+    duplicate_of: []  # 14da
+    not_duplicate_of: []  # 14da
+    pr_ref:  # 14da
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6, verified by reading: cli.py:1845 keeps edges whose meta['io_boundary'] == category; the scalar is first-declared-wins (io_boundary.py:1614); io-boundaries itself iterates meta['io_boundaries'] (io_boundary.py:4354). --io-boundary subprocess misses the 23 ipc_recv+subprocess rows (child_process.execSync, subprocess.check_output, go Cmd.Output) and scala Process(cmd) (scalar fs_write); --io-boundary navigation_read matches 1 of its 7 rows. Fix: read io_boundaries like the io-boundaries command; repro through the CLI first."  # 14da
+    fields: {}  # 14da
