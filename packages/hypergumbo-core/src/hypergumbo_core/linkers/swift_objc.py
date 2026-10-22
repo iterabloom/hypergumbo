@@ -23,6 +23,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..analyze.base import make_file_id, make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 from ._text_filters import read_masked_source
@@ -39,9 +40,20 @@ class SwiftObjCLinkerResult:
     run: AnalysisRun | None = None
 
 
-def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"swift_objc:{path}:{line}-{line}:{name}:{kind}"
+#: The registered symbol kind each framework role folds to (ADR-0027 Phase 3).
+_ROLE_FOLDS: dict[str, str] = {"objc_bridge": "function", "selector_ref": "reference"}
+
+
+def _make_symbol_id(path: str, line: int, name: str, role: str) -> str:
+    """The node id of a symbol this linker mints from a Swift file.
+
+    ADR-0036 Ruling 2: the kind slot is ``node.kind`` and the language slot
+    ``discovery_language or language`` -- ``swift`` for these Class B
+    stand-ins. The pass name and the framework role used to sit in those two
+    slots. The role is kept as a name-segment suffix, as the websocket linker
+    does (INV-dulah), so a bridge and a selector at one line stay distinct.
+    """
+    return make_symbol_id("swift", path, line, line, f"{name}-{role}", _ROLE_FOLDS[role])
 
 
 def _find_swift_files(root: Path) -> list[Path]:
@@ -189,13 +201,24 @@ def _extract_swift_objc_patterns(
 
 
 def _extract_bridging_header_imports(
-    file_path: Path, run: AnalysisRun
+    file_path: Path, run: AnalysisRun,
+    file_ids_by_path: dict[str, str] | None = None,
 ) -> tuple[list[Symbol], list[Edge]]:
-    """Extract imports from a bridging header file."""
+    """Extract imports from a bridging header file.
+
+    WI-mofih-datih: both endpoints take the shapes the ObjC analyzer gives its
+    own ``#import`` edges, so the edge meets the graph instead of dangling.
+    The src is the header's file node -- the one the run already holds for
+    this path when an analyzer emitted one (a header may be parsed as C), else
+    ``make_file_id("objc", path)``; it used to carry the PASS NAME in the
+    language slot and match no node. The dst is the analyzer's header
+    placeholder ``objc:<header>:0-0:header:header`` (INV-dulah), not the raw
+    ``#import`` string, which is no id at all.
+    """
     symbols: list[Symbol] = []
     edges: list[Edge] = []
     rel_path = str(file_path)
-    file_id = f"swift_objc:{rel_path}:1-1:file:file"
+    file_id = (file_ids_by_path or {}).get(rel_path) or make_file_id("objc", rel_path)
 
     try:
         content = read_masked_source(file_path, encoding="utf-8", errors="replace")
@@ -208,22 +231,24 @@ def _extract_bridging_header_imports(
 
         edges.append(Edge.create(
             src=file_id,
-            dst=import_path,
+            dst=f"objc:{import_path}:0-0:header:header",
             edge_type="imports",
             line=line_num,
             evidence_type="bridging_header_import",
             confidence=0.95,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            # derived-from consumed-none: a bridging-header text scan; neither endpoint is a graph
-            #   record
+            # derived-from consumed-none: a bridging-header text scan; the src is the header's file
+            #   id and the dst the analyzer's header placeholder, neither decided by a consumed record
             derived_from=[],
         ))
 
     return symbols, edges
 
 
-def link_swift_objc(root: Path) -> SwiftObjCLinkerResult:
+def link_swift_objc(
+    root: Path, graph_symbols: list[Symbol] | None = None,
+) -> SwiftObjCLinkerResult:
     """Run the Swift/Objective-C bridging linker.
 
     Detects:
@@ -231,8 +256,14 @@ def link_swift_objc(root: Path) -> SwiftObjCLinkerResult:
     - NSObject subclasses in Swift
     - Bridging header imports
     - #selector() references
+
+    ``graph_symbols`` are the run's symbols so far; a bridging header's existing
+    file node is the src of its import edges.
     """
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+    file_ids_by_path = {
+        sym.path: sym.id for sym in (graph_symbols or ()) if sym.kind == "file"
+    }
 
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
@@ -245,7 +276,9 @@ def link_swift_objc(root: Path) -> SwiftObjCLinkerResult:
 
     # Process bridging headers
     for header_file in _find_bridging_headers(root):
-        symbols, edges = _extract_bridging_header_imports(header_file, run)
+        symbols, edges = _extract_bridging_header_imports(
+            header_file, run, file_ids_by_path,
+        )
         all_symbols.extend(symbols)
         all_edges.extend(edges)
 
@@ -275,7 +308,7 @@ def swift_objc_linker(ctx: LinkerContext) -> LinkerResult:
 
     This wraps link_swift_objc() to use the LinkerContext/LinkerResult interface.
     """
-    result = link_swift_objc(ctx.repo_root)
+    result = link_swift_objc(ctx.repo_root, ctx.symbols)
 
     return LinkerResult(
         symbols=result.symbols,
