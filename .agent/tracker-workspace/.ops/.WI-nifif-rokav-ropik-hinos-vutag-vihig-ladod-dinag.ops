@@ -1,0 +1,22 @@
+- op: create  # 5fd0
+  at: '2026-10-22T14:22:14Z'  # 5fd0
+  by: agent  # 5fd0
+  actor: jgstern_agent  # 5fd0
+  clock: 1  # 5fd0
+  nonce: 5fd0  # 5fd0
+  data:  # 5fd0
+    kind: work_item  # 5fd0
+    title: "smart-test never selects the whole-tree meta-key gate for an analyzer edit, so WI-sogof's PR merged green and dev went red (WI-vosif's shape, second gate)"  # 5fd0
+    status: todo_hard  # 5fd0
+    priority: 2  # 5fd0
+    parent:  # 5fd0
+    tags:  # 5fd0
+    - tooling  # 5fd0
+    - smart_test  # 5fd0
+    - ci  # 5fd0
+    isbefore: []  # 5fd0
+    duplicate_of: []  # 5fd0
+    not_duplicate_of: []  # 5fd0
+    pr_ref:  # 5fd0
+    description: "FOUND 2026-10-22. WI-sogof's PR (merged cdddef709a) turned dev red on packages/hypergumbo-core/tests/test_meta_key_coherence.py::TestLiveTree::test_unenumerable_writes_are_exactly_the_acknowledged_ones. swift.py built Edge meta as `{\"call_construct\": \"function\", **_extra}` with `_extra` returned through a tuple, which the gate cannot enumerate, so a new entry appeared in MetaKeyEmits.unresolved. The PR's own CI was GREEN: smart-test did not select test_meta_key_coherence.py for a swift.py-only change. It surfaced only because a later branch (bufar-dst-slots) changed analyze/base.py and pulled in the whole core suite. Fixed forward in 7b57c9137c (literal keys at the call sites).\n\nWHY THE SLICE MISSES IT. The gate reads every producer module by PATH (scan_meta_key_emits walks the tree), so nothing imports the changed analyzer and the import-graph reverse slice never reaches it. The WI-lujon citation union does not cover it either: the gate names no file by string. This is the WI-vosif shape exactly: test_confidence_sites.py is unioned in for any `packages/*/src/**.py` change for this reason.\n\nFIX. A sibling union in scripts/smart-test next to the WI-vosif block, adding test_meta_key_coherence.py on any changed package source. Then check which other whole-tree producer gates have the same blind spot: tests driving producer_coherence (Symbol.kind / edge_type / evidence_type axis scans), the multi-value field axis gate, id-construction checks. Measure each one's cost; the confidence gate costs about 2s. Prefer one derived list (tests that call a whole-tree scanner over REPO_ROOT) to a hand list that rots. Gate the selector with a test of its own, as WI-vosif did.\n\nREPRO. On cdddef709a: `scripts/smart-test` with only swift.py changed; `grep -c test_meta_key_coherence .ci/affected-tests.txt` -> 0. On 7b57c9137c's own change (swift.py + module_key_axis.py) the count was also 0."  # 5fd0
+    fields: {}  # 5fd0

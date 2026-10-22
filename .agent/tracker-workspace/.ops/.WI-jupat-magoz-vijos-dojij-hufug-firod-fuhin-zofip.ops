@@ -1,0 +1,21 @@
+- op: create  # 50d4
+  at: '2026-10-22T14:22:32Z'  # 50d4
+  by: agent  # 50d4
+  actor: jgstern_agent  # 50d4
+  clock: 1  # 50d4
+  nonce: 50d4  # 50d4
+  data:  # 50d4
+    kind: work_item  # 50d4
+    title: "No validator checks an id's language slot equals the node's own language (ADR-0036 Ruling 2); only 'is a known language' is checked, so a wrong-but-known slot passes"  # 50d4
+    status: todo_hard  # 50d4
+    priority: 3  # 50d4
+    parent:  # 50d4
+    tags:  # 50d4
+    - analysis_quality  # 50d4
+    - axis  # 50d4
+    isbefore: []  # 50d4
+    duplicate_of: []  # 50d4
+    not_duplicate_of: []  # 50d4
+    pr_ref:  # 50d4
+    description: "FOUND 2026-10-22 while fixing stage-10 id items (WI-fotad, WI-mofih-datih, WI-vojur). ADR-0036 Ruling 2 fixes an id's language slot to `node.discovery_language or node.language`, and the kind slot to node.kind. The kind half has a check. The language half has only a weaker one: spec_validator's non_canonical_language_prefix (spec_validator.py:1846-1866) fires when the slot is not a KNOWN language. It does not fire when the slot is a known language other than the node's own.\n\nINSTANCES THIS LET THROUGH, each found by reading code, not by any gate:\n- grpc linker: slot 'grpc' while language=proto (WI-fotad). 'grpc' was caught only because it is not a language; a slot of 'go' would not have been.\n- swift_objc bridge: objc-slot ids on swift-side nodes (WI-mofih-datih).\n- wasm_bindgen: host-language import stand-ins (WI-vojur).\nThe family is the INV-dulah lang-slot limb. Its close condition counts `<unknown>` slots, which a wrong-but-known slot does not produce.\n\nPROPOSED CHECK. For every node in a survey: parse the id's language slot and compare it with `discovery_language or language`. A mismatch is a new spec_validator finding, e.g. `id_language_slot_mismatch (<slot> vs <lang>)`. Run it on the fixture floor first, then on the 28 INV-dulah surveys, to size the backlog before making it a gate. Two expected exemptions to decide, not assume: (1) dangling dst materialised by finalize, which has no language except the slot itself; (2) cross-language import stand-ins whose id carries the IMPORTER's language by convention (base.make_module_import_dst, WI-bufar-pokam). Either the exemption is written down in ADR-0036 or the convention changes.\n\nNOT DONE. No measurement yet; the size of the backlog is unknown."  # 50d4
+    fields: {}  # 50d4
