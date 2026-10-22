@@ -1262,6 +1262,12 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "WGSL, 'thread_local' in C++). Distinct from "
                 "``visibility`` (which is access control) and "
                 "``static`` (which is binding-time)."),
+    MetaKeySpec("item_span", AXIS_SYMBOL_META,
+                "A token-spanned producer's item extent (the SCIP "
+                "Definition's ``enclosing_range``; Span fields, "
+                "1-indexed). Producer input to the merge pass, which "
+                "applies it to a record it does not fold and drops it "
+                "from every record (INV-lodum)."),
     MetaKeySpec("scip_kind", AXIS_SYMBOL_META,
                 "SCIP-native kind label on Symbols sourced from "
                 "SCIP indexes. Kept alongside the canonical "

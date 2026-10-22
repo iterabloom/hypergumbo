@@ -486,3 +486,37 @@ def test_a_declared_document_language_still_wins_over_the_extension() -> None:
 def test_an_empty_language_and_an_unknown_extension_stay_unknown() -> None:
     [symbol] = scip_index_to_symbols(_one_definition("pkg/mod.zzz"))
     assert symbol.language == "unknown"
+
+
+def _definition_with(rng: list[int], enclosing: list[int]) -> Symbol:
+    sym = _py_symbol("handler")
+    occ = scip_pb2.Occurrence(range=rng, symbol=sym, symbol_roles=DEFINITION_ROLE)
+    occ.enclosing_range.extend(enclosing)
+    [out] = scip_index_to_symbols(
+        _make_index(symbols=[scip_pb2.SymbolInformation(symbol=sym)], occurrences=[occ])
+    )
+    return out
+
+
+class TestTheItemExtentRidesInMeta:
+    """INV-lodum: the Symbol is spanned over the Definition's name token (the
+    producer's declared TOKEN anchor, which the merge pass pairs on), and the
+    item the emitter enclosed it in travels in ``meta["item_span"]`` for the
+    merge pass to apply to a record it does not fold."""
+
+    def test_an_enclosing_range_that_differs_is_recorded_one_indexed(self) -> None:
+        out = _definition_with([6, 4, 9], [2, 0, 475, 1])
+        assert (out.span.start_line, out.span.end_line) == (7, 7)  # the token, unchanged
+        assert out.meta["item_span"] == {"start_line": 3, "end_line": 476, "start_col": 0, "end_col": 1}
+
+    def test_an_enclosing_range_equal_to_the_range_adds_nothing(self) -> None:
+        out = _definition_with([0, 0, 30, 0], [0, 0, 30, 0])
+        assert "item_span" not in out.meta
+
+    def test_no_enclosing_range_adds_nothing(self) -> None:
+        out = _definition_with([4, 4, 11], [])
+        assert "item_span" not in out.meta
+
+    def test_a_malformed_enclosing_range_is_treated_as_absent(self) -> None:
+        out = _definition_with([4, 4, 11], [4, 4])
+        assert "item_span" not in out.meta

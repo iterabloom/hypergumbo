@@ -991,6 +991,9 @@
             "is_recursive": {
               "description": "True on recursive function / method Symbols. Detected by call-graph self-loop analysis."
             },
+            "item_span": {
+              "description": "A token-spanned producer's item extent (the SCIP Definition's ``enclosing_range``; Span fields, 1-indexed). Producer input to the merge pass, which applies it to a record it does not fold and drops it from every record (INV-lodum)."
+            },
             "module_system": {
               "description": "Module system on synthetic file-shape Symbols (e.g. 'esm', 'commonjs'). Fold residue for the ``module_file`` \u2192 ``file`` migration per audit-findings 0005."
             },
