@@ -2651,21 +2651,23 @@ def _extract_edges_from_file(
 
     def _constructed(
         callee: Symbol, call: "tree_sitter.Node", score: float | None,
-    ) -> tuple[Symbol, float | None, dict[str, str]]:
+    ) -> tuple[Symbol, float | None, bool]:
         # WI-sogof: a bare call that resolved to a TYPE is a construction; land
         # it on the init that runs, else keep the type. Returns the callee, the
         # edge's ADR-0039 ``resolution_score`` (the resolver's match quality
         # times an ambiguous choice's 1/sqrt(N); ``None`` = the pathway base)
-        # and its extra meta.
+        # and whether the init choice was ambiguous. The caller builds the meta
+        # dict itself, with literal keys, so the meta-key gate can enumerate
+        # them (a dict returned through a tuple is opaque to it).
         if callee.kind not in _SWIFT_CONSTRUCTIBLE_KINDS:
-            return callee, score, {}
+            return callee, score, False
         choice = _choose_init(callee.qualified_name or callee.name, call, callee)
         if choice is None or choice.symbol is None:
-            return callee, score, {}
+            return callee, score, False
         if not choice.ambiguous:
-            return choice.symbol, score, {}
+            return choice.symbol, score, False
         base = score if score is not None else 1.0
-        return choice.symbol, base * choice.confidence, {"resolution_quality": "ambiguous"}
+        return choice.symbol, base * choice.confidence, True
 
     for node in iter_tree(tree.root_node):
         if node.type == "property_declaration":
@@ -3002,9 +3004,12 @@ def _extract_edges_from_file(
                         # through the resolver path below, which is INV-fahub-gated).
                         # A free-function bind is legitimate (callable bare), so no
                         # magnet gate is needed on this branch.
-                        callee, _score, _extra = _constructed(
+                        callee, _score, _ambiguous = _constructed(
                             local_symbols[callee_name], node, None,
                         )
+                        _meta: dict[str, str] = {"call_construct": "function"}
+                        if _ambiguous:
+                            _meta["resolution_quality"] = "ambiguous"
                         edges.append(Edge.create(
                             src=current_function.id,
                             dst=callee.id,
@@ -3014,7 +3019,7 @@ def _extract_edges_from_file(
                             resolution_score=_score,
                             origin=PASS_ID,
                             origin_run_id=run_id,
-                            meta={"call_construct": "function", **_extra},
+                            meta=_meta,
                         ))
                         resolved = True
 
@@ -3033,9 +3038,12 @@ def _extract_edges_from_file(
                             lookup_result.match_type, _enclosing_type,
                         )
                         if lookup_result.found and _sym is not None and not _defer:
-                            _callee, _score, _extra = _constructed(
+                            _callee, _score, _ambiguous = _constructed(
                                 _sym, node, lookup_result.confidence,
                             )
+                            _meta = {"call_construct": "function"}
+                            if _ambiguous:
+                                _meta["resolution_quality"] = "ambiguous"
                             edges.append(Edge.create(
                                 src=current_function.id,
                                 dst=_callee.id,
@@ -3045,7 +3053,7 @@ def _extract_edges_from_file(
                                 resolution_score=_score,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
-                                meta={"call_construct": "function", **_extra},
+                                meta=_meta,
                             ))
                         else:
                             edges.append(make_unresolved_edge(
