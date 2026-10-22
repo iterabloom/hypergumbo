@@ -1,0 +1,23 @@
+- op: create  # 8073
+  at: '2026-10-22T05:11:19Z'  # 8073
+  by: agent  # 8073
+  actor: jgstern_agent  # 8073
+  clock: 1  # 8073
+  nonce: '8073'  # 8073
+  data:  # 8073
+    kind: work_item  # 8073
+    title: "a catalogue file named on the command line that sits inside the repo is tiered in_repo, not yours (ADR-0061 ruling 1), and is listed twice in text output"  # 8073
+    status: todo_hard  # 8073
+    priority: 3  # 8073
+    parent:  # 8073
+    tags:  # 8073
+    - catalogue  # 8073
+    - adr_0061  # 8073
+    - verify_claims  # 8073
+    - concept_audit_20261021  # 8073
+    isbefore: []  # 8073
+    duplicate_of: []  # 8073
+    not_duplicate_of: []  # 8073
+    pr_ref:  # 8073
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F4, agent read (two agents independently): 'verify-claims . --io-primitives tools/my-io.yaml' with the file committed in the repo: cli.py:5842 builds it shipped=False -> verify_claims.py:2314 assigns in_repo; ADR-0061 ruling 1 defines a command-line-named file as 'yours' (ruling 4's 'tier names follow location' explains how 'nobody vouched' is detected for an UNNAMED in-repo file; naming opts it in). Text renderer dedups 'yours' against flag paths (verify_claims.py:2825-2826) but not 'in_repo' (:2828-2831). Disclosure only, no verdict change. Fix: tier yours + git state; test with a committed in-repo flag file."  # 8073
+    fields: {}  # 8073
