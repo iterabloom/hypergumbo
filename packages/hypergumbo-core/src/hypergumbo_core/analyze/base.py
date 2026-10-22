@@ -127,6 +127,7 @@ import re as _re
 import time
 import warnings
 from dataclasses import dataclass, field
+import posixpath
 from pathlib import Path
 from collections.abc import Container, Sequence
 from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional
@@ -134,6 +135,7 @@ from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, It
 from ..library_signatures import load_library_signatures
 from ..dataflow import annotate_dataflow, get_dataflow_config
 from ..discovery import find_files
+from ..taxonomy import get_language
 from ..paths import normalize_path
 from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext,
@@ -626,6 +628,42 @@ def make_file_id(lang: str, path: str) -> str:
         A file-level symbol ID.
     """
     return f"{lang}:{path}:1-1:file:file"
+
+
+def make_module_import_dst(importer_lang: str, import_path: str) -> str:
+    """The canonical dst of an ``imports`` edge to a module or file by path.
+
+    ``<importer_lang>:<import_path>:0-0:module:module`` -- the JS/TS
+    analyzer's shape (the language slot is the IMPORTING file's language),
+    which ``linkers/js_module`` parses to resolve the import to a file node
+    and finalize materialises as a well-formed boundary node otherwise. A bare
+    path as dst is no id: finalize's 4-part fallback renders it with the path
+    in the language slot and ``<unknown>`` in the path slot (INV-dulah,
+    WI-bufar-pokam).
+    """
+    return f"{importer_lang}:{import_path}:0-0:module:module"
+
+
+def make_manifest_target_dst(
+    manifest_path: str, target: str, fallback_lang: str,
+) -> str:
+    """The dst of a manifest's ``defines_target`` edge to its entry file.
+
+    A manifest names its entry file relative to its own directory (npm
+    ``bin`` / ``main`` / ``exports``, Cargo ``[[bin]] path``). The dst is
+    that file's node id -- ``make_file_id`` on the path joined onto the
+    manifest's directory, in the language the file's extension says (else
+    *fallback_lang*: an npm bin without an extension is a node script) -- so
+    the edge meets the file when it is analysed and is a well-formed id when
+    it is not (a ``dist/`` build output). Callers keep the manifest-relative
+    path in ``meta["target_path"]`` for the build-target linker
+    (WI-bufar-pokam).
+    """
+    joined = posixpath.normpath(
+        posixpath.join(posixpath.dirname(manifest_path), target.lstrip("./"))
+    )
+    lang = get_language(Path(joined)) or fallback_lang
+    return make_file_id(lang, joined)
 
 
 _FILE_ID_SUFFIX = ":1-1:file:file"

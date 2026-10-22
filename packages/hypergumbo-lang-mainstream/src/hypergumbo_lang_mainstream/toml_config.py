@@ -66,6 +66,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     is_table_kind,
     iter_tree,
+    make_manifest_target_dst,
     make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -350,12 +351,15 @@ def _process_toml_tree(
                 edges.append(
                     Edge.create(
                         src=symbol_id,
-                        dst=target_path,
+                        # WI-bufar-pokam: the target file's node id, not the
+                        # bare path (no id at all); the linker reads the path.
+                        dst=make_manifest_target_dst(rel_path, target_path, "rust"),
                         edge_type="defines_target",
                         line=start_line,
                         evidence_type="build_target_main",
                         origin=PASS_ID,
                         origin_run_id=run_id,
+                        meta={"target_path": target_path},
                     )
                 )
 

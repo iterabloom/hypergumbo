@@ -72,12 +72,13 @@ from typing import TYPE_CHECKING, ClassVar
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
-    FileAnalysis,
-    TreeSitterAnalyzer,
     ancestor_labels,
+    FileAnalysis,
     html_element_tag,
     make_doc_symbol_ids,
     make_file_id,
+    make_module_import_dst,
+    TreeSitterAnalyzer,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -348,7 +349,9 @@ class _AstroFileExtractor:
             # is a 5-part dangling component id so the relationship keeps
             # representation in the graph.
             if import_path:
-                edge_dst = import_path
+                # WI-bufar-pokam: the canonical module-import id, not
+                # the bare path (finalize's ``<unknown>`` fallback).
+                edge_dst = make_module_import_dst("astro", import_path)
             else:
                 edge_dst = f"astro:component:{tag_name}:0-0:{tag_name}:component"
             edge = Edge.create(

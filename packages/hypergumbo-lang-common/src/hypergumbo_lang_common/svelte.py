@@ -54,12 +54,13 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
-    TreeSitterAnalyzer,
     ancestor_labels,
     html_element_tag,
     make_doc_symbol_ids,
     make_file_id,
+    make_module_import_dst,
     populate_docstrings_from_tree,
+    TreeSitterAnalyzer,
 )
 from hypergumbo_core.analyze.registry import MergeDisjoint, register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -274,7 +275,9 @@ def _process_tag(
         # a 5-part dangling component id so the relationship keeps
         # representation in the graph.
         if import_path:
-            edge_dst = import_path
+            # WI-bufar-pokam: the canonical module-import id, not
+            # the bare path (finalize's ``<unknown>`` fallback).
+            edge_dst = make_module_import_dst("svelte", import_path)
         else:
             edge_dst = f"svelte:component:{tag_name}:0-0:{tag_name}:component"
         edge = Edge.create(
