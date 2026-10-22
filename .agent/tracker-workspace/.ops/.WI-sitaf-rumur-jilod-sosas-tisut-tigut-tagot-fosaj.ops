@@ -50,3 +50,18 @@
   clock: 5  # 7e5a
   nonce: 7e5a  # 7e5a
   message: "Fixed in PR #1797 (dev e9215548f6). DefUseResult/CfgStatement gain targets (LHS by position, blank kept as '_'); Go short-var and assignment handlers report it when a blank is present and every other target names exactly one variable; stmt_defuse uses it, so _received_seeds maps the received position exactly. Repro through the production CLI (fresh cache), claim host_secret -> subprocess, fixture get() returns os.Getenv at position 0; wrap() does '_, err := get(); return \"ls\", err'; main() does 'name, err := wrap(); exec.Command(name, err.Error()).Run()': BEFORE (dev e3ea9db6c9) exit 1, violated, 2 evidence rows with source_returned_by [wrap, get] -- the error-chain climb; AFTER (merged dev) exit 3, confirmed_with_caveats, 0 evidence. Control (value, _ := get(); return value, nil) stays violated with returned_by {get, wrap} (test_go_a_blank_elsewhere_keeps_the_value_s_position). Corpus: 0 verdicts moved on runc/gin/coredns/buildah; buildah walks 2874 -> 2749, host-secret-no-network evidence 91 -> 79. NOT COVERED: 'var _, err = f()' spec declarations; a target naming no variable (*p) keeps the seed-everything fallback."  # 7e5a
+- op: update  # ac11
+  at: '2026-10-22T04:26:42Z'  # ac11
+  by: agent  # ac11
+  actor: jgstern_agent  # ac11
+  clock: 6  # ac11
+  nonce: ac11  # ac11
+  set:  # ac11
+    status: todo_hard  # ac11
+- op: discuss  # c6c8
+  at: '2026-10-22T04:26:42Z'  # c6c8
+  by: agent  # c6c8
+  actor: jgstern_agent  # c6c8
+  clock: 7  # c6c8
+  nonce: c6c8  # c6c8
+  message: "REOPENED 2026-10-22: PR #1797 reverted by PR #1799. The 2026-10-21 concept audit (F1, ~/hypergumbo_lab_notebook/concept_audit_10212026/) found that putting Go's blank '_' into stmt_defuse's defines slot made two consumers read it as a variable. Verified through the production CLI, claim host_secret -> subprocess: (a) '_, err := get(); fmt.Println(err); exec.Command(\"ls\")' with get returning os.Getenv, and (b) 's, _ := tok.(string); fmt.Println(s); exec.Command(\"ls\")' read confirmed_with_caveats (exit 3) before e9215548f6, violated (exit 1, ddg_mixed/escaped) after it, and exit 3 again on merged dev after the revert. Causes: taint inherits made '_' an heir with no recorded use (unrecorded_heir escape); _received_seeds seeded {'_'}, which the walk reads as source_undefined. RE-FIX SHAPE: carry positions APART from defines (stmt_defuse defines stay bindings), and make a received position that lands on a blank mean 'nothing received' (seed nothing / lift nothing), not 'unknown'. Tests to carry: the two fixtures above (must stay exit 3) plus the original pair (blank at the value's position discards it; value, _ := keeps it)."  # c6c8

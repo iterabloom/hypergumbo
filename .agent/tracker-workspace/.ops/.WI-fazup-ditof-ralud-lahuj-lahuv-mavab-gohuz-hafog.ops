@@ -1,0 +1,24 @@
+- op: create  # 59d9
+  at: '2026-10-22T05:10:10Z'  # 59d9
+  by: agent  # 59d9
+  actor: jgstern_agent  # 59d9
+  clock: 1  # 59d9
+  nonce: 59d9  # 59d9
+  data:  # 59d9
+    kind: work_item  # 59d9
+    title: "calls.src has no written contract: it is a function/method OR an anchor (file, type, Go variable, C-family stand-in) and consumers assume a function"  # 59d9
+    status: todo_hard  # 59d9
+    priority: 2  # 59d9
+    parent:  # 59d9
+    tags:  # 59d9
+    - call_graph  # 59d9
+    - docs  # 59d9
+    - axis  # 59d9
+    - concept_audit_20261021  # 59d9
+    isbefore:  # 59d9
+    - WI-mifag-vunus-vosug-ratam-fomij-voguz-nizad-tamir  # 59d9
+    duplicate_of: []  # 59d9
+    not_duplicate_of: []  # 59d9
+    pr_ref:  # 59d9
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F3. Anchors are mandated (spec section 9 'src anchoring', INV-foluz / INV-nopoh) and stay. Recommended verdict KEEP + DOCUMENT: write the contract (src = the code unit whose execution makes the call: function/method, or an anchor for code outside any function, with WHEN it runs: import, first use, every construction) into the spec / an ADR-0023 amendment, and fix spec drift: docs/hypergumbo-spec.md:1205 says rust/java/kotlin/swift/ruby/c/cpp/scala/lua are 'still missing' anchoring (all anchor now) and omits type-body anchoring; :123 says file-anchored flows are always structural (false since WI-nilir). Must land before WI-mifag (test-only reachability reads calls.src as callers). Sibling consumer fixes are filed separately."  # 59d9
+    fields: {}  # 59d9
