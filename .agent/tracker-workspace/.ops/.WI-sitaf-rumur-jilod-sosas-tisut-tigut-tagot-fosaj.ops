@@ -27,3 +27,26 @@
   clock: 2  # c2f1
   nonce: c2f1  # c2f1
   message: "Status check 2026-10-20: still open on dev 2760e4010b. go_def_use.py still drops the blank identifier (_BLANK at lines 114/146/211), and taint._received_seeds still requires len(defines) == arity before mapping positions, else returns None (seed everything)."  # c2f1
+- op: update  # 8a89
+  at: '2026-10-22T01:58:28Z'  # 8a89
+  by: agent  # 8a89
+  actor: jgstern_agent  # 8a89
+  clock: 3  # 8a89
+  nonce: 8a89  # 8a89
+  set:  # 8a89
+    status: in_progress  # 8a89
+- op: update  # d854
+  at: '2026-10-22T03:21:16Z'  # d854
+  by: agent  # d854
+  actor: jgstern_agent  # d854
+  clock: 4  # d854
+  nonce: d854  # d854
+  set:  # d854
+    status: done  # d854
+- op: discuss  # 7e5a
+  at: '2026-10-22T03:21:16Z'  # 7e5a
+  by: agent  # 7e5a
+  actor: jgstern_agent  # 7e5a
+  clock: 5  # 7e5a
+  nonce: 7e5a  # 7e5a
+  message: "Fixed in PR #1797 (dev e9215548f6). DefUseResult/CfgStatement gain targets (LHS by position, blank kept as '_'); Go short-var and assignment handlers report it when a blank is present and every other target names exactly one variable; stmt_defuse uses it, so _received_seeds maps the received position exactly. Repro through the production CLI (fresh cache), claim host_secret -> subprocess, fixture get() returns os.Getenv at position 0; wrap() does '_, err := get(); return \"ls\", err'; main() does 'name, err := wrap(); exec.Command(name, err.Error()).Run()': BEFORE (dev e3ea9db6c9) exit 1, violated, 2 evidence rows with source_returned_by [wrap, get] -- the error-chain climb; AFTER (merged dev) exit 3, confirmed_with_caveats, 0 evidence. Control (value, _ := get(); return value, nil) stays violated with returned_by {get, wrap} (test_go_a_blank_elsewhere_keeps_the_value_s_position). Corpus: 0 verdicts moved on runc/gin/coredns/buildah; buildah walks 2874 -> 2749, host-secret-no-network evidence 91 -> 79. NOT COVERED: 'var _, err = f()' spec declarations; a target naming no variable (*p) keeps the seed-everything fallback."  # 7e5a
