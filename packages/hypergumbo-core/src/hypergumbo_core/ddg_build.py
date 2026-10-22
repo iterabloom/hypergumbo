@@ -138,7 +138,9 @@ position, in order (``stmt_defuse`` keeps that order), so the lift can seed
 the caller on ``name`` alone. Without it every variable a multi-value call
 defines is seeded, and a Go caller that propagates the helper's ``err``
 "returns the value" -- which, lifted again, climbs every error chain above a
-source.
+source. A blank keeps its position in ``stmt_defuse`` (``_, err := get()`` ->
+``("_", "err")``, from ``CfgStatement.targets``, WI-sitaf): the blank is no
+variable any edge carries, so a value received there seeds nothing.
 
 Refinement Hook
 ---------------
@@ -684,8 +686,14 @@ def _solve_one_function(
             out.forfeit_refutation.add(sym_id)
         # Collected only alongside edges: a function with no edges cannot be
         # walked, so its statements would be dead weight in the index.
+        # A statement's left-hand side by POSITION where the extractor reports
+        # one (WI-sitaf: Go's blank keeps its slot), else its defines.
         stmts = [
-            (s.line, tuple(s.defines), tuple(s.uses))
+            (
+                s.line,
+                tuple(s.targets if s.targets is not None else s.defines),
+                tuple(s.uses),
+            )
             for block in cfg.blocks.values()
             for s in block.statements
             if s.defines or s.uses

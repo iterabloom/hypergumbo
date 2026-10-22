@@ -102,6 +102,19 @@ class TestShortVarDeclaration:
         assert r.defines == ["err"]
         assert "x" in r.uses
 
+    def test_blank_identifier_keeps_its_position(self) -> None:
+        """WI-sitaf: the return lift reads the left side by position."""
+        assert _extract(_wrap("_, err := do(x)")).targets == ["_", "err"]
+        assert _extract(_wrap("v, _ = do(x)")).targets == ["v", "_"]
+
+    def test_no_blank_reports_no_positions(self) -> None:
+        # ``defines`` already lists the left side in order.
+        assert _extract(_wrap("a, b := split(s)")).targets is None
+
+    def test_a_target_naming_no_variable_reports_no_positions(self) -> None:
+        # ``*p`` binds no name, so there is nothing to put in its slot.
+        assert _extract(_wrap("*p, _ = do(x)")).targets is None
+
     def test_channel_receive(self) -> None:
         r = _extract(_wrap("got := <-ch"))
         assert r.defines == ["got"]

@@ -26,6 +26,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A closure defined before the secret it reads carries it**: `function setup() { u += k }` above `const k = …` no longer hides the flow.
 - **Module-level code is walked like a function body**: Python and JS/TS top-level flows are confirmed or removed, not decided by reachability alone.
 - **Python class-body calls emit calls edges**: `class C: requests.get(...)` is anchored on `C`, no longer a silent all-clear.
+- **`_, err := get()` no longer taints `err`** with the discarded value, so error chains above a Go source stay clean.
 
 #### Calls, types and inheritance
 
