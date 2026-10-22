@@ -324,3 +324,22 @@ class TestCssImportDstIsCanonical:
         result = analyze_css_files(tmp_path)
         dsts = [e.dst for e in result.edges if e.edge_type == "imports"]
         assert dsts == ["css:theme/dark.css:0-0:module:module"]
+
+
+class TestLocalImportResolver:
+    """WI-popak-mopad: an ``@import`` of a repository file lands on that
+    file's node; anything else keeps the module placeholder."""
+
+    def test_resolves_only_a_repository_file(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.css import _local_import_resolver
+
+        repo = tmp_path / "repo"
+        (repo / "css").mkdir(parents=True)
+        (repo / "css" / "base.css").write_text(".x {}\n")
+        (tmp_path / "outside.css").write_text(".y {}\n")
+        resolve = _local_import_resolver(repo, repo / "css" / "site.css")
+        assert resolve("base.css") == "css:css/base.css:1-1:file:file"
+        assert resolve("missing.css") is None
+        assert resolve("../../outside.css") is None
+        assert resolve("https://cdn.example/x.css") is None
+        assert resolve("//cdn.example/x.css") is None

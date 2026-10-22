@@ -31,12 +31,8 @@ from hypergumbo_core.cli import run_survey
 
 KNOWN_LANGUAGES = frozenset(all_known_languages())
 
-# css is fixed at the analyzer (its own test pins the shape) but is NOT driven
-# here: its ``imports`` edges never reach the survey at all -- their src is a
-# hash-shaped symbol id (``css:sha256:...``, 3 slots) that the pipeline drops,
-# so the edges are orphaned -- and every css symbol id trips id_format on its
-# own. Both are a separate css limb of INV-dulah, filed; driving css here
-# would make the non-vacuity guard fail for a reason this fix does not own.
+# css joined the cases with WI-popak-mopad: its import edges used to start at
+# a file id with the path in the name slot, which matched no node.
 #: ``case -> ({filename: source}, the edge type whose dst is checked)``.
 #: WI-bufar-pokam added the five producers the fleet count found after the
 #: objc/solidity fix (json_config, make, jsonnet, astro, svelte), plus Cargo
@@ -49,6 +45,7 @@ CASES: dict[str, tuple[dict[str, str], str]] = {
     "jsonnet": ({"alerts.jsonnet": "local lib = import 'lib/util.libsonnet';\n{ a: lib }\n"}, "imports"),
     "astro": ({"Page.astro": "---\nimport Header from './Header.astro';\n---\n<Header />\n"}, "imports"),
     "svelte": ({"App.svelte": "<script>\nimport Button from './Button.svelte';\n</script>\n<Button />\n"}, "imports"),
+    "css": ({"site.css": '@import "base.css";\n.btn { color: red; }\n', "base.css": ".x { margin: 0; }\n"}, "imports"),
     "toml": ({"Cargo.toml": '[package]\nname = "p"\n\n[[bin]]\nname = "p"\npath = "src/bin/p.rs"\n'}, "defines_target"),
 }
 
@@ -92,6 +89,15 @@ def test_no_node_carries_the_unknown_path_sentinel(lang: str, maps: dict[str, di
             # always the case's own: the JS/TS analyzer also reads a
             # ``.svelte`` file's <script> and writes ``javascript:``.)
             assert dst.split(":")[0] in KNOWN_LANGUAGES, dst
+
+
+def test_a_css_import_of_a_repository_file_lands_on_its_node(maps: dict[str, dict]) -> None:
+    """WI-popak-mopad: ``@import "base.css"`` starts at the importer's file
+    node and ends at ``base.css``'s, both nodes the survey carries."""
+    node_ids = {n["id"] for n in maps["css"]["nodes"]}
+    imports = [(e["src"], e["dst"]) for e in maps["css"]["edges"] if e.get("type") == "imports"]
+    assert imports == [("css:site.css:1-1:file:file", "css:base.css:1-1:file:file")]
+    assert set(imports[0]) <= node_ids
 
 
 @pytest.mark.parametrize("lang", sorted(CASES))
