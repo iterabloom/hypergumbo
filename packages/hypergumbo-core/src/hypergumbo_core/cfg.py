@@ -130,14 +130,6 @@ class DefUseResult:
 
     defines: list[str] = field(default_factory=list)
     uses: list[str] = field(default_factory=list)
-    #: The assignment's left-hand side IN ORDER, one entry per position, with a
-    #: position that binds nothing kept as the language's blank (Go's ``_``).
-    #: ``None`` when the extractor reports no positions, which is the default
-    #: and means ``defines`` already lists them in order (WI-sitaf). The
-    #: return lift maps a callee's result positions onto these; ``defines``
-    #: drops the blank, so ``_, err := get()`` defined one name against an
-    #: arity of two and the position rule could not read it.
-    targets: Optional[list[str]] = None
 
 
 @runtime_checkable
@@ -244,8 +236,6 @@ class CfgStatement:
     code_snippet: str
     defines: list[str] = field(default_factory=list)
     uses: list[str] = field(default_factory=list)
-    #: :attr:`DefUseResult.targets`, copied by the def/use pass (WI-sitaf).
-    targets: Optional[list[str]] = None
     call_target: Optional[str] = None
     #: The AST node type this statement stands for, when ``node_type`` is a
     #: SYNTHETIC name no AST node carries (``context_manager_enter`` is recorded
@@ -1983,9 +1973,6 @@ def populate_def_use_for_cfg(
             result = extractor.extract(node, source)
             cfg_stmt.defines = list(result.defines)
             cfg_stmt.uses = list(result.uses)
-            cfg_stmt.targets = (
-                list(result.targets) if result.targets is not None else None
-            )
         for child in node.children:
             visit(child)
 
