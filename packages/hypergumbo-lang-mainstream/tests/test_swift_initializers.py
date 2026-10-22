@@ -266,6 +266,48 @@ func use() {
         assert _at(calls, 7) == [(7, "use", "V.init", 3)]
         assert _at(calls, 8) == [(8, "use", "V.init", 3)]
 
+    def test_a_labelled_further_trailing_closure_and_a_label_after_a_variadic(
+        self, tmp_path: Path,
+    ) -> None:
+        # ``V(x: 1) { } other: { }``: the second closure carries its label, so
+        # only the init that has ``other`` takes it. ``W(1, 2, label: 3)``: the
+        # variadic absorbs 1 and 2, then ``label`` binds the next parameter.
+        result, by_id = _analyze(tmp_path, {"A.swift": """\
+struct V {
+    init(x: Int, body: () -> Void, other: () -> Void) {}
+    init(x: Int, body: () -> Void) {}
+}
+struct W {
+    init(_ items: Int..., label: Int) {}
+    init(_ items: Int...) {}
+}
+func use() {
+    _ = V(x: 1) { } other: { }
+    _ = W(1, 2, label: 3)
+}
+"""})
+        calls = _calls(result, by_id)
+        assert _at(calls, 10) == [(10, "use", "V.init", 2)]
+        assert _at(calls, 11) == [(11, "use", "W.init", 6)]
+
+    def test_an_ambiguous_explicit_init_call_says_so(self, tmp_path: Path) -> None:
+        # ``T.init(1)`` names the init outright; two admit an unlabelled
+        # argument, so the first by position is chosen and marked ambiguous.
+        result, by_id = _analyze(tmp_path, {"A.swift": """\
+struct T {
+    init(_ a: Int) {}
+    init(_ b: String) {}
+}
+func use() {
+    _ = T.init(1)
+}
+"""})
+        hits = [e for e in result.edges if e.edge_type == "calls" and e.line == 6]
+        assert [(by_id[e.dst].name, by_id[e.dst].span.start_line) for e in hits] == [
+            ("T.init", 2),
+        ]
+        assert hits[0].meta["resolution_quality"] == "ambiguous"
+
     def test_a_trailing_closure_never_binds_an_opaque_or_existential_parameter(
         self, tmp_path: Path,
     ) -> None:
