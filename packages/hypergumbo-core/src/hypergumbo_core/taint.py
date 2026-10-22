@@ -4118,23 +4118,47 @@ def _received_seeds(
     lines: Sequence[int],
     received: Received,
     defines_at: Mapping[tuple[str, int], Sequence[tuple[str, ...]]],
+    positions_at: Mapping[
+        tuple[str, int], Sequence[tuple[Optional[str], ...]]
+    ] | None = None,
 ) -> Optional[frozenset[str]]:
-    """The variables *fn*'s call defines at the RECEIVED result positions.
+    """The variables *fn*'s call binds at the RECEIVED result positions.
 
     ``None`` -- seed every variable, the walk's default -- unless some call
-    line holds a statement defining exactly ``arity`` variables, in order
+    line holds a statement whose left-hand side has exactly ``arity`` slots,
+    in order: the extractor's positional targets where it reported them
+    (``positions_at``, WI-sitaf), else the statement's ``defines``
     (``stmt_defuse`` keeps the left-hand side's order). See
     :func:`_lift_returned_sources`, "WHICH RESULT CARRIES IT".
+
+    An EMPTY set is a positive answer, not an unknown one: every matching
+    statement received the value into a slot that binds nothing (Go's
+    ``_, err := get()``), so the value went nowhere, and the walk reads it so.
     """
     if received is None:
         return None
     arity, positions = received
     seeds: set[str] = set()
+    every_line_matched = bool(lines)
     for line in lines:
-        for defines in defines_at.get((fn, line), ()):
-            if len(defines) == arity:
-                seeds.update(defines[i] for i in positions)
-    return frozenset(seeds) if seeds else None
+        slots: Sequence[tuple[Optional[str], ...]] = (
+            (positions_at or {}).get((fn, line))
+            or defines_at.get((fn, line), ())
+        )
+        line_matched = False
+        for lhs in slots:
+            if len(lhs) == arity:
+                line_matched = True
+                seeds.update(
+                    name for i in positions if (name := lhs[i]) is not None
+                )
+        every_line_matched = every_line_matched and line_matched
+    if seeds:
+        return frozenset(seeds)
+    # Discarded only when EVERY call line was read: a line the position rule
+    # could not read (``use(get())``) may still carry the value, and an empty
+    # answer would let the walk skip it.
+    return frozenset() if every_line_matched else None
 
 
 def _returns_to_caller(edge: dict[str, Any]) -> bool:
@@ -5015,9 +5039,12 @@ def _ddg_taint_reaches(
         seed_variables: Restrict the seeds to these of the variables the
             source call line defines (INV-komoj: the variables a lifted call
             defines at the result positions its callee returned the value
-            in). ``None`` seeds them all. Seeds it leaves empty are an
-            unrecorded definition, i.e. ``source_undefined`` -- ignorance,
-            never ``False`` on that account.
+            in). ``None`` seeds them all. An EMPTY set is the one positive
+            answer: every call line received the value into a slot that binds
+            nothing (WI-sitaf, ``_received_seeds``), so no line seeds and
+            nothing escapes. A non-empty set whose intersection with a line's
+            definitions is empty is an unrecorded definition, i.e.
+            ``source_undefined`` -- ignorance, never ``False`` on that account.
         reached: Optional out-param. On ``True``, the ``(variable, line)``
             whose use at a target line decided it. Purely observational.
         source_line_escapes: Source lines on which some OTHER call does not
@@ -5041,6 +5068,10 @@ def _ddg_taint_reaches(
     # known about where the value went (INV-lupav).
     frontier: list[tuple[str, int]] = []
     for line in source_lines:
+        if seed_variables is not None and not seed_variables:
+            # WI-sitaf: the call received the value into a slot that binds
+            # nothing (``_received_seeds``). Accounted for, carries nothing.
+            continue
         seeds = (defs_at or {}).get((symbol_id, line))
         if seeds and seed_variables is not None:
             seeds = set(seeds) & set(seed_variables)
@@ -5657,6 +5688,9 @@ def propagate_taint_ddg(
     unaccounted_names: Mapping[str, AbstractSet[str]] | None = None,
     include_community: bool = True,
     return_spans: Mapping[str, Sequence[ReturnSpan]] | None = None,
+    stmt_targets: Mapping[
+        str, Sequence[tuple[int, tuple[Optional[str], ...]]]
+    ] | None = None,
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -5813,6 +5847,14 @@ def propagate_taint_ddg(
         for line, defines, _uses in statements:
             if defines:
                 defines_at[(sym_id, line)].append(defines)
+    # WI-sitaf: the left-hand sides the extractor reported BY POSITION, which
+    # answer for their line in place of ``defines`` (a blank keeps its slot).
+    positions_at: dict[tuple[str, int], list[tuple[Optional[str], ...]]] = (
+        defaultdict(list)
+    )
+    for sym_id, positional in (stmt_targets or {}).items():
+        for line, targets in positional:
+            positions_at[(sym_id, line)].append(targets)
 
     def _walk_reaches_return(
         fn: str, lines: list[int], targets: list[int], barriers: list[int],
@@ -5826,7 +5868,9 @@ def propagate_taint_ddg(
             defs_at=defs_at, inherits=inherits,
             barrier_lines=frozenset(barriers),
             unaccounted=(unaccounted_names or {}).get(fn),
-            seed_variables=_received_seeds(fn, lines, received, defines_at),
+            seed_variables=_received_seeds(
+                fn, lines, received, defines_at, positions_at,
+            ),
             reached=reached,
         ) is True:
             return reached[0]
@@ -5861,7 +5905,7 @@ def propagate_taint_ddg(
         # at the positions the callee returned the value in; ``None`` (every
         # direct read) leaves the walk's seeding as it was.
         entry_seeds = _received_seeds(
-            source_fn, source_call_lines, received, defines_at,
+            source_fn, source_call_lines, received, defines_at, positions_at,
         )
 
         # Structural BFS for reachability (used for mixed-coverage), through

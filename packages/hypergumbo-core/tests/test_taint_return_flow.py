@@ -244,6 +244,62 @@ class TestTheValueComesBackInItsOwnResultPosition:
         assert verdict["verdict"] == "violated", verdict["details"]
         assert _returned_by(verdict) == {"get", "wrap"}
 
+    def test_go_a_blank_at_the_value_s_position_discards_it(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-sitaf. ``_, err := get()`` drops the value into the blank. The
+        extractor drops the blank from ``defines``, so the call defined
+        ``("err",)`` against an arity of 2, the position rule could not
+        apply, and the fallback seeded ``err`` -- which ``wrap`` returns, so
+        the lift climbed into ``main`` and ``err.Error()`` reached the
+        launch."""
+        verdict = _verdict(tmp_path, {"go.mod": _GO_MOD, "main.go": _GO_HEAD + (
+            'func get() (string, error) {\n\tv := os.Getenv("TOOL")\n'
+            "\treturn v, nil\n}\n\n"
+            "func wrap() (string, error) {\n\t_, err := get()\n"
+            '\treturn "ls", err\n}\n\n'
+            "func main() {\n\tname, err := wrap()\n"
+            "\texec.Command(name, err.Error()).Run()\n}\n")})
+        assert verdict["verdict"] != "violated", verdict["evidence"]
+
+    def test_go_a_blank_elsewhere_keeps_the_value_s_position(
+        self, tmp_path: Path,
+    ) -> None:
+        """The control: ``value, _ := get()`` keeps the value, and ``wrap``
+        returns it, so the lift does climb."""
+        verdict = _verdict(tmp_path, {"go.mod": _GO_MOD, "main.go": _GO_HEAD + (
+            'func get() (string, error) {\n\tv := os.Getenv("TOOL")\n'
+            "\treturn v, nil\n}\n\n"
+            "func wrap() (string, error) {\n\tvalue, _ := get()\n"
+            "\treturn value, nil\n}\n\n"
+            "func main() {\n\tname, _ := wrap()\n"
+            "\texec.Command(name).Run()\n}\n")})
+        assert verdict["verdict"] == "violated", verdict["details"]
+        assert _returned_by(verdict) == {"get", "wrap"}
+
+    @pytest.mark.parametrize("body", [
+        # A value received into the blank is discarded: positive evidence,
+        # not ignorance, so the walk must not read it as an escape.
+        '\t_, err := get()\n\tfmt.Println(err)\n\texec.Command("ls").Run()\n',
+        # A blank that is no call result binds nothing: it is no variable.
+        '\tvar tok interface{} = os.Getenv("TOOL")\n\ts, _ := tok.(string)\n'
+        '\tfmt.Println(s)\n\texec.Command("ls").Run()\n',
+    ], ids=["received_into_the_blank", "blank_beside_a_type_assertion"])
+    def test_go_the_blank_is_never_a_variable(
+        self, tmp_path: Path, body: str,
+    ) -> None:
+        """The two shapes the first cut of WI-sitaf turned into false
+        ``violated`` verdicts (concept audit 2026-10-21, F1): it put ``_``
+        into ``stmt_defuse``'s defines, where ``inherits`` made it an heir
+        with no recorded use and the received-position seed read ``{"_"}``
+        as an untracked source."""
+        verdict = _verdict(tmp_path, {"go.mod": _GO_MOD, "main.go": (
+            'package main\n\nimport (\n\t"fmt"\n\t"os"\n\t"os/exec"\n)\n\n'
+            'func get() (string, error) {\n\tv := os.Getenv("TOOL")\n'
+            "\treturn v, nil\n}\n\n"
+            "func main() {\n" + body + "}\n")})
+        assert verdict["verdict"] != "violated", verdict["evidence"]
+
     def test_python_returning_the_other_element_does_not(
         self, tmp_path: Path,
     ) -> None:
@@ -551,10 +607,31 @@ class TestTheLift:
         defines = {("g", 7): [("name", "err")]}
         assert _received_seeds("g", [7], (2, frozenset({0})), defines) == {
             "name"}
-        # ``_, err := get()``: the blank is not a define, so the arity does
-        # not match and every variable is seeded, as before.
+        # A left side without ``arity`` slots cannot be read by position:
+        # every variable is seeded, as before.
         assert _received_seeds("g", [7], (3, frozenset({0})), defines) is None
         assert _received_seeds("g", [7], None, defines) is None
+
+    def test_received_seeds_read_positions_and_a_blank_receives_nothing(
+        self,
+    ) -> None:
+        """WI-sitaf. ``_, err := get()`` binds ``("err",)`` but its positional
+        left side is ``(None, "err")``: the value at position 0 went into the
+        blank, which is an empty answer -- not ``None``, which would seed
+        ``err``."""
+        defines = {("g", 7): [("err",)], ("g", 9): [("x",)]}
+        positions = {("g", 7): [(None, "err")]}
+        assert _received_seeds(
+            "g", [7], (2, frozenset({0})), defines, positions,
+        ) == frozenset()
+        assert _received_seeds(
+            "g", [7], (2, frozenset({1})), defines, positions,
+        ) == {"err"}
+        # A second call line the position rule cannot read may still carry
+        # the value, so the answer falls back to "unknown".
+        assert _received_seeds(
+            "g", [7, 9], (2, frozenset({0})), defines, positions,
+        ) is None
 
     def test_a_callee_seeded_source_is_not_a_value(self) -> None:
         entry = TaintSource(
