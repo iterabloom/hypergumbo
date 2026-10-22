@@ -34,6 +34,10 @@ Why This Design
   The same ``ARG VERSION`` in two stages is two symbols, and the floor key
   ``(kind, path, name)`` nulled both. An unnamed stage is named by its
   ordinal (``0``, ``1``), so deleting an earlier unnamed stage renames it.
+- One Symbol per variable per stage (WI-dabug): a re-declared ``ENV`` or
+  ``ARG`` in one stage is the same variable, so it is one Symbol at its
+  first declaration, as a bash export is (WI-nasil); every pair of
+  ``ENV A=1 B=2`` is a variable.
 """
 from __future__ import annotations
 
@@ -164,6 +168,11 @@ def _process_dockerfile_tree(
     """
     # The build stage an instruction belongs to: the scope chain of its id.
     current_stage: tuple[str, ...] = ()
+    # WI-dabug: the (kind, name) pairs this stage already has a Symbol for.
+    # A re-declared ENV / ARG is the same variable, so it is ONE Symbol at its
+    # first declaration (WI-nasil's model for bash exports), per stage: a
+    # FROM starts a new stage and an ENV does not cross it.
+    declared_in_stage: set[tuple[str, str]] = set()
     for node in iter_tree(root_node):
         if node.type == "from_instruction":
             # Extract image name and optional alias
@@ -173,6 +182,7 @@ def _process_dockerfile_tree(
             stage_name = stage_alias if stage_alias else str(stage_counter[0])
             stage_counter[0] += 1
             current_stage = (stage_name,)
+            declared_in_stage = set()
 
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
@@ -250,11 +260,12 @@ def _process_dockerfile_tree(
                 symbols.append(sym)
 
         elif node.type == "env_instruction":
-            # Extract environment variable
-            env_pair = find_child_by_type(node, "env_pair")
-            if env_pair:
+            # Every pair of the instruction is a variable (``ENV A=1 B=2``;
+            # the legacy ``ENV A 1`` parses as one pair too).
+            for env_pair in (c for c in node.children if c.type == "env_pair"):
                 var_name = _extract_env_name(env_pair, source)
-                if var_name:
+                if var_name and ("env_var", var_name) not in declared_in_stage:
+                    declared_in_stage.add(("env_var", var_name))
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
                     symbol_id = make_symbol_id("dockerfile", rel_path, start_line, end_line, var_name, "env_var")
@@ -285,7 +296,8 @@ def _process_dockerfile_tree(
         elif node.type == "arg_instruction":
             # Extract build argument
             arg_name = _extract_arg_name(node, source)
-            if arg_name:
+            if arg_name and ("build_arg", arg_name) not in declared_in_stage:
+                declared_in_stage.add(("build_arg", arg_name))
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 symbol_id = make_symbol_id("dockerfile", rel_path, start_line, end_line, arg_name, "build_arg")
