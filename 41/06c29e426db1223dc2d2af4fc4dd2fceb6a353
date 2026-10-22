@@ -1,0 +1,23 @@
+Original commit body from 3e156ecaac78b5230bbcd377ad4bf591aed7373b:
+
+py.py walked function bodies and module code, and for a ClassDef only its
+decorators, so a statement in the class body itself -- field =
+models.CharField(...), requests.get(...) -- emitted no calls edge and no
+module_attr_ref (INV-foluz). verify-claims read a class-body secret ->
+network flow as confirmed with no evidence.
+
+The class body's own statements (defs and nested classes excluded) are now
+walked like module code under the innermost class, looked up by AST node
+id (class_symbol_by_node_id, threaded through FileAnalysis) so Django's
+many same-named Meta classes do not collide. The scope is the enclosing
+function's LEGB chain, if any, plus a frame for the class body's bindings.
+
+Fixtures (28, A = dev 4945e072e9): py_class_flow confirmed [] -> violated
+(structural; the DDG has no body under the class, WI-hofad).
+Corpus verify-claims (flask-restful, fastapi, django; 21 claims): 0
+verdicts, evidence counts or walks moved. Edges: django +8359 (6451 calls,
+1477 instantiates, 305 references, 126 module_attr_ref), fastapi +218,
+flask-restful +6; decorated_by unchanged. django analyze_python 70.8 ->
+72.9 s.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
