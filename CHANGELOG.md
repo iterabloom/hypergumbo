@@ -12,6 +12,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Breaking and contract changes
+
+- **`stable_id_scheme` v9 → v10**: BitBake symbols' `stable_id` is a real hash, no longer their node id; other languages are unchanged.
+
 ### Removed
 
 - **The aardvark-dns test fixture's `Cargo.lock`**: never built, it drew five Dependabot alerts. Its README pins the upstream copy for re-recording.

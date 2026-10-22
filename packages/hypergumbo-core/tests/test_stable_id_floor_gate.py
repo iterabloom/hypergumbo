@@ -1831,6 +1831,24 @@ def test_every_fixture_emits_a_symbol(runs) -> None:
     assert silent == []
 
 
+def test_every_fixture_stable_id_is_canonical(runs) -> None:
+    """WI-banod: bitbake set ``stable_id`` to its node id
+    (``bitbake:<path>:0-0:<name>:variable``). Such an id neither rides the
+    floor nor is null, and it moves nothing when a sibling is deleted, so the
+    census and the deletion check both passed it. ``None`` is allowed (the
+    census owns nulls); any other value must be the canonical
+    ``sha256:<16hex>`` the validator's stable_id format check requires."""
+    from hypergumbo_core.spec_validator import _CANONICAL_STABLE_ID_PATTERN
+
+    bad = sorted(
+        (n.get("language"), n.get("kind"), n.get("stable_id"))
+        for n in _fixture_nodes(runs, "with")
+        if n.get("stable_id") is not None
+        and not _CANONICAL_STABLE_ID_PATTERN.match(n["stable_id"])
+    )
+    assert bad == []
+
+
 def test_floor_census_matches_baseline(runs) -> None:
     live = floor_census(_fixture_nodes(runs, "with"))
     breaches = census_breaches(live, _baseline()["floor_and_null"])

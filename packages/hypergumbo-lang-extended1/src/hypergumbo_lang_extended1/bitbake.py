@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -189,7 +190,9 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=scoped_stable_id(
+                kind="variable", lang="bitbake", path=str(rel_p), name=var_name,
+            ),
             name=var_name,
             kind="variable",
             language="bitbake",
@@ -299,7 +302,9 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=scoped_stable_id(
+                kind="task", lang="bitbake", path=str(rel_p), name=func_name,
+            ),
             name=func_name,
             kind="task",
             language="bitbake",
@@ -339,7 +344,12 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            # The scope keeps a python task apart from a shell task of the
+            # same name, as the ``python_task`` id kind does.
+            stable_id=scoped_stable_id(
+                kind="task", lang="bitbake", path=str(rel_p), name=func_name,
+                scope=("python",),
+            ),
             name=func_name,
             kind="task",
             language="bitbake",
@@ -379,7 +389,9 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
 
         symbol = Symbol(
             id=symbol_id,
-            stable_id=symbol_id,
+            stable_id=scoped_stable_id(
+                kind="addtask", lang="bitbake", path=str(rel_p), name=task_name,
+            ),
             name=task_name,
             kind="addtask",
             language="bitbake",
