@@ -266,6 +266,31 @@ func use() {
         assert _at(calls, 7) == [(7, "use", "V.init", 3)]
         assert _at(calls, 8) == [(8, "use", "V.init", 3)]
 
+    def test_a_trailing_closure_never_binds_an_opaque_or_existential_parameter(
+        self, tmp_path: Path,
+    ) -> None:
+        # TCA's ``Reduce { state, action in ... }`` beside ``init(_ r: some
+        # Reducer)``: ``some P`` / ``any P`` / ``P & Q`` are read as types, so
+        # only the function-typed init admits the closure, with no ambiguity.
+        result, by_id = _analyze(tmp_path, {"A.swift": """\
+struct R {
+    init(_ reducer: some P) {}
+    init(_ other: any P) {}
+    init(_ both: P & Q) {}
+    init(_ reduce: @escaping (Int) -> Int) {}
+}
+func use() {
+    _ = R { x in x }
+}
+"""})
+        hits = [
+            e for e in result.edges if e.edge_type == "calls" and e.line == 8
+        ]
+        assert [(by_id[e.dst].name, by_id[e.dst].span.start_line) for e in hits] == [
+            ("R.init", 5),
+        ]
+        assert "resolution_quality" not in hits[0].meta
+
     def test_several_that_admit_is_ambiguous(self, tmp_path: Path) -> None:
         result, by_id = _analyze(tmp_path, {"A.swift": """\
 struct T {

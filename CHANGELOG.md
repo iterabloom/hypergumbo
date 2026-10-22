@@ -27,6 +27,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Module-level code is walked like a function body**: Python and JS/TS top-level flows are confirmed or removed, not decided by reachability alone.
 - **Python class-body calls emit calls edges**: `class C: requests.get(...)` is anchored on `C`, no longer a silent all-clear.
 
+#### Calls, types and inheritance
+
+- **Swift initialisers and deinitialisers are symbols**: `T(...)` lands on the `init` it runs; init bodies' calls are credited to it.
+
 ## [9.2.0] - 2026-10-20
 
 ### Added
