@@ -51,14 +51,16 @@ Why This Design
 
 import hashlib
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id,
     sanitize_id_name_segment,
 )
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree
+from hypergumbo_core.analyze.base import (
+    AnalysisResult, TreeSitterAnalyzer, ancestor_labels, iter_tree, make_file_id,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
@@ -78,6 +80,29 @@ def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
     contain a colon (``a:hover``) and a colon there shifts every anchor.
     """
     return f"css:{path}:{line}-{line}:{sanitize_id_name_segment(name)}:{kind}"
+
+
+def _local_import_resolver(
+    repo_root: Path, css_file: Path,
+) -> Callable[[str], Optional[str]]:
+    """``@import`` path -> the file node id of the repository file it names.
+
+    Resolved against the importing file's directory, as a browser does for a
+    relative URL; ``None`` for a URL with a scheme, a protocol-relative URL, a
+    path outside the repository or a file that is not there.
+    """
+    def resolve(import_path: str) -> Optional[str]:
+        if "://" in import_path or import_path.startswith("//"):
+            return None
+        target = (css_file.parent / import_path).resolve()
+        try:
+            rel = target.relative_to(repo_root.resolve())
+        except ValueError:
+            return None
+        if not target.is_file():
+            return None
+        return make_file_id("css", str(rel))
+    return resolve
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -205,8 +230,13 @@ def _process_css_tree(
     file_symbol_id: str,
     *,
     run_id: str,
+    local_import_id: Callable[[str], Optional[str]] | None = None,
 ) -> None:
-    """Process a CSS AST tree and extract symbols using iterative traversal."""
+    """Process a CSS AST tree and extract symbols using iterative traversal.
+
+    ``local_import_id`` maps an ``@import`` path to the file node id of the
+    repository file it names, or ``None`` (WI-popak-mopad).
+    """
     for node in iter_tree(root_node):
         if node.type == "import_statement":
             import_path = _extract_import_path(node, source)
@@ -220,10 +250,16 @@ def _process_css_tree(
                 # an id -- finalize's 4-part fallback put it in the LANG slot.
                 # Same shape as the js/ts import edge (module name in the path
                 # slot, the ``module`` name/kind pair).
+                # WI-popak-mopad: an import of a file this repository holds
+                # lands on that file's node; a URL or a missing file keeps the
+                # module placeholder.
+                dst = (local_import_id(import_path) if local_import_id else None) or (
+                    f"css:{import_path}:0-0:module:module"
+                )
                 edges.append(
                     Edge.create(
                         src=file_symbol_id,
-                        dst=f"css:{import_path}:0-0:module:module",
+                        dst=dst,
                         edge_type="imports",
                         evidence_type="ast_import",
                         line=start_line,
@@ -476,14 +512,18 @@ class CSSAnalyzer(TreeSitterAnalyzer):
                     css_file.relative_to(repo_root) if repo_root.is_dir() else css_file.name
                 )
 
-                # Create a file symbol for import edges
-                file_symbol_id = _make_symbol_id(rel_path, 1, rel_path, "file")
+                # WI-popak-mopad: import edges start at the file node the
+                # pipeline keeps (``css:<path>:1-1:file:file``). The old
+                # ``_make_symbol_id(rel_path, 1, rel_path, "file")`` put the
+                # PATH in the name slot, matched no node, and finalize turned
+                # it into a phantom external_symbol src.
+                file_symbol_id = make_file_id("css", rel_path)
 
                 # Process the tree
                 _process_css_tree(
-                    tree.root_node, symbols, edges, rel_path, source, file_symbol_id
-                ,
+                    tree.root_node, symbols, edges, rel_path, source, file_symbol_id,
                     run_id=run.execution_id,
+                    local_import_id=_local_import_resolver(repo_root, css_file),
                 )
 
             except (OSError, IOError) as e:  # pragma: no cover
