@@ -1679,6 +1679,54 @@ def _extract_symbols_from_file(
                 analysis.symbols.append(v_sym)
                 analysis.symbol_by_name[var_name] = v_sym
 
+        # Module-level type alias -- WI-bamar: ``pub type R<T> = Result<T, E>;``
+        # is a declaration, and emitted nothing (two of the three SCIP-only
+        # declarations on aardvark-dns). Module level only, by the const rule:
+        # an impl's ``type Item = u32;`` is an associated type, and a trait's
+        # ``type Item;`` is not a ``type_item`` at all.
+        elif node.type == "type_item" and _is_rust_module_level_const(node):
+            name_node = _find_child_by_field(node, "name")
+            if name_node:
+                alias_name = node_text(name_node, source)
+                aliased_node = _find_child_by_field(node, "type")
+                aliased = node_text(aliased_node, source) if aliased_node is not None else None
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                a_modifiers = _extract_modifiers_rust(node, source)
+                a_qualified = _make_rust_qualified_name(
+                    _get_rust_mod_path(node, source), None, alias_name,
+                )
+                a_sym = Symbol(
+                    id=make_symbol_id(
+                        "rust", str(file_path), start_line, end_line, alias_name, "type_alias",
+                    ),
+                    name=alias_name,
+                    kind="type_alias",
+                    language="rust",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    modifiers=a_modifiers,
+                    signature=aliased,
+                    stable_id=make_typed_stable_id(
+                        "type_alias", aliased or "",
+                        visibility_from_modifiers(a_modifiers),
+                        name=alias_name, qualified_name=a_qualified,
+                        file_stable_id=file_stable_id,
+                    ),
+                    line_span=end_line - start_line + 1,
+                    is_exported="pub" in a_modifiers,
+                    qualified_name=a_qualified,
+                )
+                analysis.symbols.append(a_sym)
+                analysis.symbol_by_name[alias_name] = a_sym
+
         # Enum declaration
         elif node.type == "enum_item":
             name_node = _find_child_by_field(node, "name")
