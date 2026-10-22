@@ -1,0 +1,23 @@
+- op: create  # 2661
+  at: '2026-10-22T05:13:12Z'  # 2661
+  by: agent  # 2661
+  actor: jgstern_agent  # 2661
+  clock: 1  # 2661
+  nonce: '2661'  # 2661
+  data:  # 2661
+    kind: work_item  # 2661
+    title: "stale taint/verify-claims prose: ddg_mixed, unavailable, precise, built-in sinks, exit 3, CONFIRMING_VERDICTS use; bakeoff-deep counts only == 'confirmed'"  # 2661
+    status: todo_hard  # 2661
+    priority: 3  # 2661
+    parent:  # 2661
+    tags:  # 2661
+    - docs  # 2661
+    - verify_claims  # 2661
+    - taint  # 2661
+    - concept_audit_20261021  # 2661
+    isbefore: []  # 2661
+    duplicate_of: []  # 2661
+    not_duplicate_of: []  # 2661
+    pr_ref:  # 2661
+    description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F5/F6, agent read. ddg_mixed defined as 'walk ran and did not confirm' at taint.py:605-607, 917-919, verify_claims.py:1612-1614, docs/hypergumbo-spec.md:127 (omits not_attempted; VERIFY-CLAIMS-SCOPE.md:224-233 is right; verify_claims.py:5753 says it includes refuted, which never reaches evidence); dataflow_scope.py:71-72 describes unavailable as 'the walk ran' (it is ran=False, taint.py:559-560); taint.py:5677-5679 precise docstring; envelope comment verify_claims.py:396 'for every finding' (unconfirmed is always 0 over findings); deferred-only path returns confirmed_with_caveats with evidence_count=1 (6446-6448) vs docs 1562/1568; verify_claims.py:433-435 says the CLI uses CONFIRMING_VERDICTS (cli.py:7905-7929/8002-8004 use literals); cli.py:7983-7986 / 7909-7913 exit-3 rationale; cli.py:7045-7046 and taint.py:321-322 zone lists; cli.py:7056-7058, taint.py:1929-1931, verify_claims.py:4548-4551 'every built-in sink comes from io_primitives' (false since ADR-0060); io_boundary_types.py:440-441 'there is no bash catalogue' (bash.yaml exists); taint.py:319 zone docstring. Code bug: scripts/bakeoff-deep:2703-2705 counts == 'confirmed' only, so confirmed_with_caveats reads undecided."  # 2661
+    fields: {}  # 2661
