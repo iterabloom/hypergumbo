@@ -31,6 +31,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Calls, types and inheritance
 
 - **Swift initialisers and deinitialisers are symbols**: `T(...)` lands on the `init` it runs; init bodies' calls are credited to it.
+- **Swift construction-call meta is enumerable again**: literal keys restore the meta-key gate.
 
 ## [9.2.0] - 2026-10-20
 

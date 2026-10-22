@@ -358,6 +358,33 @@ func use() {
         assert "resolution_quality" not in sure.meta
         assert amb.confidence < sure.confidence
 
+    def test_several_that_admit_is_ambiguous_across_files(self, tmp_path: Path) -> None:
+        # The type lives in another file, so the call resolves through the
+        # resolver rather than the same-file table; the record is the same.
+        result, by_id = _analyze(tmp_path, {
+            "B.swift": """\
+struct T {
+    init(_ a: Int) {}
+    init(_ b: String) {}
+}
+""",
+            "A.swift": """\
+func use() {
+    _ = T(1)
+}
+""",
+        })
+        (amb,) = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.line == 2
+            and by_id.get(e.src) is not None and by_id[e.src].name == "use"
+        ]
+        assert by_id[amb.dst].name == "T.init"
+        assert by_id[amb.dst].span.start_line == 2
+        assert amb.meta == {
+            "call_construct": "function", "resolution_quality": "ambiguous",
+        }
+
     def test_an_unknown_super_keeps_the_old_edge(self, tmp_path: Path) -> None:
         # An EXTERNAL superclass: nothing to land on, the edge stays unresolved.
         result, by_id = _analyze(tmp_path, {"A.swift": """\
