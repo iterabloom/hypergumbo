@@ -37,7 +37,11 @@ Analysis proceeds in two passes for cross-file resolution:
   then type ``setUp`` fixture fields (``self.x = Model.objects.create(...)``)
 
 **Pass 2 - Edge Extraction:**
-- Walk AST to find function/method call sites
+- Walk AST to find function/method call sites. Three kinds of block are
+  walked: each function body (under its symbol), module code (under the file
+  anchor), and each class body's own statements (under the innermost class,
+  found by AST node id -- WI-muzav-nugak). A class body runs when the class is
+  defined, so ``f = models.CharField(...)`` is a call site like any other
 - Resolve callees using local symbols first, then imports. Methods sit in the
   local table under their QUALIFIED name (``Class.method``) only: a bare-name
   call cannot reach a method (a class body is not an enclosing scope), and a
@@ -2440,6 +2444,10 @@ class FileAnalysis:
     # AST node ids are stable within a single process; this field is only
     # consumed in the same process that produced the tree.
     func_symbol_by_node_id: dict[int, "Symbol"] = field(default_factory=dict)
+    # WI-muzav-nugak: maps AST ClassDef node id -> Symbol, so edge extraction
+    # anchors a class-body call on the class that lexically holds it. A name
+    # lookup cannot: every Django model's ``Meta`` shares one name.
+    class_symbol_by_node_id: dict[int, "Symbol"] = field(default_factory=dict)
     # identity:F1/F4a: maps every function/method Symbol.id to its NEAREST
     # enclosing FUNCTION Symbol.id (ClassDef ancestors are passed through).
     # Materializes the lexical scope chain for _build_scope_stack; unlike
@@ -3946,6 +3954,7 @@ def _extract_file_analysis(
         source=source,
         nested_by_parent_id=nested_by_parent_id,
         func_symbol_by_node_id=func_symbol_by_node_id,
+        class_symbol_by_node_id=class_symbol_by_node_id,
         enclosing_func_id=enclosing_func_id,
         local_names_by_func_id=local_names_by_func_id,
         method_to_enclosing_class_id=method_to_enclosing_class_id,
@@ -5750,6 +5759,7 @@ def _extract_edges(
     run_id: str,
     nested_by_parent_id: dict[str, dict[str, Symbol]] | None = None,
     func_symbol_by_node_id: dict[int, Symbol] | None = None,
+    class_symbol_by_node_id: dict[int, Symbol] | None = None,
     enclosing_func_id: dict[str, str] | None = None,
     local_names_by_func_id: dict[str, frozenset[str]] | None = None,
     method_to_enclosing_class_id: dict[str, str] | None = None,
@@ -5812,6 +5822,8 @@ def _extract_edges(
         nested_by_parent_id = {}
     if func_symbol_by_node_id is None:  # pragma: no cover
         func_symbol_by_node_id = {}
+    if class_symbol_by_node_id is None:  # pragma: no cover
+        class_symbol_by_node_id = {}
     if enclosing_func_id is None:  # pragma: no cover
         enclosing_func_id = {}
     if local_names_by_func_id is None:  # pragma: no cover
@@ -7124,6 +7136,68 @@ def _extract_edges(
     # AND the module-level block, despite process_code_block recursing per-node.
     _call_func_attr_ids = _collect_call_func_attr_ids([tree])
 
+    # WI-muzav-nugak: each class's innermost enclosing FUNCTION node, passing
+    # through enclosing classes (Python resolves a class body's free names in
+    # the nearest function scope, never in an outer class body).
+    _class_enclosing_fn = _class_enclosing_functions(tree)
+
+    def _process_class_body(node: ast.ClassDef, class_symbol: Symbol) -> None:
+        """Walk a class body's own statements under the class (WI-muzav-nugak).
+
+        The statements of a class body run when the class is defined, and a
+        call there -- ``f = models.CharField(...)``, ``requests.get(...)`` --
+        was in no walked block: module code skips every ClassDef, and each
+        method is walked under the method. INV-foluz (every parsed call site
+        emits a calls edge) failed for them, and verify-claims read a
+        class-body flow as a clean all-clear.
+
+        The block is processed like module code, under the class's own symbol
+        (the innermost class, as Java's static initializer is anchored,
+        INV-bamij). Its ``def`` and ``class`` statements are excluded: they are
+        walked under their own symbols. The scope is the enclosing function's
+        LEGB chain, if any, plus one frame for the class body's own bindings.
+        """
+        body: list[ast.AST] = [
+            stmt for stmt in node.body
+            if not isinstance(
+                stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+            )
+        ]
+        if not body:
+            return
+        found = _collect_bound_names(body)
+        frames: list[Scope] = []
+        shadow = frozenset(found.bound)
+        fn_node = _class_enclosing_fn.get(id(node))
+        fn_symbol = (
+            func_symbol_by_node_id.get(id(fn_node)) if fn_node is not None else None
+        )
+        if fn_symbol is not None:
+            frames = _build_scope_stack(
+                fn_symbol.id, enclosing_func_id, nested_by_parent_id,
+                local_names_by_func_id, _value_names_by_func_id,
+            ).frames
+            shadow |= (
+                local_names_by_func_id.get(fn_symbol.id, frozenset())
+                | _stmt_shadow_by_func_id.get(fn_symbol.id, frozenset())
+                | _enclosing_shadow(fn_symbol.id)
+            )
+        stack = ScopeStack(frames=[*frames, Scope(
+            owner_id=class_symbol.id,
+            bindings={},
+            local_names=frozenset(found.bound - found.nonlocals),
+            value_names=frozenset(
+                (found.stored | _collect_statement_binding_names(list(node.body)))
+                - found.imported - found.nonlocals
+            ),
+        )])
+        _emit_module_attr_refs(
+            body, class_symbol, local_bindings=shadow,
+            value_shadowed=stack.value_shadowed(),
+        )
+        process_code_block(body, class_symbol, stack=stack)
+        _emit_variable_refs(body, class_symbol, local_bindings=shadow)
+
     # Process functions (including async functions)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -7217,11 +7291,12 @@ def _extract_edges(
                     local_bindings=_collect_local_bindings(node) | _enclosing,
                 )
 
-        # Process class decorators
+        # Process class decorators and the class body's own statements
         elif isinstance(node, ast.ClassDef):
-            class_symbol = local_symbols.get(node.name)
+            class_symbol = class_symbol_by_node_id.get(id(node))
             if class_symbol:
                 _process_decorators(class_symbol, node.decorator_list)
+                _process_class_body(node, class_symbol)
 
     # Process module-level code for <module> pseudo-nodes
     module_symbol = local_symbols.get("<module>")
@@ -7401,6 +7476,29 @@ def _collect_bound_names(child_nodes: list[ast.AST]) -> _BoundNames:
 
     _walk(child_nodes)
     return _BoundNames(names, nonlocals, stored, imported)
+
+
+def _class_enclosing_functions(
+    tree: ast.Module,
+) -> dict[int, ast.FunctionDef | ast.AsyncFunctionDef]:
+    """``{id(ClassDef): innermost enclosing FunctionDef}`` (WI-muzav-nugak).
+
+    A class body resolves free names in the nearest enclosing FUNCTION scope,
+    passing over any enclosing class body, so the walk carries the innermost
+    function down through ClassDefs and resets it only at a FunctionDef. A
+    class with no enclosing function is absent.
+    """
+    out: dict[int, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    pending: list[tuple[ast.AST, ast.FunctionDef | ast.AsyncFunctionDef | None]] = [
+        (tree, None),
+    ]
+    while pending:
+        node, fn = pending.pop()
+        if isinstance(node, ast.ClassDef) and fn is not None:
+            out[id(node)] = fn
+        inner = node if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else fn
+        pending.extend((child, inner) for child in ast.iter_child_nodes(node))
+    return out
 
 
 def _collect_module_local_names(tree: ast.Module) -> frozenset[str]:
@@ -9987,6 +10085,7 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
         run_id=run.execution_id,
         nested_by_parent_id=file_analysis.nested_by_parent_id,
         func_symbol_by_node_id=file_analysis.func_symbol_by_node_id,
+        class_symbol_by_node_id=file_analysis.class_symbol_by_node_id,
         enclosing_func_id=file_analysis.enclosing_func_id,
         local_names_by_func_id=file_analysis.local_names_by_func_id,
         method_to_enclosing_class_id=file_analysis.method_to_enclosing_class_id,
@@ -10295,6 +10394,7 @@ def analyze_python(
             property_getter_by_path_name=_property_getter_by_path_name,
             nested_by_parent_id=analysis.nested_by_parent_id,
             func_symbol_by_node_id=analysis.func_symbol_by_node_id,
+            class_symbol_by_node_id=analysis.class_symbol_by_node_id,
             enclosing_func_id=analysis.enclosing_func_id,
             local_names_by_func_id=analysis.local_names_by_func_id,
             method_to_enclosing_class_id=analysis.method_to_enclosing_class_id,
