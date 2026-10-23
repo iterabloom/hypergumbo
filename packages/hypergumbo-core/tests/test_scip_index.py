@@ -135,9 +135,10 @@ def test_single_definition_becomes_symbol() -> None:
     assert s.path == "mod.py"
     assert s.span == Span(start_line=6, end_line=9, start_col=0, end_col=0)
     assert s.origin == ["scip"]
-    # INV-hunup: stable_id is the canonical sha256 of the SCIP moniker; the raw
-    # moniker is preserved in meta["scip_symbol"].
-    assert s.stable_id == _short_sha256(sym)
+    # INV-hunup: stable_id is a canonical sha256; INV-kutid: of the defining
+    # Document's path AND the moniker. The raw moniker is preserved in
+    # meta["scip_symbol"].
+    assert s.stable_id == _short_sha256(f"scip:mod.py:{sym}")
     assert s.stable_id.startswith("sha256:")
     assert s.meta and s.meta.get("scip_symbol") == sym
 
@@ -268,6 +269,65 @@ def test_global_symbol_beside_a_local_is_still_minted() -> None:
         ],
     )
     assert [s.name for s in scip_index_to_symbols(idx)] == ["f"]
+
+
+class TestAMonikerDefinedInTwoDocumentsIsTwoIdentities:
+    """INV-kutid. rust-analyzer's moniker names the cargo PACKAGE, not the
+    crate TARGET, so the lib (``src/lib.rs``), bin (``src/main.rs``) and
+    build script (``build.rs``) of one package all define ``crate/`` -- and
+    every same-named item at their roots -- under one string. Hashing the
+    moniker alone gave the three roots one ``stable_id``. The defining
+    Document's repo-relative path is the input that tells the targets apart,
+    so it is hashed with the moniker, as every tree-sitter producer hashes
+    its path (ADR-0035 §4)."""
+
+    ROOT = "rust-analyzer cargo aardvark-dns 2.0.0-dev crate/"
+
+    def _roots(self, paths: tuple[str, ...]) -> list[Symbol]:
+        docs = [
+            scip_pb2.Document(
+                language="Rust", relative_path=path,
+                symbols=[scip_pb2.SymbolInformation(symbol=self.ROOT)],
+                occurrences=[scip_pb2.Occurrence(
+                    symbol=self.ROOT, symbol_roles=DEFINITION_ROLE, range=[0, 0, 0],
+                )],
+            )
+            for path in paths
+        ]
+        return scip_index_to_symbols(scip_pb2.Index(documents=docs))
+
+    def test_one_package_root_in_three_targets_is_three_stable_ids(self) -> None:
+        roots = self._roots(("src/lib.rs", "src/main.rs", "build.rs"))
+        assert [s.path for s in roots] == ["src/lib.rs", "src/main.rs", "build.rs"]
+        assert len({s.stable_id for s in roots}) == 3
+        # The moniker itself is unchanged: what the targets share is still
+        # visible to a consumer that wants the package-level name.
+        assert {s.meta["scip_symbol"] for s in roots} == {self.ROOT}
+
+    def test_the_id_is_a_function_of_path_and_moniker_only(self) -> None:
+        """Stable across runs and across which other targets exist: adding a
+        bin target does not move the lib root's id."""
+        [lib_alone] = self._roots(("src/lib.rs",))
+        lib_with_siblings = self._roots(("build.rs", "src/main.rs", "src/lib.rs"))[2]
+        assert lib_alone.stable_id == lib_with_siblings.stable_id
+        assert lib_alone.stable_id == _short_sha256(f"scip:src/lib.rs:{self.ROOT}")
+
+    def test_a_same_named_item_at_two_target_roots_is_two_stable_ids(self) -> None:
+        """Not only ``crate/``: a root-level ``fn main`` in build.rs and
+        src/main.rs carries one moniker too."""
+        main = "rust-analyzer cargo aardvark-dns 2.0.0-dev main()."
+        docs = [
+            scip_pb2.Document(
+                language="Rust", relative_path=path,
+                symbols=[scip_pb2.SymbolInformation(symbol=main)],
+                occurrences=[scip_pb2.Occurrence(
+                    symbol=main, symbol_roles=DEFINITION_ROLE, range=[4, 3, 7],
+                )],
+            )
+            for path in ("build.rs", "src/main.rs")
+        ]
+        a, b = scip_index_to_symbols(scip_pb2.Index(documents=docs))
+        assert a.stable_id != b.stable_id
 
 
 def test_document_scoped_local_ids_recur_across_documents_and_mint_nothing() -> None:

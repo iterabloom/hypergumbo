@@ -14,6 +14,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
+- **`stable_id_scheme` v10 → v11**: a SCIP-only symbol's `stable_id` hashes its file path with the moniker, so a cargo package's lib, bin and `build.rs` roots no longer share one id; tree-sitter and merged ids are unchanged.
 - **`stable_id_scheme` v9 → v10**: BitBake symbols' `stable_id` is a real hash, no longer their node id; other languages are unchanged.
 
 ### Removed

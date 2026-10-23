@@ -38,7 +38,7 @@ id byte for byte **when given the item's span**. Production never gives it
 that: rust-analyzer's Definition occurrence is the identifier token (line 14
 for a method whose body runs 14–17), the helper requires both endpoints to
 match, so it abstains for every multi-line item and the SCIP symbol keeps its
-`sha256(moniker)` id. Measured on aardvark-dns (INV-dolud, 2026-09-18): **0 of
+path-and-moniker id (`scip_stable_id`, stable_id v11). Measured on aardvark-dns (INV-dolud, 2026-09-18): **0 of
 52** functions emitted by both arms share a `stable_id`. The two arms carry
 independent identities today, and a consumer joining on `stable_id` sees two
 records for one function. Whether they should share one — and what a dedup
