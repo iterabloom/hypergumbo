@@ -432,9 +432,10 @@ subprocess:
 
       `Run` and `Start` stay launch-only in the row above: they return an
       error, not the child's message. The precedent is rust.yaml's
-      `std::process::Child.wait_with_output` / `ChildStdout.read`, which cite
-      python.yaml's `os.wait` in turn -- the return direction of a subprocess
-      was already modelled in two catalogues, and this makes the rest agree.
+      `std::process::Child.wait_with_output` / `ChildStdout.read` -- the return
+      direction of a subprocess was already modelled there, and this makes the
+      rest agree. (They once cited python.yaml's `os.wait`, a status-only row
+      WI-lanos removed: a bare exit status is not the child's message.)
   - module: syscall
     functions: [Exec, ForkExec]
 
@@ -541,8 +542,9 @@ ipc_recv:
       The siblings that return only an exit status or a HANDLE stay
       launch-only: a status is not the child's message, and a handle is a
       crossing that has not happened yet (the ADR-0049 deferred shape).
-      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
-      `os.wait`.
+      Follows rust.yaml's `Child.wait_with_output`. (Its own precedent,
+      python.yaml's `os.wait`, is no longer rowed: a bare exit status is
+      not the child's message -- WI-lanos, ADR-0049 §Ruling 4.)
   - module: fmt
     functions: [Scan, Scanln, Scanf]
     notes: >-

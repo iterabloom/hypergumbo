@@ -303,9 +303,10 @@ module_completeness:
       launchedProcess rowed subprocess; terminate, interrupt, suspend, resume
       rowed ipc_send. waitUntilExit is declared NOT I/O: it blocks until the
       child exits and returns nothing -- python.yaml's
-      multiprocessing.Process.join, which is disclosed and not rowed (rust's
-      Child.wait is rowed ipc_recv because it RETURNS the status; here the
-      status is read separately, from the terminationStatus property).
+      multiprocessing.Process.join, which is disclosed and not rowed. (rust's
+      Child.wait returns the status and is not rowed either: a bare exit
+      status is not the child's message, WI-lanos; here the status is read
+      separately, from the terminationStatus property.)
       Everything else on the class is a property (executableURL, launchPath,
       arguments, environment, standardInput/Output/Error, terminationStatus,
       isRunning ...), configured before the launch or read after it, and is

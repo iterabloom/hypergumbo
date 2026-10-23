@@ -161,7 +161,7 @@ ambiguous_names:
   - exception     # logging.exception vs same
   - log           # logging.log vs math.log, any local log()
   - warn          # warnings.warn vs any local warn()
-  - wait          # os.wait vs Popen.wait, Event.wait, Condition.wait
+  - wait          # Popen.wait vs Event.wait, Condition.wait (os.wait unrowed since WI-lanos)
   - kill          # os.kill vs Popen.kill, Process.kill
   - parse         # xml.etree.ElementTree.parse vs argparse-ish local parse()
   - version       # importlib.metadata.version vs any local version()
@@ -953,11 +953,9 @@ ipc_recv:
       The siblings that return only an exit status or a HANDLE stay
       launch-only: a status is not the child's message, and a handle is a
       crossing that has not happened yet (the ADR-0049 deferred shape).
-      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
-      `os.wait`.
-  - module: os
-    functions: [wait, waitpid, wait3, wait4, waitid]
-    notes: "Reaping a child collects its exit status - data received from another process."
+      Follows rust.yaml's `Child.wait_with_output`. (Its own precedent,
+      python.yaml's `os.wait`, is no longer rowed: a bare exit status is
+      not the child's message -- WI-lanos, ADR-0049 §Ruling 4.)
   - module: shlex
     functions: [shlex]
     notes: "shlex(instream=None) defaults to READING sys.stdin - the survey probe's catch."
@@ -989,8 +987,8 @@ ipc_recv:
       through it returns bytes the CHILD chose (ADR-0049 ruling 1) -- the
       crossing the launch row cannot carry, because the launch returns a
       handle. close() waits for the child and returns its exit status, which
-      is os.waitpid; os.wait / os.waitpid are rowed here ("Reaping a child
-      collects its exit status"). Iterating the object (`for line in f:`) is
+      is os.waitpid -- not rowed: a bare exit status is not the child's
+      message (WI-lanos, ADR-0049 §Ruling 4). Iterating the object (`for line in f:`) is
       no call and is not reached.
 
 subprocess:
@@ -1013,9 +1011,9 @@ subprocess:
   - module: subprocess.Popen
     methods: [wait, poll, terminate, kill, send_signal]
     notes: >-
-      WI-jabus. LAUNCH-ONLY: wait / poll return the exit status (python rows
-      Popen.wait here and os.wait under ipc_recv -- two answers for one reap,
-      recorded rather than reconciled), terminate / kill / send_signal return
+      WI-jabus. LAUNCH-ONLY: wait / poll return the exit status, which mints
+      nothing -- the answer os.wait now gives too (WI-lanos reconciled the two
+      answers for one reap that this note used to record), terminate / kill / send_signal return
       nothing. `communicate` returns the child's OUTPUT and is rowed above and
       under ipc_recv. `subprocess.run` stays launch-only for a reason that does
       NOT transfer to communicate: its CompletedProcess carries the child's
@@ -1084,8 +1082,9 @@ subprocess:
       The siblings that return only an exit status or a HANDLE stay
       launch-only: a status is not the child's message, and a handle is a
       crossing that has not happened yet (the ADR-0049 deferred shape).
-      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
-      `os.wait`.
+      Follows rust.yaml's `Child.wait_with_output`. (Its own precedent,
+      python.yaml's `os.wait`, is no longer rowed: a bare exit status is
+      not the child's message -- WI-lanos, ADR-0049 §Ruling 4.)
   - module: os
     functions: [system, popen, execl, execle, execlp, execlpe, execv, execve, execvp, execvpe, spawnl, spawnle, spawnlp, spawnlpe, spawnv, spawnve, spawnvp, spawnvpe]
   - module: os
@@ -1809,7 +1808,7 @@ module_completeness:
     completeness: complete
     retrieved: "2026-08-15"
     notes: >-
-      Full I/O surface rowed above (fs/env/ipc/subprocess). The unrowed remainder is constants (O_*), pure helpers (fsencode), and inert process-state reads (getpid, cpu_count) kept out of env_read so they do not auto-derive false host_secret taint sources; urandom keeps its hand-written shipped taint source instead of a row twin that displaces it.
+      Full I/O surface rowed above (fs/env/ipc/subprocess). The unrowed remainder is constants (O_*), pure helpers (fsencode), inert process-state reads (getpid, cpu_count) kept out of env_read so they do not auto-derive false host_secret taint sources, and the reaping calls (wait, waitpid, wait3, wait4, waitid), which return only an exit status and mint nothing (WI-lanos, 2026-10-23: ADR-0049 §Ruling 4); urandom keeps its hand-written shipped taint source instead of a row twin that displaces it.
   - module: os.environ
     completeness: complete
     retrieved: "2026-08-15"

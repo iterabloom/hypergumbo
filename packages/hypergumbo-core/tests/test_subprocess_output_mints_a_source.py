@@ -24,7 +24,9 @@ return direction] as a source". Two do. ``rust.yaml`` declares
 ``std::process::Child.wait_with_output``, ``ChildStdout.read`` and
 ``ChildStderr.read`` under ``ipc_recv``, and its own note grounds that in
 ``python.yaml``'s ``os.wait`` / ``os.waitpid`` rows — *"Reaping a child collects
-its exit status - data received from another process."* So the BOUNDARY QUESTION
+its exit status - data received from another process."* (Those status-only rows
+were later removed, WI-lanos: a bare exit status is not the child's message.)
+So the BOUNDARY QUESTION
 the item asks ("which boundary? ipc_recv collapses into untrusted_input") was
 already answered in the tree by two shipped catalogues citing each other, and
 this change makes the rest of the corpus consistent with them rather than
