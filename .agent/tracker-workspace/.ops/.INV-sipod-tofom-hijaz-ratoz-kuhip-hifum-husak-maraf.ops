@@ -1,0 +1,24 @@
+- op: create  # b268
+  at: '2026-10-22T23:55:15Z'  # b268
+  by: agent  # b268
+  actor: jgstern_agent  # b268
+  clock: 1  # b268
+  nonce: b268  # b268
+  data:  # b268
+    kind: invariant  # b268
+    title: "SCIP edge resolution keys on the raw moniker, so an edge into a moniker that several crate targets share resolves to one of N records (INV-kutid's sibling; unmeasured)"  # b268
+    status: violated  # b268
+    priority: 3  # b268
+    parent:  # b268
+    tags:  # b268
+    - rust  # b268
+    - multi_fidelity  # b268
+    - analysis_quality  # b268
+    isbefore: []  # b268
+    duplicate_of: []  # b268
+    not_duplicate_of: []  # b268
+    pr_ref:  # b268
+    description: "FOUND 2026-10-22 while choosing INV-kutid's fix shape; NOT MEASURED.\n\nscip/edges.py resolves an Edge endpoint by the raw SCIP symbol string, matched\nagainst Symbol.meta[\"scip_symbol\"] (module docstring, \"Symbol resolution\").\nINV-kutid shows rust-analyzer emits one moniker for several records when a\ncargo package has several crate targets: `crate/` in src/lib.rs, src/main.rs\nand build.rs of aardvark-dns, and any same-path item in two targets. A\nmoniker -> Symbol.id map built over those records keeps one of N, so an edge\nwhose endpoint is such a moniker lands on whichever record the map kept.\n\nINV-kutid's ruled fix (a) path-anchors the stable_id only; it does not touch\nthis lookup, which keys on the moniker, not the stable_id.\n\nNOT CHECKED: whether any SCIP edge on a real repo targets a colliding moniker\n(root namespaces may receive no edges; a same-named root fn in lib and bin\nwould). REPRO TO WRITE: on the recorded aardvark-dns index, list edges whose\nsrc or dst moniker is shared by >1 Definition occurrence in different\nDocuments, and report which record each resolved to.\n\nFIX SHAPE, not chosen: resolve a moniker per Document (the occurrence's own\nDocument first, then the unique definer), and refuse (drop + count) an\nambiguous cross-Document match rather than pick one."  # b268
+    fields:  # b268
+      statement: "An edge endpoint must resolve to the record it names, or be dropped and counted; it must never silently pick one of several records that share the lookup key."  # b268
+      root_cause: "scip/edges.py resolves endpoints against Symbol.meta['scip_symbol'] (the raw moniker); rust-analyzer's moniker omits the crate target, so several records in different Documents share one key (INV-kutid)."  # b268

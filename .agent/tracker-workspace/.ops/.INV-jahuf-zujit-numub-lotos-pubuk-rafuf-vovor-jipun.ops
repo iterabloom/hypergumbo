@@ -1,0 +1,25 @@
+- op: create  # fc5e
+  at: '2026-10-23T17:35:35Z'  # fc5e
+  by: agent  # fc5e
+  actor: jgstern_agent  # fc5e
+  clock: 1  # fc5e
+  nonce: fc5e  # fc5e
+  data:  # fc5e
+    kind: invariant  # fc5e
+    title: "C++ external-symbol ids carry the whole #include stamp (comma-joined, up to 12 KB), so envoy's survey is 5.5 GB and verify-claims dies at ~20.5 GB on a 22 GB machine"  # fc5e
+    status: violated  # fc5e
+    priority: 1  # fc5e
+    parent:  # fc5e
+    tags:  # fc5e
+    - cpp  # fc5e
+    - performance  # fc5e
+    - identity  # fc5e
+    - verify_claims  # fc5e
+    isbefore: []  # fc5e
+    duplicate_of: []  # fc5e
+    not_duplicate_of: []  # fc5e
+    pr_ref:  # fc5e
+    description: "FOUND 2026-10-23 while profiling why `verify-claims` on envoy (217 MB, 12677\ntracked files) was SIGKILLed twice at ~20.5 GB RSS on a 22 GB machine (WI-lanos\nremoval arms, ~/hypergumbo_lab_notebook/lanos_removal_10222026/prof/).\n\nMEASURED (dev 9b93a6396a, which contains 517a52b64f / INV-valom):\n  envoy        survey.json 5.50 GB; verify-claims maxrss 19.8 GB (BEFORE, completed)\n               and 20.5 GB at SIGKILL (AFTER, twice, 1037 s / 1048 s)\n  envoy-half   (6291 files by a sha256 rule, 92 MB) survey.json 3.12 GB;\n               maxrss 12.6 GB; json.load of the survey alone 6.4 GB\n  envoy-half breakdown: edges 2272 MB (dst 1068 MB, dst_ref 1058 MB of it),\n  nodes 726 MB (id 304 MB, display_label 299 MB). 46107 cpp external_symbol\n  nodes carry ids of 1000-12405 chars (median of ALL node ids 116, p90 9097);\n  139703 edges point at them; those dst strings alone are 1.04 GB.\n  Example id head: `cpp:array,iostream,memory,string,envoy/buffer/buffer.h,\n  envoy/event/dispatcher.h,...` (9765 chars, 172 edges point at it).\n\nTHE CAUSE. cpp.py (~2243) builds module_hint = \",\".join(_slots) where _slots\nis the namespace slot plus include_closure's stamp for the FILE, and passes it\nas ExternalRef.module_path. module_path is part of the external symbol's\nidentity, so the whole disjunction of candidate headers is copied into\nnode id, display_label, edge dst and edge dst_ref, once per unresolved call\nsite's target. INV-valom (517a52b64f) widened the stamp from the file's angle\nincludes to every header it can see; its commit measured the cost on\nmodsecurity (x1.19 trimmed) and whisper.cpp (x1.11) and accepted it. On\nenvoy, whose files see ~200 headers, the cost does not stay bounded.\n\nTHE PEAK. py-spy + 2 s RSS sampling on envoy-half: RSS climbs through\nrun_survey to ~6.9 GB, then spikes at the hand-off -- cmd_verify_claims writes\nthe survey, then load_substrate re-reads the whole JSON and\n_rehydrate_io_boundary_edges rebuilds the edges -- reaching 12.6 GB between\nsamples. Both envoy AFTER kills came at that same point (just after the\n`[passes]` line, before the io_primitives catalogue warnings).\n\nWHY IT IS AN IDENTITY DEFECT, not only a size one: the same external function\n(`fopen` from <cstdio>) gets a different id in every file whose include set\ndiffers, so one external symbol is many nodes, and the identity of a call\ntarget changes when an unrelated header is added to the file.\n\nNOT CHECKED: envoy's size and peak before 517a52b64f (a dev-before-valom run\nwould answer it); other C++ repos in the corpus; whether c.py (INV-zikul's\nstamp, ambiguous names only) shows the same growth.\n\nFIX SHAPES, not chosen: (a) keep the disjunction out of identity -- the\nexternal symbol's module_path names a stable key (the `external` sentinel or\na short hash of the stamp) and the stamp rides once per FILE (or per stamp\nhash) in a side table the classifier reads; (b) resolve at analysis time and\nstamp only the headers that actually declare a catalogued primitive of that\nname, which is all the module filter and INV-zimud's ALL-expansion ask;\n(c) cap the stamp, which is a recall regression under INV-valom's own\nstatement and is listed only to be rejected. Any shape must keep INV-valom's\nrepro (fopen via a quoted include -> NO-FSWRITE violated) and its\nmodsecurity / whisper.cpp verdicts unchanged.\n\nREPRO: hypergumbo verify-claims ~/whole_bunch_of_repos/envoy --claims\ndocs/example-claims/generic-taint-claims.yaml --format json\n--no-default-overlays under /usr/bin/time -f %M; or the envoy-half rule in\nthe notebook's PLAN.md AMENDMENT 4 for a 12.6 GB / 6-minute version."  # fc5e
+    fields:  # fc5e
+      statement: "A symbol's identity must be bounded in size and independent of call-site context: the same external target has one id, and no id grows with the number of headers its caller can see."  # fc5e
+      root_cause: "cpp.py passes module_hint = ','.join(namespace slot + the file's include_closure stamp) as ExternalRef.module_path, which is part of the external symbol's id; INV-valom (517a52b64f) widened the stamp to every visible header, so on envoy each id, display_label, dst and dst_ref carries 1-12 KB."  # fc5e
