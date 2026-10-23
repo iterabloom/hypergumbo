@@ -1,0 +1,31 @@
+Original commit body from ff0af0f772e87ffead6785ea3bafd6d9eba2039f:
+
+rust-analyzer's moniker names the cargo PACKAGE, not the crate TARGET, so
+a package's lib (src/lib.rs), bin (src/main.rs) and build script
+(build.rs) each define `crate/` -- and any same-named root item -- under
+one string. scip/index.py hashed the moniker alone, so on aardvark-dns
+the three SCIP-only roots shared sha256:fe9021ce48cd040c across three
+files, a group split_within_file_stable_id_collisions never sees.
+
+Owner ruling 2026-10-22, fix shape (a): stable_id =
+sha256("scip:<Document.relative_path>:<moniker>"), via the new
+scip_stable_id(). The path is the per-Document input that separates
+targets, and it is what ADR-0035 §4 already hashes for every tree-sitter
+producer. Shape (b), recovering the target from cargo's conventional
+paths, was rejected: wrong for [lib]/[[bin]] path= targets.
+
+Scheme v10 -> v11 (schema.py, spec history entry, CHANGELOG). Changes
+only SCIP-only records' ids and the SCIP alternative on merged records;
+a merged record keeps the incumbent's id (ADR-0057). Also corrects the
+spec's stale "v9 is the current shipped value" line, and five docs that
+still described the SCIP id as sha256(moniker).
+
+Tests: TestAMonikerDefinedInTwoDocumentsIsTwoIdentities (3 targets ->
+3 ids; id depends on path and moniker only; a root fn main in build.rs
+and src/main.rs -> 2 ids) and, on the recorded aardvark-dns arms after
+the merge, 0 stable_id collision groups (was 1 group / 3 records).
+
+Not changed: the Rust edge resolver still keys on the raw moniker
+(INV-sipod).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
