@@ -1,0 +1,44 @@
+Original commit body from 857476996979b5326a3c4bec17ae789d82e43247:
+
+One value, two verdicts: python's os wait family and rust's Child.wait /
+try_wait minted an untrusted_input source (ipc_recv, "Reaping a child
+collects its exit status"), while subprocess.call, os.system,
+Command::status, Cmd.Run and rawSystem -- which return the same value --
+minted nothing, under INV-lozat's ruling that "an exit status is not the
+child's message".
+
+Owner decision 2026-10-22 (removal side) and approved ADR-0049 amendment
+2026-10-23 (§Ruling 4, "An exit status is not the child's message"): a
+finding needs the value to reach a sink argument, an exit status is
+consumed as a branch condition, and the opposite direction measured 0 of
+120 sampled added findings carrying a status to a sink argument. Ruling 3's
+finding-level test ran first (pre-registered, lab notebook
+lanos_removal_10222026/): 11 repositories, 0 situations removed or added,
+0 verdicts moved, true evidence counts unchanged.
+
+- python.yaml: the os wait-family ipc_recv row removed; os's completeness
+  note names the reaping calls in its unrowed remainder.
+- rust.yaml: Child keeps only wait_with_output under ipc_recv, and gains a
+  dated module_completeness entry enumerated from impl Child in std's
+  process.rs. Without it the two unrowed methods were an unclassified call:
+  Child.wait read inconclusive where Command::status reads
+  confirmed_with_caveats, trading one disagreement for another. The new
+  agreement test caught this; the corpus arms could not, since a Child
+  method on an unannotated binding mints nothing anyway (WI-rupah).
+- verify_claims: the exit-status family leaves CHOICE_SHAPED_SOURCE_NAMES,
+  since no source carries those names now.
+- Eight catalogue notes in seven languages cited python's os.wait as the
+  precedent for the return direction; each now says it is gone and why.
+  Stale notes in python (os.popen close, Popen.wait), go and swift fixed.
+- ADR-0049: the approved amendment text plus an Implementation-state
+  paragraph; spec's untrusted_input and INV-lozat passages; CHANGELOG.
+
+Tests (test_exit_status_is_one_verdict.py): the removed rows are absent;
+every status-only launch is rowed, still a subprocess sink, and mints no
+source; every output-carrying row still mints; through the production CLI
+os.waitpid vs subprocess.call and Child.wait vs Command::status read one
+verdict with no evidence; and the residual (INV-sozak) is pinned as
+today's state: getstatusoutput()[0] and wait_with_output().status still
+read violated, so the pin goes red when field-sensitivity lands.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
