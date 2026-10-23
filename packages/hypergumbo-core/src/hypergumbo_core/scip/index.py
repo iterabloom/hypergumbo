@@ -116,8 +116,36 @@ Edge cases intentionally handled by skip rather than raise:
   (:func:`~hypergumbo_core.scip.descriptor.is_local_symbol`) to edge
   endpoints, so the rule holds for a library caller that supplies no
   resolver. Its parity-side consequence — the remaining SCIP Symbols
-  carry ``sha256(moniker)``, an identity the tree-sitter arm never
-  shares — is WI-gojum's, not this module's.
+  carry a moniker-derived identity the tree-sitter arm never shares — is
+  WI-gojum's, not this module's.
+
+Identity (``stable_id``, scheme v11, INV-kutid):
+
+* ``stable_id = sha256("scip:<Document.relative_path>:<moniker>")``,
+  truncated like every other id (:func:`scip_stable_id`). A moniker alone
+  is only as scoped as its emitter makes it, and rust-analyzer's names the
+  cargo PACKAGE (``rust-analyzer cargo aardvark-dns 2.0.0-dev crate/``),
+  not the crate TARGET: a package's lib (``src/lib.rs``), bin
+  (``src/main.rs``) and build script (``build.rs``) each define
+  ``crate/`` -- and any same-named item at their roots -- under one
+  string, which rust-analyzer itself logs as "Duplicate symbol". Hashed
+  alone, the three roots shared one id across three files, a group the
+  within-file collision splitter never sees. The defining Document's path
+  is the one per-Document input that tells targets apart, so it goes into
+  the hash, which is also what ADR-0035 §4 does for every tree-sitter
+  producer. Recovering the TARGET from cargo's conventional paths instead
+  was rejected (owner, 2026-10-22): it is wrong for ``[lib] path =`` and
+  ``[[bin]] path =`` and would re-implement cargo's target discovery.
+* The cost is the tree-sitter arm's: renaming a file re-mints its ids.
+  A file compiled into two targets (``mod util;`` in both lib and bin) is
+  one path and one moniker, so its items stay one id -- the same code.
+* Only SCIP-only records keep this value. A record the merge pass folds
+  takes the incumbent's id (ADR-0057) and keeps this one as an
+  alternative.
+* NOT changed: edge endpoints still resolve by the raw moniker
+  (``meta["scip_symbol"]``) in the Rust backend's resolver, so an edge
+  into a moniker several targets share still resolves to one of them
+  (INV-sipod).
 """
 from __future__ import annotations
 
@@ -260,6 +288,17 @@ def _kind_from_chain(descriptors: "tuple[Any, ...]") -> str:
     if leaf.kind is DescriptorKind.TERM:
         return "field" if under_type else "variable"
     return _KIND_MAP[leaf.kind]
+
+
+def scip_stable_id(relative_path: str, moniker: str) -> str:
+    """The ``stable_id`` of a SCIP Definition (module docstring, "Identity").
+
+    ``relative_path`` is the defining ``Document.relative_path`` (repo-
+    relative, as SCIP emits it); ``moniker`` is the global SCIP symbol
+    string. Both are hashed because the moniker alone does not name the
+    crate target (INV-kutid).
+    """
+    return _short_sha256(f"scip:{relative_path}:{moniker}")
 
 
 def _span_from_range(range_array: "list[int]") -> Span:
@@ -441,14 +480,11 @@ def scip_index_to_symbols(index: scip_pb2.Index) -> List[Symbol]:
                     path=doc.relative_path,
                     span=span,
                     origin="scip",
-                    # INV-hunup: canonical sha256 stable_id. A GLOBAL SCIP
-                    # moniker (sym_info.symbol) is a stable identity across the
-                    # index, so hashing it yields a stable canonical id; the raw
-                    # moniker is preserved in meta["scip_symbol"] (_build_meta).
-                    # That sentence was false for locals — ``local 0`` recurs in
-                    # every document — which is one of the two reasons they are
-                    # filtered above rather than hashed here.
-                    stable_id=_short_sha256(sym_info.symbol),
+                    # INV-hunup: canonical sha256 stable_id; INV-kutid: of the
+                    # defining Document's path AND the moniker (module
+                    # docstring, "Identity"). The raw moniker is preserved in
+                    # meta["scip_symbol"] (_build_meta).
+                    stable_id=scip_stable_id(doc.relative_path, sym_info.symbol),
                     meta=meta,
                 )
             )

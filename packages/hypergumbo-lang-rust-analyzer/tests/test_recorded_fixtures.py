@@ -400,6 +400,23 @@ class TestTheMergePassOnBothArms:
         assert sum(1 for e in edges if {e.src, e.dst} & set(report.respanned)) == 12
         assert [e for e in edges if {e.src, e.dst} & old] == []
 
+    def test_no_two_records_share_a_stable_id_after_the_merge(self) -> None:
+        """INV-kutid on committed input. The recording is the producer's own
+        evidence (rust-analyzer logs "Duplicate symbol: ... crate/"): the
+        lib, bin and build-script roots of aardvark-dns define ``crate/``
+        under one moniker. Hashed alone, the three SCIP-only roots shared
+        ``sha256:fe9021ce48cd040c`` -- one cross-file group, which the
+        within-file splitter cannot reach. Path-anchored, the run has none."""
+        from hypergumbo_core.spec_validator import compute_stable_id_stats
+
+        symbols, edges, runs = _both_arms()
+        merge_producer_records(symbols, edges, runs)
+        roots = sorted(s.path for s in symbols if s.origin == ["scip"] and s.name == "crate")
+        assert roots == ["build.rs", "src/lib.rs", "src/main.rs"]
+        assert len({s.stable_id for s in symbols if s.origin == ["scip"] and s.name == "crate"}) == 3
+        stats = compute_stable_id_stats(symbols)
+        assert (stats["collision_groups"], stats["collided_symbols"]) == (0, 0)
+
     def test_shared_call_sites_are_folded_and_corroborated(self) -> None:
         """WI-kokiz folds the endpoints; WI-binis folds the agreeing edges in
         the same pass (§11) and combines their confidence (§13): every one of

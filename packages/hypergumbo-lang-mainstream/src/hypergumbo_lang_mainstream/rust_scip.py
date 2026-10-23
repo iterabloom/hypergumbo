@@ -25,7 +25,7 @@ The caller, ``reassign_rust_stable_ids``, passes the SCIP Definition-occurrence
 range, and rust-analyzer's definition range is the identifier TOKEN — line 14
 for a method whose ``function_item`` runs 14-17. The exact-match predicate below
 therefore abstains for every multi-line item and the SCIP symbol keeps its
-``sha256(moniker)`` id; measured on aardvark-dns, 0 of 52 functions emitted by
+path-and-moniker id (``scip/index.py::scip_stable_id``); measured on aardvark-dns, 0 of 52 functions emitted by
 both arms share a stable_id. The two arms carry independent identities today.
 This is stated rather than fixed because making parity hold would also require
 ``split_within_file_stable_id_collisions`` to spare cross-backend groups (it

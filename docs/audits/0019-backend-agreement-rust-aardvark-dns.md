@@ -78,7 +78,7 @@ Written by the agent on 2026-09-19 from the tables above; the numbers are the in
 - **`span`: 2 agree, 148 disagree, by construction** — the §10 role split (item vs identifier token); the two that agree are single-token items. Not a disagreement about the declaration.
 - **`stable_id`: 150 disagree, none one-sided.** The arms hash different things, so they disagree on every paired record:
   - tree-sitter uses the typed id for callables, and the orchestrator's declaration backstop for struct/enum/trait (WI-rihob).
-  - The SCIP arm uses `sha256(moniker)`, and its parity reassignment abstains (INV-dolud; whether the arms should share an identity is WI-gojum's).
+  - The SCIP arm hashes its path with the moniker (`scip_stable_id`; `sha256(moniker)` before stable_id v11, INV-kutid), and its parity reassignment abstains (INV-dolud; whether the arms should share an identity is WI-gojum's).
 
   **Correction (2026-09-23):** this row first read 134 / 14 one-sided, and was blamed on the SCIP translation. Both halves were wrong.
   - The 14 were one-sided to `rust_analyzer`, not to `rust`.

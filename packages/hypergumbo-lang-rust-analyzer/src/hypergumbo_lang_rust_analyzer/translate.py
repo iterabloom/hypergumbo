@@ -29,7 +29,7 @@ shim cannot do on its own:
    function (INV-dolud, 2026-09-18).** The span handed to the helper is the
    SCIP Definition-occurrence range, and rust-analyzer's is the identifier
    token; the helper requires the item range, so it abstains and the
-   ``sha256(moniker)`` id stays. Measured on aardvark-dns: 0 of 52 functions
+   path-and-moniker id (``scip_stable_id``) stays. Measured on aardvark-dns: 0 of 52 functions
    emitted by both Rust arms share a ``stable_id``, so the double-counting
    the paragraph above describes is the shipped state, not the averted one.
    The pass is kept as readiness for WI-gojum (parked), which owns whether
