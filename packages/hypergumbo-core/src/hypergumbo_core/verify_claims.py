@@ -768,9 +768,12 @@ CAVEAT_HIGHER_FIDELITY_AVAILABLE = "higher_fidelity_available"
 #: The terminal segments of the catalogue source names whose value the far side
 #: merely CHOSE FROM A CONSTRAINED SET rather than authored (WI-jivih, arc T8).
 #:
-#: Three families, from the 2026-09-06 taint-label concept audit: ``accept``'s
-#: peer address in seven languages, erlang's ``inet`` DNS answers, and the exit
-#: status collected by ``os.wait*`` / ``Child.wait``. Matching is on the LAST
+#: Two families, from the 2026-09-06 taint-label concept audit: ``accept``'s
+#: peer address in seven languages and erlang's ``inet`` DNS answers. The audit's
+#: third, the exit status collected by ``os.wait*`` / ``Child.wait``, left with
+#: its rows (WI-lanos, ADR-0049 §Ruling 4: an exit status is not the child's
+#: message, so those calls mint nothing); an entry kept for a name no source
+#: carries would only match an unrelated ``wait``. Matching is on the LAST
 #: SEGMENT because the catalogue spells one concept with a different module
 #: prefix per language (``gen_tcp.accept``, ``sys/socket.accept``,
 #: ``net.Listener.Accept``).
@@ -783,8 +786,6 @@ CHOICE_SHAPED_SOURCE_NAMES: frozenset[str] = frozenset({
     # erlang inet DNS: an address or a name chosen from what exists
     "getaddr", "getaddrs", "gethostbyname", "gethostbyaddr",
     "gethostname", "getservbyname", "getservbyport",
-    # exit status: eight bits
-    "wait", "waitpid", "wait3", "wait4", "waitid", "try_wait",
 })
 
 #: A reported finding is rooted at a source whose value the far side CHOSE from

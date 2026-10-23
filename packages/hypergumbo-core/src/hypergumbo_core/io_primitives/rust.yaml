@@ -364,8 +364,9 @@ subprocess:
       The siblings that return only an exit status or a HANDLE stay
       launch-only: a status is not the child's message, and a handle is a
       crossing that has not happened yet (the ADR-0049 deferred shape).
-      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
-      `os.wait`.
+      Follows rust.yaml's `Child.wait_with_output`. (Its own precedent,
+      python.yaml's `os.wait`, is no longer rowed: a bare exit status is
+      not the child's message -- WI-lanos, ADR-0049 §Ruling 4.)
   # std::process::exit / abort are NOT rowed (INV-mulul): they end the
   # CALLING process (abort() is crate::sys::abort_internal(), SIGABRT on this
   # process; exit() runs rt::cleanup() then sys::os::exit) and launch,
@@ -497,11 +498,15 @@ ipc_recv:
       source" -- half wrong, and it is the precedent the other catalogues
       now follow.
   - module: std::process::Child
-    methods: [wait, try_wait, wait_with_output]
+    methods: [wait_with_output]
     notes: >-
-      python.yaml's kind for `os.wait` / `waitpid`, in its words:
-      "Reaping a child collects its exit status - data received from
-      another process." `wait_with_output` takes `mut self` — a BY-VALUE
+      Returns the child's `Output { stdout, stderr, status }`: the child's
+      message, so a transfer (INV-lozat). `wait` / `try_wait` are deliberately
+      NOT rowed (WI-lanos, ADR-0049 §Ruling 4 "An exit status is not the
+      child's message"): they return only an `ExitStatus`, as `Command::status`
+      does, and were the rows giving that value a second verdict. The `status`
+      field of an `Output` still mints with the rest of it (field-
+      insensitivity, INV-sozak). `wait_with_output` takes `mut self` — a BY-VALUE
       receiver is still a receiver, so it is a METHOD. An earlier cut of
       the enumerating probe required a leading `&` and reported it, plus 46
       other consuming methods in process.rs, as associated FUNCTIONS; that
@@ -671,6 +676,23 @@ module_completeness:
       `read_volatile`, names that collide exactly with I/O verbs, so the grant
       is protective as well as correct — it makes those calls an examined
       negative instead of leaving the spelling to be guessed at.
+  - module: std::process::Child
+    completeness: complete
+    retrieved: "2026-10-23"
+    notes: >-
+      WI-lanos. `impl Child` in library/std/src/process.rs has five methods
+      and three public fields. `kill` is rowed ipc_send and
+      `wait_with_output` ipc_recv (it returns the child's Output). `id` is an
+      inert process-id read, held out as python holds out `os.getpid`.
+      `wait` / `try_wait` return only an ExitStatus: they cross into the
+      kernel to reap the child, but what they hand back is not the child's
+      message (ADR-0049 §Ruling 4), so they are examined and mint nothing --
+      the answer `Command::status` already gave the same value. The fields
+      `stdin` / `stdout` / `stderr` are ChildStdin / ChildStdout /
+      ChildStderr, rowed under their own modules. Without this entry the two
+      unrowed methods were an unclassified call that withheld the qualified
+      verdict `Command::status` earns, so removing their rows would have
+      traded one disagreement for another.
   - module: std::slice
     completeness: complete
     retrieved: "2026-08-27"

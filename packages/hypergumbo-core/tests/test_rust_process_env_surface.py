@@ -103,14 +103,19 @@ class TestEnvGainsItsMutationAndHostReadHalves:
 
 
 class TestChildProcessInteractionIsIpc:
-    """python: os.kill is ipc_send, os.wait is ipc_recv. rust follows."""
+    """python: os.kill is ipc_send. Reaping (Child.wait / try_wait) returns
+    only an exit status and is not rowed (WI-lanos); the reap that returns the
+    child's OUTPUT is ipc_recv."""
 
     def test_kill_signals_another_process(self) -> None:
         assert _rows("std::process::Child")["kill"] == ("ipc_send", "method")
 
-    @pytest.mark.parametrize("name", ["wait", "try_wait", "wait_with_output"])
-    def test_reaping_a_child_receives_its_status(self, name: str) -> None:
-        assert _rows("std::process::Child")[name] == ("ipc_recv", "method")
+    def test_reaping_a_childs_output_receives_it(self) -> None:
+        assert _rows("std::process::Child")["wait_with_output"] == ("ipc_recv", "method")
+
+    @pytest.mark.parametrize("name", ["wait", "try_wait"])
+    def test_reaping_only_a_status_is_not_rowed(self, name: str) -> None:
+        assert name not in _rows("std::process::Child")
 
     @pytest.mark.parametrize("name", ["write", "write_all", "write_fmt"])
     def test_writing_the_childs_stdin_is_ipc_send(self, name: str) -> None:

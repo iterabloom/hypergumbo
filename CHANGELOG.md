@@ -14,6 +14,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
+- **An exit status is no longer a taint source** (ADR-0049 amendment): `os.wait*` and Rust's `Child.wait` / `try_wait` mint nothing, matching `subprocess.call`, `os.system` and `Command::status`. The child's output still does (`check_output`, `communicate`, `Command.output`, `wait_with_output`). Measured first: 0 findings removed or added on 11 repositories.
 - **`stable_id_scheme` v10 → v11**: a SCIP-only symbol's `stable_id` hashes its file path with the moniker, so a cargo package's lib, bin and `build.rs` roots no longer share one id; tree-sitter and merged ids are unchanged.
 - **`stable_id_scheme` v9 → v10**: BitBake symbols' `stable_id` is a real hash, no longer their node id; other languages are unchanged.
 

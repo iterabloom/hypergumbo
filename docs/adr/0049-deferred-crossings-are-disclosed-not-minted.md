@@ -186,6 +186,64 @@ crossing has not happened yet at the constructor: those rows are unmarked. A
 function that RETURNS what it read (`getproxies()`) is a transfer and keeps
 minting.
 
+**An exit status is not the child's message (owner, 2026-10-22; WI-lanos).**
+Ruling 1 asks whether a call returns a value whose *content* the far side chose.
+For a child process this was already answered when INV-lozat closed: a launch
+that hands back the child's bytes is a transfer, and the sibling forms that
+return only an exit status (`Run`, `call`, `system`) stay launch-only because
+"an exit status is not the child's message" (spec, §"Taint-flow analysis (ADR-0017)"). The child
+does pick the code, so this is a reading of "content", and it is the reading the
+tree already ships. `os.wait` / `waitpid` / `wait3` / `wait4` / `waitid` and
+Rust's `std::process::Child.wait` / `try_wait` were the rows that still gave the
+other answer for the same value; they no longer declare `ipc_recv` and mint
+nothing, so one value carries one verdict.
+
+The reason the reading is the right one is the question taint asks, not the size
+of the value. A finding needs the value to reach a sink's *argument*; a value
+that only decides a branch is not a flow (this ADR, on `bufio.NewReader`'s y/N
+case). An exit status is consumed as a branch condition — `if rc != 0`. A single
+bit can still matter (an auth helper's exit code), but it matters through control
+dependence, which hypergumbo's taint analysis does not model; a status row that
+mints therefore buys findings that cannot be true flows. That is what was
+measured in the opposite direction (minting a status at every status-returning
+call, 10-03 and 10-22): 0 of 120 sampled added findings carried an exit status to
+a sink argument (Wilson 95% upper bound 6.0% per sample of 60), 0 were useful, and
+the 5 verdicts that moved did not rest on an exit-status flow.
+
+**Re-evaluation trigger.** Revisit this ruling if a sampled exit-status flow to a
+sink argument is ever adjudicated real, or if the taint analysis comes to model
+control dependence.
+
+The limit, stated so the rule is not over-read: **an exit status read out of an
+output-carrying result still mints.** `Child.wait_with_output().status`,
+`subprocess.getstatusoutput`'s status half and Haskell's
+`readProcessWithExitCode`'s `ExitCode` stay `ipc_recv`, because the whole
+returned value is the source and the analysis is field-insensitive (ADR-0017
+§7a, implemented but unwired). That is the same value with a second verdict, so
+it violates the invariant this ruling restores; it is tracked as INV-sozak, it errs
+only toward extra findings (never a false all-clear), and it sits inside the
+cost ADR-0052 accepts ("false positives that a field-sensitive … analysis could
+refute stay in the output"). After this change those are the only ways an exit
+status mints in the four languages checked (python, rust, go, haskell): the
+post-change catalogue scan of `ipc_recv` rows named `*wait*` / `*status*` /
+`*exit*` / `*returncode*` / `*poll*` / `*system*` / `*call*` found only
+output-carrying rows.
+
+Ruling 3 was run, not argued (lab notebook `lanos_removal_10222026/`,
+pre-registered in `PLAN.md`): 11 repos (5 rust, 6 python; ceph and virtualbox
+dropped by the plan's time rules, envoy replaced by a deterministic half-size
+copy that keeps both of its `os.waitpid` sites), BEFORE = dev 9b93a6396a, AFTER =
+the same tree with only these rows removed. Removed situations 0, added 0,
+verdict moves 0, true evidence counts unchanged in every claim. The output
+primitives (`check_output`, `Popen.communicate`, `Command.output`,
+`wait_with_output`) give the same verdict in both arms, and on fixtures the
+removal does flip the exit-status cases from `violated` to no rows, so the
+comparison could fail. **Ruling 3 holds here because the rows produced no finding
+to lose on that corpus**, not because lost findings were judged wrong; the
+correctness evidence is the measurement above. Part of the Rust zero is WI-rupah:
+a `Child` method on an unannotated binding mints no source, so those rows were
+already mostly inert.
+
 `accept` is not a member of the family and never was. WI-dosov had this right
 in Haskell; the shipped Go rows carry `Accept` alongside `Socket`/`Bind`/
 `Listen` as if they were the same thing, and they are not.
@@ -368,6 +426,23 @@ to `unshare.ExecRunnable`), never reaches a `Run` the forward-only taint walk
 can see. The rows stay until that return / heap flow is represented; rust's
 `Command::new` and java's `ProcessBuilder.command` are the same shape and were
 not measured.
+
+**Exit-status rows removed (WI-lanos).** python's `os` wait-family row
+(`wait`, `waitpid`, `wait3`, `wait4`, `waitid`) and `wait` / `try_wait` from
+rust's `std::process::Child` row (which keeps `wait_with_output`). Removing a
+row is not enough on its own where the module is only partly catalogued: an
+unrowed method is an unclassified call, and rust's `Child.wait` then read
+`inconclusive` where `Command::status` reads `confirmed_with_caveats`, one
+disagreement traded for another. A dated `module_completeness` entry for
+`std::process::Child`, enumerated from `impl Child` in the standard library
+source, keeps the two methods examined (python's `os` was already declared
+complete). The audit's exit-status family also leaves `choice_shaped_source`'s
+vocabulary, since no source carries those names. A test pins AGREEMENT — one
+value, one verdict — via `os.waitpid` and `subprocess.call`, and via
+`Child.wait` and `Command::status`; and it pins the residual DISAGREEMENT
+(`os.waitpid` vs `subprocess.getstatusoutput()[0]`, `Child.wait` vs
+`wait_with_output().status`) as today's state, so it goes red when INV-sozak
+lands and is re-pointed then.
 
 ## Open work — sequencing and the evidence bar
 

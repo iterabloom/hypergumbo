@@ -42,10 +42,11 @@ def _claim():
 
 
 class TestTheRegistry:
-    def test_the_three_families_are_declared(self):
-        """accept (a peer the far side did not author), the erlang inet DNS
-        answers, and the exit status collected by wait*."""
-        for name in ("accept", "gethostbyname", "waitpid"):
+    def test_the_two_families_are_declared(self):
+        """accept (a peer the far side did not author) and the erlang inet DNS
+        answers. The audit's third, the exit status, left with its rows
+        (WI-lanos; test_exit_status_is_one_verdict.py)."""
+        for name in ("accept", "gethostbyname"):
             assert name in CHOICE_SHAPED_SOURCE_NAMES
 
     def test_matching_is_on_the_last_segment(self):
@@ -91,10 +92,10 @@ class TestTheCaveat:
 
     def test_it_names_which_sources_it_is_about(self):
         v = verify_taint_claim(_claim(), [_finding("accept"),
-                                          _finding("waitpid")])
+                                          _finding("gethostbyname")])
         entry = next(c for c in v.caveats
                      if c["kind"] == CAVEAT_CHOICE_SHAPED_SOURCE)
-        assert sorted(entry["entries"]) == ["accept", "waitpid"]
+        assert sorted(entry["entries"]) == ["accept", "gethostbyname"]
 
     def test_the_verdict_VALUE_is_unchanged(self):
         """P3: this is a DISCLOSURE, not a filter. Nothing moves between
