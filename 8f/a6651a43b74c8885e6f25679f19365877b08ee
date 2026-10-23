@@ -1,0 +1,9 @@
+Original commit body from 71cd517bcb77b9cd1d4252e352d9d8c733bc2b5b:
+
+The full affected run (25837 passed) failed only
+test_spec_symbol_meta_key_count_matches_the_registry: the spec still said
+62 keys after item_span was registered. Also lists item_span beside the
+other SCIP round-trip keys, stating that merge_producers spends it and no
+emitted record keeps it. Regenerates the affected-tests manifest.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
