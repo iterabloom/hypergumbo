@@ -1,0 +1,22 @@
+- op: create  # ae1d
+  at: '2026-10-22T21:26:16Z'  # ae1d
+  by: agent  # ae1d
+  actor: jgstern_agent  # ae1d
+  clock: 1  # ae1d
+  nonce: ae1d  # ae1d
+  data:  # ae1d
+    kind: work_item  # ae1d
+    title: "rust: a Child method mints no source on an unannotated binding (let child = cmd.spawn().unwrap()); only let child: Child = ... reports"  # ae1d
+    status: todo_hard  # ae1d
+    priority: 2  # ae1d
+    parent:  # ae1d
+    tags:  # ae1d
+    - rust  # ae1d
+    - taint  # ae1d
+    - io_boundary  # ae1d
+    isbefore: []  # ae1d
+    duplicate_of: []  # ae1d
+    not_duplicate_of: []  # ae1d
+    pr_ref:  # ae1d
+    description: "FOUND 2026-10-22 while building WI-lanos's R4 positive controls (~/hypergumbo_lab_notebook/lanos_removal_10222026/R4_and_notes.md, fixtures fx_gap/). Production CLI verify-claims, docs/example-claims/generic-taint-claims.yaml, --no-default-overlays, cold cache, dev 9b93a6396a.\n\nWHAT. A std::process::Child method row (wait_with_output, ipc_recv) mints a source only when the receiver binding carries a type ANNOTATION:\n  let child: Child = Command::new(\"cat\").stdout(Stdio::piped()).spawn().unwrap();  out = child.wait_with_output() -> Command::new(..out.stdout..).spawn()   => violated, 1 row\n  let child = Command::new(\"cat\").stdout(Stdio::piped()).spawn().unwrap();         same                                                          => exit 3, 0 rows\n  let child = Command::new(\"cat\").spawn().unwrap();                                same                                                          => 0 rows\n  let mut cmd = Command::new(\"cat\"); cmd.stdout(..); let child = cmd.spawn().unwrap();   same                                                    => 0 rows\nThe sink shape does not matter: with a typed child, .arg(s).status(), .arg(s).spawn() and Command::new(s) all report. So the receiver type of `child` is not inferred from `Command::spawn() -> io::Result<Child>` followed by `.unwrap()`.\n\nWHY IT MATTERS. The unannotated form is the everyday Rust idiom, so every Child row (wait_with_output, and before WI-lanos's removal wait/try_wait) and the ChildStdout/ChildStderr read rows behind `child.stdout.take()` are most likely near-silent on real code. That is a recall loss in the false-all-clear direction. NOT MEASURED on the corpus. The WI-lanos removal arms (lanos_removal_10222026/arms) will give an upper bound, because BEFORE counts every Child.wait source that does mint.\n\nNOT CHECKED. Whether the gap is the std return-type table (spawn's return type unknown), the Result-unwrap propagation (WI-fokup is a neighbour: a TcpListener.incoming() loop var typed TcpStream rather than io::Result<TcpStream>), or the `Command::new(..)` builder chain's type (each builder method returns &mut Command). Also whether `?` behaves like `.unwrap()`, and whether Command.output() on an unannotated `let mut cmd = Command::new(..)` has the same problem (the typed variant reports).\n\nACCEPTANCE. All three unannotated fixtures above report the same row as the annotated one. A test pins the unannotated builder-chain form."  # ae1d
+    fields: {}  # ae1d
