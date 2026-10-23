@@ -1,0 +1,24 @@
+- op: create  # 05b4
+  at: '2026-10-23T18:45:30Z'  # 05b4
+  by: agent  # 05b4
+  actor: jgstern_agent  # 05b4
+  clock: 1  # 05b4
+  nonce: 05b4  # 05b4
+  data:  # 05b4
+    kind: invariant  # 05b4
+    title: "An exit status read from an output-carrying result (wait_with_output().status, getstatusoutput()[0], readProcessWithExitCode's ExitCode) still mints while os.wait*/Child.wait do not: one value, two verdicts (WI-lanos residual, field-insensitivity)"  # 05b4
+    status: violated  # 05b4
+    priority: 3  # 05b4
+    parent:  # 05b4
+    tags:  # 05b4
+    - taint  # 05b4
+    - catalogue  # 05b4
+    - io_boundary  # 05b4
+    isbefore: []  # 05b4
+    duplicate_of: []  # 05b4
+    not_duplicate_of: []  # 05b4
+    pr_ref:  # 05b4
+    description: "FILED 2026-10-23 as the residual the owner-approved ADR-0049 amendment (WI-lanos)\nnames: \"an exit status read out of an output-carrying result still mints\".\n\nTHE TWO VERDICTS ON ONE VALUE, after WI-lanos removes the status-only rows:\n  python  os.waitpid(pid, 0)[1]            -> no source (row removed)\n          subprocess.getstatusoutput(c)[0] -> untrusted_input (ipc_recv; whole tuple is the source)\n  rust    child.wait()?                    -> no source (row removed)\n          child.wait_with_output()?.status -> untrusted_input (ipc_recv; whole Output is the source)\n  haskell readProcessWithExitCode's ExitCode -> untrusted_input (whole triple)\nThe output half of each is genuinely the child's message and must keep minting.\n\nTHE CAUSE is field-insensitivity at the source: the row taints the call's whole\nreturn value, so `.status` / `[0]` / the ExitCode component inherits the\noutput's label. ADR-0017 §7a field-sensitivity lite is implemented but unwired\n(`is_field_tainted`, zero production callers).\n\nDIRECTION AND COST: errs only toward extra findings, never a false all-clear;\ninside ADR-0052's accepted cost (\"false positives that a field-sensitive ...\nanalysis could refute stay in the output\"). NOT MEASURED: how often a\n`.status` / `[0]` read reaches a sink argument on the corpus.\n\nFIX SHAPES, not chosen: (a) wire §7a so a field/element read off a tainted\naggregate carries only that field's taint, with the status field declared\nuntainted; (b) for Rust's struct, mint at the `.stdout` / `.stderr` field\nreads instead of the call -- loses `send(out)` of the whole value, and cannot\nreach python's / haskell's tuples, so it is partial.\n\nTHE PIN: WI-lanos's agreement test pins this disagreement as today's state\n(os.waitpid vs getstatusoutput()[0]; Child.wait vs wait_with_output().status);\nit goes red when this lands and is re-pointed then."  # 05b4
+    fields:  # 05b4
+      statement: "One value carries one verdict: an exit status is a taint source either at every API that returns it or at none, whichever aggregate it arrives in."  # 05b4
+      root_cause: "The output-carrying rows taint the call's whole return value; with ADR-0017 §7a field-sensitivity unwired, the status field/element of that value inherits the output's untrusted_input label."  # 05b4
