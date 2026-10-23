@@ -55,3 +55,26 @@
   clock: 6  # cd4c
   nonce: cd4c  # cd4c
   message: "Filed the 'separate from all three' captured-output gap as two items, since the mechanisms differ: WI-lojar-huvol-vabof-nirih-fohur-bakib-zolal-gapib (Python subprocess.run(capture_output=True).stdout) and WI-pujor-vugur-guhol-jopal-kobit-bufit-dagoj-zagav (Go cmd.Stdout = &buf; cmd.Run()). Neither one blocks this item. WI-hikuz's repro is re-stated against Popen.communicate and still reproduces on dev (see that item)."  # cd4c
+- op: discuss  # 1ffc
+  at: '2026-10-23T18:45:48Z'  # 1ffc
+  by: agent  # 1ffc
+  actor: jgstern_agent  # 1ffc
+  clock: 7  # 1ffc
+  nonce: 1ffc  # 1ffc
+  message: "RULING 3 MEASUREMENT DONE, OWNER APPROVED THE ADR-0049 AMENDMENT 2026-10-23. Pre-registered removal arms (lanos_removal_10222026/PLAN.md + AMENDMENTS 1-4): 11 repos (rust netavark arti livebook firecracker ripgrep; python grpc airflow pytorch qemu-u-boot mlflow envoy-half), BEFORE = dev 9b93a6396a, AFTER = same tree minus the os wait-family row and Child.wait/try_wait. Dropped: ceph (BEFORE hit the 3 h cap, AMENDMENT 2), virtualbox (8 h arm rule, AMENDMENT 3); envoy replaced by envoy-half (restarter/ + sha256-even files, both os.waitpid sites kept) after full envoy AFTER was SIGKILLed twice at ~20.5 GB (AMENDMENT 4; cause filed as INV-jahuf). Every canary passed. RESULT by TRUE evidence_count: removed 0, added 0, verdict moves 0, counts moved 0 (diff_all.txt). R1 census empty -> no STOP; R2 none; R3 holds; R4 holds (output primitives unchanged on fixtures). The comparison can fail: on fixtures the removal flips py-os-wait / py-os-waitpid / rs-child-wait from violated to no rows. Stated plainly: Ruling 3 holds because these rows produced no finding to lose on this corpus. Approved amendment text (v2): ADR-0049_amendment_DRAFT.md -- basis is INV-lozat's existing reading ('an exit status is not the child's message'), reason is the sink-argument/branch-condition point plus 0 of 120 sampled exit-status flows real, re-evaluation trigger stated, residual named. Residual filed: INV-sozak (wait_with_output().status / getstatusoutput()[0] / readProcessWithExitCode still mint; the agreement test pins that disagreement). NEXT: implement the row removal + agreement test from ~/hg_wt/lanos, amendment in the same PR."  # 1ffc
+- op: update  # 6d74
+  at: '2026-10-23T21:59:26Z'  # 6d74
+  by: agent  # 6d74
+  actor: jgstern_agent  # 6d74
+  clock: 8  # 6d74
+  nonce: 6d74  # 6d74
+  set:  # 6d74
+    status: done  # 6d74
+    pr_ref: '1825'  # 6d74
+- op: discuss  # b39c
+  at: '2026-10-23T21:59:26Z'  # b39c
+  by: agent  # b39c
+  actor: jgstern_agent  # b39c
+  clock: 9  # b39c
+  nonce: b39c  # b39c
+  message: "DONE in PR #1825 (dev 397f2242e2): removal side, owner decision 2026-10-22, ADR-0049 amendment approved 2026-10-23. LIVE REPRO on merged dev, the item's own shape through the production CLI (verify-claims, claim untrusted-input-no-subprocess, cold XDG_CACHE_HOME per repo, --no-default-overlays): os.waitpid -> Popen: rc=3 confirmed_with_caveats, evidence 0; subprocess.call -> Popen: rc=3 confirmed_with_caveats, evidence 0; rust child.wait() (typed Child) -> Command::spawn: rc=3 confirmed_with_caveats, evidence 0; cmd.status() -> spawn: rc=3 confirmed_with_caveats, evidence 0. One value, one verdict. Control, the child's OUTPUT stays a source: subprocess.check_output -> Popen: rc=1 violated, evidence 1, source subprocess.check_output. At filing os.waitpid read violated and call confirmed_with_caveats. Ruling 3 measured before merge (lanos_removal_10222026/: 11 repos, 0 removed / 0 added / 0 verdict moves). Beyond the approved text, needed for the agreement to hold: a dated module_completeness entry for std::process::Child (enumerated from impl Child in std's process.rs) -- without it Child.wait was an unclassified call and read inconclusive vs Command::status's confirmed_with_caveats; the agreement test caught it, the corpus arms could not (WI-rupah). The exit-status family left CHOICE_SHAPED_SOURCE_NAMES. Residual pinned in the test as today's state: INV-sozak (wait_with_output().status / getstatusoutput()[0] still mint). Suite 23376 passed, gates 464."  # b39c

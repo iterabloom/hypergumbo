@@ -59,3 +59,19 @@
   clock: 6  # 4bd4
   nonce: 4bd4  # 4bd4
   message: "OWNER RULING 2026-10-22: fix shape (a) — the SCIP stable_id folds the document path into the hash (sha256 over 'scip:<path>:<moniker>' rather than the raw moniker), sequenced AFTER INV-lodum merges (both edit scip/index.py and the recorded aardvark-dns fixture counts). Rationale: the moniker's true scope is the crate target and the path is the one per-Document input that separates targets; the collision is not confined to crate/ (any same-path item in two targets, e.g. a root fn helper in main.rs and lib.rs, collides), so (b)'s conventional-path recovery is both narrower and wrong for [lib]/[[bin]] path= targets; matches ADR-0035 §4 and every analyze/base.py minter; INV-dolud's parity precondition is moot (satisfied; ADR-0057 keeps the incumbent id on merged records), so the change re-mints only SCIP-only records and merged records' alternative values. Costs to carry in the PR: stable_id scheme bump v10->v11 with spec + CHANGELOG; file renames re-mint SCIP ids (same trade the tree-sitter arm accepted); a file compiled into two targets (mod util; in lib and bin) still yields one within-file group, which split_within_file_stable_id_collisions already splits. OUT OF SCOPE, to file separately: SCIP edge resolution keys on meta['scip_symbol'] (the raw moniker), so an edge into one of the colliding crate/ roots resolves to one of N — not measured."  # 4bd4
+- op: update  # b5e0
+  at: '2026-10-23T20:44:23Z'  # b5e0
+  by: agent  # b5e0
+  actor: jgstern_agent  # b5e0
+  clock: 7  # b5e0
+  nonce: b5e0  # b5e0
+  set:  # b5e0
+    status: satisfied  # b5e0
+    pr_ref: '1824'  # b5e0
+- op: discuss  # 5fca
+  at: '2026-10-23T20:44:23Z'  # 5fca
+  by: agent  # 5fca
+  actor: jgstern_agent  # 5fca
+  clock: 8  # 5fca
+  nonce: 5fca  # 5fca
+  message: "SATISFIED by PR #1824 (dev 43a49cfd1b), owner ruling (a). LIVE REPRO, the row's own: aardvark-dns (scratch copy), fresh XDG_CACHE_HOME, HYPERGUMBO_RUST_ANALYZER=1 python -m hypergumbo_core run . with rust-analyzer ~/.cargo/bin. BEFORE (dev 8fa6651a43, stable_id v10): validation_report.stable_id_stats collision_groups 1 / collided_symbols 3, violations 1 (cross_field: 'stable_id collision detected: 3/608 Symbols ... sha256:fe9021ce48cd040c (3 symbols, e.g. crate)'); crate roots build.rs, src/lib.rs, src/main.rs all sha256:fe9021ce48cd040c. AFTER (merged dev, v11): collision_groups 0 / collided 0, violations [] (every class 0); the three roots are sha256:f553d0b82df44f18 / 6580c0690b9217cd / 8ba0784d1f8f4e7e. Fix: scip/index.py::scip_stable_id = sha256('scip:<Document.relative_path>:<moniker>'). Scheme v10 -> v11 with spec history entry. Unchanged by design: the Rust edge resolver still keys on the raw moniker (INV-sipod)."  # 5fca
