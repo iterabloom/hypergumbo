@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..analyze.base import make_symbol_id
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -268,13 +269,18 @@ def link_message_dispatch(
             # .js site and gave a .ts read the write's language.
             pub_lang = js_ts_language_from_path(Path(write.file_path)) if write.api == "js_dispatch" else "rust"
             sub_lang = js_ts_language_from_path(Path(read.file_path)) if read.api == "js_dispatch" else "rust"
-            pub_id = (
-                f"{pub_lang}:{write.file_path}:{write.line}-{write.line}"
-                f":{write.channel}:message_sender"
+            # WI-lusoh: canonical ids whose kind slot is the node's kind. The
+            # role (sender / handler) is meta.framework_role; it was the kind
+            # slot, which id-format:F3's round-trip flags. A sender and a
+            # handler share an id only if one line is both a send and a handle
+            # site for the same channel.
+            pub_id = make_symbol_id(
+                pub_lang, write.file_path, write.line, write.line,
+                write.channel, "function",
             )
-            sub_id = (
-                f"{sub_lang}:{read.file_path}:{read.line}-{read.line}"
-                f":{read.channel}:message_handler"
+            sub_id = make_symbol_id(
+                sub_lang, read.file_path, read.line, read.line,
+                read.channel, "function",
             )
 
             if pub_id not in seen_sym_ids:

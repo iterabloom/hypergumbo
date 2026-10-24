@@ -305,3 +305,25 @@ class TestCudaCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+def test_the_id_kind_slot_is_the_kind_not_the_execution_space(tmp_path):
+    """WI-lusoh (INV-kurup). The id's kind slot named the execution space
+    (``:global`` / ``:device`` / ``:host`` / ``:host_device``) while
+    ``Symbol.kind`` was ``function``: id-format:F3's round-trip flagged 2 of
+    every such symbol (whisper.cpp: 998). The space stays on meta."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    (tmp_path / "k.cu").write_text(
+        "__global__ void k(float* a) { a[0] = 1; }\n"
+        "__device__ float d(float x) { return x; }\n"
+        "__host__ __device__ float hd(float x) { return x; }\n"
+        "__host__ float h(float x) { return x; }\n"
+        "float plain(float x) { return x; }\n"
+    )
+    funcs = [s for s in analyze_cuda_files(tmp_path).symbols if s.kind == "function"]
+    assert {s.meta.get("cuda_execution_space") for s in funcs if s.meta} >= {
+        "global", "device", "host_device", "host",
+    }
+    assert all(s.id.endswith(f":{s.name}:function") for s in funcs)
+    assert _check_id_roundtrip(funcs) == []

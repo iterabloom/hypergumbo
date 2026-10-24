@@ -259,20 +259,18 @@ def _extract_cuda_symbols(
                 is_global, is_device, is_host = _get_cuda_attributes(node)
                 # WI-vibaz: canonical fold — every CUDA function is
                 # kind="function"; GPU/CPU execution space lives on
-                # meta["cuda_execution_space"]. The symbol_id discriminator
-                # is the same string as the meta value when present, or
-                # the literal "function" when no __global__/__device__/
-                # __host__ attribute applies — preserving id uniqueness
-                # without re-introducing registry-absent kind names.
+                # meta["cuda_execution_space"]. WI-lusoh: the id's kind slot
+                # is that kind too. It carried the space (`:global`, ...),
+                # which id-format:F3's round-trip flags. Path, span and name
+                # already make one definition's id unique.
                 kind, exec_space = _determine_function_kind(is_global, is_device, is_host)
-                discriminator = exec_space if exec_space else kind
                 symbol_id = make_symbol_id(
                     "cuda",
                     rel_path,
                     node.start_point[0] + 1,
                     node.end_point[0] + 1,
                     func_name,
-                    discriminator,
+                    kind,
                 )
 
                 # Extract signature
