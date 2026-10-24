@@ -1,0 +1,45 @@
+Original commit body from fffc7338368e3c3e813601b8843516c4b7a645c9:
+
+The SCIP translators resolved an edge endpoint through a flat
+{moniker: Symbol.id} dict. rust-analyzer's moniker names the cargo
+package, not the crate target, so a package's lib, bin and build-script
+roots all define `crate/`, and the dict kept whichever record came last.
+Measured on the recorded aardvark-dns index (lab notebook
+sipod_10232026/): 2 monikers are defined in more than one Document, and
+7 edges landed on the wrong record:
+  - main.rs:6 `use aardvark_dns::commands::{run, version};`, 3 edges, and
+    main.rs:90 `mod test;`, 1 edge, were credited to lib.rs's crate;
+  - 3 references from src/test/test.rs (a bin module) went to lib.rs's crate.
+
+Owner ruling 2026-10-23: same Document first, then the mod tree, then
+drop and count.
+  - hypergumbo_core/scip/resolve.py: MonikerResolver. One record carrying
+    the moniker resolves to it. Otherwise the record in the referencing
+    Document; otherwise the single record `same_unit` admits; otherwise
+    None, counted per moniker, with ambiguity_report() for the run.
+    `defines()` keeps an ambiguous internal symbol from falling through to
+    scip-python's external arm.
+  - scip/edges.py and scip/calls.py pass the Document's relative_path to
+    `resolve_symbol(symbol, document)`.
+  - hypergumbo_lang_rust_analyzer/crate_units.py: roots are the Documents
+    that define `crate/`. Each root's file-level `mod name;` declarations
+    are followed by the compiler's rules (name.rs or name/mod.rs, stem
+    directories, #[path]), over text with comments, strings and char
+    literals masked and inline-module blocks skipped. Two Documents are
+    one unit when they share a root.
+  - Both translators take `log`, and both analyzers pass
+    analyze.base.run_recording_log, so a refusal lands on the run's
+    warnings as well as stderr.
+
+Results:
+  - Recorded aardvark-dns: the 7 edges are on their real records and
+    nothing is refused. The SCIP-only `references` tally goes 269 -> 270:
+    lib.rs:2's own `pub mod commands;` had been merged with the
+    misattributed main.rs:6 edge (same src, dst, type), and now both
+    survive (recorded module updated with that reason).
+  - Live: HYPERGUMBO_RUST_ANALYZER=1 run on a copy of aardvark-dns gives
+    main.rs:6 / :90 -> src/main.rs crate, src/test/test.rs ->
+    src/main.rs crate, lib.rs:6 -> server unchanged, and no warnings on
+    the rust_analyzer run.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
