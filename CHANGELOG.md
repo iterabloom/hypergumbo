@@ -20,6 +20,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`stable_id_scheme` v10 → v11**: a SCIP-only symbol's `stable_id` hashes its file path with the moniker, so a cargo package's lib, bin and `build.rs` roots no longer share one id; tree-sitter and merged ids are unchanged.
 - **`stable_id_scheme` v9 → v10**: BitBake symbols' `stable_id` is a real hash, no longer their node id; other languages are unchanged.
 
+### Added
+
+- **The test-only-reachability ratchet judges methods** (WI-mifag). On a map the scip-python backend typed (the full-suite cron's), a production method whose only callers are tests is gated like a function: 56 on this repository, each checked by hand. A reference resolves by its receiver's type, so `s.add()` on a set no longer keeps `Store.add` out of the cohort. Overrides of a production-reached method, methods of a class on an external base (Textual's `action_*` / `on_*`), methods named like a production-reached Protocol method, and dunders are set aside as dispatched. On an untyped map methods are counted, never gated, and their baseline keys are carried through unchanged.
+
 ### Removed
 
 - **The aardvark-dns test fixture's `Cargo.lock`**: never built, it drew five Dependabot alerts. Its README pins the upstream copy for re-recording.

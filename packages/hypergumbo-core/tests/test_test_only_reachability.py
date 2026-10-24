@@ -30,8 +30,13 @@ from hypergumbo_core.test_only_reachability import (
     DEMOTION_CROSS_MODULE,
     DEMOTION_DECORATOR,
     DEMOTION_DISPATCH,
+    DEMOTION_EXTERNAL_BASE,
+    DEMOTION_OVERRIDE,
+    DEMOTION_PROTOCOL,
     DEMOTION_REGISTERED,
+    DEMOTION_RUNTIME,
     GATED_KINDS,
+    SET_ASIDE_UNTYPED,
     ProductionReferences,
     TestOnlySymbol,
     baseline_document,
@@ -44,6 +49,7 @@ from hypergumbo_core.test_only_reachability import (
     pass_contribution_problem,
     production_source_files,
     typed_method_call_share,
+    typed_references,
 )
 
 PROD = "packages/p/src/p/mod.py"
@@ -205,12 +211,11 @@ class TestDemotion:
 
 
 class TestGatedCohort:
-    def test_methods_are_counted_but_never_gated(self) -> None:
-        """Measured, not stylistic: a method's call-graph identity is its SHORT
-        name, so ``Store.add`` cannot be told from ``set.add`` until receiver
-        typing lands (WI-nanom, not INV-linub). Gating ~200 unadjudicable rows
-        would make the
-        baseline the rubber stamp this item's own ruling forbids.
+    def test_methods_are_gated_only_on_a_map_with_receiver_typing(self) -> None:
+        """Without types a method's identity is its SHORT name, so
+        ``Store.add`` cannot be told from ``set.add``: gating it then would
+        put unadjudicable rows in the baseline, the rubber stamp WI-ratuv's
+        ruling forbids. Given a typed map (WI-mifag) the method is judged.
         """
         symbols = [
             TestOnlySymbol("a", "fn", "function", PROD),
@@ -218,8 +223,13 @@ class TestGatedCohort:
         ]
         kept, census = gated_cohort(symbols, ProductionReferences())
         assert [s.name for s in kept] == ["fn"]
-        assert census["not_gated_kind"] == 1
-        assert "method" not in GATED_KINDS
+        assert census[SET_ASIDE_UNTYPED] == 1
+        assert "method" in GATED_KINDS
+
+        typed = typed_references([], [])
+        kept, census = gated_cohort(symbols, ProductionReferences(), typed)
+        assert {s.name for s in kept} == {"C.m", "fn"}
+        assert SET_ASIDE_UNTYPED not in census
 
     def test_the_census_names_why_each_was_set_aside(self) -> None:
         symbols = [
@@ -230,6 +240,218 @@ class TestGatedCohort:
         kept, census = gated_cohort(symbols, refs)
         assert [s.name for s in kept] == ["kept"]
         assert census[DEMOTION_DISPATCH] == 1
+
+
+USE = "packages/p/src/p/use.py"
+SET_ADD = "python:builtins.set:0-0:add:external_symbol"
+PROTOCOL = "python:typing:0-0:Protocol:external_symbol"
+
+
+def _typed_node(
+    nid: str, name: str, path: str, kind: str, start: int, end: int,
+    origin: tuple[str, ...] = ("python", "scip"),
+) -> dict:
+    return {"id": nid, "name": name, "path": path, "kind": kind,
+            "origin": list(origin), "span": {"start_line": start, "end_line": end}}
+
+
+def _edge(src: str, dst: str, etype: str = "calls", line: int = 0,
+          origin: tuple[str, ...] = ("scip",)) -> dict:
+    return {"src": src, "dst": dst, "type": etype, "line": line, "origin": list(origin)}
+
+
+#: ``Store.add`` in PROD; ``user`` in USE (lines 1-20) is production code.
+STORE_NODES = [
+    _typed_node("store", "Store", PROD, "class", 1, 10),
+    _typed_node("store_add", "Store.add", PROD, "method", 2, 3),
+    _typed_node("user", "user", USE, "function", 1, 20),
+]
+STORE_ADD = TestOnlySymbol("store_add", "Store.add", "method", PROD)
+
+
+class TestMethodsOnATypedMap:
+    """WI-mifag: a method is judged by the TYPE its references resolve to.
+
+    The bare-name demotion arm put ``set.add`` and ``Store.add`` in one bucket,
+    so every ``.add`` anywhere kept ``Store.add`` out of the cohort. On a map
+    the scip-python backend typed, an attribute site inside a production
+    callable resolves through that callable's typed edges instead.
+    """
+
+    def test_a_site_typed_to_another_receiver_does_not_demote(self) -> None:
+        """The item's own example: ``s.add(x)`` on a set is not ``Store.add``."""
+        typed = typed_references(STORE_NODES, [_edge("user", SET_ADD, line=5)])
+        refs = ProductionReferences(member_sites={"add": {(USE, 5)}})
+        assert demotion_reason(STORE_ADD, refs, typed) is None
+
+    def test_an_edge_missing_an_endpoint_is_ignored(self) -> None:
+        typed = typed_references(STORE_NODES, [
+            {"src": "user", "type": "calls", "origin": ["scip"]},
+            {"dst": "store_add", "type": "implements", "origin": ["scip"]},
+        ])
+        assert typed.resolved == {} and typed.overrides == {}
+
+    def test_a_site_typed_to_the_method_demotes(self) -> None:
+        typed = typed_references(STORE_NODES, [_edge("user", "store_add", line=5)])
+        refs = ProductionReferences(member_sites={"add": {(USE, 5)}})
+        assert demotion_reason(STORE_ADD, refs, typed) == DEMOTION_CROSS_MODULE
+
+    def test_an_untyped_site_demotes(self) -> None:
+        """Pyright could not type the receiver (an ``Any``): it might be a
+        Store, so the conservative reading wins -- a false NEGATIVE."""
+        typed = typed_references(STORE_NODES, [])
+        refs = ProductionReferences(member_sites={"add": {(USE, 5)}})
+        assert demotion_reason(STORE_ADD, refs, typed) == DEMOTION_CROSS_MODULE
+
+    def test_a_syntax_arm_edge_types_nothing(self) -> None:
+        """Only the typed producer's edges count: the syntax arm's ``.add``
+        resolution is the bare-name guess this replaces."""
+        typed = typed_references(
+            STORE_NODES, [_edge("user", SET_ADD, line=5, origin=("python",))],
+        )
+        refs = ProductionReferences(member_sites={"add": {(USE, 5)}})
+        assert demotion_reason(STORE_ADD, refs, typed) == DEMOTION_CROSS_MODULE
+
+    def test_a_site_outside_every_callable_demotes(self) -> None:
+        """SCIP drops an occurrence with no enclosing definition (module top
+        level), so such a site carries no type and is read conservatively."""
+        typed = typed_references(STORE_NODES, [_edge("user", SET_ADD, line=5)])
+        refs = ProductionReferences(member_sites={"add": {(USE, 40)}})
+        assert demotion_reason(STORE_ADD, refs, typed) == DEMOTION_CROSS_MODULE
+
+    def test_a_site_resolves_per_enclosing_callable_not_per_line(self) -> None:
+        """The map keeps ONE edge per (src, dst, type), on its first line, so a
+        second ``.add`` on a set in the same callable has no edge of its own.
+        Resolution is therefore by the innermost typed encloser. Residual,
+        stated: an untyped ``.add`` sharing a callable with a typed one reads
+        as typed too."""
+        typed = typed_references(STORE_NODES, [_edge("user", SET_ADD, line=5)])
+        refs = ProductionReferences(member_sites={"add": {(USE, 5), (USE, 9)}})
+        assert demotion_reason(STORE_ADD, refs, typed) is None
+
+    def test_an_override_of_a_production_reached_method_demotes(self) -> None:
+        """``DartAnalyzer.extract_symbols_from_file``: tests call it directly,
+        production reaches it through ``self.extract_symbols_from_file`` in
+        the base class -- virtual dispatch the typed call graph credits to the
+        base."""
+        nodes = [
+            _typed_node("base_run", "Base.run", PROD, "method", 2, 3),
+            _typed_node("sub_run", "Sub.run", PROD, "method", 12, 13),
+            _typed_node("leaf_run", "Leaf.run", PROD, "method", 22, 23),
+            _typed_node("user", "user", USE, "function", 1, 20),
+        ]
+        sub = TestOnlySymbol("sub_run", "Sub.run", "method", PROD)
+        leaf = TestOnlySymbol("leaf_run", "Leaf.run", "method", PROD)
+        overrides = [_edge("sub_run", "base_run", "implements"),
+                     _edge("leaf_run", "sub_run", "implements")]
+        reached = typed_references(nodes, overrides + [_edge("user", "base_run")])
+        assert demotion_reason(sub, ProductionReferences(), reached) == DEMOTION_OVERRIDE
+        assert demotion_reason(leaf, ProductionReferences(), reached) == DEMOTION_OVERRIDE
+        unreached = typed_references(nodes, overrides)
+        assert demotion_reason(sub, ProductionReferences(), unreached) is None
+
+    def test_a_method_of_a_class_on_an_external_base_demotes(self) -> None:
+        """Textual calls ``action_*`` by binding name, ``on_*`` by event, and
+        ``render_line`` by override: the caller is the framework, outside the
+        map. An in-repo ancestor on the external base counts the same."""
+        nodes = [
+            _typed_node("app", "TrackerApp", PROD, "class", 1, 50),
+            _typed_node("act", "TrackerApp.action_yank", PROD, "method", 2, 3),
+            _typed_node("child", "Child", PROD, "class", 60, 80),
+            _typed_node("cm", "Child.on_click", PROD, "method", 61, 62),
+        ]
+        edges = [
+            _edge("app", "python:textual.app:0-0:App:external_symbol", "extends",
+                  origin=("python",)),
+            _edge("child", "app", "extends", origin=("python",)),
+        ]
+        typed = typed_references(nodes, edges)
+        for sid, name in [("act", "TrackerApp.action_yank"), ("cm", "Child.on_click")]:
+            sym = TestOnlySymbol(sid, name, "method", PROD)
+            assert demotion_reason(sym, ProductionReferences(), typed) == DEMOTION_EXTERNAL_BASE
+
+    def test_a_protocol_or_abc_base_calls_nothing(self) -> None:
+        """``typing.Protocol`` and ``abc.ABC`` declare a shape; neither runs a
+        method. ``DuressHandler.filter_response`` -- a Protocol method nothing
+        in production calls -- stays gated."""
+        nodes = [
+            _typed_node("p", "DuressHandler", PROD, "class", 1, 10),
+            _typed_node("pm", "DuressHandler.filter_response", PROD, "method", 2, 3),
+            _typed_node("a", "Strategy", PROD, "class", 20, 30),
+            _typed_node("am", "Strategy.find", PROD, "method", 21, 22),
+        ]
+        edges = [
+            _edge("p", PROTOCOL, "extends", origin=("python",)),
+            _edge("a", "python:abc:0-0:ABC:external_symbol", "extends", origin=("python",)),
+        ]
+        typed = typed_references(nodes, edges)
+        for sid, name in [("pm", "DuressHandler.filter_response"), ("am", "Strategy.find")]:
+            sym = TestOnlySymbol(sid, name, "method", PROD)
+            assert demotion_reason(sym, ProductionReferences(), typed) is None
+
+    def test_a_method_named_like_a_reached_protocol_method_demotes(self) -> None:
+        """``extractor.extract(...)`` types to ``DefUseExtractor.extract`` on
+        the Protocol; ``CDefUseExtractor`` conforms structurally, with no
+        edge saying so, so the name is all that links them."""
+        nodes = [
+            _typed_node("p", "DefUseExtractor", PROD, "class", 1, 10),
+            _typed_node("pm", "DefUseExtractor.extract", PROD, "method", 2, 3),
+            _typed_node("cm", "CDefUseExtractor.extract", PROD, "method", 12, 13),
+            _typed_node("user", "user", USE, "function", 1, 20),
+        ]
+        edges = [_edge("p", PROTOCOL, "extends", origin=("python",))]
+        sym = TestOnlySymbol("cm", "CDefUseExtractor.extract", "method", PROD)
+        reached = typed_references(nodes, edges + [_edge("user", "pm")])
+        assert demotion_reason(sym, ProductionReferences(), reached) == DEMOTION_PROTOCOL
+        assert demotion_reason(sym, ProductionReferences(), typed_references(nodes, edges)) is None
+
+    def test_a_test_caller_does_not_reach_a_protocol_method(self) -> None:
+        nodes = [
+            _typed_node("p", "Proto", PROD, "class", 1, 10),
+            _typed_node("pm", "Proto.go", PROD, "method", 2, 3),
+            _typed_node("t", "test_go", TEST, "function", 1, 5),
+        ]
+        edges = [_edge("p", PROTOCOL, "extends", origin=("python",)), _edge("t", "pm")]
+        sym = TestOnlySymbol("x", "Impl.go", "method", PROD)
+        assert demotion_reason(sym, ProductionReferences(), typed_references(nodes, edges)) is None
+
+    def test_a_dunder_is_called_by_the_runtime(self) -> None:
+        """``Pattern.__post_init__`` runs from the dataclass ``__init__``."""
+        sym = TestOnlySymbol("x", "Pattern.__post_init__", "method", PROD)
+        typed = typed_references([], [])
+        assert demotion_reason(sym, ProductionReferences(), typed) == DEMOTION_RUNTIME
+
+    def test_a_decorator_demotes_only_the_method_that_carries_it(self) -> None:
+        """``@property def add`` on another class is not ``Store.add``'s."""
+        typed = typed_references(STORE_NODES, [])
+        other = ProductionReferences(decorated_methods={(PROD, "Bag.add"), (USE, "Store.add")})
+        assert demotion_reason(STORE_ADD, other, typed) is None
+        own = ProductionReferences(decorated_methods={(PROD, "Store.add")})
+        assert demotion_reason(STORE_ADD, own, typed) == DEMOTION_REGISTERED
+
+    def test_the_bare_name_indexes_do_not_vote_for_a_typed_method(self) -> None:
+        """``loads`` / ``carries_decorator`` are keyed by bare name -- the
+        ambiguity this arm replaces -- so a typed method ignores them."""
+        refs = ProductionReferences(
+            loads={"add": {USE}}, carries_decorator={"add": {USE}},
+            dispatch_bound={"add": {USE}}, decorated={"add": {USE}},
+        )
+        assert demotion_reason(STORE_ADD, refs, typed_references(STORE_NODES, [])) is None
+
+    def test_a_function_is_judged_as_before_on_a_typed_map(self) -> None:
+        refs = ProductionReferences(loads={"helper": {USE}})
+        sym = TestOnlySymbol("i", "helper", "function", PROD)
+        assert demotion_reason(sym, refs, typed_references([], [])) == DEMOTION_CROSS_MODULE
+
+    def test_the_census_names_the_method_arms(self) -> None:
+        symbols = [
+            STORE_ADD,
+            TestOnlySymbol("d", "Store.__eq__", "method", PROD),
+        ]
+        typed = typed_references(STORE_NODES, [])
+        kept, census = gated_cohort(symbols, ProductionReferences(), typed)
+        assert [s.name for s in kept] == ["Store.add"]
+        assert census == {DEMOTION_RUNTIME: 1}
 
 
 class TestTheRatchet:
@@ -261,6 +483,27 @@ class TestTheRatchet:
         doc = baseline_document([])
         assert "SHRINK" in doc["_comment"]
         assert doc["keys"] == []
+
+    def test_methods_are_baselined_apart_from_functions(self, tmp_path: Path) -> None:
+        """A map without receiver typing cannot judge methods, so a run on one
+        must neither report the method keys as drained nor drop them on
+        ``--write-baseline``. Keeping them in their own list is what lets it
+        compare functions alone and carry the methods through untouched.
+        """
+        syms = [
+            TestOnlySymbol("i", "fn", "function", PROD),
+            TestOnlySymbol("j", "C.m", "method", PROD),
+        ]
+        doc = baseline_document(syms)
+        assert doc["keys"] == [f"{PROD}::fn"]
+        assert doc["method_keys"] == [f"{PROD}::C.m"]
+        target = tmp_path / "b.json"
+        target.write_text(json.dumps(doc), encoding="utf-8")
+        assert load_baseline(target) == {f"{PROD}::fn", f"{PROD}::C.m"}
+        assert load_baseline(target, methods=False) == {f"{PROD}::fn"}
+
+        kept = baseline_document(syms[:1], keep_method_keys=[f"{PROD}::C.m"])
+        assert kept["method_keys"] == [f"{PROD}::C.m"]
 
 
 class TestAstScanning:
@@ -294,6 +537,49 @@ class TestAstScanning:
         mod.write_text("y = mod.helper\n", encoding="utf-8")
         refs = collect_production_references([mod], tmp_path)
         assert "helper" in refs.loads
+
+    def test_a_member_site_is_where_the_attribute_NAME_sits(self, tmp_path: Path) -> None:
+        """SCIP's occurrence is the ``.add`` token, which on a chain split over
+        lines is the expression's LAST line, not its first."""
+        mod = tmp_path / "m.py"
+        mod.write_text("y = (thing\n     .add)\n", encoding="utf-8")
+        refs = collect_production_references([mod], tmp_path)
+        assert refs.member_sites["add"] == {("m.py", 2)}
+
+    def test_a_local_name_is_never_a_member_site(self, tmp_path: Path) -> None:
+        """A method is reached through an attribute. A bare ``ancestors`` in a
+        function body is a local -- 42 of them once demoted ``Store.ancestors``
+        -- so only a CLASS-BODY name (``x = property(_get)``) is a member site.
+        """
+        mod = tmp_path / "m.py"
+        mod.write_text(
+            "def f():\n    ancestors = 1\n    return ancestors\n"
+            "class C:\n    def _get(self):\n        return _get\n"
+            "    x = property(_get)\n",
+            encoding="utf-8",
+        )
+        refs = collect_production_references([mod], tmp_path)
+        assert "ancestors" not in refs.member_sites
+        assert refs.member_sites["_get"] == {("m.py", 7)}
+
+    def test_a_nested_class_body_is_indexed_as_its_own(self, tmp_path: Path) -> None:
+        mod = tmp_path / "m.py"
+        mod.write_text(
+            "class Outer:\n    class Inner:\n        alias = _hook\n",
+            encoding="utf-8",
+        )
+        refs = collect_production_references([mod], tmp_path)
+        assert refs.member_sites["_hook"] == {("m.py", 3)}
+
+    def test_a_decorated_method_is_indexed_by_its_class(self, tmp_path: Path) -> None:
+        mod = tmp_path / "m.py"
+        mod.write_text(
+            "class C:\n    @property\n    def add(self):\n        return 1\n"
+            "    def plain(self):\n        return 2\n",
+            encoding="utf-8",
+        )
+        refs = collect_production_references([mod], tmp_path)
+        assert refs.decorated_methods == {("m.py", "C.add")}
 
     def test_a_decorated_function_indexes_BOTH_names(self, tmp_path: Path) -> None:
         mod = tmp_path / "m.py"
@@ -470,6 +756,24 @@ class TestAgainstTheLiveTree:
         keys = load_baseline(root / ".ci/test-only-reachability-baseline.json")
         names = {k.rsplit("::", 1)[-1] for k in keys}
         assert not {n for n in names if n.startswith("analyze_")}
+
+    def test_the_method_half_is_baselined_and_discriminates(self) -> None:
+        """WI-mifag's adjudicated rows, asserted on this repository.
+
+        ``Pattern.matches`` is the item's own example: it once scored 497
+        production "references" off regex ``.matches``, and production in fact
+        calls ``matches_all``. ``DuressHandler.filter_response`` is a Protocol
+        hook nothing in production calls. The controls: Textual's ``action_*``
+        handlers are dispatched by the framework, and ``CDefUseExtractor.
+        extract`` is reached through the ``DefUseExtractor`` Protocol.
+        """
+        root = Path(__file__).resolve().parents[3]
+        path = root / ".ci/test-only-reachability-baseline.json"
+        methods = load_baseline(path) - load_baseline(path, methods=False)
+        names = {k.rsplit("::", 1)[-1] for k in methods}
+        assert {"Pattern.matches", "DuressHandler.filter_response"} <= names
+        assert not {n for n in names if ".action_" in n}
+        assert "CDefUseExtractor.extract" not in names
 
     def test_production_source_files_finds_the_shipped_tree(self) -> None:
         root = Path(__file__).resolve().parents[3]
