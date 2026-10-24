@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.20.15"
+      "const": "0.21.0"
     },
     "confidence_model": {
       "type": "string",
@@ -400,6 +400,20 @@
         "$ref": "#/$defs/UsageContext"
       },
       "description": "Concept-tagged call/usage sites (per ADR-3ccc usage_context_patterns)"
+    },
+    "module_sets": {
+      "type": "object",
+      "description": "Disjunctive module slots stored once (INV-jahuf): handle -> the modules a call could come from, in slot order. The handle is module-set- plus the first 16 hex digits of sha256 of the comma-joined list; only handles the edges reference are listed",
+      "propertyNames": {
+        "pattern": "^module-set-[0-9a-f]{16}$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 2
+      }
     },
     "reproducibility_context": {
       "type": "object",

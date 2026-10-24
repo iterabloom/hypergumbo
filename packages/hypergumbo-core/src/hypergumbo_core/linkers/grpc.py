@@ -457,8 +457,15 @@ def _scan_ts_file(file_path: Path, content: str) -> list[GrpcPattern]:
 #: folds to a canonical Cluster A construct plus ``meta["framework_role"]``:
 #: ``interface`` for the proto service declaration, ``class`` for a server-side
 #: implementation, ``function`` for a client-side call site.
+#:
+#: The service's kind is a scalar, as it was before this table existed: it
+#: names the ONE kind a ``.proto`` service is, not a set of abstract kinds a
+#: consumer selects on, so ``find_partial_abstract_family_literals`` (which
+#: flags a partial ``interface``/``trait``/``protocol`` enumeration) has
+#: nothing to say about it. proto declares no trait or protocol.
+_PROTO_SERVICE_KIND = "interface"
 _PATTERN_FOLDS: dict[str, tuple[str, str]] = {
-    "service": ("grpc_service", "interface"),
+    "service": ("grpc_service", _PROTO_SERVICE_KIND),
     "servicer": ("grpc_servicer", "class"),
     "registration": ("grpc_servicer", "class"),
     "stub": ("grpc_stub", "function"),

@@ -9,7 +9,7 @@ def test_new_behavior_map_has_required_top_level_fields():
     assert bm["schema_version"] == SCHEMA_VERSION
     assert bm["view"] == "behavior_map"
     assert bm["confidence_model"] == "hypergumbo-evidence-v2.2"
-    assert bm["stable_id_scheme"] == "hypergumbo-stableid-v11"
+    assert bm["stable_id_scheme"] == "hypergumbo-stableid-v12"
     assert bm["shape_id_scheme"] == "hypergumbo-shapeid-v3"
     assert bm["repo_fingerprint_scheme"] == "hypergumbo-repofp-v2"
 
@@ -19,6 +19,7 @@ def test_new_behavior_map_has_required_top_level_fields():
     assert isinstance(bm["profile"], dict)
     assert isinstance(bm["nodes"], list)
     assert isinstance(bm["edges"], list)
+    assert bm["module_sets"] == {}
     assert isinstance(bm["features"], list)
     assert isinstance(bm["metrics"], dict)
     assert isinstance(bm["limits"], dict)

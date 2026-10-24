@@ -173,6 +173,7 @@ from .io_boundary_types import (
     opacity_names,
 )
 from .ir import symbol_name_slot, symbol_path_slot
+from .module_sets import expand_module_slot
 from .owner_ancestry import ancestor_retry_hints
 from .yaml_catalogs import CatalogueError
 
@@ -4768,6 +4769,7 @@ def _module_hint_candidates(
             seen.add(value)
             out.append(value)
 
+    module_hint = expand_module_slot(module_hint)
     add(module_hint)
     for spellings in module_hint_disjuncts(module_hint, language):
         for spelling in spellings:
@@ -4803,9 +4805,14 @@ def module_hint_disjuncts(
     header (``["cstdlib", "stdlib"]``, :data:`_CXX_C_LIBRARY_HEADERS`,
     WI-hilot). The last spelling is the catalogue's key, which is what the
     coverage gate reports for an unenumerated disjunct.
+
+    A ``module-set-`` handle is read as the list it names
+    (:func:`module_sets.expand_module_slot`, INV-jahuf): c and cpp store a
+    slot of two or more headers once and put the handle in the slot, so this
+    function and :func:`_module_hint_candidates` are where the list comes back.
     """
     groups: list[list[str]] = []
-    for raw in module_hint.split(","):
+    for raw in expand_module_slot(module_hint).split(","):
         part = raw.strip()
         if not part:
             continue

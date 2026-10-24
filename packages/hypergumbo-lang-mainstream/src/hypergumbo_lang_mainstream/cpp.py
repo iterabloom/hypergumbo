@@ -92,6 +92,10 @@ Call-edge details:
   (``transitive_in_repo=False``) -- prefixed with ``std``
   when the call names ``std::`` or the file has ``using namespace std``
   (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
+  A set of two or more is written as a ``module-set-`` handle and stored
+  once in the map's ``module_sets`` (``hypergumbo_core.module_sets``,
+  INV-jahuf); io_boundary expands it back, so the two quantifiers read the
+  same list.
   Member calls carry ``call_construct="method"``.
 - **Scope** (INV-fabih): every stable_id's qualified-name slot holds the
   enclosing namespaces and classes the name does not already spell
@@ -153,6 +157,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.module_sets import module_slot
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id,
 )
@@ -2195,7 +2200,9 @@ def _extract_edges_from_tree(
                             # header context. The semantics is "this call
                             # could be from any of the included headers";
                             # downstream consumers may split the module_hint
-                            # on commas if they need per-header resolution.
+                            # on commas if they need per-header resolution,
+                            # after expanding a module-set handle
+                            # (module_sets.expand_module_slot, INV-jahuf).
                             # WI-bapuk: the namespace the call NAMES is a
                             # module home, and discarding it made every
                             # `std::` row unreachable. ADDED to the
@@ -2240,7 +2247,10 @@ def _extract_edges_from_tree(
                                 node, source, callee_name,
                             )
                             if _slots:
-                                module_hint = ",".join(_slots)
+                                # INV-jahuf: two or more homes are stored once
+                                # and named by a handle; on envoy the list ran
+                                # to 12 KB in every id, label and dst.
+                                module_hint = module_slot(_slots)
                                 ext_ref = ExternalRef(
                                     lang="cpp",
                                     module_path=module_hint,
