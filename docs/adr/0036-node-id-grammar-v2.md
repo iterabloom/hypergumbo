@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0036: node.id Grammar v2 — Anchored Parsing, Colon Policy, Kind-Slot Purity
 
-- Status: Accepted — Decision/Enforcement shipped only partially (see the id-format:F3 amendments below: the Ruling-2 round-trip and the name-slot non-empty check are ERROR since WI-popak, 2026-10-24; the full Ruling-1 name-slot round-trip and the Ruling-3 sentinel enumeration are NOT landed)
+- Status: Accepted — Decision/Enforcement shipped only partially (see the id-format:F3 amendments below: the Ruling-2 round-trip and the name-slot non-empty check are ERROR since WI-popak, 2026-10-24; Ruling 3 is enforced as amended by WI-dipim (see Ruling 3); the full Ruling-1 name-slot round-trip is NOT landed)
 - Date: 2026-06-10
 
 > **Amended in place** — see the §Enforcement "Amendment — id-format:F3 partial landing (2026-06-13)" section below for the actual landed-vs-advisory enforcement state.
@@ -159,6 +159,33 @@ catalog language and `kind` must always be a registry symbol-kind. Extending thi
 requires amending this ADR (or a successor registry module, if the enumeration later
 outgrows a table — at four rows it does not).
 
+**Amendment — what the table means (WI-dipim, owner 2026-10-24).** Read
+literally, the table above says that span `1-1` and name `file` are legal *only*
+in the file triple, and that anything else outside it is a violation. A census
+of grpc (merged dev 9814ac193b, 129,954 nodes,
+`~/hypergumbo_lab_notebook/dipim_10242026/RULING3_CENSUS.md`) shows that this
+reading flags correct ids:
+
+- **18 real one-line spans** on line 1 (`python:…/__init__.py:1-1:__path__:variable`).
+  `1-1` is an ordinary span as well as the file triple's.
+- **1,904 C++ include targets** named `file` (`cpp:<header path>:0-0:file:external_symbol`),
+  an unresolved `#include`'s convention.
+- **7 angle-bracket system headers** in the path slot (`cpp:<string>:0-0:header:external_symbol`),
+  where the path slot holds the include text.
+
+The table is read as follows. Those three are legal. What IS enforced
+(`spec_validator._check_id_roundtrip`):
+
+| Rule | Severity | Measured at landing |
+|---|---|---|
+| An id named `file` of kind `file` (the file pseudo-symbol) has span `1-1`. The converse is not required: kind `file` also carries manifest entries with a role (an npm script or `main`, a pyproject script; `meta["entry_role"]`, audit-findings 0005) | error | 0 (grpc, whisper.cpp, sherpa-onnx) |
+| No path slot is `<unknown>`. It is finalize's fallback for an edge dst that is not an id (INV-dulah, WI-bufar-pokam) | warning: producers still emitting non-id dsts | grpc 221 (starlark `calls` 213, cmake `links` 7, rst `includes` 1); whisper.cpp 361 (cuda 340, cmake 19, glsl 1, wgsl 1) |
+| Span `start <= end` | error | 0 |
+
+The `<unknown>` warning goes to `error` once its producers are fixed
+(WI-zihij). That is the same path the round-trip checks took (WI-popak).
+
+
 ### Enforcement
 
 > **Landed-vs-advisory state:** the three layers below describe the *intended* enforcement. For what actually shipped, see the id-format:F3 amendment immediately following (Ruling 2 round-trip is ADVISORY; Ruling-1 name-slot round-trip and the full Ruling-3 sentinel enumeration are NOT landed). Do not read this section as fully-shipped enforcement.
@@ -236,7 +263,8 @@ checks are now `error` (`spec_validator._ID_ROUNDTRIP_SEVERITY`), and the
 validation-ratchet baselines go 11 → 0.
 
 Still not landed: the full Ruling-1 name-slot round-trip (name slot ==
-sanitized `Symbol.name`), and the Ruling-3 sentinel enumeration (WI-dipim).
+sanitized `Symbol.name`). Ruling 3 landed afterwards, as amended there
+(WI-dipim).
 The pony/robot kind-slot holes INV-dulah tracks, behind WI-talos, now report
 as errors when those analyzers run.
 
