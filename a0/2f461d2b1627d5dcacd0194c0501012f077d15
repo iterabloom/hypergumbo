@@ -1,0 +1,28 @@
+Original commit body from e4892b1a9041efe87e041bd833de6813103350da:
+
+INV-kurup's kind-slot limb, found while checking WI-popak's trigger.
+The schema-coverage corpus is at 0 violations, but real surveys still
+carried id-format:F3's round-trip advisories ("kind-slot X is not a
+registered symbol-kind" / "does not match Symbol.kind") from three
+producers that put a ROLE in the id's kind slot:
+
+  - cuda.py: the slot was cuda_execution_space (global / device / host /
+    host_device). Symbol.kind is "function" and the space is already on
+    meta. whisper.cpp: 998 symbols, 2 advisories each.
+  - xml_config.py, AndroidManifest components: the slot was the element
+    (activity / service / receiver / provider). kind is "component" and
+    meta.component_type carries the element.
+  - linkers/message_dispatch.py: f-string ids ending :message_sender /
+    :message_handler on kind="function" nodes. They are now make_symbol_id
+    ids; the role stays on meta.framework_role.
+
+Path, span and name keep each id unique. Node ids change; stable_ids do
+not, because each producer already hashed the canonical kind (cuda and
+xml via compute_stable_id / declared_arity_stable_id; dispatch stand-ins
+carry none).
+
+Live on this branch: `hypergumbo run` id_format violations, whisper.cpp
+1,016 -> 0 and sherpa-onnx 72 -> 0. Each producer gets a test that
+runs _check_id_roundtrip on its own output.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
