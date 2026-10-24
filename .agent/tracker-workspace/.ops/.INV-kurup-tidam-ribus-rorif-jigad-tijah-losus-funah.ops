@@ -150,3 +150,10 @@
   clock: 18  # b786
   nonce: b786  # b786
   message: "OWNER RULING 2026-09-25 (P2 review follow-up): NOT P2. The 09-06 reason for P2 (\"WI-vodin is SCHEDULED\") is spent: WI-vodin shipped as #915. What remains is WI-popak / WI-dipim (P3 todo_soft), the linker's three-hop reach limit, and INV-dulah's release-gated limbs. Priority 2 -> 3. Status stays violated."  # b786
+- op: discuss  # 96ff
+  at: '2026-10-24T10:28:06Z'  # 96ff
+  by: agent  # 96ff
+  actor: jgstern_agent  # 96ff
+  clock: 19  # 96ff
+  nonce: 96ff  # 96ff
+  message: "STAGE 10 PASS 2026-10-24 (dev a7115a1eea). What closing this META needs, re-verified today: (1) WI-vodin: DONE (#915). (2) WI-popak (flip the id-format:F3 round-trip advisories to error): its named blockers WI-pubiv and WI-kugaj are DONE, and the schema-coverage corpus has 0 violations on default and include_docs (VALIDATION_BASELINES are stale at 11). But real-repo surveys still carry the advisory class from producers not named before: role-in-kind-slot (cuda, AndroidManifest, message-dispatch linker; filed WI-lusoh) and empty name slots (starlark raw dep labels x479 on grpc, python call-expression bases, a ruby call, a cpp anonymous enum; filed WI-pusan). Both are now isbefore WI-popak. (3) WI-dipim (sentinel enumeration sub-check) todo_soft. (4) INV-dulah: WI-banod's bitbake limb shipped as stable_id v10 on 10-22; pony/robot kind-slot holes remain, gated behind WI-talos. Order: WI-lusoh, WI-pusan, then WI-popak plus the baseline ratchet, then WI-dipim."  # 96ff
