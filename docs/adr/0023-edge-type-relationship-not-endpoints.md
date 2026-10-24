@@ -311,6 +311,46 @@ Notably `module_attr_ref` survives because `imported_module.X` is a
 syntactically different construct from a bare-name `X` reference, and the
 distinction is a property of the use site (axis 1), not the dst (axis 2).
 
+### Amendment: what a `calls` edge's `src` may be (WI-fazup, 2026-10-24)
+
+`calls` names the relationship "executing `src` invokes `dst`". This ADR
+says nothing about which endpoints that admits. Since the anchoring work
+(INV-foluz, INV-nopoh, INV-bamij, INV-jahom, WI-jadaf) a call outside any
+function still emits an edge, so `src` is not always a function. The
+written contract:
+
+**`src` is the code unit whose execution makes the call.** It is one of:
+
+| `src` kind | the call sits in | it runs |
+|---|---|---|
+| `function` / `method` / `constructor` (the callables) | that callable's body; a function literal's calls belong to the named callable that contains it (INV-foluz) | when the callable is invoked |
+| a type: `class`, `struct`, `enum`, `interface`, `object`, `module`, `actor`, ... | the type's body, outside every member: a Python class body, a Java/C# static or instance field initializer or `static {}` block, a Scala `object` body | depends on the construct and the language: once at definition or class initialization (Python class body, Java static initializers), or on every construction (instance field initializers) |
+| `variable` (Go package-level) | the variable's initializer, `var x = f()`, including a literal it is bound to (INV-nopoh) | once, at package initialization |
+| `file` (the file pseudo-symbol) | top-level code no narrower unit owns: module-level statements, a blank `var _ = f()` in Go, a C/C++ global initializer, a JS/TS class-field initializer | once, when the file is loaded or initialized |
+
+**What the edge does not say.** Nothing on the edge says which row applies,
+or when the code runs. A consumer reads the src node's `kind`. It
+treats `src` as a CALLER, an invokable that other edges can reach and that
+dead-code, slices and reachability can seed, only when the kind is a
+callable kind. It must not assume a function: `owner_of(src.name)` is
+`None` for a class anchor, and a type anchor is reached through
+`instantiates` or import, not through a call.
+
+**Known divergence, recorded rather than ratified.** JS/TS anchor a
+class-field initializer on the `file` (`class P { x = compute(); static y =
+build(); }`), where Python anchors a class body and Java a static field
+initializer on the class. All three were checked on dev 48d10fb825. The
+2026-10-22 concept audit reports class anchoring for Kotlin, Swift and C#
+as well; that was not re-checked here. Both are allowed by the
+contract above; they are not the same answer. Changing either is a producer
+change with its own measurement, not part of this amendment.
+
+The consumers that assumed a function are filed separately: magnet
+demotion's same-class exemption (WI-nafif), dead-code's seeding of
+module-init calls and the three test-only consumers' disagreement
+(WI-fakuh), and test-only reachability reading `src` as callers (WI-mifag,
+which this amendment precedes).
+
 ### Enforcement (three complementary defenses)
 
 **1. Static — landed (commits `3b60ba3dd`, `f722374da`).** The

@@ -57,7 +57,7 @@ remaining backlog.
 
 Values that name the relationship the edge expresses between src and dst. Per ADR-0023, this is the only axis a new `edge_type` value should occupy.
 
-- **`calls`** — Caller invokes callee.
+- **`calls`** — Executing src invokes dst. src is a callable, or an anchor (type, Go package variable, file) for code outside any function; read its kind before treating it as a caller (ADR-0023, WI-fazup).
 - **`constrains`** — pip ``-c`` / ``--constraint`` file reference — constrains version selection without forcing install. Peer of ``includes`` (which models ``-r`` / ``--requirement``). Surfaced by WI-nubuv ext A in linkers/requirements.py.
 - **`contains`** — Container symbol holds member symbol.
 - **`data_flows_to`** — Data flow edge per ADR-0015 — value computed at src reaches dst.

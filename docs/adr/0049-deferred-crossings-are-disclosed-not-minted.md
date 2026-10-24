@@ -229,6 +229,16 @@ post-change catalogue scan of `ipc_recv` rows named `*wait*` / `*status*` /
 `*exit*` / `*returncode*` / `*poll*` / `*system*` / `*call*` found only
 output-carrying rows.
 
+**The residual is accepted (owner, 2026-10-24).** INV-sozak stays open as an
+accepted residual (P4). It is not fixed. A census of the 273-repo corpus found
+no production site that sends such a status into a network or filesystem sink
+(lab notebook `sozak_10242026/CENSUS.md`). Fixing it would mean a field-clearing
+mechanism §7a does not have, and Haskell has no def-use extractor to host one.
+`test_exit_status_is_one_verdict.py` keeps pinning the disagreement. **The
+re-evaluation trigger above extends to it:** revisit if a sampled finding
+rooted at one of these three status reads is adjudicated real, or if a
+field-sensitive source model lands for another reason.
+
 Ruling 3 was run, not argued (lab notebook `lanos_removal_10222026/`,
 pre-registered in `PLAN.md`): 11 repos (5 rust, 6 python; ceph and virtualbox
 dropped by the plan's time rules, envoy replaced by a deterministic half-size
