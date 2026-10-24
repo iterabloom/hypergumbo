@@ -193,17 +193,6 @@ def _scan_file_for_jsx_usages(file_path: Path) -> list[tuple[str, int]]:
     return usages
 
 
-def _scan_file_for_jsx_components(
-    file_path: Path,
-) -> list[str]:
-    """Scan a JS/TS file for JSX component usage.
-
-    Returns a list of PascalCase component names found in JSX expressions.
-    Filters out React built-in components.
-    """
-    return [name for name, _line in _scan_file_for_jsx_usages(file_path)]
-
-
 #: The symbol kinds a JSX usage is credited to, innermost first (WI-gulud).
 _RENDERER_KINDS: frozenset[str] = frozenset({"function", "method", "class"})
 

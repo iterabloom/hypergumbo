@@ -111,18 +111,18 @@ class TestBuildComponentMap:
 
 
 class TestScanForJsxComponents:
-    """Tests for _scan_file_for_jsx_components."""
+    """Tests for _scan_file_for_jsx_usages: the component names it reports."""
 
     def test_basic_jsx_component(self, tmp_path: Path) -> None:
-        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_components
+        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_usages
 
         f = tmp_path / "App.tsx"
         f.write_text("return <Button onClick={handleClick} />;")
-        result = _scan_file_for_jsx_components(f)
+        result = [name for name, _line in _scan_file_for_jsx_usages(f)]
         assert "Button" in result
 
     def test_multiple_components(self, tmp_path: Path) -> None:
-        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_components
+        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_usages
 
         f = tmp_path / "App.tsx"
         f.write_text("""
@@ -133,21 +133,21 @@ return (
     </Header>
 );
 """)
-        result = _scan_file_for_jsx_components(f)
+        result = [name for name, _line in _scan_file_for_jsx_usages(f)]
         assert "Header" in result
         assert "Sidebar" in result
         assert "MainContent" in result
 
     def test_ignores_html_elements(self, tmp_path: Path) -> None:
-        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_components
+        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_usages
 
         f = tmp_path / "App.tsx"
         f.write_text("<div><span>hello</span></div>")
-        result = _scan_file_for_jsx_components(f)
+        result = [name for name, _line in _scan_file_for_jsx_usages(f)]
         assert result == []
 
     def test_ignores_react_builtins(self, tmp_path: Path) -> None:
-        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_components
+        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_usages
 
         f = tmp_path / "App.tsx"
         f.write_text("""
@@ -161,41 +161,41 @@ return (
     </React.Fragment>
 );
 """)
-        result = _scan_file_for_jsx_components(f)
+        result = [name for name, _line in _scan_file_for_jsx_usages(f)]
         # Only MyComponent should be detected, not Fragment/Suspense/StrictMode
         assert result == ["MyComponent"]
 
     def test_dotted_component_name(self, tmp_path: Path) -> None:
-        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_components
+        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_usages
 
         f = tmp_path / "App.tsx"
         f.write_text("<Form.Control />")
-        result = _scan_file_for_jsx_components(f)
+        result = [name for name, _line in _scan_file_for_jsx_usages(f)]
         assert "Form.Control" in result
 
     def test_nonexistent_file(self) -> None:
-        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_components
+        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_usages
 
-        result = _scan_file_for_jsx_components(Path("/nonexistent/file.tsx"))
+        result = [name for name, _line in _scan_file_for_jsx_usages(Path("/nonexistent/file.tsx"))]
         assert result == []
 
     def test_self_closing_tag(self, tmp_path: Path) -> None:
-        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_components
+        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_usages
 
         f = tmp_path / "App.tsx"
         f.write_text("<Icon name='home' />")
-        result = _scan_file_for_jsx_components(f)
+        result = [name for name, _line in _scan_file_for_jsx_usages(f)]
         assert "Icon" in result
 
     def test_multiline_jsx(self, tmp_path: Path) -> None:
-        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_components
+        from hypergumbo_core.linkers.react_component import _scan_file_for_jsx_usages
 
         f = tmp_path / "App.tsx"
         f.write_text("""<Modal
     isOpen={true}
     onClose={handleClose}
 >""")
-        result = _scan_file_for_jsx_components(f)
+        result = [name for name, _line in _scan_file_for_jsx_usages(f)]
         assert "Modal" in result
 
 
