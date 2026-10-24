@@ -28,6 +28,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Identity
 
+- **The id round-trip checks are errors** (WI-popak, INV-kurup). An id whose kind slot is not a registered kind or differs from `Symbol.kind`, or whose name slot is empty, was a `warning` while a known backlog drained. That backlog is now 0 on every substrate and survey checked, so new violations report as `error`. The validation-ratchet baselines drop from 11 to 0.
 - **Starlark `deps` labels reach the targets they name** (WI-pusan, INV-kurup). A label was pasted into the dst raw (`starlark:BUILD::utils`), which is no id, so none resolved. On grpc, 479 edges collapsed onto one nameless `<unknown>` node. `:name`, `name`, `//pkg:name` and `//pkg` now resolve to the declared target: grpc resolves 14,328 of 15,572. Any other label (an `@repo` label, or a target a macro makes) is a canonical external ref. The label as written is kept in `meta["build_label"]`.
 - **No id's name slot is empty.** No symbol is made for a C++ anonymous enum with a base type (`enum : uint16_t {...}`); tree-sitter's zero-width MISSING name had read as `''`, and its enumerators went with it. No edge is made for a Ruby call whose method is error recovery's MISSING node, or for a Python base class that is a call expression (`class X(namedtuple(...))`). A C++ base name split across lines keeps no newline in its id. grpc's id-format violations go 10 → 0.
 

@@ -106,11 +106,15 @@ SUBSTRATES: dict[str, dict[str, Any]] = {
 # corpus's external-reference count, so a *fixture* edit can move it with no
 # code change. On a red gate, re-measure before assuming a code regression;
 # ratchet DOWN on a genuine shrink, never UP.
+# Ratcheted 11 -> 0 by WI-popak (2026-10-24): the +11 pinned the id-format:F3
+# round-trip advisories on external_symbol boundary nodes, and the folds that
+# drained them (WI-pubiv, WI-kugaj, the tsconfig kind-slot, WI-lusoh, WI-pusan)
+# have all landed. Every substrate measured 0.
 VALIDATION_BASELINES: dict[str, int] = {
-    "default": 11,
-    "frameworks_all": 11,
-    "include_docs": 11,
-    "max_tier_4": 11,
+    "default": 0,
+    "frameworks_all": 0,
+    "include_docs": 0,
+    "max_tier_4": 0,
 }
 
 # Shrink-only runtime_coherence (ADR-0023 §3 edge-type partition coherence)

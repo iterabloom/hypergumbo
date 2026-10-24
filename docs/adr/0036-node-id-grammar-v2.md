@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0036: node.id Grammar v2 — Anchored Parsing, Colon Policy, Kind-Slot Purity
 
-- Status: Accepted — Decision/Enforcement shipped only partially (see the id-format:F3 partial-landing amendment below: Ruling 2 round-trip is ADVISORY; Ruling-1 name-slot round-trip and Ruling-3 sentinel enumeration NOT landed)
+- Status: Accepted — Decision/Enforcement shipped only partially (see the id-format:F3 amendments below: the Ruling-2 round-trip and the name-slot non-empty check are ERROR since WI-popak, 2026-10-24; the full Ruling-1 name-slot round-trip and the Ruling-3 sentinel enumeration are NOT landed)
 - Date: 2026-06-10
 
 > **Amended in place** — see the §Enforcement "Amendment — id-format:F3 partial landing (2026-06-13)" section below for the actual landed-vs-advisory enforcement state.
@@ -217,6 +217,28 @@ wired into `validate_ir`) shipped as a Wave-2 T0 PR. What landed, and the gating
   id-changing, deferred). `tsconfig` is **not** registered — it is
   DEPRECATE-NO-FOLD (audit-findings 0005); the fix folds its id kind-slot to
   `file` (id-changing/T1). Registering kinds is identity-neutral.
+
+### Amendment — the round-trip checks are errors (WI-popak, 2026-10-24)
+
+The "why advisory" backlog has drained. WI-pubiv and WI-kugaj are done, and
+`json_config.py` writes the tsconfig id's kind slot as `file`. A
+2026-10-24 sweep found the advisories still firing on real repositories from
+producers no one had named before, and both limbs were fixed. **WI-lusoh**:
+cuda's execution space, the AndroidManifest element and the message-dispatch
+role sat in the kind slot (whisper.cpp 1,016 violations → 0, sherpa-onnx
+72 → 0). **WI-pusan**: empty name slots from starlark's raw deps labels, a
+C++ anonymous enum's MISSING name node, ruby error recovery and python
+call-expression bases (grpc 10 → 0). After both, the schema-coverage corpus
+and the surveys swept (grpc, whisper.cpp, sherpa-onnx, envoy-half,
+torsocks, modsecurity, shaka-packager, plasma-desktop, aardvark-dns) read 0.
+So the kind-slot membership, kind-slot == `Symbol.kind` and non-empty name
+checks are now `error` (`spec_validator._ID_ROUNDTRIP_SEVERITY`), and the
+validation-ratchet baselines go 11 → 0.
+
+Still not landed: the full Ruling-1 name-slot round-trip (name slot ==
+sanitized `Symbol.name`), and the Ruling-3 sentinel enumeration (WI-dipim).
+The pony/robot kind-slot holes INV-dulah tracks, behind WI-talos, now report
+as errors when those analyzers run.
 
 ## Alternatives considered
 
