@@ -1,0 +1,28 @@
+Original commit body from fe2d471b65a8e12fb0c335dac576b639ac25b38e:
+
+Concept audit 2026-10-22, F3: `calls.src` may be a function or an anchor (a
+type, a Go package variable, the file), and nothing written said so. The
+registry called it "Caller invokes callee", and some consumers assumed a
+function. Verdict KEEP + DOCUMENT; the consumer fixes are filed separately
+(WI-nafif, WI-fakuh, WI-mifag).
+
+- ADR-0023 amendment "what a calls edge's src may be": a table of src kinds,
+  where each sits, and when it runs. A consumer that needs a caller reads the
+  src node's kind. The JS/TS class-field-initializer -> file divergence is
+  recorded, not ratified (checked on dev 48d10fb825 alongside Python class body
+  -> class and Java static initializer -> class; the audit's Kotlin/Swift/C#
+  reports are marked not re-checked).
+- Spec, src anchoring: the "still missing in rust, java, ... lua" list was stale
+  (INV-bamij anchored all nine; perl `$obj->m()` outside a sub now emits too,
+  checked on dev 48d10fb825). It now names who anchors on the file and who on
+  the type, and states the contract.
+- Spec, verify-claims: "file-anchored flows are always structural" was false
+  for Python/JS/TS since WI-nilir (PR #1793); the residuals are named.
+- edge_types.py: the `calls` description states the contract;
+  docs/concept-axes.md regenerated.
+- ADR-0049: INV-sozak recorded as an accepted residual (owner, 2026-10-24),
+  with the corpus census, and the re-evaluation trigger extended to it.
+
+No output changes.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
