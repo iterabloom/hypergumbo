@@ -23,3 +23,21 @@
     fields:  # fc5e
       statement: "A symbol's identity must be bounded in size and independent of call-site context: the same external target has one id, and no id grows with the number of headers its caller can see."  # fc5e
       root_cause: "cpp.py passes module_hint = ','.join(namespace slot + the file's include_closure stamp) as ExternalRef.module_path, which is part of the external symbol's id; INV-valom (517a52b64f) widened the stamp to every visible header, so on envoy each id, display_label, dst and dst_ref carries 1-12 KB."  # fc5e
+- op: update  # 511b
+  at: '2026-10-24T07:38:08Z'  # 511b
+  by: agent  # 511b
+  actor: jgstern_agent  # 511b
+  clock: 2  # 511b
+  nonce: 511b  # 511b
+  set:  # 511b
+    status: satisfied  # 511b
+    pr_ref: '1827'  # 511b
+    fields:  # 511b
+      statement: "A symbol's identity must be bounded in size: no id, label or dst grows with the number of headers its caller can see. (The context-independence half was split to INV-mujov by the owner's 2026-10-23 ruling.)"  # 511b
+- op: discuss  # a431
+  at: '2026-10-24T07:38:08Z'  # a431
+  by: agent  # a431
+  actor: jgstern_agent  # a431
+  clock: 3  # a431
+  nonce: a431  # a431
+  message: "Fixed in PR #1827 (dev 17cd29d60f). Root cause: cpp.py and c.py wrote the call site's whole include list (up to 12 KB) into ExternalRef.module_path, so it was copied into every id, label, dst and dst_ref. A slot naming 2+ modules is now a module-set-<16hex> handle, the list is stored once in the top-level module_sets, and both io_boundary expansion points read the handle back as its list. LIVE REPRO on merged dev (the item's own envoy-half variant): verify-claims envoy-half --claims docs/example-claims/generic-taint-claims.yaml --format json --no-default-overlays gives rc=1 (violated claims, as before), maxrss 3.70 GB (11.86 GB on dev 88ac39f8a5), survey 490 MB (3.12 GB), longest node id 821 chars (an objc selector; was 12,405, an include list), schema 0.21.0 / stableid-v12, 3,657 module_sets entries. Full envoy (A/B arm, same code): completes at 6.0 GB and 977 MB, where dev 88ac39f8a5 is SIGKILLed at 20.3 GB. Verdict envelopes identical on 8 of 8 repos and surveys identical after expanding the handles: ~/hypergumbo_lab_notebook/jahuf_10232026/RESULTS.md."  # a431

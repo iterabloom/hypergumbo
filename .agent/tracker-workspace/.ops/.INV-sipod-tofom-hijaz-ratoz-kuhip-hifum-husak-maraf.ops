@@ -22,3 +22,19 @@
     fields:  # b268
       statement: "An edge endpoint must resolve to the record it names, or be dropped and counted; it must never silently pick one of several records that share the lookup key."  # b268
       root_cause: "scip/edges.py resolves endpoints against Symbol.meta['scip_symbol'] (the raw moniker); rust-analyzer's moniker omits the crate target, so several records in different Documents share one key (INV-kutid)."  # b268
+- op: update  # 68fc
+  at: '2026-10-24T09:13:10Z'  # 68fc
+  by: agent  # 68fc
+  actor: jgstern_agent  # 68fc
+  clock: 2  # 68fc
+  nonce: 68fc  # 68fc
+  set:  # 68fc
+    status: satisfied  # 68fc
+    pr_ref: '1828'  # 68fc
+- op: discuss  # 83e6
+  at: '2026-10-24T09:13:10Z'  # 83e6
+  by: agent  # 83e6
+  actor: jgstern_agent  # 83e6
+  clock: 3  # 83e6
+  nonce: '83e6'  # 83e6
+  message: "Fixed in PR #1828 (dev 48d10fb825). Root cause: the SCIP translators resolved endpoints through a flat {moniker: id} dict. rust-analyzer's moniker omits the crate target, so lib/bin/build.rs share crate/ and the dict kept the last record. Fix (owner ruling 2026-10-23): scip/resolve.py MonikerResolver resolves in the referencing Document, then in the crate target its mod tree belongs to (crate_units.py), and otherwise drops the endpoint and counts it on the run's warnings. LIVE REPRO on merged dev: HYPERGUMBO_RUST_ANALYZER=1 hypergumbo run on a copy of ~/whole_bunch_of_repos/aardvark-dns gives rc=0. main.rs:6 (3 edges) and main.rs:90 now have src rust:src/main.rs:1-91:crate:namespace, where they were lib.rs's crate. src/test/test.rs:11 -> src/main.rs crate (was lib.rs). No lib.rs-crate edge at line 90. The rust_analyzer run has no warnings: nothing was refused. Recorded-index tests: tests/test_crate_units.py. Measurement: ~/hypergumbo_lab_notebook/sipod_10232026/."  # 83e6
