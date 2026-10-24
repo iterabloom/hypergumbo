@@ -157,3 +157,10 @@
   clock: 19  # 96ff
   nonce: 96ff  # 96ff
   message: "STAGE 10 PASS 2026-10-24 (dev a7115a1eea). What closing this META needs, re-verified today: (1) WI-vodin: DONE (#915). (2) WI-popak (flip the id-format:F3 round-trip advisories to error): its named blockers WI-pubiv and WI-kugaj are DONE, and the schema-coverage corpus has 0 violations on default and include_docs (VALIDATION_BASELINES are stale at 11). But real-repo surveys still carry the advisory class from producers not named before: role-in-kind-slot (cuda, AndroidManifest, message-dispatch linker; filed WI-lusoh) and empty name slots (starlark raw dep labels x479 on grpc, python call-expression bases, a ruby call, a cpp anonymous enum; filed WI-pusan). Both are now isbefore WI-popak. (3) WI-dipim (sentinel enumeration sub-check) todo_soft. (4) INV-dulah: WI-banod's bitbake limb shipped as stable_id v10 on 10-22; pony/robot kind-slot holes remain, gated behind WI-talos. Order: WI-lusoh, WI-pusan, then WI-popak plus the baseline ratchet, then WI-dipim."  # 96ff
+- op: discuss  # a113
+  at: '2026-10-24T15:08:02Z'  # a113
+  by: agent  # a113
+  actor: jgstern_agent  # a113
+  clock: 20  # a113
+  nonce: a113  # a113
+  message: "STAGE 10 PROGRESS 2026-10-24. Landed: WI-lusoh #1832 (kind-slot roles), WI-pusan #1833 (empty name slots, starlark label resolution), WI-popak #1834 (round-trip checks are errors, baselines 11 -> 0). Remaining before this META can close: (a) WI-dipim. Ruling 3 as written flags real ids (grpc census: 1,904 C++ include targets named 'file', 18 real 1-1 spans, 7 angle-bracket headers) and catches real defects (220 cmake <unknown> path slots). Awaiting an owner ruling on narrowing the check and amending the table (~/hypergumbo_lab_notebook/dipim_10242026/RULING3_CENSUS.md). (b) INV-dulah's pony/robot kind-slot holes, behind WI-talos. (c) The id-construction linker's three-hop reach. (d) The full Ruling-1 name-slot round-trip (not filed separately)."  # a113

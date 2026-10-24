@@ -1,0 +1,26 @@
+- op: create  # c7a0
+  at: '2026-10-24T11:57:32Z'  # c7a0
+  by: agent  # c7a0
+  actor: jgstern_agent  # c7a0
+  clock: 1  # c7a0
+  nonce: c7a0  # c7a0
+  data:  # c7a0
+    kind: invariant  # c7a0
+    title: "ruby, kotlin and go drop a file with no symbols before the edge pass, so a top-level-only script (RSpec file, Rakefile, .kts, Go var _ = init file) emits no calls or imports"  # c7a0
+    status: violated  # c7a0
+    priority: 2  # c7a0
+    parent:  # c7a0
+    tags:  # c7a0
+    - call_graph  # c7a0
+    - ruby  # c7a0
+    - kotlin  # c7a0
+    - go  # c7a0
+    - analysis_quality  # c7a0
+    isbefore: []  # c7a0
+    duplicate_of: []  # c7a0
+    not_duplicate_of: []  # c7a0
+    pr_ref:  # c7a0
+    description: "FOUND 2026-10-24 while minimising a WI-pusan Ruby fixture (dev a02f461d2b code).\n\nThree analyzers drop a file whose pass 1 found no symbols, before the edge pass ever sees it: `if analysis.symbols: file_analyses[f] = analysis else: files_skipped += 1`.\n  - ruby.py:3564. Measured: `require \"json\"; puts(1); Foo.bar(2)` gives 0 edges and 0 symbols. Adding `def m; end` makes the same file give calls file->puts and file->bar. RSpec files (only describe/it blocks), Rakefiles and bin/ scripts are this shape. The require is lost too.\n  - kotlin.py:2856. Measured: a .kts with `println(\"x\"); val y = listOf(1)` contributes no edges, while a .kt with `val z = listOf(1).map{}` does, because it has a variable symbol.\n  - go.py:6648. Not measured. A file with only imports and a blank `var _ = register()` (the INV-nopoh file-anchor shape) has no symbol, so its anchored call is dropped.\nThe file is also counted in files_skipped, which reads as \"not analysed\" although it was parsed.\n\nStatement: a parsed file's top-level calls and imports are emitted whether or not it declares anything (INV-bamij anchored them on the file; this drops the file first).\nFIX DIRECTION: keep every parsed file in the edge pass; the file anchor already exists (file_anchor_symbol). Check every analyzer for the same gate, not only these three. Measure the edge delta on a Ruby corpus repo with specs (e.g. a Rails app) before merging."  # c7a0
+    fields:  # c7a0
+      statement: "A parsed file's top-level calls and imports are emitted whether or not the file declares a symbol."  # c7a0
+      root_cause: "ruby.py / kotlin.py / go.py keep a file for pass 2 only if pass 1 found symbols (if analysis.symbols ... else files_skipped += 1)."  # c7a0

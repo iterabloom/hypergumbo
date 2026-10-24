@@ -29,3 +29,19 @@
   set: {}  # 140c
   add:  # 140c
     isbefore: [WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak]  # 140c
+- op: update  # b417
+  at: '2026-10-24T14:06:17Z'  # b417
+  by: agent  # b417
+  actor: jgstern_agent  # b417
+  clock: 3  # b417
+  nonce: b417  # b417
+  set:  # b417
+    status: done  # b417
+    pr_ref: '1833'  # b417
+- op: discuss  # ac75
+  at: '2026-10-24T14:06:17Z'  # ac75
+  by: agent  # ac75
+  actor: jgstern_agent  # ac75
+  clock: 4  # ac75
+  nonce: ac75  # ac75
+  message: "Fixed in PR #1833 (dev 9814ac193b). Root causes: starlark pasted raw deps labels into dsts; cpp read tree-sitter's zero-width MISSING type_identifier (anonymous enum with a base type) as a name; ruby made an edge for a MISSING method node; python made an extends edge for a call-expression base (formats as ''); cpp kept a newline inside a base name split across lines. LIVE REPRO on merged dev: hypergumbo run ~/whole_bunch_of_repos/grpc gives rc=0, validation_report id_format violations 0 (was 10: 9 advisory + 1 double_colon error), 0 nodes with an empty name slot (was the starlark <unknown> node carrying 479 edges, plus python/ruby/cpp ones), and starlark depends_on resolving 14,328 of 15,572 to targets (was 0; raw labels). Tests: tests/test_empty_id_name_slots.py, test_starlark.py::TestDependencyLabelsResolve."  # ac75
