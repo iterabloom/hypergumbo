@@ -29,3 +29,19 @@
   set: {}  # 9136
   add:  # 9136
     isbefore: [WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak]  # 9136
+- op: update  # c2d0
+  at: '2026-10-24T11:40:52Z'  # c2d0
+  by: agent  # c2d0
+  actor: jgstern_agent  # c2d0
+  clock: 3  # c2d0
+  nonce: c2d0  # c2d0
+  set:  # c2d0
+    status: done  # c2d0
+    pr_ref: '1832'  # c2d0
+- op: discuss  # aa3b
+  at: '2026-10-24T11:40:52Z'  # aa3b
+  by: agent  # aa3b
+  actor: jgstern_agent  # aa3b
+  clock: 4  # aa3b
+  nonce: aa3b  # aa3b
+  message: "Fixed in PR #1832 (dev a02f461d2b). Root cause: cuda.py put cuda_execution_space in the id's kind slot, xml_config.py put the AndroidManifest element, and message_dispatch.py built f-string ids ending :message_sender/:message_handler. All three already carried the role on meta. The kind slot is now the kind; node ids change, stable_ids do not. LIVE REPRO on merged dev: hypergumbo run ~/whole_bunch_of_repos/sherpa-onnx gives rc=0 and validation_report id_format violations 72 -> 0. Dispatch stand-ins are now e.g. javascript:wasm/tts/app-tts.js:28-28:sherpa-onnx-tts-progress:function. whisper.cpp (branch run, same code) 1,016 -> 0. Per-producer tests run _check_id_roundtrip on their own output."  # aa3b
