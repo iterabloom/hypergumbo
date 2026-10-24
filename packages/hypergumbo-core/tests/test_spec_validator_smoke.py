@@ -2327,9 +2327,9 @@ def test_id_roundtrip_passes_on_registered_matching_canonical_id() -> None:
     assert _check_id_roundtrip([sym]) == []
 
 
-def test_id_roundtrip_flags_unregistered_kind_slot_warning() -> None:
+def test_id_roundtrip_flags_unregistered_kind_slot_error() -> None:
     """An id kind-slot that is not a registered symbol-kind is flagged at
-    advisory (warning) severity — the net value over the shape-only canonical
+    error severity (advisory until WI-popak, 2026-10-24) — the net value over the shape-only canonical
     pattern. kind-slot == Symbol.kind here, isolating membership from the
     mismatch check."""
     from hypergumbo_core.spec_validator import _check_id_roundtrip
@@ -2340,23 +2340,23 @@ def test_id_roundtrip_flags_unregistered_kind_slot_warning() -> None:
     violations = _check_id_roundtrip([sym])
     assert len(violations) == 1
     v = violations[0]
-    assert v.severity == "warning"
+    assert v.severity == "error"
     assert v.validator_class == "id_format"
     assert v.field_name == "Symbol.id"
     assert v.observed == "zzznotarealkind"
     assert "registered symbol-kind" in v.message
 
 
-def test_id_roundtrip_flags_kind_slot_mismatch_warning() -> None:
+def test_id_roundtrip_flags_kind_slot_mismatch_error() -> None:
     """The id kind-slot must equal Symbol.kind. A divergence (both kinds
-    registered) is flagged at advisory severity."""
+    registered) is flagged at error severity (advisory until WI-popak)."""
     from hypergumbo_core.spec_validator import _check_id_roundtrip
 
     sym = _FakeSym(id="python:pkg/foo.py:1-1:name:function", kind="method")
     violations = _check_id_roundtrip([sym])
     assert len(violations) == 1
     v = violations[0]
-    assert v.severity == "warning"
+    assert v.severity == "error"
     assert v.field_name == "Symbol.id"
     assert "does not match Symbol.kind" in v.message
 
@@ -2384,17 +2384,17 @@ def test_id_roundtrip_catches_tsconfig_divergence_invisible_to_axis_conformance(
     rt = _check_id_roundtrip([sym])
     assert any("does not match Symbol.kind" in v.message for v in rt)
     assert any("registered symbol-kind" in v.message for v in rt)
-    assert all(v.severity == "warning" for v in rt)
+    assert all(v.severity == "error" for v in rt)
 
 
-def test_id_roundtrip_flags_empty_name_slot_warning() -> None:
-    """An empty name-slot is flagged at advisory severity."""
+def test_id_roundtrip_flags_empty_name_slot_error() -> None:
+    """An empty name-slot is flagged at error severity (advisory until WI-popak)."""
     from hypergumbo_core.spec_validator import _check_id_roundtrip
 
     sym = _FakeSym(id="python:pkg/foo.py:1-1::function", kind="function")
     violations = _check_id_roundtrip([sym])
     assert len(violations) == 1
-    assert violations[0].severity == "warning"
+    assert violations[0].severity == "error"
     assert "name-slot" in violations[0].message
 
 

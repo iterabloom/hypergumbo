@@ -66,10 +66,10 @@ holds those counts shrink-only):
    ``make_*_stable_id`` factory produces. See ADR-0034 for the discipline
    rationale. id-format:F3 (``_check_id_roundtrip``) extends the class once
    more with the ADR-0036 Ruling-2 *round-trip* canary: the id kind-slot must
-   be a registered symbol-kind and equal ``Symbol.kind`` (advisory ``warning``
-   until the v6 kind-slot folds clear the WI-pubiv/WI-kugaj/tsconfig backlog),
-   the name-slot must be non-empty (advisory), and the span must satisfy
-   ``start <= end`` (``error``). The class also pins ``Edge.id`` to
+   be a registered symbol-kind and equal ``Symbol.kind``, the name-slot must
+   be non-empty, and the span must satisfy ``start <= end``, all at
+   ``error`` (the first three were advisory ``warning`` until WI-popak, when
+   the kind-slot and name-slot backlog reached 0). The class also pins ``Edge.id`` to
    ``edge:sha256:<16hex>`` (``_check_edge_id_format``) and requires the
    ``hgfp2:`` prefix on every non-null real-source ``Symbol.fingerprint``
    (``_check_fingerprint_format``).
@@ -2057,21 +2057,19 @@ def _check_stable_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]
 # colon-free tokens (span, name, kind) per ADR-0036 Ruling 1 and assert
 # they round-trip to the Symbol's own fields and the symbol-kind registry.
 #
-# Severity gating (scope A of the Wave-2 identity train): the kind-slot
-# membership, kind-slot==Symbol.kind, and non-empty-name checks land at
-# ADVISORY (``_ID_ROUNDTRIP_ADVISORY``) because a strict pass red-flags a
-# known, id-CHANGING (T1) backlog that cannot clear before the v6 stable_id
-# bump:
-#   * the ~1645 external_symbol kind-slot disagreements (WI-pubiv),
-#   * the route/event role-disagreement cohort (WI-kugaj), and
-#   * the tsconfig id kind-slot (DEPRECATE-NO-FOLD per audit-findings 0005;
-#     the producer folded Symbol.kind->"file" but left "tsconfig" in the id).
-# Those folds change node.id, so they ride the v6 migration. Advisory
-# severity makes the violations visible/measurable now; the gating tracker
-# item promotes them to error once the backlog clears. The span start<=end
-# check has no such backlog and lands at error directly.
-
-_ID_ROUNDTRIP_ADVISORY = "warning"
+# Severity: ERROR since WI-popak (2026-10-24). The kind-slot membership,
+# kind-slot==Symbol.kind and non-empty-name checks landed ADVISORY in the
+# Wave-2 identity train, because a strict pass red-flagged an id-CHANGING
+# (T1) backlog: the ~1645 external_symbol kind-slot disagreements
+# (WI-pubiv), the route/event role cohort (WI-kugaj) and the tsconfig
+# kind-slot (audit-findings 0005). All three folds landed, and so did the two
+# producer limbs a 2026-10-24 corpus sweep found (cuda / AndroidManifest /
+# message-dispatch roles in the kind slot, WI-lusoh; empty name slots,
+# WI-pusan). The schema-coverage corpus and the surveys swept (grpc,
+# whisper.cpp, sherpa-onnx, envoy-half, torsocks, modsecurity,
+# shaka-packager, plasma-desktop, aardvark-dns) read 0. A new violation is a
+# producer defect, so it reports as one.
+_ID_ROUNDTRIP_SEVERITY = "error"
 
 
 def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
@@ -2084,20 +2082,20 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
     last-3-tokens grammar; the path slot may itself contain colons) and
     check:
 
-    * **kind-slot registry membership** (advisory) — the kind token is a
+    * **kind-slot registry membership** (error) — the kind token is a
       registered symbol-kind. Net value over the shape-only pattern: it
       catches divergences like ``tsconfig`` that ``axis_conformance`` is
       blind to (the *Symbol.kind* field carries the registered ``file``
       while the id slot kept the stale ``tsconfig``).
-    * **kind-slot == Symbol.kind** (advisory) — the id round-trips to the
+    * **kind-slot == Symbol.kind** (error) — the id round-trips to the
       Symbol's own kind. Skipped when ``Symbol.kind`` is absent / None
       (required-field presence is ``axis_conformance``'s job).
-    * **name-slot non-empty** (advisory).
+    * **name-slot non-empty** (error).
     * **span start <= end** (error) — a genuine malformation with no
       id-changing backlog.
 
-    See ADR-0036 Rulings 1-3 and the module comment above for the
-    advisory-vs-error severity gating.
+    See ADR-0036 Rulings 1-3 and the module comment above for why these
+    were advisory until WI-popak.
     """
     from .symbol_kinds import all_symbol_kind_names
 
@@ -2116,7 +2114,7 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
 
         if kind_slot not in registered:
             violations.append(ValidationViolation(
-                severity=_ID_ROUNDTRIP_ADVISORY,
+                severity=_ID_ROUNDTRIP_SEVERITY,
                 validator_class="id_format",
                 field_name="Symbol.id",
                 record_id=sym_id,
@@ -2132,7 +2130,7 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
         node_kind = getattr(sym, "kind", None)
         if node_kind is not None and kind_slot != node_kind:
             violations.append(ValidationViolation(
-                severity=_ID_ROUNDTRIP_ADVISORY,
+                severity=_ID_ROUNDTRIP_SEVERITY,
                 validator_class="id_format",
                 field_name="Symbol.id",
                 record_id=sym_id,
@@ -2147,7 +2145,7 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
 
         if name_slot == "":
             violations.append(ValidationViolation(
-                severity=_ID_ROUNDTRIP_ADVISORY,
+                severity=_ID_ROUNDTRIP_SEVERITY,
                 validator_class="id_format",
                 field_name="Symbol.id",
                 record_id=sym_id,
