@@ -274,6 +274,9 @@ def _recompute_view_metrics(view_map: dict[str, Any]) -> None:
         view_map["metrics"] = compute_metrics(
             view_map["nodes"], view_map["edges"],
             profile=view_map.get("profile"),
+            # A fact about the enrichment run, not about the projected
+            # arrays, so the source's counts carry over unchanged.
+            framework_patterns=view_map["metrics"].get("framework_patterns"),
         )
 
 

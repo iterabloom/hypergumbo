@@ -506,7 +506,8 @@ class TestRunAllLinkers:
 
         ctx = LinkerContext(repo_root=Path("/test"))
         results = run_all_linkers(ctx)
-        assert len(results) == 1
+        # The enclosure post-pass is always recorded after the linkers (WI-tivif).
+        assert [name for name, _ in results] == ["pair-test", "enclosure"]
         name, result = results[0]
         assert name == "pair-test"
         assert result.symbols == ["s"]
@@ -975,9 +976,11 @@ class TestEnclosureLinker:
         ctx = LinkerContext(repo_root=Path("/test"), symbols=[func])
         results = run_all_linkers(ctx)
 
-        # Only the linker result, no enclosure result (no synthetic nodes)
-        assert len(results) == 1
-        assert results[0][0] == "non-synthetic-test"
+        # The linker result, and the enclosure run recorded with no edges
+        # because there was no synthetic node to connect (WI-tivif).
+        assert [name for name, _ in results] == ["non-synthetic-test", "enclosure"]
+        assert results[1][1].edges == []
+        assert results[1][1].run.silence_reason == "no_candidate_construct"
 
     def test_handles_no_enclosing_function(self):
         """Gracefully handles synthetic nodes with no enclosing function."""
@@ -1005,9 +1008,11 @@ class TestEnclosureLinker:
         ctx = LinkerContext(repo_root=Path("/test"), symbols=[])
         results = run_all_linkers(ctx)
 
-        # Only the linker result, no enclosure edges created
-        assert len(results) == 1
-        assert results[0][0] == "no-enclosing-test"
+        # No enclosure edge: the synthetic node was found but nothing encloses
+        # it, which the recorded run says (WI-tivif).
+        assert [name for name, _ in results] == ["no-enclosing-test", "enclosure"]
+        assert results[1][1].edges == []
+        assert results[1][1].run.silence_reason == "candidates_unresolved"
 
     def test_creates_uses_edges_for_post_phase3_framework_role_shape(self):
         """Synthetic nodes emitted in the post-Wave-5 shape — kind=function/method
@@ -1100,9 +1105,11 @@ class TestEnclosureLinker:
         ctx = LinkerContext(repo_root=Path("/test"), symbols=[func])
         results = run_all_linkers(ctx)
 
-        # No enclosure pass result — predicate rejects unknown roles.
-        assert len(results) == 1
-        assert results[0][0] == "non-synth-role-test"
+        # No enclosure edge — the predicate rejects unknown roles, so the run
+        # found no synthetic node (WI-tivif records it anyway).
+        assert [name for name, _ in results] == ["non-synth-role-test", "enclosure"]
+        assert results[1][1].edges == []
+        assert results[1][1].run.silence_reason == "no_candidate_construct"
 
 
 class TestLinkerPipelineAccumulation:

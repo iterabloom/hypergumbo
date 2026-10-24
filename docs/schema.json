@@ -159,6 +159,14 @@
           "type": "number",
           "description": "Mean of edge confidence over edges carrying a confidence value (3 decimal places). EDGES ONLY: nodes carry no confidence. Edge confidence is a few per-evidence-type spikes, so this mean can sit between spikes on a value no edge carries -- read edge_confidence for the shape. 0.0 when no edge carries confidence (edge_confidence.histogram is then empty)"
         },
+        "framework_patterns": {
+          "type": "object",
+          "description": "Framework-pattern enrichment (the framework-patterns pass, WI-tivif): pattern YAML id -> symbols that gained a concept from it. Every YAML loaded is listed, zeros included, so 'loaded and matched nothing' (0) is told apart from 'not loaded' (absent)",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
         "edge_confidence": {
           "type": "object",
           "description": "Distribution of edge confidence over the same edges avg_confidence averages (edges only)",

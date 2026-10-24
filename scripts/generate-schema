@@ -355,6 +355,18 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                             "histogram is then empty)"
                         )
                     },
+                    # WI-tivif: framework-pattern enrichment's per-YAML output.
+                    "framework_patterns": {
+                        "type": "object",
+                        "description": (
+                            "Framework-pattern enrichment (the framework-patterns "
+                            "pass, WI-tivif): pattern YAML id -> symbols that "
+                            "gained a concept from it. Every YAML loaded is "
+                            "listed, zeros included, so 'loaded and matched "
+                            "nothing' (0) is told apart from 'not loaded' (absent)"
+                        ),
+                        "additionalProperties": {"type": "integer", "minimum": 0},
+                    },
                     # WI-zimor: the distribution behind avg_confidence.
                     "edge_confidence": {
                         "type": "object",

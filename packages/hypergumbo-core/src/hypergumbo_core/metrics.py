@@ -63,6 +63,7 @@ def compute_metrics(
     nodes: List[Dict[str, Any]],
     edges: List[Dict[str, Any]],
     profile: Dict[str, Any] | None = None,
+    framework_patterns: Dict[str, int] | None = None,
 ) -> Dict[str, Any]:
     """Compute metrics from nodes and edges.
 
@@ -72,6 +73,9 @@ def compute_metrics(
         profile: Optional repo profile dict (the ``behavior_map["profile"]``
             block). When supplied, the profile-language-sum file count
             rides in ``debug.profile_files_sum`` (introspection only).
+        framework_patterns: Framework-pattern enrichment's per-YAML counts
+            (``framework_patterns.enrich_symbols(report=...)``, WI-tivif),
+            carried as ``framework_patterns``; ``{}`` when not supplied.
 
     Returns:
         Metrics dict with total_nodes, total_edges, avg_confidence,
@@ -223,5 +227,6 @@ def compute_metrics(
         "edge_confidence": edge_confidence,
         "languages": languages,
         "by_supply_chain_tier": by_supply_chain_tier,
+        "framework_patterns": dict(sorted((framework_patterns or {}).items())),
         "debug": debug,
     }
