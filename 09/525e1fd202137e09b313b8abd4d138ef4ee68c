@@ -1,0 +1,27 @@
+Original commit body from 34bf26032347cacc9f5f63692c72dd590c147710:
+
+Ruling 3's sentinel table, read literally ("anything outside the
+enumeration is a violation"), flags correct ids. Census on grpc (merged dev
+9814ac193b, 129,954 nodes; lab notebook dipim_10242026/RULING3_CENSUS.md):
+18 real one-line spans `1-1` on line 1, 1,904 C++ include targets named
+`file` (cpp:<header>:0-0:file:external_symbol), and 7 angle-bracket system
+headers in the path slot. Owner ruling 2026-10-24: narrow the check and
+amend the table.
+
+Enforced (spec_validator._check_id_roundtrip):
+  - The file pseudo-symbol (name and kind `file`) has span `1-1`, at error.
+    The converse is not a rule: kind `file` also carries manifest entries
+    with a role (audit-findings 0005: npm script or main, pyproject script;
+    meta["entry_role"]). An earlier cut of this change required every
+    kind=file id to be 1-1:file:file, which contradicted that audit. The
+    full suite caught it on a json fixture, and the follow-up item it filed
+    (WI-dofif) was retracted. 0 hits on grpc, whisper.cpp, sherpa-onnx.
+  - No path slot is `<unknown>`, finalize's fallback for an edge dst that is
+    not an id; warning. grpc 221 (starlark calls 213, cmake links 7, rst
+    includes 1), whisper.cpp 361 (cuda calls 340, cmake 19, glsl 1, wgsl 1),
+    filed as WI-zihij. It goes to error once those producers are fixed.
+  - ADR-0036: the table's reading is amended, with the census and the
+    enforced rules; the status line updated.
+Fixture corpus baselines stay 0.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
