@@ -22,3 +22,19 @@
     pr_ref:  # 59d9
     description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F3. Anchors are mandated (spec section 9 'src anchoring', INV-foluz / INV-nopoh) and stay. Recommended verdict KEEP + DOCUMENT: write the contract (src = the code unit whose execution makes the call: function/method, or an anchor for code outside any function, with WHEN it runs: import, first use, every construction) into the spec / an ADR-0023 amendment, and fix spec drift: docs/hypergumbo-spec.md:1205 says rust/java/kotlin/swift/ruby/c/cpp/scala/lua are 'still missing' anchoring (all anchor now) and omits type-body anchoring; :123 says file-anchored flows are always structural (false since WI-nilir). Must land before WI-mifag (test-only reachability reads calls.src as callers). Sibling consumer fixes are filed separately."  # 59d9
     fields: {}  # 59d9
+- op: update  # b3c2
+  at: '2026-10-24T10:27:19Z'  # b3c2
+  by: agent  # b3c2
+  actor: jgstern_agent  # b3c2
+  clock: 2  # b3c2
+  nonce: b3c2  # b3c2
+  set:  # b3c2
+    status: done  # b3c2
+    pr_ref: '1830'  # b3c2
+- op: discuss  # 30bf
+  at: '2026-10-24T10:27:19Z'  # 30bf
+  by: agent  # 30bf
+  actor: jgstern_agent  # 30bf
+  clock: 3  # 30bf
+  nonce: 30bf  # 30bf
+  message: "Done in PR #1830. ADR-0023 gains 'what a calls edge's src may be': src is the code unit whose execution makes the call, a callable or an anchor (type / Go package variable / file), with when each runs. A consumer reads the src kind before treating it as a caller. The edge_types.py calls description states the same. Spec drift fixed: (1) the 'still missing in rust..lua' anchoring list is replaced with the current per-language anchor table (INV-bamij's sweep, and perl $obj->m() outside a sub checked on dev 48d10fb825); (2) 'file-anchored flows are always structural' now notes WI-nilir (#1793: Python/JS/TS module roots walked) and the residuals. Verified on dev 48d10fb825 by fixtures: Python class body -> class, Java static initializer -> class, Go var x=f() -> variable, var _ = f() -> file, JS class-field initializer -> file (divergence recorded, not ratified). Docs-only: no output change. WI-mifag is unblocked."  # 30bf

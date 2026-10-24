@@ -1,0 +1,31 @@
+- op: create  # 9bb3
+  at: '2026-10-24T10:27:45Z'  # 9bb3
+  by: agent  # 9bb3
+  actor: jgstern_agent  # 9bb3
+  clock: 1  # 9bb3
+  nonce: 9bb3  # 9bb3
+  data:  # 9bb3
+    kind: work_item  # 9bb3
+    title: "Four producers emit an empty id name slot (starlark raw dep labels, python call-expression bases, a ruby call, a cpp anonymous enum): INV-kurup name-slot limb"  # 9bb3
+    status: todo_hard  # 9bb3
+    priority: 3  # 9bb3
+    parent:  # 9bb3
+    tags:  # 9bb3
+    - id_format  # 9bb3
+    - identity  # 9bb3
+    - dogfood_umbrella_member  # 9bb3
+    isbefore: []  # 9bb3
+    duplicate_of: []  # 9bb3
+    not_duplicate_of: []  # 9bb3
+    pr_ref:  # 9bb3
+    description: "FOUND 2026-10-24 alongside the kind-slot limb (INV-kurup, stage 10). id-format:F3's 'Symbol.id name-slot is empty' advisory, from four producers (grpc survey, dev 2aeec80eb3 code):\n  - starlark.py: depends_on edges use dst=f\"starlark:{rel_path}:{dep}\", the RAW label (\":name\", \"//pkg:name\", \"@repo//pkg:name\"), not a canonical id. Boundary synthesis then mints starlark:<unknown>:0-0::external_symbol, and 479 depends_on edges on grpc collapse onto that one nameless node.\n  - py.py: a base class that is a call expression (class X(collections.namedtuple(...)), and similar) gives an extends edge to python:external:0-0::external_symbol (30 on grpc).\n  - ruby.py: 1 calls edge to ruby:external:0-0::external_symbol (src/ruby/qps/proxy-worker.rb:161).\n  - cpp.py: an anonymous enum gets a symbol with an empty name (http2_settings.h:36-49::enum).\nFIX: per producer. Starlark: resolve \":name\" to the package's own target id and give other labels a canonical external dst (make_manifest_target_dst / make_unresolved_edge). Python and Ruby: emit no edge, or a named one, when the base or callee has no name. C++: name the anonymous enum per the language's convention for anonymous types, or emit none. Acceptance: 0 empty-name-slot advisories on the jahuf corpus surveys; no verdict change."  # 9bb3
+    fields: {}  # 9bb3
+- op: update  # 140c
+  at: '2026-10-24T10:28:06Z'  # 140c
+  by: agent  # 140c
+  actor: jgstern_agent  # 140c
+  clock: 2  # 140c
+  nonce: 140c  # 140c
+  set: {}  # 140c
+  add:  # 140c
+    isbefore: [WI-popak-gugoz-kibah-dugur-hopif-dutor-zopud-tamak]  # 140c
