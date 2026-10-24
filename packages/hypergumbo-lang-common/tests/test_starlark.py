@@ -343,3 +343,57 @@ def caller():
         assert resolved_call is not None
         # Resolved calls have confidence 0.85 * lookup confidence
         assert resolved_call.confidence > 0.70
+
+
+class TestDependencyLabelsResolve:
+    """WI-pusan (INV-kurup). A deps label was written into the dst raw
+    (``starlark:<BUILD path>:<label>``), which is no id. Nothing resolved it,
+    and boundary synthesis gave grpc 479 depends_on edges to one nameless
+    ``starlark:<unknown>:0-0::external_symbol``. A label now resolves to the
+    target it names, or to a canonical external ref when no target here
+    declares it."""
+
+    def _edges(self, temp_repo: Path) -> dict[str, tuple[str, bool]]:
+        (temp_repo / "lib").mkdir()
+        (temp_repo / "lib" / "BUILD").write_text(
+            'cc_library(name = "core", srcs = ["core.cc"])\n'
+            'cc_library(name = "lib", srcs = ["lib.cc"])\n'
+        )
+        (temp_repo / "BUILD").write_text(
+            'cc_library(name = "util", srcs = ["u.cc"])\n'
+            "cc_binary(\n"
+            '    name = "app",\n'
+            '    deps = [":util", "util", "//lib:core", "//lib", "//:util",\n'
+            '            "@abseil-cpp//absl/strings", "@zlib", "//missing:thing", "//lib:"],\n'
+            ")\n"
+        )
+        result = analyze_starlark(temp_repo)
+        app = next(s for s in result.symbols if s.name == "app")
+        return {
+            str((e.meta or {}).get("build_label")): (e.dst, e.is_resolved)
+            for e in result.edges if e.edge_type == "depends_on" and e.src == app.id
+        }
+
+    def test_in_repo_labels_reach_their_targets(self, temp_repo: Path) -> None:
+        deps = self._edges(temp_repo)
+        for label, (name, path) in {
+            ":util": ("util", "BUILD"), "util": ("util", "BUILD"), "//:util": ("util", "BUILD"),
+            "//lib:core": ("core", "lib/BUILD"), "//lib": ("lib", "lib/BUILD"),
+        }.items():
+            dst, resolved = deps[label]
+            assert resolved and dst.startswith(f"starlark:{path}:") and dst.endswith(f":{name}:target"), label
+
+    def test_other_labels_are_canonical_external_refs(self, temp_repo: Path) -> None:
+        from hypergumbo_core.ir import symbol_name_slot, symbol_path_slot
+
+        deps = self._edges(temp_repo)
+        for label, (module, name) in {
+            "@abseil-cpp//absl/strings": ("@abseil-cpp//absl/strings", "strings"),
+            "@zlib": ("@zlib//", "zlib"),
+            "//missing:thing": ("//missing", "thing"),
+        }.items():
+            dst, resolved = deps[label]
+            assert not resolved, label
+            assert (symbol_path_slot(dst), symbol_name_slot(dst)) == (module, name), label
+        # `//lib:` names no target, so it makes no edge.
+        assert "//lib:" not in deps

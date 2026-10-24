@@ -1694,6 +1694,10 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     MetaKeySpec("import_form", AXIS_EDGE_META,
                 "R imports edge: the function that loaded the package "
                 "('library' or 'require')."),
+    MetaKeySpec("build_label", AXIS_EDGE_META,
+                "starlark depends_on edge: the deps label as written "
+                "(':util', '//pkg:name', '@repo//pkg'), beside the dst it "
+                "resolved to (WI-pusan)."),
     MetaKeySpec("target_path", AXIS_EDGE_META,
                 "defines_target edge (manifest_targets, toml_config): the file "
                 "path of the build target's entry point; read by the "

@@ -23,7 +23,15 @@ Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 2. Extract function definitions and signatures
 3. Extract build targets with rule types
 4. Track load statements as import edges
-5. Track target dependencies as depends_on edges
+5. Track target dependencies as depends_on edges. A ``deps`` label is
+   resolved after every file's targets are known (WI-pusan): ``:name``, a
+   bare ``name`` and ``//pkg:name`` (``//pkg`` meaning ``//pkg:pkg``) reach
+   the target declared in that package's file, and any other label (a
+   ``@repo`` label, or a target no file here declares, such as one a macro
+   makes) is an unresolved edge to ``starlark:<@repo//pkg | //pkg>:0-0:<name>``.
+   The label as written stays in ``meta["build_label"]``. It used to be pasted
+   into the dst raw, which is no id; on grpc that gave 479 edges to one
+   nameless ``<unknown>`` node.
 6. Build a NameResolver from the global symbol registry and run a second pass to resolve function calls into `calls` edges, using load aliases as path hints for cross-file resolution.
 
 Why This Design
@@ -35,6 +43,7 @@ Why This Design
 """
 from __future__ import annotations
 
+import posixpath
 import uuid
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
@@ -50,7 +59,10 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, format_legacy_dst,
+    make_pass_id,
+)
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import nested_qualified_name
@@ -116,6 +128,8 @@ class _FileContext:
         target_ids: dict[str, str],
         load_aliases: Optional[dict[str, str]] = None,
         file_anchor: str = "",
+        package_targets: Optional[dict[tuple[str, str], str]] = None,
+        pending_deps: Optional[list[tuple[str, str, int, str]]] = None,
     ) -> None:
         self.source = source
         self.rel_path = rel_path
@@ -130,6 +144,15 @@ class _FileContext:
         # scope) so same-(kind, name) symbols in different files hash distinctly.
         # ``rel_path`` is repo-relative (built via file_path.relative_to(repo_root)).
         self.file_anchor = file_anchor
+        # WI-pusan: (package, target name) -> id across the run, and each
+        # ``deps`` label as (src id, label, line, declaring file), resolved
+        # once every file's targets are known.
+        self.package_targets: dict[tuple[str, str], str] = (
+            package_targets if package_targets is not None else {}
+        )
+        self.pending_deps: list[tuple[str, str, int, str]] = (
+            pending_deps if pending_deps is not None else []
+        )
 
 
 def _make_symbol(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
@@ -314,23 +337,66 @@ def _process_target(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
         sym = _make_symbol(analyzer, ctx, node, target_name, "target",
                            meta={"rule_type": rule_type})
         ctx.target_ids[target_name] = sym.id
+        ctx.package_targets[(posixpath.dirname(ctx.rel_path), target_name)] = sym.id
         ctx.symbols.append(sym)
 
-        # Create dependency edges
+        # Resolved after pass 1, when every package's targets are known.
         for dep in deps_list:
-            # Deps can be ":name" (same package), "//pkg:name", "@repo//pkg:name"
-            ctx.edges.append(
-                Edge.create(
-                    src=sym.id,
-                    dst=f"starlark:{ctx.rel_path}:{dep}",
-                    edge_type="depends_on",
-                    evidence_type="build_dependency",
-                    line=node.start_point[0] + 1,
-                    confidence=0.9,
-                    origin=PASS_ID,
-                    origin_run_id=ctx.run_id,
-                )
-            )
+            ctx.pending_deps.append((sym.id, dep, node.start_point[0] + 1, ctx.rel_path))
+
+
+def _parse_label(label: str, package: str) -> tuple[Optional[str], str, str]:
+    """``(repo or None, package, target)`` for a Bazel label read in *package*.
+
+    ``:name`` and a bare ``name`` are the current package; ``//pkg:name`` and
+    ``//pkg`` (``//pkg:pkg``) name another; ``@repo//pkg:name``, ``@repo//pkg``
+    and ``@repo`` (``@repo//:repo``) name an external repository.
+    """
+    repo: Optional[str] = None
+    if label.startswith("@"):
+        repo, sep, label = label[1:].partition("//")
+        if not sep:
+            return repo, "", repo
+        label = "//" + label
+    if label.startswith("//"):
+        pkg, sep, name = label[2:].partition(":")
+        return repo, pkg, name if sep else posixpath.basename(pkg)
+    return repo, package, label[1:] if label.startswith(":") else label
+
+
+def _resolve_dependency_edges(
+    pending: list[tuple[str, str, int, str]],
+    package_targets: dict[tuple[str, str], str],
+    run_id: str,
+) -> list[Edge]:
+    """One ``depends_on`` edge per ``deps`` label, to the target it names."""
+    edges: list[Edge] = []
+    for src_id, label, line, rel_path in pending:
+        repo, pkg, name = _parse_label(label, posixpath.dirname(rel_path))
+        if not name:
+            continue  # `//pkg:` names no target
+        target = None if repo is not None else package_targets.get((pkg, name))
+        ref: Optional[ExternalRef] = None
+        if target is not None:
+            dst = target
+        else:
+            module = f"@{repo}//{pkg}" if repo is not None else f"//{pkg}"
+            ref = ExternalRef(lang="starlark", module_path=module, name=name)
+            dst = format_legacy_dst(ref)
+        edges.append(Edge.create(
+            src=src_id,
+            dst=dst,
+            edge_type="depends_on",
+            evidence_type="build_dependency",
+            line=line,
+            confidence=0.9,
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            is_resolved=target is not None,
+            dst_ref=ref,
+            meta={"build_label": label},
+        ))
+    return edges
 
 
 def _find_enclosing_function_starlark(
@@ -488,6 +554,8 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
 
         # Track targets by name for dependency resolution
         target_ids: dict[str, str] = {}
+        package_targets: dict[tuple[str, str], str] = {}
+        pending_deps: list[tuple[str, str, int, str]] = []
 
         # Global symbol registry for cross-file resolution
         global_symbol_registry: dict[str, Symbol] = {}
@@ -519,6 +587,8 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
                 # WI-bokab (v7): repo-relative anchor, computed once per file and
                 # reused across every symbol's compute_stable_id call below.
                 file_anchor=self._file_anchor(rel_path),
+                package_targets=package_targets,
+                pending_deps=pending_deps,
             )
 
             before = len(ctx.symbols)
@@ -527,6 +597,8 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
 
             # Store for pass 2 (including load_aliases for path_hint resolution)
             parsed_files.append((rel_path, source, tree, ctx.load_aliases))
+
+        edges.extend(_resolve_dependency_edges(pending_deps, package_targets, run_id))
 
         # Create resolver from global registry
         resolver = NameResolver(global_symbol_registry)
