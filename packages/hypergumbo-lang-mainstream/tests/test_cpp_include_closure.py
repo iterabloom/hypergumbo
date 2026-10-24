@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.cli import main
+from hypergumbo_core.module_sets import expand_module_slot
 from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
 _SEND = 'int run(int fd) { return (int)send(fd, "x", 1, 0); }\n'
@@ -42,7 +43,7 @@ def _slots(repo: Path, name: str) -> list[list[str]]:
     for edge in analyze_cpp(repo).edges:
         parts = edge.dst.split(":")
         if edge.edge_type == "calls" and len(parts) >= 4 and parts[3] == name:
-            out.append(parts[1].split(","))
+            out.append(expand_module_slot(parts[1]).split(","))
     return out
 
 
@@ -181,6 +182,38 @@ def test_a_direct_call_outside_analyze_reads_the_file_s_own_directory(
         "main.cpp", {}, {}, AnalysisRun.create(pass_id="t", version="t"), {},
         NameResolver({}),
     )
-    slots = [e.dst.split(":")[1].split(",") for e in edges
+    slots = [expand_module_slot(e.dst.split(":")[1]).split(",") for e in edges
              if e.edge_type == "calls" and e.dst.split(":")[3] == "fopen"]
     assert slots == [["util.h", "cstdio"]]
+
+
+def test_a_wide_include_set_is_a_bounded_handle_stored_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """INV-jahuf. envoy's files see ~140 headers, and the list rode in every
+    unresolved call's id, label, dst and dst_ref, 1-12 KB each. The slot is now
+    a handle, the behavior map stores the list once, and the verdict read back
+    from the written map is unchanged (pq4's violation, 200 headers wider)."""
+    many = "".join(f'#include "h{i}.h"\n' for i in range(200))
+    files = {f"h{i}.h": "" for i in range(200)}
+    files["main.cpp"] = '#include <cstdint>\n#include "util.h"\n' + many + _FOPEN
+    files["util.h"] = "#include <cstdio>\n"
+    repo = _repo(tmp_path, files)
+    calls = [e for e in analyze_cpp(repo).edges
+             if e.edge_type == "calls" and e.dst.split(":")[3] == "fopen"]
+    assert len(calls) == 1
+    assert len(calls[0].dst) < 80
+    assert calls[0].dst_ref is not None
+    slot = calls[0].dst_ref.module_path
+    homes = expand_module_slot(slot).split(",")
+    assert len(homes) == 203 and {"cstdint", "util.h", "cstdio"} <= set(homes)
+
+    out = tmp_path / "map.json"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    with contextlib.redirect_stdout(io.StringIO()), \
+            contextlib.redirect_stderr(io.StringIO()):
+        main(["run", str(repo), "--out", str(out)])
+    doc = json.loads(out.read_text())
+    assert doc["module_sets"][slot] == expand_module_slot(slot).split(",")
+    assert all(len(e["dst"]) < 200 for e in doc["edges"])
+    assert _verdicts(repo, tmp_path, monkeypatch)["NO-FSWRITE"] == "violated"

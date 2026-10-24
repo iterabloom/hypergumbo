@@ -43,6 +43,7 @@ from hypergumbo_core.io_boundary import (
     load_overlay_catalog,
     module_hint_disjuncts,
 )
+from hypergumbo_core.module_sets import expand_module_slot
 from hypergumbo_core.verify_claims import _adjudicate_external_modules
 
 _JOINED = "string,sys/socket.h,ws2tcpip.h"
@@ -228,7 +229,8 @@ def test_a_disjunctive_slot_only_ever_rides_an_unresolved_edge(tmp_path: Path):
 
     disjunctive = [
         e for e in result.edges
-        if "," in str(e.dst).split(":")[1] if str(e.dst).startswith("cpp:")
+        if str(e.dst).startswith("cpp:")
+        and "," in expand_module_slot(str(e.dst).split(":")[1])
     ]
     assert disjunctive, "fixture produced no disjunctive slot; it tests nothing"
     resolved = [e for e in disjunctive if getattr(e, "is_resolved", True)]

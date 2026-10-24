@@ -84,6 +84,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from .arbitration import BUILTIN_POLICY, ArbitrationPolicy
 from .arbitration import SUPERSEDED_STUB_RANK_FACTOR as SUPERSEDED_STUB_RANK_FACTOR  # re-export: the §14 level
 from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
+from .module_sets import module_sets_for
 from .pass_metadata import PassMetadataLookup
 from .owner_ancestry import stamp_external_owner_ancestors
 from .receiver_blind_magnets import demote_harmful_magnets
@@ -771,6 +772,12 @@ def _finalize_commit_dicts(ctx: FinalizeContext) -> None:
     ctx.behavior_map["analysis_runs"] = ctx.analysis_runs
     ctx.behavior_map["nodes"] = [s.to_dict() for s in ctx.symbols]
     ctx.behavior_map["edges"] = [e.to_dict() for e in ctx.edges]
+    # INV-jahuf: each disjunctive module slot the edges name by handle, stored
+    # once, so a re-read survey expands it as this run did.
+    ctx.behavior_map["module_sets"] = module_sets_for(
+        ref.module_path for e in ctx.edges
+        if (ref := getattr(e, "dst_ref", None)) is not None
+    )
     ctx.behavior_map["usage_contexts"] = [uc.to_dict() for uc in ctx.usage_contexts]
 
 

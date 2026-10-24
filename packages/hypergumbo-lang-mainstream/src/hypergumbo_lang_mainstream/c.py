@@ -52,7 +52,9 @@ Call-edge details:
   headers the file can see: its own ``#include`` lines, quoted and angled,
   and everything a header found in the repository includes, transitively
   (``include_closure``, INV-zikul). The catalogue matches the call through
-  any of them, and the coverage gate needs every one enumerated.
+  any of them, and the coverage gate needs every one enumerated. Two or more
+  headers are written as a ``module-set-`` handle, stored once in the map
+  (``hypergumbo_core.module_sets``, INV-jahuf).
   Other unresolved calls keep the ``external`` hint; stamping them too was
   measured to lose matches, because a hint disables the short-name fallback.
 - **I/O stamps**: ``stamp_io_mode_from_call`` records a literal mode
@@ -124,6 +126,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Mapping, Optional
 
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.module_sets import module_slot
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
@@ -956,7 +959,8 @@ def _extract_edges(
     # of, and each analysed function's facts (pass 1).
     visible_macros = include_closure.visible_macros(file_path, source)
     facts = function_facts or {}
-    _include_hint = ",".join(visible_headers) if visible_headers else None
+    # INV-jahuf: two or more headers are a handle, stored once (cpp's twin).
+    _include_hint = module_slot(visible_headers) if visible_headers else None
     # Imported here, as ``_c_ambiguous_names`` imports the catalogue loader.
     from hypergumbo_core.io_boundary import declared_by_an_included_header
 

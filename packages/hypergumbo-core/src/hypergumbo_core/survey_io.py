@@ -45,6 +45,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
+from .module_sets import register_module_sets
 from .schema import SCHEMA_VERSION
 
 
@@ -192,9 +193,15 @@ def load_behavior_map(path: Union[Path, str]) -> Any:
     p = Path(path)
     if str(p).endswith(".gz"):
         with gzip.open(p, "rt") as f:
-            return json.load(f)
-    with open(p) as f:
-        return json.load(f)
+            data = json.load(f)
+    else:
+        with open(p) as f:
+            data = json.load(f)
+    # INV-jahuf: a map's disjunctive module slots are handles; register the
+    # table they name so every consumer of this map can expand them.
+    if isinstance(data, dict) and isinstance(data.get("module_sets"), dict):
+        register_module_sets(data["module_sets"])
+    return data
 
 
 def find_behavior_map(directory: Union[Path, str], basename: str = "hg.json") -> Optional[Path]:

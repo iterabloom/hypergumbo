@@ -63,6 +63,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.cli import run_behavior_map
+from hypergumbo_core.module_sets import expand_module_slot
 
 
 @dataclass(frozen=True)
@@ -538,7 +539,12 @@ def test_polyglot_call_site_coverage(
     data = json.loads(out_path.read_text())
 
     calls = [e for e in data["edges"] if e["type"] == "calls"]
-    call_dsts = [e["dst"] for e in calls]
+    # INV-jahuf: a slot naming two or more headers is a module-set handle;
+    # read the modules it names.
+    call_dsts = [
+        ":".join([p[0], expand_module_slot(p[1]), *p[2:]])
+        for p in (e["dst"].split(":") for e in calls)
+    ]
 
     missing: list[tuple[str, str]] = []
     for module, callable_name in fixture.expected_targets:

@@ -78,6 +78,9 @@ and so had the same false all-clear wider. It asks for the stamp WITHOUT the
 names of in-repo headers reached only transitively (``transitive_in_repo``):
 with them the behavior map grew 2.31x on modsecurity, without them 1.19x,
 and every verdict on modsecurity and whisper.cpp was identical either way.
+Both write a stamp of two or more headers as a ``module-set-`` handle and store
+the list once (``hypergumbo_core.module_sets``, INV-jahuf): on envoy the list
+ran to 12 KB, copied into every unresolved call's id, label and dst.
 The method-call recovery linker the first prototype measured losing four
 calls to recovers none of those sites on the current tree, so it is
 unchanged; widening it to stamped member calls was tried and recovered

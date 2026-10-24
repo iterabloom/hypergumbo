@@ -275,7 +275,10 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
             "downstream by two deliberately different quantifiers -- "
             "_module_hint_candidates asks ANY (INV-funuf) and "
             "module_hint_disjuncts asks ALL (INV-zimud) -- which is why the "
-            "shape wants its own field rather than removal."
+            "shape wants its own field rather than removal. Since INV-jahuf "
+            "a set of two or more is written as a `module-set-` handle and "
+            "stored once in the map's `module_sets`; both quantifiers expand "
+            "it (module_sets.expand_module_slot)."
         ),
         emission_sites=(
             EmissionSite(
@@ -283,8 +286,8 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=2243,
-                anchor='module_hint = ",".join(_slots)',
+                line=2253,
+                anchor="module_hint = module_slot(_slots)",
                 note=(
                     "Every header the file can see (its own includes, quoted "
                     "and angled, and what in-repo headers include, "

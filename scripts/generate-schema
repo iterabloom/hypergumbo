@@ -615,6 +615,24 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     "ADR-3ccc usage_context_patterns)"
                 )
             },
+            # INV-jahuf: a C/C++ module slot naming two or more headers is a
+            # `module-set-<16 hex>` handle; this table holds each list once.
+            "module_sets": {
+                "type": "object",
+                "description": (
+                    "Disjunctive module slots stored once (INV-jahuf): "
+                    "handle -> the modules a call could come from, in slot "
+                    "order. The handle is module-set- plus the first 16 hex "
+                    "digits of sha256 of the comma-joined list; only handles "
+                    "the edges reference are listed"
+                ),
+                "propertyNames": {"pattern": "^module-set-[0-9a-f]{16}$"},
+                "additionalProperties": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 2,
+                },
+            },
             # WI-kutas PR2: reproducibility_context is built by
             # schema.build_reproducibility_context() (ad-hoc dict); its
             # properties are pinned to the builder's key set by

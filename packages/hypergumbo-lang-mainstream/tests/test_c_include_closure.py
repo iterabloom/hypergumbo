@@ -29,6 +29,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.cli import main
+from hypergumbo_core.module_sets import expand_module_slot
 from hypergumbo_lang_mainstream import include_closure
 from hypergumbo_lang_mainstream.c import analyze_c
 from hypergumbo_lang_mainstream.include_closure import (
@@ -53,7 +54,7 @@ def _slots(repo: Path, name: str) -> list[list[str]]:
     for edge in analyze_c(repo).edges:
         parts = edge.dst.split(":")
         if edge.edge_type == "calls" and len(parts) >= 4 and parts[3] == name:
-            out.append(parts[1].split(","))
+            out.append(expand_module_slot(parts[1]).split(","))
     return out
 
 

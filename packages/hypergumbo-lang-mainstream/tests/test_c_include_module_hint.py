@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from hypergumbo_core.module_sets import expand_module_slot
 from hypergumbo_lang_mainstream.c import analyze_c
 
 
@@ -39,7 +40,7 @@ def _module_slots(tmp_path: Path, name: str) -> list[str]:
             continue
         parts = edge.dst.split(":")
         if len(parts) >= 4 and parts[3] == name and parts[-1] == "unresolved":
-            out.append(parts[1])
+            out.append(expand_module_slot(parts[1]))
     return out
 
 
