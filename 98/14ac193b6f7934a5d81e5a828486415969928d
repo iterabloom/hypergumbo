@@ -1,0 +1,36 @@
+Original commit body from 9a391bb11f0f6fbf6e1fd85e56b200dad7bf9389:
+
+INV-kurup's name-slot limb. id-format:F3's "Symbol.id name-slot is
+empty" advisory came from four producers on grpc, and the same pass
+found grpc's one id_format error:
+
+  - starlark.py: a deps label was pasted raw into the dst
+    (`starlark:BUILD::utils`), which is no id. Nothing resolved it, and
+    boundary synthesis gave 479 depends_on edges one nameless
+    `starlark:<unknown>:0-0::external_symbol`. Labels are now collected in
+    pass 1 and resolved once every package's targets are known: `:name`,
+    `name`, `//pkg:name` and `//pkg` (= //pkg:pkg) go to the declared
+    target. Any other label (`@repo//...`, `@repo`, a target a macro
+    makes) is an unresolved edge to
+    starlark:<@repo//pkg | //pkg>:0-0:<name>. The label stays in
+    meta["build_label"], and `//pkg:` makes no edge.
+  - cpp.py: `enum : uint16_t { ... }`. tree-sitter fills the absent name
+    with a zero-width MISSING type_identifier, which read as '' and gave
+    `::enum` plus owner-less `::kA` fields. A MISSING name is now no name.
+  - ruby.py: error recovery's MISSING method (`foo.`) gave a calls edge to
+    `ruby:external:0-0::`. A call with no callee name now emits no edge.
+  - py.py: a call-expression base (`class X(collections.namedtuple(...))`)
+    formats as "" and gave `extends` to `python:external:0-0::`. It names no
+    class, so it gets no edge.
+  - cpp.py: a base class split across lines kept its newline and
+    indentation, which ended up in an external id
+    (`cpp:...EventEngine::\n    Endpoint:0-0:TelemetryInfo`). Whitespace
+    around `::` is dropped.
+
+Live on this branch: `hypergumbo run` on grpc gives id_format violations
+10 -> 0. starlark depends_on resolves 14,328 of 15,572 (before: 0, raw labels).
+
+Found alongside and filed, not fixed: INV-zopiz (ruby, kotlin and go
+drop a file with no symbols before the edge pass).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
