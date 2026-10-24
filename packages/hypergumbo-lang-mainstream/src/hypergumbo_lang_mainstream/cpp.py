@@ -153,6 +153,7 @@ Why This Design
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional, TypeAlias
 
@@ -408,10 +409,16 @@ def _extract_base_classes_cpp(node: "tree_sitter.Node", source: bytes) -> list[s
             # Simple base class name
             base_classes.append(_node_text(child, source))
         elif child.type == "qualified_identifier":
-            # Qualified name like std::runtime_error
-            base_classes.append(_node_text(child, source))
+            # Qualified name like std::runtime_error. A name split across lines
+            # (`ns::Engine::\n    Endpoint::Info`) keeps its whitespace in the
+            # node text, which reached an id's module slot (INV-kurup); the
+            # whitespace around `::` is not part of the name.
+            base_classes.append(_QUALIFIER_SPACE.sub("::", _node_text(child, source)))
 
     return base_classes
+
+
+_QUALIFIER_SPACE = re.compile(r"\s*::\s*")
 
 
 def _extract_field_types_cpp(
@@ -1123,6 +1130,11 @@ def _extract_symbols_from_tree(
         elif node.type == "enum_specifier":
             has_body = any(c.type == "enumerator_list" for c in node.children)
             name_node = _find_child_by_type(node, "type_identifier") if has_body else None
+            # WI-pusan: `enum : uint16_t { ... }` has no name, and tree-sitter
+            # fills the slot with a zero-width MISSING type_identifier. Read as
+            # a name it made `...:36-49::enum` and owner-less `::kA` fields.
+            if name_node is not None and name_node.is_missing:
+                name_node = None
             if name_node:
                 name = _node_text(name_node, source)
                 start_line = node.start_point[0] + 1

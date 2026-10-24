@@ -3038,6 +3038,11 @@ def _extract_inheritance_edges(
         for base_class_name in base_classes:
             # Strip generics from base class name (e.g., "Generic[T]" -> "Generic")
             base_name = base_class_name.split("[")[0]
+            # WI-pusan: a base that is a call expression
+            # (``class X(collections.namedtuple(...))``) formats as ``""``. It
+            # names no class, and an edge to it was ``python:external:0-0::``.
+            if not base_name:
+                continue
 
             # WI-ratid: a base named THROUGH AN IMPORT of an out-of-tree module
             # is external, whatever in-repo class shares its last segment. The

@@ -28,6 +28,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Identity
 
+- **Starlark `deps` labels reach the targets they name** (WI-pusan, INV-kurup). A label was pasted into the dst raw (`starlark:BUILD::utils`), which is no id, so none resolved. On grpc, 479 edges collapsed onto one nameless `<unknown>` node. `:name`, `name`, `//pkg:name` and `//pkg` now resolve to the declared target: grpc resolves 14,328 of 15,572. Any other label (an `@repo` label, or a target a macro makes) is a canonical external ref. The label as written is kept in `meta["build_label"]`.
+- **No id's name slot is empty.** No symbol is made for a C++ anonymous enum with a base type (`enum : uint16_t {...}`); tree-sitter's zero-width MISSING name had read as `''`, and its enumerators went with it. No edge is made for a Ruby call whose method is error recovery's MISSING node, or for a Python base class that is a call expression (`class X(namedtuple(...))`). A C++ base name split across lines keeps no newline in its id. grpc's id-format violations go 10 → 0.
+
 - **A node id's kind slot is the node's kind** for CUDA functions, Android-manifest components and message-dispatch stand-ins (WI-lusoh, INV-kurup). The slot carried the execution space (`:global`, `:device`, ...), the manifest element (`:activity`, `:service`, ...) or the dispatch role (`:message_sender`/`:message_handler`). Those already live on meta. whisper.cpp's id-format violations go 1,016 → 0, and sherpa-onnx's 72 → 0. Node ids change; `stable_id`s do not.
 
 #### SCIP backends

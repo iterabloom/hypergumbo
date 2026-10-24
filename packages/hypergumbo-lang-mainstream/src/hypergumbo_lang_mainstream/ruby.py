@@ -2903,6 +2903,10 @@ def _extract_edges_from_file(
 
             if method_node:
                 callee_name = node_text(method_node, source)
+                # WI-pusan: error recovery's zero-width MISSING method (`foo.`)
+                # names nothing; an edge to it was `ruby:external:0-0::`.
+                if not callee_name:
+                    continue
 
                 # Handle require/require_relative as imports
                 if callee_name in ("require", "require_relative"):
