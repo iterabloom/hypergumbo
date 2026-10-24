@@ -1,0 +1,43 @@
+Original commit body from c27995c4840a74a1353608f80aef51e7d5912781:
+
+Framework-pattern enrichment was not a recorded pass, so no consumer
+could tell "YAML loaded, matched nothing" from "YAML never loaded". Five
+orchestrator post-passes appended their AnalysisRun only inside
+`if <output>:`, so a pass that ran and found nothing disappeared:
+route-materializer, django-cbv-method-expander,
+boundary_external_symbol_synthesis, enclosure-linker and
+orchestrator_file_symbol_synthesis. That also let a falsifier phrased as
+"every silent pass-run carries a reason" be satisfied by the run
+disappearing (the T6 pre-registration note on this item).
+
+  - framework_patterns.enrich_symbols(report=...) counts, per loaded
+    YAML, the symbols that gained a concept from it (zeros included;
+    concepts an analyzer already stamped are not credited). The cli
+    records a `framework-patterns` AnalysisRun (registered in
+    catalog._BUILTIN_PIPELINE_PASS_IDS / pass_metadata.GAP_PASSES), with
+    silence_reason when nothing matched. The counts land in
+    metrics.framework_patterns via compute_metrics(framework_patterns=...).
+    The compact view carries them over: they describe the enrichment run,
+    not the projected arrays.
+  - The five post-passes are recorded whether or not they emitted
+    (cli._record_post_pass and the registry / all_analyzers sites). Each
+    silent run's reason is silence_reason_for_candidates over what its
+    scan FOUND: route-concept symbols, class-based-view routes, dangling
+    edge endpoints, synthetic linker nodes. The file synthesizer mints one
+    anchor per candidate, so for it none emitted means none found.
+  - producer-merge is deliberately unchanged. ADR-0057 requires a
+    single-backend run to be byte-identical through the merge pass, so it
+    still appends a run only when it merged.
+  - Schema: metrics.framework_patterns is declared (additive, noted under
+    0.21.0). Spec §metrics documents it.
+  - Tests that pinned "absent when silent" now pin "present with its
+    reason": linker-registry enclosure x4, test_run_behavior_map's
+    synthesis test, test_pass_clock's pool set.
+
+Live on this branch, hypergumbo run on flask-restful: framework-patterns
+recorded; 11 YAMLs listed, 5 non-zero (flask 47, flask-restful 42,
+test-frameworks 46, library-exports 15, main-functions 1).
+route-materializer recorded with candidates_unresolved; cbv-expander and
+enclosure-linker with no_candidate_construct.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
