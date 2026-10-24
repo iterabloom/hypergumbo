@@ -2093,6 +2093,10 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
     * **name-slot non-empty** (error).
     * **span start <= end** (error) — a genuine malformation with no
       id-changing backlog.
+    * **the file pseudo-symbol is 1-1:file:file** (error, WI-dipim) — an id
+      named ``file`` of kind ``file`` with another span.
+    * **no <unknown> path slot** (warning, WI-dipim) — finalize's fallback
+      for a non-id dst, i.e. a producer defect.
 
     See ADR-0036 Rulings 1-3 and the module comment above for why these
     were advisory until WI-popak.
@@ -2154,6 +2158,45 @@ def _check_id_roundtrip(symbols: Iterable[Any]) -> list[ValidationViolation]:
                 message=(
                     "Symbol.id name-slot is empty; make_symbol_id(...) requires "
                     "a non-empty name (file pseudo-symbols use the literal 'file')."
+                ),
+            ))
+
+        # WI-dipim, ADR-0036 Ruling 3 as amended: the file pseudo-symbol
+        # (name ``file``, kind ``file``) has span ``1-1``. Neither half of the
+        # converse is a rule. A one-line definition on line 1 is ``1-1``. Kind
+        # ``file`` also carries manifest entries, an npm script or ``main`` or a
+        # pyproject script, with the role in meta["entry_role"] (audit-findings
+        # 0005). A C++ include target is an external_symbol named ``file``.
+        if kind_slot == "file" and name_slot == "file" and span_slot != "1-1":
+            violations.append(ValidationViolation(
+                severity="error",
+                validator_class="id_format",
+                field_name="Symbol.id",
+                record_id=sym_id,
+                observed=span_slot,
+                expected="1-1",
+                message=(
+                    f"Symbol.id {sym_id!r} is the file pseudo-symbol (name and "
+                    f"kind 'file') with span {span_slot!r}; it is 1-1:file:file "
+                    "(make_file_id(...))."
+                ),
+            ))
+        # ``<unknown>`` is finalize's fallback for a dst that names no path,
+        # never a producer's intent (INV-dulah, WI-bufar-pokam). Advisory
+        # until the cmake producer that still emits it is fixed.
+        if _lang_path.split(":", 1)[-1] == "<unknown>":
+            violations.append(ValidationViolation(
+                severity="warning",
+                validator_class="id_format",
+                field_name="Symbol.id",
+                record_id=sym_id,
+                observed="<unknown>",
+                expected="a path, a module qualifier, or <external>",
+                message=(
+                    f"Symbol.id {sym_id!r} has the path slot '<unknown>', "
+                    "finalize's fallback for an edge dst that is not an id; the "
+                    "producer of that dst should build a canonical one "
+                    "(ADR-0036 Ruling 3)."
                 ),
             ))
 

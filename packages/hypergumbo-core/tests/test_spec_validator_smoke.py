@@ -2647,3 +2647,45 @@ def test_route_marker_single_home_wired_into_validate_ir() -> None:
         v for v in validate_ir([sym], [], []) if v.field_name == "meta.concepts"
     ]
     assert len(dual_carry) == 1
+
+
+# --- WI-dipim: ADR-0036 Ruling 3, the checks that flag no correct id ---------
+
+
+def _rt_sym(sym_id: str, kind: str, name: str):
+    from hypergumbo_core.ir import Span, Symbol
+
+    return Symbol(id=sym_id, name=name, kind=kind, language="python",
+                  path="a.py", span=Span(1, 1, 0, 0))
+
+
+def test_a_file_pseudo_symbol_is_exactly_the_file_triple() -> None:
+    """``file:file`` (name and kind) is the file pseudo-symbol, and its span
+    is ``1-1``. Neither half of the converse is a rule: a one-line ``def`` on
+    line 1 is ``1-1``, kind ``file`` also carries manifest entries with a role
+    (audit-findings 0005), and a C++ include target is named ``file``."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    good = [_rt_sym("python:a.py:1-1:file:file", "file", "file"),
+            _rt_sym("python:a.py:1-1:f:function", "function", "f"),
+            _rt_sym("json:package.json:5-5:build:file", "file", "build"),
+            _rt_sym("cpp:h.hpp:0-0:file:external_symbol", "external_symbol", "file")]
+    assert _check_id_roundtrip(good) == []
+    [v] = _check_id_roundtrip([_rt_sym("python:a.py:1-3:file:file", "file", "file")])
+    assert v.severity == "error" and "file pseudo-symbol" in v.message
+
+
+def test_an_unknown_path_slot_is_a_violation() -> None:
+    """``<unknown>`` is finalize's fallback when a dst names no path, so an
+    id carrying it is a producer defect (220 cmake ids on grpc); ``<external>``
+    and a C/C++ angle header (``cpp:<string>:0-0:header:...``) are legal."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    assert _check_id_roundtrip([
+        _rt_sym("cpp:<string>:0-0:header:external_symbol", "external_symbol", "header"),
+        _rt_sym("python:<external>:0-0:x:external_symbol", "external_symbol", "x"),
+    ]) == []
+    [v] = _check_id_roundtrip([
+        _rt_sym("cmake:<unknown>:0-0:LIB:external_symbol", "external_symbol", "LIB"),
+    ])
+    assert v.severity == "warning" and "<unknown>" in v.message
