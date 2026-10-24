@@ -142,10 +142,10 @@ Identity (``stable_id``, scheme v11, INV-kutid):
 * Only SCIP-only records keep this value. A record the merge pass folds
   takes the incumbent's id (ADR-0057) and keeps this one as an
   alternative.
-* NOT changed: edge endpoints still resolve by the raw moniker
-  (``meta["scip_symbol"]``) in the Rust backend's resolver, so an edge
-  into a moniker several targets share still resolves to one of them
-  (INV-sipod).
+* Edge endpoints are a separate question: they resolve by the moniker
+  (``meta["scip_symbol"]``) read in the occurrence's Document, and a moniker
+  several targets share is decided by that Document, then by its crate
+  target, or refused and counted (:mod:`.resolve`, INV-sipod).
 """
 from __future__ import annotations
 

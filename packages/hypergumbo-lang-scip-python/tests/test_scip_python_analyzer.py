@@ -96,7 +96,7 @@ class TestSuccess:
         logged: list[str] = []
         result = analyze_python_with_scip_impl(
             tmp_path, gate=lambda **kw: True, invoke=lambda p, *, cwd, project_name: b"",
-            translate=lambda b, *, run_id: ([], []), log=logged.append,
+            translate=lambda b, *, run_id, log=None: ([], []), log=logged.append,
         )
         assert result.skipped is False and result.run is not None and result.symbols == []
         assert logged and "produced no symbols" in logged[0]

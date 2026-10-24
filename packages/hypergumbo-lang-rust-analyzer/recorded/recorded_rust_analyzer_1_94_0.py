@@ -346,7 +346,11 @@ AARDVARK_DNS_EDGE_OVERLAP = {
     ("decorated_by", False): (0, 1, 0),
     ("implements", False): (0, 2, 0),
     ("module_attr_ref", False): (0, 26, 0),
-    ("references", True): (0, 0, 269),
+    # 269 before INV-sipod. The shared ``crate/`` moniker credited main.rs:6's
+    # ``use aardvark_dns::commands`` to lib.rs's crate, and the fold then merged
+    # it with lib.rs:2's own ``pub mod commands;`` (same src, dst, type). Each
+    # now has its real source, so both survive.
+    ("references", True): (0, 0, 270),
 }
 
 

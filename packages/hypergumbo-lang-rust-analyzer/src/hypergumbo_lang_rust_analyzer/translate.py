@@ -45,11 +45,15 @@ shim cannot do on its own:
    supplies none (WI-higap).
 
 3. **Symbol resolution, and the deliberate dropping of external edges.**
-   The translate builds an ``id_by_scip_symbol`` map from each Symbol's
-   ``meta['scip_symbol']`` to its hypergumbo id, and passes a ``_resolve``
-   closure to both edge builders as ``resolve_symbol=``. ``_resolve``
-   returns ``None`` for a symbol outside the indexed workspace, and the
-   shims skip the edge rather than emitting it.
+   The translate builds a ``MonikerResolver`` (``hypergumbo_core.scip.
+   resolve``) over each Symbol's ``meta['scip_symbol']`` and passes it to
+   both edge builders as ``resolve_symbol=``. It is keyed per Document, not
+   per moniker (INV-sipod). rust-analyzer gives a package's lib, bin and
+   build-script roots one ``crate/`` moniker, so a reference resolves in its
+   own Document first, then within its crate target (``crate_units``: the
+   ``mod`` tree from each root), and is otherwise refused and counted, with
+   one line to ``log``. It returns ``None`` for a symbol outside the indexed
+   workspace, and the shims skip the edge rather than emitting it.
 
    This is load-bearing, not an oversight. Before commit ``9266762d4b``
    the edge builders used raw SCIP descriptor strings as endpoints, so
@@ -91,9 +95,12 @@ from hypergumbo_core.scip._generated import scip_pb2
 from hypergumbo_core.scip.calls import scip_index_to_call_edges
 from hypergumbo_core.scip.edges import scip_index_to_edges
 from hypergumbo_core.scip.index import scip_index_to_symbols
+from hypergumbo_core.scip.resolve import MonikerResolver
 from hypergumbo_lang_mainstream.rust_scip import (
     compute_rust_stable_id_from_source,
 )
+
+from .crate_units import crate_owners, same_crate
 
 
 SourceReader = Callable[[str], Optional[bytes]]
@@ -173,8 +180,12 @@ def translate_scip_to_hg(
     source_reader: SourceReader,
     *,
     run_id: str = "",
+    log: Optional[Callable[[str], None]] = None,
 ) -> tuple[List[Symbol], List[Edge]]:
     """Parse *scip_bytes* and return ``(symbols, edges)`` with parity.
+
+    ``log`` receives one line when edge endpoints were refused as ambiguous
+    (INV-sipod; :class:`~hypergumbo_core.scip.resolve.MonikerResolver`).
 
     The three core SCIP shim passes are invoked in order:
 
@@ -239,24 +250,28 @@ def translate_scip_to_hg(
     # finalize drops the ENTIRE scip call graph while the scip Symbols survive,
     # a silent half-merge that made the rust-analyzer backend emit zero edges via
     # ``hypergumbo survey``.
-    id_by_scip_symbol = {
-        (sym.meta or {}).get("scip_symbol"): sym.id
-        for sym in symbols
-        if sym.meta and sym.meta.get("scip_symbol")
-    }
-
-    def _resolve(scip_symbol: str) -> Optional[str]:
-        # ``None`` tells the shim to skip the edge: the referenced symbol is
-        # external (a dependency / stdlib symbol not defined in this workspace,
-        # hence absent from the Symbol set). Internal references resolve to the
-        # defining Symbol's ``id``.
-        return id_by_scip_symbol.get(scip_symbol)
+    #
+    # INV-sipod: the map is per Document, not per moniker. rust-analyzer gives a
+    # package's lib, bin and build-script roots one ``crate/`` moniker, and a
+    # flat dict kept the last record, so main.rs code was credited to lib.rs.
+    # ``None`` still tells the shim to skip the edge: a symbol no record
+    # carries is external (a dependency / stdlib symbol, absent from the Symbol
+    # set), and an ambiguous one is refused and counted.
+    resolve = MonikerResolver(
+        symbols,
+        same_unit=same_crate(
+            crate_owners(index, lambda p: _read_source(source_reader, p)),
+        ),
+    )
 
     edges: List[Edge] = []
     edges.extend(
-        scip_index_to_edges(index, run_id=run_id, resolve_symbol=_resolve)
+        scip_index_to_edges(index, run_id=run_id, resolve_symbol=resolve)
     )
     edges.extend(
-        scip_index_to_call_edges(index, run_id=run_id, resolve_symbol=_resolve)
+        scip_index_to_call_edges(index, run_id=run_id, resolve_symbol=resolve)
     )
+    report = resolve.ambiguity_report()
+    if report is not None and log is not None:
+        log(report)
     return symbols, edges

@@ -40,6 +40,7 @@ from hypergumbo_core.scip.calls import scip_index_to_call_edges
 from hypergumbo_core.scip.descriptor import DescriptorKind, parse_scip_symbol
 from hypergumbo_core.scip.edges import scip_index_to_edges
 from hypergumbo_core.scip.index import scip_index_to_symbols
+from hypergumbo_core.scip.resolve import MonikerResolver
 
 #: Symbol kinds the importer mints for descriptors the syntax arm never models.
 DROPPED_KINDS = frozenset({"parameter", "declaration"})
@@ -76,8 +77,14 @@ def _external_ref(scip_symbol: str) -> Optional[Tuple[ExternalRef, str]]:
 
 def translate_scip_python_to_hg(
     scip_bytes: bytes, *, run_id: str,
+    log: Optional[Callable[[str], None]] = None,
 ) -> Tuple[List[Symbol], List[Edge]]:
     """Parse ``scip_bytes`` and return ``(symbols, edges)``.
+
+    ``log`` receives one line when edge endpoints were refused as ambiguous
+    (INV-sipod): an in-repo symbol that names records in several Documents
+    resolves in the referencing Document or not at all, and never falls
+    through to the external arm.
 
     ``run_id`` is the analyzer's own run: every Symbol and Edge names it, so
     the artifact's provenance resolves to a serialized run (WI-didag).
@@ -88,20 +95,15 @@ def translate_scip_python_to_hg(
     for symbol in symbols:
         symbol.origin_run_id = run_id
 
-    id_by_scip_symbol: Dict[str, str] = {
-        (sym.meta or {}).get("scip_symbol", ""): sym.id
-        for sym in symbols
-        if sym.meta and sym.meta.get("scip_symbol")
-    }
+    internal_of = MonikerResolver(symbols)
     external: Dict[str, Tuple[ExternalRef, str]] = {}
 
-    def _resolve(scip_symbol: str) -> Optional[str]:
+    def _resolve(scip_symbol: str, document: str) -> Optional[str]:
         # In-repo: the defining Symbol's id. External callable: the syntax
         # arm's module-qualified unresolved id, remembered so the edge can be
         # given its structured dst_ref below. Anything else: skip the edge.
-        internal = id_by_scip_symbol.get(scip_symbol)
-        if internal is not None:
-            return internal
+        if internal_of.defines(scip_symbol):
+            return internal_of(scip_symbol, document)
         if scip_symbol in external:
             return format_legacy_dst(external[scip_symbol][0])
         ref = _external_ref(scip_symbol)
@@ -113,6 +115,9 @@ def translate_scip_python_to_hg(
     edges: List[Edge] = []
     edges.extend(scip_index_to_edges(index, run_id=run_id, resolve_symbol=_resolve))
     edges.extend(scip_index_to_call_edges(index, run_id=run_id, resolve_symbol=_resolve))
+    report = internal_of.ambiguity_report()
+    if report is not None and log is not None:
+        log(report)
     by_dst = {format_legacy_dst(ref): (ref, construct) for ref, construct in external.values()}
     kept: List[Edge] = []
     for edge in edges:

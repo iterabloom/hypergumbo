@@ -92,13 +92,15 @@ class TranslateFn(Protocol):
     """The translator's call shape, as a Protocol rather than a Callable alias.
 
     ``Callable[[bytes, SourceReader], ...]`` cannot express the keyword-only
-    ``run_id`` this function now forwards (WI-didag), and widening it to
+    ``run_id`` this function now forwards (WI-didag), nor the keyword ``log``
+    the translator reports its refusals through (INV-sipod), and widening it to
     ``Callable[..., ...]`` would drop argument checking on the injection seam
     that every graceful-degrade test uses.
     """
 
     def __call__(
         self, scip_bytes: bytes, source_reader: SourceReader, *, run_id: str = ...,
+        log: Optional[Callable[[str], None]] = ...,
     ) -> Tuple[List[Symbol], List[Edge]]: ...
 
 @dataclass(frozen=True)
@@ -312,7 +314,9 @@ def try_analyze_with_rust_analyzer(
             return ScipAttempt.failure(_silence_code_for(exc), str(exc))
 
     try:
-        symbols, edges = translate_fn(scip_bytes, source_reader, run_id=run_id)
+        symbols, edges = translate_fn(
+            scip_bytes, source_reader, run_id=run_id, log=emit,
+        )
         # An EMPTY index is a success, not a failure: rust-analyzer ran to
         # completion and found nothing to index. Reporting it as a failure is
         # what put a pass that RAN into the "did not run" bucket (WI-luvud).

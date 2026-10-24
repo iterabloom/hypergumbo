@@ -218,12 +218,17 @@ def test_resolve_symbol_rewrites_both_endpoints() -> None:
 
     mapping = {src: "python:s.py:1-1:s:class", dst: "python:d.py:1-1:d:class"}
 
-    def resolve(scip_symbol: str) -> "str | None":
+    seen: list[str] = []
+
+    def resolve(scip_symbol: str, document: str) -> "str | None":
+        seen.append(document)
         return mapping.get(scip_symbol)
 
     [e] = scip_index_to_edges(idx, resolve_symbol=resolve, run_id="test")
     assert e.src == mapping[src]
     assert e.dst == mapping[dst]
+    # INV-sipod: both ends are read in the SymbolInformation's Document.
+    assert seen == [idx.documents[0].relative_path] * 2
 
 
 def test_resolve_symbol_returning_none_for_src_skips_edge() -> None:
@@ -234,7 +239,7 @@ def test_resolve_symbol_returning_none_for_src_skips_edge() -> None:
     # When src cannot be resolved, no edge is emitted at all.
     result = scip_index_to_edges(
         idx,
-        resolve_symbol=lambda s: None if s == src else "python:resolved:1-1:x:class",
+        resolve_symbol=lambda s, _doc: None if s == src else "python:resolved:1-1:x:class",
 
         run_id="test",
     )
@@ -248,7 +253,7 @@ def test_resolve_symbol_returning_none_for_dst_skips_edge() -> None:
 
     result = scip_index_to_edges(
         idx,
-        resolve_symbol=lambda s: None if s == dst else "python:resolved:1-1:x:class",
+        resolve_symbol=lambda s, _doc: None if s == dst else "python:resolved:1-1:x:class",
 
         run_id="test",
     )
