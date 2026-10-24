@@ -440,3 +440,28 @@ def test_skipped_when_grammar_unavailable(tmp_path):
 
     assert result.skipped is True
     assert "not available" in result.skip_reason
+
+
+def test_a_manifest_component_id_names_the_component_kind(tmp_path):
+    """WI-lusoh (INV-kurup). The id's kind slot was the element name
+    (``:activity`` / ``:service`` / ...) on a ``kind="component"`` symbol, which
+    id-format:F3's round-trip flags. The element stays on meta.component_type."""
+    from hypergumbo_core.spec_validator import _check_id_roundtrip
+
+    (tmp_path / "AndroidManifest.xml").write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.x">\n'
+        '  <application>\n'
+        '    <activity android:name=".A" />\n'
+        '    <service android:name=".S" />\n'
+        '    <receiver android:name=".R" />\n'
+        '    <provider android:name=".P" />\n'
+        '  </application>\n'
+        '</manifest>\n'
+    )
+    comps = [s for s in analyze_xml_files(tmp_path).symbols if s.kind == "component"]
+    assert sorted(s.meta["component_type"] for s in comps) == [
+        "activity", "provider", "receiver", "service",
+    ]
+    assert all(s.id.endswith(f":{s.name}:component") for s in comps)
+    assert _check_id_roundtrip(comps) == []

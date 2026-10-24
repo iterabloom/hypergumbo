@@ -463,7 +463,9 @@ def _process_android_application(
                             end_line = sub.end_point[0] + 1
                             # Use short name without package prefix
                             short_name = full_name.split(".")[-1]
-                            symbol_id = make_symbol_id("xml", rel_path, start_line, end_line, short_name, elem_name)
+                            # WI-lusoh: the kind slot is the kind; the element
+                            # (activity / service / ...) is meta.component_type.
+                            symbol_id = make_symbol_id("xml", rel_path, start_line, end_line, short_name, "component")
 
                             meta: dict = {"component_type": elem_name, "full_name": full_name}
                             if exported:

@@ -26,6 +26,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### Identity
+
+- **A node id's kind slot is the node's kind** for CUDA functions, Android-manifest components and message-dispatch stand-ins (WI-lusoh, INV-kurup). The slot carried the execution space (`:global`, `:device`, ...), the manifest element (`:activity`, `:service`, ...) or the dispatch role (`:message_sender`/`:message_handler`). Those already live on meta. whisper.cpp's id-format violations go 1,016 → 0, and sherpa-onnx's 72 → 0. Node ids change; `stable_id`s do not.
+
 #### SCIP backends
 
 - **A SCIP edge lands on the record in its own crate target** (INV-sipod). rust-analyzer gives a package's lib, bin and `build.rs` roots one `crate/` moniker, and edges from `src/main.rs` and its modules were credited to the lib crate (7 on aardvark-dns). A reference now resolves in its own Document, then in the crate target its `mod` tree belongs to, or is dropped. Drops are counted in the run's warnings.
