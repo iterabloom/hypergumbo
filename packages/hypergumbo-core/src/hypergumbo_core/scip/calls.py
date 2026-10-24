@@ -115,7 +115,8 @@ Edge shape:
   relationship emission, so the floor is slightly lower.
 
 Symbol resolution contract matches :mod:`hypergumbo_core.scip.edges`:
-a caller-supplied ``resolve_symbol`` callable remaps either endpoint;
+a caller-supplied ``resolve_symbol(symbol, document)`` callable remaps
+either endpoint, given the occurrence's Document (INV-sipod);
 returning ``None`` for either endpoint drops the edge, preventing
 half-resolved artefacts in the output.
 """
@@ -256,7 +257,7 @@ def _area(span: Tuple[int, int, int, int]) -> Tuple[int, int]:
 def scip_index_to_call_edges(
     index: scip_pb2.Index,
     *,
-    resolve_symbol: Optional[Callable[[str], Optional[str]]] = None,
+    resolve_symbol: Optional[Callable[[str, str], Optional[str]]] = None,
     run_id: str,
 ) -> List[Edge]:
     """Emit hypergumbo ``Edge`` objects for SCIP non-Definition Occurrences.
@@ -302,8 +303,15 @@ def scip_index_to_call_edges(
             if enclosing is None or enclosing == occ.symbol:
                 continue
 
-            src_resolved = enclosing if resolve_symbol is None else resolve_symbol(enclosing)
-            dst_resolved = occ.symbol if resolve_symbol is None else resolve_symbol(occ.symbol)
+            # INV-sipod: both ends are read in this Document. The enclosing
+            # Definition is in it by construction; the target may not be.
+            src_resolved: Optional[str]
+            dst_resolved: Optional[str]
+            if resolve_symbol is None:
+                src_resolved, dst_resolved = enclosing, occ.symbol
+            else:
+                src_resolved = resolve_symbol(enclosing, doc.relative_path)
+                dst_resolved = resolve_symbol(occ.symbol, doc.relative_path)
             if src_resolved is None or dst_resolved is None:
                 continue
 

@@ -34,7 +34,7 @@ from typing import Callable, Optional
 
 from google.protobuf.message import DecodeError
 
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, run_recording_log
 from hypergumbo_core.analyze.registry import (
     SPAN_ROLE_TOKEN,
     MergeAnchor,
@@ -108,7 +108,9 @@ def analyze_python_with_scip_impl(
     try:
         with tempfile.TemporaryDirectory(prefix="hypergumbo-scip-python-") as scratch:
             scip_bytes = do_invoke(repo_root, cwd=Path(scratch), project_name=repo_root.name or "project")
-        symbols, edges = do_translate(scip_bytes, run_id=run.execution_id)
+        symbols, edges = do_translate(
+            scip_bytes, run_id=run.execution_id, log=run_recording_log(run, emit),
+        )
     except (ScipPythonError, DecodeError) as exc:
         emit(f"scip-python backend did not run on {repo_root}: {exc}")
         return AnalysisResult(

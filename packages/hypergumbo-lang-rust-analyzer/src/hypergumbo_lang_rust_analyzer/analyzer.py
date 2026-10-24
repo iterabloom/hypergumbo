@@ -65,7 +65,7 @@ import warnings
 from collections.abc import Callable
 from pathlib import Path
 
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, run_recording_log
 from hypergumbo_core.analyze.registry import (
     SPAN_ROLE_TOKEN,
     MergeAnchor,
@@ -248,7 +248,9 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
         pass_id="rust_analyzer", version=PASS_VERSION,
     )
     result = try_analyze_with_rust_analyzer(
-        repo_root, _repo_anchored_reader(repo_root), log=_emit_user_warning,
+        repo_root, _repo_anchored_reader(repo_root),
+        # INV-sipod: the translator's refusals land on the run as well.
+        log=run_recording_log(run, _emit_user_warning),
         run_id=run.execution_id,
     )
     if result.failed:

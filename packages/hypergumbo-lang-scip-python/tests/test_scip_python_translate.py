@@ -102,3 +102,36 @@ class TestExternalEdgeCases:
         symbols, edges = translate_scip_python_to_hg(_index(doc), run_id="r")
         assert [s.name for s in symbols] == ["run"]
         assert edges == []  # an `implements` edge to an external method is neither pairable nor typable
+
+
+class TestASharedSymbolIsNotGuessed:
+    """INV-sipod: an in-repo symbol two Documents define resolves in the
+    referencing Document, or is refused and logged -- never sent to the
+    external arm, and never handed to whichever record a map kept."""
+
+    _F = f"{PKG} `m`/f()."
+    _G = f"{PKG} `m`/g()."
+
+    def _two_definers_and_a_caller(self, caller_path: str) -> bytes:
+        f, g = self._F, self._G
+        return _index(
+            _doc("a.py", [f], [(f, DEF, [0, 4, 5])]),
+            _doc("b.py", [f], [(f, DEF, [0, 4, 5])]),
+            _doc(caller_path, [g], [(g, DEF, [0, 0, 9, 0]), (f, 0, [3, 4, 5])]),
+        )
+
+    def test_the_referencing_document_decides(self) -> None:
+        logged: list[str] = []
+        _, edges = translate_scip_python_to_hg(
+            self._two_definers_and_a_caller("a.py"), run_id="r", log=logged.append,
+        )
+        assert [e.dst.split(":")[1] for e in edges if e.dst.endswith(":f:function")] == ["a.py"]
+        assert logged == []
+
+    def test_elsewhere_the_edge_is_refused_and_logged(self) -> None:
+        logged: list[str] = []
+        _, edges = translate_scip_python_to_hg(
+            self._two_definers_and_a_caller("c.py"), run_id="r", log=logged.append,
+        )
+        assert [e for e in edges if ":f:" in e.dst] == []
+        assert len(logged) == 1 and "INV-sipod" in logged[0]

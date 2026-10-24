@@ -1024,6 +1024,23 @@ def synthesize_file_anchors_for_paths(
     return synthesized
 
 
+def run_recording_log(
+    run: AnalysisRun, emit: Callable[[str], None],
+) -> Callable[[str], None]:
+    """A log that records each line on ``run.warnings`` before emitting it.
+
+    INV-pitab's pattern for a pass's own diagnostics: a warning a consumer
+    can read later from ``analysis_runs`` as well as from stderr. The SCIP
+    translators take a ``log`` and report what they refused through it
+    (INV-sipod).
+    """
+    def _log(message: str) -> None:
+        run.warnings.append(f"UserWarning: {message}")
+        emit(message)
+
+    return _log
+
+
 def make_unresolved_edge(
     lang: str,
     src_id: str,

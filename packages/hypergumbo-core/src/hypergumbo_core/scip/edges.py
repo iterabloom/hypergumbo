@@ -83,9 +83,11 @@ SCIP symbol strings. Callers are expected to resolve those against the
 Slice B output's ``Symbol.meta["scip_symbol"]`` (the raw SCIP string;
 ``stable_id`` holds its sha256) to produce hypergumbo ``Symbol.id``
 values. A caller-
-provided ``resolve_symbol`` callable remaps either endpoint; if it
-returns ``None`` for either endpoint, the Edge is dropped rather than
-emitted with a partial / raw endpoint. This matches the same-pass-
+provided ``resolve_symbol(symbol, document)`` callable remaps either
+endpoint, given the ``relative_path`` of the Document the SymbolInformation
+sits in (a moniker can name records in several Documents, INV-sipod; see
+:mod:`.resolve`); if it returns ``None`` for either endpoint, the Edge is
+dropped rather than emitted with a partial / raw endpoint. This matches the same-pass-
 emits-resolved pattern used by other hypergumbo shims.
 """
 from __future__ import annotations
@@ -111,7 +113,7 @@ _SCIP_EDGE_CONFIDENCE = 0.9  # Explicit SCIP relationship from the upstream inde
 def scip_index_to_edges(
     index: scip_pb2.Index,
     *,
-    resolve_symbol: Optional[Callable[[str], Optional[str]]] = None,
+    resolve_symbol: Optional[Callable[[str, str], Optional[str]]] = None,
     run_id: str,
 ) -> List[Edge]:
     """Emit hypergumbo ``Edge`` objects from a parsed SCIP ``Index``.
@@ -121,8 +123,8 @@ def scip_index_to_edges(
 
     Args:
         index: A parsed ``scip_pb2.Index``.
-        resolve_symbol: Optional callable mapping SCIP symbol strings
-            to hypergumbo Symbol IDs. When provided, the Edge is dropped
+        resolve_symbol: Optional callable mapping a SCIP symbol string and
+            the Document it is read in to a hypergumbo Symbol ID. When provided, the Edge is dropped
             if the resolver returns ``None`` for either endpoint.
 
     Returns:
@@ -136,14 +138,14 @@ def scip_index_to_edges(
             src_raw = sym_info.symbol
             if is_local_symbol(src_raw):
                 continue
-            src_resolved = _resolve(src_raw, resolve_symbol)
+            src_resolved = _resolve(src_raw, doc.relative_path, resolve_symbol)
             if src_resolved is None:
                 continue
             for rel in sym_info.relationships:
                 dst_raw = rel.symbol
                 if dst_raw == src_raw or is_local_symbol(dst_raw):
                     continue
-                dst_resolved = _resolve(dst_raw, resolve_symbol)
+                dst_resolved = _resolve(dst_raw, doc.relative_path, resolve_symbol)
                 if dst_resolved is None:
                     continue
                 emitted: set[str] = set()
@@ -171,7 +173,8 @@ def scip_index_to_edges(
 
 def _resolve(
     scip_symbol: str,
-    resolver: Optional[Callable[[str], Optional[str]]],
+    document: str,
+    resolver: Optional[Callable[[str, str], Optional[str]]],
 ) -> Optional[str]:
     """Apply the caller's resolver when present, else pass through.
 
@@ -182,4 +185,4 @@ def _resolve(
     """
     if resolver is None:
         return scip_symbol
-    return resolver(scip_symbol)
+    return resolver(scip_symbol, document)

@@ -34,7 +34,7 @@ def _fake_source_reader(_p: str) -> bytes:  # pragma: no cover — unused path
 
 def _make_ok_translate(symbols: List[Symbol], edges: List[Edge]):
     def _translate(
-        _scip: bytes, _reader, *, run_id: str = "",
+        _scip: bytes, _reader, *, run_id: str = "", log=None,
     ) -> Tuple[List[Symbol], List[Edge]]:
         return symbols, edges
     return _translate
@@ -145,7 +145,7 @@ class TestTranslateFailure:
         def _invoke(workspace, *, cwd):
             return b"truncated-bytes"
 
-        def _translate(_scip, _reader, *, run_id=""):
+        def _translate(_scip, _reader, *, run_id="", log=None):
             raise DecodeError("bad wire format")
 
         log_msgs: list[str] = []
@@ -161,7 +161,7 @@ class TestTranslateFailure:
         def _invoke(workspace, *, cwd):
             return b"x"
 
-        def _translate(_scip, _reader, *, run_id=""):
+        def _translate(_scip, _reader, *, run_id="", log=None):
             raise DecodeError("bad")
 
         log_msgs: list[str] = []
@@ -363,7 +363,7 @@ class TestRunIdForwarding:
         def _invoke(_workspace, *, cwd):
             return b"scip-bytes"
 
-        def _translate(_blob, _reader, *, run_id=""):
+        def _translate(_blob, _reader, *, run_id="", log=None):
             seen["run_id"] = run_id
             return ([], [])
 
@@ -380,7 +380,7 @@ class TestRunIdForwarding:
         def _invoke(_workspace, *, cwd):
             return b"scip-bytes"
 
-        def _translate(_blob, _reader, *, run_id=""):
+        def _translate(_blob, _reader, *, run_id="", log=None):
             seen["run_id"] = run_id
             return ([], [])
 
@@ -438,7 +438,7 @@ class TestOutcomeDiscrimination:
         def _invoke(_workspace, *, cwd):
             return b"not-a-scip-index"
 
-        def _translate(_blob, _reader, *, run_id=""):
+        def _translate(_blob, _reader, *, run_id="", log=None):
             raise DecodeError("bad wire format")
 
         got = try_analyze_with_rust_analyzer(
@@ -455,7 +455,7 @@ class TestOutcomeDiscrimination:
         def _invoke(_workspace, *, cwd):
             return b"scip"
 
-        def _translate(_blob, _reader, *, run_id=""):
+        def _translate(_blob, _reader, *, run_id="", log=None):
             return ([], [])
 
         got = try_analyze_with_rust_analyzer(

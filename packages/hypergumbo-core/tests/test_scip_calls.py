@@ -267,9 +267,17 @@ def test_resolve_symbol_rewrites_endpoints() -> None:
     )
     mapping = {caller: "python:mod.py:1-21:foo:method",
                callee: "python:mod.py:30-35:bar:method"}
-    [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=lambda s: mapping.get(s), run_id="test")
+    seen: list[str] = []
+
+    def resolve(s: str, document: str) -> "str | None":
+        seen.append(document)
+        return mapping.get(s)
+
+    [edge] = scip_index_to_call_edges(_idx(doc), resolve_symbol=resolve, run_id="test")
     assert edge.src == mapping[caller]
     assert edge.dst == mapping[callee]
+    # INV-sipod: both ends are read in the occurrence's Document.
+    assert seen == [doc.relative_path] * 2
 
 
 def test_resolve_symbol_none_for_either_endpoint_drops_edge() -> None:
@@ -285,14 +293,14 @@ def test_resolve_symbol_none_for_either_endpoint_drops_edge() -> None:
     # Resolve caller but not callee → drop
     assert scip_index_to_call_edges(
         _idx(doc),
-        resolve_symbol=lambda s: "resolved" if s == caller else None,
+        resolve_symbol=lambda s, _doc: "resolved" if s == caller else None,
 
         run_id="test",
     ) == []
     # Resolve callee but not caller → drop
     assert scip_index_to_call_edges(
         _idx(doc),
-        resolve_symbol=lambda s: "resolved" if s == callee else None,
+        resolve_symbol=lambda s, _doc: "resolved" if s == callee else None,
 
         run_id="test",
     ) == []

@@ -25,6 +25,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### SCIP backends
+
+- **A SCIP edge lands on the record in its own crate target** (INV-sipod). rust-analyzer gives a package's lib, bin and `build.rs` roots one `crate/` moniker, and edges from `src/main.rs` and its modules were credited to the lib crate (7 on aardvark-dns). A reference now resolves in its own Document, then in the crate target its `mod` tree belongs to, or is dropped. Drops are counted in the run's warnings.
+
 #### Taint analysis
 
 - **A Python walrus or JS/TS nested assignment defines its variable**, call arguments included, so `if (t := os.environ["K"])` and `while ((m = re.exec(s)) !== null)` are walked precisely.
