@@ -22,3 +22,18 @@
     fields:  # 05b4
       statement: "One value carries one verdict: an exit status is a taint source either at every API that returns it or at none, whichever aggregate it arrives in."  # 05b4
       root_cause: "The output-carrying rows taint the call's whole return value; with ADR-0017 §7a field-sensitivity unwired, the status field/element of that value inherits the output's untrusted_input label."  # 05b4
+- op: update  # 72a4
+  at: '2026-10-24T09:13:20Z'  # 72a4
+  by: agent  # 72a4
+  actor: jgstern_agent  # 72a4
+  clock: 2  # 72a4
+  nonce: 72a4  # 72a4
+  set:  # 72a4
+    priority: 4  # 72a4
+- op: discuss  # 01ec
+  at: '2026-10-24T09:13:20Z'  # 01ec
+  by: agent  # 01ec
+  actor: jgstern_agent  # 01ec
+  clock: 3  # 01ec
+  nonce: 01ec  # 01ec
+  message: "ACCEPTED RESIDUAL. Owner ruling 2026-10-24: won't do; the pin stays. (The tracker refuses wont_do for an invariant, and the invariant IS still violated, so it stays violated at P4, recorded as accepted.) Census of 273 corpus repos (~/hypergumbo_lab_notebook/sozak_10242026/CENSUS.md): Python getstatusoutput has 1 production site, and it reads [1], the output. Rust wait_with_output is called only in tests (excluded by WI-bifob). Of 7 production Haskell readProcessWithExitCode sites, 5 branch on the status, 1 prints it to the console, 1 returns it, and none sends it to a network or filesystem sink. The residual errs only toward extra findings, inside ADR-0052's accepted cost. ADR-0017 §7a only ADDS field taint, so clearing a field would be a new mechanism, and Haskell has no DDG extractor. test_exit_status_is_one_verdict.py stays pinned on the disagreement. ADR-0049's re-evaluation trigger is extended to cover this residual."  # 01ec
