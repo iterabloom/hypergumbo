@@ -1,0 +1,29 @@
+Original commit body from a890f9b1ec81278fc3d11fb44b292fc536b94ec1:
+
+ADR-0036's id-format:F3 round-trip (kind slot registered, kind slot ==
+Symbol.kind, name slot non-empty) landed at `warning` because a strict
+pass would have flagged an id-changing backlog. Every item in that
+backlog has now landed:
+  - WI-pubiv (external_symbol kind slot), WI-kugaj (route/event roles),
+    and the tsconfig kind slot (json_config.py writes `file`);
+  - the two producer limbs today's sweep found: WI-lusoh (#1832; cuda /
+    AndroidManifest / message-dispatch roles in the kind slot) and
+    WI-pusan (#1833; empty name slots).
+With those in, the schema-coverage corpus reads 0 violations on all four
+substrates. So do the surveys swept: grpc, whisper.cpp, sherpa-onnx,
+envoy-half, torsocks, modsecurity, shaka-packager, plasma-desktop,
+aardvark-dns.
+
+  - spec_validator: _ID_ROUNDTRIP_ADVISORY "warning" ->
+    _ID_ROUNDTRIP_SEVERITY "error". A new violation is a producer defect
+    and now reports as one. No consumer branches on severity; it is the
+    report's and the gates' label.
+  - test_validation_report_empty: VALIDATION_BASELINES 11 -> 0 on default,
+    frameworks_all, include_docs and max_tier_4. The +11 pinned exactly this
+    backlog, and the gate is shrink-only.
+  - ADR-0036: status line and an amendment naming what is still not landed:
+    the full Ruling-1 name-slot round-trip, and the Ruling-3 sentinel
+    enumeration (WI-dipim). The pony/robot kind-slot holes (INV-dulah,
+    behind WI-talos) now report as errors when those analyzers run.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
