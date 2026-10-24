@@ -1,0 +1,37 @@
+- op: create  # aa56
+  at: '2026-10-24T18:13:23Z'  # aa56
+  by: agent  # aa56
+  actor: jgstern_agent  # aa56
+  clock: 1  # aa56
+  nonce: aa56  # aa56
+  data:  # aa56
+    kind: work_item  # aa56
+    title: "json_config / toml_config mint kind=file symbols for manifest entries (npm bin, pyproject scripts) that are not file pseudo-symbols"  # aa56
+    status: todo_hard  # aa56
+    priority: 3  # aa56
+    parent:  # aa56
+    tags:  # aa56
+    - id_format  # aa56
+    - identity  # aa56
+    - dogfood_umbrella_member  # aa56
+    isbefore: []  # aa56
+    duplicate_of: []  # aa56
+    not_duplicate_of: []  # aa56
+    pr_ref:  # aa56
+    description: "FOUND 2026-10-24 by WI-dipim's new advisory check (\"a kind=file id is exactly 1-1:file:file\"). json_config and toml_config mint kind=\"file\" symbols that are not file pseudo-symbols: `json:examples/addon.node/package.json:5-5:addon.node:file` (an npm `bin` / main entry), `toml:tools/distrib/python/grpcio_tools/pyproject.toml:43-43:python-grpc-tools-protoc:file` (a pyproject script). whisper.cpp 2-4, grpc 1. kind=file is reserved for the file pseudo-symbol (make_file_id). These are declarations IN a manifest that name an entry point. FIX: give them a kind that says so (the WI-bufar-pokam build-target vocabulary, or the existing defines_target edge to make_manifest_target_dst), and check what consumers of kind=file (file anchors, slices) assumed. Acceptance: 0 file-triple advisories on those surveys; then promote the check to error."  # aa56
+    fields: {}  # aa56
+- op: update  # 5e50
+  at: '2026-10-24T18:51:48Z'  # 5e50
+  by: agent  # 5e50
+  actor: jgstern_agent  # 5e50
+  clock: 2  # 5e50
+  nonce: '5e50'  # 5e50
+  set:  # 5e50
+    status: wont_do  # 5e50
+- op: discuss  # f1f5
+  at: '2026-10-24T18:51:48Z'  # f1f5
+  by: agent  # f1f5
+  actor: jgstern_agent  # f1f5
+  clock: 3  # f1f5
+  nonce: f1f5  # f1f5
+  message: "Retracted by the filer the same day. kind=file on manifest entries (npm scripts and main, pyproject scripts) is audit-findings 0005's deliberate fold (file + meta['entry_role']), not a defect. WI-dipim's file-triple rule was narrowed to what Ruling 3 can mean without contradicting it: an id named 'file' of kind 'file' has span 1-1. That narrowed rule has 0 hits on grpc, whisper.cpp and sherpa-onnx."  # f1f5

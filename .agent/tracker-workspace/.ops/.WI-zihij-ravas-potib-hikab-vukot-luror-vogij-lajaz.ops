@@ -1,0 +1,22 @@
+- op: create  # 5016
+  at: '2026-10-24T18:13:17Z'  # 5016
+  by: agent  # 5016
+  actor: jgstern_agent  # 5016
+  clock: 1  # 5016
+  nonce: '5016'  # 5016
+  data:  # 5016
+    kind: work_item  # 5016
+    title: "Six producers emit non-id edge dsts that finalize renders with an <unknown> path slot (starlark calls, cmake links, rst includes, cuda/glsl/wgsl calls)"  # 5016
+    status: todo_hard  # 5016
+    priority: 3  # 5016
+    parent:  # 5016
+    tags:  # 5016
+    - id_format  # 5016
+    - identity  # 5016
+    - dogfood_umbrella_member  # 5016
+    isbefore: []  # 5016
+    duplicate_of: []  # 5016
+    not_duplicate_of: []  # 5016
+    pr_ref:  # 5016
+    description: "FOUND 2026-10-24 by WI-dipim's new advisory check (\"no <unknown> path slot\", ADR-0036 Ruling 3 as amended). `<unknown>` is finalize's 4-part fallback for an edge dst that is not an id; boundary synthesis then mints a node like `cmake:<unknown>:0-0:<name>:external_symbol`, and every edge to the same name collapses onto it. Measured (merged-dev surveys, 2026-10-24):\n  grpc: starlark `calls` 213 (e.g. starlark:<unknown>:0-0:file:external_symbol <- calls from bazel/grpc_deps.bzl:_openssl_impl), cmake `links` 7 (${_PROTOBUF_LIBPROTOBUF}), rst `includes` 1 (doc).\n  whisper.cpp: cuda `calls` 340 (GGML_ASSERT ...), cmake `links` 19, glsl `calls` 1 (builtin), wgsl `calls` 1 (builtin).\nSame class as WI-bufar-pokam fixed for json/toml/make/jsonnet/astro/svelte: each producer passes a bare name or a raw string as dst. FIX: per producer, use make_unresolved_edge (a canonical external dst with a module hint, or the `external` sentinel) or resolve to an in-repo id. Acceptance: 0 `<unknown>` path-slot advisories on grpc and whisper.cpp; then promote the check to error."  # 5016
+    fields: {}  # 5016
