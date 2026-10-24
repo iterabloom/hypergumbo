@@ -227,6 +227,7 @@ from .finalize import FinalizeContext, _relativize_ir_paths, finalize
 from .linkers.registry import LinkerContext, run_all_linkers
 from .pass_metadata import build_pass_metadata
 from .pass_clock import PassClock
+from .pass_silence import silence_reason_for_candidates
 from .safety_zones import (
     cache_mkdir,
     cache_rename,
@@ -12607,6 +12608,37 @@ def _releases_file_index(fn: _SurveyFn) -> _SurveyFn:
     return cast(_SurveyFn, wrapper)
 
 
+def _has_route_concept(symbol: Symbol) -> bool:
+    """Whether the symbol carries a ``concept=route`` from enrichment."""
+    return any(
+        isinstance(c, dict) and c.get("concept") == "route"
+        for c in ((symbol.meta or {}).get("concepts") or [])
+    )
+
+
+def _record_post_pass(
+    analysis_runs: list[dict[str, Any]],
+    run: AnalysisRun,
+    clock: PassClock,
+    nodes_emitted: int,
+    candidates: "list[Any]",
+) -> None:
+    """Record an orchestrator post-pass whether or not it emitted (WI-tivif).
+
+    These passes used to append their run only inside ``if <output>:``, so a
+    pass that ran and found nothing vanished from ``analysis_runs`` and no
+    consumer could tell it from a pass that never ran. ``candidates`` is what
+    the pass's scan FOUND (the construct it acts on), never what it emitted:
+    the silence reason is the body's claim about it
+    (:func:`pass_silence.silence_reason_for_candidates`).
+    """
+    clock.read().stamp(run)
+    run.nodes_emitted = nodes_emitted
+    if not nodes_emitted:
+        run.silence_reason = silence_reason_for_candidates(candidates)
+    analysis_runs.append(run.to_dict())
+
+
 @_releases_file_index
 @run_status.reports_run
 def run_survey(
@@ -12815,7 +12847,25 @@ def run_survey(
     # usage contexts (v1.1.x) for call-based frameworks like Django URLs.
     run_status.phase("Enriching symbols")
     detected_frameworks = set(profile.frameworks)
-    enrich_symbols(all_symbols, detected_frameworks, all_usage_contexts)
+    # WI-tivif: enrichment is a pass like any other, so it is recorded, with
+    # per-YAML counts (zeros included) in metrics.framework_patterns.
+    _fp_run = AnalysisRun.create(  # nosec B106 — pass_id is a pass identifier, not a password
+        pass_id="framework-patterns", version=PASS_VERSION,
+        config_fingerprint=compute_config_fingerprint(
+            {"pass_id": "framework-patterns",
+             "frameworks": sorted(detected_frameworks)}
+        ),
+    )
+    _fp_clock = PassClock()
+    framework_pattern_counts: dict[str, int] = {}
+    enrich_symbols(
+        all_symbols, detected_frameworks, all_usage_contexts,
+        report=framework_pattern_counts,
+    )
+    _fp_clock.read().stamp(_fp_run)
+    _fp_matched = [n for n in framework_pattern_counts.values() if n]
+    _fp_run.silence_reason = "" if _fp_matched else silence_reason_for_candidates(_fp_matched)
+    analysis_runs.append(_fp_run.to_dict())
 
     # Materialize route symbols from enriched concept metadata (WI-lodik).
     # Annotation-based frameworks (JAX-RS, Spring MVC, ASP.NET) tag handler
@@ -12846,9 +12896,13 @@ def run_survey(
     )
     if materialized_routes:
         all_symbols.extend(materialized_routes)
-        _route_mat_clock.read().stamp(_route_mat_run)
-        _route_mat_run.nodes_emitted = len(materialized_routes)
-        analysis_runs.append(_route_mat_run.to_dict())
+    # WI-tivif: recorded whether or not it emitted; a run that is absent
+    # cannot say it found nothing. Candidates: the symbols carrying a route
+    # concept, the construct this pass materializes.
+    _record_post_pass(
+        analysis_runs, _route_mat_run, _route_mat_clock, len(materialized_routes),
+        [s for s in all_symbols if _has_route_concept(s)],
+    )
 
     # WI-lojoh: expand Django CBV routes (single ANY route per as_view()
     # registration) into one route per declared HTTP method on the view
@@ -12868,9 +12922,11 @@ def run_survey(
         all_symbols = [s for s in all_symbols if s.id not in cbv_removed_ids]
     if cbv_expanded:
         all_symbols.extend(cbv_expanded)
-        _cbv_clock.read().stamp(_cbv_run)
-        _cbv_run.nodes_emitted = len(cbv_expanded)
-        analysis_runs.append(_cbv_run.to_dict())
+    # WI-tivif. Candidates: class-based-view routes, what this pass expands.
+    _record_post_pass(
+        analysis_runs, _cbv_run, _cbv_clock, len(cbv_expanded),
+        [s for s in all_symbols if (s.meta or {}).get("is_class_based_view")],
+    )
 
     # Run cross-language linkers
     run_status.phase("Running linkers")
@@ -13100,6 +13156,11 @@ def run_survey(
         ),
     )
     _boundary_clock = PassClock()
+    # WI-tivif: the construct this pass resolves is a dangling edge endpoint.
+    _known_ids = {s.id for s in all_symbols}
+    _dangling = [
+        e for e in all_edges if e.src not in _known_ids or e.dst not in _known_ids
+    ]
     boundary, id_remap = create_boundary_nodes(
         all_symbols, all_edges, dependency_manifest=dependency_manifest,
         origin_run_id=_boundary_run.execution_id,
@@ -13107,12 +13168,13 @@ def run_survey(
     )
     if boundary:
         all_symbols.extend(boundary)
-        # INV-gizik: stamp this synthesis pass's duration + node count (it emits
-        # external_symbol placeholder Symbols; edge changes are remaps, not new
-        # edges, so edges_emitted stays 0). WI-nuvam: plus its own CPU time.
-        _boundary_clock.read().stamp(_boundary_run)
-        _boundary_run.nodes_emitted = len(boundary)
-        analysis_runs.append(_boundary_run.to_dict())
+    # INV-gizik: stamp this synthesis pass's duration + node count (it emits
+    # external_symbol placeholder Symbols; edge changes are remaps, not new
+    # edges, so edges_emitted stays 0). WI-nuvam: plus its own CPU time.
+    # WI-tivif: recorded whether or not it created a node.
+    _record_post_pass(
+        analysis_runs, _boundary_run, _boundary_clock, len(boundary), _dangling,
+    )
     if id_remap:
         all_edges = apply_external_id_remap(all_edges, id_remap)
     _log_memory("after boundary nodes")
@@ -13170,6 +13232,7 @@ def run_survey(
     run_status.phase("Computing metrics")
     behavior_map["metrics"] = compute_metrics(
         all_nodes, all_edge_dicts, profile=behavior_map.get("profile"),
+        framework_patterns=framework_pattern_counts,
     )
 
     # Detect and store entrypoints (computed from symbols, persisted for convenience)

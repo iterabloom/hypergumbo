@@ -45,6 +45,7 @@ from ..pass_silence import (
     NO_CANDIDATE_FILES,
     UNREPORTED,
     derive_silence_reason,
+    silence_reason_for_candidates,
 )
 from ..pass_clock import PassClock, PassCost
 from ..run_status import worker_pass
@@ -579,12 +580,15 @@ def run_all_analyzers(
         len(_synth_file_symbols) + len(_synth_node_anchors)
         + len(_synth_candidate_anchors)
     )
-    if _total_file_synth:
-        # INV-gizik: this synthesis pass bypasses both analyzer + linker
-        # chokepoints; stamp its duration + node count (it emits only Symbols).
-        _file_synth_clock.read().stamp(_file_synth_run)
-        _file_synth_run.nodes_emitted = _total_file_synth
-        analysis_runs.append(_file_synth_run.to_dict())
+    # INV-gizik: this synthesis pass bypasses both analyzer + linker
+    # chokepoints; stamp its duration + node count (it emits only Symbols).
+    # WI-tivif: recorded whether or not it minted an anchor. It mints one
+    # anchor per path that needs one, so emitting none means it found none.
+    _file_synth_clock.read().stamp(_file_synth_run)
+    _file_synth_run.nodes_emitted = _total_file_synth
+    if not _total_file_synth:
+        _file_synth_run.silence_reason = silence_reason_for_candidates([])
+    analysis_runs.append(_file_synth_run.to_dict())
 
     # Normalize paths: some analyzers produce absolute paths instead of
     # paths relative to repo_root.  Stripping the repo_root prefix ensures

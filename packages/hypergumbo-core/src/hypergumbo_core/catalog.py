@@ -709,6 +709,10 @@ _BUILTIN_PIPELINE_PASS_IDS: frozenset[str] = frozenset({
     # declared HTTP method.
     "route-materializer",
     "django-cbv-method-expander",
+    # framework_patterns.enrich_symbols — framework-pattern enrichment as a
+    # recorded pass (WI-tivif): it stamps concepts and emits no node, and its
+    # per-YAML counts are metrics.framework_patterns.
+    "framework-patterns",
     # analyze/merge_producers.py — ADR-0057 §3 (WI-kokiz): the merge pass at
     # the top of Phase C that folds two producers' records for one
     # declaration into one Symbol. Emits a real AnalysisRun (only when it

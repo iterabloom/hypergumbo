@@ -131,6 +131,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Collection, Iterator
 
 from ..pass_clock import PassClock
+from ..pass_silence import silence_reason_for_candidates
 from ..run_status import worker_pass
 
 if TYPE_CHECKING:
@@ -1133,8 +1134,14 @@ def run_all_linkers(
     # so stamp its duration + edge count here (no nodes; it only emits edges).
     _encl_clock.read().stamp(enclosure_run)
     enclosure_run.edges_emitted = len(enclosure_edges)
-    if enclosure_edges:
-        results.append(("enclosure", LinkerResult(edges=enclosure_edges, run=enclosure_run)))
+    # WI-tivif: recorded whether or not it connected anything, so a run that
+    # found nothing is told apart from one that never ran. Candidates: the
+    # synthetic nodes this pass connects to their enclosing functions.
+    if not enclosure_edges:
+        enclosure_run.silence_reason = silence_reason_for_candidates(
+            [s for s in all_linker_symbols if hasattr(s, "kind") and _is_synthetic_node(s)]
+        )
+    results.append(("enclosure", LinkerResult(edges=enclosure_edges, run=enclosure_run)))
 
     return results
 

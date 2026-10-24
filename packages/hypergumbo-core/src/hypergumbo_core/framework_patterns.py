@@ -89,6 +89,7 @@ Usage
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1528,10 +1529,34 @@ def _drop_library_export_on_route_marker(
     return [c for c in matches if c.get("concept") != "library_export"]
 
 
+def _concept_keys(symbol: Symbol) -> set[str]:
+    """The symbol's concepts, as comparable strings."""
+    concepts = (symbol.meta or {}).get("concepts") or []
+    return {json.dumps(c, sort_keys=True, default=str) for c in concepts if isinstance(c, dict)}
+
+
+def _report_new_concepts(
+    symbols: list[Symbol], before: dict[int, set[str]],
+    pattern_defs: list[Any], report: dict[str, int],
+) -> None:
+    """Count, per loaded YAML, the symbols that gained a concept from it."""
+    for pattern_def in pattern_defs:
+        report.setdefault(pattern_def.id, 0)
+    for symbol in symbols:
+        frameworks = set()
+        for key in _concept_keys(symbol) - before.get(id(symbol), set()):
+            fw = json.loads(key).get("framework")
+            if fw in report:
+                frameworks.add(fw)
+        for fw in frameworks:
+            report[fw] += 1
+
+
 def enrich_symbols(
     symbols: list[Symbol],
     detected_frameworks: set[str],
     usage_contexts: list[UsageContext] | None = None,
+    report: dict[str, int] | None = None,
 ) -> list[Symbol]:
     """Enrich symbols with framework concept metadata.
 
@@ -1548,6 +1573,10 @@ def enrich_symbols(
         symbols: Symbols to enrich
         detected_frameworks: Set of detected framework IDs
         usage_contexts: List of UsageContext records for usage-based matching (v1.1.x)
+        report: When given, filled with ``{pattern YAML id: symbols that gained
+            a concept from it}`` for EVERY YAML loaded, zeros included, so a
+            consumer can tell "loaded and matched nothing" (0) from "not loaded"
+            (absent) (WI-tivif).
 
     Returns:
         Same symbols, possibly with updated metadata.
@@ -1578,6 +1607,13 @@ def enrich_symbols(
 
     if not pattern_defs:  # pragma: no cover - main-functions.yaml is always loaded
         return symbols
+
+    # WI-tivif: what each symbol carried BEFORE enrichment, so the report
+    # credits a YAML only with concepts this call added (an analyzer may have
+    # stamped concepts of its own already).
+    before = (
+        {id(s): _concept_keys(s) for s in symbols} if report is not None else {}
+    )
 
     # Build lookups for parent resolution and name-based fallback
     symbol_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
@@ -1752,6 +1788,8 @@ def enrich_symbols(
                 # merge_union declaration.
                 write_meta_key(resolved_symbol.meta, "concepts", matches)
 
+    if report is not None:
+        _report_new_concepts(symbols, before, pattern_defs, report)
     return symbols
 
 

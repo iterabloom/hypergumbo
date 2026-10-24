@@ -26,6 +26,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+#### Pass disclosure
+
+- **A pass that ran and found nothing is in `analysis_runs`, with why** (WI-tivif). Framework-pattern enrichment is now recorded as the `framework-patterns` pass. The new `metrics.framework_patterns` lists every pattern YAML loaded, zeros included, with how many symbols each tagged. route-materializer, django-cbv-method-expander, boundary synthesis, enclosure-linker and the file-symbol synthesizer used to vanish when they emitted nothing; they are now recorded with a `silence_reason` taken from what each scan found.
+
 #### Identity
 
 - **ADR-0036 Ruling 3's sentinel table is enforced, as amended** (WI-dipim, INV-kurup). Read literally, it would have flagged correct ids on grpc: 18 real one-line `1-1` spans, 1,904 C++ include targets named `file`, and 7 angle-bracket system headers. Two rules are checked instead. The file pseudo-symbol (`file:file`) must have span `1-1`; this is an error, with 0 hits on grpc, whisper.cpp and sherpa-onnx. No path slot may be `<unknown>`, finalize's fallback for a non-id dst. That one is advisory until the starlark/cmake/rst/cuda/glsl/wgsl producers behind it are fixed (WI-zihij).

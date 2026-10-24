@@ -869,12 +869,11 @@ def test_synthetic_producers_emit_resolvable_provenance(tmp_path):
     assert "boundary_external_symbol_synthesis" in passes
 
 
-def test_synthesis_runs_absent_when_no_synthetic_nodes(tmp_path):
-    """synthetic:F1 conditional-append (FALSE branch): a synthesis AnalysisRun
-    is recorded ONLY when its producer actually mints nodes. A trivial repo with
-    no dangling/external edges leaves BOTH synthesis passes absent from
-    analysis_runs (no empty-pass records) — the stated rationale for the
-    ``if produced:`` guards at both orchestrator sites."""
+def test_synthesis_runs_are_recorded_when_they_mint_nothing(tmp_path):
+    """synthetic:F1's two synthesis passes, on a repo where neither mints a
+    node. They used to be absent ("no empty-pass records"), which left a
+    consumer unable to tell "ran, found nothing" from "never ran". WI-tivif
+    records them, with the body's silence reason."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     # A module-level assignment: one analyzer runs, but no imports (no
@@ -887,9 +886,10 @@ def test_synthesis_runs_absent_when_no_synthetic_nodes(tmp_path):
         include_sketch_precomputed=False,
     )
     data = json.loads(out_path.read_text())
-    passes = {r.get("pass") for r in data["analysis_runs"]}
-    assert "orchestrator_file_symbol_synthesis" not in passes
-    assert "boundary_external_symbol_synthesis" not in passes
+    runs = {r.get("pass"): r for r in data["analysis_runs"]}
+    for pass_id in ("orchestrator_file_symbol_synthesis", "boundary_external_symbol_synthesis"):
+        assert runs[pass_id]["nodes_emitted"] == 0, pass_id
+        assert runs[pass_id]["silence_reason"] == "no_candidate_construct", pass_id
 
 
 def test_node_bearing_path_gets_file_anchor_wi_dagif(tmp_path):

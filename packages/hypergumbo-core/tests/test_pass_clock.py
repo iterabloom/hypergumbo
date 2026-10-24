@@ -199,6 +199,9 @@ class TestAnalyzerPoolMeasuresOnTheWorkerThread:
 
         (analysis_runs, *_rest) = _all_analyzers.run_all_analyzers(tmp_path)
         by_pass = {r["pass"]: r for r in analysis_runs}
+        # The orchestrator's file-symbol synthesis run is recorded even when it
+        # mints nothing (WI-tivif); it is not one of the pool's analyzers.
+        by_pass.pop("orchestrator_file_symbol_synthesis", None)
         assert set(by_pass) == {"burner-an", "sleeper-an"}  # reach first
 
         # Read on the orchestrating thread (which only waits in as_completed)
