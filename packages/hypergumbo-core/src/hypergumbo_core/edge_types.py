@@ -95,7 +95,9 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     # ADR-0023 compliant — the value names the relationship.
     EdgeTypeSpec(
         "calls", AXIS_RELATIONSHIP,
-        "Caller invokes callee.",
+        "Executing src invokes dst. src is a callable, or an anchor (type, "
+        "Go package variable, file) for code outside any function; read its "
+        "kind before treating it as a caller (ADR-0023, WI-fazup).",
     ),
     EdgeTypeSpec(
         "imports", AXIS_RELATIONSHIP,
