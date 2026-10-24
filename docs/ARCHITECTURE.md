@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **363** Python modules (149 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 110 core, 4 CLI, 37 tracker)
-- **56093** symbols (functions, classes, methods)
-- **224216** edges by type:
-  - calls: 127216
-  - contains: 52271
-  - imports: 18984
-  - instantiates: 12655
-  - references: 9402
-  - module_attr_ref: 2065
-  - other: 1623
+- **366** Python modules (150 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 112 core, 4 CLI, 37 tracker)
+- **56354** symbols (functions, classes, methods)
+- **225425** edges by type:
+  - calls: 127834
+  - contains: 52514
+  - imports: 19125
+  - instantiates: 12718
+  - references: 9532
+  - module_attr_ref: 2073
+  - other: 1629
 
 ## Package Architecture
 
@@ -36,7 +36,7 @@ depend on core but not on each other, and the tracker is fully independent.
                 /       |       |        \
                v        v       v         v
   lang-mainstream  lang-common  lang-extended1  lang-rust-analyzer  lang-scip-python
-  (53 analyzers)  (39 analyzers)  (41 analyzers)   (5 SCIP backend)   (4 SCIP backend)
+  (53 analyzers)  (39 analyzers)  (41 analyzers)   (6 SCIP backend)   (4 SCIP backend)
                    \      |      |       /
                     v     v      v      v
                        hypergumbo-core
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 56093 Symbols + 224216 Edges + UsageContexts           │
+│  Output: 56354 Symbols + 225425 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,20 +279,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10371.8 | ir.py |
-| `len` | external_symbol | 7981.0 | <external> |
-| `write_text` | external_symbol | 7227.0 | <external> |
-| `Span` | class | 6713.7 | ir.py |
-| `LinkerContext` | class | 3771.7 | registry.py |
-| `get` | external_symbol | 3552.0 | <external> |
-| `load_catalog` | function | 3384.4 | io_boundary.py |
-| `Edge.create` | method | 2521.9 | ir.py |
-| `str` | external_symbol | 2426.0 | <external> |
-| `Path` | external_symbol | 2408.0 | <external> |
-| `next` | external_symbol | 2249.0 | <external> |
+| `Symbol` | class | 10413.7 | ir.py |
+| `len` | external_symbol | 7993.0 | <external> |
+| `write_text` | external_symbol | 7251.0 | <external> |
+| `Span` | class | 6746.1 | ir.py |
+| `LinkerContext` | class | 3775.9 | registry.py |
+| `get` | external_symbol | 3578.0 | <external> |
+| `load_catalog` | function | 3392.4 | io_boundary.py |
+| `Edge.create` | method | 2525.5 | ir.py |
+| `str` | external_symbol | 2436.0 | <external> |
+| `Path` | external_symbol | 2418.0 | <external> |
+| `next` | external_symbol | 2250.0 | <external> |
 | `load_framework_patterns` | function | 2107.0 | framework_patterns.py |
 | `TrackerApp` | class | 1969.8 | tui.py |
-| `append` | external_symbol | 1893.0 | <external> |
+| `append` | external_symbol | 1904.0 | <external> |
 | `main` | function | 1781.4 | cli.py |
 
 ## Pattern System
@@ -500,7 +500,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-self-claims-drift` | Compare a verify-claims JSON run against the checked-in self-claim snapshot. |
 | `check-self-tree-validation` | Full-suite self-tree validation ratchet gate (WI-jigup). |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
-| `check-test-only-reachability` | WI-ratuv gate: a production function reachable only from test modules. |
+| `check-test-only-reachability` | WI-ratuv gate: a production function or method reachable only from test modules. |
 | `citation_gate_tests.py` | Tests reachable from a changed file by a STRING literal, for smart-test. |
 | `compare-survey-fingerprints.py` | Diff ``Symbol.fingerprint`` across two surveys of the same tree. |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
@@ -647,6 +647,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.meta_write_discipline`**: INV-hazov: static enforcement of ``MetaKeySpec.write_discipline``.
 - **`hypergumbo_core.metrics`**: Metrics computation for behavior map output.
 - **`hypergumbo_core.module_key_axis`**: The module-key axis: what may occupy a module slot (ADR-0051).
+- **`hypergumbo_core.module_sets`**: A disjunctive module slot is stored once and named by a short handl...
 - **`hypergumbo_core.multi_value_field_axis`**: Multi-value field axis declaration linter (WI-busij).
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
 - **`hypergumbo_core.noise_filter`**: Default-view noise predicate for the survey pipeline (Phase D).
@@ -676,6 +677,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.scip.descriptor`**: Parser for Sourcegraph SCIP symbol strings.
 - **`hypergumbo_core.scip.edges`**: SCIP ``Index`` → hypergumbo ``Edge`` translation shim (WI-mafut Pha...
 - **`hypergumbo_core.scip.index`**: SCIP ``Index`` → hypergumbo ``Symbol`` translation shim (WI-mafut P...
+- **`hypergumbo_core.scip.resolve`**: Resolve a SCIP symbol to the record it names, in the Document that ...
 - **`hypergumbo_core.scip_python_install`**: Availability probes for the scip-python backend (WI-nanom).
 - **`hypergumbo_core.selection.filters`**: Path classification and symbol kind filtering for selection.
 - **`hypergumbo_core.selection.language_proportional`**: Language-proportional symbol selection utilities.
@@ -847,6 +849,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_extended1.wolfram`**: Wolfram Language analysis pass using tree-sitter-wolfram.
 - **`hypergumbo_lang_extended1.zig`**: Zig language analyzer using tree-sitter.
 - **`hypergumbo_lang_rust_analyzer.analyzer`**: Registered analyzer entry point for the SCIP-backed Rust backend (W...
+- **`hypergumbo_lang_rust_analyzer.crate_units`**: Which crate target each Document of a rust-analyzer index belongs t...
 - **`hypergumbo_lang_rust_analyzer.gate`**: Opt-in gate for the SCIP-backed Rust analyzer (WI-duzul Slice C gate).
 - **`hypergumbo_lang_rust_analyzer.graceful_degrade`**: Graceful-degrade orchestrator for the SCIP-backed Rust analyzer (WI...
 - **`hypergumbo_lang_rust_analyzer.invoke`**: Shell-out wrapper for ``rust-analyzer scip`` (WI-duzul Slice B-first).
@@ -973,8 +976,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 9a3d8296f061
-  commit_count: 8536
+  commit: e9bfcd30a912
+  commit_count: 8574
   hypergumbo: 9.2.0
   python: 3.12.3
 -->
