@@ -1,0 +1,57 @@
+Original commit body from 31f151c8dfe58060a93c6fbfc1456c6e012f3dee:
+
+An unresolved C/C++ call is stamped with every header its file can see
+(INV-zikul / INV-valom), and that comma-joined list was the module slot:
+part of the external symbol's id, its display label, the edge's dst and
+its dst_ref, once per call site. On envoy a file sees ~140 headers, so
+each of those strings ran 1-12 KB. envoy's survey was 5.5 GB, and
+verify-claims was SIGKILLed at 20.5 GB when load_substrate re-read it.
+envoy-half: 151,591 edges carried 2.07 GB of repeated lists against
+14 MB of distinct content (3,657 lists, about one per file).
+
+Owner ruling 2026-10-23: handle + side table. A slot naming two or more
+modules is now `module-set-<16 hex>` (sha256 of the comma-joined list),
+built by module_sets.module_slot in cpp.py and c.py. The list is stored
+once in a new top-level `module_sets` table written by finalize.
+survey_io.load_behavior_map registers it on every load, and refuses any
+entry whose handle does not hash to its list. module_hint_disjuncts and
+_module_hint_candidates, the two places the slot is split, expand the
+handle first. So classification (ANY) and the coverage gate (ALL) read
+the same list as before. A one-module slot is written as itself. A
+handle with no table entry reads as one unenumerated module, which
+withholds (fails closed), and warns once.
+
+Versions (owner ruling: bump the stable_id scheme):
+  SCHEMA_VERSION 0.20.15 -> 0.21.0. MINOR because a reader that split the
+    slot on commas must now expand the handle first (spec: "Breaking
+    output changes bump minor").
+  stable_id_scheme v11 -> v12. The formula is unchanged, but its module
+    path input is the handle for C/C++ externals with 2+ headers. No other
+    value changes.
+
+Measured A/B, pre-registered (lab notebook jahuf_10232026/; BEFORE = dev
+88ac39f8a5, AFTER = this change):
+  - Verdict envelopes identical on 8 of 8 repos with both arms: torsocks,
+    modsecurity, whisper.cpp, sherpa-onnx, shaka-packager, plasma-desktop,
+    grpc and envoy-half. Handles were expanded before comparing.
+    whisper.cpp and sherpa-onnx differ only in the order of some
+    sink_symbols lists (same strings, sorted by id).
+  - Surveys identical on the same 8 after normalisation: masked hashes over
+    dst strings, and order-insensitive lists.
+  - Survey size: grpc 892 -> 495 MB, envoy-half 3,121 -> 490 MB.
+  - Peak RSS: grpc 5.8 -> 4.4 GB, envoy-half 11.9 -> 3.7 GB.
+  - Full envoy: dev is SIGKILLed at 20.3 GB; this change completes at
+    6.0 GB with a 977 MB survey.
+
+Stated limit: the handle bounds an id's size, not its dependence on
+context. One external target still gets one node per distinct include
+list (52,571 nodes for 12,160 names on envoy-half). Filed as INV-mujov.
+
+Also: linkers/grpc.py's proto-service fold row became a named scalar
+again. WI-fotad (6782e9bf28) turned `canonical_kind = "interface"` into the
+tuple ("grpc_service", "interface"), and find_partial_abstract_family_literals
+read the tuple as a partial interface/trait/protocol enumeration. That
+failed test_no_language_agnostic_module_hand_rolls_a_partial_abstract_family
+on dev; found here by the full suite.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
