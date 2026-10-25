@@ -12,7 +12,8 @@ same). WI-saduj wrote the walk into ``c.py`` and shared it with ``cpp.py``, but
 kept a reader that looked for a ``function_declarator`` as a DIRECT child of the
 definition: every CUDA function returning a pointer (``float *f()``) got no
 symbol and every call in it was dropped (WI-fohuh). One walk in the package all
-three can reach is the cure; ``c.py`` re-exports it under its old names.
+three can reach is the cure; ``c.py``, ``cpp.py`` and ``cuda.py`` now import it
+from here.
 
 How it works
 ------------

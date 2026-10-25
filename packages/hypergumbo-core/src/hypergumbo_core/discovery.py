@@ -16,8 +16,8 @@ respecting exclude patterns. Also provides:
   requested root equals or lies under the installed index's ``repo_root`` (a
   sub-directory request is answered from the index, filtered to that
   sub-directory), ``find_files`` matches patterns against the index (applying
-  only ``max_files`` and the size limit -- the ``excludes`` argument is not
-  re-checked) and never walks the tree. ``cli.run_survey`` installs one built from a single ``os.walk``
+  only ``max_files``, the size limit and the running analyzer's file budget --
+  the ``excludes`` argument is not re-checked) and never walks the tree. ``cli.run_survey`` installs one built from a single ``os.walk``
   (``FileIndex.build``) and clears it on every exit path; ``sketch`` installs
   a map-scoped ``FileIndex.from_paths`` for the ``--input`` / warm-map case
   (INV-jumim), so ``find_files`` then yields only the map's files. With no
@@ -134,8 +134,11 @@ respecting exclude patterns. Also provides:
   ``_sibling_output`` (the producing tool's manifest beside the candidate) never
   claims a directory that holds a project manifest of its own (a subproject named
   ``build``); the ``_sibling_file`` rules (``cover``, ``.dart_tool``,
-  ``.stack-work``, ``elm-stuff``), the Sphinx split-layout ``build/`` rule,
-  sbt's ``project/target`` arm, setuptools ``build/`` and Python ``dist/`` do
+  ``.stack-work``, ``elm-stuff``), Phoenix ``priv/static/assets``, the Sphinx
+  split-layout ``build/`` rule, sbt's ``project/target`` arm, setuptools
+  ``build/``, Python ``dist/`` and declared JS output (a ``dist``/``build``/
+  ``out`` that a ``package.json``, ``tsconfig`` or ``action.yml`` names --
+  deliberately, since declared output may carry its own ``package.json``) do
   not apply that check; MkDocs ``site/`` and untracked JS output check only
   for their own manifest inside the directory.
 

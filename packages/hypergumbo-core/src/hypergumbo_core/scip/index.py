@@ -69,9 +69,10 @@ Edge cases intentionally handled by skip rather than raise:
   without doing it, and the symbol side was never where it belonged.
 
   Where it actually lives, for anyone following the thread: the Rust
-  backend's ``translate.py`` passes a ``resolve_symbol`` map and returns
-  ``None`` for a SCIP symbol with no in-workspace definition, which
-  *drops the edge* rather than letting it dangle into a boundary node.
+  backend's ``translate.py`` passes a ``resolve_symbol`` resolver (a
+  ``MonikerResolver``) that returns ``None`` for a SCIP symbol with no
+  in-workspace definition (and for an ambiguous one), which *drops the
+  edge* rather than letting it dangle into a boundary node.
   That is deliberate and load-bearing — before commit ``9266762d4b``,
   endpoints were raw SCIP descriptor strings, so EVERY scip edge dangled
   and finalize's endpoint-integrity step silently discarded the entire
@@ -101,8 +102,10 @@ Edge cases intentionally handled by skip rather than raise:
   Symbol's name was the bare index (``"1"``, ``"102"``) and its
   ``stable_id`` was ``sha256("local 1")``, so on a 16-file crate 498 of
   1255 Symbols shared an id (39.7%); and the Rust backend's edge resolver
-  is one index-wide map keyed on the raw moniker, so a read of ``local 0``
-  in one file resolved to the ``local 0`` of whichever file was mapped
+  was then one index-wide map keyed on the raw moniker (INV-sipod has since
+  made it per-Document, through
+  :class:`~hypergumbo_core.scip.resolve.MonikerResolver`), so a read of
+  ``local 0`` in one file resolved to the ``local 0`` of whichever file was mapped
   last — 329 of 455 local-pointing edges crossed files, 21.2% of every
   edge in the artifact, each asserting a reference that cannot exist.
   Those 500 nodes were 75% of the backend's output and, carrying the

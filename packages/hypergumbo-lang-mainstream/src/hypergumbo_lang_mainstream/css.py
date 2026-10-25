@@ -34,8 +34,11 @@ is not itself emitted as a Symbol.
 Why This Design
 ---------------
 - CSS analysis helps understand theming and styling patterns
-- @import edges record cross-file dependencies (the target is a module
-  placeholder, not resolved to the imported file)
+- @import edges record cross-file dependencies: an import of a file the
+  repository holds (resolved against the importing file's directory) lands
+  on that file's file node; a URL, a protocol-relative URL, a path outside
+  the repository or a missing file keeps the module placeholder
+  ``css:<path>:0-0:module:module`` (WI-popak-mopad)
 - Variable detection helps identify design system patterns
 - Useful for frontend-heavy applications
 - Identity (ADR-0035, WI-tusad): keyframes, media, font-face and selector

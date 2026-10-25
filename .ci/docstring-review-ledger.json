@@ -17,12 +17,16 @@
    "run": "2026-10-16"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/analyze/all_analyzers.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py": {
-   "reviewed": "2026-09-28",
-   "run": "2026-09-28"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
+  },
+  "packages/hypergumbo-core/src/hypergumbo_core/analyze/c_family.py": {
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/analyze/cyclomatic.py": {
    "reviewed": "2026-10-14",
@@ -33,8 +37,8 @@
    "run": "2026-10-20"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/analyze/merge_producers.py": {
-   "reviewed": "2026-10-17",
-   "run": "2026-10-17"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/analyze/registry.py": {
    "reviewed": "2026-10-14",
@@ -53,8 +57,8 @@
    "run": "2026-10-17"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/audit_findings.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/axis_drift.py": {
    "reviewed": "2026-09-28",
@@ -97,8 +101,8 @@
    "run": "2026-10-20"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/catalog.py": {
-   "reviewed": "2026-10-16",
-   "run": "2026-10-16"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/catalogue_home.py": {
    "reviewed": "2026-10-05",
@@ -113,8 +117,8 @@
    "run": "2026-10-14"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/cfg.py": {
-   "reviewed": "2026-09-28",
-   "run": "2026-09-28"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/check_id_construction.py": {
    "reviewed": "2026-10-17",
@@ -129,8 +133,8 @@
    "run": "2026-10-17"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/cli.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/compact.py": {
    "reviewed": "2026-10-05",
@@ -165,12 +169,12 @@
    "run": "2026-10-14"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/ddg_build.py": {
-   "reviewed": "2026-10-14",
-   "run": "2026-10-14"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/discovery.py": {
-   "reviewed": "2026-10-17",
-   "run": "2026-10-17"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/edge_types.py": {
    "reviewed": "2026-10-17",
@@ -197,8 +201,8 @@
    "run": "2026-10-14"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/framework_patterns.py": {
-   "reviewed": "2026-10-14",
-   "run": "2026-10-14"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/function_summaries/__init__.py": {
    "reviewed": "2026-10-20",
@@ -217,8 +221,8 @@
    "run": "2026-10-17"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/io_boundary_types.py": {
    "reviewed": "2026-09-28",
@@ -249,12 +253,12 @@
    "run": "2026-10-17"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/_text_filters.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/_third_party_bases.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/_transitive_bases.py": {
    "reviewed": "2026-10-16",
@@ -265,8 +269,8 @@
    "run": "2026-10-05"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/airflow_framework_dispatch.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/annotation_convention.py": {
    "reviewed": "2026-09-25",
@@ -317,12 +321,12 @@
    "run": "2026-10-10"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/di_resolution.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25b"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/django_orm_dispatch.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/event_sourcing.py": {
    "reviewed": "2026-10-17",
@@ -337,8 +341,8 @@
    "run": "2026-09-28"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/graphql.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/graphql_resolver.py": {
    "reviewed": "2026-10-14",
@@ -349,8 +353,8 @@
    "run": "2026-10-17"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/grpc.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25b"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/http.py": {
    "reviewed": "2026-10-20",
@@ -369,8 +373,8 @@
    "run": "2026-09-25b"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/jackson_dispatch.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/jni.py": {
    "reviewed": "2026-09-25",
@@ -381,16 +385,16 @@
    "run": "2026-09-28"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/kafka_streams_dispatch.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/lua_ffi.py": {
    "reviewed": "2026-09-25",
    "run": "2026-09-25b"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/message_dispatch.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25b"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/message_queue.py": {
    "reviewed": "2026-10-17",
@@ -401,8 +405,8 @@
    "run": "2026-09-28"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/middleware_chain.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/napi.py": {
    "reviewed": "2026-09-25",
@@ -425,12 +429,12 @@
    "run": "2026-10-16"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/pyffi.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/react_component.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25b"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/receiver_type_dispatch.py": {
    "reviewed": "2026-10-14",
@@ -457,20 +461,20 @@
    "run": "2026-10-16"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/solidity_abi.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25b"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/subprocess_cli.py": {
    "reviewed": "2026-10-20",
    "run": "2026-10-20"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/swift_objc.py": {
-   "reviewed": "2026-09-28",
-   "run": "2026-09-28"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/tauri_ipc.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25b"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/type_hierarchy.py": {
    "reviewed": "2026-10-20",
@@ -485,16 +489,16 @@
    "run": "2026-09-25b"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/view_template_laravel.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/view_template_phoenix.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/view_template_spring.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/vue_component.py": {
    "reviewed": "2026-10-06",
@@ -505,8 +509,8 @@
    "run": "2026-09-25b"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/wasm_bindgen.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25b"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py": {
    "reviewed": "2026-10-20",
@@ -535,6 +539,10 @@
   "packages/hypergumbo-core/src/hypergumbo_core/module_key_axis.py": {
    "reviewed": "2026-10-20",
    "run": "2026-10-20"
+  },
+  "packages/hypergumbo-core/src/hypergumbo_core/module_sets.py": {
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/multi_value_field_axis.py": {
    "reviewed": "2026-10-17",
@@ -645,16 +653,20 @@
    "run": "2026-10-06-sample"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/scip/descriptor.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/scip/edges.py": {
    "reviewed": "2026-10-20",
    "run": "2026-10-20"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/scip/index.py": {
-   "reviewed": "2026-10-17",
-   "run": "2026-10-17"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
+  },
+  "packages/hypergumbo-core/src/hypergumbo_core/scip/resolve.py": {
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/scip_python_install.py": {
    "reviewed": "2026-10-17",
@@ -689,8 +701,8 @@
    "run": "2026-10-06-sample"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/signature_axis.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/sketch.py": {
    "reviewed": "2026-10-16",
@@ -705,8 +717,8 @@
    "run": "2026-09-28"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/spec_validator.py": {
-   "reviewed": "2026-10-16",
-   "run": "2026-10-16"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/supply_chain.py": {
    "reviewed": "2026-10-16",
@@ -725,12 +737,12 @@
    "run": "2026-10-14"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/symbol_resolution.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/taint.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/taint_refine.py": {
    "reviewed": "2026-10-16",
@@ -745,8 +757,8 @@
    "run": "2026-10-16"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/test_only_reachability.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-core/src/hypergumbo_core/url_folding/__init__.py": {
    "reviewed": "2026-10-14",
@@ -777,8 +789,8 @@
    "run": "2026-10-20"
   },
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/__init__.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/astro.py": {
    "reviewed": "2026-10-06",
@@ -860,6 +872,10 @@
    "reviewed": "2026-10-05",
    "run": "2026-10-05"
   },
+  "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/meson.py": {
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
+  },
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/mix_deps.py": {
    "reviewed": "2026-10-10",
    "run": "2026-10-10"
@@ -900,6 +916,10 @@
    "reviewed": "2026-09-25",
    "run": "2026-09-25b"
   },
+  "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/rst.py": {
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
+  },
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/scheme.py": {
    "reviewed": "2026-10-20",
    "run": "2026-10-20"
@@ -909,8 +929,12 @@
    "run": "2026-09-25b"
   },
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/starlark.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
+  },
+  "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/svelte.py": {
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/thrift.py": {
    "reviewed": "2026-10-20",
@@ -925,8 +949,8 @@
    "run": "2026-10-16"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/__init__.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/ada.py": {
    "reviewed": "2026-10-05",
@@ -940,13 +964,17 @@
    "reviewed": "2026-10-06",
    "run": "2026-10-06-sample"
   },
+  "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/asm.py": {
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
+  },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/bibtex.py": {
    "reviewed": "2026-10-14",
    "run": "2026-10-14"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/bitbake.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25b"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/blade.py": {
    "reviewed": "2026-09-25",
@@ -957,20 +985,24 @@
    "run": "2026-10-05"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/circom.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/cobol.py": {
    "reviewed": "2026-10-20",
    "run": "2026-10-20"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/d_lang.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/fennel.py": {
    "reviewed": "2026-09-25",
    "run": "2026-09-25b"
+  },
+  "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/fish.py": {
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/gdscript.py": {
    "reviewed": "2026-10-05",
@@ -985,20 +1017,20 @@
    "run": "2026-09-25"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/hack.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/haxe.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/janet.py": {
    "reviewed": "2026-09-25",
    "run": "2026-09-25b"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/jsonnet.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25b"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/kdl.py": {
    "reviewed": "2026-10-14",
@@ -1043,6 +1075,10 @@
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/smithy.py": {
    "reviewed": "2026-10-14",
    "run": "2026-10-14"
+  },
+  "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/solidity.py": {
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/sparql.py": {
    "reviewed": "2026-09-25",
@@ -1113,24 +1149,24 @@
    "run": "2026-10-20"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/css.py": {
-   "reviewed": "2026-10-05",
-   "run": "2026-10-05"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/dockerfile.py": {
    "reviewed": "2026-09-25",
    "run": "2026-09-25b"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/gitignore.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go.py": {
    "reviewed": "2026-10-16",
    "run": "2026-10-16"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/go_def_use.py": {
-   "reviewed": "2026-10-06",
-   "run": "2026-10-06-sample"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/groovy.py": {
    "reviewed": "2026-10-20",
@@ -1153,8 +1189,8 @@
    "run": "2026-10-20"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ini.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py": {
    "reviewed": "2026-10-20",
@@ -1200,6 +1236,10 @@
    "reviewed": "2026-10-20",
    "run": "2026-10-20"
   },
+  "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/markdown.py": {
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
+  },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/npm_deps.py": {
    "reviewed": "2026-10-10",
    "run": "2026-10-10"
@@ -1229,12 +1269,12 @@
    "run": "2026-10-10"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py_def_use.py": {
-   "reviewed": "2026-09-28",
-   "run": "2026-09-28"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/py_deps.py": {
    "reviewed": "2026-10-10",
@@ -1249,8 +1289,8 @@
    "run": "2026-10-20"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust.py": {
-   "reviewed": "2026-09-28",
-   "run": "2026-09-28"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/rust_def_use.py": {
    "reviewed": "2026-10-05",
@@ -1269,8 +1309,8 @@
    "run": "2026-10-20"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/swift.py": {
-   "reviewed": "2026-09-28",
-   "run": "2026-09-28"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/symbol_introspection.py": {
    "reviewed": "2026-10-14",
@@ -1281,8 +1321,8 @@
    "run": "2026-09-28"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ts_def_use.py": {
-   "reviewed": "2026-10-20",
-   "run": "2026-10-20"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/xml_config.py": {
    "reviewed": "2026-09-28",
@@ -1304,6 +1344,10 @@
    "reviewed": "2026-10-17",
    "run": "2026-10-17"
   },
+  "packages/hypergumbo-lang-rust-analyzer/src/hypergumbo_lang_rust_analyzer/crate_units.py": {
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
+  },
   "packages/hypergumbo-lang-rust-analyzer/src/hypergumbo_lang_rust_analyzer/gate.py": {
    "reviewed": "2026-10-16",
    "run": "2026-10-16"
@@ -1317,8 +1361,8 @@
    "run": "2026-10-17"
   },
   "packages/hypergumbo-lang-rust-analyzer/src/hypergumbo_lang_rust_analyzer/translate.py": {
-   "reviewed": "2026-10-17",
-   "run": "2026-10-17"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo-lang-scip-python/src/hypergumbo_lang_scip_python/__init__.py": {
    "reviewed": "2026-10-17",
@@ -1489,8 +1533,8 @@
    "run": "2026-10-14"
   },
   "packages/hypergumbo-tracker/src/hypergumbo_tracker/validation.py": {
-   "reviewed": "2026-09-25",
-   "run": "2026-09-25"
+   "reviewed": "2026-10-25",
+   "run": "2026-10-25"
   },
   "packages/hypergumbo/src/hypergumbo/__init__.py": {
    "reviewed": "2026-10-10",

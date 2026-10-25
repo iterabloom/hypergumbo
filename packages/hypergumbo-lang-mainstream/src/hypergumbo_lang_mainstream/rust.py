@@ -6,7 +6,8 @@ This analyzer uses tree-sitter to parse Rust files and extract:
 - Struct declarations (struct)
 - Enum declarations (enum)
 - Impl blocks and their methods
-- Trait declarations, including bodyless trait methods (``method`` symbols)
+- Trait declarations and their methods, bodyless or default-bodied
+  (``method`` symbols named ``Trait::name``)
 - Functions declared in ``extern`` blocks (``function`` symbols carrying the
   foreign binding the source states -- ABI, wasm_bindgen ``js_namespace`` /
   ``js_name`` / ``module``, ``#[link]`` / ``#[link_name]`` -- in
@@ -105,11 +106,13 @@ Why This Design
 
 Population of ``is_exported`` follows Rust's visibility rule: an item is
 exported only when its declaration carries an unqualified ``pub`` modifier;
-``pub(crate)`` / ``pub(super)`` / private items are not exported. Two
-constructs cannot follow that rule and do not: a bodyless trait method
-carries no visibility modifier of its own and is always marked exported,
-and an enum variant inherits the *enum's* export status (its
-``modifiers`` remain the variant's own).
+``pub(crate)`` / ``pub(super)`` / private items are not exported. Some
+constructs carry no visibility modifier of their own. A bodyless trait
+method is always marked exported, even in a private trait. An enum variant
+inherits the *enum's* export status (its ``modifiers`` remain the
+variant's own). A default-bodied trait method and a method in an
+``impl Trait for T`` block go through the ``pub`` test like any function,
+so they are never marked exported.
 """
 from __future__ import annotations
 

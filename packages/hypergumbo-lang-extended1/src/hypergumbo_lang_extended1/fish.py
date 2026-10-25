@@ -2,7 +2,8 @@
 """Fish shell analysis pass using tree-sitter.
 
 Detects:
-- Function definitions (with --argument options)
+- Function definitions (the signature lists the names after a literal
+  ``--argument`` flag; the ``--argument-names`` and ``-a`` spellings are not read)
 - Alias declarations
 - Global variable assignments (set -g, set -gx, set -U, set -Ux, set -x)
 - Source statements for imports

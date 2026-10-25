@@ -9,8 +9,11 @@ How It Works
 ------------
 1. ``load_cfg_mapping()`` reads a per-language YAML file that maps tree-sitter
    node types to control-flow categories: conditional, loop, break, continue,
-   return, try/catch, switch/match, and semantic hooks. Two further keys are
-   not control-flow categories: ``call_node_types`` and ``atomic_statement``.
+   return, try/catch, switch/match, and semantic hooks. Besides ``language``
+   and ``grammar``, four further keys are not control-flow categories:
+   ``call_node_types``, ``atomic_statement``, ``nested_function`` and
+   ``block_tail_returns`` (a block's last expression without ``;`` is a
+   return, read by ``ddg_build``'s return-span lift).
 
 2. ``build_function_cfg()`` walks the tree-sitter AST for a function body and
    produces a ``FunctionCfg`` using the fringe-based recursive algorithm (same
@@ -27,7 +30,9 @@ How It Works
    - try/catch/finally: exception edges run from a synthetic try-entry
      block to every catch entry; the try and catch fringes connect to the
      finally entry, or merge when there is no finally.
-   - switch/match: edges from scrutinee to each case entry.
+   - switch/match: ``case`` edges from scrutinee to each case entry, plus an
+     ``always`` fall-through fringe edge from the scrutinee for "no case
+     matched" (WI-sozob), added even when a default arm exists.
 
 3. **Semantic hooks** handle non-standard control flow that cannot be reduced
    to the standard categories via YAML mapping alone:
@@ -38,8 +43,11 @@ How It Works
    yields a CFG missing that construct with no error and no warning.
 
    - ``early_return``: Dual control flow (Rust ``?`` operator) — Ok path
-     continues, Err path exits function. The per-entry ``semantics`` value
-     (e.g. ``return_on_err``) selects the variant.
+     continues, Err path exits function. Each entry's ``semantics``,
+     ``ok_defines`` and ``err_edge`` values are parsed into
+     ``EarlyReturnMapping`` but not consulted: ``_process_early_return``
+     implements one fixed variant, a ``false`` edge from the statement to the
+     exit block (Err) plus a ``true`` fringe edge (Ok).
    - ``context_manager``: Entry call before body, exit call after body including
      exceptional paths (Python ``with``).
    - ``deferred``: Statement body executes at function exit, after all

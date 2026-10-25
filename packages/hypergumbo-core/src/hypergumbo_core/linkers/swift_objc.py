@@ -8,8 +8,10 @@ This linker detects interoperability patterns between Swift and Objective-C:
 - #selector() references
 
 Patterns detected:
-- @objc class/func/var/enum declarations in Swift -> ``kind="function"``
-  symbols with ``meta["framework_role"] = "objc_bridge"``
+- ``@objc`` immediately followed by ``class``/``func``/``var``/``enum`` in
+  Swift (``@objc(name)``, ``@objcMembers`` and forms with an intervening
+  modifier such as ``@objc public func`` are not matched) ->
+  ``kind="function"`` symbols with ``meta["framework_role"] = "objc_bridge"``
 - NSObject inheritance in Swift -> ``kind="function"`` symbols with
   ``meta["framework_role"] = "objc_bridge"``
 - *-Bridging-Header.h files -> import edges

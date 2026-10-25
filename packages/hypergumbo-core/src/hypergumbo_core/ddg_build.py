@@ -95,8 +95,10 @@ Code at module scope -- a Python module body, a JS/TS program's top level --
 is anchored by the analyzer on the FILE pseudo-symbol
 (``python:app.py:1-1:file:file``). A spec that names its root node type in
 ``module_node_types`` has that root walked as one more function under the file
-id, so a flow written at module scope is adjudicated like the same lines in a
-function, where before it was decided by call-graph reachability alone.
+id when the module has at least one call outside every nested function (a
+definitions-and-imports-only module is skipped), so a flow written at module
+scope is adjudicated like the same lines in a function, where before it was
+decided by call-graph reachability alone.
 
 The module's top-level ``def`` / ``function`` / ``class`` are its nested
 functions: may-run regions, never statements in sequence (the cfg mappings'

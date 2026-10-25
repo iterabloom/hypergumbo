@@ -66,8 +66,10 @@ Analysis proceeds in two passes for cross-file resolution:
 - Create import edges from files to imported symbols
 - Annotate call edges with dataflow access modes (``annotate_dataflow_ast``)
 
-After both passes, a ``pyproject.toml`` dependency manifest is parsed so boundary
-nodes for declared dependencies classify as tier 2.
+After both passes, every ``pyproject.toml`` under the repo is parsed
+(``py_deps.parse_python_dependencies``) into the ``AnalysisResult.dependency_manifest``,
+which ``ir.create_boundary_nodes`` uses to stamp boundary nodes for declared
+dependencies with ``meta["directness"]``; every boundary node stays tier 3 (ADR-0041).
 
 Detected Patterns
 -----------------
@@ -194,6 +196,9 @@ Symbols include structured metadata in `meta` dict:
 - **fields** / **field_type_ids**: on a class, its ``__init__`` field -> project
   type name, plus type id where that id is trustworthy, for the
   ``inherited_calls`` linker's ``self.field.method()`` walk (WI-hiziz, WI-supat).
+- **concepts** (file node): ``[{"concept": "main_guard", "framework": "python"}]``
+  when the module has an ``if __name__ == "__main__":`` guard, which
+  ``entrypoints`` reads for script entry-point detection.
 
 Why This Design
 ---------------
@@ -10464,9 +10469,9 @@ def analyze_python(
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    # Parse pyproject.toml deps for tier-2 classification of boundary
-    # nodes (WI-nunuj). Empty manifest → no entries → boundary nodes
-    # stay tier 3 (no regression vs. previous behaviour).
+    # Parse pyproject.toml deps so boundary nodes get a ``directness``
+    # stamp (WI-nunuj). Every boundary node stays tier 3 (ADR-0041);
+    # an empty manifest → no entries → no stamp.
     from hypergumbo_lang_mainstream.py_deps import parse_python_dependencies
     py_manifest = parse_python_dependencies(repo_root)
 

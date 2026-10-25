@@ -104,8 +104,18 @@ Shared helpers
   ``make_entry_stable_id`` (shader entry points), ``make_protocol_stable_id``
   (linker stand-ins) and ``make_synthetic_symbol_identity`` (Class-B
   stand-ins). ``is_table_kind`` tells a producer which of its kinds the
-  backstop's table owns, and ``ancestor_labels`` collects the enclosing
-  scopes a producer hashes into its scope chain.
+  backstop's table owns, ``floor_stable_id_key`` computes the backstop's
+  floor key for every other kind (one definition, also read by
+  ``spec_validator.compute_stable_id_stats``), and ``ancestor_labels``
+  collects the enclosing scopes a producer hashes into its scope chain.
+- **Smaller helpers.** ``make_module_import_dst`` and
+  ``make_manifest_target_dst`` build well-formed dst ids for ``imports``
+  edges and manifest ``defines_target`` edges; ``visibility_from_modifiers``
+  and ``is_exported_from_modifiers`` read visibility and exported-ness from a
+  modifier list; ``run_recording_log`` wraps a log so each line is also
+  recorded on ``run.warnings``; ``html_element_tag`` and ``block_prelude``
+  are the ``label_of`` callbacks ``ancestor_labels`` uses for HTML-family and
+  block-bodied grammars.
 
 Why This Design
 ---------------

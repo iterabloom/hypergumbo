@@ -12,7 +12,8 @@ method looks like a dead function to dead-code analysis.
 
 This linker scans symbols for classes whose transitive base chain (the
 class's own ``meta.base_classes`` plus those of in-tree ancestors reached via
-``extends``/``implements`` edges) names any Airflow base class, finds the
+the inheritance edge family, ``extends`` / ``implements`` / ``inherits``)
+names any Airflow base class, finds the
 framework-called methods defined on those classes (Python analyzer emits
 method names as ``ClassName.method_name``), and emits ``dispatches_to`` edges
 from each Airflow subclass to each of its override methods. With the class
@@ -108,8 +109,9 @@ def _find_airflow_subclasses(
     """Return (class_symbol, framework_method_names, is_fallback) for every Airflow subclass.
 
     A class qualifies when **any** name in its transitive ``base_classes``
-    chain — itself plus every in-tree ancestor reached via
-    ``extends``/``implements`` edges — matches an Airflow base. This
+    chain — itself plus every in-tree ancestor reached via the inheritance
+    edge family (``extends`` / ``implements`` / ``inherits``) — matches an
+    Airflow base. This
     catches the dominant real-world case where projects extend an
     intermediate base (``AlloyDBWriteBaseOperator``) that itself extends
     the framework base (``BaseOperator``); per WI-halat / UAT BUG-01 the

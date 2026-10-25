@@ -10,8 +10,10 @@ SCIP shim (``hypergumbo_core.scip.*``) with three things the generic
 shim cannot do on its own:
 
 1. **Stable-ID parity with rust.py.** The core shim fills
-   ``Symbol.stable_id`` with the raw SCIP symbol string. That string is
-   correct for cross-SCIP-pass dedup but does not match the
+   ``Symbol.stable_id`` with ``scip_stable_id``, a sha256 of the defining
+   Document's relative path and the SCIP moniker (INV-kutid); the raw
+   moniker stays in ``meta['scip_symbol']``. That id is correct for
+   cross-SCIP-pass dedup but does not match the
    signature-derived stable_id rust.py computes for the same function
    in the same source file. Without reassignment, enabling this
    backend on a cached analysis double-counts every Rust symbol.

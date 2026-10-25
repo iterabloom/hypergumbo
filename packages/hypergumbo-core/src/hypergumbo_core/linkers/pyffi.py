@@ -15,8 +15,9 @@ Four FFI mechanisms are detected by scanning Python source files:
    attribute calls on the loaded library variable. Matches funcname against
    C/C++ function symbols.
 
-2. **cffi**: Scans for ``ffi.dlopen()`` / ``ffi.verify()`` patterns, then finds
-   ``lib.funcname()`` attribute calls. Same name-matching as ctypes.
+2. **cffi**: In files that import cffi (``from cffi import`` / ``import cffi``),
+   scans for ``lib = <x>.dlopen(...)`` / ``lib = <x>.verify(...)`` assignments,
+   then finds ``lib.funcname()`` attribute calls. Same name-matching as ctypes.
 
 3. **C stdlib via ctypes/cffi**: When ``ctypes.CDLL(None)`` or ``ffi.dlopen(None)``
    loads the system C library (no repo-local C symbols to match), the linker

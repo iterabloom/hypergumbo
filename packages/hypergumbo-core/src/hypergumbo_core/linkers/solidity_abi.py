@@ -15,11 +15,13 @@ Two-phase detection:
    symbols and builds a name-to-symbols map. Event and modifier symbols are
    excluded since they're not callable from TS/JS contract interfaces.
 
-2. **TS/JS side**: Scans source files for two call patterns:
+2. **TS/JS side**: Scans every JS/TS file in the repository, keeping the
+   first call site per (file, function name), for two call patterns:
    - **ethers.js method calls**: ``variable.functionName(args)`` where
      ``functionName`` matches a known Solidity function name.
-   - **viem config calls**: ``functionName: 'solidityFn'`` inside
-     ``readContract``/``writeContract``/``simulateContract`` call objects.
+   - **viem config calls**: ``functionName: 'solidityFn'`` anywhere on a
+     line (the enclosing ``readContract``/``writeContract``/
+     ``simulateContract`` call is not checked).
 
 After building both maps, the linker creates ``calls`` edges
 (``meta.call_kind="abi"``) from synthetic TS/JS-side call nodes to the matching
@@ -182,7 +184,8 @@ def link_solidity_abi(
 
     Args:
         repo_root: Path to the repository root.
-        ts_js_symbols: All TypeScript/JavaScript symbols.
+        ts_js_symbols: Unused; call sites come from scanning every JS/TS
+            file in the repo file index (an rglob when no index is set).
         sol_symbols: All Solidity symbols.
 
     Returns:

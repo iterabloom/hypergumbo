@@ -37,8 +37,9 @@ exclusive markers of "this type is serialized"):
 * **Any method on the class carries a Jackson method-level annotation** —
   ``@JsonProperty``, ``@JsonGetter``, ``@JsonSetter``, ``@JsonCreator``,
   ``@JsonValue``, ``@JsonAnyGetter``, ``@JsonAnySetter``, ``@JsonRawValue``.
-  (Field-level ``@JsonProperty`` is carried on the paired accessor in the
-  default Java analyzer output, so the method sweep catches it.)
+  (Field-level ``@JsonProperty`` is NOT detected: the Java analyzer attaches
+  field annotations to a separate ``kind="field"`` symbol, and the method
+  sweep reads only ``kind="method"`` symbols.)
 * **Bean-marker base class** — the class extends a name in
   ``BEAN_MARKER_BASE_CLASSES`` (``ConfigurationProperties``) anywhere on its
   transitive base chain, including via in-tree intermediate classes.
@@ -153,8 +154,9 @@ CLASS_LEVEL_SERIALIZATION_ANNOTATIONS: frozenset[str] = frozenset({
     "Embeddable",
 })
 
-# Annotations on methods (or the methods paired with annotated fields) that
-# designate the method as a directly-dispatched accessor. A class that has
+# Annotations on methods (field-level annotations are not read; they sit on
+# separate field symbols) that designate the method as a directly-dispatched
+# accessor. A class that has
 # *any* method carrying one of these is itself a serialization target, and
 # each annotated method receives an edge regardless of its bean-convention
 # name.
@@ -347,10 +349,11 @@ def _find_bean_target_classes(
 
     A class is a target when it carries a class-level serialization hint, or
     when any of its methods carries a method-level Jackson annotation. The
-    second clause covers the ``@JsonProperty`` on a field → getter case: the
-    Java analyzer carries field-level annotations onto the paired accessor
-    method's decorators, so a method sweep under the class finds the hint
-    even if the class declaration itself is unannotated.
+    second clause does NOT cover ``@JsonProperty`` on a field: the Java
+    analyzer attaches field annotations to a separate ``kind="field"``
+    symbol, not to the paired accessor's decorators, and the method sweep
+    reads only methods, so a class whose only hint is a field annotation is
+    not a target.
 
     INV-zuhub: ``is_fallback`` is ``True`` iff the class qualified
     **only** via a bean-marker base whose short name has an in-tree
