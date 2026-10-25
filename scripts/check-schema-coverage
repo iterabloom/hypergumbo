@@ -200,16 +200,16 @@ def _observed_values(output: dict) -> tuple[set[str], set[str], set[str]]:
     return kinds, edge_types, evidence_types
 
 
-def _load_baseline() -> dict:
+def _load_baseline(path: Path) -> dict:
     """Return {kinds, edge_types, evidence_types} lists. Missing file → empty sets."""
-    if not BASELINE_PATH.exists():
+    if not path.exists():
         return {
             "uncovered_kinds": [],
             "uncovered_edge_types": [],
             "uncovered_evidence_types": [],
         }
     try:
-        return json.loads(BASELINE_PATH.read_text())
+        return json.loads(path.read_text())
     except json.JSONDecodeError as exc:  # pragma: no cover — defensive
         print(
             f"check-schema-coverage: baseline file invalid: {exc}",
@@ -219,20 +219,21 @@ def _load_baseline() -> dict:
 
 
 def _save_baseline(
+    path: Path,
     kinds: list[str],
     edge_types: list[str],
     evidence_types: list[str],
     conformance_violations: "list[str] | None" = None,
 ) -> None:
     """Write a new baseline file with sorted, deduplicated uncovered values."""
-    BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     body = {
         "uncovered_kinds": sorted(set(kinds)),
         "uncovered_edge_types": sorted(set(edge_types)),
         "uncovered_evidence_types": sorted(set(evidence_types)),
         "schema_conformance_violations": sorted(set(conformance_violations or [])),
     }
-    BASELINE_PATH.write_text(json.dumps(body, indent=2) + "\n")
+    path.write_text(json.dumps(body, indent=2) + "\n")
 
 
 def _report_axis(
@@ -291,6 +292,16 @@ def main(argv: "list[str] | None" = None) -> int:
         ),
     )
     parser.add_argument(
+        "--baseline",
+        type=Path,
+        default=BASELINE_PATH,
+        help=(
+            f"Baseline file to read, and to write with --update-baseline "
+            f"(default: {BASELINE_PATH}). The gate's own tests pass a private "
+            "file, so parallel runs never rewrite the committed one."
+        ),
+    )
+    parser.add_argument(
         "--corpus",
         type=Path,
         default=DEFAULT_CORPUS,
@@ -319,7 +330,7 @@ def main(argv: "list[str] | None" = None) -> int:
     # well-formed corpus; positive delta is a producer regression.
     conformance_current = _collect_conformance_violations(output)
 
-    baseline = _load_baseline()
+    baseline = _load_baseline(args.baseline)
     baseline_kinds = set(baseline.get("uncovered_kinds", []))
     baseline_edges = set(baseline.get("uncovered_edge_types", []))
     baseline_conformance = set(baseline.get("schema_conformance_violations", []))
@@ -358,13 +369,14 @@ def main(argv: "list[str] | None" = None) -> int:
 
     if args.update_baseline:
         _save_baseline(
+            args.baseline,
             current_uncovered_kinds,
             current_uncovered_edges,
             current_uncovered_ev,
             conformance_violations=conformance_current,
         )
         print(
-            f"check-schema-coverage: baseline updated → {BASELINE_PATH} "
+            f"check-schema-coverage: baseline updated → {args.baseline} "
             f"(uncovered: {len(current_uncovered_kinds)} kinds / "
             f"{len(current_uncovered_edges)} edge_types / "
             f"{len(current_uncovered_ev)} evidence_types / "
