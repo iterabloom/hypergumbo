@@ -1,0 +1,31 @@
+Original commit body from 0ed6a63ec5a6eca8a3e2a916178182d346476492:
+
+validate_pass_dependencies was a pre-run CNF gate that raised. ADR-0056 W1
+refused to wire it, because raising is the withholding direction and 29.2% of
+surveys carry a falsified declaration, and it was kept only so its 11 tests
+stayed green. Nothing called it outside those tests. Measured on a one-.js,
+one-.rs Tauri fixture, it would have raised on 12 of 71 active passes, every one
+a repo-lacks-the-language case; run over the full catalog it can never fail.
+Three wired mechanisms already do its jobs: name resolution in CI,
+prerequisite_absent at the linker chokepoint, and the post-run falsification
+audit.
+
+Removed: the function, its 11 tests, its test-only-reachability baseline key.
+ADR-0030 no longer says dependencies are checked at configuration time.
+ADR-0056 W1 is edited in place, and its pass-level-selector trigger now names
+a disclosure, not a raise, as the answer.
+
+Added, the two static checks it never made:
+- validate_pass_name_resolution refuses an empty inner clause ([[]], an OR of
+  nothing). An outer [] stays legal. The runtime readers disagreed about [[]],
+  and no live declaration has one.
+- TestLinkerDependenciesRunEarlier: a linker named in another linker's
+  depends_on sits in a STRICTLY lower priority group, because same-priority
+  linkers run in parallel from one snapshot. The three such pairs all hold
+  today. A floor and two mutation controls (same priority, later priority) show
+  it can fail.
+
+No output, schema or governance change. Addresses WI-rihob; INV-hujog stays
+violated on WI-nijil and the WI-rasal family.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
