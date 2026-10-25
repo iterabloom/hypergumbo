@@ -27,6 +27,12 @@ condition header parts that go.yaml's hooks record; see Scope):
 - ``go f(x)``, bare calls                   — go_statement, expression_statement
 - ``k, v := range xs``                      — range_clause (loop header)
 
+The short-var and assignment handlers also report ``targets``: the left-hand
+side by position, ``None`` for each blank ``_``, given only when a blank is
+present and every other target names exactly one variable. The taint return
+lift uses it to map a callee's result positions onto the variables the call
+binds (WI-sitaf).
+
 Importing the module also calls ``register_ddg_language`` to make Go a DDG
 language: every ``function_declaration`` and ``method_declaration`` is a
 function, named and kinded exactly as ``go.py`` names them (``Recv.name``

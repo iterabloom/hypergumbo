@@ -107,6 +107,12 @@ The rest of the dataflow pipeline over a built CFG also lives here:
 - **Reaching definitions** (ADR-0017 §1b): ``solve_reaching_defs`` runs the
   worklist fixpoint and emits ``DdgEdge`` def-to-use edges, bailing out above
   ``MAX_DEFINITIONS`` per function.
+- **Late-captured reads** (WI-lokok): ``late_capture_edges`` runs after the
+  solve and adds ``DdgEdge`` edges from each definition placed after a nested
+  function, and outside every nested function, into that nested function's
+  reads of the same name, which the solve cannot connect because the nested
+  body hangs off its definition point. ``ddg_build`` calls it for every
+  function whose solve did not bail out.
 - ``select_ddg_targets`` holds the §1c target-selection policy; it has no
   production caller (see its docstring).
 """

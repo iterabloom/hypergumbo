@@ -86,6 +86,19 @@ Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
   only when it lands on source the analysis read: one through ``node_modules``
   / ``vendor``, or one climbing above the analysed root, stays reported
   (INV-juvul). An unknown language suppresses nothing.
+- **Catalogue status and the closed-world gate.** ``_validate_catalog_dict``
+  checks a catalogue's ``status`` at load: ``provenance_declared`` requires an
+  https ``stdlib_provenance.source_url`` on a host in
+  ``ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES``, ``in_progress`` requires nothing,
+  and the retired ``complete`` is refused (INV-titih). A language with no
+  catalogue loads as ``CATALOG_STATUS_UNSUPPORTED``, and
+  ``in_progress_languages`` names the languages whose results must be
+  disclosed as possibly incomplete. Coverage is claimed per module in
+  ``module_completeness``; ``module_io_is_enumerated`` is an exact match
+  against it and the one predicate that may treat silence as an examined
+  negative. verify-claims asks it, and so does the ``external_potential``
+  synthesis, which drops a call into an enumerated module (as it drops a
+  ``stdlib_other`` symbol).
 - **Row annotations**, each validated at load because each fails silently:
   ``abstains_to`` names the row an unstamped call falls back to (INV-fatok);
   ``requires_target_kind`` drops a row unless every collapsed site's

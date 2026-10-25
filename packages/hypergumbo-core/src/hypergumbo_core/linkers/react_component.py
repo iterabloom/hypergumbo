@@ -36,6 +36,15 @@ Why This Design
   pattern that reliably indicates component usage.
 - The JS/TS tree-sitter parser captures imports but doesn't track JSX
   element-to-component relationships. A linker bridges this gap.
+
+Limitations
+-----------
+- A tag whose resolved component is defined in the same file gets no edge:
+  the self-reference guard compares files, not symbols, so a component
+  rendering a sibling from its own file is not linked.
+- When several components share the tag's short name, the lowest-id
+  candidate is taken with confidence 0.5 and
+  ``meta.disambiguation_fallback=True`` (0.80 otherwise).
 """
 from __future__ import annotations
 
