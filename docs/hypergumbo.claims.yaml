@@ -59,6 +59,9 @@ extra_catalogs:
     - hypergumbo-self-catalog/dev_zone_sinks.yaml
     - hypergumbo-self-catalog/repo_inspection_sinks.yaml
     - hypergumbo-self-catalog/analyser_backend_sinks.yaml
+    - hypergumbo-self-catalog/user_state_sinks.yaml
+    - hypergumbo-self-catalog/user_config_sinks.yaml
+    - hypergumbo-self-catalog/developer_checkout_sinks.yaml
   sanitizers:
     - hypergumbo-self-catalog/zone_barrier_sanitizers.yaml
   # The third-party half of the boundary catalogue. ADR-0016 §27 keeps the
@@ -80,10 +83,18 @@ claims:
       cmd_search, cmd_routes, cmd_explain, cmd_symbols, cmd_compact,
       cmd_io_boundaries, cmd_verify_claims, cmd_catalog,
       cmd_test_coverage, cmd_dead_code_maybe, cmd_config,
-      cmd_cache_status, cmd_cache_clear) do not write to arbitrary
-      filesystem paths. All writes go through the safety_zones wrappers
-      (cache_write / user_out_write / tmp_artifact_write) in their
-      respective peer zones.
+      cmd_cache_status, cmd_cache_clear, cmd_trust_backend,
+      cmd_trust_catalogues, cmd_init_catalogs, cmd_backend_agreement,
+      cmd_repeat_finder, cmd_catalog_inventory, and the one-time repo-tier
+      offer main() makes after any of them) do not write to arbitrary
+      filesystem paths. All writes go through the safety_zones wrappers in
+      their respective peer zones: cache_write (user_cache), user_out_write
+      (user_out), tmp_artifact_write (tmp_artifact), user_state_write (trust
+      grants and the offer's answer under $XDG_STATE_HOME/hypergumbo),
+      user_config_mkdir / user_config_write (the catalogue home
+      init-catalogs seeds), and developer_checkout_write (the offer's
+      example tree in ~/hypergumbo, never written while the analysed path
+      overlaps that checkout).
     constraint:
       taint_flow:
         source_taint: runtime_cli_entry

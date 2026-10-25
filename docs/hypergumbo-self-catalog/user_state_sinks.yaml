@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# hypergumbo's in-repo self-audit catalogue — user_state zone sinks (INV-kuroj).
+#
+# Per-user decisions under $XDG_STATE_HOME/hypergumbo/:
+#   trust.d/<sha>.json     backend trust grants (ADR-0045), 0600   trust-backend
+#   <store>/<sha>.json     in-repo catalogue grants (ADR-0061), 0600  trust-catalogues
+#   offers.json            the repo-tier offer's answer (ADR-0047 ruling 9)  main() after any command
+#
+# These were raw Path.mkdir / write_text / chmod calls, visible to the
+# self-proof only as untyped_receiver caveat counts. Declared here so a claim
+# can permit or prohibit them by name.
+zone: user_state
+trust_level: untrusted
+
+sinks:
+  python:
+    - module: hypergumbo_core.safety_zones
+      functions:
+        - user_state_write

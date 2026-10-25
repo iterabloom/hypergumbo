@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# hypergumbo's in-repo self-audit catalogue — developer_checkout zone sinks (INV-kuroj).
+#
+# ~/hypergumbo/.hypergumbo-examples/: the example repo-tier overlay tree the
+# offer places on a "y" (ADR-0047 ruling 9). Asked only on a TTY, once, and
+# never while the analysed path overlaps the checkout, so it is never a write
+# into a repository being analysed.
+zone: developer_checkout
+trust_level: untrusted
+
+sinks:
+  python:
+    - module: hypergumbo_core.safety_zones
+      functions:
+        - developer_checkout_write

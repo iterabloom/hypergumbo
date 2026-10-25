@@ -49,6 +49,14 @@ How to use — the full wrapper inventory, by zone:
   :func:`repo_inspect_probe`, the narrowest member, which reads nothing at
   all — not the repository, not the environment — and only asks an external
   tool whether it is installed and at what version.
+- **user_state** — :func:`user_state_write`, the per-user decisions under
+  ``$XDG_STATE_HOME/hypergumbo/``: trust grants, in-repo catalogue grants and
+  the repo-tier offer's answer (INV-kuroj).
+- **user_config** — :func:`user_config_mkdir` / :func:`user_config_write`, the
+  catalogue home ``init-catalogs`` seeds (``$XDG_CONFIG_HOME/hypergumbo/`` or
+  ``--home``).
+- **developer_checkout** — :func:`developer_checkout_write`, the example tree
+  the repo-tier offer places in ``~/hypergumbo`` on a "y" (ADR-0047 ruling 9).
 - **analyser_backend** — the opt-in SCIP indexers, which READ the analysed
   repository and act on it, so they sit outside ``repo_inspection`` (whose
   split trigger is exactly that): :func:`backend_index_scip_python` (static
@@ -751,3 +759,50 @@ def backend_index_rust_analyzer(argv: list[str], **kwargs: Any) -> "subprocess.C
     """
     _safety_zone_barrier()
     return subprocess.run(argv, **kwargs)  # noqa: S603  # nosec B603
+
+
+def user_state_write(path: Path, content: str, *, private: bool) -> None:
+    """Write a per-user decision under ``$XDG_STATE_HOME/hypergumbo/``.
+
+    SAFETY ZONE: ``user_state``. The trust store (ADR-0045), the in-repo
+    catalogue grants (ADR-0061 ruling 4) and the repo-tier offer's answer
+    (ADR-0047 ruling 9). Creates the parent directory. ``private`` is the
+    caller's statement, not a default: a trust grant is ``0o600`` because which
+    repositories someone agreed to execute is theirs, while the offer's answer
+    is a display preference and deliberately is not.
+    """
+    _safety_zone_barrier()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    if private:
+        path.chmod(0o600)
+
+
+def user_config_mkdir(path: Path) -> None:
+    """Create a directory of the user's catalogue home.
+
+    SAFETY ZONE: ``user_config``. Only ``init-catalogs`` writes here (ADR-0047
+    ruling 4: never during analysis). Not zone-enforced, because ``--home``
+    lets the user name any directory.
+    """
+    _safety_zone_barrier()
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def user_config_write(path: Path, content: str) -> None:
+    """Write a file into the user's catalogue home. SAFETY ZONE: ``user_config``."""
+    _safety_zone_barrier()
+    path.write_text(content, encoding="utf-8")
+
+
+def developer_checkout_write(path: Path, content: str) -> None:
+    """Write an example file under ``~/hypergumbo/.hypergumbo-examples/``.
+
+    SAFETY ZONE: ``developer_checkout``. Reached only on a "y" to the
+    repo-tier offer, made only on a TTY, once, and never while the analysed
+    path overlaps the checkout. Creates the parent directory. The caller
+    asserts containment (``write_repo_tier_examples``).
+    """
+    _safety_zone_barrier()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")

@@ -54,6 +54,8 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional
 
+from .safety_zones import developer_checkout_write, user_state_write
+
 __all__ = [
     "OFFER_REPO_TIER_EXAMPLES",
     "developer_checkout",
@@ -140,10 +142,9 @@ def record_offer_decision(
     sensitive would blur the very distinction that keeps it out of the trust
     store."""
     path = offer_state_path(environ, home)
-    path.parent.mkdir(parents=True, exist_ok=True)
     state = _load_state(path)
     state[offer] = {"accepted": accepted}
-    path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+    user_state_write(path, json.dumps(state, indent=2, sort_keys=True), private=False)
     return path
 
 
@@ -162,20 +163,37 @@ def should_offer(
     environ: Optional[Mapping[str, str]] = None,
     home: Optional[Path] = None,
     interactive: Optional[bool] = None,
+    analysed: Optional[Path] = None,
 ) -> bool:
-    """All three constraints, in the order that makes the cheapest check first.
+    """All four constraints, in the order that makes the cheapest check first.
 
     ``interactive`` is injected so a test never depends on the terminal it runs
     under — and so the production default is one obvious expression rather than
     a mock.
+
+    ``analysed`` is the path the command just analysed, when it took one. The
+    prompt promises "Nothing is written into any repository you analyse", and
+    the destination lives inside the developer checkout, so the offer is not
+    made while the two overlap -- the checkout itself, a directory inside it,
+    or one that contains it (INV-kuroj: analysing ``~/hypergumbo`` and
+    answering "y" wrote three files into the analysed repository).
     """
     if interactive is None:  # pragma: no cover - exercised via injection
         interactive = sys.stdin.isatty()
     if not interactive:
         return False
-    if not developer_checkout(home).is_dir():
+    checkout = developer_checkout(home)
+    if not checkout.is_dir():
+        return False
+    if analysed is not None and _overlaps(Path(analysed), checkout):
         return False
     return read_offer_decision(offer, environ, home) is None
+
+
+def _overlaps(a: Path, b: Path) -> bool:
+    """Whether one of two paths is, contains, or lies inside the other."""
+    a, b = a.resolve(), b.resolve()
+    return a == b or a in b.parents or b in a.parents
 
 
 _EXAMPLE_OVERLAY = """\
@@ -246,10 +264,9 @@ def write_repo_tier_examples(dest: Path) -> "tuple[Path, ...]":
             raise ValueError(  # pragma: no cover - unreachable by construction
                 f"refusing to write {path} outside {dest}",
             )
-        path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             continue
-        path.write_text(text, encoding="utf-8")
+        developer_checkout_write(path, text)
         written.append(path)
     return tuple(written)
 
@@ -269,13 +286,15 @@ def maybe_offer_repo_tier_examples(
     interactive: Optional[bool] = None,
     ask: "Optional[Callable[[str], str]]" = None,
     out: Any = None,
+    analysed: Optional[Path] = None,
 ) -> Optional[bool]:
     """Make the offer at most once. Returns the answer, or ``None`` if not asked.
 
     Every dependency that could block or touch the real filesystem is injected,
     because the failure this must never have is hanging a non-interactive run.
     """
-    if not should_offer(environ=environ, home=home, interactive=interactive):
+    if not should_offer(environ=environ, home=home, interactive=interactive,
+                        analysed=analysed):
         return None
     stream = sys.stderr if out is None else out
     prompt = _PROMPT.format(checkout=developer_checkout(home),

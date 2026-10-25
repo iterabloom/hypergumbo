@@ -52,7 +52,6 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **A SCIP edge lands on the record in its own crate target**, or is dropped and counted.
 - **SCIP-only symbols span their whole item**, not the name token.
-- **The SCIP indexer launches go through a declared `analyser_backend` zone**, and `runtime-cli-no-subprocess` names each one and what enables it.
 
 #### Taint analysis
 
@@ -64,6 +63,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`--max-files` bounds every language analyzer**, not 10 of 119; linkers and SCIP backends are not bounded.
 - **`hypergumbo catalog` names the grammar package each pass loads**, and a pass is available only when it is installed.
+
+#### Security claims
+
+- **The SCIP indexer launches go through a declared `analyser_backend` zone**, and `runtime-cli-no-subprocess` names each one and what enables it.
+- **Trust grants, the catalogue home and the repo-tier offer write through declared zones** (`user_state`, `user_config`, `developer_checkout`), and every `cmd_*` handler plus the offer is a taint source. The offer is no longer made while the analysed path overlaps `~/hypergumbo`, so it never writes into a repository being analysed.
 
 #### CI and gates
 

@@ -55,6 +55,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
+from .safety_zones import user_state_write
 from .user_config import backends_executing_analysed_code
 
 #: Files whose change REVOKES a grant. Owner ruling 2026-08-23 resolving
@@ -187,7 +188,6 @@ def record_decision(
         advisory_digest=_digest_of(resolved, _ADVISORY_MANIFESTS),
     )
     path = _record_path(resolved, environ)
-    path.parent.mkdir(parents=True, exist_ok=True)
     existing = _load_record(path)
     existing[backend] = {
         "granted": decision.recorded_grant,
@@ -197,8 +197,7 @@ def record_decision(
     }
     # 0o600: the grant is the user's own, and nothing else on the machine has
     # business reading which repositories they have agreed to execute.
-    path.write_text(json.dumps(existing, indent=2, sort_keys=True), encoding="utf-8")
-    path.chmod(0o600)
+    user_state_write(path, json.dumps(existing, indent=2, sort_keys=True), private=True)
     return decision
 
 
