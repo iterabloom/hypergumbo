@@ -3643,6 +3643,23 @@ class TreeSitterAnalyzer:
         """Language-pack grammar name (e.g., "nim")."""
         return None
 
+    @classmethod
+    def grammar_distribution(cls) -> Optional[str]:
+        """The PyPI distribution that supplies this analyzer's grammar (WI-pakof).
+
+        ``tree-sitter-<lang>`` for a dedicated wheel (the module's
+        underscores are the distribution's hyphens: ``tree_sitter_c_sharp``
+        is ``tree-sitter-c-sharp``), ``tree-sitter-language-pack`` for a
+        pack grammar, ``None`` when the class declares neither. Read at
+        CLASS level, where an undeclared slot is the base property object.
+        """
+        module = getattr(cls, "grammar_module", None)
+        if isinstance(module, str):
+            return module.replace("_", "-")
+        if isinstance(getattr(cls, "language_pack_name", None), str):
+            return "tree-sitter-language-pack"
+        return None
+
     # -- Optional configuration --------------------------------------------
     resolver_class: type = NameResolver
     """Resolver class for symbol lookup during Pass 2."""
