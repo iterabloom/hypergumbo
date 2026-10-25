@@ -54,6 +54,7 @@ from typing import Iterator
 from ..analyze.base import make_symbol_id, sanitize_id_name_segment
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..pass_silence import silence_reason_for_candidates
 from ..taxonomy import JS_TS_LANGUAGES, extension_globs
 from .registry import LinkerActivation, LinkerContext, LinkerResult, LinkerRequirement, register_linker
 from ._text_filters import js_ts_language_from_path, read_masked_source
@@ -428,6 +429,8 @@ def link_graphql(
         }
         edges.append(edge)
 
+    # WI-lisan: the claim is what the scan found, never what was emitted.
+    run.silence_reason = silence_reason_for_candidates(all_calls)
     run.duration_ms = int((time.time() - start_time) * 1000)
     run.files_analyzed = files_scanned
 

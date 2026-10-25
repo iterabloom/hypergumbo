@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
+from ..pass_silence import silence_reason_for_candidates
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -193,6 +194,9 @@ def link_ruby_ffi(
     for sym in ruby_symbols:
         if sym.language == "ruby" and sym.path.endswith(".rb"):
             ruby_files.add(sym.path)
+    # WI-lisan: the FFI calls (phase 1) and rb_define sites (phase 2) the
+    # scans find.
+    found: list[object] = []
 
     for rb_path_str in ruby_files:
         rb_path = Path(rb_path_str)
@@ -203,6 +207,7 @@ def link_ruby_ffi(
             continue
 
         ffi_calls = _scan_ruby_file_for_ffi(rb_path)
+        found.extend(ffi_calls)
 
         for func_name, line_num in ffi_calls:
             # Find the enclosing Ruby symbol for this file
@@ -295,6 +300,7 @@ def link_ruby_ffi(
             continue
 
         rb_defines = _scan_c_file_for_rb_define(c_path, c_lookup)
+        found.extend(rb_defines)
 
         for c_sym, line_num, is_fallback in rb_defines:
             dedup_key = ("rb_define", c_sym.name)
@@ -330,6 +336,7 @@ def link_ruby_ffi(
                 derived_from=[c_sym.id],
             ))
 
+    run.silence_reason = silence_reason_for_candidates(found)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return RubyFFILinkResult(edges=result_edges, run=run)

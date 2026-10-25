@@ -45,6 +45,7 @@ from typing import Iterator
 
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..pass_silence import silence_reason_for_candidates
 from ._text_filters import language_from_path, read_source_bytes
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
@@ -366,6 +367,8 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     # event_subscribes shape problem; the forward
     # event_publishes edges already capture the relationship.
 
+    # WI-lisan: the claim is what the scan found, never what was emitted.
+    run.silence_reason = silence_reason_for_candidates(all_patterns)
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)

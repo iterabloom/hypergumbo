@@ -53,6 +53,7 @@ from pathlib import Path
 
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, make_pass_id
+from ..pass_silence import silence_reason_for_candidates
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 from ._text_filters import read_source_bytes
 
@@ -148,6 +149,9 @@ def go_memberlist_linker(ctx: LinkerContext) -> LinkerResult:
         return LinkerResult(run=run)
 
     memberlist_files = _collect_memberlist_files(ctx.repo_root)
+    # WI-lisan: the construct is a file that uses memberlist. Its probe reads
+    # every Go file, so each return below is a run that read files.
+    run.silence_reason = silence_reason_for_candidates(memberlist_files)
     if not memberlist_files:
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(run=run)

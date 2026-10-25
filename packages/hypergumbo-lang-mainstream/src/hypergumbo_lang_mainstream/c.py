@@ -130,6 +130,7 @@ from hypergumbo_core.module_sets import module_slot
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
+    claim_declaration_silence,
     record_partial_parse,
     AnalysisResult,
     FileAnalysis,
@@ -2085,6 +2086,7 @@ class CAnalyzer(TreeSitterAnalyzer):
         # Deduplicate: remove declaration-only symbols when a definition
         # exists for the same function name.  Declarations in headers produce
         # orphan nodes because calls resolve to the definition.
+        declared = list(all_symbols)  # the scan's finding (WI-lisan)
         definition_by_name: dict[str, Symbol] = {}
         for sym in all_symbols:
             if sym.kind == "function" and "declaration" not in sym.modifiers:
@@ -2112,6 +2114,7 @@ class CAnalyzer(TreeSitterAnalyzer):
 
         run.files_analyzed = files_analyzed
         run.files_skipped = files_skipped
+        claim_declaration_silence(run, declared, all_symbols, all_edges)
         run.duration_ms = int((_time.time() - start_time) * 1000)
 
         return AnalysisResult(

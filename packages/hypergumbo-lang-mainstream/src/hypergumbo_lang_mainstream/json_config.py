@@ -50,6 +50,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
+    claim_declaration_silence,
     AnalysisResult, TreeSitterAnalyzer, make_manifest_target_dst, make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -1011,6 +1012,7 @@ def _analyze_json_impl(repo_root: Path) -> AnalysisResult:
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
+    claim_declaration_silence(run, symbols, symbols, edges)
     run.duration_ms = duration_ms
     run.warnings = warnings_list
     run.failed_files = failed_files_list

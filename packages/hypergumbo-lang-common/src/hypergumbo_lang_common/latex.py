@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, AbstractSet, Any, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
+    claim_declaration_silence,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -507,6 +508,7 @@ class LatexAnalyzer(TreeSitterAnalyzer):
 
         # Update run stats
         run.files_analyzed = len(file_trees)
+        claim_declaration_silence(run, symbols, symbols, edges)
         run.duration_ms = int((time.time() - start_time) * 1000)
 
         return AnalysisResult(symbols=symbols, edges=edges, run=run)
