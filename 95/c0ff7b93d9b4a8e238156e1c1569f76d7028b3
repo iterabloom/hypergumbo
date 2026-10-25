@@ -1,0 +1,11 @@
+Original commit body from 46cfe902b18a7f7d7683202b39486fc3ab4f2d2f:
+
+The audited section (#1846) was 1,130 words for 51 substantive commits,
+22 per commit; 9.2.0 is 682 for 65, 10.5. Now 556 words, 10.7 per
+commit. Dropped: before/after counts (envoy size, per-repo id-format
+violations, starlark resolution, analysis_runs unreported counts),
+mechanism explanations, and per-case examples. Kept: every entry, every
+ADR reference, every version transition and the module_sets migration
+note. The numbers stay in the commit messages.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
