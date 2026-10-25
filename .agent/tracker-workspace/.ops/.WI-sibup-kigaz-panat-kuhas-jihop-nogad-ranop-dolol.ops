@@ -1,0 +1,21 @@
+- op: create  # bef4
+  at: '2026-10-25T23:56:09Z'  # bef4
+  by: agent  # bef4
+  actor: jgstern_agent  # bef4
+  clock: 1  # bef4
+  nonce: bef4  # bef4
+  data:  # bef4
+    kind: work_item  # bef4
+    title: "C++ calls on a declared-type receiver are demoted by the magnet pass: Logger lg; lg.Close() becomes cpp:external:Close:unresolved because _RECEIVER_MARKERS lacks receiver=declared_type"  # bef4
+    status: todo_hard  # bef4
+    priority: 2  # bef4
+    parent:  # bef4
+    tags:  # bef4
+    - call_graph  # bef4
+    - cpp  # bef4
+    isbefore: []  # bef4
+    duplicate_of: []  # bef4
+    not_duplicate_of: []  # bef4
+    pr_ref:  # bef4
+    description: "Found 2026-10-25 by the WI-mujug premise re-check; reproduced independently by the orchestrator on dev 9245df71d6 through the production CLI. Fixture: `class Logger { public: void Close() {} void Flush() {} }; class App { public: void run() { Logger lg; lg.Close(); lg.Flush(); } };` -> `hypergumbo survey`: run->`cpp:external:0-0:Close:unresolved` (confidence 0.4, resolution_quality 'ambiguous', receiver 'declared_type') while run->`cpp:app.cpp:1-1:Logger..Flush:method` stays at 0.85 (same receiver value; the positive control). In-process, before finalize, BOTH bind correctly to Logger's methods, and find_harmful_magnets returns Logger..Close.\nMECHANISM. receiver_blind_magnets._RECEIVER_MARKERS (receiver_blind_magnets.py:92-98) is a hand-written subset of the Edge.meta['receiver'] vocabulary that lacks 'declared_type' (cpp.py ~2056, WI-lamij 2026-10-19), and also 'self' (ruby ~567, WI-misir), 'bare' and 'generic'. An edge whose receiver marker is not in the set is treated as receiver-blind, so finalize's magnet demotion (finalize.py ~391-410, _STDLIB_INTERFACE_METHODS names) replaces a correctly typed bind with an unresolved external stub. Affects every C++ declared-type call to a method named in _STDLIB_INTERFACE_METHODS (Close, Read, Write, Lock, String, Len, Parse, ...): a wrong edge, and the real method then reads dead.\nFIX (structural): derive the marker set from the declared receiver vocabulary (register Edge.meta['receiver']'s values -- see WI-mujug, whose registry prose at axis_meta_keys.py:498-515 is stale) rather than a hand list, or classify each receiver value as receiver-evidence yes/no beside its declaration. Test: the fixture above keeps Logger..Close; control: a genuinely receiver-blind call is still demoted; and a property test that every emitted receiver value is classified. Check ruby 'self' (likely saved by the same-class exemption) and 'bare'/'generic' while there. Measure: count C++ edges with receiver=declared_type demoted on the corpus."  # bef4
+    fields: {}  # bef4

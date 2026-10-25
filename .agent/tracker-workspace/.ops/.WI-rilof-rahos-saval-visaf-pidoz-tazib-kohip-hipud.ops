@@ -1,0 +1,21 @@
+- op: create  # 89b5
+  at: '2026-10-25T23:56:19Z'  # 89b5
+  by: agent  # 89b5
+  actor: jgstern_agent  # 89b5
+  clock: 1  # 89b5
+  nonce: 89b5  # 89b5
+  data:  # 89b5
+    kind: work_item  # 89b5
+    title: "npm and Cargo workspace imports of a sibling package call a tier-3 phantom (@ws/b:helper, crate_b::helper external_symbol) instead of the sibling's real source"  # 89b5
+    status: todo_hard  # 89b5
+    priority: 2  # 89b5
+    parent:  # 89b5
+    tags:  # 89b5
+    - call_graph  # 89b5
+    - supply_chain  # 89b5
+    isbefore: []  # 89b5
+    duplicate_of: []  # 89b5
+    not_duplicate_of: []  # 89b5
+    pr_ref:  # 89b5
+    description: "Found 2026-10-25 by the independent premise check of INV-kutub, on dev 9245df71d6 through the production CLI (fixtures: scratchpad stale1025b/repro_INV-kutub/{js,cargo}). npm workspaces: packages/a/index.js `const { helper } = require('@ws/b'); function run() { return helper(); }` with packages/b/index.js defining `helper` -> run calls `javascript:@ws/b:0-0:helper:external_symbol` (tier 3, 'unresolved external reference') instead of b's real tier-1 helper; a `javascript:@ws/b:0-0:module:external_symbol` stub and a js_module stand-in `javascript:npm:0-0:@ws/b:package` (tier 3, 'npm_package (third-party dependency)', js_module.py:949-950) appear too. Cargo workspace: crate-a calling crate_b::helper -> `rust:crate_b::helper:0-0:module:external_symbol` (tier 3).\nThis is a CALL-GRAPH defect, not only a tier one: the sibling's real function reads uncalled and the call lands on a phantom. It contradicts WI-gikok's 'JS/TS already has linkers/js_module.py (no gap)' (WI-gikok does not list Rust), and it is a counterexample to INV-nuzas's acceptance property (no consumer-reached external_symbol with a workspace-package prefix). Fix: resolve an import of an in-tree workspace package (npm workspaces / package.json name, Cargo [workspace] members / crate name) to the sibling's source, the way python workspace imports already resolve (ba11d947a5); then the stubs and stand-ins are not minted. Not checked: ESM imports and package.json `exports` maps, pnpm/yarn workspaces, Cargo `workspace = true` inheritance. INV-kutub's tier half depends on this for its stand-in/stub producers."  # 89b5
+    fields: {}  # 89b5

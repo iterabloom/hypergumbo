@@ -1,0 +1,20 @@
+- op: create  # 258d
+  at: '2026-10-25T23:56:24Z'  # 258d
+  by: agent  # 258d
+  actor: jgstern_agent  # 258d
+  clock: 1  # 258d
+  nonce: 258d  # 258d
+  data:  # 258d
+    kind: work_item  # 258d
+    title: "sketch prints a data model's framework twice: 'Author (django django model)'"  # 258d
+    status: todo_hard  # 258d
+    priority: 4  # 258d
+    parent:  # 258d
+    tags:  # 258d
+    - sketch  # 258d
+    isbefore: []  # 258d
+    duplicate_of: []  # 258d
+    not_duplicate_of: []  # 258d
+    pr_ref:  # 258d
+    description: "Noticed 2026-10-25 during the independent check of WI-tikan: `hypergumbo sketch` on a Django fixture prints a data model as `Author (django django model)`. The concept-derived DataModel label is already '{framework} model' and the sketch formatter prefixes the framework again (sketch.py ~5856, _format_datamodels 5811-5871). Fix: render the framework once (omit the prefix when the label already starts with it, or stop composing the framework into the label). Test on a Django and a Pydantic fixture. Unchecked lead from the same run: `BookSchema(BaseModel)` was labelled '(Schema)' from the naming heuristic, which suggests the Pydantic base-class detector did not fire -- confirm before filing."  # 258d
+    fields: {}  # 258d
