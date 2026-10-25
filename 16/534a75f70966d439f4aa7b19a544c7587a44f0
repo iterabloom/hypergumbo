@@ -1,0 +1,34 @@
+Original commit body from 8ac9764a542b19998ddaf175aa19577b470eef5a:
+
+tui_preferences.json lived at <tracker_root>/tracker-workspace/: one copy
+inside the shared, agent-owned checkout, gitignored, never journalled, and
+removed by git clean -xdf (a dry run lists it among 249 files). The
+2026-10-25 premise check found the shared copy worse than the item said:
+a second account is not 'denied by mode 600' -- _load_tui_preferences
+swallows the PermissionError and returns defaults, and
+_save_tui_preferences replaces the file via mkstemp + os.replace in the
+group-writable directory, so that account's first save REPLACED the
+owner's file and the two clobbered each other on every save (simulated
+with a mode-000 file: load -> defaults, save -> True, file replaced).
+
+The file now lives at $XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/
+(~/.local/state when unset), <repo-id> the key the ops journal uses for the
+same clone -- the destination proposed on the item, and the same rule that
+places the journal and the protected config, only the root chosen by who
+must own the data. load_tui_preferences_migrating reads an existing in-repo
+file once when the new one is absent and writes only the new location; the
+old file is never modified or deleted.
+
+A conftest fixture pins XDG_STATE_HOME per test, so the TUI tests no longer
+could write into the developer's real state directory.
+
+Tests: test_tui_preferences_location.py (8: location keyed like the
+journal, XDG default, two users -> two files, two clones -> two files, a
+non-git root, migration, the new file winning, no file -> defaults and no
+write) plus an end-to-end TrackerApp test in test_tui.py (the in-repo file
+is picked up; the save lands under the user's state home). All 9 red
+before the change.
+
+Addresses INV-rugid.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
