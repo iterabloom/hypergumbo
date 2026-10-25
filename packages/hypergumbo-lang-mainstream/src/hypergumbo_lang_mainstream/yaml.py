@@ -43,7 +43,7 @@ from pathlib import Path
 
 from hypergumbo_core.analyze.base import AnalysisResult, make_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
-from hypergumbo_core.discovery import get_file_index, is_excluded
+from hypergumbo_core.discovery import get_file_index, is_excluded, within_file_budget
 from hypergumbo_core.ir import AnalysisRun, PASS_VERSION, Span, Symbol, make_pass_id
 
 from .yaml_ansible import find_ansible_files
@@ -72,6 +72,7 @@ def find_generic_yaml_files(root: Path) -> list[Path]:
     return [
         p for p in all_files
         if p.suffix in _YAML_EXTENSIONS and p not in ansible_claimed
+        and within_file_budget(p)
     ]
 
 
@@ -95,5 +96,8 @@ def analyze_yaml(root: Path) -> AnalysisResult:
             origin_run_id=run.execution_id,
         ))
 
+    # One anchor per file read, so the count is the files analyzed; left at
+    # its default the run claimed 0 files beside N anchors (WI-fomid).
+    run.files_analyzed = len(symbols)
     run.duration_ms = int((_time.time() - start_time) * 1000)
     return AnalysisResult(symbols=symbols, run=run)

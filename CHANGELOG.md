@@ -43,6 +43,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **A node id's kind slot is the node's kind** for CUDA functions, Android-manifest components and message-dispatch stand-ins (WI-lusoh, INV-kurup). The slot carried the execution space (`:global`, `:device`, ...), the manifest element (`:activity`, `:service`, ...) or the dispatch role (`:message_sender`/`:message_handler`). Those already live on meta. whisper.cpp's id-format violations go 1,016 → 0, and sherpa-onnx's 72 → 0. Node ids change; `stable_id`s do not.
 
+#### Run limits
+
+- **`--max-files` bounds every language analyzer** (WI-fomid). It was documented as a per-analyzer cap but reached only the 10 of 119 analyzers registered to accept it: at `--max-files 1` this repository still analyzed 252 files. It is now enforced where analyzers find files, so it applies to all of them. A two-pass analyzer sees the same N files in both passes. The bash, gitignore, yaml and Ansible finders that read the file index directly are bounded too. At `--max-files 1` the 49 analyzer runs read 24 files, none more than 1. Linkers and the opt-in SCIP backends are not bounded, and the help text now says so. The generic yaml analyzer's run also reports the files it read; it said 0.
+
 #### CI and gates
 
 - **Every spec-validator check on the fixture matrix has something to inspect** (WI-jigup). The route-marker check found no route on any of the four substrates, so its ceiling of 0 passed without looking at anything. A gin route fixes that, and a Spring controller that only `--frameworks all` recognises makes that substrate differ from the default. A test now fails when a wired check's population is empty, or when a newly wired check does not say what it reads. The stale `id_format|warning: 11` cells are ratcheted to 0.

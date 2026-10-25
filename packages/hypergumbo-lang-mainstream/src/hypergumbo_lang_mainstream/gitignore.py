@@ -35,7 +35,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator
 
-from hypergumbo_core.discovery import find_files
+from hypergumbo_core.discovery import find_files, within_file_budget
 from hypergumbo_core.ir import AnalysisRun, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     make_doc_stable_id,
@@ -60,7 +60,8 @@ def find_gitignore_files(repo_root: Path) -> list[Path]:
     files = list(find_files(repo_root, [".gitignore"]))
     # Also look for the root .gitignore
     root_gitignore = repo_root / ".gitignore"
-    if root_gitignore.exists() and root_gitignore not in files:  # pragma: no cover
+    if (root_gitignore.exists() and root_gitignore not in files  # pragma: no cover
+            and within_file_budget(root_gitignore)):
         files.append(root_gitignore)
     return sorted(files)
 

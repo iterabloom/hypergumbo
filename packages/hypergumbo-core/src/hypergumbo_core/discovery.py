@@ -166,6 +166,8 @@ import functools
 import os
 import json
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
@@ -2187,6 +2189,76 @@ def is_excluded(path: Path, repo_root: Path, excludes: list[str] | None = None) 
 
 
 # ---------------------------------------------------------------------------
+# Per-analyzer file budget (WI-fomid)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class FileBudget:
+    """At most ``limit`` distinct files for one analyzer run.
+
+    ``run_survey``'s ``max_files`` promises a cap per language analyzer, and
+    108 of the 119 registered analyzers take ``repo_root`` alone, so the cap
+    cannot travel as an argument. It is enforced where every analyzer finds
+    its files instead: :func:`find_files` admits a file through the budget of
+    the analyzer running in this thread.
+
+    Admission is by FILE, not by yield. A file admitted once is admitted again,
+    so a two-pass analyzer (symbols, then edges) sees the same files in both
+    passes; once ``limit`` files are admitted, every other file is refused.
+    Every file an analyzer finds this way counts, a manifest or a header
+    lookup included. Files an analyzer walks without :func:`find_files` are
+    not bounded.
+    """
+
+    limit: int
+    admitted: set[Path] = field(default_factory=set)
+    refused: set[Path] = field(default_factory=set)
+
+    def admit(self, path: Path) -> bool:
+        if path in self.admitted:
+            return True
+        if len(self.admitted) < self.limit:
+            self.admitted.add(path)
+            return True
+        self.refused.add(path)
+        return False
+
+
+_analyzer_budget: ContextVar["FileBudget | None"] = ContextVar(
+    "analyzer_file_budget", default=None,
+)
+
+
+def within_file_budget(path: Path) -> bool:
+    """Whether the running analyzer's budget admits ``path`` (True with none).
+
+    For a finder that cannot go through :func:`find_files` -- a shebang scan
+    of extensionless files, an unconditional root ``.gitignore``. Call it once
+    the path is known to be the analyzer's, so a rejected candidate is not
+    charged.
+    """
+    budget = _analyzer_budget.get()
+    return budget is None or budget.admit(path)
+
+
+@contextmanager
+def analyzer_file_budget(limit: int | None) -> Iterator["FileBudget | None"]:
+    """Bound :func:`find_files` to ``limit`` files for the enclosed analyzer run.
+
+    ``None`` means no cap. The budget is a context variable, so it binds the
+    thread that opened it: analyzers run in parallel worker threads, each
+    under its own, and a linker or another analyzer is never charged.
+    """
+    budget = FileBudget(limit) if limit is not None else None
+    token = _analyzer_budget.set(budget)
+    try:
+        yield budget
+    finally:
+        _analyzer_budget.reset(token)
+
+
+# ---------------------------------------------------------------------------
 # FileIndex — single-pass file discovery cache
 # ---------------------------------------------------------------------------
 
@@ -2592,6 +2664,8 @@ def find_files(
     if on_file_skipped is None:
         on_file_skipped = _global_on_file_skipped
 
+    budget = _analyzer_budget.get()
+
     # Fast path: use the global file index if available.
     # The index was built with its own excludes and locale filtering (the
     # ``excludes`` argument is not re-applied, WI-duhih), so only
@@ -2620,6 +2694,8 @@ def find_files(
                                 f"exceeds {max_file_bytes} bytes",
                             )
                         continue
+                if budget is not None and not budget.admit(path):
+                    continue
                 yield path
                 count += 1
         return
@@ -2661,6 +2737,8 @@ def find_files(
                             f"exceeds {max_file_bytes} bytes",
                         )
                     continue
+            if budget is not None and not budget.admit(path):
+                continue
             yield path
             count += 1
 
