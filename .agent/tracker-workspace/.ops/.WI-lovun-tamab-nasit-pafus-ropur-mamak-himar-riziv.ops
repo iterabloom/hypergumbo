@@ -1,0 +1,21 @@
+- op: create  # 2ccf
+  at: '2026-10-25T23:56:14Z'  # 2ccf
+  by: agent  # 2ccf
+  actor: jgstern_agent  # 2ccf
+  clock: 1  # 2ccf
+  nonce: 2ccf  # 2ccf
+  data:  # 2ccf
+    kind: work_item  # 2ccf
+    title: "python fully-dotted module calls resolve to a phantom: import pkg_b.sub.deep; pkg_b.sub.deep.deep_fn() calls an external_symbol although deep_fn is defined in the tree"  # 2ccf
+    status: todo_hard  # 2ccf
+    priority: 2  # 2ccf
+    parent:  # 2ccf
+    tags:  # 2ccf
+    - call_graph  # 2ccf
+    - python  # 2ccf
+    isbefore: []  # 2ccf
+    duplicate_of: []  # 2ccf
+    not_duplicate_of: []  # 2ccf
+    pr_ref:  # 2ccf
+    description: "Found 2026-10-25 by the INV-nuzas premise re-check; reproduced independently by the orchestrator on dev 9245df71d6 through the production CLI. Fixture (uv workspace; also reproduces in a single package): packages/pkg-b/src/pkg_b/sub/deep.py defines `deep_fn`; packages/pkg-a/src/pkg_a/app.py does `import pkg_b.sub.deep` and `pkg_b.sub.deep.deep_fn()`. `hypergumbo survey` emits the call as run -> `python:pkg_b.sub.deep:0-0:deep_fn:external_symbol` with path '<external>', although the definition is in the analysed tree. The same call written `from pkg_b.sub import deep; deep.deep_fn()` resolves. The checker's single-package control (`mypkg.sub.deep.deep_fn()`) fails the same way: the module `references` edge lands on sub/__init__.py instead of deep.py, and deep_fn gets 0 inbound calls.\nConsequences: a wrong (phantom) call edge, a first-party symbol reachable only through its phantom (dead-code / slice / reverse-slice read it as uncalled), and, in a workspace, a workspace-prefixed external_symbol on a production path -- the shape INV-nuzas's acceptance property forbids. Related, not duplicates: WI-zigah (done; stdlib dotted submodules), WI-tanot (test-reached Category D/E). Also in the same fixture: builtin method calls on in-tree module constants (`pkg_b.REGISTRY.get()`, `pkg_b.core.CONSTANTS.values()`) produce workspace-prefixed external_symbols from production code; INV-nuzas's closure accepted that 'Category D' shape only as test-reached -- decide here whether such stubs should carry the in-tree module's id or a builtin receiver. Fix: resolve a fully dotted `a.b.c.f()` against the import table entry for `a.b.c` the way `from a.b import c; c.f()` already is. Test with a control that the from-import form keeps resolving."  # 2ccf
+    fields: {}  # 2ccf
