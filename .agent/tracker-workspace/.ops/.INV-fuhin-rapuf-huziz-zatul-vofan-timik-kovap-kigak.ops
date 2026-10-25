@@ -1,0 +1,30 @@
+- op: create  # 9073
+  at: '2026-10-25T21:25:49Z'  # 9073
+  by: agent  # 9073
+  actor: jgstern_agent  # 9073
+  clock: 1  # 9073
+  nonce: '9073'  # 9073
+  data:  # 9073
+    kind: invariant  # 9073
+    title: "directness is never stamped on kind=dependency manifest declarations, so supply_chain_summary counts every declared dependency as directness 'unknown'"  # 9073
+    status: violated  # 9073
+    priority: 3  # 9073
+    parent:  # 9073
+    tags:  # 9073
+    - supply_chain  # 9073
+    - adr_0041  # 9073
+    isbefore: []  # 9073
+    duplicate_of: []  # 9073
+    not_duplicate_of: []  # 9073
+    pr_ref:  # 9073
+    description: "Found by the F1 investigation 2026-10-25 on dev edafc0cada. ADR-0041 (:54-56), spec §14 (:1804) and axis_meta_keys.py:1099-1110 declare Symbol.meta['directness'] (direct / transitive / undeclared) as the declaration relationship between the project's manifests and an external dependency. A manifest dependency declaration is the most direct evidence of that relationship, yet `hypergumbo survey` on a python workspace fixture emits `dependency requests` (a declared third-party package, tier 3) with meta.directness = None (re-read by the orchestrator from the fixture output). The stamp exists only on boundary nodes (ir.py ~2172). So supply_chain_summary['external_dep']['directness'] (WI-bojok's reader, cli.py:12283-12297) counts every declaration under 'unknown' with no disclosure -- a direct dependency reads as not-known-to-be-direct. Absent != empty: a missing directness on a node that IS a declaration is a false 'unknown'. Fix: stamp directness='direct' on kind=dependency declarations from a project manifest (check the declaration kinds in _DEPENDENCY_KINDS across ecosystems), or exclude declaration nodes from the directness bucket and say so. Test: a fixture with one declared and one undeclared import, asserting the summary's direct count is non-zero and the declaration carries direct."  # 9073
+    fields:  # 9073
+      statement: "A dependency declared in a project manifest carries meta.directness='direct', or is excluded from the directness summary with a disclosure; it is never silently counted as unknown."  # 9073
+      root_cause: "directness is stamped only on boundary nodes (ir.py ~2172); the manifest declaration nodes that are the direct evidence never receive it, and WI-bojok's summary reader defaults absent to 'unknown'."  # 9073
+- op: discuss  # 05fd
+  at: '2026-10-25T21:26:14Z'  # 05fd
+  by: agent  # 05fd
+  actor: jgstern_agent  # 05fd
+  clock: 2  # 05fd
+  nonce: 05fd  # 05fd
+  message: "Companion items: WI-sufon / INV-kutub (the same 2026-10-25 F1 investigation of ADR-0041 §1). Related, done: WI-bojok-tamih (built the supply_chain_summary directness reader that now counts every declaration as unknown)."  # 05fd

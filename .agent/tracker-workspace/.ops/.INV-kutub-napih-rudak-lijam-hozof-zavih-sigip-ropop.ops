@@ -1,0 +1,30 @@
+- op: create  # e32e
+  at: '2026-10-25T21:25:44Z'  # e32e
+  by: agent  # e32e
+  actor: jgstern_agent  # e32e
+  clock: 1  # e32e
+  nonce: e32e  # e32e
+  data:  # e32e
+    kind: invariant  # e32e
+    title: "nodes standing for one workspace package carry different tiers: python sibling declarations tier 2, npm/cargo sibling declarations and the js_module stand-in package node tier 3 'external'"  # e32e
+    status: violated  # e32e
+    priority: 3  # e32e
+    parent:  # e32e
+    tags:  # e32e
+    - supply_chain  # e32e
+    - adr_0041  # e32e
+    isbefore: []  # e32e
+    duplicate_of: []  # e32e
+    not_duplicate_of: []  # e32e
+    pr_ref:  # e32e
+    description: "Found by the F1 investigation 2026-10-25 on dev edafc0cada, production CLI `hypergumbo survey` on three two-member workspace fixtures (scratchpad tierF1/):\n- python (uv-style pyproject workspace): `project pkg-b` tier 1 'default'; `dependency pkg_b` in a's pyproject.toml tier 2 'workspace-internal dependency declaration'.\n- JS (npm workspaces): `package @ws/b` tier 1 'in workspace b'; `dependency @ws/b` in a's package.json tier 3 'dependency declaration (external)'; and a second, pathless `package @ws/b` from the js_module linker tier 3 'npm_package (third-party dependency)'.\n- Cargo workspace: `package crate-b` tier 1; `dependency crate-b` tier 3 'dependency declaration (external)'.\nOne package, up to three tiers. Producers: the declaration branch at cli.py:12080-12086 recognises python pyproject siblings only (workspace_names); npm and cargo siblings fall to the external arm; js_module.py:949-950 mints the stand-in package node as third-party. Under the owner's 2026-10-25 project-frame ruling (ADR-0041 §1, see the companion document item) all of them are tier 1, and the python tier 2 is wrong too. Consequences today: --max-tier 1 drops every sibling declaration; supply_chain_summary.internal_dep counts python sibling declarations; a JS/Cargo workspace reads its own siblings as third-party. Ranking effect is about nil (sibling declarations have no incident edges). Fix: a declaration naming an in-tree workspace package, in every manifest ecosystem the workspace detector knows, takes tier 1 with a reason naming the sibling; the js_module stand-in for a workspace package takes the workspace package's tier (or is not minted). Flip TestWorkspaceSiblingDependencyTier (test_supply_chain.py:2220); add a cross-ecosystem property test (python, npm, cargo fixtures) asserting every node standing for one package has one tier, with a control that fails on today's code. Land with or after WI-lidig."  # e32e
+    fields:  # e32e
+      statement: "Every node that stands for the same package carries the same supply_chain_tier; a dependency declaration naming an in-tree workspace package is tier 1 (ADR-0041 §1, project frame, owner ruling 2026-10-25)."  # e32e
+      root_cause: "The declaration branch (cli.py:12080-12086) recognises only python pyproject workspace siblings and gives them tier 2; npm and cargo siblings fall to the external arm (tier 3), and js_module mints a third-party stand-in package node for a workspace package (js_module.py:949-950)."  # e32e
+- op: discuss  # eb43
+  at: '2026-10-25T21:26:14Z'  # eb43
+  by: agent  # eb43
+  actor: jgstern_agent  # eb43
+  clock: 2  # eb43
+  nonce: eb43  # eb43
+  message: "Companion items: WI-sufon (rewrite ADR-0041 §1, spec §14 and tier docstrings to the project frame -- the document half), INV-fuhin (directness unstamped on declarations), INV-nuzas (statement reworded 2026-10-25 to this ruling; this item carries its declaration clause). Blocked by WI-lidig (unclassified marker). Measure first: tier-2 population by node kind on the corpus."  # eb43
