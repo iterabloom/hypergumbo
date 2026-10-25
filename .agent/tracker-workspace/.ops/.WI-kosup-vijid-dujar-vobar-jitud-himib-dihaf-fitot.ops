@@ -1,0 +1,37 @@
+- op: create  # 2ce3
+  at: '2026-10-25T23:14:45Z'  # 2ce3
+  by: agent  # 2ce3
+  actor: jgstern_agent  # 2ce3
+  clock: 1  # 2ce3
+  nonce: 2ce3  # 2ce3
+  data:  # 2ce3
+    kind: work_item  # 2ce3
+    title: "next concept audit input: sweep for write-only fields, meta keys, knobs and functions (no production reader), and re-check every keep-with-trigger verdict for whether its trigger can fire"  # 2ce3
+    status: todo_hard  # 2ce3
+    priority: 3  # 2ce3
+    parent:  # 2ce3
+    tags:  # 2ce3
+    - dead_code  # 2ce3
+    - concept_audit  # 2ce3
+    isbefore: []  # 2ce3
+    duplicate_of: []  # 2ce3
+    not_duplicate_of: []  # 2ce3
+    pr_ref:  # 2ce3
+    description: "Proposed 2026-10-25 from a review of all 19 recorded Fundamental Concept Audits; filed on the owner's request as the input for the next audit when the cadence comes due (54 non-tracker commits since audit #19 at 2026-10-25, threshold 72).\n\nFINDING. The audits are built to find one name carrying two meanings (the four leakage tests), and those often came back clean (#3 layering, #9 identity axis, #10 type kinds, #16 ten of twelve values). The defect that recurred across them was different and was always found in passing: a field, meta key, knob or function that NOTHING READS, or a documented claim nothing enforces. Instances: origin_run_signature, run_signature and linker pass_version (#4); DataModel.kind (#5; deletion ruled 2026-10-25, WI-tikan); requires_symbols and validate_pass_dependencies (#6; the latter deleted 2026-10-25, PR #1864); TaintSink.trust_level (#3 kept it as an extension point, #15 found it a promised control with no effect); directness and analysis_tiers (#8); shape_id (#9); 34 unregistered Edge.meta keys (#13); receiver_type_hint unread at the io_boundary/taint seam (#14, WI-monul still open); AnalysisRun.skipped_passes and limits.skipped_languages (#17). LIVE.md rule 7: an instrument with no reader is the same defect. Nobody has swept for it directly.\n\nSCOPE (the inventory, with a production-reader count for each): every field on the dataclasses in ir.py, datamodels.py and io_boundary.py (and TaintSource / TaintSink / TaintFlowFinding in taint.py); every registered meta key in axis_meta_keys.py (MetaKeySpec entries) and every meta key actually emitted; every config knob (SupplyChainConfig, .hypergumbo.toml keys, config.toml keys, CLI flags, environment variables read); every public module-level function in packages/*/src with no production caller (scripts/check-test-only-reachability already lists the test-only ones -- start from its baseline).\nMETHOD. Find readers with an AST walk across all five Step-4.5 emit/read shapes, never grep alone: audit #16's grep missed 126 of 140 emit sites written in dict-literal form, and #17's grep called two live values dead. A serialised field counts as read only if something consumes the serialised output (a CLI view, a documented JSON contract, a test that pins a consumer), not merely because to_dict() writes it -- #5 found DataModel.to_dict() itself never called. Measure across configurations, not only defaults (#17 missed a third outcome behind HYPERGUMBO_RUST_ANALYZER=1).\nVERDICTS per item: DELETE (no reader and none intended), WIRE (a reader is needed and missing -- name it), DECLARE EXTERNAL (deliberately written for an outside consumer; say which, in the field's docstring, as #9 did for run_signature), or KEEP WITH A TRIGGER THAT CAN FIRE. A trigger of the form 'when a consumer appears' cannot fire on a field nothing reads, so it is not accepted (#5's DataModelKind triggers and INV-hujog's original trigger were both unfireable). Also re-check every existing keep-with-trigger verdict from the 19 audits for whether its trigger can fire at all.\nDELIVERABLE: the per-item table (docs/audits/ or the lab notebook per docs/audits/README.md scope), filed items for each DELETE/WIRE verdict, and the audit recorded with scripts/concept-audit-record. Every action in the write-up names a tracker id (audit #8's F1 was listed only as an action and was lost for three months). Related: the axiom-falsification item filed beside this one; WI-monul; WI-tikan; WI-mujug; WI-punod."  # 2ce3
+    fields: {}  # 2ce3
+- op: update  # 8ff0
+  at: '2026-10-25T23:15:12Z'  # 8ff0
+  by: agent  # 8ff0
+  actor: jgstern_agent  # 8ff0
+  clock: 2  # 8ff0
+  nonce: 8ff0  # 8ff0
+  set: {}  # 8ff0
+  add:  # 8ff0
+    not_duplicate_of: [WI-dubum-lufip-vagol-bitah-vimar-dofag-tudak-higah, WI-rihob-fufiz-judav-nijoh-pogip-goguk-likab-sugaf]  # 8ff0
+- op: discuss  # 11b5
+  at: '2026-10-25T23:15:12Z'  # 11b5
+  by: agent  # 11b5
+  actor: jgstern_agent  # 11b5
+  clock: 3  # 11b5
+  nonce: 11b5  # 11b5
+  message: "Not a duplicate of WI-dubum (explain output ordering, unrelated) or WI-rihob-fufiz (deleted one no-reader function, done in PR #1864, which this sweep cites as an instance). Companion: WI-ziruv (falsify each declared axis's axiom on real output). The two are independent inputs; either can be the next audit's."  # 11b5

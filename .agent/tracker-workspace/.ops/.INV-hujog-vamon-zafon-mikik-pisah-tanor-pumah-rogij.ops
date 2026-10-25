@@ -120,3 +120,17 @@
   clock: 14  # 5291
   nonce: '5291'  # 5291
   message: "STATEMENT AND TITLE RESTATED 2026-10-25, owner-approved. OLD statement asked for a pre-run validator that errors when a prerequisite is missing; that enforcement half was refused on evidence by ADR-0056 W1 (raising is the withholding direction; 29.2% of surveys carry a falsified declaration), and on the same day the owner ruled the unwired validator itself deleted (filed beside this note). The old title also named the wrong field: Pass.requires is a different, package-availability label (WI-pakof); the field that shipped is Pass.depends_on. The NEW statement is what ADR-0056 actually decided: declare, resolve, disclose. STATUS: stays VIOLATED, now on two named, fixable residuals instead of a refusal: (1) a linker that crashes is invisible to the linkers depending on it -- skipped-pass codes are captured once before any linker runs (registry.py:998-1008); probe: graphql-sdl-linker made to raise, graphql-linker lost its edge with silence_reason '' (the G1 item filed beside this note); (2) declarations that are wrong: the WI-rasal family, four repair items open (WI-ziguf, INV-tukig, INV-vivit, WI-pagil). Already discharged: names resolve in CI (TestCatalogStaticConsistency), toolchain-skipped prerequisites are disclosed (prerequisite_absent, WI-dabup), falsified declarations are reported after the run (find_falsified_dependencies, WI-jijor). An invariant is never wont_do: this row closes satisfied when both residuals do."  # 5291
+- op: discuss  # cfcb
+  at: '2026-10-25T21:38:02Z'  # cfcb
+  by: agent  # cfcb
+  actor: jgstern_agent  # cfcb
+  clock: 15  # cfcb
+  nonce: cfcb  # cfcb
+  message: "Items named in the restatement above: the validator deletion is WI-rihob; the crashed-linker residual (G1) is WI-nijil."  # cfcb
+- op: discuss  # 32e7
+  at: '2026-10-25T23:07:28Z'  # 32e7
+  by: agent  # 32e7
+  actor: jgstern_agent  # 32e7
+  clock: 16  # 32e7
+  nonce: '32e7'  # 32e7
+  message: "Correction to the cross-link note above: the validator deletion is WI-rihob-fufiz (the short id WI-rihob is ambiguous with WI-rihob-rupar). Done in PR #1864 (dev f0b360e93c)."  # 32e7

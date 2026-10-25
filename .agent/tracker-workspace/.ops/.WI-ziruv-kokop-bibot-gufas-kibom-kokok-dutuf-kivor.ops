@@ -1,0 +1,28 @@
+- op: create  # 4289
+  at: '2026-10-25T23:14:40Z'  # 4289
+  by: agent  # 4289
+  actor: jgstern_agent  # 4289
+  clock: 1  # 4289
+  nonce: '4289'  # 4289
+  data:  # 4289
+    kind: work_item  # 4289
+    title: "for each declared axis, try to falsify its one-sentence axiom on real survey output with a property test (or record why it needs per-row judgment): registries stop new spellings, not meaning drift"  # 4289
+    status: todo_hard  # 4289
+    priority: 3  # 4289
+    parent:  # 4289
+    tags:  # 4289
+    - axis  # 4289
+    - concept_audit  # 4289
+    isbefore: []  # 4289
+    duplicate_of: []  # 4289
+    not_duplicate_of: []  # 4289
+    pr_ref:  # 4289
+    description: "Proposed 2026-10-25 from a review of all 19 recorded Fundamental Concept Audits; filed on the owner's request.\n\nFINDING. Declared axes (ADR-0024: axiom + registry + drift linter + property test) stop new SPELLINGS: an unregistered value written as a literal by a producer the linter can read. They do not stop the MEANING drifting. Every axis's ADR has a one-sentence falsifiable axiom (ADR-0024 requires one), and nothing ever runs the falsification. Evidence that this is where verdicts flip:\n- 2026-10-21 audit #19 F6: the io-boundary axis (ADR-0050, fully declared) had its axiom applied three ways (medium, content, chooser); the owner amended it 2026-10-25 (WI-rutup).\n- #19 F3: calls.src had no contract under ADR-0023, the oldest declared axis (fixed as WI-fazup).\n- WI-higik / WI-totam: pony emits unregistered Symbol.kind values via node.type.replace(...); ADR-0027's static drift linter cannot see a computed emit, only the runtime validator flags it.\n- WI-fuzat: a field's '# axis:' comment says 'never parsed' while it is parsed -- the declaration linter checks a declaration is PRESENT, not TRUE.\n- ADR-0041's tier axiom was falsified against output in minutes on 2026-10-25 (three tiny workspace surveys: one package, three tiers), three months after an audit said its frame was ambiguous.\nVerdicts that stayed fixed had a test of MEANING, not vocabulary: INV-zivah (every I/O boundary has a taint mapping or a documented exclusion), audit 0018's type-family predicate plus a consumer linter, INV-suhob (activation/depends_on drift test).\n\nDO.\n1. Enumerate the declared axes and their axiom sentences: the heavyweight registry axes (edge-type ADR-0023, symbol-kind ADR-0027, evidence-type ADR-0028, io-boundary ADR-0050, module-key ADR-0051, io-primitive-kind ADR-0059) and the lightweight catalog-derived ones in multi_value_field_axis._known_axes (language, pass-id, protocol-origin, qualified-name, callable-signature, entrypoint-kind, visibility, pass-silence-reason), plus axiom-bearing ADRs that are not registry axes but state a one-sentence rule over output (ADR-0039 confidence, ADR-0041 supply_chain_tier, ADR-0061 catalogue tiers).\n2. For each, classify the axiom (a few minutes each): MECHANICALLY TESTABLE on survey output (e.g. ADR-0041 'nodes standing for one package carry one tier'; ADR-0023 'edge_type names the relationship', testable at least as 'no two edges with the same (src kind, relationship, dst kind) shape carry different edge_types'); PARTLY TESTABLE (a necessary condition can be checked); or NEEDS PER-ROW JUDGMENT (e.g. ADR-0050's medium reading). Record the classification and the reason in one table.\n3. For each testable axiom, write a property test that tries to FALSIFY it on real output: small committed fixtures through the production survey path (per-language where the axis varies by language), plus a mutation control proving the test can go red. A falsification found while writing it is filed, not fixed in the same PR. INV-kutub's planned 'every node standing for one package has one tier' test is the model and counts as ADR-0041's.\n4. For the per-row-judgment axioms, record that they are not mechanically testable and what a reviewer would sample instead, so the gap is declared, not silent.\nDELIVERABLE: the classification table (a docs/audits/ or docs/surveys/ document per docs/audits/README.md scope rules), the tests, and filed items for any falsification found. Does not touch governance files. Related: the write-only sweep filed beside this item; INV-kutub; WI-sufon; WI-rutup."  # 4289
+    fields: {}  # 4289
+- op: discuss  # 1e9e
+  at: '2026-10-25T23:15:12Z'  # 1e9e
+  by: agent  # 1e9e
+  actor: jgstern_agent  # 1e9e
+  clock: 2  # 1e9e
+  nonce: 1e9e  # 1e9e
+  message: "Companion: WI-kosup (sweep for write-only fields, knobs and functions; re-check every keep-with-trigger verdict for fireability). Model test for ADR-0041: INV-kutub. Axes whose axiom was amended or ruled 2026-10-25 and should be classified against the NEW wording: ADR-0050 (WI-rutup, medium + simultaneous reading) and ADR-0041 (WI-sufon, project frame)."  # 1e9e
