@@ -4173,10 +4173,11 @@ def _prune_shadowed(
     empty (e.g. a no-arg lambda) so no-shadow sub-scopes share the dicts."""
     if not shadow:
         return var_types, external_var_types
-    # A field path (``svc.conn``, INV-mumov) is bound to its ROOT: a sub-scope
-    # that rebinds ``svc`` must lose ``svc.conn`` with it.
+    # A field path (``svc.conn``, INV-mumov; ``self.conn``, WI-bufud) is bound
+    # to its ROOT: a sub-scope that rebinds ``svc`` must lose ``svc.conn`` with
+    # it, and one that rebinds only ``conn`` must not.
     return (
-        {k: v for k, v in var_types.items() if k not in shadow},
+        {k: v for k, v in var_types.items() if k.split(".", 1)[0] not in shadow},
         {
             k: v for k, v in external_var_types.items()
             if k.split(".", 1)[0] not in shadow
@@ -7232,13 +7233,18 @@ def _extract_edges(
                 # class-field merge below adds bare field names -- a field
                 # path is bound only under a name the code can actually write.
                 _declared_params = dict(param_types)
-                # Merge class field types for self.field.method() resolution
+                # Merge class field types for self.field.method() resolution,
+                # keyed ``self.<field>`` (WI-bufud / INV-hovoj). A field and a
+                # local of the same name are different variables; under a BARE
+                # key a later ``conn = Other()`` retyped ``self.conn`` (a wrong
+                # ``Other.ping`` edge @0.85), a comprehension or lambda binding
+                # ``conn`` pruned it (the call lost), and a bare ``conn.ping()``
+                # the method never bound resolved to the field's class. The
+                # external map below has keyed fields this way since INV-fibis.
                 if caller_symbol.kind == "method":
                     class_name = caller_symbol.name.split(".")[0]
-                    if class_name in class_field_types:
-                        for fname, fsym in class_field_types[class_name].items():
-                            if fname not in param_types:
-                                param_types[fname] = fsym
+                    for fname, fsym in class_field_types.get(class_name, {}).items():
+                        param_types[f"self.{fname}"] = fsym
                 # INV-mofav: each function's inner_scope contains its nested
                 # function helpers, keyed by short name. The RAW dict is kept for
                 # closure-factory dispatch (which must see only the caller's OWN
@@ -9112,15 +9118,15 @@ def _process_call(
 
         # Case 2f: self.field.method() - call on injected dependency (INV-014)
         # Pattern: self.svc.process() where self.svc was assigned from a typed param
-        # or constructor call in __init__. Field types are pre-loaded into var_types.
+        # or constructor call in __init__. Field types are pre-loaded into var_types as ``self.<field>``.
         elif (
             isinstance(func.value, ast.Attribute)
             and isinstance(func.value.value, ast.Name)
             and func.value.value.id == "self"
         ):
             field_name = func.value.attr
-            if field_name in var_types:
-                class_symbol = var_types[field_name]
+            if f"self.{field_name}" in var_types:
+                class_symbol = var_types[f"self.{field_name}"]
                 qualified_name = f"{class_symbol.name}.{attr_name}"
                 callee_symbol = local_symbols.get(qualified_name)
                 if not callee_symbol and sym_by_path_name is not None:
@@ -9685,7 +9691,7 @@ def _process_call(
             # _caller_locals (excludes a classmethod referencing self);
             # "staticmethod" not in _caller_decos (a staticmethod's declared self
             # is under-determined); and the OWN-field exclusion the linker's
-            # parent-only walk assumes — ``field_name not in var_types`` (typed
+            # parent-only walk assumes — ``self.<field> not in var_types`` (typed
             # own fields) AND ``field_name not in own_field_names`` (EVERY
             # __init__ self.X target, incl. an untyped/factory ``self.f =
             # make_conn()`` that var_types misses). An own field is never
@@ -9739,7 +9745,7 @@ def _process_call(
                 and "self" not in var_types
                 and "self" in _caller_locals
                 and "staticmethod" not in _caller_decos
-                and field_name not in var_types
+                and f"self.{field_name}" not in var_types
             ):
                 _site3_meta: dict[str, str] = {"call_construct": "method"}
                 if field_name not in own_field_names:
