@@ -116,6 +116,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .axis_meta_keys import call_family_edge_types
+from .edge_types import is_inheritance_edge_record
 from .paths import is_test_file
 
 #: Node kinds this gate adjudicates. A method only on a map with receiver
@@ -366,10 +367,11 @@ class TypedReferences:
     #: ``{(encloser id, member name): {dst id}}`` over the typed producer's
     #: call-family and ``references`` edges.
     resolved: dict[tuple[str, str], set[str]] = field(default_factory=dict)
-    #: ``{method id: {the method ids it overrides}}`` (``implements`` edges).
+    #: ``{method id: {the method ids it overrides}}`` (inheritance edges
+    #: between methods: scip's ``implements``).
     overrides: dict[str, set[str]] = field(default_factory=dict)
     #: ``{class id: {in-repo base class ids}}`` and ``{class id: {external
-    #: base ids}}`` (``extends`` edges).
+    #: base ids}}`` (every other inheritance edge, per the registry).
     parents: dict[str, set[str]] = field(default_factory=dict)
     external_bases: dict[str, set[str]] = field(default_factory=dict)
     #: ``{(path, class name): class id}``.
@@ -407,9 +409,9 @@ def typed_references(
     """Index what the typed producer ``origin`` says about methods in a map.
 
     An edge or node is the typed producer's when ``origin`` is among its
-    producers. ``overrides`` and the class bases take any producer's edge:
-    an override or a base is declared in the source, not inferred from a
-    receiver.
+    producers. ``overrides`` and the class bases take any producer's
+    inheritance edge (``edge_types.is_inheritance_edge_record``): an override
+    or a base is declared in the source, not inferred from a receiver.
     """
     by_id = {n["id"]: n for n in nodes if n.get("id")}
     typed = TypedReferences()
@@ -427,13 +429,17 @@ def typed_references(
         etype, src, dst = edge.get("type"), edge.get("src"), edge.get("dst")
         if not src or not dst:
             continue
-        if etype == "implements":
-            typed.overrides.setdefault(src, set()).add(dst)
-        elif etype == "extends":
-            base = by_id.get(dst)
-            in_repo = base is not None and base.get("kind") == "class" and base.get("path")
-            (typed.parents if in_repo else typed.external_bases).setdefault(
-                src, set()).add(dst)
+        if is_inheritance_edge_record(edge):
+            # The family comes from the registry; which slot is decided by
+            # the endpoints: a method over a method is an override, anything
+            # else is a class on its base, in the repo or outside it.
+            sub, base = by_id.get(src), by_id.get(dst)
+            if sub is not None and sub.get("kind") == "method":
+                typed.overrides.setdefault(src, set()).add(dst)
+            else:
+                in_repo = base is not None and base.get("kind") == "class" and base.get("path")
+                (typed.parents if in_repo else typed.external_bases).setdefault(
+                    src, set()).add(dst)
         elif etype in reference_types:
             caller = by_id.get(src)
             if caller is not None and _is_production_caller(caller.get("path") or ""):
