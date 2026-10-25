@@ -1,0 +1,35 @@
+Original commit body from 9c53e89a2710aa826e56465ac94b3deacc46372a:
+
+`fun f(pb: ProcessBuilder) { pb.start() }` needs no import (JLS 7.3), but
+kotlin's _kt_receiver_module and scala's typed-receiver call arm accepted
+only an import or an inline dotted path for a DECLARED type, so the call
+went out as external:0-0:start and classified as nothing. Measured before
+the fix through verify-claims on dev 02507e31eb: "No subprocess launches"
+came back confirmed_with_caveats (exit 3), the caveat saying the receiver's
+type "could not be determined", while the same code spelled
+java.lang.ProcessBuilder came back violated (exit 1). Scala disagreed with
+itself: its parameterless arm (_library_owner) already took the closed list.
+
+Both now fall through to static_owner_module, the closed java.lang list the
+static-call arm (WI-kilap) uses, with the same exclusions: a project type,
+an import of another type of the same name, and the names kotlin.* /
+scala._ shadow keep the placeholder. Kotlin's docstring recorded the
+premise for declining ("a declared type the file forgot to import is not
+java.lang's"); that holds for InputStream and is false for ProcessBuilder,
+which is why the list is closed. Scala's two branches now share one lookup.
+
+Tests (test_jvm_declared_java_lang_receiver.py, kotlin + scala): the bare
+ProcessBuilder / Runtime receivers name java.lang and classify as
+subprocess; verify-claims reports the claim violated end to end; a project
+ProcessBuilder, an imported org.other.ProcessBuilder and a shadowed name
+keep their own answer. 8 of 14 were red before the change.
+
+Re-pinned two signature_axis LEGACY_VALUE_PARSERS kotlin lines moved by the
+edit (2241 -> 2254, 2406 -> 2419; INV-fogul).
+
+Scope: fixtures only; the corpus count of typed receivers this reaches was
+not measured.
+
+Addresses INV-dibij.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
