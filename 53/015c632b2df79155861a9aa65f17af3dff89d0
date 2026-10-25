@@ -1,0 +1,45 @@
+Original commit body from 37fa9bedfbf789b8f6668ba0df0a7dd553076080:
+
+WI-jigup's residual, measured on the four G1 substrates of
+schema-coverage-corpus:
+
+- route_marker_single_home inspected 0 route markers on every substrate, so
+  its ceiling of 0 passed vacuously. A gin route (go/web/server.go) gives it
+  1 on every substrate.
+- frameworks_all differed from default only in its run list. A Spring
+  controller with no build file declaring Spring
+  (java/web/HealthController.java) is matched only under --frameworks all:
+  one more route and three more concepts.
+- max_tier_4 filters nothing by construction (tier 4 is the highest), so its
+  output equals default. It is kept for the filter's code path; the test
+  docstring now says so.
+- no_harmful_receiver_blind_magnets reads resolved calls into methods: 7 on
+  every substrate. Its harmful subset is empty on any honest corpus, because
+  producers withhold such binds (defer_bare_method_call) and finalize demotes
+  survivors. A Go production -> testutils `.Add()` bait was tried and the Go
+  analyzer correctly emitted an external call instead.
+
+test_validation_report_empty.py adds a reach table naming, per wired check,
+the records it inspects. The per-substrate test fails when any count is 0:
+deleting the gin fixture reds 3 substrates on route_marker_single_home, while
+frameworks_all keeps its Spring route. test_every_wired_check_declares_its_reach
+pins the table to _WIRED_CHECKS, with verdict_enum_completeness declared
+corpus-independent.
+
+The enforcement half of the meta-rule: CLASS_SEVERITY_BASELINES still allowed
+id_format|warning 11 on each substrate after WI-popak took the total to 0.
+Every cell is now 0, and test_no_class_severity_cell_tolerates_a_violation
+pins that, so no check at any severity is total-count-only on the fixture
+matrix. The self-tree baseline was already 0 in every cell.
+
+Found on the way, pre-existing on dev: test_check_schema_coverage.py swapped
+the COMMITTED .ci/schema-coverage-baseline.json in place. Under xdist the
+tests raced on that one path: 3 of 12 failed on dev, 3 to 7 on this branch,
+and the file was left deleted. check-schema-coverage gains --baseline PATH;
+each test runs on a private file (3 consecutive runs: 13/13). A new test
+asserts an --update-baseline run leaves the committed file byte-identical.
+
+The schema-coverage baseline shrinks by 3 values the new fixtures cover:
+type_alias, dispatch_pattern, function_reference_arg.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
