@@ -1,0 +1,20 @@
+Original commit body from bdff9381c2164fe34a95fab8e7ed47b544d19bc6:
+
+#1844 had each file-scanning linker claim silence_reason_for_candidates(...)
+unconditionally. On compose-go, database-query, subprocess and websocket read
+0 files and so reported no_candidate_construct, losing the orchestrator's
+more precise no_candidate_files (found by diffing every pass's reason before
+and after, not the totals).
+
+The claim now waits for a file to have been read: http, graphql, subprocess,
+event-sourcing and database-query use their files_scanned; phoenix-ipc,
+argparse-dispatch and go-cobra their files_analyzed. websocket's
+files_analyzed counts only files WITH patterns, so it gains files_read.
+The symbol-scanning linkers (the original eleven, the FFI bridges) are
+unchanged: a construct in the symbol set is looked for whatever files were
+read.
+
+test_a_scan_that_read_no_file_keeps_no_candidate_files pins it on a Go-only
+repo; making websocket's claim unconditional reds it.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
