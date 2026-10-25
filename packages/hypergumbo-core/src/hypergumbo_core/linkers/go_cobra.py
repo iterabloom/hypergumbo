@@ -73,6 +73,7 @@ from pathlib import Path
 
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, make_pass_id
+from ..pass_silence import silence_reason_for_candidates
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 from ._text_filters import read_source_bytes
 
@@ -191,6 +192,8 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
 
     edges: list[Edge] = []
     seen_pairs: set[tuple[str, str]] = set()
+    # WI-lisan: every cobra.Command handler assignment the scan finds.
+    found_assignments: list[tuple[str, str, int]] = []
     files_analyzed = 0
     files_skipped = 0
 
@@ -215,6 +218,7 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
             continue
 
         assignments = _find_handler_assignments(source)
+        found_assignments.extend(assignments)
         if not assignments:
             files_analyzed += 1
             continue
@@ -288,5 +292,6 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
+    run.silence_reason = silence_reason_for_candidates(found_assignments)
     run.duration_ms = int((time.time() - start_time) * 1000)
     return LinkerResult(run=run, edges=edges)

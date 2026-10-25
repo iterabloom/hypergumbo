@@ -85,6 +85,7 @@ from typing import Iterator
 from ..analyze.base import make_symbol_id, sanitize_id_name_segment
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..pass_silence import silence_reason_for_candidates
 from ._concept_utils import has_concept
 from ._text_filters import language_from_path
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
@@ -947,6 +948,8 @@ def link_subprocess(
                     ],
                 ))
 
+    # WI-lisan: the claim is what the scan found, never what was emitted.
+    run.silence_reason = silence_reason_for_candidates(all_calls)
     run.duration_ms = int((time.time() - start_time) * 1000)
     run.files_analyzed = files_scanned
 

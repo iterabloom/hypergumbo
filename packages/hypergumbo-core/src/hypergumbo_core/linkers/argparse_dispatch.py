@@ -68,6 +68,7 @@ import time
 
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, make_pass_id
+from ..pass_silence import silence_reason_for_candidates
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 from ._text_filters import read_source_bytes
 
@@ -192,6 +193,8 @@ def argparse_dispatch_linker(ctx: LinkerContext) -> LinkerResult:
 
     edges: list[Edge] = []
     seen_pairs: set[tuple[str, str]] = set()
+    # WI-lisan: every set_defaults registration the scan finds.
+    registrations: list[tuple[str, str, int]] = []
     files_analyzed = 0
     files_skipped = 0
 
@@ -212,7 +215,9 @@ def argparse_dispatch_linker(ctx: LinkerContext) -> LinkerResult:
         if not _file_mentions_argparse(source):
             continue
 
-        for kwarg, handler_name, line in _find_handler_registrations(source):
+        found = _find_handler_registrations(source)
+        registrations.extend(found)
+        for kwarg, handler_name, line in found:
             candidates = ctx.find_symbols_by_name(
                 handler_name, languages=_HANDLER_LANGUAGES,
             )
@@ -268,5 +273,6 @@ def argparse_dispatch_linker(ctx: LinkerContext) -> LinkerResult:
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
+    run.silence_reason = silence_reason_for_candidates(registrations)
     run.duration_ms = int((time.time() - start_time) * 1000)
     return LinkerResult(run=run, edges=edges)

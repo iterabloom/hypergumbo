@@ -130,7 +130,7 @@ from dataclasses import dataclass, field
 import posixpath
 from pathlib import Path
 from collections.abc import Container, Sequence
-from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional
+from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional, Sized
 
 from ..library_signatures import load_library_signatures
 from ..dataflow import annotate_dataflow, get_dataflow_config
@@ -151,7 +151,7 @@ from ..ir import sanitize_id_name_segment as sanitize_id_name_segment
 from ..axis_meta_keys import write_meta_key
 from ..call_constructs import require_declared as _require_declared_construct
 from ..symbol_resolution import NameResolver
-from ..pass_silence import DEPENDENCY_UNAVAILABLE
+from ..pass_silence import DEPENDENCY_UNAVAILABLE, silence_reason_for_candidates
 
 # ---------------------------------------------------------------------------
 # Memory safety: abort analysis before OOM crashes the machine
@@ -1149,6 +1149,24 @@ def make_unresolved_edge(
         dst_ref=dst_ref,
         meta=hint_meta or None,
     )
+
+
+def claim_declaration_silence(
+    run: AnalysisRun, declared: Sized, symbols: Sized, edges: Sized,
+) -> None:
+    """WI-lisan: an analyzer that read files and emits nothing says why.
+
+    An analyzer's scan finds declarations, and its emission is those
+    declarations, so a silent run either declared nothing
+    (``no_candidate_construct``) or declared something that post-processing
+    then dropped (``candidates_unresolved``). ``declared`` is the scan's
+    finding -- for the base pipeline, pass 1's symbols before
+    ``post_process``. Call it after ``run.files_analyzed`` is set: a run that
+    read no file is the orchestrator's ``no_candidate_files``, and a run that
+    emitted something has no silence to explain.
+    """
+    if run.files_analyzed and not symbols and not edges:
+        run.silence_reason = silence_reason_for_candidates(declared)
 
 
 def defer_bare_method_call(
@@ -4776,6 +4794,7 @@ class TreeSitterAnalyzer:
         self._current_file_symbols = None
 
         # 7. Post-process
+        declared = list(all_symbols)
         all_symbols, all_edges, all_contexts = self.post_process(
             all_symbols, all_edges, all_contexts, run,
         )
@@ -4783,6 +4802,7 @@ class TreeSitterAnalyzer:
         # 8. Assemble result
         run.files_analyzed = files_analyzed
         run.files_skipped = files_skipped
+        claim_declaration_silence(run, declared, all_symbols, all_edges)
         run.duration_ms = int((time.time() - start_time) * 1000)
 
         return AnalysisResult(

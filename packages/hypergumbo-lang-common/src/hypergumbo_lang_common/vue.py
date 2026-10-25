@@ -66,6 +66,7 @@ from typing import TYPE_CHECKING, ClassVar, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
+    claim_declaration_silence,
     AnalysisResult,
     TreeSitterAnalyzer,
     ancestor_labels,
@@ -269,6 +270,7 @@ class VueAnalyzer(TreeSitterAnalyzer):
 
         duration_ms = int((_time.time() - start_time) * 1000)
         run.files_analyzed = files_analyzed
+        claim_declaration_silence(run, symbols, symbols, edges)
         run.duration_ms = duration_ms
 
         return AnalysisResult(
