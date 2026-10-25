@@ -10430,3 +10430,31 @@ class TestEditModeBindingAndBanner:
             assert tracker_set.edit_mode_status()["on"] is False
             # And the failure must have been notified.
             assert any("failed" in m.lower() for m, _ in captured)
+
+
+# ---------------------------------------------------------------------------
+# INV-rugid: preferences live in the user's state home (end to end)
+# ---------------------------------------------------------------------------
+
+
+async def test_the_app_reads_and_writes_the_user_location(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """End to end through TrackerApp: the in-repo file is picked up, and the
+    save lands in the user's state home, not the checkout."""
+    import json
+
+    from hypergumbo_tracker.tui import TrackerApp
+
+    state = tmp_path / "xdg-state"
+    monkeypatch.setenv("XDG_STATE_HOME", str(state))
+    tracker_set = _make_tracker_set(tmp_path)
+    legacy = tracker_set._tracker_root / "tracker-workspace" / "tui_preferences.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(json.dumps({"version": 1, "hidden_statuses": ["done"],
+                                  "display_order": []}), encoding="utf-8")
+    app = TrackerApp(tracker_set=tracker_set)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await _wait_for_std_table(pilot, app)
+        assert app._hidden_statuses == {"done"}
+    assert app._prefs_path.is_relative_to(state)
+    assert app._prefs_path.is_file()
