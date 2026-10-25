@@ -172,11 +172,39 @@ def is_available(p: Pass) -> bool:
     if p.availability == "core":
         return True
 
-    # Check for tree-sitter dependency based on the requires field
-    if p.requires and "tree-sitter" in p.requires:
-        return importlib.util.find_spec("tree_sitter") is not None
+    # A tree-sitter pass needs the base library AND the grammar distribution
+    # it names (WI-pakof). Testing the field for the substring and checking
+    # only ``tree_sitter`` reported rust available with tree_sitter_rust gone.
+    if p.requires and p.requires.startswith("tree-sitter"):
+        return (
+            importlib.util.find_spec("tree_sitter") is not None
+            and importlib.util.find_spec(p.requires.replace("-", "_")) is not None
+        )
 
     return False
+
+
+def _declared_grammar_distribution(func: Any) -> Optional[str]:
+    """The grammar distribution the analyzer behind ``func`` loads, or ``None``.
+
+    An analyzer module defines one ``TreeSitterAnalyzer`` subclass and
+    registers a function that drives it; the class declares the grammar
+    (``grammar_module`` / ``language_pack_name``). ``None`` when the module
+    defines none, or more than one, such class.
+    """
+    from .analyze.base import TreeSitterAnalyzer
+
+    module = sys.modules.get(getattr(func, "__module__", "") or "")
+    if module is None:
+        return None
+    classes = {
+        value for value in vars(module).values()
+        if isinstance(value, type) and issubclass(value, TreeSitterAnalyzer)
+        and value is not TreeSitterAnalyzer and value.__module__ == module.__name__
+    }
+    if len(classes) != 1:
+        return None
+    return next(iter(classes)).grammar_distribution()
 
 
 def validate_pass_name_resolution(passes: List[Pass]) -> None:
@@ -624,7 +652,8 @@ def build_catalog_from_registries() -> Catalog:
     def _from_registered(name: str, reg_description: str, reg_languages: List[str],
                          reg_availability: str, reg_requires: Optional[str],
                          reg_backend: str, reg_pass_label: str,
-                         reg_depends_on: List[List[str]]) -> Pass:
+                         reg_depends_on: List[List[str]],
+                         reg_func: Any = None) -> Pass:
         # Registry default for availability is "core". For analyzers that
         # haven't yet moved their metadata into the decorator call, the
         # fallback dict knows better — most analyzers are actually "extra"
@@ -635,11 +664,16 @@ def build_catalog_from_registries() -> Catalog:
             availability = fallback["availability"]
         else:
             availability = reg_availability
+        # The analyzer's class declares its grammar; _ts() could not know it
+        # and stamped the language pack on every pass (WI-pakof).
+        requires = reg_requires
+        if requires is None:
+            requires = _declared_grammar_distribution(reg_func) or fallback.get("requires")
         return Pass(
             id=name,
             description=reg_description or fallback.get("description", ""),
             availability=availability,
-            requires=reg_requires if reg_requires is not None else fallback.get("requires"),
+            requires=requires,
             languages=list(reg_languages) if reg_languages else list(fallback.get("languages", [])),
             backend=reg_backend or fallback.get("backend", ""),
             pass_label=reg_pass_label or name,
@@ -659,6 +693,7 @@ def build_catalog_from_registries() -> Catalog:
             reg_backend=reg.backend,
             reg_pass_label=reg.pass_label,
             reg_depends_on=reg.depends_on,
+            reg_func=reg.get_func(),
         ))
         seen.add(reg.name)
 
