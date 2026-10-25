@@ -29,3 +29,18 @@
   clock: 2  # c432
   nonce: c432  # c432
   message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: STALE-TEXT; still violated. Fake scip-python / rust-analyzer first on PATH (log argv, write no index): (a) a fixture with .hypergumbo.toml [backends] scip_python = true and no flag or env -> `hypergumbo run` launched `scip-python --version` then `index --cwd <fixture> --project-name fxpy --project-version 0 --output /tmp/hypergumbo-scip-python-XXXX/index.scip` -- the analysed repository switches the launch on for itself; (b) a Cargo fixture with HYPERGUMBO_RUST_ANALYZER=1, empty XDG_STATE_HOME, NO trust grant -> `rust-analyzer scip <fixture>` (runs build.rs). invoke.py:103 and :149 both `run = runner if runner is not None else subprocess.run`; scip_python analyzer.py:109 raw tempfile.TemporaryDirectory; safety_zones.py has no backend wrapper. MISSTATED: 'after a trust-backend grant' -- flag, env and grant are ALTERNATIVE enablers (backend_selection.py:241-253); the env var alone launched it. UNDER-SCOPED: the enumeration omits the scip-python --version probe (repo_inspect_probe, scip_python_install.py:56). Drift: the scip-python argv is now `index --cwd ... --output <tmp>/index.scip` (WI-nijod, 1d26944212); io-allowlist.yaml:654 target still has the old form. NOT checked: verify-claims self-proof, a real backend run."  # c432
+- op: update  # 485c
+  at: '2026-10-25T15:01:03Z'  # 485c
+  by: agent  # 485c
+  actor: jgstern_agent  # 485c
+  clock: 3  # 485c
+  nonce: 485c  # 485c
+  set:  # 485c
+    status: satisfied  # 485c
+- op: discuss  # ab63
+  at: '2026-10-25T15:01:03Z'  # ab63
+  by: agent  # ab63
+  actor: jgstern_agent  # ab63
+  clock: 4  # ab63
+  nonce: ab63  # ab63
+  message: "Satisfied. Merged as PR #1856 (dev 65124fe5ac). safety_zones gains backend_index_scip_python and backend_index_rust_analyzer (zone analyser_backend, declared in docs/hypergumbo-self-catalog/analyser_backend_sinks.yaml and loaded by the claims file); both invoke modules default to them; the scip-python scratch dir is safety_zones.tmp_artifact_dir; runtime-cli-no-subprocess now enumerates both launches with their enablers (flag, env var, or trust grant / config tier -- alternatives) plus the scip-python --version probe; SECURITY.md regenerated; the three findings left the I/O allowlist (check-io-allowlist OK, 263 sites). BEHAVIORAL EVIDENCE on merged dev, the premise check's own repro re-run with fake scip-python / rust-analyzer first on PATH and a spy on the production module attribute: (a) the fixture whose .hypergumbo.toml sets [backends] scip_python = true, `hypergumbo run` -> zone wrapper calls [backend_index_scip_python scip-python index], and the fake binary logged `scip-python index --cwd <fixture> ... --output /tmp/hypergumbo-scip-python-*/index.scip`; (b) the Cargo fixture with HYPERGUMBO_RUST_ANALYZER=1 and no trust grant -> [backend_index_rust_analyzer rust-analyzer scip], binary logged `rust-analyzer scip <fixture>`. Every launch reached its declared wrapper. check-self-claims: 18 claims unchanged (18 confirmed_with_caveats). NOT checked: a real backend run (no real binaries used), and whether any claim should PROHIBIT the analyser_backend zone (none does; the zone is declared and enumerated, not forbidden)."  # ab63

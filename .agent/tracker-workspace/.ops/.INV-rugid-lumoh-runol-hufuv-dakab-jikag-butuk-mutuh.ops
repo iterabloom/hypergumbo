@@ -36,3 +36,18 @@
   clock: 3  # ba1b
   nonce: ba1b  # ba1b
   message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: STALE-TEXT; consequence (3) is MISPREMISED and the real behaviour is worse. Path unchanged (tui.py:2392-2394, was 2368); gitignored by .agent/tracker-workspace/.gitignore:1, untracked; `git clean -xdn` (dry run) lists it among 249 lines (was 240); file 279,176 bytes (was 234,642), still 0600; directory drwxrwsr-x, no sticky bit; journal.py mirrors only .ops. CORRECTION: a second user is NOT 'simply denied by mode 600'. _load_tui_preferences catches the PermissionError (OSError) and silently returns defaults (tui.py:588-589); _save_tui_preferences writes mkstemp + os.replace in the group-writable directory (tui.py:662-672), which needs no access to the target, so the second user's first save REPLACES the owner's file (new owner, still 0600, owner now locked out) and the owner's next save flips it back: mutual clobbering with silent data loss. Simulated with a mode-000 file in a writable dir: load -> defaults, save -> True, file replaced. Applies to the agent too if it ever runs the TUI. The 09-13 destination proposal is still unimplemented. NOT checked: a real two-account run."  # ba1b
+- op: update  # 8356
+  at: '2026-10-25T18:16:56Z'  # 8356
+  by: agent  # 8356
+  actor: jgstern_agent  # 8356
+  clock: 4  # 8356
+  nonce: '8356'  # 8356
+  set:  # 8356
+    status: satisfied  # 8356
+- op: discuss  # b42e
+  at: '2026-10-25T18:16:57Z'  # b42e
+  by: agent  # b42e
+  actor: jgstern_agent  # b42e
+  clock: 5  # b42e
+  nonce: b42e  # b42e
+  message: "Satisfied. Merged as PR #1859 (dev 16534a75f7). The destination proposed on 2026-09-13, as proposed: tui_preferences_path() = $XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/tui_preferences.json (~/.local/state when unset), <repo-id> = journal._repo_id(toplevel); load_tui_preferences_migrating() reads an existing in-repo file once when the new one is absent and writes only the new location, never touching the old file. BEHAVIORAL EVIDENCE on merged dev: a clone fixture whose in-repo file is the owner's and mode 000 (the premise check's clobber shape) -> user A and user B (separate XDG_STATE_HOME) resolve to userA/... and userB/hypergumbo-tracker/d803292c6dee/tui_preferences.json; each saves and reads back only its own (A -> ['A'], B -> ['B']); the owner's in-repo file still reads ['OWNER'] (before the fix B's first save replaced it). On this checkout the agent account now resolves to /home/jgstern_agent/.local/state/hypergumbo-tracker/8b85be80f37d/tui_preferences.json, outside the checkout (8b85be80f37d is the same repo-id the protected config uses). Tests: 9, all red before. RESIDUAL, stated: the owner's existing in-repo copy is still in the checkout (git clean -xdn lists it) until the owner next opens the TUI, which carries it over; it is never deleted automatically, so the owner can remove it after that. NOT checked: a real two-account run (cannot switch users here)."  # b42e

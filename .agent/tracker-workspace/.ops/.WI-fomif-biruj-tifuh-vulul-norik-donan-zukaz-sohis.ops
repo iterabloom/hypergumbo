@@ -1,0 +1,22 @@
+- op: create  # c5cd
+  at: '2026-10-25T20:05:51Z'  # c5cd
+  by: agent  # c5cd
+  actor: jgstern_agent  # c5cd
+  clock: 1  # c5cd
+  nonce: c5cd  # c5cd
+  data:  # c5cd
+    kind: work_item  # c5cd
+    title: "bakeoff-deep counts only verdict == 'confirmed', so a confirmed_with_caveats claim reads undecided"  # c5cd
+    status: todo_hard  # c5cd
+    priority: 4  # c5cd
+    parent:  # c5cd
+    tags:  # c5cd
+    - bakeoff  # c5cd
+    - verify_claims  # c5cd
+    - concept_audit_20261021  # c5cd
+    isbefore: []  # c5cd
+    duplicate_of: []  # c5cd
+    not_duplicate_of: []  # c5cd
+    pr_ref:  # c5cd
+    description: "Split from WI-pidit (concept audit 2026-10-21/22 F5; premise re-check 2026-10-25 on dev 16534a75f7). scripts/bakeoff-deep:2703-2707 counts a claim as confirmed only on verdict == 'confirmed', so a confirmed_with_caveats claim (verify-claims >= 2.0, exit 3) reads undecided. The step runs only when claims/<repo>.yaml exists, and no reader of claims_confirmed / claim_verdict_pct was found, so the harm today is a wrong number nobody reads. Fix: count confirmed_with_caveats as decided (report it separately, or alongside confirmed with its caveat count). Claim verdict names are unaffected by WI-bujum's walk-verdict rename."  # c5cd
+    fields: {}  # c5cd
