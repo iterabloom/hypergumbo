@@ -1,0 +1,21 @@
+- op: create  # a446
+  at: '2026-10-25T11:04:18Z'  # a446
+  by: agent  # a446
+  actor: jgstern_agent  # a446
+  clock: 1  # a446
+  nonce: a446  # a446
+  data:  # a446
+    kind: work_item  # a446
+    title: "fish, hack, D and bitbake start edges at a hand-built file id (fish:<path>:file:, d:<path>:file:, bitbake:<path>), not make_file_id's node"  # a446
+    status: todo_hard  # a446
+    priority: 3  # a446
+    parent:  # a446
+    tags:  # a446
+    - docstring_audit  # a446
+    - analysis_quality  # a446
+    isbefore: []  # a446
+    duplicate_of: []  # a446
+    not_duplicate_of: []  # a446
+    pr_ref:  # a446
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- fish.py: `sources` edges use non-canonical endpoint ids -- evidence: fish.py:262 `file_stable_id = f\"fish:{rel_path}:file:\"`, fish.py:307 `dst=f\"fish:{source_path}:file\"`; repro edge `fish:a.fish:file: -> fish:other.fish:file sources 0.9`. `make_file_id` (base.py:630) gives `fish:<path>:1-1:file:file`; jsonnet.py:337-339 records fixing this same shape (WI-bufar-pokam).\n- hack.py: calls in a standalone function are attributed to the file, and that src is a 3-slot id -- evidence: code hack.py:443-450; `make_file_id` would give `hack:a.hack:1-1:file:file`.\n- d_lang.py: (NEW) D import edges start at the malformed 3-slot id `d:<path>:file:` -- evidence: d_lang.py:919 `file_stable_id = f\"d:{rel_path}:file:\"`; repro edge `d:app.d:file: -> d:std.stdio:0-0:module:module imports`; `make_file_id` would give `d:app.d:1-1:file:file`.\n- bitbake.py: (NEW) `inherits` / `depends_on` edges start at a 2-slot id that is not the file-node shape -- evidence: bitbake.py:228 `src=f\"bitbake:{rel_path}\"` and L263 `src=f\"bitbake:{rel_p}\"`; repro edge `bitbake:a.bb -> bitbake:package:a depends_on`; `make_file_id` (hypergumbo_core/analyze/base.py:630) gives `bitbake:a.bb:1-1:file:file`. This is the shape jsonnet.py:337-339 records fixing under WI-bufar-pokam.\n\nOne mechanism in four producers: the edge src/dst is a string built by hand instead of make_file_id (base.py), so no file node carries it. hack also credits calls inside a standalone function to that file id instead of the function. Sweep the other lang packages for the same f\"{lang}:{path}:file\" shape before fixing.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # a446
+    fields: {}  # a446

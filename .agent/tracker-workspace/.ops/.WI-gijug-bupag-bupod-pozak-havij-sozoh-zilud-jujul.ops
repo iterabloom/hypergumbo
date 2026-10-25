@@ -1,0 +1,21 @@
+- op: create  # 8fb8
+  at: '2026-10-25T11:05:09Z'  # 8fb8
+  by: agent  # 8fb8
+  actor: jgstern_agent  # 8fb8
+  clock: 1  # 8fb8
+  nonce: 8fb8  # 8fb8
+  data:  # 8fb8
+    kind: work_item  # 8fb8
+    title: "message_dispatch: a serde-renamed Rust variant never pairs with its match arm (write channel is the rename string, read channel the variant name)"  # 8fb8
+    status: todo_hard  # 8fb8
+    priority: 3  # 8fb8
+    parent:  # 8fb8
+    tags:  # 8fb8
+    - docstring_audit  # 8fb8
+    - analysis_quality  # 8fb8
+    isbefore: []  # 8fb8
+    duplicate_of: []  # 8fb8
+    not_duplicate_of: []  # 8fb8
+    pr_ref:  # 8fb8
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- message_dispatch.py: renamed Rust variants can never pair with their own match arms -- evidence: the write channel is the rename string (L166-169) and the read channel is the PascalCase variant (L173-180). The join at L250 is an exact `read_index.get((write.api, write.channel), [])`. Repro (scratchpad/verify/tmp/v08md/md.py): proto.rs `#[serde(tag = \"type\")] enum Message { #[serde(rename = \"join\")] Join {..} }` plus h.rs `Message::Join { room } => ...` gives `edges: 0 silence: candidates_unresolved`. Changing the rename to `\"Join\"` gives `rename==variant edges: 1`. An edge appears only when the rename happens to equal a variant name, which is the case where `rename` is a no-op.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 8fb8
+    fields: {}  # 8fb8

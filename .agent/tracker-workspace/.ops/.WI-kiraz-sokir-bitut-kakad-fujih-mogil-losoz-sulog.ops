@@ -1,0 +1,21 @@
+- op: create  # 3840
+  at: '2026-10-25T11:05:56Z'  # 3840
+  by: agent  # 3840
+  actor: jgstern_agent  # 3840
+  clock: 1  # 3840
+  nonce: '3840'  # 3840
+  data:  # 3840
+    kind: work_item  # 3840
+    title: "markdown: is_internal treats every non-http scheme (mailto:, ftp:, data:) as internal and emits references edges for them"  # 3840
+    status: todo_hard  # 3840
+    priority: 3  # 3840
+    parent:  # 3840
+    tags:  # 3840
+    - docstring_audit  # 3840
+    - analysis_quality  # 3840
+    isbefore: []  # 3840
+    duplicate_of: []  # 3840
+    not_duplicate_of: []  # 3840
+    pr_ref:  # 3840
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- markdown.py: The docstring (L40) says edges are \"Emitted only for repo-internal targets\", but `is_internal` treats every non-http scheme URL as internal, so mailto:, ftp: and similar links get `references` edges. The same test also excludes a relative path that starts with \"http\" (for example `httpd.md`). Evidence: markdown.py:364-366 `is_internal = url.startswith(\"./\") or url.startswith(\"../\") or (not url.startswith(\"http\") and not url.startswith(\"#\"))`, and L395-406 emit the edge when `is_internal`. Repro (analyze_markdown on a README containing `[me](mailto:a@b.c) [ftp](ftp://x.org/f) [doc](./a.md) [h](httpd.md)`):\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 3840
+    fields: {}  # 3840

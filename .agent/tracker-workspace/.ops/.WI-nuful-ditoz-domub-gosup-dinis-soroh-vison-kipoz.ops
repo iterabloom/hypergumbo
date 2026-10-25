@@ -1,0 +1,21 @@
+- op: create  # 4b95
+  at: '2026-10-25T11:04:44Z'  # 4b95
+  by: agent  # 4b95
+  actor: jgstern_agent  # 4b95
+  clock: 1  # 4b95
+  nonce: 4b95  # 4b95
+  data:  # 4b95
+    kind: work_item  # 4b95
+    title: "add-extras installs sentence-transformers unpinned and never upgrades an installed old version, skipping EMBEDDINGS_REQUIREMENT and its PYSEC floor"  # 4b95
+    status: todo_hard  # 4b95
+    priority: 2  # 4b95
+    parent:  # 4b95
+    tags:  # 4b95
+    - docstring_audit  # 4b95
+    - analysis_quality  # 4b95
+    isbefore: []  # 4b95
+    duplicate_of: []  # 4b95
+    not_duplicate_of: []  # 4b95
+    pr_ref:  # 4b95
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- cli.py: add-extras installs embeddings unpinned and never upgrades an old version -- evidence: cli.py:4078-4079 `cmd = [sys.executable, \"-m\", \"pip\", \"install\", \"sentence-transformers\", \"onnxruntime\"]` in `_install_embeddings_impl`, while cli.py:4957-4963 calls `EMBEDDINGS_REQUIREMENT = \"sentence-transformers~=5.7\"` \"The one sentence-transformers requirement\" with the PYSEC-2026-4164 floor, and `cmd_install_embeddings` uses it (5044 `cmd = [..., \"pip\", \"install\", EMBEDDINGS_REQUIREMENT]`, with a version check at 5014 `current = available and _embeddings_version_ok(version)`). The add-extras row uses `cli_mod._is_embeddings_available` (3944), which is only `import sentence_transformers; return True` (4982-4988). So cmd_add_extras (5145-5147 `if row_available(): ... \"already installed. Skipping.\"`) skips an installed sentence-transformers below 5.7, and on a fresh install it pins nothing.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 4b95
+    fields: {}  # 4b95

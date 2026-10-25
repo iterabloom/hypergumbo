@@ -1,0 +1,21 @@
+- op: create  # ebd4
+  at: '2026-10-25T11:04:23Z'  # ebd4
+  by: agent  # ebd4
+  actor: jgstern_agent  # ebd4
+  clock: 1  # ebd4
+  nonce: ebd4  # ebd4
+  data:  # ebd4
+    kind: work_item  # ebd4
+    title: "cfg.unaccounted_names keys statements by node_type, so names in a `with` header are never checked (the completeness gate fails open there)"  # ebd4
+    status: todo_hard  # ebd4
+    priority: 3  # ebd4
+    parent:  # ebd4
+    tags:  # ebd4
+    - docstring_audit  # ebd4
+    - analysis_quality  # ebd4
+    isbefore: []  # ebd4
+    duplicate_of: []  # ebd4
+    not_duplicate_of: []  # ebd4
+    pr_ref:  # ebd4
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- cfg.py: `unaccounted_names` indexes statements by `(stmt.line, stmt.col, stmt.node_type)` instead of `statement_match_key`, so a `context_manager_enter` statement (ast_node_type=\"with_clause\") never matches its AST node and names in a `with` header are never checked (gate fails open) -- evidence: cfg.py:2228-2233 `# Same key as populate_def_use_for_cfg and uncovered_semantic_lines build.` / `recorded[(stmt.line, stmt.col, stmt.node_type)] = stmt`; cfg.py:273 `return (stmt.line, stmt.col, stmt.ast_node_type or stmt.node_type)`; cfg.py:1723 `ast_node_type=value_node.type` (only setter). Repro (verify/tmp/v02_unacc.py, python mapping + py_def_use extractor, source `def f(p):\\n    x = p\\n    with open(x) as fh:\\n        y = 1\\n    return y`): statement `3 9 context_manager_enter with_clause ['fh'] ['x']`; after clearing that statement's uses -> `unaccounted (with-header uses cleared): frozenset()`; control, clearing the return statement's uses -> `frozenset({'y'})`; same function with the key swapped to `statement_match_key(stmt)` -> `frozenset({'x'})`. Scope note: with the current Python extractor the with header is accounted correctly, so this is a latent hole that bites only when the extractor misses a name in a context-manager header (the exact failure class the gate exists to catch).\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # ebd4
+    fields: {}  # ebd4
