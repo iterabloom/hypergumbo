@@ -1,0 +1,15 @@
+Original commit body from e787ccc528b0c8fda1c712a2805839feff2cd73e:
+
+The C half of the 2026-10-25 audit (the A+B+D half merged as #1848):
+13 verified silent omissions, each now one sentence or a short bullet
+checked against the code. Files: analyze/base.py (2), cfg.py,
+ddg_build.py, discovery.py, framework_patterns.py, io_boundary.py,
+taint.py, linkers/react_component.py, linkers/tauri_ipc.py,
+hypergumbo_lang_mainstream/go_def_use.py and rust.py, and
+hypergumbo_lang_extended1/asm.py. Docstrings only.
+
+signature_axis FACT_HOMES re-anchored again for base.py
+(315->326, 277->288).
+
+Tests: smart-test affected set, 27180 passed; changed files at 100%.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
