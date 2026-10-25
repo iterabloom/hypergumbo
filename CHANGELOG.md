@@ -14,75 +14,73 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
-- **A `calls` edge's `src` has a written contract** (ADR-0023 amendment, WI-fazup). `src` is the code unit whose execution makes the call: a callable, or an anchor (a type, a Go package variable, the file) for code outside any function. A consumer that needs a caller reads the src node's kind. No output changes. The spec's anchoring paragraph is corrected (every listed language now anchors, and Python/JS/TS module-level flows are walked since WI-nilir). The INV-sozak exit-status residual is recorded in ADR-0049 as accepted.
-- **An exit status is no longer a taint source** (ADR-0049 amendment): `os.wait*` and Rust's `Child.wait` / `try_wait` mint nothing, matching `subprocess.call`, `os.system` and `Command::status`. The child's output still does (`check_output`, `communicate`, `Command.output`, `wait_with_output`). Measured first: 0 findings removed or added on 11 repositories.
-- **A C/C++ module slot naming two or more headers is a short handle** (`module-set-<16 hex>`; `SCHEMA_VERSION` 0.20.15 → 0.21.0, `stable_id_scheme` v11 → v12). The header list is stored once, in a new top-level `module_sets` table. It had been copied into every unresolved call's id, label, `dst` and `dst_ref`: envoy's survey was 5.5 GB, and `verify-claims` was killed at 20.5 GB. The same lists now take 14 MB instead of 2.07 GB on envoy-half. Verdicts are unchanged: both catalogue readers expand the handle. A reader that splits the slot on commas must expand it through `module_sets` first. The `stable_id` of each such C/C++ external symbol changes; no other id does.
-- **`stable_id_scheme` v10 → v11**: a SCIP-only symbol's `stable_id` hashes its file path with the moniker, so a cargo package's lib, bin and `build.rs` roots no longer share one id; tree-sitter and merged ids are unchanged.
-- **`stable_id_scheme` v9 → v10**: BitBake symbols' `stable_id` is a real hash, no longer their node id; other languages are unchanged.
+- **A C/C++ module slot naming two or more headers is a short handle** (`module-set-<16 hex>`; `SCHEMA_VERSION` 0.20.15 → 0.21.0). The header list is stored once, in a new top-level `module_sets` table, instead of in every unresolved call's id, label, `dst` and `dst_ref`: on envoy-half those lists take 14 MB, down from 2.07 GB. Verdicts are unchanged. A reader that splits the slot on commas must expand it through `module_sets` first.
+- **`stable_id_scheme` v9 → v12**. v10: BitBake symbols hash their identity instead of copying their node id. v11: a SCIP-only symbol hashes its file path with the moniker, so a cargo package's lib, bin and `build.rs` roots no longer share one id. v12: C/C++ external symbols whose module slot names a header set change with the handle. No other `stable_id` changes.
+- **An exit status is no longer a taint source** (ADR-0049): `os.wait*` and Rust's `Child.wait` / `try_wait` mint nothing, matching `subprocess.call` and `Command::status`. The child's output still does. No finding changed on the 11 repositories measured.
+- **A `calls` edge's `src` has a written contract** (ADR-0023): it is the code unit whose execution makes the call. That is a callable, or, for code outside any function, an anchor (a type, a Go package variable, the file). No output changes.
 
 ### Added
 
-- **The test-only-reachability ratchet judges methods** (WI-mifag). On a map the scip-python backend typed (the full-suite cron's), a production method whose only callers are tests is gated like a function: 56 on this repository, each checked by hand. A reference resolves by its receiver's type, so `s.add()` on a set no longer keeps `Store.add` out of the cohort. Overrides of a production-reached method, methods of a class on an external base (Textual's `action_*` / `on_*`), methods named like a production-reached Protocol method, and dunders are set aside as dispatched. On an untyped map methods are counted, never gated, and their baseline keys are carried through unchanged.
+- **The test-only-reachability ratchet judges methods** on a map typed by the scip-python backend, as in the full-suite cron. A production method whose only callers are tests is gated like a function (56 on this repository). References resolve by the receiver's type. Four kinds of method are treated as dispatched and set aside: overrides, methods of a class with an external base, methods named like a production-reached Protocol method, and dunders. On an untyped map, methods are counted but not gated.
 
 ### Removed
 
-- **The aardvark-dns test fixture's `Cargo.lock`**: never built, it drew five Dependabot alerts. Its README pins the upstream copy for re-recording.
+- **The aardvark-dns test fixture's `Cargo.lock`**, which drew five Dependabot alerts. A test now fails on any committed lockfile or exact `==` pin in a requirements file.
 
 ### Fixed
 
 #### Pass disclosure
 
-- **A pass that ran and found nothing is in `analysis_runs`, with why** (WI-tivif). Framework-pattern enrichment is now recorded as the `framework-patterns` pass. The new `metrics.framework_patterns` lists every pattern YAML loaded, zeros included, with how many symbols each tagged. route-materializer, django-cbv-method-expander, boundary synthesis, enclosure-linker and the file-symbol synthesizer used to vanish when they emitted nothing; they are now recorded with a `silence_reason` taken from what each scan found.
-
-- **A pass that read files and found nothing says so, on more repositories** (WI-lisan). Only eleven linker bodies claimed a silence reason, so `unreported` was 0 on this repository and not elsewhere: 4 on compose-go and 6 on component-model-demo. 13 more linkers now claim one from what their scan found. Those are argparse-dispatch, database-query, event-sourcing, go-cobra, go-memberlist, graphql, http, lua-ffi, napi, phoenix-ipc, ruby-ffi, subprocess and websocket. The tree-sitter analyzers claim one through a shared helper: none declared is `no_candidate_construct`, and declared then dropped is `candidates_unresolved`. `unreported` is now 0 on six corpus repositories and on a construct-free file in every language a pass reads. A content scan that read no file keeps `no_candidate_files`.
+- **Every pass that ran is in `analysis_runs`, and one that found nothing says why.** Framework-pattern enrichment is recorded as the `framework-patterns` pass. `metrics.framework_patterns` lists every pattern YAML loaded and how many symbols each one tagged. Five post-passes that vanished when they emitted nothing are now recorded. 13 more linkers and the tree-sitter analyzers now give a `silence_reason` (`no_candidate_construct` or `candidates_unresolved`) based on what their scan found. `unreported` is 0 on six corpus repositories; it was 4 on compose-go and 6 on component-model-demo.
 
 #### Identity
 
-- **ADR-0036 Ruling 3's sentinel table is enforced, as amended** (WI-dipim, INV-kurup). Read literally, it would have flagged correct ids on grpc: 18 real one-line `1-1` spans, 1,904 C++ include targets named `file`, and 7 angle-bracket system headers. Two rules are checked instead. The file pseudo-symbol (`file:file`) must have span `1-1`; this is an error, with 0 hits on grpc, whisper.cpp and sherpa-onnx. No path slot may be `<unknown>`, finalize's fallback for a non-id dst. That one is advisory until the starlark/cmake/rst/cuda/glsl/wgsl producers behind it are fixed (WI-zihij).
-- **The id round-trip checks are errors** (WI-popak, INV-kurup). An id whose kind slot is not a registered kind or differs from `Symbol.kind`, or whose name slot is empty, was a `warning` while a known backlog drained. That backlog is now 0 on every substrate and survey checked, so new violations report as `error`. The validation-ratchet baselines drop from 11 to 0.
-- **Starlark `deps` labels reach the targets they name** (WI-pusan, INV-kurup). A label was pasted into the dst raw (`starlark:BUILD::utils`), which is no id, so none resolved. On grpc, 479 edges collapsed onto one nameless `<unknown>` node. `:name`, `name`, `//pkg:name` and `//pkg` now resolve to the declared target: grpc resolves 14,328 of 15,572. Any other label (an `@repo` label, or a target a macro makes) is a canonical external ref. The label as written is kept in `meta["build_label"]`.
-- **No id's name slot is empty.** No symbol is made for a C++ anonymous enum with a base type (`enum : uint16_t {...}`); tree-sitter's zero-width MISSING name had read as `''`, and its enumerators went with it. No edge is made for a Ruby call whose method is error recovery's MISSING node, or for a Python base class that is a call expression (`class X(namedtuple(...))`). A C++ base name split across lines keeps no newline in its id. grpc's id-format violations go 10 → 0.
+- **The validator's id round-trip checks are errors**. An id whose kind slot differs from the symbol's kind, or whose name slot is empty, now fails rather than warns. The validation-ratchet baselines drop from 11 to 0. ADR-0036 Ruling 3 is enforced as amended: the file pseudo-symbol must span `1-1` (an error), and a `<unknown>` path slot is advisory.
+- **A node id's kind slot is the node's kind** for CUDA functions, Android-manifest components and message-dispatch stand-ins. Those slots had carried the execution space, the manifest element or the dispatch role, which now live only in meta. whisper.cpp's id-format violations go from 1,016 to 0. Node ids change; `stable_id`s do not.
+- **No id has an empty name slot.** Previously, tree-sitter's zero-width MISSING nodes produced empty names for C++ anonymous typed enums, Ruby error-recovery calls and Python call-expression base classes; grpc's id-format violations go from 10 to 0. gRPC, Swift/Objective-C and WebAssembly linker ids carry the node's own language and kind.
+- **Starlark `deps` labels resolve to the targets they name**: 14,328 of 15,572 on grpc, where 479 edges had collapsed onto one `<unknown>` node. Any other label becomes a canonical external ref, and the label as written is kept in `meta["build_label"]`.
+- **Edges start and end on real nodes**:
+  - Import and build-target edges from json, make, jsonnet, astro, svelte and Cargo manifests.
+  - CSS `@import` edges.
+  - Swift/Objective-C bridging-header imports and WebAssembly load edges, which now start at the file node.
+  - React JSX references, which now start at the component that renders the tag.
 
-- **A node id's kind slot is the node's kind** for CUDA functions, Android-manifest components and message-dispatch stand-ins (WI-lusoh, INV-kurup). The slot carried the execution space (`:global`, `:device`, ...), the manifest element (`:activity`, `:service`, ...) or the dispatch role (`:message_sender`/`:message_handler`). Those already live on meta. whisper.cpp's id-format violations go 1,016 → 0, and sherpa-onnx's 72 → 0. Node ids change; `stable_id`s do not.
+#### Calls, types and symbols
 
-#### Run limits
-
-- **`--max-files` bounds every language analyzer** (WI-fomid). It was documented as a per-analyzer cap but reached only the 10 of 119 analyzers registered to accept it: at `--max-files 1` this repository still analyzed 252 files. It is now enforced where analyzers find files, so it applies to all of them. A two-pass analyzer sees the same N files in both passes. The bash, gitignore, yaml and Ansible finders that read the file index directly are bounded too. At `--max-files 1` the 49 analyzer runs read 24 files, none more than 1. Linkers and the opt-in SCIP backends are not bounded, and the help text now says so. The generic yaml analyzer's run also reports the files it read; it said 0.
-
-- **`hypergumbo catalog` names the grammar package each pass loads** (WI-pakof). Every tree-sitter pass reported `requires: tree-sitter-language-pack`, but 39 of those 63 load their own wheel (`tree-sitter-rust`, `tree-sitter-go`, ...), and 42 more passes named nothing. `requires` now comes from the grammar the analyzer's class declares: 45 passes name a dedicated wheel and 60 the language pack. A pass is available only when that package is installed, not just the base `tree_sitter` library; before, rust read as available with `tree_sitter_rust` gone.
-
-#### CI and gates
-
-- **Every spec-validator check on the fixture matrix has something to inspect** (WI-jigup). The route-marker check found no route on any of the four substrates, so its ceiling of 0 passed without looking at anything. A gin route fixes that, and a Spring controller that only `--frameworks all` recognises makes that substrate differ from the default. A test now fails when a wired check's population is empty, or when a newly wired check does not say what it reads. The stale `id_format|warning: 11` cells are ratcheted to 0.
-- **`check-schema-coverage --baseline PATH`**. Its tests used to swap the committed baseline file in place. In parallel runs they raced: 3 to 7 of 12 failed per run, and a run could leave the file deleted. They now use a private file.
+- **Swift initialisers and deinitialisers are symbols**, and `T(...)` lands on the `init` it runs. Swift construction-call meta uses literal keys, so the meta-key gate can read it again.
+- **Python class-body calls emit calls edges** anchored on the class. `class C: requests.get(...)` used to be reported clean.
+- **Rust `type` aliases are symbols** (`type_alias`).
+- **A Dockerfile variable is one symbol per build stage**, and `ENV A=1 B=2` declares both.
 
 #### SCIP backends
 
-- **A SCIP edge lands on the record in its own crate target** (INV-sipod). rust-analyzer gives a package's lib, bin and `build.rs` roots one `crate/` moniker, and edges from `src/main.rs` and its modules were credited to the lib crate (7 on aardvark-dns). A reference now resolves in its own Document, then in the crate target its `mod` tree belongs to, or is dropped. Drops are counted in the run's warnings.
+- **A SCIP edge lands on the record in its own crate target**: it resolves in its own Document, then in the crate target its `mod` tree belongs to, or it is dropped and counted in the run's warnings. Before, edges from a package's bin were credited to its lib.
+- **SCIP-only symbols span their whole item**, not just the name token.
 
 #### Taint analysis
 
-- **A Python walrus or JS/TS nested assignment defines its variable**, call arguments included, so `if (t := os.environ["K"])` and `while ((m = re.exec(s)) !== null)` are walked precisely.
-- **`build_opener().open(url)` with no secret is no longer a leak**, matching `urlopen(url)`. The opener's proxy-environment read is still classified.
-- **`n = acc.push(secret)` then `fetch(acc[0])` is reported**: a call with no catalogue entry no longer lets the walk remove the flow.
-- **A closure defined before the secret it reads carries it**: `function setup() { u += k }` above `const k = …` no longer hides the flow.
-- **Module-level code is walked like a function body**: Python and JS/TS top-level flows are confirmed or removed, not decided by reachability alone.
-- **Python class-body calls emit calls edges**: `class C: requests.get(...)` is anchored on `C`, no longer a silent all-clear.
-- **`_, err := get()` no longer taints `err`** with the discarded value, so error chains above a Go source stay clean.
+- **Module-level Python and JS/TS code is walked like a function body**, so top-level flows are confirmed or removed instead of decided by reachability alone.
+- **More definitions reach their reads**:
+  - Python walrus and JS/TS nested assignments define their target.
+  - A closure defined before the secret it reads carries it.
+  - A call with no catalogue entry (`acc.push(secret)`) no longer removes the flow.
+- **Fewer false leaks**: `build_opener().open(url)` with no secret is clean, matching `urlopen(url)`. In Go, `_, err := get()` no longer taints `err`.
 
-#### Calls, types and inheritance
+#### Run limits
 
-- **Swift initialisers and deinitialisers are symbols**: `T(...)` lands on the `init` it runs; init bodies' calls are credited to it.
-- **Swift construction-call meta is enumerable again**: literal keys restore the meta-key gate.
-- **Import and build-target edges from json, make, jsonnet, astro, svelte and Cargo manifests have well-formed destinations**, so none becomes an `<unknown>` node.
-- **gRPC linker node ids use the node's own language and kind**, so they pass the id round-trip check.
-- **Swift/Objective-C bridging edges and nodes meet the graph**: bridging-header imports start at the header's file node, and linker ids carry `swift` and the node's kind.
-- **WebAssembly load edges start at the loading file's node**, and the WASM import and module stand-ins' ids carry their node kind.
-- **React JSX references start at the component that renders the tag**, at its line, not at a fabricated id no node carried.
-- **A Dockerfile variable is one symbol per build stage**: a re-declared `ENV` or `ARG` no longer duplicates it, and `ENV A=1 B=2` declares both.
-- **Rust `type` aliases are symbols** (`type_alias`), so a slice or dead-code query can name them.
-- **SCIP-only symbols span their whole item**, not the name token (rust-analyzer: inline `mod`s, local statics).
-- **CSS `@import` edges reach the survey**: they start at the file node and land on the imported file's node when the repository has it.
+- **`--max-files` bounds every language analyzer.** Before, only 10 of 119 analyzers honoured it, and this repository analyzed 252 files at `--max-files 1`. The cap is now enforced where analyzers find files. Linkers and the opt-in SCIP backends are not bounded, and the help text says so.
+- **`hypergumbo catalog` names the grammar package each pass loads.** `requires` comes from the grammar the analyzer's class declares: 45 passes name a dedicated wheel and 60 the language pack. A pass counts as available only when that package is installed.
+
+#### CI and gates
+
+- **Every spec-validator check on the fixture matrix has something to inspect**. The route-marker check had found no route on any substrate; a gin route and a Spring controller fixture fix that. A test now fails when a check finds nothing to inspect.
+- **Parallel test runs no longer race**: `check-schema-coverage --baseline PATH` gives its tests a private baseline instead of the committed one, which they could delete. Transcript-watcher tests use unique session ids, so one test's launch no longer kills another's watcher.
+
+### Documentation
+
+- The spec counts 63 `symbol_meta` keys and documents the transient `item_span`; its `calls` anchoring paragraph is corrected.
+- The fundamental-concept-audit playbook records its latest audit and a sixth producer-emit shape.
+- `ALLOWED_WEBSITES.md` permits discuss.python.org for Python packaging security notices; ARCHITECTURE.md regenerated.
 
 ## [9.2.0] - 2026-10-20
 
