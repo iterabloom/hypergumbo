@@ -20,3 +20,10 @@
     pr_ref:  # ec2e
     description: "Prior-tranche flag from WI-vafad (tranche 1, 2026-09-11), never filed, re-verified ACCEPT at dev fe3c32259d (docs/audits/0022, prior-backlog section).\n\npython asyncio.StreamReader.read and .readuntil are rowed net_recv only. The same StreamReader class is fed by subprocess pipe transports (asyncio/subprocess.py:45-54; asyncio.create_subprocess_exec is rowed subprocess, python.yaml:976-978) and by AF_UNIX sockets (open_unix_connection, streams.py:90-95), not only by TCP. read() drains self._buffer from whatever transport set_transport attached (streams.py:671). Whether the bytes came from the network or from another local process is a property of how the reader was created, which is a call-site question.\n\nFIX SHAPE (verifier's): an ipc_recv twin under call_site_undecidable beside the net_recv row (abstains_to net_recv, so nothing moves without a stamp), the shape typing.TextIO's read rows already use. ipc_recv and net_recv both derive untrusted_input, so no taint verdict should change. What changes is WHICH claim (network vs ipc) a subprocess-pipe read violates. Selecting the twin needs a receiver stamp from the create_subprocess_* / open_unix_connection binding. Pay ADR-0049 ruling 3."  # ec2e
     fields: {}  # ec2e
+- op: discuss  # 6364
+  at: '2026-10-25T20:08:25Z'  # 6364
+  by: agent  # 6364
+  actor: jgstern_agent  # 6364
+  clock: 2  # 6364
+  nonce: '6364'  # 6364
+  message: "From the WI-rutup premise re-check 2026-10-25: this is one of the remaining Unix-domain-socket medium cases under the ADR-0050 amendment WI-rutup carries (a row's primary boundary names the medium). WI-rutup points here rather than owning it."  # 6364

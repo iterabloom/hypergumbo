@@ -20,3 +20,10 @@
     pr_ref:  # 4738
     description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F5. Verified by reading verify_claims.py:6577-6581 (_choice_sources = sorted set of terminal names) vs :6624 ('{len(_choice_sources)} of this claim's evidence rows'): three rows rooted at socket.accept -> '1 of ...'. Agent probe: the comprehension tests v.source_primitive (the witness), not the authoritative source_primitives set (taint.py:743-767), so a collapsed (accept, recv) row with witness recv gets no caveat -- member-order dependent. NOTE: jgstern-agent/fix/lanos changes is_choice_shaped_source's signature; coordinate."  # 4738
     fields: {}  # 4738
+- op: discuss  # 999d
+  at: '2026-10-25T20:08:23Z'  # 999d
+  by: agent  # 999d
+  actor: jgstern_agent  # 999d
+  clock: 2  # 999d
+  nonce: 999d  # 999d
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT. Three functions each pass s.accept() -> subprocess.*: verdict violated, evidence_count 3, text '3 unsanitized untrusted_input flow(s)' and directly below 'CAVEAT (choice_shaped_source): 1 of this claim's evidence rows are rooted at...: accept'. With recv called before accept, the collapsed ddg_mixed row has source_primitive=recv, source_primitives=[accept, recv], and gets no caveat; swap the calls and the same set gets it -- member-order dependent. Refs: verify_claims.py:6578-6582 (name set), :6625 (count text), :6634-6635 (the detail also points the reader at the witness source_primitive); taint.py:748-773 (source_primitives), :1026-1036 (collapse, witness grp[0]). The 'coordinate with lanos' note is retracted: WI-lanos (PR #1825) only removed wait* names from CHOICE_SHAPED_SOURCE_NAMES; is_choice_shaped_source(primitive) is unchanged (verify_claims.py:944). Part 2 duplicates WI-kufos part (2) (filed 2026-10-05); fix together. P3 kept."  # 999d

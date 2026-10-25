@@ -20,3 +20,18 @@
     pr_ref:  # 14da
     description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6, verified by reading: cli.py:1845 keeps edges whose meta['io_boundary'] == category; the scalar is first-declared-wins (io_boundary.py:1614); io-boundaries itself iterates meta['io_boundaries'] (io_boundary.py:4354). --io-boundary subprocess misses the 23 ipc_recv+subprocess rows (child_process.execSync, subprocess.check_output, go Cmd.Output) and scala Process(cmd) (scalar fs_write); --io-boundary navigation_read matches 1 of its 7 rows. Fix: read io_boundaries like the io-boundaries command; repro through the CLI first."  # 14da
     fields: {}  # 14da
+- op: update  # fa92
+  at: '2026-10-25T20:08:23Z'  # fa92
+  by: agent  # fa92
+  actor: jgstern_agent  # fa92
+  clock: 2  # fa92
+  nonce: fa92  # fa92
+  set:  # fa92
+    priority: 2  # fa92
+- op: discuss  # fc84
+  at: '2026-10-25T20:08:23Z'  # fc84
+  by: agent  # fc84
+  actor: jgstern_agent  # fc84
+  clock: 3  # fc84
+  nonce: fc84  # fc84
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, WIDER. Python: run_check() -> subprocess.check_output, run_plain() -> subprocess.run, main calls both; `slice --entry main --io-boundary subprocess` reports '1 edge(s) reach this boundary' (subprocess.run only), exit 0, no warning (reproduced independently twice); --io-boundary ipc_recv keeps only check_output; io-boundaries lists check_output under both. JS: --io-boundary navigation_read keeps window.name and drops document.location. Refs: filter cli.py:1844-1847; scalar written io_boundary.py:5938, list :5955; the io-boundaries command fans out over the list at :4372; first-declared-wins loop :1632 (rationale :266-271); the --help example (cli.py:10694-10702) uses subprocess, the failing case. Scope: 41 two-boundary primitives (24 ipc_recv+subprocess, 6 env_read+navigation_read, 3 host_info_read+subprocess, 3 fs_write+subprocess, 2 fs_read+fs_write, 2 net_send+net_recv, 1 fs_read+logging); --io-boundary subprocess misses 30; the fs_write, net_recv and logging filters are affected too. Fix: read meta io_boundaries the way io_boundary.py:4372 does. P3 -> P2: a user-facing filter silently drops results."  # fc84

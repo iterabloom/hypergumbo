@@ -21,3 +21,18 @@
     pr_ref:  # 735e
     description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F4, agent read (two agents independently): builtin is decided by == 'builtin' (taint.py:2328), by 'not community' (verify_claims.py:2309-2312, taint.py:2520), and by path-or-line (io_boundary.py:2455); they agree today only because CI forces every shipped file to declare. DefaultOverlay.provenance '# axis: free-text ... never parsed' (io_boundary.py:2224) is compared as an enum by declares_community (yaml_catalogs.py:288); the runtime validator checks non-empty only (io_boundary.py:2255). PROVENANCE_BUILTIN constant unreferenced (yaml_catalogs.py:278). Fix: one is_builtin predicate, a bounded-enum axis declaration, the validator rejects other values. Also: supply-chain tier 1 doubles as an 'unclassified' sentinel when supply_chain_reason is empty (cli.py:12014-12017, analyze/base.py:1914-1917) although supply_chain_reason is declared never-branch-on free text (ir.py:727) -- make 'unclassified' explicit."  # 735e
     fields: {}  # 735e
+- op: update  # 5844
+  at: '2026-10-25T20:08:22Z'  # 5844
+  by: agent  # 5844
+  actor: jgstern_agent  # 5844
+  clock: 2  # 5844
+  nonce: '5844'  # 5844
+  set:  # 5844
+    priority: 4  # 5844
+- op: discuss  # 8ba7
+  at: '2026-10-25T20:08:22Z'  # 8ba7
+  by: agent  # 8ba7
+  actor: jgstern_agent  # 8ba7
+  clock: 3  # 8ba7
+  nonce: 8ba7  # 8ba7
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, OVERSTATED (code read; diverging the rules needs a malformed shipped file). Refs: taint.py:2334 (requires explicit builtin), verify_claims.py:2310-2315 (shipped and not community), taint.py:2526 split_community_files, io_boundary.py:2472-2475 (path-or-line; decides COMMUNITY, not builtin); axis comment io_boundary.py:2242; non-empty-only validator :2273; PROVENANCE_BUILTIN still unreferenced (yaml_catalogs.py:278); the CI gate keeping the rules in agreement is tests/test_catalogue_scope_gates.py:763. Correction: the DefaultOverlay.provenance FIELD is display-only (sole reader verify_claims.py:2503); what is parsed as an enum is the raw YAML key (yaml_catalogs.py:288 overlay_declares_community, catalogues_doc.py:112, taint.py:2334). Real defects: the axis comment calls the value a 'prose citation' when it is the tier token (declare bounded-enum), the validator accepts any non-empty value, and three predicates exist where one should. The supply-chain tier-1 'unclassified' sentinel half is unrelated to catalogue provenance and is already tracked in WI-lidig (F78.A3 watch-item); refs moved there (cli.py:12072-12077, analyze/base.py:2008-2011). P3 -> P4: latent, held by a CI gate, nothing user-visible wrong today."  # 8ba7

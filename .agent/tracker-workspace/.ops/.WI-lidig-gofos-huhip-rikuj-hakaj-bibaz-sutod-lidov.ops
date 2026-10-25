@@ -31,3 +31,10 @@
     tags: [dogfood_tranche_04]  # 3eac
   remove:  # 3eac
     tags: [dogfood_tranch_04]  # 3eac
+- op: discuss  # f133
+  at: '2026-10-25T20:08:24Z'  # f133
+  by: agent  # f133
+  actor: jgstern_agent  # f133
+  clock: 3  # f133
+  nonce: f133  # f133
+  message: "From the WI-fuzat premise re-check 2026-10-25 (dev 16534a75f7): the concept audit 2026-10-21 (F4) asked for supply-chain 'unclassified' to be explicit rather than tier 1 + empty supply_chain_reason (which ir.py:727 declares never-branch-on free text). Still present at cli.py:12072-12077 and analyze/base.py:2008-2011. Tracked here with the F78.A3 sentinel watch-item, not in WI-fuzat."  # f133
