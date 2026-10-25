@@ -56,3 +56,18 @@
   clock: 5  # ccbe
   nonce: ccbe  # ccbe
   message: "holding(deprecated)->violated: Multi-lang invariant (Python+JS/TS). Python arm holds (tests pass, 160 extends edges in dogfood). JS/TS arm VIOLATED: WI-dutov (P1 todo_hard dogfood) shows TS emits ZERO extends edges despite passing unit tests. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # ccbe
+- op: update  # fe20
+  at: '2026-10-25T11:37:00Z'  # fe20
+  by: agent  # fe20
+  actor: jgstern_agent  # fe20
+  clock: 6  # fe20
+  nonce: fe20  # fe20
+  set:  # fe20
+    status: satisfied  # fe20
+- op: discuss  # 6270
+  at: '2026-10-25T11:37:01Z'  # 6270
+  by: agent  # 6270
+  actor: jgstern_agent  # 6270
+  clock: 7  # 6270
+  nonce: '6270'  # 6270
+  message: "Satisfied 2026-10-25 on behavioral evidence (dev 2399d5ad7c). The only violation on record was the JS/TS arm (WI-dutov: TS emitted 0 extends edges); WI-dutov is done (PR #4255) and was validated MOVED on apollo-server (0 -> 86 TS extends/implements edges, DEEP cohort deep-20260621-215349). Live repro of THIS statement today (`hypergumbo run` on a 4-file fixture): python B(A) -> extends python:m.py:1-2:A:class; javascript Q extends P -> extends javascript:a.js:1-1:P:class; typescript Sq extends Base implements Shape (cross-file import) -> extends typescript:base.ts:2-2:Base:class AND implements typescript:base.ts:1-1:Shape:interface; interface Big extends Shape -> extends typescript:base.ts:1-1:Shape:interface. Every dst resolves to a real in-repo node. Scope: in-repo bases only, as the statement says; external bases are INV-kobad matrix row 4 / META-sigap."  # 6270

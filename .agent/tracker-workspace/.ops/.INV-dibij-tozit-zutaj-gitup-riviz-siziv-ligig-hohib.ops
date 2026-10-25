@@ -22,3 +22,10 @@
     fields:  # 9e45
       statement: "A call on a receiver whose declared type is a bare java.lang closed-list name, with no shadow in scope, carries that java.lang path in its module slot, consistently across every arm of an analyzer."  # 9e45
       root_cause: "_qualify_scala_receiver and _kt_receiver_module accept only an import or an inline dotted path for a declared type; scala's receiver typer (_library_owner) also accepts java.lang's closed list, so the two scala arms disagree."  # 9e45
+- op: discuss  # 0a06
+  at: '2026-10-25T11:36:55Z'  # 0a06
+  by: agent  # 0a06
+  actor: jgstern_agent  # 0a06
+  clock: 2  # 0a06
+  nonce: 0a06  # 0a06
+  message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: STALE-TEXT. The violation reproduces exactly as filed (scala s(p: Process) -> scala:external:0-0:getInputStream; kotlin u -> kotlin:external; kotlin p.inputStream -> no edge; fully qualified java.lang.Process -> qualified), via _qualify_scala_receiver (scala.py:699), _library_owner (scala.py:2354) and _kt_receiver_module (kotlin.py:1024, which declines java.lang deliberately, docstring :1050). BUT the headline consequence is FALSE: there is no java.lang.Process io_primitives row, so qualifying p.getInputStream() would still reach no catalogue row -- classify_call returns None on the qualified id too; java.lang.Process appears only in library_signatures/java.yaml:40-44 as a return type. The invariant is real on types that DO have rows: pb: ProcessBuilder -> pb.start() and rt: Runtime -> rt.exec(..) mint external:0-0:start / exec in both languages and classify to None, while the qualified java.lang.ProcessBuilder:0-0:start / java.lang.Runtime:0-0:exec classify non-None. Use those as the instance; Process.getInputStream matters only for return-type chaining. Distinct from INV-suril (statics) and WI-vafot (scala implicit imports). NOT checked: corpus counts."  # 0a06

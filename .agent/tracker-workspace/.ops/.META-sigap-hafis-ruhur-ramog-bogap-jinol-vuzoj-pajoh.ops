@@ -20,3 +20,19 @@
     description: "Layer-1 root-cause family from the connection sweep (connections-sweep 2026-06-08T1900Z). Members: INV-jukok, WI-mujor, WI-ninuv, WI-jubag. Orphan members are reparented here; already-parented members are cross-linked (not_duplicate_of) to preserve their existing umbrella."  # f680
     fields:  # f680
       statement: "Placeholder synthesis must be symmetric: unresolved edge sources and skipped edge families (extends/instantiates) need the same placeholder fallback that unresolved destinations already receive."  # f680
+- op: discuss  # 722b
+  at: '2026-10-25T11:36:55Z'  # 722b
+  by: agent  # 722b
+  actor: jgstern_agent  # 722b
+  clock: 2  # 722b
+  nonce: 722b  # 722b
+  message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: PARTLY FIXED; statement re-scoped to the instantiates half. 3 of 4 members closed (INV-jukok satisfied 07-15, WI-mujor and WI-ninuv done 06-17); WI-jubag is the only open member. SOURCE half FIXED: a04ea91b99 (WI-pozur) moved synthesis after the tier filter; create_boundary_nodes collects dangling srcs (ir.py:2084); _check_dangling_endpoint (spec_validator.py:2346). Repro: a tier-4-filtered gen_pb2.py's srcs come out as python:src/gen_pb2.py:0-0:file:external_symbol placeholders; 0 edges with a missing src or dst. EXTENDS half FIXED in all 9 OO languages probed (py kt rb java ts cs swift scala php) via the core chokepoint _external_base_edge (linkers/inheritance.py:327, 70d0cc067e). INSTANTIATES half STILL VIOLATED and wider than WI-jubag says: only Python types an external constructor as instantiates; Java (new File), C# (new StringBuilder), PHP (new DateTime), TS (new Thing from lib) emit NO edge (each does emit instantiates for an in-repo new Local(), so the path is reached); Kotlin, Ruby, Swift emit plain calls; Scala emits no construction edge even in-repo. Ruby's in-repo Local.new resolves to ruby:Local:0-0:initialize:external_symbol though Local is in the same file. Both filed as separate items. NOT checked: dart, groovy, c++, objc."  # 722b
+- op: update  # 768d
+  at: '2026-10-25T11:36:59Z'  # 768d
+  by: agent  # 768d
+  actor: jgstern_agent  # 768d
+  clock: 3  # 768d
+  nonce: 768d  # 768d
+  set:  # 768d
+    fields:  # 768d
+      statement: "Constructing an EXTERNAL class must emit a typed instantiates edge to a placeholder, in every OO language, as an unresolved destination already receives a placeholder. RE-SCOPED 2026-10-25: the unresolved-source half (a04ea91b99) and the external-extends half (70d0cc067e, verified in 9 languages) are FIXED. LIVE: only Python emits instantiates for an external constructor; Java, C#, PHP and TypeScript emit nothing; Kotlin, Ruby and Swift emit plain calls; Scala emits no construction edge even in-repo."  # 768d

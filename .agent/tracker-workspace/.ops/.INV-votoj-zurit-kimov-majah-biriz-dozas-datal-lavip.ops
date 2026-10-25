@@ -28,3 +28,19 @@
   clock: 2  # f349
   nonce: f349  # f349
   message: "HANDOVER FROM WI-kogop-poguh-nanig-gikuf-linup-sibuj-tojum-jidom (closed 2026-09-30 on its filed instance, owner-agreed). That row was this item's def/use half, observed from the test side. Its filed repro passed twice (smart-test --full --no-cov -n 5: 31729 passed, 0 failed, both runs), and a deterministic probe shows ensure_def_use_extractors_registered() restoring javascript after clear + reload-only-py.\n\nTHE RESIDUAL NOW LIVES HERE ONLY (this item's unclosed item 1). dataflow_capable needs BOTH the def/use extractor AND ddg_spec (dataflow_scope.py ~400/412, ddg_build._DDG_LANGUAGES). Only the def/use registry is compared against a baseline. A loss of javascript's DDG spec with its def/use extractor intact would not trigger a reload, and the language would read incapable.\nTest-side mutators of _DDG_LANGUAGES: test_ddg_build.py _preserve_registry (~:32-39, snapshot then clear+update) and clear_ddg_languages (~:71, inside the fixture). The 09-30 premise check found no live path (no test there first-imports ts_def_use inside the fixture window). Read only, not run.\nStatus stays violated: unclosed items 1 and 3 (no gate on future side-effect registries) are unchanged."  # f349
+- op: discuss  # df25
+  at: '2026-10-25T11:36:56Z'  # df25
+  by: agent  # df25
+  actor: jgstern_agent  # df25
+  clock: 3  # df25
+  nonce: df25  # df25
+  message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: STALE-TEXT; still violated and WIDER than stated (statement re-scoped). Probe with the production ensure_def_use_extractors_registered() (dataflow_scope.py:312): def/use registry cleared -> all 7 languages restored (half fixed, f013cc7d13 / INV-zunik); clear_ddg_languages() (ddg_build.py:377) then ensure() -> returns True with the DDG registry STILL EMPTY, compute_dataflow_scope reports def_use True, ddg_spec False for go, javascript, python (unclosed item 1 reproduces); both cleared -> DDG restores c go java javascript rust typescript but PYTHON NEVER, because python's DDG spec registers inside core (ddg_build.py:1030), not in a *_def_use module, so no module reload can bring it back. SAME CLASS ELSEWHERE: analyze.registry.clear_registry() then ensure_discovered() restores 0 of 119 analyzers (worked around per site by the session fixture in packages/hypergumbo-core/tests/conftest.py:18-47, INV-tajik); linkers/registry.py:1294 clear_registry has the same shape (not probed). No gate checks that a test-only clear_* leaves the process recoverable (unclosed item 3). Drift: the restore imports SIX modules, not four (the test docstring still says four); capability fields dataflow_scope.py:412/413; _preserve_registry test_ddg_build.py:31-38."  # df25
+- op: update  # 05b7
+  at: '2026-10-25T11:36:58Z'  # 05b7
+  by: agent  # 05b7
+  actor: jgstern_agent  # 05b7
+  clock: 4  # 05b7
+  nonce: 05b7  # 05b7
+  set:  # 05b7
+    fields:  # 05b7
+      statement: "Any registry populated as an import side effect must expose a restore path that works after the registry is cleared. Re-importing an already-imported module does not re-run its decorators, so a restore built on import alone returns success while restoring nothing. RE-SCOPED 2026-10-25: the def/use registry restores (f013cc7d13); STILL VIOLATED for the DDG registry (ensure() returns True with it empty, and python's spec, registered inside core at ddg_build.py:1030, is never restored), the analyzer registry (clear_registry then ensure_discovered restores 0 of 119), and unprobed for linkers/registry.py clear_registry. No gate checks that a test-only clear_* leaves the process recoverable."  # 05b7
