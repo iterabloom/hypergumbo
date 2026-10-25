@@ -36,3 +36,10 @@
   set:  # 768d
     fields:  # 768d
       statement: "Constructing an EXTERNAL class must emit a typed instantiates edge to a placeholder, in every OO language, as an unresolved destination already receives a placeholder. RE-SCOPED 2026-10-25: the unresolved-source half (a04ea91b99) and the external-extends half (70d0cc067e, verified in 9 languages) are FIXED. LIVE: only Python emits instantiates for an external constructor; Java, C#, PHP and TypeScript emit nothing; Kotlin, Ruby and Swift emit plain calls; Scala emits no construction edge even in-repo."  # 768d
+- op: discuss  # 023a
+  at: '2026-10-25T11:38:46Z'  # 023a
+  by: agent  # 023a
+  actor: jgstern_agent  # 023a
+  clock: 4  # 023a
+  nonce: 023a  # 023a
+  message: "Cross-ref (2026-10-25): in-repo siblings found by the same fixture are WI-gaduf (ruby Local.new) and WI-josik (scala new Local())."  # 023a

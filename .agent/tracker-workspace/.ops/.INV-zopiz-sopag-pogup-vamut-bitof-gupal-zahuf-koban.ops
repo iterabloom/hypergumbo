@@ -39,3 +39,10 @@
   nonce: a7d9  # a7d9
   set:  # a7d9
     title: "ruby, kotlin, go and csharp drop a file with no symbols before the edge pass, so a top-level-only file (RSpec spec, Go var _ = init file, import-only .kt, C# top-level-statements Program.cs) emits no calls or imports"  # a7d9
+- op: discuss  # 5ea8
+  at: '2026-10-25T11:38:46Z'  # 5ea8
+  by: agent  # 5ea8
+  actor: jgstern_agent  # 5ea8
+  clock: 4  # 5ea8
+  nonce: 5ea8  # 5ea8
+  message: "Cross-ref (2026-10-25): the .kts / .rake / Rakefile discovery gap is WI-pogad (related to WI-midik)."  # 5ea8

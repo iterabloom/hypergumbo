@@ -29,3 +29,18 @@
   clock: 2  # 0a06
   nonce: 0a06  # 0a06
   message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: STALE-TEXT. The violation reproduces exactly as filed (scala s(p: Process) -> scala:external:0-0:getInputStream; kotlin u -> kotlin:external; kotlin p.inputStream -> no edge; fully qualified java.lang.Process -> qualified), via _qualify_scala_receiver (scala.py:699), _library_owner (scala.py:2354) and _kt_receiver_module (kotlin.py:1024, which declines java.lang deliberately, docstring :1050). BUT the headline consequence is FALSE: there is no java.lang.Process io_primitives row, so qualifying p.getInputStream() would still reach no catalogue row -- classify_call returns None on the qualified id too; java.lang.Process appears only in library_signatures/java.yaml:40-44 as a return type. The invariant is real on types that DO have rows: pb: ProcessBuilder -> pb.start() and rt: Runtime -> rt.exec(..) mint external:0-0:start / exec in both languages and classify to None, while the qualified java.lang.ProcessBuilder:0-0:start / java.lang.Runtime:0-0:exec classify non-None. Use those as the instance; Process.getInputStream matters only for return-type chaining. Distinct from INV-suril (statics) and WI-vafot (scala implicit imports). NOT checked: corpus counts."  # 0a06
+- op: update  # 06c1
+  at: '2026-10-25T13:01:00Z'  # 06c1
+  by: agent  # 06c1
+  actor: jgstern_agent  # 06c1
+  clock: 3  # 06c1
+  nonce: 06c1  # 06c1
+  set:  # 06c1
+    status: satisfied  # 06c1
+- op: discuss  # 227b
+  at: '2026-10-25T13:01:00Z'  # 227b
+  by: agent  # 227b
+  actor: jgstern_agent  # 227b
+  clock: 4  # 227b
+  nonce: 227b  # 227b
+  message: "Satisfied. Merged as PR #1853 (dev cd93704544). Kotlin's _kt_receiver_module and scala's typed-receiver call arm now fall through to static_owner_module -- the closed java.lang list and shadow exclusions the static-call arm uses -- for a bare declared type the file never imports. BEHAVIORAL EVIDENCE on merged dev: (1) this item's own filed probe, re-run through analyze_kotlin / analyze_scala: kotlin u(p: Process) p.getInputStream() -> kotlin:java.lang.Process:0-0:getInputStream (was external); kotlin v p.inputStream -> kotlin:java.lang.Process:0-0:getInputStream (was NO edge); kotlin w (qualified control) unchanged; scala s p.getInputStream() -> scala:java.lang.Process (was external); scala t parameterless unchanged -- all five arms now agree, which is the statement. (2) The consequence measured in the 2026-10-25 premise check: `hypergumbo verify-claims` with \"No subprocess launches\" on `fun f(pb: ProcessBuilder) { pb.start() }` (kotlin) and the scala equivalent now exits 1 with the claim VIOLATED; before the fix it exited 3, confirmed_with_caveats. (3) test_jvm_declared_java_lang_receiver.py (14 tests, 8 red before): bare ProcessBuilder / Runtime classify as subprocess; a project ProcessBuilder, an imported org.other.ProcessBuilder and a shadowed kotlin String / scala Iterable keep their own answer. NOT measured: the corpus count of typed receivers this reaches."  # 227b
