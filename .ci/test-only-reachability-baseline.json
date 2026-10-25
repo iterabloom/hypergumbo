@@ -12,7 +12,6 @@
   "packages/hypergumbo-core/src/hypergumbo_core/axis_meta_keys.py::access_mode_applicable_edge_types",
   "packages/hypergumbo-core/src/hypergumbo_core/axis_meta_keys.py::access_mode_na_edge_types",
   "packages/hypergumbo-core/src/hypergumbo_core/call_constructs.py::all_call_construct_values",
-  "packages/hypergumbo-core/src/hypergumbo_core/catalog.py::validate_pass_dependencies",
   "packages/hypergumbo-core/src/hypergumbo_core/catalog.py::validate_pass_name_resolution",
   "packages/hypergumbo-core/src/hypergumbo_core/catalogue_home.py::repo_catalogue_home",
   "packages/hypergumbo-core/src/hypergumbo_core/cfg.py::clear_cfg_mapping_cache",

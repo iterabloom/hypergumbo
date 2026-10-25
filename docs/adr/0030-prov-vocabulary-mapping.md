@@ -86,13 +86,13 @@ Analyzer-originated edges have `derived_from = None` because the derivation is t
 
 PROV **wasInformedBy**: "communication of an entity from a completing activity to a started activity."
 
-`Pass.depends_on` is `list[list[str]]` in Conjunctive Normal Form (INV-hujog, WI-dilab). Each inner list is a disjunctive clause: at least one pass in the clause must be active. All clauses must be satisfied for the pass to run.
+`Pass.depends_on` is `list[list[str]]` in Conjunctive Normal Form (INV-hujog, WI-dilab). Each inner list is a disjunctive clause, satisfied when at least one pass in it produces; the declaration holds when every clause does. It is a declaration, not a gate: the runtime never refuses to run a pass on it (ADR-0056).
 
 | PROV concept | hypergumbo field | Type | Semantics |
 |---|---|---|---|
 | wasInformedBy | `Pass.depends_on` | `list[list[str]]` (CNF) | Pass-ID prerequisites — each clause is a disjunction, all clauses must hold |
 
-Example: `depends_on=[["java"], ["c", "cpp", "rust"]]` means "requires java AND (c OR cpp OR rust)". `validate_pass_dependencies()` checks this at configuration time.
+Example: `depends_on=[["java"], ["c", "cpp", "rust"]]` means "requires java AND (c OR cpp OR rust)". Three readers check or disclose it: `validate_pass_name_resolution()` in CI (every literal names a registered pass, no clause is empty), `prerequisite_absent` at the linker chokepoint (a linker silent because a prerequisite was skipped for a toolchain reason), and `find_falsified_dependencies()` after the run (a pass that emitted output with a clause unsatisfied proves its declaration wrong).
 
 ### Summary table
 
@@ -115,6 +115,6 @@ Example: `depends_on=[["java"], ["c", "cpp", "rust"]]` means "requires java AND 
 
 1. **Queryable derivation graph**: consumers can answer "why does this edge exist?" by walking `derived_from` to the contributing Symbols, without re-reading linker source code.
 2. **Multi-pass credit**: `origin` as a list prevents lossy single-attribution when evidence crosses pass boundaries.
-3. **Config-time validation**: `Pass.depends_on` in CNF enables `validate_pass_dependencies()` to catch missing prerequisites before analysis runs.
+3. **Checkable dependencies**: `Pass.depends_on` in CNF is checked statically in CI, disclosed at runtime when a prerequisite did not produce (`prerequisite_absent`), and audited after the run against what actually produced — reported, never enforced (ADR-0056).
 4. **PROV interop**: any tool that understands PROV-DM can mechanically translate a behavior map's provenance fields into valid PROV assertions using this mapping.
 5. **No PROV serialization**: we do NOT emit PROV-N or PROV-JSON natively. The mapping is conceptual. A future `hypergumbo export --format prov-json` could use this ADR as its specification.

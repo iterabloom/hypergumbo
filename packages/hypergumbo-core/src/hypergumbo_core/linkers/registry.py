@@ -615,9 +615,11 @@ class RegisteredLinker:
     # Distinct from ``activation`` (which gates "should this linker run at all
     # for this repo") and ``requirements`` (which gates "does this linker have
     # enough symbols to do useful work"). ``depends_on`` names the upstream
-    # analyzer pass IDs whose output this linker structurally requires —
-    # i.e., without those analyzers running, this linker cannot produce its
-    # intended edges at all.
+    # pass IDs whose output this linker structurally requires — i.e., without
+    # those passes producing, this linker cannot produce its intended edges at
+    # all. Usually analyzers; a LINKER named here must sit in a strictly lower
+    # priority group (test_catalog.TestLinkerDependenciesRunEarlier). It is a
+    # declaration, never a gate (ADR-0056).
     #
     # CNF shape examples:
     #   [["javascript"]]              — single conjunct, single literal:
@@ -1011,7 +1013,9 @@ def run_all_linkers(
     # Group by priority — linkers at the same priority are independent
     # and can run in parallel.  E.g., inheritance linker (priority 15)
     # creates implements edges that type_hierarchy (priority 60) needs,
-    # but linkers *within* the same priority never depend on each other.
+    # but linkers *within* the same priority never depend on each other: a
+    # linker named in another's depends_on sits in a strictly lower group
+    # (enforced by test_catalog.TestLinkerDependenciesRunEarlier).
     for _priority, group_iter in groupby(active_linkers, key=lambda lnk: lnk.priority):
         group = list(group_iter)
 

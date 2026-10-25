@@ -27,14 +27,13 @@ How It Works
 Beyond the build, the module provides:
 
 - **``depends_on`` checks.** ``Pass.depends_on`` is CNF (an AND of
-  OR-clauses). ``validate_pass_name_resolution`` checks that every literal
-  names a known pass; ``validate_pass_dependencies`` raises when a clause
-  has no active member (forward-looking, no production caller yet).
-  ``find_falsified_dependencies`` instead reports, after the run, passes
-  that emitted edges while a clause had no producing member, which proves
-  the declaration wrong; ``emit_falsified_dependency_summary`` prints it as
-  a one-line stderr advisory on the survey path. It reports rather than
-  gates because a gate would abort surveys on stale declarations.
+  OR-clauses). The runtime never gates on it (ADR-0056): a gate would abort
+  surveys on stale declarations. ``validate_pass_name_resolution`` is the
+  static check, run in CI: every literal names a known pass and no clause is
+  empty. ``find_falsified_dependencies`` reports, after the run, passes that
+  emitted edges while a clause had no producing member, which proves the
+  declaration wrong; ``emit_falsified_dependency_summary`` prints it as a
+  one-line stderr advisory on the survey path.
 - **Axis resolvers.** ``all_known_pass_ids`` and ``all_known_languages``
   return the legal values of the ``pass-id`` and ``language`` field axes:
   the registered names, plus each linker's emitted ``PASS_ID`` when it
@@ -97,24 +96,21 @@ class Pass:
             Infrastructure linkers like containment). Distinct from
             ``requires`` (package-availability label).
 
-            Two validators consume this field:
+            The runtime never gates a pass on this field (ADR-0056): raising
+            is the withholding direction, and WI-jijor measured 29% of surveys
+            carrying a falsified declaration, so a gate would abort more than
+            it protected. Three readers check or disclose it instead:
 
-            - :func:`validate_pass_name_resolution` is the static check:
-              every literal in every clause must resolve to a registered
-              pass-id. Catches typos at CI time, independent of any runtime
-              active-set decision.
-            - :func:`validate_pass_dependencies` is the forward-looking
-              runtime check: given an active subset of passes, every outer
-              AND-conjunct must contain at least one literal in the active
-              set. Still not wired into ``run_behavior_map`` and deliberately
-              so — it RAISES, and raising is the withholding direction
-              (WI-jijor measured 29% of surveys carrying a falsified
-              declaration, so a gate would abort more than it protected).
-            - :func:`find_falsified_dependencies` is the BACKWARD-looking twin
-              that IS wired (WI-jijor / ADR-0056 W1): the same CNF predicate
-              read against runs that already happened, reporting a pass that
-              emitted output despite an unsatisfied conjunct. It reports and
-              never raises, which is why it may run where the gate may not.
+            - :func:`validate_pass_name_resolution`, the static check in CI:
+              every literal resolves to a registered pass-id and no clause is
+              empty.
+            - :func:`find_falsified_dependencies`, after the run (WI-jijor /
+              ADR-0056 W1): a pass that emitted output despite an unsatisfied
+              conjunct proves its declaration wrong. It reports and never
+              raises.
+            - ``pass_silence.prerequisite_absent_clauses``, at the linker
+              chokepoint: a linker that fell silent because a prerequisite was
+              skipped for a toolchain reason is stamped ``prerequisite_absent``.
     """
 
     id: str
@@ -212,104 +208,58 @@ def _declared_grammar_distribution(func: Any) -> Optional[str]:
 
 
 def validate_pass_name_resolution(passes: List[Pass]) -> None:
-    """Static check: every literal in every ``depends_on`` clause names a known pass.
+    """Static check: every ``depends_on`` clause is non-empty and names known passes.
 
     ``Pass.depends_on`` is CNF (outer-AND of inner-OR clauses), per the WI-dilab
     schema. This validator iterates every literal across every clause and
     requires it to match the ``id`` of a registered pass. Independent of which
     passes are runtime-active — purely a typo / drift check.
 
-    **Where it actually runs, corrected (WI-jijor).** This docstring used to
-    claim it runs "at catalog-build time and in CI". It has never had a
-    production call site; the only thing that invokes it is
-    ``TestCatalogStaticConsistency`` — and until WI-jijor that test built the
-    catalog WITHOUT importing the linker modules, which register by import
-    side-effect, so it validated 118 analyzers and zero ``depends_on``
-    conjuncts. It is a CI check now because that test was repaired, not
-    because the catalog builder calls it.
+    **An empty clause is refused.** ``[[]]`` is an OR of nothing, a conjunct no
+    set of passes can satisfy; it is not the outer ``[]``, which declares no
+    dependency and stays legal. The two runtime readers disagree about it —
+    :func:`find_falsified_dependencies` reports it, while
+    ``pass_silence.prerequisite_absent_clauses`` skips it — so it is stopped
+    here, where every registered declaration is checked, before either sees it.
 
-    Distinct from :func:`validate_pass_dependencies` (which checks the OR-arm
-    runtime semantics: every outer-AND-conjunct must contain at least one
-    literal in the active-pass subset).
+    **Where it runs.** It has no production call site, deliberately: its reader
+    is ``TestCatalogStaticConsistency``, which builds the full catalog with the
+    linkers imported (they register by import side-effect; until WI-jijor the
+    test validated 118 analyzers and zero conjuncts) and carries a floor and a
+    pinned declaration, so it can fail. That is why it stays on the
+    test-only-reachability baseline while a validator nothing could fail was
+    removed.
 
     Raises:
-        ValueError: At least one literal in some clause names a pass that is
-            not in ``passes``. The error message groups misspellings by
-            dependent pass-id, listing every (pass_id, [unknown_literals])
-            pair so callers see the full surface of the typo set, not just
-            the first offending name.
+        ValueError: At least one clause names a pass that is not in
+            ``passes``, or is empty. The error message groups the faults by
+            dependent pass-id, listing every unknown literal and every empty
+            clause so callers see the full surface, not just the first
+            offending name.
     """
     known_ids = {p.id for p in passes}
-    unknown_by_pass: List[tuple[str, List[str]]] = []
+    faults_by_pass: List[tuple[str, List[str]]] = []
     for p in passes:
+        faults: List[str] = []
         unknown: List[str] = []
         for clause in p.depends_on:
+            if not clause and "empty clause []" not in faults:
+                faults.append("empty clause []")
             for literal in clause:
                 if literal not in known_ids and literal not in unknown:
                     unknown.append(literal)
         if unknown:
-            unknown_by_pass.append((p.id, unknown))
-    if unknown_by_pass:
+            faults.insert(0, f"names unknown passes: {unknown}")
+        if faults:
+            faults_by_pass.append((p.id, faults))
+    if faults_by_pass:
         lines = [
-            f"Pass {pass_id!r} depends_on names unknown passes: {unknown}"
-            for pass_id, unknown in unknown_by_pass
+            f"Pass {pass_id!r} depends_on {fault}"
+            for pass_id, faults in faults_by_pass
+            for fault in faults
         ]
         raise ValueError(
             "Pass dependency name-resolution failed:\n  " + "\n  ".join(lines)
-        )
-
-
-def validate_pass_dependencies(active_passes: List[Pass]) -> None:
-    """Runtime CNF check: every AND-conjunct contains at least one active literal.
-
-    Forward-looking validator. Once :data:`hypergumbo_core.cli.run_behavior_map`
-    grows config-time pass-filtering (a Phase 2 WI), this validator will fire
-    on the filtered active-pass set to surface "linker X needs at least one
-    of [a, b, c] but none of them are active" before pipeline execution
-    produces silently-degraded output.
-
-    CNF semantics:
-
-    - ``depends_on=[]`` — no declared dependencies (vacuously satisfied).
-      Honest for Infrastructure linkers like containment that operate on any
-      symbol set.
-    - ``depends_on=[["x"]]`` — single conjunct, single literal. Equivalent to
-      plain "x must be active." Used for Framework linkers scoped to one
-      language.
-    - ``depends_on=[["x", "y", "z"]]`` — single conjunct, three-literal OR.
-      "At least one of x/y/z must be active." Used for Protocol linkers that
-      scan multiple language analyzers' output.
-    - ``depends_on=[["x"], ["a", "b"]]`` — two conjuncts. "x AND (a OR b)
-      must both hold." Used for Bridge linkers that bridge one anchor
-      language to multiple impl languages.
-
-    Pathological-but-defined: a pass listing itself in some clause is trivially
-    satisfied when that pass is in the active set. Cycle detection is a
-    separate scheduling concern, deferred.
-
-    Raises:
-        ValueError: At least one pass has an outer AND-conjunct with no
-            literal in the active-pass set. The error message groups by
-            dependent pass, listing every unsatisfied clause as a list so
-            callers see the full set of unmet "at least one of"
-            requirements, not just the first.
-    """
-    active_ids = {p.id for p in active_passes}
-    unsatisfied_by_pass: List[tuple[str, List[List[str]]]] = []
-    for p in active_passes:
-        unsatisfied_clauses: List[List[str]] = []
-        for clause in p.depends_on:
-            if not any(literal in active_ids for literal in clause):
-                unsatisfied_clauses.append(list(clause))
-        if unsatisfied_clauses:
-            unsatisfied_by_pass.append((p.id, unsatisfied_clauses))
-    if unsatisfied_by_pass:
-        lines = [
-            f"Pass {pass_id!r} unsatisfied depends_on clauses (need at least one literal in active set): {clauses}"
-            for pass_id, clauses in unsatisfied_by_pass
-        ]
-        raise ValueError(
-            "Pass dependency CNF validation failed:\n  " + "\n  ".join(lines)
         )
 
 
@@ -319,16 +269,16 @@ def find_falsified_dependencies(
 ) -> List[Tuple[str, List[List[str]]]]:
     """Report passes that EMITTED OUTPUT despite an unsatisfied ``depends_on`` conjunct.
 
-    The same CNF predicate as :func:`validate_pass_dependencies`, re-pointed
-    (WI-jijor / ADR-0056 W1). That one asks *"may these passes run
-    together?"* and RAISES; this one asks *"did a pass that already ran prove
-    its own declaration wrong?"* and REPORTS.
+    The CNF predicate read backwards (WI-jijor / ADR-0056 W1): not *"may these
+    passes run together?"*, which would have to RAISE before the run, but
+    *"did a pass that already ran prove its own declaration wrong?"*, which
+    REPORTS after it.
 
-    **Why not wire the gate instead.** Raising is the withholding direction:
-    a gate aborts the whole survey on any repo whose declarations are stale,
-    and the ~73 conjuncts across 59 passes have never been enforced, so some
-    of them are. Falsification never suppresses anything, so it cannot lose an
-    edge — which is exactly why it may be wired where a gate may not.
+    **Why not a gate.** Raising is the withholding direction: a gate aborts the
+    whole survey on any repo whose declarations are stale, and the ~73
+    conjuncts across 59 passes have never been enforced, so some of them are.
+    Falsification never suppresses anything, so it cannot lose an edge — which
+    is exactly why it may be wired where a gate may not.
 
     **Why EMITTED is the proof and SILENCE is not.** A pass that emitted
     nothing proves nothing: its declaration may be perfectly correct and the
@@ -339,11 +289,11 @@ def find_falsified_dependencies(
     which the never-enforced declaration set can be audited from evidence
     rather than from reading it.
 
-    **Why it does not take an active-pass list.** :func:`validate_pass_dependencies`
-    is handed the active set because it runs *before* execution. Here the
-    active set is DERIVED from ``runs`` — the ground truth of what actually
-    ran — which is the whole difference between a forecast and a measurement.
-    ``passes`` therefore supplies only the declarations.
+    **Why it does not take an active-pass list.** A pre-run check would be
+    handed the active set as a forecast. Here the active set is DERIVED from
+    ``runs`` — the ground truth of what actually ran — which is the whole
+    difference between a forecast and a measurement. ``passes`` therefore
+    supplies only the declarations.
 
     **A clause is satisfied by PRODUCTION, not by membership** (corrected
     under WI-rasal; the first cut tested membership in ``analysis_runs``).
@@ -450,13 +400,11 @@ def emit_falsified_dependency_summary(
 ) -> None:
     """Write the falsified-declaration advisory to stderr; silent when clean.
 
-    The CONSUMER half. A predicate with no reader is the defect this item was
-    filed against — ``validate_pass_dependencies`` has eleven call sites and
-    all eleven are tests, and its sibling
-    :func:`validate_pass_name_resolution` had none at all despite a docstring
-    claiming it "runs at catalog-build time and in CI". Wiring the reader here,
-    next to ``emit_silence_summary`` on the survey path, is what keeps this one
-    from joining them.
+    The CONSUMER half. A predicate with no reader is the defect this was
+    filed against: the pre-run gate this predicate replaced had eleven call
+    sites, all tests, and was deleted for it (WI-rihob). Wiring the reader
+    here, next to ``emit_silence_summary`` on the survey path, is what keeps
+    this one from joining it.
 
     Advisory only: it never raises and never suppresses a pass.
     """
