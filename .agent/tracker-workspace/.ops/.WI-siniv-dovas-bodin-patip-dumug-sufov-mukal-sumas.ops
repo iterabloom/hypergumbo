@@ -1,0 +1,21 @@
+- op: create  # a23f
+  at: '2026-10-25T11:05:45Z'  # a23f
+  by: agent  # a23f
+  actor: jgstern_agent  # a23f
+  clock: 1  # a23f
+  nonce: a23f  # a23f
+  data:  # a23f
+    kind: work_item  # a23f
+    title: "hypergumbo-lang-extended1 does not declare tree-sitter-language-pack, which its d, asm and bitbake analyzers load"  # a23f
+    status: todo_hard  # a23f
+    priority: 3  # a23f
+    parent:  # a23f
+    tags:  # a23f
+    - docstring_audit  # a23f
+    - analysis_quality  # a23f
+    isbefore: []  # a23f
+    duplicate_of: []  # a23f
+    not_duplicate_of: []  # a23f
+    pr_ref:  # a23f
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- d_lang.py: hypergumbo-lang-extended1 does not declare `tree-sitter-language-pack` -- evidence: packages/hypergumbo-lang-extended1/pyproject.toml `dependencies` lists hypergumbo-core plus zig/odin/agda/solidity/verilog/vhdl/llvm/tlaplus only; hypergumbo-core's dependencies do not include it either; it is declared only in hypergumbo-lang-mainstream/pyproject.toml:62 and hypergumbo-lang-common/pyproject.toml:25. About 30 extended1 analyzers set `language_pack_name` (asm.py:148, d_lang.py:814, bitbake.py:105, fish.py:171, hack.py:482, haxe.py:190, jsonnet.py:370, ...).\n\nOnly installed transitively through lang-common or lang-mainstream.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # a23f
+    fields: {}  # a23f

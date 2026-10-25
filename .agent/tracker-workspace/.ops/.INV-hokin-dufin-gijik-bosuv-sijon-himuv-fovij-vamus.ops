@@ -73,3 +73,18 @@
   clock: 8  # b6a7
   nonce: b6a7  # b6a7
   message: "Wired in PR #1408. Status pending_validation, not satisfied: the scheduled full-suite has not fired on it yet. Satisfy after `ci-debug cron-status` shows self-tree-validation green with the ratchet running.\n\nINV-hokin: the WI-ratuv test-only-reachability ratchet now runs in the live scheduled pipeline, `.woodpecker/full-suite.yml` step `self-tree-validation`, on the map that step builds. It is not per-PR, per the owner's ruling.\n\nBehavioral evidence:\n- `tests/test_check_test_only_reachability_ci_wiring.py` runs the step's commands under `/bin/sh -e`. The step goes red on gate exit 1 and passes with a warning on exit 2. The two self-map ratchets cannot hide each other. Four YAML mutations each turned it red.\n- Run locally through the board against a current self-map, `scripts/check-test-only-reachability` exits 0 with the adjudicated baseline. A code mutation (a production function called only by a test) gives exit 1 naming exactly that key.\n- The mis-pinned teeth test (premise audit item 3) and `test_workflow_cli_invocation.py` now read `.woodpecker/`. The old versions stayed green under the same mutations that turn the new ones red.\n\nWhat this closure does not assert:\n- That the general statement holds for every gate. The full-suite and nightly diff was done by the premise audit, and per-package isolation is WI-sagar.\n- That the cron's first firing is green. CI's Python version and install set differ from the local run; check with `ci-debug cron-status`.\n\nResiduals filed: WI-mifup (8 unwired functions), WI-modip (scripts/ callers count as test-only), WI-sagar (no live per-package isolation).\n\n\nOWNER RATIFIED (2026-10-03) the baseline re-freeze in commit a2261d0770 (+21/-3, adjudicated in its commit message): 13 keys not dead (6 scripts/-only callers, 3 intended test callers, 4 test-only lookups; the gate blind spot is WI-modip), 8 truly unwired keys tracked on WI-mifup."  # b6a7
+- op: update  # e54d
+  at: '2026-10-25T07:19:11Z'  # e54d
+  by: agent  # e54d
+  actor: jgstern_agent  # e54d
+  clock: 9  # e54d
+  nonce: e54d  # e54d
+  set:  # e54d
+    status: satisfied  # e54d
+- op: discuss  # b28d
+  at: '2026-10-25T07:19:11Z'  # b28d
+  by: agent  # b28d
+  actor: jgstern_agent  # b28d
+  clock: 10  # b28d
+  nonce: b28d  # b28d
+  message: "Satisfied on the condition this row set: `ci-debug cron-status` shows the scheduled full-suite's self-tree-validation step green, with the ratchet running.\n\nPipeline at 53015c63 (2026-10-24T20:17 -04:00), step self-tree-validation: OK. Its log reads:\n- \"scip_python: contributed; Python method calls typed: 9356 of 9553 (97.9%)\"\n- \"GATED cohort: 346 (290 functions, 56 methods)\"\n- \"✓ no new test-only-reachable callables\"\n- \"self-tree-validation exit=0  test-only-reachability exit=0\"\n\nSo the gate runs in the live (Woodpecker) cron, on a scip-typed map, and now gates methods (WI-mifag). That pipeline's other failing step, test-all-packages (the inheritance-family linter), was fixed in PR #1842, which postdates 53015c63."  # b28d

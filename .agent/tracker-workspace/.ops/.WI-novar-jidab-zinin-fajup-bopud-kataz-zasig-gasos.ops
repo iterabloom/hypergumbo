@@ -1,0 +1,21 @@
+- op: create  # e79c
+  at: '2026-10-25T11:05:51Z'  # e79c
+  by: agent  # e79c
+  actor: jgstern_agent  # e79c
+  clock: 1  # e79c
+  nonce: e79c  # e79c
+  data:  # e79c
+    kind: work_item  # e79c
+    title: "fish: function signatures read only --argument, missing --argument-names and -a"  # e79c
+    status: todo_hard  # e79c
+    priority: 3  # e79c
+    parent:  # e79c
+    tags:  # e79c
+    - docstring_audit  # e79c
+    - analysis_quality  # e79c
+    isbefore: []  # e79c
+    duplicate_of: []  # e79c
+    not_duplicate_of: []  # e79c
+    pr_ref:  # e79c
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- fish.py: `--argument-names` and `-a` are not captured -- evidence: repro output `SYM fish:a.fish:1-3:f:function function f ()`, `SYM fish:a.fish:4-6:g:function function g ()`, `SYM fish:a.fish:7-9:h:function function h (p, q)`.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # e79c
+    fields: {}  # e79c

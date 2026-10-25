@@ -1,0 +1,21 @@
+- op: create  # 01dd
+  at: '2026-10-25T11:05:25Z'  # 01dd
+  by: agent  # 01dd
+  actor: jgstern_agent  # 01dd
+  clock: 1  # 01dd
+  nonce: 01dd  # 01dd
+  data:  # 01dd
+    kind: work_item  # 01dd
+    title: "meson: custom_target / run_target dependency edges carry kind 'executable' while the symbols are kind 'target', so the edges dangle"  # 01dd
+    status: todo_hard  # 01dd
+    priority: 3  # 01dd
+    parent:  # 01dd
+    tags:  # 01dd
+    - docstring_audit  # 01dd
+    - analysis_quality  # 01dd
+    isbefore: []  # 01dd
+    duplicate_of: []  # 01dd
+    not_duplicate_of: []  # 01dd
+    pr_ref:  # 01dd
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- meson.py: The variable registry and the dependency-edge src id hard-code `\"library\" if \"library\" in cmd_name else \"executable\"`, but custom_target and run_target symbols are emitted with kind \"target\". The edge endpoints therefore match no symbol. -- evidence: meson.py:235-240 `else: kind = \"target\"`; :280 and :320 use the hard-coded kind. Repro (scratchpad verify/tmp/repro_meson.py on a meson.build containing `gen = custom_target('gen', ...)`, `lib = static_library('foo', 'a.c', dependencies: [gen])` and `rt = run_target('rt', command: ['y'], dependencies: [lib])`) printed:\n- meson.py: An unassigned target's `dependencies:` list is silently dropped. Repro: notebook staleness_audit_10252026/verify/V09.md. Whether this counts as a defect or a scoping choice is for the owner to decide. The code reading is unambiguous.\n\nItem 19 (an unassigned target's dependencies: dropped) is an owner call: defect or scope.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 01dd
+    fields: {}  # 01dd

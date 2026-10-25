@@ -1,0 +1,21 @@
+- op: create  # f3b6
+  at: '2026-10-25T11:04:54Z'  # f3b6
+  by: agent  # f3b6
+  actor: jgstern_agent  # f3b6
+  clock: 1  # f3b6
+  nonce: f3b6  # f3b6
+  data:  # f3b6
+    kind: work_item  # f3b6
+    title: "grpc-linker claims no_candidate_construct for a run that read no file (the files-read guard the other content-scanning linkers got)"  # f3b6
+    status: todo_hard  # f3b6
+    priority: 3  # f3b6
+    parent:  # f3b6
+    tags:  # f3b6
+    - docstring_audit  # f3b6
+    - analysis_quality  # f3b6
+    isbefore: []  # f3b6
+    duplicate_of: []  # f3b6
+    not_duplicate_of: []  # f3b6
+    pr_ref:  # f3b6
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- grpc.py: (low) grpc.py:1093 `run.silence_reason = silence_reason_for_candidates(all_patterns)` runs unconditionally, so a run that read no file claims `no_candidate_construct` and overrides the orchestrator's `no_candidate_files` (pass_silence.py:262-263). Commit 4727c6fb84 put this exact guard on http/graphql/subprocess/event-sourcing/database-query/phoenix-ipc/argparse/go-cobra/websocket, but not on grpc. Reach is narrow: grpc is gated on `LinkerActivation(frameworks=[\"grpc\", \"protobuf\"])` (L1241), so it needs a grpc dependency with no scannable gRPC files -- evidence (repro): `link_grpc(<dir with only a.txt>)` -> `'no_candidate_construct' 0` (silence_reason, files_analyzed).\n\nResidual of the pass-silence work merged as #1845: grpc was not in that set.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # f3b6
+    fields: {}  # f3b6

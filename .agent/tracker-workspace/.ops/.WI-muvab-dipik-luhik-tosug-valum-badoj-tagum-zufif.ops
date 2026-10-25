@@ -1,0 +1,21 @@
+- op: create  # 6056
+  at: '2026-10-25T11:04:28Z'  # 6056
+  by: agent  # 6056
+  actor: jgstern_agent  # 6056
+  clock: 1  # 6056
+  nonce: '6056'  # 6056
+  data:  # 6056
+    kind: work_item  # 6056
+    title: "swift: init/deinit stable_ids hash only the enclosing type chain, so two function-local types' constructors share one stable_id"  # 6056
+    status: todo_hard  # 6056
+    priority: 3  # 6056
+    parent:  # 6056
+    tags:  # 6056
+    - docstring_audit  # 6056
+    - analysis_quality  # 6056
+    isbefore: []  # 6056
+    duplicate_of: []  # 6056
+    not_duplicate_of: []  # 6056
+    pr_ref:  # 6056
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- swift.py: Two function-local `struct Inner { init(x: Int) {} ; deinit {} ; func go() {} }`, one in `func f` and one in `func g` of one file, share their constructor AND deinit stable_ids, while their struct and `go` ids differ -- evidence: `analyze_swift` on a scratch repo printed\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 6056
+    fields: {}  # 6056

@@ -1,0 +1,21 @@
+- op: create  # 0b2f
+  at: '2026-10-25T11:05:30Z'  # 0b2f
+  by: agent  # 0b2f
+  actor: jgstern_agent  # 0b2f
+  clock: 1  # 0b2f
+  nonce: 0b2f  # 0b2f
+  data:  # 0b2f
+    kind: work_item  # 0b2f
+    title: "asm: bare .data/.text/.bss directives are not tracked, misclassifying labels and producing a self-edge; only `call` makes call edges (callq, bl dropped)"  # 0b2f
+    status: todo_hard  # 0b2f
+    priority: 3  # 0b2f
+    parent:  # 0b2f
+    tags:  # 0b2f
+    - docstring_audit  # 0b2f
+    - analysis_quality  # 0b2f
+    isbefore: []  # 0b2f
+    duplicate_of: []  # 0b2f
+    not_duplicate_of: []  # 0b2f
+    pr_ref:  # 0b2f
+    description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- asm.py: bare section directives are not recognized, which misclassifies labels and produces a self-edge -- evidence: repro on `.data\\nfoo: .long 1\\n.section .bss\\nbar: .zero 4\\n.text\\nmain:\\n call foo` gives `SYM asm:a.s:2-2:foo:function`, `SYM asm:a.s:4-4:bar:variable`, `SYM asm:a.s:6-6:main:variable`, `EDGE asm:a.s:2-2:foo:function -> asm:a.s:2-2:foo:function calls 0.85` (main is dropped from `file_labels` by the `s.kind == \"function\"` filter at L232-235, so the call is attributed to foo).\n- asm.py: (NEW) only `call` produces call edges; `callq` / `bl` are dropped -- evidence: asm2 repro (notebook staleness_audit_10252026/verify/V10.md), one edge from three call-like instructions.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 0b2f
+    fields: {}  # 0b2f
