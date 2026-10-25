@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from hypergumbo_core.cli import run_behavior_map
-from hypergumbo_core.pass_silence import CANDIDATES_UNRESOLVED, UNREPORTED
+from hypergumbo_core.pass_silence import CANDIDATES_UNRESOLVED, NO_CANDIDATE_FILES, UNREPORTED
 
 #: One construct-free file per language a pass reads.
 _CONSTRUCT_FREE = {
@@ -60,6 +60,21 @@ def test_no_pass_reads_files_and_stays_silent_without_a_reason(tmp_path: Path) -
     read_files = [p for p, r in runs.items() if r.get("files_analyzed")]
     assert len(read_files) >= 20, read_files
     assert sorted(p for p, r in runs.items() if r.get("silence_reason") == UNREPORTED) == []
+
+
+def test_a_scan_that_read_no_file_keeps_no_candidate_files(tmp_path: Path) -> None:
+    """The first cut claimed no_candidate_construct for a content scan that
+    read nothing: on compose-go, database-query, subprocess and websocket read
+    0 files and lost the orchestrator's more precise no_candidate_files."""
+    runs = _runs(tmp_path / "repo", {"main.go": "package main\n\nfunc main() {}\n"},
+                 tmp_path / "bm.json")
+    for pass_id in ("websocket-linker", "database-query-linker", "subprocess-linker",
+                    "http-linker", "graphql-linker", "event-sourcing-linker"):
+        run = runs.get(pass_id)
+        if run is None or run.get("files_analyzed"):
+            continue
+        assert run.get("silence_reason") == NO_CANDIDATE_FILES, (pass_id, run)
+    assert runs["websocket-linker"].get("files_analyzed") in (0, None)
 
 
 def _silence(tmp_path: Path, files: dict[str, str], pass_id: str) -> str:
