@@ -1,0 +1,28 @@
+Original commit body from d6c5d930089412b2658318501b38823e096613af:
+
+catalog._ts() stamped requires="tree-sitter-language-pack" on all 63 of its
+passes. 39 of them load a dedicated wheel instead (rust.py: grammar_module =
+"tree_sitter_rust"), and 42 more passes whose analyzers declare a grammar
+published no `requires` at all. is_available() tested the field for the
+substring "tree-sitter" and then checked only the base tree_sitter package,
+so neither a test nor a runtime path could tell the true name from the false
+one. ADR-0056's bare-venv acceptance test was aimed by that field, and run as
+written it came back empty.
+
+- TreeSitterAnalyzer.grammar_distribution() names the PyPI distribution from
+  the class's declaration: grammar_module with underscores as hyphens (every
+  installed one checked against importlib.metadata.packages_distributions:
+  tree_sitter_c_sharp is tree-sitter-c-sharp), or tree-sitter-language-pack
+  for a pack grammar.
+- build_catalog_from_registries publishes it whenever the registry gives no
+  `requires`, read from the one TreeSitterAnalyzer subclass the registered
+  function's module defines. The catalog now names a dedicated wheel for 45
+  passes and the language pack for 60.
+- is_available() requires the base library AND the named distribution's
+  module. With tree_sitter_rust patched away, rust is now unavailable; it
+  used to read available.
+
+A population test checks every pass whose module defines one
+TreeSitterAnalyzer (>=60 checked), not three named rows.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
