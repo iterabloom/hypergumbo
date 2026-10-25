@@ -1,0 +1,21 @@
+- op: create  # 95aa
+  at: '2026-10-25T21:27:41Z'  # 95aa
+  by: agent  # 95aa
+  actor: jgstern_agent  # 95aa
+  clock: 1  # 95aa
+  nonce: 95aa  # 95aa
+  data:  # 95aa
+    kind: work_item  # 95aa
+    title: "delete DataModel.kind and the DataModelKind enum: write-only since detection began, reaches no output, mislabels invisibly (owner ruling 2026-10-25; concept audit #5)"  # 95aa
+    status: todo_hard  # 95aa
+    priority: 4  # 95aa
+    parent:  # 95aa
+    tags:  # 95aa
+    - dead_code  # 95aa
+    - axis  # 95aa
+    isbefore: []  # 95aa
+    duplicate_of: []  # 95aa
+    not_duplicate_of: []  # 95aa
+    pr_ref:  # 95aa
+    description: "OWNER RULING 2026-10-25: delete DataModel.kind (\"no dead code; no instrument without a reader\").\n\nWHY. The 2026-05-27 concept audit (#5, 'DataModelKind re-eval triggers'; playbook Examples entry) found DataModel.kind WRITE-ONLY: no consumer reads it, and DataModel.to_dict() -- the only place it is serialised -- is never called outside datamodels.py, so the value reaches no output. It also mislabels (cli-rust ValueEnum -> SCHEMA, Qt model/view -> ORM_MODEL), invisibly. The audit annotated it (datamodels.py:96 '# currently write-only') and kept it under three re-eval triggers from WI-juvag / WI-sudov (2026-05-01/02): (a) a consumer needing per-axis filtering, (b) the enum past ~12 values, (c) a single value hiding a needed cross-axis signal. (a) and (c) cannot fire on a field nothing reads, so the keep was a control that cannot fail (LIVE rule 6). Re-checked 2026-10-25 on dev: three datamodels.py commits since 05-27 (43a4ba3dd4, b8d6e3f8c9, b0c9ee1872), none adds a reader; sketch's only per-model use is dm.symbol_id (sketch.py:3640-3643); the per-strategy labels are derived from the pattern, not from kind (_detect_from_naming).\n\nDO.\n- datamodels.py: remove the DataModelKind enum (:54, incl. its three-axis docstring from WI-sudov), the DataModel.kind field (:96) and its to_dict key (:110); drop the kind column from MODEL_BASE_CLASSES (:119), MODEL_DECORATORS (:139), NAMING_PATTERNS and the concept/decorator/base-class/naming detectors (:157-355) -- about 24 DataModelKind.* uses. Keep label, framework, confidence, rank_score.\n- Also decide DataModel.to_dict() itself: its only caller is test_datamodels.py:459. If nothing outside the module serialises a DataModel, delete it with the field rather than keep a second no-reader method.\n- Tests: test_datamodels.py (~20 kind/DataModelKind references) and test_sketch.py (:48 import, :3151, :3169 constructors). Assert on label/framework where a test currently pins kind; a test whose only claim was the kind value is deleted, not rewritten.\n- Docs: CHANGELOG (Removed). The playbook Examples entry for 2026-05-27 lives under .agent/** (governance): leave it as history, do not edit it in this PR.\n- Grep before deleting: DataModelKind / '\"kind\"' in sketch, cli, schema generator, docs/schema.json, spec (none found 2026-10-25 outside the files above, by grep only).\nBehaviour: no output changes (the value never reached output). Verify with a before/after sketch on a repo with Django/Pydantic models: byte-identical."  # 95aa
+    fields: {}  # 95aa
