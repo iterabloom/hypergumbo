@@ -36,3 +36,10 @@
   clock: 3  # 859d
   nonce: 859d  # 859d
   message: "Not a duplicate of WI-bojok-tamih (directness surfaced in the supply-chain summary, done 2026-07-26): this item rewrites the tier axiom's reference frame. Companions: INV-kutub (the code half: same package -> same tier) and INV-fuhin (directness never stamped on declarations, found by the same investigation)."  # 859d
+- op: discuss  # 5cb2
+  at: '2026-10-25T23:58:45Z'  # 5cb2
+  by: agent  # 5cb2
+  actor: jgstern_agent  # 5cb2
+  clock: 4  # 5cb2
+  nonce: 5cb2  # 5cb2
+  message: "Premise re-check 2026-10-25 on dev 9245df71d6 (production-CLI repros on tiny fixtures, scratchpad stale1025b/repro_<ID>/). Independent check: every cited line accurate; 'internal_package_roots is unreachable in a CLI run' HOLDS (classify_file has two production callers, cli.py:12095 and sketch.py:5576, both without config; nothing constructs SupplyChainConfig; no flag; .hypergumbo.toml rejects the key bare and under [supply_chain], exit 2). Corrections: (1) :39 already says 'from the project under analysis' -- the gap is the project's EXTENT and what a declaration or boundary stub stands for, and the direct conflict is row :44 ('monorepo siblings' in tier 2). (2) 'A CLI run emits no tier-2 node' is false until INV-kutub lands (a python sibling declaration is tier 2 today) -> now ordered after INV-kutub. (3) Partly overlaps WI-jaloz (wire or delete SupplyChainConfig): if WI-jaloz deletes it, tier 2 has zero producers and row 2 must say so. (4) More stale tier-2 text to fix in the same pass: supply_chain.py:172-173 (DependencyManifest docstring 'assigned by file classification' -- already false), :466-469, :686, :1180, :1209, :1255, :1628-1633; cli.py:12058-12061, :12079, :13096; ADR-0004:64; docs/RELEASE-NOTES-7.X.md:77; docs/schema.json:82. P3 kept."  # 5cb2

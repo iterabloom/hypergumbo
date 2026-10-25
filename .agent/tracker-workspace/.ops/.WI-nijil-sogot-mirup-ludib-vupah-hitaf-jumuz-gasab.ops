@@ -26,3 +26,10 @@
   clock: 2  # 370f
   nonce: 370f  # 370f
   message: "Residual (1) of INV-hujog (restated 2026-10-25). Closing this is half of what moves INV-hujog to satisfied; the other half is the WI-rasal declaration-repair family."  # 370f
+- op: discuss  # 58cf
+  at: '2026-10-25T23:58:47Z'  # 58cf
+  by: agent  # 58cf
+  actor: jgstern_agent  # 58cf
+  clock: 3  # 58cf
+  nonce: 58cf  # 58cf
+  message: "Ordered AFTER WI-punod (2026-10-25): this fix feeds crashed-linker records into the skipped-pass map that prerequisite_absent_clauses reads through a one-value proxy (pass_silence.py:709-711) which maps every value except no_candidate_files to 'toolchain'. Land WI-punod's exported value->state mapping first, or have this fix admit only pass_crashed records. Both items correct the same docstring (pass_silence.py:683-690, :696-697)."  # 58cf

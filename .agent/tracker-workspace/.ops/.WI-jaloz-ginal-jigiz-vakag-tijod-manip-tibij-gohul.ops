@@ -21,3 +21,10 @@
     pr_ref:  # af60
     description: "classify_file honours the three arms when passed config=..., but both production callers (cli._classify_symbols, sketch._run_analysis) pass none, no CLI flag exists, and .hypergumbo.toml rejects the keys ('unknown setting internal_package_roots'). It was added in 21a1a38585 and fed by the capsule plan, removed in 03223627a4. docs/hypergumbo-spec.md §14 still shows it 🟩 (tier table ~L1761, ~L1780, capsule-plan YAML ~L1871-1891). Decide: expose as config keys (ADR-0045 tiers) or delete the arms and fix the spec. The supply_chain docstring now says it is unfed (2026-10-10 audit).\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # af60
     fields: {}  # af60
+- op: discuss  # 3df8
+  at: '2026-10-25T23:58:48Z'  # 3df8
+  by: agent  # 3df8
+  actor: jgstern_agent  # 3df8
+  clock: 2  # 3df8
+  nonce: 3df8  # 3df8
+  message: "2026-10-25: WI-sufon (rewrite ADR-0041 §1 / spec §14 to the owner's project-frame ruling) rewrites tier row 2, which today names internal_package_roots -- the SupplyChainConfig arm this item decides to wire or delete. If deleted, tier 2 has zero producers once INV-kutub lands, and row 2 must say so."  # 3df8
