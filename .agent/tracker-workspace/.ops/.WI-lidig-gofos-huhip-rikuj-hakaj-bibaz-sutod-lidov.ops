@@ -38,3 +38,19 @@
   clock: 3  # f133
   nonce: f133  # f133
   message: "From the WI-fuzat premise re-check 2026-10-25 (dev 16534a75f7): the concept audit 2026-10-21 (F4) asked for supply-chain 'unclassified' to be explicit rather than tier 1 + empty supply_chain_reason (which ir.py:727 declares never-branch-on free text). Still present at cli.py:12072-12077 and analyze/base.py:2008-2011. Tracked here with the F78.A3 sentinel watch-item, not in WI-fuzat."  # f133
+- op: update  # b668
+  at: '2026-10-25T21:26:14Z'  # b668
+  by: agent  # b668
+  actor: jgstern_agent  # b668
+  clock: 4  # b668
+  nonce: b668  # b668
+  set: {}  # b668
+  add:  # b668
+    isbefore: [INV-kutub-napih-rudak-lijam-hozof-zavih-sigip-ropop]  # b668
+- op: discuss  # fcc9
+  at: '2026-10-25T21:26:14Z'  # fcc9
+  by: agent  # fcc9
+  actor: jgstern_agent  # fcc9
+  clock: 5  # fcc9
+  nonce: fcc9  # fcc9
+  message: "2026-10-25: INV-kutub (sibling dependency declarations to tier 1 under the owner's project-frame ruling on ADR-0041 §1) edits the declaration branch that runs only behind this item's tier-1 'unclassified' guard (cli.py:12071-12078: tier 1 + empty reason + no protocol_origin). Land this item's explicit unclassified marker first, or together."  # fcc9

@@ -1,0 +1,38 @@
+- op: create  # 3efa
+  at: '2026-10-25T21:25:39Z'  # 3efa
+  by: agent  # 3efa
+  actor: jgstern_agent  # 3efa
+  clock: 1  # 3efa
+  nonce: 3efa  # 3efa
+  data:  # 3efa
+    kind: work_item  # 3efa
+    title: "ADR-0041 §1 tier axiom gets a reference frame (owner ruling 2026-10-25, option A): tier is distance FROM THE PROJECT of the code a node stands for -- rewrite §1, spec §14 and tier docstrings in place"  # 3efa
+    status: todo_hard  # 3efa
+    priority: 3  # 3efa
+    parent:  # 3efa
+    tags:  # 3efa
+    - supply_chain  # 3efa
+    - adr_0041  # 3efa
+    - docs  # 3efa
+    isbefore: []  # 3efa
+    duplicate_of: []  # 3efa
+    not_duplicate_of: []  # 3efa
+    pr_ref:  # 3efa
+    description: "OWNER RULING 2026-10-25: option A (project frame) for the 2026-07-15 supply_chain_tier concept audit's finding F1 (~/hypergumbo_lab_notebook/concept-audit-supply_chain_tier_07152026.md), which never landed. ADR-0041 §1 (docs/adr/0041-supply-tier-purity.md:39) names no reference frame, so a workspace sibling is tier 1 as its own source/project/package node and tier 2 (python) or tier 3 'external' (npm, cargo) as a dependency declaration. The audit's proposed wording ('the package a node represents') is falsified by current output: `project pkg-b` (tier 1) and `dependency pkg_b` (tier 2) stand for the same package. Measuring a declaration from the member that declares it is the declaration-influences-tier pattern ADR-0041 exists to remove.\n\nTHE DOCUMENT HALF (this item). Rewrite in place, no addendum and no history (docs/adr/README.md ADR lifecycle):\n- ADR-0041 §1 axiom: \"`tier` names the supply-chain distance, from the project under analysis, of the code a node stands for — the project being every package whose source is in the analysed tree; where the node is written, how the code is declared, and what produced the node may not influence the value.\" Then: \"A file, function, project or package node stands for its own code; a dependency declaration stands for the package it names; a boundary stub stands for the code it replaces. Nodes standing for the same package carry the same tier. Tiers 1-3 are distances; tier 4 is the derived-artifact exception.\"\n- Row 2 becomes org-internal code that is not part of the project (local forks, internal_package_roots); say no CLI path supplies that setting, so a CLI run emits no tier-2 node. Fix the stale :93 prediction ('tier 2 fills with the 7 workspace packages') and the :50 'posterity' / :60 annotation text that breaks the lifecycle rule.\n- Spec §14: :1773 'classifies files' -> 'classifies nodes'; replace the axiom sentence at :1797; cut the '(History: ...)' paragraph at :1806-1818 to current facts; correct :1793 and :1910-1931, which still present the internal_package_roots arm as live (it is unreachable in a CLI run, supply_chain.py:70-77).\n- Docstrings: ir.py:617 ('Position in dependency graph'), supply_chain.py:10-13 and :63-66, cli.py:12038-12048.\nThe CODE half is the sibling invariant filed beside this item (same package -> same tier). Coordinate with WI-lidig: the declaration branch runs only behind the tier-1 'unclassified' guard (cli.py:12071-12078), so the code change lands with or after WI-lidig's explicit unclassified marker. Measure first: tier-2 population by node kind on the corpus (self-analysis had 9 at 830f8bd426). Not checked by the investigation: Go/Maven/Gradle workspaces, slice --max-tier through declaration nodes, every entrypoint detector's handling of kind=dependency, the sketch fallback path (sketch.py:5573-5582 classifies declarations by path -> tier 1, a second producer that disagrees with survey)."  # 3efa
+    fields: {}  # 3efa
+- op: update  # 173c
+  at: '2026-10-25T21:26:13Z'  # 173c
+  by: agent  # 173c
+  actor: jgstern_agent  # 173c
+  clock: 2  # 173c
+  nonce: 173c  # 173c
+  set: {}  # 173c
+  add:  # 173c
+    not_duplicate_of: [WI-bojok-tamih-jibih-huzog-govuv-kirol-hakob-zukij]  # 173c
+- op: discuss  # 859d
+  at: '2026-10-25T21:26:14Z'  # 859d
+  by: agent  # 859d
+  actor: jgstern_agent  # 859d
+  clock: 3  # 859d
+  nonce: 859d  # 859d
+  message: "Not a duplicate of WI-bojok-tamih (directness surfaced in the supply-chain summary, done 2026-07-26): this item rewrites the tier axiom's reference frame. Companions: INV-kutub (the code half: same package -> same tier) and INV-fuhin (directness never stamped on declarations, found by the same investigation)."  # 859d
