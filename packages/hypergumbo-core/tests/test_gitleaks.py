@@ -875,7 +875,8 @@ class TestInstallEmbeddingsCLI:
         args = Namespace(check=True, quiet=False)
 
         with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
-            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"):
+            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"), \
+                    patch("hypergumbo_core.cli._embedding_models_cached", return_value=True):
                 result = cmd_install_embeddings(args)
 
         assert result == 0
@@ -900,7 +901,8 @@ class TestInstallEmbeddingsCLI:
         args = Namespace(check=False, quiet=True)
 
         with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
-            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"):
+            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"), \
+                    patch("hypergumbo_core.cli._embedding_models_cached", return_value=True):
                 result = cmd_install_embeddings(args)
 
         assert result == 0
@@ -1079,7 +1081,8 @@ class TestVerboseOutput:
         args = Namespace(check=False, quiet=False)
 
         with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
-            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"):
+            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.7.0"), \
+                    patch("hypergumbo_core.cli._embedding_models_cached", return_value=True):
                 result = cmd_install_embeddings(args)
 
         assert result == 0

@@ -50,16 +50,22 @@ from hypergumbo_core.cli import cmd_sketch, _validate_require_sections
 
 
 def _has_sentence_transformers() -> bool:
-    """Check if sentence-transformers is already installed.
+    """Check if sentence-transformers is installed AND its weights are cached.
 
     Only checks via import - does NOT try to install because pip install
     during test collection causes OOM on small CI runners.
     CI can optionally install sentence-transformers in a separate step.
+
+    The weights are part of the precondition since INV-gujus: analysis never
+    downloads a model, so with the library but no weights these tests would
+    exercise the degraded path, not the one they are about. (Before, they
+    downloaded both models from huggingface.co in the middle of the run.)
     """
     try:
         import sentence_transformers
         del sentence_transformers  # Silence F841 (unused variable)
-        return True
+        from hypergumbo_core.cli import _embedding_models_cached
+        return _embedding_models_cached()
     except ImportError:
         return False
 
