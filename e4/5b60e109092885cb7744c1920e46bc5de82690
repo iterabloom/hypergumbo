@@ -1,0 +1,33 @@
+Original commit body from 8cf23af7ca937405ad35eef69546ccf8087e5ca3:
+
+A method's typed own fields were merged into its call-resolution type map
+under BARE names (param_types["conn"] = Conn), so a field and a local of
+the same name were one key. Measured before the fix on dev 02507e31eb:
+
+    self.conn = Conn()                     # __init__
+    conn = Other(); self.conn.ping()       # -> Other.ping @0.85 (WRONG)
+    [self.conn.ping() for conn in items]   # -> python:external @0.4 (LOST)
+    lambda conn: self.conn.ping()          # -> python:external @0.4 (LOST)
+    conn.ping()  # no local conn           # -> Conn.ping (a name never bound)
+
+The first is a local's assignment overwriting the field's key, the next
+two are _prune_shadowed deleting it, the last is the bare key typing a
+name Python would look up as a global.
+
+The merge now keys fields as self.<field>, as the external-type map has
+since INV-fibis, and the two readers (Case 2f, and the Site-3 own-field
+exclusion) read that key. _prune_shadowed drops a var_types key by its
+ROOT, as it already did for external_var_types, so rebinding `self` in a
+lambda loses self.<field> and rebinding `conn` does not.
+
+Tests (test_py_own_field_namespaced.py): the plain field call resolves to
+Conn (reach); a same-named local, a comprehension variable and a lambda
+parameter leave self.conn typed as Conn; a bare conn is not the field.
+4 of 5 were red before the change.
+
+Not addressed here (INV-hovoj residual): var_types is pruned at a
+comprehension boundary but the block's _assigned set is not.
+
+Addresses INV-hovoj, WI-bufud.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
