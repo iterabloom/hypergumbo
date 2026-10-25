@@ -32,3 +32,19 @@
   set: {}  # 3d6d
   add:  # 3d6d
     not_duplicate_of: [WI-zumud-nofos-mivap-zatid-bohag-mapoj-zoviv-rolam]  # 3d6d
+- op: discuss  # b7f4
+  at: '2026-10-25T11:36:57Z'  # b7f4
+  by: agent  # b7f4
+  actor: jgstern_agent  # b7f4
+  clock: 3  # b7f4
+  nonce: b7f4  # b7f4
+  message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: PARTLY FIXED + WIDER; WI-savuj folded in as a duplicate (owner 2026-10-25); statement re-scoped. The citation tests are still keyed on line: test_module_key_axis.py:126 checks `site.anchor not in lines[site.line - 1]`; signature_axis CitedSite / FactHome (:125/:141) the same, checked at test_signature_axis.py:108/148. Probe over all 18 citations (MODULE_KEY_NOTIONS + FACT_HOMES + LEGACY_VALUE_PARSERS, 12 files, 3 packages): 0 broken now; 17 of 18 anchors occur exactly once in their file (so anchor-as-identity works for 17/18); one comment line added at the top of each cited file breaks 18 of 18. NEW, MORE SERIOUS: signature_axis.find_undeclared_value_parsers (:532) identifies grandfathered sites by (path, line) (_declared_sites :464-465) -- on a copy of packages/*/src with one line added at the top of csharp.py the closure gate reported 2 NEW undeclared parse sites (csharp.py:563, :2042): an unrelated edit produces a false gate FAILURE, not just a stale citation. 101 commits since filing changed a line= value in module_key_axis.py / signature_axis.py, several dedicated re-pins, and both of today's docstring-audit PRs had to re-pin (6b74ccd833: 5; 7b46c1fe37: 2). FIXED HALF: test selection -- 07b9ccef7d (WI-lujon, done) added scripts/citation_gate_tests.py, which selects both pin tests for csharp.py / swift.py edits; 'no slice selects the guarding test' is no longer true. Sweep scope: anchor= + line= in packages/*/src finds only these two modules (docs and tests not swept)."  # b7f4
+- op: update  # d967
+  at: '2026-10-25T11:36:58Z'  # d967
+  by: agent  # d967
+  actor: jgstern_agent  # d967
+  clock: 4  # d967
+  nonce: d967  # d967
+  set:  # d967
+    fields:  # d967
+      statement: "A citation or grandfather list stored in one place that points into source owned by another must stay valid under any edit that does not touch the construct it names. RE-SCOPED 2026-10-25: three consumers key on (path, line): test_module_key_axis.py (MODULE_KEY_NOTIONS), test_signature_axis.py (FACT_HOMES, LEGACY_VALUE_PARSERS) and signature_axis.find_undeclared_value_parsers, the closure gate, which reports false NEW undeclared parse sites after an unrelated insertion above a grandfathered line. The test-selection half is fixed (WI-lujon, scripts/citation_gate_tests.py)."  # d967

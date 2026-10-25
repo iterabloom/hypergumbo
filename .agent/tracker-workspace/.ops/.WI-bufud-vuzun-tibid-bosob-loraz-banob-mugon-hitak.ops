@@ -1,0 +1,21 @@
+- op: create  # fe48
+  at: '2026-10-25T11:37:27Z'  # fe48
+  by: agent  # fe48
+  actor: jgstern_agent  # fe48
+  clock: 1  # fe48
+  nonce: fe48  # fe48
+  data:  # fe48
+    kind: work_item  # fe48
+    title: "python: own-class field types are keyed by BARE name in the per-call type map, so a local or comprehension variable named like a field retypes or erases self.<field> (wrong Other.ping edge @0.85 / lost Conn.ping)"  # fe48
+    status: todo_hard  # fe48
+    priority: 3  # fe48
+    parent:  # fe48
+    tags:  # fe48
+    - analysis_quality  # fe48
+    - python  # fe48
+    isbefore: []  # fe48
+    duplicate_of: []  # fe48
+    not_duplicate_of: []  # fe48
+    pr_ref:  # fe48
+    description: "FOUND 2026-10-25 (premise check of INV-hovoj, which this blocks).\n\nDEFECT. For a method, own-class field types are merged into the per-call param_types map under BARE field names (py.py:7236-7241: `param_types[fname] = fsym` for each fname in class_field_types[class_name]). The external-type counterpart is namespaced as `self.<field>` (INV-fibis, py.py:7272-7284); this map is not. A bare key collides with any local or comprehension/lambda variable of the same name:\n\n(a) WRONG EDGE: `self.conn = Conn()` in __init__, then in a method `conn = Other()` and `self.conn.ping()` -> resolves to Other.ping @0.85.\n(b) LOST EDGE: `[self.conn.ping() for conn in items]` or `lambda conn: self.conn.ping()` -> _prune_shadowed (py.py:4166) removes the bare key, and the call drops to python:external @0.4 instead of Conn.ping @0.85.\n\nFIX PATTERN. Key own-field types as `self.<field>` exactly as the external map does (INV-fibis) and the Swift analogue WI-tagir did; look them up only for an attribute access on `self`. Test both (a) and (b), plus the plain-statement control that resolves to Conn.ping today."  # fe48
+    fields: {}  # fe48

@@ -74,3 +74,10 @@
   nonce: 33fa  # 33fa
   set:  # 33fa
     status: pending_validation  # 33fa
+- op: discuss  # fb27
+  at: '2026-10-25T11:36:57Z'  # fb27
+  by: agent  # fb27
+  actor: jgstern_agent  # fb27
+  clock: 9  # fb27
+  nonce: fb27  # fb27
+  message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). Bears on this item's pending_validation: the 2026-09-11 claim that all 11 core-name copies were cleaned is contradicted by the live census -- 6 items still carry a core attribute name as a custom field key: WI-dupok (fields.priority/status/tags), WI-nubik / WI-kanor / WI-furim (fields.description holding the whole text while the core description is EMPTY), WI-joruz (fields.description='') and WI-mifag (fields.isbefore=''). All six were created 2026-07-30..09-02, before the 09-06 write-path gate, so this is un-migrated legacy data, not a gate bypass (the gate's tier 1 refuses a new core-name key, verified on a throwaway Store). Validation therefore needs the migration of these six, not just the gate. Full census on INV-linan."  # fb27

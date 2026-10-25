@@ -26,3 +26,18 @@
   clock: 2  # b315
   nonce: b315  # b315
   message: "Bears on WI-hilum (branch jgstern-agent/fix/hilum): cpp overload choice re-chooses a call among definitions with the picked symbol's EXACT name. A member template defined in a class body (sherpa-onnx keyword-spotter-transducer-impl.h L319 template InitKeywords(Manager *mgr)) is named unqualified 'InitKeywords' with kind function, so it is outside the 'KeywordSpotterTransducerImpl::InitKeywords' overload set. Two consequences, measured on sherpa-onnx d7526c8: (1) the call InitKeywords(is) at L336, inside that template, still binds the template itself (a self-call the hilum fix cannot see); (2) the L300/L314 calls now resolve uniquely to the istream& overload only BECAUSE the template is missing from the set -- once this item qualifies member templates, those calls become an ambiguous record {L283, L319} (both take one argument) unless an argument-shape check (object vs pointer) separates them. Re-measure the InitKeywords sites when this lands."  # b315
+- op: update  # e840
+  at: '2026-10-25T11:37:00Z'  # e840
+  by: agent  # e840
+  actor: jgstern_agent  # e840
+  clock: 3  # e840
+  nonce: e840  # e840
+  set:  # e840
+    title: "cpp: an in-class constructor or member template is emitted as a free function with an unqualified name (qualified-name class bodies class X::Impl: see INV-tohuj)"  # e840
+- op: discuss  # 25b8
+  at: '2026-10-25T11:37:00Z'  # 25b8
+  by: agent  # 25b8
+  actor: jgstern_agent  # 25b8
+  clock: 4  # 25b8
+  nonce: 25b8  # 25b8
+  message: "Re-scoped 2026-10-25 (owner-approved fold): point 3 (members of a class declared with a qualified name, class X::Impl, stay unqualified) is the same mechanism as INV-tohuj (_get_enclosing_class, cpp.py:1448, reads only a direct type_identifier) and is now owned there, with the self-bind and pimpl-forward consequences. This item keeps points 1-2 (in-class constructor; member template)."  # 25b8

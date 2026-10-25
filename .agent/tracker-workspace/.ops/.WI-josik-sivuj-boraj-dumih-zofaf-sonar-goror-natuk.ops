@@ -1,0 +1,22 @@
+- op: create  # 7c19
+  at: '2026-10-25T11:37:16Z'  # 7c19
+  by: agent  # 7c19
+  actor: jgstern_agent  # 7c19
+  clock: 1  # 7c19
+  nonce: 7c19  # 7c19
+  data:  # 7c19
+    kind: work_item  # 7c19
+    title: "scala emits no construction edge for `new Local()` even when Local is an in-repo class (java/cs/php/ts emit instantiates)"  # 7c19
+    status: todo_hard  # 7c19
+    priority: 3  # 7c19
+    parent:  # 7c19
+    tags:  # 7c19
+    - analysis_quality  # 7c19
+    - scala  # 7c19
+    - parity  # 7c19
+    isbefore: []  # 7c19
+    duplicate_of: []  # 7c19
+    not_duplicate_of: []  # 7c19
+    pr_ref:  # 7c19
+    description: "FOUND 2026-10-25 (premise check of META-sigap), fixture only.\n\nScala emits no construction edge of any type -- not instantiates, not calls -- for `new Local()` where `class Local` is defined in the same repository, and none for an external `new File(...)`. java, csharp, php and typescript each emit instantiates for the in-repo case on the same fixture shape, so the scala gap is not a fixture artefact. Consequence: a Scala class constructed only via `new` looks unreferenced (dead-code false positive) and its constructor-side effects are unreachable in slices.\n\nIn-repo half is this item; the external half is WI-jubag. Not measured on a corpus; scala 3 `Local()` universal-apply syntax not checked."  # 7c19
+    fields: {}  # 7c19

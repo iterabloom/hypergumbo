@@ -98,3 +98,18 @@
   clock: 12  # 415c
   nonce: 415c  # 415c
   message: "Closeable-verification (2026-07-28): NOT closeable — this item was RETITLED past its filed bug. The FILED extends + Python-instantiates external-DROP bug IS fixed & verified (js/ts EXTENDS+IMPLEMENTS via PR #4255/WI-dutov; Python external extends/instantiates landed 5d787c9250/41f3a0e930). But the item now represents the still-OPEN GREENFIELD residual: Kotlin/Ruby emit 0 external-constructor 'instantiates' edges. That is legitimate open feature work — a per-analyzer fix (kotlin.py/ruby.py route external constructors to external_symbol placeholders) or the Approach-C core inheritance-linker chokepoint (analyzers carry import-module + clause-kind into base_classes meta; the linker emits import-aware unresolved edges for every OO lang). Staying todo_hard/P3."  # 415c
+- op: update  # 0684
+  at: '2026-10-25T11:36:59Z'  # 0684
+  by: agent  # 0684
+  actor: jgstern_agent  # 0684
+  clock: 13  # 0684
+  nonce: '0684'  # 0684
+  set:  # 0684
+    title: "instantiates: external-constructor emission for non-Python OO langs -- Java/C#/PHP/TS emit no edge, Kotlin/Ruby/Swift emit plain calls, Scala none (even in-repo); the extends + Python-instantiates external-DROP bug is FIXED"  # 0684
+- op: discuss  # c62c
+  at: '2026-10-25T11:36:59Z'  # c62c
+  by: agent  # c62c
+  actor: jgstern_agent  # c62c
+  clock: 14  # c62c
+  nonce: c62c  # c62c
+  message: "PREMISE CHECK 2026-10-25: title corrected from 'Kotlin/Ruby currently emit 0'. Constructor fixture (no generics, so no overlap with WI-buhip): Python is the only language typing an external constructor as instantiates (e.g. Path); Java new File, C# new StringBuilder, PHP new Thing / new DateTime, TS new Thing from lib produce NO edge (each does emit instantiates for an in-repo new Local(), so the path is reached); Kotlin File(...) -> calls kotlin:java.io.File:0-0:File:external_symbol; Ruby .new -> calls; Swift URL(...) -> calls; Scala emits no construction edge of any type even for an in-repo new Local() (filed separately). Not checked: dart, groovy, c++, objc. META-sigap re-scoped to this half."  # c62c

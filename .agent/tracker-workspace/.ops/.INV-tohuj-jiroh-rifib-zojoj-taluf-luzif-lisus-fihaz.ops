@@ -22,3 +22,10 @@
     fields:  # 2f48
       statement: "Every member function defined inside a class body is registered under its owning class, including when the class is declared with a qualified name (class A::B { ... })."  # 2f48
       root_cause: "Class-name extraction and _get_enclosing_class read only a direct type_identifier child of class_specifier; a qualified_identifier name yields no class, so its methods get no owner."  # 2f48
+- op: discuss  # 8fd0
+  at: '2026-10-25T11:36:55Z'  # 8fd0
+  by: agent  # 8fd0
+  actor: jgstern_agent  # 8fd0
+  clock: 2  # 8fd0
+  nonce: 8fd0  # 8fd0
+  message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: overlaps WI-rugin point 3 (same mechanism: _get_enclosing_class, cpp.py:1448, reads only a direct type_identifier; the class-symbol arm cpp.py:1016-1018 uses the same test, so _cpp_owner_class cpp.py:1680 finds nothing). Folded per owner 2026-10-25: THIS item now owns the qualified-name class-body defect; WI-rugin is re-scoped to its points 1-2. Still reproduces: method AcceptWaveform (a.cc:6) calls itself. Extra consequence: impl_->AcceptWaveform(n) in OnlineStream::AcceptWaveform goes to cpp:external:0-0:AcceptWaveform:unresolved (hint Impl), so the pimpl forward never reaches the Impl method; struct A::S { void f(){g();} } is hit the same way. CORRECTION to the description: 'the class itself is named Impl' is wrong -- a qualified class DEFINITION emits no class symbol at all and its fields are dropped; the Impl class seen is the forward declaration `class Impl;` inside the outer class. With no forward declaration the only symbol is the method. NOT checked: the sherpa-onnx 10-of-41 count."  # 8fd0

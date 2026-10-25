@@ -22,3 +22,10 @@
     fields:  # 2d17
       statement: "A Ruby class, module or method is identified by its full lexical path whether it is declared in a block (module A; class X) or compactly (class A::X); two same-named declarations in different namespaces never share a name."  # 2d17
       root_cause: "ruby.py names a block-nested declaration by its own name only (class 'X', method 'X.run' inside module A), while a compact declaration keeps its written path ('A::C'); the name registry is keyed by those names, so nested namesakes collide (last write wins)."  # 2d17
+- op: discuss  # 30b5
+  at: '2026-10-25T11:36:55Z'  # 30b5
+  by: agent  # 30b5
+  actor: jgstern_agent  # 30b5
+  clock: 2  # 30b5
+  nonce: 30b5  # 30b5
+  message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: CURRENT, and the damage is understated. The filed repro still gives the short names (class X twice, X.run twice, B.go, A::C, A::C.go), but in that fixture both calls happen to bind correctly. A wider fixture shows WRONG binds: with A::X declared before A::B::X, `A.top { X.run }` and `Z.go { A::X.run }` both reach a.rb:5 (A::B::X) instead of A::X at line 2, and `class Q < A::B::X` gets its extends edge to A::X. Mechanism unchanged: _get_enclosing_class_or_module (ruby.py:357) returns only the direct name node; _lexical_nesting (ruby.py:2412) exists but feeds only receiver-candidate lookup (_nested_candidates :2434), never registration. No commit since filing touches it. Shares the no-namespace-in-symbol-names root with WI-kazut (external constant captured by a project class); not a duplicate. NOT checked: corpus frequency, stable_id churn from a rename."  # 30b5

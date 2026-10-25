@@ -24,3 +24,18 @@
     fields:  # c7a0
       statement: "A parsed file's top-level calls and imports are emitted whether or not the file declares a symbol."  # c7a0
       root_cause: "ruby.py / kotlin.py / go.py keep a file for pass 2 only if pass 1 found symbols (if analysis.symbols ... else files_skipped += 1)."  # c7a0
+- op: discuss  # 2774
+  at: '2026-10-25T11:36:55Z'  # 2774
+  by: agent  # 2774
+  actor: jgstern_agent  # 2774
+  clock: 2  # 2774
+  nonce: '2774'  # 2774
+  message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: STALE-TEXT, re-scoped (title updated). Gates still at ruby.py:3564, kotlin.py:2856, go.py:6648 and reproduce: ruby `require \"json\"; puts(1); Foo.bar(2)` -> 0 edges, skipped 1 (adding `def m; end` restores imports + 2 calls); a describe/it-only spec/foo_spec.rb -> 0 edges; go `var _ = register()` file skipped; an import-only .kt loses both imports. UNDER-SCOPED: C# has the same gate at csharp.py:2370 -- a top-level-statements Program.cs (C# 9+, the minimal-API shape) gives 0 edges; adding `class K {}` restores imports System and both calls. `grep 'if analysis.symbols:' packages/hypergumbo-lang-*` finds exactly these four; base.py TreeSitterAnalyzer.analyze has no such gate. WRONG EXAMPLES: .kts, Rakefile and extensionless bin/ scripts are never DISCOVERED (KotlinAnalyzer.file_patterns = ['*.kt'], RubyAnalyzer = ['*.rb']), so removing this gate cannot help them; filed separately as a discovery item. Kotlin's real exposure to this gate is import-only .kt files (a .kt cannot hold top-level calls without a declaration). NOT checked: the edge delta on a corpus repo."  # 2774
+- op: update  # a7d9
+  at: '2026-10-25T11:36:58Z'  # a7d9
+  by: agent  # a7d9
+  actor: jgstern_agent  # a7d9
+  clock: 3  # a7d9
+  nonce: a7d9  # a7d9
+  set:  # a7d9
+    title: "ruby, kotlin, go and csharp drop a file with no symbols before the edge pass, so a top-level-only file (RSpec spec, Go var _ = init file, import-only .kt, C# top-level-statements Program.cs) emits no calls or imports"  # a7d9

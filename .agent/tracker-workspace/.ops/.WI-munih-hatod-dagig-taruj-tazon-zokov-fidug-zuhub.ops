@@ -1,0 +1,21 @@
+- op: create  # 0a8a
+  at: '2026-10-25T11:37:21Z'  # 0a8a
+  by: agent  # 0a8a
+  actor: jgstern_agent  # 0a8a
+  clock: 1  # 0a8a
+  nonce: 0a8a  # 0a8a
+  data:  # 0a8a
+    kind: work_item  # 0a8a
+    title: "supply_chain_summary.derived_skipped counts 0 files on a run whose limits.tier_filtered_files lists a tier-4 generated file"  # 0a8a
+    status: todo_hard  # 0a8a
+    priority: 3  # 0a8a
+    parent:  # 0a8a
+    tags:  # 0a8a
+    - analysis_quality  # 0a8a
+    - supply_chain  # 0a8a
+    isbefore: []  # 0a8a
+    duplicate_of: []  # 0a8a
+    not_duplicate_of: []  # 0a8a
+    pr_ref:  # 0a8a
+    description: "FOUND 2026-10-25 (premise check of META-jotob), fixture only.\n\nOn a fixture whose src/gen_pb2.py (protobuf-generated) is tier-4 filtered at the default --max-tier 3, the run's limits.tier_filtered_files lists ['src/gen_pb2.py'] and max_tier_applied is 3, yet supply_chain_summary.derived_skipped reads {files: 0, paths: []}. derived_skipped's file count is len(tier_files[4]) + len(derived_paths) (cli.py:12247-12250); suspected mechanism (from code reading, not traced): the summary is built from the post-filter symbol set, so tier_files[4] is empty by the time it is counted, and _find_derived_skipped (cli.py:12124) only scans derived DIRECTORIES (DERIVED_PATH_PATTERNS dir names), never a generated file by content.\n\nExpected: a file the run dropped as derived is counted in derived_skipped (or the field is documented as directories-only). Related: WI-lutud (tier-4 parse-then-drop), META-jotob (spec drift on the same fields)."  # 0a8a
+    fields: {}  # 0a8a

@@ -22,3 +22,18 @@
     fields:  # 0857
       statement: "A named CI job must resolve to that job's own log. VIOLATED for matrix legs: cron/nightly/1..4 are four distinct failing statuses, and fetching each by name returns byte-identical output (same duration 1243.40s, same Python 3.10), so the multi-Python gate cannot be read in the dimension it exists for."  # 0857
       root_cause: "A Woodpecker matrix is ONE pipeline containing several workflows. _github_fetch_job_log's step resolver flattens [s for wf in workflows for s in wf.children] into a single list, discarding which workflow each step belongs to, then returns the first failing step. The job name selects the pipeline but nothing selects the leg."  # 0857
+- op: discuss  # c664
+  at: '2026-10-25T11:36:57Z'  # c664
+  by: agent  # c664
+  actor: jgstern_agent  # c664
+  clock: 2  # c664
+  nonce: c664  # c664
+  message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: PARTLY FIXED; title re-scoped to `logs`. Code read only (ci-debug not run: network). `status` and `cron-status` now address a leg: gate selection substring-matches a leg context such as nightly/2, and `ci-debug cron-status` (scripts/ci-debug:382-415, a72d4808f4, INV-bozid) lists each leg with its own URL and step verdicts. `logs` still cannot: the resolver is _github_fetch_job_log in scripts/lib/github-api.sh:272 (NOT in scripts/ci-debug); _wp_pipeline_coords (:163-175) parses the workflow index off target_url -- its comment says that index is what a matrix leg's context points at -- and the log path DISCARDS it at :402 (`read -r wp_repo wp_pipeline _`), flattens every workflow's steps (:416-417) and returns the first failing step or steps[-1] (:433). The per-step reader _wp_render_steps (:242-246) already filters by workflow index. PREMISE CORRECTION: the description guessed the four statuses share one target_url, leaving nothing to disambiguate with; by the code's own contract each leg URL carries /<workflow index> and the fetcher throws it away, so the fix is to pass the parsed index through, not to invent a discriminator (not verified against a live status payload). GOVERNANCE NOTE: scripts/lib/github-api.sh is not on the AGENTS.md governance list (only scripts/ci-debug and scripts/lib/forgejo-api.sh are). NOT checked: the byte-identical-log evidence, the --actions arm (WI-pubur)."  # c664
+- op: update  # f154
+  at: '2026-10-25T11:36:58Z'  # f154
+  by: agent  # f154
+  actor: jgstern_agent  # f154
+  clock: 3  # f154
+  nonce: f154  # f154
+  set:  # f154
+    title: "ci-debug logs cannot address a matrix LEG: the log resolver parses the leg's workflow index and discards it (github-api.sh:402), so every nightly/N returns the same log; status and cron-status already show legs"  # f154
