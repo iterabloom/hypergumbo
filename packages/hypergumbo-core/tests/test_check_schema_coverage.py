@@ -32,6 +32,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT_REAL = Path(__file__).resolve().parents[3]
@@ -86,53 +87,55 @@ def _run_gate(
     *args: str,
     baseline_file: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run the gate script in a subprocess with a tmp baseline file.
+    """Run the gate script in a subprocess, on the active test baseline.
 
-    The script reads ``.ci/schema-coverage-baseline.json`` relative to
-    its own location, which is the real repo root. We use ``--input``
-    to bypass the hypergumbo subprocess, but the baseline path is
-    fixed. So tests symlink-or-copy the real baseline aside, install a
-    test baseline, then restore. Simpler: run with HYPERGUMBO_TEST_BASELINE
-    env var if the script supports it.
-
-    Until the script supports an override flag, the workaround is to
-    copy the real baseline aside and write our own at the path. Tests
-    do this with a context-manager helper below.
+    ``--input`` bypasses the hypergumbo subprocess. Inside a
+    ``_BaselineSwap`` block the gate reads (and ``--update-baseline``
+    writes) that block's private file through ``--baseline``; the
+    committed ``.ci/schema-coverage-baseline.json`` is never touched.
+    Swapping the committed file in place, as these tests once did, raced
+    under xdist: parallel tests unlinked and restored one shared path, so
+    a test read another's baseline and a run could leave the committed
+    file deleted.
     """
     env = dict(os.environ)
+    baseline = baseline_file or _ACTIVE_BASELINE
     cmd = [sys.executable, str(SCRIPT_PATH), "--input", str(input_json), *args]
+    if baseline is not None:
+        cmd += ["--baseline", str(baseline)]
     return subprocess.run(
         cmd, env=env, capture_output=True, text=True, check=False,
     )
 
 
+#: The baseline file ``_run_gate`` passes while a ``_BaselineSwap`` is open.
+_ACTIVE_BASELINE: Path | None = None
+
+
 class _BaselineSwap:
-    """Context manager: temporarily replace the real baseline file."""
+    """Context manager: run the gate against a private baseline file.
+
+    ``replacement`` is the baseline's content, or ``None`` for no baseline
+    file at all. ``path`` is where it lives, for a test that reads back what
+    ``--update-baseline`` wrote.
+    """
 
     def __init__(self, replacement: dict | None):
         self.replacement = replacement
-        self.real_path = REPO_ROOT_REAL / ".ci" / "schema-coverage-baseline.json"
-        self.backup: bytes | None = None
-        self.had_file: bool = False
+        self._dir = tempfile.TemporaryDirectory(prefix="schema-coverage-baseline-")
+        self.path = Path(self._dir.name) / "schema-coverage-baseline.json"
 
     def __enter__(self) -> "_BaselineSwap":
-        self.had_file = self.real_path.exists()
-        if self.had_file:
-            self.backup = self.real_path.read_bytes()
-        if self.replacement is None:
-            if self.had_file:
-                self.real_path.unlink()
-        else:
-            self.real_path.parent.mkdir(parents=True, exist_ok=True)
-            self.real_path.write_text(json.dumps(self.replacement, indent=2))
+        global _ACTIVE_BASELINE
+        if self.replacement is not None:
+            self.path.write_text(json.dumps(self.replacement, indent=2))
+        _ACTIVE_BASELINE = self.path
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
-        if self.had_file:
-            assert self.backup is not None
-            self.real_path.write_bytes(self.backup)
-        elif self.real_path.exists():
-            self.real_path.unlink()
+        global _ACTIVE_BASELINE
+        _ACTIVE_BASELINE = None
+        self._dir.cleanup()
 
 
 class TestWarningMode:
@@ -266,12 +269,11 @@ class TestUpdateBaseline:
         input_json = tmp_path / "obs.json"
         input_json.write_text(json.dumps(observed))
 
-        baseline_path = REPO_ROOT_REAL / ".ci" / "schema-coverage-baseline.json"
-        with _BaselineSwap(None):
+        with _BaselineSwap(None) as swap:
             r = _run_gate(input_json, "--update-baseline")
             assert r.returncode == 0, r.stderr
-            assert baseline_path.is_file()
-            data = json.loads(baseline_path.read_text())
+            assert swap.path.is_file()
+            data = json.loads(swap.path.read_text())
             assert isinstance(data["uncovered_kinds"], list)
             assert data["uncovered_kinds"] == sorted(set(data["uncovered_kinds"]))
             # "function" and "class" should NOT be in uncovered (they're
@@ -435,13 +437,12 @@ class TestSchemaConformanceFold:
         input_json = tmp_path / "obs.json"
         input_json.write_text(json.dumps(_make_schema_invalid_output()))
 
-        baseline_path = REPO_ROOT_REAL / ".ci" / "schema-coverage-baseline.json"
         baseline = _coverage_tolerant_baseline_dict()
         baseline["schema_conformance_violations"] = list(_SYNTHETIC_OUTPUT_BASELINE_CONFORMANCE)
-        with _BaselineSwap(baseline):
+        with _BaselineSwap(baseline) as swap:
             r = _run_gate(input_json, "--update-baseline")
             assert r.returncode == 0, r.stdout + r.stderr
-            data = json.loads(baseline_path.read_text())
+            data = json.loads(swap.path.read_text())
             assert "schema_conformance_violations" in data
             assert any(
                 "minimum" in fp for fp in data["schema_conformance_violations"]
@@ -465,3 +466,24 @@ class TestSchemaConformanceFold:
             assert r.returncode == 0, r.stdout + r.stderr
             # Hint to user that the baseline can be tightened.
             assert "newly" in r.stdout.lower() or "fixed" in r.stdout.lower()
+
+
+class TestTheCommittedBaselineIsNeverRewrittenByATest:
+    """The swap-in-place helper raced under xdist: parallel tests unlinked and
+    restored the one committed file, so a test read another test's baseline,
+    3 to 7 of 12 failed per run, and a run could leave the file deleted."""
+
+    def test_update_baseline_writes_only_the_private_file(self, tmp_path: Path) -> None:
+        committed = REPO_ROOT_REAL / ".ci" / "schema-coverage-baseline.json"
+        before = committed.read_bytes()
+        input_json = tmp_path / "obs.json"
+        input_json.write_text(json.dumps(_make_output_with_observed_values(
+            kinds=["function"], edge_types=["calls"], evidence_types=["ast_call_direct"],
+        )))
+        with _BaselineSwap(None) as swap:
+            r = _run_gate(input_json, "--update-baseline")
+            assert r.returncode == 0, r.stderr
+            assert swap.path.is_file()
+            assert str(swap.path) in r.stdout
+        assert committed.read_bytes() == before
+        assert not swap.path.exists()

@@ -42,11 +42,15 @@ Vehicle notes:
   non-trivial node count. The floor is deliberately low (it proves the
   substrate was analyzed, not its exact size) so it survives a
   reduced-analyzer CI environment while still catching a vacuous pass.
-* On the current corpus only ``default`` and ``include_docs`` are
-  distinguishing (``frameworks_all`` and ``max_tier_4`` produce byte-identical
-  output — the fixtures carry no framework code and no tier>1 third-party
-  symbols). The latter two are retained as FORWARD GUARDS for when the corpus
-  grows to exercise those writer paths.
+* ``frameworks_all`` is distinguished by ``java/web/HealthController.java``:
+  Spring annotations with no build file declaring Spring, so only ``--frameworks
+  all`` applies the spring patterns (one more route, three more concepts).
+  ``max_tier_4`` filters nothing BY CONSTRUCTION -- tier 4 is the highest tier
+  -- so its output equals ``default``; it is kept to run the filter's code path.
+* A ceiling of 0 passes vacuously for a check whose population the corpus does
+  not contain. ``_REACH`` therefore names, per wired check, the records it
+  inspects, and each must be non-empty on every substrate (WI-jigup). Before
+  ``go/web/server.go`` (a gin route) the route-marker check inspected nothing.
 """
 from __future__ import annotations
 
@@ -57,6 +61,7 @@ from typing import Any
 import pytest
 
 from hypergumbo_core.cli import run_behavior_map
+from hypergumbo_core.spec_validator import _WIRED_CHECKS
 from hypergumbo_core.runtime_coherence import (
     filter_by_allowlist,
     find_offenders,
@@ -142,16 +147,77 @@ RUNTIME_COHERENCE_BASELINES: dict[str, int] = {
 
 # Shrink-only per-(validator_class, severity) baselines — a finer dimension than
 # the lumped ``total`` below, so a regression in one warning class cannot hide
-# behind a shrink in another (signed cancellation). Measured 2026-06-18; all 11
-# of each substrate's violations are the id-format:F3 external_symbol kind-slot
-# round-trip warnings. Shrink-only: ratchet a cell DOWN on a genuine shrink,
-# never UP; an unbaselined (class|severity) cell has a ceiling of 0. (WI-jigup.)
+# behind a shrink in another (signed cancellation). An unbaselined
+# (class|severity) cell has a ceiling of 0, and every cell is unbaselined: the
+# 11 id_format|warning round-trip advisories pinned here drained with
+# VALIDATION_BASELINES (WI-popak), and the cells ratcheted to 0 with them
+# (WI-jigup). With every ceiling at 0 no check, at any severity, is
+# total-count-only: a violation of any class trips its own cell.
 CLASS_SEVERITY_BASELINES: dict[str, dict[str, int]] = {
-    "default": {"id_format|warning": 11},
-    "frameworks_all": {"id_format|warning": 11},
-    "include_docs": {"id_format|warning": 11},
-    "max_tier_4": {"id_format|warning": 11},
+    "default": {},
+    "frameworks_all": {},
+    "include_docs": {},
+    "max_tier_4": {},
 }
+
+
+def _meta(record: dict[str, Any]) -> dict[str, Any]:
+    return record.get("meta") or {}
+
+
+def _method_call_pool(bm: dict[str, Any]) -> int:
+    kinds = {n["id"]: n.get("kind") for n in bm["nodes"]}
+    return sum(
+        1 for e in bm["edges"]
+        if e.get("type") in ("calls", "dispatches_to") and e.get("is_resolved")
+        and kinds.get(e.get("dst")) == "method"
+    )
+
+
+def _files_with_two_stable_ids(bm: dict[str, Any]) -> int:
+    per_file: dict[str, int] = {}
+    for n in bm["nodes"]:
+        if n.get("stable_id") and n.get("path"):
+            per_file[n["path"]] = per_file.get(n["path"], 0) + 1
+    return sum(1 for count in per_file.values() if count >= 2)
+
+
+#: Per wired spec_validator check, how many records of the substrate's map it
+#: inspects -- the population a violation could come from. A check whose
+#: population is empty passes at ceiling 0 having looked at nothing.
+#: ``no_harmful_receiver_blind_magnets`` reads resolved calls into methods;
+#: the HARMFUL subset is empty on any honest corpus, because producers withhold
+#: such binds (``defer_bare_method_call``) and finalize demotes survivors, so
+#: the pool is what a fixture can show the check reads.
+_REACH: dict[str, Any] = {
+    "axis_conformance": lambda bm: len(bm["nodes"]) + len(bm["edges"]),
+    "writer_contract": lambda bm: len(bm.get("analysis_runs") or []),
+    "cross_field_coherence": lambda bm: len(bm["nodes"]) + len(bm["edges"]),
+    "stable_id_per_file_uniqueness": _files_with_two_stable_ids,
+    "id_format": lambda bm: sum(1 for n in bm["nodes"] if n.get("id")),
+    "edge_id_format": lambda bm: sum(1 for e in bm["edges"] if e.get("id")),
+    "stable_id_format": lambda bm: sum(1 for n in bm["nodes"] if n.get("stable_id")),
+    "id_roundtrip": lambda bm: sum(1 for n in bm["nodes"] if n.get("id")),
+    "origin_run_id_fk": lambda bm: sum(
+        1 for r in bm["nodes"] + bm["edges"] if r.get("origin_run_id")
+    ) if bm.get("analysis_runs") else 0,
+    "dangling_endpoint": lambda bm: len(bm["edges"]) if bm.get("analysis_runs") else 0,
+    "fingerprint_format": lambda bm: sum(
+        1 for n in bm["nodes"] if n.get("fingerprint") and n.get("language")
+    ),
+    "confidence_range": lambda bm: sum(
+        1 for e in bm["edges"]
+        if _meta(e).get("evidence_type") and e.get("confidence") is not None
+    ),
+    "route_marker_single_home": lambda bm: sum(
+        1 for n in bm["nodes"] if _meta(n).get("framework_role") == "route"
+    ),
+    "no_harmful_receiver_blind_magnets": _method_call_pool,
+}
+
+#: Wired checks that read no corpus record: ``verdict_enum_completeness``
+#: inspects the verdict dataclasses' docstrings.
+_CORPUS_INDEPENDENT: frozenset[str] = frozenset({"verdict_enum_completeness"})
 
 # Liveness floor (NOT a ratchet): the smallest node count that still proves the
 # corpus was found and analyzed. Deliberately far below the observed ~66, so a
@@ -172,6 +238,22 @@ def _run_substrate(substrate: str, out_path: Path) -> dict[str, Any]:
         **SUBSTRATES[substrate],
     )
     return json.loads(out_path.read_text())
+
+
+def test_every_wired_check_declares_its_reach() -> None:
+    """A newly wired check must say what it reads, or the reach floor below
+    cannot tell a vacuous pass from a clean one."""
+    wired = {c["check"] for c in _WIRED_CHECKS}
+    assert set(_REACH) | _CORPUS_INDEPENDENT == wired
+    assert not set(_REACH) & _CORPUS_INDEPENDENT
+
+
+def test_no_class_severity_cell_tolerates_a_violation() -> None:
+    """Every (class|severity) ceiling is 0 and so is every total: no check is
+    advisory on the fixture matrix (WI-jigup's enforcement rule). Raising a
+    cell is a ratchet going UP; this makes it a visible test edit."""
+    assert all(not cells for cells in CLASS_SEVERITY_BASELINES.values())
+    assert set(VALIDATION_BASELINES.values()) == {0}
 
 
 @pytest.mark.parametrize("substrate", sorted(SUBSTRATES))
@@ -199,6 +281,13 @@ def test_substrate_within_ratchet_baseline(
     assert n_nodes >= _LIVENESS_MIN_NODES, (
         f"[{substrate}] only {n_nodes} nodes (< {_LIVENESS_MIN_NODES}); the "
         "corpus was not analyzed — a shrink-only gate would pass vacuously"
+    )
+
+    # --- Reach floor: every wired check inspected something. -------------
+    unreached = sorted(name for name, reach in _REACH.items() if reach(bm) == 0)
+    assert not unreached, (
+        f"[{substrate}] wired checks with no population on this substrate "
+        f"(their ceiling of 0 passes vacuously): {unreached}"
     )
 
     # --- Structural floor: report present and internally consistent. -----
