@@ -81,7 +81,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files, is_excluded
+from hypergumbo_core.discovery import find_files, is_excluded, within_file_budget
 from hypergumbo_core.ir import (
     AnalysisRun,
     Edge,
@@ -234,7 +234,7 @@ def find_bash_files(root: Path) -> list[Path]:
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 first_line = f.readline()
-                if _is_bash_shebang(first_line):
+                if _is_bash_shebang(first_line) and within_file_budget(path):
                     bash_files.append(path)
         except (OSError, IOError):  # pragma: no cover
             pass

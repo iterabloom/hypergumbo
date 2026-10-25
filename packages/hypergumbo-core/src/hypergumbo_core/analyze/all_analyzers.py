@@ -35,7 +35,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from ..discovery import DEFAULT_EXCLUDES, get_file_index, set_global_on_file_skipped
+from ..discovery import (
+    DEFAULT_EXCLUDES,
+    analyzer_file_budget,
+    get_file_index,
+    set_global_on_file_skipped,
+)
 from ..ir import (
     AnalysisRun, Edge, PASS_VERSION, Symbol, UsageContext,
     _default_config_fingerprint, compute_config_fingerprint,
@@ -385,9 +390,13 @@ def _run_costed(func: Any, *args: Any, **kwargs: Any) -> tuple[Any, PassCost]:
     return result, clock.read()
 
 
-def _run_named(name: str, func: Any, *args: Any, **kwargs: Any) -> tuple[Any, PassCost]:
-    """``_run_costed`` with the thread named for the run-status heartbeat."""
-    with worker_pass(name):
+def _run_named(
+    name: str, func: Any, *args: Any, file_budget: int | None = None, **kwargs: Any,
+) -> tuple[Any, PassCost]:
+    """``_run_costed`` with the thread named for the run-status heartbeat,
+    under ``file_budget`` files (``max_files``, WI-fomid: enforced in
+    ``discovery.find_files``, so it binds analyzers that take no argument)."""
+    with worker_pass(name), analyzer_file_budget(file_budget):
         return _run_costed(func, *args, **kwargs)
 
 
@@ -459,7 +468,8 @@ def run_all_analyzers(
             if analyzer.supports_max_files and max_files is not None:  # pragma: no cover
                 kwargs["max_files"] = max_files
             future = pool.submit(
-                _run_named, analyzer.name, analyzer.get_func(), repo_root, **kwargs
+                _run_named, analyzer.name, analyzer.get_func(), repo_root,
+                file_budget=max_files, **kwargs,
             )
             futures[future] = analyzer
 

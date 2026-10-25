@@ -10348,7 +10348,10 @@ Cache location:
         type=int,
         default=None,
         dest="max_files",
-        help="Maximum files to analyze per language (for large repos)",
+        help="Maximum files each language analyzer reads: the first N it "
+             "finds, in discovery order (for large repos). Linkers are not "
+             "bounded; neither are the opt-in SCIP backends, which index the "
+             "whole repository.",
     )
     p_run.add_argument(
         "--max-file-bytes",
@@ -12670,8 +12673,12 @@ def run_survey(
             ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/survey.json
         max_tier: Optional maximum supply chain tier (1-4). Symbols with
             tier > max_tier are filtered out. None means no filtering.
-        max_files: Optional maximum files per language analyzer. Limits
-            how many files each analyzer processes (for large repos).
+        max_files: Optional maximum files per language analyzer. Every
+            file an analyzer finds through ``discovery.find_files`` (or a
+            finder that calls ``within_file_budget``) counts, manifests
+            included; the first N are admitted and re-admitted on a second
+            pass (WI-fomid). Linkers and the opt-in SCIP backends are not
+            bounded.
         compact: If True, output compact mode with coverage-based truncation
             and bag-of-words summary of omitted items.
         coverage: Target centrality coverage for compact mode (0.0-1.0).

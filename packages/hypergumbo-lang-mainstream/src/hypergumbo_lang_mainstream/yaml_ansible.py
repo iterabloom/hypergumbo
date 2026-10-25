@@ -56,7 +56,7 @@ from typing import TYPE_CHECKING, ClassVar, Optional
 
 import yaml
 
-from hypergumbo_core.discovery import is_excluded
+from hypergumbo_core.discovery import is_excluded, within_file_budget
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.overload_arity import scoped_stable_id
 from hypergumbo_core.paths import to_relative_path
@@ -640,7 +640,9 @@ class AnsibleAnalyzer(TreeSitterAnalyzer):
 
         parser = self._create_parser()
 
-        all_files = find_ansible_files(repo_root)
+        # The budget is charged here, not in find_ansible_files: the generic
+        # yaml analyzer calls that finder for the set to SKIP (WI-fomid).
+        all_files = [p for p in find_ansible_files(repo_root) if within_file_budget(p)]
         if not all_files:
             run.duration_ms = int((_time.time() - start_time) * 1000)
             return AnalysisResult(run=run)
