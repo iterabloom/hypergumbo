@@ -28,3 +28,18 @@
   clock: 2  # 05fd
   nonce: 05fd  # 05fd
   message: "Companion items: WI-sufon / INV-kutub (the same 2026-10-25 F1 investigation of ADR-0041 §1). Related, done: WI-bojok-tamih (built the supply_chain_summary directness reader that now counts every declaration as unknown)."  # 05fd
+- op: update  # 0751
+  at: '2026-10-25T23:58:45Z'  # 0751
+  by: agent  # 0751
+  actor: jgstern_agent  # 0751
+  clock: 3  # 0751
+  nonce: '0751'  # 0751
+  set:  # 0751
+    priority: 4  # 0751
+- op: discuss  # af82
+  at: '2026-10-25T23:58:45Z'  # af82
+  by: agent  # af82
+  actor: jgstern_agent  # af82
+  clock: 4  # af82
+  nonce: af82  # af82
+  message: "Premise re-check 2026-10-25 on dev 9245df71d6 (production-CLI repros on tiny fixtures, scratchpad stale1025b/repro_<ID>/). Independent check: premise HOLDS -- ADR-0041 :56/:64, spec :1804 and axis_meta_keys.py:1106-1108 all scope directness to dependency AND boundary nodes, yet the only producer (ir.py:2166-2172, create_boundary_nodes) never sees kind=dependency. Repro: python `dependency requests` meta.directness None; summary {direct:2, undeclared:6, unknown:1}, the 1 being the declaration. Scope corrections: (1) the registry text and spec :1804 falsely claim dependency Symbols are stamped -- fix the text with the code. (2) In JS 'unknown' = 2 declarations + 2 js_module stand-in package nodes (also unstamped; the lodash stand-in should arguably be direct) + 2 sibling boundary stubs; Cargo is all unknown (WI-hajag; ruby/php WI-tikar) -- stamping declarations alone leaves the bucket mostly unknown, and the output does not disclose why. (3) Workspace-sibling declarations must NOT be stamped direct (not external; tier 1 under INV-kutub) -- coordinate. All kind=dependency producers are manifest readers, not lockfiles, so 'direct' is right for third-party declarations. P3 -> P4: the only consumer is a summary count dominated by absent-by-design unknowns."  # af82

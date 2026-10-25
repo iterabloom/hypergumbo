@@ -212,3 +212,21 @@
   clock: 26  # f4fd
   nonce: f4fd  # f4fd
   message: "STATEMENT REWORDED 2026-10-25, owner-approved, following the owner's ruling (option A, project frame) on the 2026-07-15 supply_chain_tier concept audit's finding F1. OLD clause: 'Workspace dependency declarations should be internal-dependency.' NEW clause: a dependency declaration naming an in-tree workspace package carries that package's tier (first-party), because every node standing for one package carries one tier. The old clause encoded the tier-2 reading ADR-0041 §1 is being rewritten to rule out: measuring a declaration from the member that declares it is the declaration-influences-tier pattern ADR-0041 exists to remove. STATUS: stays satisfied on its re-scoped acceptance property (2026-07-15: no consumer-visible external_symbol carries a workspace-package prefix), which is unchanged. The reworded declaration clause is NOT satisfied today and is carried as its own violated invariant, INV-kutub (python sibling declarations tier 2; npm/cargo sibling declarations and the js_module stand-in package node tier 3 'external', reproduced 2026-10-25 via hypergumbo survey on three workspace fixtures). The ADR/spec rewrite is WI-sufon."  # f4fd
+- op: update  # 0a75
+  at: '2026-10-25T23:58:46Z'  # 0a75
+  by: agent  # 0a75
+  actor: jgstern_agent  # 0a75
+  clock: 27  # 0a75
+  nonce: 0a75  # 0a75
+  set:  # 0a75
+    status: violated  # 0a75
+    priority: 2  # 0a75
+    fields:  # 0a75
+      statement: "Workspace-package source at `packages/*/src/` (or analogous monorepo layout) is first-party, and first-party symbols preserve their real path rather than collapsing to a placeholder: no consumer-reached external_symbol carries a workspace-package prefix. (The tier of a dependency DECLARATION naming a workspace package is INV-kutub's statement.)"  # 0a75
+- op: discuss  # 18df
+  at: '2026-10-25T23:58:46Z'  # 18df
+  by: agent  # 18df
+  actor: jgstern_agent  # 18df
+  clock: 28  # 18df
+  nonce: 18df  # 18df
+  message: "RE-OPENED 2026-10-25 (owner-approved), P1 -> P2, on positive evidence against the 2026-07-15 re-scoped acceptance property, whose own rule is 'a consumer-reached one re-violates'. Counterexamples, production `hypergumbo survey` on dev 9245df71d6: (1) PYTHON, reproduced independently by the orchestrator: a uv workspace where pkg-a's app.py does `import pkg_b.sub.deep; pkg_b.sub.deep.deep_fn()` calls `python:pkg_b.sub.deep:0-0:deep_fn:external_symbol` (path '<external>') although deep_fn is defined in packages/pkg-b; `from pkg_b.sub import deep; deep.deep_fn()` resolves; a single-package control fails the same way, so it is a general python dotted-module gap -- filed WI-lovun (P2). Same fixture: production-reached `pkg_b.REGISTRY.get()` / `pkg_b.core.CONSTANTS.values()` stubs, the Category-D shape the closure accepted only as test-reached (carve-out (a)'s wording is ambiguous for builtin methods; decided on WI-lovun). (2) JS AND CARGO: sibling-package imports call tier-3 phantoms (javascript:@ws/b:0-0:helper, rust:crate_b::helper:0-0:module external_symbols) instead of the sibling's source -- filed WI-rilof (P2). STATEMENT: the declaration clause added earlier today ('a declaration naming an in-tree workspace package carries that package's tier') is removed from this statement and lives on INV-kutub alone, so this item's status can never again assert a clause it knows is false; sentence 1 (packages/*/src is tier 1) holds; the path/prefix clause is the one now violated. Closes satisfied when WI-lovun and WI-rilof land and the property is re-checked on python, npm and cargo workspace fixtures. The description's Invariant / Candidate-fixes sections still say declarations 'should be internal_dep' -- superseded by the 2026-10-25 project-frame ruling (ADR-0041 §1, WI-sufon)."  # 18df

@@ -27,3 +27,10 @@
   clock: 2  # 999d
   nonce: 999d  # 999d
   message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT. Three functions each pass s.accept() -> subprocess.*: verdict violated, evidence_count 3, text '3 unsanitized untrusted_input flow(s)' and directly below 'CAVEAT (choice_shaped_source): 1 of this claim's evidence rows are rooted at...: accept'. With recv called before accept, the collapsed ddg_mixed row has source_primitive=recv, source_primitives=[accept, recv], and gets no caveat; swap the calls and the same set gets it -- member-order dependent. Refs: verify_claims.py:6578-6582 (name set), :6625 (count text), :6634-6635 (the detail also points the reader at the witness source_primitive); taint.py:748-773 (source_primitives), :1026-1036 (collapse, witness grp[0]). The 'coordinate with lanos' note is retracted: WI-lanos (PR #1825) only removed wait* names from CHOICE_SHAPED_SOURCE_NAMES; is_choice_shaped_source(primitive) is unchanged (verify_claims.py:944). Part 2 duplicates WI-kufos part (2) (filed 2026-10-05); fix together. P3 kept."  # 999d
+- op: discuss  # 8d21
+  at: '2026-10-25T23:58:47Z'  # 8d21
+  by: agent  # 8d21
+  actor: jgstern_agent  # 8d21
+  clock: 3  # 8d21
+  nonce: 8d21  # 8d21
+  message: "PART 3, added 2026-10-25 from the WI-jivih premise re-check: CHOICE_SHAPED_SOURCE_NAMES (verify_claims.py:783-789) still lists gethostname / getservbyname / getservbyport, which WI-dozul moved from net_recv to host_info_read on 2026-09-08 (erlang.yaml:326-334, 4f463b6722); matching is last-segment and label-blind (:6578-6582). Live: python `name = socket.gethostname(); s.send(name.encode())` under host-description-no-network -> violated (2 rows) with a choice_shaped_source caveat claiming the far side CHOSE the value. Fix with parts 1-2 (same block): drop the three names, and restrict the caveat to rows whose source label is untrusted_input (the label the choice shape was defined on)."  # 8d21

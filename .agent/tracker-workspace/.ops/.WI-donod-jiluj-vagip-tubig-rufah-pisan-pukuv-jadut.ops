@@ -35,3 +35,10 @@
   clock: 3  # 90d4
   nonce: 90d4  # 90d4
   message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, NARROWER. `io-boundaries . --format json` with and without --io-primitives cat/my-io.yaml (a user file classifying only mylib.ship): the unrelated otherlib.frobnicate external_potential chain flips dst_classification_unreliable False -> True ([unreliable] in text); it stays False with --no-default-overlays. Disclosure only: verify-claims never reads the flag (readers: the text tag cli.py:6531 and the JSON field). The run contradicts itself: the stderr in_progress warning does not fire because in_progress_languages loads without overlays (io_boundary.py:2541-2560). The dropped stdlib_provenance has no reader on the merged catalogue. Affects only the four provenance_declared catalogues (python, javascript (+typescript via alias), rust, erlang); the other 11 are already in_progress. Refs: io_boundary.py:2206 (status rewrite), :1555/:1592 (merge), :2495-2501 (community-only restore), :4268 (flag); pinning test tests/test_default_overlays.py:302-316 unchanged. Premise and fix shape correct. Related: WI-sihiz works on the same erasure line. P3 -> P4: a false over-cautious tag, four languages, user-overlay runs only."  # 90d4
+- op: discuss  # 0ce5
+  at: '2026-10-25T23:58:48Z'  # 0ce5
+  by: agent  # 0ce5
+  actor: jgstern_agent  # 0ce5
+  clock: 4  # 0ce5
+  nonce: 0ce5  # 0ce5
+  message: "2026-10-25: WI-sihiz re-checked -- same erasure line (io_boundary.py:2206); a fold must keep `status: overlay` as a deprecated alias (8 shipped overlays, templates and users' io_primitives.d carry it). Do the two together."  # 0ce5

@@ -37,3 +37,18 @@
   clock: 3  # 246b
   nonce: 246b  # 246b
   message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CONSUMER-SIDE MEMBER. CLAUSE: ADR-0051 s2, \"the receiver's type already has a home in Edge.meta['receiver_type_hint'] -- stamped by six analyzers and read by neither io_boundary nor taint\". NOTION: the consumers cannot tell whether the slot carries a namespace or a type, so they decide by ORTHOGRAPHY, while the field carrying the conformant TYPE goes unread at that seam. This is the remedy the axiom names rather than a violation of it, and it is what would let INV-kotob / WI-gudak's receiver_variable slots be bypassed instead of repaired."  # 246b
+- op: update  # 0db0
+  at: '2026-10-25T23:58:44Z'  # 0db0
+  by: agent  # 0db0
+  actor: jgstern_agent  # 0db0
+  clock: 4  # 0db0
+  nonce: 0db0  # 0db0
+  set:  # 0db0
+    priority: 3  # 0db0
+- op: discuss  # 893e
+  at: '2026-10-25T23:58:44Z'  # 893e
+  by: agent  # 893e
+  actor: jgstern_agent  # 893e
+  clock: 5  # 893e
+  nonce: 893e  # 893e
+  message: "Premise re-check 2026-10-25 on dev 9245df71d6 (production-CLI repros on tiny fixtures, scratchpad stale1025b/repro_<ID>/). CURRENT, refs drifted; PAYOFF PREMISE LARGELY STALE -> P2 to P3. AST scan of io_boundary.py and taint.py across every read shape (literal/variable-key get, subscript, kwarg, f-string, meta iteration): no direct read. Live differential via io-boundaries --input: changing java readLine's receiver_type_hint BufferedReader->ProcessBuilder leaves boundaries byte-identical; changing only the module slot to java.lang.Bogus removes the fs_read chain -- the matcher reads the slot and ignores the hint. New since filing (927e6afd40, 2026-10-12): owner_ancestry.py:229-231 reads the hint for IN-REPO owners only, feeding io_boundary.py:5736 / taint.py:1458 via ancestor_retry_hints -- not the external package-vs-type question this item is about. Refs: registry axis_meta_keys.py:1391; _module_matches io_boundary.py:5181 (the Go-convention docstring was replaced by WI-zozun's case-disagreement test; Swift carve-out :5356-5360; orthography still decides); producers now 10 analyzers, consumers 4. Premise: the Swift target was fixed producer-side by INV-kotob (2026-09-04, three days after filing), JVM bare-type slots by INV-dibij (PR #1853); the project fixes the slot at the producer instead. FIRST STEP: count edges whose hint disagrees with the module slot; build only if nonzero."  # 893e

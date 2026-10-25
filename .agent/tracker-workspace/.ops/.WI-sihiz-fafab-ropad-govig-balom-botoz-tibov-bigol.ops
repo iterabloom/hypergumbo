@@ -27,3 +27,10 @@
   clock: 2  # 23c0
   nonce: 23c0  # 23c0
   message: "From WI-donod 2026-10-25: WI-donod (a user I/O overlay rewrites the merged catalogue status to in_progress, io_boundary.py:2206, flipping unrelated external_potential chains to dst_classification_unreliable) works on the same erasure line; fix together or in order."  # 23c0
+- op: discuss  # 556e
+  at: '2026-10-25T23:58:45Z'  # 556e
+  by: agent  # 556e
+  actor: jgstern_agent  # 556e
+  clock: 3  # 556e
+  nonce: 556e  # 556e
+  message: "Premise re-check 2026-10-25 on dev 9245df71d6 (production-CLI repros on tiny fixtures, scratchpad stale1025b/repro_<ID>/). CURRENT, refs drifted; BLAST RADIUS WIDER than filed. Live (io-boundaries --io-primitives, --no-default-overlays): status 'overlay' accepted; provenance_declared / in_progress / complete / missing all exit 2 with the SAME text \"'provenance_declared' is a claim about a language's stdlib citation and is not available to an overlay\" -- the wrong explanation for 3 of 4; load_overlay_catalog returns status 'in_progress' (erasure io_boundary.py:2206; gate :2159-2165; constant :1881), and the same run shows WI-donod's unreliable-flag flip. Corrections: 'no persisted data migrates' is now FALSE -- status: overlay is in 8 shipped community overlays (io_primitives_overlays/*.yaml), docs/io-primitives-overlays/hypergumbo-self.yaml, docs/CATALOGUES.md:92, docs/templates/bash-io-primitives.template.yaml, generated samples (repo_tier_offer.py:216, catalogues_doc.py:46), 17 test files, and init-catalogs seeds copies into users' io_primitives.d -- so the fold must keep accepting `status: overlay` as a deprecated alias. 'complete' is now 'provenance_declared' (e6cb77fa15); module_completeness is PERMITTED in overlays (owner 2026-08-15; only the stdlib_ spelling is refused); ADR-0016:47 still says 'complete'. ADR-0061's `provenance:` key already gives origin its own field, which strengthens the fold. Do together with WI-donod (same line). P3 todo_soft kept."  # 556e
