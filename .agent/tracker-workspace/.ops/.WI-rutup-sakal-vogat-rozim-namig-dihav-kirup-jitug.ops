@@ -21,3 +21,19 @@
     pr_ref:  # e22a
     description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6, agent read. ADR-0050 section 1 axiom 'what data crosses ... in which direction' + its own 'logging names a medium' (io_boundary_types.py:327-329) vs elixir.yaml:251-254 / erlang.yaml:315 / javascript.yaml:296,303 ('env_read means may carry a credential' -> document.cookie and document.location as env_read) vs navigation_read's chooser definition (:400-415). Recommended verdict DOCUMENT (owner-endorsed 2026-10-22): amend ADR-0050 section 1 to say the value names the MEDIUM. Then rows: ipc_send's definition includes 'a local socket' (io_boundary_types.py:221-224) and C rows AF_UNIX there (c.yaml:168-174, 263) but go net.DialUnix is net_send (go.yaml:262), ListenUnix net_listen, python asyncio.start_unix_server net_listen (python.yaml:749), node net.Socket IPC path net_send. Also swift.yaml:182 'argv is env_read in every catalogue' (go rows no os.Args). The argv / cookie label change is its own measured item."  # e22a
     fields: {}  # e22a
+- op: discuss  # abaf
+  at: '2026-10-25T20:08:23Z'  # abaf
+  by: agent  # abaf
+  actor: jgstern_agent  # abaf
+  clock: 2  # abaf
+  nonce: abaf  # abaf
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). PARTLY MISPREMISED (code/row read). Axiom half current: ADR-0050 §1 (:71-85) and the registry axiom (io_boundary_types.py:4-9) unchanged; content-reading rows elixir.yaml:249-258, erlang.yaml:315, javascript.yaml:295-297 (cookie), :298-307 (location); navigation_read's chooser definition io_boundary_types.py:399-413; 'logging names a medium' :324-329. Scope wider: env_read's OWN definition is by content ('values that may carry a credential', :235-238) and host_info_read by identity (:247-250), so the amendment must address the INV-tutar split itself, not only rows. The Unix-socket comparison was wrong: it set C's AF_UNIX send rows against go dial/listen (go.yaml:262 DialUnix, :376 ListenUnix), but C's own connect() is also net_send (c.yaml:157-162), and WI-potog (PR #1417) kept go dial/listen to that precedent and moved go writes/reads (fmt.Fprint*, io.WriteString, bufio) to ipc. Remaining socket cases: go net.Conn.Write/Read = WI-kalol; python asyncio.StreamReader = WI-foloh; untracked, now owned here: python socket.socket.send/recv over AF_UNIX (python.yaml:610-611) and node net.Socket (javascript.yaml:163-164). asyncio.start_unix_server (python.yaml:749, net_listen) cannot be fixed by a row edit: there is no ipc-side listen value, so it needs a vocabulary ruling. swift.yaml:181-183 'argv is env_read in every catalogue' is false (go has no os.Args row); it goes with WI-zidam. OWNER RULING 2026-10-25 (via WI-zidam's cookie route): the amendment is NOT 'the value names only the medium'. It says: a row's primary boundary names the MEDIUM; a `simultaneous` second boundary may record the reading a taint label needs (credential-bearing; chosen by the party that navigated), as the shipped INV-dadu URL rows already do. It must state outright that env_read therefore still means both the process environment and 'may carry a credential'. Lands before WI-zidam (isbefore added). P3 kept."  # abaf
+- op: update  # 5536
+  at: '2026-10-25T20:08:25Z'  # 5536
+  by: agent  # 5536
+  actor: jgstern_agent  # 5536
+  clock: 3  # 5536
+  nonce: '5536'  # 5536
+  set: {}  # 5536
+  add:  # 5536
+    isbefore: [WI-zidam-lilam-mufuk-dozup-dipoz-budik-sigas-fujop]  # 5536

@@ -20,3 +20,18 @@
     pr_ref:  # ca43
     description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F4, agent read: io_boundary.py:2186 rewrites an overlay's status to in_progress to pass validation; merge (:1574) and the community-only restore (:2479-2482) let it become the merged status; :4250 then flags dst_classification_unreliable on every external_potential chain. Pinned by tests/test_default_overlays.py:302-316 as 'a separate question'. Fix: an overlay never lowers the base catalogue's status/provenance."  # ca43
     fields: {}  # ca43
+- op: update  # c17b
+  at: '2026-10-25T20:08:22Z'  # c17b
+  by: agent  # c17b
+  actor: jgstern_agent  # c17b
+  clock: 2  # c17b
+  nonce: c17b  # c17b
+  set:  # c17b
+    priority: 4  # c17b
+- op: discuss  # 90d4
+  at: '2026-10-25T20:08:22Z'  # 90d4
+  by: agent  # 90d4
+  actor: jgstern_agent  # 90d4
+  clock: 3  # 90d4
+  nonce: 90d4  # 90d4
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, NARROWER. `io-boundaries . --format json` with and without --io-primitives cat/my-io.yaml (a user file classifying only mylib.ship): the unrelated otherlib.frobnicate external_potential chain flips dst_classification_unreliable False -> True ([unreliable] in text); it stays False with --no-default-overlays. Disclosure only: verify-claims never reads the flag (readers: the text tag cli.py:6531 and the JSON field). The run contradicts itself: the stderr in_progress warning does not fire because in_progress_languages loads without overlays (io_boundary.py:2541-2560). The dropped stdlib_provenance has no reader on the merged catalogue. Affects only the four provenance_declared catalogues (python, javascript (+typescript via alias), rust, erlang); the other 11 are already in_progress. Refs: io_boundary.py:2206 (status rewrite), :1555/:1592 (merge), :2495-2501 (community-only restore), :4268 (flag); pinning test tests/test_default_overlays.py:302-316 unchanged. Premise and fix shape correct. Related: WI-sihiz works on the same erasure line. P3 -> P4: a false over-cautious tag, four languages, user-overlay runs only."  # 90d4

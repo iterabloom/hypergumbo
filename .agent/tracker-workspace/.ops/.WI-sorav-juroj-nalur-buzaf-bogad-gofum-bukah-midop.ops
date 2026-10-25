@@ -21,3 +21,10 @@
     pr_ref:  # 8850
     description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). Adjacent findings. ContentRule.ecosystem (discovery.py:911-925, 'display label') holds ~45 values mixing package managers, build tools, detection mechanisms ('self-ignored output', 'cache directory (CACHEDIR.TAG)') and 'git submodule'; it is re-emitted as 'tool' for generated output (discovery.py:1861, supply_chain.py:1538) and branched on at discovery.py:1831; ADR-0041 section 3 owns 'ecosystem' for stdlib/third_party. Recommended: rename the field to tool. channel_kind (axis_meta_keys.py:564-566) declares example 'message_queue' while producers emit 'queue'; Phoenix Channels (WebSocket transport) carry 'ipc' (linkers/phoenix_ipc.py:357). KEEP with trigger: generic Edge.meta keys call_type / method (axis_meta_keys.py:1482-1487, 1590-1594) -- re-audit on their first reader."  # 8850
     fields: {}  # 8850
+- op: discuss  # 5339
+  at: '2026-10-25T20:08:24Z'  # 5339
+  by: agent  # 5339
+  actor: jgstern_agent  # 5339
+  clock: 2  # 5339
+  nonce: '5339'  # 5339
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, refs drifted (code read). ContentRule.ecosystem discovery.py:925-939: 85 rules carry 41 distinct values plus the 'git submodule' rule, 42 in all (not ~45); branched on as a display label at :1845; re-emitted as tool at :1875 and supply_chain.py:1538. ADR-0041 §3 (:66-70) owns 'ecosystem' as stdlib/third_party, so the rename to tool stands. channel_kind's example 'message_queue' (axis_meta_keys.py:564-566) still has no producer -- producers emit exactly crdt, ipc, message_bus, queue, websocket; the spec (:1231, :1263) is already right, only the registry example is wrong; Phoenix 'ipc' at phoenix_ipc.py:358. The keep-with-trigger half (generic Edge.meta keys call_type axis_meta_keys.py:1488, method :1596) overlaps WI-kuhoh (open, owner decision pending) and defers to it; grep found no edge reader. P4 kept."  # 5339

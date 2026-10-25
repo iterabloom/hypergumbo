@@ -20,3 +20,27 @@
     pr_ref:  # f473
     description: "Concept audit 2026-10-21/22 (pinned dev e9215548f6; write-up ~/hypergumbo_lab_notebook/concept_audit_10212026/concept-audit-vocabulary-since-0923_10222026.md). F6, agent read: taint.py:2246-2253 keys the override on (module, name, kind) without the label, so a user source row for document.location removes both its host_secret and untrusted_input auto-sources; disclosure only on claims naming the lost label (verify_claims.py:5995-5999). Related name collision: IoPrimitive.requires_target_kind holds a target kind (std_stream, io_boundary.py:844) while TaintSource/TaintSink.requires_target_kind holds a BOUNDARY (taint.py:2153-2157, 2174, 2206, compared 1228-1233); TaintSink.requires_mode also holds a boundary (2190-2192) -- rename the taint-side fields."  # f473
     fields: {}  # f473
+- op: update  # 2c0e
+  at: '2026-10-25T20:08:24Z'  # 2c0e
+  by: agent  # 2c0e
+  actor: jgstern_agent  # 2c0e
+  clock: 2  # 2c0e
+  nonce: 2c0e  # 2c0e
+  set:  # 2c0e
+    priority: 4  # 2c0e
+- op: discuss  # 65dd
+  at: '2026-10-25T20:08:24Z'  # 65dd
+  by: agent  # 65dd
+  actor: jgstern_agent  # 65dd
+  clock: 3  # 65dd
+  nonce: 65dd  # 65dd
+  message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). MISPREMISED TODAY. The code is as described -- _merge_with_user_override keys on (module, name, kind) without the label (taint.py:2253-2262); disclosure filter verify_claims.py:5996-6001 -- but the stated repro cannot happen: every two-label source today is one of 12 JS/TS ATTRIBUTE rows (document.location, window.location...), and the user source loader _load_source_yaml (taint.py:1766-1815) builds only functions:/methods: entries (by design: WI-jojis wont_do chose auto-derivation). Live check: a user file with attributes: [location] (or functions: [location]) left both claims violated, identical to baseline. It becomes live when a function/method row gains two labels -- WI-zidam's argv change does exactly that (rust env::args, haskell getArgs, elixir System.argv, erlang init:get_argument*, argparse parse_args); even then the drop is disclosed (displaced_shipped_entry), not a silent false confirm. Hence isbefore WI-zidam. Split out: the requires_target_kind / requires_mode name collision -> WI-dinop; the silently-ignored attributes: key in user source files -> WI-rinaz. P3 -> P4."  # 65dd
+- op: update  # f665
+  at: '2026-10-25T20:08:25Z'  # f665
+  by: agent  # f665
+  actor: jgstern_agent  # f665
+  clock: 4  # f665
+  nonce: f665  # f665
+  set: {}  # f665
+  add:  # f665
+    isbefore: [WI-zidam-lilam-mufuk-dozup-dipoz-budik-sigas-fujop]  # f665
