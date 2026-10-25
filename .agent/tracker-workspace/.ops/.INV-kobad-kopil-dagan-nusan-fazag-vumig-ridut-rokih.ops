@@ -161,3 +161,10 @@
   set:  # 28c6
     fields:  # 28c6
       statement: "RESTATED 2026-10-25 as a measurable matrix. For each FEATURE row and each LANGUAGE column whose grammar has the construct, a fixture containing the construct populates the feature. ROWS: (1) cyclomatic_complexity counts every decision construct, including ternary and statement-modifier forms; (2) signature populated for a callable with a body; (3) code outside any function anchors its calls on the file or class node; (4) extends/implements to an EXTERNAL base emits an unresolved typed edge; (5) constructing an EXTERNAL class emits an instantiates edge. COLUMNS: python, javascript, typescript, java, kotlin, scala, csharp, go, rust, swift, php, ruby, c, cpp, lua, elixir. THRESHOLD: violated while any cell is a gap; open cells are listed in the discussion. Bodyless declarations (protocol/trait methods) are exempt from rows 1-2."  # 28c6
+- op: discuss  # 1a7c
+  at: '2026-10-25T11:38:46Z'  # 1a7c
+  by: agent  # 1a7c
+  actor: jgstern_agent  # 1a7c
+  clock: 20  # 1a7c
+  nonce: 1a7c  # 1a7c
+  message: "Cross-ref (2026-10-25): matrix row 1 ruby cell is WI-harij; row 5 is WI-jubag (external) plus WI-gaduf (ruby in-repo Local.new) and WI-josik (scala in-repo new)."  # 1a7c

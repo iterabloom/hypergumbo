@@ -34,3 +34,10 @@
   clock: 3  # 4a22
   nonce: 4a22  # 4a22
   message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: STALE-TEXT; still violated. All 4 named members done. Node supply_chain shape holds (8 keys = spec:1141). RETRACTION of the 09-25 claim #2 'the spec never names limits.supply_chain': spec section 14 (lines 1998-2012) documents it as a JSON example with classification_failures / ambiguous_paths, present since 2025-12-24; the grep searched the literal string, which the nested example never contains. What IS true: the section 9 limits list (spec:1406) omits it, and the section 14 example shows classification_failures: [] while limits.py:91-96 drops empty arrays, so a real run emits supply_chain: {}. Claim #3 HOLDS: spec:1419 says max_tier_applied is null/absent with no tier filter, but a default run emits 3 (cli.py:13060 effective_tier=3, assigned at cli.py:13119, was cited as 11833). NEW RESIDUALS, same family: limits.tier_filtered_files is emitted and in schema.json:2318 but never in the spec (faf57536cc, WI-tulit); limits.test_files_excluded likewise (schema.json:2336); supply_chain_summary.vendored_analysed and external_dep.ecosystem / directness sub-buckets are in schema.json:234 but not the spec; spec:1400 says tier-4 files emit no symbols, false (parsed, edges kept -- WI-lutud covers parse-then-drop). supply_chain_summary.derived_skipped reads {files: 0} on a run whose tier_filtered_files lists the tier-4 file: filed separately."  # 4a22
+- op: discuss  # 3d11
+  at: '2026-10-25T11:38:46Z'  # 3d11
+  by: agent  # 3d11
+  actor: jgstern_agent  # 3d11
+  clock: 4  # 3d11
+  nonce: 3d11  # 3d11
+  message: "Cross-ref (2026-10-25): the derived_skipped undercount is WI-munih."  # 3d11

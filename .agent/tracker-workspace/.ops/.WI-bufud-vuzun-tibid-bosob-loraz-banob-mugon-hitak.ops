@@ -19,3 +19,27 @@
     pr_ref:  # fe48
     description: "FOUND 2026-10-25 (premise check of INV-hovoj, which this blocks).\n\nDEFECT. For a method, own-class field types are merged into the per-call param_types map under BARE field names (py.py:7236-7241: `param_types[fname] = fsym` for each fname in class_field_types[class_name]). The external-type counterpart is namespaced as `self.<field>` (INV-fibis, py.py:7272-7284); this map is not. A bare key collides with any local or comprehension/lambda variable of the same name:\n\n(a) WRONG EDGE: `self.conn = Conn()` in __init__, then in a method `conn = Other()` and `self.conn.ping()` -> resolves to Other.ping @0.85.\n(b) LOST EDGE: `[self.conn.ping() for conn in items]` or `lambda conn: self.conn.ping()` -> _prune_shadowed (py.py:4166) removes the bare key, and the call drops to python:external @0.4 instead of Conn.ping @0.85.\n\nFIX PATTERN. Key own-field types as `self.<field>` exactly as the external map does (INV-fibis) and the Swift analogue WI-tagir did; look them up only for an attribute access on `self`. Test both (a) and (b), plus the plain-statement control that resolves to Conn.ping today."  # fe48
     fields: {}  # fe48
+- op: update  # b197
+  at: '2026-10-25T11:38:46Z'  # b197
+  by: agent  # b197
+  actor: jgstern_agent  # b197
+  clock: 2  # b197
+  nonce: b197  # b197
+  set: {}  # b197
+  add:  # b197
+    isbefore: [INV-hovoj-jakut-pilup-tusun-kipik-vimov-somuv-kozaj]  # b197
+- op: update  # 2de7
+  at: '2026-10-25T13:52:56Z'  # 2de7
+  by: agent  # 2de7
+  actor: jgstern_agent  # 2de7
+  clock: 3  # 2de7
+  nonce: 2de7  # 2de7
+  set:  # 2de7
+    status: done  # 2de7
+- op: discuss  # 5b6a
+  at: '2026-10-25T13:52:56Z'  # 5b6a
+  by: agent  # 5b6a
+  actor: jgstern_agent  # 5b6a
+  clock: 4  # 5b6a
+  nonce: 5b6a  # 5b6a
+  message: "Done. Merged as PR #1854 (dev e45b60e109). Own-class field types are keyed self.<field> in the per-call type map; Case 2f and the Site-3 own-field exclusion read that key; _prune_shadowed drops a var_types key by its ROOT. BEHAVIORAL EVIDENCE on merged dev, the premise-check fixtures re-run through analyze_python: b2 (self.conn = Conn(); conn = Other(); self.conn.ping()) -> Conn.ping @0.85, was Other.ping @0.85; a1 / a4 ([self.conn.ping() for conn in items], lambda conn: self.conn.ping()) -> Conn.ping @0.85, was python:external @0.4; a6 -> Conn.ping on both lines. test_py_own_field_namespaced.py: 5 tests, 4 red before (same-named local, comprehension variable, lambda parameter, bare conn not the field); the plain-call reach control green before and after."  # 5b6a
