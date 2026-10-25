@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Fixed
+
+- **TUI tests click only once the target is under the pointer.** On a starved run a button reported a stale region, the click landed on the dialog, and the modal was never dismissed. Every `pilot.click` in the TUI tests now goes through a helper that waits for the target and fails if the click did not land.
+
 ## [0.11.0] - 2026-10-20
 
 ### Breaking and contract changes
