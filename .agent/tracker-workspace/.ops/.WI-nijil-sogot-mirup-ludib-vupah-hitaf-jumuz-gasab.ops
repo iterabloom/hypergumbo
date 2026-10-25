@@ -19,3 +19,10 @@
     pr_ref:  # b122
     description: "Found by the 2026-10-25 investigation of validate_pass_dependencies (concept audit 2026-05-27 F3). run_all_linkers captures the skipped-pass codes ONCE, before any linker runs (linkers/registry.py:998-1008). A linker that crashes in an earlier priority group is appended to limits.skipped_passes (pass_crashed) but never enters that captured set, so prerequisite_absent_clauses cannot see it when a later linker that depends on it falls silent. Probe (in-process, made graphql-sdl-linker raise): graphql-linker went from 1 node / 1 edge to 1 node / 0 edges with silence_reason '' -- the lost edge is attributed to nothing; only the root crash is disclosed. Also the record is wrong here: spec §1033-1039 and the prerequisite_absent_clauses docstring (pass_silence.py ~651) say only analyzer passes appear in skipped_passes, so a linker literal \"can never be observed missing\"; crashed linkers do appear there.\nFix: after each priority group, merge that group's crash records into the captured skipped-pass codes before the next group runs; correct the spec and docstring. Test: the synthetic sdl-crash case stamps prerequisite_absent on the silent dependent; control: the normal run stamps nothing. Measure first: count pass_crashed records for linkers on the corpus (ADR-0056 found zero pass_crashed in 229,541 records at the time), and say the measured effect in the PR. This is one of the two residuals that keep INV-hujog violated (the other: falsified declarations, WI-rasal family)."  # b122
     fields: {}  # b122
+- op: discuss  # 370f
+  at: '2026-10-25T21:38:03Z'  # 370f
+  by: agent  # 370f
+  actor: jgstern_agent  # 370f
+  clock: 2  # 370f
+  nonce: 370f  # 370f
+  message: "Residual (1) of INV-hujog (restated 2026-10-25). Closing this is half of what moves INV-hujog to satisfied; the other half is the WI-rasal declaration-repair family."  # 370f
