@@ -44,3 +44,19 @@
   clock: 4  # fa26
   nonce: fa26  # fa26
   message: "INTEGRATION NOTE from WI-nuvam-julik-lupig-sohid-rigod-kimom-lovup-fobuk (local branch jgstern-agent/fix/nuvam, unmerged). That branch adds a PassClock stamp (pass_clock.PassClock, which sets duration_ms AND the new cpu_ms) at four of the sites this item names. In each one the stamp sits INSIDE the existing \"if <output>:\" guard, next to the append:\n\n  cli.py   route-materializer                   _route_mat_clock.read().stamp(_route_mat_run)\n  cli.py   django-cbv-method-expander           _cbv_clock.read().stamp(_cbv_run)\n  cli.py   boundary_external_symbol_synthesis   _boundary_clock.read().stamp(_boundary_run)\n  linkers/registry.py  enclosure                _encl_clock.read().stamp(enclosure_run)\n  (also all_analyzers.py orchestrator_file_symbol_synthesis and merge_producers.py)\n\nWI-nuvam did NOT move any append out of its guard; that is this item's work. When this item hoists an append so a silent pass is recorded, move the stamp with it (before to_dict), or the newly recorded silent run will serialize cpu_ms=null (not measured) and an unstamped duration_ms."  # fa26
+- op: update  # 44c2
+  at: '2026-10-24T22:48:10Z'  # 44c2
+  by: agent  # 44c2
+  actor: jgstern_agent  # 44c2
+  clock: 5  # 44c2
+  nonce: 44c2  # 44c2
+  set:  # 44c2
+    status: done  # 44c2
+    pr_ref: '1838'  # 44c2
+- op: discuss  # 792a
+  at: '2026-10-24T22:48:11Z'  # 792a
+  by: agent  # 792a
+  actor: jgstern_agent  # 792a
+  clock: 6  # 792a
+  nonce: 792a  # 792a
+  message: "Fixed in PR #1838 (dev 35da6d74d3). Live repro on merged dev: `python -m hypergumbo_core survey . --out F` on ALL_REPOS/whole_bunch_of_repos/flask-restful, rc=0 (F = lab notebook tivif_10242026/flask-restful.merged.json).\n- analysis_runs now has a `framework-patterns` entry (143 ms, silence_reason empty because it emitted concepts).\n- metrics.framework_patterns lists the 11 YAMLs loaded for this repo, zeros included: flask 47, test-frameworks 46, flask-restful 42, library-exports 15, main-functions 1; config-conventions, go-encoding-callbacks, language-conventions, logging-conventions, naming-conventions, node-http 0. A YAML that was loaded and matched nothing shows 0; a YAML that was not loaded has no key.\n- The corroborating silent post-passes are recorded with reasons: route-materializer candidates_unresolved, django-cbv-method-expander no_candidate_construct, enclosure-linker no_candidate_construct, boundary_external_symbol_synthesis 335 nodes, orchestrator_file_symbol_synthesis 29 nodes.\nNOT asserted / scope differences from the filed Expectation:\n(1) The per-YAML counts are in metrics.framework_patterns, not in the run record.\n(2) Only concepts emitted per YAML is counted; \"matches considered\" is not.\n(3) The run's nodes_emitted is 0 because enrichment adds concepts to existing nodes and mints none.\n(4) producer-merge is unchanged (ADR-0057 byte-identity)."  # 792a
