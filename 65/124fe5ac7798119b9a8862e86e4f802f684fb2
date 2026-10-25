@@ -1,0 +1,38 @@
+Original commit body from 49a0b764ca36fcbb7400cf0cd0b81850a5572299:
+
+`--backend rust-analyzer` runs `rust-analyzer scip <workspace>`, which
+EXECUTES the analysed project's build.rs and proc macros; `--backend
+scip-python` runs `scip-python index`. Both are reachable from runtime
+cmd_* handlers, and both called subprocess.run through an injectable
+local (`run = runner or subprocess.run`), so no edge reached a catalogued
+launch, and runtime-cli-no-subprocess said runtime subcommands shell out
+only through repo_inspection. Reproduced in the 2026-10-25 premise check
+with fake binaries on PATH: a fixture's own .hypergumbo.toml switched the
+scip-python launch on, and HYPERGUMBO_RUST_ANALYZER=1 alone (no trust
+grant) launched `rust-analyzer scip`.
+
+- safety_zones gains backend_index_scip_python and
+  backend_index_rust_analyzer (zone analyser_backend), one per backend so a
+  claim can permit the static indexer and prohibit the one that runs code.
+  Their own zone, not repo_inspection: that zone's recorded split trigger
+  (owner, 2026-08-11) is anything that reads repository content and acts on
+  it, which indexing does.
+- Both invoke modules default to the wrapper; `runner` stays the test seam.
+- The scip-python scratch dir comes from safety_zones.tmp_artifact_dir.
+- docs/hypergumbo-self-catalog/analyser_backend_sinks.yaml declares the
+  zone, loaded from the claims file.
+- runtime-cli-no-subprocess now names both launches and what enables each
+  (flag, env var, or trust grant / config tier, any one suffices -- the
+  item's "after a trust-backend grant" was wrong), and the scip-python
+  --version probe; SECURITY.md regenerated; the three INV-tusos findings
+  leave the I/O allowlist and the two wrapper sites enter it.
+
+check-self-claims: 18 claims unchanged (18 confirmed_with_caveats).
+Tests: test_analyser_backend_zone.py (barrier once, the wrappers run and
+pass kwargs through, the zone file, the claims-file entry, the claim text
+naming every launch and enabler) and one default-launcher test per backend
+package plus the scratch-dir test; 10 red before the change.
+
+Addresses INV-tusos.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
