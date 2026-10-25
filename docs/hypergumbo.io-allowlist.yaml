@@ -321,6 +321,30 @@ modules:
       purpose: remove the rustup-managed rust-analyzer
   hypergumbo_core.safety_zones:
     sites:
+    - function: backend_index_rust_analyzer
+      primitive: subprocess.run
+      family: process
+      count: 1
+      zone: analyser_backend
+      target: rust-analyzer scip <workspace> (EXECUTES the analysed repo's build.rs and proc
+        macros)
+      commands:
+      - <analysis> with --backend rust-analyzer, HYPERGUMBO_RUST_ANALYZER=1, or a trust-backend
+        grant (any one suffices)
+      purpose: 'analyser_backend wrapper: SCIP indexing for the opt-in rust-analyzer backend
+        (INV-tusos)'
+    - function: backend_index_scip_python
+      primitive: subprocess.run
+      family: process
+      count: 1
+      zone: analyser_backend
+      target: scip-python index --cwd <project> ... --output <tmp>/index.scip (static inference;
+        executes nothing from the project)
+      commands:
+      - <analysis> with --backend scip-python, HYPERGUMBO_SCIP_PYTHON, or [backends] scip_python
+        in config.toml / the analysed repo's .hypergumbo.toml
+      purpose: 'analyser_backend wrapper: SCIP indexing for the opt-in scip-python backend
+        (INV-tusos)'
     - function: cache_mkdir
       primitive: '*.mkdir'
       family: fs_write
@@ -623,49 +647,6 @@ modules:
       count: 1
       purpose: import the first-party module named in an internal table to compare a Literal
         against its documented values
-  hypergumbo_lang_rust_analyzer.invoke:
-    zone: analyser_backend
-    target: rust-analyzer scip <workspace> (EXECUTES the analysed repo's build.rs and proc
-      macros)
-    commands:
-    - <analysis> with --backend rust-analyzer or HYPERGUMBO_RUST_ANALYZER=1, after trust-backend
-    purpose: SCIP indexing for the rust-analyzer backend, gated by the ADR-0045 trust grant;
-      launched through raw subprocess.run via an injectable `run` local, outside the repo_inspection
-      zone the runtime-cli-no-subprocess claim names
-    finding: INV-tusos-gibog-pupan-ratid-tutug-kivub-fison-zuhad
-    sites:
-    - function: run_rust_analyzer_scip
-      primitive: subprocess.run
-      family: process
-      count: 1
-  hypergumbo_lang_scip_python.analyzer:
-    zone: tmp_artifact
-    commands:
-    - <analysis> with --backend scip-python, HYPERGUMBO_SCIP_PYTHON, or [backends] scip_python
-      in config.toml / the analysed repo's .hypergumbo.toml
-    purpose: scratch dir for the scip-python index output; raw tempfile.TemporaryDirectory
-      instead of safety_zones.tmp_artifact_dir
-    finding: INV-tusos-gibog-pupan-ratid-tutug-kivub-fison-zuhad
-    sites:
-    - function: analyze_python_with_scip_impl
-      primitive: tempfile.TemporaryDirectory
-      family: fs_write
-      count: 1
-  hypergumbo_lang_scip_python.invoke:
-    zone: analyser_backend
-    target: scip-python index <project> --output <tmp>/index.scip (static inference; executes
-      nothing from the project)
-    commands:
-    - <analysis> with --backend scip-python, HYPERGUMBO_SCIP_PYTHON, or [backends] scip_python
-      in config.toml / the analysed repo's .hypergumbo.toml
-    purpose: SCIP indexing for the scip-python backend; raw subprocess.run via an injectable
-      `run` local, outside any declared zone, and enable-able by the analysed repo's own config
-    finding: INV-tusos-gibog-pupan-ratid-tutug-kivub-fison-zuhad
-    sites:
-    - function: run_scip_python_index
-      primitive: subprocess.run
-      family: process
-      count: 1
   hypergumbo_tracker.cache:
     zone: dev_zone
     commands:

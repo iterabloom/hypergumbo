@@ -37,7 +37,6 @@ Families with no site in the tree today (adding one fails the gate until it is r
 
 - ``INV-gujus-fahub-pusip-dugoz-hidaj-vulav-higop-jihuf``: ``hypergumbo_core.sketch_embeddings._load_embedding_model``, ``hypergumbo_core.sketch_embeddings._load_modernbert_model``
 - ``INV-kuroj-nihok-pupiv-zanun-jovij-ladod-mabiz-kiliz``: ``hypergumbo_core.backend_trust.record_decision``, ``hypergumbo_core.catalogue_home.materialize_catalogue_home``, ``hypergumbo_core.in_repo_catalogues.record_in_repo_decision``, ``hypergumbo_core.repo_tier_offer.record_offer_decision``, ``hypergumbo_core.repo_tier_offer.write_repo_tier_examples``
-- ``INV-tusos-gibog-pupan-ratid-tutug-kivub-fison-zuhad``: ``hypergumbo_lang_rust_analyzer.invoke.run_rust_analyzer_scip``, ``hypergumbo_lang_scip_python.analyzer.analyze_python_with_scip_impl``, ``hypergumbo_lang_scip_python.invoke.run_scip_python_index``
 - ``WI-puban-modig-mifip-mazov-dakas-jufot-bokob-vodut``: ``hypergumbo_tracker.stop_hook._call_openrouter``
 
 ### Independent check: the observed I/O manifest
@@ -158,9 +157,10 @@ respective peer zones.
 downloads happen only via the install-embeddings extras subcommand
 and downstream library calls — never from the analyze-my-code path.
 
-**runtime-cli-no-subprocess** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands shell out ONLY through the declared
-repo_inspection zone. Every such invocation is local, read-only, and
-executes no code originating in the analysed repository:
+**runtime-cli-no-subprocess** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands shell out ONLY through two declared zones.
+By default, only through repo_inspection, where every invocation is
+local, read-only, and executes no code originating in the analysed
+repository:
 
   - git, for cache-key fingerprinting and repo identity
     (rev-parse HEAD, rev-list --max-parents=0 HEAD,
@@ -168,10 +168,23 @@ executes no code originating in the analysed repository:
   - gitleaks, for the best-effort secret scan. Reads content on
     stdin, reports findings on stdout. Runs only when the optional
     binary is installed.
-  - rust-analyzer --version, a capability probe that reads nothing.
-    NOT an indexing request: rust-analyzer executes a project's
-    build.rs and proc macros when it indexes, and a default run
-    never asks it to.
+  - rust-analyzer --version and scip-python --version, capability
+    probes that read nothing. NOT indexing requests: rust-analyzer
+    executes a project's build.rs and proc macros when it indexes,
+    and a default run never asks it to.
+
+When an analyser backend is ENABLED, analysis subcommands also launch
+its indexer through the declared analyser_backend zone (INV-tusos):
+
+  - rust-analyzer scip <workspace>. EXECUTES the analysed project's
+    build.rs and proc macros. Enabled by --backend rust-analyzer, by
+    HYPERGUMBO_RUST_ANALYZER=1, or by a trust-backend grant for the
+    repository; any one of the three suffices.
+  - scip-python index. Static inference; executes nothing from the
+    project. Enabled by --backend scip-python, by
+    HYPERGUMBO_SCIP_PYTHON, or by [backends] scip_python in the
+    user's config.toml or the analysed repository's own
+    .hypergumbo.toml, so a repository can turn it on for itself.
 
 Anything else — curl, pip, rustup, or an unwrapped subprocess call —
 is prohibited. The previous wording of this claim ("Runtime CLI

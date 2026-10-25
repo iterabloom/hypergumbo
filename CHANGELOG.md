@@ -52,6 +52,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **A SCIP edge lands on the record in its own crate target**, or is dropped and counted.
 - **SCIP-only symbols span their whole item**, not the name token.
+- **The SCIP indexer launches go through a declared `analyser_backend` zone**, and `runtime-cli-no-subprocess` names each one and what enables it.
 
 #### Taint analysis
 

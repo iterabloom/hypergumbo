@@ -91,3 +91,21 @@ def test_a_node_heap_exhaustion_names_the_remedy(tmp_path: Path) -> None:
         run_scip_python_index(tmp_path, cwd=tmp_path, which=_found,
                               runner=lambda argv, **kw: _Completed(returncode=1, stderr=b"boom"))
     assert "NODE_OPTIONS" not in str(other.value)
+
+
+def test_with_no_runner_the_launch_goes_through_the_analyser_backend_zone(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """INV-tusos: the default launcher is the declared zone wrapper, never a bare
+    ``subprocess.run`` the self-proof cannot see."""
+    import hypergumbo_lang_scip_python.invoke as invoke_mod
+
+    seen: list[list[str]] = []
+
+    def wrapper(argv, **kwargs):
+        seen.append(argv)
+        (tmp_path / "index.scip").write_bytes(b"\x01")
+        return _Completed()
+
+    monkeypatch.setattr(invoke_mod, "backend_index_scip_python", wrapper)
+    assert run_scip_python_index(tmp_path, cwd=tmp_path, which=_found) == b"\x01"
+    assert seen and seen[0][1] == "index"

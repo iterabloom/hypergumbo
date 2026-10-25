@@ -27,7 +27,6 @@ routine silence, hid it).
 """
 from __future__ import annotations
 
-import tempfile
 import warnings
 from pathlib import Path
 from typing import Callable, Optional
@@ -49,6 +48,7 @@ from hypergumbo_core.pass_silence import (
     UNREPORTED,
     silence_reason_for_candidates,
 )
+from hypergumbo_core.safety_zones import tmp_artifact_dir
 
 from hypergumbo_lang_scip_python.gate import should_use_scip_python_backend
 from hypergumbo_lang_scip_python.invoke import (
@@ -106,7 +106,9 @@ def analyze_python_with_scip_impl(
     do_translate = translate if translate is not None else translate_scip_python_to_hg
     emit = log if log is not None else _emit_user_warning
     try:
-        with tempfile.TemporaryDirectory(prefix="hypergumbo-scip-python-") as scratch:
+        # INV-tusos: the scratch dir is the ``tmp_artifact`` zone's, not a raw
+        # ``tempfile.TemporaryDirectory`` outside every zone.
+        with tmp_artifact_dir(prefix="hypergumbo-scip-python-") as scratch:
             scip_bytes = do_invoke(repo_root, cwd=Path(scratch), project_name=repo_root.name or "project")
         symbols, edges = do_translate(
             scip_bytes, run_id=run.execution_id, log=run_recording_log(run, emit),
