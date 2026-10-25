@@ -233,3 +233,22 @@ class TestInvocationFailedCarriesReturncode:
             )
         assert excinfo.value.returncode is None
         assert excinfo.value.stderr == b""
+
+
+def test_with_no_runner_the_launch_goes_through_the_analyser_backend_zone(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """INV-tusos: the default launcher is the declared zone wrapper. This is the
+    launch that executes the analysed project's build.rs, so it is the one a
+    self-proof must not be blind to."""
+    import hypergumbo_lang_rust_analyzer.invoke as invoke_mod
+
+    (tmp_path / "index.scip").write_bytes(b"x")
+    seen: list[list[str]] = []
+
+    def wrapper(cmd, **kwargs):
+        seen.append(cmd)
+        return _Completed()
+
+    monkeypatch.setattr(invoke_mod, "backend_index_rust_analyzer", wrapper)
+    assert run_rust_analyzer_scip(tmp_path, cwd=tmp_path, which=_which_found) == b"x"
+    assert seen and seen[0][1] == "scip"

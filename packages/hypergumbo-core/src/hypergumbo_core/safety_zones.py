@@ -49,6 +49,13 @@ How to use — the full wrapper inventory, by zone:
   :func:`repo_inspect_probe`, the narrowest member, which reads nothing at
   all — not the repository, not the environment — and only asks an external
   tool whether it is installed and at what version.
+- **analyser_backend** — the opt-in SCIP indexers, which READ the analysed
+  repository and act on it, so they sit outside ``repo_inspection`` (whose
+  split trigger is exactly that): :func:`backend_index_scip_python` (static
+  inference, executes nothing from the project) and
+  :func:`backend_index_rust_analyzer`, which EXECUTES the project's
+  ``build.rs`` and proc macros. One wrapper each, so a claim can permit one
+  and prohibit the other (INV-tusos).
 
 What this pattern does NOT do:
 - It does NOT prevent misuse for the NON-enforced wrappers — a
@@ -711,6 +718,36 @@ def repo_inspect_probe(argv: list[str], **kwargs: Any) -> "subprocess.CompletedP
     index, so no code from the analysed repository is executed.
     ``test_repo_inspection_zone.py::TestTheProbeDoesNotIndex`` pins that, and
     if it goes red the disclosure in SECURITY.md is wrong.
+    """
+    _safety_zone_barrier()
+    return subprocess.run(argv, **kwargs)  # noqa: S603  # nosec B603
+
+
+def backend_index_scip_python(argv: list[str], **kwargs: Any) -> "subprocess.CompletedProcess[Any]":
+    """Run ``scip-python index`` over the analysed repository.
+
+    SAFETY ZONE: ``analyser_backend``. Reached only when the scip-python backend
+    is enabled -- ``--backend scip-python``, ``HYPERGUMBO_SCIP_PYTHON``, or
+    ``[backends] scip_python`` in the user's config.toml OR the analysed repo's
+    own ``.hypergumbo.toml``, so a repository can turn this launch on for
+    itself. Static inference: it reads every Python file and executes nothing
+    from the project, which is why a preference opt-in is ADR-0045-consistent.
+    Writes only its index into a ``tmp_artifact`` scratch directory.
+    """
+    _safety_zone_barrier()
+    return subprocess.run(argv, **kwargs)  # noqa: S603  # nosec B603
+
+
+def backend_index_rust_analyzer(argv: list[str], **kwargs: Any) -> "subprocess.CompletedProcess[Any]":
+    """Run ``rust-analyzer scip`` over the analysed workspace.
+
+    SAFETY ZONE: ``analyser_backend``. THE MOST DANGEROUS LAUNCH IN THIS TREE:
+    indexing EXECUTES the analysed project's ``build.rs`` and proc macros. It
+    is reached only when the rust-analyzer backend is selected -- by
+    ``--backend rust-analyzer``, by ``HYPERGUMBO_RUST_ANALYZER=1``, or by a
+    ``trust-backend`` grant for the repository (ADR-0045); those are
+    ALTERNATIVES, so the flag or the variable alone launches it. A default run
+    only probes ``--version`` through :func:`repo_inspect_probe`.
     """
     _safety_zone_barrier()
     return subprocess.run(argv, **kwargs)  # noqa: S603  # nosec B603

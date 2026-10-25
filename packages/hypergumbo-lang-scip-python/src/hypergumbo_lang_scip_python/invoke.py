@@ -33,6 +33,7 @@ import subprocess  # nosec B404 — required for the scip-python invocation
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from hypergumbo_core.safety_zones import backend_index_scip_python
 from hypergumbo_core.scip_python_install import SCIP_PYTHON_BINARY
 
 
@@ -100,7 +101,10 @@ def run_scip_python_index(
         "--project-version", "0",
         "--output", str(output),
     ]
-    run = runner if runner is not None else subprocess.run
+    # INV-tusos: the default launcher is the declared ``analyser_backend``
+    # zone wrapper, so the self-proof sees the launch; ``runner`` stays the
+    # test seam.
+    run = runner if runner is not None else backend_index_scip_python
     try:
         completed = run(  # nosec B603 — argv is built here from a resolved binary
             argv, cwd=str(cwd), capture_output=True, timeout=timeout_sec, check=False,

@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# hypergumbo's in-repo self-audit catalogue — analyser_backend zone sinks (INV-tusos).
+#
+# The opt-in SCIP indexers. Both are reachable from runtime cmd_* handlers
+# (any analysis subcommand), and both called subprocess.run through an
+# injectable local, so the self-proof saw no launch and
+# runtime-cli-no-subprocess said runtime subcommands shell out only through
+# repo_inspection — false for any run with a backend enabled.
+#
+# A zone of their own rather than members of repo_inspection: that zone's
+# recorded split trigger (owner, 2026-08-11) is "anything that reads repository
+# CONTENT and acts on it", which indexing does, and rust-analyzer's indexing
+# runs the project's own code.
+#
+# What enables each, and they are ALTERNATIVES (backend_selection.py):
+#   rust-analyzer scip <workspace>   --backend rust-analyzer, HYPERGUMBO_RUST_ANALYZER=1,
+#                                     or a `trust-backend` grant for the repository.
+#                                     EXECUTES the project's build.rs and proc macros.
+#   scip-python index ...             --backend scip-python, HYPERGUMBO_SCIP_PYTHON, or
+#                                     [backends] scip_python in config.toml or in the
+#                                     analysed repo's own .hypergumbo.toml. Static
+#                                     inference; executes nothing from the project.
+#
+# One sink per backend, as repo_inspection keeps one per activity, so a future
+# claim can permit the static indexer while prohibiting the one that executes code.
+zone: analyser_backend
+trust_level: untrusted
+
+sinks:
+  python:
+    - module: hypergumbo_core.safety_zones
+      functions:
+        - backend_index_scip_python
+        - backend_index_rust_analyzer
