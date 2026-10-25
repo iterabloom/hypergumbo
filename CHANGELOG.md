@@ -22,9 +22,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Added
 
 - **The test-only-reachability ratchet judges methods** on a scip-python-typed map, resolving references by receiver type; overrides, external-base methods, Protocol methods and dunders are set aside as dispatched.
+- **Two static `depends_on` checks**: no clause may be empty, and a linker named in another linker's `depends_on` must run in an earlier priority group.
 
 ### Removed
 
+- **`catalog.validate_pass_dependencies`**, a pre-run `depends_on` gate nothing called; ADR-0056 refused to wire it, and ADR-0030 no longer says dependencies are checked at configuration time.
 - **The aardvark-dns fixture's `Cargo.lock`**; a test now fails on any committed lockfile or exact `==` pin.
 
 ### Fixed

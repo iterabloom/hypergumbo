@@ -11,7 +11,6 @@ from hypergumbo_core.catalog import (
     format_falsified_dependencies,
     get_default_catalog,
     is_available,
-    validate_pass_dependencies,
     validate_pass_name_resolution,
 )
 
@@ -398,117 +397,35 @@ class TestValidatePassNameResolution:
         # The known literal must NOT be flagged.
         assert "depends_on names unknown passes: ['jaba', 'see', 'ceepeepee']" in msg
 
+    def test_an_empty_inner_clause_raises(self) -> None:
+        """``[[]]`` is an OR of nothing: a clause no active set can satisfy.
 
-class TestValidatePassDependencies:
-    """Runtime CNF check: every AND-conjunct contains at least one active literal."""
-
-    def test_empty_pass_set_passes_silently(self) -> None:
-        validate_pass_dependencies([])
-
-    def test_pass_with_no_depends_on_passes_silently(self) -> None:
-        validate_pass_dependencies([
-            Pass(id="python", description="", availability="core"),
-        ])
-
-    def test_single_clause_single_literal_active(self) -> None:
-        validate_pass_dependencies([
-            Pass(id="python", description="", availability="core"),
-            Pass(id="airflow-linker", description="", availability="core",
-                 depends_on=[["python"]]),
-        ])
-
-    def test_single_clause_or_satisfied_by_any_member(self) -> None:
-        # http-linker: [["python", "javascript", "java"]] — any one of these
-        # being active satisfies the (single) AND-conjunct.
-        validate_pass_dependencies([
-            Pass(id="python", description="", availability="core"),
-            # javascript and java NOT active — but python is.
-            Pass(id="http-linker", description="", availability="core",
-                 depends_on=[["python", "javascript", "java"]]),
-        ])
-
-    def test_single_clause_or_no_members_active_raises(self) -> None:
-        # http-linker needs at least one of [python, javascript, java].
-        # If none are active, the conjunct is unsatisfied.
+        It is not the outer ``[]`` (no declared dependency), which stays legal.
+        The runtime readers disagreed about it -- the falsification audit
+        reports it, ``prerequisite_absent_clauses`` skips it -- so it is
+        refused here, before either can see it.
+        """
         with pytest.raises(ValueError) as excinfo:
-            validate_pass_dependencies([
-                # Only ruby is active.
-                Pass(id="ruby", description="", availability="core"),
-                Pass(id="http-linker", description="", availability="core",
-                     depends_on=[["python", "javascript", "java"]]),
+            validate_pass_name_resolution([
+                Pass(id="odd-linker", description="", availability="core",
+                     depends_on=[[]]),
             ])
         msg = str(excinfo.value)
-        assert "http-linker" in msg
-        assert "python" in msg
-        assert "javascript" in msg
-        assert "java" in msg
+        assert "odd-linker" in msg
+        assert "empty clause" in msg
 
-    def test_multi_clause_all_satisfied(self) -> None:
-        # JNI's actual shape: java AND (c OR cpp OR rust).
-        validate_pass_dependencies([
-            Pass(id="java", description="", availability="core"),
-            Pass(id="c", description="", availability="core"),
-            # No cpp, no rust — but the (c OR cpp OR rust) clause is satisfied by c.
-            Pass(id="jni-linker", description="", availability="core",
-                 depends_on=[["java"], ["c", "cpp", "rust"]]),
-        ])
-
-    def test_multi_clause_first_unsatisfied_raises(self) -> None:
-        # JNI: java AND (c OR cpp OR rust). Missing java.
-        with pytest.raises(ValueError) as excinfo:
-            validate_pass_dependencies([
-                Pass(id="c", description="", availability="core"),
-                Pass(id="jni-linker", description="", availability="core",
-                     depends_on=[["java"], ["c", "cpp", "rust"]]),
+    def test_an_empty_clause_beside_a_real_one_raises(self) -> None:
+        with pytest.raises(ValueError, match="odd-linker"):
+            validate_pass_name_resolution([
+                Pass(id="python", description="", availability="core"),
+                Pass(id="odd-linker", description="", availability="core",
+                     depends_on=[["python"], []]),
             ])
-        msg = str(excinfo.value)
-        assert "jni-linker" in msg
-        # The unsatisfied "java"-only clause should appear.
-        assert "['java']" in msg
 
-    def test_multi_clause_second_unsatisfied_raises(self) -> None:
-        # JNI: java AND (c OR cpp OR rust). java present, but no impl lang.
-        with pytest.raises(ValueError) as excinfo:
-            validate_pass_dependencies([
-                Pass(id="java", description="", availability="core"),
-                Pass(id="jni-linker", description="", availability="core",
-                     depends_on=[["java"], ["c", "cpp", "rust"]]),
-            ])
-        msg = str(excinfo.value)
-        assert "jni-linker" in msg
-        # The unsatisfied OR-of-impls clause should appear.
-        assert "['c', 'cpp', 'rust']" in msg
-
-    def test_both_clauses_unsatisfied_both_reported(self) -> None:
-        with pytest.raises(ValueError) as excinfo:
-            validate_pass_dependencies([
-                # Neither java nor any impl lang active.
-                Pass(id="ruby", description="", availability="core"),
-                Pass(id="jni-linker", description="", availability="core",
-                     depends_on=[["java"], ["c", "cpp", "rust"]]),
-            ])
-        msg = str(excinfo.value)
-        assert "['java']" in msg
-        assert "['c', 'cpp', 'rust']" in msg
-
-    def test_multiple_passes_reported_together(self) -> None:
-        with pytest.raises(ValueError) as excinfo:
-            validate_pass_dependencies([
-                Pass(id="jni-linker", description="", availability="core",
-                     depends_on=[["java"], ["c", "cpp", "rust"]]),
-                Pass(id="cgo-linker", description="", availability="core",
-                     depends_on=[["go"], ["c", "cpp"]]),
-            ])
-        msg = str(excinfo.value)
-        # Both unsatisfied passes cited.
-        assert "jni-linker" in msg
-        assert "cgo-linker" in msg
-
-    def test_self_dependency_resolves(self) -> None:
-        # Pathological: a pass listing itself in some clause.
-        validate_pass_dependencies([
-            Pass(id="weird", description="", availability="core",
-                 depends_on=[["weird"]]),
+    def test_an_outer_empty_declaration_still_passes(self) -> None:
+        validate_pass_name_resolution([
+            Pass(id="containment-linker", description="", availability="core",
+                 depends_on=[]),
         ])
 
 
@@ -580,6 +497,78 @@ class TestCatalogStaticConsistency:
             "find_falsified_dependencies keys falsification on edges_emitted "
             "and will not audit a node-producing pass"
         )
+
+
+def _linker_order_violations(registry: dict) -> list[tuple[str, int, str, int]]:
+    """``(linker, priority, depended-on linker, its priority)`` run too late.
+
+    ``run_all_linkers`` runs one priority group at a time, and the linkers
+    inside a group run in parallel from one snapshot of the graph, so a linker
+    sees another linker's output only when that linker sits in a STRICTLY
+    lower priority group. Analyzer literals are not checked: every analyzer
+    runs before any linker.
+    """
+    return [
+        (name, linker.priority, literal, registry[literal].priority)
+        for name, linker in sorted(registry.items())
+        for clause in linker.depends_on
+        for literal in clause
+        if literal in registry and registry[literal].priority >= linker.priority
+    ]
+
+
+def _linker_literals(registry: dict) -> set[tuple[str, str]]:
+    return {
+        (name, literal)
+        for name, linker in registry.items()
+        for clause in linker.depends_on
+        for literal in clause
+        if literal in registry
+    }
+
+
+class TestLinkerDependenciesRunEarlier:
+    """A linker named in another linker's ``depends_on`` runs in an earlier group.
+
+    The registry's own comment says "linkers *within* the same priority never
+    depend on each other"; nothing enforced it. A dependency placed at the same
+    or a later priority silently reads an empty graph for that input.
+    """
+
+    @pytest.fixture
+    def registry(self) -> dict:
+        import hypergumbo_core.cli  # linkers register on import
+        from hypergumbo_core.linkers.registry import _LINKER_REGISTRY
+
+        return dict(_LINKER_REGISTRY)
+
+    def test_every_linker_dependency_runs_in_an_earlier_group(self, registry: dict) -> None:
+        assert _linker_order_violations(registry) == []
+
+    def test_the_check_has_something_to_check(self, registry: dict) -> None:
+        literals = _linker_literals(registry)
+        assert len(literals) >= 3, literals
+        assert ("graphql-linker", "graphql-sdl-linker") in literals
+        assert ("type-hierarchy-linker", "inheritance-linker") in literals
+
+    def test_a_same_priority_dependency_is_caught(self, registry: dict) -> None:
+        import dataclasses
+
+        registry["graphql-sdl-linker"] = dataclasses.replace(
+            registry["graphql-sdl-linker"], priority=registry["graphql-linker"].priority,
+        )
+        late = {(name, literal) for name, _, literal, _ in _linker_order_violations(registry)}
+        assert ("graphql-linker", "graphql-sdl-linker") in late
+        assert ("graphql-resolver-linker", "graphql-sdl-linker") in late
+
+    def test_a_later_priority_dependency_is_caught(self, registry: dict) -> None:
+        import dataclasses
+
+        registry["inheritance-linker"] = dataclasses.replace(
+            registry["inheritance-linker"], priority=registry["type-hierarchy-linker"].priority + 10,
+        )
+        late = {(name, literal) for name, _, literal, _ in _linker_order_violations(registry)}
+        assert late == {("type-hierarchy-linker", "inheritance-linker")}
 
 
 class TestBridgeLinkerDependsOnPopulated:
@@ -874,11 +863,11 @@ class TestSyntheticPassIds:
 
 
 class TestFindFalsifiedDependencies:
-    """WI-jijor / ADR-0056 W1: the same CNF predicate, re-pointed.
+    """WI-jijor / ADR-0056 W1: the CNF predicate read after the run.
 
-    ``validate_pass_dependencies`` asks "may these passes run together?" and
-    RAISES. This asks "did a pass that already ran prove its own declaration
-    wrong?" and REPORTS. Falsification never suppresses anything, so it cannot
+    A pre-run gate would ask "may these passes run together?" and RAISE (the
+    one that did was deleted, WI-rihob). This asks "did a pass that already ran
+    prove its own declaration wrong?" and REPORTS. Falsification never suppresses anything, so it cannot
     lose an edge — which is why it may be wired where a gate may not
     (LIVE.md §2: raising is the withholding direction).
     """

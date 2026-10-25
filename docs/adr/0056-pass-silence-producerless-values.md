@@ -69,7 +69,7 @@ Dual-write is specifically wrong: two channels for one concept is the defect WI-
 
 ## The work, in dependency order
 
-**W1 — re-point `validate_pass_dependencies` from gate to falsification detector.** Independently valuable; fires today. Add `find_falsified_dependencies(active_passes, runs)` reporting passes that **emitted output** despite an unsatisfied conjunct. Keep `validate_pass_dependencies` as-is so its 11 tests stay green. **Do not wire it as a gate:** raising is the withholding direction (LIVE.md §2), and a gate would abort a survey on any repo whose declarations are stale. The declaration set has never been enforced and gets its first real audit from this.
+**W1 — read the `depends_on` predicate as a falsification detector, not a gate.** Independently valuable; fires today. `find_falsified_dependencies(passes, runs)` reports passes that **emitted output** despite an unsatisfied conjunct. **There is no pre-run gate:** raising is the withholding direction (LIVE.md §2), and a gate would abort a survey on any repo whose declarations are stale. The declaration set has never been enforced and gets its first real audit from this.
 
 **W2 — `skip_reason_code` on `skipped_passes`.** Schema bump. ~4 producer sites. Plus a summarizer mirroring `emit_silence_summary`, because `skipped_passes` is serialized today and **nothing summarizes it** — landing a code without a reader would repeat the defect this ADR is about.
 
@@ -97,7 +97,7 @@ Replacing INV-hujog's unfireable *"wire the validator when a reason-bearing corp
 >
 > **T-hujog-b (falsification twin, checked in the same sweep).** A pass that **emitted output** has an unsatisfied `depends_on` conjunct. This re-opens the *declaration set*, not the wire-up, and is what W1 reports.
 
-**Independently fireable:** it reads only fields already written (229,541 such records were extracted from disk without touching production code); its first half has already fired 2,443 times; it never mentions `silence_reason`, `prerequisite_absent` or `validate_pass_dependencies`; and it is satisfiable by a user in a bare environment, a CI matrix without the language pack, or anyone running the acceptance test above — three fireers, none of them INV-hujog. It can also return the other answer: the self-survey satisfies its first half (rust-analyzer) and fails its second (no dependent clause names it), so it currently reads NO.
+**Independently fireable:** it reads only fields already written (229,541 such records were extracted from disk without touching production code); its first half has already fired 2,443 times; it never mentions `silence_reason` or `prerequisite_absent`; and it is satisfiable by a user in a bare environment, a CI matrix without the language pack, or anyone running the acceptance test above — three fireers, none of them INV-hujog. It can also return the other answer: the self-survey satisfies its first half (rust-analyzer) and fails its second (no dependent clause names it), so it currently reads NO.
 
 ## Corrections this ADR makes to the record
 
@@ -112,7 +112,7 @@ Bucket 1. This was scoped as an audit-findings document (`docs/audits/0020`) and
 
 ## What would change this decision
 
-1. **A pass-level selector.** The ruling rests on "unsatisfied ≈ the repo lacks the language", which holds because file-presence filtering is the dominant remover (98.94%). A `--skip-pass`-style selector would break that equivalence and make the naive producer correct. `--skip` today takes sketch components, not passes; if that changes, **re-decide**.
+1. **A pass-level selector.** The ruling rests on "unsatisfied ≈ the repo lacks the language", which holds because file-presence filtering is the dominant remover (98.94%). A `--skip-pass`-style selector would break that equivalence and make the naive producer correct. `--skip` today takes sketch components, not passes; if that changes, **re-decide** — and the answer is a disclosure that separates "removed by the selector" from "no files", not a gate that raises.
 2. **The `depends_on` set surviving W1 on a polyglot corpus.** One hit across 20 repos means the declarations are trustworthier than expected and W3 could precede W2. Ten hits means declaration repair, not W2, is the blocker.
 3. **The bare-venv acceptance test coming back empty.** Then `prerequisite_absent` is unreachable in practice as well as in this corpus, and the verdict flips to **DEPRECATE**. Run it *before* W3.
 4. **`pass_crashed` firing once.** Zero instances in 229,541 records; one real crash record moves it from speculative re-host to evidenced migration.

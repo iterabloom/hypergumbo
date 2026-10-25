@@ -690,9 +690,8 @@ def prerequisite_absent_clauses(
 
     Args:
         depends_on: The pass's CNF declaration — outer AND of inner ORs. See
-            ``catalog.Pass.depends_on`` for the schema and
-            ``catalog.validate_pass_dependencies`` for the satisfaction
-            semantics this mirrors.
+            ``catalog.Pass.depends_on`` for the schema: a clause is satisfied
+            when at least one of its literals is satisfied.
         silence_reasons: ``{pass_id: silence_reason}`` for every pass that
             did NOT run, from ``limits.skipped_passes``. A pass absent from
             this mapping ran.
