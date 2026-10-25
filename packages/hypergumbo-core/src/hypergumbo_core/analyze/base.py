@@ -33,6 +33,13 @@ Shared Components
   declaration in the repository always wins. During Pass 2,
   ``file_symbols`` hands an analyzer every symbol of the current file,
   where the name-keyed ``symbol_by_name`` keeps only one per name.
+  After ``post_process``, ``claim_declaration_silence`` records why a run
+  that read files emitted nothing: ``no_candidate_construct`` when Pass 1
+  declared nothing, ``candidates_unresolved`` when post-processing dropped
+  what it declared; five analyzers that override ``analyze()`` (c,
+  json_config, latex, proto, vue) call the same helper. When the grammar is
+  unavailable the run is returned skipped with
+  ``skip_reason_code=DEPENDENCY_UNAVAILABLE``.
 - **AnalysisResult**: Universal result type returned by all analyzers
 - **FileAnalysis**: Intermediate per-file analysis result
 - **Tree-sitter helpers**: node_text (slices the source bytes),
@@ -64,7 +71,11 @@ Shared helpers
   clauses). ``symbols_at`` indexes symbols by declaration start position and
   ``symbol_declared_by`` maps a declaration node back to its symbol; every
   analyzer should credit calls this way, reading the file's symbols from
-  ``TreeSitterAnalyzer.file_symbols``. The one line-span variant is
+  ``TreeSitterAnalyzer.file_symbols``. A call in no function is not
+  dropped: ``enclosing_declared_symbol`` anchors it on the nearest enclosing
+  type declaration that has a symbol, and when there is none
+  ``file_anchor_symbol`` supplies the anchor of last resort, the file node
+  that ``make_file_id`` names. The one line-span variant is
   ``_innermost_callable_at``: ``emit_module_attribute_refs`` uses it to
   anchor a module-attribute read (a taint source) to the narrowest
   callable containing its line, over the ``enclosing_symbols`` its callers

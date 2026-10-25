@@ -33,8 +33,14 @@ escaping tracked ground (``escaped``) *and* the walk never running at all
 reaching-def data for the flow's SOURCE FUNCTION (decided per function, not
 per language). A walk that exhausts every route without confirming
 (``unconfirmed``) REMOVES the flow (WI-kabif); it is not emitted, and is
-handed to the optional ``refuted_flows`` out-param instead. So do NOT
-assume every finding carries ``analysis_method="structural"`` — see the
+handed to the optional ``refuted_flows`` out-param instead. A sanitizer
+called in the source's OWN function, which the BFS barrier exempts with the
+seed, is credited on this arm alone (WI-fasub): once the walk confirms the
+flow, a second walk bounded by that function's sanitizer call lines must
+return ``False`` (every route exhausted without avoiding a barrier, under the
+same forfeit gate) before the flow is labelled ``sanitized`` and the
+sanitizer is named from ``sanitizer_callers``; an escaped walk earns nothing.
+So do NOT assume every finding carries ``analysis_method="structural"`` — see the
 field's own docs below for what each value licenses.
 
 Both propagators follow a source a function RETURNS into its callers

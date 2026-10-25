@@ -19,6 +19,8 @@ This analyzer uses tree-sitter to parse Rust files and extract:
   outside the crate (``use std::fs::write``)
 - Named struct fields and enum variants (``field`` symbols)
 - Module-level ``const`` / ``static`` (``variable`` symbols)
+- Module-level ``type`` aliases (``type_alias`` symbols; an impl's associated
+  ``type`` is not one)
 - Function call relationships
 - ``implements`` edges for ``impl Trait for Struct``
 - ``module_attr_ref`` edges for bare path-attribute reads

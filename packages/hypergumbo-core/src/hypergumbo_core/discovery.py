@@ -27,6 +27,15 @@ respecting exclude patterns. Also provides:
   bare name, and both match a pure ``*.ext`` pattern case-insensitively
   (INV-kalaj).
 
+- **Per-analyzer file budget (WI-fomid):** ``run_all_analyzers`` opens
+  ``analyzer_file_budget(limit)`` (a ``ContextVar``, so it binds only that
+  worker thread; linkers are never charged) around each analyzer run, and
+  ``find_files`` admits each file through its ``FileBudget`` on both the index
+  and ``rglob`` paths -- by file, not by yield, so a two-pass analyzer sees the
+  same files in both passes. Finders that bypass ``find_files`` (a shebang
+  scan, the root ``.gitignore``, YAML/Ansible discovery) call
+  ``within_file_budget()``.
+
 - **Test-file gate for content-scanning linkers:** ``find_non_test_files()``
   wraps ``find_files`` (same signature, every argument forwarded) and
   withholds paths that ``paths.is_test_file`` classifies as test files, so

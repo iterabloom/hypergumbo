@@ -42,7 +42,9 @@ Four-phase detection:
    ``emit_to`` and TS/JS files for ``listen`` / ``once``, then creates
    ``event_publishes`` edges (tagged ``meta.channel_kind="ipc"``,
    ``meta.framework_dispatch="tauri_emit_listen"``) between matching event
-   channel names, along with synthetic event-subscriber nodes.
+   channel names, along with synthetic event-subscriber nodes. This phase
+   runs only when step 1 found at least one ``#[tauri::command]`` function;
+   with no commands the linker returns before scanning for events.
 
 After building both maps, the linker creates ``calls`` edges
 (``meta.protocol="ipc"``) from synthetic TS/JS-side sources to the matching

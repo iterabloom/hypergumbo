@@ -26,6 +26,12 @@ Also provides:
   framework lifted onto ``route_framework`` (``_dedup_route_marker_concepts``,
   INV-vokak), and on any route-family marker a ``library_export`` match is
   dropped (``_drop_library_export_on_route_marker``, INV-liraj).
+- Route-path composition inside ``enrich_symbols``: an APIRouter
+  ``router_prefix`` is prepended to the symbol's route paths, a pattern's
+  ``prefix_from_parent`` combines a method's path with its parent class's
+  concept path (``_combine_route_paths``), and JAX-RS subresource-locator paths
+  are chained through the locator methods that return a resource class
+  (``_apply_subresource_locator_paths``).
 - Pipeline passes run outside ``enrich_symbols``:
   ``resolve_deferred_symbol_refs`` (resolves UsageContext handler references
   against the full symbol table once every analyzer has run),

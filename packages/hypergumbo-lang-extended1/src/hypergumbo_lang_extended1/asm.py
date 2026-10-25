@@ -9,7 +9,8 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract labels as symbols
-2. Pass 2: Detect call instructions and resolve targets against label registry
+2. Pass 2: Detect ``call`` instructions (only that mnemonic; ``callq``, ``bl``,
+   ``blx``, ``jal`` and jumps are not read) and resolve targets against label registry
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the assembly-specific extraction

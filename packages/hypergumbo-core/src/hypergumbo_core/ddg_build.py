@@ -132,7 +132,12 @@ carries only its start line. :func:`return_statement_spans` therefore reads the
 AST, stopping at every node that opens a callable scope of its own, and
 records ``(start line, end line)``. It runs for EVERY walked function, with or
 without DDG edges: ``def get(): return os.getenv("K")`` defines nothing, has
-no edges, and is the filed instance.
+no edges, and is the filed instance. Two bodies with no return statement still
+return a value and are recorded as one (WI-sodoj): an expression body (a JS /
+TS arrow ``() => process.env.K``, a Python ``lambda``) spans as a single
+return, and where the cfg mapping sets ``block_tail_returns`` (Rust), a
+block's tail expression -- its last named child that is not a statement,
+declaration or item -- does too.
 
 It also records the identifiers in each RESULT POSITION (``return v, nil`` ->
 ``({"v"}, {})``). A caller's ``name, err := get()`` defines one variable per

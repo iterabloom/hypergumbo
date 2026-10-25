@@ -250,7 +250,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
 FACT_HOMES: Final[dict[str, FactHome]] = {
     "return_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=315,
+        line=326,
         anchor="method_return_types: dict[str, str]",
         home="FileAnalysis.method_return_types",
         populated_by=("go", "rust", "scala", "swift", "objc"),
@@ -292,7 +292,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
     ),
     "value_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=277,
+        line=288,
         anchor="class_field_types: dict[str, dict[str, str]]",
         home="FileAnalysis.class_field_types",
         populated_by=("csharp", "cpp", "go", "rust", "swift"),
