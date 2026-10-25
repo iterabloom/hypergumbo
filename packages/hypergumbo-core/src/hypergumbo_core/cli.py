@@ -5053,14 +5053,19 @@ def cmd_install_embeddings(args: argparse.Namespace) -> int:
     current = available and _embeddings_version_ok(version)
 
     if args.check:
-        symbol = "\u2713" if current else "\u2717"
+        # INV-gujus: analysis never downloads a model, so the library without
+        # its weights is not a working install and --check must say so.
+        weights = current and _embedding_models_cached()
+        symbol = "\u2713" if weights else "\u2717"
         status = "installed" if available else "not installed"
         print(f"embeddings: {symbol} {status}")
         if available:
             print(f"  sentence-transformers {version}")
-        if not current:
-            if available:
+        if not weights:
+            if available and not current:
                 print(f"  older than the required {EMBEDDINGS_REQUIREMENT}")
+            elif current:
+                print("  the model weights have not been downloaded")
             print("\nRun 'hypergumbo install-embeddings' to install.")
             return 1
         return 0

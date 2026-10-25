@@ -159,3 +159,14 @@ def test_add_extras_fails_when_the_weights_cannot_be_fetched() -> None:
     with patch.object(cli, "_fetch_embedding_models", return_value=False), \
             patch.object(subprocess, "run", return_value=ok):
         assert cli._install_embeddings_impl(quiet=True) is False
+
+
+def test_check_fails_when_the_library_is_there_but_the_weights_are_not(
+        capsys: pytest.CaptureFixture[str]) -> None:
+    """``--check`` reports a working install, and without the weights analysis
+    now degrades, so the library alone is not one."""
+    with patch.object(cli, "_is_embeddings_available", return_value=True), \
+            patch.object(cli, "_get_embeddings_version", return_value="5.7.0"), \
+            patch.object(cli, "_embedding_models_cached", return_value=False):
+        assert cli.cmd_install_embeddings(_args(check=True)) == 1
+    assert "weights have not been downloaded" in capsys.readouterr().out
