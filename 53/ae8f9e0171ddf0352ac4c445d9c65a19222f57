@@ -1,0 +1,42 @@
+Original commit body from 9a6e27855917b9c24a222a3d31cf493f7a6d83cb:
+
+Five runtime writes used raw Path.mkdir / write_text / chmod into places
+no self-catalogue zone declared, visible to the self-proof only as
+untyped_receiver caveat counts: the backend trust grants and in-repo
+catalogue grants ($XDG_STATE_HOME/hypergumbo, 0600), the repo-tier
+offer's answer (offers.json), its example tree (~/hypergumbo), and the
+catalogue home init-catalogs seeds. Six cmd_* handlers were in no
+*_sources.yaml, and the offer runs from main() after every subcommand,
+so no claim covered the offer's writes at all.
+
+THE USER-FACING HALF. Reproduced in the 2026-10-25 premise check under a
+real TTY: analysing $HOME/hypergumbo and answering "y" wrote three files
+into the analysed repository while the prompt said "Nothing is written
+into any repository you analyse". should_offer() now takes the analysed
+path (main() hands over the command's `path`) and makes no offer while it
+is the checkout, lies inside it, or contains it.
+
+- safety_zones: user_state_write (private= is the caller's statement),
+  user_config_mkdir / user_config_write, developer_checkout_write.
+- The five sites route through them; zone files user_state_sinks.yaml,
+  user_config_sinks.yaml, developer_checkout_sinks.yaml, loaded by the
+  claims file.
+- runtime_cli_sources.yaml names cmd_trust_backend, cmd_trust_catalogues,
+  cmd_init_catalogs, cmd_backend_agreement, cmd_repeat_finder,
+  cmd_catalog_inventory and repo_tier_offer.maybe_offer_repo_tier_examples;
+  a test now fails on any cmd_* handler no sources file names.
+- runtime-cli-no-host-fs names the new handlers and zones; SECURITY.md
+  regenerated; the INV-kuroj allowlist findings are replaced by the
+  wrapper sites (check-io-allowlist OK, 257 sites).
+
+check-self-claims: 18 claims unchanged (18 confirmed_with_caveats).
+Tests: test_user_state_config_zones.py, 20 tests, all red before (barrier,
+wrapper behaviour incl. 0600 vs umask, zone files, sources, the cmd_*
+catalogue gate, each site through its wrapper, no offer on the-checkout /
+inside-it / its-parent, an unrelated path still offered, main() passing
+the path). Two test_repo_tier_offer tests updated for the hook's new
+`args` parameter.
+
+Addresses INV-kuroj.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
