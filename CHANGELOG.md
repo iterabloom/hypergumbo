@@ -45,6 +45,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Swift initialisers and deinitialisers are symbols**, and `T(...)` lands on the `init` it runs.
 - **Python class-body calls emit calls edges**, anchored on the class.
 - **Rust `type` aliases are symbols**; **a Dockerfile variable is one symbol per build stage**.
+- **A Kotlin or Scala receiver declared with a bare `java.lang` type** (`pb: ProcessBuilder`) names `java.lang`, so `verify-claims` sees the launch.
 
 #### SCIP backends
 
