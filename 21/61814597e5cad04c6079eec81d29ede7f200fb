@@ -1,0 +1,17 @@
+Original commit body from 762b0bc9fa79cd1928d253b6af36c6cb55369a1f:
+
+Phase 0: no misplaced entries; the one tracker-only commit since v9.2.0
+(the TUI click helper) gets an entry in the tracker changelog.
+
+Phase 1 (63 non-tracker commits, no prior audit since the tag): added
+the dependency-pin guard, the watcher-test session-id race, and a
+Documentation section (spec symbol_meta count, concept-audit playbook,
+allowlist, ARCHITECTURE.md).
+
+Phase 2: the section was 11.6k chars against 9.2.0's 4.6k. Cut to 7.3k
+at the released granularity: the four stable_id_scheme bumps collapse to
+one v9 -> v12 entry, the two disclosure entries to one, the id fixes to
+five, the taint entries to three. Tracker IDs stripped; every ADR
+reference and version transition kept.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
