@@ -273,6 +273,7 @@ def argparse_dispatch_linker(ctx: LinkerContext) -> LinkerResult:
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
-    run.silence_reason = silence_reason_for_candidates(registrations)
+    if files_analyzed:  # none read: the orchestrator's no_candidate_files
+        run.silence_reason = silence_reason_for_candidates(registrations)
     run.duration_ms = int((time.time() - start_time) * 1000)
     return LinkerResult(run=run, edges=edges)

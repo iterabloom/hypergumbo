@@ -368,7 +368,9 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     # event_publishes edges already capture the relationship.
 
     # WI-lisan: the claim is what the scan found, never what was emitted.
-    run.silence_reason = silence_reason_for_candidates(all_patterns)
+    # A scan that read no file leaves the orchestrator's no_candidate_files.
+    if files_analyzed:
+        run.silence_reason = silence_reason_for_candidates(all_patterns)
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)

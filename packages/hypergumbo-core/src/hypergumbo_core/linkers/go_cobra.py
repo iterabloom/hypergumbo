@@ -292,6 +292,7 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
-    run.silence_reason = silence_reason_for_candidates(found_assignments)
+    if files_analyzed:  # none read: the orchestrator's no_candidate_files
+        run.silence_reason = silence_reason_for_candidates(found_assignments)
     run.duration_ms = int((time.time() - start_time) * 1000)
     return LinkerResult(run=run, edges=edges)

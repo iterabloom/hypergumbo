@@ -699,9 +699,11 @@ def link_websocket(
 
     all_patterns: list[WebSocketPattern] = []
     files_analyzed = 0
+    files_read = 0  # every file scanned; files_analyzed counts the ones with patterns
 
     # Scan JavaScript/TypeScript files
     for file_path in find_js_ts_files(repo_root):
+        files_read += 1
         patterns = _detect_patterns(file_path)
         all_patterns.extend(patterns)
         if patterns:
@@ -709,6 +711,7 @@ def link_websocket(
 
     # Scan Python files
     for file_path in find_python_files(repo_root):
+        files_read += 1
         patterns = _detect_python_patterns(file_path)
         all_patterns.extend(patterns)
         if patterns:
@@ -998,7 +1001,9 @@ def link_websocket(
                 ))
 
     # WI-lisan: the claim is what the scan found, never what was emitted.
-    run.silence_reason = silence_reason_for_candidates(all_patterns)
+    # A scan that read no file leaves the orchestrator's no_candidate_files.
+    if files_read:
+        run.silence_reason = silence_reason_for_candidates(all_patterns)
     run.files_analyzed = files_analyzed
     run.duration_ms = int((time.time() - start_time) * 1000)
 

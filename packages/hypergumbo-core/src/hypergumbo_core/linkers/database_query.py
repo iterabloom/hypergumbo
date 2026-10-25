@@ -488,7 +488,9 @@ def link_database_queries(root: Path, table_symbols: list[Symbol]) -> DatabaseQu
             edges.append(edge)
 
     # WI-lisan: the claim is what the scan found, never what was emitted.
-    run.silence_reason = silence_reason_for_candidates(all_patterns)
+    # A scan that read no file leaves the orchestrator's no_candidate_files.
+    if files_scanned:
+        run.silence_reason = silence_reason_for_candidates(all_patterns)
     run.duration_ms = int((time.time() - start_time) * 1000)
     run.files_analyzed = files_scanned
 
