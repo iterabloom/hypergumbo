@@ -1,0 +1,22 @@
+- op: create  # d327
+  at: '2026-10-25T20:05:57Z'  # d327
+  by: agent  # d327
+  actor: jgstern_agent  # d327
+  clock: 1  # d327
+  nonce: d327  # d327
+  data:  # d327
+    kind: work_item  # d327
+    title: "taint-side requires_target_kind / requires_mode hold a BOUNDARY while IoPrimitive.requires_target_kind holds a target kind: rename the taint side"  # d327
+    status: todo_hard  # d327
+    priority: 4  # d327
+    parent:  # d327
+    tags:  # d327
+    - taint  # d327
+    - naming  # d327
+    - concept_audit_20261021  # d327
+    isbefore: []  # d327
+    duplicate_of: []  # d327
+    not_duplicate_of: []  # d327
+    pr_ref:  # d327
+    description: "Split from WI-mozig (concept audit 2026-10-21/22 F6; premise re-check 2026-10-25 on dev 16534a75f7). One field name, two meanings: IoPrimitive.requires_target_kind holds a TARGET KIND (std_stream; io_boundary.py:862, used once at java.yaml:401), while TaintSource/TaintSink.requires_target_kind holds a BOUNDARY (taint.py:299, :382; derived :2161-2165, :2180, :2212; compared :1234-1237). TaintSink.requires_mode also holds a boundary (taint.py:2196-2198). Pure rename on the taint side (e.g. requires_boundary), no behaviour change; update readers and tests."  # d327
+    fields: {}  # d327

@@ -1,0 +1,22 @@
+- op: create  # 334a
+  at: '2026-10-25T20:06:02Z'  # 334a
+  by: agent  # 334a
+  actor: jgstern_agent  # 334a
+  clock: 1  # 334a
+  nonce: 334a  # 334a
+  data:  # 334a
+    kind: work_item  # 334a
+    title: "a user taint source file's attributes: key is silently ignored: the file reports loaded and contributes nothing"  # 334a
+    status: todo_hard  # 334a
+    priority: 3  # 334a
+    parent:  # 334a
+    tags:  # 334a
+    - taint  # 334a
+    - catalogue  # 334a
+    - concept_audit_20261021  # 334a
+    isbefore: []  # 334a
+    duplicate_of: []  # 334a
+    not_duplicate_of: []  # 334a
+    pr_ref:  # 334a
+    description: "Found by the WI-mozig premise re-check 2026-10-25 on dev 16534a75f7. The user taint source loader _load_source_yaml (taint.py:1766-1815) builds only functions: and methods: entries. A user file under taint_sources.d/ or --taint-sources with an attributes: key (e.g. attributes: [location] for document.location) is reported as loaded and contributes nothing, with no warning. Live check: such a file left both affected claims' verdicts identical to baseline. WI-jojis (wont_do) chose auto-derivation from io_primitives for attribute sources, so supporting the key is not required; the minimum is that the loader refuses or warns, naming the ignored key -- a user row that silently does nothing is the 'silent limitation is a defect' case."  # 334a
+    fields: {}  # 334a

@@ -29,3 +29,18 @@
   clock: 2  # 0323
   nonce: '0323'  # 0323
   message: "PREMISE CHECK 2026-10-25 (dev 2399d5ad7c; owner-requested re-check of the 17 actionable open P2 violated INV/META items; fixtures archived under ~/hypergumbo_lab_notebook/premise_check_10252026/). VERDICT: STALE-TEXT; still violated. Fresh fake HOME/XDG: `trust-backend rust_analyzer proj` wrote state/hypergumbo/trust.d/<hash>.json (0600); `init-catalogs` wrote config/hypergumbo/README.md + 8 io_primitives.d/*.yaml; `run` under a real TTY with $HOME/hypergumbo present, answering y, wrote state/hypergumbo/offers.json (0644) and 3 files under <fake HOME>/hypergumbo/.hypergumbo-examples/ -- and analysing that $HOME/hypergumbo itself wrote them INTO THE ANALYSED REPOSITORY while the prompt said 'Nothing is written into any repository you analyse'. Raw writes: backend_trust.py:190/200/201, in_repo_catalogues.py:83/85/88, repo_tier_offer.py:143/146, 249/252, catalogue_home.py:391/396/405; offer hook still in main() (cli.py:13731/13738). Drift: write_repo_tier_examples now writes a `*` .gitignore in the examples tree (63a26c57c8, 10-16) -- fewer accidental commits, still a write. UNDER-SCOPED problem 2: not only the main() offer is outside every taint source -- diffing every def cmd_* against the catalogued *_sources.yaml finds 6 uncatalogued handlers: cmd_trust_backend (cli.py:3737), cmd_trust_catalogues (:3804), cmd_init_catalogs (:8129), cmd_backend_agreement, cmd_repeat_finder, cmd_catalog_inventory; so no claim covers any of the five write sites. Related: WI-kipid (same offer hook, UX side). NOT checked: the verify-claims caveat counts."  # 0323
+- op: update  # 0df1
+  at: '2026-10-25T16:13:04Z'  # 0df1
+  by: agent  # 0df1
+  actor: jgstern_agent  # 0df1
+  clock: 3  # 0df1
+  nonce: 0df1  # 0df1
+  set:  # 0df1
+    status: satisfied  # 0df1
+- op: discuss  # 5d1c
+  at: '2026-10-25T16:13:04Z'  # 5d1c
+  by: agent  # 5d1c
+  actor: jgstern_agent  # 5d1c
+  clock: 4  # 5d1c
+  nonce: 5d1c  # 5d1c
+  message: "Satisfied on the filed rows. Merged as PR #1857 (dev 53ae8f9e01). The five filed sites (backend_trust.record_decision, in_repo_catalogues.record_in_repo_decision, repo_tier_offer.record_offer_decision, repo_tier_offer.write_repo_tier_examples, catalogue_home.materialize_catalogue_home) now write through safety_zones.user_state_write / user_config_mkdir / user_config_write / developer_checkout_write, whose zones are declared in user_state_sinks.yaml, user_config_sinks.yaml and developer_checkout_sinks.yaml and loaded by the claims file; the six uncatalogued cmd_* handlers and repo_tier_offer.maybe_offer_repo_tier_examples are runtime_cli_entry sources, and test_every_cmd_handler_is_catalogued_somewhere fails on any future cmd_* no sources file names. BEHAVIORAL EVIDENCE on merged dev, the premise check's real-TTY repro re-run (fake HOME holding a hypergumbo/ checkout, `printf 'y\\n' | script -qec \"hypergumbo symbols <target>\"`): target = $HOME/hypergumbo -> NO prompt, the checkout still holds only a.py, no offers.json (before the fix: prompt, and 3 files written into the analysed repository); target = an unrelated repo -> the prompt appears, \"Wrote 3 example file(s)\" to $HOME/hypergumbo/.hypergumbo-examples, offers.json recorded. check-io-allowlist: OK, 257 sites, no INV-kuroj finding left; check-self-claims: 18 claims unchanged (18 confirmed_with_caveats). Scope: closed on the five filed sites; the statement's general form (EVERY write reachable from the installed CLI) is NOT asserted beyond what check-io-allowlist inventories."  # 5d1c
