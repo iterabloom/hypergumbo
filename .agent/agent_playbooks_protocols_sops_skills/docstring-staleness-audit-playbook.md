@@ -414,6 +414,7 @@ means something only if it beats the rate outside the flags.
 | 2026-10-16 | 9 | 0 (0%)⁸ | 30 (rolling, never read) + 30 (code changed since the last audit) | 19 (63%) + 26 (87%)⁸ | #1630 (A+B+D), C bundle |
 | 2026-10-17 | 9 | not re-read⁹ | 30 (rolling, never read) + 9 (code changed since the last review) | 20 (67%) + 4 (44%)⁹ | #1689 (A+B+D), C bundle |
 | 2026-10-20 | 10 | 2 (20%) | 30 (rolling, never read) + 30 (most-changed since the last audit) | 20 (67%) + 25 (83%)¹⁰ | A+B+D bundle, C bundle |
+| 2026-10-25 | 9 | 1 (11%) | 30 (rolling) + 30 (most-changed since the last audit) | 10 (33%) + 23 (77%)¹¹ | #1848 (A+B+D), #1849 (C) |
 
 ¹ The pool was the 70 flagged plus 9 tracker-ref-only files; the notebook
 records 55 drifted files across all 79, not split by source.
@@ -447,6 +448,10 @@ both rates are lower bounds.
 ¹⁰ The changed-group 25 includes 2 files the first pass cleared and a blind
 re-review of 5 "matches" found drifted (setup.py, include_closure.py); the other
 18 first-pass "matches" were not re-read, so all three rates are lower bounds.
+¹¹ A blind re-review of 5 first-pass "matches" (seeded) found no drift; the other
+30 "matches" were not re-read, so both rates are lower bounds. The rolling 30 were
+the 11 never-reviewed files plus 19 last read on 2026-09-25: the never-read pool
+is down to 1 file.
 
 The 2026-05-15 run also produced #3751 as a side-effect (widening the
 `verify-generated` window 5 → 15 commits). Its notebook entry is at
@@ -675,6 +680,20 @@ pending ops pass the threshold, so eight adds took over five minutes; batch them
 one background command. Second, docstring edits again rotted line citations, this
 time four `LEGACY_VALUE_PARSERS` rows in `signature_axis` (csharp, kotlin) and one
 `MODULE_KEY_NOTIONS` row (cpp); run both checks before smart-test, not after it.
+
+The 2026-10-25 run read 69 files: the 9 flagged, 30 from the rolling read and the
+30 most-changed files since the 2026-10-20 audit. 34 drifted (lower bound): 1 of 9,
+10 of 30 and 23 of 30. 25 reviewers read the files; 11 default-REJECT verifiers
+checked 63 first-pass findings: 61 confirmed, 2 re-graded, 1 rejected, 23 added.
+They confirmed 31 code defects, filed as 21 items in one `tracker batch` file (one
+auto-sync PR for all of them; a batch line is parsed alone, so a multi-line
+`discuss` message must be flattened first). Fixes were applied by one editor
+sub-agent per verifier report, filtered by severity (A+B+D, then C). Two lessons.
+First, line-pinned citations rotted in BOTH bundles (`FACT_HOMES` moved twice for
+base.py): re-run the pin loop after each bundle, not once per audit. Second, the
+rolling read now reaches files reviewed a month ago, and those drifted at less than
+half the rate of the code-changed group, which carries the yield. The notebook
+entry is `~/<repo>_lab_notebook/staleness_audit_10252026/RESULTS.md`.
 
 **A caveat to carry into any future run: the flagged count measures the
 scan, not the tree.** The two most consequential findings of the
