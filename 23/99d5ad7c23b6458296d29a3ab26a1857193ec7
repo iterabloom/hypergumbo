@@ -1,0 +1,11 @@
+Original commit body from c84d497b60103a231c35e0b8c1c0d44f569484a4:
+
+Adds the 2026-10-25 row to the calibration table (69-file pool: 34
+drifted, 1/9 flagged, 10/30 rolling, 23/30 most-changed; blind
+re-review of 5 "matches" found none), its footnote, and the run's
+lessons: re-run the line-pin loop after each bundle, and the
+code-changed group now carries the yield as the never-read pool drains.
+
+Approved by the human owner in session, including auto-pr without --gov.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
