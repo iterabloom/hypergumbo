@@ -105,6 +105,17 @@ modules:
   hypergumbo_core.cli:
     zone: install
     sites:
+    - function: _fetch_embedding_models
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: python -c 'from hypergumbo_core.sketch_embeddings import fetch_embedding_models;
+        fetch_embedding_models()' (downloads the two embedding models from huggingface.co)
+      commands:
+      - install-embeddings
+      - add-extras
+      purpose: fetch the embedding model weights in a fresh interpreter after the library is
+        installed; analysis never downloads them (INV-gujus)
     - function: _install_embeddings_impl
       primitive: subprocess.run
       family: process
@@ -585,24 +596,38 @@ modules:
       count: 1
       purpose: import an analyzer module by name from the first-party package list (hypergumbo_lang_mainstream/common/extended1)
   hypergumbo_core.sketch_embeddings:
-    zone: install
-    target: huggingface.co (model download on first use)
-    commands:
-    - sketch
-    purpose: 'the SentenceTransformer CLASS is handed to _load_st_model_offline_first, which
-      falls back to a network-allowed load when the model is not cached: the first sketch
-      after install-embeddings downloads the model, contrary to runtime-cli-no-network''s
-      text'
-    finding: INV-gujus-fahub-pusip-dugoz-hidaj-vulav-higop-jihuf
     sites:
     - function: _load_embedding_model
       primitive: sentence_transformers.SentenceTransformer
       family: network
       count: 1
+      zone: in_process
+      commands:
+      - sketch
+      purpose: 'the SentenceTransformer CLASS is handed to _load_st_model_offline_first, which
+        loads from the local HF cache only (local_files_only=True, HF_HUB_OFFLINE=1) and degrades
+        when the model is absent; it never downloads (INV-gujus)'
     - function: _load_modernbert_model
       primitive: sentence_transformers.SentenceTransformer
       family: network
       count: 1
+      zone: in_process
+      commands:
+      - sketch
+      purpose: 'the SentenceTransformer CLASS is handed to _load_st_model_offline_first, which
+        loads from the local HF cache only (local_files_only=True, HF_HUB_OFFLINE=1) and degrades
+        when the model is absent; it never downloads (INV-gujus)'
+    - function: fetch_embedding_models
+      primitive: sentence_transformers.SentenceTransformer
+      family: network
+      count: 1
+      zone: install
+      target: huggingface.co (microsoft/unixcoder-base, nomic-ai/modernbert-embed-base)
+      commands:
+      - install-embeddings
+      - add-extras
+      purpose: the one place a model is fetched, reached only from the install path in a fresh
+        interpreter (INV-gujus)
   hypergumbo_core.spec_validator:
     zone: in_process
     commands:

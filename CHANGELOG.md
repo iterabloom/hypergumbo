@@ -67,6 +67,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Security claims
 
 - **The SCIP indexer launches go through a declared `analyser_backend` zone**, and `runtime-cli-no-subprocess` names each one and what enables it.
+- **Analysis never downloads an embedding model**: `install-embeddings` and `add-extras` fetch the weights, and a sketch without them runs without embeddings and says so. The first sketch used to download both models.
 - **Trust grants, the catalogue home and the repo-tier offer write through declared zones** (`user_state`, `user_config`, `developer_checkout`), and every `cmd_*` handler plus the offer is a taint source. The offer is no longer made while the analysed path overlaps `~/hypergumbo`, so it never writes into a repository being analysed.
 
 #### CI and gates

@@ -175,8 +175,8 @@ def _warn_embeddings_unavailable(exc: BaseException) -> None:
         f"enhancement. Cause: {exc}. The sketch is complete but omits "
         "semantic config discovery and README description extraction. "
         "To enable it, run 'hypergumbo install-embeddings' on a machine with "
-        "network access; the weights are then cached under $HF_HOME and no "
-        "further network access is needed.",
+        "network access: it downloads the model weights into $HF_HOME. "
+        "Analysis never downloads them itself (runtime-cli-no-network).",
         UserWarning,
         stacklevel=2,
     )
@@ -246,13 +246,20 @@ def _load_st_model_offline_first(st_cls, model_name, **kwargs):
     no HF_TOKEN is set. For ``hypergumbo .`` runs that's noise on every
     invocation.
 
-    Strategy: try the constructor with ``local_files_only=True`` first
-    (which suppresses the freshness check entirely). If the model isn't
-    cached yet (typically the first install after ``hypergumbo
-    install-embeddings``), HuggingFace Hub raises ``LocalEntryNotFoundError``
-    (a subclass of ``OSError``) — fall back to a normal load that allows
-    the download. After the first successful load, all subsequent calls
-    take the offline path with no network.
+    Strategy: the constructor with ``local_files_only=True`` (which
+    suppresses the freshness check entirely), and ONLY that. If the model is
+    not cached, HuggingFace Hub raises ``LocalEntryNotFoundError`` (a subclass
+    of ``OSError``) and the enhancement is unavailable: this raises
+    :class:`EmbeddingsUnavailable` naming ``hypergumbo install-embeddings``,
+    which is where the weights are fetched (:func:`fetch_embedding_models`).
+
+    INV-gujus: this used to fall back to a network-allowed load, so the first
+    ``sketch`` after installing the library downloaded both models from
+    huggingface.co while ``runtime-cli-no-network`` said analysis never does.
+    Measured with a stub ``sentence_transformers``: every cache miss was a
+    ``local_files_only=True`` attempt followed by a download-allowed retry.
+    The claim was kept and the code made to match it, rather than the claim
+    weakened to describe the code.
 
     Catching the broader ``(OSError, ValueError)`` covers all the
     documented "no local entry" exception variants without forcing a
@@ -268,36 +275,26 @@ def _load_st_model_offline_first(st_cls, model_name, **kwargs):
     network on every invocation, violating the ``runtime-cli-no-network``
     claim (INV-dasig). ``HF_HUB_OFFLINE=1`` is the only switch that
     hard-disables every HF Hub sub-API, so we set it before the cached
-    load and (on success) leave it set for the rest of the process. The
-    network-allowing fallback restores the caller's prior setting so the
-    one-time first-install download — the only sanctioned runtime fetch —
-    still works.
+    load and (on success) leave it set for the rest of the process. On a
+    miss the caller's prior setting is restored before raising.
     """
     prior_offline = os.environ.get("HF_HUB_OFFLINE")
     os.environ["HF_HUB_OFFLINE"] = "1"
     try:
         model = st_cls(model_name, local_files_only=True, **kwargs)
-    except (OSError, ValueError):
-        # Model not cached (first use after install-embeddings): restore the
-        # caller's prior offline state so the download can reach the network.
+    except (OSError, ValueError) as exc:
         if prior_offline is None:
             os.environ.pop("HF_HUB_OFFLINE", None)
         else:
             os.environ["HF_HUB_OFFLINE"] = prior_offline
-        try:
-            return st_cls(model_name, **kwargs)
-        except (OSError, ValueError) as exc:
-            # INV-rupid: BOTH sources are exhausted — not cached, and the
-            # download could not happen (offline, air-gapped, egress-blocked,
-            # or HF_HUB_OFFLINE=1 set by the caller). This is the enhancement
-            # being unavailable, NOT a bug, so it must not reach the CLI's
-            # internal-error handler. Raising a typed error rather than
-            # returning None keeps the two failure modes distinguishable and
-            # preserves the original for the operator via __cause__.
-            raise EmbeddingsUnavailable(
-                f"could not load embedding model {model_name!r}: "
-                "not in the local cache and not downloadable"
-            ) from exc
+        # INV-rupid: the enhancement being unavailable is NOT a bug, so it
+        # must not reach the CLI's internal-error handler. A typed error
+        # rather than None keeps the failure distinguishable and preserves
+        # the original for the operator via __cause__.
+        raise EmbeddingsUnavailable(
+            f"embedding model {model_name!r} is not in the local cache; "
+            "run 'hypergumbo install-embeddings' to download it"
+        ) from exc
     # Cached-load success: keep HF_HUB_OFFLINE=1 set so encode()-time HF
     # background threads stay offline too.
     return model
@@ -329,8 +326,7 @@ def _hf_model_is_cached(model_name: str) -> bool:
 
 
 def _ensure_hf_offline_for_cached_models() -> bool:
-    """Set ``HF_HUB_OFFLINE=1`` BEFORE the first huggingface_hub import when
-    every embedding model is already cached (INV-dasig).
+    """Set ``HF_HUB_OFFLINE=1`` BEFORE the first huggingface_hub import (INV-dasig).
 
     huggingface_hub freezes its offline switch into the module constant
     ``huggingface_hub.constants.HF_HUB_OFFLINE`` at IMPORT time and does not
@@ -341,26 +337,19 @@ def _ensure_hf_offline_for_cached_models() -> bool:
     helper therefore runs at the top of every function that imports
     sentence_transformers, BEFORE the import.
 
-    Gating is all-or-nothing across the embedding models: the offline constant
-    is process-global once frozen, so forcing offline while a model is still
-    missing would deadlock that model's one-time download. When any model is
-    absent we leave offline off so first-install downloads proceed; once all
-    models are cached every subsequent load is fully offline. (The narrow,
-    transient partial-cache window therefore still permits HF metadata
-    traffic — documented in docs/hypergumbo-spec.md.) An already-set
-    ``HF_HUB_OFFLINE`` (user / CI / test) is honored as-is.
+    UNCONDITIONAL since INV-gujus. It used to force offline only when every
+    model was cached, leaving it off while one was missing so that model's
+    one-time download could proceed -- which kept a partial-cache window open
+    to HF metadata traffic. Analysis no longer downloads at all (the weights
+    come from ``install-embeddings``, :func:`fetch_embedding_models`), so there
+    is no download to protect and offline is forced on every runtime load. An
+    already-set ``HF_HUB_OFFLINE`` (user / CI / test) is honored as-is.
 
-    Returns True if offline mode is in effect (set here or already set).
+    Returns True: offline mode is in effect (set here or already set).
     """
-    if os.environ.get("HF_HUB_OFFLINE"):
-        return True
-    if all(
-        _hf_model_is_cached(name)
-        for name in (_EMBEDDING_MODEL, _MODERNBERT_MODEL_NAME)
-    ):
+    if not os.environ.get("HF_HUB_OFFLINE"):
         os.environ["HF_HUB_OFFLINE"] = "1"
-        return True
-    return False
+    return True
 
 
 # Probe patterns for embedding-based config extraction
@@ -1994,3 +1983,33 @@ def compute_5w1h_similarity(
 
     # Return mean similarity
     return float(np.mean(similarities))
+
+
+#: Every model a runtime command loads, in the order install fetches them.
+EMBEDDING_MODELS: tuple[str, ...] = (_EMBEDDING_MODEL, _MODERNBERT_MODEL_NAME)
+
+
+def fetch_embedding_models(st_cls: "Callable[..., object] | None" = None) -> None:
+    """Download every model in :data:`EMBEDDING_MODELS` that is not cached.
+
+    THE ONE PLACE A MODEL IS FETCHED (INV-gujus). Called only from the install
+    path -- ``install-embeddings`` and ``add-extras``, in a fresh interpreter
+    so a library pip just installed imports cleanly -- never from analysis,
+    whose loader (:func:`_load_st_model_offline_first`) is cache-only. Lifts
+    ``HF_HUB_OFFLINE`` for the duration, since the caller asked for a download.
+    """
+    # Lifted BEFORE the import: huggingface_hub freezes the switch then.
+    prior_offline = os.environ.pop("HF_HUB_OFFLINE", None)
+    load: Callable[..., object]
+    if st_cls is not None:
+        load = st_cls
+    else:  # pragma: no cover - the real library; tests inject it
+        from sentence_transformers import SentenceTransformer
+        load = SentenceTransformer
+    try:
+        for name in EMBEDDING_MODELS:
+            if not _hf_model_is_cached(name):
+                load(name)
+    finally:
+        if prior_offline is not None:
+            os.environ["HF_HUB_OFFLINE"] = prior_offline

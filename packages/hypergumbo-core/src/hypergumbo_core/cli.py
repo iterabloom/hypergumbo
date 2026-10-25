@@ -4061,6 +4061,43 @@ def _install_rust_analyzer_with_bug06_gate(quiet: bool = False) -> bool:
     return install_rust_analyzer(quiet=quiet)
 
 
+def _embedding_models_cached() -> bool:
+    """Whether every model analysis loads is already in the local HF cache."""
+    from .sketch_embeddings import EMBEDDING_MODELS, _hf_model_is_cached
+
+    return all(_hf_model_is_cached(name) for name in EMBEDDING_MODELS)
+
+
+def _fetch_embedding_models(quiet: bool) -> bool:
+    """Download the embedding model weights; the install path's job (INV-gujus).
+
+    Analysis never downloads a model (its loader is cache-only), so installing
+    the library is not enough: without the weights every sketch degrades. Run
+    in a fresh interpreter, because the library pip just installed may not be
+    importable in this one. Returns False, with the reason on stderr, when the
+    download fails.
+    """
+    import subprocess  # nosec B404 — the model download, install path only
+
+    if _embedding_models_cached():
+        return True
+    if not quiet:
+        print("Downloading the embedding model weights...")
+    cmd = [sys.executable, "-c",
+           "from hypergumbo_core.sketch_embeddings import fetch_embedding_models; "
+           "fetch_embedding_models()"]
+    try:
+        result = subprocess.run(cmd, check=False, timeout=3600.0)  # noqa: S603 # nosec B603
+    except (subprocess.SubprocessError, OSError) as exc:
+        print(f"Error downloading the embedding models: {exc}", file=sys.stderr)
+        return False
+    if result.returncode != 0:
+        print("Error: the embedding model download failed; re-run "
+              "'hypergumbo install-embeddings' with network access.", file=sys.stderr)
+        return False
+    return True
+
+
 def _install_embeddings_impl(quiet: bool = False) -> bool:
     """Thin adapter calling the embeddings installer like the others.
 
@@ -4094,6 +4131,8 @@ def _install_embeddings_impl(quiet: bool = False) -> bool:
             f"{result.returncode}. {stderr.strip()}",
             file=sys.stderr,
         )
+        return False
+    if not _fetch_embedding_models(quiet):
         return False
     if not quiet:
         print("  Done!")
@@ -5029,7 +5068,9 @@ def cmd_install_embeddings(args: argparse.Namespace) -> int:
     if current:
         if not args.quiet:
             print(f"Embeddings already installed (sentence-transformers {version})")
-        return 0
+        # INV-gujus: the library alone is not enough -- analysis never
+        # downloads a model, so make sure the weights are here too.
+        return 0 if _fetch_embedding_models(args.quiet) else 1
     if available and not args.quiet:
         print(f"sentence-transformers {version} is older than the required "
               f"{EMBEDDINGS_REQUIREMENT}; upgrading.")
@@ -5050,6 +5091,8 @@ def cmd_install_embeddings(args: argparse.Namespace) -> int:
             return 1
     except (subprocess.SubprocessError, OSError) as e:
         print(f"Error: {e}", file=sys.stderr)
+        return 1
+    if not _fetch_embedding_models(args.quiet):
         return 1
 
     if not args.quiet:

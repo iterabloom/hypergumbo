@@ -97,7 +97,7 @@ def test_offline_and_uncached_raises_typed_unavailable_not_bare_oserror():
         )
     # The original failure is preserved for the operator, not swallowed.
     assert isinstance(excinfo.value.__cause__, OSError)
-    assert "huggingface.co" in str(excinfo.value.__cause__)
+    assert "no local entry" in str(excinfo.value.__cause__)
 
 
 def test_control_cached_weights_load_without_raising():
@@ -109,18 +109,20 @@ def test_control_cached_weights_load_without_raising():
     assert model.kwargs.get("local_files_only") is True
 
 
-def test_control_first_install_download_is_still_reached():
-    """POSITIVE CONTROL: the one sanctioned runtime fetch must survive the fix.
+def test_uncached_weights_are_never_downloaded_even_with_network():
+    """INV-gujus: there is no sanctioned RUNTIME fetch.
 
-    Weights absent but network available is the first run after
-    ``hypergumbo install-embeddings``. A fix that made the probe refuse whenever
-    weights are missing would break exactly this and no other test would notice.
+    This test used to be the opposite -- a positive control that "the one
+    sanctioned runtime fetch must survive" -- pinning the network-allowed
+    fallback that made ``runtime-cli-no-network`` false: the first sketch after
+    installing the library downloaded both models. The weights are fetched by
+    the install path (``fetch_embedding_models``); with them absent the loader
+    degrades even when a download would succeed.
     """
-    model = se._load_st_model_offline_first(
-        _stub_cls(cached_ok=False, download_ok=True), "some/model"
-    )
-    assert isinstance(model, _StubModel)
-    assert not model.kwargs.get("local_files_only")
+    with pytest.raises(EmbeddingsUnavailable, match="install-embeddings"):
+        se._load_st_model_offline_first(
+            _stub_cls(cached_ok=False, download_ok=True), "some/model"
+        )
 
 
 # ---------------------------------------------------------------------------
