@@ -155,7 +155,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Final, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Final, Iterator, Optional
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
@@ -1021,7 +1021,9 @@ def _kt_inline_path(node: "tree_sitter.Node", source: bytes) -> str | None:
     return None if head is None else f"{head}.{node_text(named[1], source)}"
 
 
-def _kt_receiver_module(type_name: str, imports: dict[str, str]) -> str | None:
+def _kt_receiver_module(
+    type_name: str, imports: dict[str, str], *, is_project_type: Callable[[str], bool],
+) -> str | None:
     """The module slot a receiver TYPE names, or ``None`` when the file gives no path.
 
     WI-nasuf / ADR-0051. An imported simple name maps through the import
@@ -1045,14 +1047,21 @@ def _kt_receiver_module(type_name: str, imports: dict[str, str]) -> str | None:
     ``println`` classifying in the same run as a control. scala is worse at
     57 of 184 rows (31.0%).
 
-    A closed list therefore buys 22 rows, not nothing. It is not applied HERE,
-    because this function qualifies a receiver's declared TYPE, and a declared
-    type the file forgot to import is not java.lang's. The case the list serves
-    is a receiver the source spelled AS a type (``System.getenv(k)``, a static
-    call), and the call-edge fallback handles it through
-    :func:`jvm_implicit_imports.static_owner_module` (WI-kilap), which also
-    covers the explicitly imported ``Files.readAllBytes(p)`` that dropped its
-    qualifier the same way.
+    A closed list therefore buys 22 rows, not nothing, and it applies to a
+    declared TYPE exactly as it does to a receiver spelled AS a type
+    (``System.getenv(k)``, WI-kilap): a name ON the closed list has no import
+    to forget (JLS 7.3), and the cases where it is NOT java.lang's -- a project
+    type, an import of another type of that name, a ``kotlin.*`` name that
+    shadows it -- are the ones :func:`jvm_implicit_imports.static_owner_module`
+    already excludes. So a bare name the file never imports falls through to
+    that function. INV-dibij, measured before this: ``fun f(pb:
+    ProcessBuilder) { pb.start() }`` went out as ``external:0-0:start`` and
+    ``verify-claims`` called "No subprocess launches" confirmed, while the same
+    code spelled ``java.lang.ProcessBuilder`` was violated. An earlier version
+    of this docstring declined the list here on the premise that "a declared
+    type the file forgot to import is not java.lang's"; that holds for
+    ``InputStream`` and is false for ``ProcessBuilder``, which is why the list
+    is closed.
     """
     if type_name in imports:
         return imports[type_name]
@@ -1062,7 +1071,11 @@ def _kt_receiver_module(type_name: str, imports: dict[str, str]) -> str | None:
             return type_name
         if head in imports:
             return f"{imports[head]}.{rest}"
-    return None
+        return None
+    return static_owner_module(
+        type_name, imports, shadowed=KOTLIN_SHADOWED_JAVA_LANG,
+        is_project_type=is_project_type(type_name),
+    )
 
 
 def _extract_imports(
@@ -1745,7 +1758,7 @@ def _extract_edges_from_file(
         if node.type == "identifier":
             name = node_text(node, source)
             owner = (
-                _kt_receiver_module(var_types[name], imports) if name in var_types
+                _kt_receiver_module(var_types[name], imports, is_project_type=_is_project_receiver) if name in var_types
                 else static_owner_module(
                     name, imports, shadowed=KOTLIN_SHADOWED_JAVA_LANG,
                     is_project_type=_is_project_receiver(name),
@@ -1761,7 +1774,7 @@ def _extract_edges_from_file(
             created = next(
                 (c for c in node.children if c.type == "identifier"), None)
             created_type = None if created is None else _kt_constructor_type(created, source)
-            owner = None if created_type is None else _kt_receiver_module(created_type, imports)
+            owner = None if created_type is None else _kt_receiver_module(created_type, imports, is_project_type=_is_project_receiver)
         else:
             owner = None
         for link in reversed(links):
@@ -1790,7 +1803,7 @@ def _extract_edges_from_file(
         if receiver.type == "call_expression":
             owner = _library_call_type(receiver)
         elif receiver.type == "identifier" and node_text(receiver, source) in var_types:
-            owner = _kt_receiver_module(var_types[node_text(receiver, source)], imports)
+            owner = _kt_receiver_module(var_types[node_text(receiver, source)], imports, is_project_type=_is_project_receiver)
         elif receiver.type == "navigation_expression":
             inner = _synthetic_getter(receiver)
             owner = None if inner is None else library_returns.get(".".join(inner))
@@ -1822,7 +1835,7 @@ def _extract_edges_from_file(
         assert current_function is not None  # narrowed by the call arm
         recv_type = var_types.get(this_property) if this_property else None
         if recv_type is not None:
-            module = _kt_receiver_module(recv_type, imports)
+            module = _kt_receiver_module(recv_type, imports, is_project_type=_is_project_receiver)
             edges.append(make_unresolved_edge(
                 "kotlin", current_function.id, method_name, line, PASS_ID,
                 run.execution_id, module_hint=module or "external",
@@ -2306,7 +2319,7 @@ def _extract_edges_from_file(
                                 else var_types.get(receiver_name)
                             )
                             _module = (
-                                _kt_receiver_module(_recv_type, imports)
+                                _kt_receiver_module(_recv_type, imports, is_project_type=_is_project_receiver)
                                 if _recv_type is not None
                                 # WI-kilap: an untyped receiver spelled as a TYPE
                                 # (``Files.readAllBytes(p)``, ``System.getenv(k)``)

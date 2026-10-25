@@ -2788,21 +2788,28 @@ def _extract_edges_from_file(
                         # explicit-import path below carries the population.
                         typed_module = (
                             _qualify_scala_receiver(receiver_type, import_aliases)
-                            if receiver_type
-                            # WI-kilap: an untyped receiver spelled as a TYPE
-                            # (``Files.readAllBytes(p)``, ``System.getenv(k)``,
-                            # ``Properties.envOrElse(...)``) is a static / object
-                            # call, and its owner is the module. Only the file's
-                            # import or java.lang's closed list names one, so
-                            # WI-sigog's "a path the file declares" still holds.
-                            else _scala_static_owner(
-                                receiver_name or "", import_aliases,
+                            if receiver_type else None
+                        )
+                        # WI-kilap: an untyped receiver spelled as a TYPE
+                        # (``Files.readAllBytes(p)``, ``System.getenv(k)``,
+                        # ``Properties.envOrElse(...)``) is a static / object
+                        # call, and its owner is the module. Only the file's
+                        # import or java.lang's closed list names one, so
+                        # WI-sigog's "a path the file declares" still holds.
+                        # INV-dibij: a bare DECLARED type the file never imports
+                        # (``pb: ProcessBuilder``) takes the same list -- there is
+                        # no import to forget (JLS 7.3), and it is what the
+                        # parameterless arm's ``_library_owner`` already did, so
+                        # the two arms no longer disagree on one receiver.
+                        owner_name = receiver_type or receiver_name or ""
+                        if typed_module is None and "." not in owner_name:
+                            typed_module = _scala_static_owner(
+                                owner_name, import_aliases,
                                 is_project_type=_is_project_type(
-                                    receiver_name or "", global_symbols,
-                                    import_aliases if _applies(receiver_name or "", node) else None,
+                                    owner_name, global_symbols,
+                                    import_aliases if _applies(owner_name, node) else None,
                                     file_packages, project_packages),
                             )
-                        )
                         if typed_module is None and inline_path is not None:
                             typed_module = _inline_qualified_owner(
                                 inline_path, callee_name,
