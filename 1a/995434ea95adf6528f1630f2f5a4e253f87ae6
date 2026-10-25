@@ -1,0 +1,47 @@
+Original commit body from 1734af01a2f55d801a5cb572984381da130ae33f:
+
+derive_silence_reason gives `unreported` when a pass read files, emitted
+nothing, and gave no reason. The linker registry fills files_analyzed from
+the read log, so an import probe counts as a read. Only eleven linker bodies
+claimed a reason (WI-finij), so unreported was 0 on the self-survey and 4 on
+compose-go and 6 on component-model-demo, each a different set (both
+reproduced exactly before this change).
+
+Each body below now claims silence_reason_for_candidates(<what its scan
+FOUND>), never what it emitted:
+- all_calls: http, graphql, subprocess;
+- all_patterns: websocket, event-sourcing, database-query, phoenix-ipc;
+- argparse-dispatch: set_defaults registrations;
+- go-cobra: cobra.Command handler assignments;
+- go-memberlist: files that use memberlist, set before its early returns;
+- lua-ffi: phase-1 FFI calls;
+- napi: exports;
+- ruby-ffi: FFI calls plus rb_define sites.
+
+Analyzers: base.claim_declaration_silence(run, declared, symbols, edges).
+An analyzer's emission is the declarations its scan finds, so a silent run
+read files and declared nothing (no_candidate_construct), or declared and
+then dropped all of it in post-processing (candidates_unresolved). The base
+pipeline passes its pass-1 symbols. c (symbols before its declaration merge),
+json, proto, vue and latex call the helper from their own analyze().
+
+Measured after:
+- A construct-free file in every language a pass reads (plus a C function
+  and a .tex), --frameworks all: 16 unreported -> 0
+  (test_pass_silence_claims).
+- compose-go 4 -> 0, component-model-demo 6 -> 0, flask-restful 0,
+  gin-realworld 0, cowboy 0, confluent-examples 0. cowboy (latex) and
+  confluent-examples (napi, ruby-ffi) surfaced after the first eleven were
+  fixed; they are covered here.
+- Dropping http's, napi's or ruby-ffi's claim reds the enumerating test,
+  naming that pass.
+- Targeted tests: a found-but-unresolved construct (argparse handler,
+  cobra handler, memberlist import with no delegate) is
+  candidates_unresolved.
+
+NOT asserted: the general claim for the ~50 linker bodies that still make no
+claim. Those read no file before finding a candidate, so the orchestrator's
+no_candidate_files covers them on every corpus measured; a repository whose
+mix reaches a new file-reading branch can still produce `unreported`.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
