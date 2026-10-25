@@ -1,0 +1,35 @@
+Original commit body from 7ffd9a2236947c09b58bd34143dd43cbad6ad784:
+
+run_survey's max_files is documented as a per-language-analyzer cap. It reached
+only the 10 of 119 analyzers registered supports_max_files=True; 108 take
+repo_root alone, so the cap could not travel as an argument. At --max-files 1
+this repository still analyzed 252 files (the item's count).
+
+The cap is now a per-analyzer FileBudget, a context variable that _run_named
+opens in each analyzer's worker thread and discovery.find_files consults on
+both of its paths (index and rglob). Admission is by file: a file admitted
+once is admitted again, so a two-pass analyzer sees the same N files in both
+passes. The budget binds only its own thread, so linkers and parallel
+analyzers are not charged.
+
+Four finders read the file index directly and are now bounded through
+within_file_budget, which runs after a candidate is known to be the
+analyzer's:
+- bash's shebang scan of extensionless files (33 files at cap 1);
+- gitignore's unconditional root .gitignore (2 at cap 1);
+- the generic yaml finder;
+- yaml_ansible, charged where its analyzer consumes the files and not inside
+  find_ansible_files, because the generic yaml analyzer calls that finder
+  for the set it skips.
+
+Measured on this repository at --max-files 1 after the change: the 49
+analyzer runs read 24 files in total, and none read more than 1. Still not
+bounded, and now said in --help and the run_survey docstring: linkers (15
+passes read more than 1 file) and the opt-in SCIP backends, which hand the
+whole repository to an external indexer. Every file an analyzer finds through
+the finder counts against the cap, a manifest or header lookup included.
+
+Also: the generic yaml analyzer's run reported files_analyzed 0 beside N file
+anchors. It now reports N.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
