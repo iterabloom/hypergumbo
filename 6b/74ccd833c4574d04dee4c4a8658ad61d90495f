@@ -1,0 +1,24 @@
+Original commit body from 52739b290ec9559bef5ab7279ac559b6c6b14229:
+
+Pool: 69 files -- the 9 flagged by check-docstring-drift, the 30-file
+rolling read, and the 30 files most changed since the 2026-10-20 audit.
+First pass: 34 drifted (lower bound) -- 1 of 9 flagged, 10 of 30 rolling,
+23 of 30 changed. Default-REJECT verifiers checked 63 first-pass findings:
+61 confirmed, 2 regraded, 1 rejected, and added 23 of their own. A blind
+re-review of 5 first-pass "matches" (seeded) found no drift.
+
+This bundle applies the B and D findings (no A this run); the C
+omissions follow separately. Docstrings and comments only.
+
+Line-pinned citations moved by these edits and re-anchored:
+signature_axis FACT_HOMES (base.py 305->315, 267->277),
+LEGACY_VALUE_PARSERS (jackson_dispatch.py 305->307), and
+module_key_axis MODULE_KEY_NOTIONS (swift.py 3064->3074, 2981->2991).
+All 69 reviews are recorded in .ci/docstring-review-ledger.json.
+ARCHITECTURE.md regenerated.
+
+The 31 code defects the verifiers confirmed are filed in the tracker
+after merge (docstring_audit tag); none is changed here.
+
+Tests: smart-test affected set, 29218 passed; changed files at 100%.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
