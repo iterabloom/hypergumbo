@@ -50,7 +50,8 @@ config-defined resolved status.
 
 Manual display reordering (``<``/``>``) lets users visually group related
 items without changing their priority.  The reorder is persisted to a
-``tui_preferences.json`` file alongside toggle state.
+``tui_preferences.json`` file alongside toggle state, kept per user under
+``$XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/`` (:func:`tui_preferences_path`).
 
 A background timer (every ``HTRAC_RELOAD_INTERVAL`` seconds, default 5)
 compares the ops-file mtime signature and, when another process has written,
@@ -87,7 +88,7 @@ import re
 import tempfile
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, ClassVar
+from typing import Any, Callable, ClassVar, Mapping
 
 from textual.app import App, ComposeResult
 from textual.binding import BindingType
@@ -115,6 +116,7 @@ from textual.widgets.tree import TreeNode
 
 from rich.text import Text as RichText
 
+from hypergumbo_tracker import journal
 from hypergumbo_tracker.hotspot_markup import render_hotspots
 from hypergumbo_tracker.id_matching import build_item_id_pattern
 from hypergumbo_tracker.item_nav_render import NavModalContent, build_nav_modal_content
@@ -127,6 +129,7 @@ from hypergumbo_tracker.store import (
     HumanAuthorityError,
     ItemNotFoundError,
     LockedFieldError,
+    _find_git_dir,
 )
 from hypergumbo_tracker.trackerset import TierMovementError, TrackerSet
 
@@ -539,6 +542,57 @@ _MAX_TOGGLE_SESSIONS = 9
 # filter text, or in-flight compose text. Override via the
 # ``HTRAC_RELOAD_INTERVAL`` environment variable (value in seconds).
 _TUI_RELOAD_INTERVAL: float = float(os.environ.get("HTRAC_RELOAD_INTERVAL", "5.0"))
+
+
+_PREFS_FILENAME = "tui_preferences.json"
+
+
+def tui_preferences_path(
+    tracker_root: Path, *, environ: Mapping[str, str] | None = None,
+) -> Path:
+    """Where THIS user's TUI preferences for THIS clone live (INV-rugid).
+
+    ``$XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/tui_preferences.json``
+    (``~/.local/state`` when unset), ``<repo-id>`` being the key the ops journal
+    uses for the same clone, so one rule places all three per-clone stores and
+    only the root differs by who must own the data: the journal under the agent
+    home, the protected config under ``/etc``, this file under each user's home.
+
+    It used to be ``<tracker_root>/tracker-workspace/tui_preferences.json``:
+    one copy inside the shared checkout, removed by ``git clean -xdf``, never
+    journalled, and shared by every account. A second user's load swallowed the
+    PermissionError and returned defaults, and their first save replaced the
+    owner's file through a temp file in the group-writable directory, so the two
+    clobbered each other on every save.
+    """
+    env = os.environ if environ is None else environ
+    state = env.get("XDG_STATE_HOME")
+    root = Path(state) if state else Path.home() / ".local" / "state"
+    git_dir = _find_git_dir(tracker_root.resolve())
+    toplevel = git_dir.parent if git_dir is not None else tracker_root.resolve()
+    return root / "hypergumbo-tracker" / journal._repo_id(toplevel) / _PREFS_FILENAME
+
+
+def load_tui_preferences_migrating(path: Path, legacy: Path) -> dict[str, Any]:
+    """Load from ``path``; on first use, carry an in-repo ``legacy`` file over.
+
+    When ``path`` is absent and ``legacy`` exists, its preferences are read and
+    written to ``path`` once, so an upgrade loses nothing and needs no step.
+    ``legacy`` is never modified or deleted.
+    """
+    if path.is_file() or not legacy.is_file():
+        return _load_tui_preferences(path)
+    prefs = _load_tui_preferences(legacy)
+    _save_tui_preferences(
+        path, set(prefs["hidden_statuses"]), list(prefs["display_order"]),
+        hidden_tags=set(prefs["hidden_tags"]),
+        toggle_sessions=list(prefs["toggle_sessions"]),
+        last_filters=prefs["last_filters"],
+        hide_tagged=bool(prefs["hide_tagged"]),
+        human_read_state=prefs["human_read_state"],
+        race_log_path=prefs["race_log_path"] or None,
+    )
+    return prefs
 
 
 def _load_tui_preferences(path: Path) -> dict[str, Any]:
@@ -2389,8 +2443,9 @@ class TrackerApp(App[None]):
         self._human_read_state: dict[str, dict[str, object]] = {}
         self._unread_override_ids: set[str] = set()
         self._last_ops_signature: float = 0.0
-        self._prefs_path = (
-            tracker_set._tracker_root / "tracker-workspace" / "tui_preferences.json"
+        self._prefs_path = tui_preferences_path(tracker_set._tracker_root)
+        self._legacy_prefs_path = (
+            tracker_set._tracker_root / "tracker-workspace" / _PREFS_FILENAME
         )
         # WI-sulij item-nav hotspots: compile once at construction so
         # every _show_* render reuses the same pattern. Configs with no
@@ -2461,7 +2516,9 @@ class TrackerApp(App[None]):
 
     def on_mount(self) -> None:
         """Initialize layout on mount, loading persisted preferences."""
-        prefs = _load_tui_preferences(self._prefs_path)
+        prefs = load_tui_preferences_migrating(
+            self._prefs_path, self._legacy_prefs_path,
+        )
         self._hidden_statuses = set(prefs["hidden_statuses"])
         self._hidden_tags = set(prefs.get("hidden_tags", []))
         self._hide_tagged = bool(prefs.get("hide_tagged", False))
