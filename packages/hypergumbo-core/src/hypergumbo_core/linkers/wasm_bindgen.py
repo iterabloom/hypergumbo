@@ -12,11 +12,11 @@ How It Works
 ------------
 Three-phase detection:
 
-1. **Rust side**: Iterates all Rust symbols to find functions with
-   ``#[wasm_bindgen]`` in their ``meta.annotations``. Builds an export map
-   keyed by the JavaScript-visible name:
-   - Default: the Rust function name (snake_case preserved)
-   - ``js_name = "customName"``: explicit JavaScript name override
+1. **Rust side**: Iterates all Rust function and method symbols to find
+   those with ``#[wasm_bindgen]`` in their ``meta.annotations``. Builds an
+   export map keyed by the JavaScript-visible name:
+   - Always: the Rust function name (snake_case preserved)
+   - ``js_name = "customName"``: also registered under that explicit name
 
 2. **JS/TS side**: Scans source files for import statements that reference
    wasm-bindgen output directories or files. Detects:

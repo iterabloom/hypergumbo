@@ -25,7 +25,9 @@ WHAT IT READS, AND FROM WHERE. Nothing here is Rust-shaped:
   the backend-neutral declaration name, ``span_role`` says whether
   ``Symbol.span`` is the identifier token or the item. Two records pair
   when they share a path and a key and their spans satisfy the roles: a
-  token inside an item, or item equal to item. ``merge_participants``
+  token inside an item, an item on the same start and end lines as an
+  item, or a token at the same start line and column as a token.
+  ``merge_participants``
   supplies the anchored producers and REFUSES, naming the analyzer, a
   producer of a shared language with no declaration; that exception is
   this pass's refusal, and it is not caught here.
@@ -72,8 +74,10 @@ EDGES (§11, §13). ``src``, ``dst`` and ``edge_type`` are identity. Every
 edge endpoint (and ``derived_from``) that named a folded record is rewired
 to the merged id and its ``edge_key`` reset. Then the participants' edges
 that now agree on all three are FOLDED here (not left for
-``deduplicate_edges``, whose survivor is encounter order — the SCIP arm
-runs first by priority, and the fold must be incumbent-first): the
+``deduplicate_edges``, whose survivor is encounter order — and
+``run_all_analyzers`` collects results in thread-pool completion order
+(``as_completed``), so which producer's edge comes first is not
+deterministic, while the fold must be incumbent-first): the
 survivor is the incumbent's edge, the others' call sites are absorbed
 (``_absorb_call_site``), ``origin`` is the union, and ``confidence`` is
 COMBINED, not arbitrated by precedence: two DISTINCT inference pathways

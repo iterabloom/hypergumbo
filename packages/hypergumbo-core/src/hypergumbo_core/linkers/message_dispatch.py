@@ -6,7 +6,10 @@ between sender and handler code. Creates ``event_publishes`` edges (tagged
 ``meta.channel_kind="message_bus"``) between send sites and receive/dispatch
 sites matched by message type name. (The bespoke ``message_dispatch`` edge
 type was folded onto ``event_publishes`` per the audit-findings 0001
-cross-family consolidation.)
+cross-family consolidation.) Both ends are synthetic nodes minted per site
+(``meta.framework_role`` ``message_sender`` / ``message_handler``), edges
+carry confidence 0.70, and a write and a read in the same file are never
+paired.
 
 Two API surfaces are covered:
 
@@ -16,10 +19,13 @@ Two API surfaces are covered:
 - Read (dispatch): ``case 'MSG_TYPE':`` in switch statements, or
   ``msg.type === 'MSG_TYPE'`` / ``msg.type == 'MSG_TYPE'`` comparisons
 
-**Rust (serde-tagged enums):**
-- Write (type def): ``#[serde(rename = "msg_type")]`` on enum variants
-  inside ``#[serde(tag = "...")]`` enums
-- Read (match): ``EnumName::Variant { ... } =>`` match arms
+**Rust (serde enums):**
+- Write (type def): any ``#[serde(rename = "msg_type")]`` attribute line,
+  with the rename string as the channel; the enclosing
+  ``#[serde(tag = "...")]`` enum is not checked, so struct-field renames
+  also count
+- Read (match): every ``EnumName::Variant`` on a line that contains
+  ``=>``, with the variant name (not its serde rename) as the channel
 
 Why This Design
 ---------------

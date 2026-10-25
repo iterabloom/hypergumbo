@@ -27,11 +27,14 @@ Four-phase detection:
    - ``__TAURI_INVOKE__('cmd')`` — older specta / internal Tauri API
 
 3. **TS/JS side (specta wrapper resolution)**: Detects tauri-specta generated
-   wrapper files — files that export functions wrapping TAURI_INVOKE calls
+   wrapper files — files that export functions, or const objects with methods,
+   whose bodies call ``invoke`` / ``TAURI_INVOKE`` / ``__TAURI_INVOKE__``
    (e.g., ``export function takeScreenshot() { return TAURI_INVOKE("take_screenshot") }``).
-   Scans other TS/JS files for imports from these wrapper files, and creates
-   ``calls`` edges (tagged ``meta.framework_dispatch="specta_wrapper"``) from
-   the import site to the synthetic ``ipc_publisher`` node. This closes the "last mile" gap: TS components
+   Scans other TS/JS files for relative (``./`` / ``../``) imports from these
+   wrapper files (path-alias imports are not followed), and creates ``calls``
+   edges (tagged ``meta.framework_dispatch="specta_wrapper"``) from a synthetic
+   ``ipc_caller`` node minted per (importing file, imported wrapper name) to
+   the synthetic ``ipc_publisher`` node. This closes the "last mile" gap: TS components
    calling ``commands.startRecording()`` are now linked through to Rust
    handlers.
 
@@ -44,8 +47,8 @@ Four-phase detection:
 After building both maps, the linker creates ``calls`` edges
 (``meta.protocol="ipc"``) from synthetic TS/JS-side sources to the matching
 Rust command functions, and ``calls`` edges
-(``meta.framework_dispatch="specta_wrapper"``) from TS/JS files that import
-specta wrappers to the ipc_publisher nodes.
+(``meta.framework_dispatch="specta_wrapper"``) from synthetic ``ipc_caller``
+nodes in TS/JS files that import specta wrappers to the ipc_publisher nodes.
 
 Why This Design
 ---------------
@@ -57,8 +60,11 @@ Why This Design
 - The ``#[tauri::command]`` attribute is captured by the Rust analyzer's
   annotation extraction, so no additional Rust source scanning is needed.
 - Specta wrapper resolution uses a two-pass approach: first identify wrapper
-  files (files containing TAURI_INVOKE), then scan imports pointing at those
-  files and resolve imported names to command names.
+  files (files with an ``export function`` whose body, or an
+  ``export const X = {...}`` object whose method bodies, call ``invoke`` /
+  ``TAURI_INVOKE`` / ``__TAURI_INVOKE__`` with a literal command), then scan
+  relative imports pointing at those files and resolve imported names to
+  command names.
 """
 from __future__ import annotations
 
@@ -708,7 +714,8 @@ def link_tauri_ipc(
             ))
 
     # Phase 4: Specta wrapper resolution
-    # Files that contain TAURI_INVOKE are wrapper files. Build wrapper maps,
+    # Files exporting functions/const-object methods that call invoke /
+    # TAURI_INVOKE / __TAURI_INVOKE__ are wrapper files. Build wrapper maps,
     # then scan other files for imports from those wrappers.
     wrapper_file_paths: set[str] = set()  # absolute paths of wrapper files
     wrapper_maps: dict[str, dict[str, str]] = {}  # abs_path → {func: cmd}

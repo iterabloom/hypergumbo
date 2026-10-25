@@ -5,7 +5,7 @@ Detects:
 - Function definitions (def)
 - Build targets (py_binary, cc_library, etc.)
 - Load statements as imports
-- Variable assignments
+- Variable assignments (only names starting with an uppercase letter, e.g. constants)
 - Dependency edges between targets
 - Function call edges (resolved via NameResolver, with load-alias path hints for cross-file calls)
 
@@ -28,7 +28,8 @@ Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
    bare ``name`` and ``//pkg:name`` (``//pkg`` meaning ``//pkg:pkg``) reach
    the target declared in that package's file, and any other label (a
    ``@repo`` label, or a target no file here declares, such as one a macro
-   makes) is an unresolved edge to ``starlark:<@repo//pkg | //pkg>:0-0:<name>``.
+   makes) is an unresolved edge to
+   ``starlark:<@repo//pkg | //pkg>:0-0:<name>:unresolved``.
    The label as written stays in ``meta["build_label"]``. It used to be pasted
    into the dst raw, which is no id; on grpc that gave 479 edges to one
    nameless ``<unknown>`` node.

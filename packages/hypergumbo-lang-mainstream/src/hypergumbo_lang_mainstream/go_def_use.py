@@ -14,7 +14,8 @@ unrecognised falls back to "every identifier in the subtree is a use",
 which is the conservative direction: it can only add spurious *uses*
 (over-linking), never invent a definition that silently drops a real flow.
 
-Handled statement shapes, all of them children of a ``statement_list``:
+Handled statement shapes (``statement_list`` children, plus the loop and
+condition header parts that go.yaml's hooks record; see Scope):
 
 - ``a := expr`` / ``a, b := f()``           — short_var_declaration
 - ``var x T = expr`` / ``const c = expr``   — var_declaration, const_declaration

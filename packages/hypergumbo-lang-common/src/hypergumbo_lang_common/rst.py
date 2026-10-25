@@ -14,11 +14,14 @@ How It Works
 5. Populates docstrings onto the symbols just extracted
    (``populate_docstrings_from_tree``)
 
-Every symbol here is minted through ``make_doc_symbol_ids``, which issues
-``id`` and ``stable_id`` together. That pairing is the INV-dulah contract
-for documentation families: the ``id`` carries the span so two same-named
-sections stay distinct, while the ``stable_id`` survives the section moving
-down the file. The ``stable_id`` hashes the titles of the sections a symbol
+Every symbol's ``id`` is minted through ``make_doc_symbol_ids`` (the
+INV-dulah contract for documentation families). Targets also take the
+``stable_id`` that call issues; sections and directives discard it and take
+their ``stable_id`` from a separate ``make_doc_stable_id`` call that hashes
+the section title (or the directive name plus its arguments) instead of the
+ordinal their ``id`` carries (WI-tusad). The ``id`` carries the span so two
+same-named sections stay distinct, while the ``stable_id`` survives the
+section moving down the file. The ``stable_id`` hashes the titles of the sections a symbol
 sits in (INV-punig; ADR-0035 §1, scheme v9). tree-sitter-rst emits every
 section as a sibling, so the hierarchy comes from the adornment styles, in
 the order the document first uses them, as reStructuredText defines it

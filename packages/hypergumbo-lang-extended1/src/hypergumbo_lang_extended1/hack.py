@@ -28,7 +28,9 @@ Symbol Types
 
 Edge Types
 ----------
-- calls: Function/method invocations
+- calls: Function/method invocations. A call inside a class, interface or
+  trait method starts at that method; every other call (inside a standalone
+  function or at top level) starts at the file pseudo-node ``hack:<path>:file``.
 """
 
 from __future__ import annotations

@@ -9,20 +9,21 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 1. Uses tree-sitter-svelte grammar from tree-sitter-language-pack
-2. Extracts component structure (script, style, template)
+2. Parses ``<script>`` import statements and walks the template (``<style>`` is not read)
 3. Identifies component references and event handlers
 4. Tracks control flow blocks (#if, #each, #await)
 
 Symbols Extracted
 -----------------
-- **Components**: Imported components used in template (capitalized tags)
 - **Slots**: Named and default slot definitions
 - **Blocks**: Control flow blocks (if, each, await)
 - **Events**: Event handlers on elements
 
 Edges Extracted
 ---------------
-- **imports**: Links component usage to imported component paths
+- **imports**: One edge per capitalized (component) tag, from the file to
+  the imported component's module; a tag with no matching import is an
+  unresolved edge to ``svelte:component:<Tag>:0-0:<Tag>:component``
   (ADR-0023 §6 folded the former `imports_component` type into
   canonical `imports`)
 

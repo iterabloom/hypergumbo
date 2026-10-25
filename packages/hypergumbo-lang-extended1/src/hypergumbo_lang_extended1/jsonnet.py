@@ -33,8 +33,9 @@ Edge Types
 
 Edge details
 ------------
-- Every edge starts at the file-level pseudo-node ``jsonnet:<path>:file``,
-  not at the enclosing function or method.
+- Every edge starts at the file-level pseudo-node
+  ``jsonnet:<path>:1-1:file:file`` (``make_file_id``), not at the enclosing
+  function or method.
 - A call whose first dotted segment is in ``JSONNET_BUILTINS`` (``std``,
   ``self``, ``super``, ``$``, ...) emits no edge.
 - The callee is looked up by the last dotted segment of its name
@@ -42,7 +43,8 @@ Edge details
   ``global_symbols`` (confidence 1.0). An unmatched call gets the synthetic
   dst ``jsonnet:unresolved:0-0:<name>:unresolved`` at confidence 0.6.
 - Call edges carry evidence type ``tree_sitter``; import edges point at
-  ``jsonnet:import:<path>`` with evidence type ``import``.
+  ``jsonnet:<path>:0-0:module:module`` (``make_module_import_dst``) with
+  evidence type ``import``.
 """
 
 from __future__ import annotations

@@ -2,8 +2,9 @@
 """BitBake analyzer using tree-sitter.
 
 BitBake is the build tool used by Yocto Project and OpenEmbedded for embedded
-Linux development. It processes recipe files (.bb, .bbappend) and class files
-(.bbclass) to build complete Linux distributions.
+Linux development. It processes recipe files (.bb, .bbappend), class files
+(.bbclass) and include files (.inc) to build complete Linux distributions;
+this analyzer reads all four file types.
 
 How It Works
 ------------

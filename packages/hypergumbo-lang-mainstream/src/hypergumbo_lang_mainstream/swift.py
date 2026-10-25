@@ -11,12 +11,15 @@ This analyzer uses tree-sitter to parse Swift files and extract:
 - Computed properties and subscripts, whose stable_id is the ADR-0035
   producer formula (``make_typed_stable_id`` over the type or, for a
   subscript, the parameter types; WI-tusad: they rode the backstop floor key)
-- Every stable_id hashes the FULL chain of enclosing types and functions
-  (``_swift_scope``; INV-fabih): methods hashed their emitted nearest-owner
-  name (``Inner.go``) and types the backstop's bare-name table key, so two
-  nested ``class Inner`` tied and deleting the first outer type moved the
-  second's ids; types now mint ``overload_arity.scoped_table_stable_id``.
-  Top-level types and their members keep their values
+- Every stable_id except an initialiser's or a deinitialiser's hashes the
+  FULL chain of enclosing types and functions (``_swift_scope``; INV-fabih):
+  methods hashed their emitted nearest-owner name (``Inner.go``) and types
+  the backstop's bare-name table key, so two nested ``class Inner`` tied and
+  deleting the first outer type moved the second's ids; types now mint
+  ``overload_arity.scoped_table_stable_id``. Top-level types and their
+  members keep their values. An ``init`` / ``deinit`` id hashes only the
+  enclosing TYPE chain (``_get_swift_type_ancestors``), so two function-local
+  types of one name in one file tie on it
 - Initialisers (``constructor``, ``Type.init``, with ``meta["arg_labels"]`` and
   ``meta["parameters"]``) and deinitialisers (``method``, ``Type.deinit``)
 - Enum cases and protocol requirements as ``field`` / member symbols
@@ -87,9 +90,14 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      ``super.init``. The init is chosen among every init of the run by
      argument labels in Swift's order (defaults may be omitted, a variadic
      absorbs, a trailing closure binds a function-typed parameter), an exact
-     binding before a defaulted one; an init in the body of another
-     same-named type is not a candidate, and a delegating ``self.init`` never
-     runs its own init. Several in the deciding tier is core
+     binding before a defaulted one. When the construction's type declaration
+     is known -- ``T(...)`` resolved to a type, or ``self.init`` /
+     ``Self.init`` in that type's own body -- an init in the body of another
+     same-named type is not a candidate; for ``T.init``, ``super.init`` and
+     ``self.init`` in an extension only the dotted-owner suffix check
+     (``_swift_owner_matches``) filters, and an init declared in an extension
+     always stays a candidate. A delegating ``self.init`` never runs its own
+     init. Several in the deciding tier is core
      ``overload_arity.choose_overload``'s ambiguous record
      (``resolution_quality="ambiguous"``, confidence 1/sqrt(N)). None -- a
      memberwise, inherited or library init, which has no symbol -- keeps the
@@ -440,15 +448,17 @@ _SWIFT_ID_SCOPE_NODES = frozenset({
 
 def _swift_scope(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """The names of the types and functions enclosing ``node``, outermost
-    first: what every Swift stable_id hashes beside the symbol's own name
-    (INV-fabih).
+    first: what every Swift stable_id except an init's or a deinit's hashes
+    beside the symbol's own name (INV-fabih).
 
     A method hashed its emitted nearest-owner name (``Inner.go``), which two
     nested ``class Inner`` in ``A`` and ``B`` share, and a type had only the
     backstop's bare-name table key; members hashed the type chain but not an
     enclosing function, which two function-local ``struct Inner`` share. The
     emitted ``qualified_name`` stays the type chain
-    (:func:`_make_swift_qualified_name`).
+    (:func:`_make_swift_qualified_name`). ``_swift_lifecycle_symbol`` still
+    hashes only the type chain, so two function-local ``struct Inner`` in one
+    file share their ``init`` / ``deinit`` ids.
     """
     def label(n: "tree_sitter.Node") -> Optional[str]:
         if n.type not in _SWIFT_ID_SCOPE_NODES:

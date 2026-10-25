@@ -2,7 +2,8 @@
 """Framework linker: GraphQL client-schema for detecting cross-file GraphQL calls.
 
 This linker detects GraphQL client calls (``gql`` literals/calls) and links
-them to GraphQL schema definitions detected by the GraphQL analyzer.
+them to same-named GraphQL operations from the GraphQL analyzer, or to schema
+root fields minted by ``graphql-sdl-linker``.
 
 Detected Client Patterns
 ------------------------

@@ -16,10 +16,11 @@ How It Works
 Two-phase detection:
 
 1. **Build component map**: Identify all symbols that are React components.
-   A symbol is a React component if it's a function/class in a .jsx/.tsx file
-   with a PascalCase name (React convention). Also includes symbols detected
-   as components via ``base_classes`` containing ``React.Component`` or
-   ``React.PureComponent``.
+   A symbol is a React component if it's a function/class in any JS/TS
+   file (no .jsx/.tsx extension check) with a PascalCase name (React
+   convention). A non-PascalCase class also qualifies when its own
+   ``base_classes`` contain ``Component``, ``PureComponent``,
+   ``React.Component`` or ``React.PureComponent``.
 
 2. **Scan for JSX usage**: Scan JS/TS source files for JSX element tags
    (``<ComponentName``) and match them against the component map. For each

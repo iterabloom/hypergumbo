@@ -30,10 +30,12 @@ Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
   FILE's ``provenance: community`` line wherever the file sits (ADR-0061,
   ``overlay_declares_community``), so a copy seeded into the user's
   io_primitives.d stays unvouched and its completeness grants are withheld
-  until the line is deleted. An overlay that does not parse, repeats a key, is
-  not a mapping, or carries a boundary section or row of the wrong type is
-  refused as ``IoPrimitiveOverlayError`` (a ``CatalogueError``, exit 2) -- by
-  the load and by the provenance pre-read alike (``_read_overlay_yaml``).
+  until the line is deleted. An overlay that does not parse or repeats a key
+  is refused as ``IoPrimitiveOverlayError`` (a ``CatalogueError``, exit 2) by
+  the load and by the provenance pre-read alike (``_read_overlay_yaml``); one
+  that is not a mapping, or carries a boundary section or row of the wrong
+  type, is refused under the same type by the load (``load_overlay_catalog``),
+  while the pre-read reads it as not community.
 - **Mode discrimination.** A primitive can be rowed at more than one mode, so
   a write stops classifying as a read, and a single primitive can name more
   than one boundary at once.
@@ -90,8 +92,10 @@ Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
   ``io_target_kind`` resolves to it, with no fallback (WI-dorus, for
   ``java.io.PrintStream``); ``boundary_ruling`` records why a primitive carries
   several boundaries, and ``multi_boundary_reason`` is the one predicate that
-  combines it with mode discrimination and ``simultaneous`` (INV-vaduk). The
-  T9 ``resource_naming`` map feeds ``suppresses_resource_naming_finding``, which
+  combines it with mode discrimination and ``simultaneous`` (INV-vaduk).
+  ``returns_handle`` marks an inbound row whose call hands back a handle rather
+  than the data it read, so taint does not taint the return value (WI-patit;
+  refused on a non-boolean or a non-inbound row). The T9 ``resource_naming`` map feeds ``suppresses_resource_naming_finding``, which
   lets taint mark a finding resource-naming-only only when the row is
   classified, naming is not itself the danger, and ``content_args`` is
   explicitly ``[]``. Every catalogue and overlay is parsed by

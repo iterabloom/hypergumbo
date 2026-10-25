@@ -15,19 +15,27 @@ dispatch relationship. The DI-specific distinction is carried in ``meta``.
 
 How It Works
 ------------
-1. **Build interface→implementations map** from ``implements``/``extends`` edges
-   and symbol metadata (``base_classes``).
+1. **Build interface→implementations map** from ``implements`` edges, plus
+   ``extends`` edges whose target is an ``interface`` symbol.
 2. **Scan source files** for explicit DI binding patterns per language:
-   - Java/Kotlin/Scala: Guice ``bind().to()``, Spring ``@Bean`` methods
+   - Java: Guice ``bind().to()`` / ``@Provides`` / ``@ImplementedBy``, Spring
+     ``@Bean``, CDI ``@Produces`` and scope-annotated ``implements``
+   - Kotlin: Guice ``bind().to()`` / ``@Provides``, Koin; Scala: Guice
+     ``bind().to()`` / ``@Provides``
    - C#: ``services.Add{Scoped,Transient,Singleton}<I,C>()``
    - TypeScript: NestJS/Angular ``{ provide: X, useClass: Y }``, Inversify ``bind().to()``
    - Python: ``binder.bind(I, to=C)``
    - Java SPI: ``META-INF/services/`` files
-3. **Resolution cascade** (highest-confidence wins):
-   - Explicit framework binding → 0.90
-   - SPI ``META-INF/services/`` → 0.85
-   - Naming convention (``DefaultX``/``XImpl``) → 0.75
-   - Single implementation → 0.70
+3. **Resolution cascade** (every explicit binding is kept; heuristics run
+   only for interfaces with no explicit binding):
+   - Explicit framework binding (Guice ``bind().to()`` / ``@Provides``, Spring
+     ``@Bean``, CDI ``@Produces``, Koin, ASP.NET Core, NestJS/Angular
+     providers, Inversify, injector) → 0.90
+   - Java SPI ``META-INF/services/``, Guice ``@ImplementedBy``, CDI
+     scope-annotated ``implements``, NestJS ``@Module`` registrations → 0.85
+   - Naming convention (``DefaultX``/``XImpl``: the single implementation, or
+     the one matching implementation among several) → 0.75
+   - Otherwise, single implementation → 0.70
 4. **Create ``dispatches_to`` edges** (``meta.mechanism="di"``) from interface
    methods to implementation methods (method-level, not class-level).
 5. **Create ``references`` edges** (``meta.mechanism="di_registration"``,
@@ -40,8 +48,8 @@ Supported Frameworks
 Java: Guice (``bind().to()``, ``@Provides``, ``@ImplementedBy``), Spring
 (``@Bean``), CDI (``@Produces``, scope-annotated ``implements``), SPI.
 Kotlin: Koin, Guice.  C#: ASP.NET Core DI.
-TypeScript: NestJS, Angular, InversifyJS.  Python: injector.  Scala: Guice (same
-patterns as Java).
+TypeScript: NestJS, Angular, InversifyJS.  Python: injector.  Scala: Guice
+(``bind().to()``, ``@Provides``).
 """
 
 from __future__ import annotations

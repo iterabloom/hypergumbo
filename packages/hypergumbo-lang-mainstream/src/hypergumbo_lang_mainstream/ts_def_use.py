@@ -12,8 +12,11 @@ Each spec declares the callable node types the DDG walk will enter —
 ``function_declaration`` and ``method_definition`` (named and kinded by
 ``js_ts.py``'s ``jsts_method_name`` / ``jsts_method_kind``), plus the
 binding-named ``arrow_function`` / ``function_expression`` / ``function`` /
-``generator_function``, walked under the analyzer's own id — the scope
-limit that decides how much of a file the data-dependence graph can see.
+``generator_function``, walked under the analyzer's own id. Each spec also
+names ``program`` in ``module_node_types``, so a file's top-level code is
+walked as module code under the file pseudo-symbol (WI-nilir; ddg_build's
+"Module Code"). Together these node types decide how much of a file the
+data-dependence graph can see.
 
 Handles core patterns:
 
@@ -35,8 +38,7 @@ handled by recursing into the node and collecting identifiers, with two
 deliberate exclusions: names in ``_TS_SKIP_NAMES`` (globals and builtins such
 as ``console``, ``JSON``, ``Promise``, ``parseInt``) never become uses, and
 the callee of a plain call is not a use — in ``foo(a)``, ``a`` is a use and
-``foo`` is not. This covers the majority of taint-relevant data flow in
-TypeScript code.
+``foo`` is not.
 """
 from __future__ import annotations
 
@@ -466,13 +468,10 @@ _HANDLERS: dict[str, Any] = {
 #
 # SCOPE, deliberately narrow and disclosed rather than implied:
 #
-#   * Only `function_declaration`. Class methods (`method_definition`) are NOT
-#     registered, because the analyzer's kind slot for them is getter/setter
-#     sensitive (js_ts.py decides "method" / "getter" / "setter" inline) and
-#     re-deriving that classification here would put a second copy of a
-#     production judgement in a consumer — the precise shape that has produced
-#     wrong numbers in this subsystem before. Reusing the analyzer's decision
-#     requires extracting it into a shared helper first; filed separately.
+#   * `function_declaration` and `method_definition` (named and kinded through
+#     js_ts.py's `jsts_method_name` / `jsts_method_kind`, WI-sakir / WI-jopuf),
+#     the binding-named callables (WI-mufag), and top-level `program` code
+#     (WI-nilir).
 #
 #   * TypeScript currently has ZERO catalogued taint sinks (6 sources, 0 sinks),
 #     so no TypeScript DDG edge can change a taint verdict today whatever this

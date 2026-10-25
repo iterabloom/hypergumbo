@@ -250,7 +250,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
 FACT_HOMES: Final[dict[str, FactHome]] = {
     "return_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=305,
+        line=315,
         anchor="method_return_types: dict[str, str]",
         home="FileAnalysis.method_return_types",
         populated_by=("go", "rust", "scala", "swift", "objc"),
@@ -292,7 +292,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
     ),
     "value_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=267,
+        line=277,
         anchor="class_field_types: dict[str, dict[str, str]]",
         home="FileAnalysis.class_field_types",
         populated_by=("csharp", "cpp", "go", "rust", "swift"),
@@ -379,7 +379,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-core/src/hypergumbo_core/"
             "linkers/jackson_dispatch.py"
         ),
-        line=305,
+        line=307,
         anchor='getattr(sym, "signature", None)',
         fact="parameter_arity",
         note=(

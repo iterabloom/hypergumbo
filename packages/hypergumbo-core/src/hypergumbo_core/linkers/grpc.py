@@ -63,8 +63,11 @@ Unresolved Edge Resolution
 When the Go analyzer creates unresolved edges to gRPC registration functions
 (e.g., RegisterUserServer), this linker attempts to resolve them by:
 1. Finding unresolved edges with names matching Register*Server pattern
-2. Looking up corresponding symbols created by the linker's file scan
-3. Creating replacement ``calls`` edges to the matched servicer. These stay
+2. Looking up a symbol whose name equals the ``Register*Server`` callee. In
+   practice this is an analyzer symbol from ``ctx.symbols`` (the generated
+   ``RegisterXxxServer`` function), because this linker's own symbols are
+   named by the bare service name
+3. Creating replacement ``calls`` edges to that symbol. These stay
    ``is_resolved=False`` — the linker supplies a destination, not a proof
    that the callee was resolved by name binding.
 
@@ -1153,7 +1156,9 @@ def _resolve_unresolved_grpc_edges(
 
     When the Go analyzer can't resolve a RegisterXxxServer call, it creates
     an unresolved edge. This function attempts to resolve these by matching
-    the function name to symbols created by the linker's file scan.
+    the function name to a same-named symbol. The linker's own symbols are
+    named by the bare service name, so in practice only an analyzer symbol
+    from ``ctx.symbols`` (the generated ``RegisterXxxServer``) matches.
 
     Args:
         ctx: LinkerContext with edges and symbols

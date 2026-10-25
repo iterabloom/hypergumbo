@@ -7,11 +7,11 @@ field carries a ``# axis: <category>`` annotation. This module checks the
 *emitted IR at runtime* — that every value populated into those axis-tagged
 fields conforms to the axis the annotation declares.
 
-The pipeline (``cli.run_behavior_map``) constructs ``Symbol`` / ``Edge`` /
-``AnalysisRun`` records through ordered passes (analyzers → linkers →
-fingerprint stamping → supply-chain classification → route promotion →
-tier filtering → boundary synthesis → finalize (validate) → metrics →
-write). Each pass is a writer;
+The pipeline (``cli.run_survey``, formerly ``run_behavior_map``)
+constructs ``Symbol`` / ``Edge`` / ``AnalysisRun`` records through ordered
+passes (analyzers → linkers → fingerprint stamping → supply-chain
+classification → route promotion → tier filtering → boundary synthesis →
+finalize (validate) → metrics → write). Each pass is a writer;
 no pass is a reader. Until this module, nothing read the emitted records
 and checked them against the schema axioms, axis catalogs, or producer
 contracts. That gap is INV-sugat — "no spec-vs-data validator stage exists
@@ -34,7 +34,10 @@ holds those counts shrink-only):
    *known-axis-name* uses the registry accessor; *identity* is a
    uniqueness invariant; *bounded-enum* is a fixed-list check;
    *free-text* skips value-level checks (the justification was the gate
-   at source-write time).
+   at source-write time). The class also carries one structural check: a
+   populated ``Symbol.qualified_name`` must not use another language's
+   separator in place of its own language's declared one (ADR-0032
+   per-language separator policy, ``warning``).
 2. **Writer-contract** — partitions by (record class, field): sub-pattern 2
    (default-only initializer) for ``AnalysisRun.config_fingerprint``; a
    sub-pattern-1 never-populated table (currently empty); and a
@@ -67,12 +70,14 @@ holds those counts shrink-only):
    rationale. id-format:F3 (``_check_id_roundtrip``) extends the class once
    more with the ADR-0036 Ruling-2 *round-trip* canary: the id kind-slot must
    be a registered symbol-kind and equal ``Symbol.kind``, the name-slot must
-   be non-empty, and the span must satisfy ``start <= end``, all at
-   ``error`` (the first three were advisory ``warning`` until WI-popak, when
-   the kind-slot and name-slot backlog reached 0). The class also pins ``Edge.id`` to
-   ``edge:sha256:<16hex>`` (``_check_edge_id_format``) and requires the
-   ``hgfp2:`` prefix on every non-null real-source ``Symbol.fingerprint``
-   (``_check_fingerprint_format``).
+   be non-empty, the span must satisfy ``start <= end``, and the file
+   pseudo-symbol must be ``1-1:file:file`` (WI-dipim), all at ``error`` (the
+   first three were advisory ``warning`` until WI-popak, when the kind-slot
+   and name-slot backlog reached 0); a ``<unknown>`` path slot, finalize's
+   fallback for a dst that is not an id, is flagged at ``warning``. The class
+   also pins ``Edge.id`` to ``edge:sha256:<16hex>``
+   (``_check_edge_id_format``) and requires the ``hgfp2:`` prefix on every
+   non-null real-source ``Symbol.fingerprint`` (``_check_fingerprint_format``).
 
 Besides ``violations`` and ``violations_by_class``, the
 ``validation_report`` that ``build_validation_report`` emits carries a

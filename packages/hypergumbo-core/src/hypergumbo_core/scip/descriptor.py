@@ -37,9 +37,7 @@ Why a hand-rolled parser
 ------------------------
 Regex approaches choke on backtick escapes and on the method-
 disambiguator ``(...)`` sub-grammar nested inside a descriptor. A
-small forward scanner is easier to read, easier to extend (future
-phases will decorate descriptors with per-indexer post-processing
-hooks — see :mod:`hypergumbo_lang_mainstream.rust_scip`), and keeps
+small forward scanner is easier to read, easier to extend, and keeps
 this parser free of any protobuf dependency: the translator can
 parse a symbol string without ever touching ``scip.proto``.
 

@@ -61,7 +61,8 @@ function gets tagged as a route handler). This is complementary to — not a
 replacement for — route-marker symbols. Route symbols are first-class IR
 entities representing the route itself, consumed by the ``route_handler``
 linker to create ``dispatches_to`` edges. Language analyzers create route
-markers directly for routing DSLs (Go, JS/TS, Django urls.py, Rails, Phoenix).
+markers directly for routing DSLs (Go, JS/TS, Django urls.py, Rails, Phoenix,
+Laravel, Swift, Play ``conf/routes``).
 For handlers enriched with ``concept: route`` that have no marker (decorator
 and annotation frameworks such as JAX-RS, Spring, ASP.NET, FastAPI),
 ``materialize_route_symbols`` creates the marker.
@@ -83,7 +84,8 @@ Usage
     # Enrich symbols in place with matched framework concepts. Pass the set of
     # detected framework ids directly; enrich_symbols loads each framework's
     # YAML patterns internally (signature: enrich_symbols(symbols,
-    # detected_frameworks, usage_contexts=None)).
+    # detected_frameworks, usage_contexts=None, report=None); ``report``
+    # collects per-pattern-YAML gain counts, WI-tivif).
     enriched = enrich_symbols(symbols, detected_frameworks)
 """
 

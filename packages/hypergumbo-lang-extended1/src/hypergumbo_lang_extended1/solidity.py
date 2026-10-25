@@ -5,7 +5,8 @@ This analyzer uses tree-sitter to parse Solidity smart contract files and extrac
 - Contract declarations
 - Interface declarations
 - Library declarations
-- Function definitions
+- Function definitions (kind="method" inside a contract, interface or
+  library; kind="function" for a file-scope free function; INV-lapas)
 - Constructor definitions
 - Modifier definitions
 - Event definitions
@@ -24,7 +25,9 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-- Pass 1: Parse all files, extract all symbols into global registry
+- Pass 1: Parse all files, extract all symbols, and register every symbol
+  except the field/variable data anchors in the global registry (WI-jusus;
+  they stay in the output symbols)
 - Pass 2: Detect calls, imports, inheritance, event emits, and function overrides, resolving against the global symbol registry
 
 The base class handles grammar checking, parser creation, file discovery,
