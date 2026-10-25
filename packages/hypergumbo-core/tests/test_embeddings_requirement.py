@@ -68,6 +68,7 @@ def test_an_outdated_install_is_upgraded() -> None:
     ok = MagicMock(returncode=0)
     with patch.object(cli, "_is_embeddings_available", return_value=True), \
             patch.object(cli, "_get_embeddings_version", return_value="5.2.2"), \
+            patch.object(cli, "_embedding_models_cached", return_value=True), \
             patch.object(subprocess, "run", return_value=ok) as run:
         assert cmd_install_embeddings(_args()) == 0
     cmd = run.call_args.args[0]
@@ -78,6 +79,7 @@ def test_an_outdated_install_is_upgraded() -> None:
 def test_a_current_install_is_left_alone() -> None:
     with patch.object(cli, "_is_embeddings_available", return_value=True), \
             patch.object(cli, "_get_embeddings_version", return_value="5.7.0"), \
+            patch.object(cli, "_embedding_models_cached", return_value=True), \
             patch.object(subprocess, "run") as run:
         assert cmd_install_embeddings(_args()) == 0
     run.assert_not_called()
@@ -95,6 +97,7 @@ def test_an_outdated_install_says_it_is_upgrading(capsys: pytest.CaptureFixture[
     ok = MagicMock(returncode=0)
     with patch.object(cli, "_is_embeddings_available", return_value=True), \
             patch.object(cli, "_get_embeddings_version", return_value="5.2.2"), \
+            patch.object(cli, "_embedding_models_cached", return_value=True), \
             patch.object(subprocess, "run", return_value=ok):
         assert cmd_install_embeddings(_args(quiet=False)) == 0
     assert "5.2.2 is older than the required" in capsys.readouterr().out

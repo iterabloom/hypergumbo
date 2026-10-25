@@ -121,15 +121,15 @@ Read this before installing hypergumbo on a machine you care about. Each stateme
 - Reads the files of the repository you point it at.
 - Writes its results under `~/.cache/hypergumbo/` (`$XDG_CACHE_HOME/hypergumbo/` if set), plus short-lived files in the system temp directory. It does not write into the repository it analyses ([ADR-0047](https://github.com/iterabloom/hypergumbo/blob/dev/docs/adr/0047-catalogue-scope-and-user-visible-homes.md) ruling 9). The exceptions are an `-o` path you choose inside it, and the case in the last bullet of this list. One command writes more than the file you name: `survey --out X.json` also writes `X.4k.json`, `X.16k.json` and `X.64k.json` (the same map compacted to those token budgets) and a directory `X.slices/` holding one slice per detected route handler, all beside `X.json`. `--no-sketch-fan-out --no-handler-slices` suppresses them, so exactly one file is written.
 - Runs `git` read-only (`rev-parse HEAD`, `rev-list --max-parents=0 HEAD`, `config --get remote.origin.url`). If they are installed, it also runs `gitleaks` to scan for secrets and `rust-analyzer --version`; the version check does not index anything.
-- Makes no network connection, unless you installed embeddings support (`install-embeddings`, `add-extras`, or `pip install 'hypergumbo[embeddings]'`). In that case the first sketch downloads two models (`microsoft/unixcoder-base` and `nomic-ai/modernbert-embed-base`) from huggingface.co into `~/.cache/huggingface/` (or `$HF_HOME`). Once both models are cached, later runs work offline. To stop the download, set `HF_HUB_OFFLINE=1`; the sketch then runs without embeddings. SECURITY.md's network claim still says downloads happen only through `install-embeddings`. That claim is wrong, and INV-gujus tracks it.
-- If a directory `~/hypergumbo` exists (for example, a clone of this repository), an interactive run asks once whether to write example config files into `~/hypergumbo/.hypergumbo-examples/`. It records your answer in `~/.local/state/hypergumbo/offers.json`. If you answer yes while analysing `~/hypergumbo` itself, that is a write into the analysed repository (INV-kuroj).
+- Makes no network connection. With embeddings support installed, the sketch loads its two models (`microsoft/unixcoder-base` and `nomic-ai/modernbert-embed-base`) from `~/.cache/huggingface/` (or `$HF_HOME`) only; if they are not there it runs without embeddings and says to run `hypergumbo install-embeddings`, which downloads them. `pip install 'hypergumbo[embeddings]'` installs the library but not the models.
+- If a directory `~/hypergumbo` exists (for example, a clone of this repository), an interactive run asks once whether to write example config files into `~/hypergumbo/.hypergumbo-examples/`. It records your answer in `~/.local/state/hypergumbo/offers.json`. It does not ask while the path you analysed is `~/hypergumbo`, lies inside it, or contains it.
 
 **Commands that download, compile or run other programs.** None of these run unless you invoke them:
 
 | Command | What it does |
 |---|---|
 | `install-gitleaks` | Downloads the latest gitleaks release from github.com into `~/.local/bin/`. It checks no checksum or signature. |
-| `install-embeddings` | Runs `pip install sentence-transformers`, which pulls in PyTorch (about 2 GB). It does not fetch the models; the first sketch does. |
+| `install-embeddings` | Runs `pip install sentence-transformers`, which pulls in PyTorch (about 2 GB), then downloads the two embedding models from huggingface.co. Analysis never downloads them. |
 | `install-rust-analyzer` | Runs `rustup component add rust-analyzer`. |
 | `build-grammars` | Compiles three tree-sitter grammars (Lean, Wolfram, Circom) with your compiler, from C source that ships inside `hypergumbo-core`, through `pip install`, which can download build tools from PyPI. |
 | `add-extras` | Runs all four of the above. Skip any of them with `--skip`. |
@@ -152,9 +152,6 @@ Read this before installing hypergumbo on a machine you care about. Each stateme
 
 The allowlist gate currently records these open findings:
 
-- **INV-gujus:** the first sketch after installing embeddings downloads models (see above), although the network claim says it does not.
-- **INV-tusos:** the rust-analyzer and scip-python backends start their programs outside the wrappers that the subprocess claim lists, and the claim does not name them.
-- **INV-kuroj:** writes to `~/.local/state/hypergumbo/` (trust grants, offer answers), `~/.config/hypergumbo/` (`init-catalogs`) and `~/hypergumbo/.hypergumbo-examples/` bypass the audited write wrappers, so no claim covers them. Each one follows a command you ran or a question you answered.
 - **WI-puban:** the tracker's OpenRouter call, described above.
 
 **Analysing a repository you don't trust.**

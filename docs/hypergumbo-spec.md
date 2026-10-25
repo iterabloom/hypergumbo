@@ -193,7 +193,8 @@ all optional extras at once (grammars, gitleaks, embeddings, rust-analyzer).
 🟩 **`hypergumbo build-grammars [--check]`** — build the from-source tree-sitter
 grammars (Lean, Wolfram, Circom) from the C sources vendored as `hypergumbo-core` package data (`hypergumbo_core/vendor/`, so a PyPI install has them; INV-bazoz) — offline except for the build tools `pip` may fetch; needs a C/C++ compiler; see [§4](#4-supported-stacks).
 🟩 **`hypergumbo install-embeddings [--check]`** / **`hypergumbo uninstall-embeddings [--all]`** — the
-`sentence-transformers` stack used by embedding-based config extraction.
+`sentence-transformers` stack used by embedding-based config extraction, and the two models it loads (analysis
+never downloads them).
 🟩 **`hypergumbo install-gitleaks [--check]`** / **`hypergumbo uninstall-gitleaks`** — the secret scanner.
 🟩 **`hypergumbo install-rust-analyzer [--check]`** / **`hypergumbo uninstall-rust-analyzer`** — installs
 rust-analyzer via rustup for the SCIP backend. **That backend executes `build.rs`**
@@ -241,7 +242,7 @@ Disable tier-based weighting in Key Symbols ranking (use raw centrality instead)
 | `HYPERGUMBO_RUST_ANALYZER` | unset | Set to `1` to opt into the SCIP-backed rust-analyzer backend, or `0` to opt out; falls through to the tree-sitter `rust.py` analyzer when unavailable. **`--backend` outranks this variable in both directions** (ADR-0045 ruling 4): `--backend tree-sitter` disables the backend even where the variable says `1`, and `--backend rust-analyzer` enables it even where the variable says `0`. **`rust-analyzer` executes `build.rs`** — opting in runs the analyzed crate's build script as arbitrary code; never enable it on an untrusted repo (see [§4](#4-supported-stacks)). |
 | `HYPERGUMBO_MIN_MEMORY_MB` | `512` | Minimum available system memory (MB) below which an in-progress analysis aborts *between files* with `MemoryPressureError` rather than risking the OOM killer or swap thrash (Linux `/proc/meminfo`; no-op on other platforms). Set to `0` to disable the check entirely. |
 | `HYPERGUMBO_VERBOSE` | unset | Set (to any value) to emit `[embed] …` progress logging to stderr during embedding-based config extraction. |
-| `HF_HUB_OFFLINE` | managed | hypergumbo sets this to `1` automatically while loading a *cached* embedding model, so runtime CLI subcommands make no outbound HuggingFace Hub requests (the `runtime-cli-no-network` claim). `local_files_only=True` alone does not stop HF Hub's metadata API, the xet cache-freshness ping, or the `transformers` safetensors background thread — only `HF_HUB_OFFLINE=1` does. The one-time first-install model download restores your prior setting so it can fetch. You may also export `HF_HUB_OFFLINE=1` yourself to force offline mode globally. |
+| `HF_HUB_OFFLINE` | managed | hypergumbo sets this to `1` automatically before every runtime embedding-model load, so runtime CLI subcommands make no outbound HuggingFace Hub requests (the `runtime-cli-no-network` claim). `local_files_only=True` alone does not stop HF Hub's metadata API, the xet cache-freshness ping, or the `transformers` safetensors background thread — only `HF_HUB_OFFLINE=1` does. Analysis never downloads a model: an uncached model degrades the sketch, and `install-embeddings` (which lifts this setting for its own download) is where the weights come from (INV-gujus). You may also export `HF_HUB_OFFLINE=1` yourself to force offline mode globally. |
 
 ### Backend trust grants
 

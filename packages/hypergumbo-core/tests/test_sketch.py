@@ -9186,9 +9186,10 @@ class TestStModelOfflineFirst:
     SentenceTransformer's constructor contacts HF Hub on every invocation
     for a cache-freshness check. The wrapper here tries
     ``local_files_only=True`` first to suppress the network call when the
-    model is already cached, and falls back to a normal load only on
-    cache miss (typically the first install). After this fix,
-    ``hypergumbo .`` runs do not hit HF Hub on every invocation.
+    model is already cached. On a cache miss it raises
+    ``EmbeddingsUnavailable`` and never retries with the network
+    (INV-gujus): the weights are fetched by ``install-embeddings``, not by
+    analysis, so ``hypergumbo .`` runs never hit HF Hub.
     """
 
     def test_offline_load_succeeds_on_first_try(self) -> None:
@@ -9208,61 +9209,47 @@ class TestStModelOfflineFirst:
         assert st_cls.call_count == 1
         st_cls.assert_called_once_with("model-name", local_files_only=True)
 
-    def test_falls_back_to_network_on_cache_miss(self) -> None:
-        """When local-only load raises (model not cached), fall through
-        to the network-allowing path."""
+    def test_a_cache_miss_raises_without_a_network_attempt(self) -> None:
+        """INV-gujus: a local-only miss is the end. It used to fall through to
+        a network-allowing load; the second construction is what made the
+        first sketch download both models."""
         from unittest.mock import MagicMock
         from hypergumbo_core.sketch_embeddings import (
+            EmbeddingsUnavailable,
             _load_st_model_offline_first,
         )
 
-        sentinel = object()
-        # First call raises (cache miss), second call succeeds.
-        st_cls = MagicMock(side_effect=[OSError("not in cache"), sentinel])
-
-        result = _load_st_model_offline_first(st_cls, "model-name")
-        assert result is sentinel
-        assert st_cls.call_count == 2
-        # First call: local-only.
+        st_cls = MagicMock(side_effect=[OSError("not in cache"), object()])
+        with pytest.raises(EmbeddingsUnavailable):
+            _load_st_model_offline_first(st_cls, "model-name")
+        assert st_cls.call_count == 1
         assert st_cls.call_args_list[0].kwargs.get("local_files_only") is True
-        # Second call: no local_files_only kwarg → constructor allowed
-        # to hit the network.
-        assert "local_files_only" not in st_cls.call_args_list[1].kwargs
 
-    def test_passes_extra_kwargs_through_on_both_paths(self) -> None:
+    def test_passes_extra_kwargs_through(self) -> None:
         """truncate_dim and similar SentenceTransformer kwargs propagate
-        through the offline-first wrapper on both the cache-hit and
-        cache-miss paths.
-        """
+        through the offline-first wrapper with local_files_only."""
         from unittest.mock import MagicMock
         from hypergumbo_core.sketch_embeddings import (
             _load_st_model_offline_first,
         )
 
-        # Cache-hit path: extra kwargs go through with local_files_only.
         st_cls = MagicMock(return_value=object())
         _load_st_model_offline_first(st_cls, "m", truncate_dim=256)
         st_cls.assert_called_once_with("m", local_files_only=True, truncate_dim=256)
 
-        # Cache-miss path: extra kwargs go through on fallback too.
-        st_cls = MagicMock(side_effect=[ValueError("miss"), object()])
-        _load_st_model_offline_first(st_cls, "m", truncate_dim=256)
-        assert st_cls.call_args_list[1].args == ("m",)
-        assert st_cls.call_args_list[1].kwargs == {"truncate_dim": 256}
-
-    def test_cache_miss_via_value_error_falls_back(self) -> None:
+    def test_a_value_error_cache_miss_is_also_unavailable(self) -> None:
         """huggingface_hub raises ValueError variants in some cases too —
         the broader ``(OSError, ValueError)`` clause covers both."""
         from unittest.mock import MagicMock
         from hypergumbo_core.sketch_embeddings import (
+            EmbeddingsUnavailable,
             _load_st_model_offline_first,
         )
 
-        sentinel = object()
-        st_cls = MagicMock(side_effect=[ValueError("bad cache"), sentinel])
-        result = _load_st_model_offline_first(st_cls, "m")
-        assert result is sentinel
-        assert st_cls.call_count == 2
+        st_cls = MagicMock(side_effect=[ValueError("bad cache"), object()])
+        with pytest.raises(EmbeddingsUnavailable):
+            _load_st_model_offline_first(st_cls, "m")
+        assert st_cls.call_count == 1
 
     def test_cached_load_forces_hf_hub_offline(
         self, monkeypatch: pytest.MonkeyPatch
@@ -9303,14 +9290,13 @@ class TestStModelOfflineFirst:
         # background threads cannot reach the network either.
         assert os.environ.get("HF_HUB_OFFLINE") == "1"
 
-    def test_network_fallback_restores_prior_offline_state(
+    def test_a_cache_miss_restores_prior_offline_state(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """On cache miss the wrapper restores the prior HF_HUB_OFFLINE
-        value before the network-allowing fallback, so the one-time
-        first-install download (the only sanctioned runtime download) can
-        still reach HF Hub. Only the offline-first attempt forces offline
-        mode."""
+        value before raising, so the setting it forced for the cached
+        attempt does not leak into the caller. There is no network-allowing
+        fallback (INV-gujus)."""
         import os
         from hypergumbo_core.sketch_embeddings import (
             _load_st_model_offline_first,
@@ -9327,11 +9313,13 @@ class TestStModelOfflineFirst:
                 raise OSError("not cached")
             return object()
 
-        _load_st_model_offline_first(fake_st, "m")
+        from hypergumbo_core.sketch_embeddings import EmbeddingsUnavailable
 
-        # Offline attempt saw "1"; the download fallback saw the restored
-        # (absent) prior value so the network is reachable.
-        assert seen == ["1", None]
+        with pytest.raises(EmbeddingsUnavailable):
+            _load_st_model_offline_first(fake_st, "m")
+
+        # Only the offline attempt ran; no download was tried.
+        assert seen == ["1"]
         # Prior absent state is restored after the call.
         assert os.environ.get("HF_HUB_OFFLINE") is None
 
@@ -9400,11 +9388,12 @@ class TestHfOfflineBeforeImport:
         assert _ensure_hf_offline_for_cached_models() is True
         assert os.environ.get("HF_HUB_OFFLINE") == "1"
 
-    def test_ensure_offline_leaves_env_unset_when_any_missing(
+    def test_ensure_offline_forces_offline_even_when_a_model_is_missing(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """First-install / partial cache: do not force offline, so the
-        missing model can still download."""
+        """INV-gujus: analysis never downloads, so a partial cache is no
+        reason to leave the HF Hub reachable. This used to assert the
+        opposite, to keep the runtime download the claim forbids possible."""
         from hypergumbo_core.sketch_embeddings import (
             _ensure_hf_offline_for_cached_models,
             _EMBEDDING_MODEL,
@@ -9414,8 +9403,8 @@ class TestHfOfflineBeforeImport:
         monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
         self._make_fake_hf_cache(tmp_path, [_EMBEDDING_MODEL])  # only one of two
 
-        assert _ensure_hf_offline_for_cached_models() is False
-        assert os.environ.get("HF_HUB_OFFLINE") is None
+        assert _ensure_hf_offline_for_cached_models() is True
+        assert os.environ.get("HF_HUB_OFFLINE") == "1"
 
     def test_ensure_offline_respects_existing_env(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
@@ -9475,11 +9464,12 @@ class TestHfOfflineBeforeImport:
         importlib.util.find_spec("huggingface_hub") is None,
         reason="huggingface_hub not installed (embeddings extra absent)",
     )
-    def test_subprocess_import_time_constant_false_when_uncached(
+    def test_subprocess_import_time_constant_true_even_when_uncached(
         self, tmp_path
     ) -> None:
-        """First-install path: nothing cached → guard does not force offline →
-        constants.HF_HUB_OFFLINE stays False so the download can proceed."""
+        """INV-gujus: nothing cached is no longer a reason to leave the HF Hub
+        reachable at import time -- analysis never downloads. This asserted
+        False|False while the runtime still made the first-install download."""
         import subprocess
         import sys
 
@@ -9499,7 +9489,7 @@ class TestHfOfflineBeforeImport:
             capture_output=True, text=True, env=env, timeout=120,
         )
         assert out.returncode == 0, out.stderr
-        assert out.stdout.strip().endswith("False|False"), out.stdout
+        assert out.stdout.strip().endswith("True|True"), out.stdout
 
 
 class TestConfigFilesNoLockFiles:

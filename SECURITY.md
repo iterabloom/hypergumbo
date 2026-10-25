@@ -35,7 +35,6 @@ Families with no site in the tree today (adding one fails the gate until it is r
 
 **Sites the allowlist records as findings rather than as reviewed-and-fine** — each names an open tracker item:
 
-- ``INV-gujus-fahub-pusip-dugoz-hidaj-vulav-higop-jihuf``: ``hypergumbo_core.sketch_embeddings._load_embedding_model``, ``hypergumbo_core.sketch_embeddings._load_modernbert_model``
 - ``WI-puban-modig-mifip-mazov-dakas-jufot-bokob-vodut``: ``hypergumbo_tracker.stop_hook._call_openrouter``
 
 ### Independent check: the observed I/O manifest
@@ -160,9 +159,12 @@ init-catalogs seeds), and developer_checkout_write (the offer's
 example tree in ~/hypergumbo, never written while the analysed path
 overlaps that checkout).
 
-**runtime-cli-no-network** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands do not initiate network sends. Embeddings
-downloads happen only via the install-embeddings extras subcommand
-and downstream library calls — never from the analyze-my-code path.
+**runtime-cli-no-network** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands do not initiate network sends. Embedding
+model weights are downloaded only by install-embeddings (and by
+add-extras when it installs embeddings); analysis loads them from
+the local cache only, and when they are absent it runs without
+embeddings rather than fetching them (INV-gujus). Installing the
+embeddings extra with pip installs the library, not the weights.
 
 **runtime-cli-no-subprocess** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands shell out ONLY through two declared zones.
 By default, only through repo_inspection, where every invocation is

@@ -102,9 +102,12 @@ claims:
 
   - id: runtime-cli-no-network
     text: |
-      Runtime CLI subcommands do not initiate network sends. Embeddings
-      downloads happen only via the install-embeddings extras subcommand
-      and downstream library calls — never from the analyze-my-code path.
+      Runtime CLI subcommands do not initiate network sends. Embedding
+      model weights are downloaded only by install-embeddings (and by
+      add-extras when it installs embeddings); analysis loads them from
+      the local cache only, and when they are absent it runs without
+      embeddings rather than fetching them (INV-gujus). Installing the
+      embeddings extra with pip installs the library, not the weights.
     constraint:
       taint_flow:
         source_taint: runtime_cli_entry
