@@ -76,27 +76,6 @@ modules:
       count: 1
       purpose: import each installed distribution whose name starts with `hypergumbo` to hash
         its source into the results-cache key; same environment trust boundary as entry points
-  hypergumbo_core.backend_trust:
-    zone: user_state
-    commands:
-    - trust-backend
-    purpose: persist a per-repository trust grant for an executing backend (ADR-0045 r8) at
-      $XDG_STATE_HOME/hypergumbo/trust.d/<sha256(repo path)>.json, mode 0600; raw Path methods,
-      no safety_zones wrapper or self-catalogue zone
-    finding: INV-kuroj-nihok-pupiv-zanun-jovij-ladod-mabiz-kiliz
-    sites:
-    - function: record_decision
-      primitive: '*.chmod'
-      family: fs_write
-      count: 1
-    - function: record_decision
-      primitive: '*.mkdir'
-      family: fs_write
-      count: 1
-    - function: record_decision
-      primitive: '*.write_text'
-      family: fs_write
-      count: 1
   hypergumbo_core.build_grammars:
     commands:
     - build-grammars
@@ -123,23 +102,6 @@ modules:
       - remove-extras
       purpose: probe whether tree_sitter_<name> for each SOURCE_GRAMMARS entry imports (names
         from a first-party constant)
-  hypergumbo_core.catalogue_home:
-    zone: user_config
-    commands:
-    - init-catalogs
-    purpose: 'materialize the catalogue home ($XDG_CONFIG_HOME/hypergumbo or --home): channel
-      dirs, README, seeded community overlays; existing files left untouched; raw Path methods,
-      no wrapper/zone'
-    finding: INV-kuroj-nihok-pupiv-zanun-jovij-ladod-mabiz-kiliz
-    sites:
-    - function: materialize_catalogue_home
-      primitive: '*.mkdir'
-      family: fs_write
-      count: 1
-    - function: materialize_catalogue_home
-      primitive: '*.write_text'
-      family: fs_write
-      count: 2
   hypergumbo_core.cli:
     zone: install
     sites:
@@ -226,26 +188,6 @@ modules:
       count: 1
       purpose: download the gitleaks release archive (then extracted/installed via tmp_artifact_*
         and install_artifact_* wrappers)
-  hypergumbo_core.in_repo_catalogues:
-    zone: user_state
-    commands:
-    - trust-catalogues
-    purpose: record a grant/decline for a repository's in-repo catalogue data at $XDG_STATE_HOME/hypergumbo/<store>/<sha256(repo
-      path)>.json, mode 0600; raw Path methods, no wrapper/zone
-    finding: INV-kuroj-nihok-pupiv-zanun-jovij-ladod-mabiz-kiliz
-    sites:
-    - function: record_in_repo_decision
-      primitive: '*.chmod'
-      family: fs_write
-      count: 1
-    - function: record_in_repo_decision
-      primitive: '*.mkdir'
-      family: fs_write
-      count: 1
-    - function: record_in_repo_decision
-      primitive: '*.write_text'
-      family: fs_write
-      count: 1
   hypergumbo_core.pass_metadata:
     zone: in_process
     commands:
@@ -261,43 +203,6 @@ modules:
       primitive: importlib.import_module[dynamic]
       family: dynamic_import
       count: 1
-  hypergumbo_core.repo_tier_offer:
-    commands:
-    - <any>
-    finding: INV-kuroj-nihok-pupiv-zanun-jovij-ladod-mabiz-kiliz
-    sites:
-    - function: record_offer_decision
-      primitive: '*.mkdir'
-      family: fs_write
-      count: 1
-      zone: user_state
-      purpose: record the answer to the one-time repo-tier examples offer in $XDG_STATE_HOME/hypergumbo/offers.json;
-        runs from cli.main() after the command, interactive stdin only, outside every claim's
-        taint source
-    - function: record_offer_decision
-      primitive: '*.write_text'
-      family: fs_write
-      count: 1
-      zone: user_state
-      purpose: record the answer to the one-time repo-tier examples offer in $XDG_STATE_HOME/hypergumbo/offers.json;
-        runs from cli.main() after the command, interactive stdin only, outside every claim's
-        taint source
-    - function: write_repo_tier_examples
-      primitive: '*.mkdir'
-      family: fs_write
-      count: 1
-      zone: developer_checkout
-      purpose: on a 'y' answer, write example overlay files under ~/hypergumbo/.hypergumbo-examples
-        (containment asserted); ~/hypergumbo is a repository checkout, so analysing it would
-        make this a write into the analysed repo
-    - function: write_repo_tier_examples
-      primitive: '*.write_text'
-      family: fs_write
-      count: 1
-      zone: developer_checkout
-      purpose: on a 'y' answer, write example overlay files under ~/hypergumbo/.hypergumbo-examples
-        (containment asserted); ~/hypergumbo is a repository checkout, so analysing it would
-        make this a write into the analysed repo
   hypergumbo_core.rust_analyzer_install:
     zone: install
     sites:
@@ -419,6 +324,22 @@ modules:
       commands:
       - cache-clear
       purpose: zone-enforced soft-delete archive written inside the cache root
+    - function: developer_checkout_write
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      zone: developer_checkout
+      commands:
+      - '<any> (the repo-tier offer, on a y answer, TTY only, never while the analysed path overlaps the checkout)'
+      purpose: 'developer_checkout wrapper: the example overlay tree under ~/hypergumbo/.hypergumbo-examples (ADR-0047 ruling 9; INV-kuroj)'
+    - function: developer_checkout_write
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      zone: developer_checkout
+      commands:
+      - '<any> (the repo-tier offer, on a y answer, TTY only, never while the analysed path overlaps the checkout)'
+      purpose: 'developer_checkout wrapper: the example overlay tree under ~/hypergumbo/.hypergumbo-examples (ADR-0047 ruling 9; INV-kuroj)'
     - function: install_artifact_chmod
       primitive: '*.chmod'
       family: fs_write
@@ -544,6 +465,22 @@ modules:
       - build-grammars
       - add-extras
       purpose: 'tmp_artifact wrapper: write grammar build scaffolding under the temp dir'
+    - function: user_config_mkdir
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      zone: user_config
+      commands:
+      - init-catalogs
+      purpose: 'user_config wrapper: catalogue-home directories ($XDG_CONFIG_HOME/hypergumbo or --home; INV-kuroj)'
+    - function: user_config_write
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      zone: user_config
+      commands:
+      - init-catalogs
+      purpose: 'user_config wrapper: catalogue-home README and seeded community overlays; existing files left untouched (INV-kuroj)'
     - function: user_out_mkdir
       primitive: '*.mkdir'
       family: fs_write
@@ -576,6 +513,36 @@ modules:
       commands:
       - <analysis>
       purpose: 'user_out wrapper: write a file at a path the user named (-o/--out)'
+    - function: user_state_write
+      primitive: '*.chmod'
+      family: fs_write
+      count: 1
+      zone: user_state
+      commands:
+      - trust-backend
+      - trust-catalogues
+      - '<any> (the repo-tier offer answer)'
+      purpose: 'user_state wrapper: trust grants and in-repo catalogue grants (0600) and the repo-tier offer answer under $XDG_STATE_HOME/hypergumbo (INV-kuroj)'
+    - function: user_state_write
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      zone: user_state
+      commands:
+      - trust-backend
+      - trust-catalogues
+      - '<any> (the repo-tier offer answer)'
+      purpose: 'user_state wrapper: trust grants and in-repo catalogue grants (0600) and the repo-tier offer answer under $XDG_STATE_HOME/hypergumbo (INV-kuroj)'
+    - function: user_state_write
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      zone: user_state
+      commands:
+      - trust-backend
+      - trust-catalogues
+      - '<any> (the repo-tier offer answer)'
+      purpose: 'user_state wrapper: trust grants and in-repo catalogue grants (0600) and the repo-tier offer answer under $XDG_STATE_HOME/hypergumbo (INV-kuroj)'
   hypergumbo_core.selection_index:
     zone: dev_zone
     commands:

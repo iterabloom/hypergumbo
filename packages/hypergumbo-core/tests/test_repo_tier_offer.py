@@ -21,6 +21,7 @@ separation structurally, not by comment.
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -275,7 +276,7 @@ def test_the_cli_wrapper_is_silent_when_there_is_nothing_to_offer(
     from hypergumbo_core.cli import _maybe_offer_repo_tier_examples
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setattr("sys.stdin", type("S", (), {"isatty": lambda self: False})())
-    _maybe_offer_repo_tier_examples()
+    _maybe_offer_repo_tier_examples(argparse.Namespace())
     assert not (tmp_path / "state").exists()
 
 
@@ -289,7 +290,7 @@ def test_a_failing_offer_never_breaks_the_run(monkeypatch) -> None:
         raise RuntimeError("state dir unwritable")
 
     monkeypatch.setattr(cli_mod, "maybe_offer_repo_tier_examples", _boom)
-    cli_mod._maybe_offer_repo_tier_examples()  # must not raise
+    cli_mod._maybe_offer_repo_tier_examples(argparse.Namespace())  # must not raise
 
 
 def test_main_calls_the_offer_exactly_once(monkeypatch, tmp_path) -> None:

@@ -8035,16 +8035,20 @@ def _registered_subcommands(parser: argparse.ArgumentParser) -> "set[str]":
     return set()  # pragma: no cover - build_parser always adds subparsers
 
 
-def _maybe_offer_repo_tier_examples() -> None:
+def _maybe_offer_repo_tier_examples(args: argparse.Namespace) -> None:
     """ADR-0047 ruling 9's offer, wrapped so it can never break a run.
 
     An offer is a courtesy. A courtesy that raises out of ``main`` and turns a
     successful analysis into a traceback is strictly worse than no offer, so
     every failure here is swallowed — the user simply is not asked, which is
-    the pre-feature behaviour and is never wrong.
+    the pre-feature behaviour and is never wrong. The command's ``path``, when
+    it took one, is handed over so the offer is not made while the analysed
+    repository overlaps the destination (INV-kuroj).
     """
+    path = getattr(args, "path", None)
     try:
-        maybe_offer_repo_tier_examples()
+        maybe_offer_repo_tier_examples(
+            analysed=Path(path) if isinstance(path, str) else None)
     except Exception:  # pragma: no cover - defensive; see docstring
         pass
 
@@ -13735,7 +13739,7 @@ def main(argv=None) -> int:
         # lives in should_offer(); the reason it is called here rather than
         # inside the analysis pipeline is that the pipeline is reached from
         # many entry points and is the wrong place to read stdin.
-        _maybe_offer_repo_tier_examples()
+        _maybe_offer_repo_tier_examples(args)
         # Flush while we can still catch a closed downstream pipe *in-band*.
         # stdout is block-buffered when piped, so a large write (e.g. a full
         # sketch) is otherwise deferred to interpreter shutdown — where the

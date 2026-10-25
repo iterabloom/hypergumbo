@@ -36,7 +36,6 @@ Families with no site in the tree today (adding one fails the gate until it is r
 **Sites the allowlist records as findings rather than as reviewed-and-fine** — each names an open tracker item:
 
 - ``INV-gujus-fahub-pusip-dugoz-hidaj-vulav-higop-jihuf``: ``hypergumbo_core.sketch_embeddings._load_embedding_model``, ``hypergumbo_core.sketch_embeddings._load_modernbert_model``
-- ``INV-kuroj-nihok-pupiv-zanun-jovij-ladod-mabiz-kiliz``: ``hypergumbo_core.backend_trust.record_decision``, ``hypergumbo_core.catalogue_home.materialize_catalogue_home``, ``hypergumbo_core.in_repo_catalogues.record_in_repo_decision``, ``hypergumbo_core.repo_tier_offer.record_offer_decision``, ``hypergumbo_core.repo_tier_offer.write_repo_tier_examples``
 - ``WI-puban-modig-mifip-mazov-dakas-jufot-bokob-vodut``: ``hypergumbo_tracker.stop_hook._call_openrouter``
 
 ### Independent check: the observed I/O manifest
@@ -148,10 +147,18 @@ Prohibited zones (claim: zero unsanitized reach):
 cmd_search, cmd_routes, cmd_explain, cmd_symbols, cmd_compact,
 cmd_io_boundaries, cmd_verify_claims, cmd_catalog,
 cmd_test_coverage, cmd_dead_code_maybe, cmd_config,
-cmd_cache_status, cmd_cache_clear) do not write to arbitrary
-filesystem paths. All writes go through the safety_zones wrappers
-(cache_write / user_out_write / tmp_artifact_write) in their
-respective peer zones.
+cmd_cache_status, cmd_cache_clear, cmd_trust_backend,
+cmd_trust_catalogues, cmd_init_catalogs, cmd_backend_agreement,
+cmd_repeat_finder, cmd_catalog_inventory, and the one-time repo-tier
+offer main() makes after any of them) do not write to arbitrary
+filesystem paths. All writes go through the safety_zones wrappers in
+their respective peer zones: cache_write (user_cache), user_out_write
+(user_out), tmp_artifact_write (tmp_artifact), user_state_write (trust
+grants and the offer's answer under $XDG_STATE_HOME/hypergumbo),
+user_config_mkdir / user_config_write (the catalogue home
+init-catalogs seeds), and developer_checkout_write (the offer's
+example tree in ~/hypergumbo, never written while the analysed path
+overlaps that checkout).
 
 **runtime-cli-no-network** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands do not initiate network sends. Embeddings
 downloads happen only via the install-embeddings extras subcommand
