@@ -1,0 +1,46 @@
+Original commit body from eda96149e027e759fbf88644d6433323b48b8728:
+
+runtime-cli-no-network said embeddings downloads happen only through the
+install path. It was false: install-embeddings, add-extras and
+`pip install 'hypergumbo[embeddings]'` installed only the library, and
+_load_st_model_offline_first fell back to a network-allowed
+SentenceTransformer(name) on a cache miss, so the first sketch fetched
+microsoft/unixcoder-base and nomic-ai/modernbert-embed-base from
+huggingface.co. Measured in the 2026-10-25 premise check with a stub
+sentence_transformers: every cache miss was a local_files_only=True
+attempt followed by a download-allowed retry. The degradation warning
+also told users install-embeddings would cache the weights, which it did
+not.
+
+The claim is kept and the code made to match it (the owner's 2026-08-11
+ruling on the same choice for repo_inspection: declare, don't launder):
+
+- The runtime loader is cache-only: a miss raises EmbeddingsUnavailable
+  naming `hypergumbo install-embeddings`, after restoring the caller's
+  HF_HUB_OFFLINE; and _ensure_hf_offline_for_cached_models now forces
+  offline on every runtime load, closing the partial-cache window it left
+  open only so the runtime download could proceed.
+- sketch_embeddings.fetch_embedding_models is the one place a model is
+  fetched; install-embeddings (including the already-installed path) and
+  add-extras run it in a fresh interpreter and fail when it fails.
+- The warning, runtime-cli-no-network, the spec, both READMEs and
+  SECURITY.md say what happens now; the README's open-findings list also
+  drops INV-tusos and INV-kuroj, fixed in #1856 and #1857.
+- I/O allowlist: the two loader sites lose the finding (cache-only), the
+  fetch and its subprocess are listed under the install zone.
+
+Tests: test_embeddings_never_fetched_at_runtime.py (14; it could not import
+before the change). Seven existing tests pinned the runtime download as
+intended behaviour -- the fallback, its kwargs, its ValueError arm, its
+offline restore, the "first-install download is still reached" control
+and two partial-cache "leave offline off" checks -- and are inverted, each
+saying so. Three install tests now pin the model-cache state, which they
+had silently depended on. check-self-claims: 18 claims unchanged (18
+confirmed_with_caveats).
+
+Behaviour change: a sketch after `pip install 'hypergumbo[embeddings]'`
+without install-embeddings now runs without embeddings and says to run it.
+
+Addresses INV-gujus.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
