@@ -465,9 +465,13 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 
 ## `io_boundary` — the I/O-boundary axis (ADR-0050)
 
-**Axiom.** A boundary value names *what data crosses the process boundary at
-this call site, in which direction* — not what the program is thereby arranged
-to do later.
+**Axiom.** A row's *primary* boundary names the *medium* data crosses at this
+call site, and in which direction — not what the program is thereby arranged to
+do later, and not what the data is. A `simultaneous` second boundary may record a
+reading of the same crossing that a taint label needs: that its content may carry
+a credential (`env_read`), or that the party who navigated to the page chose it
+(`navigation_read`). So `env_read` means both the process environment and "may
+carry a credential" (ADR-0050 §1).
 
 Six consumers branch on this vocabulary (`AUTO_SOURCE_LABEL_MAP`,
 `OPAQUE_BOUNDARIES`, `_DISCLOSED_ONLY_BOUNDARIES`, `DEFERRED_CROSSING_SHADOWS`,
@@ -480,21 +484,21 @@ in the `total_io_edges` headline (`subprocess` is opaque *and* counted).
 
 ### `data_crossing` — ADR-0050 compliant
 
-Values that name what data crosses the process boundary at this call site, and in which direction. Per ADR-0050 this is the only axis a new catalogue-declarable boundary should occupy.
+Values that name the medium data crosses at this call site, and in which direction. Per ADR-0050 this is the only axis a new catalogue-declarable boundary should occupy.
 
 - **`browser_storage_read`** — Read from browser-local storage. Like fs_read and for the same reason, deliberately NOT in AUTO_SOURCE_LABEL_MAP: sensitivity depends on what is stored, so you add your own taint_sources rows for your threat model (taint_sources.d/).
 - **`browser_storage_write`** — Write to browser-local storage (localStorage and peers). Structurally distinct from the host filesystem -- reachable via XSS, not via local-user FS access (WI-lokuv).
 - **`db_read`** — Read from a database or persistent store -- java.sql.Connection, erlang ets/dets, CoreData NSManagedObjectContext, sqlite3.
 - **`db_write`** — Write to a database or persistent store -- java.sql.Statement, erlang ets/dets, CoreData NSManagedObjectContext.
-- **`env_read`** — Read ambient CONFIGURATION -- values that may carry a credential. Narrowed by INV-tutar: host description and user identity are host_info_read, not this. Mints a host_secret taint source, which is why the narrowing mattered.
+- **`env_read`** — Read the process ENVIRONMENT -- environment variables and the ambient configuration a deployment supplies (application config, system properties) -- whose content may carry a credential. Both readings hold (ADR-0050 section 1): as a primary boundary it names that medium, and as a simultaneous second boundary it records only the credential reading (the page URL, beside navigation_read). Mints a host_secret taint source. Host description and user identity come from the host, not the environment: host_info_read (INV-tutar).
 - **`env_write`** — Mutate the process environment -- os.environ assignment, std::env::set_var, System.Environment setEnv.
 - **`fs_read`** — Read data from the local filesystem. Deliberately QUIET as a taint source -- sensitivity depends on what is stored, so it mints nothing (ADR-0016 risk-classification note).
 - **`fs_write`** — Write data to the local filesystem.
-- **`host_info_read`** — Read host DESCRIPTION or user identity -- not a secret (split from env_read by INV-tutar) -- INCLUDING THE CLOCK (WI-pavob). Fires almost universally, so its discriminating power is deliberately low and that was accepted on the record.
+- **`host_info_read`** — Read the HOST's own state -- its description, the user identity, the clock (WI-pavob) -- a medium the environment did not fill, and not a secret (split from env_read by INV-tutar). Fires almost universally, so its discriminating power is deliberately low and that was accepted on the record.
 - **`ipc_recv`** — Receive data from another process -- stdin, a pipe read, shared memory read.
 - **`ipc_send`** — Send data to another process over a channel the program set up or addressed -- a pipe, a child's stdin, a local socket, an IPC message channel, a signal. NOT the process's own standard output, which is `logging` (audit-findings 0021).
 - **`logging`** — Write to the process's own standard output or standard error -- the channel whose far side the launcher chose, not the program -- directly (sys.stderr, os.Stdout, System.out, std::cerr) or through a print or logging facility whose default destination it is (print, fmt.Println, java.util.logging.Logger, Prelude.putStrLn). A medium, like every data_crossing value (audit-findings 0021).
-- **`navigation_read`** — Read a value the party that NAVIGATED to this page chose -- the page URL, the referrer, window.name. A link can put anything in them, so it mints untrusted_input (INV-dadu). The URL spellings may also carry a credential and are declared SIMULTANEOUS with env_read, so they mint host_secret as well.
+- **`navigation_read`** — Read the page's NAVIGATION -- the page URL, the referrer, window.name: values the party that navigated to this page chose. A link can put anything in them, so it mints untrusted_input (INV-dadu). The URL spellings may also carry a credential and are declared SIMULTANEOUS with env_read, so they mint host_secret as well; by declaration order env_read is their scalar io_boundary.
 - **`net_recv`** — Receive data from the network. Shadowed by net_listen: a deferred-crossing site qualifies a clean net_recv verdict and a clean taint verdict over untrusted_input, the label net_recv derives, and nothing else (ADR-0049 ruling 2, INV-fogum).
 - **`net_send`** — Send data to the network. Egress risk is additionally graded by the supply-chain dst_tier rather than by this value alone.
 - **`process_send`** — Send a message to another runtime-managed process or actor -- erlang send, Control.Concurrent. Distinct from ipc_send: the far side is a peer inside the same runtime, not an OS pipe.

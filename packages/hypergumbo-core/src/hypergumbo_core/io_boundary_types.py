@@ -1,12 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Canonical registry of I/O-boundary values — the io-boundary axis (ADR-0050).
 
-THE AXIOM, taken verbatim from ADR-0049 ruling 1 so that ruling stays the
-value-level ruling and this module is the axis it lives on:
+THE AXIOM (ADR-0050 section 1, which applies ADR-0049 ruling 1's transfer test
+to the axis as a whole):
 
-    A boundary value names WHAT DATA CROSSES THE PROCESS BOUNDARY AT THIS
-    CALL SITE, IN WHICH DIRECTION -- not what the program is thereby
-    arranged to do later.
+    A row's PRIMARY boundary names the MEDIUM data crosses at this call site,
+    and in which direction -- not what the program is thereby arranged to do
+    later, and not what the data is. A ``simultaneous`` SECOND boundary may
+    record a reading of the same crossing that a taint label needs: that its
+    content may carry a credential (``env_read``), or that the party who
+    navigated to the page chose it (``navigation_read``).
+
+So ``env_read`` means both the process environment (as a primary boundary) and
+"may carry a credential" (wherever it is declared).
 
 WHY THIS MODULE EXISTS (INV-tafig). ADR-0016 and ``taint.py`` both call this
 vocabulary "hypergumbo's canonical I/O-boundary risk taxonomy", and six
@@ -232,10 +238,15 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         catalog_declarable=True,
         counts_in_headline=True,
         description=(
-            "Read ambient CONFIGURATION -- values that may carry a credential. "
-            "Narrowed by INV-tutar: host description and user identity are "
-            "host_info_read, not this. Mints a host_secret taint source, which "
-            "is why the narrowing mattered."
+            "Read the process ENVIRONMENT -- environment variables and the "
+            "ambient configuration a deployment supplies (application config, "
+            "system properties) -- whose content may carry a credential. Both "
+            "readings hold (ADR-0050 section 1): as a primary boundary it names "
+            "that medium, and as a simultaneous second boundary it records only "
+            "the credential reading (the page URL, beside navigation_read). "
+            "Mints a host_secret taint source. Host description and user "
+            "identity come from the host, not the environment: host_info_read "
+            "(INV-tutar)."
         ),
     ),
     IoBoundarySpec(
@@ -245,8 +256,9 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         catalog_declarable=True,
         counts_in_headline=True,
         description=(
-            "Read host DESCRIPTION or user identity -- not a secret (split "
-            "from env_read by INV-tutar) -- INCLUDING THE CLOCK (WI-pavob). "
+            "Read the HOST's own state -- its description, the user identity, "
+            "the clock (WI-pavob) -- a medium the environment did not fill, "
+            "and not a secret (split from env_read by INV-tutar). "
             "Fires almost universally, so its discriminating power is "
             "deliberately low and that was accepted on the record."
         ),
@@ -403,11 +415,13 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         catalog_declarable=True,
         counts_in_headline=True,
         description=(
-            "Read a value the party that NAVIGATED to this page chose -- the "
-            "page URL, the referrer, window.name. A link can put anything in "
-            "them, so it mints untrusted_input (INV-dadu). The URL spellings "
-            "may also carry a credential and are declared SIMULTANEOUS with "
-            "env_read, so they mint host_secret as well."
+            "Read the page's NAVIGATION -- the page URL, the referrer, "
+            "window.name: values the party that navigated to this page chose. "
+            "A link can put anything in them, so it mints untrusted_input "
+            "(INV-dadu). The URL spellings may also carry a credential and are "
+            "declared SIMULTANEOUS with env_read, so they mint host_secret as "
+            "well; by declaration order env_read is their scalar "
+            "io_boundary."
         ),
     ),
     # ------------------------------------------------------------------

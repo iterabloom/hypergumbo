@@ -105,6 +105,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Documentation
 
+- **ADR-0050's io-boundary axiom names the medium**: a row's primary boundary names the medium data crosses, and a `simultaneous` second boundary may record the credential or navigator reading a taint label needs; `env_read` means both the process environment and "may carry a credential". The `env_read`, `host_info_read` and `navigation_read` definitions are rewritten to match. No row's boundary changes.
 - The spec counts 63 `symbol_meta` keys and documents `item_span`; the concept-audit playbook records its latest audit; `ALLOWED_WEBSITES.md` permits discuss.python.org; ARCHITECTURE.md regenerated.
 
 ## [9.2.0] - 2026-10-20
