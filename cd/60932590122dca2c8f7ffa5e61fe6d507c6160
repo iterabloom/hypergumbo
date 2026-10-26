@@ -1,0 +1,51 @@
+Original commit body from 0855abd2a546f9586cd22bdf32d967c47e5a7ec4:
+
+Two defects on one line of load_overlay_catalog/load_catalog.
+
+WI-donod. A USER overlay merged into a catalogued language replaced the
+catalogue's status and stdlib_provenance with the overlay's forced
+'in_progress'. For the four provenance_declared catalogues (erlang,
+javascript, python, rust) every unrelated external_potential chain then
+read dst_classification_unreliable / [unreliable]. Community defaults
+already restored the pre-file status; now every overlay does, except over
+a language with NO shipped catalogue, where the overlay is the whole row
+set and in_progress (partial) is true.
+
+WI-sihiz. `status: overlay` was a password: required, compared once,
+then overwritten before any object saw it, while origin already has
+ADR-0061's `provenance:`. `status` now means one thing, a shipped
+catalogue's completeness claim, and an overlay omits it. The legacy
+`status: overlay` still loads (shipped overlays carried it and
+init-catalogs seeded copies into users' io_primitives.d).
+`provenance_declared` is refused with the laundering reason; any other
+value is refused with its own reason. Every value, including a missing
+key, used to get the provenance_declared explanation.
+
+- io_boundary.py: loader + restore; _OVERLAY_STATUS ->
+  _LEGACY_OVERLAY_STATUS.
+- The 8 shipped community overlays, docs/io-primitives-overlays/
+  hypergumbo-self.yaml, the bash template, the catalogues-doc and
+  repo-tier-offer samples drop `status: overlay`; docs/CATALOGUES.md
+  regenerated.
+- ADR-0016 states the rule in place. Spec: also corrects the count of
+  provenance_declared catalogues (four, not three: javascript was
+  missing).
+
+Tests: test_a_user_overlay_leaves_the_catalogue_status_alone (with and
+without defaults; replaces the test that pinned the old behaviour as
+"a separate question"); test_a_user_overlay_does_not_mark_unrelated_
+chains_unreliable through cmd_io_boundaries; overlay status
+omitted / legacy / provenance_declared / other values. Red before the
+fix for the stated reasons.
+
+Live, production CLI (`io-boundaries --format json`, python fixture
+calling mylib.ship and otherlib.frobnicate, user overlay classifying
+mylib.ship): otherlib.frobnicate's chain reads
+dst_classification_unreliable False with the new overlay and with the
+legacy spelling. The premise check's note that the flag stayed False
+under --no-default-overlays was wrong: the red test shows it flipped
+either way. `status: in_progress` exits 2 with its own message.
+
+Addresses WI-donod, WI-sihiz.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
