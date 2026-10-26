@@ -1,0 +1,18 @@
+Original commit body from 97080d0e6c29584a3dc03a622021229bfa33ebd6:
+
+WI-rilof (PR #1877) added two package.json reads to the js_module linker
+that bypass the counted readers in linkers/_text_filters (WI-finij /
+INV-hosig): _package_entry read with Path.read_text directly, and
+_build_workspace_package_index reads every manifest through
+supply_chain.own_package_name, outside linkers/ where the syntactic gate
+cannot see it. test_linker_file_read_accounting fails on dev since
+091984531e (js_module.py:688:read_text); the PR's own CI selection did not
+run that test, and my local run of the fix's next branch did.
+
+_package_entry now reads through read_source_text, and the index logs each
+manifest with note_source_read before handing it to own_package_name. A new
+test binds a read log around link_js_modules and asserts both manifests are
+in it, so the count is checked by behaviour and not only by the syntactic
+gate.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
