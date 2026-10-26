@@ -971,6 +971,7 @@ class Edge:
         alternatives: ADR-0057 §6 candidate set on a folded edge: ``{field: [{"value", "origin": [pass_id, ...]}]}`` for the values the scalar does not carry; under ``confidence_source="corroborated"`` both producers' original confidences are here.
         rank_score: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
         meta: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3). An edge that survived a collapse of two or more call sites stores the union of their lines in ``call_lines`` (see :func:`deduplicate_edges`); its absence means the one call site is ``line``.
+        resolution_score: The resolver's match grade ``Edge.create`` interpolated ``confidence`` from (ADR-0039 ruling 6), kept so finalize re-derives WITH it (WI-sakum); ``None`` on an ungraded edge, and cleared when finalize's verdict makes the edge unresolved (a grade on an unresolved edge is meaningless, ruling 6). Internal: not serialized, the published contract carries the graded ``confidence``.
     """
 
     id: str  # axis: identity
@@ -994,6 +995,7 @@ class Edge:
     alternatives: Optional[Dict[str, List[Dict[str, Any]]]] = None
     rank_score: Optional[float] = None
     meta: Optional[Dict[str, Any]] = None
+    resolution_score: Optional[float] = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         if isinstance(self.origin, str):
@@ -1058,7 +1060,9 @@ class Edge:
         quality in [0, 1] (``LookupResult.confidence``, or a producer's
         product of such factors). Given it, confidence is interpolated inside
         the pathway's band — ``low + (base - low) * score`` — and stamped
-        ``evidence_derived``. Passing it together with ``confidence``, with
+        ``evidence_derived``; the score is kept on the edge so finalize's
+        re-derivation keeps the grade (WI-sakum). Passing it together with
+        ``confidence``, with
         ``is_resolved=False``, or on a pathway with no seeded base raises
         ``ValueError``.
         """
@@ -1163,6 +1167,7 @@ class Edge:
             confidence_source=confidence_source,
             rank_score=rank_score,
             meta=meta,
+            resolution_score=resolution_score,
         )
 
     def to_dict(self) -> dict[str, Any]:

@@ -686,13 +686,26 @@ def _rederive_confidence_from_verdict(edge: "Edge") -> None:
     old confidence — ruling 3 says it diverges once a producer relocates a ranking
     adjustment onto it, and clobbering that would silently discard the adjustment.
 
+    A resolver-graded edge (ADR-0039 ruling 6, ``Edge.resolution_score``) is
+    re-derived WITH its grade while it stays resolved, and loses the grade when
+    the verdict makes it unresolved -- ruling 6: a grade on an unresolved edge is
+    meaningless. Before WI-sakum the table lookup ignored the grade and reset every
+    graded bind to its pathway's base, so the interpolation reached no published
+    edge (C ``fp = f1; if (c) fp = f2; fp(1)``: created 0.575, published 0.85).
+
     Idempotent: re-deriving from the same verdict yields the same value, so the
     sub-step is safe to re-enter.
     """
     if edge.confidence_source != "evidence_derived":
         return
-    from hypergumbo_core.confidence import derive_confidence
-    derived = derive_confidence(edge.evidence_type, is_resolved=edge.is_resolved)
+    from hypergumbo_core.confidence import derive_confidence, derive_resolved_confidence
+    if not edge.is_resolved:
+        edge.resolution_score = None
+    derived: float | None = (
+        derive_resolved_confidence(edge.evidence_type, edge.resolution_score)
+        if edge.resolution_score is not None
+        else derive_confidence(edge.evidence_type, is_resolved=edge.is_resolved)
+    )
     if derived is None or derived == edge.confidence:
         return
     was_mirroring = edge.rank_score == edge.confidence
