@@ -1,0 +1,21 @@
+- op: create  # b804
+  at: '2026-10-26T11:06:38Z'  # b804
+  by: agent  # b804
+  actor: jgstern_agent  # b804
+  clock: 1  # b804
+  nonce: b804  # b804
+  data:  # b804
+    kind: work_item  # b804
+    title: "rust: a brace-list or aliased use (use a::{b, c}; use a::b as c;) emits no imports edge at all"  # b804
+    status: todo_hard  # b804
+    priority: 3  # b804
+    parent:  # b804
+    tags:  # b804
+    - call_graph  # b804
+    - rust  # b804
+    isbefore: []  # b804
+    duplicate_of: []  # b804
+    not_duplicate_of: []  # b804
+    pr_ref:  # b804
+    description: "Found 2026-10-26 while fixing WI-rilof, on dev e22b97d62c through the production CLI. rust.py's use_declaration branch picks the imported path from the first child of type scoped_identifier / identifier / use_wildcard / use_list. A brace list (`use crate::error::{AardvarkError, AardvarkResult};`, tree-sitter type scoped_use_list) and an alias (`use foo::bar as baz;`, use_as_clause) match none of them, so the declaration emits NO imports edge at all. Measured: aardvark-dns src/commands/run.rs line 2 (`use crate::error::{...}`) has no imports edge while lines 3-5 do. Brace lists are among the most common use forms, so a file's import set is silently incomplete (dependency-linker requirement counts, file-level import graphs, and after WI-rilof the first-party file edges). Fix: handle scoped_use_list (prefix path + each list element, recursing into nested lists) and use_as_clause (the path before `as`), through the same in-tree resolution WI-rilof added. Measure the added edge count on firecracker first. Test: list, nested list, alias, `self` inside a list (`use a::{self, b}`)."  # b804
+    fields: {}  # b804
