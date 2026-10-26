@@ -70,19 +70,35 @@ is `hypergumbo_core.io_boundary_types`; the linter is
 
 ### 1. Axiom
 
-> A boundary value names **what data crosses the process boundary at this call
-> site, in which direction** — not what the program is thereby arranged to do
-> later.
+> A row's **primary** boundary names the **medium** data crosses at this call
+> site — the process environment, the host, the filesystem, a network peer,
+> another process, a database, the process's own standard streams, the
+> browser's storage, the page's navigation — and in which direction; not what
+> the program is thereby arranged to do later, and not what the data is. A
+> `simultaneous` **second** boundary may record a reading of the same crossing
+> that a taint label needs: that its content may carry a credential
+> (`env_read`), or that the party who navigated to the page chose it
+> (`navigation_read`), as the shipped INV-dadu URL rows do.
 
-Taken verbatim from ADR-0049 ruling 1. Adopting the existing sentence rather
-than writing a new one keeps ADR-0049 the value-level ruling and makes this the
-axis that ruling lives on; two differently-worded axioms for one vocabulary
-would be the same "one fact, two homes" shape the vocabulary already paid for.
+`env_read` therefore still means both. As a primary boundary it names the
+process environment: environment variables and the ambient configuration a
+deployment supplies (application config, system properties). Wherever it is
+declared it also says the content may carry a credential, which is why it mints
+`host_secret`. INV-tutar's split stands on the medium: host description and user
+identity come from the host, not from the environment, so they are
+`host_info_read`.
 
-The axiom is falsifiable in ADR-0024's sense. Its second clause is what makes
-`net_listen` a disclosure rather than a crossing, and its first clause is the
-sentence `env_read` failed when INV-tutar found most of its rows were host
-description.
+The axiom applies ADR-0049 ruling 1's transfer test (does the call hand the
+program data the far side chose?) to the axis as a whole; it is not that
+ruling's sentence. Medium is the reading the value definitions already used
+where they were written carefully (`logging` "names a medium", audit-findings
+0021); content readings and chooser readings, which some rows had used for
+their only boundary, now live in a second, `simultaneous` boundary instead.
+
+The axiom is falsifiable in ADR-0024's sense. Its "not what the program is
+arranged to do later" clause is what makes `net_listen` a disclosure rather than
+a crossing, and its medium clause is the sentence `env_read` failed when INV-tutar
+found most of its rows were host description.
 
 ### 2. Sections
 

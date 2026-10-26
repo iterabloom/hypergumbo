@@ -165,8 +165,8 @@ _IO_BOUNDARY_SECTIONS: tuple[tuple[str, str, str], ...] = (
     (
         AXIS_DATA_CROSSING,
         "`data_crossing` — ADR-0050 compliant",
-        "Values that name what data crosses the process boundary at this "
-        "call site, and in which direction. Per ADR-0050 this is the only "
+        "Values that name the medium data crosses at this call site, and in "
+        "which direction. Per ADR-0050 this is the only "
         "axis a new catalogue-declarable boundary should occupy.",
     ),
     (
@@ -358,9 +358,13 @@ _IO_BOUNDARY_HEADER = """\
 
 ## `io_boundary` — the I/O-boundary axis (ADR-0050)
 
-**Axiom.** A boundary value names *what data crosses the process boundary at
-this call site, in which direction* — not what the program is thereby arranged
-to do later.
+**Axiom.** A row's *primary* boundary names the *medium* data crosses at this
+call site, and in which direction — not what the program is thereby arranged to
+do later, and not what the data is. A `simultaneous` second boundary may record a
+reading of the same crossing that a taint label needs: that its content may carry
+a credential (`env_read`), or that the party who navigated to the page chose it
+(`navigation_read`). So `env_read` means both the process environment and "may
+carry a credential" (ADR-0050 §1).
 
 Six consumers branch on this vocabulary (`AUTO_SOURCE_LABEL_MAP`,
 `OPAQUE_BOUNDARIES`, `_DISCLOSED_ONLY_BOUNDARIES`, `DEFERRED_CROSSING_SHADOWS`,
