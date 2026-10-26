@@ -26,3 +26,19 @@
   clock: 2  # c349
   nonce: c349  # c349
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Counterexample to INV-nuzas's acceptance property. Its regression test is part of that property's test (WI-ziruv shape). Does not wait for either audit."  # c349
+- op: update  # f7ba
+  at: '2026-10-26T10:44:15Z'  # f7ba
+  by: agent  # f7ba
+  actor: jgstern_agent  # f7ba
+  clock: 3  # f7ba
+  nonce: f7ba  # f7ba
+  set:  # f7ba
+    status: done  # f7ba
+    pr_ref: '1876'  # f7ba
+- op: discuss  # ddc9
+  at: '2026-10-26T10:44:15Z'  # ddc9
+  by: agent  # ddc9
+  actor: jgstern_agent  # ddc9
+  clock: 4  # ddc9
+  nonce: ddc9  # ddc9
+  message: "DONE in PR #1876 (merged, dev 31c261df44). Root cause: py.py's call resolver had no case for a call whose receiver is a dotted chain rooted at an imported module, so `pkg.sub.deep.deep_fn()` fell to the WI-zigah emitter (meant for modules outside the tree). Wider than filed: one level was enough (`import mypkg.core; mypkg.core.core_fn()`). Fix: Case 2g resolves the call against the module the path names (root's import binding + every hop but the callee) with the lookup Case 2b/2e use; aliased roots work; the call site's live (scope-narrowed) import map is consulted, so a shadowing parameter does not bind. DECISION on the Category D shape the item asked for: `pkg_b.REGISTRY.get()` / `pkg_b.core.CONSTANTS.values()` take the from-import spelling's existing answer (WI-hotug CASE B) -- a references edge to the in-tree variable and no stub -- instead of minting python:pkg_b.REGISTRY:0-0:get, a module that does not exist. The references edge from the chain's first hop to pkg/sub/__init__.py is kept (importing pkg.sub.deep executes the package).\nBEHAVIOURAL EVIDENCE, the filed repro re-run on merged dev through the CLI: single package (`import mypkg.sub.deep; mypkg.sub.deep.deep_fn()`) -> run -> python:mypkg/sub/deep.py:1-2:deep_fn:function 0.85 (was python:mypkg.sub.deep:0-0:deep_fn:external_symbol), 0 external_symbols in the map; uv workspace (packages/pkg-a/src/pkg_a/app.py: `import pkg_b.sub.deep; pkg_b.REGISTRY.get(1); pkg_b.sub.deep.deep_fn()`) -> run -> packages/pkg-b/src/pkg_b/sub/deep.py deep_fn, references -> pkg_b/__init__.py REGISTRY, externals: [] (the INV-nuzas acceptance property holds on this fixture). Tests: test_py_dotted_module_calls.py (8, incl. the workspace property, a dotted class construction, and controls: from-import spelling, stdlib urllib.request.urlopen keeps its module-qualified stub, shadowing parameter does not bind).\nMEASURED vs dev: django 21 call pairs move from an external_symbol to the in-tree target, 0 lost (migrations' django.contrib.auth.models.UserManager() under `import django.contrib.auth.models`); fastapi 2, 0 lost."  # ddc9

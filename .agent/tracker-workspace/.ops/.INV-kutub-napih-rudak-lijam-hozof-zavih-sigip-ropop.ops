@@ -51,3 +51,10 @@
   clock: 5  # 9572
   nonce: '9572'  # 9572
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output) counts this item's planned test (every node standing for one package carries one tier) as ADR-0041's falsification test, and uses it as the model for the other axes."  # 9572
+- op: discuss  # 28e6
+  at: '2026-10-26T13:33:43Z'  # 28e6
+  by: agent  # 28e6
+  actor: jgstern_agent  # 28e6
+  clock: 6  # 28e6
+  nonce: '28e6'  # 28e6
+  message: "2026-10-26: WI-rilof landed (PR #1877, dev 091984531e). On the repro fixtures the js_module stand-in package node (javascript:npm:0-0:@ws/b:package) is no longer minted, the helper/module call stubs for the sibling are gone, and the Cargo use stub resolves to crate-b/src/lib.rs. One stub remains: javascript:@ws/b:0-0:module:external_symbol, from the analyzer's raw import edge that js_module never retires (also present for every relative import) -- filed as WI-vadup. What remains for this item: the dependency-declaration tier (python tier 2, npm/cargo tier 3), plus WI-vadup's stub if this item's property test counts it."  # 28e6
