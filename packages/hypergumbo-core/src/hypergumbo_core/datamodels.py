@@ -160,6 +160,10 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[DataModel]:
     YAML framework patterns emit "model", "schema", or "entity" concepts
     for classes that match known data model patterns.
 
+    The label names the construct only ("model"); the framework goes in
+    ``DataModel.framework``, and the sketch renders ``{framework} {label}``.
+    A label carrying the framework too printed it twice (WI-kibat).
+
     Args:
         symbols: All symbols with potential concept metadata.
 
@@ -186,7 +190,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[DataModel]:
             framework = concept.get("framework", "")
 
             if concept_type == "model":
-                label = f"{framework} model" if framework else "Data model"
+                label = "model" if framework else "Data model"
                 models.append(DataModel(
                     symbol_id=sym.id,
                     kind=DataModelKind.ORM_MODEL,
@@ -197,7 +201,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[DataModel]:
                 break  # One model per symbol
 
             elif concept_type == "schema":
-                label = f"{framework} schema" if framework else "Schema"
+                label = "schema" if framework else "Schema"
                 models.append(DataModel(
                     symbol_id=sym.id,
                     kind=DataModelKind.SCHEMA,
@@ -208,7 +212,7 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[DataModel]:
                 break
 
             elif concept_type == "entity":
-                label = f"{framework} entity" if framework else "Entity"
+                label = "entity" if framework else "Entity"
                 models.append(DataModel(
                     symbol_id=sym.id,
                     kind=DataModelKind.ENTITY,

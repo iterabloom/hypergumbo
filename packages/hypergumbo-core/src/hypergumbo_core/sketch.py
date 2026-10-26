@@ -5808,6 +5808,17 @@ def _format_entrypoints(
     return "\n".join(lines)
 
 
+def _datamodel_description(model: "DataModel") -> str:
+    """Render a data model as ``{framework} {label}``, or the label alone.
+
+    The label names the construct and never repeats the framework (WI-kibat),
+    so the framework is composed here, once, for grouped and fallback lines.
+    """
+    if model.framework:
+        return f"{model.framework} {model.label}"
+    return model.label
+
+
 def _format_datamodels(
     datamodels: "list[DataModel]",
     symbols: list[Symbol],
@@ -5849,13 +5860,13 @@ def _format_datamodels(
             rel_path = sym.path
             if rel_path.startswith(str(repo_root)):
                 rel_path = rel_path[len(str(repo_root)) + 1:]
-            if model.framework:
-                bullet = f"  - `{sym.name}` ({model.framework} {model.label})"
-            else:
-                bullet = f"  - `{sym.name}` ({model.label})"
-            grouped.setdefault(rel_path, []).append(bullet)
+            grouped.setdefault(rel_path, []).append(
+                f"  - `{sym.name}` ({_datamodel_description(model)})"
+            )
         else:
-            fallback_lines.append(f"  - `{model.symbol_id}` ({model.label})")
+            fallback_lines.append(
+                f"  - `{model.symbol_id}` ({_datamodel_description(model)})"
+            )
 
     lines = [_section_header("Data Models", exclude_tests), ""]
 

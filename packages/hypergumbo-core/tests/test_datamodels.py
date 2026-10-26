@@ -66,8 +66,30 @@ class TestDetectFromConcepts:
         assert len(models) == 1
         assert models[0].kind == DataModelKind.ORM_MODEL
         assert models[0].confidence == 0.95
-        assert "Django" in models[0].label
         assert models[0].framework == "Django"
+
+    @pytest.mark.parametrize(
+        ("concept", "word"),
+        [("model", "model"), ("schema", "schema"), ("entity", "entity")],
+    )
+    def test_label_does_not_repeat_the_framework(
+        self, concept: str, word: str,
+    ) -> None:
+        """The label names the construct; the framework lives in .framework.
+
+        The sketch renders ``{framework} {label}``, so a label that already
+        carries the framework printed it twice: 'Author (django django model)'
+        (WI-kibat).
+        """
+        sym = _make_class_symbol(
+            "User",
+            meta={"concepts": [{"concept": concept, "framework": "django"}]},
+        )
+
+        models = _detect_from_concepts([sym])
+
+        assert models[0].label == word
+        assert models[0].framework == "django"
 
     def test_detects_schema_concept(self) -> None:
         """Detects data models from 'schema' concept."""
