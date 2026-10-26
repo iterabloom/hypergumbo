@@ -1,0 +1,28 @@
+Original commit body from 7c94a2db0ea42d4272aee96fe50108c39f4c09a4:
+
+Owner ruling 2026-10-25: delete it ("no dead code; no instrument without a
+reader"). DataModel.kind was written by all four detectors and read by
+nothing; its only serializer, DataModel.to_dict(), had no caller outside
+its own test, so the value reached no output. The 2026-05-27 concept audit
+kept it under three re-evaluation triggers, two of which could never fire
+on a field nothing reads.
+
+Removed: the enum (with its three-axis docstring), the field, to_dict()
+(a second no-reader method), and the kind column of MODEL_BASE_CLASSES,
+MODEL_DECORATORS and NAMING_PATTERNS. NAMING_PATTERNS now pairs each
+pattern with the label it gives, which replaces the suffix if-chain and its
+`pragma: no cover` else branch; the label is unchanged, because the first
+matching pattern's suffix is the one the name ends with. label, framework,
+confidence and rank_score are kept.
+
+Tests: the 18 test_datamodels assertions on kind now assert the label the
+same detector row produces (each test also asserts detection itself, so
+none was kind-only); the to_dict test is deleted with the method; nine
+DataModel(kind=...) constructors in test_sketch drop the argument.
+
+Behaviour: none. `hypergumbo sketch` on a Django / Pydantic / dataclass /
+naming-convention fixture is byte-identical before and after apart from
+the cache-path footer. The .agent playbook's 2026-05-27 Examples entry is
+governance-owned history and is left as it is.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
