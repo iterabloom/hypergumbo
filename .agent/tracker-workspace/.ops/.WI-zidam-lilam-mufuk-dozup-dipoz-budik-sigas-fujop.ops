@@ -35,3 +35,10 @@
   clock: 3  # cf2a
   nonce: cf2a  # cf2a
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output) classifies ADR-0050 against the 10-25 ruling recorded here (a label read from content rides as a simultaneous second boundary, not the primary). That shape can be checked on catalogue rows. The argv/cookie measurement here is independent of both audits."  # cf2a
+- op: discuss  # 18ac
+  at: '2026-10-26T19:32:29Z'  # 18ac
+  by: agent  # 18ac
+  actor: jgstern_agent  # 18ac
+  clock: 4  # 18ac
+  nonce: 18ac  # 18ac
+  message: "2026-10-26, from WI-rutup (ADR-0050 section 1 now reads: a row's PRIMARY boundary names the medium; a simultaneous SECOND boundary may record the credential or navigator reading; env_read means both the process environment and 'may carry a credential'). One point for this item to settle with its row changes: the INV-dadu URL rows (document.location / referrer / URL / documentURI / baseURI, window.location) declare env_read + navigation_read simultaneous, and first-declared-wins (CATALOG_BOUNDARY_TYPES order, pinned by three tests: test_io_boundary_types, test_deferred_crossing_boundary, test_navigation_read_boundary) makes env_read their scalar io_boundary. The owner's ruling cites those rows as already following the new axiom; if their MEDIUM is the navigation, the primary should be navigation_read, which needs an explicit per-row primary or a registry reorder, not a row edit. Since WI-votat (PR #1883) every consumer that asks 'does this edge reach B' reads the full list, so the scalar is now informational. WI-rutup changed no row's boundary; document.cookie (env_read, 'session tokens') is left for this item's browser-storage move."  # 18ac
