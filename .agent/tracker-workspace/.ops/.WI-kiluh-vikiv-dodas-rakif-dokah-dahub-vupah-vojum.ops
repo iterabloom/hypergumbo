@@ -1,0 +1,21 @@
+- op: create  # 3ab5
+  at: '2026-10-26T00:43:28Z'  # 3ab5
+  by: agent  # 3ab5
+  actor: jgstern_agent  # 3ab5
+  clock: 1  # 3ab5
+  nonce: 3ab5  # 3ab5
+  data:  # 3ab5
+    kind: work_item  # 3ab5
+    title: "datamodels' base-class detector reads meta parent_bases, which no analyzer emits (they emit base_classes): the strategy never fires, so Pydantic models fall to the naming heuristic or go unlisted"  # 3ab5
+    status: todo_hard  # 3ab5
+    priority: 3  # 3ab5
+    parent:  # 3ab5
+    tags:  # 3ab5
+    - sketch  # 3ab5
+    - dead_code  # 3ab5
+    isbefore: []  # 3ab5
+    duplicate_of: []  # 3ab5
+    not_duplicate_of: []  # 3ab5
+    pr_ref:  # 3ab5
+    description: "Found 2026-10-25 while fixing WI-kibat (confirming its unchecked lead). datamodels._detect_from_base_classes reads sym.meta[\"parent_bases\"] (datamodels.py:285). NO analyzer emits that key: a grep of packages/*/src finds it only at that read, and git log -S traces it to the 55296f5440 package split. Analyzers emit \"base_classes\" (registered in axis_meta_keys.py:1118; py, java, csharp, kotlin, scala, swift, php, ruby, go, cpp, js_ts, objc, groovy, apex). So the base-class strategy (MODEL_BASE_CLASSES: Django Model, SQLAlchemy DeclarativeBase/Base, Pydantic BaseModel, ... at confidence 0.85) has never fired in production, and its unit tests pass only because they hand-build parent_bases.\n\nLIVE REPRO (dev 129ee2ecf1 + the WI-kibat branch, production CLI): app/models.py with `class BookSchema(BaseModel)` (pydantic) -> survey meta base_classes ['BaseModel'] and no parent_bases; `hypergumbo sketch` lists it as `BookSchema (Schema)`, from the 0.70 naming heuristic, not Pydantic. A Pydantic class not named *Schema/*Model/... is not listed at all. Django models are found only because the YAML concept path catches them first.\n\nA reader keyed to a key nothing emits (LIVE rule 7; WI-kosup section A, reader with no producer -- a named instance).\n\nFIX SHAPE: read base_classes (the registered key). BUT MEASURE FIRST, because it turns on a dormant detector: the bare short forms ^Model$ and ^Base$ will match unrelated classes (any class extending a local Base), so the Data Models section grows and some additions are false. Plan: an A/B of sketch's Data Models section on a few corpus repos with Python, Java and TS models, a sampled precision read of the additions, and tightening or dropping the bare short forms before shipping. Also check whether the decorator strategy's keys match what analyzers emit (the python dataclass path does: meta decorators [{name: dataclass}]); the other languages are unchecked."  # 3ab5
+    fields: {}  # 3ab5

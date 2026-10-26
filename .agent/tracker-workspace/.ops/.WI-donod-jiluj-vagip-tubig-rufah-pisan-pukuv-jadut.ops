@@ -42,3 +42,18 @@
   clock: 4  # 0ce5
   nonce: 0ce5  # 0ce5
   message: "2026-10-25: WI-sihiz re-checked -- same erasure line (io_boundary.py:2206); a fold must keep `status: overlay` as a deprecated alias (8 shipped overlays, templates and users' io_primitives.d carry it). Do the two together."  # 0ce5
+- op: update  # eb99
+  at: '2026-10-26T03:22:20Z'  # eb99
+  by: agent  # eb99
+  actor: jgstern_agent  # eb99
+  clock: 5  # eb99
+  nonce: eb99  # eb99
+  set:  # eb99
+    status: done  # eb99
+- op: discuss  # 6706
+  at: '2026-10-26T03:22:20Z'  # 6706
+  by: agent  # 6706
+  actor: jgstern_agent  # 6706
+  clock: 6  # 6706
+  nonce: '6706'  # 6706
+  message: "DONE in PR #1870 (merged, dev cd60932590), together with WI-sihiz. Root cause: load_catalog restored the pre-file status/stdlib_provenance only for COMMUNITY overlays; a user overlay's forced in_progress became the merged status. Fix: every overlay keeps the status from before it, except over a language with no shipped catalogue (overlay_only), where a user overlay leaves it in_progress (true: partial). LIVE REPRO ON MERGED DEV, the item's own shape, production CLI: `hypergumbo io-boundaries . --format json --io-primitives cat/my-io.yaml` on a python fixture calling mylib.ship and otherlib.frobnicate (user overlay classifies only mylib.ship), cold cache: rc 0, the unrelated otherlib.frobnicate external_potential chain reads dst_classification_unreliable False, with defaults AND with --no-default-overlays, and with the legacy `status: overlay` spelling too. Before the fix the same shape read True in both configurations (red tests test_cli_io_boundaries.py::test_a_user_overlay_does_not_mark_unrelated_chains_unreliable[False|True]; the premise check's note that it stayed False under --no-default-overlays was wrong). Tests: test_default_overlays.py::test_a_user_overlay_leaves_the_catalogue_status_alone (status provenance_declared and stdlib_provenance unchanged, with and without defaults; replaces the test that pinned the old behaviour as 'a separate question'); the uncatalogued-language in_progress pin (test_io_overlay_uncatalogued_language.py) still passes. Also corrected spec §15: four catalogues are provenance_declared (javascript was missing)."  # 6706

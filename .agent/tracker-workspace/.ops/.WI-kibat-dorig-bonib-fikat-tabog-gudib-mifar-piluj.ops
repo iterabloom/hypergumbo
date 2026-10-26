@@ -18,3 +18,18 @@
     pr_ref:  # 258d
     description: "Noticed 2026-10-25 during the independent check of WI-tikan: `hypergumbo sketch` on a Django fixture prints a data model as `Author (django django model)`. The concept-derived DataModel label is already '{framework} model' and the sketch formatter prefixes the framework again (sketch.py ~5856, _format_datamodels 5811-5871). Fix: render the framework once (omit the prefix when the label already starts with it, or stop composing the framework into the label). Test on a Django and a Pydantic fixture. Unchecked lead from the same run: `BookSchema(BaseModel)` was labelled '(Schema)' from the naming heuristic, which suggests the Pydantic base-class detector did not fire -- confirm before filing."  # 258d
     fields: {}  # 258d
+- op: update  # bb78
+  at: '2026-10-26T02:09:43Z'  # bb78
+  by: agent  # bb78
+  actor: jgstern_agent  # bb78
+  clock: 2  # bb78
+  nonce: bb78  # bb78
+  set:  # bb78
+    status: done  # bb78
+- op: discuss  # 84d4
+  at: '2026-10-26T02:09:43Z'  # 84d4
+  by: agent  # 84d4
+  actor: jgstern_agent  # 84d4
+  clock: 3  # 84d4
+  nonce: 84d4  # 84d4
+  message: "DONE in PR #1869 (merged, dev 7c32fad94c). Root cause: _detect_from_concepts composed the framework into the label ('django model') and sketch's formatter prefixed DataModel.framework again; the formatter's own tests already built label='model', framework='Django', so the producer broke the contract. Fix: the concept label names the construct only; sketch._datamodel_description composes '{framework} {label}' once for grouped AND fallback lines (the fallback used to drop the framework). LIVE REPRO ON MERGED DEV, the item's own shape, production CLI: `hypergumbo sketch` on app/models.py (class Author(models.Model) + class BookSchema(BaseModel)), cold XDG_CACHE_HOME -> rc 0, 'Author (django model)' (was 'Author (django django model)'). Test: test_sketch.py::TestFormatDatamodels::test_concept_model_names_its_framework_once (detect_datamodels -> _format_datamodels, grouped + fallback) and test_datamodels.py::test_label_does_not_repeat_the_framework[model|schema|entity]. The item's unchecked Pydantic lead is CONFIRMED and filed separately as WI-kiluh: BookSchema still reads '(Schema)' because the base-class detector reads meta parent_bases, which no analyzer emits."  # 84d4
