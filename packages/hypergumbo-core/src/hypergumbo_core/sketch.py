@@ -5361,6 +5361,12 @@ def _estimate_test_coverage(
         for edge in edges
         if getattr(edge, "edge_type", None) == "calls"
     ]
+    # WI-fakuh: the same anchor contract test-coverage and dead-code read --
+    # module-level code and class bodies run with their container, so a test
+    # reaches its own test module's and class's.
+    from .anchor_execution import anchor_execution_edges
+
+    call_edges += anchor_execution_edges(symbols, edges)
 
     # Use shared helper for transitive BFS
     tests_per_target = compute_transitive_test_coverage(
