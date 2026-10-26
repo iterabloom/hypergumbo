@@ -326,8 +326,10 @@ class TaintSink:
     """A function/method/attribute that should not receive tainted data.
 
     Attributes:
-        zone: The trust zone (e.g. "host_fs", "network", "host_env", "ipc",
-            "browser_storage", "relay").
+        zone: The trust zone: a built-in one (an ``AUTO_SINK_ZONE_MAP``
+            value such as "host_fs" or "network", or ADR-0060's
+            "code_execution" / "dom_injection") or one a user sink catalogue
+            declares (e.g. PlazaFlow's "relay").
         trust_level: The trust level (e.g. "untrusted", "semi-trusted").
             Exactly one value has an effect: ``"trusted"``
             (:data:`TRUST_LEVEL_TRUSTED`), which a project declares on a sink
@@ -611,8 +613,12 @@ class TaintFlowFinding:
             for THIS FLOW'S SOURCE FUNCTION — the language has no def/use
             extractor, or that particular function was not analyzed — so no
             walk was possible), ``ddg`` (the walk ran and confirmed a
-            dependence), or ``ddg_mixed`` (the walk ran and did not confirm
-            one, so inclusion rests on call-graph reachability). ``confidence``
+            dependence), or ``ddg_mixed`` (the walk did not confirm one:
+            reaching-def data covered the source function, but a guard above
+            the walk failed, ``not_attempted``, or the walk ran and lost the
+            value, ``escaped``; a flow the walk refuted is removed, so it never
+            carries this label. Inclusion rests on call-graph reachability).
+            ``walk_verdict`` says which. ``confidence``
             collapses the last two into ``approximate``; this is the finer
             axis, because "the analysis looked and found nothing" and "the
             analysis could not look" are different facts. The discriminant is
@@ -923,7 +929,8 @@ class TaintFlowFinding:
 #: The two ``analysis_method`` values that mean "inclusion rests on call-graph
 #: reachability, not on a confirmed data dependence". ``structural`` = no
 #: reaching-def data existed for the source function so no walk was possible;
-#: ``ddg_mixed`` = the walk ran and did not confirm one. Different facts, same
+#: ``ddg_mixed`` = the walk did not confirm one (it was not attempted, or it ran
+#: and lost the value; a refuted flow is removed). Different facts, same
 #: consequence for what the finding is entitled to claim.
 UNADJUDICATED_METHODS = frozenset({"structural", "ddg_mixed"})
 
@@ -1934,9 +1941,10 @@ def load_taint_catalog(
 # candidate sink for tainted data; every io_primitives read-side primitive
 # for a sensitive category is a candidate source.
 #
-# Since 2026-04 (commit 51e1d232f3) the shipped sink catalog no longer
-# exists as a separate ``taint_sinks/`` directory — sinks derive entirely
-# from io_primitives via the mapping below.  Sources still ship as YAML in
+# I/O sinks derive entirely from io_primitives via the mapping below (commit
+# 51e1d232f3 retired the hand-kept ``taint_sinks/`` that drifted from it).
+# ``taint_sinks/`` ships again for sinks with NO I/O counterpart only
+# (``code_execution``, ``dom_injection``; ADR-0060).  Sources still ship as YAML in
 # ``taint_sources/`` because their taint_label is project-meaningful
 # (host_secret vs untrusted_input vs ...) and not derivable from the
 # IO-boundary category alone.
@@ -5752,8 +5760,10 @@ def propagate_taint_ddg(
        reachability.
 
     Mixed-coverage verdict (ADR-0017 §3c-3d):
-    - If source AND sink functions both have DDG data: ``confidence="precise"``
-    - If either lacks DDG data: ``confidence="approximate"``
+    - ``confidence="precise"`` only where the §3a walk actually confirmed a
+      data dependence (``walk_verdict == "confirmed"``); DDG coverage at both
+      ends is necessary, not sufficient (INV-sadah)
+    - Everything else: ``confidence="approximate"``
     - Structural-only findings (no DDG anywhere): fall back entirely to
       ``propagate_taint_structural()``.
 

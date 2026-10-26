@@ -67,8 +67,9 @@ WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — III, and it is the argument at
 the top of this docstring applied to this module's OWN removal count.
 ``flows_removed_by_walk`` is published beside a ``findings_by_analysis_method``
 rollup in which ``ddg_mixed`` collapses THREE walk verdicts and ``structural``
-covers a fourth (``unavailable`` — the walk ran but the DDG held no reaching-def
-data for that flow's source function). Only ``unconfirmed`` can remove a flow.
+covers a fourth (``unavailable`` — the walk did not run, because the DDG held no
+reaching-def data for that flow's source function). Only ``unconfirmed`` can
+remove a flow.
 So a bare ``0`` could mean "the walk adjudicated every flow and refuted none" or
 "the walk never got to look at any of them", which is the same pair of opposite
 meanings on identical evidence that this module exists to prevent for "0 precise

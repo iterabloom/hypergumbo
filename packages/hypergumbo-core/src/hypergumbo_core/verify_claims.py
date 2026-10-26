@@ -394,9 +394,11 @@ from .paths import classify_test_file, is_migration_file
 # ``sink_primitive`` reads one of the primitives the row names rather than a
 # field that vanished.
 # 2.3 adds ``walk_verdicts`` inside ``dataflow_coverage`` — the §3a walk's own
-# result for every finding (``confirmed`` / ``unconfirmed`` / ``escaped`` /
-# ``not_attempted`` / ``unavailable``, plus ``mixed`` for a collapsed row whose
-# members disagreed and ``unrecorded``). See ADR-0052.
+# result for every finding (``confirmed`` / ``escaped`` / ``not_attempted`` /
+# ``unavailable``, plus ``mixed`` for a collapsed row whose members disagreed
+# and ``unrecorded``). ``unconfirmed`` is a key too but always 0 here: a flow
+# the walk refuted is diverted before it becomes a finding and is counted in
+# ``refuted_flows``. See ADR-0052.
 #
 # THIS IS THE BORDERLINE CASE THE catalog_provenance PARAGRAPH ABOVE DESCRIBES,
 # and it is called out rather than decided silently. By that rule it would NOT
@@ -430,9 +432,10 @@ from .paths import classify_test_file, is_migration_file
 # which is the carve-out's "changed the meaning of an existing key".
 VERIFY_CLAIMS_SCHEMA_VERSION = "2.6"
 
-#: Verdict values that ASSERT THE CLAIM HOLDS. The one predicate for "did this
-#: claim pass", consumed by the coverage gate, the CLI's exit code and the CLI's
-#: summary counter alike.
+#: Verdict values that ASSERT THE CLAIM HOLDS. The predicate for "did this
+#: claim pass" inside this module (the coverage gate). The CLI's exit code and
+#: summary counter in ``cli.cmd_verify_claims`` do not consume it: they compare
+#: verdict literals.
 #:
 #: This exists because adding a fourth verdict value is exactly the change that
 #: punches holes in ``!= "confirmed"`` tests scattered across consumers. The
@@ -1560,14 +1563,18 @@ class ClaimVerdict:
             one of the ``CAVEAT_*`` constants or ``deferred_crossing`` (see
             the module docstring) — and the structure is a LIST of typed
             entries rather than a bool so each new kind needs no new field.
-        evidence_count: Number of I/O chains that violate the claim (0 if confirmed).
+        evidence_count: Number of I/O chains that violate the claim; 0 for a
+            clean verdict, except the ``sink_before_source``-only path, whose
+            ``confirmed_with_caveats`` counts the deferred flows it reports.
         details: Human-readable explanation.
         evidence: Bounded, deduplicated list of per-flow drill-down records for
             a violated taint claim (WI-kikis). Each entry carries
             ``source_symbol`` / ``sink_symbol`` (the graph node IDs a consumer
             uses to locate the exact edge), the corresponding primitive names,
             and the ``path`` (list of symbol IDs through the call graph). Empty
-            for confirmed / inconclusive / boundary verdicts. Capped at
+            for confirmed / inconclusive / boundary verdicts, except the
+            ``sink_before_source``-only ``confirmed_with_caveats``, which lists
+            its deferred flows. Capped at
             ``_MAX_EVIDENCE_ROWS`` DISTINCT flows — ``evidence_count`` remains
             the full total, so ``len(evidence) < evidence_count`` signals either
             verbatim-duplicate flows collapsed away or a high-count claim
@@ -1610,10 +1617,11 @@ class ClaimVerdict:
             are no counted flows. Same shape and rationale as
             ``flow_origins``: the pipeline computed this and the consumer
             could not see it. ``ddg`` means the ADR-0017 §3a walk found a data
-            dependence; ``ddg_mixed`` means the walk ran and did not confirm
-            one, so inclusion rests on call-graph reachability; ``structural``
-            means no reaching-def data existed for the language and no walk
-            was possible. ``confidence`` collapses the last two into
+            dependence; ``ddg_mixed`` means it did not confirm one -- a guard
+            above the walk failed, or it ran and lost the value (a refuted flow
+            is removed, never counted here) -- so inclusion rests on call-graph
+            reachability; ``structural`` means no reaching-def data existed for
+            the flow's source function and no walk was possible. ``confidence`` collapses the last two into
             ``approximate``, which is why this is the finer axis and the one
             worth carrying — "the analysis looked and found nothing" and "the
             analysis could not look" are different facts about a security
@@ -3628,7 +3636,8 @@ def _opaque_launch_sites(
     TWO CHANNELS, ONE QUESTION (INV-larol). A catalogue is not the only thing
     that knows a call is a launch. The bash analyzer stamps
     ``meta.io_boundary = "command_launch"`` on an external-command edge because
-    there is no bash catalogue to match against and ADR-0016 rules one out, so
+    bash's catalogue covers only the shell's own redirections and ADR-0016 rules
+    out cataloguing external commands, so
     that stamp is the ONLY evidence of opacity those edges will ever carry.
     Consulting the catalogue alone left it unread. The producer stamp is
     therefore checked FIRST, before ``classify_call``: a catalogue row can
@@ -4546,13 +4555,12 @@ def untyped_receiver_sink_zones(
     unrelated dict ``.get`` must not be able to qualify a ``network`` verdict.
     Returning a MAP rather than a flat list is what makes that structural.
 
-    ASKED OF THE SINK CATALOGUE, NOT MAPPED FROM BOUNDARIES. Every sink hypergumbo
-    ships today is auto-derived from an I/O primitive through
-    ``AUTO_SINK_ZONE_MAP`` (measured: all 214 python sinks, and every zone present
-    is reachable from that map), so inverting the boundary map would return an
-    IDENTICAL answer on the shipped catalogue and would have been less code. It is
-    not what this does, because the equality holds by construction and is enforced
-    nowhere: a repository that declares its own sink via ``--taint-sinks`` names a
+    ASKED OF THE SINK CATALOGUE, NOT MAPPED FROM BOUNDARIES. When this was written
+    every shipped sink was auto-derived from an I/O primitive through
+    ``AUTO_SINK_ZONE_MAP``, so inverting the boundary map would have returned an
+    identical answer. It no longer would: ADR-0060 ships sinks with no I/O row
+    (``code_execution``, ``dom_injection``) in ``taint_sinks/``. And the equality
+    was never enforced anywhere: a repository that declares its own sink via ``--taint-sinks`` names a
     method the I/O catalogue has never heard of, and inverting the map would
     silently disclose nothing about it. Under-reporting a caveat is a quieter
     failure than a false ``confirmed``, but it is the same species — asserting a
@@ -5751,9 +5759,10 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
         "confidence": v.confidence,
         "analysis_method": v.analysis_method,
         # INV-zidur: WHAT THE WALK RETURNED, beside which analysis ran.
-        # ``analysis_method == "ddg_mixed"`` is three different outcomes —
-        # the walk refuted, the walk escaped, or the walk never ran because a
-        # guard above it was not met — and a consumer cannot tell
+        # ``analysis_method == "ddg_mixed"`` on an evidence row is two
+        # different outcomes — the walk escaped, or it never ran because a
+        # guard above it was not met (a flow the walk refuted is removed
+        # before it reaches evidence) — and a consumer cannot tell
         # removal-on-knowledge from removal-on-ignorance without this. It is
         # the field ADR-0017 §7a's addressable domain has to be priced on;
         # pricing it on ``analysis_method`` is what made WI-kabif's own

@@ -437,11 +437,11 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         description=(
             "The same question as subprocess -- did control leave this "
             "process? -- asked of the producer-stamped channel (INV-larol). "
-            "bash.py stamps it directly because there is no bash catalogue and "
-            "per ADR-0016 there is not going to be one: cataloguing curl as "
-            "net_send would attribute curl's network activity to the shell "
-            "script. Definite but uncurated, so disclosed and excluded from "
-            "the headline."
+            "bash.py stamps it directly because bash's catalogue covers only "
+            "the shell's own redirections, and per ADR-0016 external commands "
+            "will not be catalogued: cataloguing curl as net_send would "
+            "attribute curl's network activity to the shell script. Definite "
+            "but uncurated, so disclosed and excluded from the headline."
         ),
     ),
 )
