@@ -3292,6 +3292,27 @@ def _narrow_by_target_kind(
     return kept
 
 
+def boundaries_of(meta: "Mapping[str, Any] | None") -> list[str]:
+    """Every boundary an edge's classification says it reaches (WI-votat).
+
+    ``io_boundaries`` when the call is true for more than one (a
+    ``simultaneous`` row, or a collapsed edge whose sites span modes); it
+    always contains the scalar. Else the scalar ``io_boundary``, which alone
+    names only the FIRST declared row (first-declared-wins). A consumer that
+    asks "does this edge reach boundary B" reads this, never the scalar:
+    ``slice --io-boundary subprocess`` read the scalar and dropped every
+    ``ipc_recv`` + ``subprocess`` launch (``subprocess.check_output``,
+    ``execSync``) that ``io-boundaries`` lists under both.
+    """
+    if not meta:
+        return []
+    many = meta.get("io_boundaries")
+    if many:
+        return list(many)
+    one = meta.get("io_boundary")
+    return [one] if one else []
+
+
 def mode_spanned_boundaries(
     catalog: "IoBoundaryCatalog",
     match: IoPrimitive,
@@ -4393,7 +4414,7 @@ def compute_boundary_map(
         # ``io_boundaries`` is absent for every primitive that is not
         # simultaneously true, so this falls back to exactly one chain and the
         # ~99% of the corpus that is single-boundary pays nothing.
-        for chain_boundary in (meta.get("io_boundaries") or [boundary]):
+        for chain_boundary in boundaries_of(meta):
             by_boundary.setdefault(chain_boundary, []).append(IoChain(
                 boundary=chain_boundary,
                 primitive=primitive,
