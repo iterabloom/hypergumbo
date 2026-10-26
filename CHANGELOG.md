@@ -46,6 +46,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Swift initialisers and deinitialisers are symbols**, and `T(...)` lands on the `init` it runs.
 - **Python class-body calls emit calls edges**, anchored on the class.
+- **A Python call spelled through a dotted module path binds in the tree**: `import pkg.sub.deep; pkg.sub.deep.deep_fn()` reaches `deep_fn` instead of a phantom `external_symbol` (in a workspace, one carrying the sibling package's name). A dotted method call on an in-tree module constant (`pkg.REGISTRY.get()`) references the constant, as the `from pkg import REGISTRY` spelling already did.
 - **Finalize no longer replaces a typed bind with an unresolved stub** for a method named like a stdlib interface (`Close`, `Parse`, `Write`, ...). Two binds were demoted: a C++ call on a receiver whose declaration names its class (`Logger lg; lg.Close();`), and a call a class makes to its own method from a static field initializer (Java, C#, Kotlin). The magnet detector now places every `meta.receiver` value, and a test fails on one it does not place. On bento4, 251 published C++ binds were being demoted.
 - **A Python local named like a field no longer retypes or erases `self.<field>`**, so `self.conn.ping()` lands on the field's class.
 - **Rust `type` aliases are symbols**; **a Dockerfile variable is one symbol per build stage**.
