@@ -1,0 +1,60 @@
+Original commit body from 03a9b9d6f2dce6c8479e0adcc67a98576173fc56:
+
+ADR-0050 section 1's axiom ("a boundary value names what data crosses the
+process boundary at this call site") was applied three ways in the
+catalogues: by MEDIUM (logging "names a medium"), by CONTENT (env_read
+"values that may carry a credential", document.cookie as env_read), and by
+CHOOSER (navigation_read, "a value the party that navigated chose"). The
+owner endorsed the medium reading (2026-10-22) and ruled its exact form
+(2026-10-25, via WI-zidam's cookie route):
+
+  A row's primary boundary names the MEDIUM; a `simultaneous` second
+  boundary may record the reading a taint label needs (credential-bearing;
+  chosen by the party that navigated), as the shipped INV-dadu URL rows
+  already do. It must state outright that env_read therefore still means
+  both the process environment and "may carry a credential".
+
+Rewritten in place, no addendum (docs/adr/README.md lifecycle):
+* ADR-0050 section 1: the axiom in that form; env_read's two readings stated
+  outright (primary = the process environment: env vars and the ambient
+  configuration a deployment supplies; wherever declared = may carry a
+  credential, hence host_secret); INV-tutar's split restated on the medium
+  (host description and identity come from the host). The claim that the
+  axiom was "taken verbatim from ADR-0049 ruling 1" was false -- ruling 1 is
+  the transfer test, a different sentence -- and now says the axiom applies
+  that test to the axis.
+* io_boundary_types: the module's axiom, and the env_read, host_info_read
+  and navigation_read definitions, which were the content / identity /
+  chooser readings the premise check found (navigation_read's now also says
+  env_read is the URL rows' scalar io_boundary by declaration order).
+* scripts/generate-concept-axes' hard-coded axiom and data_crossing text;
+  docs/concept-axes.md regenerated.
+* elixir.yaml / erlang.yaml Application.get_env notes asserted the opposite
+  of the ruling ("env_read means 'may carry a credential', NOT 'reads the
+  process environment'"); they now say application config is the
+  environment's medium and may carry a credential. No boundary changes.
+
+No row's boundary changes in this PR, so no output moves. Left to their
+owners, with the reasoning recorded on each:
+* document.cookie's env_read and the argv rows -> WI-zidam (its route). The
+  INV-dadu URL rows read env_read as their scalar io_boundary by
+  first-declared-wins (registry order, pinned by three tests); whether
+  their primary should be navigation_read is noted on WI-zidam -- the
+  ruling cites those rows as already conforming, and since WI-votat no
+  consumer that asks "does this edge reach B" reads the scalar.
+* python socket.socket send/recv and node net.Socket over AF_UNIX are the
+  abstain rows C keeps too; deciding them per call site needs an analyzer
+  io_target_kind stamp like C's (WI-baran) -> WI-muful.
+* asyncio.start_unix_server / go net.ListenUnix: no ipc-side listen value
+  exists, so they need a vocabulary ruling -> WI-gaziv.
+* swift.yaml's "argv is env_read in every catalogue" -> WI-zidam.
+
+Local verification: two full smart-test runs each ended with one failure,
+tests/test_autopr_signal_termination.py::test_each_signal_is_named_rather_
+than_collapsed (subprocess TimeoutExpired after 30s under full parallel
+load; selected because scripts/ changed). It passes alone (8 passed in
+1.9s) and exercises scripts/auto-pr's signal traps, which this PR does not
+touch. Because the run failed, smart-test printed no coverage verdict; the
+only changed Python source is string literals in io_boundary_types.py.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
