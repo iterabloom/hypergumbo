@@ -1,0 +1,43 @@
+Original commit body from 96c086c84303a4242d308dfb0f22487b37eeee21:
+
+_merge_with_user_override keyed on (module, name, kind) alone, so a user
+row for a function that carries several labels (sources) or zones
+(sinks) displaced all of them. Two live shapes, both reproduced:
+
+- Sources. A user I/O overlay can give a function two labels today
+  (`simultaneous` env_read + net_recv on mylib.fetch); a
+  --taint-sources file naming only untrusted_input for it dropped its
+  host_secret source too, and `host-secret-no-host-fs` on
+  `os.remove(mylib.fetch())` went violated -> confirmed_with_caveats
+  (displaced_shipped_entry). The item's premise ("cannot happen until a
+  function row gains two labels") missed the overlay route.
+- Sinks, the same mechanism (not in the filed item; same function).
+  26 shipped sink functions carry several zones, e.g. C/C++
+  unistd.write = host_fs + ipc + network; a user row trusting its
+  network sink dropped the host_fs and ipc sinks as well.
+
+THE RULE. A user entry whose label (taint_label / zone) the function
+already carries replaces that entry only; its siblings stay. A user
+entry naming a label or zone the function does not carry re-labels or
+re-zones the whole function, which keeps the two ruled overrides intact:
+INV-hukug's (16 cmd_* sources moved to a new label) and INV-faput's
+(os.remove moved into a user dev_zone). Label-only keying would have
+broken both. Every dropped entry is still returned as displaced.
+
+MEASURED EFFECT ON DEFAULT RUNS: none. With no user catalogue, the
+built-in YAML displaces 0 auto-derived sources/sinks, and 0 of 15
+community sources share a function with a built-in of a different
+label. Only user-supplied layers change, and only toward keeping
+findings.
+
+Live, production CLI on the branch, the shape above:
+`verify-claims . --claims claims.yaml --io-primitives two-label-io.yaml
+--taint-sources user-src.yaml` -> host-secret-no-host-fs violated
+(evidence 1), the same as without the user file.
+
+Docs: taint.py module docstring, the verify-claims stderr banner, spec
+"Adding your own taint catalogues".
+
+Addresses WI-mozig.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
