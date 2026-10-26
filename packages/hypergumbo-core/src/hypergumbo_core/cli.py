@@ -8493,12 +8493,16 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         print("No functions found to analyze.", file=sys.stderr)
         return 0
 
-    # Extract call edges for transitive BFS
+    # Extract call edges for transitive BFS, plus WI-fakuh's walk-only
+    # anchor edges: module-level code and class bodies run with their
+    # container, so a test reaches its own test module's and class's.
+    from .anchor_execution import anchor_execution_edges
+
     call_edges = [
         (edge.get("src", ""), edge.get("dst", ""))
         for edge in edges
         if edge.get("type") == "calls"
-    ]
+    ] + anchor_execution_edges(nodes, edges)
 
     # Compute transitive test coverage using shared helper
     tests_per_target = compute_transitive_test_coverage(
@@ -9434,6 +9438,12 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # after seed detection, so no emitted edge and no other consumer moves.
     for _owner, _init in _construction_initializer_edges(nodes, edges):
         call_graph.setdefault(_owner, []).append(_init)
+    # WI-fakuh: and code anchored on a file or class runs when its container
+    # does (anchor_execution's contract), walk-only like the edges above.
+    from .anchor_execution import anchor_execution_edges
+
+    for _container, _anchor in anchor_execution_edges(nodes, edges):
+        call_graph.setdefault(_container, []).append(_anchor)
 
     reachable = _bfs_reachable(seed_ids, call_graph)
 

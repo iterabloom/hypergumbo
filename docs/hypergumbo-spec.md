@@ -159,6 +159,10 @@ reachable`, the same `production_callables` denominator `test-coverage` uses).
 Each candidate carries a `reachability` field (`test_only` / `unreachable` / null)
 with both denominators published. Its JSON envelope has its own
 `DEAD_CODE_MAYBE_SCHEMA_VERSION` (0.2.0), not the shared `READ_VIEW_SCHEMA_VERSION`.
+Code anchored on a file or class (module-level calls, class bodies, static
+initializers) runs when its container does -- a file when any symbol it contains
+is reached or a loaded file imports it -- and `dead-code-maybe`, `test-coverage`
+and sketch's coverage line all walk that one rule (`anchor_execution`, WI-fakuh).
 
 🟩 **`hypergumbo compact --input FILE [--out FILE] [--max-symbols N] [--min-symbols N] [--coverage C]`**
 Rewrites a behavior map into a compact form with coverage-based truncation.

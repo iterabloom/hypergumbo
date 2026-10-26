@@ -58,6 +58,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`slice --io-boundary` keeps a call for every boundary it crosses.** A call true for two boundaries (`subprocess.check_output` is `ipc_recv` and `subprocess`; `child_process.execSync`; the `navigation_read` rows) was kept only for the first declared one, so `--io-boundary subprocess` silently dropped it while `io-boundaries` listed it under both. Both now read one helper, `io_boundary.boundaries_of`.
 
+#### Dead code and test coverage
+
+- **A helper called only from module-level code or a class body is not dead or untested.** `REGISTRY = build_registry()` runs when its module is imported, and a test module's `CASES = build_cases()` and test class bodies run when the runner loads it; `dead-code-maybe`, `test-coverage` and sketch's coverage line now share one rule for when anchored code runs. Measured on django: `--seeds entrypoints` 8,581 -> 8,297 dead, default seeds 1,364 -> 1,353, 43 more functions tested; none newly dead.
+
 #### Sketch
 
 - **A data model names its framework once**: `Author (django model)`, not `Author (django django model)`.
