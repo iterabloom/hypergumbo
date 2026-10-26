@@ -27,3 +27,26 @@
   clock: 2  # 4e5a
   nonce: 4e5a  # 4e5a
   message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT. Java `class P { static int Parse(String s); static int compute(String s); static int X = Parse(\"1\"); static int Y = compute(\"1\"); static int fromMethod(){ return Parse(\"2\"); } }` publishes P:class -> java:external:0-0:Parse:unresolved (ambiguous, 0.5) while fromMethod -> P.Parse is kept at 0.85; analyze_java binds P -> P.Parse at 0.85 before finalize. C# and Kotlin behave the same; a nested Outer.Inner anchoring Close(\"1\") is demoted too. Refs: receiver_blind_magnets.py:247-251 accurate; demotion call finalize.py:410 (function :391); _harmful_magnet_reason :299-321; _STDLIB_INTERFACE_METHODS :261-285. Scope is narrower than the title: the detector misflags EVERY class-anchored own-method call (compute too), but finalize demotes only for the ~25 stdlib-interface names (Parse, Close, Read, Write, String, Error, Len, Value...). Fix precision: for a type-like src kind the owner is the anchor's full generic-stripped name, NOT owner_of(name) -- owner_of('Outer.Inner') is 'Outer' while owner_of('Outer.Inner.Close') is 'Outer.Inner'; per the ADR-0023 contract (WI-fazup) a consumer reads the src kind. The regression test must include the nested case. Unchecked side gap: Python `class C: def Read(s): ...; x = Read(\"1\")` gives C:class -> python:external:0-0:Read:external_symbol. P2 kept."  # 4e5a
+- op: update  # c55f
+  at: '2026-10-26T09:10:48Z'  # c55f
+  by: agent  # c55f
+  actor: jgstern_agent  # c55f
+  clock: 3  # c55f
+  nonce: c55f  # c55f
+  set:  # c55f
+    status: done  # c55f
+- op: discuss  # de0c
+  at: '2026-10-26T09:10:48Z'  # de0c
+  by: agent  # de0c
+  actor: jgstern_agent  # de0c
+  clock: 4  # de0c
+  nonce: de0c  # de0c
+  message: "DONE in PR #1874 (merged, dev 1b50a90482). Root cause: the same-owner exemption read the caller's owner as owner_of(name), and a class-kind anchor is its own owner (owner_of('P') is None, owner_of('Outer.Inner') is 'Outer'). Fix: _caller_owner returns the generic-stripped full name for a src whose kind is in type_like_kind_names() (read off the node, per the ADR-0023 kind contract), owner_of otherwise.\nBEHAVIOURAL EVIDENCE, the filed repro re-run on merged dev: Java `class Outer { static int Parse(String s); static int compute(String s); static int X = Parse(\"1\"); static int Y = compute(\"1\"); static int fromMethod(){ return Parse(\"2\"); } static class Inner { static int Close(String s); static int Z = Close(\"1\"); } }` -> Outer -> Outer.Parse 0.85 (was java:external:0-0:Parse:unresolved), Outer.Inner -> Outer.Inner.Close 0.85 (the nested case), fromMethod unchanged. Production-path tests for java, csharp and kotlin (test_magnet_demotion_keeps_typed_binds.py); unit controls that a class anchor calling ANOTHER class's method, and an outer anchor calling a nested class's method, are still flagged.\nMEASURED: jenkins and spring-petclinic 0 type-anchor demotions (camelCase methods rarely hit the PascalCase list); C# effect unmeasured (no C#-heavy repo on hand). The Python side gap in the premise note is NOT this defect: `class C: def Read(s): ...; x = Read(\"1\")` publishes C -> python:external:0-0:Read:external_symbol for compute too, i.e. the python analyzer does not bind a class-body bare call to a class-scope function at all -- filed separately."  # de0c
+- op: update  # ae7d
+  at: '2026-10-26T09:11:05Z'  # ae7d
+  by: agent  # ae7d
+  actor: jgstern_agent  # ae7d
+  clock: 5  # ae7d
+  nonce: ae7d  # ae7d
+  set:  # ae7d
+    pr_ref: '1874'  # ae7d

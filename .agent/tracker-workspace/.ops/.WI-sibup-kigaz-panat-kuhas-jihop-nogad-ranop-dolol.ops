@@ -26,3 +26,26 @@
   clock: 2  # bd26
   nonce: bd26  # bd26
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Named instance in WI-kosup section D: _RECEIVER_MARKERS is a hand-written subset of meta['receiver'] that did not grow with it. The fix here does NOT wait for the sweep. The structural fix (structural-fix protocol) places EVERY receiver value in or out of the set, with a test that fails when a new value is unplaced, not only adding declared_type. The proposed partition gate WI-kosup files is the general form."  # bd26
+- op: update  # 7822
+  at: '2026-10-26T09:10:48Z'  # 7822
+  by: agent  # 7822
+  actor: jgstern_agent  # 7822
+  clock: 3  # 7822
+  nonce: '7822'  # 7822
+  set:  # 7822
+    status: done  # 7822
+- op: discuss  # 5980
+  at: '2026-10-26T09:10:48Z'  # 5980
+  by: agent  # 5980
+  actor: jgstern_agent  # 5980
+  clock: 4  # 5980
+  nonce: '5980'  # 5980
+  message: "DONE in PR #1874 (merged, dev 1b50a90482). Root cause: the magnet detector read \"was the target type identified\" from a hand-written subset of meta['receiver'] values that never gained declared_type. Fix: the subset is now RECEIVER_IDENTIFIES_TARGET, a mapping that places all 11 written values (identified: typed_var, typed_field, field_chain, declared_type, self, external, constant_external, stdlib, qualified; receiver-blind: bare, generic). test_receiver_vocabulary_partition walks every analyzer source (AST) and fails on a written value the mapping does not place and on a placed value nothing writes, with a positive control. Ruby checked: 'self' binds only the enclosing class's own method (identified); 'generic' binds Const.m but also Const.other(..).m (kept blind); 'bare' kept blind.\nBEHAVIOURAL EVIDENCE, the filed repro re-run on merged dev: `hypergumbo survey` on `class Logger { public: void Close() {} void Flush() {} }; class App { public: void run() { Logger lg; lg.Close(); lg.Flush(); } };` exit 0 -> App::run -> cpp:app.cpp:1-1:Logger..Close:method 0.85 (was cpp:external:0-0:Close:unresolved 0.4), Flush unchanged at 0.85. Production-path test: test_magnet_demotion_keeps_typed_binds.py::test_cpp_declared_type_receiver_keeps_its_bind.\nMEASURED (published graph re-checked under the old rule): bento4 251 published C++ binds the old rule demoted, all declared_type; spot-checked WriteAdtsHeader's output->Write on an AP4_ByteStream* parameter -> AP4_ByteStream::Write, correct. Registry and spec prose for the receiver key corrected (8 of 11 values listed, Swift missing as a producer, 'no consumer branches on it' false); the key's two-axes leak stays WI-mujug's."  # 5980
+- op: update  # 7439
+  at: '2026-10-26T09:11:05Z'  # 7439
+  by: agent  # 7439
+  actor: jgstern_agent  # 7439
+  clock: 5  # 7439
+  nonce: '7439'  # 7439
+  set:  # 7439
+    pr_ref: '1874'  # 7439
