@@ -512,6 +512,7 @@ class Symbol:
                                # producer computed exportedness for this record
                                # (INV-kubup) — seventeen analyzer modules have a
                                # rule and ninety-odd do not
+    supply_chain_classified: bool  # internal, not serialized: the annotator classifies a node only while False (WI-lidig)
     cyclomatic_complexity: Optional[int]
                                # McCabe (decision points + 1); None when the
                                # producing analyzer does not compute it

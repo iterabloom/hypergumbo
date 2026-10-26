@@ -336,6 +336,7 @@ def link_annotations(
             ).hexdigest()[:16]
             route_sym.supply_chain_tier = 1
             route_sym.supply_chain_reason = "@hg:route annotation"
+            route_sym.supply_chain_classified = True  # WI-lidig
             result_symbols.append(route_sym)
 
     # --- Create dispatches_to edges for @hg:dispatches directives ---

@@ -391,6 +391,8 @@ def _symbol_spec() -> ClassSpec:
         cls=Symbol,
         description="A code symbol (function, class, method, etc.)",
         folded={name: "supply_chain" for name in supply_chain_fields},
+        # WI-lidig: the annotator's internal "already classified" flag.
+        omitted={"supply_chain_classified"},
         composites={
             "supply_chain": {
                 "type": "object",

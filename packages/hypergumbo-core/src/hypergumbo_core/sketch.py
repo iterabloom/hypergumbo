@@ -5582,6 +5582,7 @@ def _run_analysis(
         classification = classify_file(file_path, repo_root, package_roots)
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
+        symbol.supply_chain_classified = True  # WI-lidig
         symbol.is_test_file = classification.is_test
         symbol.is_example_file = classification.is_example
         symbol.is_config_file = classification.is_config
