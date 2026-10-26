@@ -5,8 +5,6 @@ from __future__ import annotations
 import pytest
 
 from hypergumbo_core.datamodels import (
-    DataModel,
-    DataModelKind,
     detect_datamodels,
     _detect_from_concepts,
     _detect_from_decorators,
@@ -64,7 +62,7 @@ class TestDetectFromConcepts:
         models = _detect_from_concepts([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.ORM_MODEL
+        assert models[0].label == "model"
         assert models[0].confidence == 0.95
         assert models[0].framework == "Django"
 
@@ -103,7 +101,7 @@ class TestDetectFromConcepts:
         models = _detect_from_concepts([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.SCHEMA
+        assert models[0].label == "schema"
         assert models[0].confidence == 0.95
 
     def test_detects_entity_concept(self) -> None:
@@ -118,7 +116,7 @@ class TestDetectFromConcepts:
         models = _detect_from_concepts([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.ENTITY
+        assert models[0].label == "entity"
         assert models[0].confidence == 0.95
 
     def test_skips_non_class_symbols(self) -> None:
@@ -184,7 +182,7 @@ class TestDetectFromDecorators:
         models = _detect_from_decorators([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.DATACLASS
+        assert models[0].label == "@dataclass"
         assert models[0].confidence == 0.90
 
     def test_detects_qualified_dataclass(self) -> None:
@@ -197,7 +195,7 @@ class TestDetectFromDecorators:
         models = _detect_from_decorators([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.DATACLASS
+        assert models[0].label == "@dataclass"
 
     def test_detects_entity_decorator(self) -> None:
         """Detects @Entity decorator."""
@@ -209,7 +207,7 @@ class TestDetectFromDecorators:
         models = _detect_from_decorators([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.ENTITY
+        assert models[0].label == "@Entity"
 
     def test_detects_table_decorator(self) -> None:
         """Detects @Table decorator."""
@@ -221,7 +219,7 @@ class TestDetectFromDecorators:
         models = _detect_from_decorators([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.ORM_MODEL
+        assert models[0].label == "@Table"
 
     def test_handles_decorator_dict_format(self) -> None:
         """Handles decorator as dict with name field."""
@@ -233,7 +231,7 @@ class TestDetectFromDecorators:
         models = _detect_from_decorators([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.DATACLASS
+        assert models[0].label == "@dataclass"
 
     def test_skips_unknown_decorators(self) -> None:
         """Skips unknown decorators."""
@@ -260,7 +258,7 @@ class TestDetectFromBaseClasses:
         models = _detect_from_base_classes([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.ORM_MODEL
+        assert models[0].label == "extends Model"
         assert models[0].framework == "Django"
 
     def test_detects_qualified_django_model(self) -> None:
@@ -273,7 +271,7 @@ class TestDetectFromBaseClasses:
         models = _detect_from_base_classes([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.ORM_MODEL
+        assert models[0].label == "extends Model"
 
     def test_detects_pydantic_basemodel(self) -> None:
         """Detects Pydantic BaseModel."""
@@ -285,7 +283,7 @@ class TestDetectFromBaseClasses:
         models = _detect_from_base_classes([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.PYDANTIC_MODEL
+        assert models[0].label == "extends BaseModel"
         assert models[0].framework == "Pydantic"
 
     def test_detects_sqlalchemy_base(self) -> None:
@@ -298,7 +296,7 @@ class TestDetectFromBaseClasses:
         models = _detect_from_base_classes([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.ORM_MODEL
+        assert models[0].label == "extends Base"
         assert models[0].framework == "SQLAlchemy"
 
     def test_detects_marshmallow_schema(self) -> None:
@@ -311,7 +309,7 @@ class TestDetectFromBaseClasses:
         models = _detect_from_base_classes([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.SCHEMA
+        assert models[0].label == "extends Schema"
 
     def test_skips_unknown_bases(self) -> None:
         """Skips unknown base classes."""
@@ -335,7 +333,7 @@ class TestDetectFromNaming:
         models = _detect_from_naming([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.DOMAIN_MODEL
+        assert models[0].label == "Domain model"
         assert models[0].confidence == 0.70
 
     def test_detects_entity_suffix(self) -> None:
@@ -345,7 +343,7 @@ class TestDetectFromNaming:
         models = _detect_from_naming([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.ENTITY
+        assert models[0].label == "Entity"
 
     def test_detects_schema_suffix(self) -> None:
         """Detects classes ending in Schema."""
@@ -354,7 +352,7 @@ class TestDetectFromNaming:
         models = _detect_from_naming([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.SCHEMA
+        assert models[0].label == "Schema"
 
     def test_detects_dto_suffix(self) -> None:
         """Detects classes ending in DTO."""
@@ -363,7 +361,7 @@ class TestDetectFromNaming:
         models = _detect_from_naming([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.DTO
+        assert models[0].label == "DTO"
 
     def test_detects_record_suffix(self) -> None:
         """Detects classes ending in Record."""
@@ -372,7 +370,7 @@ class TestDetectFromNaming:
         models = _detect_from_naming([sym])
 
         assert len(models) == 1
-        assert models[0].kind == DataModelKind.DOMAIN_MODEL
+        assert models[0].label == "Record"
 
     def test_requires_lowercase_before_suffix(self) -> None:
         """Requires lowercase letter before suffix to avoid base classes."""
@@ -462,27 +460,3 @@ class TestDetectDatamodels:
         models = detect_datamodels([sym], [])
 
         assert len(models) == 0
-
-
-class TestDataModelSerialization:
-    """Tests for DataModel serialization."""
-
-    def test_to_dict(self) -> None:
-        """Serializes DataModel to dictionary."""
-        model = DataModel(
-            symbol_id="test:User",
-            kind=DataModelKind.ORM_MODEL,
-            confidence=0.95,
-            label="Django model",
-            framework="Django",
-            rank_score=0.98,
-        )
-
-        result = model.to_dict()
-
-        assert result["symbol_id"] == "test:User"
-        assert result["kind"] == "orm_model"
-        assert result["confidence"] == 0.95
-        assert result["label"] == "Django model"
-        assert result["framework"] == "Django"
-        assert result["rank_score"] == 0.98
