@@ -26,3 +26,19 @@
   clock: 2  # 9e21
   nonce: '9e21'  # 9e21
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Counterexample to INV-nuzas's acceptance property, and its sibling stubs are also INV-kutub's tier counterexample. Its regression test feeds both property tests (WI-ziruv shape). Does not wait for either audit."  # 9e21
+- op: update  # ecb1
+  at: '2026-10-26T13:33:43Z'  # ecb1
+  by: agent  # ecb1
+  actor: jgstern_agent  # ecb1
+  clock: 3  # ecb1
+  nonce: ecb1  # ecb1
+  set:  # ecb1
+    status: done  # ecb1
+    pr_ref: '1877'  # ecb1
+- op: discuss  # b6f4
+  at: '2026-10-26T13:33:43Z'  # b6f4
+  by: agent  # b6f4
+  actor: jgstern_agent  # b6f4
+  clock: 4  # b6f4
+  nonce: b6f4  # b6f4
+  message: "DONE in PR #1877 (merged, dev 091984531e). npm: js_ts's _disambiguate_by_import answered only relative specifiers, and the cross-package guard then refused the name lookup's (correct) bind to the sibling; it now answers a bare specifier whose package an in-tree package.json names (_in_tree_package_candidate, even with one candidate; subpaths at the root or under src/). js_module resolves such a specifier to the package's entry (exports[\".\"] import/require/default, module, main, index, else src/index when the entry names build output not in the tree) instead of minting the npm stand-in. Cargo: PREMISE CORRECTION -- the calls already bound to the sibling by name (`use crate_b::helper; helper()` and `crate_b::helper()` both reach crate-b's helper on dev); the defect was the `use` edge, and it was wider than workspaces: NO Rust use edge ever reached a file (`use crate::util::tool` inside one crate was a tier-3 external_symbol too). _InTreeCrates now resolves a use rooted at crate/self/super or an in-tree crate's [package] name to the deepest module file (inline `mod x {}` blocks counted, so `mod tests { use super::*; }` names the file's own module and gets no edge). New shared reader supply_chain.own_package_name(manifest).\nBEHAVIOURAL EVIDENCE, filed repros re-run on merged dev through the CLI: npm workspace (packages/a `const { helper } = require('@ws/b'); run() { return helper(); }`) -> run -> javascript:packages/b/index.js:1-1:helper:function 0.85 (was javascript:@ws/b:0-0:helper:external_symbol); no javascript:npm:0-0:@ws/b:package node. Cargo (crate-a `use crate_b::helper;`) -> imports crate-a/src/lib.rs -> crate-b/src/lib.rs, externals: [] (was rust:crate_b::helper:0-0:module:external_symbol tier 3).\nMEASURED vs dev: firecracker imports->external_symbol 2199 -> 881, ->file 0 -> 973, tier-3 stubs 2715 -> 2190, 0 in-tree call targets lost, 14 random samples correct against source (after fixing one `use super::*` in an inline test module); aardvark-dns 17 use edges to files; apollo-server in-tree calls 819 -> 841, imports to npm stand-ins 276 -> 228.\nREMAINING (filed): javascript:@ws/b:0-0:module:external_symbol is still minted -- the analyzer's raw import edge survives beside every resolved JS import, relative ones included (WI-vadup). `use a::{b, c}` / `use a as b` emit no edge at all (WI-silam). Not checked: pnpm/yarn protocols beyond package.json names, exports subpath patterns, Cargo [lib] path and renamed dependencies. For INV-kutub: the sibling stand-in package node and the helper/module stubs (except the JS module stub, WI-vadup) are gone; what remains there is the declaration tier."  # b6f4
