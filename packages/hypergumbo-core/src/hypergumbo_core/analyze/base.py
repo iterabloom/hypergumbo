@@ -2006,9 +2006,10 @@ def populate_synthetic_class_b_identity(symbols: list[Symbol]) -> None:
     symbol-list order.
 
     WI-lidig: this pass NEVER writes ``supply_chain_tier`` /
-    ``supply_chain_reason`` — the annotator re-classifies
-    ``(tier==1 AND reason=='')`` nodes via the path classifier, and stamping a
-    reason here would break that re-classification.
+    ``supply_chain_reason`` — the annotator classifies every node whose
+    ``supply_chain_classified`` is False via the path classifier, and a
+    constructor given a tier or reason sets that flag, so stamping one here
+    would skip the classification.
     """
     # Pre-assign occurrence indices for every Class-B null-stable_id node,
     # grouped by (protocol_origin, kind, path, name) and ordered deterministically

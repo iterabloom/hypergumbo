@@ -12090,12 +12090,12 @@ def _classify_symbols(
         # to trip this skip, leaking mechanism into the distance axis; keying the
         # skip on the honest synthetic marker lets those nodes carry a real
         # first-party distance instead of a phantom internal_dep tier.
-        if (
-            symbol.supply_chain_tier != 1
-            or symbol.supply_chain_reason
-            or symbol.protocol_origin
-        ):
+        #
+        # WI-lidig: "already classified" is an explicit flag, no longer read
+        # off the default tier 1 with an empty (free-text) reason.
+        if symbol.supply_chain_classified or symbol.protocol_origin:
             continue
+        symbol.supply_chain_classified = True
         # Dependency declarations are external references, not source code —
         # unless the declared name is an in-repo workspace sibling (tier 2).
         if symbol.kind in _DEPENDENCY_KINDS:
@@ -13127,6 +13127,7 @@ def run_survey(
             if is_route:
                 s.supply_chain_tier = 1
                 s.supply_chain_reason = "route promoted from derived"
+                s.supply_chain_classified = True
 
     # Apply tier filtering: always exclude DERIVED (tier 4) unless --max-tier 4.
     # DERIVED files are minified/bundled/generated artifacts whose symbols distort

@@ -617,6 +617,15 @@ class Symbol:
         supply_chain_tier: Position in dependency graph (1=first_party, 2=internal_dep,
             3=external_dep, 4=derived). See §14 of spec.
         supply_chain_reason: Why this tier was assigned (e.g., "matches ^src/")
+        supply_chain_classified: Whether a producer or the annotator has
+            assigned the tier (WI-lidig). The annotator classifies every node
+            for which this is False; it used to infer "unclassified" from the
+            default tier 1 with an empty reason, which made a free-text field's
+            emptiness a branch and left a deliberate "tier 1, no reason" stamp
+            indistinguishable from none. Set by ``__post_init__`` when a
+            constructor passes a tier or a reason, by ``from_dict`` (a
+            serialized map is classified), and by every producer that assigns a
+            tier afterwards. Internal: not serialized.
         is_test_file: True if the file holds test *code* — the NARROW
             supply-chain role flag (spec §14), where examples/benches/fuzz
             carry their own role rather than this flag. Independent of tier —
@@ -743,11 +752,16 @@ class Symbol:
     # the keys are field names of this record and the leaves are pass ids.
     attribution: Optional[Dict[str, List[str]]] = None
     alternatives: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    supply_chain_classified: bool = field(default=False, compare=False)
     visibility: Optional[str] = None  # axis: visibility — INV-jusot: one computed canonical visibility level (public/private/protected/internal/package), folded in finalize from the language modifier / legacy meta['visibility'] / Python name convention; None until finalize computes it. The deciding signal is recorded in meta['visibility_signal'].
 
     def __post_init__(self) -> None:
         if isinstance(self.origin, str):
             self.origin = [self.origin] if self.origin else []
+        # WI-lidig: a constructor that passes a tier or a reason has classified
+        # the node (boundary nodes, the crypto-flow stand-ins).
+        if self.supply_chain_tier != 1 or self.supply_chain_reason:
+            self.supply_chain_classified = True
 
     # Keep line/end_line for backwards compatibility during transition
     # (span=None falls back to the codebase-wide line-0 convention, matching
@@ -854,6 +868,7 @@ class Symbol:
             visibility=d.get("visibility"),  # INV-jusot
             attribution=d.get("attribution"),  # ADR-0057 §6
             alternatives=d.get("alternatives"),
+            supply_chain_classified=True,  # WI-lidig: a serialized map is classified
         )
 
 
