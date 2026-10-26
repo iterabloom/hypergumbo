@@ -646,6 +646,9 @@ def _edge_spec() -> ClassSpec:
         cls=Edge,
         description="A relationship between two symbols",
         renames={"edge_type": "type"},
+        # WI-sakum: the resolver grade finalize re-derives confidence from;
+        # internal, the published contract carries the graded confidence.
+        omitted={"resolution_score"},
         folded={
             "evidence_type": "meta",
             "evidence_lang": "meta",

@@ -52,7 +52,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo_core.confidence import derive_confidence
+from hypergumbo_core.confidence import derive_confidence, derive_resolved_confidence
 from hypergumbo_core.finalize import FinalizeContext, _finalize_edge_resolution
 from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.limits import Limits
@@ -203,3 +203,58 @@ class TestBranchesThatMustNotFire:
         assert edge.rank_score == edge.confidence == derive_confidence(
             "ast_call", is_resolved=False,
         )
+
+
+def _scored_edge(dst: str, score: float) -> Edge:
+    """A resolver-graded bind (ADR-0039 ruling 6): confidence interpolated in band."""
+    return Edge.create(
+        src="go:a:1-2:caller:function", dst=dst, edge_type="calls", line=1,
+        evidence_type="ast_call_direct", resolution_score=score,
+        origin="test", origin_run_id="r",
+    )
+
+
+class TestResolutionScoreSurvivesTheVerdict:
+    """WI-sakum. Re-deriving from ``(evidence_type, is_resolved)`` alone reset
+    every resolver-graded bind to its pathway's base at finalize, so ADR-0039
+    ruling 6's interpolation never reached a published edge (C ``fp = f1; if
+    (c) fp = f2; fp(1)``: created 0.575, published 0.85)."""
+
+    def test_a_scored_in_repo_bind_keeps_its_interpolated_confidence(
+        self, tmp_path: Path,
+    ) -> None:
+        dst = "go:a:5-9:callee:function"
+        edge = _scored_edge(dst, 0.5)
+        graded = derive_resolved_confidence("ast_call_direct", 0.5)
+        assert edge.confidence == graded < derive_confidence(
+            "ast_call_direct", is_resolved=True), "precondition: the score lowered it"
+        _finalize_edge_resolution(_ctx(tmp_path, [_inrepo(dst)], [edge]))
+        assert edge.is_resolved is True
+        assert edge.confidence == graded
+        assert edge.rank_score == graded
+
+    def test_a_scored_bind_that_finalize_unresolves_drops_its_score(
+        self, tmp_path: Path,
+    ) -> None:
+        """Ruling 6: a score grades a resolution, and an unresolved edge has none."""
+        dst = "go:external:0-0:Open:unresolved"
+        edge = _scored_edge(dst, 0.5)
+        _finalize_edge_resolution(_ctx(tmp_path, [_external(dst)], [edge]))
+        assert edge.is_resolved is False
+        assert edge.confidence == derive_confidence("ast_call_direct", is_resolved=False)
+        assert edge.resolution_score is None
+
+    def test_a_scored_bind_is_stable_across_reentry(self, tmp_path: Path) -> None:
+        dst = "go:a:5-9:callee:function"
+        edge = _scored_edge(dst, 0.25)
+        ctx = _ctx(tmp_path, [_inrepo(dst)], [edge])
+        _finalize_edge_resolution(ctx)
+        first = edge.confidence
+        _finalize_edge_resolution(ctx)
+        assert edge.confidence == first == derive_resolved_confidence(
+            "ast_call_direct", 0.25)
+
+    def test_the_score_is_not_serialized(self) -> None:
+        """Kept internal: the published contract carries the graded confidence,
+        not a new field."""
+        assert "resolution_score" not in _scored_edge("go:a:5-9:callee:function", 0.5).to_dict()
