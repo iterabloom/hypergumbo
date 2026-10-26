@@ -54,3 +54,10 @@
   clock: 5  # fcc9
   nonce: fcc9  # fcc9
   message: "2026-10-25: INV-kutub (sibling dependency declarations to tier 1 under the owner's project-frame ruling on ADR-0041 §1) edits the declaration branch that runs only behind this item's tier-1 'unclassified' guard (cli.py:12071-12078: tier 1 + empty reason + no protocol_origin). Land this item's explicit unclassified marker first, or together."  # fcc9
+- op: discuss  # 5356
+  at: '2026-10-26T00:31:43Z'  # 5356
+  by: agent  # 5356
+  actor: jgstern_agent  # 5356
+  clock: 6  # 5356
+  nonce: '5356'  # 5356
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0041 row waits on INV-kutub, which waits on this item (explicit 'unclassified' marker before the declaration branch changes)."  # 5356

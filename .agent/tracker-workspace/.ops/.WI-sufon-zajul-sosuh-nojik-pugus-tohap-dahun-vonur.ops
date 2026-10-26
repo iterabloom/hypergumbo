@@ -43,3 +43,10 @@
   clock: 4  # 5cb2
   nonce: 5cb2  # 5cb2
   message: "Premise re-check 2026-10-25 on dev 9245df71d6 (production-CLI repros on tiny fixtures, scratchpad stale1025b/repro_<ID>/). Independent check: every cited line accurate; 'internal_package_roots is unreachable in a CLI run' HOLDS (classify_file has two production callers, cli.py:12095 and sketch.py:5576, both without config; nothing constructs SupplyChainConfig; no flag; .hypergumbo.toml rejects the key bare and under [supply_chain], exit 2). Corrections: (1) :39 already says 'from the project under analysis' -- the gap is the project's EXTENT and what a declaration or boundary stub stands for, and the direct conflict is row :44 ('monorepo siblings' in tier 2). (2) 'A CLI run emits no tier-2 node' is false until INV-kutub lands (a python sibling declaration is tier 2 today) -> now ordered after INV-kutub. (3) Partly overlaps WI-jaloz (wire or delete SupplyChainConfig): if WI-jaloz deletes it, tier 2 has zero producers and row 2 must say so. (4) More stale tier-2 text to fix in the same pass: supply_chain.py:172-173 (DependencyManifest docstring 'assigned by file classification' -- already false), :466-469, :686, :1180, :1209, :1255, :1628-1633; cli.py:12058-12061, :12079, :13096; ADR-0004:64; docs/RELEASE-NOTES-7.X.md:77; docs/schema.json:82. P3 kept."  # 5cb2
+- op: discuss  # c2f3
+  at: '2026-10-26T00:31:43Z'  # c2f3
+  by: agent  # c2f3
+  actor: jgstern_agent  # c2f3
+  clock: 5  # c2f3
+  nonce: c2f3  # c2f3
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output) classifies ADR-0041 against this item's project-frame wording, not the old §1."  # c2f3

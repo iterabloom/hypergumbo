@@ -27,3 +27,10 @@
   clock: 2  # 0c4a
   nonce: 0c4a  # 0c4a
   message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT. `hypergumbo survey` on C `int (*fp)(int)=f1; if(c) fp=f2; return fp(1);` publishes run->f1 and run->f2 at confidence 0.85 / rank_score 0.85, evidence_derived; in-process analyze_c creates them at 0.575 (= derive_resolved_confidence('function_pointer', 0.5)). Refs: ir.py:1099-1111 (interpolation) and :1127 (evidence_derived stamp); finalize.py:446 calls _rederive_confidence_from_verdict at :666-702 (rank_score re-mirror :701). resolution_score is not stored on Edge, so finalize cannot recover it. Fix-shape refinement: Edge.create forbids a score with is_resolved=False, so a scored edge can only flip resolved->unresolved; the minimal fix is to re-derive only when the verdict CHANGES the producer's is_resolved -- identical to today for unscored edges, and it drops the score exactly where ruling 6 says. Storing the score is the alternative if it should be visible in output. test_finalize_confidence_rederivation.py has no scored-edge case. Also check that the 6c magnet demotion (finalize.py:391-410, sees pre-rederive confidence, acts at >= 0.80) and the spec_validator magnet gate (spec_validator.py:355, sees published confidence) see the same value. P2 kept."  # 0c4a
+- op: discuss  # 387d
+  at: '2026-10-26T00:31:42Z'  # 387d
+  by: agent  # 387d
+  actor: jgstern_agent  # 387d
+  clock: 3  # 387d
+  nonce: 387d  # 387d
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0039 row: ruling 6 (resolution_score interpolation survives to the published edge) is testable on output, and this item is its counterexample. That test ships as a strict xfail naming this item, and becomes this item's closure evidence. Do not wait for WI-ziruv."  # 387d

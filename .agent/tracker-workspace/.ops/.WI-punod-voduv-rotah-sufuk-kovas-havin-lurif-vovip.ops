@@ -35,3 +35,10 @@
   set: {}  # 7ca3
   add:  # 7ca3
     isbefore: [WI-nijil-sogot-mirup-ludib-vupah-hitaf-jumuz-gasab]  # 7ca3
+- op: discuss  # 315c
+  at: '2026-10-26T00:31:44Z'  # 315c
+  by: agent  # 315c
+  actor: jgstern_agent  # 315c
+  clock: 4  # 315c
+  nonce: 315c  # 315c
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Two audits bear on this. (1) WI-ziruv (falsify each declared axis's rule on real output) cannot test the pass-silence axis until this item turns the A/B/C states into data, so this item comes before that row. (2) The != no_candidate_files proxy and ROUTINE_SILENCE_REASONS are hand-written partitions of the vocabulary, named instances in WI-kosup section D. The fix here does not wait for the sweep."  # 315c

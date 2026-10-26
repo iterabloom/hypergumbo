@@ -44,3 +44,10 @@
   set: {}  # cedd
   add:  # cedd
     isbefore: [WI-sufon-zajul-sosuh-nojik-pugus-tohap-dahun-vonur]  # cedd
+- op: discuss  # 9572
+  at: '2026-10-26T00:31:43Z'  # 9572
+  by: agent  # 9572
+  actor: jgstern_agent  # 9572
+  clock: 5  # 9572
+  nonce: '9572'  # 9572
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output) counts this item's planned test (every node standing for one package carries one tier) as ADR-0041's falsification test, and uses it as the model for the other axes."  # 9572

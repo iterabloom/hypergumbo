@@ -20,3 +20,10 @@
     pr_ref:  # c5cd
     description: "Split from WI-pidit (concept audit 2026-10-21/22 F5; premise re-check 2026-10-25 on dev 16534a75f7). scripts/bakeoff-deep:2703-2707 counts a claim as confirmed only on verdict == 'confirmed', so a confirmed_with_caveats claim (verify-claims >= 2.0, exit 3) reads undecided. The step runs only when claims/<repo>.yaml exists, and no reader of claims_confirmed / claim_verdict_pct was found, so the harm today is a wrong number nobody reads. Fix: count confirmed_with_caveats as decided (report it separately, or alongside confirmed with its caveat count). Claim verdict names are unaffected by WI-bujum's walk-verdict rename."  # c5cd
     fields: {}  # c5cd
+- op: discuss  # 1ee3
+  at: '2026-10-26T00:28:57Z'  # 1ee3
+  by: agent  # 1ee3
+  actor: jgstern_agent  # 1ee3
+  clock: 2  # 1ee3
+  nonce: 1ee3  # 1ee3
+  message: "2026-10-25 (owner): WI-kosup now decides this item. Its verdict on claims_confirmed / claim_verdict_pct (no reader recorded here) comes first: DELETE the metric, or WIRE it and name the reader. Only then, if the metric stays, fix the count. WI-kosup now blocks this item."  # 1ee3

@@ -27,3 +27,10 @@
   clock: 2  # 7878
   nonce: '7878'  # 7878
   message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, WIDER THAN FILED. The default --seeds production ALSO reports a private module-init helper dead: lib.py `def _build_registry(): ...; _REGISTRY = _build_registry(); def run(): return _REGISTRY`, imported by main.py -> dead-code-maybe lists _build_registry (reproduced independently twice). The three-consumer half now has a production-path repro (packages/p/src + tests/test_mod.py with module-level CASES = helper() and a test-class-body call): dead-code-maybe json says unreachable/unreachable/test_only; test-coverage (a FOURTH consumer, cmd_test_coverage cli.py:8463) lists both anchor-called helpers in Cold Spots; sketch says ~33% (1/3); scripts/check-test-only-reachability lists all three test-only. Refs: test_only_reachability.py:314-353 (rule :348); cli.py:8961 (function/method-only test seeds), :9409, :9453; the dead-code BFS edge set (cli.py:9271) has no imports; sketch.py:5345 unchanged. WI-mifag closed (PR #1839) without touching the anchor-as-caller rule. Fix addition: the test runner executes test files, so their file and class anchors ARE test seeds (the ratchet's answer); move dead-code, test-coverage and sketch to it. P2 kept."  # 7878
+- op: discuss  # 55e3
+  at: '2026-10-26T00:31:44Z'  # 55e3
+  by: agent  # 55e3
+  actor: jgstern_agent  # 55e3
+  clock: 3  # 55e3
+  nonce: '55e3'  # 55e3
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Neither WI-ziruv nor WI-kosup catches this. Four consumers disagree on one fact, and the contract they should share (when anchored code runs) was never written, so WI-ziruv has no rule to falsify. The fix shape here writes that contract. Does not wait for either audit."  # 55e3

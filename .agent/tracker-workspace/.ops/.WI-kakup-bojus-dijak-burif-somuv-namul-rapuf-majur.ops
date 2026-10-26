@@ -27,3 +27,10 @@
   clock: 2  # 5907
   nonce: '5907'  # 5907
   message: "From WI-tibib 2026-10-25: this item's revisit condition ('a value-carrying edge is ever emitted from a type node') is met (WI-muzav PR #1795, INV-bamij). Concrete case on dev 16534a75f7: verify-claims rc=1 violated, path [f, C:class], for `def f(): data = input(); return C(data)` with class-body `y = eval(EXPR)` -- C's body ran at import and never received data. See WI-tibib."  # 5907
+- op: discuss  # d4ec
+  at: '2026-10-26T00:31:45Z'  # d4ec
+  by: agent  # d4ec
+  actor: jgstern_agent  # d4ec
+  clock: 3  # d4ec
+  nonce: d4ec  # d4ec
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Outside WI-ziruv's reach: what an instantiates edge carries (constructs vs runs the class body) is a contract never written (see WI-tibib, WI-fakuh). The guard this item asks for (members of the taint edge set carry a value) is the test that would follow from it."  # d4ec

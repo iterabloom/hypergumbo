@@ -37,3 +37,10 @@
   set: {}  # 5536
   add:  # 5536
     isbefore: [WI-zidam-lilam-mufuk-dozup-dipoz-budik-sigas-fujop]  # 5536
+- op: discuss  # 45bd
+  at: '2026-10-26T00:31:43Z'  # 45bd
+  by: agent  # 45bd
+  actor: jgstern_agent  # 45bd
+  clock: 4  # 45bd
+  nonce: 45bd  # 45bd
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0050 row waits on this amendment, and classifies the axis against the medium wording."  # 45bd

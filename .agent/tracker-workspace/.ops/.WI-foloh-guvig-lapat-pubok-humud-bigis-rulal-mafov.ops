@@ -27,3 +27,10 @@
   clock: 2  # 6364
   nonce: '6364'  # 6364
   message: "From the WI-rutup premise re-check 2026-10-25: this is one of the remaining Unix-domain-socket medium cases under the ADR-0050 amendment WI-rutup carries (a row's primary boundary names the medium). WI-rutup points here rather than owning it."  # 6364
+- op: discuss  # 196a
+  at: '2026-10-26T00:31:44Z'  # 196a
+  by: agent  # 196a
+  actor: jgstern_agent  # 196a
+  clock: 3  # 196a
+  nonce: 196a  # 196a
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): A medium case under WI-rutup's ADR-0050 amendment. WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0050 row could partly test 'the same medium gets the same boundary across catalogues', which would flag this item's Unix-socket/pipe reader."  # 196a

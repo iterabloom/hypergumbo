@@ -52,3 +52,10 @@
   clock: 5  # 893e
   nonce: 893e  # 893e
   message: "Premise re-check 2026-10-25 on dev 9245df71d6 (production-CLI repros on tiny fixtures, scratchpad stale1025b/repro_<ID>/). CURRENT, refs drifted; PAYOFF PREMISE LARGELY STALE -> P2 to P3. AST scan of io_boundary.py and taint.py across every read shape (literal/variable-key get, subscript, kwarg, f-string, meta iteration): no direct read. Live differential via io-boundaries --input: changing java readLine's receiver_type_hint BufferedReader->ProcessBuilder leaves boundaries byte-identical; changing only the module slot to java.lang.Bogus removes the fs_read chain -- the matcher reads the slot and ignores the hint. New since filing (927e6afd40, 2026-10-12): owner_ancestry.py:229-231 reads the hint for IN-REPO owners only, feeding io_boundary.py:5736 / taint.py:1458 via ancestor_retry_hints -- not the external package-vs-type question this item is about. Refs: registry axis_meta_keys.py:1391; _module_matches io_boundary.py:5181 (the Go-convention docstring was replaced by WI-zozun's case-disagreement test; Swift carve-out :5356-5360; orthography still decides); producers now 10 analyzers, consumers 4. Premise: the Swift target was fixed producer-side by INV-kotob (2026-09-04, three days after filing), JVM bare-type slots by INV-dibij (PR #1853); the project fixes the slot at the producer instead. FIRST STEP: count edges whose hint disagrees with the module slot; build only if nonzero."  # 893e
+- op: discuss  # 5baa
+  at: '2026-10-26T00:31:44Z'  # 5baa
+  by: agent  # 5baa
+  actor: jgstern_agent  # 5baa
+  clock: 6  # 5baa
+  nonce: 5baa  # 5baa
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Named instance in WI-kosup section C: receiver_type_hint has readers (two linkers, owner_ancestry), so a per-field reader count calls it read. The defect is per QUESTION: the consumer that decides package-vs-type does not read it. WI-kosup now records that shape per question."  # 5baa

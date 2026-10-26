@@ -36,3 +36,10 @@
   clock: 3  # 8ba7
   nonce: 8ba7  # 8ba7
   message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, OVERSTATED (code read; diverging the rules needs a malformed shipped file). Refs: taint.py:2334 (requires explicit builtin), verify_claims.py:2310-2315 (shipped and not community), taint.py:2526 split_community_files, io_boundary.py:2472-2475 (path-or-line; decides COMMUNITY, not builtin); axis comment io_boundary.py:2242; non-empty-only validator :2273; PROVENANCE_BUILTIN still unreferenced (yaml_catalogs.py:278); the CI gate keeping the rules in agreement is tests/test_catalogue_scope_gates.py:763. Correction: the DefaultOverlay.provenance FIELD is display-only (sole reader verify_claims.py:2503); what is parsed as an enum is the raw YAML key (yaml_catalogs.py:288 overlay_declares_community, catalogues_doc.py:112, taint.py:2334). Real defects: the axis comment calls the value a 'prose citation' when it is the tier token (declare bounded-enum), the validator accepts any non-empty value, and three predicates exist where one should. The supply-chain tier-1 'unclassified' sentinel half is unrelated to catalogue provenance and is already tracked in WI-lidig (F78.A3 watch-item); refs moved there (cli.py:12072-12077, analyze/base.py:2008-2011). P3 -> P4: latent, held by a CI gate, nothing user-visible wrong today."  # 8ba7
+- op: discuss  # fd27
+  at: '2026-10-26T00:31:43Z'  # fd27
+  by: agent  # fd27
+  actor: jgstern_agent  # fd27
+  clock: 4  # fd27
+  nonce: fd27  # fd27
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Two audits bear on this. (1) WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0061 row: three different rules decide 'builtin'. (2) WI-kosup section C: DefaultOverlay.provenance is a second free-text declaration ('never parsed') shown false, after ADR-0058's signature. ADR-0058 leaves the other free-text declarations unswept, and WI-kosup's reader classification (display/presence/branch) is where they get checked."  # fd27

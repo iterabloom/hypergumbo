@@ -34,3 +34,10 @@
   clock: 3  # 8d21
   nonce: 8d21  # 8d21
   message: "PART 3, added 2026-10-25 from the WI-jivih premise re-check: CHOICE_SHAPED_SOURCE_NAMES (verify_claims.py:783-789) still lists gethostname / getservbyname / getservbyport, which WI-dozul moved from net_recv to host_info_read on 2026-09-08 (erlang.yaml:326-334, 4f463b6722); matching is last-segment and label-blind (:6578-6582). Live: python `name = socket.gethostname(); s.send(name.encode())` under host-description-no-network -> violated (2 rows) with a choice_shaped_source caveat claiming the far side CHOSE the value. Fix with parts 1-2 (same block): drop the three names, and restrict the caveat to rows whose source label is untrusted_input (the label the choice shape was defined on)."  # 8d21
+- op: discuss  # 5bdf
+  at: '2026-10-26T00:31:44Z'  # 5bdf
+  by: agent  # 5bdf
+  actor: jgstern_agent  # 5bdf
+  clock: 4  # 5bdf
+  nonce: 5bdf  # 5bdf
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Two audits bear on this. (1) WI-ziruv (falsify each declared axis's rule on real output): the choice-shaped-source rule (the value is chosen by the far side; untrusted_input) is testable as 'every caveated row's source label is untrusted_input', and part 3 is its counterexample. (2) CHOICE_SHAPED_SOURCE_NAMES is a hand-written subset that missed WI-dozul's re-label, a named instance in WI-kosup section D. Neither blocks this item."  # 5bdf
