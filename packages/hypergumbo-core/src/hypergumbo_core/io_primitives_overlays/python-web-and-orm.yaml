@@ -47,7 +47,6 @@
 # `--no-default-overlays`.
 
 language: python
-status: overlay
 provenance: community
 retrieved: 2026-03-21
 

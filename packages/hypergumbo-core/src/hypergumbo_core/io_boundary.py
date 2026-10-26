@@ -18,7 +18,7 @@ files in the ``io_primitives/`` directory alongside this module.
 Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
 
 - **Overlays.** ``load_overlay_catalog`` loads a project-local overlay file
-  (which must declare ``status: overlay``) and ``load_catalog`` merges its
+  (which omits ``status``, WI-sihiz) and ``load_catalog`` merges its
   rows, so a repository can declare the I/O of its own third-party
   dependencies; the shipped catalogue stays stdlib-scoped. Separately,
   community overlays SHIPPED in ``io_primitives_overlays/`` load BY DEFAULT
@@ -1873,12 +1873,17 @@ class IoBoundaryCatalog:
 
 _CATALOG_DIR = Path(__file__).parent / "io_primitives"
 
-#: Status a PROJECT-LOCAL overlay must declare (INV-fotav). Deliberately
-#: NOT one of the shipped catalogue statuses: ``provenance_declared`` asserts
-#: a citation of the language's stdlib source and ``in_progress`` asserts an
-#: incomplete catalogue, and an overlay is making neither claim — it describes
-#: third-party surface hypergumbo does not own (ADR-0016 §27).
-_OVERLAY_STATUS = "overlay"
+#: The LEGACY ``status`` spelling an overlay may still carry (WI-sihiz).
+#: ``status`` is a shipped catalogue's completeness claim —
+#: ``provenance_declared`` cites the language's stdlib source,
+#: ``in_progress`` admits it is partial — and an overlay makes neither: it
+#: describes third-party surface hypergumbo does not own (ADR-0016 §27). So an
+#: overlay omits the key. ``overlay`` was once required as a door password,
+#: compared at load and then overwritten; it is still accepted because the
+#: shipped overlays once carried it and ``init-catalogs`` seeded copies of them
+#: into users' io_primitives.d. Where a file came from is ``provenance:``
+#: (ADR-0061), not ``status``.
+_LEGACY_OVERLAY_STATUS = "overlay"
 
 # Languages that share an IO primitive catalog.  C++ uses C stdlib IO
 # functions (fopen, fread, fwrite, popen, etc.) so it falls back to the
@@ -2138,12 +2143,14 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
     precedence semantics and the same error posture, rather than a second
     mechanism that would drift from it.
 
-    An overlay declares ``status: overlay``. It may NOT declare
+    An overlay omits ``status`` (``status: overlay``, the legacy spelling, is
+    still accepted; see :data:`_LEGACY_OVERLAY_STATUS`). It may NOT declare
     ``status: provenance_declared``: that status marks a curated catalogue
     citing an allowlisted stdlib source, and letting an overlay claim it would
-    launder third-party rows into the standing of the curated catalogue. It
-    carries no ``stdlib_modules`` either — see :func:`load_catalog` for why
-    that matters.
+    launder third-party rows into the standing of the curated catalogue. Any
+    other value is refused for what it is: ``in_progress`` would be a key that
+    loads and changes nothing. It carries no ``stdlib_modules`` either — see
+    :func:`load_catalog` for why that matters.
     """
     if not path.exists():
         raise IoPrimitiveOverlayError(
@@ -2156,12 +2163,19 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
             f"got {type(data).__name__}.",
         )
     status = data.get("status")
-    if status != _OVERLAY_STATUS:
+    if status == "provenance_declared":
         raise IoPrimitiveOverlayError(
-            f"I/O primitive overlay {path} must declare "
-            f"status: {_OVERLAY_STATUS!r}, got {status!r}. "
-            f"'provenance_declared' is a claim about a language's stdlib "
-            f"citation and is not available to an overlay.",
+            f"I/O primitive overlay {path} declares status: "
+            f"'provenance_declared', which is a claim about a language's "
+            f"stdlib citation and is not available to an overlay. Omit "
+            f"`status`.",
+        )
+    if status not in (None, _LEGACY_OVERLAY_STATUS):
+        raise IoPrimitiveOverlayError(
+            f"I/O primitive overlay {path} declares status: {status!r}. "
+            f"`status` is a shipped catalogue's completeness claim and an "
+            f"overlay makes none, so omit the key (to say a module's rows "
+            f"are complete, use `module_completeness`).",
         )
     # THE SPELLING IS REFUSED; THE DECLARATION IS NOT (owner, 2026-08-15).
     # An overlay describes THIRD-PARTY modules, so a key named ``stdlib_*`` in
@@ -2177,9 +2191,11 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
             f"not describing. Use `module_completeness` instead — same "
             f"meaning, honest name, and available here.",
         )
-    # Hand ``_from_dict`` a status it accepts; the overlay marker has already
-    # done its job and must not reach the stdlib-provenance validator, which
-    # exists for the shipped catalogues.
+    # Hand ``_from_dict`` a status it accepts. ``in_progress`` (partial) is
+    # what an overlay's own row set is, and it must not reach the
+    # stdlib-provenance validator, which exists for the shipped catalogues. It
+    # stays on the overlay object: ``load_catalog`` does not let it lower the
+    # catalogue it merges into (WI-donod).
     #
     # WHAT A COMPLETENESS ENTRY COSTS, KEPT ON THE RECORD NOW THAT IT IS
     # PERMITTED. It is the single grant of confirmability (INV-buzab), so it is
@@ -2489,12 +2505,20 @@ def load_catalog(
         # overlay as receiver, so without this python went provenance_declared
         # -> in_progress the moment defaults loaded, and every python run
         # would have emitted "io-boundary results may be incomplete" beside
-        # the true ADR-0047 disclosure. The status kept is the one BEFORE this
-        # file, so a file of yours merged earlier keeps its effect. A USER
-        # overlay's effect on status is left exactly as it was.
+        # the true ADR-0047 disclosure.
+        #
+        # NOR IS A USER ROW (WI-donod). An overlay of yours describes
+        # third-party surface too, so it says nothing about how completely the
+        # stdlib was enumerated: it used to drop python/javascript/rust/erlang
+        # to in_progress and their stdlib_provenance, and every UNRELATED
+        # external_potential chain then read dst_classification_unreliable.
+        # So every overlay keeps the status from before it. The one exception
+        # is a language with NO shipped catalogue: there the overlay is the
+        # whole row set (``overlay_only``), and a user overlay leaves it
+        # in_progress — partial, which is true — rather than "unsupported".
         _status, _provenance = catalog.status, catalog.stdlib_provenance
         catalog = overlay.merge(catalog)
-        if community:
+        if community or _status != CATALOG_STATUS_UNSUPPORTED:
             catalog = replace(
                 catalog, status=_status, stdlib_provenance=_provenance,
             )

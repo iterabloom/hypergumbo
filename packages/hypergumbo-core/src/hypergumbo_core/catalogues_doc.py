@@ -43,7 +43,6 @@ _PKG_ROOT = Path(__file__).parent
 HOW_TO_ADD: dict[str, str] = {
     "io_primitives": (
         "language: python\n"
-        "status: overlay\n"
         "retrieved: 2026-09-30        # when you last checked the library\n"
         "net_send:\n"
         "  - module: inhouse_http\n"

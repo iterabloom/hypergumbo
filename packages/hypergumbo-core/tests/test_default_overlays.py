@@ -299,21 +299,31 @@ class TestADefaultDoesNotRestateTheCatalogueSStatus:
 
         assert "python" not in in_progress_languages(["python"])
 
-    def test_a_user_overlay_still_behaves_as_before(self, tmp_path: Path):
-        """The narrow fix must not silently change user-overlay semantics.
-
-        Whether a USER overlay should restate status is a separate question
-        with its own measurement; this change is scoped to shipped defaults.
+    @pytest.mark.parametrize("include_defaults", [False, True])
+    def test_a_user_overlay_leaves_the_catalogue_status_alone(
+        self, tmp_path: Path, include_defaults: bool,
+    ):
+        """An overlay adds third-party rows; it says nothing about how
+        completely the STDLIB was enumerated, so it may not lower that claim
+        (WI-donod). It used to: python went provenance_declared -> in_progress
+        and lost its stdlib_provenance the moment a user overlay merged, and
+        every unrelated external_potential chain then read
+        dst_classification_unreliable.
         """
+        base = load_catalog("python", include_defaults=False)
         ov = tmp_path / "u.yaml"
         ov.write_text(
-            "language: python\nstatus: overlay\n"
-            "net_send:\n  - module: zzz\n    name: send\n    kind: function\n"
+            "language: python\n"
+            "net_send:\n  - module: zzz\n    functions: [send]\n"
         )
         with_user = load_catalog(
-            "python", overlay_paths=[ov], include_defaults=False,
+            "python", overlay_paths=[ov], include_defaults=include_defaults,
         )
-        assert with_user.status == "in_progress"
+        assert ("zzz", "send") in {
+            (p.module, p.name) for p in with_user.primitives
+        }, "reach: the user row must have merged"
+        assert with_user.status == "provenance_declared"
+        assert with_user.stdlib_provenance == base.stdlib_provenance
 
 
 class TestAnUnvouchedRowAddsFindingsButNeverLicensesTheAllClear:

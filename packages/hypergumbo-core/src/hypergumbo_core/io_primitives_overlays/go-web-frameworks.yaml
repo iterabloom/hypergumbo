@@ -39,7 +39,6 @@
 # the full import path, they resolve for the first time (INV-safig).
 
 language: go
-status: overlay
 provenance: community
 retrieved: 2026-08-11
 

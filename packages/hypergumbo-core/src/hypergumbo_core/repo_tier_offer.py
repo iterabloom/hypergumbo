@@ -213,7 +213,6 @@ _EXAMPLE_OVERLAY = """\
 # run) or `hypergumbo trust-catalogues` (one repository) -- ADR-0061 ruling 4.
 # hypergumbo never writes into a repository it analyses.
 language: python
-status: overlay
 net_send:
   - module: acme.internal.transport
     functions: [post_payload]

@@ -50,10 +50,10 @@
 
 language: bash
 
-# REQUIRED, and it must be exactly this. An overlay you supply declares
-# `overlay`; `complete` asserts a provenance-backed stdlib enumeration and
-# is not available to you, and any other value is rejected outright.
-status: overlay
+# No `status:` key. That is a shipped catalogue's completeness claim, and an
+# overlay makes none; `provenance_declared` (a cited stdlib enumeration) is
+# refused, and so is any other value. Older overlays carry `status: overlay`,
+# which still loads.
 
 # SPELLING THAT ACTUALLY MATCHES, because it is easy to get wrong: a bash
 # launch names the command in BOTH slots, so `module` must equal the

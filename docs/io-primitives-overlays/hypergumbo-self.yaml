@@ -35,7 +35,6 @@
 # List every module you actually audited.
 
 language: python
-status: overlay
 
 # -------------------------------------------------------------------
 # ROWS — what these dependencies DO. Written first, deliberately: the
