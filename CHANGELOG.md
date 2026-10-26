@@ -46,6 +46,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Swift initialisers and deinitialisers are symbols**, and `T(...)` lands on the `init` it runs.
 - **Python class-body calls emit calls edges**, anchored on the class.
+- **Finalize no longer replaces a typed bind with an unresolved stub** for a method named like a stdlib interface (`Close`, `Parse`, `Write`, ...). Two binds were demoted: a C++ call on a receiver whose declaration names its class (`Logger lg; lg.Close();`), and a call a class makes to its own method from a static field initializer (Java, C#, Kotlin). The magnet detector now places every `meta.receiver` value, and a test fails on one it does not place. On bento4, 251 published C++ binds were being demoted.
 - **A Python local named like a field no longer retypes or erases `self.<field>`**, so `self.conn.ping()` lands on the field's class.
 - **Rust `type` aliases are symbols**; **a Dockerfile variable is one symbol per build stage**.
 - **A Kotlin or Scala receiver declared with a bare `java.lang` type** (`pb: ProcessBuilder`) names `java.lang`, so `verify-claims` sees the launch.

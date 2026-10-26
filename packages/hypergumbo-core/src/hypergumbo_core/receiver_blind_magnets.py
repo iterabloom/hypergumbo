@@ -26,18 +26,16 @@ on ``run_analyzer`` output.
 resolution *knows the target type* and stamps it — either a receiver-aware
 ``evidence_type`` (``ast_call_type_inferred`` / ``ast_call_ufcs`` /
 ``ast_call_inherited`` — the Site-1/Site-2 recoveries and typed binds), or a
-``meta.receiver`` marker (``typed_var`` / ``typed_field`` / ``field_chain`` /
-``external`` / ``constant_external`` / ``stdlib`` for a typed/external receiver,
-or ``qualified`` for an explicitly-scoped/static ``Type::method`` call whose
-type the call site named),
-or ``meta.resolution_quality`` other than ``"ambiguous"``. So a magnet is
+``meta.receiver`` value that ``RECEIVER_IDENTIFIES_TARGET`` places on the
+identified side, or ``meta.resolution_quality`` other than ``"ambiguous"``. So a magnet is
 precisely a **resolved** ``calls`` or ``dispatches_to`` edge to an
 **internal ``method``** that carries only the bare ``ast_call`` /
 ``ast_call_direct`` pathway, **no** receiver marker, is **not a framework route
 registration** (a handler bound by reference is a correct dispatch, not a
 method call — see ``_is_route_dispatch``), is **cross-owner** (the caller's
 class differs from the method's owner — a same-class implicit-``this`` call is
-legitimate), and lands at or above ``min_confidence``. Everything the
+legitimate; a caller that IS a type, such as a class whose static field
+initializer makes the call, is its own owner), and lands at or above ``min_confidence``. Everything the
 resolver understood about the receiver is excluded by construction, so genuine
 inherited-call recoveries (``ast_call_inherited``) and typed binds never trip.
 
@@ -65,8 +63,10 @@ from typing import Any, Iterable, List, Optional
 
 from .member_names import member_owner, member_short_name
 from .paths import is_test_file
+from .symbol_kinds import type_like_kind_names
 
 __all__ = [
+    "RECEIVER_IDENTIFIES_TARGET",
     "demote_harmful_magnets",
     "find_harmful_magnets",
     "find_receiver_blind_magnets",
@@ -79,23 +79,40 @@ __all__ = [
 # legitimate bind and is excluded simply by not being in this set.
 _BARE_EVIDENCE = frozenset({"ast_call", "ast_call_direct"})
 
-# meta.receiver values that mean the call's TARGET TYPE was identified, so the
-# bind is NOT receiver-blind: a typed receiver (``typed_var`` / ``typed_field`` /
-# ``field_chain``), an external/stdlib receiver, or an explicitly-QUALIFIED
-# target (``Type::method`` / ``Type.Method`` — the scoped/static call whose type
-# the call site named, which resolves to a method-kind associated-function/static
-# symbol and would otherwise be a false positive). The receiver-blind values
-# ``'bare'`` (implicit-``this``/``self``) and ``'generic'`` (receiver present but
-# unclassified) are deliberately ABSENT — a ``'bare'`` cross-class bind is exactly
-# the magnet, and the legitimate same-class implicit-``this`` case is excluded by
-# the owner check in ``find_receiver_blind_magnets`` instead.
-_RECEIVER_MARKERS = frozenset(
-    {
-        "typed_var", "typed_field", "field_chain",
-        "external", "constant_external", "stdlib",
-        "qualified",
-    }
-)
+# Every meta.receiver value a producer writes, placed by one question: did the
+# call site identify the TARGET TYPE? True means the bind is not receiver-blind:
+# a typed receiver (``typed_var`` / ``typed_field`` / ``field_chain``), one whose
+# declaration names its class (C++ ``Logger lg; lg.Close()``, ``declared_type``,
+# WI-lamij), Ruby's ``self`` (bound only to the enclosing class's own method,
+# WI-misir), an external/stdlib receiver, or an explicitly-QUALIFIED target
+# (``Type::method`` / ``Type.Method`` — the scoped/static call whose type the
+# call site named, which resolves to a method-kind associated-function/static
+# symbol and would otherwise be a false positive). False means receiver-blind:
+# ``'bare'`` (implicit-``this``/``self``) — a cross-class bind is exactly the
+# magnet, and the legitimate same-class case is excluded by the owner check in
+# ``find_receiver_blind_magnets`` instead — and Ruby's ``'generic'``, which
+# binds ``Const.m`` but also ``Const.other(..).m``, whose receiver is
+# ``other``'s unknown return.
+#
+# A MAPPING, not a set of the identified values (WI-sibup): the set this
+# replaced named only the values someone had thought to add, so
+# ``declared_type`` read as blind and finalize demoted correct C++ binds. A
+# value missing here still reads as blind, but
+# ``test_receiver_vocabulary_partition`` fails on any written value this does
+# not place, and on any placed value no producer writes.
+RECEIVER_IDENTIFIES_TARGET: "dict[str, bool]" = {
+    "typed_var": True,
+    "typed_field": True,
+    "field_chain": True,
+    "declared_type": True,
+    "self": True,
+    "external": True,
+    "constant_external": True,
+    "stdlib": True,
+    "qualified": True,
+    "bare": False,
+    "generic": False,
+}
 
 
 
@@ -159,6 +176,23 @@ def owner_of(name: Optional[str]) -> Optional[str]:
     return member_owner(name)
 
 
+def _caller_owner(src: Any) -> Optional[str]:
+    """The type a call's caller belongs to, for the same-owner exemption.
+
+    A member's owner is its name's prefix (``owner_of``). A caller that is
+    itself a TYPE — the class whose static field initializer makes the call,
+    ``class P { static int X = Parse("1"); }`` — owns itself, so its owner is
+    its whole name (WI-nafif). ``owner_of`` would give ``None`` for ``P`` and
+    ``Outer`` for the nested ``Outer.Inner``, and the call to the class's own
+    method then read as cross-owner. The kind is read off the node, per the
+    ADR-0023 contract that a consumer branches on ``kind``, never on name shape.
+    """
+    name = _get(src, "name", None) or _get(src, "qualified_name", None)
+    if name and _get(src, "kind", None) in type_like_kind_names():
+        return _strip_generics(name)
+    return owner_of(name)
+
+
 def _evidence_type(edge: Any, meta: "dict[str, Any]") -> Optional[str]:
     """evidence_type is a top-level field on the Edge dataclass but nests under
     ``meta`` in serialized survey JSON — read whichever is present."""
@@ -174,7 +208,8 @@ def _receiver_was_identified(meta: "dict[str, Any]") -> bool:
     rq = meta.get("resolution_quality")
     if rq is not None and rq != "ambiguous":
         return True
-    return meta.get("receiver") in _RECEIVER_MARKERS
+    receiver = meta.get("receiver")
+    return isinstance(receiver, str) and RECEIVER_IDENTIFIES_TARGET.get(receiver, False)
 
 
 def _is_route_dispatch(meta: "dict[str, Any]") -> bool:
@@ -207,11 +242,12 @@ def find_receiver_blind_magnets(
     * ``is_resolved`` is true;
     * ``evidence_type`` is a bare pathway (``ast_call`` / ``ast_call_direct``);
     * no receiver marker (``meta.resolution_quality`` is absent/``"ambiguous"`` and
-      ``meta.receiver`` is not a known-receiver marker);
+      ``RECEIVER_IDENTIFIES_TARGET`` does not place ``meta.receiver`` as identified);
     * ``confidence`` >= ``min_confidence``;
     * ``dst`` resolves to an in-set node whose ``kind`` is ``method``;
     * cross-owner: the ``src`` node's owner differs from the ``dst`` method's owner
-      (a same-class implicit-``this`` call is legitimate and excluded).
+      (a same-class implicit-``this`` call is legitimate and excluded, and a
+      ``src`` of a type-like kind is its own owner — ``_caller_owner``).
 
     Returns the offending edge objects (per-edge, ungrouped) in input order; the
     caller may group by ``dst`` to rank magnets. Confidence defaults to the
@@ -245,10 +281,9 @@ def find_receiver_blind_magnets(
         if dst is None or _get(dst, "kind", None) != "method":
             continue
         dst_owner = owner_of(_get(dst, "name", None) or _get(dst, "qualified_name", None))
-        src = by_id.get(_get(edge, "src", None))
-        src_owner = owner_of(_get(src, "name", None) or _get(src, "qualified_name", None))
+        src_owner = _caller_owner(by_id.get(_get(edge, "src", None)))
         if src_owner is not None and src_owner == dst_owner:
-            continue  # same-class implicit-this/self — legitimate
+            continue  # same-class implicit-this/self, or a type's own anchor
         out.append(edge)
     return out
 
