@@ -1,0 +1,31 @@
+Original commit body from 2c60a1a73a77cb128f35c8fee4d4a58a21037407:
+
+The supply-chain annotator (_classify_symbols) classified a node when its
+tier was the constructor default 1 AND its reason was empty. That made the
+emptiness of supply_chain_reason the branch, although ir.py declares it
+free text "consumers display, never branch on the value itself" (concept
+audit 2026-10-21, F4 / T2), and it made a producer's deliberate "tier 1, no
+reason" indistinguishable from no stamp at all (WI-lidig's F78.A3 sentinel
+watch-item: unexercised today, every producer that sets a tier also sets a
+reason, but undecidable by construction).
+
+Symbol.supply_chain_classified now answers it: set by the annotator, by
+__post_init__ when a constructor passes a tier or a reason (boundary nodes,
+the crypto-flow stand-ins), by from_dict (a serialized map is classified),
+and by the producers that assign a tier afterwards (annotation_convention's
+@hg:route symbols, route promotion, sketch's fallback classification). The
+annotator skips a classified node or a synthetic protocol stand-in, as
+before. Internal: compare=False, not serialized (the schema spec declares it
+omitted; docs/schema.json unchanged). analyze/base.py's WI-lidig note now
+describes the flag.
+
+This lands before INV-kutub, whose declaration-tier change edits the branch
+behind this guard (WI-lidig discussion, 2026-10-25).
+
+Behaviour: none. apollo-server surveyed with dev and with this branch: all
+7,349 nodes carry the same tier and reason. Tests: the flag's four sources,
+that it is not serialized, and the annotator leaving a deliberate tier-1 /
+no-reason node alone (the case the old guard re-classified) while
+classifying a fresh node and skipping a protocol stand-in.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
