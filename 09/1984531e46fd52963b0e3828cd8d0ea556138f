@@ -1,0 +1,80 @@
+Original commit body from 7c0ce5c814486dc88651499b2a386b8ec2a005ce:
+
+npm workspaces. `const { helper } = require('@ws/b'); helper()` in
+packages/a called javascript:@ws/b:0-0:helper:external_symbol (tier 3)
+instead of packages/b's real helper, and the js_module linker minted a
+javascript:npm:0-0:@ws/b:package "third-party" stand-in beside the real
+tier-1 @ws/b package.
+
+* js_ts: the name lookup did find b's helper; _is_cross_package then
+  refused it, because b has its own package.json root, and
+  _disambiguate_by_import gave up on any non-relative specifier.
+  _disambiguate_by_import now answers a bare specifier with
+  _in_tree_package_candidate: the candidate whose nearest package.json
+  names that package (and, for a subpath, whose file the subpath names, at
+  the package root or under src/). It answers even for one candidate,
+  since that is exactly the bind the guard would refuse; a package
+  importing itself by name and an ambiguous match return None. One change
+  covers all four call sites of _disambiguate_by_import.
+* js_module: a bare specifier that no alias matched but whose package a
+  package.json in the tree declares (outside node_modules) resolves to that
+  package's entry -- exports["."] (import/require/default), module, main,
+  index -- or to the subpath's file. When the declared entry is build
+  output not in the tree ("main": "dist/cjs/index.js", four apollo-server
+  packages), the package's src/index answers.
+
+Cargo workspaces. Both call forms already bound to the sibling (by name);
+the defect was the `use` edge: every Rust `use` became an imports edge to
+rust:<path>:0-0:module:module, which nothing resolves, so finalize made
+each a tier-3 external_symbol. That was true of `use crate_b::helper` and
+equally of every `use crate::...` inside one crate -- no Rust use edge in
+the tree ever reached a file. _InTreeCrates (built once per run from the
+files the symbol pass saw) resolves a path rooted at `crate`, `self`,
+`super` or an in-tree crate's [package] name (`-` read as `_`: a
+workspace sibling, or an integration test's own library) to the deepest
+module file it walks through (a.rs or a/mod.rs; lib.rs, else main.rs, at
+the root). A `use` inside inline `mod x { }` blocks counts them: `super`
+leaves those first, so `#[cfg(test)] mod tests { use super::*; }` names
+the file's own module and gets no edge (it used to be an external stub).
+Paths rooted elsewhere (std, registry crates) are unchanged. #[path]
+attributes are not read.
+
+New helper supply_chain.own_package_name(manifest): the per-manifest form
+of collect_first_party_package_names, using the readers it already keeps
+(Cargo.toml / go.mod / package.json), shared by the linker, js_ts and the
+Rust resolver instead of three more package-name readers.
+
+The dependency linker already skipped an import whose dst is an in-repo
+id; its two docstring sentences saying Rust imports never resolve are
+corrected. Consequence: a resolved sibling-crate use no longer gets a
+depends_on_manifest edge to the sibling's dependency declaration, as for
+Python, whose resolved in-tree imports never did.
+
+Measured against dev (dev tree on PYTHONPATH, same CLI):
+  firecracker  imports->external_symbol 2199 -> 881; imports->file 0 -> 973
+               (deduped); tier-3 stub nodes 2715 -> 2190; 0 in-tree call
+               targets lost. 14 random samples read against source: all
+               correct after the inline-module fix (before it, one
+               `use super::*` in `mod tests` pointed at lib.rs).
+  aardvark-dns imports->external_symbol 64 -> 47, ->file 0 -> 13
+  apollo-server calls to in-tree functions 819 -> 841 (calls to
+               external_symbol 3064 -> 3042), imports->file 201 -> 265,
+               imports->npm package 276 -> 228, 0 lost; sample
+               cacheControlFromInfo from '@apollo/cache-control-types' ->
+               packages/cache-control-types/src/index.ts.
+
+Not fixed here, filed as WI-vadup: a resolved JS import keeps the
+analyzer's raw edge, so javascript:@ws/b:0-0:module:external_symbol (and
+./b:0-0:module for every relative import) is still minted beside the
+resolved edge. The declaration-tier half (sibling dependency declarations
+at tier 2/3) is INV-kutub's.
+
+Not checked: pnpm/yarn workspace protocols beyond package.json names,
+package.json exports maps with subpath patterns, Cargo [lib] path and
+renamed dependencies (`foo = { package = "bar" }`). `use a::{b, c}` lists
+and `use a as b` emit no imports edge at all today (filed as WI-silam).
+
+Three line-number citations into js_ts.py (module_key_axis,
+signature_axis) moved with the inserted helpers.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
