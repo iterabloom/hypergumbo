@@ -265,6 +265,7 @@ from .io_boundary import (
     PRODUCER_OPAQUE_BOUNDARIES,
     BoundaryMap,
     IoBoundaryCatalog,
+    boundaries_of,
     classify_call,
     is_definitionally_first_party,
     module_hint_disjuncts,
@@ -3611,7 +3612,7 @@ def _is_producer_stamped_launch(edge: dict[str, Any]) -> bool:
     the edge, the other skips it — so a filter at the source would have to be
     duplicated with inverted senses, which is the drift this exists to stop.
     """
-    return (edge.get("meta") or {}).get("io_boundary") in PRODUCER_OPAQUE_BOUNDARIES
+    return any(b in PRODUCER_OPAQUE_BOUNDARIES for b in boundaries_of(edge.get("meta")))
 
 
 def _opaque_launch_sites(

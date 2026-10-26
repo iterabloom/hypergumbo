@@ -54,6 +54,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Rust `type` aliases are symbols**; **a Dockerfile variable is one symbol per build stage**.
 - **A Kotlin or Scala receiver declared with a bare `java.lang` type** (`pb: ProcessBuilder`) names `java.lang`, so `verify-claims` sees the launch.
 
+#### I/O boundaries
+
+- **`slice --io-boundary` keeps a call for every boundary it crosses.** A call true for two boundaries (`subprocess.check_output` is `ipc_recv` and `subprocess`; `child_process.execSync`; the `navigation_read` rows) was kept only for the first declared one, so `--io-boundary subprocess` silently dropped it while `io-boundaries` listed it under both. Both now read one helper, `io_boundary.boundaries_of`.
+
 #### Sketch
 
 - **A data model names its framework once**: `Author (django model)`, not `Author (django django model)`.

@@ -1820,11 +1820,13 @@ def _apply_io_boundary_filter(
     Per the io-boundary REFRAME (WI-fakuv / WI-puvun), io-boundary is not a
     persisted field — ``compute_boundary_map`` derives it on demand and stamps
     ``meta['io_boundary']`` onto the slice's edges *in memory*. We keep only the
-    edges whose stamp equals ``category``, plus their endpoint nodes and the
-    slice's entry nodes, and return the count of kept edges. This is the
-    slice-scoped, on-demand twin of ``hypergumbo io-boundaries``.
+    edges that reach ``category`` -- by :func:`io_boundary.boundaries_of`, the
+    same reading ``io-boundaries`` makes, so a call true for two boundaries is
+    kept for both (WI-votat) -- plus their endpoint nodes and the slice's entry
+    nodes, and return the count of kept edges. This is the slice-scoped,
+    on-demand twin of ``hypergumbo io-boundaries``.
     """
-    from .io_boundary import compute_boundary_map, load_catalog
+    from .io_boundary import boundaries_of, compute_boundary_map, load_catalog
 
     # WI-najil: same in_progress-catalog disclosure as io-boundaries/verify-claims.
     _warn_in_progress_catalogs({n.language for n in nodes if n.language})
@@ -1843,7 +1845,7 @@ def _apply_io_boundary_filter(
     # Stamps meta['io_boundary'] on slice_edges in place (consumer-time).
     compute_boundary_map(slice_edges, catalogs)
     kept_edge_ids = {
-        e.id for e in slice_edges if (e.meta or {}).get("io_boundary") == category
+        e.id for e in slice_edges if category in boundaries_of(e.meta)
     }
     keep_nodes = set(result.entry_nodes)
     for edge in slice_edges:
