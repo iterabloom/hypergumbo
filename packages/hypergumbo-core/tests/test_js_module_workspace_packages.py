@@ -97,3 +97,32 @@ def test_link_emits_an_imports_edge_to_the_sibling_entry(tmp_path: Path) -> None
     dsts = {e.dst for e in result.edges if e.edge_type == "imports"}
     assert dsts == {"javascript:packages/b/lib/main.js:1-1:file:file"}
     assert not [s for s in result.symbols if s.kind == "package"]
+
+
+def test_manifest_reads_are_counted(tmp_path: Path) -> None:
+    """WI-finij: the package index and the entry lookup read package.json
+    files, and a linker's reads must reach the active read log."""
+    from hypergumbo_core.linkers._text_filters import (
+        reset_active_read_log,
+        set_active_read_log,
+    )
+
+    _write(tmp_path, {
+        "packages/a/package.json": '{"name": "@ws/a"}',
+        "packages/a/index.js": "",
+        "packages/b/package.json": '{"name": "@ws/b", "main": "index.js"}',
+        "packages/b/index.js": "",
+    })
+    edge = Edge.create(
+        src="javascript:packages/a/index.js:1-1:file:file",
+        dst="javascript:@ws/b:0-0:module:module", edge_type="imports", line=1,
+        evidence_type="ast_import", origin="test", origin_run_id="r",
+    )
+    log: set[str] = set()
+    token = set_active_read_log(log)
+    try:
+        link_js_modules(repo_root=tmp_path, symbols=[], edges=[edge])
+    finally:
+        reset_active_read_log(token)
+    read = {Path(p).resolve().relative_to(tmp_path.resolve()).as_posix() for p in log}
+    assert {"packages/a/package.json", "packages/b/package.json"} <= read, read

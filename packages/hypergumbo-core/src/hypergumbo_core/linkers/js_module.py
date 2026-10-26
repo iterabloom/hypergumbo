@@ -89,7 +89,7 @@ from ..analyze.base import make_dependency_stable_id, make_file_id, make_file_st
 from ..supply_chain import own_package_name
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
 from ..taxonomy import get_language
-from ._text_filters import read_source_text
+from ._text_filters import note_source_read, read_source_text
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -666,6 +666,9 @@ def _build_workspace_package_index(repo_root: Path) -> dict[str, Path]:
     for manifest in sorted(manifests):
         if "node_modules" in manifest.parts:
             continue
+        # own_package_name reads through supply_chain, outside the counted
+        # readers, so the read is logged here (WI-finij).
+        note_source_read(manifest)
         name = own_package_name(manifest)
         if name is not None and name not in index:
             index[name] = manifest.parent.resolve()
@@ -685,7 +688,7 @@ def _package_entry(root: Path) -> Path | None:
     # ``root`` came from _build_workspace_package_index, which read this
     # manifest as a JSON object naming a package moments ago.
     try:
-        data = json_module.loads((root / "package.json").read_text(errors="ignore"))
+        data = json_module.loads(read_source_text(root / "package.json", errors="ignore"))
     except (OSError, ValueError):  # pragma: no cover - indexed as valid JSON above
         data = {}
     if not isinstance(data, dict):  # pragma: no cover - indexed as an object above
