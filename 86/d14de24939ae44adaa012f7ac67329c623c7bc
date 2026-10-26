@@ -1,0 +1,38 @@
+Original commit body from a29566f0c34e653a4d244c2be487cae779717432:
+
+ADR-0039 ruling 6: a resolver that binds a call by a graded match passes
+resolution_score, and Edge.create interpolates confidence inside the
+pathway's band (low + (base - low) * score). Finalize's INV-fazim step then
+re-derived every evidence_derived edge from (evidence_type, is_resolved)
+alone -- the score was not stored, so it could not be used -- and reset each
+graded bind to its pathway's base. The interpolation reached no published
+edge: C `int (*fp)(int) = f1; if (c) fp = f2; return fp(1);` created
+run->f1/f2 at 0.575 and published them at 0.85.
+
+Edge now keeps resolution_score (an internal field, compare=False, not in
+to_dict: the published contract carries the graded confidence, not a new
+key). _rederive_confidence_from_verdict re-derives WITH it while the edge
+stays resolved, and clears it when the verdict makes the edge unresolved --
+ruling 6: a grade on an unresolved edge is meaningless. Ungraded edges take
+the same path as before, including SCIP's translate step, which flips
+is_resolved after creation (the reason a "re-derive only when the verdict
+changes the flag" shortcut would have been wrong).
+
+Side effect, intended: finalize's magnet demotion (step 6c, before the
+re-derivation) and the spec_validator magnet gate (after it) now see the
+same value for a graded edge; before, a graded edge read 0.575 to one and
+0.85 to the other.
+
+Measured against dev (same CLI, dev tree on PYTHONPATH): apollo-server 244
+of 18,684 edge confidences change (ast_call_direct 0.85 -> 0.815 / 0.768);
+mastodon 4,870 of 93,090 (JS 0.815, Ruby ast_call 0.782 / 0.725 / 0.623 /
+0.589 ...). All downward; no edge id appears or disappears, so no magnet
+demotion moved on either repo.
+
+Tests: unit (scored in-repo bind keeps its grade and rank_score mirror;
+scored bind finalize unresolves drops the grade to the unresolved base;
+re-entry is stable; the score is not serialized) and production path
+(run_behavior_map on the C fixture: both targets publish
+derive_resolved_confidence('function_pointer', 0.5)).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
