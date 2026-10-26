@@ -54,6 +54,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **A data model names its framework once**: `Author (django model)`, not `Author (django django model)`.
 
+#### Taint catalogues
+
+- **A user source or sink row replaces only the label or zone it restates.** A function carrying two labels or several zones used to lose all of them: trusting C's `unistd.write` network row dropped its host_fs and ipc sinks, and a source file naming one label of a two-label function turned a violated host-secret claim confirmed (with a `displaced_shipped_entry` caveat). A row naming a label or zone the function lacks still re-labels or re-zones it. Default runs are unchanged: no shipped row is displaced either way.
+
 #### I/O overlays
 
 - **A user overlay no longer lowers the catalogue it merges into**: python, javascript, rust and erlang kept `provenance_declared` only until one loaded, and every unrelated `external_potential` chain then read `[unreliable]`.
