@@ -1,0 +1,21 @@
+- op: create  # a101
+  at: '2026-10-26T19:31:13Z'  # a101
+  by: agent  # a101
+  actor: jgstern_agent  # a101
+  clock: 1  # a101
+  nonce: a101  # a101
+  data:  # a101
+    kind: work_item  # a101
+    title: "python and node: a send/recv over an AF_UNIX socket is classified net_*; the C family-decided rows (WI-baran) need an analyzer io_target_kind stamp in py.py and js_ts"  # a101
+    status: todo_hard  # a101
+    priority: 3  # a101
+    parent:  # a101
+    tags:  # a101
+    - io_boundary  # a101
+    - adr_0050  # a101
+    isbefore: []  # a101
+    duplicate_of: []  # a101
+    not_duplicate_of: []  # a101
+    pr_ref:  # a101
+    description: "Split out of WI-rutup 2026-10-26 (its premise check named these as owned there). Under ADR-0050 section 1's medium axiom a send or receive over an AF_UNIX / socketpair socket is process-local IPC (ipc_send / ipc_recv), over AF_INET a network crossing. C already decides this per call site (WI-baran, c.yaml sys/socket send/recv rows: boundary_ruling call_site_undecidable, abstains_to net_*, c.py stamps io_target_kind 'pipe' or 'net_stream' from the descriptor's creation). Python and node have only the abstain row: python.yaml net_send `socket.socket` [send, sendto, sendall, sendmsg, ...] and the net_recv twin; javascript.yaml net_send `net.Socket` [connect, write, end] (net.connect({path}) / net.createConnection(path) is a Unix socket). The rows are not wrong as written -- they are the abstain default C keeps too -- so a row edit cannot fix them; the fix is the analyzer stamp: py.py records `s = socket.socket(socket.AF_UNIX, ...)` (and socket.socketpair()) and stamps io_target_kind 'pipe' on calls through that variable, js_ts does the same for net.connect / createConnection with a path; then the rows gain the family-decided ipc twin as C's did. Measure first: how many python/node send/recv calls on a corpus have a recoverable family. Not in scope: go net.Conn.Write/Read (WI-kalol), python asyncio.StreamReader (WI-foloh)."  # a101
+    fields: {}  # a101

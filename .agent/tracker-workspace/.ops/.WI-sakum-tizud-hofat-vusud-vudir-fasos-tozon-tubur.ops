@@ -34,3 +34,19 @@
   clock: 3  # 387d
   nonce: 387d  # 387d
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0039 row: ruling 6 (resolution_score interpolation survives to the published edge) is testable on output, and this item is its counterexample. That test ships as a strict xfail naming this item, and becomes this item's closure evidence. Do not wait for WI-ziruv."  # 387d
+- op: update  # 469e
+  at: '2026-10-26T16:25:43Z'  # 469e
+  by: agent  # 469e
+  actor: jgstern_agent  # 469e
+  clock: 4  # 469e
+  nonce: 469e  # 469e
+  set:  # 469e
+    status: done  # 469e
+    pr_ref: '1881'  # 469e
+- op: discuss  # 4071
+  at: '2026-10-26T16:25:43Z'  # 4071
+  by: agent  # 4071
+  actor: jgstern_agent  # 4071
+  clock: 5  # 4071
+  nonce: '4071'  # 4071
+  message: "DONE in PR #1881 (merged, dev 86d14de249). Root cause: Edge did not store resolution_score, so finalize's INV-fazim re-derivation could only use (evidence_type, is_resolved) and reset every graded bind to its base. Fix: Edge keeps resolution_score (internal, compare=False, not serialized -- declared `omitted` in the schema generator; docs/schema.json unchanged); _rederive_confidence_from_verdict re-derives with it while the edge stays resolved and clears it when the verdict makes the edge unresolved (ruling 6). The premise note's alternative ('re-derive only when the verdict changes is_resolved') was rejected: SCIP's translate step flips is_resolved after Edge.create, so the flag at finalize entry is not the producer's, and that shortcut would have left those edges at the resolved base.\nBEHAVIOURAL EVIDENCE, the filed repro re-run on merged dev: `hypergumbo survey` on C `int (*fp)(int) = f1; if (c) fp = f2; return fp(1);` exit 0 -> run->f1 and run->f2 confidence 0.575, rank_score 0.575, evidence_derived, function_pointer (was 0.85/0.85). Production-path test test_scored_confidence_published.py; unit tests in test_finalize_confidence_rederivation.py::TestResolutionScoreSurvivesTheVerdict (graded bind keeps grade + rank mirror; unresolved verdict drops grade; re-entry stable; not serialized).\nThe 6c magnet demotion and the spec_validator gate now see the same value for a graded edge (the premise note's check): demotion runs before re-derivation and saw the graded value already; the validator reads the published value, which is now the same.\nMEASURED vs dev: apollo-server 244 of 18,684 confidences change; mastodon 4,870 of 93,090; all downward; no edge id appears or disappears on either (so no magnet demotion moved). WI-ziruv's ADR-0039 ruling-6 row can now be tested on output as a passing property rather than the strict xfail the earlier note anticipated."  # 4071

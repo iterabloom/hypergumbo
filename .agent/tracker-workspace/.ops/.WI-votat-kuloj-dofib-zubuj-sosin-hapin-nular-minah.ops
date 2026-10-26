@@ -42,3 +42,19 @@
   clock: 4  # d6f3
   nonce: d6f3  # d6f3
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Neither WI-ziruv nor WI-kosup catches this shape: two consumers (slice --io-boundary, the io-boundaries command) answer one fact differently. It can be tested as a cross-consumer property (both consumers list the same edges per boundary). Does not wait for either audit."  # d6f3
+- op: update  # 9ad7
+  at: '2026-10-26T17:29:19Z'  # 9ad7
+  by: agent  # 9ad7
+  actor: jgstern_agent  # 9ad7
+  clock: 5  # 9ad7
+  nonce: 9ad7  # 9ad7
+  set:  # 9ad7
+    status: done  # 9ad7
+    pr_ref: '1883'  # 9ad7
+- op: discuss  # 33ab
+  at: '2026-10-26T17:29:19Z'  # 33ab
+  by: agent  # 33ab
+  actor: jgstern_agent  # 33ab
+  clock: 6  # 33ab
+  nonce: 33ab  # 33ab
+  message: "DONE in PR #1883 (merged, dev ac7df8ee2a). Root cause: _apply_io_boundary_filter compared the scalar meta['io_boundary'] (first-declared-wins) while io-boundaries fans out over meta['io_boundaries']. Fix: io_boundary.boundaries_of(meta) -- the list when present (it always contains the scalar: simultaneous_boundaries_for and mode_spanned_boundaries both return every row's boundary), else the scalar -- read by the slice filter, the io-boundaries fan-out and verify_claims' producer-opaque test (same answer there today; same question, now one reader).\nBEHAVIOURAL EVIDENCE, the filed repro re-run on merged dev: python run_check() -> subprocess.check_output, run_plain() -> subprocess.run, main calls both; `hypergumbo slice map.json --entry main --io-boundary subprocess` -> \"2 edge(s) reach this boundary\", exit 0 (was 1). JS through the CLI on the branch: --io-boundary subprocess keeps execSync and spawn, ipc_recv keeps execSync, navigation_read keeps document.location and window.name (was window.name only). The cross-consumer property the earlier note proposed ships as test_slice_io_boundary.py::TestMultiBoundaryCall::test_the_filter_and_io_boundaries_agree_per_boundary (for every boundary compute_boundary_map lists, the slice filter keeps exactly those edges); production-path test test_slice_io_boundary_multi.py.\nNot changed: two ad-hoc measurement scripts (scripts/measure-go-composite-literal-ab.py, measure-blind-language-signal.py) count edges by the scalar's presence, which is unaffected."  # 33ab
