@@ -33,3 +33,19 @@
   clock: 3  # 79a2
   nonce: 79a2  # 79a2
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-kosup cites this item as an already-decided precedent (write-only field, DELETE). It does not re-audit it, so this can land any time."  # 79a2
+- op: update  # ebc2
+  at: '2026-10-26T19:29:14Z'  # ebc2
+  by: agent  # ebc2
+  actor: jgstern_agent  # ebc2
+  clock: 4  # ebc2
+  nonce: ebc2  # ebc2
+  set:  # ebc2
+    status: done  # ebc2
+    pr_ref: '1885'  # ebc2
+- op: discuss  # 0e94
+  at: '2026-10-26T19:29:14Z'  # 0e94
+  by: agent  # 0e94
+  actor: jgstern_agent  # 0e94
+  clock: 5  # 0e94
+  nonce: '0e94'  # 0e94
+  message: "DONE in PR #1885 (merged, dev a051983d5e), per the owner ruling. Removed DataModelKind (with its three-axis docstring), DataModel.kind, DataModel.to_dict() (no caller outside its own test -- the second no-reader method), and the kind column of MODEL_BASE_CLASSES / MODEL_DECORATORS / NAMING_PATTERNS. NAMING_PATTERNS now pairs each pattern with its label, which replaced the suffix if-chain and its pragma-no-cover else (labels unchanged: the first matching pattern's suffix is the one the name ends with). Tests: the 18 test_datamodels kind assertions now assert the label the same detector row produces (none was kind-only: each also asserts detection); the to_dict test deleted with the method; 9 DataModel(kind=...) constructors in test_sketch dropped the argument. Grep after: 0 DataModelKind references under packages/. BEHAVIOURAL EVIDENCE: hypergumbo sketch on a Django/Pydantic/dataclass/naming fixture on merged dev matches the pre-change output line for line except the cache-path/artifact-count footer (Data Models section: Author (django model), Point (Python @dataclass), OrderRecord (Record), PaymentSchema (Schema), UserDTO (DTO)). The .agent playbook Examples entry (governance) left as history. Observed while there: Item(BaseModel) is not listed at all -- WI-kiluh (the base-class detector reads meta['parent_bases'], which no analyzer emits)."  # 0e94

@@ -34,3 +34,19 @@
   clock: 3  # 55e3
   nonce: '55e3'  # 55e3
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Neither WI-ziruv nor WI-kosup catches this. Four consumers disagree on one fact, and the contract they should share (when anchored code runs) was never written, so WI-ziruv has no rule to falsify. The fix shape here writes that contract. Does not wait for either audit."  # 55e3
+- op: update  # 3f2e
+  at: '2026-10-26T18:38:40Z'  # 3f2e
+  by: agent  # 3f2e
+  actor: jgstern_agent  # 3f2e
+  clock: 4  # 3f2e
+  nonce: 3f2e  # 3f2e
+  set:  # 3f2e
+    status: done  # 3f2e
+    pr_ref: '1884'  # 3f2e
+- op: discuss  # a4ef
+  at: '2026-10-26T18:38:40Z'  # a4ef
+  by: agent  # a4ef
+  actor: jgstern_agent  # a4ef
+  clock: 5  # a4ef
+  nonce: a4ef  # a4ef
+  message: "DONE in PR #1884 (merged, dev 8c1c17e92b). The contract the earlier note said was never written is now hypergumbo_core.anchor_execution (module docstring): code anchored on a file or class runs when its container does -- a file when any symbol it contains is reached or a loaded file imports it; a class body / static initializer when its file loads or any member is reached. It is served as walk-only edges from the graph's own contains and file->file imports edges (member -> container, file -> its type-like symbols, importer -> imported), added by dead-code-maybe, test-coverage and sketch's coverage line to the graph each walks (nothing emitted). Containing is still not calling: no edge leads from a container to a function. The ratchet already counted anchors in test files as test callers and is unchanged; the walks now agree with it WITHOUT seeding test-file anchors as tests (a test function reaches its own test class and module through member -> container), so test counts stay counts of test functions. Residual (documented): a test file with module-level calls and no test function/class is not reached.\nBEHAVIOURAL EVIDENCE, the filed repros re-run on merged dev through the CLI: lib.py `_REGISTRY = _build_registry(); REGISTRY = build_registry(); def run()` imported by main.py's main guard -> dead-code-maybe --seeds entrypoints: [] and default production: [] (both listed the module-init helpers before). Test half (packages/p/src/p/mod.py + tests/test_mod.py with module-level CASES = f_mod_level() and a test-class-body call): dead-code-maybe --seeds tests -> ['f_uncalled'] only; test-coverage cold spots -> ['f_uncalled'] only (were f_class_body, f_mod_level, f_uncalled); sketch _estimate_test_coverage 3/4 (production-path test test_anchored_code_reachability.py).\nMEASURED vs dev on the same maps: django dead(entrypoints) 8,581 -> 8,297, dead(production) 1,364 -> 1,353, tested 1,917 -> 1,960, test-coverage 3.5s -> 4.6s, 0 newly dead; fastapi entrypoints 1,233 -> 1,165, production 120 unchanged, tested 38 -> 41. Spot-checked django rows against source (a JS class constructed inside a module-level document.addEventListener registration; multipartparser chains)."  # a4ef
