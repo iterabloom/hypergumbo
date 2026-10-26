@@ -1,0 +1,44 @@
+Original commit body from 892fe2b7b6fce07cef7a73aad240d953deebf8c0:
+
+Finalize step 6c replaces a receiver-blind call to a method named like a
+stdlib interface (Close, Parse, Write, ...) with an unresolved external
+stub. Two kinds of correct bind were caught by it.
+
+WI-sibup. The detector decided "was the target type identified" from a
+hand-written subset of meta['receiver'] values, and the subset did not
+grow with the vocabulary. C++'s declared_type (WI-lamij: the receiver's
+declaration names its class) was never added, so `Logger lg; lg.Close();`
+published as cpp:external:0-0:Close:unresolved while lg.Flush() kept its
+bind. The subset is now RECEIVER_IDENTIFIES_TARGET, a mapping that places
+every written value: declared_type and Ruby's self (bound only to the
+enclosing class's own method) join the identified side; bare and generic
+stay receiver-blind (Ruby's generic binds Const.m but also
+Const.other(..).m, whose receiver is an unknown return).
+test_receiver_vocabulary_partition walks every analyzer source (AST, not
+grep) and fails on a written value the mapping does not place, and on a
+placed value nothing writes.
+
+WI-nafif. The same-owner exemption read the caller's owner as
+owner_of(name). A class whose static field initializer calls its own
+method (`static int X = Parse("1");`) is the caller itself, so owner_of('P')
+was None and owner_of('Outer.Inner') was 'Outer': the call read as
+cross-owner and was demoted. A caller of a type-like kind
+(type_like_kind_names) now owns its own generic-stripped name.
+
+Measured with the published graph re-checked under the old rule: bento4
+(C++) had 251 published binds the old rule demotes, all declared_type
+(spot-checked: output->Write on an AP4_ByteStream* parameter binds
+AP4_ByteStream::Write). jenkins and spring-petclinic (Java): 0 type-anchor
+cases, as expected for camelCase methods. No C#-heavy repo was on hand, so
+the C# effect is unmeasured.
+
+Production-path tests (run_behavior_map) for C++, Java (incl. the nested
+Outer.Inner anchor), C# and Kotlin; unit tests for each owner and marker
+branch with cross-owner controls that must still be flagged.
+
+Docs: the receiver MetaKeySpec and spec line listed 8 of the 11 values,
+omitted Swift as a producer, and said no consumer branches on the key; all
+three corrected (the key's two-axes leak stays WI-mujug's). One line-number
+citation in signature_axis's fact table moved with the registry edit.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
