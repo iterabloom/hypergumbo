@@ -49,7 +49,6 @@
 # `--no-default-overlays`.
 
 language: go
-status: overlay
 provenance: community
 retrieved: 2026-03-20
 

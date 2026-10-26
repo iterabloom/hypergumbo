@@ -88,10 +88,10 @@ class TestOverlayLoading:
     def test_an_overlay_may_not_claim_a_shipped_status(self, tmp_path: Path) -> None:
         """``status: provenance_declared`` is a claim about a language's
         stdlib citation. An overlay that claimed it would launder third-party
-        guesses into the same standing as the curated catalogue. (The old
-        spelling ``complete`` is refused everywhere per INV-titih; the overlay
-        path refuses ANY non-``overlay`` status.)"""
-        with pytest.raises(IoPrimitiveOverlayError, match="status"):
+        guesses into the same standing as the curated catalogue."""
+        with pytest.raises(
+            IoPrimitiveOverlayError, match="stdlib citation",
+        ):
             load_overlay_catalog(_write(tmp_path, "bad.yaml", """\
                 language: python
                 status: provenance_declared
@@ -99,6 +99,47 @@ class TestOverlayLoading:
                   - module: requests
                     functions: [post]
                 """))
+
+    def test_an_overlay_omits_status(self, tmp_path: Path) -> None:
+        """``status`` is a shipped catalogue's completeness claim, and an
+        overlay makes none, so the key is simply absent (WI-sihiz). It was a
+        password: required as ``overlay``, compared once, then overwritten."""
+        cat = load_overlay_catalog(_write(tmp_path, "o.yaml", """\
+            language: python
+            net_send:
+              - module: requests
+                functions: [post]
+            """))
+        assert ("requests", "post") in {
+            (p.module, p.name) for p in cat.primitives
+        }
+
+    def test_status_overlay_is_still_accepted(self, tmp_path: Path) -> None:
+        """The legacy spelling loads unchanged: shipped overlays, templates
+        and the copies ``init-catalogs`` seeded into users' io_primitives.d
+        carry it."""
+        cat = load_overlay_catalog(_write(tmp_path, "o.yaml", REQUESTS_OVERLAY))
+        assert cat.primitives
+
+    @pytest.mark.parametrize("value", ["in_progress", "complete", "partial"])
+    def test_any_other_status_is_refused_with_its_own_reason(
+        self, tmp_path: Path, value: str,
+    ) -> None:
+        """A non-laundering value is refused for what it IS, not with the
+        provenance_declared explanation every value used to get. Accepting
+        ``in_progress`` would be a key that loads and changes nothing."""
+        with pytest.raises(IoPrimitiveOverlayError) as exc:
+            load_overlay_catalog(_write(tmp_path, "bad.yaml", f"""\
+                language: python
+                status: {value}
+                net_send:
+                  - module: requests
+                    functions: [post]
+                """))
+        message = str(exc.value)
+        assert repr(value) in message
+        assert "omit" in message
+        assert "stdlib citation" not in message
 
     def test_an_overlay_may_declare_its_own_dependency_enumerated(
         self, tmp_path: Path,

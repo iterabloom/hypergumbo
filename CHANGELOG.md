@@ -54,6 +54,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **A data model names its framework once**: `Author (django model)`, not `Author (django django model)`.
 
+#### I/O overlays
+
+- **A user overlay no longer lowers the catalogue it merges into**: python, javascript, rust and erlang kept `provenance_declared` only until one loaded, and every unrelated `external_potential` chain then read `[unreliable]`.
+- **An overlay omits `status`**, which is a shipped catalogue's completeness claim. `status: overlay` still loads; `provenance_declared` and any other value are refused, each with its own reason (every value used to get the `provenance_declared` explanation). The shipped overlays, template and samples drop the line.
+
 #### SCIP backends
 
 - **A SCIP edge lands on the record in its own crate target**, or is dropped and counted.

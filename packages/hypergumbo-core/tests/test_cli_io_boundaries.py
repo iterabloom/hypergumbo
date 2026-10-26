@@ -461,6 +461,60 @@ def test_cmd_io_boundaries_chain_shows_dst_tier_for_external_boundary(
     assert "[tier-3 external_dep]" in text
 
 
+@pytest.mark.parametrize("no_default_overlays", [False, True])
+def test_a_user_overlay_does_not_mark_unrelated_chains_unreliable(
+    tmp_path: Path, capsys, no_default_overlays: bool,
+) -> None:
+    """WI-donod, through the command: a user overlay describing ONE library
+    used to drop python's catalogue to in_progress, so an unrelated
+    external_potential chain flipped dst_classification_unreliable to True
+    (rendered ``[unreliable]``). The overlay says nothing about the stdlib."""
+    overlay = tmp_path / "my-io.yaml"
+    overlay.write_text(
+        "language: python\n"
+        "net_send:\n  - module: mylib\n    functions: [ship]\n"
+    )
+    bmap = _make_behavior_map(
+        nodes=[
+            {
+                "id": "python:src/load.py:1-5:load:function",
+                "name": "load", "kind": "function", "language": "python",
+                "path": "src/load.py",
+                "span": {"start_line": 1, "end_line": 5},
+                "supply_chain": {"tier": 1, "tier_name": "first_party"},
+            },
+            {
+                "id": "python:otherlib:0-0:frobnicate:unresolved",
+                "name": "frobnicate", "kind": "external_symbol",
+                "language": "python", "path": "<external>",
+                "span": {"start_line": 0, "end_line": 0,
+                         "start_col": 0, "end_col": 0},
+                "meta": {"external_boundary": True},
+                "supply_chain": {"tier": 3, "tier_name": "external_dep",
+                                 "reason": "unresolved external reference"},
+            },
+        ],
+        edges=[
+            {
+                "src": "python:src/load.py:1-5:load:function",
+                "dst": "python:otherlib:0-0:frobnicate:unresolved",
+                "type": "calls", "confidence": 0.9,
+            },
+        ],
+    )
+    args = _make_args(
+        tmp_path, bmap, json_output=True, io_primitives=[str(overlay)],
+        no_default_overlays=no_default_overlays,
+    )
+    assert cmd_io_boundaries(args) == 0
+    data = json.loads(capsys.readouterr().out)
+    chains = data["boundaries"]["external_potential"]["chains"]
+    assert len(chains) == 1 and "frobnicate" in chains[0]["primitive"], (
+        "reach: the unrelated chain must be present"
+    )
+    assert chains[0]["dst_classification_unreliable"] is False
+
+
 def test_cmd_io_boundaries_renders_external_potential_section(
     tmp_path: Path, capsys,
 ) -> None:

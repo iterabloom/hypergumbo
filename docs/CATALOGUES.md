@@ -89,7 +89,6 @@ library_patterns:
 
 ```yaml
 language: python
-status: overlay
 retrieved: 2026-09-30        # when you last checked the library
 net_send:
   - module: inhouse_http
