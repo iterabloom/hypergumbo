@@ -28,6 +28,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`catalog.validate_pass_dependencies`**, a pre-run `depends_on` gate nothing called; ADR-0056 refused to wire it, and ADR-0030 no longer says dependencies are checked at configuration time.
 - **The aardvark-dns fixture's `Cargo.lock`**; a test now fails on any committed lockfile or exact `==` pin.
+- **`DataModel.kind` and the `DataModelKind` enum**, and `DataModel.to_dict()`. The field was written by every data-model detector and read by nothing (the only serializer had no caller outside its test), so it reached no output; sketch's Data Models section is byte-identical without it.
 
 ### Fixed
 

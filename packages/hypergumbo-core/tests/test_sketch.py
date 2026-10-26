@@ -45,7 +45,7 @@ from hypergumbo_core.ranking import compute_centrality, _is_test_path
 from hypergumbo_core.profile import detect_profile
 from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.entrypoints import Entrypoint, EntrypointKind
-from hypergumbo_core.datamodels import DataModel, DataModelKind
+from hypergumbo_core.datamodels import DataModel
 from hypergumbo_core.cli import cmd_sketch, _validate_require_sections
 
 
@@ -3148,8 +3148,7 @@ class TestFormatDatamodels:
                    path=str(tmp_path / "models.py"), span=Span(1, 1, 1, 10)),
         ]
         datamodels = [
-            DataModel(symbol_id="test:User", kind=DataModelKind.ORM_MODEL,
-                      confidence=0.95, label="model", framework="Django"),
+            DataModel(symbol_id="test:User", confidence=0.95, label="model", framework="Django"),
         ]
 
         result = _format_datamodels(datamodels, symbols, tmp_path)
@@ -3166,8 +3165,7 @@ class TestFormatDatamodels:
             for i in range(10)
         ]
         datamodels = [
-            DataModel(symbol_id=f"test:Model{i}", kind=DataModelKind.PYDANTIC_MODEL,
-                      confidence=0.85, label="model", framework="Pydantic")
+            DataModel(symbol_id=f"test:Model{i}", confidence=0.85, label="model", framework="Pydantic")
             for i in range(10)
         ]
 
@@ -3183,8 +3181,7 @@ class TestFormatDatamodels:
     def test_missing_symbol_fallback(self, tmp_path: Path) -> None:
         """Falls back to symbol_id in Unknown group when symbol not found."""
         datamodels = [
-            DataModel(symbol_id="unknown:Model", kind=DataModelKind.DATACLASS,
-                      confidence=0.90, label="@dataclass", framework="Python"),
+            DataModel(symbol_id="unknown:Model", confidence=0.90, label="@dataclass", framework="Python"),
         ]
 
         result = _format_datamodels(datamodels, [], tmp_path)
@@ -3221,8 +3218,7 @@ class TestFormatDatamodels:
                    path=str(tmp_path / "models.py"), span=Span(1, 1, 1, 10)),
         ]
         datamodels = [
-            DataModel(symbol_id="test:UserModel", kind=DataModelKind.DOMAIN_MODEL,
-                      confidence=0.70, label="Domain model", framework=""),
+            DataModel(symbol_id="test:UserModel", confidence=0.70, label="Domain model", framework=""),
         ]
 
         result = _format_datamodels(datamodels, symbols, tmp_path)
@@ -3237,8 +3233,7 @@ class TestFormatDatamodels:
                    path=str(tmp_path / "src" / "models.py"), span=Span(1, 1, 1, 10)),
         ]
         datamodels = [
-            DataModel(symbol_id="test:User", kind=DataModelKind.ORM_MODEL,
-                      confidence=0.95, label="model", framework="Django"),
+            DataModel(symbol_id="test:User", confidence=0.95, label="model", framework="Django"),
         ]
 
         result = _format_datamodels(datamodels, symbols, tmp_path)
@@ -3258,12 +3253,9 @@ class TestFormatDatamodels:
                    path=str(tmp_path / "settings.py"), span=Span(1, 1, 1, 10)),
         ]
         datamodels = [
-            DataModel(symbol_id="test:User", kind=DataModelKind.ORM_MODEL,
-                      confidence=0.95, label="model", framework="Django"),
-            DataModel(symbol_id="test:Post", kind=DataModelKind.ORM_MODEL,
-                      confidence=0.90, label="model", framework="Django"),
-            DataModel(symbol_id="test:Config", kind=DataModelKind.DATACLASS,
-                      confidence=0.85, label="@dataclass", framework="Python"),
+            DataModel(symbol_id="test:User", confidence=0.95, label="model", framework="Django"),
+            DataModel(symbol_id="test:Post", confidence=0.90, label="model", framework="Django"),
+            DataModel(symbol_id="test:Config", confidence=0.85, label="@dataclass", framework="Python"),
         ]
 
         result = _format_datamodels(datamodels, symbols, tmp_path)
@@ -4986,7 +4978,6 @@ class TestCollectImportantFiles:
         )
         datamodel = DataModel(
             symbol_id="models:user:UserModel",
-            kind=DataModelKind.DOMAIN_MODEL,
             confidence=0.7,
             label="Domain model",
         )
