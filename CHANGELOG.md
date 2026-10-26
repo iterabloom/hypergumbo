@@ -50,6 +50,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Rust `type` aliases are symbols**; **a Dockerfile variable is one symbol per build stage**.
 - **A Kotlin or Scala receiver declared with a bare `java.lang` type** (`pb: ProcessBuilder`) names `java.lang`, so `verify-claims` sees the launch.
 
+#### Sketch
+
+- **A data model names its framework once**: `Author (django model)`, not `Author (django django model)`.
+
 #### SCIP backends
 
 - **A SCIP edge lands on the record in its own crate target**, or is dropped and counted.

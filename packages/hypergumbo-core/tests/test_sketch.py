@@ -3190,7 +3190,29 @@ class TestFormatDatamodels:
         result = _format_datamodels(datamodels, [], tmp_path)
 
         assert "Unknown:" in result
-        assert "  - `unknown:Model` (@dataclass)" in result
+        assert "  - `unknown:Model` (Python @dataclass)" in result
+
+    def test_concept_model_names_its_framework_once(self, tmp_path: Path) -> None:
+        """A concept-detected model renders 'django model', not 'django django model'.
+
+        Production path: the concept detector's DataModel straight into the
+        formatter, with and without a symbol to group it under (WI-kibat).
+        """
+        from hypergumbo_core.datamodels import detect_datamodels
+
+        sym = Symbol(id="test:Author", name="Author", kind="class",
+                     language="python", path=str(tmp_path / "models.py"),
+                     span=Span(1, 1, 1, 10),
+                     meta={"concepts": [{"concept": "model",
+                                         "framework": "django"}]})
+        datamodels = detect_datamodels([sym], [])
+
+        grouped = _format_datamodels(datamodels, [sym], tmp_path)
+        fallback = _format_datamodels(datamodels, [], tmp_path)
+
+        assert "  - `Author` (django model)" in grouped
+        assert "  - `test:Author` (django model)" in fallback
+        assert "django django" not in grouped + fallback
 
     def test_format_without_framework(self, tmp_path: Path) -> None:
         """Formats model without framework info under file group."""
