@@ -1,0 +1,41 @@
+Original commit body from 31c261df4427a10b25bcd9524f8845600cab704c:
+
+`import pkg.sub.deep` binds only `pkg`, so the call site spells the whole
+path: `pkg.sub.deep.deep_fn()`. The analyzer resolved `deep.deep_fn()`
+after `from pkg.sub import deep` (Case 2e) but sent the dotted spelling to
+the WI-zigah emitter, which exists for modules OUTSIDE the tree. The call
+landed on python:pkg.sub.deep:0-0:deep_fn:external_symbol and the real
+deep_fn read as uncalled. Two module levels were enough
+(`import mypkg.core; mypkg.core.core_fn()`), and in a workspace the
+phantom carried the sibling's prefix, a counterexample to INV-nuzas's
+acceptance property.
+
+Case 2g resolves the call against the module the path names (root's
+import binding + every hop but the callee), with the lookup Case 2b and
+2e already use. An aliased root works (`import pkg.sub as s;
+s.deep.f()`), and the call site's live import map is the one consulted,
+so a parameter named like the root does not bind.
+
+The item asked for a decision on builtin calls on an in-tree module
+constant (`pkg.REGISTRY.get()`, `pkg.core.CONSTANTS.values()`), which
+minted python:pkg.REGISTRY:0-0:get -- a module that does not exist. They
+take the answer the from-import spelling already has (WI-hotug CASE B): a
+references edge to the in-tree variable and no stub. One rule for both
+spellings.
+
+The `references` edge from the dotted chain's first hop to
+pkg/sub/__init__.py is left as it is: importing pkg.sub.deep executes the
+package, so the read is real.
+
+Measured against dev (same CLI, dev tree on PYTHONPATH): django 21 call
+pairs move from an external_symbol to the in-tree target and none are
+lost (migrations' `django.contrib.auth.models.UserManager()` under
+`import django.contrib.auth.models`); fastapi 2, none lost.
+
+Tests (run_behavior_map): the dotted call at two depths, the aliased
+root, the constant receivers, the uv-workspace sibling with no
+pkg_b-prefixed external_symbol; controls that the from-import spelling
+still binds, a stdlib dotted call keeps its module-qualified stub, and a
+shadowing parameter does not bind.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
