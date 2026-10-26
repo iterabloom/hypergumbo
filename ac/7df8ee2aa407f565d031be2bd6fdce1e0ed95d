@@ -1,0 +1,30 @@
+Original commit body from 13b726ec4c3e54009c476db6c8f260f2d3169fe8:
+
+A primitive true for two boundaries at once (a `simultaneous` row, or a
+collapsed edge whose sites span modes) records both in
+meta['io_boundaries']; the scalar meta['io_boundary'] names only the first
+declared row (first-declared-wins). `io-boundaries` builds one chain per
+entry of the list. `slice --io-boundary` compared the scalar, so a call was
+invisible to the boundary it is listed second for: on the item's fixture,
+`slice --entry main --io-boundary subprocess` reported 1 edge
+(subprocess.run) and dropped subprocess.check_output (ipc_recv +
+subprocess), at exit 0 with no warning; --io-boundary navigation_read kept
+window.name and dropped document.location. The premise check counted 41
+two-boundary primitives; the subprocess filter missed 30 of them.
+
+io_boundary.boundaries_of(meta) is now the one answer to "which boundaries
+does this edge reach": the list when present (it always contains the
+scalar), else the scalar. The slice filter, the io-boundaries fan-out and
+verify_claims' producer-opaque test read it. The opaque test's answer does
+not change today (a producer-opaque stamp is always in the list when there
+is one), but it is the same question and now has the same reader.
+
+Tests: core (TestMultiBoundaryCall: check_output kept under subprocess and
+ipc_recv, run under subprocess only; a cross-consumer property that, for
+every boundary compute_boundary_map lists, the slice filter keeps exactly
+those edges) and production path (run_behavior_map + cmd_slice on the
+python fixture). JS checked through the CLI on this branch: execSync under
+subprocess and ipc_recv, document.location and window.name under
+navigation_read.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
