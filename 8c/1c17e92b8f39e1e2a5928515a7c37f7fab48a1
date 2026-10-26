@@ -1,0 +1,53 @@
+Original commit body from 040c31f1f2ef8dbb7b25b7c15627d1bc5598ccf5:
+
+A call outside every function is anchored on the node it runs in: the
+file for module-level code (`_REGISTRY = _build_registry()`), the class
+for a class body or a static initializer. Nothing said when an anchor is
+itself reached, and four consumers disagreed on one fixture:
+
+* dead-code-maybe walked from function/method seeds over call edges and
+  never entered an anchor, so a module-init helper read dead under
+  `--seeds entrypoints`, and under the default seeds when private
+  (lib.py `_build_registry` imported by main.py);
+* test-coverage and sketch's coverage line likewise, so production helpers
+  reached from a test module's module-level code or a test class body were
+  cold spots;
+* the test-only ratchet counted any caller in a test file, anchors
+  included -- the right answer, since the runner imports test modules.
+
+New module anchor_execution writes the contract down and serves it as
+walk-only edges from the graph's own `contains` and file-to-file `imports`
+edges: member -> container (calling a function requires its module, using
+a member its class), file -> the type-like symbols it contains (loading a
+module runs its class bodies), importer file -> imported file. The three
+walking consumers add them to the graph they walk, the way INV-rolok's
+construction-initializer edges are added; nothing is emitted. Containing
+is still not calling: no edge leads from a container to a function, so a
+loaded file makes its module-level code and class bodies run, never a
+function nobody calls -- each test fixture keeps such a function and it
+stays dead / cold.
+
+No separate test seed: a test function reaches its own test class and
+test module through the member -> container step, so the walks agree with
+the ratchet without counting a test FILE as a test (a first cut seeded
+test-file anchors and raised fastapi's reported total_tests 3768 -> 4535;
+dropped). Residual, documented: a test file with module-level calls and
+no test function or class is not reached.
+
+Measured against dev on the same survey map (dev tree on PYTHONPATH):
+  django   dead (entrypoints) 8,581 -> 8,297; dead (production) 1,364 ->
+           1,353; test-coverage tested 1,917 -> 1,960 (19.0% -> 19.5%);
+           test-coverage 3.5s -> 4.6s; none newly dead (edges are only
+           added). Samples read against source: OLMapWidget.js's MapWidget
+           methods (constructed inside a module-level
+           document.addEventListener registration), multipartparser's
+           InterBoundaryIter.__init__.
+  fastapi  dead (entrypoints) 1,233 -> 1,165; production 120 unchanged;
+           tested 38 -> 41; total_tests unchanged.
+
+Tests: core unit (each edge rule; a loaded file never reaches its
+functions; live-object shape) and production path (run_behavior_map +
+dead-code-maybe under entrypoints/production/tests seeds, test-coverage
+cold spots, sketch's _estimate_test_coverage).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
