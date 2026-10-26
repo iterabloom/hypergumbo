@@ -200,6 +200,7 @@ Why This Design
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 import time
@@ -215,6 +216,7 @@ from hypergumbo_core.ir import (
     make_pass_id,
 )
 from hypergumbo_core.paths import normalize_path
+from hypergumbo_core.supply_chain import own_package_name
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
@@ -860,15 +862,21 @@ def _disambiguate_by_import(
 
     Resolves the import path relative to the importing file's directory and
     matches against candidate symbol file paths (with extension stripped).
-    Only handles relative imports (starting with '.').
+
+    A bare specifier that names a package the tree defines (an npm workspace
+    sibling, ``require('@ws/b')``) is answered by
+    :func:`_in_tree_package_candidate` instead, even for a single candidate:
+    that bind is the one the cross-package guard downstream would otherwise
+    refuse (WI-rilof).
 
     Returns the matching Symbol, or None if disambiguation fails.
     """
-    if not import_path.startswith("."):
-        return None  # Non-relative imports can't be disambiguated this way
-
     candidates = symbols_by_name.get(full_name)
-    if not candidates or len(candidates) < 2:
+    if not candidates:
+        return None
+    if not import_path.startswith("."):
+        return _in_tree_package_candidate(import_path, file_path, candidates)
+    if len(candidates) < 2:
         return None  # No disambiguation needed
 
     # Resolve import path relative to importing file's directory
@@ -884,6 +892,51 @@ def _disambiguate_by_import(
             return candidate
 
     return None
+
+
+def _in_tree_package_candidate(
+    specifier: str, file_path: Path, candidates: list["Symbol"],
+) -> "Symbol | None":
+    """The candidate a bare ``specifier`` imports from a package in the tree.
+
+    ``require('@ws/b')`` in an npm workspace names a package whose source is
+    analysed: its ``package.json`` declares ``"name": "@ws/b"``. The candidate
+    is the one whose nearest ``package.json`` is that package's, and, for a
+    subpath (``@ws/b/util``), whose file is the one the subpath names. Without
+    this, the name lookup found b's function and ``_is_cross_package`` refused
+    it, so the call landed on a ``javascript:@ws/b:0-0:helper`` stub and b's
+    real function read as uncalled (WI-rilof).
+
+    A specifier no in-tree ``package.json`` names, more than one match, or a
+    package importing itself by name returns None, leaving the call to the
+    existing routes.
+    """
+    package = _js_package_name(specifier)
+    own_root = _find_package_root(file_path)
+    matches = []
+    for candidate in candidates:
+        root = _find_package_root(Path(candidate.path))
+        if root is not None and root != own_root and _package_json_name(root) == package:
+            matches.append((root, candidate))
+    subpath = specifier[len(package):].lstrip("/")
+    if subpath:
+        # The subpath's file, or its directory's index, at the package root or
+        # under ``src/`` -- the same places the js_module linker probes.
+        matches = [
+            (root, c) for root, c in matches
+            if Path(c.path).with_suffix("") in {
+                (root / subpath).with_suffix(""),
+                (root / "src" / subpath).with_suffix(""),
+            }
+            or Path(c.path).parent in {root / subpath, root / "src" / subpath}
+        ]
+    return matches[0][1] if len(matches) == 1 else None
+
+
+@functools.lru_cache(maxsize=4096)
+def _package_json_name(root: Path) -> str | None:
+    """The ``name`` a directory's ``package.json`` declares, or None."""
+    return own_package_name(root / "package.json")
 
 
 def _find_package_root(file_path: Path) -> Path | None:

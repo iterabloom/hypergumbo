@@ -39,6 +39,14 @@ For npm packages (bare/scoped imports like 'lodash', '@vue/test-utils'),
 the linker creates `kind="package"` symbols carrying
 `meta['package_ecosystem'] == 'npm'` and `imports` edges to them.
 
+A bare specifier whose package a `package.json` IN THE TREE declares (an npm
+workspace sibling, `require('@ws/b')`) is not a third-party package: it
+resolves to that package's entry file -- `exports["."]`, `module` or `main`,
+else its index -- or, for a subpath (`@ws/b/util`), to the file the subpath
+names (`_build_workspace_package_index` / `_resolve_workspace_import`,
+WI-rilof). Before, it became a tier-3 "third-party" stand-in beside the real
+tier-1 package.
+
 Path Alias Resolution
 ---------------------
 Non-relative imports that aren't npm packages may be project aliases:
@@ -78,6 +86,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..analyze.base import make_dependency_stable_id, make_file_id, make_file_stable_id
+from ..supply_chain import own_package_name
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
 from ..taxonomy import get_language
 from ._text_filters import read_source_text
@@ -641,6 +650,77 @@ def _resolve_alias(
     return None
 
 
+def _build_workspace_package_index(repo_root: Path) -> dict[str, Path]:
+    """Map each package name a ``package.json`` in the tree declares to its
+    directory (WI-rilof). ``node_modules`` is skipped: an installed copy is
+    the third-party package, not source in the tree. The first declaration of
+    a name wins, in path order, so the result does not depend on scan order.
+    """
+    from hypergumbo_core.discovery import get_file_index
+    file_index = get_file_index()
+    if file_index is not None and file_index.repo_root == repo_root:
+        manifests = list(file_index.by_name("package.json"))
+    else:
+        manifests = list(repo_root.rglob("package.json"))
+    index: dict[str, Path] = {}
+    for manifest in sorted(manifests):
+        if "node_modules" in manifest.parts:
+            continue
+        name = own_package_name(manifest)
+        if name is not None and name not in index:
+            index[name] = manifest.parent.resolve()
+    return index
+
+
+def _package_entry(root: Path) -> Path | None:
+    """A workspace package's entry file, the way Node finds it for a bare
+    ``require``: a string ``exports`` or ``exports["."]`` (its ``import`` /
+    ``require`` / ``default`` condition when it is a map), then ``module``,
+    then ``main``, then ``index.<ext>``.
+
+    A TypeScript package's entry usually names BUILD output
+    (``"main": "dist/cjs/index.js"``) that is not in the tree, so when no
+    declared entry exists the package's own source entry, ``src/index.<ext>``,
+    answers instead (apollo-server: four of its workspace packages)."""
+    # ``root`` came from _build_workspace_package_index, which read this
+    # manifest as a JSON object naming a package moments ago.
+    try:
+        data = json_module.loads((root / "package.json").read_text(errors="ignore"))
+    except (OSError, ValueError):  # pragma: no cover - indexed as valid JSON above
+        data = {}
+    if not isinstance(data, dict):  # pragma: no cover - indexed as an object above
+        data = {}
+    exports = data.get("exports")
+    if isinstance(exports, dict):
+        exports = exports.get(".", exports)
+        if isinstance(exports, dict):
+            exports = next(
+                (exports[k] for k in ("import", "require", "default")
+                 if isinstance(exports.get(k), str)),
+                None,
+            )
+    for field_value in (exports, data.get("module"), data.get("main")):
+        if isinstance(field_value, str):
+            found = _probe_file((root / field_value).resolve())
+            if found is not None:
+                return found
+    return _probe_file(root / "index") or _probe_file(root / "src" / "index")
+
+
+def _resolve_workspace_import(
+    import_path: str, workspace_packages: dict[str, Path],
+) -> Path | None:
+    """The file a bare specifier names inside an in-tree package, or None."""
+    package = _get_npm_package_name(import_path)
+    root = workspace_packages.get(package)
+    if root is None:
+        return None
+    subpath = import_path[len(package):].lstrip("/")
+    if subpath:
+        return _probe_file(root / subpath) or _probe_file(root / "src" / subpath)
+    return _package_entry(root)
+
+
 def _get_npm_package_name(import_path: str) -> str:
     """Extract the npm package name from an import path.
 
@@ -748,6 +828,7 @@ def link_js_modules(
     vite_aliases = _load_vite_aliases(repo_root)
     # Cache: source directory → combined sorted aliases (avoid re-sorting)
     aliases_cache: dict[str, list[tuple[str, Path]]] = {}
+    workspace_packages = _build_workspace_package_index(repo_root)
 
     for edge in import_edges:
         # Parse the dst to extract import path
@@ -805,6 +886,8 @@ def link_js_modules(
                 if resolved is not None:
                     evidence_type = "alias_resolution"
                     import_confidence = 0.85
+            if resolved is None:
+                resolved = _resolve_workspace_import(import_path, workspace_packages)
 
         if resolved is not None:
             # Compute path relative to repo_root for the symbol

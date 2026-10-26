@@ -1755,6 +1755,26 @@ _FIRST_PARTY_MANIFESTS: dict[str, Callable[[str], Optional[str]]] = {
 }
 
 
+def own_package_name(manifest: Path) -> Optional[str]:
+    """The name a ``Cargo.toml`` / ``go.mod`` / ``package.json`` publishes its
+    own package under, read by the reader :data:`_FIRST_PARTY_MANIFESTS` keeps
+    for that basename; None for another basename, an unreadable file, or a
+    manifest that names no package.
+
+    The per-manifest form of :func:`collect_first_party_package_names`, for a
+    consumer that needs to know WHICH directory a name belongs to: an import of
+    a workspace sibling resolves to that sibling's source (WI-rilof, js_module
+    and the Rust ``use`` resolver)."""
+    reader = _FIRST_PARTY_MANIFESTS.get(manifest.name)
+    if reader is None:
+        return None
+    try:
+        content = manifest.read_text(errors="ignore")
+    except OSError:
+        return None
+    return reader(content)
+
+
 def collect_first_party_package_names(repo_root: Path) -> set[str]:
     """The names this repository PUBLISHES ITSELF UNDER, read from its manifests.
 

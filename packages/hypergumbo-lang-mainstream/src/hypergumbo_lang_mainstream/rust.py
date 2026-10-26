@@ -2337,6 +2337,131 @@ _RUST_ABSOLUTE_PATH_ROOTS: frozenset[str] = frozenset({"std", "core", "alloc"})
 _PLAIN_RUST_PATH = re.compile(r"(?:::)?[A-Za-z_]\w*(?:::[A-Za-z_]\w*)+")
 
 
+class _InTreeCrates:
+    """Where a ``use`` path that starts inside the tree lands (WI-rilof).
+
+    Built once per run from the files the symbol pass saw. A crate is a
+    ``Cargo.toml`` with a ``[package] name`` (read by
+    ``supply_chain.own_package_name``); its root file is ``src/lib.rs``, else
+    ``src/main.rs``, and its modules are files under ``src/`` in the standard
+    layout (``a.rs`` or ``a/mod.rs``). A path's first segment selects where
+    to start: ``crate`` (this file's crate), ``self`` / ``super`` (this
+    file's module and its parents), or a crate name -- any in-tree package,
+    ``-`` read as ``_``, which covers a workspace sibling and an integration
+    test reaching its own library. Every other first segment (``std``, a
+    registry crate) is outside the tree and gets None.
+
+    The answer is the DEEPEST module file the path walks through: ``use
+    crate_b::net::conn::Conn`` imports ``net/conn.rs``; a path whose next
+    segment names an item or a module this layout cannot find stops at the
+    last file reached, and at least at the crate root. A ``use`` inside
+    inline ``mod x { }`` blocks passes their count as ``inline_depth``: a
+    ``super`` first leaves those blocks (``#[cfg(test)] mod tests { use
+    super::*; }`` names the file's own module), and a path that never leaves
+    them names code in the current file. ``#[path]`` attributes are not read,
+    and an inline module's children are items of its file, so a path through
+    one stops at that file.
+    """
+
+    def __init__(self, files: "dict[str, Path]") -> None:
+        self._files = set(files)
+        self._crate_dir_of: dict[str, Optional[Path]] = {}
+        self.by_name: dict[str, Path] = {}
+        for rel, abs_path in sorted(files.items()):
+            crate_dir = self._find_crate_dir(Path(rel), abs_path)
+            self._crate_dir_of[rel] = crate_dir
+
+    def _find_crate_dir(self, rel: Path, abs_path: Path) -> Optional[Path]:
+        from hypergumbo_core.supply_chain import own_package_name
+
+        repo_root = abs_path.parents[len(rel.parts) - 1]
+        for parent in rel.parents:
+            manifest = repo_root / parent / "Cargo.toml"
+            if not manifest.is_file():
+                continue
+            name = own_package_name(manifest)
+            if name is None:
+                continue  # a virtual workspace manifest: keep walking up
+            self.by_name.setdefault(name.replace("-", "_"), parent)
+            return parent
+        return None
+
+    def _root_file(self, crate_dir: Path) -> Optional[Path]:
+        for name in ("lib.rs", "main.rs"):
+            candidate = crate_dir / "src" / name
+            if str(candidate) in self._files:
+                return candidate
+        return None
+
+    def _module_file(self, module_dir: Path, crate_dir: Path) -> Optional[Path]:
+        """The file that declares the module whose children live in ``module_dir``."""
+        if module_dir == crate_dir / "src":
+            return self._root_file(crate_dir)
+        for candidate in (module_dir / "mod.rs", module_dir.with_suffix(".rs")):
+            if str(candidate) in self._files:
+                return candidate
+        return None
+
+    def resolve(
+        self, rel: str, import_path: str, inline_depth: int = 0,
+    ) -> Optional[str]:
+        """The repo-relative file ``import_path`` imports from ``rel``, or None.
+
+        ``rel`` itself is returned for a path that stays in the current file
+        (``self::`` / ``super::`` inside an inline module)."""
+        segments = [s for s in import_path.split("::") if s and s != "*"]
+        if not segments:
+            return None
+        own_crate = self._crate_dir_of.get(rel)
+        head = segments[0]
+        if head == "crate" and own_crate is not None:
+            crate_dir, rest = own_crate, segments[1:]
+            module_dir = crate_dir / "src"
+        elif head in ("self", "super") and own_crate is not None:
+            crate_dir = own_crate
+            here = Path(rel)
+            module_dir = (
+                here.parent if here.name in ("lib.rs", "main.rs", "mod.rs")
+                else here.parent / here.stem
+            )
+            rest = segments
+            if rest[0] == "self":
+                rest = rest[1:]
+            while rest and rest[0] == "super" and inline_depth > 0:
+                inline_depth, rest = inline_depth - 1, rest[1:]
+            if inline_depth > 0:
+                return rel  # still inside this file's inline modules
+            while rest and rest[0] == "super":
+                if module_dir == crate_dir / "src":
+                    return None  # above the crate root
+                module_dir, rest = module_dir.parent, rest[1:]
+        elif head in self.by_name:
+            crate_dir, rest = self.by_name[head], segments[1:]
+            module_dir = crate_dir / "src"
+        else:
+            return None
+        best = self._module_file(module_dir, crate_dir)
+        if best is None:
+            return None
+        for segment in rest:
+            nxt = self._module_file(module_dir / segment, crate_dir)
+            if nxt is None:
+                break
+            best, module_dir = nxt, module_dir / segment
+        return str(best)
+
+
+def _inline_mod_depth(node: "tree_sitter.Node") -> int:
+    """How many inline ``mod x { ... }`` blocks enclose ``node``."""
+    depth = 0
+    parent = node.parent
+    while parent is not None:
+        if parent.type == "mod_item":
+            depth += 1
+        parent = parent.parent
+    return depth
+
+
 def _extract_use_aliases(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -2623,9 +2748,26 @@ def _extract_edges_from_file(
 
             if path_node:
                 import_path = node_text(path_node, source)
+                # WI-rilof: a path into the tree imports the file it reaches
+                # rather than a ``module`` placeholder finalize turns into a
+                # tier-3 external_symbol.
+                in_tree = (
+                    analyzer.in_tree_crates().resolve(
+                        str(file_path), import_path, _inline_mod_depth(node),
+                    )
+                    if analyzer is not None else None
+                )
+                if in_tree == str(file_path):
+                    # A path into this file's own (inline) modules imports
+                    # nothing from another file; no edge, rather than a
+                    # self-import or the external stub it used to become.
+                    continue
                 edges.append(Edge.create(
                     src=file_id,
-                    dst=f"rust:{import_path}:0-0:module:module",
+                    dst=(
+                        make_file_id("rust", in_tree) if in_tree is not None
+                        else f"rust:{import_path}:0-0:module:module"
+                    ),
                     edge_type="imports",
                     line=node.start_point[0] + 1,
                     evidence_type="use_declaration",
@@ -3879,13 +4021,31 @@ class RustAnalyzer(TreeSitterAnalyzer):
     lang = "rust"
     file_patterns: ClassVar[list[str]] = ["*.rs"]
     grammar_module = "tree_sitter_rust"
+    # WI-rilof: the files the symbol pass saw this run (keyed by run id, as
+    # the analyzer instance outlives a run) and the crate layout built from
+    # them for ``use`` resolution.
+    _seen_files: "tuple[str, dict[str, Path]] | None" = None
+    _crates: "_InTreeCrates | None" = None
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str, run: "AnalysisRun",
     ) -> FileAnalysis:
         """Extract functions, structs, enums, traits from a Rust file."""
+        if self._seen_files is None or self._seen_files[0] != run.execution_id:
+            self._seen_files = (run.execution_id, {})
+            self._crates = None
+        self._seen_files[1][rel_path] = file_path
         return _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+
+    def in_tree_crates(self) -> _InTreeCrates:
+        """This run's crate layout, built on first use in the edge pass, when
+        the symbol pass has seen every file (WI-rilof)."""
+        if self._crates is None:
+            self._crates = _InTreeCrates(
+                self._seen_files[1] if self._seen_files is not None else {}
+            )
+        return self._crates
 
     def get_import_aliases(
         self, tree: "tree_sitter.Tree", source: bytes,

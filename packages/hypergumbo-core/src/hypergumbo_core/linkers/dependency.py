@@ -284,9 +284,11 @@ _RUST_NON_MODULE_STEMS = frozenset({"main", "lib", "mod", "build"})
 def _rust_first_party_roots(ctx: LinkerContext) -> set[str]:
     """Names a Rust ``use`` path can start with and still mean this repo's code.
 
-    Rust import dsts are never resolved to in-repo ids (the analyzer emits
-    ``rust:util::helper:0-0:module:module`` for every ``use``), so unlike
-    Python there is no resolution verdict to read and the name is the only
+    The analyzer resolves a ``use`` rooted at ``crate`` / ``self`` / ``super``
+    or at an in-tree crate's name to the module file (WI-rilof), and such an
+    edge is already skipped as first-party by its in-repo dst. A bare
+    2018-edition ``use util::helper`` beside ``mod util;`` still reaches here
+    as ``rust:util::helper:0-0:module:module``, and for it the name is the only
     evidence. Two sources, both from symbols the analysis already holds:
 
     - module names: the stem of every analyzed ``.rs`` file (``src/util.rs``
@@ -336,8 +338,8 @@ def _count_import_edges(ctx: LinkerContext) -> int:
     still the producer's advisory default (True) when linkers run. That is how
     the Python analyzer reports ``from pkg import b``; counting it made a repo
     whose modules import each other warn about missing pyproject dependencies
-    with no third-party import at all (INV-nuraf). Rust imports never resolve,
-    so their first-party test is by name (:func:`_rust_first_party_roots`).
+    with no third-party import at all (INV-nuraf). A Rust import that did not
+    resolve gets the by-name first-party test (:func:`_rust_first_party_roots`).
     """
     from ..io_boundary import load_catalog
 
