@@ -1,0 +1,27 @@
+Original commit body from b0af51d815b7e0aea74fdd52ed5b66e6fd37698f:
+
+`hypergumbo sketch` printed a concept-detected data model as
+`Author (django django model)`. The concept detector composed the
+framework into the label ("django model") and the formatter prefixed
+DataModel.framework again. The formatter's own tests already built
+DataModels with label="model", framework="Django", so the producer was
+what broke the contract.
+
+- datamodels._detect_from_concepts: the label names the construct only
+  ("model" / "schema" / "entity"); framework-less labels unchanged.
+- sketch._datamodel_description composes "{framework} {label}" once,
+  for grouped AND fallback lines. The fallback used to print the label
+  alone, which after the label change would have lost the framework.
+
+Live, production CLI, Django + Pydantic fixture: before
+`Author (django django model)`; after `Author (django model)`.
+
+Not in this change, filed as WI-kiluh: the item's unchecked lead holds.
+`BookSchema(BaseModel)` reads `(Schema)` because
+_detect_from_base_classes reads meta["parent_bases"], which no analyzer
+emits (they emit base_classes), so that strategy never fires. Turning
+it on changes detection output, so it is measured first there.
+
+Addresses WI-kibat.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
