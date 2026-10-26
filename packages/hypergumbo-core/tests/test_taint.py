@@ -3383,6 +3383,135 @@ class TestAutoImportFromIoPrimitives:
 # ---------------------------------------------------------------------------
 
 
+class TestAnOverrideReplacesOnlyWhatItRestates:
+    """WI-mozig: a user row that restates ONE of a function's labels (or
+    zones) replaces that one; its siblings stay. A row naming a label the
+    function does not carry still re-labels the whole function, which is the
+    override INV-hukug documents (16 ``cmd_*`` sources moved to a new label)
+    and INV-faput's re-zoned sink. The displaced set says exactly what left.
+    """
+
+    @staticmethod
+    def _src(label: str, *, returns: bool = True) -> TaintSource:
+        return TaintSource(taint_label=label, module="mylib", name="fetch",
+                           kind="function", return_tainted=returns)
+
+    @staticmethod
+    def _sink(zone: str, trust: str = "untrusted") -> TaintSink:
+        return TaintSink(zone=zone, trust_level=trust, module="unistd",
+                         name="write", kind="function")
+
+    def test_restating_one_label_keeps_the_other(self) -> None:
+        from hypergumbo_core.taint import _merge_with_user_override
+
+        auto = {"python": [self._src("host_secret"),
+                           self._src("untrusted_input")]}
+        user = {"python": [self._src("untrusted_input", returns=False)]}
+
+        merged, displaced = _merge_with_user_override(auto, user)
+
+        assert sorted((s.taint_label, s.return_tainted)
+                      for s in merged["python"]) == [
+            ("host_secret", True), ("untrusted_input", False),
+        ]
+        assert [s.taint_label for s in displaced["python"]] == [
+            "untrusted_input",
+        ]
+
+    def test_a_label_the_function_lacks_relabels_it(self) -> None:
+        """INV-hukug's override: the new label replaces every old one."""
+        from hypergumbo_core.taint import _merge_with_user_override
+
+        auto = {"python": [self._src("host_secret"),
+                           self._src("untrusted_input")]}
+        user = {"python": [self._src("redirected_entry")]}
+
+        merged, displaced = _merge_with_user_override(auto, user)
+
+        assert [s.taint_label for s in merged["python"]] == [
+            "redirected_entry",
+        ]
+        assert sorted(s.taint_label for s in displaced["python"]) == [
+            "host_secret", "untrusted_input",
+        ]
+
+    def test_a_sink_restating_one_zone_keeps_the_others(self) -> None:
+        """The same rule for sinks, keyed on zone: C's unistd.write ships as
+        host_fs, ipc AND network, and trusting its network row used to drop
+        the other two."""
+        from hypergumbo_core.taint import _merge_with_user_override
+
+        auto = {"c": [self._sink("host_fs"), self._sink("ipc"),
+                      self._sink("network")]}
+        user = {"c": [self._sink("network", trust="trusted")]}
+
+        merged, displaced = _merge_with_user_override(auto, user)
+
+        assert sorted((s.zone, s.trust_level) for s in merged["c"]) == [
+            ("host_fs", "untrusted"), ("ipc", "untrusted"),
+            ("network", "trusted"),
+        ]
+        assert [s.zone for s in displaced["c"]] == ["network"]
+
+    def test_a_sink_in_a_zone_the_function_lacks_rezones_it(self) -> None:
+        """INV-faput's override: a sink moved into the user's own zone."""
+        from hypergumbo_core.taint import _merge_with_user_override
+
+        auto = {"c": [self._sink("host_fs"), self._sink("ipc")]}
+        user = {"c": [self._sink("dev_zone", trust="trusted")]}
+
+        merged, displaced = _merge_with_user_override(auto, user)
+
+        assert [s.zone for s in merged["c"]] == ["dev_zone"]
+        assert sorted(s.zone for s in displaced["c"]) == ["host_fs", "ipc"]
+
+    def test_through_the_production_loader(self, tmp_path: Path) -> None:
+        """A user I/O overlay can give a function two labels today
+        (``simultaneous`` env_read + net_recv), and a user source file naming
+        only untrusted_input used to drop its host_secret source as well: a
+        host-secret claim read violated -> confirmed_with_caveats."""
+        from hypergumbo_core.taint import load_full_taint_catalog
+
+        overlay = tmp_path / "two-label-io.yaml"
+        overlay.write_text(dedent("""\
+            language: python
+            env_read:
+              - module: mylib
+                functions: [fetch]
+                simultaneous: true
+            net_recv:
+              - module: mylib
+                functions: [fetch]
+                simultaneous: true
+            """))
+        user_src = tmp_path / "user-src.yaml"
+        user_src.write_text(dedent("""\
+            taint_label: untrusted_input
+            sources:
+              python:
+                - module: mylib
+                  functions: [fetch]
+            """))
+
+        without = load_full_taint_catalog(io_overlay_paths=[overlay])
+        cat = load_full_taint_catalog(
+            cli_source_paths=[user_src], io_overlay_paths=[overlay],
+        )
+
+        def labels(c):
+            return sorted(s.taint_label for s in c.sources_for_language("python")
+                          if (s.module, s.name) == ("mylib", "fetch"))
+
+        assert labels(without) == ["host_secret", "untrusted_input"], (
+            "reach: the overlay must give mylib.fetch both labels"
+        )
+        assert labels(cat) == ["host_secret", "untrusted_input"]
+        assert [(s.module, s.name, s.taint_label)
+                for s in cat._displaced_sources.get("python", [])] == [
+            ("mylib", "fetch", "untrusted_input"),
+        ]
+
+
 class TestLoadFullTaintCatalog:
     """WI-votan: ``load_full_taint_catalog`` stacks three layers
     (auto-derived io_primitives, built-in YAML, user-supplied YAML) and

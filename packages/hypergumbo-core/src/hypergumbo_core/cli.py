@@ -7441,7 +7441,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 f"{len(cli_sanitizers) + len(claims_sanitizers)} sanitizer "
                 "path(s). CLI --taint-* entries override claims-file "
                 "extra_catalogs entries, which override built-in defaults, "
-                "on (module, name, kind) match.",
+                "on (module, name, kind) match: an entry replaces the one "
+                "with its own label (sources) or zone (sinks), or every one "
+                "when it names a label or zone the function lacks.",
                 file=sys.stderr,
             )
             if named_community_taint:

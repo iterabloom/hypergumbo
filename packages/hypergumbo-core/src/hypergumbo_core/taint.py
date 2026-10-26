@@ -152,8 +152,10 @@ point end-users hit is :func:`load_full_taint_catalog`, which stacks
 io_primitives-derived entries, the built-in YAML (``taint_sources/``,
 ``taint_sanitizers/``, and ``taint_sinks/`` for ADR-0060's non-boundary sinks:
 code execution, DOM injection), the user's ``taint_*.d`` channels, the claims
-file's ``extra_catalogs``, then CLI flags — each replacing lower layers'
-sources/sinks on ``(module, name, kind)`` (sanitizers concatenate). Community
+file's ``extra_catalogs``, then CLI flags — each replacing the lower layers'
+sources/sinks it restates (same ``(module, name, kind)`` and label or zone; a
+new label re-labels the function: :func:`_merge_with_user_override`;
+sanitizers concatenate). Community
 files (ADR-0061) form one more layer that only ADDS: it never displaces a
 vouched row, and its sanitizers do not clear a flow. A file's provenance line,
 not the path that named it, puts it there (``split_community_files``).
@@ -2216,17 +2218,48 @@ def _derive_auto_imports_from_io_primitives(
     return dict(sources_by_lang), dict(sinks_by_lang), ambiguous_by_lang
 
 
+def _entry_key(e: TaintEntry) -> tuple[str, str, str]:
+    """The function an entry describes: what overrides match on."""
+    return (e.module, e.name, e.kind)
+
+
+def _entry_label(e: TaintEntry) -> str:
+    """What an entry says about its function: a source's label, a sink's zone."""
+    return e.taint_label if isinstance(e, TaintSource) else e.zone
+
+
+def _labels_by_function(
+    entries: Sequence[TaintEntry],
+) -> dict[tuple[str, str, str], set[str]]:
+    """Each function's labels (sources) or zones (sinks) among ``entries``."""
+    labels: dict[tuple[str, str, str], set[str]] = {}
+    for e in entries:
+        labels.setdefault(_entry_key(e), set()).add(_entry_label(e))
+    return labels
+
+
 def _merge_with_user_override(
     auto_by_lang: Mapping[str, Sequence[TEntry]],
     user_by_lang: Mapping[str, Sequence[TEntry]],
 ) -> tuple[dict[str, list[TEntry]], dict[str, list[TEntry]]]:
-    """Merge auto-derived entries with user entries; user entries win on
-    (module, name, kind) match.
+    """Merge auto-derived entries with user entries; a user entry replaces
+    the lower entries it RESTATES.
 
     Returns ``(merged, displaced)``. ``merged`` preserves every user entry and
-    adds auto entries whose (module, name, kind) triple is not already declared
-    by the user. ``displaced`` holds the entries that were DROPPED — the ones a
-    user entry took the place of.
+    the lower entries no user entry restates. ``displaced`` holds the entries
+    that were DROPPED — the ones a user entry took the place of.
+
+    WHAT A USER ENTRY RESTATES (WI-mozig). Entries match on (module, name,
+    kind), and one function can carry several: two source labels
+    (``document.location`` is host_secret AND untrusted_input) or several sink
+    zones (C's ``unistd.write`` is host_fs, ipc and network). A user entry
+    whose label — a source's ``taint_label``, a sink's ``zone`` — the function
+    already carries replaces THAT entry only, so trusting ``write``'s network
+    row no longer silently drops its host_fs and ipc rows. A user entry whose
+    label the function does not carry re-labels or re-zones the whole function:
+    the override INV-hukug documents (sources moved to a new label) and the
+    sink INV-faput moved into a user's own zone. Every dropped entry is still
+    returned in ``displaced``.
 
     INV-faput: the displacement set was always computed here and thrown away,
     and that is the whole defect. A user sink re-declaring a shipped one does
@@ -2250,16 +2283,20 @@ def _merge_with_user_override(
     all_langs = set(auto_by_lang) | set(user_by_lang)
     for lang in all_langs:
         user_list = user_by_lang.get(lang, [])
-        user_keys = {(e.module, e.name, e.kind) for e in user_list}
         auto_list = auto_by_lang.get(lang, [])
-        filtered_auto = [
-            e for e in auto_list
-            if (e.module, e.name, e.kind) not in user_keys
-        ]
-        dropped = [
-            e for e in auto_list
-            if (e.module, e.name, e.kind) in user_keys
-        ]
+        user_labels = _labels_by_function(user_list)
+        auto_labels = _labels_by_function(auto_list)
+        filtered_auto: list[TEntry] = []
+        dropped: list[TEntry] = []
+        for e in auto_list:
+            key = _entry_key(e)
+            wanted = user_labels.get(key)
+            if wanted is None:
+                filtered_auto.append(e)
+            elif wanted & auto_labels[key] and _entry_label(e) not in wanted:
+                filtered_auto.append(e)  # a sibling the user did not restate
+            else:
+                dropped.append(e)  # restated, or a re-label of the whole function
         if dropped:
             displaced.setdefault(lang, []).extend(dropped)
         merged[lang] = filtered_auto + list(user_list)
