@@ -7093,8 +7093,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     code 1 if any claim is violated. Supports boundary constraints
     (ADR-0016) and taint-flow constraints (ADR-0017).
 
-    Trust zones checked: ``host_fs``, ``network``, ``host_env``, ``ipc``,
-    ``browser_storage``, ``relay``. Built-in taint labels: ``host_secret``,
+    Built-in trust zones: the ``AUTO_SINK_ZONE_MAP`` zones in ``taint.py``
+    (``host_fs``, ``subprocess``, ``network``, ``host_env``, ``ipc``,
+    ``browser_storage``, ``database``, ``logging``, ...) plus ADR-0060's
+    ``code_execution`` and ``dom_injection``; a user sink catalogue may add
+    its own (``relay`` is PlazaFlow's). Built-in taint labels: ``host_secret``,
     ``host_description``, ``untrusted_input``, ``plaintext``, ``key_material``,
     ``ciphertext``, ``derived_key``. The source and sink catalogs are derived
     automatically from ``io_primitives/*.yaml`` (every write-side primitive is
@@ -7103,9 +7106,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     is NOT a weaker ``host_secret``: it is a different fact, and a claim naming
     one does not match flows carrying the other (INV-tutar). YAML files under ``taint_sources/`` and
     ``taint_sanitizers/`` contribute cryptographic labels and sanitizer
-    transforms that the auto-layer cannot express.  (Built-in sinks come
-    only from the auto-layer above; ``taint_sinks/`` as a shipped
-    directory was retired in 51e1d232f3.)
+    transforms that the auto-layer cannot express, and ``taint_sinks/``
+    ships the sinks that are not I/O boundaries (``code_execution``,
+    ``dom_injection``; ADR-0060).
 
     Project-local catalogs (WI-votan): the ``--taint-sources``,
     ``--taint-sinks``, and ``--taint-sanitizers`` flags each accept a YAML
@@ -7963,7 +7966,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # ✓ with `confirmed` would restate the defect — a clean-looking
                 # verdict a repo-supplied entry is holding up — and sharing ?
                 # with `inconclusive` would say the analysis could not look,
-                # which is false: it looked, and then trusted an input.
+                # which is false: it looked, and names what it did not check.
                 icon = "!"
             elif v.verdict == "violated":
                 icon = "✗"
@@ -8035,8 +8038,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     #       "machine-checkable claims all passed" from "couldn't actually
     #       check the claim." INV-bitig P0 silent-confirm.
     #   3 = at least one confirmed_with_caveats (and none of the above) —
-    #       INV-pojib (b). The claim held, but part of the reasoning rests on
-    #       an entry the ANALYSED REPOSITORY supplied about itself.
+    #       INV-pojib (b). The claim held, with a named caveat: something the
+    #       verdict rests on that the analysis did not check. The first kind
+    #       was an entry the ANALYSED REPOSITORY supplied about itself; there
+    #       are 16 kinds now (verify_claims CAVEAT_* plus deferred_crossing),
+    #       most of them analysis limits (an untyped receiver, an analyzer
+    #       blind to a construct), not repository inputs.
     #
     # WHY A NEW CODE RATHER THAN PROSE. Remedy (a1) already names the
     # repo-supplied sanitizer in the verdict text, and that is where it stopped
@@ -8051,8 +8058,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # that legitimately declares its own sanitizers — hypergumbo's own
     # self-proof does, via its zone-barrier entry — moves from rc 0 to rc 3 and
     # must either accept rc 3 or drop the entry. Ordered AFTER inconclusive
-    # because "could not look" is a worse state than "looked, and trusted a
-    # declared input".
+    # because "could not look" is a worse state than "looked, with a named
+    # caveat".
     has_violations = any(v.verdict == "violated" for v in verdicts)
     has_inconclusive = any(v.verdict == "inconclusive" for v in verdicts)
     has_caveats = any(v.verdict == "confirmed_with_caveats" for v in verdicts)

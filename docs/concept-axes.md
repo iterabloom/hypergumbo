@@ -503,7 +503,7 @@ Values that name what data crosses the process boundary at this call site, and i
 
 The call is correctly classified and the analysis cannot see past it, so it does not license "I looked and found nothing". Split by channel: `subprocess` is catalogue-declared, `command_launch` is producer-stamped, and each is reachable through exactly one of them.
 
-- **`command_launch`** — The same question as subprocess -- did control leave this process? -- asked of the producer-stamped channel (INV-larol). bash.py stamps it directly because there is no bash catalogue and per ADR-0016 there is not going to be one: cataloguing curl as net_send would attribute curl's network activity to the shell script. Definite but uncurated, so disclosed and excluded from the headline.
+- **`command_launch`** — The same question as subprocess -- did control leave this process? -- asked of the producer-stamped channel (INV-larol). bash.py stamps it directly because bash's catalogue covers only the shell's own redirections, and per ADR-0016 external commands will not be catalogued: cataloguing curl as net_send would attribute curl's network activity to the shell script. Definite but uncurated, so disclosed and excluded from the headline.
 - **`subprocess`** — Launch or communicate with a child process. OPAQUE: control left this process for a program whose behaviour is not in the edge set, so a subprocess site withholds a clean verdict on EVERY boundary. Without that, a program whose only statement was subprocess.run(['curl', '-o', '/etc/cron.d/pwned', ...]) returned confirmed rc 0 for both fs_write and net_send must_not_exist claims. The one boundary carrying the display-only high_risk marker (ADR-0016).
 
 ### `deferred_crossing` — disclosed, never minted (ADR-0049)
