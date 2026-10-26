@@ -7798,6 +7798,50 @@ def _unwind_attribute_chain(
     return current, attrs
 
 
+def _dotted_module_of_call(
+    func: ast.Attribute, module_imports: dict[str, str],
+) -> str | None:
+    """The module a dotted call's path names, or None (WI-lovun).
+
+    ``pkg.sub.deep.deep_fn()`` under ``import pkg.sub.deep`` is
+    ``pkg.sub.deep``: the root's import binding joined with every hop but the
+    callee. An alias binds the root to its module (``import pkg.sub as s;
+    s.deep.f()`` is ``pkg.sub.deep``). A chain whose root no import binds -- a
+    local, ``self``, a builtin -- is not a module path and returns None.
+    ``module_imports`` is already narrowed to what is live at the call site, so
+    a parameter named like the import never reaches here.
+    """
+    chain = _unwind_attribute_chain(func)
+    if chain is None:
+        return None
+    root, attrs = chain
+    if root.id not in module_imports or len(attrs) < 2:
+        return None
+    return ".".join([module_imports[root.id], *attrs[:-1]])
+
+
+def _dotted_receiver_constant(
+    chain_attrs: list[str],
+    root_module: str | None,
+    global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None",
+) -> Symbol | None:
+    """The in-tree module VARIABLE a dotted method call is made on, or None.
+
+    ``pkg.core.CONSTANTS.values()``: the hop before the callee is a
+    module-level variable of ``pkg.core``. Only a ``variable`` counts: a
+    submodule or a function there is not a constant receiver, and a module
+    outside the tree has no symbol to find.
+    """
+    if root_module is None or len(chain_attrs) < 2:
+        return None
+    owner = ".".join([root_module, *chain_attrs[:-2]])
+    found = _lookup_symbol_by_module(
+        global_symbols, owner, chain_attrs[-2], resolver=resolver,
+    )
+    return found if found is not None and found.kind == "variable" else None
+
+
 def _resolve_call_target(
     call_node: ast.Call,
     local_symbols: dict[str, Symbol],
@@ -9134,6 +9178,23 @@ def _process_call(
                         (class_symbol.path, qualified_name)
                     )
 
+        # Case 2g: a fully dotted module call -- ``import pkg.sub.deep`` then
+        # ``pkg.sub.deep.deep_fn()`` (WI-lovun). ``import pkg.sub.deep`` binds
+        # only ``pkg``, so the call site spells the whole path, and the member
+        # lives in the module the path names: the same lookup Case 2b makes for
+        # ``m.f()`` and Case 2e for ``from pkg.sub import deep; deep.f()``.
+        # Without it the call fell to the WI-zigah emitter below, which is for
+        # modules OUTSIDE the tree, and landed on a phantom external_symbol
+        # while the real function read as uncalled.
+        elif isinstance(func.value, ast.Attribute):
+            dotted_module = _dotted_module_of_call(func, module_imports)
+            if dotted_module is not None:
+                callee_symbol = _lookup_symbol_by_module(
+                    global_symbols, dotted_module, attr_name, resolver=resolver
+                )
+                if callee_symbol and callee_symbol.kind == "class":
+                    is_instantiation = True
+
     # Emit edge if we resolved the callee
     if callee_symbol:
         if is_instantiation:
@@ -9823,7 +9884,28 @@ def _process_call(
             else:
                 root_name_node, chain_attrs = chain
                 root_name = root_name_node.id
-                if root_name in module_imports and len(chain_attrs) >= 2:
+                # WI-lovun: ``pkg.REGISTRY.get()`` -- the receiver is an
+                # in-tree module CONSTANT and ``.get`` a builtin on it. The
+                # from-import spelling (``from pkg import REGISTRY;
+                # REGISTRY.get()``) answers with a ``references`` edge to the
+                # variable and no stub (WI-hotug CASE B); the dotted spelling
+                # takes the same answer instead of minting
+                # ``python:pkg.REGISTRY:0-0:get``, a module that does not exist.
+                _const_receiver = _dotted_receiver_constant(
+                    chain_attrs, module_imports.get(root_name),
+                    global_symbols, resolver,
+                )
+                if _const_receiver is not None:
+                    edges.append(Edge.create(
+                        src=caller_symbol.id,
+                        dst=_const_receiver.id,
+                        edge_type="references",
+                        line=call_node.lineno,
+                        evidence_type="ast_name_read",
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                    ))
+                elif root_name in module_imports and len(chain_attrs) >= 2:
                     real_root = module_imports[root_name]
                     submodule = real_root + "." + ".".join(chain_attrs[:-1])
                     callee = chain_attrs[-1]
