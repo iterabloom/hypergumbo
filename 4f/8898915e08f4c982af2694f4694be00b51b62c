@@ -1,0 +1,39 @@
+Original commit body from 0a24d5ef9fc679ca7ba97bf383c1650b09ade024:
+
+Prose only; no behaviour change. Each sentence was checked against the
+code it describes (dev 7997614804):
+
+- ddg_mixed: not "the walk ran and did not confirm". It is reaching-def
+  coverage without a confirmed dependence: not_attempted (a guard above
+  the walk failed) or escaped; a refuted flow is removed and never
+  carries it (method_for_walk_verdict). Fixed in TaintFlowFinding,
+  UNADJUDICATED_METHODS, ClaimVerdict.analysis_methods, the evidence-row
+  comment (said ddg_mixed includes refuted) and spec §15.
+- unavailable: the walk did NOT run (ran=False) -- dataflow_scope said it
+  ran.
+- precise: set only when the walk confirmed, not whenever both ends have
+  DDG data (propagate docstring).
+- Envelope 2.3 comment: walk_verdicts.unconfirmed is always 0 over
+  findings; refuted flows are diverted and counted in refuted_flows.
+- ClaimVerdict.evidence / evidence_count: the sink_before_source-only
+  confirmed_with_caveats carries its deferred flows (evidence_count =
+  deferred_flows >= 1), not 0 / empty.
+- CONFIRMING_VERDICTS: the CLI's exit code and summary counter do not
+  consume it; they compare literals.
+- Exit 3 rationale and the "!" icon comment: 16 caveat kinds now, most
+  analysis limits, not repository-supplied entries.
+- cmd_verify_claims zone list (said relay, omitted subprocess, database,
+  logging, code_execution, dom_injection); TaintSink.zone examples.
+- "Every built-in sink comes from io_primitives" (cli, taint,
+  verify_claims): false since ADR-0060's taint_sinks/.
+- "There is no bash catalogue" (io_boundary_types, verify_claims):
+  bash.yaml catalogues the shell's own redirections; external commands
+  stay uncatalogued. docs/concept-axes.md regenerated from the registry.
+
+Not here: bakeoff-deep's == 'confirmed' count is a code bug, split to
+WI-fomif. WI-bujum's walk-verdict rename will rewrite several of these
+sentences again; they are correct for today's names.
+
+Addresses WI-pidit.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
