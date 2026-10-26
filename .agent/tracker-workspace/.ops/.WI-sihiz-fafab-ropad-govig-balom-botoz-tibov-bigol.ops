@@ -34,3 +34,18 @@
   clock: 3  # 556e
   nonce: 556e  # 556e
   message: "Premise re-check 2026-10-25 on dev 9245df71d6 (production-CLI repros on tiny fixtures, scratchpad stale1025b/repro_<ID>/). CURRENT, refs drifted; BLAST RADIUS WIDER than filed. Live (io-boundaries --io-primitives, --no-default-overlays): status 'overlay' accepted; provenance_declared / in_progress / complete / missing all exit 2 with the SAME text \"'provenance_declared' is a claim about a language's stdlib citation and is not available to an overlay\" -- the wrong explanation for 3 of 4; load_overlay_catalog returns status 'in_progress' (erasure io_boundary.py:2206; gate :2159-2165; constant :1881), and the same run shows WI-donod's unreliable-flag flip. Corrections: 'no persisted data migrates' is now FALSE -- status: overlay is in 8 shipped community overlays (io_primitives_overlays/*.yaml), docs/io-primitives-overlays/hypergumbo-self.yaml, docs/CATALOGUES.md:92, docs/templates/bash-io-primitives.template.yaml, generated samples (repo_tier_offer.py:216, catalogues_doc.py:46), 17 test files, and init-catalogs seeds copies into users' io_primitives.d -- so the fold must keep accepting `status: overlay` as a deprecated alias. 'complete' is now 'provenance_declared' (e6cb77fa15); module_completeness is PERMITTED in overlays (owner 2026-08-15; only the stdlib_ spelling is refused); ADR-0016:47 still says 'complete'. ADR-0061's `provenance:` key already gives origin its own field, which strengthens the fold. Do together with WI-donod (same line). P3 todo_soft kept."  # 556e
+- op: update  # b765
+  at: '2026-10-26T03:22:20Z'  # b765
+  by: agent  # b765
+  actor: jgstern_agent  # b765
+  clock: 4  # b765
+  nonce: b765  # b765
+  set:  # b765
+    status: done  # b765
+- op: discuss  # a03b
+  at: '2026-10-26T03:22:20Z'  # a03b
+  by: agent  # a03b
+  actor: jgstern_agent  # a03b
+  clock: 5  # a03b
+  nonce: a03b  # a03b
+  message: "DONE in PR #1870 (merged, dev cd60932590), with WI-donod. FOLD as the 2026-08-12 audit's DEPRECATE verdict proposed: `status` now means one thing, a shipped catalogue's completeness claim, and an overlay omits it; origin is ADR-0061's `provenance:`. The legacy `status: overlay` is still accepted (_LEGACY_OVERLAY_STATUS), as the 10-25 re-check required for shipped/seeded copies. The refusal that matters is preserved: provenance_declared is refused with the laundering reason; any other value is refused with its own reason (every value used to get the provenance_declared text). The 8 shipped community overlays, hypergumbo-self.yaml, the bash template, the catalogues-doc and repo-tier-offer samples drop the line; docs/CATALOGUES.md regenerated; ADR-0016 states the rule in place (the stale 'complete' wording went with it). LIVE REPRO ON MERGED DEV, production CLI `hypergumbo io-boundaries . --io-primitives F`: a file with NO status loads (rc 0, its mylib.ship row classifies: net_send 1); `status: overlay` loads (rc 0); `status: in_progress` rc 2 'declares status: 'in_progress'. `status` is a shipped catalogue's completeness claim and an overlay makes none, so omit the key...'; `status: provenance_declared` rc 2 '...a claim about a language's stdlib citation and is not available to an overlay. Omit `status`.' Tests: test_io_primitives_overlay.py::test_an_overlay_omits_status, ::test_status_overlay_is_still_accepted, ::test_an_overlay_may_not_claim_a_shipped_status, ::test_any_other_status_is_refused_with_its_own_reason[in_progress|complete|partial]."  # a03b

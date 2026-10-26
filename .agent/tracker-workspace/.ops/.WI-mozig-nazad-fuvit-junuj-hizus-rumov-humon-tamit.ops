@@ -44,3 +44,18 @@
   set: {}  # f665
   add:  # f665
     isbefore: [WI-zidam-lilam-mufuk-dozup-dipoz-budik-sigas-fujop]  # f665
+- op: update  # a05a
+  at: '2026-10-26T04:31:11Z'  # a05a
+  by: agent  # a05a
+  actor: jgstern_agent  # a05a
+  clock: 5  # a05a
+  nonce: a05a  # a05a
+  set:  # a05a
+    status: done  # a05a
+- op: discuss  # c419
+  at: '2026-10-26T04:31:11Z'  # c419
+  by: agent  # c419
+  actor: jgstern_agent  # c419
+  clock: 6  # c419
+  nonce: c419  # c419
+  message: "DONE in PR #1871 (merged, dev 7997614804). Audit F6 verdict FIX, applied without breaking the two ruled overrides.\n\nPREMISE CORRECTION. The 10-25 re-check said the drop could not happen until a function row gains two labels (WI-zidam). It can today: a user I/O overlay gives a function two labels (`simultaneous` env_read + net_recv on mylib.fetch), and a --taint-sources file naming only untrusted_input for it dropped the host_secret source too. LIVE ON dev cd60932590 (before), production CLI: `verify-claims . --claims claims.yaml --io-primitives two-label-io.yaml --taint-sources user-src.yaml` on `os.remove(mylib.fetch())` -> host-secret-no-host-fs confirmed_with_caveats, evidence 0, caveat displaced_shipped_entry (baseline without the user file: violated, evidence 1).\n\nTHE RULE (taint._merge_with_user_override). A user entry whose label (sources: taint_label; sinks: zone) the function already carries replaces THAT entry only; siblings stay. A user entry naming a label/zone the function lacks re-labels/re-zones the whole function -- so INV-hukug's documented override (16 cmd_* sources moved to a new label) and INV-faput's (os.remove into a user dev_zone) are unchanged. Plain label keying would have broken both. Displaced entries are still returned and disclosed.\n\nSAME DEFECT, SINK SIDE (not in the filed title; same function): 26 shipped sink functions carry several zones (C/C++ unistd.write = host_fs + ipc + network); trusting one zone dropped the others. Fixed by the same rule.\n\nLIVE REPRO ON MERGED DEV 7997614804, production CLI, cold caches: (1) the shape above -> host-secret-no-host-fs violated, evidence 1, no caveat (identical to baseline); (2) C `write(3, getenv(\"API_KEY\"), 4)` with `--taint-sinks` trusting unistd.write zone network -> host-secret-no-host-fs violated, evidence 1 (the host_fs sink survives).\n\nMEASURED EFFECT ON DEFAULT RUNS: none (built-in YAML displaces 0 auto-derived entries; 0 of 15 community sources share a function with a built-in of another label). Tests: test_taint.py::TestAnOverrideReplacesOnlyWhatItRestates (restated label / new label / restated zone / new zone / production loader with a two-label overlay), red before the fix on the three restating cases. WI-zidam (which this item blocked) is now unblocked."  # c419
