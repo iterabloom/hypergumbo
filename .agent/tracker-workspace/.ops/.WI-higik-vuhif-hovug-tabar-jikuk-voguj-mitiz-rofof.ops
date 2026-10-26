@@ -25,3 +25,10 @@
   clock: 2  # 5513
   nonce: '5513'  # 5513
   message: "From the WI-totam premise re-check 2026-10-25 (dev 16534a75f7): pony.py:327 also emits kind 'primitive' (node.type.replace('_definition','')), unregistered and flagged by the validator on a live run beside 'actor'. It belongs in this item's register-vs-fold decision; WI-totam no longer owns the pony kinds."  # 5513
+- op: discuss  # 0904
+  at: '2026-10-26T00:31:43Z'  # 0904
+  by: agent  # 0904
+  actor: jgstern_agent  # 0904
+  clock: 3  # 0904
+  nonce: '0904'  # 0904
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0027 row: surveying every language's fixtures and asserting no axis_conformance error in the validation report would fail on pony's 'actor' and 'primitive'. It ships as a strict xfail naming this item. The registry's static drift linter cannot see this emit (computed by node.type.replace)."  # 0904

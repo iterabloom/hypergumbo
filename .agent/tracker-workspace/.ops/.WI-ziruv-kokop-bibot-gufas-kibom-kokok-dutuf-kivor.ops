@@ -26,3 +26,10 @@
   clock: 2  # 1e9e
   nonce: 1e9e  # 1e9e
   message: "Companion: WI-kosup (sweep for write-only fields, knobs and functions; re-check every keep-with-trigger verdict for fireability). Model test for ADR-0041: INV-kutub. Axes whose axiom was amended or ruled 2026-10-25 and should be classified against the NEW wording: ADR-0050 (WI-rutup, medium + simultaneous reading) and ADR-0041 (WI-sufon, project frame)."  # 1e9e
+- op: discuss  # 54d5
+  at: '2026-10-26T00:31:42Z'  # 54d5
+  by: agent  # 54d5
+  actor: jgstern_agent  # 54d5
+  clock: 3  # 54d5
+  nonce: 54d5  # 54d5
+  message: "Review on the owner's request: about 17 open rows are counterexamples this item would find, already filed. Per rule: ADR-0039 ruling 6 -> WI-sakum; ADR-0041 -> INV-kutub (model test; WI-lidig first; WI-sufon gives the wording), INV-fuhin; INV-nuzas's acceptance property -> WI-lovun, WI-rilof; ADR-0061 -> WI-dagun (ruling 1), WI-savoh (ruling 2), WI-fuzat; ADR-0027 -> WI-higik, WI-totam(a); ADR-0050 -> WI-rutup (the amendment; classify against it), WI-kalol, WI-foloh, WI-zidam; ADR-0059 -> WI-ziviv (its shrink-only ledger is already a falsification test, a second model beside INV-kutub); pass-silence reasons -> WI-punod (the A/B/C states are prose only, so that row cannot be tested until WI-punod makes them data); choice-shaped sources -> WI-zakil part 3, WI-kufos. CONSEQUENCE: those tests fail on day one, so ship each as a strict xfail naming its item (the pony kind-slot precedent); each flips when its fix lands and becomes that item's production-path closure evidence. PREREQUISITES for single rows: WI-rutup (ADR-0050), WI-lidig -> INV-kutub -> WI-sufon (ADR-0041), WI-punod (pass silence). OUT OF THIS ITEM'S REACH: free-text field declarations shown false (WI-fuzat) -> WI-kosup section C; consumer-side subsets of a vocabulary (WI-sibup and four others) -> WI-kosup section D; consumers disagreeing about one fact (WI-votat, WI-fakuh, WI-bobuf); contracts never written, so nothing to falsify (when anchored code runs: WI-fakuh, WI-tibib, WI-kakup)."  # 54d5

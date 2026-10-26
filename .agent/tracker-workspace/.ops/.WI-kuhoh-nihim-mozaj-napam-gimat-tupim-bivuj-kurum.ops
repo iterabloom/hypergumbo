@@ -26,3 +26,10 @@
   clock: 2  # 55fd
   nonce: 55fd  # 55fd
   message: "From WI-sorav 2026-10-25: the concept audit 2026-10-21's keep-with-trigger on the generic Edge.meta keys call_type (axis_meta_keys.py:1488) and method (:1596) -- re-audit on their first reader -- defers to this item's decision."  # 55fd
+- op: discuss  # 0bbc
+  at: '2026-10-26T00:28:57Z'  # 0bbc
+  by: agent  # 0bbc
+  actor: jgstern_agent  # 0bbc
+  clock: 3  # 0bbc
+  nonce: 0bbc  # 0bbc
+  message: "2026-10-25 (owner): WI-kosup now owns the call_type / method decision deferred here from WI-sorav; it will replace the unfireable 're-audit on first reader' keep with a fireable verdict. WI-kosup's registered-vs-emitted meta-key table, built per record, supplies the data for this item's other half (keys written on both Symbol.meta and Edge.meta). That half stays here, and is not blocked."  # 0bbc

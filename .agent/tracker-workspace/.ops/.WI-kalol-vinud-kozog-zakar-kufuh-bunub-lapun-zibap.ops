@@ -27,3 +27,10 @@
   clock: 2  # df93
   nonce: df93  # df93
   message: "From the WI-rutup premise re-check 2026-10-25: this is one of the remaining Unix-domain-socket medium cases under the ADR-0050 amendment WI-rutup carries (a row's primary boundary names the medium). WI-rutup points here rather than owning it."  # df93
+- op: discuss  # fcad
+  at: '2026-10-26T00:31:43Z'  # fcad
+  by: agent  # fcad
+  actor: jgstern_agent  # fcad
+  clock: 3  # fcad
+  nonce: fcad  # fcad
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): A medium case under WI-rutup's ADR-0050 amendment. WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0050 row could partly test 'the same medium gets the same boundary across catalogues', which would flag the Unix-socket split this item belongs to."  # fcad

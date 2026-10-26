@@ -26,3 +26,10 @@
   clock: 2  # 1792
   nonce: '1792'  # 1792
   message: "WI-zakil part 2 is this item's part (2), reproduced via CLI 2026-10-25 on dev 16534a75f7: a collapsed (accept, recv) row with witness recv gets no choice_shaped_source caveat; swap the call order and it does. WI-zakil part 1 (the caveat counts distinct names but says 'evidence rows', verify_claims.py:6578-6582 vs :6625) lives in the same block -- fix together."  # 1792
+- op: discuss  # a837
+  at: '2026-10-26T00:31:44Z'  # a837
+  by: agent  # a837
+  actor: jgstern_agent  # a837
+  clock: 3  # a837
+  nonce: a837  # a837
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output): the choice-shaped-source rule's test should run over a collapsed row's whole group, not its witness. Part (2) here is the counterexample. No blocking."  # a837

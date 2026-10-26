@@ -20,3 +20,10 @@
     pr_ref:  # 334a
     description: "Found by the WI-mozig premise re-check 2026-10-25 on dev 16534a75f7. The user taint source loader _load_source_yaml (taint.py:1766-1815) builds only functions: and methods: entries. A user file under taint_sources.d/ or --taint-sources with an attributes: key (e.g. attributes: [location] for document.location) is reported as loaded and contributes nothing, with no warning. Live check: such a file left both affected claims' verdicts identical to baseline. WI-jojis (wont_do) chose auto-derivation from io_primitives for attribute sources, so supporting the key is not required; the minimum is that the loader refuses or warns, naming the ignored key -- a user row that silently does nothing is the 'silent limitation is a defect' case."  # 334a
     fields: {}  # 334a
+- op: discuss  # 6efd
+  at: '2026-10-26T00:31:44Z'  # 6efd
+  by: agent  # 6efd
+  actor: jgstern_agent  # 6efd
+  clock: 2  # 6efd
+  nonce: 6efd  # 6efd
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Named instance in WI-kosup section B: catalogue/overlay/taint/claims YAML keys are now in the knob inventory, and an accepted key with no reader is a write-only knob. The minimum fix here (refuse or warn, naming the key) does not wait for the sweep."  # 6efd

@@ -28,3 +28,10 @@
   clock: 2  # 9f99
   nonce: 9f99  # 9f99
   message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, WRONG VERDICT SHOWN. Shipped claim untrusted-input-no-database on Go: typed DB calls are withheld by the unclassified-call gate (net/http handler -> db.Exec, a typed *sql.DB parameter, gorm: all inconclusive); but fmt.Scanln -> package-global `var db *sql.DB; db.Exec(v)` reads confirmed_with_caveats (rc 3) whose only caveat is untyped_receiver -- implying typing would help, though go has no database sinks at all; a DB-free repo reads confirmed; on the same repos a code_execution claim reads inconclusive ('go has no sink in the code_execution zone'). Refs: _sink_zone_gaps cli.py:6796 (docstring premise :6804-6808, zone filter :6821-6825, per-language emptiness :6836); per-language sink count :7516-7519; shipped_non_boundary_sink_zones taint.py:2286; claim file lines unchanged. Zone list wider than filed: database also empty for javascript, typescript, bash; host_env and ipc also for groovy, bash; logging, network, subprocess for bash; network for haskell with --no-default-overlays. browser_storage is empty for every non-JS language by nature: the fix must rule whether a zone a language can never have withholds (the code_execution precedent says it does). P3 kept."  # 9f99
+- op: discuss  # 07f1
+  at: '2026-10-26T00:31:44Z'  # 07f1
+  by: agent  # 07f1
+  actor: jgstern_agent  # 07f1
+  clock: 3  # 07f1
+  nonce: 07f1  # 07f1
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Named instance in WI-kosup section D: the empty-zone gate checks a hand-written two-zone subset (code_execution, dom_injection) where the property holds for every zone. The fix here does not wait for the sweep."  # 07f1

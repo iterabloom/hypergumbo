@@ -28,3 +28,10 @@
   clock: 2  # 5339
   nonce: '5339'  # 5339
   message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). CURRENT, refs drifted (code read). ContentRule.ecosystem discovery.py:925-939: 85 rules carry 41 distinct values plus the 'git submodule' rule, 42 in all (not ~45); branched on as a display label at :1845; re-emitted as tool at :1875 and supply_chain.py:1538. ADR-0041 §3 (:66-70) owns 'ecosystem' as stdlib/third_party, so the rename to tool stands. channel_kind's example 'message_queue' (axis_meta_keys.py:564-566) still has no producer -- producers emit exactly crdt, ipc, message_bus, queue, websocket; the spec (:1231, :1263) is already right, only the registry example is wrong; Phoenix 'ipc' at phoenix_ipc.py:358. The keep-with-trigger half (generic Edge.meta keys call_type axis_meta_keys.py:1488, method :1596) overlaps WI-kuhoh (open, owner decision pending) and defers to it; grep found no edge reader. P4 kept."  # 5339
+- op: discuss  # 4520
+  at: '2026-10-26T00:28:57Z'  # 4520
+  by: agent  # 4520
+  actor: jgstern_agent  # 4520
+  clock: 3  # 4520
+  nonce: '4520'  # 4520
+  message: "2026-10-25 (owner): WI-kosup now owns this item's keep-with-trigger on the generic Edge.meta keys call_type and method. 're-audit on their first reader' cannot fire on keys nothing reads, and WI-kosup does not accept that form; it gives a DELETE / WIRE / DECLARE EXTERNAL / fireable-KEEP verdict instead. This item's other parts (ContentRule.ecosystem -> tool; the channel_kind 'message_queue' example) are unaffected, but the latter is recorded in WI-kosup as an instance of a declared value with no producer."  # 4520

@@ -43,3 +43,10 @@
   clock: 4  # af82
   nonce: af82  # af82
   message: "Premise re-check 2026-10-25 on dev 9245df71d6 (production-CLI repros on tiny fixtures, scratchpad stale1025b/repro_<ID>/). Independent check: premise HOLDS -- ADR-0041 :56/:64, spec :1804 and axis_meta_keys.py:1106-1108 all scope directness to dependency AND boundary nodes, yet the only producer (ir.py:2166-2172, create_boundary_nodes) never sees kind=dependency. Repro: python `dependency requests` meta.directness None; summary {direct:2, undeclared:6, unknown:1}, the 1 being the declaration. Scope corrections: (1) the registry text and spec :1804 falsely claim dependency Symbols are stamped -- fix the text with the code. (2) In JS 'unknown' = 2 declarations + 2 js_module stand-in package nodes (also unstamped; the lodash stand-in should arguably be direct) + 2 sibling boundary stubs; Cargo is all unknown (WI-hajag; ruby/php WI-tikar) -- stamping declarations alone leaves the bucket mostly unknown, and the output does not disclose why. (3) Workspace-sibling declarations must NOT be stamped direct (not external; tier 1 under INV-kutub) -- coordinate. All kind=dependency producers are manifest readers, not lockfiles, so 'direct' is right for third-party declarations. P3 -> P4: the only consumer is a summary count dominated by absent-by-design unknowns."  # af82
+- op: discuss  # 5713
+  at: '2026-10-26T00:31:43Z'  # 5713
+  by: agent  # 5713
+  actor: jgstern_agent  # 5713
+  clock: 5  # 5713
+  nonce: '5713'  # 5713
+  message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Two audits bear on this. (1) WI-ziruv (falsify each declared axis's rule on real output): the directness rule in the registry text and spec §14 is falsified on output; this item is that counterexample. (2) WI-kosup section A (reader with no producer): supply_chain_summary reads directness on declarations, which nothing stamps. This is a named instance there."  # 5713
