@@ -1,0 +1,22 @@
+- op: create  # acf1
+  at: '2026-10-26T19:32:12Z'  # acf1
+  by: agent  # acf1
+  actor: jgstern_agent  # acf1
+  clock: 1  # acf1
+  nonce: acf1  # acf1
+  data:  # acf1
+    kind: work_item  # acf1
+    title: "a Unix-socket listener (asyncio.start_unix_server, go net.ListenUnix) is net_listen: the vocabulary has no ipc-side listen value -- needs an owner ruling (ipc_listen, or net_listen means any listener)"  # acf1
+    status: todo_hard  # acf1
+    priority: 4  # acf1
+    parent:  # acf1
+    tags:  # acf1
+    - io_boundary  # acf1
+    - adr_0050  # acf1
+    - needs_ruling  # acf1
+    isbefore: []  # acf1
+    duplicate_of: []  # acf1
+    not_duplicate_of: []  # acf1
+    pr_ref:  # acf1
+    description: "Split out of WI-rutup 2026-10-26. python.yaml rows asyncio.start_unix_server (and loop.create_unix_server) under net_listen, and go net.ListenUnix (go.yaml ~:376, kept to the C connect() precedent by WI-potog), name a Unix-socket LISTENER: under ADR-0050 section 1's medium axiom the medium is local IPC, not the network, but the vocabulary has no ipc-side deferred-crossing value -- net_listen is the only listen boundary (deferred_crossing axis: net_listen, db_compose). A row edit cannot fix it; it needs a vocabulary ruling: (a) add an ipc_listen deferred-crossing value (registry + ADR-0050 section 2 table + catalogue rows + the disclosure clauses net_listen carries), or (b) rule that net_listen names \"a listener\" regardless of medium and say so in its definition. Owner decision; nothing to implement until then."  # acf1
+    fields: {}  # acf1
