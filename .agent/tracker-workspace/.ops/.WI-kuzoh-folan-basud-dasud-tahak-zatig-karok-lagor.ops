@@ -1,0 +1,22 @@
+- op: create  # 4069
+  at: '2026-10-27T09:13:17Z'  # 4069
+  by: agent  # 4069
+  actor: jgstern_agent  # 4069
+  clock: 1  # 4069
+  nonce: '4069'  # 4069
+  data:  # 4069
+    kind: work_item  # 4069
+    title: "ADR-0050 section 1 covers only a READING as a simultaneous second boundary; 29 of 35 shipped simultaneous primitives pair two CROSSINGS (ipc_recv+subprocess 23), which the axiom cannot be applied to"  # 4069
+    status: todo_hard  # 4069
+    priority: 4  # 4069
+    parent:  # 4069
+    tags:  # 4069
+    - io_boundary  # 4069
+    - catalogue  # 4069
+    - axis  # 4069
+    isbefore: []  # 4069
+    duplicate_of: []  # 4069
+    not_duplicate_of: []  # 4069
+    pr_ref:  # 4069
+    description: "Found 2026-10-27 by WI-ziruv while classifying ADR-0050's axiom. Needs a ruling (docs or catalogue), no behaviour defect shown.\n\nADR-0050 section 1: a row's PRIMARY boundary names the medium; \"A `simultaneous` SECOND boundary may record a reading of the same crossing that a taint label needs: that its content may carry a credential (env_read), or that the party who navigated to the page chose it (navigation_read).\"\nShipped catalogues carry 35 `simultaneous: true` rows (io_primitives/ and io_primitives_overlays/). Only the 6 env_read+navigation_read primitives are readings in that sense. The rest pair two CROSSINGS: ipc_recv+subprocess 23 (e.g. python subprocess.check_output, python.yaml:979-981: it launches a process AND reads its output), host_info_read+subprocess 3, fs_write+subprocess 3, net_recv+net_send 2, fs_read+fs_write 1, fs_read+logging 1 (counts per (file, module, name)).\nThe axiom neither permits nor forbids a second boundary that is itself a medium crossing, so it cannot be applied to those 29 primitives: nothing says which is primary or what the second means. Also open: WI-novap (scala Process.apply rowed fs_write simultaneous). Decide: extend section 1 with a sentence for a call that performs two crossings (and how first-declared-wins picks the primary), or move those rows."  # 4069
+    fields: {}  # 4069

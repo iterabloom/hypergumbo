@@ -1,0 +1,22 @@
+- op: create  # fbd3
+  at: '2026-10-27T09:15:25Z'  # fbd3
+  by: agent  # fbd3
+  actor: jgstern_agent  # fbd3
+  clock: 1  # fbd3
+  nonce: fbd3  # fbd3
+  data:  # fbd3
+    kind: work_item  # fbd3
+    title: "visibility defaults to public in every language: java package-private, csharp default-private members, rust non-pub and pub(crate) read public, and typescript private/protected keywords never reach modifiers"  # fbd3
+    status: todo_hard  # fbd3
+    priority: 3  # fbd3
+    parent:  # fbd3
+    tags:  # fbd3
+    - axis  # fbd3
+    - visibility  # fbd3
+    - analysis_quality  # fbd3
+    isbefore: []  # fbd3
+    duplicate_of: []  # fbd3
+    not_duplicate_of: []  # fbd3
+    pr_ref:  # fbd3
+    description: "Found 2026-10-27 by WI-ziruv (falsify each declared axiom on real output), production `hypergumbo survey` on dev 7207fb0ecf.\n\nThe visibility axis (visibility.py, INV-jusot) says Symbol.visibility is \"one computed canonical visibility level (public/private/protected/internal/package)\", computed from the language modifier, else the Python name convention, else \"the default (public)\" (visibility.py: `return VISIBILITY_PUBLIC, SIGNAL_DEFAULT`). The default is one language-agnostic value, so every language whose own default is NOT public reads wrong, and one analyzer drops its keywords:\n\n| fixture | language rule | emitted visibility (visibility_signal) |\n|---|---|---|\n| java `int pkg()` (no modifier) | package-private | public (default) |\n| csharp class member `int Default()` (no modifier) | private | public (default) |\n| rust `fn private_fn()` (no pub) | private to its module | public (default) |\n| rust `pub(crate) fn crate_fn()` | crate-internal | public (default) |\n| typescript `private priv()`, `protected prot()` class members | private / protected | public (default): the keyword never reaches modifiers |\n| typescript non-exported module `function local()` | module-local | public (default) |\nCorrect in the same probe: java public/private/protected; kotlin public(default)/private/internal/protected; csharp public/private/internal/protected; go Exported/unexported; rust `pub`; python `_x`/`__x` private, `x` public.\n\nConsequence: is_exported is constrained by visibility (forced False only for non-public), so these symbols can be read as exported surface; dead-code, entrypoint (library_export) and slice ranking all read the field. Fix shape: a per-language default (the language profile is the natural home) plus the TS modifier extraction; sweep every analyzer's modifier extraction against its language's visibility keywords (php const visibility is already WI-dajur). WI-ziruv ships a production-path test pinning the correct rows and these as strict xfails naming this item."  # fbd3
+    fields: {}  # fbd3

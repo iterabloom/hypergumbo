@@ -50,3 +50,10 @@
   clock: 5  # 5713
   nonce: '5713'  # 5713
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Two audits bear on this. (1) WI-ziruv (falsify each declared axis's rule on real output): the directness rule in the registry text and spec §14 is falsified on output; this item is that counterexample. (2) WI-kosup section A (reader with no producer): supply_chain_summary reads directness on declarations, which nothing stamps. This is a named instance there."  # 5713
+- op: discuss  # 9a93
+  at: '2026-10-27T09:13:28Z'  # 9a93
+  by: agent  # 9a93
+  actor: jgstern_agent  # 9a93
+  clock: 6  # 9a93
+  nonce: 9a93  # 9a93
+  message: "2026-10-27, from WI-ziruv (production survey on dev 7207fb0ecf): the ECOSYSTEM half has the same shape. A python project declaring `requests` in pyproject: the kind=dependency node `requests` carries neither meta.directness nor meta.ecosystem, and supply_chain_summary.external_dep reports directness {direct 2, undeclared 7, unknown 1} AND ecosystem {stdlib 5, third_party 4, unknown 1}; in both, the 1 unknown is the declaration. ADR-0041's ecosystem axiom (\"names the provenance class of an external dependency's distribution channel\") applies to a declaration of a registry package as much as to its import. WI-ziruv ships the test \"every node supply_chain_summary counts under directness/ecosystem carries the stamp\" as a strict xfail naming this item; the fix should cover both keys (or the summary should stop counting declarations under either)."  # 9a93
