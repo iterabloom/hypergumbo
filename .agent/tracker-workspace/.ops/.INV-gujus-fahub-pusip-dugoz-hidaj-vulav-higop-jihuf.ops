@@ -51,3 +51,10 @@
   clock: 5  # b3b1
   nonce: b3b1  # b3b1
   message: "2026-10-27: this item's fix (9679de97c5) turned dev's twice-daily full suite red from 2026-10-25 (d7ab329e45, a4546cb836): check-test-only-reachability reported sketch_embeddings.fetch_embedding_models newly reachable only from its tests, because install-embeddings ran it only through a 'python -c' string the analysis cannot follow. Fixed in PR #1896 (merged as 8c61dbe07c): the child program is built from the function's __module__/__name__, a real reference. Evidence: a scip-python-typed self-map reproduced the gate's exit 1 on dev 4395a62c5e with the same callable and exits 0 on the fix ('no new test-only-reachable callables'). The next full-suite cron on dev is the confirmation; not yet observed."  # b3b1
+- op: discuss  # 2c90
+  at: '2026-10-27T20:37:51Z'  # 2c90
+  by: agent  # 2c90
+  actor: jgstern_agent  # 2c90
+  clock: 6  # 2c90
+  nonce: 2c90  # 2c90
+  message: "2026-10-27: CI confirmation of the #1896 fix (8c61dbe07c). The 13:00 UTC full-suite cron ran at 0cb6bd3f, which contains it; ci-debug cron-status reports success on every step, self-tree-validation included (pipeline 5617). This is the first scheduled full suite after the fix. Status stays satisfied."  # 2c90

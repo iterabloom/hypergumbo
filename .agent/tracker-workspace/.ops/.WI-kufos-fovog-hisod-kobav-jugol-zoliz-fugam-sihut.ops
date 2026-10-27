@@ -33,3 +33,10 @@
   clock: 3  # a837
   nonce: a837  # a837
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output): the choice-shaped-source rule's test should run over a collapsed row's whole group, not its witness. Part (2) here is the counterexample. No blocking."  # a837
+- op: discuss  # 6604
+  at: '2026-10-27T20:37:28Z'  # 6604
+  by: agent  # 6604
+  actor: jgstern_agent  # 6604
+  clock: 4  # 6604
+  nonce: '6604'  # 6604
+  message: "2026-10-27: both parts reproduced end to end, and production-path closure tests exist (PR #1905, merged 2fe7978820). packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestCollapsedRowIsItsGroup. Part (2): recv and accept reaching subprocess through a helper collapse into one ddg_mixed row (collapsed_flow_count 2, source_primitives [accept, recv]); the choice_shaped_source caveat appears only when accept is called first. Part (1): process.env.TOKEN reaching a yours dom_injection sink (zlib.gzipSync, an enumerated module, so nothing else withholds) and document.write through one helper; document.write first -> inconclusive (INV-dudal withdraws), yours sink first -> confirmed_with_caveats, the false-clean direction. Both strict xfails, plus reach controls. Mutation: applying each fix shape (caveat over source_primitives; reached over the group's sink_primitives) flips its xfail to XPASS. Remove the marks in the fix PR."  # 6604
