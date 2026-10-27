@@ -20,3 +20,28 @@
     pr_ref:  # acf1
     description: "Split out of WI-rutup 2026-10-26. python.yaml rows asyncio.start_unix_server (and loop.create_unix_server) under net_listen, and go net.ListenUnix (go.yaml ~:376, kept to the C connect() precedent by WI-potog), name a Unix-socket LISTENER: under ADR-0050 section 1's medium axiom the medium is local IPC, not the network, but the vocabulary has no ipc-side deferred-crossing value -- net_listen is the only listen boundary (deferred_crossing axis: net_listen, db_compose). A row edit cannot fix it; it needs a vocabulary ruling: (a) add an ipc_listen deferred-crossing value (registry + ADR-0050 section 2 table + catalogue rows + the disclosure clauses net_listen carries), or (b) rule that net_listen names \"a listener\" regardless of medium and say so in its definition. Owner decision; nothing to implement until then."  # acf1
     fields: {}  # acf1
+- op: discuss  # 0e10
+  at: '2026-10-26T23:31:52Z'  # 0e10
+  by: agent  # 0e10
+  actor: jgstern_agent  # 0e10
+  clock: 2  # 0e10
+  nonce: '0e10'  # 0e10
+  message: "OWNER RULING 2026-10-26 (chat): option (a) -- add an ipc_listen deferred-crossing value. Scope: registry value; ADR-0050 section 2 table row; its own disclosure clauses worded for a local listener; re-label python asyncio.start_unix_server / loop.create_unix_server and go net.ListenUnix from net_listen to ipc_listen; regenerate docs/schema.json and docs/concept-axes.md. Before editing: enumerate consumers that branch on net_listen and report what output moves. Queued after INV-kutub, WI-sufon, WI-punod."  # 0e10
+- op: update  # 8b12
+  at: '2026-10-26T23:31:52Z'  # 8b12
+  by: agent  # 8b12
+  actor: jgstern_agent  # 8b12
+  clock: 3  # 8b12
+  nonce: 8b12  # 8b12
+  set:  # 8b12
+    status: todo_soft  # 8b12
+- op: update  # 2949
+  at: '2026-10-26T23:32:06Z'  # 2949
+  by: agent  # 2949
+  actor: jgstern_agent  # 2949
+  clock: 4  # 2949
+  nonce: '2949'  # 2949
+  set:  # 2949
+    status: todo_hard  # 2949
+  remove:  # 2949
+    tags: [needs_ruling]  # 2949
