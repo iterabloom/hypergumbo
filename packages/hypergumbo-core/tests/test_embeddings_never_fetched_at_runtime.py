@@ -170,3 +170,26 @@ def test_check_fails_when_the_library_is_there_but_the_weights_are_not(
             patch.object(cli, "_embedding_models_cached", return_value=False):
         assert cli.cmd_install_embeddings(_args(check=True)) == 1
     assert "weights have not been downloaded" in capsys.readouterr().out
+
+
+def test_the_child_imports_the_fetcher_by_its_own_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ``-c`` program is built from the function object, so it names the
+    function that exists rather than a string that can drift from it; and
+    the reference is what lets the test-only-reachability gate see that the
+    install path reaches ``fetch_embedding_models`` (it went red on the
+    string-only spelling). Run the generated program against a recorder."""
+    ok = MagicMock(returncode=0)
+    with patch.object(cli, "_embedding_models_cached", return_value=False), \
+            patch.object(subprocess, "run", return_value=ok) as run:
+        assert cli._fetch_embedding_models(quiet=True) is True
+    (cmd,) = [c.args[0] for c in run.call_args_list]
+    assert cmd[1] == "-c"
+    # Built from the real function; run it against a recorder in its place.
+    calls: list[str] = []
+    monkeypatch.setattr(
+        sketch_embeddings, "fetch_embedding_models", lambda: calls.append("fetched"),
+    )
+    exec(cmd[2], {})  # noqa: S102 - the program the child would run
+    assert calls == ["fetched"]
