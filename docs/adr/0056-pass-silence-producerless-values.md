@@ -75,7 +75,7 @@ Dual-write is specifically wrong: two channels for one concept is the defect WI-
 
 **W3 — the `prerequisite_absent` producer.** Only after W2:
 
-> Stamp `prerequisite_absent` on a silent run **iff** some conjunct of its `depends_on` contains no active literal **AND** at least one literal in that conjunct was skipped with a `skip_reason_code` other than `no_candidate_files`. Otherwise fall through to `derive_silence_reason`.
+> Stamp `prerequisite_absent` on a silent run **iff** some conjunct of its `depends_on` contains no active literal **AND** at least one literal in that conjunct was skipped with a `skip_reason_code` that does not establish State A — one whose states (`pass_silence.SILENCE_REASON_SPECS`) are not exactly {A}. Only `no_candidate_files` and `no_candidate_construct` establish it; a missing code reads `unreported`. Otherwise fall through to `derive_silence_reason`.
 
 The plumbing exists — `run_all_linkers(ctx, limits)` already takes the `Limits` sink.
 

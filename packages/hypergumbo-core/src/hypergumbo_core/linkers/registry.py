@@ -1003,12 +1003,16 @@ def run_all_linkers(
     # so this map is complete rather than racing the passes it describes.
     # Falls back to the caller's own map when no Limits sink was supplied, so
     # a direct caller can still exercise the path.
+    # A record with no code is UNREPORTED, read by the one reader the summary
+    # uses too (WI-punod: this used to default to "").
+    from ..pass_silence import skip_record_code
+
     skipped_pass_codes = dict(ctx.skipped_pass_codes)
     if limits is not None:
         for entry in limits.skipped_passes:
             pass_id = entry.get("pass", "")
             if pass_id:
-                skipped_pass_codes[pass_id] = entry.get("silence_reason", "")
+                skipped_pass_codes[pass_id] = skip_record_code(entry)
 
     # Group by priority — linkers at the same priority are independent
     # and can run in parallel.  E.g., inheritance linker (priority 15)
