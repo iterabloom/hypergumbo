@@ -19,3 +19,10 @@
     pr_ref:  # 049d
     description: "Found 2026-10-26 while fixing WI-rilof, on dev e22b97d62c through the production CLI. Fixture: a.js `const { helper } = require('./b'); function run() { return helper(); }`, b.js defines helper. `hypergumbo survey` publishes BOTH a.js -> javascript:b.js:1-1:file:file (the js_module linker's resolved imports edge) AND a.js -> javascript:./b:0-0:module:external_symbol, a tier-3 'unresolved external reference' node standing for the in-tree file b.js. The analyzer's raw imports edge (dst javascript:./b:0-0:module:module) is never retired once the linker resolves it, so finalize mints the stub. Same for every resolved alias import and, after WI-rilof, every resolved workspace-package import (javascript:@ws/b:0-0:module:external_symbol). Consequences: one import counted twice (once in-tree, once external), an in-tree file represented by a tier-3 external node (INV-kutub's 'every node standing for one package/file carries one tier'), and the external_symbol population inflated on every JS/TS repo. Fix: when js_module resolves an import edge, retarget that edge (or drop it in favour of the resolved one) instead of adding a parallel edge; check consumers that count imports edges (dependency linker requirements, sketch, supply-chain summary). Measure the stub count on a corpus repo first. Not checked: dynamic imports, CSS/asset imports, TS `import type`."  # 049d
     fields: {}  # 049d
+- op: discuss  # 1507
+  at: '2026-10-27T01:32:06Z'  # 1507
+  by: agent  # 1507
+  actor: jgstern_agent  # 1507
+  clock: 2  # 1507
+  nonce: '1507'  # 1507
+  message: "2026-10-26 (found by INV-kutub's measurement): Go analogue. Fixture go.mod 'module example.com/a' + 'replace example.com/b => ./b', b/go.mod 'module example.com/b'; a.go imports example.com/b and calls b.Helper(). On dev 1ecb54e013: the calls edge Run -> b/b.go Helper resolves, but the imports edge a.go -> go:example.com/b:0-0:package:external_symbol is a tier-3 'unresolved external reference' stub for an in-tree module -- the same shape as the JS raw-import stub this item tracks, and the residual INV-kutub's closure names."  # 1507

@@ -44,3 +44,26 @@
   clock: 4  # 45bd
   nonce: 45bd  # 45bd
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0050 row waits on this amendment, and classifies the axis against the medium wording."  # 45bd
+- op: update  # b77b
+  at: '2026-10-26T21:11:17Z'  # b77b
+  by: agent  # b77b
+  actor: jgstern_agent  # b77b
+  clock: 5  # b77b
+  nonce: b77b  # b77b
+  set:  # b77b
+    status: done  # b77b
+    pr_ref: '1887'  # b77b
+- op: discuss  # fa9f
+  at: '2026-10-26T21:11:17Z'  # fa9f
+  by: agent  # fa9f
+  actor: jgstern_agent  # fa9f
+  clock: 6  # fa9f
+  nonce: fa9f  # fa9f
+  message: "DONE in PR #1887 (merged, dev d0103b7248). A documentation item: ADR-0050 section 1's axiom is rewritten in place to the owner's 2026-10-25 form -- a row's PRIMARY boundary names the medium; a simultaneous SECOND boundary may record the credential or navigator reading a taint label needs -- and says outright that env_read means both the process environment (env vars and ambient deployment configuration) and 'may carry a credential'. The false claim that the axiom was 'taken verbatim from ADR-0049 ruling 1' now says it applies that ruling's transfer test. Same text in io_boundary_types' module docstring and scripts/generate-concept-axes (docs/concept-axes.md regenerated); env_read / host_info_read / navigation_read definitions rewritten from the content / identity / chooser readings the premise check found. Rows: the elixir/erlang Application.get_env notes asserted the opposite ('env_read means may carry a credential, NOT reads the process environment') and now follow the ruling. EVIDENCE (doc item): on merged dev, docs/adr/0050-io-boundary-axis.md:73 reads the new axiom; find_io_boundary('env_read').description begins 'Read the process ENVIRONMENT -- environment variables and the ambient configuration a deployment supplies'. No boundary changed, so no output moved. Routed with reasoning: document.cookie, argv and swift's 'argv is env_read in every catalogue' -> WI-zidam (plus a note there on whether the INV-dadu URL rows' scalar primary should be navigation_read: first-declared-wins makes it env_read, the order is pinned by three tests, and the ruling cites those rows as already conforming); python socket.socket / node net.Socket over AF_UNIX need an analyzer io_target_kind stamp like C's WI-baran -> WI-muful (new); asyncio.start_unix_server / go net.ListenUnix need a vocabulary ruling (no ipc-side listen value) -> WI-gaziv (new, needs_ruling). Local suite note: test_autopr_signal_termination timed out under full parallel load twice (passes alone, unrelated); recorded in the commit."  # fa9f
+- op: discuss  # f844
+  at: '2026-10-26T23:31:52Z'  # f844
+  by: agent  # f844
+  actor: jgstern_agent  # f844
+  clock: 7  # f844
+  nonce: f844  # f844
+  message: "Correction to the closure note and to PR #1887's commit body: the test_autopr_signal_termination.py timeout in my two local full-suite runs was NOT parallel load. I had launched the suite as `( cmd & )`, which starts it with SIGINT ignored, so the test's SIGINT never reached the child and it timed out. Under harness backgrounding the same test passes (confirmed 10-26 during WI-lidig's full suite, 30837 passed). The PR's content and closure stand; only the stated cause was wrong."  # f844
