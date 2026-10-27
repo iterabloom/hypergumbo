@@ -5519,8 +5519,7 @@ def _run_analysis(
         or None if no non-test functions exist. Coverage is computed BEFORE filtering.
     """
     import importlib
-    from .analyze.base import is_exported_from_modifiers
-    from .supply_chain import classify_file, detect_package_roots
+    from .supply_chain import detect_package_roots
 
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
@@ -5575,25 +5574,13 @@ def _run_analysis(
         all_symbols = filtered_symbols
         all_edges = filtered_edges
 
-    # Apply supply chain classification to all symbols.
-    package_roots = detect_package_roots(repo_root)
-    for symbol in all_symbols:
-        file_path = repo_root / symbol.path
-        classification = classify_file(file_path, repo_root, package_roots)
-        symbol.supply_chain_tier = classification.tier.value
-        symbol.supply_chain_reason = classification.reason
-        symbol.supply_chain_classified = True  # WI-lidig
-        symbol.is_test_file = classification.is_test
-        symbol.is_example_file = classification.is_example
-        symbol.is_config_file = classification.is_config
-        symbol.is_generated_file = classification.is_generated
-        # WI-zimum: fold in modifier-derived export signal. Analyzer
-        # may have already set is_exported (WI-gipag Python __all__);
-        # otherwise pick up "public"/"exported"/"pub" from modifiers.
-        # INV-kubup: only the PRESENCE of the modifier is a signal — its
-        # absence leaves the field unobserved rather than asserting False.
-        if is_exported_from_modifiers(symbol.modifiers):
-            symbol.is_exported = True
+    # Supply chain classification: the survey's own annotator, so this
+    # fallback tiers a dependency declaration as the survey does (INV-kutub;
+    # a per-path loop here tiered every declaration by its manifest's path,
+    # tier 1) and folds in the modifier-derived export signal the same way.
+    from .cli import _classify_symbols
+
+    _classify_symbols(all_symbols, repo_root, detect_package_roots(repo_root))
 
     # Deduplicate edges by ID (some analyzers may produce duplicate edges)
     seen_edge_ids: set[str] = set()

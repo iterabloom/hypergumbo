@@ -333,10 +333,9 @@ from .limits import Limits
 from .supply_chain import (
     DERIVED_PATH_PATTERNS,
     FileClassification,
-    _normalize_pep503,
     classify_file,
     collect_first_party_package_names,
-    collect_workspace_package_names,
+    collect_in_tree_packages,
     detect_package_roots,
     format_vendored_disclosure,
     vendored_analysed_summary,
@@ -12058,14 +12057,14 @@ def _classify_symbols(
     set by a linker (e.g. npm_package with tier=3) are not reclassified
     — the linker's tier takes precedence.
 
-    Dependency-kind symbols (from Cargo.toml, package.json, etc.) are
-    classified as tier 3 (EXTERNAL_DEP) since they represent references
-    to external packages, not first-party code — EXCEPT a declaration
-    naming an in-repo workspace sibling, which is workspace-internal
-    (tier 2 INTERNAL_DEP) per INV-nuzas / ADR-0041 §1. Workspace-sibling
-    recognition uses ``collect_workspace_package_names`` (Python pyproject
-    distribution names); Cargo/npm workspace-sibling analogues are a
-    documented cross-language follow-up and still fall through to tier 3.
+    A dependency declaration (from Cargo.toml, package.json, ...) stands for
+    the package it names (ADR-0041 §1). When an in-tree manifest of the same
+    ecosystem publishes that name (``supply_chain.collect_in_tree_packages``:
+    pyproject, npm, Composer, Cargo, Maven), the declaration carries the tier
+    that manifest classifies to, so a declaration and the package node it
+    names carry one tier (INV-kutub); otherwise it is tier 3 (EXTERNAL_DEP).
+    ``sketch._run_analysis``'s fallback (no map) calls this too, so the two
+    producers cannot disagree.
 
     INV-virik: when ``limits`` is supplied, ``classify_file`` failures
     (the default-fallback "outside repo" classification, or any uncaught
@@ -12076,11 +12075,20 @@ def _classify_symbols(
     """
     seen_failures: set[str] = set()
     classification_by_path: dict[str, FileClassification] = {}
-    # INV-nuzas / ADR-0041 §1: recognize in-repo workspace-sibling package
-    # names so a sibling declared as a dependency is tiered workspace-internal
-    # (tier 2), not external (tier 3). Empty set on a non-Python repo → the
-    # dependency branch below is unchanged (all deps tier 3).
-    workspace_names = collect_workspace_package_names(repo_root)
+
+    def _path_classification(rel_path: str) -> FileClassification:
+        classification = classification_by_path.get(rel_path)
+        if classification is None:
+            classification = classify_file(
+                repo_root / rel_path, repo_root, package_roots,
+            )
+            classification_by_path[rel_path] = classification
+        return classification
+
+    # INV-kutub / ADR-0041 §1: the in-tree packages a dependency declaration
+    # may name. Empty on a repo with no such manifest -> every declaration is
+    # tier 3.
+    in_tree = collect_in_tree_packages(repo_root)
     for symbol in symbols:
         # INV-bonup / ADR-0041 §1: supply_chain_tier names supply-chain DISTANCE
         # only. Skip symbols already deliberately classified (a reason is set) or
@@ -12096,13 +12104,21 @@ def _classify_symbols(
         if symbol.supply_chain_classified or symbol.protocol_origin:
             continue
         symbol.supply_chain_classified = True
-        # Dependency declarations are external references, not source code —
-        # unless the declared name is an in-repo workspace sibling (tier 2).
+        # A dependency declaration takes the tier of the package it names:
+        # an in-tree package's manifest classification, else tier 3.
         if symbol.kind in _DEPENDENCY_KINDS:
-            if _normalize_pep503(symbol.name or "") in workspace_names:
-                symbol.supply_chain_tier = 2
+            manifests = in_tree.manifests_named_by(
+                symbol.path, symbol.name or "", symbol.qualified_name,
+            )
+            if manifests:
+                # Two in-tree manifests can publish one name (a package and a
+                # vendored copy of it): the nearest, then the first by path.
+                tier, manifest = min(
+                    (_path_classification(m).tier.value, m) for m in manifests
+                )
+                symbol.supply_chain_tier = tier
                 symbol.supply_chain_reason = (
-                    "workspace-internal dependency declaration"
+                    f"declares in-tree package {symbol.name} ({manifest})"
                 )
             else:
                 symbol.supply_chain_tier = 3
@@ -12111,12 +12127,7 @@ def _classify_symbols(
         # WI-fojot: classify_file is a function of the PATH (it stats and
         # reads the whole file), so it runs once per path, not once per
         # symbol: a file with N symbols was read N times.
-        classification = classification_by_path.get(symbol.path)
-        if classification is None:
-            classification = classify_file(
-                repo_root / symbol.path, repo_root, package_roots,
-            )
-            classification_by_path[symbol.path] = classification
+        classification = _path_classification(symbol.path)
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
         symbol.is_test_file = classification.is_test

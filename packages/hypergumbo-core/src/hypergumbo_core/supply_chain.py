@@ -8,9 +8,8 @@ prioritized) and noise reduction (derived artifacts excluded).
 Tiers
 -----
 - FIRST_PARTY (1): Project's own source code (highest priority)
-- INTERNAL_DEP (2): Org-internal dependency packages (workspace-sibling
-  dependency declarations; ``internal_package_roots`` when a caller passes a
-  ``SupplyChainConfig`` — see "Configuration" below)
+- INTERNAL_DEP (2): Org-internal dependency packages (``internal_package_roots``
+  when a caller passes a ``SupplyChainConfig`` — see "Configuration" below)
 - EXTERNAL_DEP (3): Third-party dependencies in readable form
 - DERIVED (4): Build artifacts, transpiled/bundled output (skip analysis)
 
@@ -43,9 +42,7 @@ file. Signals are checked in order; first match wins:
 4. Documentation detection (tier 1) - in-repo docs; the role is carried by
    the reason string (INV-naduh)
 5. ``SupplyChainConfig.internal_package_roots`` → tier 2 (the only tier-2
-   producer *within* ``classify_file``; ``cli._classify_symbols``
-   additionally tiers a workspace-sibling *dependency declaration* tier-2 via
-   :func:`collect_workspace_package_names` — INV-nuzas / ADR-0041 §1)
+   producer)
 6. Workspace package detection:
    - If file is in a test directory, or matches a test file pattern beside
      its source → tier 1 with is_test=True
@@ -73,8 +70,16 @@ The ``SupplyChainConfig`` arms (``derived_patterns``,
 1, 5 and 9 when a caller passes ``classify_file(config=...)``, but as of
 2026-10 no CLI flag or config key feeds them: both production callers
 (``cli._classify_symbols`` and ``sketch._run_analysis``) pass no ``config``,
-and ``.hypergumbo.toml`` rejects these keys as unknown settings. In a CLI run
-the only tier-2 producer is the workspace-sibling dependency declaration.
+and ``.hypergumbo.toml`` rejects these keys as unknown settings, so a CLI run
+emits no tier-2 node.
+
+Dependency Declarations
+-----------------------
+A ``kind='dependency'`` node is not a file of the project: it stands for the
+package it names. ``cli._classify_symbols`` gives a declaration naming an
+in-tree package (:func:`collect_in_tree_packages`) the tier that package's
+manifest classifies to, and every other declaration tier 3, so the declaration
+and the package node it names carry one tier (INV-kutub, ADR-0041 §1).
 
 Role Flags Beside the Tier
 --------------------------
@@ -1571,16 +1576,15 @@ def _installed_dependency_root(
     return None
 
 
-# INV-nuzas / ADR-0041 §1 — workspace-sibling dependency recognition.
+# INV-kutub / ADR-0041 §1 — a dependency declaration naming an in-tree package.
 #
-# A monorepo sibling that another workspace member declares as a *dependency*
-# is workspace-INTERNAL (tier 2 ``internal_dep``), not a third-party external
-# (tier 3). ``cli._classify_symbols`` stamps every ``kind='dependency'`` symbol
-# tier-3 by default; consulting the set of in-repo package distribution names
-# below lets it tier a matching declaration tier-2 instead. This parallels the
-# workspace-member *subtraction* in
-# ``hypergumbo_lang_mainstream.py_deps.parse_python_dependencies`` (same
-# ADR-0041 §1 rule, applied there to imported boundary nodes). The two cannot
+# A declaration stands for the package it names, so a declaration naming a
+# package whose source is in the analysed tree carries THAT package's tier
+# (one package, one tier). ``cli._classify_symbols`` asks
+# :class:`InTreePackages` for the naming manifest and classifies it; every other
+# declaration is tier 3. The Python half parallels the workspace-member
+# *subtraction* in ``hypergumbo_lang_mainstream.py_deps.parse_python_dependencies``
+# (the same rule, applied there to imported boundary nodes). The two cannot
 # share code: ``hypergumbo-core`` is the base package and must not import a
 # language-analyzer package, so the small name-collection logic is duplicated.
 _WORKSPACE_NAME_NORMALIZE_RE = re.compile(r"[-_.]+")
@@ -1611,41 +1615,6 @@ def _own_distribution_name(data: dict[str, Any]) -> Optional[str]:
             if isinstance(name, str) and name.strip():
                 return name.strip()
     return None
-
-
-def collect_workspace_package_names(repo_root: Path) -> set[str]:
-    """Collect the PEP 503-normalized distribution names of every in-repo
-    Python package (workspace member).
-
-    Walks ``repo_root`` for every ``pyproject.toml`` (the root manifest and any
-    ``packages/<pkg>/pyproject.toml`` at any depth), skipping
-    ``discovery.manifest_walk_skip()`` names, content-claimed dependency
-    directories and dot-prefixed directories so a vendored
-    ``.venv/site-packages/<pkg>/pyproject.toml`` cannot leak in, and reads each
-    package's own distribution name (``[project].name`` /
-    ``[tool.poetry].name``).
-
-    The result is the workspace-sibling recognizer for
-    :func:`cli._classify_symbols`: a ``kind='dependency'`` symbol whose
-    normalized name is in this set is a workspace-internal dependency
-    declaration (tier 2), not a third-party external (tier 3) —
-    INV-nuzas / ADR-0041 §1. Returns an empty set when no ``pyproject.toml``
-    is present (non-Python repo → all deps stay tier 3, unchanged behavior).
-    """
-    from .profile import _load_toml
-    names: set[str] = set()
-    for entry in _manifest_files(repo_root, {"pyproject.toml"}):
-        try:
-            content = entry.read_text(encoding="utf-8", errors="ignore")
-        except (OSError, IOError):  # pragma: no cover - unreadable file
-            continue
-        data = _load_toml(content)
-        if not isinstance(data, dict):
-            continue
-        own = _own_distribution_name(data)
-        if own:
-            names.add(_normalize_pep503(own))
-    return names
 
 
 def _manifest_files(repo_root: Path, file_names: "Container[str]") -> "Iterator[Path]":
@@ -1730,7 +1699,8 @@ def _own_go_module_path(content: str) -> Optional[str]:
 
 
 def _own_npm_package_name(content: str) -> Optional[str]:
-    """The ``name`` field of a ``package.json``. ``json.JSONDecodeError``
+    """The ``name`` field of a ``package.json`` (or ``composer.json``, which
+    spells its own name the same way). ``json.JSONDecodeError``
     subclasses ``ValueError``, so a malformed manifest is skipped, not fatal."""
     try:
         data = json.loads(content)
@@ -1833,3 +1803,144 @@ def collect_first_party_package_names(repo_root: Path) -> set[str]:
         if own:
             names.add(own)
     return names
+
+
+def _own_pyproject_name(content: str) -> Optional[str]:
+    """A ``pyproject.toml``'s own distribution name (``[project].name``, else
+    ``[tool.poetry].name``); None for malformed TOML or no name."""
+    from .profile import _load_toml
+
+    data = _load_toml(content)
+    if not isinstance(data, dict):
+        return None
+    return _own_distribution_name(data)
+
+
+def _own_pom_coordinate(content: str) -> Optional[str]:
+    """A ``pom.xml``'s own Maven coordinate, ``groupId:artifactId``.
+
+    The groupId is the project's own, else its ``<parent>``'s: a module that
+    omits it inherits the parent's, which is the usual multi-module shape.
+    Only the project element's direct children are read, so a
+    ``<dependency>``'s coordinate cannot be taken for the project's."""
+    import xml.etree.ElementTree as ET  # nosec B405 - parsing a local pom.xml
+
+    try:
+        root = ET.fromstring(content)  # noqa: S314  # nosec B314
+    except ET.ParseError:
+        return None
+    ns = root.tag.split("}")[0] + "}" if root.tag.startswith("{") else ""
+    artifact = (root.findtext(f"{ns}artifactId") or "").strip()
+    group = (
+        root.findtext(f"{ns}groupId")
+        or root.findtext(f"{ns}parent/{ns}groupId")
+        or ""
+    ).strip()
+    if not artifact or not group:
+        return None
+    return f"{group}:{artifact}"
+
+
+def _cargo_fold(name: str) -> str:
+    """Cargo treats ``-`` and ``_`` in a crate name as the same character
+    (``crate_b = { path = "../crate-b" }`` names ``crate-b``)."""
+    return name.replace("_", "-")
+
+
+def _exact(name: str) -> str:
+    return name
+
+
+#: Dependency-declaring manifest basename -> (the reader of THAT manifest's own
+#: package name, the fold under which the ecosystem compares two names). A
+#: declaration is matched only against packages published by a manifest of the
+#: same basename: an npm ``core`` is not the crate ``core``.
+_DECLARATION_ECOSYSTEMS: dict[
+    str, tuple[Callable[[str], Optional[str]], Callable[[str], str]]
+] = {
+    "pyproject.toml": (_own_pyproject_name, _normalize_pep503),
+    "package.json": (_own_npm_package_name, _exact),
+    "composer.json": (_own_npm_package_name, _exact),
+    "Cargo.toml": (_own_cargo_package_name, _cargo_fold),
+    "pom.xml": (_own_pom_coordinate, _exact),
+}
+
+#: The Maven property a module uses to name its own group; a sibling
+#: dependency on ``${project.groupId}:mod-b`` names the declaring project's
+#: group.
+_MAVEN_OWN_GROUP = "${project.groupId}"
+
+
+@dataclass(frozen=True)
+class InTreePackages:
+    """The packages whose manifest is in the analysed tree, by ecosystem.
+
+    ``by_name`` maps (manifest basename, folded own name) to the repo-relative
+    paths of every manifest publishing that name, sorted; ``own`` maps a
+    manifest's repo-relative path to its own (unfolded) name, which resolves
+    a Maven ``${project.groupId}``.
+
+    Built by :func:`collect_in_tree_packages` in one walk; read by
+    ``cli._classify_symbols`` through :meth:`manifests_named_by`."""
+
+    by_name: dict[tuple[str, str], tuple[str, ...]] = field(default_factory=dict)
+    own: dict[str, str] = field(default_factory=dict)
+
+    def manifests_named_by(
+        self, declaring_path: str, name: str, qualified_name: Optional[str] = None,
+    ) -> tuple[str, ...]:
+        """The in-tree manifests publishing the package a declaration names.
+
+        ``declaring_path`` is the declaration's own manifest (its basename picks
+        the ecosystem); ``name`` is the declared name, except for Maven, whose
+        declaration is named by its artifactId and identified by
+        ``qualified_name`` (``groupId:artifactId``). Empty when the name is not
+        an in-tree package, or the manifest kind declares no dependencies."""
+        basename = declaring_path.rsplit("/", 1)[-1]
+        ecosystem = _DECLARATION_ECOSYSTEMS.get(basename)
+        if ecosystem is None:
+            return ()
+        fold = ecosystem[1]
+        key = name
+        if basename == "pom.xml":
+            if not qualified_name or ":" not in qualified_name:
+                return ()
+            group, artifact = qualified_name.split(":", 1)
+            if group == _MAVEN_OWN_GROUP:
+                own = self.own.get(declaring_path)
+                if own is None:
+                    return ()
+                group = own.split(":", 1)[0]
+            key = f"{group}:{artifact}"
+        return self.by_name.get((basename, fold(key)), ())
+
+
+def collect_in_tree_packages(repo_root: Path) -> InTreePackages:
+    """Read every in-tree manifest of a dependency-declaring ecosystem
+    (:data:`_DECLARATION_ECOSYSTEMS`) for the name it publishes its own package
+    under.
+
+    One walk over :func:`_manifest_files`, which skips dependency directories
+    and dot-prefixed directories, so a vendored
+    ``node_modules/<dep>/package.json`` cannot make a third-party name read as
+    in-tree. A manifest that names no package (a workspace root
+    ``Cargo.toml``, a pyproject with only ``[build-system]``) adds nothing.
+    """
+    by_name: dict[tuple[str, str], list[str]] = {}
+    own: dict[str, str] = {}
+    for entry in _manifest_files(repo_root, _DECLARATION_ECOSYSTEMS):
+        try:
+            content = entry.read_text(encoding="utf-8", errors="ignore")
+        except OSError:  # pragma: no cover - unreadable file
+            continue
+        reader, fold = _DECLARATION_ECOSYSTEMS[entry.name]
+        name = reader(content)
+        if not name:
+            continue
+        rel = entry.relative_to(repo_root).as_posix()
+        own[rel] = name
+        by_name.setdefault((entry.name, fold(name)), []).append(rel)
+    return InTreePackages(
+        by_name={key: tuple(sorted(paths)) for key, paths in by_name.items()},
+        own=own,
+    )

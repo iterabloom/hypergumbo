@@ -11,10 +11,13 @@ Tests the classification of files into supply chain tiers:
 - Tier 4 (derived): Build artifacts, minified/bundled output
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import pytest
 
+from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.supply_chain import (
     Tier,
     FileClassification,
@@ -2217,196 +2220,208 @@ class TestClassifySymbolsDependencyTier:
         assert sym.supply_chain_tier == 1  # First-party, not tier 3
 
 
-class TestWorkspaceSiblingDependencyTier:
-    """INV-nuzas / ADR-0041 §1: a workspace sibling that another workspace
-    package declares as a *dependency* is workspace-INTERNAL (tier 2
-    ``internal_dep``), not a third-party external (tier 3).
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
 
-    ``_classify_symbols`` previously stamped every ``kind='dependency'``
-    symbol tier-3 unconditionally, so in a monorepo where sibling packages
-    list each other as dependencies (the normal pattern) every internal
-    cross-package dependency edge was mis-tiered external — corrupting
-    tier-weighted views. The fix consults the set of in-repo package
-    distribution names (``collect_workspace_package_names``) and tiers a
-    matching dependency declaration tier-2.
-    """
 
-    def test_python_workspace_sibling_dependency_gets_tier2(
-        self, tmp_path: Path
+def _declaration(path: str, name: str, qualified_name: str | None = None) -> Symbol:
+    return Symbol(
+        id=f"dep:{path}:{name}",
+        name=name,
+        kind="dependency",
+        language="toml",
+        path=path,
+        span=Span(1, 0, 1, 12),
+        qualified_name=qualified_name,
+    )
+
+
+def _tier_of_declaration(
+    repo: Path, path: str, name: str, qualified_name: str | None = None,
+) -> tuple[int, str]:
+    from hypergumbo_core.cli import _classify_symbols
+
+    dep = _declaration(path, name, qualified_name)
+    _classify_symbols([dep], repo, set())
+    return dep.supply_chain_tier, dep.supply_chain_reason
+
+
+_POM = (
+    '<project xmlns="http://maven.apache.org/POM/4.0.0">'
+    "<modelVersion>4.0.0</modelVersion>{body}</project>"
+)
+
+
+class TestInTreeDependencyDeclarationTier:
+    """INV-kutub / ADR-0041 §1: a dependency declaration stands for the package
+    it names, so one naming an in-tree package carries that package's tier --
+    the tier its own manifest (and so its package node) classifies to -- in
+    every ecosystem whose manifests both publish a name and declare
+    dependencies. A third-party declaration stays tier 3.
+
+    Python sibling declarations used to be tier 2 and npm / Cargo ones tier 3
+    'external' while the sibling's own package node was tier 1."""
+
+    def test_python_sibling_is_tier1_and_names_the_sibling(self, tmp_path: Path) -> None:
+        _write(tmp_path / "packages/a/pyproject.toml",
+               '[project]\nname = "pkg-a"\ndependencies = ["pkg_b", "rich"]\n')
+        _write(tmp_path / "packages/b/pyproject.toml", '[project]\nname = "pkg-b"\n')
+
+        tier, reason = _tier_of_declaration(tmp_path, "packages/a/pyproject.toml", "pkg_b")
+        assert tier == 1
+        assert reason == "declares in-tree package pkg_b (packages/b/pyproject.toml)"
+        tier, reason = _tier_of_declaration(tmp_path, "packages/a/pyproject.toml", "rich")
+        assert (tier, reason) == (3, "dependency declaration (external)")
+
+    def test_python_match_is_pep503_and_reads_poetry(self, tmp_path: Path) -> None:
+        _write(tmp_path / "pkg_a/pyproject.toml", '[project]\nname = "My.Pkg.A"\n')
+        _write(tmp_path / "libs/w/pyproject.toml", '[tool.poetry]\nname = "widget-lib"\n')
+
+        assert _tier_of_declaration(tmp_path, "app/pyproject.toml", "my_pkg_a")[0] == 1
+        assert _tier_of_declaration(tmp_path, "app/pyproject.toml", "Widget_Lib")[0] == 1
+
+    def test_npm_and_composer_match_exactly(self, tmp_path: Path) -> None:
+        _write(tmp_path / "packages/b/package.json", '{"name": "@ws/b"}')
+        _write(tmp_path / "php/b/composer.json", '{"name": "ws/b"}')
+
+        assert _tier_of_declaration(tmp_path, "packages/a/package.json", "@ws/b")[0] == 1
+        assert _tier_of_declaration(tmp_path, "packages/a/package.json", "@ws/B")[0] == 3
+        assert _tier_of_declaration(tmp_path, "php/a/composer.json", "ws/b")[0] == 1
+
+    def test_cargo_folds_underscore_and_hyphen(self, tmp_path: Path) -> None:
+        _write(tmp_path / "Cargo.toml", '[workspace]\nmembers = ["crate-b"]\n')
+        _write(tmp_path / "crate-b/Cargo.toml", '[package]\nname = "crate-b"\n')
+
+        tier, reason = _tier_of_declaration(tmp_path, "crate-a/Cargo.toml", "crate_b")
+        assert tier == 1
+        assert reason == "declares in-tree package crate_b (crate-b/Cargo.toml)"
+        assert _tier_of_declaration(tmp_path, "crate-a/Cargo.toml", "serde")[0] == 3
+
+    def test_maven_matches_the_coordinate_and_resolves_own_group(
+        self, tmp_path: Path,
     ) -> None:
-        """A sibling package declared as a dependency → tier 2; a genuine
-        third-party dependency in the same manifest stays tier 3."""
-        from hypergumbo_core.cli import _classify_symbols
-        from hypergumbo_core.ir import Symbol, Span
+        parent = "<parent><groupId>org.ex</groupId><artifactId>p</artifactId></parent>"
+        _write(tmp_path / "mod-a/pom.xml",
+               _POM.format(body=parent + "<artifactId>mod-a</artifactId>"))
+        _write(tmp_path / "mod-b/pom.xml",
+               _POM.format(body=parent + "<artifactId>mod-b</artifactId>"))
 
-        pkg_a = tmp_path / "packages" / "pkg-a"
-        pkg_a.mkdir(parents=True)
-        (pkg_a / "pyproject.toml").write_text(
-            '[project]\nname = "my-pkg-a"\nversion = "0.1"\n'
-        )
-        pkg_b = tmp_path / "packages" / "pkg-b"
-        pkg_b.mkdir(parents=True)
-        (pkg_b / "pyproject.toml").write_text(
-            '[project]\nname = "my-pkg-b"\n'
-            'dependencies = ["my-pkg-a", "rich"]\n'
-        )
+        # A sibling named through the declaring module's own group property ...
+        assert _tier_of_declaration(
+            tmp_path, "mod-a/pom.xml", "mod-b", "${project.groupId}:mod-b",
+        )[0] == 1
+        # ... or literally.
+        assert _tier_of_declaration(
+            tmp_path, "mod-a/pom.xml", "mod-b", "org.ex:mod-b",
+        )[0] == 1
+        # The same artifactId under another group is someone else's package.
+        assert _tier_of_declaration(
+            tmp_path, "mod-a/pom.xml", "mod-b", "other.org:mod-b",
+        )[0] == 3
+        # A declaration with no coordinate, or a group property in a pom
+        # whose own coordinate is unknown, cannot be matched.
+        assert _tier_of_declaration(tmp_path, "mod-a/pom.xml", "mod-b")[0] == 3
+        assert _tier_of_declaration(
+            tmp_path, "other/pom.xml", "mod-b", "${project.groupId}:mod-b",
+        )[0] == 3
 
-        sibling = Symbol(
-            id="toml:dep:my-pkg-a",
-            name="my-pkg-a",
-            kind="dependency",
-            language="toml",
-            path="packages/pkg-b/pyproject.toml",
-            span=Span(3, 0, 3, 12),
-        )
-        external = Symbol(
-            id="toml:dep:rich",
-            name="rich",
-            kind="dependency",
-            language="toml",
-            path="packages/pkg-b/pyproject.toml",
-            span=Span(3, 0, 3, 12),
-        )
+    def test_ecosystems_do_not_cross(self, tmp_path: Path) -> None:
+        """An npm ``core`` is not the crate ``core``."""
+        _write(tmp_path / "web/package.json", '{"name": "core"}')
 
-        _classify_symbols([sibling, external], tmp_path, set())
+        assert _tier_of_declaration(tmp_path, "rs/Cargo.toml", "core")[0] == 3
+        assert _tier_of_declaration(tmp_path, "Gemfile", "core")[0] == 3
 
-        assert sibling.supply_chain_tier == 2
-        assert "workspace" in sibling.supply_chain_reason
-        assert external.supply_chain_tier == 3
-        assert "dependency declaration" in external.supply_chain_reason
+    def test_declaration_takes_the_named_manifests_tier(self, tmp_path: Path) -> None:
+        """One package, one tier: a package vendored under ``third_party/`` is
+        tier 3 as a package node, so a declaration naming it is tier 3 too --
+        not tier 1 because its source is in the tree."""
+        vendored = tmp_path / "third_party/libfoo/Cargo.toml"
+        _write(vendored, '[package]\nname = "libfoo"\n')
+        package_tier = classify_file(vendored, tmp_path, set()).tier
 
-    def test_workspace_sibling_pep503_normalization(self, tmp_path: Path) -> None:
-        """Sibling match is PEP 503-normalized: an underscore/dot in either
-        the declared dep name or the package's own name still matches."""
-        from hypergumbo_core.cli import _classify_symbols
-        from hypergumbo_core.ir import Symbol, Span
+        tier, reason = _tier_of_declaration(tmp_path, "app/Cargo.toml", "libfoo")
+        assert package_tier == Tier.EXTERNAL_DEP
+        assert tier == package_tier.value
+        assert "third_party/libfoo/Cargo.toml" in reason
 
-        pkg_a = tmp_path / "pkg_a"
-        pkg_a.mkdir()
-        # Own name uses dots; the dependency declaration uses underscores.
-        (pkg_a / "pyproject.toml").write_text('[project]\nname = "My.Pkg.A"\n')
+    def test_nearest_of_two_publishing_manifests_wins(self, tmp_path: Path) -> None:
+        """A package and a vendored copy of it publish one name; the declaration
+        takes the nearer (tier 1), and between equal tiers the first by path."""
+        _write(tmp_path / "packages/b/package.json", '{"name": "@ws/b"}')
+        _write(tmp_path / "third_party/b/package.json", '{"name": "@ws/b"}')
+        _write(tmp_path / "x/package.json", '{"name": "@ws/x"}')
+        _write(tmp_path / "a/package.json", '{"name": "@ws/x"}')
 
-        dep = Symbol(
-            id="toml:dep:my_pkg_a",
-            name="my_pkg_a",
-            kind="dependency",
-            language="toml",
-            path="other/pyproject.toml",
-            span=Span(1, 0, 1, 12),
-        )
-
-        _classify_symbols([dep], tmp_path, set())
-        assert dep.supply_chain_tier == 2
-
-    def test_poetry_named_sibling_gets_tier2(self, tmp_path: Path) -> None:
-        """A workspace member that declares its name under Poetry
-        ``[tool.poetry].name`` is recognized as a sibling too."""
-        from hypergumbo_core.cli import _classify_symbols
-        from hypergumbo_core.ir import Symbol, Span
-
-        pkg = tmp_path / "libs" / "widget"
-        pkg.mkdir(parents=True)
-        (pkg / "pyproject.toml").write_text(
-            '[tool.poetry]\nname = "widget-lib"\n'
-        )
-
-        dep = Symbol(
-            id="toml:dep:widget-lib",
-            name="widget-lib",
-            kind="dependency",
-            language="toml",
-            path="app/pyproject.toml",
-            span=Span(1, 0, 1, 12),
-        )
-
-        _classify_symbols([dep], tmp_path, set())
-        assert dep.supply_chain_tier == 2
-
-    def test_non_sibling_dependency_stays_tier3(self, tmp_path: Path) -> None:
-        """When no in-repo package matches, the dependency stays tier 3."""
-        from hypergumbo_core.cli import _classify_symbols
-        from hypergumbo_core.ir import Symbol, Span
-
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nname = "the-app"\ndependencies = ["requests"]\n'
-        )
-        dep = Symbol(
-            id="toml:dep:requests",
-            name="requests",
-            kind="dependency",
-            language="toml",
-            path="pyproject.toml",
-            span=Span(3, 0, 3, 12),
-        )
-
-        _classify_symbols([dep], tmp_path, set())
-        assert dep.supply_chain_tier == 3
-        assert "dependency declaration" in dep.supply_chain_reason
+        tier, reason = _tier_of_declaration(tmp_path, "packages/a/package.json", "@ws/b")
+        assert tier == 1
+        assert reason.endswith("(packages/b/package.json)")
+        tier, reason = _tier_of_declaration(tmp_path, "packages/a/package.json", "@ws/x")
+        assert tier == 1
+        assert reason.endswith("(a/package.json)")
 
 
-class TestCollectWorkspacePackageNames:
-    """Unit coverage for ``collect_workspace_package_names`` — the
-    workspace-sibling recognizer backing the tier-2 dependency rule."""
+class TestCollectInTreePackages:
+    """Unit coverage for ``collect_in_tree_packages``, the in-tree package
+    recognizer behind the declaration tier."""
 
-    def test_collects_pep621_names_across_monorepo(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
+    def test_reads_each_ecosystems_own_name(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_in_tree_packages
 
-        for name, rel in [("core-pkg", "packages/core"), ("util-pkg", "packages/util")]:
-            d = tmp_path / rel
-            d.mkdir(parents=True)
-            (d / "pyproject.toml").write_text(f'[project]\nname = "{name}"\n')
+        _write(tmp_path / "py/pyproject.toml", '[project]\nname = "My_Cool.Pkg"\n')
+        _write(tmp_path / "js/package.json", '{"name": "@s/js"}')
+        _write(tmp_path / "php/composer.json", '{"name": "v/php"}')
+        _write(tmp_path / "rs/Cargo.toml", '[package]\nname = "rs_crate"\n')
+        _write(tmp_path / "jv/pom.xml", _POM.format(
+            body="<groupId>g</groupId><artifactId>jv</artifactId>"))
 
-        assert collect_workspace_package_names(tmp_path) == {"core-pkg", "util-pkg"}
-
-    def test_normalizes_names_pep503(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
-
-        (tmp_path / "pyproject.toml").write_text('[project]\nname = "My_Cool.Pkg"\n')
-        assert collect_workspace_package_names(tmp_path) == {"my-cool-pkg"}
-
-    def test_reads_poetry_name(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
-
-        (tmp_path / "pyproject.toml").write_text('[tool.poetry]\nname = "poe-pkg"\n')
-        assert collect_workspace_package_names(tmp_path) == {"poe-pkg"}
+        in_tree = collect_in_tree_packages(tmp_path)
+        assert in_tree.by_name == {
+            ("pyproject.toml", "my-cool-pkg"): ("py/pyproject.toml",),
+            ("package.json", "@s/js"): ("js/package.json",),
+            ("composer.json", "v/php"): ("php/composer.json",),
+            ("Cargo.toml", "rs-crate"): ("rs/Cargo.toml",),
+            ("pom.xml", "g:jv"): ("jv/pom.xml",),
+        }
+        assert in_tree.own["jv/pom.xml"] == "g:jv"
+        assert in_tree.own["rs/Cargo.toml"] == "rs_crate"
 
     def test_project_without_name_falls_back_to_poetry(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
+        from hypergumbo_core.supply_chain import collect_in_tree_packages
 
-        # [project] present but no name; [tool.poetry].name supplies it.
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nversion = "1.0"\n[tool.poetry]\nname = "fallback-pkg"\n'
-        )
-        assert collect_workspace_package_names(tmp_path) == {"fallback-pkg"}
+        _write(tmp_path / "pyproject.toml",
+               '[project]\nversion = "1.0"\n[tool.poetry]\nname = "fallback-pkg"\n')
+        assert collect_in_tree_packages(tmp_path).own == {"pyproject.toml": "fallback-pkg"}
 
-    def test_pyproject_without_any_name_is_skipped(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
+    def test_manifests_naming_no_package_add_nothing(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_in_tree_packages
 
-        (tmp_path / "pyproject.toml").write_text('[build-system]\nrequires = []\n')
-        assert collect_workspace_package_names(tmp_path) == set()
+        _write(tmp_path / "pyproject.toml", '[build-system]\nrequires = []\n')
+        _write(tmp_path / "bad/pyproject.toml", '[project\nname = broken')
+        _write(tmp_path / "Cargo.toml", '[workspace]\nmembers = []\n')
+        _write(tmp_path / "a/pom.xml", _POM.format(body="<artifactId>x</artifactId>"))
+        _write(tmp_path / "b/pom.xml", "<project><unclosed></project>")
+        _write(tmp_path / "package.json", "not json")
+        _write(tmp_path / "README.md", "hi")
+        assert collect_in_tree_packages(tmp_path).by_name == {}
 
-    def test_malformed_toml_is_skipped(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
+    def test_pom_dependency_coordinate_is_not_the_projects(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_in_tree_packages
 
-        (tmp_path / "pyproject.toml").write_text('[project\nname = broken')
-        assert collect_workspace_package_names(tmp_path) == set()
+        _write(tmp_path / "pom.xml", _POM.format(body=(
+            "<groupId>me</groupId><artifactId>app</artifactId><dependencies>"
+            "<dependency><groupId>them</groupId><artifactId>lib</artifactId>"
+            "</dependency></dependencies>")))
+        assert collect_in_tree_packages(tmp_path).own == {"pom.xml": "me:app"}
 
-    def test_excluded_and_dot_dirs_are_not_walked(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
+    def test_dependency_and_dot_dirs_are_not_walked(self, tmp_path: Path) -> None:
+        from hypergumbo_core.supply_chain import collect_in_tree_packages
 
         for skip_dir in ("node_modules", ".venv"):
-            d = tmp_path / skip_dir / "vendored"
-            d.mkdir(parents=True)
-            (d / "pyproject.toml").write_text('[project]\nname = "leaked-pkg"\n')
-        (tmp_path / "pyproject.toml").write_text('[project]\nname = "real-pkg"\n')
-
-        assert collect_workspace_package_names(tmp_path) == {"real-pkg"}
-
-    def test_no_pyproject_returns_empty(self, tmp_path: Path) -> None:
-        from hypergumbo_core.supply_chain import collect_workspace_package_names
-
-        (tmp_path / "README.md").write_text("hi")
-        assert collect_workspace_package_names(tmp_path) == set()
+            _write(tmp_path / skip_dir / "vendored/package.json", '{"name": "leaked"}')
+        _write(tmp_path / "package.json", '{"name": "real"}')
+        assert collect_in_tree_packages(tmp_path).own == {"package.json": "real"}
 
 
 class TestIsTestFileAxis:

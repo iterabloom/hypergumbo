@@ -1794,8 +1794,8 @@ Code is classified into four tiers based on its relationship to the project:
 
 | Tier | Name | Description | Examples | Status |
 |------|------|-------------|----------|--------|
-| 1 | `first_party` | Project's own source code (including its tests) | `src/`, `lib/`, `app/` | 🟩 |
-| 2 | `internal_dep` | Org-internal *dependency* packages: config-declared `internal_package_roots`, **and** a workspace-sibling *dependency declaration* (a monorepo package that another workspace member lists as a dependency). Workspace member *source files* stay tier 1. | Local forks; `hypergumbo-core` listed in a sibling package's `pyproject.toml` | 🟩 |
+| 1 | `first_party` | Project's own source code (including its tests), and a dependency declaration naming an in-tree package | `src/`, `lib/`, `app/`; `hypergumbo-core` listed in a sibling package's `pyproject.toml` | 🟩 |
+| 2 | `internal_dep` | Org-internal *dependency* packages: config-declared `internal_package_roots`. No CLI path sets it, so a CLI run emits no tier-2 node. Workspace member *source files* stay tier 1. | Local forks | 🟩 |
 | 3 | `external_dep` | **All** third-party code — direct, transitive, undeclared, and stdlib alike | `node_modules/lodash/`, `vendor/`, declared PyPI deps, `os`/`json` | 🟩 |
 | 4 | `derived` | Build artifacts, transpiled/bundled output | `dist/`, `*.min.js`, source-mapped files | 🟩 |
 
@@ -1813,14 +1813,10 @@ mapping. File classification independently still routed some in-repo non-source
 *role* files — examples, documentation bundles, notebooks, fuzz/bench harnesses
 — to tier 2 (INV-naduh); these are the project's own code (distance 0) and now
 classify as **tier 1** with their role on the `is_example` / `is_test` / reason
-axis, not by tier. Tier 2 has **two** producers: config-declared
-`internal_package_roots`, and a workspace-sibling *dependency declaration* — a
-`kind=dependency` symbol naming an in-repo package that another workspace member
-lists as a dependency (INV-nuzas / ADR-0041 §1 tier table; this is the
-"populate tier 2 with the workspace packages" end-state ADR-0041 §1 anticipated
-for the workspace-resolution fix, not a re-admission of the retired *third-party*
-direct-dependency → tier-2 mapping). Workspace member *source* stays tier 1, and
-in-repo generated *routes* promote from tier 4 to tier 1, not tier 2.)
+axis, not by tier. Tier 2 has one producer, config-declared
+`internal_package_roots`; a dependency declaration naming an in-tree package
+carries that package's tier (INV-kutub). Workspace member *source* stays tier 1,
+and in-repo generated *routes* promote from tier 4 to tier 1, not tier 2.)
 
 **Default behavior:**
 - Tiers 1-3: Analyzed, with tier used for ranking/filtering
@@ -1909,24 +1905,11 @@ def extract_package_name(rel_path: str) -> str | None:
 
 #### 3. Internal dependency detection (tier 2)
 
-Tier 2 (`internal_dep`) has **two** producers, both representing an org-internal
-*dependency* (never the project's own source, which is tier 1):
-
-1. **Config-declared `internal_package_roots`** — org-internal dependency
-   packages (local forks, vendored-but-internal libs). No *path* heuristic
-   produces tier 2 for source files: workspace member source is tier 1, and
-   in-repo role files carry their role on a flag/reason (ADR-0041 §1 / INV-naduh).
-2. **Workspace-sibling dependency declarations** — a `kind=dependency` symbol
-   whose PEP 503-normalized name matches an in-repo package's distribution name
-   (`collect_workspace_package_names` reads every `pyproject.toml`'s
-   `[project].name` / `[tool.poetry].name`). A monorepo sibling that another
-   workspace package lists as a dependency is a workspace-**internal** dependency
-   (tier 2), not a third-party external (tier 3) — INV-nuzas / ADR-0041 §1 (tier
-   table + the anticipated "populate tier 2 with the workspace packages"
-   end-state). This is orthogonal to the retired *third-party*
-   direct-dependency → tier-2 mapping (§1): a genuine third-party declaration
-   stays tier 3. Python `pyproject.toml`-scoped; Cargo/npm sibling analogues are
-   a documented follow-up (still tier 3).
+Tier 2 (`internal_dep`) has one producer, config-declared
+`internal_package_roots` — org-internal dependency packages (local forks,
+vendored-but-internal libs). No *path* heuristic produces tier 2 for source
+files: workspace member source is tier 1, and in-repo role files carry their
+role on a flag/reason (ADR-0041 §1 / INV-naduh).
 
 **Config-declared internal package roots:**
 ```yaml
@@ -1934,6 +1917,33 @@ Tier 2 (`internal_dep`) has **two** producers, both representing an org-internal
 internal_package_roots: ["custom_packages/shared", "libs/common"]
 ```
 Files under a declared root are tier 2 (`internal_dep`).
+
+#### 3a. Dependency declarations (tier of the package named) 🟩
+
+A `kind=dependency` node stands for the package it names, so it carries that
+package's tier (INV-kutub, ADR-0041 §1). When an in-tree manifest of the same
+ecosystem publishes the declared name
+(`supply_chain.collect_in_tree_packages`), the declaration takes the tier that
+manifest — and so the package's own node — classifies to (tier 1 for a
+workspace sibling), with the reason `declares in-tree package <name>
+(<manifest>)`; every other declaration is tier 3 (`dependency declaration
+(external)`). Names compare per ecosystem:
+
+| Declaring manifest | In-tree name read from | Comparison |
+|---|---|---|
+| `pyproject.toml` | `[project].name`, else `[tool.poetry].name` | PEP 503 normalized |
+| `package.json` | `name` | exact |
+| `composer.json` | `name` | exact |
+| `Cargo.toml` | `[package].name` | `-` and `_` equal |
+| `pom.xml` | `groupId:artifactId` (groupId inherited from `<parent>`) | exact coordinate; a declared `${project.groupId}` is the declaring module's group |
+
+When two in-tree manifests publish one name (a package and a vendored copy),
+the declaration takes the lower tier, then the first manifest by path. A
+genuine third-party declaration stays tier 3 whether or not it is declared
+directly — the retired direct-dependency → tier-2 mapping (§1) stays retired.
+Not recognized: a Cargo dependency renamed with `package = "..."` (the
+declaration node carries only its key). `go.mod` produces no declaration
+nodes.
 
 **Workspace / monorepo detection → tier 1.** Workspace configuration files
 (npm/yarn/pnpm `workspaces`, Cargo `[workspace] members`, Maven `<modules>`,
