@@ -1,0 +1,22 @@
+- op: create  # 296f
+  at: '2026-10-27T09:12:23Z'  # 296f
+  by: agent  # 296f
+  actor: jgstern_agent  # 296f
+  clock: 1  # 296f
+  nonce: 296f  # 296f
+  data:  # 296f
+    kind: work_item  # 296f
+    title: "evidence_type encodes resolution for a bare call in 8 of 12 languages: the resolver arm emits ast_call (+call_construct), the shared unresolved emitter ast_call_direct (no call_construct) -- ADR-0028 falsified on output, against WI-molit's KEEP premise"  # 296f
+    status: todo_hard  # 296f
+    priority: 3  # 296f
+    parent:  # 296f
+    tags:  # 296f
+    - call_graph  # 296f
+    - axis  # 296f
+    - evidence_type  # 296f
+    isbefore: []  # 296f
+    duplicate_of: []  # 296f
+    not_duplicate_of: []  # 296f
+    pr_ref:  # 296f
+    description: "Found 2026-10-27 by WI-ziruv (falsify each declared axiom on real output), production `hypergumbo survey` on dev 7207fb0ecf.\n\nADR-0028's axiom: \"Edge.evidence_type names the inference pathway by which the analyzer concluded this edge exists. Properties of the dst's resolvedness ... are queried from siblings (Edge.is_resolved) ... not smuggled into the evidence label.\"\n\nMetamorphic probe: one function making two bare calls of the same construct, one to a callee defined in the file, one to a name defined nowhere (`func caller() { inTree(); missing() }` and its equivalent per language). Measured (is_resolved, evidence_type, meta.call_construct):\n\n| language | resolved call | unresolved call |\n|---|---|---|\n| go, swift, kotlin, rust, scala, cpp | ast_call, function | ast_call_direct, none (go: function) |\n| ruby, csharp | ast_call, method | ast_call_direct, none |\n| python, java, typescript, php | ast_call_direct, none | ast_call_direct, none |\n\nIn 8 of the 12 languages the label is set by RESOLUTION, not construct: each analyzer's own resolver arm emits ast_call (+call_construct), and the shared unresolved emitter emits ast_call_direct with no call_construct. In those languages the label is a bijection with is_resolved for a bare call. (Base confidences agree here: both 0.85 resolved, and the unresolved side is always ast_call_direct 0.50, so the visible cost is the label and the missing call_construct, not the score.)\n\nRelation to WI-molit (wont_do 2026-07-17, KEEP): its premise was that ast_call and ast_call_direct \"are distinct call-CONSTRUCT pathways set at DETECTION time\". This table is the counterexample to that premise: same construct, label chosen by which code path resolved it. It does not reopen WI-molit's aggregate (rule: the counterexample that survives the fair objection, not the aggregate). Audit-findings 0012 kept ast_call_direct as a canonical name (\"rename rejected\") while folding function_call into ast_call + call_construct=function, so a direct function call has two spellings, and the analyzers split them by resolution.\n\nDecide: one spelling for a direct call (0012's fold implies ast_call + call_construct; the shared unresolved emitter would then carry call_construct too), applied in the shared emitter and the resolver arms together. WI-ziruv ships the metamorphic test (same construct, in-tree vs missing callee -> same evidence_type) with the eight languages as strict xfails naming this item."  # 296f
+    fields: {}  # 296f
