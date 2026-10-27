@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **366** Python modules (150 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 112 core, 4 CLI, 37 tracker)
-- **56428** symbols (functions, classes, methods)
-- **225750** edges by type:
-  - calls: 128012
-  - contains: 52579
-  - imports: 19182
-  - instantiates: 12726
-  - references: 9543
-  - module_attr_ref: 2076
-  - other: 1632
+- **367** Python modules (150 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 113 core, 4 CLI, 37 tracker)
+- **56715** symbols (functions, classes, methods)
+- **227057** edges by type:
+  - calls: 128752
+  - contains: 52848
+  - imports: 19347
+  - instantiates: 12754
+  - references: 9626
+  - module_attr_ref: 2091
+  - other: 1639
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 56428 Symbols + 225750 Edges + UsageContexts           │
+│  Output: 56715 Symbols + 227057 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -205,6 +205,8 @@ A code symbol (function, class, etc.) detected by analysis.
 - `meta`: Optional metadata dict for language-specific information
 - `supply_chain_tier`: Position in dependency graph (1=first_party, 2=internal_dep, 3=external_dep, 4=derived). See §14 of spec.
 - `supply_chain_reason`: Why this tier was assigned (e.g., "matches ^src/")
+- `supply_chain_classified`: Whether a producer or the annotator has assigned the tier (WI-lidig). The annotator classifies every node for which this is False; it used to infer "unclassified" from the default tier 1 with an empty reason, which made a free-text field's emptiness a branch and left a deliberate "tier 1, no reason" stamp indistinguishable from none. Set by ``__post_init__`` when a constructor passes a tier or a reason, by ``from_dict`` (a serialized map is classified), and by every producer that assigns a
+- `tier afterwards. Internal`: not serialized.
 - `is_test_file`: True if the file holds test *code* — the NARROW supply-chain role flag (spec §14), where examples/benches/fuzz carry their own role rather than this flag. Independent of tier — co-located test files can be tier 1. Deliberately distinct from the broader ``paths.is_test_file`` ranking/scan heuristic (which also covers mocks/fixtures/testdata/benches for entrypoint deprioritization); do not swap consumers of one for the other without re-running the WI-popok concept audit.
 - `is_example_file`: True if the file is example/demo/sample/tutorial code. Set when the path matches an EXAMPLE_PATTERN.
 - `is_config_file`: True if the file is a dependency/build manifest such as ``pyproject.toml`` / ``package.json`` / ``Cargo.toml``. Within tier 2, ``is_test_file`` / ``is_example_file`` / ``is_config_file`` are mutually exclusive — at most one is True per Symbol.
@@ -249,6 +251,7 @@ A relationship between two symbols (e.g., function calls).
 - `alternatives`: ADR-0057 §6 candidate set on a folded edge: ``{field: [{"value", "origin": [pass_id, ...]}]}`` for the values the scalar does not carry; under ``confidence_source="corroborated"`` both producers' original confidences are here.
 - `rank_score`: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
 - `meta`: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3). An edge that survived a collapse of two or more call sites stores the union of their lines in ``call_lines`` (see :func:`deduplicate_edges`); its absence means the one call site is ``line``.
+- `resolution_score`: The resolver's match grade ``Edge.create`` interpolated ``confidence`` from (ADR-0039 ruling 6), kept so finalize re-derives WITH it (WI-sakum); ``None`` on an ungraded edge, and cleared when finalize's verdict makes the edge unresolved (a grade on an unresolved edge is meaningless, ruling 6). Internal: not serialized, the published contract carries the graded ``confidence``.
 
 
 ## Canonical Vocabularies
@@ -279,20 +282,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10413.7 | ir.py |
-| `len` | external_symbol | 8006.0 | <external> |
-| `write_text` | external_symbol | 7256.0 | <external> |
-| `Span` | class | 6746.1 | ir.py |
+| `Symbol` | class | 10479.6 | ir.py |
+| `len` | external_symbol | 8022.0 | <external> |
+| `write_text` | external_symbol | 7268.0 | <external> |
+| `Span` | class | 6749.1 | ir.py |
 | `LinkerContext` | class | 3775.9 | registry.py |
-| `get` | external_symbol | 3590.0 | <external> |
-| `load_catalog` | function | 3392.4 | io_boundary.py |
-| `Edge.create` | method | 2525.5 | ir.py |
-| `str` | external_symbol | 2438.0 | <external> |
-| `Path` | external_symbol | 2421.0 | <external> |
-| `next` | external_symbol | 2252.0 | <external> |
+| `get` | external_symbol | 3604.0 | <external> |
+| `load_catalog` | function | 3408.4 | io_boundary.py |
+| `Edge.create` | method | 2536.4 | ir.py |
+| `str` | external_symbol | 2459.0 | <external> |
+| `Path` | external_symbol | 2449.0 | <external> |
+| `next` | external_symbol | 2258.0 | <external> |
 | `load_framework_patterns` | function | 2107.0 | framework_patterns.py |
-| `TrackerApp` | class | 1969.8 | tui.py |
-| `append` | external_symbol | 1905.0 | <external> |
+| `TrackerApp` | class | 1975.3 | tui.py |
+| `append` | external_symbol | 1918.0 | <external> |
 | `main` | function | 1781.4 | cli.py |
 
 ## Pattern System
@@ -595,6 +598,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 - **`hypergumbo_core.analyzer_disclosure`**: Dated per-language declarations of whether an analyzer emits the ex...
 - **`hypergumbo_core.analyzer_identity`**: Compute a hash representing the analyzer's identity (WI-panih).
+- **`hypergumbo_core.anchor_execution`**: When anchored code runs: the one contract reachability consumers sh...
 - **`hypergumbo_core.arbitration`**: The arbitration policy: precedence among a language's producers (AD...
 - **`hypergumbo_core.audit_findings`**: Parser and validator for the audit-findings document format.
 - **`hypergumbo_core.axis_drift`**: Field-agnostic AST drift detector for axis-bearing canonical regist...
@@ -976,8 +980,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 95c0ff7b93d9
-  commit_count: 8584
+  commit: aeaf183d1660
+  commit_count: 8626
   hypergumbo: 9.2.0
   python: 3.12.3
 -->

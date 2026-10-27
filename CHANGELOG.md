@@ -98,6 +98,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Analysis never downloads an embedding model**: `install-embeddings` and `add-extras` fetch the weights, and a sketch without them runs without embeddings and says so. The first sketch used to download both models.
 - **Trust grants, the catalogue home and the repo-tier offer write through declared zones** (`user_state`, `user_config`, `developer_checkout`), and every `cmd_*` handler plus the offer is a taint source. The offer is no longer made while the analysed path overlaps `~/hypergumbo`, so it never writes into a repository being analysed.
 
+#### Supply-chain tiers
+
+- **A dependency declaration naming an in-tree package has that package's tier** (INV-kutub, ADR-0041 §1): a sibling declaration was tier 2 in Python and tier 3 "external" in npm, Composer, Cargo and Maven while the sibling's own package node was tier 1. Names compare per ecosystem (PEP 503; exact; `-`/`_`; Maven `groupId:artifactId`, with `${project.groupId}` read as the declaring module's group), and the reason names the sibling's manifest. Measured: nest 172 of 1,379 declarations 3 → 1 (165 from `sample/` apps that pin the published package by version), diesel 45 of 275, killbill 118 of 683; no other node moved. `--max-tier 1` now keeps them. Sketch's no-map fallback uses the same classifier, which it previously re-implemented per path (every declaration tier 1).
+
 #### CI and gates
 
 - **Every spec-validator check on the fixture matrix has something to inspect**, and a test fails when one does not.

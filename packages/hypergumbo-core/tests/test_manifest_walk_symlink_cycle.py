@@ -23,7 +23,7 @@ import pytest
 from hypergumbo_core.discovery import walks_into
 from hypergumbo_core.supply_chain import (
     collect_first_party_package_names,
-    collect_workspace_package_names,
+    collect_in_tree_packages,
 )
 
 
@@ -59,10 +59,14 @@ def test_first_party_names_terminate_on_a_self_link(
     assert "tor-proto" in collect_first_party_package_names(cyclic_repo)
 
 
-def test_workspace_names_terminate_on_a_self_link(
+def test_in_tree_packages_terminate_on_a_self_link(
     deadline: None, cyclic_repo: Path,
 ) -> None:
-    assert collect_workspace_package_names(cyclic_repo) == {"my-tool"}
+    in_tree = collect_in_tree_packages(cyclic_repo)
+    assert in_tree.by_name[("pyproject.toml", "my-tool")] == ("pyproject.toml",)
+    assert in_tree.by_name[("Cargo.toml", "tor-proto")] == (
+        "crates/tor-proto/Cargo.toml",
+    )
 
 
 def test_a_symlinked_directory_is_not_entered_but_a_linked_file_is_read(
