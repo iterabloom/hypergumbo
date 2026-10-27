@@ -109,6 +109,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### CI and gates
 
+- **The full-suite test-only-reachability gate is green again.** `install-embeddings` ran `fetch_embedding_models` only through a `python -c` string, so the gate read it as reachable only from its tests and the twice-daily full suite failed from 2026-10-25 (INV-gujus). The child program is now built from the function's own `__module__` / `__name__`, a real reference a rename cannot leave stale.
 - **Every spec-validator check on the fixture matrix has something to inspect**, and a test fails when one does not.
 - **Parallel tests no longer race** on the committed schema-coverage baseline or on shared watcher session ids.
 

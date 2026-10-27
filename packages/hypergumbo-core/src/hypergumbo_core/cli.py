@@ -4080,13 +4080,21 @@ def _fetch_embedding_models(quiet: bool) -> bool:
     """
     import subprocess  # nosec B404 — the model download, install path only
 
+    from .sketch_embeddings import fetch_embedding_models
+
     if _embedding_models_cached():
         return True
     if not quiet:
         print("Downloading the embedding model weights...")
+    # The child imports the function by the name this one carries, so the
+    # call is a real reference here (the test-only-reachability gate reads
+    # it) and a rename cannot leave a stale string behind. Importing
+    # sketch_embeddings in this interpreter is safe: it loads
+    # sentence_transformers lazily, inside the function.
     cmd = [sys.executable, "-c",
-           "from hypergumbo_core.sketch_embeddings import fetch_embedding_models; "
-           "fetch_embedding_models()"]
+           f"from {fetch_embedding_models.__module__} import "
+           f"{fetch_embedding_models.__name__}; "
+           f"{fetch_embedding_models.__name__}()"]
     try:
         result = subprocess.run(cmd, check=False, timeout=3600.0)  # noqa: S603 # nosec B603
     except (subprocess.SubprocessError, OSError) as exc:
