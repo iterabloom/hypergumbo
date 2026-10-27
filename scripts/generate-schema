@@ -232,7 +232,7 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                                     "description": (
                                         "How many of `files` are the "
                                         "project's own code: supply-chain "
-                                        "tier 1-2 by path "
+                                        "not tier 3 or 4 by path "
                                         "(supply_chain.tier_by_path; no file "
                                         "read). Committed vendored and "
                                         "derived files are still analysed "

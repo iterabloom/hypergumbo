@@ -109,6 +109,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Documentation
 
+- **ADR-0041 §1's tier axiom names its reference frame** (owner ruling 2026-10-25): tier is the distance, from the project, of the code a node stands for, the project being every package whose source is in the analysed tree; a dependency declaration stands for the package it names and a boundary stub for the code it replaces, so nodes standing for one package carry one tier. Tier 2 is org-internal code outside the project; no CLI path sets its one producer (`internal_package_roots`, WI-jaloz), so spec §14 marks it 🟧 and says a CLI run emits no tier-2 node. Spec §14 and the `Tier`, `Symbol.supply_chain_tier` and `supply_chain` docstrings say the same; the spec no longer claims `directness` is stamped on declarations (INV-fuhin).
 - **ADR-0050's io-boundary axiom names the medium**: a row's primary boundary names the medium data crosses, and a `simultaneous` second boundary may record the credential or navigator reading a taint label needs; `env_read` means both the process environment and "may carry a credential". The `env_read`, `host_info_read` and `navigation_read` definitions are rewritten to match. No row's boundary changes.
 - The spec counts 63 `symbol_meta` keys and documents `item_span`; the concept-audit playbook records its latest audit; `ALLOWED_WEBSITES.md` permits discuss.python.org; ARCHITECTURE.md regenerated.
 

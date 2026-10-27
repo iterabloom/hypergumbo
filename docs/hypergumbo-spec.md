@@ -1775,7 +1775,7 @@ Output ordering is deterministic (same input → same output) and optimized for 
 
 ## 14) Supply chain classification
 
-Hypergumbo classifies files by their position in the project's dependency graph. This enables focused analysis (first-party code prioritized in results) and noise reduction (derived artifacts excluded from analysis entirely).
+Hypergumbo classifies nodes by the supply-chain distance, from the project, of the code each stands for. This enables focused analysis (first-party code prioritized in results) and noise reduction (derived artifacts excluded from analysis entirely).
 
 ### Motivation
 
@@ -1794,29 +1794,33 @@ Code is classified into four tiers based on its relationship to the project:
 
 | Tier | Name | Description | Examples | Status |
 |------|------|-------------|----------|--------|
-| 1 | `first_party` | Project's own source code (including its tests), and a dependency declaration naming an in-tree package | `src/`, `lib/`, `app/`; `hypergumbo-core` listed in a sibling package's `pyproject.toml` | 🟩 |
-| 2 | `internal_dep` | Org-internal *dependency* packages: config-declared `internal_package_roots`. No CLI path sets it, so a CLI run emits no tier-2 node. Workspace member *source files* stay tier 1. | Local forks | 🟩 |
+| 1 | `first_party` | The project's own code — every package whose source is in the analysed tree, including its tests — and a dependency declaration naming one of those packages | `src/`, `lib/`, `app/`; `hypergumbo-core` listed in a sibling package's `pyproject.toml` | 🟩 |
+| 2 | `internal_dep` | Org-internal code that is not part of the project: config-declared `internal_package_roots`. No CLI path sets it (WI-jaloz), so a CLI run emits no tier-2 node. | Local forks | 🟧 |
 | 3 | `external_dep` | **All** third-party code — direct, transitive, undeclared, and stdlib alike | `node_modules/lodash/`, `vendor/`, declared PyPI deps, `os`/`json` | 🟩 |
 | 4 | `derived` | Build artifacts, transpiled/bundled output | `dist/`, `*.min.js`, source-mapped files | 🟩 |
 
-**Tier names supply-chain distance and nothing else (ADR-0041 §1).** A *declared*
+**Tier names the supply-chain distance, from the project under analysis, of the
+code a node stands for (ADR-0041 §1)** — the project being every package whose
+source is in the analysed tree; where the node is written, how the code is
+declared, and what produced the node may not influence the value. A file,
+function, project or package node stands for its own code; a dependency
+declaration stands for the package it names; a boundary stub stands for the code
+it replaces. Nodes standing for the same package carry the same tier. A *declared*
 (direct) third-party package is **not** promoted to tier 2 — distance, not
 declaration status, is what `tier` records, and a declared PyPI package is no
 closer to the project than an undeclared one. The direct/transitive/undeclared
 *declaration relationship* lives on the registered `directness` meta key
 (`direct` / `transitive` / `undeclared`); the stdlib-vs-third_party *provenance*
 distinction lives on the registered `ecosystem` axis (ADR-0041 §3). Both are
-stamped once, at classification time, on boundary/dependency nodes.
+stamped once, on boundary nodes as they are synthesized; dependency declarations
+carry neither yet (INV-fuhin).
 
-(History: ADR-0041 §1 retired the *manifest* direct-dependency → tier-2
-mapping. File classification independently still routed some in-repo non-source
-*role* files — examples, documentation bundles, notebooks, fuzz/bench harnesses
-— to tier 2 (INV-naduh); these are the project's own code (distance 0) and now
-classify as **tier 1** with their role on the `is_example` / `is_test` / reason
-axis, not by tier. Tier 2 has one producer, config-declared
-`internal_package_roots`; a dependency declaration naming an in-tree package
-carries that package's tier (INV-kutub). Workspace member *source* stays tier 1,
-and in-repo generated *routes* promote from tier 4 to tier 1, not tier 2.)
+In-repo non-source *role* files — examples, documentation bundles, notebooks,
+fuzz/bench harnesses — are the project's own code (distance 0): tier 1, with the
+role on the `is_example` / `is_test` / reason axis, not by tier. Workspace member
+source is tier 1, and in-repo generated *routes* promote from tier 4 to tier 1.
+Tier 2 has one producer, config-declared `internal_package_roots`, which no CLI
+path sets (WI-jaloz), so a CLI run emits no tier-2 node.
 
 **Default behavior:**
 - Tiers 1-3: Analyzed, with tier used for ranking/filtering
@@ -1905,18 +1909,15 @@ def extract_package_name(rel_path: str) -> str | None:
 
 #### 3. Internal dependency detection (tier 2)
 
-Tier 2 (`internal_dep`) has one producer, config-declared
-`internal_package_roots` — org-internal dependency packages (local forks,
-vendored-but-internal libs). No *path* heuristic produces tier 2 for source
-files: workspace member source is tier 1, and in-repo role files carry their
-role on a flag/reason (ADR-0041 §1 / INV-naduh).
-
-**Config-declared internal package roots:**
-```yaml
-# capsule plan supply_chain config
-internal_package_roots: ["custom_packages/shared", "libs/common"]
-```
-Files under a declared root are tier 2 (`internal_dep`).
+🟧 Tier 2 (`internal_dep`) has one producer, `SupplyChainConfig.internal_package_roots`
+— org-internal code that is not part of the project (local forks,
+vendored-but-internal libs): `classify_file(config=...)` tiers a file under a
+declared root tier 2. Nothing supplies that config: both production callers
+(`cli._classify_symbols`, `sketch._run_analysis`) pass none, no CLI flag sets it,
+and `.hypergumbo.toml` rejects `internal_package_roots` as an unknown setting, so
+a CLI run emits no tier-2 node. Whether to wire or delete it is WI-jaloz. No
+*path* heuristic produces tier 2: workspace member source is tier 1, and in-repo
+role files carry their role on a flag/reason (ADR-0041 §1 / INV-naduh).
 
 #### 3a. Dependency declarations (tier of the package named) 🟩
 
