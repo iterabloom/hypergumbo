@@ -50,3 +50,18 @@
   clock: 5  # c2f3
   nonce: c2f3  # c2f3
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output) classifies ADR-0041 against this item's project-frame wording, not the old §1."  # c2f3
+- op: update  # 75e2
+  at: '2026-10-27T02:57:54Z'  # 75e2
+  by: agent  # 75e2
+  actor: jgstern_agent  # 75e2
+  clock: 6  # 75e2
+  nonce: '75e2'  # 75e2
+  set:  # 75e2
+    status: done  # 75e2
+- op: discuss  # 807b
+  at: '2026-10-27T02:57:54Z'  # 807b
+  by: agent  # 807b
+  actor: jgstern_agent  # 807b
+  clock: 7  # 807b
+  nonce: 807b  # 807b
+  message: "Done in PR #1892 (merged as b3f06fcf9c), docs only. Rewritten in place per the item's list: ADR-0041 §1 axiom now names the frame (distance, from the project under analysis, of the code a node stands for; the project = every package whose source is in the analysed tree; declaration -> the package it names; boundary stub -> the code it replaces; same package -> same tier; tiers 1-3 distances, 4 the derived exception); row 1 includes workspace siblings, row 2 = org-internal code outside the project with no CLI producer; cut the 'posterity' paragraph and the 2026-07-17 WI-popok annotation; replaced the stale '7 workspace packages' prediction; corrected §2's claim that directness is stamped on dependency nodes (only boundary nodes, INV-fuhin). Spec §14: 'classifies files by position in the dependency graph' -> nodes by distance; axiom paragraph states the frame; '(History: ...)' cut to current facts; tier-2 row/section marked 🟧 blocked on WI-jaloz with the unfed config described (verified: .hypergumbo.toml internal_package_roots exits 2 'unknown setting'); capsule-plan YAML removed. Docstrings: Tier, Symbol.supply_chain_tier, supply_chain header + tier list, DependencyManifest, classify_import, ADR-0004's Tier sketch; scripts/generate-schema own_files 'tier 1-2 by path' -> 'not tier 3 or 4 by path' (tier_by_path returns only 3/4/None), schema.json regenerated. Verified on merged dev: the axiom sentence and 'Nodes standing for the same package carry the same tier' present in ADR-0041 and spec §14; 'posterity'/'7 actual workspace' gone. The code half is INV-kutub (PR #1890). Left as is: docs/RELEASE-NOTES-7.X.md:77, a 7.x release record true when written. Suite: 30684 passed, 100% coverage on changed files."  # 807b

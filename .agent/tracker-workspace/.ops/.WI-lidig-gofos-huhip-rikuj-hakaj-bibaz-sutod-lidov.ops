@@ -61,3 +61,18 @@
   clock: 6  # 5356
   nonce: '5356'  # 5356
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0041 row waits on INV-kutub, which waits on this item (explicit 'unclassified' marker before the declaration branch changes)."  # 5356
+- op: update  # 8b48
+  at: '2026-10-26T23:31:51Z'  # 8b48
+  by: agent  # 8b48
+  actor: jgstern_agent  # 8b48
+  clock: 7  # 8b48
+  nonce: 8b48  # 8b48
+  set:  # 8b48
+    status: done  # 8b48
+- op: discuss  # 64d8
+  at: '2026-10-26T23:31:51Z'  # 64d8
+  by: agent  # 64d8
+  actor: jgstern_agent  # 64d8
+  clock: 8  # 64d8
+  nonce: 64d8  # 64d8
+  message: "Fixed in PR #1889 (merged as a4546cb836 via rebase). Root cause: the annotator (cli._classify_symbols) read \"unclassified\" off tier 1 + an empty supply_chain_reason, a free-text field ir.py declares never-branch-on, so a deliberate tier-1/no-reason stamp was indistinguishable from none (the F78.A3 sentinel). Fix: an explicit Symbol.supply_chain_classified flag (compare=False, not serialized; schema spec marks it omitted), set by the annotator, by __post_init__ when a constructor passes a tier or reason, by from_dict, and by the producers that assign a tier later (annotation_convention @hg:route, route promotion, sketch fallback). The guard now reads the flag or protocol_origin.\nBehavioural evidence, re-run on merged dev a4546cb836: `hypergumbo survey` on a two-member pyproject workspace with a tests/ file -> 12 nodes, 0 missing a supply_chain dict, every orchestrator-synthesized file node carries a path-derived tier-1 reason ('path matches ^packages/[^/]+/src/' x2, 'test path matches (?:^|/)tests?/' x1, 'default (no matching pattern)' x2) -- the item's positive control still holds. test_supply_chain_classified_flag.py + test_supply_chain.py: 305 passed on merged dev, including the annotator leaving a deliberate tier-1/no-reason node alone (the case the old guard re-classified). Pre-merge A/B: apollo-server 7,349 nodes, identical tier and reason dev vs branch. No output change, by design."  # 64d8

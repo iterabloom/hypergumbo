@@ -1,0 +1,21 @@
+- op: create  # b9a2
+  at: '2026-10-27T01:37:20Z'  # b9a2
+  by: agent  # b9a2
+  actor: jgstern_agent  # b9a2
+  clock: 1  # b9a2
+  nonce: b9a2  # b9a2
+  data:  # b9a2
+    kind: work_item  # b9a2
+    title: "pyproject Poetry, optional-dependency and PEP 735 dependency tables emit no dependency nodes (only [project].dependencies does)"  # b9a2
+    status: todo_hard  # b9a2
+    priority: 3  # b9a2
+    parent:  # b9a2
+    tags:  # b9a2
+    - supply_chain  # b9a2
+    - toml  # b9a2
+    isbefore: []  # b9a2
+    duplicate_of: []  # b9a2
+    not_duplicate_of: []  # b9a2
+    pr_ref:  # b9a2
+    description: "toml_config emits a kind=dependency node only for pyproject [project].dependencies (toml_config.py, the `is_pyproject and table_name == \"project\"` arm). Not emitted: [tool.poetry.dependencies], [tool.poetry.group.<g>.dependencies], [tool.poetry.dev-dependencies], [project.optional-dependencies] and PEP 735 [dependency-groups]. Consequence: a Poetry project's declared dependencies are invisible to every consumer of declaration nodes (the dependency linker, supply_chain_summary, INV-kutub's in-tree declaration tier, directness). Found by INV-kutub's measurement 2026-10-26: the poetry repo (~/curriculum_repos/poetry) has 22 sibling declarations in tests/fixtures Poetry tables (e.g. tests/fixtures/project_with_nested_local/pyproject.toml: foo, bar) and the survey has no node for any of them; its 24 dependency nodes are all from [project].dependencies. Fix direction: emit one node per entry of each listed table, with meta dependency_scope for dev/group/optional (the cargo dev/build precedent, WI-limas), names PEP 508-parsed for array forms and table keys for Poetry; stable_id scoped by table (INV-punig). Measure node counts before/after on poetry and a uv/PEP 735 repo. Check the python dependency linker and directness producers for consumers keyed to the current single table."  # b9a2
+    fields: {}  # b9a2
