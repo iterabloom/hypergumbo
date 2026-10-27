@@ -35,3 +35,10 @@
   clock: 3  # 2919
   nonce: '2919'  # 2919
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0061 row: this item is ruling 1's counterexample (a command-line-named file is yours). It ships as a strict xfail naming this item, flipping when fixed."  # 2919
+- op: discuss  # 06ac
+  at: '2026-10-27T09:37:02Z'  # 06ac
+  by: agent  # 06ac
+  actor: jgstern_agent  # 06ac
+  clock: 4  # 06ac
+  nonce: 06ac  # 06ac
+  message: "2026-10-27: a production-path closure test exists (WI-ziruv, PR #1902): packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestCatalogueTiers::test_a_flag_named_file_inside_the_repo_is_yours (strict xfail). It XPASSes when this item is fixed; remove the mark in the fix PR."  # 06ac

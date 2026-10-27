@@ -1,0 +1,21 @@
+- op: create  # d5e2
+  at: '2026-10-27T20:15:11Z'  # d5e2
+  by: agent  # d5e2
+  actor: jgstern_agent  # d5e2
+  clock: 1  # d5e2
+  nonce: d5e2  # d5e2
+  data:  # d5e2
+    kind: work_item  # d5e2
+    title: "entrypoint kind main_function also names an application object: the 'application' concept (a Flask app variable, an http4s IOApp class; 19 framework files) emits main_function"  # d5e2
+    status: todo_hard  # d5e2
+    priority: 3  # d5e2
+    parent:  # d5e2
+    tags:  # d5e2
+    - entrypoints  # d5e2
+    - concept_audit  # d5e2
+    isbefore: []  # d5e2
+    duplicate_of: []  # d5e2
+    not_duplicate_of: []  # d5e2
+    pr_ref:  # d5e2
+    description: "FOUND 2026-10-27 by the entrypoint-kind half of the WI-ziruv follow-up (the survey's recorded gaps).\n\nThe axiom (entrypoints.all_known_entrypoint_kinds): `kind` names WHAT the entrypoint is; `evidence_type` names HOW it was detected. EntrypointKind.MAIN_FUNCTION is documented as \"Language-level main() entry points\". WI-tuvun already split MAIN_GUARD out of it on the rule \"kind alone disambiguates the target type (function vs file)\".\n\nCounterexample, production path (run_behavior_map, dev 0cb6bd3f16): `from flask import Flask; app = Flask(__name__)` emits an entrypoint kind=main_function, evidence_type=framework_pattern, label \"Flask application\", whose target is the VARIABLE node `app`. The source is entrypoints.py:1279: concept `application` -> EntrypointKind.MAIN_FUNCTION. 19 shipped framework files emit that concept: aiohttp, fastapi, flask, tornado (python variables); http4s, zio (scala IOApp / ZIOAppDefault classes); giraffe, javalin, hummingbird, openresty, padrino, plumber, roda, servant, shiny, qt, swiftui, scotty, yesod.\n\nSo main_function now names three different things: a main() callable, an application object held in a variable, and an application class. It is the overload WI-tuvun removed for files.\n\nFix shape (not decided here): an `application` entrypoint kind (registered in EntrypointKind, so all_known_entrypoint_kinds and the schema pick it up), or route the concept to an existing kind that names an object. Consumers that branch on main_function need a check (sketch.py, entrypoint ranking).\n\nClosure test: packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py, the entrypoint-kind section (strict xfail naming this item)."  # d5e2
+    fields: {}  # d5e2
