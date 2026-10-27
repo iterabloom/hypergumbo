@@ -112,6 +112,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The full-suite test-only-reachability gate is green again.** `install-embeddings` ran `fetch_embedding_models` only through a `python -c` string, so the gate read it as reachable only from its tests and the twice-daily full suite failed from 2026-10-25 (INV-gujus). The child program is now built from the function's own `__module__` / `__name__`, a real reference a rename cannot leave stale.
 - **Every spec-validator check on the fixture matrix has something to inspect**, and a test fails when one does not.
 - **Parallel tests no longer race** on the committed schema-coverage baseline or on shared watcher session ids.
+- **Declared axioms are tested against output, not only their vocabulary** (WI-ziruv). Each axiom that implies a property of survey or verify-claims output gets a production-path test with a reach check, a checker control, and a mutation that turns it red. The classification of all 19 axioms is [`docs/surveys/axiom-falsifiability.md`](docs/surveys/axiom-falsifiability.md). The tests failing today are strict xfails naming their items:
+  - an evidence label set by resolution in 8 of 12 languages (WI-sukug);
+  - visibility defaulting to `public` in every language (WI-gisip);
+  - Pony's unregistered kinds (WI-higik);
+  - unstamped declarations (INV-fuhin);
+  - catalogue tier rulings 1 and 2 (WI-dagun, WI-savoh);
+  - the choice-shaped caveat on `gethostname` (WI-zakil).
 
 ### Documentation
 
