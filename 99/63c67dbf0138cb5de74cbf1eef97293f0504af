@@ -1,0 +1,78 @@
+Original commit body from c73b06b1c73b65fd1927c4606edaecc0c9968990:
+
+ADR-0050 §1 (owner ruling 2026-10-25) names a row's primary boundary by
+the MEDIUM data crosses, and a Unix-domain socket's medium is local IPC.
+The vocabulary had no IPC-side deferred-crossing value -- net_listen was
+the only listen boundary -- so Go's net.ListenUnix and Python's
+asyncio.start_unix_server were rowed net_listen and read as network
+ingress. Owner ruling 2026-10-26 (WI-gaziv, option a): add ipc_listen
+rather than widen net_listen to "any listener".
+
+ipc_listen is net_listen's local-IPC twin and carries its three ADR-0049
+clauses: catalog-declarable, deferred_crossing axis, inbound; mints no
+taint; disclosed and held out of total_io_edges in its own
+ipc_listen_edges count; shadows ipc_recv (DEFERRED_CROSSING_SHADOWS), so
+a clean ipc_recv verdict over a program with a Unix listener is
+qualified, never granted. It is declared last, so first-declared-wins
+leaves every existing row's primary boundary alone.
+
+Rows:
+* go: net.ListenUnix moved from net_listen; net.ListenUnixgram (ListenUDP's
+  Unix twin, previously unrowed) added.
+* python: asyncio.start_unix_server moved from net_listen; serve_forever /
+  handle_request on socketserver's six Unix server classes (Unix /
+  ThreadingUnix / ForkingUnix x Stream / Datagram) added -- TCPServer, their
+  twin, is net_listen.
+* Stays net_listen: calls that may bind either medium (socket.socket.bind,
+  socket.create_server, go net.Listen / ListenPacket with a network
+  argument, syscall and x/sys/unix Socket/Bind/Listen) until a call-site
+  stamp can tell them apart.
+* Not rowed: loop.create_unix_server -- its receiver is the loop
+  get_running_loop() returns, which the analyzer leaves untyped
+  (python:external:...), so a row could never match; asyncio's
+  loop.create_server has no row for the same reason. And the receive half
+  of a Python Unix server, asyncio.StreamReader.read*, stays net_recv
+  because TCP and Unix streams share it (WI-muful); the description says so.
+
+io-boundaries envelope: ipc_listen_edges on both the BoundaryMap.to_dict
+and the cmd_io_boundaries filtered path; IO_BOUNDARIES_SCHEMA_VERSION 2.4 ->
+2.5 (additive). docs/concept-axes.md regenerated (docs/schema.json does not
+list boundary values; unchanged). ADR-0050 §2's deferred_crossing row and
+§3's headline list, spec §9 / §11 vocabulary and disclosure text (the §9
+list was also missing navigation_read and host_info_read; it now matches
+CATALOG_BOUNDARY_TYPES exactly).
+
+Consumers that branch on the deferred values were enumerated first:
+DEFERRED_CROSSING_SHADOWS (now keyed for ipc_listen), the disclosed-only
+set (derived from the spec), the envelope counts (both paths, gated by
+TestTheTwoEnvelopePathsCannotDrift), verify-claims' deferred caveat
+(generic over the shadowed boundary -- no edit). Nothing else keys on
+the string.
+
+Measured, `hypergumbo io-boundaries --format json`, dev 4395a62c5e vs
+this branch:
+  gvisor-tap-vsock  ipc_listen_edges 0 -> 2, net_listen_edges 36 -> 35,
+                    external_potential_edges 45,428 -> 45,427
+                    (net.ListenUnixgram was unclassified), total_io_edges
+                    2,019 unchanged; the only chains moved are ListenUnix
+                    net_listen -> ipc_listen and ListenUnixgram
+                    external_potential -> ipc_listen.
+  spire             ipc_listen_edges 0 -> 1, net_listen_edges 21 -> 20,
+                    everything else unchanged (ListenUnix moved).
+
+Tests: the vocabulary's three clauses and declaration order; the go and
+python ipc_listen row sets (with ListenUnix out of the go net_listen pin
+and the go partition now 63 rows); each Unix listener shadows ipc_recv
+while its TCP twin shadows net_recv; the pinned constant and envelope key
+sets; production path (lang-mainstream): run_behavior_map + io-boundaries
+on Go and Python fixtures puts each Unix listener in ipc_listen_edges and
+its TCP twin in net_listen_edges. Before the change: 11 of the new or
+updated core assertions failed. Pins moved with the vocabulary on purpose:
+the pre-refactor boundary tuple and disclosed-only set, the envelope key
+locks, navigation_read's "declared last" (now second to last), and the two
+2.4 schema pins in test_untraced_dependency_io_unknown. The catalogue scope
+gate admits the six socketserver Unix classes with the reasoning written
+into CATALOGUE_SCOPE['python'] (CPython Lib/socketserver.py, beside the
+admitted socketserver.TCPServer).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
