@@ -1,0 +1,81 @@
+Original commit body from d2990e79097017fa7e73ffae405f19a51db9e6a1:
+
+A declared axis (ADR-0024) stops a new SPELLING. Its registry and drift
+linter reject an unregistered literal. Nothing ran an axiom's own sentence
+against what the tool emits, so meaning drift went unseen: ADR-0050's medium
+reading, ADR-0041's frame, Pony's computed kinds. This commit classifies
+every declared axiom and tests each testable consequence through the
+production pipeline.
+
+docs/surveys/axiom-falsifiability.md classifies all 19 axioms:
+- the 14 `_known_axes()` entries;
+- ADR-0039, ADR-0041 (tier; directness/ecosystem) and ADR-0061;
+- the verify-claims choice-shaped-source rule.
+Each is mechanically testable, partly testable, or needs per-row judgment,
+with the reason. For the judgment axioms (the ADR-0050 primary, ADR-0028's
+"pathway", ADR-0051 owner paths, ADR-0039 calibration, a silence reason's
+truth) it records what a reviewer samples instead. Existing meaning tests
+are cited rather than duplicated: the edge-type runtime-coherence ratchet,
+the ADR-0059 shrink-only ledger, INV-kutub's tier test, ADR-0058's consumer
+scan, and ADR-0061 rulings 3/4/6.
+
+New tests, lang-mainstream test_axiom_falsification.py, 80 pass + 17 xfail.
+Fixtures go through run_behavior_map / cmd_verify_claims.
+
+| Axiom | Test | Holds on | Strict xfail |
+|---|---|---|---|
+| ADR-0027 symbol kind | a framework role (flask route, celery task, django Model, spring annotations, express handler) does not move the kind | py, java, ts | — |
+| ADR-0027 symbol kind | every emitted kind is on language_construct | py, java, ts; extended1: zig, nim, gleam | pony (WI-higik) |
+| ADR-0028 evidence type | a bare call's label is the same whether the callee resolves or not | python, java, typescript, php | go, swift, kotlin, rust, ruby, csharp, scala, cpp (WI-sukug) |
+| ADR-0051 module key | it does not follow a renamed receiver variable | python, java, go, kotlin, rust, swift | — |
+| ADR-0041 directness / ecosystem | every node supply_chain_summary counts is stamped | imported externals | declarations (INV-fuhin) |
+| pass-silence | a reason only on a silent run; no_candidate_files only with zero files analysed | 16 surveys | — |
+| ADR-0031 language | a declaration carries its file's language | 16 surveys | — |
+| visibility | each language's own rule, 24 rows | 19 rows | 5 rows (WI-gisip) |
+| ADR-0061 ruling 5 | a command-line file is disclosed under exactly one tier | yes | — |
+| ADR-0061 ruling 1 | a command-line file is yours | — | WI-dagun |
+| ADR-0061 ruling 2 | community trust never cleans a verdict; the control is that your own trust does | — | WI-savoh |
+| choice_shaped_source | the caveat appears only on an untrusted_input claim; the control is an accept() peer | — | gethostname (WI-zakil part 3) |
+
+Each test first asserts that its fixture reached what it tests. Each
+property is one pure checker, with a hand-built counterexample in-suite.
+The visibility failures: java package-private, csharp default-private
+members and rust non-pub all read `public`, and the typescript `private` /
+`protected` keywords are never read.
+
+Mutation controls. Eight mutations were applied in a detached worktree with
+a pinned PYTHONPATH (43 tests went red):
+
+| # | Mutation | Tests that went red |
+|---|---|---|
+| 1 | visibility default -> private | every default row; the WI-gisip rows XPASSed |
+| 2 | every post-pass gets a reason | silence, 16 surveys |
+| 3 | no directness stamp | imported-stamp test |
+| 4 | the shared unresolved emitter says ast_call | java, php, ts; the 8 WI-sukug rows XPASSed. Python has its own emitter and stayed green |
+| 5 | .ts reads javascript | language, 2 TS surveys |
+| 6 | java keys a lower-case receiver by its name | java module key |
+| 7 | enrichment rewrites kind to route | py/java kind tests. TS's concept is analyzer-stamped and stayed green |
+| 8 | a command-line catalogue is listed twice | tier-once |
+
+The checker controls and both verify-claims reach controls stayed green.
+
+Filed from this work:
+- WI-sukug (P3): the evidence-label split above. It is the counterexample
+  to WI-molit's KEEP premise ("set at detection time").
+- WI-gisip (P3): visibility.
+- WI-mupal (P3, a ruling): route markers are kind=function with a source
+  language, whatever they stand for.
+- WI-kuzoh (P4, a ruling): 33 of the 39 shipped simultaneous primitives
+  pair two crossings, which ADR-0050 section 1 does not cover.
+- WI-fanad (P3, found in passing): ruby drops a method call on a local
+  typed to an external class.
+- A note on INV-fuhin: the ecosystem half.
+
+WI-kufos's collapsed-group shape was not reproduced on a fixture. The
+choice checker reads the claim, so it covers that shape too.
+
+Tests and docs only. No source change, no output change.
+
+Addresses WI-ziruv.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
