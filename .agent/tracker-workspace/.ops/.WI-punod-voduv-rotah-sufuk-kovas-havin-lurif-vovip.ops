@@ -42,3 +42,18 @@
   clock: 4  # 315c
   nonce: 315c  # 315c
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Two audits bear on this. (1) WI-ziruv (falsify each declared axis's rule on real output) cannot test the pass-silence axis until this item turns the A/B/C states into data, so this item comes before that row. (2) The != no_candidate_files proxy and ROUTINE_SILENCE_REASONS are hand-written partitions of the vocabulary, named instances in WI-kosup section D. The fix here does not wait for the sweep."  # 315c
+- op: update  # 4b5b
+  at: '2026-10-27T04:08:33Z'  # 4b5b
+  by: agent  # 4b5b
+  actor: jgstern_agent  # 4b5b
+  clock: 5  # 4b5b
+  nonce: 4b5b  # 4b5b
+  set:  # 4b5b
+    status: done  # 4b5b
+- op: discuss  # 7678
+  at: '2026-10-27T04:08:33Z'  # 7678
+  by: agent  # 7678
+  actor: jgstern_agent  # 7678
+  clock: 6  # 7678
+  nonce: '7678'  # 7678
+  message: "Done in PR #1894 (merged as 4395a62c5e). pass_silence.SILENCE_REASON_SPECS now declares, per value, the A/B/C states it is consistent with (a SET: dependency_unavailable and backend_disabled are {A,C} -- C with files to read, A without, which a skip record does not say; candidates_unresolved {A,B}; pass_crashed and unreported all; prerequisite_absent {C}; the two no_candidate_* {A}) and a declared `routine` flag. SILENCE_REASONS and ROUTINE_SILENCE_REASONS are read off the specs; silence_states() reads one (a string outside the vocabulary, '' included, -> all states). The proxy `!= no_candidate_files` in prerequisite_absent_clauses is replaced by 'states are not exactly {A}'; ADR-0056 W3 and spec §9 state the rule that way. Trap (1): skip_record_code() is now the one reader of a skip record's code; the linker dispatcher's '' default became unreported. Trap (2): the docstring now names out-of-taxonomy zero-file analyzers as unobservable and no longer says 'a pass absent from this mapping ran'.\nEvidence on merged dev 4395a62c5e: test_pass_silence.py 103 passed, including run_all_linkers handing a codeless skip record to linkers as 'unreported' (production dispatcher path; red under the old '' default) and a prerequisite missing for no_candidate_construct not blocking (red under the old proxy). Direct check: prerequisite_absent_clauses([['rust']], {'rust': 'no_candidate_construct'}) -> [] (was [['rust']]); a value added later -> [['rust']]; dependency_unavailable -> [['rust']] (unchanged); ROUTINE = {backend_disabled, no_candidate_construct, no_candidate_files} (unchanged). No output change in this environment, by construction and measured: nest survey dev vs branch -- 82 analysis_runs silence reasons, 84 skipped_passes codes, stderr pass lines identical. Residual filed separately: skip records carry no candidate-file presence, so {A,C} cannot be narrowed (the premise check's 29 out-of-taxonomy dependency_unavailable records). This unblocks WI-ziruv's pass-silence row (the states are now data)."  # 7678

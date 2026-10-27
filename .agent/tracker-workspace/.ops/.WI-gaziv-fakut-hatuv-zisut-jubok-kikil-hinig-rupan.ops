@@ -45,3 +45,18 @@
     status: todo_hard  # 2949
   remove:  # 2949
     tags: [needs_ruling]  # 2949
+- op: update  # 7272
+  at: '2026-10-27T07:26:24Z'  # 7272
+  by: agent  # 7272
+  actor: jgstern_agent  # 7272
+  clock: 5  # 7272
+  nonce: '7272'  # 7272
+  set:  # 7272
+    status: done  # 7272
+- op: discuss  # 5e6f
+  at: '2026-10-27T07:26:24Z'  # 5e6f
+  by: agent  # 5e6f
+  actor: jgstern_agent  # 5e6f
+  clock: 6  # 5e6f
+  nonce: 5e6f  # 5e6f
+  message: "Done in PR #1895 (merged as 9963c67dbf), per the owner's 2026-10-26 ruling (option a). New deferred-crossing value ipc_listen, net_listen's local-IPC twin: catalog-declarable, inbound, declared last (first-declared-wins untouched); mints no taint; disclosed in its own ipc_listen_edges (io-boundaries schema 2.4 -> 2.5, both envelope paths); shadows ipc_recv. Rows: go net.ListenUnix (moved) + net.ListenUnixgram (new, ListenUDP's twin); python asyncio.start_unix_server (moved) + serve_forever/handle_request on socketserver's six Unix server classes (new; admitted to the catalogue scope gate as CPython stdlib beside socketserver.TCPServer). Stay net_listen: medium-undecidable calls (socket.bind, socket.create_server, go net.Listen/ListenPacket, syscall/x-sys Socket/Bind/Listen). Not rowed: loop.create_unix_server (untyped receiver, a row could never match). ADR-0050 §2/§3, spec §9/§11, concept-axes.md updated.\nBehavioural evidence, the item's own repro re-run on merged dev 9963c67dbf (`hypergumbo io-boundaries --format json`, scratchpad r_gaziv/): go -> ipc_listen {net.ListenUnix, net.ListenUnixgram}, net_listen {net.ListenTCP}, ipc_listen_edges 2 / net_listen_edges 1, schema 2.5; python -> ipc_listen {asyncio.start_unix_server, socketserver.UnixStreamServer.serve_forever, socketserver.UnixDatagramServer.handle_request}, net_listen {asyncio.start_server, socketserver.TCPServer.serve_forever} (on dev before: ListenUnix and start_unix_server were net_listen, no ipc_listen_edges key). Production-path test test_unix_listener_is_ipc_listen.py (run_behavior_map + io-boundaries). Measured dev vs branch: gvisor-tap-vsock ipc_listen 0->2, net_listen 36->35, external_potential 45428->45427, total_io_edges 2019 unchanged; spire ipc_listen 0->1, net_listen 21->20. Suite 28932 passed, 100% coverage on changed files."  # 5e6f
