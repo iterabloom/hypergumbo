@@ -1,0 +1,38 @@
+Original commit body from bd409fc39436cb814e78bed11b68391735d2a3c8:
+
+ADR-0050 section 1 said a `simultaneous` second boundary "may record a
+reading of the same crossing that a taint label needs". On the shipped
+catalogues that covers 6 of the 39 primitives on `simultaneous: true` rows
+(the URL rows). The other 33 pair two crossings: subprocess.check_output
+launches a process and reads its output. The sentence neither allowed nor
+forbade them, so the axiom could not be applied to them. That is what the
+flag was minted for (INV-zumin): a call true under two boundaries at once.
+
+Owner ruling 2026-10-27: section 1 now says a simultaneous second boundary
+is either such a reading, or a second crossing the same call performs at
+this call site, which must satisfy the axiom on its own. Every
+simultaneous boundary is a fact about the call, and none is primary.
+
+The ADR records the check of all 39 against the widened sentence:
+- 32 hold: ipc_recv+subprocess 23 (ADR-0049 ruling 1, INV-lozat), the 6 URL
+  rows, erlang filelib.ensure_dir, python builtins.license, objc
+  sendSynchronousRequest.
+- 3 are kept by judgment: python platform.* run a command and return host
+  facts. ipc_recv would mint untrusted_input for a host fact.
+- 4 fail and are already filed: scala Process.apply / Process(...) /
+  Process.run (WI-novap) and objc sendAsynchronousRequest (WI-mapim's
+  shape).
+
+"Primary" is not stored. Consumers read every boundary through
+boundaries_of. The scalar io_boundary is the first in CATALOG_BOUNDARY_TYPES
+order, which for the URL rows is env_read, not the medium navigation_read.
+The ADR says so.
+
+The same sentence is updated in io_boundary_types' docstring, in the
+concept-axes generator (with docs/concept-axes.md regenerated), and in the
+falsifiability survey row; CHANGELOG has an entry. Docs and docstrings
+only. No row or behaviour changes.
+
+Addresses WI-kuzoh.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
