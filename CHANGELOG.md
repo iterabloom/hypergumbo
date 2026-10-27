@@ -102,6 +102,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **A dependency declaration naming an in-tree package has that package's tier** (INV-kutub, ADR-0041 §1): a sibling declaration was tier 2 in Python and tier 3 "external" in npm, Composer, Cargo and Maven while the sibling's own package node was tier 1. Names compare per ecosystem (PEP 503; exact; `-`/`_`; Maven `groupId:artifactId`, with `${project.groupId}` read as the declaring module's group), and the reason names the sibling's manifest. Measured: nest 172 of 1,379 declarations 3 → 1 (165 from `sample/` apps that pin the published package by version), diesel 45 of 275, killbill 118 of 683; no other node moved. `--max-tier 1` now keeps them. Sketch's no-map fallback uses the same classifier, which it previously re-implemented per path (every declaration tier 1).
 
+#### Pass disclosure (states)
+
+- **The pass-silence states are data** (WI-punod): each `silence_reason` value declares the A/B/C states it is consistent with and whether the stderr summaries count it as routine (`pass_silence.SILENCE_REASON_SPECS`). The `prerequisite_absent` rule reads them (a missing prerequisite blocks unless its reason establishes State A) instead of `!= no_candidate_files`, which called `no_candidate_construct` and any value added later a toolchain reason; `ROUTINE_SILENCE_REASONS` is read off the specs; a skip record with no code reads `unreported` in the linker dispatcher too (it read `""`). No output change in this environment: nest's 82 run reasons, 84 skip records and stderr lines are identical.
+
 #### CI and gates
 
 - **Every spec-validator check on the fixture matrix has something to inspect**, and a test fails when one does not.

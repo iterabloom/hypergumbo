@@ -22,13 +22,21 @@ from hypergumbo_core.pass_silence import (
     NO_CANDIDATE_FILES,
     PASS_CRASHED,
     PREREQUISITE_ABSENT,
+    ALL_STATES,
+    ROUTINE_SILENCE_REASONS,
+    SILENCE_REASON_SPECS,
     SILENCE_REASONS,
+    STATE_DID_NOT_RUN,
+    STATE_MISSED,
+    STATE_NOTHING_TO_FIND,
     UNREPORTED,
     all_pass_silence_reason_names,
     derive_silence_reason,
     emit_skip_summary,
     format_skip_summary,
     prerequisite_absent_clauses,
+    silence_states,
+    skip_record_code,
     summarize_skip_reasons,
 )
 
@@ -711,6 +719,107 @@ class TestPrerequisiteAbsentClauses:
         assert prerequisite_absent_clauses(
             [["inheritance-linker"]], {"rust": DEPENDENCY_UNAVAILABLE},
         ) == []
+
+
+class TestSilenceStates:
+    """WI-punod: the A/B/C states the axis exists to separate are data.
+
+    They used to live only in the module docstring, and two consumers each
+    re-derived a partition of the vocabulary by hand: the prerequisite rule as
+    ``!= NO_CANDIDATE_FILES`` (so ``no_candidate_construct`` -- State A -- and
+    any value added later read as a toolchain reason) and the stderr summaries
+    as a hand-written ``ROUTINE_SILENCE_REASONS``. Both now read one spec."""
+
+    def test_every_value_has_exactly_one_spec_and_nothing_else_does(self) -> None:
+        names = [spec.name for spec in SILENCE_REASON_SPECS]
+        assert len(names) == len(set(names))
+        assert frozenset(names) == SILENCE_REASONS
+
+    def test_every_spec_names_a_nonempty_set_of_the_three_states(self) -> None:
+        for spec in SILENCE_REASON_SPECS:
+            assert spec.states, spec.name
+            assert spec.states <= ALL_STATES, spec.name
+
+    def test_the_states_each_value_is_consistent_with(self) -> None:
+        a, b, c = STATE_NOTHING_TO_FIND, STATE_MISSED, STATE_DID_NOT_RUN
+        assert {spec.name: spec.states for spec in SILENCE_REASON_SPECS} == {
+            NO_CANDIDATE_FILES: {a},
+            NO_CANDIDATE_CONSTRUCT: {a},
+            CANDIDATES_UNRESOLVED: {a, b},
+            # C when the pass had files to read, A when it had none; the
+            # value alone does not say which.
+            DEPENDENCY_UNAVAILABLE: {a, c},
+            BACKEND_DISABLED: {a, c},
+            PREREQUISITE_ABSENT: {c},
+            PASS_CRASHED: {a, b, c},
+            UNREPORTED: {a, b, c},
+        }
+
+    def test_a_string_outside_the_vocabulary_is_consistent_with_every_state(
+        self,
+    ) -> None:
+        """Cannot determine, never not applicable -- the empty string included."""
+        assert silence_states("a_value_added_later") == ALL_STATES
+        assert silence_states("") == ALL_STATES
+        assert silence_states(NO_CANDIDATE_CONSTRUCT) == {STATE_NOTHING_TO_FIND}
+
+    def test_the_routine_set_is_read_off_the_spec(self) -> None:
+        assert ROUTINE_SILENCE_REASONS == frozenset(
+            spec.name for spec in SILENCE_REASON_SPECS if spec.routine
+        )
+        assert ROUTINE_SILENCE_REASONS == frozenset({
+            NO_CANDIDATE_FILES, NO_CANDIDATE_CONSTRUCT, BACKEND_DISABLED,
+        })
+
+    def test_a_prerequisite_missing_for_a_construct_reason_is_state_a(self) -> None:
+        """The ``!= no_candidate_files`` proxy called this a toolchain reason."""
+        assert prerequisite_absent_clauses(
+            [["rust"]], {"rust": NO_CANDIDATE_CONSTRUCT},
+        ) == []
+
+    def test_a_value_added_later_counts_as_not_shown_to_be_state_a(self) -> None:
+        """The conservative direction, as for ``unreported``: only a value
+        that establishes State A lets a missing prerequisite through."""
+        assert prerequisite_absent_clauses(
+            [["rust"]], {"rust": "a_value_added_later"},
+        ) == [["rust"]]
+
+
+class TestSkipRecordCode:
+    """WI-punod trap (1): the skip host had two readers that disagreed about
+    a record with no code -- the summary counted it ``unreported``, the
+    linker dispatcher mapped it to ``""``. One function now reads it."""
+
+    def test_a_missing_or_empty_code_is_unreported(self) -> None:
+        assert skip_record_code({"pass": "rust"}) == UNREPORTED
+        assert skip_record_code({"pass": "rust", "silence_reason": ""}) == UNREPORTED
+
+    def test_a_code_is_read_as_written(self) -> None:
+        assert skip_record_code(
+            {"pass": "rust", "silence_reason": DEPENDENCY_UNAVAILABLE},
+        ) == DEPENDENCY_UNAVAILABLE
+
+    def test_the_linker_dispatcher_reads_a_codeless_record_as_unreported(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # The linker registry fills by import side-effect; without it no
+        # linker dispatches and ``seen`` stays empty for the wrong reason.
+        import hypergumbo_core.cli
+        from hypergumbo_core.limits import Limits
+        from hypergumbo_core.linkers import registry
+        from hypergumbo_core.linkers.registry import LinkerContext, run_all_linkers
+
+        seen: dict[str, str] = {}
+
+        def _capture(func, ctx):
+            seen.update(ctx.skipped_pass_codes)
+            return registry.LinkerResult()
+
+        monkeypatch.setattr(registry, "_run_linker_with_cache", _capture)
+        limits = Limits()
+        limits.skipped_passes.append({"pass": "rust", "reason": "no grammar"})
+        run_all_linkers(LinkerContext(repo_root=Path(".")), limits=limits)
+        assert seen == {"rust": UNREPORTED}
 
 
 class TestSilenceCensus:

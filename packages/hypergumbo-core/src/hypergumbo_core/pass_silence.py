@@ -87,11 +87,17 @@ Beyond the vocabulary (:data:`SILENCE_REASONS`) and
   :data:`CANDIDATES_UNRESOLVED`); :func:`prerequisite_absent_clauses` names the
   ``depends_on`` conjuncts that went missing for a toolchain reason, which
   the linker wrapper stamps as :data:`PREREQUISITE_ABSENT`.
+- **The states, as data.** :data:`SILENCE_REASON_SPECS` gives each value
+  the A/B/C states it is consistent with and whether it is routine;
+  :func:`silence_states` reads it. A consumer that asks "would installing or
+  reordering something change this?" asks it, never a hand-written subset
+  of the vocabulary (WI-punod).
 - **The two host summaries.** :func:`summarize_silence` /
   :func:`format_silence_summary` / :func:`emit_silence_summary` read
   ``analysis_runs[].silence_reason``; :func:`summarize_skip_reasons` /
   :func:`format_skip_summary` / :func:`emit_skip_summary` read
-  ``limits.skipped_passes`` (a missing code counts as :data:`UNREPORTED`).
+  ``limits.skipped_passes`` (a missing code counts as :data:`UNREPORTED`,
+  through :func:`skip_record_code`).
   Each writes one stderr line, counting but not naming the
   :data:`ROUTINE_SILENCE_REASONS`, and writes nothing when every silence is
   routine.
@@ -167,20 +173,89 @@ PASS_CRASHED: Final[str] = "pass_crashed"
 #: remaining work.
 UNREPORTED: Final[str] = "unreported"
 
-#: The canonical, closed pass-silence vocabulary. Computed-not-derived (like
-#: ``visibility``), exposed via :func:`all_pass_silence_reason_names` and
-#: wired into ``multi_value_field_axis._known_axes`` so the
-#: ``# axis: pass-silence-reason`` field annotation resolves like every other.
-SILENCE_REASONS: Final[frozenset[str]] = frozenset({
-    NO_CANDIDATE_FILES,
-    NO_CANDIDATE_CONSTRUCT,
-    CANDIDATES_UNRESOLVED,
-    DEPENDENCY_UNAVAILABLE,
-    BACKEND_DISABLED,
-    PREREQUISITE_ABSENT,
-    PASS_CRASHED,
-    UNREPORTED,
+#: The three states the axis exists to separate (see the module docstring).
+#: A reason names the states it is CONSISTENT WITH, not one state, because the
+#: value is all a reader holds and several values cannot tell two states apart
+#: on their own: :data:`DEPENDENCY_UNAVAILABLE` is State C when the pass had
+#: files to read and State A when it had none (installing the grammar would
+#: change nothing), and a skip record does not say which.
+STATE_NOTHING_TO_FIND: Final[str] = "A"
+STATE_MISSED: Final[str] = "B"
+STATE_DID_NOT_RUN: Final[str] = "C"
+ALL_STATES: Final[frozenset[str]] = frozenset({
+    STATE_NOTHING_TO_FIND, STATE_MISSED, STATE_DID_NOT_RUN,
 })
+
+
+@dataclass(frozen=True)
+class SilenceReasonSpec:
+    """One pass-silence reason: the states it is consistent with, and whether
+    the stderr summaries count it as routine.
+
+    ``routine`` is declared, not computed from ``states``: an opt-in backend
+    left off may be State C (it did not run, and the files may be there) yet
+    asks nothing of anyone, because the user chose it (WI-vadom, owner ruling
+    2026-10-15)."""
+
+    name: str
+    states: frozenset[str]
+    routine: bool
+
+
+#: The canonical, closed pass-silence vocabulary with each value's states
+#: (WI-punod). A value is added HERE, which forces a decision about its states
+#: and its routine-ness; no consumer partitions the vocabulary by hand.
+SILENCE_REASON_SPECS: Final[tuple[SilenceReasonSpec, ...]] = (
+    SilenceReasonSpec(
+        NO_CANDIDATE_FILES, frozenset({STATE_NOTHING_TO_FIND}), routine=True,
+    ),
+    SilenceReasonSpec(
+        NO_CANDIDATE_CONSTRUCT, frozenset({STATE_NOTHING_TO_FIND}), routine=True,
+    ),
+    # The counterpart may be absent (A) or the pass's matcher missed it (B).
+    SilenceReasonSpec(
+        CANDIDATES_UNRESOLVED,
+        frozenset({STATE_NOTHING_TO_FIND, STATE_MISSED}), routine=False,
+    ),
+    # C with files to read; A without (see the state constants).
+    SilenceReasonSpec(
+        DEPENDENCY_UNAVAILABLE,
+        frozenset({STATE_NOTHING_TO_FIND, STATE_DID_NOT_RUN}), routine=False,
+    ),
+    SilenceReasonSpec(
+        BACKEND_DISABLED,
+        frozenset({STATE_NOTHING_TO_FIND, STATE_DID_NOT_RUN}), routine=True,
+    ),
+    SilenceReasonSpec(
+        PREREQUISITE_ABSENT, frozenset({STATE_DID_NOT_RUN}), routine=False,
+    ),
+    # A crash says nothing about what was there.
+    SilenceReasonSpec(PASS_CRASHED, ALL_STATES, routine=False),
+    SilenceReasonSpec(UNREPORTED, ALL_STATES, routine=False),
+)
+
+#: The vocabulary's names. Computed-not-derived (like ``visibility``), exposed
+#: via :func:`all_pass_silence_reason_names` and wired into
+#: ``multi_value_field_axis._known_axes`` so the
+#: ``# axis: pass-silence-reason`` field annotation resolves like every other.
+SILENCE_REASONS: Final[frozenset[str]] = frozenset(
+    spec.name for spec in SILENCE_REASON_SPECS
+)
+
+_SPEC_BY_NAME: Final[dict[str, SilenceReasonSpec]] = {
+    spec.name: spec for spec in SILENCE_REASON_SPECS
+}
+
+
+def silence_states(reason: str) -> frozenset[str]:
+    """The states a silence reason is consistent with.
+
+    A string outside the vocabulary -- the empty string included -- is
+    consistent with every state: it is CANNOT DETERMINE, the same reading as
+    :data:`UNREPORTED`, never NOT APPLICABLE.
+    """
+    spec = _SPEC_BY_NAME.get(reason)
+    return spec.states if spec is not None else ALL_STATES
 
 
 #: The reasons a run on an ordinary repository produces in bulk and that ask
@@ -189,12 +264,10 @@ SILENCE_REASONS: Final[frozenset[str]] = frozenset({
 #: count them but do not name them (WI-vadom, owner ruling 2026-10-15): on
 #: hypergumbo's own tree they were 122 of the 128 passes the two lines
 #: reported, which buried the six worth a look. The artifact keeps every
-#: reason.
-ROUTINE_SILENCE_REASONS: Final[frozenset[str]] = frozenset({
-    NO_CANDIDATE_FILES,
-    NO_CANDIDATE_CONSTRUCT,
-    BACKEND_DISABLED,
-})
+#: reason. Read off :data:`SILENCE_REASON_SPECS`.
+ROUTINE_SILENCE_REASONS: Final[frozenset[str]] = frozenset(
+    spec.name for spec in SILENCE_REASON_SPECS if spec.routine
+)
 
 
 def _summary_parts(counts: Mapping[str, int]) -> tuple[int, str, int] | None:
@@ -448,6 +521,18 @@ def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
 # ---------------------------------------------------------------------------
 
 
+def skip_record_code(entry: Mapping[str, object]) -> str:
+    """The structured code of one ``limits.skipped_passes`` entry.
+
+    A missing or empty code is :data:`UNREPORTED` -- the producer did not
+    classify itself -- never ``""``, which on the run host means NOT
+    APPLICABLE. The one reader of the field, so the summary and the linker
+    dispatcher cannot disagree about a codeless record (WI-punod).
+    """
+    code = entry.get("silence_reason")
+    return str(code) if code else UNREPORTED
+
+
 def summarize_skip_reasons(
     skipped_passes: Iterable[Mapping[str, object]],
 ) -> dict[str, int]:
@@ -467,8 +552,7 @@ def summarize_skip_reasons(
     """
     counts: dict[str, int] = {}
     for entry in skipped_passes:
-        code = entry.get("silence_reason")
-        key = str(code) if code else UNREPORTED
+        key = skip_record_code(entry)
         counts[key] = counts.get(key, 0) + 1
     return counts
 
@@ -648,6 +732,9 @@ def emit_unaccounted_warning(census: SilenceCensus) -> None:
         sys.stderr.write(line + "\n")
 
 
+_NOTHING_TO_FIND_ONLY: Final[frozenset[str]] = frozenset({STATE_NOTHING_TO_FIND})
+
+
 def prerequisite_absent_clauses(
     depends_on: "Sequence[Sequence[str]]",
     silence_reasons: Mapping[str, str],
@@ -669,32 +756,47 @@ def prerequisite_absent_clauses(
     first.
 
     A conjunct qualifies when EVERY literal in it is absent from the run
-    (present in ``silence_reasons``) and AT LEAST ONE of them went missing
-    for something other than :data:`NO_CANDIDATE_FILES`. The disjunction is
-    honoured both ways: one surviving member satisfies the clause, and a clause
-    all of whose members are merely file-absent stays State A.
+    (present in ``silence_reasons``) and AT LEAST ONE of them went missing for
+    a reason that does not establish State A -- whose
+    :func:`silence_states` are not exactly ``{A}``. Only
+    :data:`NO_CANDIDATE_FILES` and :data:`NO_CANDIDATE_CONSTRUCT` establish
+    it; any other value, and any string outside the vocabulary, does not
+    (WI-punod: this read ``!= NO_CANDIDATE_FILES``, which called
+    ``no_candidate_construct`` a toolchain reason and would have called every
+    value added later one too). The disjunction is honoured both ways: one
+    surviving member satisfies the clause, and a clause all of whose members
+    are State A stays State A.
 
     An :data:`UNREPORTED` prerequisite COUNTS as a toolchain reason. That is
     the conservative direction and it follows from the axis's own distinction:
     a producer that did not classify itself has not said the repository lacked
     the files, so waving it through as State A would be reading "cannot
-    determine" as "not applicable".
+    determine" as "not applicable". :data:`DEPENDENCY_UNAVAILABLE` takes the
+    same reading for the same reason: it is State A when the pass had no files
+    to read -- an analyzer outside the language taxonomy is dispatched without
+    a file check and self-skips on a missing grammar whether or not the
+    repository has its files -- and the skip record does not say which.
 
-    **What it structurally cannot see.** Only ANALYZER passes are enumerated in
-    ``limits.skipped_passes`` — the spec is explicit that a linker with no
-    applicable targets is a correct no-op, not a pass that did not run. A
-    clause naming a LINKER (``inheritance-linker`` is one) can therefore never
-    be observed missing and always reads satisfied. That under-reports rather
-    than inventing an ordering defect out of a population this channel does not
+    **What it structurally cannot see.** Only ANALYZER passes that did not run
+    are enumerated in ``limits.skipped_passes`` — the spec is explicit that a
+    linker with no applicable targets is a correct no-op, not a pass that did
+    not run. A clause naming a LINKER (``inheritance-linker`` is one) can
+    therefore never be observed missing and always reads satisfied; so does an
+    analyzer outside the language taxonomy (``apex``, ``twig``,
+    ``manifest_targets``, ...) that ran over zero files, which lands in
+    ``analysis_runs`` rather than here. That under-reports rather than
+    inventing an ordering defect out of a population this channel does not
     cover, which is the right way round for a disclosure field.
 
     Args:
         depends_on: The pass's CNF declaration — outer AND of inner ORs. See
             ``catalog.Pass.depends_on`` for the schema: a clause is satisfied
             when at least one of its literals is satisfied.
-        silence_reasons: ``{pass_id: silence_reason}`` for every pass that
-            did NOT run, from ``limits.skipped_passes``. A pass absent from
-            this mapping ran.
+        silence_reasons: ``{pass_id: silence_reason}`` for every ANALYZER
+            pass that did not run, from ``limits.skipped_passes`` (read with
+            :func:`skip_record_code`). A pass absent from this mapping reads
+            as satisfied: it ran, or it is one this channel does not
+            enumerate (above).
 
     Returns:
         The offending conjuncts, in declaration order. Empty means no stamp is
@@ -707,7 +809,8 @@ def prerequisite_absent_clauses(
         if not all(literal in silence_reasons for literal in clause):
             continue
         if any(
-            silence_reasons[literal] != NO_CANDIDATE_FILES for literal in clause
+            silence_states(silence_reasons[literal]) != _NOTHING_TO_FIND_ONLY
+            for literal in clause
         ):
             blocked.append(list(clause))
     return blocked
