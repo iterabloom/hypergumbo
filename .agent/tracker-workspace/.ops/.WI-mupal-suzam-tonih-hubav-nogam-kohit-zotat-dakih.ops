@@ -1,0 +1,22 @@
+- op: create  # 43e3
+  at: '2026-10-27T09:13:12Z'  # 43e3
+  by: agent  # 43e3
+  actor: jgstern_agent  # 43e3
+  clock: 1  # 43e3
+  nonce: '43e3'  # 43e3
+  data:  # 43e3
+    kind: work_item  # 43e3
+    title: "route-marker symbols are kind=function with a source language whatever they stand for (a java handler METHOD, a ts/go registration CALL): ADR-0027 kind and ADR-0031 language/protocol_origin need a ruling on what a route marker represents"  # 43e3
+    status: todo_hard  # 43e3
+    priority: 3  # 43e3
+    parent:  # 43e3
+    tags:  # 43e3
+    - symbol_kind  # 43e3
+    - axis  # 43e3
+    - framework  # 43e3
+    isbefore: []  # 43e3
+    duplicate_of: []  # 43e3
+    not_duplicate_of: []  # 43e3
+    pr_ref:  # 43e3
+    description: "Found 2026-10-27 by WI-ziruv, production `hypergumbo survey` on dev 7207fb0ecf. Needs a ruling before any fix.\n\nRoute-marker symbols (pass route-materializer; framework_patterns.py:151 mints kind=\"function\", \"the ADR-0027 Phase-3 route->function fold\") are kind=function whatever they stand for:\n- java: `@GetMapping(\"/a\") String routed()` inside a @RestController -> a node \"GET /a\", kind=function, language=java, meta.materialized_from=...:Ctl.routed:method. The handler is a METHOD.\n- typescript: `app.get('/a', handler)` -> \"GET /a\", kind=function: the node stands for a registration CALL expression.\n- go: `http.HandleFunc(\"/a\", handler)` in main -> \"ANY /a\", kind=function: also a call.\nTwo axioms bear on it:\n- ADR-0027: \"Symbol.kind names the source-language syntactic construct that the symbol represents.\" Audit-findings 0013's row for `route` says \"Fold: kind=function/method + meta['framework_role']='route'\", so method was anticipated, but the producer emits function for every case.\n- ADR-0031: language \"names the source language in which this Symbol's declaration appears, or None if the Symbol does not represent a declaration\"; protocol_origin names the family a synthetic stand-in stands for. A marker for a registration call is a synthetic stand-in, yet it carries language=java/typescript/go and protocol_origin=None.\nQuestion for the owner: what does a route marker represent? (a) the handler's declaration: then kind should follow the handler (function vs method) and the node is a second node for one declaration; (b) a synthetic route stand-in: then language=None + protocol_origin set, and kind needs a construct that is not 'function'. WI-ziruv records this as a candidate falsification and ships no test for it until it is ruled."  # 43e3
+    fields: {}  # 43e3
