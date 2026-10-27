@@ -19,3 +19,19 @@
     pr_ref:  # b804
     description: "Found 2026-10-26 while fixing WI-rilof, on dev e22b97d62c through the production CLI. rust.py's use_declaration branch picks the imported path from the first child of type scoped_identifier / identifier / use_wildcard / use_list. A brace list (`use crate::error::{AardvarkError, AardvarkResult};`, tree-sitter type scoped_use_list) and an alias (`use foo::bar as baz;`, use_as_clause) match none of them, so the declaration emits NO imports edge at all. Measured: aardvark-dns src/commands/run.rs line 2 (`use crate::error::{...}`) has no imports edge while lines 3-5 do. Brace lists are among the most common use forms, so a file's import set is silently incomplete (dependency-linker requirement counts, file-level import graphs, and after WI-rilof the first-party file edges). Fix: handle scoped_use_list (prefix path + each list element, recursing into nested lists) and use_as_clause (the path before `as`), through the same in-tree resolution WI-rilof added. Measure the added edge count on firecracker first. Test: list, nested list, alias, `self` inside a list (`use a::{self, b}`)."  # b804
     fields: {}  # b804
+- op: discuss  # 92ab
+  at: '2026-10-27T09:00:07Z'  # 92ab
+  by: agent  # 92ab
+  actor: jgstern_agent  # 92ab
+  clock: 2  # 92ab
+  nonce: 92ab  # 92ab
+  message: "2026-10-27, from the INV-nuzas re-check (production `hypergumbo survey`, dev 8c61dbe07c): the CALL through an aliased use also misses, not only the imports edge. Single crate: `use crate::m::helper as h3; h3()` and `use crate::m::{third as t4}; t4()` call an external_symbol `helper` / `third` (path <external>), while `use crate::m::{other}; other()` resolves to the real function. Cargo workspace: `use crate_b::{Thing, helper as h2}; h2()` calls `rust:crate_b:0-0:helper:external_symbol` (tier 3), a consumer-reached workspace-prefixed phantom, so this item is now also an INV-nuzas counterexample (made a blocker of it). `Thing::new()` from the same brace list resolves. The fix's tests should include the call through the alias, in one crate and across workspace members."  # 92ab
+- op: update  # baf7
+  at: '2026-10-27T09:00:08Z'  # baf7
+  by: agent  # baf7
+  actor: jgstern_agent  # baf7
+  clock: 3  # baf7
+  nonce: baf7  # baf7
+  set: {}  # baf7
+  add:  # baf7
+    isbefore: [INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap]  # baf7

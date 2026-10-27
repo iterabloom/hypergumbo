@@ -1,0 +1,31 @@
+- op: create  # 6f74
+  at: '2026-10-27T08:59:34Z'  # 6f74
+  by: agent  # 6f74
+  actor: jgstern_agent  # 6f74
+  clock: 1  # 6f74
+  nonce: 6f74  # 6f74
+  data:  # 6f74
+    kind: work_item  # 6f74
+    title: "js/ts: a workspace sibling reached through a module object (require('@ws/b').helper), a namespace import (C.shout) or a default import still calls a tier-3 @ws/ phantom; WI-rilof fixed only named bindings"  # 6f74
+    status: todo_hard  # 6f74
+    priority: 2  # 6f74
+    parent:  # 6f74
+    tags:  # 6f74
+    - call_graph  # 6f74
+    - supply_chain  # 6f74
+    - javascript  # 6f74
+    isbefore: []  # 6f74
+    duplicate_of: []  # 6f74
+    not_duplicate_of: []  # 6f74
+    pr_ref:  # 6f74
+    description: "Found 2026-10-27 by the INV-nuzas re-check, production `hypergumbo survey` on dev 8c61dbe07c (fixtures in the session scratchpad, nuzas_recheck/js and ctl_js). WI-rilof (#1877/#1879) resolved the shape it was filed on (`const { helper } = require('@ws/b'); helper()`, and the ESM named import `import { shout } from '@ws/c'; shout()`); three other import shapes of a workspace sibling still call a tier-3 phantom.\n\nnpm workspace (root package.json workspaces [\"packages/*\"]; @ws/b = packages/b, @ws/c = packages/c with a TS entry), production code in packages/a/src:\n1. module object of a require: `const b = require('@ws/b'); b.helper()` -> calls `javascript:@ws/b:0-0:helper:external_symbol` (ast_method_inferred)\n2. namespace import: `import * as C from '@ws/c'; C.shout(\"b\")` -> calls `typescript:@ws/c:0-0:shout:external_symbol`\n3. default import: `import cDefault from '@ws/c'; cDefault()` (c exports `export default function cDefault`) -> calls `typescript:@ws/c:0-0:default:external_symbol`\nControl (ctl_js): the same three shapes against RELATIVE imports (`require('./b')`, `from './c'`) all resolve to the real functions, so the gap is the package-name route WI-rilof added only for named bindings.\n\nTwo more phantoms appear with relative imports too, so they are general JS/TS behaviour; in a workspace they carry the @ws/ prefix. Decide with this item whether they are acceptable stand-ins:\n4. `new b.Engine()` emits a module_attr_ref to `javascript:@ws/b:0-0:@ws/b.Engine:external_symbol` (relative: `./b.Engine`) BESIDE the correct instantiates edge to class Engine.\n5. every import emits an imports edge to a `<spec>:0-0:module` external_symbol stand-in BESIDE the real file edge (`javascript:@ws/b:0-0:module`, `typescript:@ws/c:0-0:module`, `javascript:@ws/b/src/util/deep:0-0:module`).\nShapes 1-3 are consumer-reached phantoms with an in-tree definition: INV-nuzas counterexamples. Closure: the fixture through the production survey, shapes 1-3 landing on the real nodes, plus the relative-import control unchanged."  # 6f74
+    fields: {}  # 6f74
+- op: update  # 5c6f
+  at: '2026-10-27T09:00:08Z'  # 5c6f
+  by: agent  # 5c6f
+  actor: jgstern_agent  # 5c6f
+  clock: 2  # 5c6f
+  nonce: 5c6f  # 5c6f
+  set: {}  # 5c6f
+  add:  # 5c6f
+    isbefore: [INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap]  # 5c6f
