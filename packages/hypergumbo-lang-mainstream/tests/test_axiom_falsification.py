@@ -533,6 +533,92 @@ def test_visibility_follows_the_languages_rule(survey, language: str, symbol: st
 
 
 # ---------------------------------------------------------------------------
+# entrypoint-kind: "kind names WHAT the entrypoint is ... evidence_type names
+# HOW it was detected" (entrypoints.all_known_entrypoint_kinds)
+# ---------------------------------------------------------------------------
+
+#: One entrypoint, detected by two routes. The route shows in evidence_type
+#: or in the detection mechanism (ADR-3aaa: a decorator on the definition vs
+#: a registration call), and the kind must not follow it. The CLI function is
+#: not named ``main``, so the main() convention does not add a third kind; the
+#: package is not ``t/``, which the test-file heuristic reads as a Perl test
+#: directory.
+_ROUTE_TWINS: dict[str, tuple[dict[str, str], dict[str, str]]] = {
+    "cli": (
+        {"requirements.txt": "click\n", "tool/__init__.py": "",
+         "tool/app.py": "import click\n\n\n@click.command()\ndef run():\n    print('x')\n"},
+        {"pyproject.toml": '[project]\nname = "tool"\nversion = "0"\n[project.scripts]\ntool = "tool.app:run"\n',
+         "tool/__init__.py": "", "tool/app.py": "def run():\n    print('x')\n"},
+    ),
+    "flask": (
+        {"app.py": "from flask import Flask\napp = Flask(__name__)\n\n\n@app.route('/u')\ndef users():\n    return ''\n"},
+        {"app.py": ("from flask import Flask\napp = Flask(__name__)\n\n\ndef users():\n    return ''\n\n\n"
+                    "app.add_url_rule('/u', view_func=users)\n")},
+    ),
+    "express": (
+        {"app.js": ("const express = require('express');\nconst app = express();\n"
+                    "function users(req, res) { res.send(''); }\napp.get('/u', users);\n")},
+        {"app.js": ("const express = require('express');\nconst app = express();\n"
+                    "app.get('/u', function users(req, res) { res.send(''); });\n")},
+    ),
+}
+
+#: The kinds whose definition names a CALLABLE target (EntrypointKind's own
+#: comments; WI-tuvun split main_guard out of main_function on exactly this).
+_CALLABLE_ENTRYPOINT_KINDS = frozenset({"main_function", "cli_command", "http_route"})
+_CALLABLE_SYMBOL_KINDS = frozenset({"function", "method"})
+
+
+def entrypoint_kinds(bm: Map) -> set[str]:
+    return {ep["kind"] for ep in bm["entrypoints"]}
+
+
+def callable_target_violations(bm: Map) -> list[str]:
+    """Entrypoints of a callable kind whose target is not a callable."""
+    nodes = {n["id"]: n for n in bm["nodes"]}
+    out = []
+    for ep in bm["entrypoints"]:
+        target = nodes.get(ep["symbol_id"], {})
+        if ep["kind"] in _CALLABLE_ENTRYPOINT_KINDS and target.get("kind") not in _CALLABLE_SYMBOL_KINDS:
+            # cli_command from a manifest names the script FILE by design.
+            if ep["meta"].get("evidence_type") == "manifest_declared" and target.get("kind") == "file":
+                continue
+            out.append(f"{ep['kind']} -> {target.get('kind')} {target.get('name')}")
+    return out
+
+
+class TestEntrypointChecker:
+    def test_it_reports_a_callable_kind_on_a_variable(self) -> None:
+        bm = {"nodes": [{"id": "v", "kind": "variable", "name": "app"}],
+              "entrypoints": [{"symbol_id": "v", "kind": "main_function", "meta": {"evidence_type": "framework_pattern"}}]}
+        assert callable_target_violations(bm) == ["main_function -> variable app"]
+
+
+class TestEntrypointKindIsTheWhat:
+    @pytest.mark.parametrize("name", sorted(_ROUTE_TWINS))
+    def test_the_detection_route_does_not_move_the_kind(self, survey, name: str) -> None:
+        one, two = (survey(f"ep_{name}_{i}", files) for i, files in enumerate(_ROUTE_TWINS[name]))
+        assert one["entrypoints"] and two["entrypoints"]  # reach
+        assert entrypoint_kinds(one) == entrypoint_kinds(two)
+
+    def test_control_the_cli_twins_really_took_two_routes(self, survey) -> None:
+        one, two = (survey(f"ep_cli_{i}", files) for i, files in enumerate(_ROUTE_TWINS["cli"]))
+        routes = [{ep["meta"]["evidence_type"] for ep in bm["entrypoints"]} for bm in (one, two)]
+        assert routes == [{"framework_pattern"}, {"manifest_declared"}]
+
+    @pytest.mark.parametrize("name", ["cli", "express"])
+    def test_a_callable_kind_targets_a_callable(self, survey, name: str) -> None:
+        for i, files in enumerate(_ROUTE_TWINS[name]):
+            assert callable_target_violations(survey(f"ep_{name}_{i}", files)) == []
+
+    @pytest.mark.xfail(strict=True, reason="WI-dofiz: the Flask application variable is a main_function entrypoint")
+    def test_a_flask_application_is_not_a_main_function(self, survey) -> None:
+        bm = survey("ep_flask_0", _ROUTE_TWINS["flask"][0])
+        assert "http_route" in entrypoint_kinds(bm)  # reach
+        assert callable_target_violations(bm) == []
+
+
+# ---------------------------------------------------------------------------
 # verify-claims: ADR-0061 catalogue tiers, and the choice-shaped-source caveat
 # ---------------------------------------------------------------------------
 
@@ -610,13 +696,32 @@ class TestCatalogueTiers:
         verdicts = self._verdicts(tmp_path, "community")
         assert verdicts["trusted"] == verdicts["untrusted"] == "violated"
 
+    def test_your_taint_channel_is_one_home_for_every_repository(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Ruling 7, "Your taint model gets one persistent home": a file in
+        ``taint_sinks.d/`` is read for a repository that names nothing, and
+        for a second, unrelated one, as ``yours``. What each channel does to a
+        verdict is ``test_taint_channels_are_read.py`` (WI-mimap)."""
+        for var in ("XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"):
+            monkeypatch.setenv(var, str(tmp_path / var.lower()))
+        files = {"app.py": _SHIP, "claims.yaml": _SECRET_CLAIM}
+        before = _verify(_write(tmp_path / "zero", files))["verdicts"][0]["verdict"]
+        assert before != "violated"  # control: without the file there is no sink
+        sink = _write(tmp_path / "xdg_config_home/hypergumbo/taint_sinks.d",
+                      {"s.yaml": _sink_file("untrusted", "")}) / "s.yaml"
+        for name in ("one", "two"):
+            data = _verify(_write(tmp_path / name, files))
+            assert data["verdicts"][0]["verdict"] == "violated"
+            assert tier_of(data["catalog_provenance"], sink) == ["yours"]
+
 
 #: verify_claims.py: a finding is "rooted at a source whose value the far side
 #: CHOSE from a constrained set" (CHOICE_SHAPED_SOURCE_NAMES) -- a reading of
 #: untrusted input. So the choice_shaped_source caveat belongs only on a claim
-#: about untrusted_input. The checker reads the claim, not the witness row, so
-#: a collapsed row's whole group is covered (WI-kufos's shape; not reproduced
-#: on a fixture here).
+#: about untrusted_input. The checker reads the claim, not the witness row.
+#: Whether the caveat reads a collapsed row's group or its witness is the
+#: member-order test in TestCollapsedRowIsItsGroup below.
 
 def _claims(*pairs: tuple[str, str, str]) -> str:
     body = "".join(
@@ -670,3 +775,69 @@ class TestChoiceShapedSource:
         data = _verify(repo)
         assert data["verdicts"][0]["verdict"] == "violated"  # reach
         assert choice_caveat_violations(data, labels) == []
+
+
+#: taint.collapse_unadjudicated_flows: a structural or ddg_mixed row stands for
+#: a GROUP, and its scalar fields are the first member's, a witness. Every
+#: question verify-claims asks of the group must come out the same whichever
+#: member is first. Member order is call order, so each twin swaps two lines.
+#: The calls go through a helper so the flow is ddg_mixed and collapses (a
+#: direct data dependence is ``ddg`` and passes through uncollapsed).
+
+def _choice_twin(order: tuple[str, str]) -> dict[str, str]:
+    calls = {"recv": "    a = s.recv(10)\n", "accept": "    b, _ = s.accept()\n"}
+    return {
+        "claims.yaml": _claims(("in-no-subprocess", "untrusted_input", "subprocess")),
+        "app.py": ("import socket\nimport subprocess\n\n\ndef run_it(x):\n    subprocess.run(x, shell=True)\n\n\n"
+                   "def serve():\n    s = socket.socket()\n" + "".join(calls[k] for k in order)
+                   + "    run_it(a + str(b))\n"),
+    }
+
+
+_DOM_SINK = ("description: a sink row\nzone: dom_injection\ntrust_level: untrusted\n\n"
+             "sinks:\n  javascript:\n    - module: zlib\n      functions: [gzipSync]\n")
+
+
+def _evaluation_twin(order: tuple[str, str]) -> dict[str, str]:
+    """A yours dom_injection sink on an enumerated module (zlib) and
+    ``document.write``, both reached by a secret through one helper."""
+    calls = {"zlib": "  zlib.gzipSync(x);\n", "write": "  document.write(x);\n"}
+    return {
+        "claims.yaml": _claims(("secret-no-network", "host_secret", "network")),
+        "app.js": ("const zlib = require('zlib');\n\nfunction out(x) {\n" + "".join(calls[k] for k in order)
+                   + "}\n\nfunction render() {\n  const data = process.env.TOKEN;\n  out(data);\n}\n\n"
+                   "module.exports = { render };\n"),
+    }
+
+
+class TestCollapsedRowIsItsGroup:
+    _CHOICE_ORDERS = (("recv", "accept"), ("accept", "recv"))
+    _EVALUATION_ORDERS = (("zlib", "write"), ("write", "zlib"))
+
+    def _choice(self, tmp_path: Path) -> list[dict]:
+        return [_verify(_write(tmp_path / o[0], _choice_twin(o)))["verdicts"][0] for o in self._CHOICE_ORDERS]
+
+    def _evaluation(self, tmp_path: Path) -> list[str]:
+        sinks = _write(tmp_path / "sinks", {"s.yaml": _DOM_SINK}) / "s.yaml"
+        return [_verify(_write(tmp_path / o[0], _evaluation_twin(o)), "--taint-sinks", str(sinks))["verdicts"][0]["verdict"]
+                for o in self._EVALUATION_ORDERS]
+
+    def test_control_the_two_reads_collapse_into_one_row(self, tmp_path: Path) -> None:
+        for verdict in self._choice(tmp_path):
+            (row,) = verdict["evidence"]
+            assert (row["analysis_method"], row["collapsed_flow_count"]) == ("ddg_mixed", 2)
+            assert row["source_primitives"] == ["socket.socket.accept", "socket.socket.recv"]
+
+    @pytest.mark.xfail(strict=True, reason="WI-kufos (2) / WI-zakil part 2: the caveat tests the witness source")
+    def test_the_choice_caveat_does_not_depend_on_the_witness(self, tmp_path: Path) -> None:
+        kinds = [{c["kind"] for c in v["caveats"]} for v in self._choice(tmp_path)]
+        assert kinds[0] == kinds[1]
+
+    def test_control_the_secret_reaching_document_write_withdraws_the_qualification(self, tmp_path: Path) -> None:
+        """INV-dudal: with ``document.write`` as the witness the opaque-site
+        qualification is withdrawn, so the fixture reaches the gate."""
+        assert self._evaluation(tmp_path)[1] == "inconclusive"
+
+    @pytest.mark.xfail(strict=True, reason="WI-kufos (1): the INV-dudal withdrawal reads the witness sink")
+    def test_the_evaluation_withdrawal_does_not_depend_on_the_witness(self, tmp_path: Path) -> None:
+        assert self._evaluation(tmp_path) == ["inconclusive", "inconclusive"]
