@@ -1,0 +1,68 @@
+Original commit body from 57705064a56d398616e1d9d478a8e9fc167ee48a:
+
+ADR-0041 §1 under the owner's 2026-10-25 project-frame ruling: tier is the
+distance, from the project, of the code a node stands for, and nodes
+standing for one package carry one tier. A dependency declaration stands
+for the package it names. On dev a sibling declaration was tier 2 in Python
+('workspace-internal dependency declaration') and tier 3 'dependency
+declaration (external)' in npm, Composer, Cargo and Maven, while the
+sibling's own project/package/module node was tier 1 (production-CLI repro,
+one two-member workspace per ecosystem).
+
+supply_chain.collect_in_tree_packages replaces the Python-only
+collect_workspace_package_names: one walk over the in-tree manifests of
+every ecosystem whose manifests both publish a name and declare
+dependencies, each compared the way the ecosystem compares names --
+pyproject PEP 503, package.json / composer.json exact, Cargo.toml '-' = '_',
+pom.xml groupId:artifactId (groupId inherited from <parent>; a declared
+${project.groupId} is the declaring module's group). A declaration matches
+only a manifest of its own basename (an npm `core` is not the crate
+`core`). cli._classify_symbols gives a match the tier the named manifest
+classifies to -- the package node's tier by construction, so a package
+vendored under third_party/ stays tier 3 -- and the reason
+"declares in-tree package <name> (<manifest>)"; two manifests publishing
+one name resolve to the lower tier, then the first by path.
+
+sketch._run_analysis's no-map fallback re-implemented classification per
+path, tiering every declaration (third-party included) by its manifest's
+path, tier 1; it now calls _classify_symbols.
+
+Measured, production `hypergumbo survey`, dev a4546cb836 vs this branch:
+  nest     (npm)    172 of 1,379 declarations 3 -> 1; 165 of them are
+                    sample/ apps pinning the published @nestjs/* by
+                    version (no npm `workspaces` field) -- the package
+                    named is still the repo's own, so tier 1 under the
+                    ruling; 7 are packages/.
+  diesel   (Cargo)  45 of 275, 3 -> 1 (34 from examples/, 11 from
+                    workspace crates).
+  killbill (Maven)  118 of 683, 3 -> 1.
+  poetry   (Python) 0 of 24: its sibling declarations are
+                    [tool.poetry.dependencies] tables, which toml_config
+                    emits no node for (to be filed as its own item).
+  No other node's tier or reason moved; no node set changed; no map has a
+  tier-2 node before or after. nest's 4k sketch is byte-identical apart
+  from the cache-path footer. Effect beyond the declaration nodes:
+  `--max-tier 1` keeps them; tier-weighted centrality weighs them 2x.
+
+Not covered, disclosed in spec §14 §3a: a Cargo dependency renamed with
+`package = "..."` (the node carries only its key); go.mod produces no
+declaration nodes at all.
+
+Docs: spec §14 tier table, the tier-2 section (one producer,
+internal_package_roots, which no CLI path sets) and a new §3a with the
+per-ecosystem comparison table; supply_chain and cli docstrings. The
+broader ADR-0041 §1 rewrite is WI-sufon's.
+
+Tests: core unit -- each ecosystem's sibling tier and reason, PEP 503 /
+Poetry, exact npm / Composer, Cargo fold, Maven coordinate and
+${project.groupId} (and a foreign group with the same artifactId staying
+tier 3), ecosystems not crossing, a vendored package's tier carried, the
+nearest of two publishing manifests; the collector per ecosystem.
+Production path (lang-mainstream): run_behavior_map over one workspace per
+ecosystem, asserting every node standing for one package carries one tier,
+reach asserted first. Mutating manifests_named_by to match nothing reds 7
+of 8 core cases and all 5 production cases.
+
+docs/ARCHITECTURE.md regenerated (it was 26 commits into its 30-commit window).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
