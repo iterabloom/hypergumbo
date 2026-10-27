@@ -1,0 +1,56 @@
+Original commit body from 358234cc2ecc7237fa2ef48175c9e0d428e6b38b:
+
+The WI-ziruv survey (docs/surveys/axiom-falsifiability.md) recorded four
+gaps: no cross-catalogue medium check, no entrypoint-kind test, ADR-0061
+ruling 7 unchecked, and WI-kufos's collapsed-row shape unreproduced. Each
+now has tests of the same kind as the survey's: a reach check, a checker
+control, and a strict xfail naming the item that owns a failure.
+
+| Gap | Test | Holds on | Strict xfail |
+|---|---|---|---|
+| ADR-0050: one medium, one boundary, across catalogues | core test_medium_families.py: 11 media, 99 members, 13 catalogues | 91 members | c printf/putchar (WI-sofam); js http/net.createServer, Deno.listen (WI-vogos); elixir IO.gets, IO.read, IO.inspect (WI-jofud, new) |
+| entrypoint kind names WHAT, evidence_type HOW | one entrypoint by two routes keeps one kind; a callable kind targets a callable | click vs [project.scripts]; flask decorator vs add_url_rule; express named vs inline | a Flask app variable is a main_function entrypoint (WI-dofiz, new) |
+| ADR-0061 ruling 7, one persistent taint home | one taint_sinks.d file, two unrelated repos | yes | none |
+| WI-kufos: a collapsed row is its group | swap two calls; the caveats and verdict must not move | none | (2) choice caveat on the witness source; (1) INV-dudal withdrawal on the witness sink, the false-clean direction |
+
+The medium map is the judgment ADR-0050 needs, written down once per
+family where it can be reviewed. Members are primitives whose documentation
+says they cross the medium at the call, always or with default arguments.
+Primitives whose medium is set by a required argument or receiver are left
+out: unistd.write, fprintf, PrintStream.println. So are the rows INV-dukam
+keeps on subprocess for a measured reason: go exec.Command and rust
+Command::new. A member may declare an extra arm but may not lack its
+medium's boundary. Every member must exist, so a renamed row fails rather
+than passing.
+
+Ruling 7's effect on a verdict was already tested by
+test_taint_channels_are_read.py (WI-mimap). The survey had not cited it, and
+now does.
+
+Mutation controls (detached worktree, pinned PYTHONPATH):
+
+| # | Mutation | Went red |
+|---|---|---|
+| 1 | all_boundaries_for drops env_read | all 13 environment members |
+| 2 | fix WI-sofam: printf/putchar rowed logging | 2 medium xfails XPASS |
+| 3 | a manifest-declared CLI reads main_function | the CLI route twin |
+| 4 | fix WI-dofiz's shape: `application` emits nothing | the Flask xfail XPASSes |
+| 5 | taint_sinks.d not passed to the loader | the ruling 7 test |
+| 6 | fix WI-kufos (2): the caveat reads the group's sources | its xfail XPASSes |
+| 7 | fix WI-kufos (1): INV-dudal reads the group's sinks | its xfail XPASSes |
+
+The unmutated worktree ran 186 passed, 28 xfailed.
+
+Filed from this work:
+- WI-dofiz (P3): the `application` concept (19 framework files) maps to
+  main_function, so the kind names a variable or a class as well as a
+  main(). This is the overload WI-tuvun removed for files.
+- WI-jofud (P3): elixir IO.read/gets/getn/binread default to stdin but lack
+  the ipc_recv arm of the erlang io rows they wrap, and IO.inspect, a stdout
+  write, is rowed fs_read.
+
+Tests and docs only. No source change, no output change.
+
+Addresses WI-ziruv.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
