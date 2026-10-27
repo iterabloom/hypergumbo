@@ -353,7 +353,12 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "socket (module level), ssl, sysconfig, traceback, unittest, "
             "xml.dom and their rowed classes -- every one a CPython stdlib "
             "module (sys.stdlib_module_names on 3.12), rowed from the python "
-            "probe over the 08-24 scope audit's working set."
+            "probe over the 08-24 scope audit's working set. ADDED "
+            "2026-10-27 (WI-gaziv): socketserver's six Unix server classes "
+            "(UnixStreamServer, UnixDatagramServer and their Threading / "
+            "Forking variants), rowed ipc_listen beside the admitted "
+            "socketserver.TCPServer -- all defined in CPython's "
+            "Lib/socketserver.py (the Forking pair from 3.12)."
         ),
         modules=frozenset({
             "cProfile", "cProfile.Profile", "codecs", "ctypes", "ctypes.cdll",
@@ -376,7 +381,12 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "multiprocessing.Pipe", "multiprocessing.Queue", "os",
             "os.environ", "os.path", "pathlib.Path", "pickle", "platform",
             "posixpath", "pwd", "shelve", "shlex", "shutil", "smtplib.SMTP",
-            "socket.socket", "socketserver.TCPServer", "sqlite3",
+            "socket.socket", "socketserver.TCPServer",
+            "socketserver.UnixStreamServer", "socketserver.UnixDatagramServer",
+            "socketserver.ThreadingUnixStreamServer",
+            "socketserver.ThreadingUnixDatagramServer",
+            "socketserver.ForkingUnixStreamServer",
+            "socketserver.ForkingUnixDatagramServer", "sqlite3",
             "sqlite3.Connection", "sqlite3.Cursor", "subprocess", "sys",
             "sys.stderr", "sys.stdin", "sys.stdout", "tarfile", "tempfile",
             "time", "typing", "urllib.request", "warnings",

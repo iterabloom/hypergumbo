@@ -130,6 +130,8 @@ _PRE_REFACTOR_CATALOG_BOUNDARY_TYPES = (
     "db_compose",
     # INV-dadu: declared after db_compose for the same reason.
     "navigation_read",
+    # WI-gaziv: net_listen's local-IPC twin, last for the same reason.
+    "ipc_listen",
 )
 
 
@@ -188,7 +190,8 @@ def test_disclosed_only_boundaries_unchanged():
     from hypergumbo_core.io_boundary import _DISCLOSED_ONLY_BOUNDARIES
 
     assert _DISCLOSED_ONLY_BOUNDARIES == frozenset(
-        {"external_potential", "command_launch", "net_listen", "db_compose"}
+        {"external_potential", "command_launch", "net_listen", "db_compose",
+         "ipc_listen"}
     )
 
 
@@ -196,8 +199,8 @@ def test_subprocess_is_opaque_but_still_counts_in_the_headline():
     """The one value that separates "opacity" from "disclosed-only".
 
     subprocess is opaque AND curated: it is catalog-declared, so it belongs
-    in total_io_edges. external_potential, command_launch, net_listen and
-    db_compose are disclosed but excluded. This is why headline membership is per-value
+    in total_io_edges. external_potential, command_launch, net_listen,
+    db_compose and ipc_listen are disclosed but excluded. This is why headline membership is per-value
     metadata on the spec and NOT derivable from the axis.
     """
     from hypergumbo_core.io_boundary_types import find_io_boundary
@@ -205,7 +208,10 @@ def test_subprocess_is_opaque_but_still_counts_in_the_headline():
     subprocess_spec = find_io_boundary("subprocess")
     assert subprocess_spec is not None
     assert subprocess_spec.counts_in_headline is True
-    for name in ("external_potential", "command_launch", "net_listen", "db_compose"):
+    for name in (
+        "external_potential", "command_launch", "net_listen", "db_compose",
+        "ipc_listen",
+    ):
         spec = find_io_boundary(name)
         assert spec is not None
         assert spec.counts_in_headline is False, name

@@ -108,13 +108,18 @@ Four axes partition the twenty-one values.
 |---|---|---|
 | `data_crossing` | The canonical section. Data crosses the process boundary at this call site, in a named direction. | `fs_read`, `fs_write`, `net_send`, `net_recv`, `ipc_recv`, `ipc_send`, `env_read`, `env_write`, `host_info_read`, `db_read`, `db_write`, `process_send`, `logging`, `browser_storage_read`, `browser_storage_write`, `navigation_read` |
 | `opacity` | Control left this process. The classification is correct and the analysis cannot see past it, so it does not license "I looked and found nothing." | `subprocess`, `command_launch` |
-| `deferred_crossing` | The call *arranges* a crossing it does not itself perform (ADR-0049). | `net_listen`, `db_compose` |
+| `deferred_crossing` | The call *arranges* a crossing it does not itself perform (ADR-0049). | `net_listen`, `db_compose`, `ipc_listen` |
 | `speculative` | Synthesised uncertainty; declarable by no catalogue. | `external_potential` |
 
 `deferred_crossing` is a section rather than a violation, and that is the
-subtle part: `net_listen` (and since WI-fasap its database twin `db_compose`,
-the composed-but-unevaluated query) is *precisely* what the axiom's second
-clause excludes from `data_crossing`. ADR-0049 created it deliberately, so the axis
+subtle part: `net_listen` (with its database twin `db_compose`, the
+composed-but-unevaluated query, and its local-IPC twin `ipc_listen`, a
+Unix-domain socket server) is *precisely* what the axiom's second clause
+excludes from `data_crossing`. The listener pair is split by medium, as §1
+requires of every row: `ipc_listen` shadows `ipc_recv` and `net_listen`
+shadows `net_recv`, and a call that may bind either medium (a generic
+`bind` / `Listen` taking the family or network as an argument) stays
+`net_listen` until a call-site stamp can tell them apart. ADR-0049 created it deliberately, so the axis
 must have somewhere to put it. A value that the axiom rejects and the project
 intends is a section; a value that the axiom rejects and nobody defends is a
 deprecation candidate.
@@ -135,8 +140,8 @@ the signal to put them on the spec:
 - **`counts_in_headline`** — whether the value is part of the curated surface
   reported as `total_io_edges`. `subprocess` is the value that proves this
   cannot be an axis query: it is *opaque and counted*, while
-  `external_potential`, `command_launch`, `net_listen` and `db_compose` are
-  disclosed and excluded. An axis-derived rule would need exactly one special case.
+  `external_potential`, `command_launch`, `net_listen`, `db_compose` and
+  `ipc_listen` are disclosed and excluded. An axis-derived rule would need exactly one special case.
 
 ### 4. The registry is the single source of truth
 

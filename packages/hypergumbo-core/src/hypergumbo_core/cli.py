@@ -6267,6 +6267,8 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
                     filtered_entries, "net_listen"),
                 "db_compose_edges": disclosed_chain_count(
                     filtered_entries, "db_compose"),
+                "ipc_listen_edges": disclosed_chain_count(
+                    filtered_entries, "ipc_listen"),
                 # WI-pogar: from ``untraced_chains``, not ``filtered_entries``
                 # -- see where that list is built.
                 "untraced_modules": untraced_modules(untraced_chains),

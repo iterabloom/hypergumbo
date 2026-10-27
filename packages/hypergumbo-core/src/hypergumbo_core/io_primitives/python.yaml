@@ -746,11 +746,46 @@ net_listen:
   - module: xmlrpc.server.SimpleXMLRPCServer
     methods: [serve_forever, handle_request]
   - module: asyncio
-    functions: [start_server, start_unix_server]
+    functions: [start_server]
     notes: >-
       SETUP. Returns a Server object; the bytes arrive at the client-connected
       callback, and asyncio.StreamReader.read* -- still net_recv -- is where a
-      program reads them.
+      program reads them. start_unix_server is ipc_listen (below).
+
+# WI-gaziv (owner ruling 2026-10-26, ADR-0050 section 1's medium axiom): a
+# Unix-domain socket server is LOCAL IPC, not network ingress. ipc_listen is
+# net_listen's local-IPC twin -- disclosed, never minted, shadowing ipc_recv.
+# A call that may bind either medium (socket.socket.bind, socket.create_server
+# with a family argument) stays net_listen.
+ipc_listen:
+  - module: asyncio
+    functions: [start_unix_server]
+    notes: >-
+      SETUP. Returns a Server object listening on a Unix socket path; the bytes
+      arrive at the client-connected callback. asyncio.StreamReader.read* is
+      rowed net_recv because TCP and Unix streams share it (WI-muful).
+      loop.create_unix_server has no row: its receiver is the loop
+      get_running_loop() returns, which the analyzer leaves untyped, so a row
+      could never match (asyncio's loop.create_server has none for the same
+      reason).
+  - module: socketserver.UnixStreamServer
+    methods: [serve_forever, handle_request]
+    notes: >-
+      LAUNCH, socketserver.TCPServer's Unix twin (net_listen). Blocks and
+      serves; the request reaches the handler class the server was constructed
+      with.
+  - module: socketserver.UnixDatagramServer
+    methods: [serve_forever, handle_request]
+  - module: socketserver.ThreadingUnixStreamServer
+    methods: [serve_forever, handle_request]
+  - module: socketserver.ThreadingUnixDatagramServer
+    methods: [serve_forever, handle_request]
+  - module: socketserver.ForkingUnixStreamServer
+    methods: [serve_forever, handle_request]
+    notes: "Python 3.12+."
+  - module: socketserver.ForkingUnixDatagramServer
+    methods: [serve_forever, handle_request]
+    notes: "Python 3.12+."
 
 ipc_send:
   # ---------------------------------------------------------------
