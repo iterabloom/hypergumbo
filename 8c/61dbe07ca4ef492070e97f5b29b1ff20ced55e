@@ -1,0 +1,38 @@
+Original commit body from 714e221890b6537ac6d70d82a2fc23441db255f3:
+
+The twice-daily full suite has failed on dev since 2026-10-25
+(d7ab329e45, a4546cb836): self-tree-validation's
+check-test-only-reachability step reported
+
+  FAIL: 1 callable(s) are newly reachable only from their own tests:
+    + packages/hypergumbo-core/src/hypergumbo_core/sketch_embeddings.py::fetch_embedding_models
+
+The last green full suite was cd93704544, before INV-gujus (9679de97c5)
+added the function. It IS used in production -- install-embeddings and
+add-extras run it -- but only through a `python -c` string in
+cli._fetch_embedding_models (a fresh interpreter, so a library pip just
+installed imports cleanly). No static analysis follows a string, so the
+gate saw tests as its only callers. The baseline is shrink-only, so the
+answer is to wire the reference, not to raise it.
+
+The child program is now built from the function object
+(fetch_embedding_models.__module__ / __name__), imported in the parent.
+That is a reference the analysis sees, and a rename can no longer leave a
+stale import string behind. Importing sketch_embeddings in the parent
+interpreter is safe: sentence_transformers loads lazily inside the
+function (checked: importing the module loads neither
+sentence_transformers nor torch).
+
+Evidence: a scip-python-typed self-map (`hypergumbo survey . --backend
+scip-python`, the gate's --require-pass) reproduced the gate's exit 1 on
+dev 4395a62c5e with the same single callable; on this change the gate
+exits 0, "no new test-only-reachable callables" (test-only-reachable 684
+-> 683, gated cohort 346 -> 345).
+
+Test: the generated -c program, executed against a recorder standing in
+for fetch_embedding_models, calls it -- a guard on the program's
+correctness. It passes on the old string spelling too (that spelling ran
+the right function); the red -> green for this change is the gate above,
+which CI's full suite runs and PR CI does not.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
