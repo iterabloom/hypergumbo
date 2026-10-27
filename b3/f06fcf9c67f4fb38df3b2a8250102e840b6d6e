@@ -1,0 +1,52 @@
+Original commit body from 645225d4f98c39c674eeaf8198e3d92d4ee47f39:
+
+Owner ruling 2026-10-25 (option A, project frame) on the 2026-07-15
+supply_chain_tier concept audit's F1. ADR-0041 §1 said tier is "the
+supply-chain distance of code from the project under analysis" but named
+neither the project's extent nor what a declaration or a boundary stub
+measures, and its row 2 put monorepo siblings in tier 2 -- so a sibling was
+tier 1 as its own package node and tier 2 / 3 as a declaration. INV-kutub
+(PR #1890) made the code agree with the ruling; this is the document half.
+Rewritten in place, no addendum or history (docs/adr/README.md lifecycle).
+
+ADR-0041:
+* §1 axiom: tier names the supply-chain distance, from the project under
+  analysis, of the code a node stands for -- the project being every
+  package whose source is in the analysed tree; where the node is written,
+  how the code is declared and what produced the node may not influence
+  it. A file / function / project / package node stands for its own code,
+  a dependency declaration for the package it names, a boundary stub for
+  the code it replaces; nodes standing for one package carry one tier;
+  tiers 1-3 are distances, tier 4 the derived-artifact exception.
+* Row 1 includes workspace siblings; row 2 is org-internal code outside
+  the project (internal_package_roots), with no CLI path supplying it, so
+  a CLI run emits no tier-2 node.
+* Cut the "irony recorded for posterity" paragraph and the 2026-07-17
+  WI-popok annotation (history), keeping §2's META-bifif rule; corrected
+  §2's claim that directness is stamped on dependency nodes (only boundary
+  nodes carry it -- INV-fuhin); replaced the stale prediction that tier 2
+  "fills with the 7 workspace packages"; the tracker list's WI-popok row
+  now says wont_do / not a re-derivation, and INV-kutub is listed.
+
+Spec §14: "classifies files by their position in the dependency graph" ->
+classifies nodes by distance; the axiom paragraph states the frame; the
+"(History: ...)" paragraph is cut to current facts; the directness /
+ecosystem sentence no longer claims declarations carry them (checked on
+merged dev: no dependency node has meta.directness or meta.ecosystem); the
+tier-2 row and section say no CLI path supplies internal_package_roots
+(checked: .hypergumbo.toml with that key exits 2 "unknown setting") and
+mark it 🟧 blocked on WI-jaloz's wire-or-delete decision, and the
+capsule-plan YAML example (that plan was removed in 03223627a4) is gone.
+
+Docstrings: Tier, Symbol.supply_chain_tier ("position in dependency
+graph"), the supply_chain module header and tier list,
+DependencyManifest and classify_import (which placed workspace packages
+in tier 2), ADR-0004's Tier sketch ("internal libraries, examples").
+scripts/generate-schema: own_files said "tier 1-2 by path"; tier_by_path
+returns only 3, 4 or None, so it now says "not tier 3 or 4 by path"
+(docs/schema.json regenerated; description only).
+
+Left as is: docs/RELEASE-NOTES-7.X.md:77 describes the 7.x release, when
+it was true. No behaviour change.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
