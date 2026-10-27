@@ -467,10 +467,13 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 
 **Axiom.** A row's *primary* boundary names the *medium* data crosses at this
 call site, and in which direction — not what the program is thereby arranged to
-do later, and not what the data is. A `simultaneous` second boundary may record a
-reading of the same crossing that a taint label needs: that its content may carry
-a credential (`env_read`), or that the party who navigated to the page chose it
-(`navigation_read`). So `env_read` means both the process environment and "may
+do later, and not what the data is. A `simultaneous` second boundary records
+either a reading of the same crossing that a taint label needs (that its content
+may carry a credential, `env_read`, or that the party who navigated to the page
+chose it, `navigation_read`), or a second crossing the same call performs at this
+call site, which must satisfy the axiom on its own (`subprocess.check_output`
+launches a process and reads its output). None is primary: consumers read every
+one (`boundaries_of`). So `env_read` means both the process environment and "may
 carry a credential" (ADR-0050 §1).
 
 Six consumers branch on this vocabulary (`AUTO_SOURCE_LABEL_MAP`,

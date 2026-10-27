@@ -6,10 +6,15 @@ to the axis as a whole):
 
     A row's PRIMARY boundary names the MEDIUM data crosses at this call site,
     and in which direction -- not what the program is thereby arranged to do
-    later, and not what the data is. A ``simultaneous`` SECOND boundary may
-    record a reading of the same crossing that a taint label needs: that its
-    content may carry a credential (``env_read``), or that the party who
-    navigated to the page chose it (``navigation_read``).
+    later, and not what the data is. A ``simultaneous`` SECOND boundary
+    records either a reading of the same crossing that a taint label needs
+    (that its content may carry a credential, ``env_read``, or that the party
+    who navigated to the page chose it, ``navigation_read``), or a second
+    crossing the same call performs at this call site, which must satisfy the
+    axiom on its own. None of a call's simultaneous boundaries is primary:
+    consumers read them all (``io_boundary.boundaries_of``), and the scalar
+    ``io_boundary`` is merely the first in ``CATALOG_BOUNDARY_TYPES`` order
+    (WI-kuzoh, owner ruling 2026-10-27).
 
 So ``env_read`` means both the process environment (as a primary boundary) and
 "may carry a credential" (wherever it is declared).

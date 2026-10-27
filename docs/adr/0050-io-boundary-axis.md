@@ -75,10 +75,13 @@ is `hypergumbo_core.io_boundary_types`; the linter is
 > another process, a database, the process's own standard streams, the
 > browser's storage, the page's navigation — and in which direction; not what
 > the program is thereby arranged to do later, and not what the data is. A
-> `simultaneous` **second** boundary may record a reading of the same crossing
-> that a taint label needs: that its content may carry a credential
-> (`env_read`), or that the party who navigated to the page chose it
-> (`navigation_read`), as the shipped INV-dadu URL rows do.
+> `simultaneous` **second** boundary records either a reading of the same
+> crossing that a taint label needs, such as that its content may carry a
+> credential (`env_read`) or that the party who navigated to the page chose it
+> (`navigation_read`), as the shipped INV-dadu URL rows do; or a second crossing
+> the same call performs at this call site, which must satisfy this axiom on its
+> own. Every simultaneous boundary is a fact about the call, and none is
+> primary over the others.
 
 `env_read` therefore still means both. As a primary boundary it names the
 process environment: environment variables and the ambient configuration a
@@ -94,6 +97,32 @@ ruling's sentence. Medium is the reading the value definitions already used
 where they were written carefully (`logging` "names a medium", audit-findings
 0021); content readings and chooser readings, which some rows had used for
 their only boundary, now live in a second, `simultaneous` boundary instead.
+
+**A second crossing (owner ruling 2026-10-27, WI-kuzoh).** The `simultaneous`
+flag was minted (INV-zumin) for a call that is true under two boundaries at
+once. The first wording of this section described only one of its uses, the
+reading. On the shipped catalogues the other use is the larger one: of the 39
+primitives on `simultaneous: true` rows, 6 pair a medium with a reading (the
+URL rows) and 33 pair two crossings. Checked against the widened sentence:
+
+| Pair | Primitives | Verdict |
+|---|---|---|
+| `ipc_recv` + `subprocess` (`check_output`, `execSync`, `Command.output`, …) | 23 | Hold. A launch, and a transfer of the child's bytes at the call (ADR-0049 ruling 1, INV-lozat). |
+| `env_read` + `navigation_read` (the page URL and referrer) | 6 | Hold. The reading case. |
+| `fs_read` + `fs_write` (erlang `filelib.ensure_dir`) | 1 | Holds. It checks, then creates, at the call. |
+| `fs_read` + `logging` (python `builtins.license`) | 1 | Holds. It opens the licence file, then prints it. |
+| `net_send` + `net_recv`, objc `sendSynchronousRequest:` | 1 | Holds. |
+| `net_send` + `net_recv`, objc `sendAsynchronousRequest:` | 1 | **Fails.** The response arrives in the completion handler, later. WI-mapim's shape. |
+| `fs_write` + `subprocess` (scala `Process.apply`, `Process(...)`, `Process.run`) | 3 | **Fail.** `apply` returns a `ProcessBuilder` and launches nothing; the file write is what a child may do later. WI-novap. |
+| `host_info_read` + `subprocess` (python `platform.architecture` / `platform` / `processor`) | 3 | Kept, by judgment. They run a command and return host facts. The returned bytes cross from the child's stdout, but `ipc_recv` would mint `untrusted_input` for a host fact, so `host_info_read` stands as the reading the `host_description` label needs. |
+
+**"Primary" is not stored.** Consumers read every simultaneous boundary
+(`boundaries_of`; `compute_boundary_map` builds one chain per boundary; the
+auto-derived taint catalogue takes a source or sink from each row). The scalar `Edge.meta["io_boundary"]` is the
+first of them in `CATALOG_BOUNDARY_TYPES` order. It carries no primacy: for the
+URL rows it is `env_read`, while this section names `navigation_read` the
+medium. A consumer that asks "does this edge reach B" reads `boundaries_of`,
+never the scalar.
 
 The axiom is falsifiable in ADR-0024's sense. Its "not what the program is
 arranged to do later" clause is what makes `net_listen` a disclosure rather than
