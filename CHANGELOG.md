@@ -57,6 +57,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### I/O boundaries
 
+- **A Unix-domain socket server is `ipc_listen`, not `net_listen`** (WI-gaziv, owner ruling 2026-10-26 under ADR-0050 §1's medium axiom). The new deferred-crossing value is `net_listen`'s local-IPC twin: disclosed in a new `ipc_listen_edges` count (io-boundaries schema 2.4 → 2.5, additive), never minted, and shadowing `ipc_recv`. Re-rowed: Go `net.ListenUnix`, Python `asyncio.start_unix_server`; newly rowed: Go `net.ListenUnixgram` and the six `socketserver` Unix server classes' `serve_forever` / `handle_request`. A call that may bind either medium (`socket.bind`, Go `net.Listen`) stays `net_listen`; `loop.create_unix_server` has no row because its receiver is untyped.
 - **`slice --io-boundary` keeps a call for every boundary it crosses.** A call true for two boundaries (`subprocess.check_output` is `ipc_recv` and `subprocess`; `child_process.execSync`; the `navigation_read` rows) was kept only for the first declared one, so `--io-boundary subprocess` silently dropped it while `io-boundaries` listed it under both. Both now read one helper, `io_boundary.boundaries_of`.
 
 #### Dead code and test coverage

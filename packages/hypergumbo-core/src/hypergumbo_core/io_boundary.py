@@ -7,12 +7,13 @@ tags is ``CATALOG_BOUNDARY_TYPES`` below (fs_read/fs_write, net_send/net_recv,
 ipc_recv/ipc_send, env_read/host_info_read/env_write, subprocess,
 db_read/db_write, navigation_read,
 process_send, logging, browser_storage_read/browser_storage_write,
-``net_listen`` and ``db_compose``); the synthesized ``external_potential`` and
-disclosed ``command_launch`` complete ``KNOWN_IO_BOUNDARIES``. ``net_listen``
-and ``db_compose`` sit on the ADR-0049 **deferred-crossing** axis: the call
-does not itself cross a boundary, it arranges for a later one, so each is
-disclosed rather than counted in the headline and shadows its data boundary
-(``net_recv`` / ``db_read``; ``DEFERRED_CROSSING_SHADOWS``). Catalogs are YAML
+``net_listen``, ``db_compose`` and ``ipc_listen``); the synthesized
+``external_potential`` and disclosed ``command_launch`` complete
+``KNOWN_IO_BOUNDARIES``. ``net_listen``, ``db_compose`` and ``ipc_listen`` sit
+on the ADR-0049 **deferred-crossing** axis: the call does not itself cross a
+boundary, it arranges for a later one, so each is disclosed rather than
+counted in the headline and shadows its data boundary (``net_recv`` /
+``db_read`` / ``ipc_recv``; ``DEFERRED_CROSSING_SHADOWS``). Catalogs are YAML
 files in the ``io_primitives/`` directory alongside this module.
 
 Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
@@ -213,7 +214,7 @@ if TYPE_CHECKING:
 #   - schema_version: str (this constant)
 #   - total_io_edges: int
 #   - external_potential_edges / command_launch_edges / net_listen_edges /
-#     db_compose_edges: int  (disclosed-only bucket counts)
+#     db_compose_edges / ipc_listen_edges: int  (disclosed-only bucket counts)
 #   - boundaries: dict[str, BoundaryMapEntry.to_dict()]
 #   - untraced_modules: dict[str, list[str]]  (WI-pogar: the modules behind
 #     the ``external_potential`` chains, grouped by ``dst_ecosystem``)
@@ -225,7 +226,7 @@ if TYPE_CHECKING:
 #     (1.0 -> 2.0).
 #   - Changes to ``BoundaryMapEntry.to_dict()`` / ``IoChain.to_dict()``
 #     shape are part of this same contract — they share the version.
-IO_BOUNDARIES_SCHEMA_VERSION: str = "2.4"  # WI-pogar/ADR-0016 §7: untraced_modules added + IoChain.dst_ecosystem (calls into source that was not analysed report I/O unknown). 2.3: WI-fasap/ADR-0049: db_compose_edges added (the database twin of net_listen). 2.2: WI-nosah/ADR-0049: net_listen_edges added (deferred crossings disclosed, excluded from total_io_edges, shadowing net_recv). 2.1: WI-javoh command_launch_edges added. 2.0: WI-huhit/WI-foduh total_io_edges redefined + external_potential_edges added
+IO_BOUNDARIES_SCHEMA_VERSION: str = "2.5"  # WI-gaziv: ipc_listen_edges added (a Unix-domain listener, net_listen's local-IPC twin, shadowing ipc_recv). 2.4: WI-pogar/ADR-0016 §7: untraced_modules added + IoChain.dst_ecosystem (calls into source that was not analysed report I/O unknown). 2.3: WI-fasap/ADR-0049: db_compose_edges added (the database twin of net_listen). 2.2: WI-nosah/ADR-0049: net_listen_edges added (deferred crossings disclosed, excluded from total_io_edges, shadowing net_recv). 2.1: WI-javoh command_launch_edges added. 2.0: WI-huhit/WI-foduh total_io_edges redefined + external_potential_edges added
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +324,9 @@ DEFERRED_CROSSING_SHADOWS: dict[str, str] = {
     # a QuerySet handed to a scope this call does not name, whose read no
     # call site represents.
     "db_compose": "db_read",
+    # WI-gaziv: a Unix-domain listener. Its data arrives from another local
+    # process, so the corresponding data boundary is ipc_recv, by medium.
+    "ipc_listen": "ipc_recv",
 }
 
 # Boundaries whose classification records that the analysis CANNOT SEE PAST the
@@ -4072,6 +4076,9 @@ class BoundaryMap:
     #: Chain count of the ``db_compose`` bucket (WI-fasap) -- the database twin
     #: of ``net_listen``, disclosed for the same reason.
     db_compose_edges: int = 0
+    #: Chain count of the ``ipc_listen`` bucket (WI-gaziv) -- the local-IPC
+    #: twin of ``net_listen``, disclosed for the same reason.
+    ipc_listen_edges: int = 0
     #: The modules behind the ``external_potential`` chains, grouped by
     #: ``dst_ecosystem`` (:func:`untraced_modules`; WI-pogar). Each is a module
     #: this analysis called into without reading its source and without a row
@@ -4098,6 +4105,7 @@ class BoundaryMap:
             "command_launch_edges": self.command_launch_edges,
             "net_listen_edges": self.net_listen_edges,
             "db_compose_edges": self.db_compose_edges,
+            "ipc_listen_edges": self.ipc_listen_edges,
             "untraced_modules": self.untraced_modules,
             "boundaries": {
                 k: v.to_dict() for k, v in sorted(self.entries.items())
@@ -4477,6 +4485,7 @@ def compute_boundary_map(
         command_launch_edges=disclosed_chain_count(entries, "command_launch"),
         net_listen_edges=disclosed_chain_count(entries, "net_listen"),
         db_compose_edges=disclosed_chain_count(entries, "db_compose"),
+        ipc_listen_edges=disclosed_chain_count(entries, "ipc_listen"),
         untraced_modules=untraced_modules(by_boundary.get("external_potential", ())),
     )
 
@@ -4488,11 +4497,11 @@ def disclosed_chain_count(
 ) -> int:
     """Chain count of one DISCLOSED-ONLY bucket, zero when the bucket is absent.
 
-    One helper for the four ``*_edges`` disclosure fields rather than four
+    One helper for the five ``*_edges`` disclosure fields rather than five
     copies of the same conditional: the fourth copy (``db_compose``, WI-fasap)
     is where a hand-written ``if "net_listen" in entries`` pasted under a new
     name would have counted the wrong bucket, and ``cmd_io_boundaries``
-    rebuilds the envelope with the same four fields on its filtered path.
+    rebuilds the envelope with the same five fields on its filtered path.
     """
     return len(entries[boundary].chains) if boundary in entries else 0
 

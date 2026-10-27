@@ -373,10 +373,13 @@ net_recv:
 # so the crossing is DISCLOSED rather than either minted or silently dropped.
 net_listen:
   - module: net
-    functions: [Listen, ListenTCP, ListenUDP, ListenUnix, ListenPacket]
+    functions: [Listen, ListenTCP, ListenUDP, ListenPacket]
     notes: >-
       SETUP. Returns a net.Listener; nothing has been received. The bytes
       arrive at a later Accept/Read, which are rowed separately under net_recv.
+      Listen and ListenPacket take the network as an argument and may bind a
+      Unix socket; they stay here until a call-site stamp can tell. ListenUnix
+      and ListenUnixgram are ipc_listen (below).
   - module: syscall
     functions: [Socket, Bind, Listen]
     notes: >-
@@ -391,6 +394,18 @@ net_listen:
       begins at a call that runs BEFORE the ListenAndServe statement. The real
       receive stays rowed under net_recv as net.Listener.Accept /
       net.Conn.Read, which the represented-crossing probe confirms still fire.
+
+
+# WI-gaziv (owner ruling 2026-10-26, ADR-0050 section 1's medium axiom): a
+# Unix-domain listener is LOCAL IPC, not network ingress. ipc_listen is
+# net_listen's local-IPC twin -- disclosed, never minted, shadowing ipc_recv.
+ipc_listen:
+  - module: net
+    functions: [ListenUnix, ListenUnixgram]
+    notes: >-
+      SETUP. ListenUnix returns a *net.UnixListener and ListenUnixgram a
+      *net.UnixConn bound to a socket path (ListenUDP's Unix twin); nothing
+      has been received. The bytes arrive at a later Accept/Read.
 
 subprocess:
   - module: os/exec

@@ -92,7 +92,7 @@ LISTEN_EDGE = {
 #: every row.
 GO_DEFERRED_ROWS: frozenset[tuple[str, str]] = frozenset({
     ("net", "Listen"), ("net", "ListenTCP"), ("net", "ListenUDP"),
-    ("net", "ListenUnix"), ("net", "ListenPacket"),
+    ("net", "ListenPacket"),
     ("syscall", "Socket"), ("syscall", "Bind"), ("syscall", "Listen"),
     # WI-mujod: keyed by the import path the go analyzer stamps.
     ("golang.org/x/sys/unix", "Socket"), ("golang.org/x/sys/unix", "Bind"),
@@ -112,6 +112,14 @@ GO_DEFERRED_ROWS: frozenset[tuple[str, str]] = frozenset({
     ("github.com/gofiber/fiber/v2.App", "Listen"),
     ("github.com/gofiber/fiber/v2.App", "ListenTLS"),
     ("google.golang.org/grpc.Server", "Serve"),
+})
+
+#: The go rows that name a Unix-domain listener: ``ipc_listen`` (WI-gaziv, owner
+#: ruling 2026-10-26 under ADR-0050 §1's medium axiom -- the medium is local
+#: IPC, not the network). ``ListenUnix`` came from the net_listen set above;
+#: ``ListenUnixgram`` is ``ListenUDP``'s Unix twin and had no row.
+GO_IPC_LISTEN_ROWS: frozenset[tuple[str, str]] = frozenset({
+    ("net", "ListenUnix"), ("net", "ListenUnixgram"),
 })
 
 #: The go rows that MUST NOT move: each returns data chosen by the far side.
@@ -453,11 +461,17 @@ class TestTheGoRetag:
         row would satisfy both tests above and still be a recall regression."""
         cat = load_catalog("go")
         moved = {(p.module, p.name) for p in cat.primitives
-                 if p.boundary in ("net_listen", "net_recv")}
-        assert moved == GO_DEFERRED_ROWS | GO_TRANSFER_ROWS
+                 if p.boundary in ("net_listen", "net_recv", "ipc_listen")}
+        assert moved == GO_DEFERRED_ROWS | GO_TRANSFER_ROWS | GO_IPC_LISTEN_ROWS
         # 31 + WI-suhug's 11 bufio net_recv rows + WI-dozul's 20 resolver rows
-        # (net.Lookup* 9, net.Resolver.Lookup* 11).
-        assert len(moved) == 62
+        # (net.Lookup* 9, net.Resolver.Lookup* 11) + WI-gaziv's ListenUnixgram.
+        assert len(moved) == 63
+
+    def test_the_unix_listeners_are_ipc_listen(self) -> None:
+        cat = load_catalog("go")
+        ipc = {(p.module, p.name) for p in cat.primitives
+               if p.boundary == "ipc_listen"}
+        assert ipc == GO_IPC_LISTEN_ROWS
 
     def test_the_f2_predicate_now_comes_back_empty_for_go(self) -> None:
         """INV-kanuk's own repro, and it is EMPTY NOW -- which it was not.
@@ -579,7 +593,7 @@ class TestTheDatabaseTwinVocabulary:
         # first-declared-wins resolution of every existing row is untouched by
         # the addition; only boundaries added later follow it.
         later = CATALOG_BOUNDARY_TYPES[CATALOG_BOUNDARY_TYPES.index("db_compose") + 1:]
-        assert later == ("navigation_read",)
+        assert later == ("navigation_read", "ipc_listen")
 
     def test_clause_1_it_mints_no_taint(self) -> None:
         assert "db_compose" not in AUTO_SOURCE_LABEL_MAP
@@ -750,3 +764,72 @@ class TestTheDjangoRetag:
         edges = [_E(e["src"], e["dst"], e["type"]) for e in (COMPOSE_EDGE, EVALUATION_EDGE)]
         assert tag_io_boundaries(edges, cats) == 2
         assert [e.meta["io_boundary"] for e in edges] == ["db_compose", "db_read"]
+
+
+class TestTheIpcListenerVocabulary:
+    """WI-gaziv: ``ipc_listen`` is the local-IPC twin of ``net_listen``.
+
+    ADR-0050 §1 names a row's primary boundary by the MEDIUM data crosses
+    (owner ruling 2026-10-25), and a Unix-domain listener's medium is local
+    IPC. The vocabulary had no IPC-side deferred-crossing value, so
+    ``asyncio.start_unix_server`` and Go's ``net.ListenUnix`` were rowed
+    ``net_listen`` -- reading as network ingress. The owner chose a new value
+    over widening ``net_listen`` to "any listener" (2026-10-26). It carries
+    ``net_listen``'s three clauses, over ``ipc_recv``."""
+
+    def test_it_is_catalog_declarable_and_declared_last(self) -> None:
+        assert "ipc_listen" in CATALOG_BOUNDARY_TYPES
+        assert "ipc_listen" in KNOWN_IO_BOUNDARIES
+        # Last, so first-declared-wins leaves every existing row's primary alone.
+        assert CATALOG_BOUNDARY_TYPES[-1] == "ipc_listen"
+
+    def test_clause_1_it_mints_no_taint(self) -> None:
+        assert "ipc_listen" not in AUTO_SOURCE_LABEL_MAP
+
+    def test_clause_2_it_is_disclosed_not_headlined(self) -> None:
+        assert "ipc_listen" in _DISCLOSED_ONLY_BOUNDARIES
+        assert BoundaryMap(ipc_listen_edges=3).to_dict()["ipc_listen_edges"] == 3
+
+    def test_clause_3_the_shadow_is_scoped_to_ipc_recv(self) -> None:
+        assert "ipc_listen" not in OPAQUE_BOUNDARIES
+        assert DEFERRED_CROSSING_SHADOWS["ipc_listen"] == "ipc_recv"
+
+
+#: The python rows WI-gaziv rows ``ipc_listen``: asyncio's Unix server (moved
+#: from net_listen) and socketserver's six Unix server classes, which had no
+#: row while their TCP twin was net_listen.
+PY_IPC_LISTEN_ROWS: frozenset[tuple[str, str]] = frozenset(
+    {("asyncio", "start_unix_server")}
+    | {
+        (f"socketserver.{cls}", method)
+        for cls in (
+            "UnixStreamServer", "UnixDatagramServer",
+            "ThreadingUnixStreamServer", "ThreadingUnixDatagramServer",
+            "ForkingUnixStreamServer", "ForkingUnixDatagramServer",
+        )
+        for method in ("serve_forever", "handle_request")
+    }
+)
+
+
+class TestTheIpcListenerCatalogueRows:
+
+    def test_the_python_unix_servers_are_ipc_listen(self) -> None:
+        cat = load_catalog("python")
+        ipc = {(p.module, p.name) for p in cat.primitives
+               if p.boundary == "ipc_listen"}
+        assert ipc == PY_IPC_LISTEN_ROWS
+
+    def test_a_unix_listener_shadows_ipc_recv_and_its_tcp_twin_net_recv(self) -> None:
+        """The counter-control: the network twins did not move."""
+        py, go = load_catalog("python"), load_catalog("go")
+        assert py.deferred_crossings("asyncio", "start_unix_server") == frozenset({"ipc_recv"})
+        assert py.deferred_crossings(
+            "socketserver.UnixStreamServer", "serve_forever",
+        ) == frozenset({"ipc_recv"})
+        assert py.deferred_crossings("asyncio", "start_server") == frozenset({"net_recv"})
+        assert py.deferred_crossings(
+            "socketserver.TCPServer", "serve_forever",
+        ) == frozenset({"net_recv"})
+        assert go.deferred_crossings("net", "ListenUnix") == frozenset({"ipc_recv"})
+        assert go.deferred_crossings("net", "ListenTCP") == frozenset({"net_recv"})

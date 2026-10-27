@@ -371,6 +371,7 @@ def test_cmd_io_boundaries_json_envelope_top_level_keys(
         "command_launch_edges",
         "net_listen_edges",
         "db_compose_edges",
+        "ipc_listen_edges",
         "untraced_modules",
         "boundaries",
         "unsupported_languages",

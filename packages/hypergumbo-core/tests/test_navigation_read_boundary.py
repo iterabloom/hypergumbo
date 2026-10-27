@@ -56,7 +56,9 @@ def test_the_boundary_is_an_inbound_data_crossing_declared_last() -> None:
     assert spec.axis == AXIS_DATA_CROSSING
     assert spec.direction == DIRECTION_INBOUND
     assert spec.catalog_declarable and spec.counts_in_headline
-    assert CATALOG_BOUNDARY_TYPES[-1] == "navigation_read"
+    # Every boundary that existed when it was added precedes it; only
+    # ipc_listen (WI-gaziv) was declared after it, for the same reason.
+    assert CATALOG_BOUNDARY_TYPES[-2:] == ("navigation_read", "ipc_listen")
 
 
 def test_it_derives_untrusted_input() -> None:

@@ -55,7 +55,7 @@ than a comment someone has to keep true.
 
 THE SECTIONS, and why headline membership is NOT one of them
 ------------------------------------------------------------
-Four axes partition the twenty-one values:
+Four axes partition the twenty-two values:
 
 ``data_crossing``     the axiom's canonical section. Data crosses the process
                       boundary at this call site, in a named direction.
@@ -71,17 +71,17 @@ Four axes partition the twenty-one values:
 Headline membership (``total_io_edges``) cuts ACROSS that partition and is
 therefore PER-VALUE METADATA, not a section. ``subprocess`` is the value that
 proves it: it is opaque AND curated, so it counts in the headline, while
-``external_potential``, ``command_launch``, ``net_listen`` and ``db_compose``
-are disclosed and excluded. An axis query would have to special-case exactly one value, which is
+``external_potential``, ``command_launch``, ``net_listen``, ``db_compose`` and
+``ipc_listen`` are disclosed and excluded. An axis query would have to special-case exactly one value, which is
 the shape ADR-0024's fold-residue discipline says to put on the spec instead.
 
 KNOWN GAP, stated rather than left for the next reader to rediscover
 ------------------------------------------------------------------
-ADR-0016's "controlled vocabulary" table documents TEN of these twenty-one.
+ADR-0016's "controlled vocabulary" table documents TEN of these twenty-two.
    ``env_write``, ``db_read``, ``db_write``, ``process_send``, ``logging``,
    ``browser_storage_read``, ``browser_storage_write``, ``net_listen``,
-   ``db_compose``, ``external_potential`` and ``command_launch`` are absent
-   from it. The
+   ``db_compose``, ``ipc_listen``, ``external_potential`` and
+   ``command_launch`` are absent from it. The
    vocabulary grew and its documentation did not, which is the drift INV-tafig
    describes; the descriptions below are sourced from the shipped catalogue
    rows and the consumer code, not from that table.
@@ -422,6 +422,31 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
             "declared SIMULTANEOUS with env_read, so they mint host_secret as "
             "well; by declaration order env_read is their scalar "
             "io_boundary."
+        ),
+    ),
+    # ------------------------------------------------------------------
+    # AXIS_DEFERRED_CROSSING again, last of all so first-declared-wins leaves
+    # every existing row alone (WI-gaziv).
+    # ------------------------------------------------------------------
+    IoBoundarySpec(
+        name="ipc_listen",
+        axis=AXIS_DEFERRED_CROSSING,
+        direction=DIRECTION_INBOUND,
+        catalog_declarable=True,
+        counts_in_headline=False,
+        description=(
+            "Bind or serve a LOCAL IPC listener -- a Unix-domain socket "
+            "server: the call ARRANGES inbound data from another local "
+            "process to arrive somewhere it does not name, and returns no "
+            "such data itself. net_listen's local-IPC twin, split by MEDIUM "
+            "(ADR-0050 section 1; owner ruling 2026-10-26): a Unix socket is "
+            "not network ingress. DISCLOSED, NEVER MINTED, and it shadows "
+            "ipc_recv for net_listen's reason. A call that may bind either "
+            "medium (socket.socket.bind, Go net.Listen with a network "
+            "argument) stays net_listen until a call-site stamp can tell "
+            "them apart; and the receive half of a Unix server may itself be "
+            "rowed net_recv where TCP and Unix share it "
+            "(asyncio.StreamReader.read)."
         ),
     ),
     # ------------------------------------------------------------------
