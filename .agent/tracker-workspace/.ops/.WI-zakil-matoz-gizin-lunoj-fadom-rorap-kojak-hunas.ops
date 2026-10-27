@@ -41,3 +41,10 @@
   clock: 4  # 5bdf
   nonce: 5bdf  # 5bdf
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Two audits bear on this. (1) WI-ziruv (falsify each declared axis's rule on real output): the choice-shaped-source rule (the value is chosen by the far side; untrusted_input) is testable as 'every caveated row's source label is untrusted_input', and part 3 is its counterexample. (2) CHOICE_SHAPED_SOURCE_NAMES is a hand-written subset that missed WI-dozul's re-label, a named instance in WI-kosup section D. Neither blocks this item."  # 5bdf
+- op: discuss  # d16d
+  at: '2026-10-27T09:37:02Z'  # d16d
+  by: agent  # d16d
+  actor: jgstern_agent  # d16d
+  clock: 5  # d16d
+  nonce: d16d  # d16d
+  message: "2026-10-27: a production-path closure test exists (WI-ziruv, PR #1902): packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestChoiceShapedSource::test_the_caveat_is_only_on_an_untrusted_input_claim (strict xfail, part 3). It XPASSes when this item is fixed; remove the mark in the fix PR."  # d16d

@@ -32,3 +32,10 @@
   clock: 3  # 0904
   nonce: '0904'  # 0904
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0027 row: surveying every language's fixtures and asserting no axis_conformance error in the validation report would fail on pony's 'actor' and 'primitive'. It ships as a strict xfail naming this item. The registry's static drift linter cannot see this emit (computed by node.type.replace)."  # 0904
+- op: discuss  # 6dba
+  at: '2026-10-27T09:37:01Z'  # 6dba
+  by: agent  # 6dba
+  actor: jgstern_agent  # 6dba
+  clock: 4  # 6dba
+  nonce: 6dba  # 6dba
+  message: "2026-10-27: a production-path closure test exists (WI-ziruv, PR #1902): packages/hypergumbo-lang-extended1/tests/test_axiom_falsification_extended1.py::test_every_emitted_kind_is_a_language_construct[pony] (strict xfail). It XPASSes when this item is fixed; remove the mark in the fix PR."  # 6dba

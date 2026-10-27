@@ -35,3 +35,10 @@
   clock: 3  # a51a
   nonce: a51a  # a51a
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0061 row: ruling 2 can be tested as a metamorphic property: adding a community file never moves any verdict toward clean. This item (community trust honoured) is its counterexample, and that test is a natural closure test."  # a51a
+- op: discuss  # a3a5
+  at: '2026-10-27T09:37:02Z'  # a3a5
+  by: agent  # a3a5
+  actor: jgstern_agent  # a3a5
+  clock: 4  # a3a5
+  nonce: a3a5  # a3a5
+  message: "2026-10-27: a production-path closure test exists (WI-ziruv, PR #1902): packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestCatalogueTiers::test_a_community_trusted_sink_does_not_make_the_verdict_cleaner (strict xfail; its control is test_control_a_vouched_trusted_sink_does_clear_the_flow). It XPASSes when this item is fixed; remove the mark in the fix PR."  # a3a5
