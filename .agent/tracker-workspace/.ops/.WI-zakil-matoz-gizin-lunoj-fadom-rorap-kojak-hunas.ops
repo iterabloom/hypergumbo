@@ -48,3 +48,10 @@
   clock: 5  # d16d
   nonce: d16d  # d16d
   message: "2026-10-27: a production-path closure test exists (WI-ziruv, PR #1902): packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestChoiceShapedSource::test_the_caveat_is_only_on_an_untrusted_input_claim (strict xfail, part 3). It XPASSes when this item is fixed; remove the mark in the fix PR."  # d16d
+- op: discuss  # 093e
+  at: '2026-10-27T20:37:29Z'  # 093e
+  by: agent  # 093e
+  actor: jgstern_agent  # 093e
+  clock: 6  # 093e
+  nonce: 093e  # 093e
+  message: "2026-10-27: part 2 now has its own production-path closure test, shared with WI-kufos (2): packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestCollapsedRowIsItsGroup::test_the_choice_caveat_does_not_depend_on_the_witness (strict xfail, PR #1905)."  # 093e
