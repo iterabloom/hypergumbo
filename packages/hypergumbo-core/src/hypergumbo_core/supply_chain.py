@@ -1,15 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Supply chain classification for code analysis.
 
-Classifies files into tiers based on their position in the project's
-dependency graph. This enables focused analysis (first-party code
-prioritized) and noise reduction (derived artifacts excluded).
+Classifies nodes into tiers by the supply-chain distance, from the project,
+of the code each stands for -- the project being every package whose source
+is in the analysed tree (ADR-0041 §1). This enables focused analysis
+(first-party code prioritized) and noise reduction (derived artifacts
+excluded).
 
 Tiers
 -----
-- FIRST_PARTY (1): Project's own source code (highest priority)
-- INTERNAL_DEP (2): Org-internal dependency packages (``internal_package_roots``
-  when a caller passes a ``SupplyChainConfig`` — see "Configuration" below)
+- FIRST_PARTY (1): The project's own code, workspace siblings included
+  (highest priority)
+- INTERNAL_DEP (2): Org-internal code that is not part of the project
+  (``internal_package_roots`` when a caller passes a ``SupplyChainConfig`` —
+  see "Configuration" below; no CLI path does)
 - EXTERNAL_DEP (3): Third-party dependencies in readable form
 - DERIVED (4): Build artifacts, transpiled/bundled output (skip analysis)
 
@@ -149,7 +153,9 @@ from typing import Any, Callable, Container, Iterable, Iterator, Optional
 
 
 class Tier(IntEnum):
-    """Supply chain position, lower = higher priority."""
+    """Supply-chain distance, from the project, of the code a node stands for;
+    lower = closer = higher priority (ADR-0041 §1). Tiers 1-3 are distances;
+    DERIVED (4) is the derived-artifact exception."""
 
     FIRST_PARTY = 1
     INTERNAL_DEP = 2
@@ -174,7 +180,7 @@ class DependencyManifest:
     (``classify_import`` is now constant ``EXTERNAL_DEP``). The direct/transitive
     declaration relationship the old mapping burned into tier 2 is exposed by
     ``classify_directness`` and recorded on the ``directness`` meta key instead.
-    Tier 2 (``internal_dep``) is reserved for workspace/org-internal packages,
+    Tier 2 (``internal_dep``) is org-internal code outside the project,
     assigned by file classification — never by this manifest classifier.
     """
 
@@ -198,8 +204,9 @@ class DependencyManifest:
         ADR-0041 §1: tier names supply-chain distance and nothing else, so
         every third-party / external import — direct, transitive, stdlib, or
         unknown alike — is :data:`Tier.EXTERNAL_DEP` (3). Boundary nodes are
-        external by construction; first-party (tier 1) and workspace-internal
-        (tier 2) code is assigned by file classification, not here.
+        external by construction; first-party code (tier 1, workspace
+        siblings included) and org-internal code (tier 2) are assigned by file
+        classification, not here.
 
         The direct/transitive/undeclared *declaration relationship* this method
         used to fold into tier 2 now lives on :meth:`classify_directness`.

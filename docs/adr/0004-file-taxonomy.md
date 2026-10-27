@@ -61,7 +61,7 @@ Unchanged from the existing supply chain model:
 class Tier(IntEnum):
     """Where does this file come from?"""
     FIRST_PARTY = 1   # Project's own code
-    INTERNAL_DEP = 2  # Internal libraries, examples
+    INTERNAL_DEP = 2  # Org-internal code outside the project (ADR-0041 §1)
     EXTERNAL_DEP = 3  # Third-party dependencies
     DERIVED = 4       # Build artifacts, generated output
 ```

@@ -79,7 +79,7 @@
               "own_files": {
                 "type": "integer",
                 "minimum": 0,
-                "description": "How many of `files` are the project's own code: supply-chain tier 1-2 by path (supply_chain.tier_by_path; no file read). Committed vendored and derived files are still analysed but leave this count, and the sketch's language line and totals read it (WI-kojul, ADR-0004 point 3a). Omitted when not measured; absent is not 0."
+                "description": "How many of `files` are the project's own code: supply-chain not tier 3 or 4 by path (supply_chain.tier_by_path; no file read). Committed vendored and derived files are still analysed but leave this count, and the sketch's language line and totals read it (WI-kojul, ADR-0004 point 3a). Omitted when not measured; absent is not 0."
               },
               "own_loc": {
                 "type": "integer",

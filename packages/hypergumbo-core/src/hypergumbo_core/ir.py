@@ -614,8 +614,11 @@ class Symbol:
             synthetic spans. Producer: fingerprint.py.
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict for language-specific information
-        supply_chain_tier: Position in dependency graph (1=first_party, 2=internal_dep,
-            3=external_dep, 4=derived). See §14 of spec.
+        supply_chain_tier: Supply-chain distance, from the project, of the code
+            this node stands for (1=first_party, 2=internal_dep, 3=external_dep,
+            4=derived); a dependency declaration stands for the package it
+            names, a boundary stub for the code it replaces. ADR-0041 §1,
+            spec §14.
         supply_chain_reason: Why this tier was assigned (e.g., "matches ^src/")
         supply_chain_classified: Whether a producer or the annotator has
             assigned the tier (WI-lidig). The annotator classifies every node
