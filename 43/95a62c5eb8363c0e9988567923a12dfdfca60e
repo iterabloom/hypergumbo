@@ -1,0 +1,60 @@
+Original commit body from 3a005ae0f1fe91e642dc2ca7776bcdb4e0b6d13f:
+
+The pass-silence axis exists to separate three states -- A ran and there
+was nothing to find, B ran and could not find what was there, C did not
+really run -- but the classification lived only in pass_silence.py's
+docstring, and two consumers each partitioned the vocabulary by hand:
+
+* prerequisite_absent_clauses read a missing prerequisite as a toolchain
+  reason when its code was `!= no_candidate_files`, so no_candidate_construct
+  (State A) and any value added later read as State C;
+* ROUTINE_SILENCE_REASONS was a second hand-written subset, which disagreed
+  with the first on backend_disabled.
+
+SILENCE_REASON_SPECS now declares, per value, the states it is consistent
+with and whether the stderr summaries count it as routine. A value names a
+SET of states because the value is all a reader holds: dependency_unavailable
+and backend_disabled are C when the pass had files to read and A when it had
+none, and a skip record does not say which; candidates_unresolved is A or B;
+pass_crashed and unreported could be any; prerequisite_absent is C; the two
+no_candidate_* values are A. `routine` is declared rather than derived,
+because an opt-in backend left off may be State C and still asks nothing of
+anyone (WI-vadom, owner ruling 2026-10-15). SILENCE_REASONS and
+ROUTINE_SILENCE_REASONS are read off the specs, so a ninth value cannot be
+added without deciding both. silence_states() reads a spec; a string outside
+the vocabulary, "" included, is consistent with every state (cannot
+determine, never not applicable).
+
+prerequisite_absent_clauses now blocks on a literal whose states are not
+exactly {A}. ADR-0056 W3 and spec §9's silence_reason text state the rule
+that way; it is the ADR's own discriminator ("a FILE reason or a TOOLCHAIN
+reason") expressed over the states, and it differs from the old text only
+for no_candidate_construct.
+
+Trap (1) from the item: the skip host had two readers that disagreed about a
+record with no code (summarize_skip_reasons -> unreported, the linker
+dispatcher -> ""). skip_record_code() is now the one reader; the dispatcher
+uses it.
+
+Trap (2): prerequisite_absent_clauses' docstring said only linkers are
+unobservable and "a pass absent from this mapping ran"; it now also names
+out-of-taxonomy analyzers that ran over zero files (they land in
+analysis_runs) and says an absent pass reads as satisfied. It also says why
+dependency_unavailable blocks even when the pass had no files.
+
+Behaviour: none in this environment, by construction -- the skip host
+carries only no_candidate_files / dependency_unavailable / backend_disabled /
+pass_crashed / unreported today, all four producer sites write a code, and on
+those values the new rule decides as the old one did. Measured: `hypergumbo
+survey` on nest, dev baaa7decd3 vs this branch: all 82 analysis_runs
+silence reasons, all 84 skipped_passes codes and the stderr pass lines are
+identical.
+
+Tests: the spec covers SILENCE_REASONS exactly once each; every value's
+states; an unknown string and "" are consistent with every state; the
+routine set is read off the specs; a prerequisite missing for
+no_candidate_construct does not block (red under the old proxy); a value
+added later blocks; skip_record_code; run_all_linkers hands a codeless skip
+record to linkers as unreported (red under the old "" default).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
