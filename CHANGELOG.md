@@ -120,6 +120,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - catalogue tier rulings 1 and 2 (WI-dagun, WI-savoh);
   - the choice-shaped caveat on `gethostname` (WI-zakil).
 
+  The survey's recorded gaps are closed with more tests of the same kind:
+  - **One medium, one boundary, across catalogues.** 11 media with 99 members in 13 catalogues; 91 agree. The disagreements: c `printf` / `putchar` (WI-sofam), the javascript server launches (WI-vogos), and elixir's `IO` rows (WI-jofud).
+  - **An entrypoint's kind does not follow its detection route.** It holds for click vs `[project.scripts]`, a flask decorator vs `add_url_rule`, and a named vs inline express handler. A Flask application variable is a `main_function` entrypoint (WI-dofiz).
+  - **A collapsed taint row's caveats and verdict do not follow its witness.** Both WI-kufos shapes reproduce end to end.
+  - **ADR-0061 ruling 7:** one `taint_sinks.d/` file serves every repository.
+
 ### Documentation
 
 - **ADR-0041 §1's tier axiom names its reference frame** (owner ruling 2026-10-25): tier is the distance, from the project, of the code a node stands for, the project being every package whose source is in the analysed tree; a dependency declaration stands for the package it names and a boundary stub for the code it replaces, so nodes standing for one package carry one tier. Tier 2 is org-internal code outside the project; no CLI path sets its one producer (`internal_package_roots`, WI-jaloz), so spec §14 marks it 🟧 and says a CLI run emits no tier-2 node. Spec §14 and the `Tier`, `Symbol.supply_chain_tier` and `supply_chain` docstrings say the same; the spec no longer claims `directness` is stamped on declarations (INV-fuhin).

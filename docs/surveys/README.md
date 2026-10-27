@@ -35,7 +35,7 @@ Surveys are **not subject to the audit-findings property test** that enforces st
 |---|---|---|---|
 | [Symbol Emit-Site Coherence](symbol-emit-coherence.md) | 2026-05-30 | Mixed — D1 resolved, D2/D3 ongoing | PR #3984 (objc/ansible), PR #3986 (protobuf collapse), ADR-0031 (Symbol.language reshape) |
 | [Rust stdlib module I/O enumeration](rust-stdlib-module-io-enumeration.md) | 2026-08-27 | Complete — 20 granted, 13 refused, of 33 audited | WI-lutuh (grants), WI-dukom (probe fixes), WI-pavob (futex/clock rulings) |
-| [Axiom falsifiability](axiom-falsifiability.md) | 2026-10-27 | Complete. 19 axioms classified; new output tests for 9. New falsifications: WI-sukug, WI-gisip. Rulings requested: WI-mupal, WI-kuzoh. Found in passing: WI-fanad | WI-ziruv (tests); strict xfails for WI-higik, INV-fuhin, WI-dagun, WI-savoh, WI-zakil |
+| [Axiom falsifiability](axiom-falsifiability.md) | 2026-10-27 | Complete. 19 axioms classified; new output tests for 9. New falsifications: WI-sukug, WI-gisip. Rulings requested: WI-mupal, WI-kuzoh. Found in passing: WI-fanad. Recorded gaps closed: cross-catalogue medium check (WI-jofud filed), entrypoint kind (WI-dofiz filed), ADR-0061 ruling 7, WI-kufos fixtures | WI-ziruv (tests); strict xfails for WI-higik, INV-fuhin, WI-dagun, WI-savoh, WI-zakil, WI-kufos, WI-sofam, WI-vogos |
 | [`call_construct` value family](call-construct-value-family-audit.md) | 2026-09-10 | Complete — 10 CANONICAL, 2 DEPRECATE-NO-FOLD, 1 silent bug, 1 axiom amendment | WI-dapap (axiom + gate + allowlist + 2 drops), WI-mujug (sibling fold-residue keys) |
 
 ## Related
