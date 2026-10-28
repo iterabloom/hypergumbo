@@ -1,0 +1,15 @@
+Original commit body from d301c5b04ed35c280d74fd71a82531e846ab63e1:
+
+At the owner's request, the Unreleased section goes from 1,612 words
+(16.6 per commit over the 97 non-tracker commits since v9.2.0) to 897
+(9.2 per commit), in line with 9.2.0 (10.2) and 9.1.0 (9.2).
+
+Each entry states its effect in one sentence. What is kept: every ADR
+reference, version transition (stable_id_scheme v9 -> v13, SCHEMA_VERSION
+0.20.15 -> 0.21.0, io-boundaries 2.4 -> 2.5), the one consumer action
+(expand a module-set handle before splitting on commas), and one
+measurement per large fix (apollo-server, django, nest). Fixed's eleven
+subsections are folded into seven. No entry is dropped, and no released
+section is touched.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
