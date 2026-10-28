@@ -47,9 +47,7 @@ def test_the_checker_reports_a_kind_off_the_language_construct_section() -> None
 
 
 @pytest.mark.parametrize("language", [
-    pytest.param("pony", marks=pytest.mark.xfail(
-        strict=True, reason="WI-higik: pony emits unregistered kinds 'actor' and 'primitive'")),
-    "zig", "nim", "gleam",
+    "pony", "zig", "nim", "gleam",
 ])
 def test_every_emitted_kind_is_a_language_construct(tmp_path: Path, language: str) -> None:
     for rel, text in _FIXTURES[language].items():
@@ -61,3 +59,20 @@ def test_every_emitted_kind_is_a_language_construct(tmp_path: Path, language: st
     nodes = json.loads(out.read_text())["nodes"]
     assert _REACHED[language] in {n["kind"] for n in nodes}  # reach
     assert off_axis_kinds(nodes) == set()
+
+
+def test_a_pony_actor_and_primitive_own_their_members(tmp_path: Path) -> None:
+    """WI-higik / WI-totam: a registered type kind is a container, so the
+    containment linker roots an actor's behaviour and a primitive's function
+    under them (they used to root under the file)."""
+    (tmp_path / "main.pony").write_text(
+        "actor Main\n  new create(env: Env) =>\n    None\n\n  be ping() =>\n    None\n\n"
+        "primitive Helper\n  fun twice(x: U32): U32 => x * 2\n"
+    )
+    out = tmp_path / "map.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+    data = json.loads(out.read_text())
+    nodes = {n["id"]: n for n in data["nodes"]}
+    owned = {(nodes[e["src"]]["kind"], nodes[e["dst"]]["name"])
+             for e in data["edges"] if e["type"] == "contains" and e["dst"] in nodes}
+    assert {("actor", "Main.ping"), ("primitive", "Helper.twice")} <= owned

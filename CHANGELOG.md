@@ -51,6 +51,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A Python local named like a field no longer retypes `self.<field>`.**
 - **Kotlin and Scala receivers with a bare `java.lang` type name `java.lang`**, so `verify-claims` sees the launch.
 - **New symbols**: Swift initialisers and deinitialisers, Rust `type` aliases, and Dockerfile variables per build stage. Python class-body calls emit edges.
+- **Pony's `actor` and `primitive` kinds are registered** and own their members; the validator flagged both on every Pony run. No id changes.
+- **A slice entering a Kotlin/Scala `object`, a `record`, a `union` or a go `type` reaches its members**: slice and the containment linker read one registry-derived container set.
 
 #### I/O boundaries and taint
 

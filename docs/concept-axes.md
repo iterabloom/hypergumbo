@@ -113,6 +113,7 @@ eight clusters; this section lays out the three axes (Cluster A on
 Values that name the source-language syntactic construct the symbol represents. Per ADR-0027, this is the only axis a new `Symbol.kind` value should occupy.
 
 - **`abstract`** — Abstract class / member declaration.
+- **`actor`** — Actor declaration (Pony): a type whose behaviours run asynchronously on its own message queue.
 - **`addtask`** — BitBake addtask symbol. CANONICAL per audit-findings 0006.
 - **`alias`** — Generic alias declaration.
 - **`architecture`** — Architecture symbol (VHDL). CANONICAL per audit-findings 0007.
@@ -202,6 +203,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`plot`** — Plot symbol (notebook / R). CANONICAL per audit-findings 0007.
 - **`port`** — Port symbol (k8s / VHDL). CANONICAL per audit-findings 0007.
 - **`prefix`** — Prefix symbol (URI / namespace). CANONICAL per audit-findings 0007.
+- **`primitive`** — Primitive declaration (Pony): a type with no fields and one instance.
 - **`procedure`** — Procedure declaration (Pascal / Ada / SQL).
 - **`program`** — Program declaration (Fortran `PROGRAM`, COBOL `PROGRAM-ID`, Pascal `program`). CANONICAL per audit-findings 0005.
 - **`project`** — Project declaration (Meson `project()`, .csproj root, etc.). CANONICAL per audit-findings 0005.

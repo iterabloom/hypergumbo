@@ -249,7 +249,6 @@
     "source_statement",
     "sql_foreign_key",
     "stack_construction",
-    "static",
     "struct_field_reference",
     "subdir_include",
     "topic_match",

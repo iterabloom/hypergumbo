@@ -702,6 +702,8 @@
             "call_site": "language_construct",
             "arrow_function": "language_construct",
             "object": "language_construct",
+            "actor": "language_construct",
+            "primitive": "language_construct",
             "prop": "language_construct",
             "slot": "language_construct",
             "template": "language_construct",

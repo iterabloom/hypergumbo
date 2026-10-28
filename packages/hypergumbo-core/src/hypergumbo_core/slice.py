@@ -140,6 +140,7 @@ from .construction import initializer_hops
 from .ir import Symbol, Edge
 from .paths import normalize_path, path_ends_with, is_test_node, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
+from .symbol_kinds import container_kind_names
 
 # Structural edges excluded from forward slice BFS traversal.
 # These cause BFS explosion through shared ancestors or containment:
@@ -617,25 +618,12 @@ def slice_graph(
     # When reverse-slicing from a class/interface, we also want to find callers of
     # its methods, not just edges pointing directly to the class node.
     #
-    # ADR-0027 Phase-2 audit (WI-jukav): every member is AXIS_LANGUAGE_CONSTRUCT
-    # (Cluster A) and stable across Phase 3. Intentionally narrower than
-    # ``linkers.containment.CONTAINER_KINDS`` (which adds ``message`` for proto
-    # IDL nesting, plus the ``contract``/``library``/``type``/``object``/
-    # ``union``/``instance`` language-construct kinds) — slice expansion targets
-    # ``contains`` edges from OOP-style containers, not IDL nesting nodes.
-    # Forward-compatible. (This comment also named ``service``; that was a
-    # pre-ADR-0027-fold fossil — no producer emits ``kind="service"``.)
-    # INV-hojus: ``file`` is the canonical "this file" Symbol (orchestrator
-    # synthesis + py.py for Python's executable-code files); include it so
-    # slice traversal can expand from a file node into its top-level members.
-    # WI-duguk: `protocol` (Swift, Objective-C) belongs here for the same
-    # reason `interface` does — reverse-slicing from a protocol should reach
-    # the callers of its requirements. Its absence meant a protocol entry was
-    # never expanded even once the containment linker rooted its members.
-    _CONTAINER_KINDS = {
-        "class", "interface", "module", "struct", "trait", "enum", "protocol",
-        "file",
-    }
+    # WI-totam: the SAME set the containment linker roots members under
+    # (``symbol_kinds.container_kind_names``), so every kind that owns members
+    # expands to them. A hand-written copy here lacked ``object``
+    # (Kotlin/Scala), ``contract``, ``record``, ``union``, go ``type`` and
+    # pony's ``actor``, and a slice entering one returned only itself.
+    _CONTAINER_KINDS = container_kind_names()
 
     # Initialize with entry nodes
     for entry in entry_nodes:
