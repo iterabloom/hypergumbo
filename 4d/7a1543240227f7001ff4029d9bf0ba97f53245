@@ -1,0 +1,26 @@
+Original commit body from be59b990fd9fbe7f54a55717415a90f2587922e3:
+
+A run printed "all 1 CONFIRMED (of 1 claim(s))" (the claim holds: no
+flow found) and then "§3a walk verdicts for those findings: confirmed 3"
+(a secret reached a sink): one word for opposite facts. Owner ruling
+2026-10-25: do the full rename.
+
+WALK_VERDICT_CONFIRMED / WALK_VERDICT_UNCONFIRMED ("confirmed" /
+"unconfirmed") are WALK_VERDICT_REACHED / WALK_VERDICT_REFUTED
+("reached" / "refuted"), in every evidence row's walk_verdict /
+walk_verdict_values and the dataflow_coverage.walk_verdicts keys.
+"refuted" matches the existing refuted_flows key. The verify-claims
+envelope goes 2.6 -> 3.0, breaking under the module's own version
+policy, as 2.0 was. The spec, VERIFY-CLAIMS-SCOPE.md, ADR-0017 and
+ADR-0052 use the new names; measurement write-ups keep the names their
+runs printed. The spec's io-boundaries version line (2.4) is corrected
+to 2.5.
+
+No reader to keep compatible: nothing in the tree deserialises a
+TaintFlowFinding or reads walk_verdict out of a cached artifact
+(bakeoff-deep reads claim verdicts only; the measure-* scripts pass
+walk_verdict through as a key).
+
+Addresses WI-bujum.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
