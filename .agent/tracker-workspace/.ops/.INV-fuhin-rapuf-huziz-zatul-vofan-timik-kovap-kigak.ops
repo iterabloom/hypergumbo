@@ -64,3 +64,18 @@
   clock: 7  # e457
   nonce: e457  # e457
   message: "2026-10-27: a production-path closure test exists (WI-ziruv, PR #1902): packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestDirectnessAndEcosystem::test_a_dependency_declaration_carries_both_stamps (strict xfail; checks directness and ecosystem). It XPASSes when this item is fixed; remove the mark in the fix PR."  # e457
+- op: update  # 1da8
+  at: '2026-10-28T10:50:48Z'  # 1da8
+  by: agent  # 1da8
+  actor: jgstern_agent  # 1da8
+  clock: 8  # 1da8
+  nonce: 1da8  # 1da8
+  set:  # 1da8
+    status: satisfied  # 1da8
+- op: discuss  # 55ad
+  at: '2026-10-28T10:50:49Z'  # 55ad
+  by: agent  # 55ad
+  actor: jgstern_agent  # 55ad
+  clock: 9  # 55ad
+  nonce: 55ad  # 55ad
+  message: "Fixed in PR #1918 (3c53837bb5). cli._classify_symbols stamps an EXTERNAL kind=dependency declaration with meta.directness='direct' and meta.ecosystem from supply_chain.declaration_ecosystem ('third_party'; 'stdlib' for composer platform requirements php/ext-*/lib-*/composer-*). An in-tree sibling's declaration (INV-kutub, tier 1) gets neither. Producers checked: toml_config (pyproject, Cargo), xml_config (Maven), json_config (package.json, composer.json); all read manifests, not lockfiles, so 'direct' is right. Behavioural evidence: test_axiom_falsification.py::TestDirectnessAndEcosystem::test_a_dependency_declaration_carries_both_stamps (python project declaring requests: the declaration carries both stamps and supply_chain_summary.external_dep has no 'unknown' under directness or ecosystem) was a strict xfail and passes unmarked; core test_dependency_declaration_stamps.py surveys composer (php -> direct/stdlib, monolog/monolog -> direct/third_party), pyproject requests -> direct/third_party, and an in-tree sibling -> (None, None). Registry text (axis_meta_keys directness/ecosystem) and spec §14 now say declarations are stamped. Statement holds for declarations; NOT asserted: the js_module package stand-ins and the Cargo/ruby/php boundary nodes that still count under 'unknown' (WI-hajag, WI-tikar)."  # 55ad

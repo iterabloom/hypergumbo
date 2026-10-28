@@ -56,3 +56,18 @@
   clock: 6  # 723e
   nonce: 723e  # 723e
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Named instance in WI-kosup section C: the INV-pitab warning is written to an AnalysisRun that collect_analyzer_result then drops. run.warnings is read elsewhere, so a per-field reader count misses this. WI-kosup now records writes to discarded objects."  # 723e
+- op: update  # 87c1
+  at: '2026-10-28T10:50:49Z'  # 87c1
+  by: agent  # 87c1
+  actor: jgstern_agent  # 87c1
+  clock: 7  # 87c1
+  nonce: 87c1  # 87c1
+  set:  # 87c1
+    status: done  # 87c1
+- op: discuss  # 0e22
+  at: '2026-10-28T10:50:49Z'  # 0e22
+  by: agent  # 0e22
+  actor: jgstern_agent  # 0e22
+  clock: 8  # 0e22
+  nonce: '0e22'  # 0e22
+  message: "Done in PR #1918 (3c53837bb5). (1) The INV-pitab run.warnings append on the grammar-unavailable path is removed: collect_analyzer_result discards a skipped pass's AnalysisRun (only an unskipped run is appended), so the write reached no consumer; WI-mamiv settled that the record stays discarded. (2) pass_silence.py and ADR-0056 no longer say there is 'no carrier in existence to stamp': the run exists and is discarded BY POLICY, with the reason. (3) The shared TreeSitterAnalyzer warning names the distribution to install (grammar_distribution, WI-pakof: tree-sitter-<lang> or tree-sitter-language-pack) instead of 'the required tree-sitter grammar package'. Behavioural evidence: test_tree_sitter_analyzer.py::test_the_grammar_unavailable_warning_names_what_to_install (pytest.warns match 'Install <distribution>', run.warnings == []) and the generic-advice fallback test. The zero-file-language caveat from the re-check does not arise on this path: WI-jadig's file-presence pre-filter short-circuits an analyzer whose languages have no files before it asks for a grammar. NOT done: the 58 analyzer-specific copies of the grammar-unavailable message, which are WI-bagor's retrofit of skipped_passes[].reason."  # 0e22
