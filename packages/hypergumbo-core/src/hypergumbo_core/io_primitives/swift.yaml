@@ -159,10 +159,13 @@ db_write:
 
 subprocess:
   - module: Process
+    functions:
+      - launchedProcess
+    notes: "WI-ziviv: the class-method launcher Process.launchedProcess(launchPath:arguments:), function-kind; see the row below."
+  - module: Process
     methods:
       - run
       - launch
-      - launchedProcess
     notes: >-
       Foundation.Process. The members that START the child (INV-vamif): run()
       and its class form Process.run(_:arguments:terminationHandler:) share
@@ -173,8 +176,8 @@ subprocess:
 
 env_read:
   - module: ProcessInfo
-    methods: [processInfo]
-    notes: "ProcessInfo.processInfo access (environment, processName, etc.)"
+    attributes: [processInfo]
+    notes: "ProcessInfo.processInfo access (environment, processName, etc.). WI-ziviv: a static property READ, attribute-kind (ADR-0059), as CommandLine.arguments is."
   - module: CommandLine
     attributes: [arguments]
     notes: >-
@@ -191,8 +194,9 @@ env_read:
 # host-secret-* claim count description reads as secret flows.
 host_info_read:
   - module: Date
-    methods: [now]
+    attributes: [now]
     notes: >-
+      WI-ziviv: `Date.now` is a static property READ, attribute-kind (ADR-0059).
       WI-tubij: a clock read is host_info_read in EVERY catalogued language
       (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
       Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
@@ -202,7 +206,8 @@ host_info_read:
   - module: ProcessInfo
     methods: [systemUptime]
   - module: DispatchTime
-    methods: [now]
+    functions: [now]
+    notes: "WI-ziviv: `DispatchTime.now()` is a static func, function-kind; `now` is ambiguous_names, so a bare now() never matches it."
   - module: Bundle
     methods: [bundleIdentifier, infoDictionary]
     notes: "App bundle metadata"
@@ -264,6 +269,7 @@ process_send:
 # non-IO contexts (e.g., Data() for empty data, String interpolation,
 # save() on custom types, write() on custom protocols).
 ambiguous_names:
+  - now         # DispatchTime.now (function-kind, WI-ziviv) vs any bare now()
   - write
   - read
   - run

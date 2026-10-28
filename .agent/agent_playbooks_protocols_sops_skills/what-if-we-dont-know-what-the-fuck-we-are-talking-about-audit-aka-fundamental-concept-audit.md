@@ -1134,6 +1134,23 @@ runs can find prior work:
 
 (Future audits append here.)
 
+- **2026-10-28 — reader census (`reader-census`, WI-kosup).** Trigger: the
+  input filed after audit #19, scope widened by the owner on 10-25. Method:
+  six read-only sub-agents on one pinned worktree (02a25bba56), one per scope
+  (fields, meta keys, knobs and catalogue keys, functions, vocabulary subsets,
+  keep-with-trigger verdicts), AST walks over the six emit/read shapes, each
+  reader classified display / presence / branch; the orchestrator re-checked
+  the highest-impact claims. **Confirmed in all six scopes**: 9 fields to
+  delete and 4 to wire, 115 registered meta keys with no production reader,
+  6 readers keyed to keys or values nothing writes (the worst a hand-written
+  framework_role subset that misses the IPC linkers' f-string values), 5
+  catalogue loaders that ignore unknown keys, 269 unchecked vocabulary subsets,
+  and 44 keep-with-trigger verdicts of which 9 had fired with nobody acting
+  and none is evaluated by anything. Write-up `docs/audits/0023-reader-census.md`;
+  14 action items and 4 named decisions. The lesson worth carrying: the
+  sweep's first live finding was the orchestrator's own merge of the same
+  day -- a guard function added as test-only, which the test-only ratchet
+  would have flagged on the next full suite.
 - **2026-10-22 — vocabulary since the last audit (`vocabulary-since-0923`).**
   Trigger: cadence (683 commits against a threshold of 72). Owner-requested,
   pinned to merged dev `e9215548f6` so in-flight work could proceed, with

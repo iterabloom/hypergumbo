@@ -6827,11 +6827,17 @@ def _sink_zone_gaps(
 ) -> dict[tuple[str, str], Any]:
     """What each taint claim's sink zone cannot see, per language (INV-pivam).
 
-    Only ADR-0060's zones are judged this way. An I/O-derived zone's sinks come
-    from the same catalogue whose presence the no-catalogue gate already checks
-    per language; a non-boundary zone can be empty for a language whose
-    catalogue is otherwise full (Go has no ``code_execution`` sink), which that
-    gate cannot see.
+    EVERY BUILT-IN ZONE is judged this way (WI-sojok): ADR-0060's and every
+    I/O-derived one (``taint.builtin_sink_zones``). The no-catalogue gate asks
+    whether a language has a taint catalogue at all, not whether it has a sink
+    in THIS claim's zone, and any zone can be empty for a language whose
+    catalogue is otherwise full: Go has no ``code_execution`` sink and no
+    ``database`` sink, so "untrusted input never reaches a database" read
+    ``confirmed`` on a Go repo calling ``db.Exec``. A zone a language can never
+    have (``browser_storage`` outside JS) withholds too, as ``code_execution``
+    always did: the tool cannot tell "no such sink exists" from "no row
+    names it". A zone only a project catalogue declares is not judged: its
+    sinks are where the project put them.
 
     ``present_languages`` are the taint-supported languages with production
     source in the repo (the census that decides support), narrowed to the
@@ -6841,14 +6847,15 @@ def _sink_zone_gaps(
     the case this gate exists for. A language with no taint catalogue is the
     blindness gate's to report.
     """
-    from .taint import shipped_non_boundary_sink_zones
+    from .taint import builtin_sink_zones, shipped_non_boundary_sink_zones
     from .verify_claims import SinkZoneGap
 
     zones = shipped_non_boundary_sink_zones()
+    judged = builtin_sink_zones()
     gaps: dict[tuple[str, str], Any] = {}
     for claim in claims:
         tf = claim.constraint_taint_flow
-        if tf is None or tf.prohibited_sink_zone not in zones:
+        if tf is None or tf.prohibited_sink_zone not in judged:
             continue
         key = (tf.source_taint, tf.prohibited_sink_zone)
         if key in gaps:
@@ -6862,7 +6869,7 @@ def _sink_zone_gaps(
             if not any(s.zone == zone for s in taint_catalog.sinks_for_language(lang))
         )
         unreached = tuple(sorted(
-            (lang, shapes) for lang, shapes in zones[zone].items()
+            (lang, shapes) for lang, shapes in zones.get(zone, {}).items()
             if lang in present and lang not in uncovered
         ))
         if uncovered or unreached:

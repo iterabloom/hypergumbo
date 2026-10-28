@@ -107,8 +107,14 @@ class TestTheVerdict:
     def test_it_is_no_longer_an_untyped_receiver(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """The println is a logging finding, not an ipc one, and not an untyped
+        receiver. The ipc claim is withheld for a DIFFERENT reason since
+        WI-sojok: java has no sink in the ipc zone at all, which the per-zone
+        gate now says instead of reading confirmed."""
         v = _verdicts(tmp_path, monkeypatch, _java(tmp_path, "        System.out.println(k);\n"))
-        assert v["HS-IPC"]["verdict"] == "confirmed", v["HS-IPC"]["details"]
+        assert v["HS-IPC"]["verdict"] == "inconclusive", v["HS-IPC"]["details"]
+        assert "java has no sink in the 'ipc' zone" in v["HS-IPC"]["details"]
+        assert not v["HS-IPC"]["evidence"]
         assert not any(c["kind"] == "unknown_receiver_scope" for c in v["HS-IPC"]["caveats"])
 
     def test_printf_on_err_is_a_logging_finding(

@@ -84,6 +84,7 @@ write an ADR vs an audit-findings document."
 | [0020](0020-recovery-linker-supersession-precision.md) | Which recovery passes may demote the stub they consumed (ADR-0057 §14.1) | linker supersession grant (sibling format, `kind: linker_supersession_precision`) | GRANTED / REFUSED, per pass |
 | [0021](0021-logging-family.md) | The `logging` family — is a standard-stream write `logging` or `ipc_send`? | io-boundary membership (sibling format, `kind: io_boundary_membership`) | `logging` / `ipc_send` CANONICAL, redefined by medium; 7 rows moved |
 | [0022](0022-inv-nular-remainder-sweep-tranche-3.md) | INV-nular remainder sweep, tranche 3 — catalogue rows checked against source | io-boundary row candidates (sibling format, `kind: io_boundary_row_candidates`) | Candidate list: tranche 3 6 ACCEPT / 3 HOLD; prior backlog 13 ACCEPT / 7 HOLD; no rows moved |
+| [0023](0023-reader-census.md) | Reader census — write-only fields, keys, knobs and functions; producerless readers; vocabulary subsets; keep-with-trigger verdicts (WI-kosup) | reader census (sibling format, `kind: reader_census`) | Confirmed: 14 action items filed, 4 named decisions recorded |
 
 ## Sibling formats
 
@@ -117,6 +118,13 @@ Siblings:
   HOLD), with the rejected flags tabulated. Nothing moves in the document;
   each ACCEPT becomes its own fix item and pays ADR-0049 ruling 3 there.
   First instance: `0022`.
+- **`kind: reader_census`** — a census of what NOTHING READS and what
+  nothing PRODUCES (fields, meta keys, knobs, functions, consumer-side
+  vocabulary subsets, keep-with-trigger verdicts), with one verdict per
+  non-OK item (DELETE / WIRE / DECLARE EXTERNAL / KEEP WITH A TRIGGER THAT
+  CAN FIRE). The document is the verdict summary; the per-item rows and
+  scripts live in the lab notebook, and every action names a tracker item.
+  First instance: `0023`.
 
 ## File format
 

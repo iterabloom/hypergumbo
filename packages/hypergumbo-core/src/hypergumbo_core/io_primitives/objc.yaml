@@ -26,6 +26,7 @@ ambiguous_names:
   - send          # NSURLSession send vs any send
   - start         # NSURLSessionTask start vs any start
   - data          # NSData.data vs any .data property
+  - date          # NSDate.date (function-kind, WI-ziviv) vs any bare date()
   - run           # NSRunLoop.run vs any run
   - get           # NSURLSession GET vs NSDictionary.objectForKey
   - delete        # NSFileManager delete vs any delete
@@ -50,31 +51,46 @@ fs_read:
       - "contentsEqualAtPath:andPath:"
       - "destinationOfSymbolicLinkAtPath:error:"
   - module: NSData
-    methods:
+    functions:
       - "dataWithContentsOfFile:"
       - "dataWithContentsOfFile:options:error:"
       - "dataWithContentsOfURL:"
       - "dataWithContentsOfURL:options:error:"
+    notes: >-
+      WI-ziviv (ADR-0059 axiom): CLASS methods -- `[NSData dataWith...]` is sent to
+      the class, so the row is function-kind, as `module.name(...)` reads. The
+      instance forms below stay methods.
+  - module: NSData
+    methods:
       - "initWithContentsOfFile:"
       - "initWithContentsOfURL:"
     notes: "NSData file/URL constructors cross I/O boundary"
   - module: NSString
-    methods:
+    functions:
       - "stringWithContentsOfFile:encoding:error:"
       - "stringWithContentsOfURL:encoding:error:"
+    notes: "WI-ziviv: class methods, function-kind (see NSData)."
+  - module: NSString
+    methods:
       - "initWithContentsOfFile:encoding:error:"
       - "initWithContentsOfURL:encoding:error:"
   - module: NSFileHandle
-    methods:
+    functions:
       - "fileHandleForReadingAtPath:"
       - "fileHandleForReadingFromURL:error:"
+    notes: "WI-ziviv: class methods, function-kind (see NSData)."
+  - module: NSFileHandle
+    methods:
       - "readDataOfLength:"
       - readDataToEndOfFile
       - availableData
   - module: NSInputStream
-    methods:
+    functions:
       - "inputStreamWithFileAtPath:"
       - "inputStreamWithURL:"
+    notes: "WI-ziviv: class methods, function-kind (see NSData)."
+  - module: NSInputStream
+    methods:
       - "read:maxLength:"
   - module: NSBundle
     methods:
@@ -108,18 +124,24 @@ fs_write:
       - "writeToFile:atomically:encoding:error:"
       - "writeToURL:atomically:encoding:error:"
   - module: NSFileHandle
-    methods:
+    functions:
       - "fileHandleForWritingAtPath:"
       - "fileHandleForWritingToURL:error:"
       - "fileHandleForUpdatingAtPath:"
       - "fileHandleForUpdatingURL:error:"
+    notes: "WI-ziviv: class methods, function-kind (see NSData under fs_read)."
+  - module: NSFileHandle
+    methods:
       - "writeData:"
       - "truncateFileAtOffset:"
       - "seekToFileOffset:"
       - synchronizeFile
   - module: NSOutputStream
-    methods:
+    functions:
       - "outputStreamToFileAtPath:append:"
+    notes: "WI-ziviv: a class method, function-kind (see NSData under fs_read)."
+  - module: NSOutputStream
+    methods:
       - "write:maxLength:"
 
 net_send:
@@ -139,25 +161,26 @@ net_send:
   # must be spelled on every row for a primitive or the loader rejects the pair.
   - module: NSURLConnection
     simultaneous: true
-    methods:
+    functions:
       - "sendSynchronousRequest:returningResponse:error:"
       - "sendAsynchronousRequest:queue:completionHandler:"
-    notes: "Deprecated but still widely used in older codebases"
+    notes: "Deprecated but still widely used in older codebases. WI-ziviv: class methods, function-kind."
   # NOT simultaneous: these are declared under net_send ALONE, so there is no
   # second boundary for them to be simultaneous with. Kept in their own row
   # because a parity test rejects the flag on a single-boundary primitive —
   # it fired on this very row's first version, which grouped all four methods.
   - module: NSURLConnection
-    methods:
+    functions:
       - "connectionWithRequest:delegate:"
-      - "initWithRequest:delegate:"
-    notes: "Deprecated connection constructors — send side only"
-  - module: NSMutableURLRequest
+    notes: "Deprecated connection constructor (a class method, function-kind: WI-ziviv) — send side only"
+  - module: NSURLConnection
     methods:
-      - "requestWithURL:"
-      - "initWithURL:"
-      - "setHTTPBody:"
-      - "setHTTPMethod:"
+      - "initWithRequest:delegate:"
+    notes: "Deprecated connection constructor — send side only"
+  # NSMutableURLRequest is NOT rowed (WI-ziviv): requestWithURL: / initWithURL:
+  # / setHTTPBody: / setHTTPMethod: build a request VALUE and send nothing; the
+  # send is the NSURLSession / NSURLConnection call it is handed to. INV-gujoh
+  # deleted the swift twin (URLRequest) on the same ruling.
 
 net_recv:
   - module: NSURLSession
@@ -186,7 +209,7 @@ net_recv:
       anywhere. Residual: WI-mapim (a client-side disclosure value).
   - module: NSURLConnection
     simultaneous: true
-    methods:
+    functions:
       - "sendSynchronousRequest:returningResponse:error:"
       - "sendAsynchronousRequest:queue:completionHandler:"
     notes: >-
@@ -207,13 +230,18 @@ db_read:
       - "existingObjectWithID:error:"
       - "objectRegisteredForID:"
     notes: "Core Data fetch operations"
-  - module: NSFetchRequest
-    methods:
-      - "fetchRequestWithEntityName:"
-    notes: "Core Data fetch request creation"
   - module: NSPersistentStoreCoordinator
     methods:
       - "addPersistentStoreWithType:configuration:URL:options:error:"
+
+db_compose:
+  - module: NSFetchRequest
+    functions:
+      - "fetchRequestWithEntityName:"
+    notes: >-
+      LAZY (ADR-0049 ruling 4), WI-ziviv: a class method that composes a query
+      and runs nothing; the read happens when a context executes it. Moved from
+      db_read, as the swift twin NSFetchRequest(entityName:) was (INV-gujoh).
 
 db_write:
   - module: NSManagedObjectContext
@@ -232,14 +260,17 @@ subprocess:
     methods:
       - launch
       - "launchAndReturnError:"
-      - "launchedTaskWithLaunchPath:arguments:"
-      - "launchedTaskWithExecutableURL:arguments:error:terminationHandler:"
     notes: >-
       NSTask is macOS-only. The members that START the child: launch /
       launchAndReturnError: on an instance, and the two class-method launchers
       (INV-vamif: launchedTaskWithLaunchPath:arguments: was missing).
       waitUntilExit, terminate and interrupt used to sit here too; see
       ipc_send and module_completeness (INV-babiz).
+  - module: NSTask
+    functions:
+      - "launchedTaskWithLaunchPath:arguments:"
+      - "launchedTaskWithExecutableURL:arguments:error:terminationHandler:"
+    notes: "WI-ziviv: the class-method launchers (see the row above), function-kind."
 
 env_read:
   - module: NSProcessInfo
@@ -251,8 +282,12 @@ env_read:
 # host-secret-* claim count description reads as secret flows.
 host_info_read:
   - module: NSDate
-    methods: [date, timeIntervalSinceReferenceDate]
+    functions: [date, timeIntervalSinceReferenceDate]
     notes: >-
+      WI-ziviv: both are CLASS methods (`[NSDate date]`,
+      `[NSDate timeIntervalSinceReferenceDate]`), so the row is function-kind;
+      the instance property of the same name is arithmetic on a captured date,
+      which is refused (below).
       WI-tubij: a clock read is host_info_read in EVERY catalogued language
       (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
       Linux CLOCK_MONOTONIC runs from boot, so an early read leaks

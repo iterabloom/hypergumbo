@@ -875,9 +875,9 @@ CAVEAT_WITHHELD_COMMUNITY_TRUST = "withheld_community_trust"
 class SinkZoneGap:
     """What one taint claim's sink zone cannot see, per language (INV-pivam).
 
-    Built by ``cmd_verify_claims`` for claims over a zone ``taint_sinks/``
-    ships (ADR-0060), over the languages present in the repo that a flow of
-    the claim can be in.
+    Built by ``cmd_verify_claims`` for claims over any built-in zone (the
+    I/O-derived ones and ADR-0060's, WI-sojok), over the languages present in
+    the repo that a flow of the claim can be in.
 
     ``uncovered_languages``: present languages with NO sink in the zone, so a
     flow into it there cannot be found at all -- the verdict is withheld, as
@@ -4989,6 +4989,7 @@ def method_starved_modules(
 def classified_yet_starved(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
+    starved: "Optional[Iterable[str]]" = None,
 ) -> list[str]:
     """Modules reported starved although the classifier matched a call into them (WI-bobuf).
 
@@ -5006,8 +5007,13 @@ def classified_yet_starved(
     It does NOT satisfy the module: loosening starvation on "any classified
     edge" was refused for INV-fugus, because a blind analyzer's unstamped
     method-name edge can still match by name. It is the check, not the cure.
+    :func:`_call_production_coverage` names the modules in its starvation
+    reason as an internal inconsistency; ``starved`` is the starved list it
+    already computed.
     """
-    starved = set(method_starved_modules(raw_edges, catalogs))
+    starved = set(
+        method_starved_modules(raw_edges, catalogs) if starved is None else starved
+    )
     if not starved:
         return []
     found: set[str] = set()
@@ -5308,13 +5314,23 @@ def _call_production_coverage(
         # act on. The COUNT is unranked and unchanged.
         shown = _render_capped_names(
             _rank_modules_for_disclosure(starved, catalogs))
+        # WI-bobuf: a starved module the classifier matched a call into in the
+        # same run is a contradiction, not blindness. It still withholds (the
+        # INV-fugus refusal), but the reason says which ones (WI-momiz).
+        contradicted = classified_yet_starved(raw_edges, catalogs, starved)
+        inconsistency = (
+            f"; {len(contradicted)} of them ({_render_capped_names(contradicted)}) "
+            f"also have a call the catalogue matched in this run, an internal "
+            f"inconsistency rather than blindness"
+            if contradicted else ""
+        )
         return BoundaryCoverage(
             complete=False,
             reason=(
                 f"the analysis calls into {len(starved)} module(s) whose "
                 f"catalogued I/O is method-shaped ({shown}) but produced "
                 f"no method call edge for any of them, so their I/O is "
-                f"structurally invisible"
+                f"structurally invisible{inconsistency}"
             ),
         )
 

@@ -60,7 +60,7 @@ def test_gaps_per_claim() -> None:
                         "go": {"host_fs"}})
     claims = [
         _claim("host_secret", None),                  # a boundary claim: skipped
-        _claim("host_secret", "host_fs"),             # an I/O zone: not judged here
+        _claim("host_secret", "host_fs"),             # an I/O zone: judged too (WI-sojok)
         _claim("host_secret", "code_execution"),
         _claim("host_secret", "code_execution"),      # the same key: computed once
         _claim("build_input", "code_execution"),      # a python-only label
@@ -73,7 +73,9 @@ def test_gaps_per_claim() -> None:
     assert [lang for lang, _ in ce.unreached_shapes] == ["javascript"]
     assert ("build_input", "code_execution") not in gaps   # python covers it, no shapes
     assert gaps[("host_secret", "dom_injection")].uncovered_languages == ("go", "python")
-    assert ("host_secret", "host_fs") not in gaps
+    # WI-sojok: an I/O-derived zone is judged the same way; javascript has no
+    # host_fs sink in this catalogue.
+    assert gaps[("host_secret", "host_fs")].uncovered_languages == ("javascript",)
 
 
 def test_an_uncovered_language_withholds_a_clean_verdict() -> None:

@@ -148,7 +148,7 @@ class TestTheLiteralScanner:
 class TestTheLedger:
     #: Shrink-only. Lower it when a blocked row is fixed and its entry deleted;
     #: raising it is a new exception to the axiom and must be argued in review.
-    LEDGER_SIZE = 29
+    LEDGER_SIZE = 0
 
     def test_the_size_is_pinned(self) -> None:
         assert len(KNOWN_NONCONFORMING_ROWS) == self.LEDGER_SIZE

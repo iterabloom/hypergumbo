@@ -1,6 +1,6 @@
 {
-  "last_audit_sha": "1f1e22d3f2a572288f266e94f28899ea165db3cf",
-  "last_audit_iso_date": "2026-10-22T03:26:22.946950-04:00",
-  "suspect_domain": "vocabulary-since-0923",
-  "audits_run": 19
+  "last_audit_sha": "02a25bba562dce41be7c3a70384c7f436fff6140",
+  "last_audit_iso_date": "2026-10-28T09:49:33.407392-04:00",
+  "suspect_domain": "reader-census",
+  "audits_run": 20
 }

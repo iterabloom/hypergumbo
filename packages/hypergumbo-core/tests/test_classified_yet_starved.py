@@ -113,3 +113,32 @@ def test_the_schema_coverage_corpus_has_no_contradiction(tmp_path: Path) -> None
 ])
 def test_an_unbound_call_is_not_starved(tmp_path: Path, name: str) -> None:
     assert _contradiction(tmp_path, _UFCS[name]) == []
+
+
+def test_verify_claims_names_the_contradiction_in_its_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The check is wired into the coverage gate: a starved module with a
+    classified call is still withheld (INV-fugus), and the reason says it is
+    an internal inconsistency rather than blindness (WI-momiz's shape)."""
+    import contextlib
+    import io
+
+    from hypergumbo_core.cli import main
+
+    repo = tmp_path / "repo"
+    for rel, text in _UFCS["rust_ufcs"].items():
+        path = repo / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    claims = tmp_path / "claims.yaml"
+    claims.write_text("claims:\n  - id: c\n    text: t\n    constraint:\n"
+                      "      boundary: net_send\n      must_not_exist: true\n")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+        main(["verify-claims", str(repo), "--claims", str(claims), "--format", "json"])
+    (verdict,) = json.loads(buf.getvalue())["verdicts"]
+    assert verdict["verdict"] == "inconclusive"
+    assert "std::io::Write" in verdict["details"]  # reach: the starvation reason
+    assert "internal inconsistency rather than blindness" in verdict["details"]
