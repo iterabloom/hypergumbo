@@ -120,3 +120,55 @@ def test_a_trusted_sink_does_not_clear_an_untrusted_one_beside_it(
     assert verdict["evidence_count"] == 1
     assert verdict["evidence"][0]["sink_primitives"] == ["subprocess.Popen"]
     assert verdict["trusted_sink_flows"] == 1
+
+
+_SHIP_APP = '''import os
+
+import mylib
+
+
+def go():
+    mylib.ship(os.environ["CMD"])
+'''
+
+
+def _community_verdict(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provenance: str) -> dict:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text(_SHIP_APP)
+    claims = tmp_path / "claims.yaml"
+    claims.write_text(_CLAIMS)
+    sinks = tmp_path / "sinks.yaml"
+    sinks.write_text(
+        f"description: a launcher row\n{provenance}zone: subprocess\ntrust_level: trusted\n"
+        "sinks:\n  python:\n    - module: mylib\n      functions: [ship]\n"
+    )
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+        main(["verify-claims", str(repo), "--claims", str(claims), "--format", "json",
+              "--taint-sinks", str(sinks)])
+    (verdict,) = json.loads(buf.getvalue())["verdicts"]
+    return verdict
+
+
+def test_a_community_files_trust_is_withheld_and_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-0061 ruling 2 (WI-savoh): trust only takes flows out of the
+    evidence, so a community row may not grant it. The flow is reported and the
+    verdict names the sink whose trust was withheld."""
+    verdict = _community_verdict(tmp_path, monkeypatch, "provenance: community\n")
+    assert verdict["verdict"] == "violated"
+    assert verdict["trusted_sink_flows"] == 0
+    (caveat,) = [c for c in verdict["caveats"] if c["kind"] == "withheld_community_trust"]
+    assert caveat["entries"] == ["mylib.ship"]
+
+
+def test_control_the_same_row_vouched_for_is_trusted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    verdict = _community_verdict(tmp_path, monkeypatch, "")
+    assert verdict["verdict"] != "violated"
+    assert verdict["trusted_sink_flows"] == 1
+    assert "withheld_community_trust" not in {c["kind"] for c in verdict["caveats"]}

@@ -161,7 +161,8 @@ only ever adds.
 a call count as examined, and its `module_completeness` grants are withheld; a
 community taint sanitizer is not a barrier (the flow is reported and names it,
 `withheld_community_sanitizer`); a community terminating summary never closes
-a taint branch (`withheld_community_summary`). Community `frameworks`,
+a taint branch (`withheld_community_summary`); a community sink's
+`trust_level: trusted` is withheld (`withheld_community_trust`). Community `frameworks`,
 `dataflow_patterns` and `library_signatures` rows are disclosed rather than
 withheld: measured with every one of them removed, they made no verdict
 cleaner, only added structure and flows (ADR-0061 ruling 2).
