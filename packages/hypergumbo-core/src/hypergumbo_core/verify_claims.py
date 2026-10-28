@@ -4986,6 +4986,43 @@ def method_starved_modules(
     return sorted(called - satisfied)
 
 
+def classified_yet_starved(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> list[str]:
+    """Modules reported starved although the classifier matched a call into them (WI-bobuf).
+
+    THE CONTRADICTION ITSELF, as a value. :func:`method_starved_modules` says a
+    module was called into but could never have been adjudicated;
+    :func:`io_boundary.classify_call` matching an edge into that module says
+    it was. Both cannot be true in one run, and every instance so far was a
+    row-level fix found by its symptom -- INV-nular (rust File::open), WI-komun
+    (JS console), INV-fugus (python datetime), INV-dihun (JS process, python
+    ctypes.cdll), WI-zohuk / WI-dapap (a JS handler assignment, a python
+    protocol edge). Each row sweep was limited by construction; this asks the
+    question of the OUTPUT, so the next shape is caught by a fixture before a
+    user meets it.
+
+    It does NOT satisfy the module: loosening starvation on "any classified
+    edge" was refused for INV-fugus, because a blind analyzer's unstamped
+    method-name edge can still match by name. It is the check, not the cure.
+    """
+    starved = set(method_starved_modules(raw_edges, catalogs))
+    if not starved:
+        return []
+    found: set[str] = set()
+    for edge in raw_edges:
+        if edge.get("type", "") not in _STARVATION_CALL_EDGE_TYPES:
+            continue
+        module = symbol_path_slot(edge.get("dst", ""))
+        if module not in starved or module in found:
+            continue
+        if classify_call(catalogs, edge.get("dst", ""), edge.get("meta"),
+                         dst_ref=_edge_dst_ref(edge)):
+            found.add(module)
+    return sorted(found)
+
+
 def compute_boundary_coverage(
     raw_edges: list[dict[str, Any]],
     supported_languages: set[str],

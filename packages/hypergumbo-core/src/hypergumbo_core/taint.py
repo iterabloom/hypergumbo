@@ -2975,6 +2975,25 @@ TAINT_CALL_EDGE_TYPES = call_family_edge_types() | frozenset({
     "dispatches_to",
 })
 
+#: WHAT VALUE EACH MEMBER OF :data:`TAINT_CALL_EDGE_TYPES` CARRIES (WI-kakup).
+#: Nothing used to stop an edge type joining the set without that question
+#: being asked, which is how ``dispatches_to`` arrived with its class-sourced
+#: half unconsidered (INV-putug). ``test_taint_edge_values.py`` fails when the
+#: set and this table disagree, so the next addition answers it here.
+TAINT_EDGE_VALUE: Final[dict[str, str]] = {
+    "calls": "the call's arguments, into the callee",
+    "instantiates": (
+        "the constructor's arguments, into the instance; the edge lands on "
+        "the TYPE, so the walk stops there (_type_node_holds_no_value) and "
+        "the initializer hop comes from construction.construction_calls"
+    ),
+    "dispatches_to": (
+        "the data a dispatcher hands its handler; not from a TYPE node "
+        "(_dispatch_edge_carries_a_value, INV-putug)"
+    ),
+    "module_attr_ref": "the attribute's value, to the code reading it",
+}
+
 
 #: The edge type whose value-carrying-ness depends on what emitted it.
 DISPATCH_EDGE_TYPE: Final[str] = "dispatches_to"
@@ -3049,6 +3068,30 @@ def _dispatch_edge_carries_a_value(edge: dict[str, Any]) -> bool:
     """
     kind = _id_kind_slot(edge.get("src", ""))
     return kind is None or kind not in type_like_kind_names()
+
+
+def _type_node_holds_no_value(node_id: str) -> bool:
+    """A TYPE node a value REACHED stops the walk (WI-tibib, WI-kakup).
+
+    A value passed to a construction goes to the INSTANCE: the initializer, a
+    hop the walk is handed separately (``construction.construction_calls``).
+    The ``instantiates`` edge itself lands on the type node, and every value
+    edge out of a type node is code anchored on the class -- a Python class
+    body (which ran at import), a Java/C# static or field initializer -- none
+    of which receives the constructor's arguments
+    (``anchor_execution``'s contract). Followed as dataflow, the hop made
+    ``def f(): data = input(); return C(data)`` violate "untrusted input never
+    reaches code execution" through ``class C: y = eval(EXPR)``, whose body
+    never sees ``data``. This is :func:`_dispatch_edge_carries_a_value`'s
+    INV-putug ruling one step earlier: a type holds no value.
+
+    The edge INTO the type is untouched: it is still a sink site
+    (``subprocess.Popen(tainted)``, INV-lalad). And a class whose own body
+    reads a source is the walk's SEED, which this does not stop. Fails open on
+    an id it cannot parse, like :func:`_id_kind_slot`.
+    """
+    kind = _id_kind_slot(node_id)
+    return kind is not None and kind in type_like_kind_names()
 
 
 def _is_taint_call_edge(edge: dict[str, Any]) -> bool:
@@ -4817,6 +4860,8 @@ def _reachability_past_sanitizers(
         node = queue.popleft()
         if node in reachable:
             continue  # pragma: no cover
+        if node != seed_id and _type_node_holds_no_value(node):
+            continue
         node_sanitizers = sanitizer_callers.get(node, {})
         if taint_label in node_sanitizers and node != seed_id:
             barrier_nodes.append(node)
@@ -4853,6 +4898,8 @@ def _reachability_past_sanitizers(
             # infinite loop if a future edit relaxes one of those enqueue
             # conditions.
             continue  # pragma: no cover
+        if _type_node_holds_no_value(node):
+            continue
         sanitized_reachable.add(node)
         for neighbor in sorted(forward_adj.get(node, set())):
             if neighbor in reachable or neighbor in sanitized_reachable:

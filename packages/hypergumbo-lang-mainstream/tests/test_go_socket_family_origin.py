@@ -320,3 +320,74 @@ func f(p string) {
 }
 """, "ReadString", "bufio")
         assert got == ("ipc_recv", "bufio.Reader", "ReadString")
+
+
+class TestTheConnectionsOwnMethods:
+    """WI-kalol: ``c.Write`` / ``c.Read`` on the connection itself cross the
+    medium it was made on, as the dual ``fmt`` / ``bufio`` rows already did.
+    Through the whole pipeline: the receiver's ``net.Conn`` type comes from
+    the go library signatures, which ``analyze_go`` alone does not load."""
+
+    def _classified(self, tmp_path, body: str, name: str):
+        import json
+
+        from hypergumbo_core.cli import run_behavior_map
+        from hypergumbo_core.io_boundary import classify_call, load_catalog
+
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        (tmp_path / "go.mod").write_text("module x\n")
+        (tmp_path / "m.go").write_text(
+            'package main\n\nimport (\n\t"net"\n\t"time"\n)\n\nvar _ = time.Second\n\n' + body)
+        out = tmp_path / "map.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        (edge,) = [e for e in json.loads(out.read_text())["edges"]
+                   if e["type"] == "calls" and e["dst"].startswith("go:net.Conn:")
+                   and e["dst"].split(":")[3] == name]
+        prim = classify_call({"go": load_catalog("go")}, edge["dst"], edge.get("meta") or {},
+                             dst_ref=None)
+        return None if prim is None else (prim.boundary, prim.module, prim.name)
+
+    @pytest.mark.parametrize("make", [
+        'c, _ := net.Dial("unix", p)',
+        'c, _ := net.DialTimeout("unixgram", p, time.Second)',
+        'ln, _ := net.Listen("unix", p)\n\tc, _ := ln.Accept()',
+    ])
+    def test_a_unix_connections_write_and_read_are_ipc(self, tmp_path, go_available, make: str) -> None:
+        body = f"func f(p string, b []byte) {{\n\t{make}\n\tc.Write(b)\n}}\n"
+        assert self._classified(tmp_path / "w", body, "Write") == ("ipc_send", "net.Conn", "Write")
+        body = f"func f(p string, b []byte) {{\n\t{make}\n\tc.Read(b)\n}}\n"
+        assert self._classified(tmp_path / "r", body, "Read") == ("ipc_recv", "net.Conn", "Read")
+
+    def test_a_tcp_connection_is_still_a_network_crossing(self, tmp_path, go_available) -> None:
+        body = 'func f(a string, b []byte) {\n\tc, _ := net.Dial("tcp", a)\n\tc.Write(b)\n}\n'
+        assert self._classified(tmp_path, body, "Write") == ("net_send", "net.Conn", "Write")
+
+    def test_a_parameter_keeps_todays_row(self, tmp_path, go_available) -> None:
+        body = "func f(c net.Conn, b []byte) {\n\tc.Read(b)\n}\n"
+        assert self._classified(tmp_path, body, "Read") == ("net_recv", "net.Conn", "Read")
+
+    @pytest.mark.parametrize("make, call, want", [
+        ('c, _ := net.DialUnix("unixgram", nil, addr)', "c.Write(b)", ("ipc_send", "net.UnixConn", "Write")),
+        ('c, _ := net.ListenUnixgram("unixgram", addr)', "c.Read(b)", ("ipc_recv", "net.UnixConn", "Read")),
+        ('ln, _ := net.ListenUnix("unix", addr)\n\tc, _ := ln.AcceptUnix()', "c.Write(b)",
+         ("ipc_send", "net.UnixConn", "Write")),
+    ])
+    def test_a_unix_conn_is_ipc_by_its_type(self, tmp_path, go_available, make: str, call: str, want) -> None:
+        """A *net.UnixConn had no rows: runc's notify socket and docker-cli's
+        plugin socket crossed no boundary."""
+        import json
+
+        from hypergumbo_core.cli import run_behavior_map
+        from hypergumbo_core.io_boundary import classify_call, load_catalog
+
+        (tmp_path / "go.mod").write_text("module x\n")
+        (tmp_path / "m.go").write_text(
+            'package main\n\nimport "net"\n\n'
+            f"func f(addr *net.UnixAddr, b []byte) {{\n\t{make}\n\t{call}\n}}\n")
+        out = tmp_path / "map.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        name = call.split(".")[1].split("(")[0]
+        (edge,) = [e for e in json.loads(out.read_text())["edges"]
+                   if e["type"] == "calls" and e["dst"].split(":")[3] == name]
+        prim = classify_call({"go": load_catalog("go")}, edge["dst"], edge.get("meta") or {}, dst_ref=None)
+        assert prim is not None and (prim.boundary, prim.module, prim.name) == want

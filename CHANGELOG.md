@@ -58,6 +58,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### I/O boundaries and taint
 
 - **A Unix-domain socket server is `ipc_listen`** (ADR-0050 §1), counted in `ipc_listen_edges` (io-boundaries schema 2.4 → 2.5).
+- **A Go Unix-domain connection's own `Write` / `Read` are `ipc_send` / `ipc_recv`**: `net.Conn` rows select by how the connection was made, and `*net.UnixConn` is rowed.
 - **`slice --io-boundary` keeps a call for every boundary it crosses**: `subprocess.check_output` is both `subprocess` and `ipc_recv` (`io_boundary.boundaries_of`).
 - **A user overlay no longer lowers its catalogue's status**, which turned unrelated chains `[unreliable]`, and declares none itself.
 - **The taint-side `requires_target_kind` / `requires_mode` are `requires_target_boundary` / `requires_mode_boundary`**: they hold a boundary, not a target kind or mode.
@@ -67,6 +68,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A user taint row replaces only the label or zone it restates**, not every label or zone of the function.
 - **A collapsed taint row is judged by its whole group**, not its first member; the `choice_shaped_source` caveat counts rows and applies only to `untrusted_input`.
 - **Taint walks module-level Python and JS/TS code**, reaches reads through walrus, nested assignments and closures, and drops false leaks from `build_opener().open(url)` and Go's `_, err := get()`.
+- **Constructing a class no longer taints its class body**: a value reaching a type node stops there, and the constructor's arguments reach only the initializer.
 
 #### Dead code, tiers and sketch
 
@@ -86,6 +88,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Declared axioms are tested against survey and `verify-claims` output**, each with a reach check, a checker control and a mutation ([`docs/surveys/axiom-falsifiability.md`](docs/surveys/axiom-falsifiability.md)); strict xfails record what fails today.
 - **The full-suite test-only-reachability gate is green again.**
+- **A test fails when a module the classifier matched is also reported starved** (`classified_yet_starved`), over the schema-coverage corpus and each earlier instance.
 - **Every spec-validator check has something to inspect**, and parallel tests no longer race on shared baselines or session ids.
 
 ### Documentation

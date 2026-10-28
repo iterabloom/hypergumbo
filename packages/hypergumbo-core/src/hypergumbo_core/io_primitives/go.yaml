@@ -284,6 +284,16 @@ net_send:
     notes: "WI-suhug: the net_send twin of the logging row (see it)."
   - module: net.Conn
     methods: [Write]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_send
+    notes: >-
+      WI-kalol: a write through the connection's OWN method crosses the medium
+      the connection was made on (ADR-0050 §1), which is fixed where it was
+      dialled or accepted -- WI-baran's dual-row shape, for Go's method form.
+      Declared under net_send and ipc_send; go.py stamps the receiver through
+      its binding (`net.Dial("unix", p)`, `ln.Accept()` over a unix listener
+      -> pipe -> ipc_send; a TCP dial -> net_stream -> net_send). An unstamped
+      receiver abstains to net_send, today's row.
   - module: crypto/tls
     functions: [Dial, DialWithDialer, Client]
     notes: "TLS connection establishment"
@@ -335,6 +345,9 @@ net_recv:
       socket/bind/listen while keeping accept.
   - module: net.Conn
     methods: [Read]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_recv
+    notes: "WI-kalol: the read twin of the net.Conn Write row (see it); a pipe stamp selects ipc_recv, an unstamped receiver keeps net_recv."
   - module: bufio
     functions: [NewScanner, NewReader]
     boundary_ruling: call_site_undecidable
@@ -501,6 +514,18 @@ ipc_send:
     boundary_ruling: call_site_undecidable
     abstains_to: logging
     notes: "WI-suhug: the ipc_send twin of the logging row (see it)."
+  - module: net.Conn
+    methods: [Write]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_send
+    notes: "WI-kalol: the ipc_send twin of the net_send row (see it); selected by a `pipe` stamp, a Unix-domain connection."
+  - module: net.UnixConn
+    methods: [Write, WriteTo, WriteToUnix, WriteMsgUnix]
+    notes: >-
+      WI-kalol: a *net.UnixConn is a Unix-domain socket by its TYPE, so a write
+      through it is local IPC with no call-site question (ADR-0050 §1). It had
+      no rows at all: net.DialUnix / net.ListenUnixgram connections (runc's
+      notify socket, docker-cli's plugin socket) crossed no boundary.
 
 logging:
   - module: os
@@ -596,3 +621,11 @@ ipc_recv:
     abstains_to: fs_read
     notes: >-
       WI-vutav: the ipc_recv twin of the fs_read row; see `bufio.Reader` above.
+  - module: net.Conn
+    methods: [Read]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_recv
+    notes: "WI-kalol: the ipc_recv twin of the net_recv row (see the net_send Write row); selected by a `pipe` stamp."
+  - module: net.UnixConn
+    methods: [Read, ReadFrom, ReadFromUnix, ReadMsgUnix]
+    notes: "WI-kalol: the read twin of the net.UnixConn ipc_send row (see it)."
