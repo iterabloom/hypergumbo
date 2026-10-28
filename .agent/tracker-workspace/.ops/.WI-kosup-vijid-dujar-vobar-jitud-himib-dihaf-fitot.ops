@@ -68,3 +68,18 @@
   clock: 7  # d8de
   nonce: d8de  # d8de
   message: "2026-10-25: scope widened on the owner's request (description section 'SCOPE WIDENED'): (A) readers with no producer, (B) catalogue/overlay/taint/claims YAML keys as knobs, (C) reader classification display/presence/branch plus the per-question shapes (WI-monul, WI-gidid), (D) consumer-side subsets of a registered vocabulary, with a partition gate filed as its own item. This sweep now decides WI-fomif, WI-mujug and the call_type/method keep (WI-sorav, WI-kuhoh). Now blocks WI-fomif and WI-mujug; WI-sorav and WI-kuhoh are not blocked, because only one part of each is in scope."  # d8de
+- op: update  # 0c9b
+  at: '2026-10-28T14:21:37Z'  # 0c9b
+  by: agent  # 0c9b
+  actor: jgstern_agent  # 0c9b
+  clock: 8  # 0c9b
+  nonce: 0c9b  # 0c9b
+  set:  # 0c9b
+    status: done  # 0c9b
+- op: discuss  # 7989
+  at: '2026-10-28T14:21:37Z'  # 7989
+  by: agent  # 7989
+  actor: jgstern_agent  # 7989
+  clock: 9  # 7989
+  nonce: '7989'  # 7989
+  message: "Done in PR #1922 (0ba6186e97): docs/audits/0023-reader-census.md, recorded with concept-audit-record (reader-census, at pinned 02a25bba56); per-item rows and scripts in ~/hypergumbo_lab_notebook/kosup_reader_census_10282026/. Six read-only sub-agents (fields, meta keys, knobs, functions, vocabulary subsets, keep-with-trigger verdicts), AST walks over the six shapes, readers classified display/presence/branch, orchestrator re-checks of the highest-impact claims (SYNTHETIC_FRAMEWORK_ROLES drift, the overlay stdlib_other hole, _COVERAGE_CALL_EDGE_TYPES, the field verdicts). Actions filed: WI-givar (DELETE fields), WI-popoj (WIRE fields), WI-supak (false free-text declarations), WI-pokuz (framework_role subset vs the IPC linkers), WI-tovoz (readers keyed to unwritten keys/values), WI-dikum (call_type/method DELETE + write-only key gate), WI-hapon (loaders ignoring unknown keys), WI-pofal (overlay stdlib_other), WI-ditom (remaining knobs), WI-nitug (dead/hidden functions), WI-tilav (the subset-partition gate, deliverable D), WI-hogon (subsets wrong today), WI-daruz (fired triggers), WI-vihul (nothing evaluates a trigger). Named decisions recorded on WI-fomif (DELETE), WI-mujug (receiver OK, resolution_quality WIRE), WI-kuhoh and WI-sorav (call_type/method DELETE). The sweep's first live finding (classified_yet_starved test-only) is fixed in the same PR."  # 7989
