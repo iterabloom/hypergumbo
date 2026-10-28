@@ -777,6 +777,18 @@ class Symbol:
     def end_line(self) -> int:
         return self.span.end_line if self.span else 0
 
+    @property
+    def host_language(self) -> Optional[str]:
+        """The language whose code this node belongs to.
+
+        ``language`` for a declaration; for an ADR-0031 Class-B synthetic
+        stand-in (``language`` None), the language it was discovered in. A
+        consumer asking "which language's code is this about" (ranking by
+        language dominance, per-language attribution) reads this. A consumer
+        asking "is this a declaration in language L" reads ``language``.
+        """
+        return self.language or self.discovery_language
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {

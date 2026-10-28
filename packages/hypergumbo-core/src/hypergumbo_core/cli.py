@@ -8991,8 +8991,9 @@ def production_callables(
         # flagged dead because language-scoped seeds/entrypoints can never match
         # a language=None node. Keyed on protocol_origin (the canonical Class-B
         # marker, biconditional-enforced by the spec validator), NOT framework_role
-        # (which also marks Class-A route callables that must stay candidates) and
-        # NOT language-is-None.
+        # and NOT language-is-None. (Route markers are Class B too since WI-mupal,
+        # so they leave the candidate universe here: a marker is a stand-in for a
+        # route, and its handler, a real callable, stays a candidate.)
         if node.get("protocol_origin"):
             continue
         path = node.get("path", "")
@@ -9376,6 +9377,12 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                 name=n.get("name", ""),
                 kind=n.get("kind", ""),
                 language=n.get("language", ""),
+                # ADR-0031 Class B: a route marker's host language is here
+                # (WI-mupal). detect_entrypoints ranks by Symbol.host_language,
+                # and the entrypoint cap keeps the top of that ranking, so
+                # dropping it changed which seeds survived.
+                discovery_language=n.get("discovery_language"),
+                protocol_origin=n.get("protocol_origin"),
                 path=n.get("path", ""),
                 span=Span(
                     start_line=span_data.get("start_line", 0),

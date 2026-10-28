@@ -1428,7 +1428,11 @@ end
         assert get_route.name == "GET /users"
         assert get_route.meta["http_method"] == "GET"
         assert get_route.meta["route_path"] == "/users"
-        assert get_route.language == "ruby"
+        # A route marker is a Class-B stand-in for the route (WI-mupal):
+        # no source language of its own, discovered in a ruby file.
+        assert get_route.language is None
+        assert get_route.discovery_language == "ruby"
+        assert get_route.protocol_origin == "http"
 
         post_route = next((s for s in route_symbols if "POST" in s.name), None)
         assert post_route is not None

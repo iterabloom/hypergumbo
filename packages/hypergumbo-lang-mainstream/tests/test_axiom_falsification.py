@@ -841,3 +841,88 @@ class TestCollapsedRowIsItsGroup:
     @pytest.mark.xfail(strict=True, reason="WI-kufos (1): the INV-dudal withdrawal reads the witness sink")
     def test_the_evaluation_withdrawal_does_not_depend_on_the_witness(self, tmp_path: Path) -> None:
         assert self._evaluation(tmp_path) == ["inconclusive", "inconclusive"]
+
+
+# ---------------------------------------------------------------------------
+# ADR-0031 Class B: a route marker is a synthetic stand-in for the ROUTE
+# (WI-mupal, owner ruling 2026-10-27)
+# ---------------------------------------------------------------------------
+
+#: One fixture per route-marker producer: the javascript and go analyzers,
+#: the ruby and python (Django) analyzers, and route-materializer (spring).
+_ROUTE_PRODUCERS: dict[str, tuple[str, dict[str, str]]] = {
+    "express": ("javascript", {"app.js": ("const express = require('express');\nconst app = express();\n"
+                                          "function users(req, res) { res.send(''); }\napp.get('/u', users);\n")}),
+    "go": ("go", {"go.mod": "module x\n",
+                  "main.go": ("package main\nimport \"net/http\"\n"
+                              "func handler(w http.ResponseWriter, r *http.Request) {}\n"
+                              "func main() { http.HandleFunc(\"/a\", handler) }\n")}),
+    "rails": ("ruby", {"Gemfile": "gem 'rails'\n",
+                       "config/routes.rb": "Rails.application.routes.draw do\n  get '/a', to: 'users#index'\nend\n",
+                       "app/controllers/users_controller.rb": "class UsersController < ApplicationController\n  def index; end\nend\n"}),
+    "django": ("python", {"requirements.txt": "django\n", "app/views.py": "def users(request):\n    return None\n",
+                          "app/urls.py": "from django.urls import path\nfrom . import views\n\nurlpatterns = [path('u/', views.users)]\n"}),
+    "spring": ("java", {"src/main/java/a/Ctl.java": (
+        "package a;\nimport org.springframework.web.bind.annotation.*;\n@RestController\npublic class Ctl {\n"
+        "  @GetMapping(\"/a\")\n  public String routed() { return \"\"; }\n}\n")}),
+}
+
+_ROUTE_ROLES = frozenset({"route", "route_mount", "route_include"})
+
+
+def route_markers(bm: Map) -> list[Map]:
+    return [n for n in bm["nodes"] if (n.get("meta") or {}).get("framework_role") in _ROUTE_ROLES]
+
+
+def class_b_violations(markers: Iterable[Map], host: str) -> list[str]:
+    """A marker that is not a Class-B stand-in discovered in *host*."""
+    want = {"kind": "function", "language": None, "discovery_language": host, "protocol_origin": "http"}
+    return [f"{m['name']}: {k}={m.get(k)!r}" for m in markers for k, v in want.items() if m.get(k) != v]
+
+
+class TestClassBChecker:
+    def test_it_reports_a_marker_that_carries_its_host_language(self) -> None:
+        marker = {"name": "GET /a", "kind": "function", "language": "go", "discovery_language": None,
+                  "protocol_origin": None}
+        assert class_b_violations([marker], "go") == [
+            "GET /a: language='go'", "GET /a: discovery_language=None", "GET /a: protocol_origin=None",
+        ]
+
+
+class TestRouteMarkerIsAStandIn:
+    @pytest.mark.parametrize("name", sorted(_ROUTE_PRODUCERS))
+    def test_a_route_marker_is_a_class_b_stand_in(self, survey, name: str) -> None:
+        host, files = _ROUTE_PRODUCERS[name]
+        markers = route_markers(survey(f"route_{name}", files))
+        assert markers  # reach
+        assert class_b_violations(markers, host) == []
+
+    def test_a_file_holding_only_route_markers_keeps_its_anchor(self, survey) -> None:
+        """A Rails config/routes.rb holds nothing but route markers. With the
+        markers' language None the file-anchor pass skipped it, and on chatwoot
+        the file node and its 623 contains edges vanished."""
+        bm = survey("route_rails", _ROUTE_PRODUCERS["rails"][1])
+        (anchor,) = [n for n in bm["nodes"] if n["kind"] == "file" and n["path"] == "config/routes.rb"]
+        contained = {e["dst"] for e in bm["edges"] if e["type"] == "contains" and e["src"] == anchor["id"]}
+        assert {m["id"] for m in route_markers(bm)} <= contained
+
+    # What the marker's rank must not lose with its ``language`` (the language
+    # weight, and the library-export demotion) is pinned metamorphically in
+    # hypergumbo-core's test_route_marker_host_language.py.
+
+    @pytest.mark.parametrize("name", ["express", "spring"])
+    def test_dead_code_does_not_report_a_route_marker(self, tmp_path: Path, name: str) -> None:
+        """Before WI-mupal, dead-code-maybe listed the express and spring
+        markers ("GET /u", "GET /a") as dead functions: they carried a host
+        language, so the INV-disin protocol_origin filter let them in, and
+        nothing calls a route. The handler is the callable, and it stays a
+        candidate."""
+        from hypergumbo_core.cli import main
+
+        repo = _write(tmp_path / name, _ROUTE_PRODUCERS[name][1])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            assert main(["dead-code-maybe", str(repo)]) == 0
+        report = out.getvalue()
+        assert "Production functions: 1" in report  # reach: the handler is counted
+        assert not any(m in report for m in ("GET /u", "GET /a"))

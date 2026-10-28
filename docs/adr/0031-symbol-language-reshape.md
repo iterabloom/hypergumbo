@@ -128,6 +128,46 @@ Per-linker migration target (Class B unless noted):
 | `websocket.py` | INHERIT-EMITTER via `_language_for_file` | Class B; `protocol_origin="websocket"` |
 | `yjs_crdt.py` | LITERAL `"typescript"` | Class B; `discovery_language="typescript"`, `protocol_origin="yjs_crdt"` |
 
+### 2a. Route markers are Class B (owner ruling 2026-10-27, WI-mupal)
+
+The table above lists linkers. It did not list the route markers that language
+analyzers and the route materializer mint through `make_route_symbol`, and those
+stayed Class A: `language=<host>`, `protocol_origin=None`. The factory drew its
+line at "fabricated from a protocol definition rather than a real source
+declaration", which put the grpc and annotation markers in Class B. But
+`app.get('/a', handler)`, `http.HandleFunc`, a Rails `get` and a Spring
+`@GetMapping` do not declare the route in any source language either:
+
+- the marker is named for the route (`GET /a`), never for the handler;
+- it is anchored at the registration, and one handler can get several markers
+  at one span;
+- the handler is a separate node, reached by a `dispatches_to` edge;
+- ADR-0035 types `route` as LOGICAL identity, and its v8 ruling calls routing a
+  method through the route factory "a category error".
+
+**Every route marker is a Class B synthetic stand-in for the route.**
+`language=None`; `discovery_language` is the language of the file the
+registration was found in; `protocol_origin` is the route's transport
+(`routes.route_protocol_origin`: `http`, `websocket`, `phoenix_ipc` for
+LiveView, `grpc`), unless a linker passes its own. `kind` stays `function`,
+the ADR-0027 Phase 3 fold that every Class B stand-in shares. Whether that
+fold is honest for stand-ins at all is a family-wide ADR-0027 question, not a
+route one.
+
+A consumer asking "which language's code is this about" reads
+`Symbol.host_language` (`language`, else `discovery_language`), as the
+per-language metrics already did. Four did not, and now do: the route-marker
+id widening (`widen_route_stable_ids`, so no analyzer route id moves);
+entrypoint ranking's language weight, and its library-export demotion (go and
+rails put the `http_route` entrypoint on the marker); and the node-bearing
+file-anchor pass, without which a Rails `config/routes.rb` holding only
+markers lost its file node. Measured on five repositories, 916 markers: no
+stable id moved, and entrypoint ranks shifted by at most 0.002, because
+language dominance counts declarations. `dead-code-maybe` no longer counts
+markers as functions, as the INV-disin `protocol_origin` filter already did
+for every other stand-in; on spring-petclinic, 17 dead "functions" were
+route markers.
+
 ### 3. The protobuf collapse (separate fix folded into this ADR)
 
 The non-catalog `language="protobuf"` value at `grpc.py::_scan_proto_file` (GrpcPattern construction for proto-file scans) is replaced with `"proto"` to match the proto analyzer's registered catalog value. This is one of the four catalog-conformance findings from the main audit, the cheapest of the four to fix, and naturally folds into this ADR's migration scope. The Symbol emit at `grpc.py::link_grpc` propagates the change automatically via `pattern.language`. The Route synthetic at `grpc.py::link_grpc` migrates to Class B (language=None, protocol_origin="grpc").

@@ -109,10 +109,14 @@ PATCH  /api/data/:id  controllers.Api.patchData(id: Int)
         assert len(syms) == 1
         assert syms[0].meta["controller_action"] == "controllers.Search.index"
 
-    def test_route_symbols_have_scala_language(self) -> None:
+    def test_route_symbols_are_discovered_in_scala(self) -> None:
+        """A route marker is a Class-B stand-in for the route (WI-mupal): no
+        source language of its own, discovered on behalf of scala."""
         content = "GET  /test  controllers.Test.index"
         syms, _ = parse_play_routes(content, "conf/routes", "run-1")
-        assert syms[0].language == "scala"
+        assert syms[0].language is None
+        assert syms[0].discovery_language == "scala"
+        assert syms[0].host_language == "scala"
 
     def test_route_symbols_have_correct_span(self) -> None:
         content = """\

@@ -1836,7 +1836,10 @@ def detect_entrypoints(
     for ep in unique_entrypoints:
         if ep.kind in _SEMANTIC_KINDS:
             sym = symbol_lookup.get(ep.symbol_id)
-            if sym and sym.language:
+            # host_language: a route entrypoint sits ON its marker for go and
+            # rails, and a marker is a Class-B stand-in with language None
+            # (WI-mupal); it still says the repo serves routes in that language.
+            if sym and sym.host_language:
                 # Skip entrypoints from example/utility files — these are
                 # demonstration code, not real application entrypoints that
                 # should trigger library_export demotion.  Fixes the
@@ -1844,7 +1847,7 @@ def detect_entrypoints(
                 # were demoting core library exports like Room.
                 if sym.path and is_utility_file(sym.path):
                     continue
-                langs_with_semantic.add(sym.language)
+                langs_with_semantic.add(sym.host_language)
     for ep in unique_entrypoints:
         if ep.kind == EntrypointKind.LIBRARY_EXPORT:
             sym = symbol_lookup.get(ep.symbol_id)
@@ -1877,9 +1880,9 @@ def detect_entrypoints(
     def _language_weight(symbol_id: str) -> float:
         """Language dominance weight: 1.0 for dominant, less for minority."""
         sym = symbol_lookup.get(symbol_id)
-        if not sym or not sym.language:
+        if not sym or not sym.host_language:
             return 0.0
-        return lang_symbol_counts.get(sym.language, 0) / max_lang_count
+        return lang_symbol_counts.get(sym.host_language, 0) / max_lang_count
 
     # Boost confidence based on connectivity (outgoing edges).
     # Uses one-hop transitive reach: an entrypoint's effective out-degree

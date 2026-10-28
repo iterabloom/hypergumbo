@@ -178,7 +178,7 @@ DEAD_CODE_MAYBE_SCHEMA_VERSION = "0.3.0"
 # incompatible change. `test_confidence_model_matches_documented_grammar` pins
 # the format.
 CONFIDENCE_MODEL = "hypergumbo-evidence-v2.2"  # v2.2 (ADR-0039 rulings 6-7): a name resolver's grade interpolates inside its pathway band (low + (base - low) x grade) instead of multiplying a private base, and the out-of-band literals derive -- so single-producer scores change (JS/TS scope-bound 0.90 -> 0.85), still detection reliability on 0.0-1.0 in the same bands, hence MINOR; spec_validator judges all-linker edges by the 0.40-0.95 linker range. v2.1 (ADR-0057 §13): a new confidence_source, ``corroborated``, and its declared 0.95 level for an edge two distinct pathways reached -- a MINOR refinement (new evidence handling), no change to any single-producer score
-STABLE_ID_SCHEME = "hypergumbo-stableid-v12"
+STABLE_ID_SCHEME = "hypergumbo-stableid-v13"
 # v12 (INV-jahuf; owner ruling 2026-10-23): a C or C++ external symbol whose
 # module slot names two or more headers hashes a `module-set-<16 hex>` handle
 # (module_sets.module_slot) where it hashed the comma-joined header list. The

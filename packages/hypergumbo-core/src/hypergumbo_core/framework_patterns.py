@@ -2003,9 +2003,8 @@ def materialize_route_symbols(
         List of new route Symbol objects to extend the symbol list.
         Does NOT modify the input list.
     """
-    from .analyze.base import make_route_stable_id, make_symbol_id
+    from .analyze.base import make_route_symbol
     from .ir import Span, Symbol as SymbolCls, make_pass_id
-    from .routes import transport_meta
 
     pass_id = make_pass_id("route-materializer")
     new_route_symbols: list[SymbolCls] = []
@@ -2101,34 +2100,16 @@ def materialize_route_symbols(
                     continue
                 seen_routes.add(route_key)
 
-                # Normalize empty paths to "/" (INV-nimik)
-                route_path_normalized = path if path else "/"
-                route_name = f"{method} {route_path_normalized}"
-
-                stable_id = make_route_stable_id(method, route_path_normalized)
-
-                # Create route symbol at the same location as the handler.
-                # WI-hafap: Symbol.span is Optional. A span-less handler
-                # anchors its route marker at the degenerate zero span —
-                # the line-0 fallback convention, and the same shape
-                # from_dict used to fabricate for span-less artifact symbols.
+                # Anchored at the handler's span. WI-hafap: Symbol.span is Optional,
+                # and a span-less handler anchors at the degenerate zero span (the
+                # line-0 fallback convention). Minted through the shared chokepoint,
+                # so the marker is the same ADR-0031 Class-B stand-in every analyzer
+                # emits (WI-mupal) and its id round-trips (WI-tufil).
                 handler_span = sym.span if sym.span is not None else Span(
                     start_line=0, end_line=0, start_col=0, end_col=0,
                 )
-                # WI-tufil: build the id via make_symbol_id with the symbol's
-                # own kind ("function", the ADR-0027 Phase-3 route->function
-                # fold) so the id kind-slot round-trips against Symbol.kind. The
-                # route signal lives in meta["framework_role"], not the id-slot.
-                route_id = make_symbol_id(
-                    sym.language, sym.path,
-                    handler_span.start_line, handler_span.end_line,
-                    route_name, "function",
-                )
-                route_sym = SymbolCls(
-                    id=route_id,
-                    name=route_name,
-                    kind="function",
-                    language=sym.language,
+                new_route_symbols.append(make_route_symbol(
+                    language=sym.host_language or "unknown",
                     path=sym.path,
                     span=Span(
                         start_line=handler_span.start_line,
@@ -2136,18 +2117,13 @@ def materialize_route_symbols(
                         start_col=handler_span.start_col,
                         end_col=handler_span.end_col,
                     ),
+                    method=method,
+                    route_path=path,
                     origin=pass_id,
                     origin_run_id=origin_run_id,
-                    stable_id=stable_id,
-                    meta={
-                        "route_path": route_path_normalized,
-                        **transport_meta(method),
-                        "handler_ref": sym.name,
-                        "materialized_from": sym.id,
-                        "framework_role": "route",
-                    },
-                )
-                new_route_symbols.append(route_sym)
+                    handler_ref=sym.name,
+                    extra_meta={"materialized_from": sym.id},
+                ))
 
     return new_route_symbols
 
@@ -2249,7 +2225,7 @@ def expand_class_based_view_routes(
             # the name from method+path removes the whole class of problem
             # instead of sanitizing one instance of it.
             new_routes.append(make_route_symbol(
-                language=sym.language or "python",
+                language=sym.host_language or "python",
                 path=sym.path,
                 span=Span(
                     start_line=src_span.start_line,
