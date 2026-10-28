@@ -37,6 +37,13 @@ THE CONTRACT. Code anchored on a container runs when the container does:
   stays a count of test functions). The residual: a test file with module-level
   calls and no test function or test class is not reached.
 
+WHAT THE CONTRACT DOES NOT SAY: that anchored code receives a value. It runs
+when its container runs, and a construction's arguments go to the INSTANCE --
+the initializer -- not to the class body or a static initializer, so the
+taint walk stops at a type node a value reaches
+(``taint._type_node_holds_no_value``, WI-tibib). Reachability and data flow
+are different questions about the same anchor.
+
 :func:`anchor_execution_edges` turns the contract into walk-only ``(src,
 dst)`` pairs from the graph's own ``contains`` and file-to-file ``imports``
 edges: member -> container, file -> the type-like symbols it contains, and

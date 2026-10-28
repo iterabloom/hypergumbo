@@ -25,6 +25,19 @@ signatures:
   # go:external:0-0:Accept, so the catalogue's net.Listener.Accept row was inert.
   net.Listen: net.Listener
   net.Dial: net.Conn
+  # WI-kalol: func DialTimeout(network, address string, timeout time.Duration)
+  # (Conn, error). Without it a DialTimeout connection's Write / Read fell to
+  # the `external` slot and reached no row at all, unix or TCP.
+  net.DialTimeout: net.Conn
+  # WI-kalol: the Unix-domain constructors return the Unix TYPES, whose
+  # methods are rowed ipc_send / ipc_recv (go1.22 net: DialUnix and
+  # ListenUnixgram return *UnixConn, ListenUnix a *UnixListener, whose
+  # AcceptUnix returns *UnixConn and whose Accept returns a Conn).
+  net.DialUnix: net.UnixConn
+  net.ListenUnixgram: net.UnixConn
+  net.ListenUnix: net.UnixListener
+  UnixListener.AcceptUnix: net.UnixConn
+  UnixListener.Accept: net.Conn
   Listener.Accept: net.Conn
   # os / io
   os.Open: os.File

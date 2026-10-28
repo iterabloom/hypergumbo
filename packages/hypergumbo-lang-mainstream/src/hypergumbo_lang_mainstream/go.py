@@ -3141,6 +3141,15 @@ _GO_FILE_HANDLE_PRODUCERS: Final[tuple[str, ...]] = (
 #: wrapper's argument (WI-nunab). The module-slot spelling, as INV-vusum emits it.
 _GO_HANDLE_TYPES: Final[frozenset[str]] = frozenset({"os.File"})
 
+#: Connection types whose own Write / Read are DUAL rows (net_send + ipc_send,
+#: net_recv + ipc_recv): the family is fixed where the connection was made, so
+#: the receiver is resolved through :func:`_go_target_kind_from_expression`,
+#: whose binding hop follows ``c, _ := net.Dial("unix", p)`` and an
+#: ``ln.Accept()`` over a unix listener (WI-kalol, WI-potog's stamp). A
+#: parameter or field resolves by its declared type or not at all, and the
+#: rows abstain to the network boundary they always had.
+_GO_CONN_TYPES: Final[frozenset[str]] = frozenset({"net.Conn"})
+
 #: Node types that BIND a name in a Go function body. ``var_spec`` covers
 #: ``var f = os.Open(p)``; the other two cover ``:=`` and ``=``.
 _GO_BINDING_NODES: Final[frozenset[str]] = frozenset({
@@ -4758,6 +4767,13 @@ def _extract_edges_from_file(
                                     _bound = _go_last_binding(node, source, _alias)
                                     if _bound is not None:
                                         _handle_b = _go_classify_handle_text(_bound[0])
+                                if _handle_b is None and _slot in _GO_CONN_TYPES:
+                                    _handle_b = _go_target_kind_from_expression(
+                                        node, source, _alias,
+                                        import_aliases=import_aliases,
+                                        var_types=var_types,
+                                        use_line=node.start_point[0] + 1,
+                                    )
                                 if _handle_b:
                                     _meta_b["io_target_kind"] = _handle_b
                                 dst_id = (

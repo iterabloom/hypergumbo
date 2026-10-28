@@ -217,6 +217,8 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             # would silently admit `grpc.ClientConn`; an enumeration makes
             # every stdlib TYPE a reviewed entry too.
             "crypto/tls.Conn", "log/slog.Logger", "net.Conn", "net.Listener",
+            # WI-kalol: the Unix-domain connection and listener types.
+            "net.UnixConn", "net.UnixListener",
             "net/http.Client", "net/http.RoundTripper", "net/http.Transport",
             "net/smtp.Client",
             "os/exec.Cmd", "testing.B", "testing.T",
@@ -601,6 +603,7 @@ SHORT_SPELLINGS: dict[str, dict[str, str]] = {
     "go": {
         "exec": "os/exec", "http": "net/http",
         "Listener": "net.Listener", "Cmd": "os/exec.Cmd",
+        "UnixListener": "net.UnixListener",
         # WI-vinuh: library_signatures/go.yaml's slog.New / Default / With rows.
         "slog": "log/slog",
     },
