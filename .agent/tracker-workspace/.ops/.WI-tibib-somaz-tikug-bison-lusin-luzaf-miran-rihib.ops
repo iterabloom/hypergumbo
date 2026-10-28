@@ -35,3 +35,18 @@
   clock: 3  # 69a7
   nonce: 69a7  # 69a7
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Outside WI-ziruv's reach: 'when does anchored code run' is a contract never written (WI-fakuh's fix shape), so there is no declared rule to falsify. That contract has to be written first."  # 69a7
+- op: update  # 8224
+  at: '2026-10-28T12:32:22Z'  # 8224
+  by: agent  # 8224
+  actor: jgstern_agent  # 8224
+  clock: 4  # 8224
+  nonce: '8224'  # 8224
+  set:  # 8224
+    status: done  # 8224
+- op: discuss  # 7b9b
+  at: '2026-10-28T12:32:22Z'  # 7b9b
+  by: agent  # 7b9b
+  actor: jgstern_agent  # 7b9b
+  clock: 5  # 7b9b
+  nonce: 7b9b  # 7b9b
+  message: "Fixed in PR #1920 (cdee6a3921), for the taint half the 10-25 re-check narrowed this to. _reachability_past_sanitizers (shared by the structural and DDG arms) no longer reaches or expands a TYPE node a value arrived at (_type_node_holds_no_value): a construction's value goes to the instance, i.e. the initializer hop construction_calls supplies, and code anchored on the class (a python class body, a Java/C# static or field initializer) never receives a constructor's arguments; anchor_execution's contract says so. Behavioural evidence: test_taint_edge_values.py::test_constructing_a_class_does_not_run_its_body_on_the_arguments (production CLI: def f(): data = input(); return C(data) with class C: y = eval(EXPR) -> not violated; it read violated before, and mutating the check away reds it), with controls g(data)->eval violated and a constructor that evals its argument violated (the initializer hop still carries it). Measured: verify-claims, 7 generic claims, 8 repos, dev vs branch: identical verdicts and evidence rows (zero measured corpus effect). NOT changed: the reverse SLICE including C's constructors/subclass for a helper C's body calls; under anchor_execution's contract (a class body has run once its class is reached) that reading is dependence, consistent with the contract, so it is not treated as a defect here."  # 7b9b
