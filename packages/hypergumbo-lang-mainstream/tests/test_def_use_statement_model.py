@@ -484,7 +484,7 @@ class TestProductionPath:
         capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         assert _evidence(tmp_path, name, source, capsys, monkeypatch) == [
-            ("ddg", "confirmed"),
+            ("ddg", "reached"),
         ]
 
     def test_co_located_control_is_not_confirmed(
@@ -494,4 +494,4 @@ class TestProductionPath:
         [(method, walk)] = _evidence(
             tmp_path, "main.go", _GO_RANGE_CONTROL, capsys, monkeypatch,
         )
-        assert method == "ddg_mixed" and walk != "confirmed"
+        assert method == "ddg_mixed" and walk != "reached"

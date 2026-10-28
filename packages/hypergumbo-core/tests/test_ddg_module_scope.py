@@ -64,7 +64,7 @@ def _evidence(tmp_path: Path, files: dict[str, str]) -> list[tuple[str, str]]:
     ("app.py", 'import os\nimport requests\nk = os.environ["K"]\nrequests.get("http://x/" + k)\n'),
 ])
 def test_a_module_level_flow_is_confirmed_by_the_walk(tmp_path: Path, name: str, text: str) -> None:
-    assert _evidence(tmp_path, {name: text}) == [("ddg", "confirmed")]
+    assert _evidence(tmp_path, {name: text}) == [("ddg", "reached")]
 
 
 def test_a_module_level_secret_that_dies_is_removed_as_in_a_function(tmp_path: Path) -> None:
@@ -87,7 +87,7 @@ def test_a_top_level_function_defined_before_the_secret_still_carries_it(tmp_pat
         "setup()\n"
         "requests.get(URL)\n"
     )
-    assert _evidence(tmp_path, {"app.py": text}) in ([("ddg", "confirmed")], [("ddg_mixed", "escaped")])
+    assert _evidence(tmp_path, {"app.py": text}) in ([("ddg", "reached")], [("ddg_mixed", "escaped")])
 
 
 def test_a_class_attribute_does_not_kill_the_module_name_it_shadows(tmp_path: Path) -> None:
@@ -99,7 +99,7 @@ def test_a_class_attribute_does_not_kill_the_module_name_it_shadows(tmp_path: Pa
         "    u = 'http://x/'\n"
         "requests.get(u)\n"
     )
-    assert _evidence(tmp_path, {"app.py": text}) == [("ddg", "confirmed")]
+    assert _evidence(tmp_path, {"app.py": text}) == [("ddg", "reached")]
 
 
 def test_only_a_module_with_a_call_outside_its_definitions_is_walked() -> None:

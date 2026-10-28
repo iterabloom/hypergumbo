@@ -293,7 +293,8 @@ class TestTheEnvelope:
         carve-out. 2.3 -> 2.4, re-pointed rather than relaxed.
 
         And for WI-lukoz: ``trusted_sink_flows``, whose flows leave
-        ``evidence_count`` the same way. 2.4 -> 2.5, re-pointed.
+        ``evidence_count`` the same way. 2.4 -> 2.5, re-pointed. 3.0 renames
+        the walk verdicts (WI-bujum), re-pointed.
         """
         from hypergumbo_core.verify_claims import VERIFY_CLAIMS_SCHEMA_VERSION
-        assert VERIFY_CLAIMS_SCHEMA_VERSION == "2.6"
+        assert VERIFY_CLAIMS_SCHEMA_VERSION == "3.0"

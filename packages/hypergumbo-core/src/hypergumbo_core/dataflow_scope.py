@@ -56,7 +56,7 @@ call-graph reachability, and the walk can now *remove* one it refutes.
 
 The asymmetry matters more than the rename. The walk only ever SUBTRACTS: it
 adds no flow that reachability did not already report, and it removes only on
-``unconfirmed`` — the walk exhausted every route with nothing unexplained.
+``refuted`` — the walk exhausted every route with nothing unexplained.
 ``escaped`` is ignorance and removes nothing. So reading ``analysis_method ==
 "ddg"`` as "this flow's inclusion was decided by data flow" is STILL the
 misreading INV-sadah exists for, and it has been made twice in this
@@ -68,7 +68,7 @@ the top of this docstring applied to this module's OWN removal count.
 ``flows_removed_by_walk`` is published beside a ``findings_by_analysis_method``
 rollup in which ``ddg_mixed`` collapses THREE walk verdicts and ``structural``
 covers a fourth (``unavailable`` — the walk did not run, because the DDG held no
-reaching-def data for that flow's source function). Only ``unconfirmed`` can
+reaching-def data for that flow's source function). Only ``refuted`` can
 remove a flow.
 So a bare ``0`` could mean "the walk adjudicated every flow and refuted none" or
 "the walk never got to look at any of them", which is the same pair of opposite
@@ -136,8 +136,8 @@ def count_walk_verdicts(findings: Iterable[Any]) -> dict[str, int]:
     WHY THIS EXISTS, and it is this module's own founding argument turned on
     its own field. ``flows_removed_by_walk: 0`` is published beside a
     ``findings_by_analysis_method`` rollup in which ``ddg_mixed`` collapses
-    THREE verdicts — ``taint`` records a production split of 0 ``unconfirmed``
-    / 14 ``escaped`` / 139 ``not_attempted``. Only ``unconfirmed`` can remove a
+    THREE verdicts — ``taint`` records a production split of 0 ``refuted``
+    / 14 ``escaped`` / 139 ``not_attempted``. Only ``refuted`` can remove a
     flow. So a reader looking at a zero could not tell "the walk adjudicated
     and refuted nothing" from "the walk never got to look", which is exactly
     the pair of opposite meanings on identical evidence that this module was
@@ -462,7 +462,7 @@ def dataflow_scope_dict(
         # produced, with no number a reader could check. ``findings_total``
         # counts what SURVIVED, so the two together say what the walk did.
         "flows_removed_by_walk": flows_removed_by_walk,
-        # INV-busis. What makes the number ABOVE readable: only ``unconfirmed``
+        # INV-busis. What makes the number ABOVE readable: only ``refuted``
         # can remove a flow, so a zero beside a large ``escaped`` /
         # ``not_attempted`` count means the walk never got to look. Always
         # present and fully zero-filled, for the same reason as every other key
@@ -544,7 +544,7 @@ def render_dataflow_scope_text(
         + "."
     )
     lines.append(
-        "  Only an 'unconfirmed' verdict can REMOVE a flow: 'escaped' and "
+        "  Only an 'refuted' verdict can REMOVE a flow: 'escaped' and "
         "'not_attempted' are ignorance, not absence of dependence. So a "
         "removal count of 0 beside a large 'escaped' or 'not_attempted' count "
         "means the walk did not get to look — NOT that it looked and found "

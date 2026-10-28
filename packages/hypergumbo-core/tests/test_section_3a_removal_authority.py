@@ -27,8 +27,8 @@ prerequisite rather than a courtesy.
 
 MEASURED SCOPE, RECORDED SO NOBODY READS THESE TESTS AS A PAYOFF. On
 hypergumbo-core at dev 54edacb18c the §3a census is 15 confirmed / 12 escaped /
-**0 unconfirmed** across 27 walks, and the 11-repo cohort reports the same zero
-(153 ``ddg_mixed`` rows: 0 unconfirmed / 14 escaped / 139 not_attempted). So
+**0 refuted** across 27 walks, and the 11-repo cohort reports the same zero
+(153 ``ddg_mixed`` rows: 0 refuted / 14 escaped / 139 not_attempted). So
 this removes nothing on today's corpus. It becomes live exactly as escape sites
 close, and the remaining ones have named owners (INV-mumov, INV-linub).
 """
@@ -109,7 +109,7 @@ class TestRefutedFlowsAreRemoved:
                                (3, (), ("copy",)), (4, (), ("copy",))]},
         )
         assert len(findings) == 1
-        assert findings[0].walk_verdict == "confirmed"
+        assert findings[0].walk_verdict == "reached"
 
     def test_the_removed_flow_is_reported_and_not_silent(self) -> None:
         """A deletion a caller cannot observe is the wrong shape for this.
@@ -126,7 +126,7 @@ class TestRefutedFlowsAreRemoved:
         )
         assert findings == []
         assert len(removed) == 1
-        assert removed[0].walk_verdict == "unconfirmed"
+        assert removed[0].walk_verdict == "refuted"
         assert removed[0].sink_primitive == "send"
 
 
@@ -236,4 +236,4 @@ def test_a_confirmation_is_never_removed_either_way(forfeited: bool) -> None:
         forfeit_refutation={_FN} if forfeited else None,
     )
     assert len(findings) == 1
-    assert findings[0].walk_verdict == "confirmed"
+    assert findings[0].walk_verdict == "reached"

@@ -399,7 +399,7 @@ from .paths import classify_test_file, is_migration_file
 # 2.3 adds ``walk_verdicts`` inside ``dataflow_coverage`` — the §3a walk's own
 # result for every finding (``confirmed`` / ``escaped`` / ``not_attempted`` /
 # ``unavailable``, plus ``mixed`` for a collapsed row whose members disagreed
-# and ``unrecorded``). ``unconfirmed`` is a key too but always 0 here: a flow
+# and ``unrecorded``). ``refuted`` is a key too but always 0 here: a flow
 # the walk refuted is diverted before it becomes a finding and is counted in
 # ``refuted_flows``. See ADR-0052.
 #
@@ -411,8 +411,8 @@ from .paths import classify_test_file, is_migration_file
 # change, because the existing key was being read wrongly without it.
 # ``flows_removed_by_walk: 0`` was reasonably read as "the walk adjudicated
 # these flows and found nothing to remove". It usually means the walk never got
-# to look: only ``unconfirmed`` can remove a flow, and measurement 0007 found
-# ZERO ``unconfirmed`` rows across 11 repositories while 90.8% of the population
+# to look: only ``refuted`` can remove a flow, and measurement 0007 found
+# ZERO ``refuted`` rows across 11 repositories while 90.8% of the population
 # rested on a walk that never ran. A consumer's correct reading of an unchanged
 # key therefore changes, which is what the "changed the meaning of an existing
 # one" carve-out is for.
@@ -433,7 +433,15 @@ from .paths import classify_test_file, is_migration_file
 # own beside them -- ``print(k, file=sys.stderr)`` is one row, not two -- so
 # ``evidence_count`` and the ``details`` count can fall with no verdict moving,
 # which is the carve-out's "changed the meaning of an existing key".
-VERIFY_CLAIMS_SCHEMA_VERSION = "2.6"
+# 3.0 renames the §3a walk verdicts ``confirmed`` / ``unconfirmed`` to
+# ``reached`` / ``refuted`` (WI-bujum, owner ruling 2026-10-25), in every
+# evidence row's ``walk_verdict`` / ``walk_verdict_values`` and the
+# ``dataflow_coverage.walk_verdicts`` keys. NOT additive, the second breaking
+# bump after 2.0: a run printed "all CONFIRMED" (the claim holds) beside
+# "walk verdicts: confirmed 3" (a secret reached a sink), one word for opposite
+# facts. A consumer comparing ``walk_verdict == "confirmed"`` must read
+# ``"reached"``. ``refuted`` matches the existing ``refuted_flows`` key.
+VERIFY_CLAIMS_SCHEMA_VERSION = "3.0"
 
 #: Verdict values that ASSERT THE CLAIM HOLDS. The predicate for "did this
 #: claim pass" inside this module (the coverage gate). The CLI's exit code and
