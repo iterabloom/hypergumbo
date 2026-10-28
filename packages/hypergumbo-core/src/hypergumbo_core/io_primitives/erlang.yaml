@@ -315,6 +315,12 @@ env_read:
     notes: "Application config reads. Ruled and kept under env_read with elixir's Application.get_env (INV-nular, 2026-09-06; ADR-0050 section 1): application config is the process environment's medium, and it may carry a credential -- runtime.exs / sys.config is where credentials go. The full ruling is on the elixir row."
   - module: init
     functions: [get_argument, get_arguments, get_plain_arguments]
+    simultaneous: true
+    notes: >-
+      WI-zidam (owner ruling 2026-10-22): the command line is chosen by the
+      launcher, as stdin is, so it is untrusted_input (command_line_read) as
+      well as host_secret (env_read: an argument may carry a credential).
+      Declared under both, `simultaneous`.
 
 # INV-tutar: host DESCRIPTION reads. Split out of env_read because
 # AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
@@ -450,3 +456,14 @@ logging:
   - module: logger
     functions: [emergency, alert, critical, error, warning, notice, info, debug, log]
     notes: "OTP 21+ logging framework"
+
+# WI-zidam (owner rulings 2026-10-22 and 2026-10-28): the COMMAND LINE.
+# The launcher chose it, as it chose stdin, so it mints untrusted_input. An
+# argument may also carry a credential, so each row here is simultaneous with
+# its env_read row (host_secret), which by declaration order stays the scalar
+# io_boundary. verify-claims sets these flows aside and counts them unless a
+# claim says `include_command_line: true` (ADR-0050).
+command_line_read:
+  - module: init
+    functions: [get_argument, get_arguments, get_plain_arguments]
+    simultaneous: true

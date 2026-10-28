@@ -2118,6 +2118,11 @@ AUTO_SOURCE_LABEL_MAP: dict[str, str] = {
     # label on the row, for the reason above; the URL rows are declared
     # `simultaneous` with env_read because they may also carry a credential.
     "navigation_read": "untrusted_input",
+    # WI-zidam: the program's own command line, which the LAUNCHER chose. The
+    # same shape again: a second boundary beside env_read (argv may carry a
+    # credential too), so the source carries `source_boundary ==
+    # command_line_read` and verify-claims can set its flows aside.
+    "command_line_read": "untrusted_input",
 }
 
 

@@ -19,6 +19,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A C/C++ module slot naming several headers is a handle** (`module-set-<16 hex>`) into a new top-level `module_sets` table (`SCHEMA_VERSION` 0.20.15 → 0.21.0). A reader that splits the slot on commas must expand it there first.
 - **§3a walk verdicts `confirmed` / `unconfirmed` are `reached` / `refuted`** (`verify-claims` envelope 2.6 → 3.0), so a walk verdict no longer shares a word with a claim verdict.
 - **An exit status is no longer a taint source** (ADR-0049); the child's output still is.
+- **Command-line arguments are `untrusted_input` as well as `host_secret`**, through a new `command_line_read` boundary beside `env_read` on every argv row (WI-zidam). `verify-claims` sets these flows aside and counts them in a new per-verdict `command_line_flows` (envelope 3.0 → 3.1); a claim counts them with `taint_flow.include_command_line: true`. `document.cookie` is now browser storage, keeping `host_secret`.
 - **A `calls` edge's `src` is the code unit making the call** (ADR-0023). No output changes.
 
 ### Added

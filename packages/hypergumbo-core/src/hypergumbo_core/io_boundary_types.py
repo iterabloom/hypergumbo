@@ -9,7 +9,8 @@ to the axis as a whole):
     later, and not what the data is. A ``simultaneous`` SECOND boundary
     records either a reading of the same crossing that a taint label needs
     (that its content may carry a credential, ``env_read``, or that the party
-    who navigated to the page chose it, ``navigation_read``), or a second
+    who navigated to the page chose it, ``navigation_read``, or that the party
+    who launched the process chose it, ``command_line_read``), or a second
     crossing the same call performs at this call site, which must satisfy the
     axiom on its own. None of a call's simultaneous boundaries is primary:
     consumers read them all (``io_boundary.boundaries_of``), and the scalar
@@ -60,7 +61,7 @@ than a comment someone has to keep true.
 
 THE SECTIONS, and why headline membership is NOT one of them
 ------------------------------------------------------------
-Four axes partition the twenty-two values:
+Four axes partition the twenty-three values:
 
 ``data_crossing``     the axiom's canonical section. Data crosses the process
                       boundary at this call site, in a named direction.
@@ -82,11 +83,11 @@ the shape ADR-0024's fold-residue discipline says to put on the spec instead.
 
 KNOWN GAP, stated rather than left for the next reader to rediscover
 ------------------------------------------------------------------
-ADR-0016's "controlled vocabulary" table documents TEN of these twenty-two.
+ADR-0016's "controlled vocabulary" table documents TEN of these twenty-three.
    ``env_write``, ``db_read``, ``db_write``, ``process_send``, ``logging``,
    ``browser_storage_read``, ``browser_storage_write``, ``net_listen``,
-   ``db_compose``, ``ipc_listen``, ``external_potential`` and
-   ``command_launch`` are absent from it. The
+   ``db_compose``, ``ipc_listen``, ``command_line_read``,
+   ``external_potential`` and ``command_launch`` are absent from it. The
    vocabulary grew and its documentation did not, which is the drift INV-tafig
    describes; the descriptions below are sourced from the shipped catalogue
    rows and the consumer code, not from that table.
@@ -452,6 +453,30 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
             "them apart; and the receive half of a Unix server may itself be "
             "rowed net_recv where TCP and Unix share it "
             "(asyncio.StreamReader.read)."
+        ),
+    ),
+    # ------------------------------------------------------------------
+    # AXIS_DATA_CROSSING once more, last of all for the same reason
+    # (WI-zidam).
+    # ------------------------------------------------------------------
+    IoBoundarySpec(
+        name="command_line_read",
+        axis=AXIS_DATA_CROSSING,
+        direction=DIRECTION_INBOUND,
+        catalog_declarable=True,
+        counts_in_headline=True,
+        description=(
+            "Read the program's own COMMAND LINE -- sys.argv, process.argv, "
+            "std::env::args: values the party that launched the process "
+            "chose, as it chose stdin, so it mints untrusted_input (owner "
+            "ruling 2026-10-22). navigation_read's shape: an argument may "
+            "also carry a credential, so every row declaring it is "
+            "SIMULTANEOUS with env_read, which keeps argv's host_secret label "
+            "and, by declaration order, its scalar io_boundary. verify-claims "
+            "sets its flows aside and counts them (command_line_flows) "
+            "unless a claim sets include_command_line: true -- measured, "
+            "they are true and almost never useful: a CLI doing with its "
+            "arguments what it exists to do (owner ruling 2026-10-28)."
         ),
     ),
     # ------------------------------------------------------------------

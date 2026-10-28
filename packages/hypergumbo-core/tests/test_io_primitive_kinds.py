@@ -212,7 +212,10 @@ class TestSwiftConstructorsAreFunctions:
     def test_command_line_is_an_attribute_read(self) -> None:
         rows = [(p.boundary, p.kind) for p in load_catalog("swift").primitives
                 if p.module == "CommandLine"]
-        assert rows == [("env_read", KIND_ATTRIBUTE)]
+        # Two rows since WI-zidam, both attribute reads.
+        assert sorted(rows) == [
+            ("command_line_read", KIND_ATTRIBUTE), ("env_read", KIND_ATTRIBUTE),
+        ]
 
 
 class TestJvmStaticsAreFunctions:

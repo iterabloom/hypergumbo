@@ -132,6 +132,8 @@ _PRE_REFACTOR_CATALOG_BOUNDARY_TYPES = (
     "navigation_read",
     # WI-gaziv: net_listen's local-IPC twin, last for the same reason.
     "ipc_listen",
+    # WI-zidam: argv's launcher-chosen reading, last for the same reason.
+    "command_line_read",
 )
 
 

@@ -113,7 +113,12 @@ def test_an_imported_function_is_reported_where_it_is_called(
     assert ("net_send", "urllib.request.urlopen", "e") in chains
     assert ("fs_read", "glob.glob", "g") in chains
     at_file = {(b, p) for b, p, src in chains if src == "file"}
-    assert at_file == {("env_read", "os.environ"), ("env_read", "sys.argv")}
+    # sys.argv is two boundaries at once since WI-zidam (env_read +
+    # command_line_read), so the one read is reported under both.
+    assert at_file == {
+        ("env_read", "os.environ"), ("env_read", "sys.argv"),
+        ("command_line_read", "sys.argv"),
+    }
 
 
 def test_an_import_no_longer_fails_a_claim(
