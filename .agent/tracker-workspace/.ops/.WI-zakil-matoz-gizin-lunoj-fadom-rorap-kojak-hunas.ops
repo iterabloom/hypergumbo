@@ -55,3 +55,18 @@
   clock: 6  # 093e
   nonce: 093e  # 093e
   message: "2026-10-27: part 2 now has its own production-path closure test, shared with WI-kufos (2): packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestCollapsedRowIsItsGroup::test_the_choice_caveat_does_not_depend_on_the_witness (strict xfail, PR #1905)."  # 093e
+- op: update  # e937
+  at: '2026-10-28T03:20:54Z'  # e937
+  by: agent  # e937
+  actor: jgstern_agent  # e937
+  clock: 7  # e937
+  nonce: e937  # e937
+  set:  # e937
+    status: done  # e937
+- op: discuss  # 4b97
+  at: '2026-10-28T03:20:54Z'  # 4b97
+  by: agent  # 4b97
+  actor: jgstern_agent  # 4b97
+  clock: 8  # 4b97
+  nonce: 4b97  # 4b97
+  message: "Fixed in PR #1911 (802367974a), all three parts. (1) the caveat counts evidence ROWS ('3 of this claim's evidence rows' for three accept rows; test_it_counts_rows_not_names). (2) it tests source_primitives, not the witness (shared with WI-kufos; TestCollapsedRowIsItsGroup::test_the_choice_caveat_does_not_depend_on_the_witness now passes unmarked). (3) gethostname/getservbyname/getservbyport left CHOICE_SHAPED_SOURCE_NAMES and the caveat requires taint_label untrusted_input (CHOICE_SHAPED_SOURCE_LABEL): the production-path test TestChoiceShapedSource::test_the_caveat_is_only_on_an_untrusted_input_claim (python gethostname -> send under a host_description claim: violated, no choice_shaped_source caveat) was a strict xfail and now passes unmarked. Mutations: re-adding gethostname and dropping the label test each turned a test red."  # 4b97
