@@ -1,0 +1,52 @@
+Original commit body from c38a2e84b42cd989d41498dddae5e838bfe498e6:
+
+WI-ziviv. ADR-0059's shrink-only ledger held 29 rows the axiom rejects;
+it is now empty. The ObjC class methods (NSData dataWithContentsOf*,
+NSString stringWithContentsOf*, NSFileHandle fileHandleFor*,
+NSInputStream / NSOutputStream factories, the NSURLConnection senders,
+NSDate date / timeIntervalSinceReferenceDate, the two NSTask launchers
+added after the ledger was pinned) are function-kind; Swift Date.now and
+ProcessInfo.processInfo are attribute reads, DispatchTime.now() and
+Process.launchedProcess functions. Decided first, as their Swift twins
+were (INV-gujoh): NSMutableURLRequest builds a request and sends nothing,
+so it is deleted; fetchRequestWithEntityName: composes a query, so it is
+db_compose. The five kotlin.io.FilesKt facade rows are deleted (nothing
+emits that module). `date` (objc) and `now` (swift) joined
+ambiguous_names, so a bare no-context call cannot match the new function
+rows. MEASURED: survey + classify, dev vs branch, on AFNetworking,
+CocoaLumberjack, fmdb, GPUImage, Alamofire, hummingbird and detekt:
+0 classifications moved (the re-kind is classification-neutral).
+
+WI-sojok. The per-language empty-zone gate judged only ADR-0060's two
+zones; it now judges every built-in zone (taint.builtin_sink_zones), so
+"untrusted input never reaches a database" on a Go repo with db.Exec is
+inconclusive ("go has no sink in the 'database' zone") instead of
+confirmed. A zone only a project catalogue declares is not judged. Two
+tests that pinned the old scope are re-pointed (java's ipc claim is now
+withheld for java having no ipc sink). MEASURED: verify-claims, 7 generic
+claims, on the 8-repo cohort plus gin-realworld: no verdict moved (the
+Go database claim was already withheld there by the unclassified-call
+gate); the filed repro is fixed.
+
+WI-monul. ADR-0051 s2 now states the measured decision not to read
+receiver_type_hint in io_boundary/taint: the hint is bare in every
+language but Java, and substituting it for the slot changes no
+classification where qualified and only creates short-name matches
+where bare.
+
+WI-kosup. docs/audits/0023-reader-census.md: six read-only sub-agents on
+a pinned tree inventoried what nothing reads and what nothing produces
+(229 fields, 203 registered / 348 emitted meta keys, 193 flags, 16 env
+vars, 9 YAML loaders, 5,039 functions, 269 vocabulary subsets, 44
+keep-with-trigger verdicts). 14 action items filed, 4 named decisions
+recorded (WI-fomif DELETE, call_type/method DELETE, receiver OK,
+resolution_quality WIRE). Recorded with concept-audit-record; full rows
+in the lab notebook. Its first live finding was this session's own:
+verify_claims.classified_yet_starved (#1920) had no production caller,
+which the test-only ratchet would flag; it is now wired into the
+starvation reason, which names a starved-and-classified module as an
+internal inconsistency rather than blindness (still withheld).
+
+Addresses WI-ziviv, WI-sojok, WI-monul, WI-kosup.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
