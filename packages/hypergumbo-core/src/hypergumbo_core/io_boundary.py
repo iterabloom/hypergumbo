@@ -193,7 +193,12 @@ from .io_boundary_types import (
 from .ir import symbol_name_slot, symbol_path_slot
 from .module_sets import expand_module_slot
 from .owner_ancestry import ancestor_retry_hints
-from .yaml_catalogs import PROVENANCE_COMMUNITY, CatalogueError, declares_community
+from .yaml_catalogs import (
+    PROVENANCE_COMMUNITY,
+    CatalogueError,
+    declares_community,
+    reject_unknown_keys,
+)
 
 if TYPE_CHECKING:
     from .ir import Edge, ExternalRef
@@ -979,6 +984,38 @@ class IoPrimitive:
         return f"{self.module}.{self.name}"
 
 
+#: WI-hapon: the keys :meth:`IoBoundaryCatalog._from_dict` and its callers
+#: read, at each level. Anything else is refused by name. ``provenance`` and
+#: ``retrieved`` are read before the load (the ADR-0061 tier, the
+#: ``DefaultOverlay`` disclosure); ``stdlib_provenance`` is validated by
+#: ``_validate_catalog_dict``. ``seeded_from`` (the version ``init-catalogs``
+#: stamps on a seeded copy, documented in that directory's README) and a
+#: completeness entry's ``source_url`` / ``notes`` are read by PEOPLE judging
+#: staleness and provenance, and are accepted for that.
+_CATALOGUE_KEYS: Final[frozenset[str]] = frozenset(CATALOG_BOUNDARY_TYPES) | {
+    "language", "status", "provenance", "retrieved", "stdlib_provenance",
+    "stdlib_modules", "stdlib_prefixes", "stdlib_other", "ambiguous_names",
+    "module_completeness", "stdlib_module_completeness", "seeded_from",
+}
+_ROW_KEYS: Final[frozenset[str]] = frozenset(YAML_SECTIONS) | {
+    "module", "notes", "simultaneous", "boundary_ruling", "abstains_to",
+    "requires_target_kind", "resource_naming", "returns_handle",
+}
+_STDLIB_OTHER_ROW_KEYS: Final[frozenset[str]] = frozenset(YAML_SECTIONS) | {
+    "module", "notes",
+}
+_COMPLETENESS_ROW_KEYS: Final[frozenset[str]] = frozenset({
+    "module", "completeness", "retrieved", "notes", "source_url",
+})
+#: Where a near-miss key's meaning lives, said beside the refusal.
+_UNREAD_KEY_REASONS: Final[dict[str, str]] = {
+    "fs_delete": (
+        " There is no fs_delete boundary: removing a file is fs_write, as "
+        "os.remove and shutil.rmtree are in the shipped catalogues."
+    ),
+}
+
+
 @dataclass
 class IoBoundaryCatalog:
     """Loaded I/O primitive catalog for a single language.
@@ -1620,6 +1657,14 @@ class IoBoundaryCatalog:
         provenance_declared`` catalogs (see :func:`_validate_catalog_dict`).
         """
         language = data.get("language", "unknown")
+        # WI-hapon: a key nothing reads is refused, at every level the loader
+        # reads. An overlay with ``net_sendd:`` or a row key ``function:``
+        # loaded with ZERO rows and no message (the census reproduced both),
+        # so its author believed in rows that classified nothing.
+        reject_unknown_keys(
+            data, _CATALOGUE_KEYS, origin=f"I/O catalogue for {language!r}",
+            where="top-level", error=ValueError, reasons=_UNREAD_KEY_REASONS,
+        )
         status = data.get("status", "provenance_declared")
         provenance = data.get("stdlib_provenance")
         if provenance is not None and not isinstance(provenance, dict):
@@ -1649,6 +1694,10 @@ class IoBoundaryCatalog:
                         f"{language}: each '{boundary}:' row must be a "
                         f"mapping, got {type(entry).__name__}."
                     )
+                reject_unknown_keys(
+                    entry, _ROW_KEYS, origin=f"I/O catalogue for {language!r}",
+                    where=f"'{boundary}:' row", error=ValueError,
+                )
                 module = entry.get("module", "")
                 notes = entry.get("notes", "")
                 # INV-zumin. Row-level rather than catalogue-level so it sits
@@ -1757,6 +1806,11 @@ class IoBoundaryCatalog:
             for entry in stdlib_other_entries:
                 if not isinstance(entry, dict):
                     continue
+                reject_unknown_keys(
+                    entry, _STDLIB_OTHER_ROW_KEYS,
+                    origin=f"I/O catalogue for {language!r}",
+                    where="'stdlib_other:' row", error=ValueError,
+                )
                 module = entry.get("module", "")
                 for kind_key in ("functions", "methods", "attributes"):
                     for sym_name in entry.get(kind_key, []):
@@ -1821,6 +1875,11 @@ class IoBoundaryCatalog:
             for entry in completeness_section:
                 if not isinstance(entry, dict):
                     continue
+                reject_unknown_keys(
+                    entry, _COMPLETENESS_ROW_KEYS,
+                    origin=f"I/O catalogue for {language!r}",
+                    where="'module_completeness:' entry", error=ValueError,
+                )
                 name = entry.get("module")
                 if not isinstance(name, str) or not name:
                     continue
@@ -2154,7 +2213,9 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
     launder third-party rows into the standing of the curated catalogue. Any
     other value is refused for what it is: ``in_progress`` would be a key that
     loads and changes nothing. It carries no ``stdlib_modules`` either — see
-    :func:`load_catalog` for why that matters.
+    :func:`load_catalog` for why that matters. Its ``stdlib_other`` (symbols
+    known not to be I/O) is kept here and WITHHELD by :func:`load_catalog`
+    when the file is community, with its ``module_completeness`` (WI-pofal).
     """
     if not path.exists():
         raise IoPrimitiveOverlayError(
@@ -2512,9 +2573,18 @@ def load_catalog(
             # completeness grants: a grant turns an unclassified call into an
             # examined negative, the removing half ADR-0061 ruling 2 denies an
             # unvouched row. (A shipped default may not declare one at all.)
+            #
+            # ``stdlib_other`` is the same grant one symbol at a time (WI-pofal):
+            # it says a call is NOT I/O, and ``_compute_external_potential``
+            # then stops reporting it as one that might be. Measured before
+            # this line on a one-file repo calling an uncatalogued
+            # ``frobnet.post``: ``external_potential_edges`` 1 -> 0 under a
+            # community overlay naming it. No verify-claims verdict moved (the
+            # unclassified-module coverage signal is computed apart from those
+            # chains), but the output got cleaner on an unvouched file's word.
             overlay = replace(overlay, primitives=[
                 replace(prim, unvouched=True) for prim in overlay.primitives
-            ], module_completeness={})
+            ], module_completeness={}, stdlib_other=frozenset())
         # A COMMUNITY ROW IS NOT PART OF THE STDLIB ENUMERATION, so it must not
         # restate what the catalogue claims about it. ``status:
         # provenance_declared`` says a language's STDLIB surface was enumerated
