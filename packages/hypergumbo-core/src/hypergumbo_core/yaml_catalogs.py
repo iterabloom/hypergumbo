@@ -279,6 +279,22 @@ PROVENANCE_BUILTIN = "builtin"
 PROVENANCE_COMMUNITY = "community"
 
 
+def declares_builtin(data: object) -> bool:
+    """True when a parsed catalogue file declares ``provenance: builtin``.
+
+    THE ONE RULE FOR A SHIPPED FILE (WI-fuzat): it is ``builtin`` only when it
+    says so, and any other shipped file is treated as community -- it may add,
+    never make a verdict cleaner. Three rules used to decide "builtin" (an
+    explicit line, "not community", and path-or-line) and agreed only because
+    ``test_catalogue_scope_gates.py`` forces every shipped file to declare one
+    of the two; a file that slipped past that gate now lands on the
+    withholding side under every reader. A file the operator supplied is
+    asked :func:`declares_community` instead: it is theirs unless it says
+    otherwise.
+    """
+    return isinstance(data, dict) and data.get("provenance") == PROVENANCE_BUILTIN
+
+
 def declares_community(data: object) -> bool:
     """True when a parsed catalogue file declares ``provenance: community``.
 

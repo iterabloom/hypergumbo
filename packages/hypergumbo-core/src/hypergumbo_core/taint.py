@@ -2400,10 +2400,12 @@ def shipped_non_boundary_sink_sites() -> dict[str, frozenset[tuple[str, str]]]:
     Pairs, not modules, because the module is NOT what was examined:
     ``document.getElementById`` is not a sink, and ``window.fetch`` is I/O.
     """
+    from .yaml_catalogs import declares_builtin
+
     sites: dict[str, set[tuple[str, str]]] = {}
     for path in sorted(_TAINT_SINKS_DIR.glob("*.yaml")):
         data = _safe_load_catalog_yaml(path, "sinks", dict)
-        if data.get("provenance") != "builtin":
+        if not declares_builtin(data):
             continue
         for lang, entries in (data.get("sinks") or {}).items():
             for entry in entries or []:
@@ -2566,8 +2568,12 @@ def load_full_taint_catalog(
     return catalog
 
 
-def _declares_community_file(path: Path) -> bool:
-    """Does a taint file declare ``provenance: community``?
+def _declares_community_file(path: Path, *, shipped: bool = False) -> bool:
+    """Is a taint file in the community tier?
+
+    For a file the operator supplied: it declares ``provenance: community``.
+    For a ``shipped`` file: it does not declare ``builtin``
+    (``yaml_catalogs.declares_builtin``, WI-fuzat).
 
     Asked of every file a flag, claims file or channel names BEFORE the real
     load, so an unparseable file raises :class:`TaintCatalogError` -- the
@@ -2575,15 +2581,18 @@ def _declares_community_file(path: Path) -> bool:
     ``yaml.YAMLError``. A wrong-shape document is not this question's to
     refuse: it answers False and the load refuses it.
     """
-    from .yaml_catalogs import declares_community
+    from .yaml_catalogs import declares_builtin, declares_community
 
-    return declares_community(read_catalogue_yaml(
+    data = read_catalogue_yaml(
         path, what="taint catalog", error=TaintCatalogError, mapping=False,
-    ))
+    )
+    if shipped:
+        return not declares_builtin(data)
+    return declares_community(data)
 
 
 def split_community_files(
-    paths: "Iterable[Path]",
+    paths: "Iterable[Path]", *, shipped: bool = False,
 ) -> "tuple[list[Path], list[Path]]":
     """``(yours, community)``: taint files split by their provenance line.
 
@@ -2591,11 +2600,14 @@ def split_community_files(
     directories, the user's channels, the claims file's ``extra_catalogs:``
     and the ``--taint-*`` flags -- so the loader and the verify-claims
     disclosure cannot disagree about a file's tier (ADR-0061 ruling 3).
+    A ``shipped`` file is vouched for only when it declares ``builtin``
+    (``yaml_catalogs.declares_builtin``, WI-fuzat).
     """
     yours: "list[Path]" = []
     community: "list[Path]" = []
     for path in paths:
-        (community if _declares_community_file(path) else yours).append(path)
+        (community if _declares_community_file(path, shipped=shipped)
+         else yours).append(path)
     return yours, community
 
 
@@ -2638,7 +2650,7 @@ def load_builtin_taint_catalog(
     # layer below, which only ADDS (ruling 2). ``--no-default-overlays`` omits
     # that layer entirely (ruling 5, INV-fikoh).
     shipped = (source_paths, sink_paths, sanitizer_paths)
-    split = [split_community_files(paths) for paths in shipped]
+    split = [split_community_files(paths, shipped=True) for paths in shipped]
     builtin_paths = [mine for mine, _ in split]
     community_paths: "list[list[Path]]" = [[], [], []]
     if include_community:

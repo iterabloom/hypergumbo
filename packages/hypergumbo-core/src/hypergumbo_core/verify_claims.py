@@ -2313,7 +2313,7 @@ def catalogue_tiers(
     succeeded or already failed loudly).
     """
     from .in_repo_catalogues import git_state, is_inside
-    from .yaml_catalogs import declares_community
+    from .yaml_catalogs import declares_builtin, declares_community
 
     out: dict[str, list[dict[str, str]]] = {tier: [] for tier in CATALOGUE_TIERS}
     seen: set[tuple[str, str]] = set()
@@ -2329,9 +2329,11 @@ def catalogue_tiers(
         entry = {"family": item.family, "path": str(item.path)}
         if item.stage != "verify":
             entry["stage"] = item.stage
-        community = declares_community(data)
+        # A shipped file is builtin only when it says so (WI-fuzat).
+        community = declares_community(data) or (
+            item.shipped and not declares_builtin(data))
         if community:
-            entry["retrieved"] = str(data.get("retrieved", ""))
+            entry["retrieved"] = str((data or {}).get("retrieved", ""))
         inside = (
             not item.shipped and repo_root is not None
             and is_inside(repo_root, item.path)
