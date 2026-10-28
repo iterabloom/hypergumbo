@@ -784,13 +784,21 @@ CAVEAT_HIGHER_FIDELITY_AVAILABLE = "higher_fidelity_available"
 #:
 #: DECLARED HERE RATHER THAN COPIED INTO AN INSTRUMENT, so the disclosure and
 #: any future measurement read the same list.
+#:
+#: The shape was defined on ``untrusted_input`` (the far side chose the value),
+#: so the caveat also requires that label: a name is matched label-blind, and a
+#: row that re-labels away from ``net_recv`` must not keep the caveat. erlang's
+#: ``gethostname`` / ``getservbyname`` / ``getservbyport`` read local tables
+#: (``host_info_read`` since WI-dozul) and are not listed (WI-zakil).
 CHOICE_SHAPED_SOURCE_NAMES: frozenset[str] = frozenset({
     # a peer address / connection the far side did not author
     "accept", "transport_accept", "Accept",
     # erlang inet DNS: an address or a name chosen from what exists
     "getaddr", "getaddrs", "gethostbyname", "gethostbyaddr",
-    "gethostname", "getservbyname", "getservbyport",
 })
+
+#: The one taint label the choice shape describes (WI-zakil).
+CHOICE_SHAPED_SOURCE_LABEL = "untrusted_input"
 
 #: A reported finding is rooted at a source whose value the far side CHOSE from
 #: a constrained set, and hypergumbo does not model that distinction
@@ -4322,6 +4330,22 @@ def _non_boundary_sink_site(
     return _join_site_name(module, name)
 
 
+def _evaluation_site_spellings() -> dict[str, str]:
+    """Each shipped evaluation site's ``sink_primitives`` spelling -> its site name.
+
+    A finding names its sinks ``module.name`` (``taint._qualify``) while the
+    opaque-site list joins the slots with :func:`_join_site_name`, which
+    collapses a repeated slot (``eval.eval`` -> ``eval``).
+    """
+    from .taint import _qualify, shipped_non_boundary_sink_sites
+
+    return {
+        _qualify(module, name): _join_site_name(module, name)
+        for rows in shipped_non_boundary_sink_sites().values()
+        for module, name in rows
+    }
+
+
 def _evaluation_site_names() -> frozenset[str]:
     """Every site name :func:`_non_boundary_sink_site` can return.
 
@@ -6585,10 +6609,17 @@ def _verify_taint_claim_uncredited(
     # a claim whose question is injection reads a stronger fact than the label
     # states. Disclosure only -- the verdict VALUE and evidence_count are
     # untouched, so nothing moves between confirmed and violated.
+    # A collapsed row stands for its whole group, so the test runs over
+    # ``source_primitives``, not the witness scalar (WI-kufos).
+    _choice_rows = [
+        v for v in violations
+        if v.taint_label == CHOICE_SHAPED_SOURCE_LABEL
+        and any(is_choice_shaped_source(p) for p in v.source_primitives)
+    ]
     _choice_sources = sorted({
-        v.source_primitive.rsplit(".", 1)[-1]
-        for v in violations
-        if is_choice_shaped_source(v.source_primitive)
+        p.rsplit(".", 1)[-1]
+        for v in _choice_rows for p in v.source_primitives
+        if is_choice_shaped_source(p)
     })
     violated_caveats: list[dict[str, Any]] = []
     _withheld = sorted({
@@ -6632,7 +6663,7 @@ def _verify_taint_claim_uncredited(
             "kind": CAVEAT_CHOICE_SHAPED_SOURCE,
             "entries": _choice_sources,
             "detail": (
-                f"{len(_choice_sources)} of this claim's evidence rows are "
+                f"{len(_choice_rows)} of this claim's evidence rows are "
                 f"rooted at a source whose value the far side CHOSE from a "
                 f"constrained set rather than authored: "
                 f"{', '.join(_choice_sources)}. Such a flow can only ever be a "
@@ -6643,7 +6674,7 @@ def _verify_taint_claim_uncredited(
                 f"cohort sampled deliberately for this property and 2 of 568 "
                 f"findings (0.35%) were choice-shaped, against a 5% threshold "
                 f"fixed before the number existed -- so it is not a per-row "
-                f"field. Read source_primitive on the evidence row to see "
+                f"field. Read source_primitives on the evidence row to see "
                 f"which flows these are."
             ),
         })
@@ -6793,10 +6824,15 @@ def _withhold_for_tainted_evaluation(
     evaluations = set(opaque) & _evaluation_site_names()
     if not evaluations:
         return reason, opaque
+    # A collapsed row stands for every sink in its group (WI-kufos), and
+    # ``sink_primitives`` spells each one ``_qualify``-style, so it is mapped
+    # back to the site spelling the opaque list uses.
+    spelled = _evaluation_site_spellings()
     reached = sorted({
-        _join_site_name(f.sink_module, f.sink_primitive)
+        spelled[p]
         for f in findings
         if f.taint_label == label and not f.sanitized
+        for p in f.sink_primitives if p in spelled
     } & evaluations)
     if not reached:
         return reason, opaque

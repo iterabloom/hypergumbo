@@ -762,7 +762,6 @@ class TestChoiceShapedSource:
         assert verdict["verdict"] == "violated"
         assert "choice_shaped_source" in {c["kind"] for c in verdict["caveats"]}
 
-    @pytest.mark.xfail(strict=True, reason="WI-zakil part 3: gethostname (host_info_read) still counts as choice-shaped")
     def test_the_caveat_is_only_on_an_untrusted_input_claim(self, tmp_path: Path) -> None:
         labels = {"desc-no-network": "host_description"}
         repo = _write(tmp_path, {
@@ -828,7 +827,6 @@ class TestCollapsedRowIsItsGroup:
             assert (row["analysis_method"], row["collapsed_flow_count"]) == ("ddg_mixed", 2)
             assert row["source_primitives"] == ["socket.socket.accept", "socket.socket.recv"]
 
-    @pytest.mark.xfail(strict=True, reason="WI-kufos (2) / WI-zakil part 2: the caveat tests the witness source")
     def test_the_choice_caveat_does_not_depend_on_the_witness(self, tmp_path: Path) -> None:
         kinds = [{c["kind"] for c in v["caveats"]} for v in self._choice(tmp_path)]
         assert kinds[0] == kinds[1]
@@ -838,7 +836,6 @@ class TestCollapsedRowIsItsGroup:
         qualification is withdrawn, so the fixture reaches the gate."""
         assert self._evaluation(tmp_path)[1] == "inconclusive"
 
-    @pytest.mark.xfail(strict=True, reason="WI-kufos (1): the INV-dudal withdrawal reads the witness sink")
     def test_the_evaluation_withdrawal_does_not_depend_on_the_witness(self, tmp_path: Path) -> None:
         assert self._evaluation(tmp_path) == ["inconclusive", "inconclusive"]
 

@@ -57,6 +57,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`slice --io-boundary` keeps a call for every boundary it crosses**: `subprocess.check_output` is both `subprocess` and `ipc_recv` (`io_boundary.boundaries_of`).
 - **A user overlay no longer lowers its catalogue's status**, which turned unrelated chains `[unreliable]`, and declares none itself.
 - **A user taint row replaces only the label or zone it restates**, not every label or zone of the function.
+- **A collapsed taint row is judged by its whole group**, not its first member; the `choice_shaped_source` caveat counts rows and applies only to `untrusted_input`.
 - **Taint walks module-level Python and JS/TS code**, reaches reads through walrus, nested assignments and closures, and drops false leaks from `build_opener().open(url)` and Go's `_, err := get()`.
 
 #### Dead code, tiers and sketch

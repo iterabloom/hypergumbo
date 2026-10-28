@@ -202,14 +202,18 @@ def test_a_boundary_claim_is_qualified_not_withheld() -> None:
     assert caveat["entries"] == ["document.write"]
 
 
-def _finding(label: str, module: str, prim: str, *, sanitized: bool = False):
+def _finding(label: str, module: str, prim: str, *, sanitized: bool = False,
+             also: tuple[str, ...] = ()):
     from types import SimpleNamespace
 
     # A DOM-zone flow: never the code_execution claim's own finding, so the
     # claim arm filters it out on ``sink_zone`` before reading anything else.
+    # ``also`` is the rest of a collapsed row's group, spelled as
+    # ``sink_primitives`` spells it.
     return SimpleNamespace(taint_label=label, sink_module=module,
                            sink_primitive=prim, sanitized=sanitized,
-                           sink_zone="dom_injection")
+                           sink_zone="dom_injection",
+                           sink_primitives=(f"{module}.{prim}", *also))
 
 
 def test_a_taint_claim_whose_data_reaches_the_site_is_withheld() -> None:
@@ -225,6 +229,30 @@ def test_a_taint_claim_whose_data_reaches_the_site_is_withheld() -> None:
     )
     assert opaque is None
     assert "untrusted_input data reaches 1 of those site(s) (document.write)" in reason
+
+
+def test_a_collapsed_row_is_withheld_for_any_member_of_its_group() -> None:
+    """WI-kufos (1): the witness sink is a project row, and ``document.write``
+    is another member. The group reaches the site, so the qualification goes,
+    whichever member happened to be first."""
+    from hypergumbo_core.verify_claims import _withhold_for_tainted_evaluation
+
+    witness_first = _finding("untrusted_input", "myHtml", "myHtml", also=("document.write",))
+    _, opaque = _withhold_for_tainted_evaluation(
+        "untrusted_input", [witness_first], "blind", ["document.write"])
+    assert opaque is None
+
+
+def test_a_member_is_matched_in_the_site_spelling() -> None:
+    """``sink_primitives`` spells a member ``module.name``; the opaque list joins
+    a repeated slot once. Every shipped evaluation site maps across."""
+    from hypergumbo_core.verify_claims import (
+        _evaluation_site_names, _evaluation_site_spellings,
+    )
+
+    spelled = _evaluation_site_spellings()
+    assert spelled["document.write"] == "document.write"  # reach
+    assert set(spelled.values()) == _evaluation_site_names()
 
 
 @pytest.mark.parametrize("findings, sites", [
