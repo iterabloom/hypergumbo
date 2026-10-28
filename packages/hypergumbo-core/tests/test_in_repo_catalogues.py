@@ -236,6 +236,21 @@ class TestTheTiers:
         assert next(e for e in tiers["yours"]
                     if e["path"] == str(channel))["stage"] == "analysis"
 
+    def test_a_flag_named_file_inside_the_repo_is_yours(self, tmp_path: Path) -> None:
+        """ADR-0061 ruling 1 (WI-dagun): naming a file on the command line opts
+        it in, wherever it sits. It still carries what git says about it."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        named = repo / "tools.yaml"
+        named.write_text("x: 1\n")
+        tiers = catalogue_tiers(
+            [LoadedCatalogueFile("io_primitives", named, False, named=True)], repo,
+        )
+        assert tiers["in_repo"] == []
+        assert tiers["yours"] == [{
+            "family": "io_primitives", "path": str(named), "git_state": GIT_UNTRACKED,
+        }]
+
     def test_no_repo_root_means_nothing_is_in_repo(self, tmp_path: Path) -> None:
         mine = tmp_path / "mine.yaml"
         mine.write_text("x: 1\n")

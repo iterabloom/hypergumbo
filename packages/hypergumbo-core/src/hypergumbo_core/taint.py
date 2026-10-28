@@ -336,6 +336,8 @@ class TaintSink:
             that is safe in context. Its flows are excluded from a verdict's
             evidence and DISCLOSED in ``trusted_sink_flows`` (WI-lukoz). Every
             other value, ``"semi-trusted"`` included, is carried and inert.
+            Read it through :attr:`trusted`, which withholds a community
+            row's trust.
         module: The module or class path.
         name: The function/method/attribute name.
         kind: One of "function", "method", or "attribute".
@@ -385,11 +387,23 @@ class TaintSink:
     requires_mode: str = ""
     requires_target_kind: str = ""
     abstention_fallback: bool = False
+    #: ADR-0061 ruling 2 (WI-savoh): True for a row from a file declaring
+    #: ``provenance: community``. ``trust_level: trusted`` only takes flows OUT
+    #: of a verdict's evidence, the half an unvouched row may not do, so such a
+    #: row's trust is withheld (:attr:`trusted`) and the verdict names it
+    #: (:meth:`TaintCatalog.withheld_community_trust`). Stamped at load, never
+    #: read from the YAML.
+    community: bool = False
 
     @property
     def qualified_name(self) -> str:
         """Full dotted name: module.name."""
         return f"{self.module}.{self.name}"
+
+    @property
+    def trusted(self) -> bool:
+        """Whether this sink's flows are set aside as trusted (WI-lukoz, WI-savoh)."""
+        return self.trust_level == TRUST_LEVEL_TRUSTED and not self.community
 
 
 @dataclass(frozen=True)
@@ -1569,6 +1583,19 @@ class TaintCatalog:
         """Return all taint sanitizers for a language."""
         return list(self._sanitizers.get(language, []))
 
+    def withheld_community_trust(self) -> list[str]:
+        """The community sinks declaring ``trust_level: trusted``, qualified.
+
+        ADR-0061 ruling 2 (WI-savoh): their trust is withheld, so their flows
+        stay in the evidence; a violated verdict names the ones it reached.
+        Spelled as ``TaintFlowFinding.sink_primitives`` spells a sink.
+        """
+        return sorted({
+            _qualify(sink.module, sink.name)
+            for sinks in self._sinks.values() for sink in sinks
+            if sink.community and sink.trust_level == TRUST_LEVEL_TRUSTED
+        })
+
     def all_source_labels(self) -> frozenset[str]:
         """Every taint label a FINDING could carry, across all languages.
 
@@ -2644,7 +2671,9 @@ def load_builtin_taint_catalog(
         community._sources, user_catalog._sources,
     )
     user_catalog._sinks, _ = _merge_with_user_override(
-        community._sinks, user_catalog._sinks,
+        {lang: [replace(sink, community=True) for sink in sinks]
+         for lang, sinks in community._sinks.items()},
+        user_catalog._sinks,
     )
     for lang, sans in community._sanitizers.items():
         user_catalog._sanitizers.setdefault(lang, []).extend(
@@ -4495,7 +4524,7 @@ def propagate_taint_structural(
                 sink_zone=taint_sink.zone,
                         # WI-bulag / T9: carried, never recomputed at the walk.
                         resource_naming_only=taint_sink.resource_naming_only,
-                        trusted_sink=taint_sink.trust_level == TRUST_LEVEL_TRUSTED,
+                        trusted_sink=taint_sink.trusted,
                 # INV-kakad: the SITE is the (caller, callee) pair. Recording
                 # the caller alone under-counts a function that calls four
                 # different sinks; recording the callee alone under-counts one
@@ -6328,7 +6357,7 @@ def propagate_taint_ddg(
                         sink_zone=taint_sink.zone,
                         # WI-bulag / T9: carried, never recomputed at the walk.
                         resource_naming_only=taint_sink.resource_naming_only,
-                        trusted_sink=taint_sink.trust_level == TRUST_LEVEL_TRUSTED,
+                        trusted_sink=taint_sink.trusted,
                         sink_call_sites=((sink_node, sink_callee_id),),
                         sink_carriers=_named_carriers(
                             sink_carriers.get((sink_node, sink_callee_id), ()),
@@ -6356,7 +6385,7 @@ def propagate_taint_ddg(
                 sink_zone=taint_sink.zone,
                         # WI-bulag / T9: carried, never recomputed at the walk.
                         resource_naming_only=taint_sink.resource_naming_only,
-                        trusted_sink=taint_sink.trust_level == TRUST_LEVEL_TRUSTED,
+                        trusted_sink=taint_sink.trusted,
                 sink_call_sites=((sink_node, sink_callee_id),),  # INV-kakad
                 sink_carriers=_named_carriers(
                     sink_carriers.get((sink_node, sink_callee_id), ()),

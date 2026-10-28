@@ -5857,8 +5857,13 @@ def _loaded_catalogue_files(
     *,
     include_default_overlays: bool,
     taint_paths: "Optional[Mapping[str, Sequence[Path]]]",
+    cli_named: "Sequence[Path]" = (),
 ) -> "list[Any]":
     """Every catalogue file a verify-claims run read, for ADR-0061 ruling 5.
+
+    ``cli_named`` are the paths the command-line flags named (a directory
+    stands for its YAML files); each file among them is marked ``named``, so
+    it is ``yours`` even inside the repository (ruling 1, WI-dagun).
 
     The I/O catalogue each language loaded (and its parent), the shipped
     community defaults unless omitted (``include_default_overlays=False`` also
@@ -5889,7 +5894,16 @@ def _loaded_catalogue_files(
         _declares_community_file,
         _resolve_catalog_paths,
     )
-    from .verify_claims import LoadedCatalogueFile as F
+    from .verify_claims import LoadedCatalogueFile
+
+    named = {p.resolve() for p in _resolve_catalog_paths(
+        [p for p in cli_named if p.exists()])}
+
+    def F(family: str, path: Path, shipped: bool, stage: str = "verify") -> Any:
+        return LoadedCatalogueFile(
+            family, path, shipped, stage,
+            named=not shipped and Path(path).resolve() in named,
+        )
 
     files: "list[Any]" = []
     for lang in sorted(set(languages)):
@@ -7867,6 +7881,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         credited_user_summaries=credited_user_summaries,
         # WI-tigud: community terminating summaries the walk did not credit.
         withheld_community_summaries=withheld_summaries,
+        # WI-savoh: community sinks whose trust_level: trusted was withheld.
+        withheld_community_trust=(
+            taint_catalog.withheld_community_trust()
+            if taint_catalog is not None else ()
+        ),
     )
 
     # INV-zosun: assemble the catalogue provenance BEFORE either renderer, so
@@ -7920,6 +7939,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 "taint_sanitizers": [*claims_sanitizers, *cli_sanitizers]}
                if taint_catalog is not None else None
            ),
+           cli_named=[
+               *(Path(p) for p in (getattr(args, "io_primitives", None) or [])),
+               *cli_sources, *cli_sinks, *cli_sanitizers,
+           ],
        ),
        repo_root=repo_root,
        io_overlay_origins=io_overlay_origins,

@@ -88,14 +88,15 @@ Any verdict may carry a structured ``caveats`` list of dicts (``kind``,
 ``entries``, prose ``detail``). The text renderer prints each dict's
 ``detail`` and the JSON emits the dict, so both disclose the same text. Most
 writers go through ``_merge_caveat``, which folds a repeated kind into one
-entry; the two ``CAVEAT_USER_SUPPLIED_SANITIZER`` writers and the three
+entry; the two ``CAVEAT_USER_SUPPLIED_SANITIZER`` writers and the four
 violated-path writers (each kind at most once) append directly.
 On a clean
 verdict a non-empty list makes it ``confirmed_with_caveats``;
-``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_WITHHELD_COMMUNITY_SANITIZER`` and
-``CAVEAT_WITHHELD_COMMUNITY_SUMMARY`` ride a ``violated`` verdict, and caveats
+``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_WITHHELD_COMMUNITY_SANITIZER``,
+``CAVEAT_WITHHELD_COMMUNITY_SUMMARY`` and ``CAVEAT_WITHHELD_COMMUNITY_TRUST``
+ride a ``violated`` verdict, and caveats
 raised on a clean path survive a coverage downgrade to ``inconclusive``
-(``_require_coverage_to_confirm``). Fifteen ``CAVEAT_*`` constants exist, plus
+(``_require_coverage_to_confirm``). Sixteen ``CAVEAT_*`` constants exist, plus
 one unconstanted kind (``deferred_crossing``). The four longest-standing:
 
 - ``CAVEAT_USER_SUPPLIED_SANITIZER`` — the clean answer depends on a
@@ -125,13 +126,14 @@ one unconstanted kind (``deferred_crossing``). The four longest-standing:
   caveat's ``known_collisions`` field
   (``BoundaryCoverage.untyped_receiver_collisions``, WI-jiful).
 
-The remaining eleven — ``CAVEAT_ACCESSOR_NAME_RECEIVER``,
+The remaining twelve — ``CAVEAT_ACCESSOR_NAME_RECEIVER``,
 ``CAVEAT_UNKNOWN_RECEIVER_SCOPE``, ``CAVEAT_ANALYZER_METHOD_CALL_BLIND``,
 ``CAVEAT_ANALYZER_SUPPRESSED_METHODS``, ``CAVEAT_ANALYZER_CONSTRUCT_BLIND``,
 ``CAVEAT_SINK_BEFORE_SOURCE_ONLY``, ``CAVEAT_HIGHER_FIDELITY_AVAILABLE``,
 ``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_UNREACHED_SINK_SHAPES``,
-``CAVEAT_WITHHELD_COMMUNITY_SANITIZER`` and
-``CAVEAT_WITHHELD_COMMUNITY_SUMMARY`` — are each documented at their own
+``CAVEAT_WITHHELD_COMMUNITY_SANITIZER``,
+``CAVEAT_WITHHELD_COMMUNITY_SUMMARY`` and ``CAVEAT_WITHHELD_COMMUNITY_TRUST``
+— are each documented at their own
 definition.
 
 A verdict may carry more than one kind at once.
@@ -851,6 +853,14 @@ CAVEAT_WITHHELD_COMMUNITY_SANITIZER = "withheld_community_sanitizer"
 #: termination changes which branches the walk follows, not one finding -- so
 #: it rides every violated taint verdict of the run and may over-name.
 CAVEAT_WITHHELD_COMMUNITY_SUMMARY = "withheld_community_summary"
+
+#: Caveat kind: a reported flow reaches a sink from a COMMUNITY file that
+#: declares it ``trust_level: trusted``, and the trust was not credited
+#: (ADR-0061 ruling 2, WI-savoh). Trust only takes flows out of the evidence,
+#: the half an unvouched row may not do, so the flow is reported and the
+#: verdict names the sink. Rides the VIOLATED path, like the withheld
+#: sanitizer.
+CAVEAT_WITHHELD_COMMUNITY_TRUST = "withheld_community_trust"
 
 
 @dataclass(frozen=True)
@@ -2271,13 +2281,15 @@ class LoadedCatalogueFile:
     user's channels that the ANALYSIS reads while building the graph
     (frameworks.d, dataflow_patterns.d, library_signatures.d) -- listed because
     the operator placed it there, and marked because a graph served from cache
-    was built by an earlier run.
+    was built by an earlier run. ``named`` says a command-line flag named the
+    file: ADR-0061 ruling 1 makes it ``yours`` wherever it sits (WI-dagun).
     """
 
     family: str  # axis: free-text — a YAML_CATALOGS directory name, displayed and never branched on.
     path: Path
     shipped: bool
     stage: str = "verify"  # axis: bounded-enum
+    named: bool = False
 
 
 def catalogue_tiers(
@@ -2286,9 +2298,12 @@ def catalogue_tiers(
     """Group loaded catalogue files by tier (ADR-0061 rulings 3-5).
 
     The tier is the file's own ``provenance:`` line where it says
-    ``community``. Otherwise a shipped file is ``builtin``, and a file the
-    operator or the repository supplied is named by LOCATION: ``in_repo`` when
-    it lives inside the analysed repository, ``yours`` when it does not. A file
+    ``community``. Otherwise a shipped file is ``builtin``, a file a
+    command-line flag named is ``yours`` (ruling 1: naming it opts it in), and
+    any other file the operator or the repository supplied is named by
+    LOCATION: ``in_repo`` when it lives inside the analysed repository,
+    ``yours`` when it does not. A claims file's ``extra_catalogs`` are not
+    named (owner ruling 2026-10-25), so an in-repo one stays ``in_repo``. A file
     inside the repository -- whatever its tier -- carries its git state
     (``committed`` / ``modified`` / ``untracked``), which is what hypergumbo
     can check about who wrote it.
@@ -2329,7 +2344,7 @@ def catalogue_tiers(
         elif item.shipped:
             tier = "builtin"
         else:
-            tier = "in_repo" if inside else "yours"
+            tier = "in_repo" if inside and not item.named else "yours"
         out[tier].append(entry)
     return out
 
@@ -6046,6 +6061,7 @@ def verify_taint_claim(
     coverage: Optional[BoundaryCoverage] = None,
     credited_user_summaries: "AbstractSet[str] | None" = None,
     withheld_community_summaries: "Sequence[str]" = (),
+    withheld_community_trust: "Sequence[str]" = (),
 ) -> ClaimVerdict:
     """Verify a taint claim and stamp the fidelity behind the answer.
 
@@ -6060,6 +6076,7 @@ def verify_taint_claim(
         coverage=coverage,
         credited_user_summaries=credited_user_summaries,
         withheld_community_summaries=withheld_community_summaries,
+        withheld_community_trust=withheld_community_trust,
     )
     if coverage is not None:
         verdict.analysis_fidelity = dict(coverage.analysis_fidelity)
@@ -6076,6 +6093,7 @@ def _verify_taint_claim_uncredited(
     coverage: Optional[BoundaryCoverage] = None,
     credited_user_summaries: "AbstractSet[str] | None" = None,
     withheld_community_summaries: "Sequence[str]" = (),
+    withheld_community_trust: "Sequence[str]" = (),
 ) -> ClaimVerdict:
     """Verify a single taint-flow claim against propagation findings.
 
@@ -6658,6 +6676,23 @@ def _verify_taint_claim_uncredited(
                 f"its `provenance: community` line."
             ),
         })
+    _withheld_trust = sorted(set(withheld_community_trust) & {
+        p for v in violations for p in v.sink_primitives
+    })
+    if _withheld_trust:
+        violated_caveats.append({
+            "kind": CAVEAT_WITHHELD_COMMUNITY_TRUST,
+            "entries": _withheld_trust,
+            "detail": (
+                f"These flow(s) reach a sink a COMMUNITY catalogue file "
+                f"declares trust_level: trusted, which hypergumbo ships "
+                f"without maintaining and does not credit (ADR-0061): "
+                f"{', '.join(_withheld_trust)}. Vouched for, it would have "
+                f"set them aside. To vouch for one, copy its file into "
+                f"$XDG_CONFIG_HOME/hypergumbo/taint_sinks.d/ and delete its "
+                f"`provenance: community` line."
+            ),
+        })
     if _choice_sources:
         violated_caveats.append({
             "kind": CAVEAT_CHOICE_SHAPED_SOURCE,
@@ -6891,6 +6926,7 @@ def verify_claims(
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
     credited_user_summaries: "AbstractSet[str] | None" = None,
     withheld_community_summaries: "Sequence[str]" = (),
+    withheld_community_trust: "Sequence[str]" = (),
     blind_by_source_taint: Mapping[str, ScopedBlindness] | None = None,
     sink_zone_gaps: Mapping[tuple[str, str], SinkZoneGap] | None = None,
     unfollowed_escapes: Sequence[Any] = (),
@@ -6947,6 +6983,7 @@ def verify_claims(
                 coverage=coverage,
                 credited_user_summaries=credited_user_summaries,
                 withheld_community_summaries=withheld_community_summaries,
+                withheld_community_trust=withheld_community_trust,
             )
         else:
             verdict = verify_claim(claim, boundary_map, coverage=coverage)

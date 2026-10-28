@@ -672,7 +672,6 @@ class TestCatalogueTiers:
         data = _verify(repo, "--taint-sinks", str(repo / "tools/sinks.yaml"))
         assert len(tier_of(data["catalog_provenance"], repo / "tools/sinks.yaml")) == 1
 
-    @pytest.mark.xfail(strict=True, reason="WI-dagun: an in-repo file named on the command line is tiered in_repo")
     def test_a_flag_named_file_inside_the_repo_is_yours(self, tmp_path: Path) -> None:
         repo = _write(tmp_path, {"app.py": _SHIP, "claims.yaml": _SECRET_CLAIM,
                                  "tools/sinks.yaml": _sink_file("untrusted", "")})
@@ -691,7 +690,6 @@ class TestCatalogueTiers:
         """Reach: the fixture's flow exists, and trust from YOUR file removes it."""
         assert self._verdicts(tmp_path, "") == {"untrusted": "violated", "trusted": "inconclusive"}
 
-    @pytest.mark.xfail(strict=True, reason="WI-savoh: a community file's trust_level: trusted is honoured")
     def test_a_community_trusted_sink_does_not_make_the_verdict_cleaner(self, tmp_path: Path) -> None:
         verdicts = self._verdicts(tmp_path, "community")
         assert verdicts["trusted"] == verdicts["untrusted"] == "violated"
