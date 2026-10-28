@@ -39,3 +39,18 @@
   clock: 4  # 6dba
   nonce: 6dba  # 6dba
   message: "2026-10-27: a production-path closure test exists (WI-ziruv, PR #1902): packages/hypergumbo-lang-extended1/tests/test_axiom_falsification_extended1.py::test_every_emitted_kind_is_a_language_construct[pony] (strict xfail). It XPASSes when this item is fixed; remove the mark in the fix PR."  # 6dba
+- op: update  # d8ec
+  at: '2026-10-28T09:23:46Z'  # d8ec
+  by: agent  # d8ec
+  actor: jgstern_agent  # d8ec
+  clock: 5  # d8ec
+  nonce: d8ec  # d8ec
+  set:  # d8ec
+    status: done  # d8ec
+- op: discuss  # ff6c
+  at: '2026-10-28T09:23:46Z'  # ff6c
+  by: agent  # ff6c
+  actor: jgstern_agent  # ff6c
+  clock: 6  # ff6c
+  nonce: ff6c  # ff6c
+  message: "Fixed in PR #1917 (4ebcd0d29c). REGISTERED (ADR-0027 register-vs-fold): 'actor' and 'primitive' are language_construct symbol kinds with the concrete type family; pony also emits 'class' for its own class construct, so a fold would fuse two constructs. No node.id or stable_id changes (registration only). Four artifacts: symbol_kinds registry, docs/schema.json, docs/concept-axes.md, and a pony file in tests/fixtures/schema-coverage-corpus (the coverage baseline only shrank: 'static' newly covered). Behavioural evidence: test_axiom_falsification_extended1.py::test_every_emitted_kind_is_a_language_construct[pony] (a pony survey's kinds are all registered) was a strict xfail and passes unmarked; the KIND_SLOT_HOLES entry in test_doc_family_id_parity.py is removed and test_doc_family_id_kind_slot[pony] passes; test_validation_report_empty.py passes on the corpus with the pony file (no axis_conformance error). Containment follows: an actor's behaviour and a primitive's function now root under them (test_a_pony_actor_and_primitive_own_their_members)."  # ff6c

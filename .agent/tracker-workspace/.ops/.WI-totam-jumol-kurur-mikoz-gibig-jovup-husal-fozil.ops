@@ -34,3 +34,18 @@
   clock: 3  # 382e
   nonce: 382e  # 382e
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Two audits bear on this. (1) Part (a) moved to WI-higik and is WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0027 counterexample. (2) Part (c): slice _CONTAINER_KINDS and type_like_kind_names are hand-written subsets of the symbol-kind vocabulary, a named instance in WI-kosup section D (subsets that drift when the vocabulary grows). The fix here does not wait for that sweep. A structural fix places every symbol kind in or out, rather than adding the three missing ones."  # 382e
+- op: update  # d7b0
+  at: '2026-10-28T09:23:46Z'  # d7b0
+  by: agent  # d7b0
+  actor: jgstern_agent  # d7b0
+  clock: 4  # d7b0
+  nonce: d7b0  # d7b0
+  set:  # d7b0
+    status: done  # d7b0
+- op: discuss  # 9da0
+  at: '2026-10-28T09:23:46Z'  # 9da0
+  by: agent  # 9da0
+  actor: jgstern_agent  # 9da0
+  clock: 5  # 9da0
+  nonce: 9da0  # 9da0
+  message: "Parts (b) and (c) done in PR #1917 (4ebcd0d29c); (a) moved to WI-higik (done in the same PR); (d) and (e) not done, see below. (c): slice's _CONTAINER_KINDS and the containment linker's CONTAINER_KINDS were two hand-written copies; both now read symbol_kinds.container_kind_names() = the nominal type kinds + SCOPE_CONTAINER_KINDS (file, module, type, instance, message, library), so every kind is placed in or out by the registry rather than by a consumer. Measured first on 30 recent surveys: object was the source of 40,820 contains edges (Kotlin/Scala) and slice lacked it, as it lacked contract, type, instance, record, union. Behavioural evidence: test_container_kinds.py::test_a_reverse_slice_from_a_container_reaches_its_members_callers[object|class|actor] (a reverse slice from an object reaches its member's caller; mutating slice back to the old list reds object and actor); the linker change is only actor/primitive (pony fixture A/B). 'variable' left out (a Go variable has no members). (b): the concept-audit playbook header now says six shapes. NOT DONE: (d) there is no anchor-kind predicate -- anchor_execution (WI-fakuh, #1884) now carries the anchor contract, and the taint half lands with WI-tibib; (e) the JS class-field initializer anchored on the file stays ADR-0023's recorded permitted divergence awaiting its own measurement. The title's condition (c) no longer holds."  # 9da0

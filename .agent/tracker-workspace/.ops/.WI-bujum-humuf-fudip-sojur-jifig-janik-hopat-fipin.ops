@@ -27,3 +27,18 @@
   clock: 2  # e5be
   nonce: e5be  # e5be
   message: "Premise re-check 2026-10-25 on dev 16534a75f7 (production-CLI repros on tiny fixtures unless marked code read). OWNER RULING 2026-10-25: do the full rename ('rip off the bandaid'): walk verdicts confirmed/unconfirmed become reached/refuted, and the verify-claims envelope goes 2.6 -> 3.0 (breaking under the policy at verify_claims.py:335-341, as 2.0 was). refuted also matches the existing refuted_flows key. Re-check: reproduces verbatim -- 'all 1 CONFIRMED (of 1 claim(s))' then '§3a walk verdicts for those findings: confirmed 3' -- and the walk counts are run-wide, including flows to zones no claim names. Refs: summary line cli.py:7991 (the filed :7945 was a comment), walk line dataflow_scope.py:537-543. Readers to update: taint.py constants :523-530, walk_verdict_for :537-566, method_for_walk_verdict :569-581, removal gate :6270, fields/serialisation :689/:746/:841/:885/:896/:1068; dataflow_scope.py :95, :117-180, :469-471, :537-552 (hard-coded 'unconfirmed' prose); verify_claims.py :396-399, :5761, :5776; cli.py :7746-7760, :7937, :8003; scripts/measure-cross-function-reach.py:129-130, scripts/measure-taint-precision.py:243/:263; 14 test files; docs VERIFY-CLAIMS-SCOPE.md:224-233, spec :127 and §1603, ADR-0052 :101-103, ADR-0017. No scripts/bakeoff-* script reads walk verdicts. Historical measurements and release notes stay as written. Only saved verify-claims JSON persists walk_verdict (no behavior-map field), so a consumer that loads saved output must read the old names too. Also reword the text line so the walk count reads as 'reached the sink', not as a claim verdict. Coordinate with WI-pidit. P3 kept."  # e5be
+- op: update  # 8875
+  at: '2026-10-28T08:07:21Z'  # 8875
+  by: agent  # 8875
+  actor: jgstern_agent  # 8875
+  clock: 3  # 8875
+  nonce: '8875'  # 8875
+  set:  # 8875
+    status: done  # 8875
+- op: discuss  # 810f
+  at: '2026-10-28T08:07:21Z'  # 810f
+  by: agent  # 810f
+  actor: jgstern_agent  # 810f
+  clock: 4  # 810f
+  nonce: 810f  # 810f
+  message: "Done in PR #1916 (4d7a154324). Walk verdicts confirmed/unconfirmed are reached/refuted (WALK_VERDICT_REACHED / WALK_VERDICT_REFUTED) in every evidence row's walk_verdict / walk_verdict_values and the dataflow_coverage.walk_verdicts keys; verify-claims envelope 2.6 -> 3.0 (breaking, recorded in the version policy). Behavioural evidence: the production-path tests that assert a module-level / statement-model / nested-assignment / C / Java flow is adjudicated now read ('ddg', 'reached') (test_ddg_module_scope.py, test_def_use_statement_model.py, test_nested_assignment_defines.py, test_c_def_use.py, test_java_def_use.py), test_section_3a_removal_authority.py reads a removed flow as 'refuted', and test_verdict_fidelity_provenance pins 3.0. The text summary now prints 'walk verdicts ... reached N' beside 'all N CONFIRMED'. Docs: spec, VERIFY-CLAIMS-SCOPE.md, ADR-0017, ADR-0052; measurement write-ups keep the names their runs printed. No compat reader: nothing deserialises a finding or reads walk_verdict from a cached artifact (bakeoff-deep reads claim verdicts only)."  # 810f

@@ -42,3 +42,10 @@
   clock: 4  # b336
   nonce: b336  # b336
   message: "Fixed in PR #1914 (ccf9c92eeb). The source, sink and sanitizer loaders refuse every key they do not read, top-level and per entry, with TaintCatalogError (exit 2), naming the key, the allowed set and a near-miss suggestion; an attributes: key also says attribute sources come from an io_primitives attributes: row via --io-primitives (WI-jojis). Behavioural evidence: test_taint_catalog_unknown_keys.py::test_verify_claims_refuses_the_file_with_exit_2 (verify-claims --taint-sources with attributes: [location] -> rc 2, stderr names 'attributes'); per-shape refusals for all three files; every shipped file passes. Mutating the refusal away turned 8 of 10 tests red."  # b336
+- op: discuss  # a3e4
+  at: '2026-10-28T07:37:55Z'  # a3e4
+  by: agent  # a3e4
+  actor: jgstern_agent  # a3e4
+  clock: 5  # a3e4
+  nonce: a3e4  # a3e4
+  message: "SHA correction: PR #1914 was rebased at merge; the commit on dev is e3c1caa463, not ccf9c92eeb."  # a3e4
