@@ -1,0 +1,22 @@
+Original commit body from dbc12b907599ec3151061f21690856c67321fdf6:
+
+ADR-0061 ruling 2 (WI-savoh). trust_level: trusted only takes flows out
+of a verdict's evidence, the half a community row may not do, yet a
+provenance: community sink file's trusted row was honoured and the
+verdict credited "the project's catalogue". Community sinks are now
+stamped TaintSink.community at the merge, TaintSink.trusted withholds
+their trust, and a violated verdict names each withheld sink in a new
+withheld_community_trust caveat (TaintCatalog.withheld_community_trust).
+
+ADR-0061 ruling 1 (WI-dagun). A catalogue file named by --io-primitives
+or --taint-* that sits inside the repository was tiered in_repo and
+listed twice in text output. LoadedCatalogueFile.named marks a
+flag-named file; it is yours wherever it sits and keeps its git state.
+A claims file's extra_catalogs stay in_repo (owner ruling 2026-10-25).
+
+The two strict xfails WI-ziruv shipped (#1902) now pass unmarked. Both
+fixes were mutated back and four tests went red.
+
+Addresses WI-savoh, WI-dagun.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
