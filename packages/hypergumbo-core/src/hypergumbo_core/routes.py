@@ -52,6 +52,11 @@ if TYPE_CHECKING:
 # for method-bucketing / slice-filename consumers that expect the legacy token.
 _TRANSPORT_SENTINELS: dict[str, str] = {"WS": "websocket", "LIVE": "liveview", "RPC": "grpc"}
 _PROTOCOL_METHOD_TOKENS: dict[str, str] = {v: k for k, v in _TRANSPORT_SENTINELS.items()}
+#: A route's transport -> the ADR-0031 protocol-origin family its marker is a
+#: stand-in for (WI-mupal). LiveView is Phoenix's, so it joins phoenix_ipc.
+_ROUTE_PROTOCOL_ORIGINS: dict[str, str] = {
+    "http": "http", "websocket": "websocket", "liveview": "phoenix_ipc", "grpc": "grpc",
+}
 
 
 def _route_concept(meta: dict[str, Any]) -> Optional[dict[str, Any]]:
@@ -194,6 +199,15 @@ def protocol_method_token(route_protocol: Optional[str]) -> Optional[str]:
     though the transport now lives in ``route_protocol`` not ``http_method``. INV-tibap.
     """
     return _PROTOCOL_METHOD_TOKENS.get(str(route_protocol or ""))
+
+
+def route_protocol_origin(method: Optional[str]) -> str:
+    """The protocol-origin family of a route marker minted for *method*.
+
+    A transport sentinel (``WS`` / ``LIVE`` / ``RPC``) names its own family;
+    any HTTP verb is ``http``.
+    """
+    return _ROUTE_PROTOCOL_ORIGINS[_TRANSPORT_SENTINELS.get(method or "", "http")]
 
 
 def transport_meta(method: Optional[str]) -> dict[str, Optional[str]]:

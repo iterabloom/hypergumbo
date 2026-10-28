@@ -958,15 +958,20 @@ def synthesize_file_anchors_for_node_bearing_paths(
         _rel(s.path) for s in symbols if s.kind == "file" and s.path
     }
     # path -> representative language (first content node wins; deterministic in
-    # input order). A path with no language is skipped — make_file_id needs one.
+    # input order). host_language, because a Class-B stand-in discovered in the
+    # file is content of it too: a Rails config/routes.rb holds nothing but
+    # route markers, and once those became stand-ins (WI-mupal) the file lost
+    # its anchor and its 623 contains edges on chatwoot. A path with no host
+    # language at all is skipped — make_file_id needs one.
     needs_anchor: dict[str, str] = {}
     for sym in symbols:
-        if sym.kind == "file" or not sym.path or not sym.language:
+        language = sym.host_language
+        if sym.kind == "file" or not sym.path or not language:
             continue
         rel = _rel(sym.path)
         if rel in anchored or rel in needs_anchor:
             continue
-        needs_anchor[rel] = sym.language
+        needs_anchor[rel] = language
 
     synthesized: list[Symbol] = []
     for rel, language in needs_anchor.items():
@@ -1321,31 +1326,38 @@ def make_route_symbol(
             and re-supplying ``http_method`` would undo the transport split.
         is_exported: Whether the route's handler is part of the public API
             (go derives it from the handler's leading capital).
-        protocol_origin: ADR-0031 Class B discriminator. Set it when the marker
-            is a SYNTHETIC stand-in fabricated from a protocol definition rather
-            than a real source declaration (the grpc linker reading a ``.proto``,
-            the annotation linker reading an ``@hg:route`` directive). When set,
-            ``Symbol.language`` becomes ``None`` and the ``language`` argument
-            moves to ``discovery_language`` — the host source language the
-            pattern was discovered in — matching what the other Class-B linkers
-            (message_queue / database_query / subprocess_cli) already emit. The
-            id lang-slot still uses ``language`` either way, so the id stays a
-            parseable five-segment ADR-0036 record for synthetic and real
-            markers alike.
-        discovery_language: Host source language for a synthetic marker, stated
-            EXPLICITLY rather than derived from ``language``. The two are not
+        protocol_origin: ADR-0031 Class B family. EVERY route marker is a
+            synthetic stand-in for the ROUTE, not a declaration (WI-mupal,
+            owner ruling 2026-10-27): the marker is named for the route, anchored
+            at the registration, and reaches the handler -- itself a separate
+            node -- by a ``dispatches_to`` edge; ADR-0035 types the route as a
+            LOGICAL entity. So ``Symbol.language`` is always ``None``. Left
+            ``None`` here, the family is the route's transport
+            (:func:`routes.route_protocol_origin`: ``http``, ``websocket``,
+            ``phoenix_ipc``, ``grpc``). A linker that fabricates a marker from a
+            protocol definition passes its own (``grpc``, ``annotation``). The id
+            lang-slot uses ``language`` either way, so the id stays a parseable
+            five-segment ADR-0036 record and no stable id moves.
+        discovery_language: Host source language of the marker. Left ``None``
+            with ``protocol_origin`` also ``None`` (every analyzer and the route
+            materializer), it is ``language``: the analyzer found the
+            registration in a file of that language. A linker passing its own
+            ``protocol_origin`` states this EXPLICITLY, because the two are not
             always the same judgement: the grpc linker deliberately leaves it
             ``None`` (a gRPC route is fabricated from a service definition, not
             discovered inside a host file), while the annotation linker sets it
-            to the language of the file carrying the directive. Deriving it here
-            would silently overturn that per-linker decision, so the caller owns
-            it.
+            to the language of the file carrying the directive.
 
     Returns:
         A route-marker ``Symbol`` with ``kind="function"`` (the ADR-0027 Phase-3
-        route→function fold; the route signal lives in ``meta.framework_role``).
+        route→function fold, which every Class-B stand-in shares; the route
+        signal lives in ``meta.framework_role``).
     """
-    from ..routes import transport_meta
+    from ..routes import route_protocol_origin, transport_meta
+
+    if protocol_origin is None:
+        protocol_origin = route_protocol_origin(method)
+        discovery_language = language
 
     normalized_path = route_path if route_path else "/"
     name = f"{method} {normalized_path}"
@@ -1365,9 +1377,9 @@ def make_route_symbol(
         ),
         name=name,
         kind="function",
-        # ADR-0031 Class B: a synthetic stand-in has no host language of its
-        # own, so `language` names where it was DISCOVERED, not what it is.
-        language=None if protocol_origin else language,
+        # ADR-0031 Class B: a synthetic stand-in has no source language of
+        # its own; where it was DISCOVERED is discovery_language.
+        language=None,
         discovery_language=discovery_language,
         protocol_origin=protocol_origin,
         path=path,
@@ -2234,8 +2246,13 @@ def widen_route_stable_ids(symbols: list[Symbol]) -> int:
             continue
         if not _is_route_for_widening(sym):
             continue
+        # host_language, not language: every route marker is a Class-B
+        # stand-in with language None (WI-mupal), and the declaring language
+        # it was widened with is now discovery_language. Same value as before
+        # for every analyzer and materializer marker, so their ids are
+        # unchanged.
         sym.stable_id = _short_sha256(
-            f"route_site:{sym.language or ''}:{normalize_path(sym.path)}:{sym.stable_id}"
+            f"route_site:{sym.host_language or ''}:{normalize_path(sym.path)}:{sym.stable_id}"
         )
         widened += 1
     return widened
