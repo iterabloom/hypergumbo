@@ -1,0 +1,28 @@
+Original commit body from 7963de68c8b9e8299f9e00b46a37b307ab646a3c:
+
+Phase 0: no misplaced entries. The one tracker-package commit since the
+last audit (TUI preferences per user) is already in the tracker
+changelog, and no main entry is tracker-only.
+
+Phase 1, the 35 non-tracker commits since 2161814597. Five were missing,
+now added:
+- the explicit supply-chain "classified" flag (no behaviour change);
+- the JS module linker counting its package.json reads in
+  files_analyzed;
+- the taint / verify-claims prose corrections;
+- the 2026-10-25 docstring-staleness audit (42 files corrected, 12
+  extended) and its playbook calibration row.
+
+Phase 2: the section was 16,364 characters against 9.2.0's 4,592, for
+97 commits against 67. It is now 10,921 characters:
+- tracker ids and "owner ruling" asides stripped;
+- the two stable_id_scheme bullets merged as v9 -> v13;
+- the I/O-boundary, overlay and taint-catalogue sections regrouped, and
+  the one-bullet subsections (Sketch, SCIP, Run limits, Pass disclosure
+  states) folded into their neighbours;
+- the axiom-falsification entry cut from a nested list to one bullet;
+- per-repo measurements kept to one number per entry.
+ADR references, code identifiers and version transitions are kept.
+No released section is touched.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
