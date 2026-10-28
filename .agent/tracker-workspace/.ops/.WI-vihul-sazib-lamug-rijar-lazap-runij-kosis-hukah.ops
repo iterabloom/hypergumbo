@@ -1,0 +1,21 @@
+- op: create  # b7cc
+  at: '2026-10-28T13:42:09Z'  # b7cc
+  by: agent  # b7cc
+  actor: jgstern_agent  # b7cc
+  clock: 1  # b7cc
+  nonce: b7cc  # b7cc
+  data:  # b7cc
+    kind: work_item  # b7cc
+    title: "nothing evaluates a keep-with-trigger: 19 fireable triggers are unwatched, the cited watchers do not watch, and the audit playbook still offers the unfireable a-new-consumer-arriving form"  # b7cc
+    status: todo_hard  # b7cc
+    priority: 3  # b7cc
+    parent:  # b7cc
+    tags:  # b7cc
+    - concept_audit  # b7cc
+    - kosup_sweep  # b7cc
+    isbefore: []  # b7cc
+    duplicate_of: []  # b7cc
+    not_duplicate_of: []  # b7cc
+    pr_ref:  # b7cc
+    description: "From the WI-kosup keep-with-trigger re-check (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/F_triggers.md). NOTHING EVALUATES A TRIGGER. 19 keep-with-trigger verdicts are fireable but unwatched (the condition would be noticed only by someone remembering), and the watchers that exist do not watch: the cadence hook counts commits and never looks at a trigger; test_evidence_types.py ~:127, cited as guarding the evidence_type/is_resolved trigger, never looks at a consumer; ADR-0054 says its T1 is watched by the survey's stderr summary, which nothing compares to the 60% threshold. And the concept-audit playbook's Step 6 itself offers 'a new consumer arriving' as a good trigger, the unfireable form for anything nothing reads (used by the 10-22 audit for call_type/method). Wanted: (1) a machine-checkable trigger form (a test or check that goes red when the condition becomes true) required for every new KEEP-with-trigger verdict, (2) the 19 unwatched ones converted or re-verdicted, (3) the playbook's Step 6 example corrected (governance file; owner OK)."  # b7cc
+    fields: {}  # b7cc

@@ -1,0 +1,22 @@
+- op: create  # 75ff
+  at: '2026-10-28T13:41:52Z'  # 75ff
+  by: agent  # 75ff
+  actor: jgstern_agent  # 75ff
+  clock: 1  # 75ff
+  nonce: 75ff  # 75ff
+  data:  # 75ff
+    kind: work_item  # 75ff
+    title: "hand-written vocabulary subsets that look wrong today: tag_io_boundaries default edge types, _COVERAGE_CALL_EDGE_TYPES without instantiates, inherited_calls kinds, owner_ancestry KeyError, ABSTRACT_KIND_LANGUAGES stale (its trigger fired), and five silent defaults"  # 75ff
+    status: todo_hard  # 75ff
+    priority: 3  # 75ff
+    parent:  # 75ff
+    tags:  # 75ff
+    - concept_audit  # 75ff
+    - kosup_sweep  # 75ff
+    - axis  # 75ff
+    isbefore: []  # 75ff
+    duplicate_of: []  # 75ff
+    not_duplicate_of: []  # 75ff
+    pr_ref:  # 75ff
+    description: "From the WI-kosup subset census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/E_subsets.md, top findings). Hand-written vocabulary subsets that look wrong today (static reading, NOT measured):\n- io_boundary.py ~:5833: tag_io_boundaries' default call_types copies the call family by hand and carries 7 edge-type names no longer registered (the edge-type drift linter cannot see a default argument).\n- verify_claims.py ~:3211 _COVERAGE_CALL_EDGE_TYPES omits instantiates, which the set it says it subsets includes (orchestrator confirmed the literal).\n- linkers/inherited_calls.py ~:961 omits enum, record, union, actor, contract, primitive.\n- owner_ancestry.py ~:206 indexes a hand-written priority table over a registry-derived edge set: a new inheritance spelling raises KeyError (the table is duplicated at inherited_calls.py ~:187).\n- _BARE_EVIDENCE reads any new call pathway as receiver-aware (WI-sibup's shape); a new data-crossing I/O boundary would be neither a taint source nor a sink with no test failing; the CLI exits 0 for a claim verdict it does not list; DEFAULT_EDGE_TYPE_WEIGHTS gives 14 types an unstated 0.5.\n- _merge_caveat's comment on which caveat kinds don't quote entries is unchecked and contradicted for displaced-entry and accessor-name.\n- symbol_kinds.ABSTRACT_KIND_LANGUAGES is stale and its own R10 trigger has fired: apex, d, groovy, hack, haxe, proto, smithy, solidity, thrift, verilog, v emit interface; hack emits trait; clojure and objc emit protocol -- none listed. INHERITANCE_EDGE_TYPE_LANGUAGES lacks kotlin.\nEach needs a fixture that reaches it before the fix, per LIVE rule 6."  # 75ff
+    fields: {}  # 75ff

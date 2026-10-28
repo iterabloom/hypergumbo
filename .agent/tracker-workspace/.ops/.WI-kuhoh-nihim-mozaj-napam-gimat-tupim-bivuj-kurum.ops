@@ -33,3 +33,10 @@
   clock: 3  # 0bbc
   nonce: 0bbc  # 0bbc
   message: "2026-10-25 (owner): WI-kosup now owns the call_type / method decision deferred here from WI-sorav; it will replace the unfireable 're-audit on first reader' keep with a fireable verdict. WI-kosup's registered-vs-emitted meta-key table, built per record, supplies the data for this item's other half (keys written on both Symbol.meta and Edge.meta). That half stays here, and is not blocked."  # 0bbc
+- op: discuss  # e0da
+  at: '2026-10-28T13:42:35Z'  # e0da
+  by: agent  # e0da
+  actor: jgstern_agent  # e0da
+  clock: 4  # e0da
+  nonce: e0da  # e0da
+  message: "WI-kosup sweep (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/B_meta.md §3a/§3c): the call_type / method keep is replaced by a DELETE verdict (filed WI-dikum: every writer's value is already on the same edge or its source symbol). This item's other halves get the sweep's table: 33 keys are written on BOTH Symbol.meta and Edge.meta, each registered on one axis only (§3c lists them; most are linkers copying a node's facts onto its edge, plus route_handler.py ~:795 copying route meta)."  # e0da

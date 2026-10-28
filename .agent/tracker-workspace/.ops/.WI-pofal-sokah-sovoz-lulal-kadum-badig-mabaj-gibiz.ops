@@ -1,0 +1,23 @@
+- op: create  # 2fd7
+  at: '2026-10-28T13:41:18Z'  # 2fd7
+  by: agent  # 2fd7
+  actor: jgstern_agent  # 2fd7
+  clock: 1  # 2fd7
+  nonce: 2fd7  # 2fd7
+  data:  # 2fd7
+    kind: work_item  # 2fd7
+    title: "an io_primitives overlay may declare stdlib_other, which suppresses external_potential chains; overlays are stripped of stdlib_modules on purpose but not of this (ADR-0061 ruling 2 risk for community overlays; verdict effect not measured)"  # 2fd7
+    status: todo_hard  # 2fd7
+    priority: 3  # 2fd7
+    parent:  # 2fd7
+    tags:  # 2fd7
+    - concept_audit  # 2fd7
+    - kosup_sweep  # 2fd7
+    - catalogue  # 2fd7
+    - adr_0061  # 2fd7
+    isbefore: []  # 2fd7
+    duplicate_of: []  # 2fd7
+    not_duplicate_of: []  # 2fd7
+    pr_ref:  # 2fd7
+    description: "From the WI-kosup knob census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/C_knobs.md K2). An io_primitives OVERLAY's stdlib_other: section is honoured, though the loader strips stdlib_modules / stdlib_prefixes from overlays on purpose (load_overlay_catalog's docstring). stdlib_other names stdlib symbols known NOT to be I/O, and _external_potential chain synthesis (io_boundary.py ~:4230) skips anything in it -- so an overlay can mark requests.post as stdlib non-I/O and hide its external_potential chain (reproduced by the census agent; orchestrator confirmed the code path in the pinned tree). If a COMMUNITY overlay can do this, it makes the output cleaner, which ADR-0061 ruling 2 forbids. NOT DETERMINED: whether this can move a verify-claims verdict toward clean. Measure first: a community overlay declaring stdlib_other for a third-party callee, verify-claims before/after."  # 2fd7
+    fields: {}  # 2fd7

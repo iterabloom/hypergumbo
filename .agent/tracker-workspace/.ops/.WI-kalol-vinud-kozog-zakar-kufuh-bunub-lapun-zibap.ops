@@ -34,3 +34,18 @@
   clock: 3  # fcad
   nonce: fcad  # fcad
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): A medium case under WI-rutup's ADR-0050 amendment. WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0050 row could partly test 'the same medium gets the same boundary across catalogues', which would flag the Unix-socket split this item belongs to."  # fcad
+- op: update  # 2e65
+  at: '2026-10-28T12:33:07Z'  # 2e65
+  by: agent  # 2e65
+  actor: jgstern_agent  # 2e65
+  clock: 4  # 2e65
+  nonce: '2e65'  # 2e65
+  set:  # 2e65
+    status: done  # 2e65
+- op: discuss  # cb4b
+  at: '2026-10-28T12:33:07Z'  # cb4b
+  by: agent  # cb4b
+  actor: jgstern_agent  # cb4b
+  clock: 5  # cb4b
+  nonce: cb4b  # cb4b
+  message: "Fixed in PR #1920 (cdee6a3921). net.Conn Write / Read are dual rows (net_* + ipc_*, call_site_undecidable, abstains_to net_*), go.py stamps a net.Conn receiver through _go_target_kind_from_expression (unix dial / Accept over a unix listener -> pipe; TCP -> net_stream; a parameter keeps net_*), *net.UnixConn is rowed ipc_send / ipc_recv by type (Write/WriteTo/WriteToUnix/WriteMsgUnix, Read/ReadFrom/ReadFromUnix/ReadMsgUnix), and library_signatures types net.DialTimeout, DialUnix, ListenUnixgram, ListenUnix, UnixListener.Accept/AcceptUnix. Behavioural evidence: test_go_socket_family_origin.py::TestTheConnectionsOwnMethods (full pipeline: unix dial/dialtimeout/accept Write->ipc_send, Read->ipc_recv; TCP->net_send; parameter->net_recv; DialUnix/ListenUnixgram/AcceptUnix->ipc). Measured (survey, dev vs branch): runc 8 edges moved (notify_socket UnixConn Read/Write/ReadMsgUnix -> ipc_*); docker-cli 8, including cli-plugins/socket.go:162 conn.Read unclassified -> net_recv because the whole-repo survey gives that receiver the bare net slot (filed WI-pupus); container-libs 0. The dial/listen CALL rows stay single-rowed, as filed."  # cb4b

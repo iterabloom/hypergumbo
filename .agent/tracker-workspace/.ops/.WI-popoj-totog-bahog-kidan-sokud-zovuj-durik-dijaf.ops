@@ -1,0 +1,22 @@
+- op: create  # 3f98
+  at: '2026-10-28T13:40:22Z'  # 3f98
+  by: agent  # 3f98
+  actor: jgstern_agent  # 3f98
+  clock: 1  # 3f98
+  nonce: 3f98  # 3f98
+  data:  # 3f98
+    kind: work_item  # 3f98
+    title: "reader census: WIRE four fields whose promised reader is missing (Edge.evidence_lang, Symbol.display_label, AnalysisRun.started_at left empty by 10 analyzers, AnalysisRun.cpu_ms)"  # 3f98
+    status: todo_hard  # 3f98
+    priority: 3  # 3f98
+    parent:  # 3f98
+    tags:  # 3f98
+    - concept_audit  # 3f98
+    - kosup_sweep  # 3f98
+    - axis  # 3f98
+    isbefore: []  # 3f98
+    duplicate_of: []  # 3f98
+    not_duplicate_of: []  # 3f98
+    pr_ref:  # 3f98
+    description: "From the WI-kosup reader census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/A_fields.md). WIRE verdicts: a reader is promised and missing.\n- Edge.evidence_lang: ADR-0040 says it feeds confidence scoring; nothing reads it.\n- Symbol.display_label: its docstring says cmd_explain shows it; it does not.\n- AnalysisRun.started_at: 10 analyzers build AnalysisRun(...) directly and leave it \"\", so those runs sort first, against the ordering spec :588 promises.\n- AnalysisRun.cpu_ms: nothing reads it; the per-pass cost script reads duration_ms, which the field note says is not the cost.\nPer field: wire the named reader, or (if the promise is wrong) correct the docstring/ADR/spec text and re-verdict it DECLARE EXTERNAL or DELETE."  # 3f98
+    fields: {}  # 3f98

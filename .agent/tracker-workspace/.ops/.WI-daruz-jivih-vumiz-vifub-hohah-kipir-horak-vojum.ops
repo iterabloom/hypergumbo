@@ -1,0 +1,21 @@
+- op: create  # 0053
+  at: '2026-10-28T13:42:01Z'  # 0053
+  by: agent  # 0053
+  actor: jgstern_agent  # 0053
+  clock: 1  # 0053
+  nonce: '0053'  # 0053
+  data:  # 0053
+    kind: work_item  # 0053
+    title: "keep-with-trigger verdicts whose trigger has fired and nobody acted (redirect sentinel, UsageContext.kind fifth value, supply-chain tier 4, Edge.confidence_source, ADR-0024 refactor, pass-silence Pair B, io catalogue status)"  # 0053
+    status: todo_hard  # 0053
+    priority: 3  # 0053
+    parent:  # 0053
+    tags:  # 0053
+    - concept_audit  # 0053
+    - kosup_sweep  # 0053
+    isbefore: []  # 0053
+    duplicate_of: []  # 0053
+    not_duplicate_of: []  # 0053
+    pr_ref:  # 0053
+    description: "From the WI-kosup keep-with-trigger re-check (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/F_triggers.md: 44 trigger-bearing verdicts; 9 fired and not acted on, 9 fired and acted on with the KEEP record never closed, 19 fireable but unwatched, 5 watched, 4 unfireable, 6 KEEP groups with no trigger at all). FIRED AND NOT ACTED ON:\n- 'redirect' as a sentinel module key (09-01 audit: no catalogue row matches it): bash.yaml has shipped four module: redirect rows since 08-14, so it was true when written; the comment at io_boundary.py ~:5693-5696 and the sentinel classification at module_key_axis.py ~:304-327 are wrong.\n- UsageContext.kind declared as four values ('don't add a 5th without splitting'): js_ts.py ~:2675 has emitted library_export since 01-30 and a framework pattern consumes it; data_value has no producer.\n- Supply-chain tier 4, kept 'until a consumer branches on tier 4 as a distance': ADR-0041 :15 documents that every consumer does (--max-tier, slice.py ~:811, entrypoints.py ~:1855).\n- Edge.confidence_source: four modules filter on it with hand-written literals (the promote-to-registry condition); its composite value has no producer.\n- ADR-0024's refactor trigger: io-boundary audits needed their own block formats (docs/audits/README.md :105-118); docs/family-audit-methodology.md does not exist.\n- Also fired: pass-silence Pair B (census_silence became the extra reader), meta['receiver'] (now decided OK in WI-mujug's note), the abstract-type linter's language list (see the subsets item), io catalogue status.\nEach: act on the fired condition (re-verdict, rename, register, or write the doc) and close the KEEP record where it lives."  # 0053
+    fields: {}  # 0053

@@ -1,0 +1,22 @@
+- op: create  # 07cd
+  at: '2026-10-28T13:40:49Z'  # 07cd
+  by: agent  # 07cd
+  actor: jgstern_agent  # 07cd
+  clock: 1  # 07cd
+  nonce: 07cd  # 07cd
+  data:  # 07cd
+    kind: work_item  # 07cd
+    title: "reader census: readers keyed to meta keys or values no producer writes (datamodels parent_bases, grpc extends, entrypoints imports, the CLI hint counting pre-fold call kinds, bakeoff-broad framework filter)"  # 07cd
+    status: todo_hard  # 07cd
+    priority: 3  # 07cd
+    parent:  # 07cd
+    tags:  # 07cd
+    - concept_audit  # 07cd
+    - kosup_sweep  # 07cd
+    - dead_code  # 07cd
+    isbefore: []  # 07cd
+    duplicate_of: []  # 07cd
+    not_duplicate_of: []  # 07cd
+    pr_ref:  # 07cd
+    description: "From the WI-kosup reader census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/B_meta.md §2.2-2.4). READERS KEYED TO A KEY OR VALUE NO PRODUCER WRITES (LIVE rule 7, the inverse shape), all six emit shapes checked plus the meta_key_coherence scan:\n- datamodels.py ~:242 reads Symbol.meta[\"parent_bases\"]; producers write base_classes / parent_base_classes. The base-class data-model detection there never fires.\n- grpc.py ~:1130 reads meta[\"extends\"]; Java writes base_classes.\n- entrypoints.py ~:160 reads meta[\"imports\"], which nothing writes.\n- cli.py ~:8808 and jackson_dispatch.py ~:311 fall back to meta copies of typed fields that are never written there.\n- call_kind (the ADR-0027 fold target for function_call/subprocess_call/db_query/abi_call) has no reader, while the CLI hint at cli.py ~:2403 still counts the pre-fold kind names db_query / subprocess_call: those two counts are always zero.\n- scripts/bakeoff-broad ~:1097 filters meta.framework against the concepts[].framework vocabulary; 15 of its 16 values never occur there.\nEach: either point the reader at the key/value producers write (and test it on a fixture that reaches it), or delete the dead read."  # 07cd
+    fields: {}  # 07cd

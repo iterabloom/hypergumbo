@@ -34,3 +34,18 @@
   clock: 3  # d4ec
   nonce: d4ec  # d4ec
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Outside WI-ziruv's reach: what an instantiates edge carries (constructs vs runs the class body) is a contract never written (see WI-tibib, WI-fakuh). The guard this item asks for (members of the taint edge set carry a value) is the test that would follow from it."  # d4ec
+- op: update  # 6b51
+  at: '2026-10-28T12:33:06Z'  # 6b51
+  by: agent  # 6b51
+  actor: jgstern_agent  # 6b51
+  clock: 4  # 6b51
+  nonce: 6b51  # 6b51
+  set:  # 6b51
+    status: done  # 6b51
+- op: discuss  # 4bbb
+  at: '2026-10-28T12:33:06Z'  # 4bbb
+  by: agent  # 4bbb
+  actor: jgstern_agent  # 4bbb
+  clock: 5  # 4bbb
+  nonce: 4bbb  # 4bbb
+  message: "Done in PR #1920 (cdee6a3921). (1) the guard: taint.TAINT_EDGE_VALUE states what value each member of TAINT_CALL_EDGE_TYPES carries, and test_taint_edge_values.py::test_every_taint_edge_type_says_what_value_it_carries fails when the set (derived from the call family) and the table disagree, so an addition must answer the question. (2) the revisit condition fired (WI-tibib): instantiates still targets the TYPE (re-pointing the graph is refused in construction.py's docstring: method_call_recovery keys on it and entrypoints move), so the walk now stops at a type node a value reached and the value reaches the instance through construction_calls; tests above."  # 4bbb
