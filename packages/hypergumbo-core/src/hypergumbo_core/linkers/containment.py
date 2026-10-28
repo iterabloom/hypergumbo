@@ -80,6 +80,7 @@ from typing import TYPE_CHECKING
 
 from ..member_names import member_owner
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
+from ..symbol_kinds import container_kind_names
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
@@ -155,46 +156,14 @@ CONTAINABLE_KINDS = frozenset(
 # both are already in this set. Wave-5 framework-linker producers
 # don't reach this filter for the same reason as ``CONTAINABLE_KINDS``
 # above (synthetic-node names lack class-qualifier separators).
-CONTAINER_KINDS = frozenset({
-    "class", "interface", "struct", "trait", "enum", "module",
-    "message",
-    # WI-sakug: language-construct container kinds the WI-jusus field-emission
-    # tail produces for a field's enclosing type — solidity `contract`/`library`,
-    # nim/others `type`, scala `object`, D `union`. Without these the container
-    # was never indexed into container_by_name, so dotted-name fields
-    # (`Token.totalSupply` → `Token`) found no owner and stayed orphaned
-    # (solidity 0% rooted, nim 8%, scala 69%, D 78%). All five are registered
-    # SYMBOL_KINDS; `_find_parent`'s same-language + same-file/unique gate bounds
-    # false positives for the widely-emitted `type` kind.
-    "contract", "library", "type", "object", "union",
-    # WI-pujiz (REUSE-INSTANCE): typeclass / interface INSTANCE declarations
-    # (Haskell / Lean / PureScript `instance`, and the Scala 3 `given` owner)
-    # have body members that root under them — the same one-line pattern as the
-    # WI-sakug kinds above. `_find_parent`'s same-language + same-file/unique
-    # gate isolates e.g. Haskell's space-separated `instance` names from Scala's.
-    "instance",
-    # WI-duguk: `protocol` (Swift, Objective-C) is a container exactly like
-    # `interface` — its members root under it by the same dotted-name rule.
-    # Its absence made Swift protocol containment structurally impossible:
-    # with the members emitted and correctly named `Drawable.draw`, the
-    # protocol still scored `contains_out=0` while a sibling `enum` and
-    # `struct` in the same file each rooted 3 members. Analyzer-side emission
-    # alone could never have fixed that, which is why the emission-parity
-    # column (span nesting, one analyzer in isolation) can read green while
-    # the pipeline outcome stays broken.
-    "protocol",
-    # WI-pidos: `record` (Java 16, and the erlang / fsharp / clojure / agda
-    # record kinds) is a type with members like `class`. Java records were not
-    # emitted at all before WI-pidos, so this set never met one; once they were,
-    # a record's methods (`Launcher.RemoteLaunchCallable.call`) found no owner.
-    "record",
-    # INV-hojus: file-kind Symbols are the canonical file representation
-    # (orchestrator synthesis + py.py for Python with module-level code,
-    # js_module linker for TS, etc.). Including them here lets Phase 2's
-    # span-based fallback emit file → top-level-class contains edges,
-    # closing the structural-orphan gap noted on INV-hojus.
-    "file",
-})
+# WI-totam: one set, derived from the registry (``container_kind_names``) and
+# shared with slice, which kept its own narrower copy. The per-kind history
+# that built this list -- WI-sakug (contract, library, type, object, union),
+# WI-pujiz (instance), WI-duguk (protocol), WI-pidos (record), INV-hojus
+# (file) -- is in git; each of those kinds is either a nominal type in the
+# registry or in ``SCOPE_CONTAINER_KINDS``. Registering a type kind (pony's
+# ``actor`` / ``primitive``, WI-higik) makes it a container here too.
+CONTAINER_KINDS = container_kind_names()
 
 # Separator vocabulary lives in ``member_names`` (INV-tihim): it was
 # recorded in three consumers and they disagreed.

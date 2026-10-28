@@ -168,9 +168,9 @@ CASE_FILES: dict[str, tuple[str, str]] = {
             url "postgres://localhost"
         }
     """),
-    # Carries an `actor` declaration deliberately: `actor` is not a registered
-    # symbol kind, which is the pony entry in KIND_SLOT_HOLES. Removing it would
-    # make the hole unmeasurable and the case a vacuous green.
+    # Carries an `actor` declaration deliberately: `actor` was the pony entry
+    # in KIND_SLOT_HOLES until WI-higik registered it, and the case keeps it
+    # so the kind slot is checked on the construct that used to fail.
     "pony": ("thing.pony", """\
         class Counter
           var _n: U64 = 0
@@ -328,19 +328,11 @@ CANONICAL_GRAMMAR_HOLES: dict[str, str] = {}
 
 # (case) -> strict-xfail reason for a MEASURED kind-slot hole.
 #
-# Both are the same defect class the route sweep drained — a producer writing a
-# word into the kind-slot that is not the record's own registered kind — and
-# both are blocked on the identity-scheme sequencing rather than on effort:
+# The same defect class the route sweep drained — a producer writing a word
+# into the kind-slot that is not the record's own registered kind — blocked
+# on the identity-scheme sequencing rather than on effort (pony's entry left
+# when WI-higik registered ``actor`` / ``primitive``):
 KIND_SLOT_HOLES: dict[str, str] = {
-    "pony": (
-        "pony.py emits kind='actor' for a Pony actor declaration; 'actor' is "
-        "not in the symbol-kind catalog, so the id kind-slot names an "
-        "unregistered kind (it also fires axis_conformance independently of "
-        "this gate). Resolving it is an ADR-0027 vocabulary call — register "
-        "'actor' or fold it onto a canonical — and a fold would change the "
-        "kind argument that feeds make_doc_stable_id, hence the stable_id. "
-        "Tracked separately; not an id-ORDER defect."
-    ),
     "robot": (
         "robot.py passes kind='test_case' to make_doc_symbol_ids while the "
         "Symbol it builds carries kind='test', so the id kind-slot both "

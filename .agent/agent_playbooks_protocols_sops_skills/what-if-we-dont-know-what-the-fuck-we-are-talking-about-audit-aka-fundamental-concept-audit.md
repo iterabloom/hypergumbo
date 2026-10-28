@@ -220,7 +220,7 @@ and `proto.py`. Three out of seven verdicts in that cluster were
 wrong — a 43% miss rate for that single re-trace, ~5% across the
 broader cluster.
 
-**The five producer-emit shapes** that any verdict claiming "no
+**The six producer-emit shapes** that any verdict claiming "no
 producer" or "this fold target is correct" must check:
 
 1. **Literal kwarg.** `Symbol(kind="<value>", ...)` or
@@ -251,19 +251,19 @@ producer" or "this fold target is correct" must check:
 6. **String method on an AST node type.** `kind=node.type.replace(
    "_definition", "")` derives the emitted value from the grammar's node
    name, so the value never appears as a literal anywhere in the analyzer.
-   `pony.py:327` emits `actor` and `primitive` this way, neither of them a
-   registered kind (concept audit 2026-10-22). Grep for `.type.replace(`,
+   `pony.py:327` emits `actor` and `primitive` this way; neither was a
+   registered kind until WI-higik (concept audit 2026-10-22). Grep for `.type.replace(`,
    `.type.removesuffix(` and `.type.split(` near `kind=`.
 
 The producer-emit shapes above are the *known* miss categories for
 this codebase as of 2026-10-22 (shape 6 added that day). New languages or analyzer styles can
 introduce new shapes; treat the list as a checklist seed, not as
-exhaustive. When you find a sixth shape during an audit, append it
+exhaustive. When you find a seventh shape during an audit, append it
 here with a file:line example.
 
 **Procedure.** For every value the audit's per-pair Step 6 verdict
 will touch — especially every value receiving a DEPRECATE-NO-FOLD
-verdict — run *each* of the five greps above. The audit's evidence
+verdict — run *each* of the six greps above. The audit's evidence
 section must record either the producer site found (file:line) or an
 explicit "ran shape N grep, zero hits" entry. A verdict that lists
 literal-grep hits only is incomplete and must not ship.

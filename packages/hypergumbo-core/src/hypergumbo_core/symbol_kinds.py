@@ -334,6 +334,19 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("object", AXIS_LANGUAGE_CONSTRUCT,
                    "Object / singleton declaration (Scala / Kotlin).",
                    TYPE_FAMILY_CONCRETE),
+    # WI-higik, ADR-0027 register-vs-fold: REGISTERED, not folded onto
+    # ``class``, because pony emits ``class`` from the same analyzer for its
+    # own class construct, so reuse would fuse two constructs (the
+    # Cluster-27C apex/peer break). Registering changes no node.id and no
+    # stable_id; a fold would change the kind fed to make_doc_stable_id.
+    SymbolKindSpec("actor", AXIS_LANGUAGE_CONSTRUCT,
+                   "Actor declaration (Pony): a type whose behaviours run "
+                   "asynchronously on its own message queue.",
+                   TYPE_FAMILY_CONCRETE),
+    SymbolKindSpec("primitive", AXIS_LANGUAGE_CONSTRUCT,
+                   "Primitive declaration (Pony): a type with no fields and "
+                   "one instance.",
+                   TYPE_FAMILY_CONCRETE),
     SymbolKindSpec("prop", AXIS_LANGUAGE_CONSTRUCT,
                    "Component prop declaration (Vue / React)."),
     SymbolKindSpec("slot", AXIS_LANGUAGE_CONSTRUCT,
@@ -798,6 +811,37 @@ def type_like_kind_names() -> frozenset[str]:
     return frozenset(
         spec.name for spec in SYMBOL_KINDS if spec.type_family is not None
     )
+
+
+#: Kinds that hold members through ``contains`` edges without declaring a
+#: nominal type (WI-totam): a ``file``, a ``module``, a ``type`` declaration
+#: (nim/go: its fields and methods), an ``instance`` (Haskell/Lean/PureScript
+#: instances, the Scala 3 ``given`` owner), a proto ``message`` (nested
+#: messages and fields) and a solidity ``library``. The per-kind evidence is
+#: in ``linkers/containment.py``'s history (WI-sakug, WI-pujiz, INV-hojus).
+#: ``namespace`` / ``package`` / ``program`` are not listed: no analyzer roots
+#: members under them today, and adding one changes the containment graph,
+#: which wants its own measurement.
+SCOPE_CONTAINER_KINDS: Final[frozenset[str]] = frozenset({
+    "file", "module", "type", "instance", "message", "library",
+})
+
+
+def container_kind_names() -> frozenset[str]:
+    """Every kind whose members a slice reaches through ``contains`` edges.
+
+    Derived, not listed: the nominal types (:func:`type_like_kind_names`) plus
+    :data:`SCOPE_CONTAINER_KINDS`, so a newly registered type kind is a
+    container without anyone editing a consumer. The ONE set the containment
+    linker (which kinds own members) and slice (which entries expand to their
+    members) read. They used to keep a copy each, and slice's lacked
+    ``object`` (measured 2026-10-28 on 30 surveys: 40,820 ``contains`` edges
+    from Kotlin/Scala objects), ``contract``, ``type``, ``instance``,
+    ``record`` and ``union``, so a slice entering one returned only itself.
+    ``variable`` is out: a Go variable has no members. ``external_symbol`` is
+    out: it stands for code outside the project.
+    """
+    return type_like_kind_names() | SCOPE_CONTAINER_KINDS
 
 
 def abstract_type_kind_names() -> frozenset[str]:
