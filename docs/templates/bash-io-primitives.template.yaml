@@ -84,15 +84,16 @@ fs_write:
     functions: [dd]
   - module: cp
     functions: [cp]
-fs_read:
-  - module: cat
-    functions: [cat]
-
-# ── Destructive ──────────────────────────────────────────────────────────
-# Worth declaring even though the launch is already disclosed as opaque:
-# naming them lets a claim be written against them specifically.
-fs_delete:
+  # Destructive commands.
+  # Worth declaring even though the launch is already disclosed as opaque:
+  # naming them lets a claim be written against them specifically. Removing a
+  # file is fs_write, as os.remove is in the shipped catalogues; there is no
+  # fs_delete boundary, and a section the loader does not know is refused by
+  # name (this template's own `fs_delete:` loaded zero rows until WI-hapon).
   - module: rm
     functions: [rm]
   - module: shred
     functions: [shred]
+fs_read:
+  - module: cat
+    functions: [cat]

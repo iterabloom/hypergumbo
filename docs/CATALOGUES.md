@@ -26,7 +26,8 @@ types a receiver. A source, a sink, a framework pattern or an I/O detection
 only ever adds.
 
 **What a community row may not do, exactly.** A community I/O row never makes
-a call count as examined, and its `module_completeness` grants are withheld; a
+a call count as examined, and its `module_completeness` grants and
+`stdlib_other` entries (calls it says are not I/O) are withheld; a
 community taint sanitizer is not a barrier (the flow is reported and names it,
 `withheld_community_sanitizer`); a community terminating summary never closes
 a taint branch (`withheld_community_summary`); a community sink's

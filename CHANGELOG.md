@@ -35,6 +35,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **A community I/O overlay can no longer declare a call not I/O** (WI-pofal): its `stdlib_other` entries are withheld with its `module_completeness` grants (ADR-0061 ruling 2), so `io-boundaries` keeps reporting the uncatalogued call as possible I/O. Measured: no `verify-claims` verdict depended on it.
+- **An `io_primitives` catalogue or overlay refuses a key nothing reads** (WI-hapon), at the top level, in a boundary row, a `stdlib_other` row and a completeness entry, naming the key with a near-miss hint. `net_sendd:` or `function:` used to load zero rows silently; the shipped bash template's `fs_delete:` section did, and its rm/shred rows are now `fs_write`.
 - **Every linker call-site stand-in is attached to the function it sits in** (WI-pokuz): Electron and Phoenix IPC sends and receives, message dispatch, crypto flow, gRPC and GraphQL clients, the two bridge callers, and `call_site` nodes (HTTP, database, subprocess, solidity ABI) had no edge from any real symbol, because the list the enclosure pass reads had drifted from what the linkers write. That list now partitions every role a linker writes, checked against the linker sources.
 #### Pass disclosure and identity
 

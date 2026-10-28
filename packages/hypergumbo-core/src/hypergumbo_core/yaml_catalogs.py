@@ -314,6 +314,43 @@ class CatalogueError(Exception):
     """
 
 
+def reject_unknown_keys(
+    observed: Any,
+    allowed: "frozenset[str] | set[str]",
+    *,
+    origin: str,
+    where: str,
+    error: "type[Exception]" = CatalogueError,
+    reasons: "Optional[dict[str, str]]" = None,
+) -> None:
+    """Refuse a mapping key no reader reads, naming it (WI-rinaz, WI-hapon).
+
+    A catalogue key nothing reads is a WRITE-ONLY KNOB: the file reports
+    loaded and the key does nothing. ``net_sendd:`` in an io_primitives
+    overlay loaded with zero rows and no message, so the overlay's author
+    believed a claim they never made. Every catalogue loader refuses an
+    unknown key the way the claims file does, through this one helper, so
+    the message and the near-miss hint read the same in every family.
+
+    ``origin`` names the file (``"taint catalog /x.yaml"``), ``where`` the
+    level (``"top-level"``, ``"net_send row"``); ``reasons`` maps a key to a
+    sentence saying where that key's meaning actually lives.
+    """
+    import difflib
+
+    unknown = sorted(str(key) for key in observed if key not in allowed)
+    if not unknown:
+        return
+    close = difflib.get_close_matches(unknown[0], sorted(allowed), n=3, cutoff=0.5)
+    hint = f" Did you mean: {', '.join(close)}?" if close else ""
+    raise error(
+        f"{origin}: unknown {where} key(s) "
+        f"{', '.join(repr(k) for k in unknown)}, which nothing reads "
+        f"(allowed: {', '.join(sorted(allowed))}).{hint}"
+        + "".join((reasons or {}).get(k, "") for k in unknown)
+    )
+
+
 def read_catalogue_yaml(
     path: Path,
     *,

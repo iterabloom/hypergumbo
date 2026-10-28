@@ -45,7 +45,7 @@ The test is what a row can do, not which family it belongs to.
 | a row that… | examples | from community or un-opted in-repo |
 |---|---|---|
 | adds a finding or structure | a taint source or sink, a framework pattern, a propagating summary, an I/O row that matches a call | takes effect, disclosed |
-| removes a finding or an uncertainty | a sanitizer, a summary that ends a branch, a `module_completeness` grant, an I/O row that makes a call count as examined, a library signature that types a receiver | only the adding half takes effect; the removing half is withheld, and the verdict names the withheld rows |
+| removes a finding or an uncertainty | a sanitizer, a summary that ends a branch, a `module_completeness` grant, a `stdlib_other` entry (a call declared not I/O, which stops it being reported as possible I/O; WI-pofal), an I/O row that makes a call count as examined, a library signature that types a receiver | only the adding half takes effect; the removing half is withheld, and the verdict names the withheld rows |
 
 - **Built-in rows and your rows take full effect.** When your row removes a
   finding, the verdict still carries the existing user-supplied-sanitizer caveat

@@ -209,7 +209,7 @@ from .io_boundary import (
     target_kinds_cross_no_boundary,
 )
 from .ir import symbol_name_slot, symbol_path_slot
-from .yaml_catalogs import CatalogueError, read_catalogue_yaml
+from .yaml_catalogs import CatalogueError, read_catalogue_yaml, reject_unknown_keys
 
 if TYPE_CHECKING:
     from .cfg import DdgEdge
@@ -1843,18 +1843,9 @@ def _reject_unknown_catalog_keys(
     observed: Any, allowed: frozenset[str], path: Path, where: str,
 ) -> None:
     """Raise :class:`TaintCatalogError` naming each key ``allowed`` lacks."""
-    import difflib
-
-    unknown = sorted(str(key) for key in observed if key not in allowed)
-    if not unknown:
-        return
-    close = difflib.get_close_matches(unknown[0], sorted(allowed), n=3, cutoff=0.5)
-    hint = f" Did you mean: {', '.join(close)}?" if close else ""
-    raise TaintCatalogError(
-        f"taint catalog {path}: unknown {where} key(s) "
-        f"{', '.join(repr(k) for k in unknown)}, which nothing reads "
-        f"(allowed: {', '.join(sorted(allowed))}).{hint}"
-        + "".join(_UNREAD_KEY_REASONS.get(k, "") for k in unknown)
+    reject_unknown_keys(
+        observed, allowed, origin=f"taint catalog {path}", where=where,
+        error=TaintCatalogError, reasons=_UNREAD_KEY_REASONS,
     )
 
 
