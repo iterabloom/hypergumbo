@@ -1,0 +1,22 @@
+- op: create  # bf9f
+  at: '2026-10-28T13:41:26Z'  # bf9f
+  by: agent  # bf9f
+  actor: jgstern_agent  # bf9f
+  clock: 1  # bf9f
+  nonce: bf9f  # bf9f
+  data:  # bf9f
+    kind: work_item  # bf9f
+    title: "reader census: remaining knob gaps (taint loader language keys and string rows, a transforms string row exits rc 1, claims allowed_sanitizers unread, function-summary fields unread, unconstructed config classes, routes -x, undocumented env vars, --budgets drops bad specs)"  # bf9f
+    status: todo_hard  # bf9f
+    priority: 4  # bf9f
+    parent:  # bf9f
+    tags:  # bf9f
+    - concept_audit  # bf9f
+    - kosup_sweep  # bf9f
+    - catalogue  # bf9f
+    isbefore: []  # bf9f
+    duplicate_of: []  # bf9f
+    not_duplicate_of: []  # bf9f
+    pr_ref:  # bf9f
+    description: "From the WI-kosup knob census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/C_knobs.md K3-K6, K17-K21). Remaining knob gaps:\n- Taint loaders after WI-rinaz: a misspelled LANGUAGE key and a string (non-mapping) row are dropped silently; a user sink file's unreached: is accepted but only the shipped-directory reader reads it; a string row in transforms: raises a raw AttributeError that reaches main's catch-all and exits rc 1 -- the code verify-claims uses for 'violated' (code reading, not run end to end).\n- claims files: taint_flow.allowed_sanitizers is allowlisted and stored, never read.\n- function summaries: the consumer checks fields for truthiness only; which parameters flow, sanitize from/to labels and callback details are never read; infer_summary has no production caller.\n- config dataclasses never constructed / read: SupplyChainConfig (WI-jaloz), BUILTIN_ATTRIBUTE_EXCEPTIONS validator runs only in tests and .prefer is read nowhere, tracker AuthConfig, CompactConfig.min_per_language (read only on a branch production never takes).\n- CLI/env: routes -x is a deprecated no-op; HG_MEMORY_DEBUG is undocumented; five env vars documented elsewhere are missing from the spec's env table; a non-integer HYPERGUMBO_MIN_MEMORY_MB crashes at import; survey --budgets 4k,banana silently drops the invalid spec.\nNot inventoried: cfg_nodes / url_folding loaders, the trust-store JSON, runtime_coherence --allowlist, tracker config.yaml keys."  # bf9f
+    fields: {}  # bf9f

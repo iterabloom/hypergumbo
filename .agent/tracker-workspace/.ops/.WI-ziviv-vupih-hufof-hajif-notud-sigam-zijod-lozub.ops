@@ -43,3 +43,18 @@
   clock: 4  # bb13
   nonce: bb13  # bb13
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): WI-ziruv (falsify each declared axis's rule on real output) counts ADR-0059's shrink-only ledger (which names this item) as an existing falsification test, a model beside INV-kutub. No change to this item."  # bb13
+- op: update  # 47c8
+  at: '2026-10-28T14:20:52Z'  # 47c8
+  by: agent  # 47c8
+  actor: jgstern_agent  # 47c8
+  clock: 5  # 47c8
+  nonce: 47c8  # 47c8
+  set:  # 47c8
+    status: done  # 47c8
+- op: discuss  # ffbb
+  at: '2026-10-28T14:20:52Z'  # ffbb
+  by: agent  # ffbb
+  actor: jgstern_agent  # ffbb
+  clock: 6  # ffbb
+  nonce: ffbb  # ffbb
+  message: "Done in PR #1922 (0ba6186e97). The ADR-0059 ledger is EMPTY (LEDGER_SIZE 29 -> 0; test_every_entry_is_still_a_method_row has nothing left to check). ObjC class methods re-kinded to function (NSData/NSString/NSFileHandle/NSInputStream/NSOutputStream factories, NSURLConnection senders and connectionWithRequest:delegate:, NSDate date / timeIntervalSinceReferenceDate, and the two NSTask launchers added after the ledger was pinned); Swift Date.now and ProcessInfo.processInfo -> attribute, DispatchTime.now() and Process.launchedProcess -> function; boundaries decided first as the Swift twins were (INV-gujoh): NSMutableURLRequest deleted (builds a request, sends nothing), fetchRequestWithEntityName: -> db_compose; the five kotlin.io.FilesKt facade rows deleted (nothing emits that module). 'date' (objc) and 'now' (swift) joined ambiguous_names so a bare no-context call cannot match the new function rows. Evidence: survey + classify_call A/B (dev vs branch, each side classifying with its own catalogue) on AFNetworking, CocoaLumberjack, fmdb, GPUImage (objc), Alamofire, hummingbird (swift), detekt (kotlin): 0 classifications moved. ADR-0059 s3 records the final state. Not done: Process.run stays a method row (reached both ways, the ADR-0059 re-open trigger); the possibly misnamed swift FileHandle.fileHandleFor*/InputStream.inputStreamWithFileAtPath rows (Swift imports them as initializers) were re-kinded with the rest, not renamed -- not checked against Apple docs."  # ffbb

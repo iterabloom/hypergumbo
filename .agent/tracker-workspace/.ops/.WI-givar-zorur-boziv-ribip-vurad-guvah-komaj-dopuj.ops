@@ -1,0 +1,22 @@
+- op: create  # a666
+  at: '2026-10-28T13:40:09Z'  # a666
+  by: agent  # a666
+  actor: jgstern_agent  # a666
+  clock: 1  # a666
+  nonce: a666  # a666
+  data:  # a666
+    kind: work_item  # a666
+    title: "reader census: DELETE nine dataclass fields nothing reads (Symbol.quality, AnalysisRun.skipped_passes, Limits.test_files_excluded, SupplyChainLimits.ambiguous_paths + AmbiguousPath, IoBoundaryCatalog._by_qualified / stdlib_provenance) and the run.duration_ms writes on discarded runs"  # a666
+    status: todo_hard  # a666
+    priority: 4  # a666
+    parent:  # a666
+    tags:  # a666
+    - concept_audit  # a666
+    - kosup_sweep  # a666
+    - dead_code  # a666
+    isbefore: []  # a666
+    duplicate_of: []  # a666
+    not_duplicate_of: []  # a666
+    pr_ref:  # a666
+    description: "From the WI-kosup reader census (audit 2026-10-28, pinned dev 02a25bba56; full rows in /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/A_fields.md). DELETE verdicts, each with no production reader and none intended (AST walk, six shapes, hand spot-checks of 9 results incl. 4 'unread' ones):\n- Symbol.quality: no producer, no reader.\n- AnalysisRun.skipped_passes: still dead (audit #17's finding).\n- Limits.test_files_excluded: nothing in survey sets it, so every artifact says false; exclude_tests is a view flag only.\n- SupplyChainLimits.ambiguous_paths and its 3 AmbiguousPath fields: no production caller (spec :2023 admits it).\n- IoBoundaryCatalog._by_qualified: written, never read (not even by tests).\n- IoBoundaryCatalog.stdlib_provenance: copied through merge/overlay, never read.\n- The write pattern: 25 run.duration_ms writes in 22 files land on a run collect_analyzer_result then discards (skipped result) -- WI-gidid's shape (ii), e.g. analyze/base.py near the grammar-unavailable return.\nEach deletion needs the schema/spec/axis-declaration follow-through (docs/schema.json regen, spec §6 field lists) and a re-trace at deletion time."  # a666
+    fields: {}  # a666

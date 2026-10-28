@@ -48,3 +48,18 @@
   clock: 5  # 1baf
   nonce: 1baf  # 1baf
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Neither WI-ziruv nor WI-kosup catches this shape: two consumers (the classifier, method_starved_modules) contradict each other in one run. The guard this item asks for is that cross-consumer property. Does not wait for either audit."  # 1baf
+- op: update  # 0099
+  at: '2026-10-28T12:33:07Z'  # 0099
+  by: agent  # 0099
+  actor: jgstern_agent  # 0099
+  clock: 6  # 0099
+  nonce: '0099'  # 0099
+  set:  # 0099
+    status: done  # 0099
+- op: discuss  # 161b
+  at: '2026-10-28T12:33:07Z'  # 161b
+  by: agent  # 161b
+  actor: jgstern_agent  # 161b
+  clock: 7  # 161b
+  nonce: 161b  # 161b
+  message: "Done in PR #1920 (cdee6a3921). The guard keyed on the contradiction: verify_claims.classified_yet_starved names every module method_starved_modules reports starved although classify_call matched an edge into it in the same run (option (a)); test_classified_yet_starved.py asserts it is empty over the schema-coverage corpus and one fixture per earlier instance (rust File::open, JS console/process, JS handler assignment, python datetime/ctypes.cdll), with a reach control that the check fires on a constructed contradiction. It does not satisfy the module (the INV-fugus refusal stands). The live eighth shape (unbound/UFCS calls: rust std::io::Write::write_all(out, b), python csv.DictWriter.writerow(w, row)) reproduces through the production pipeline and is held as two strict xfails naming its own item, WI-momiz (ADR-0059 re-open trigger)."  # 161b

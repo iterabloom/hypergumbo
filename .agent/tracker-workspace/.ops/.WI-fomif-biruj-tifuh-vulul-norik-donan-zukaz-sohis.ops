@@ -27,3 +27,10 @@
   clock: 2  # 1ee3
   nonce: 1ee3  # 1ee3
   message: "2026-10-25 (owner): WI-kosup now decides this item. Its verdict on claims_confirmed / claim_verdict_pct (no reader recorded here) comes first: DELETE the metric, or WIRE it and name the reader. Only then, if the metric stays, fix the count. WI-kosup now blocks this item."  # 1ee3
+- op: discuss  # 5d0f
+  at: '2026-10-28T13:42:34Z'  # 5d0f
+  by: agent  # 5d0f
+  actor: jgstern_agent  # 5d0f
+  clock: 3  # 5d0f
+  nonce: 5d0f  # 5d0f
+  message: "WI-kosup sweep decision (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/D_functions.md): DELETE, not WIRE. claims_total / claims_confirmed / claims_violated / claim_verdict_pct (scripts/bakeoff-deep ~:403-406, computed ~:2696-2709) have no reader that branches on them: they are not in the GOOD/WARN/FAIL assessment, status or active output; their only reader is cmd_compare's 'six numeric metrics that changed most', which all-zero values can never enter; the reflect pipeline reads the raw verify-claims.txt instead. And the INPUT never existed: no script creates <workdir>/claims/, and across 121 deep-session entries there is no claims/ directory and no verify-claims.txt; all 56 recorded claims_total values are 0. So the miscount this item describes is moot. Action: delete the four fields and their computation (and the verify-claims run step, whose input never exists); if the owner prefers WIRE, the reader would be _diagnose_cohort's verdict assessment with confirmed_with_caveats counted as decided."  # 5d0f

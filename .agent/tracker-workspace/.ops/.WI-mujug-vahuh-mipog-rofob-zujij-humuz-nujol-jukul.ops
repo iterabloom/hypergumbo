@@ -32,3 +32,10 @@
   clock: 3  # bacd
   nonce: bacd  # bacd
   message: "2026-10-25 (owner): WI-kosup now decides both keys. Its meta-key inventory classifies each reader (display/presence/branch) and checks consumer-side subsets of the vocabulary, which is where WI-sibup came from (_RECEIVER_MARKERS). That inventory is this audit. WI-kosup now blocks this item."  # bacd
+- op: discuss  # e4a3
+  at: '2026-10-28T13:42:34Z'  # e4a3
+  by: agent  # e4a3
+  actor: jgstern_agent  # e4a3
+  clock: 4  # e4a3
+  nonce: e4a3  # e4a3
+  message: "WI-kosup sweep decision (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/B_meta.md §3b). meta['receiver']: OK -- 11 values, both readers' value sets match the producers', and an existing partition test guards it (the keep-with-trigger on it fired and was acted on). meta['resolution_quality']: WIRE -- 7 values and every reader value is written, but the value set is declared nowhere, so the magnet detector's != 'ambiguous' treats any new value as 'receiver identified', and typed / typed_receiver / type_inferred look like synonyms no production reader tells apart. Action: declare the value set (a bounded-enum with its values) with a partition test, as receiver has, and fold or distinguish the three typed spellings. This item now carries that action."  # e4a3

@@ -1,0 +1,22 @@
+- op: create  # 8f67
+  at: '2026-10-28T13:40:56Z'  # 8f67
+  by: agent  # 8f67
+  actor: jgstern_agent  # 8f67
+  clock: 1  # 8f67
+  nonce: 8f67  # 8f67
+  data:  # 8f67
+    kind: work_item  # 8f67
+    title: "meta keys: DELETE Edge.meta call_type and method (decision replacing an unfireable keep), DELETE export_scope, fix cobol meta clobber, and a read-side gate pinning the 115 write-only registered keys"  # 8f67
+    status: todo_hard  # 8f67
+    priority: 3  # 8f67
+    parent:  # 8f67
+    tags:  # 8f67
+    - concept_audit  # 8f67
+    - kosup_sweep  # 8f67
+    - axis  # 8f67
+    isbefore: []  # 8f67
+    duplicate_of: []  # 8f67
+    not_duplicate_of: []  # 8f67
+    pr_ref:  # 8f67
+    description: "From the WI-kosup reader census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/B_meta.md §1.2, §3a, §4). Meta-key write-only family and named decisions:\n- DECISION (replaces the 2026-10-21 'keep until their first reader', an unfireable trigger): Edge.meta call_type and method -- DELETE both. Every writer's value is already on the same edge or its source symbol (otp -> mechanism; cobol -> evidence_type; subprocess -> the source symbol's call_type; openapi -> the source symbol's http_method; ipc -> the source symbol's bridge_method).\n- DELETE export_scope (registered, never written).\n- cobol.py ~:439 replaces the whole meta dict make_unresolved_edge just wrote, so unresolved COBOL CALL edges lose callee_name (shape (ii); check-meta-write-discipline only scans subscript writes, so it cannot see this).\n- 115 of 203 registered keys have no production reader (22 not even read by a test). Verdict for the family: DECLARE EXTERNAL, with a READ-SIDE GATE that pins the write-only set exactly, so a new reader (or a lost one) changes the pinned set and fails a test -- the fireable replacement for 're-audit when a consumer appears'. The registry docstring admits reads are never checked.\n- 157 emitted keys are unregistered (130 with no reader, none in docs/schema.json): register or stop writing.\nInput for WI-kuhoh: 33 keys written on BOTH Symbol.meta and Edge.meta, each registered on one axis only (list in §3c)."  # 8f67
+    fields: {}  # 8f67

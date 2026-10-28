@@ -59,3 +59,18 @@
   clock: 6  # 5baa
   nonce: 5baa  # 5baa
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Named instance in WI-kosup section C: receiver_type_hint has readers (two linkers, owner_ancestry), so a per-field reader count calls it read. The defect is per QUESTION: the consumer that decides package-vs-type does not read it. WI-kosup now records that shape per question."  # 5baa
+- op: update  # 69a1
+  at: '2026-10-28T12:33:19Z'  # 69a1
+  by: agent  # 69a1
+  actor: jgstern_agent  # 69a1
+  clock: 7  # 69a1
+  nonce: 69a1  # 69a1
+  set:  # 69a1
+    status: wont_do  # 69a1
+- op: discuss  # ab69
+  at: '2026-10-28T12:33:19Z'  # ab69
+  by: agent  # ab69
+  actor: jgstern_agent  # ab69
+  clock: 8  # ab69
+  nonce: ab69  # ab69
+  message: "DECIDED NOT TO WIRE, on measurement (2026-10-28; a refusal is a decision). The premise holds (io_boundary.py and taint.py read no receiver_type_hint at the package-vs-type seam), but reading it there would not improve that decision. Measured over 30 recent surveys (~/hypergumbo_lab_notebook/*/*.dev.json + the self survey): hints are BARE type names in every language but Java (javascript 0/2,131 qualified, python 0/1,699, typescript 0/299, cpp 0/4, swift 0/2; java 4,983/35,157 qualified). Substituting the hint for the module slot in classify_call: the QUALIFIED hints change 0 classifications; the bare ones change 120, every sampled one a short-name match against another module's rows (org.slf4j.Logger.info -> a bare 'Logger' row's logging; a JS 'B.open' -> browser_storage_read) -- the unverified match INV-tapat / INV-maluk closed. The swift receiver-variable target this item was raised for was fixed producer-side by INV-kotob. So the slot (the owner path, ADR-0051) stays the consumers' evidence; ADR-0051 s2 now states this and the measurement (lands with WI-ziviv's PR). The hint keeps its readers (inherited_calls, receiver_type_dispatch, owner_ancestry for in-repo owners). WI-pupus (go: a typed receiver gets the package slot in a whole-repo survey) is the live package-vs-type defect, and it is a producer fix."  # ab69

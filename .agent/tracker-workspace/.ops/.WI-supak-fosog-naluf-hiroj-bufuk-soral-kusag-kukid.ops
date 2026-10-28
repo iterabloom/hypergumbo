@@ -1,0 +1,22 @@
+- op: create  # a194
+  at: '2026-10-28T13:40:31Z'  # a194
+  by: agent  # a194
+  actor: jgstern_agent  # a194
+  clock: 1  # a194
+  nonce: a194  # a194
+  data:  # a194
+    kind: work_item  # a194
+    title: "reader census: eight free-text axis declarations say never branched on, but a consumer branches on the value (UsageContext.position view_func, IoChain.primitive vs HIGH_RISK_PRIMITIVES, UsageContext.context_name, Symbol.name, Symbol.path)"  # a194
+    status: todo_hard  # a194
+    priority: 3  # a194
+    parent:  # a194
+    tags:  # a194
+    - concept_audit  # a194
+    - kosup_sweep  # a194
+    - axis  # a194
+    isbefore: []  # a194
+    duplicate_of: []  # a194
+    not_duplicate_of: []  # a194
+    pr_ref:  # a194
+    description: "From the WI-kosup reader census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/A_fields.md, axis section). Fields declared '# axis: free-text -- ... never branched on / not parsed' that DO have a branch reader (ADR-0058's distinction; WI-fuzat was the previous instance):\n- UsageContext.position: cli.py ~:9452 branches on the value \"view_func\"; framework_patterns.py ~:168 regex-matches it.\n- IoChain.primitive: matched against HIGH_RISK_PRIMITIVES.\n- UsageContext.context_name: regex-matched.\n- Symbol.name compared to \"main\", \"Java_*\" and similar; Symbol.path goes through is_test_file.\n(8 fields in all; the report lists each with file:line.) Fix: re-declare each as what it is (identity / bounded-enum with its values / free-text with a TRUE justification), or move the branch onto a declared field. A free-text justification must be present, not true (0051, 0058) -- this item is about the ones whose justification is FALSE."  # a194
+    fields: {}  # a194

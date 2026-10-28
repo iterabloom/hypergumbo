@@ -35,3 +35,10 @@
   clock: 3  # 4520
   nonce: '4520'  # 4520
   message: "2026-10-25 (owner): WI-kosup now owns this item's keep-with-trigger on the generic Edge.meta keys call_type and method. 're-audit on their first reader' cannot fire on keys nothing reads, and WI-kosup does not accept that form; it gives a DELETE / WIRE / DECLARE EXTERNAL / fireable-KEEP verdict instead. This item's other parts (ContentRule.ecosystem -> tool; the channel_kind 'message_queue' example) are unaffected, but the latter is recorded in WI-kosup as an instance of a declared value with no producer."  # 4520
+- op: discuss  # f7f7
+  at: '2026-10-28T13:42:36Z'  # f7f7
+  by: agent  # f7f7
+  actor: jgstern_agent  # f7f7
+  clock: 4  # f7f7
+  nonce: f7f7  # f7f7
+  message: "WI-kosup sweep (2026-10-28): the call_type / method keep-with-trigger ('re-audit on their first reader') was the unfireable form the sweep refuses; replaced by DELETE (WI-dikum). The channel_kind 'message_queue' reader-without-producer example is in the sweep's §2 set (/home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/B_meta.md)."  # f7f7

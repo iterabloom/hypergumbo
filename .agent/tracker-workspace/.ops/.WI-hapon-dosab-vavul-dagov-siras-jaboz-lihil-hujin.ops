@@ -1,0 +1,22 @@
+- op: create  # 5d90
+  at: '2026-10-28T13:41:09Z'  # 5d90
+  by: agent  # 5d90
+  actor: jgstern_agent  # 5d90
+  clock: 1  # 5d90
+  nonce: 5d90  # 5d90
+  data:  # 5d90
+    kind: work_item  # 5d90
+    title: "catalogue loaders other than taint silently ignore unknown keys (io_primitives overlays, function_summaries, library_signatures, frameworks, dataflow_patterns), and frameworks name_pattern / usage_call / detect / linkers are accepted but unread"  # 5d90
+    status: todo_hard  # 5d90
+    priority: 3  # 5d90
+    parent:  # 5d90
+    tags:  # 5d90
+    - concept_audit  # 5d90
+    - kosup_sweep  # 5d90
+    - catalogue  # 5d90
+    isbefore: []  # 5d90
+    duplicate_of: []  # 5d90
+    not_duplicate_of: []  # 5d90
+    pr_ref:  # 5d90
+    description: "From the WI-kosup knob census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/C_knobs.md K1, K7). Catalogue YAML loaders that SILENTLY IGNORE an unknown key (a write-only knob: the file reports loaded and the key does nothing), WI-rinaz's shape in other loaders:\n- io_primitives (IoBoundaryCatalog._from_dict / load_overlay_catalog): a user overlay with net_sendd: or function: loads with 0 primitives and no message (reproduced by the census agent).\n- function_summaries, library_signatures, frameworks, dataflow_patterns loaders.\nAlso write-only keys those loaders accept: library_signatures module_completeness: partial (5 files); DataflowConfig.calls (no file produces it); frameworks linkers: (101 files, read only by tests), detect: (3 files, no reader), name_pattern (Graphene resolve_*) and usage_call (two ZIO route rules) -- those patterns match nothing (reproduced). Fix per loader: refuse unknown keys with the key named (the claims-file and WI-rinaz rule), and wire or delete each accepted-but-unread key."  # 5d90
+    fields: {}  # 5d90
