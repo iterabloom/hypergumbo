@@ -1799,6 +1799,57 @@ def _safe_load_catalog_yaml(
     return data
 
 
+#: The keys each taint catalogue file shape is read for (WI-rinaz). Anything
+#: else is refused: a key the loader does not read makes the file report
+#: "loaded" while contributing nothing, and a dropped source or sink is the
+#: false-all-clear direction. ``description`` / ``notes`` / ``provenance`` /
+#: ``retrieved`` are read by the disclosure or by people. The claims file's
+#: own allowlists (WI-bopoz, ``verify_claims._reject_unknown_keys``) are the
+#: precedent.
+_DOC_KEYS: Final[frozenset[str]] = frozenset(
+    {"description", "notes", "provenance", "retrieved"})
+_SOURCE_FILE_KEYS: Final[frozenset[str]] = _DOC_KEYS | {"taint_label", "sources"}
+_SOURCE_ENTRY_KEYS: Final[frozenset[str]] = frozenset({
+    "module", "functions", "methods", "return_tainted", "argument_tainted",
+    "start_at", "notes",
+})
+_SINK_FILE_KEYS: Final[frozenset[str]] = _DOC_KEYS | {
+    "zone", "trust_level", "sinks", "unreached"}
+_SINK_ENTRY_KEYS: Final[frozenset[str]] = frozenset(
+    {"module", "functions", "methods", "notes"})
+_SANITIZER_FILE_KEYS: Final[frozenset[str]] = _DOC_KEYS | {"transforms"}
+_SANITIZER_ENTRY_KEYS: Final[frozenset[str]] = frozenset(
+    {"input_taint", "output_taint", "functions", "notes"})
+
+#: Why a key a user may reasonably try is not read, appended to the refusal.
+_UNREAD_KEY_REASONS: Final[dict[str, str]] = {
+    "attributes": (
+        " Attribute sources (document.location, sys.argv) are derived from "
+        "the io_primitives catalogue's attributes: rows (WI-jojis); declare "
+        "the row in an --io-primitives overlay instead."
+    ),
+}
+
+
+def _reject_unknown_catalog_keys(
+    observed: Any, allowed: frozenset[str], path: Path, where: str,
+) -> None:
+    """Raise :class:`TaintCatalogError` naming each key ``allowed`` lacks."""
+    import difflib
+
+    unknown = sorted(str(key) for key in observed if key not in allowed)
+    if not unknown:
+        return
+    close = difflib.get_close_matches(unknown[0], sorted(allowed), n=3, cutoff=0.5)
+    hint = f" Did you mean: {', '.join(close)}?" if close else ""
+    raise TaintCatalogError(
+        f"taint catalog {path}: unknown {where} key(s) "
+        f"{', '.join(repr(k) for k in unknown)}, which nothing reads "
+        f"(allowed: {', '.join(sorted(allowed))}).{hint}"
+        + "".join(_UNREAD_KEY_REASONS.get(k, "") for k in unknown)
+    )
+
+
 def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
     """Load a single taint source YAML file.
 
@@ -1808,6 +1859,7 @@ def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
     iterates it via ``.items()``.
     """
     data = _safe_load_catalog_yaml(path, "sources", dict)
+    _reject_unknown_catalog_keys(data, _SOURCE_FILE_KEYS, path, "top-level")
     label = data.get("taint_label", "unknown")
     sources_by_lang: dict[str, list[TaintSource]] = {}
 
@@ -1816,6 +1868,8 @@ def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
+            _reject_unknown_catalog_keys(
+                entry, _SOURCE_ENTRY_KEYS, path, f"sources.{lang} entry")
             module = entry.get("module", "")
             return_tainted = entry.get("return_tainted", True)
             arg_tainted = tuple(entry.get("argument_tainted", []))
@@ -1857,6 +1911,7 @@ def _load_sink_yaml(path: Path) -> dict[str, list[TaintSink]]:
     Returns dict mapping language → list of TaintSink entries.
     """
     data = _safe_load_catalog_yaml(path, "sinks", dict)
+    _reject_unknown_catalog_keys(data, _SINK_FILE_KEYS, path, "top-level")
     zone = data.get("zone", "unknown")
     trust_level = data.get("trust_level", "unknown")
     sinks_by_lang: dict[str, list[TaintSink]] = {}
@@ -1866,6 +1921,8 @@ def _load_sink_yaml(path: Path) -> dict[str, list[TaintSink]]:
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
+            _reject_unknown_catalog_keys(
+                entry, _SINK_ENTRY_KEYS, path, f"sinks.{lang} entry")
             module = entry.get("module", "")
 
             for func_name in entry.get("functions", []):
@@ -1895,9 +1952,13 @@ def _load_sanitizer_yaml(path: Path) -> dict[str, list[TaintSanitizer]]:
     Returns dict mapping language → list of TaintSanitizer entries.
     """
     data = _safe_load_catalog_yaml(path, "transforms", list)
+    _reject_unknown_catalog_keys(data, _SANITIZER_FILE_KEYS, path, "top-level")
     sanitizers_by_lang: dict[str, list[TaintSanitizer]] = {}
 
     for transform in data.get("transforms", []):
+        if isinstance(transform, dict):
+            _reject_unknown_catalog_keys(
+                transform, _SANITIZER_ENTRY_KEYS, path, "transforms entry")
         input_taint = transform.get("input_taint", "unknown")
         output_taint = transform.get("output_taint", "unknown")
 
