@@ -66,9 +66,12 @@ How It Works
 
 Synthetic-symbol vocabulary
 ---------------------------
-``SYNTHETIC_FRAMEWORK_ROLES`` enumerates the canonical
-``meta["framework_role"]`` values that linkers may attach to
-synthetic Symbol nodes (e.g., a synthetic "Tauri IPC handler" node).
+``SYNTHETIC_FRAMEWORK_ROLES`` names the ``meta["framework_role"]``
+values of the CALL-SITE stand-ins the enclosure pass attaches to their
+enclosing function (an IPC send, an MQ publish, a client call); every
+``kind="call_site"`` node is one too. ``NOT_ENCLOSED_FRAMEWORK_ROLES``
+names the rest of what linkers write, each with its reason, and the two
+partition the linker sources (WI-pokuz; ``test_synthetic_role_partition``).
 This vocabulary replaced the old ``SYNTHETIC_KINDS`` set after
 ADR-0027's Phase-4b kind-vs-framework-role axis split.
 
@@ -1154,38 +1157,59 @@ def run_all_linkers(
     return results
 
 
-# Synthetic node kinds that should be connected to enclosing functions.
+# The linker nodes the enclosure pass connects to the real function they sit
+# in: CALL-SITE STAND-INS -- a send, a publish, a client call, a handler
+# registration -- minted at one line inside a function, whose linker emits
+# edges OUT of the node and none into it. Without the enclosure edge such a
+# node is reachable from no real symbol, so a slice from application code
+# never reaches it.
 #
-# Cluster D framework_role values per ADR-0027 — post-Phase-4b
-# (PR #3633, WI-butol). These names are now exclusively
-# ``Symbol.meta["framework_role"]`` values; producers emit
-# ``Symbol.kind="function"|"method"`` and the role qualifier lives on
-# meta. The set is canonical for the *framework_role* vocabulary used
-# by ``_is_synthetic_node`` below, not for ``Symbol.kind`` (so the L1
-# drift linter at ``scripts/check-symbol-kind-drift`` treats this
-# target name as out-of-scope via its ``excluded_target_names``).
-#
-# Why kept under the ``KINDS`` name: changing the public symbol would
-# ripple through ~12 consumer call sites for no behavioural gain. The
-# set's *role* (a slice of the framework_role meta-key vocabulary)
-# matters; its name is incidental.
+# Values of ``Symbol.meta["framework_role"]`` (ADR-0027 Phase 4b moved them off
+# ``Symbol.kind``). The set used to be hand-written and drifted (WI-pokuz):
+# six members had no producer, and the Electron / Phoenix IPC linkers write
+# ``ipc_send`` / ``ipc_receive`` where it said ``ipc_publisher`` /
+# ``ipc_subscriber``, so on dev session-desktop's 43 and livebook's 31 IPC
+# nodes had no edge from any real symbol. It is now one half of a PARTITION of
+# every role a linker writes, with NOT_ENCLOSED_FRAMEWORK_ROLES below, and
+# ``test_synthetic_role_partition`` reads the linker sources to keep it so.
 SYNTHETIC_FRAMEWORK_ROLES = frozenset({
+    "crypto_consumer",
+    "crypto_producer",
+    "event_publisher",
+    "event_subscriber",
+    "graphql_client",
+    "grpc_client",
     "grpc_stub",
-    "grpc_server",
+    "http_client",
+    "ipc_bridge_caller",
+    "ipc_caller",
+    "ipc_publisher",
+    "ipc_receive",
+    "ipc_send",
+    "message_handler",
+    "message_sender",
     "mq_publisher",
     "mq_subscriber",
     "websocket_endpoint",
-    "websocket_emitter",
-    "websocket_listener",
-    "event_publisher",
-    "event_subscriber",
-    "ipc_publisher",
-    "ipc_subscriber",
-    "db_query",
-    "http_client",
-    "subprocess_call",
-    "abi_call",
 })
+
+#: The roles a linker writes that the enclosure pass leaves alone, and why.
+NOT_ENCLOSED_FRAMEWORK_ROLES: dict[str, str] = {
+    "dispatcher": (
+        "an @hg:dispatches annotation marker; whether it belongs to the "
+        "function below it or the one around it is not reviewed"
+    ),
+    "graphql_resolver": "a resolver DECLARATION, not a call inside one",
+    "grpc_server": (
+        "minted kind=class; the predicate admits call-site kinds only, and "
+        "whether a server construction should attach is not reviewed"
+    ),
+    "grpc_service": "the .proto service declaration (kind=interface)",
+    "grpc_servicer": "a server-side implementation class (kind=class)",
+    "objc_bridge": "an @objc / NSObject-subclass DECLARATION marker",
+    "openapi_operation": "an operation in a spec file; no function encloses it",
+    "selector_ref": "minted kind=reference, a name, not a call site",
+}
 
 
 def _is_synthetic_node(sym: "Symbol") -> bool:
@@ -1199,6 +1223,13 @@ def _is_synthetic_node(sym: "Symbol") -> bool:
     the role-name vocabulary is no longer in the ``Symbol.kind``
     registry.
     """
+    # WI-pokuz: a ``call_site`` node is a stand-in by construction -- the http,
+    # database, subprocess and solidity-ABI linkers fold their call sites to
+    # it (``call_kind`` says which) -- and ``http_client``, the one such role
+    # the old list named, could never match while this tested function/method
+    # alone.
+    if sym.kind == "call_site":
+        return True
     if sym.kind in {"function", "method"}:
         meta = getattr(sym, "meta", None) or {}
         return meta.get("framework_role") in SYNTHETIC_FRAMEWORK_ROLES

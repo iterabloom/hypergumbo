@@ -35,6 +35,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Every linker call-site stand-in is attached to the function it sits in** (WI-pokuz): Electron and Phoenix IPC sends and receives, message dispatch, crypto flow, gRPC and GraphQL clients, the two bridge callers, and `call_site` nodes (HTTP, database, subprocess, solidity ABI) had no edge from any real symbol, because the list the enclosure pass reads had drifted from what the linkers write. That list now partitions every role a linker writes, checked against the linker sources.
 #### Pass disclosure and identity
 
 - **Every pass that ran is in `analysis_runs`, and one that found nothing says why**, including framework patterns, five post-passes and 13 more linkers.
