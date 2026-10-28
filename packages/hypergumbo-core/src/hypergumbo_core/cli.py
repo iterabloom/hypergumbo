@@ -5921,7 +5921,7 @@ def _loaded_catalogue_files(
         ):
             files += [F(family, p, True) for p in sorted(directory.glob("*.yaml"))
                       if include_default_overlays
-                      or not _declares_community_file(p)]
+                      or not _declares_community_file(p, shipped=True)]
         shipped_summaries = sorted(get_summaries_dir().glob("*.yaml"))
         files += [F("function_summaries", p, True) for p in (
             shipped_summaries if include_default_overlays

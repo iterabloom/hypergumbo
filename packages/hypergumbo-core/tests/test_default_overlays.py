@@ -178,6 +178,23 @@ class TestTheGuardThatMattersMost:
         with pytest.raises(DefaultOverlayError, match="provenance"):
             validate_default_overlays([unvouched])
 
+    @pytest.mark.parametrize("value", ["builtin", "Community", "pypi.org/requests"])
+    def test_a_default_declares_exactly_community(self, tmp_path: Path, value: str):
+        """WI-fuzat: the value is the ADR-0061 tier token, not a prose
+        citation. A shipped default is community by construction, so any
+        other value is refused rather than displayed."""
+        from hypergumbo_core.io_boundary import (
+            DefaultOverlayError, validate_default_overlays,
+        )
+
+        other = tmp_path / "other.yaml"
+        other.write_text(
+            f"language: python\nstatus: overlay\nprovenance: {value}\n"
+            "retrieved: 2026-01-01\n"
+        )
+        with pytest.raises(DefaultOverlayError, match="must be 'community'"):
+            validate_default_overlays([other])
+
     def test_the_shipped_set_passes_its_own_gate(self):
         from hypergumbo_core.io_boundary import validate_default_overlays
 

@@ -404,3 +404,35 @@ class TestWhatTheRunLoaded:
         )
         families = {f.family for f in files}
         assert families == {"io_primitives"}
+
+
+class TestOneBuiltinRule:
+    """WI-fuzat: a SHIPPED file is builtin only when it declares builtin, under
+    every reader -- the tier disclosure, the taint split and the non-I/O sink
+    sites. A shipped file that declares neither lands on the withholding side."""
+
+    def test_the_predicate(self) -> None:
+        from hypergumbo_core.yaml_catalogs import declares_builtin
+
+        assert declares_builtin({"provenance": "builtin"})
+        assert not declares_builtin({"provenance": "community"})
+        assert not declares_builtin({})
+        assert not declares_builtin(None)
+
+    def test_an_undeclared_shipped_file_is_community_in_the_disclosure(self, tmp_path: Path) -> None:
+        undeclared = tmp_path / "shipped.yaml"
+        undeclared.write_text("x: 1\n")
+        tiers = catalogue_tiers([LoadedCatalogueFile("taint_sinks", undeclared, True)], None)
+        assert tiers["builtin"] == []
+        assert [e["path"] for e in tiers["community"]] == [str(undeclared)]
+
+    def test_an_undeclared_shipped_file_is_community_in_the_taint_split(self, tmp_path: Path) -> None:
+        from hypergumbo_core.taint import split_community_files
+
+        undeclared = tmp_path / "shipped.yaml"
+        undeclared.write_text("sinks: {}\n")
+        builtin = tmp_path / "builtin.yaml"
+        builtin.write_text("provenance: builtin\nsinks: {}\n")
+        assert split_community_files([undeclared, builtin], shipped=True) == ([builtin], [undeclared])
+        # An operator's own file is theirs unless it says community.
+        assert split_community_files([undeclared]) == ([undeclared], [])

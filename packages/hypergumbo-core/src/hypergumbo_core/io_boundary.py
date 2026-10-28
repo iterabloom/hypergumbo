@@ -193,7 +193,7 @@ from .io_boundary_types import (
 from .ir import symbol_name_slot, symbol_path_slot
 from .module_sets import expand_module_slot
 from .owner_ancestry import ancestor_retry_hints
-from .yaml_catalogs import CatalogueError
+from .yaml_catalogs import PROVENANCE_COMMUNITY, CatalogueError, declares_community
 
 if TYPE_CHECKING:
     from .ir import Edge, ExternalRef
@@ -2255,11 +2255,16 @@ class DefaultOverlay:
     a reader should be able to test, and a date they can judge staleness
     against — the upstream API a row describes may have changed since anyone
     looked.
+
+    ``provenance`` is the file's ADR-0061 tier token, and a shipped default
+    is community by construction: ``"community"`` is its one valid value
+    (``yaml_catalogs.PROVENANCE_COMMUNITY``), enforced by
+    :func:`validate_default_overlays`.
     """
 
     path: Path
     language: str  # axis: language
-    provenance: str  # axis: free-text — prose citation of where the rows came from; displayed for the ADR-0047 disclosure, never parsed.
+    provenance: str  # axis: bounded-enum
     retrieved: str  # axis: free-text — the date a human last checked the upstream source, shown so a reader can judge staleness; not parsed or compared.
 
 
@@ -2268,10 +2273,11 @@ def validate_default_overlays(paths: "Sequence[Path]") -> None:
 
     Three requirements, and the third is the one that matters:
 
-    1. ``provenance`` is declared — this is the THIRD state ADR-0047 creates,
-       distinct from both "hypergumbo vouches for it" and "the user supplied
-       it", and a default that does not name itself unvouched is indistinguish-
-       able from a stdlib row.
+    1. ``provenance`` is declared, and is ``community`` — this is the THIRD
+       state ADR-0047 creates, distinct from both "hypergumbo vouches for it"
+       and "the user supplied it", and a default that does not name itself
+       unvouched is indistinguishable from a stdlib row (WI-fuzat: any other
+       value is refused, so the tier token is a bounded enum).
     2. ``retrieved`` is declared — an undated third-party claim cannot be
        judged for staleness, which is most of what disclosure is for.
     3. **No ``module_completeness``.** That entry is the single grant of
@@ -2295,6 +2301,13 @@ def validate_default_overlays(paths: "Sequence[Path]") -> None:
                 f"{path}: a shipped default overlay must declare "
                 f"'provenance' (e.g. 'community'); without it an unvouched "
                 f"row is indistinguishable from one hypergumbo stands behind"
+            )
+        if not declares_community(data):
+            raise DefaultOverlayError(
+                f"{path}: a shipped default overlay declares provenance "
+                f"{data.get('provenance')!r}; it must be "
+                f"'{PROVENANCE_COMMUNITY}', since hypergumbo ships these rows "
+                f"without maintaining them (ADR-0061 ruling 3)"
             )
         if not data.get("retrieved"):
             raise DefaultOverlayError(
@@ -2546,8 +2559,6 @@ def overlay_declares_community(path: Path) -> bool:
     split, the community notice), so an unparseable file is refused here with
     the load's own error rather than escaping as a parser exception.
     """
-    from .yaml_catalogs import declares_community
-
     return declares_community(_read_overlay_yaml(path))
 
 
