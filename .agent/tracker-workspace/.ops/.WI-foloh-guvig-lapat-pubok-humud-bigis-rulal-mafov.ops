@@ -34,3 +34,10 @@
   clock: 3  # 196a
   nonce: 196a  # 196a
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): A medium case under WI-rutup's ADR-0050 amendment. WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0050 row could partly test 'the same medium gets the same boundary across catalogues', which would flag this item's Unix-socket/pipe reader."  # 196a
+- op: discuss  # 040b
+  at: '2026-10-28T10:52:03Z'  # 040b
+  by: agent  # 040b
+  actor: jgstern_agent  # 040b
+  clock: 4  # 040b
+  nonce: 040b  # 040b
+  message: "2026-10-28 premise measurement (production CLI, dev 3c53837bb5): the shapes this item is about do not reach the asyncio.StreamReader row at all. reader, writer = await asyncio.open_unix_connection(p) then reader.read(), the open_connection twin, and proc.stdout.read() after create_subprocess_exec all emit python:external:0-0:read / readuntil and classify as nothing; only an annotated parameter (reader: asyncio.StreamReader) reaches the net_recv row, and its medium is unknown at the call site. So the ipc_recv twin the fix shape names would have NO producer today (py.py stamps no io_target_kind anywhere, and cannot type a tuple-unpacked awaited producer), which is the LIVE rule-7 defect; not added. Filed the blocker as WI-himim (isbefore this item): type the stream-factory readers and stamp pipe / net_stream, after which this item's dual row (net_recv + ipc_recv, call_site_undecidable, abstains_to net_recv) has a producer. Status unchanged: the row is still net_recv only."  # 040b

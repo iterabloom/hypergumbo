@@ -1,0 +1,31 @@
+- op: create  # 1390
+  at: '2026-10-28T10:51:47Z'  # 1390
+  by: agent  # 1390
+  actor: jgstern_agent  # 1390
+  clock: 1  # 1390
+  nonce: '1390'  # 1390
+  data:  # 1390
+    kind: work_item  # 1390
+    title: "python: asyncio stream-factory readers are untyped -- reader.read() after open_connection / open_unix_connection / create_subprocess_exec reaches no catalogue row (WI-foloh's blocker)"  # 1390
+    status: todo_hard  # 1390
+    priority: 3  # 1390
+    parent:  # 1390
+    tags:  # 1390
+    - io_boundary  # 1390
+    - python  # 1390
+    - catalogue  # 1390
+    isbefore: []  # 1390
+    duplicate_of: []  # 1390
+    not_duplicate_of: []  # 1390
+    pr_ref:  # 1390
+    description: "FOUND 2026-10-28 by WI-foloh's premise measurement (production CLI, dev 3c53837bb5, fixture in the session scratchpad).\n\npy.py does not type the readers asyncio's stream factories return, so their reads reach NO catalogue row at all:\n  reader, writer = await asyncio.open_unix_connection(path); await reader.read(100)   -> python:external:0-0:read\n  reader, writer = await asyncio.open_connection(host, 80); await reader.readuntil(b\"\\n\") -> python:external:0-0:readuntil\n  proc = await asyncio.create_subprocess_exec(..., stdout=PIPE); await proc.stdout.read() -> python:external:0-0:read\nOnly an annotated parameter (reader: asyncio.StreamReader) reaches the asyncio.StreamReader rows (net_recv). So a TCP read through open_connection is not a net_recv crossing at all today: a recall gap, larger than the medium question WI-foloh asks.\n\nWHAT IS MISSING (two mechanisms py.py does not have):\n 1. Typing a TUPLE-unpacked, AWAITED producer: library_signatures values are one type, and the assignment typing (_external_constructor_type / _bound_call_type) reads a Call value, not Await(Call), and a Name target, not a Tuple. open_connection / open_unix_connection return (StreamReader, StreamWriter); create_subprocess_exec returns a Process whose .stdout is a StreamReader.\n 2. An io_target_kind stamp: py.py stamps none anywhere (the typing.TextIO dual rows select only their first row in practice). The dual row WI-foloh wants (net_recv + ipc_recv, call_site_undecidable, abstains_to net_recv) needs a pipe stamp from open_unix_connection / create_subprocess_* and a net_stream one from open_connection.\n\nUntil 1 lands, an ipc_recv twin has no producer (LIVE rule 7), so WI-foloh waits on this."  # 1390
+    fields: {}  # 1390
+- op: update  # e69f
+  at: '2026-10-28T10:52:02Z'  # e69f
+  by: agent  # e69f
+  actor: jgstern_agent  # e69f
+  clock: 2  # e69f
+  nonce: e69f  # e69f
+  set: {}  # e69f
+  add:  # e69f
+    isbefore: [WI-foloh-guvig-lapat-pubok-humud-bigis-rulal-mafov]  # e69f
