@@ -40,3 +40,18 @@
   clock: 4  # 6604
   nonce: '6604'  # 6604
   message: "2026-10-27: both parts reproduced end to end, and production-path closure tests exist (PR #1905, merged 2fe7978820). packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestCollapsedRowIsItsGroup. Part (2): recv and accept reaching subprocess through a helper collapse into one ddg_mixed row (collapsed_flow_count 2, source_primitives [accept, recv]); the choice_shaped_source caveat appears only when accept is called first. Part (1): process.env.TOKEN reaching a yours dom_injection sink (zlib.gzipSync, an enumerated module, so nothing else withholds) and document.write through one helper; document.write first -> inconclusive (INV-dudal withdraws), yours sink first -> confirmed_with_caveats, the false-clean direction. Both strict xfails, plus reach controls. Mutation: applying each fix shape (caveat over source_primitives; reached over the group's sink_primitives) flips its xfail to XPASS. Remove the marks in the fix PR."  # 6604
+- op: update  # b98f
+  at: '2026-10-28T03:20:53Z'  # b98f
+  by: agent  # b98f
+  actor: jgstern_agent  # b98f
+  clock: 5  # b98f
+  nonce: b98f  # b98f
+  set:  # b98f
+    status: done  # b98f
+- op: discuss  # 85ed
+  at: '2026-10-28T03:20:53Z'  # 85ed
+  by: agent  # 85ed
+  actor: jgstern_agent  # 85ed
+  clock: 6  # 85ed
+  nonce: 85ed  # 85ed
+  message: "Fixed in PR #1911 (802367974a). (1) _withhold_for_tainted_evaluation reads every member of a collapsed row's sink_primitives, mapped to the opaque-site spelling (_evaluation_site_spellings), not the witness sink. (2) the choice_shaped_source caveat tests source_primitives. Behavioural evidence: the production-path tests test_axiom_falsification.py::TestCollapsedRowIsItsGroup::test_the_evaluation_withdrawal_does_not_depend_on_the_witness (both member orders now inconclusive) and ::test_the_choice_caveat_does_not_depend_on_the_witness (same caveats in both orders) were strict xfails and now pass unmarked; core unit tests test_a_collapsed_row_is_withheld_for_any_member_of_its_group and test_a_group_whose_witness_is_not_choice_shaped_is_caveated. Each fix was mutated back to the witness read and its tests went red."  # 85ed
