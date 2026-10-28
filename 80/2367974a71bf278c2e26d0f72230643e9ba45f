@@ -1,0 +1,28 @@
+Original commit body from ff70d71fc016ca8bb6ae75752b5591b693b9c85f:
+
+A structural or ddg_mixed row stands for a group, and its scalar fields
+are the first member's. Two consumers read those scalars where the
+question is about the group:
+
+- The INV-dudal evaluation-site withdrawal built `reached` from the
+  witness sink only, so a group whose witness was a project sink but
+  which also reached document.write kept the qualification it must
+  withdraw (confirmed_with_caveats where inconclusive is required).
+  It now reads every member of sink_primitives, mapped to the
+  opaque-site spelling (_qualify's "eval.eval" vs the joined "eval").
+- The choice_shaped_source caveat tested the witness source_primitive.
+  It now tests source_primitives.
+
+The caveat also said "N of this claim's evidence rows" while counting
+distinct names; it now counts rows. It is restricted to untrusted_input,
+the label the choice shape was defined on, and erlang's gethostname /
+getservbyname / getservbyport (host_info_read since WI-dozul) leave
+CHOICE_SHAPED_SOURCE_NAMES.
+
+The three strict xfails WI-ziruv shipped for these (#1902, #1905) now
+pass and lose their marks. Each fix was mutated back and its tests
+went red.
+
+Addresses WI-kufos, WI-zakil.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
