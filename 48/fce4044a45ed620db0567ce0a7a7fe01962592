@@ -1,0 +1,53 @@
+Original commit body from 9ff4f6ed010a7895f82e2f2816aa208d33c1d201:
+
+SYNTHETIC_FRAMEWORK_ROLES decides which linker nodes the enclosure pass
+connects to the real function they sit in. It was a hand-written list
+that drifted from what the linkers write:
+- the Electron and Phoenix IPC linkers write ipc_send / ipc_receive (an
+  f-string); the list said ipc_publisher / ipc_subscriber;
+- message_sender / message_handler, crypto_producer / crypto_consumer,
+  grpc_client, graphql_client, ipc_caller (tauri) and ipc_bridge_caller
+  (electron) are call-site stand-ins whose linkers emit edges OUT of the
+  node and none into it, and the list missed them;
+- http_client was listed but is minted kind=call_site, and the predicate
+  admitted function/method only, so it never matched -- nor did the
+  database, subprocess and solidity-ABI call sites folded to call_site;
+- six listed values had no producer (websocket_emitter,
+  websocket_listener, ipc_subscriber, db_query, subprocess_call,
+  abi_call), and grpc_server is minted kind=class, which never matched.
+
+Now: SYNTHETIC_FRAMEWORK_ROLES holds the 18 call-site roles; every
+kind=call_site node is a stand-in; NOT_ENCLOSED_FRAMEWORK_ROLES names the
+8 other roles linkers write, each with a reason (declarations:
+graphql_resolver, grpc_service, grpc_servicer, objc_bridge,
+openapi_operation; kind not a call site: grpc_server, selector_ref; not
+reviewed: dispatcher). ipc.py / phoenix_ipc.py share an
+IPC_FRAMEWORK_ROLES table instead of the f-string, so the values are
+literal. test_synthetic_role_partition reads the linker sources and fails
+when a role is written that neither set names, or a set names one nobody
+writes, or a new non-literal write appears.
+
+Measured, survey on dev vs this branch:
+- session-desktop (Electron): enclosure edges 125 -> 381. Before, 0 of
+  the 43 ipc_send/ipc_receive, 111 message_sender, 93 message_handler,
+  7 crypto_* and 2 http_client stand-ins had an edge from any real
+  symbol; after, all of them do. All 262 new edges run from a function
+  whose span contains the stand-in's line (checked on every edge). Node
+  count unchanged (17,806).
+- livebook (Phoenix + bundled JS): enclosure edges 327 -> 477; 0 -> all of
+  the 31 ipc_*, 107 message_*, 11 http_client and 1 grpc_client
+  stand-ins. 38 new edges are in source files and all are
+  span-contained. The other 112 start in static/assets/ bundles, which
+  are tier-filtered: their functions leave the output and their edges
+  are kept through external_symbol placeholders -- dev already carries
+  5,876 such placeholders there, 240 of them on enclosure edges. This
+  adds 16 placeholders (16,231 -> 16,247 nodes). That linker stand-ins
+  survive the tier filter at all is pre-existing and not changed here.
+
+Tests: the partition (from the linker sources), the predicate per kind
+and role, and the production Electron and Phoenix linkers through the
+production _connect_synthetic_to_enclosing: an ipcRenderer.send /
+broadcast! inside a function gets the uses edge from it. Mutation-checked:
+dropping ipc_send from the set or the call_site branch reds 6 tests.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
