@@ -1,0 +1,35 @@
+Original commit body from 663ac9518b85743010ac3a56ceb9564258c065e6:
+
+WI-higik. pony.py names a type definition's kind after its node type,
+so it emits `actor` and `primitive`, neither registered: the validator
+flagged both (axis_conformance + id_format) on every Pony run. ADR-0027
+register-vs-fold: REGISTERED (concrete type family), because pony also
+emits `class` for its own class construct and a fold would fuse two
+constructs. Registering changes no node.id and no stable_id. The schema,
+concept-axes doc and a pony file in the schema-coverage corpus cover
+them (the coverage baseline only shrinks: `static` is newly covered).
+The strict xfail and the KIND_SLOT_HOLES entry for pony are removed.
+
+WI-totam (c). slice's _CONTAINER_KINDS and the containment linker's
+CONTAINER_KINDS were two hand-written copies, and slice's lacked
+`object`: `slice --entry Registry --reverse` on a Kotlin object returned
+only the object, where the same code as a class returned its members'
+callers. Measured on 30 recent surveys, `object` was the source of
+40,820 contains edges. Both now read symbol_kinds.container_kind_names():
+the nominal type kinds plus SCOPE_CONTAINER_KINDS (file, module, type,
+instance, message, library), so a newly registered type kind is a
+container in both. The linker's set changes only by actor/primitive: on
+a pony fixture, an actor's behaviour and a primitive's function now root
+under them instead of under the file. `variable` stays out (a Go
+variable has no members).
+
+WI-totam (b): the concept-audit playbook's Step 4.5 header said "five"
+producer-emit shapes while listing six.
+
+Not done here: WI-totam (d) (no anchor-kind predicate) and (e) (JS
+class-field initializers anchored on the file, a permitted divergence in
+ADR-0023 awaiting its own measurement).
+
+Addresses WI-higik, WI-totam.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
