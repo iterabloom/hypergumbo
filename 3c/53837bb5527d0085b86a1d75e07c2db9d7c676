@@ -1,0 +1,34 @@
+Original commit body from 28c69130dc1d4a33329d9b68369d9782400d1589:
+
+INV-fuhin. ADR-0041 declares directness (direct / transitive /
+undeclared) and ecosystem (stdlib / third_party) for the external
+dependencies a project relates to, and a manifest declaration is the
+most direct evidence of that relationship, yet only boundary nodes were
+stamped: supply_chain_summary.external_dep counted every kind=dependency
+declaration as directness `unknown` and ecosystem `unknown`, and the
+registry text and spec claimed declarations were stamped. An external
+declaration now gets directness `direct` and an ecosystem from
+supply_chain.declaration_ecosystem: `third_party` (the manifest
+declares a package to fetch), or `stdlib` for composer's platform
+requirements (php, ext-*, lib-*, composer-plugin-api). A declaration
+naming an in-tree package (INV-kutub, tier 1) is not external and gets
+neither. The producers (toml_config, xml_config, json_config) read
+manifests, never lockfiles. The strict xfail WI-ziruv shipped (#1902)
+passes unmarked. Not changed: the js_module package stand-ins and the
+Cargo/ruby/php boundary nodes that still read `unknown` (WI-hajag,
+WI-tikar).
+
+WI-gidid. The grammar-unavailable branch appended its warning to an
+AnalysisRun that collect_analyzer_result then discards (only an
+unskipped run is appended), so INV-pitab's write reached no consumer.
+The append is removed and the warning names the distribution to
+install (TreeSitterAnalyzer.grammar_distribution, WI-pakof) instead of
+"the required tree-sitter grammar package". pass_silence.py and
+ADR-0056 said such a pass has "no carrier in existence to stamp"; the
+run exists and is discarded BY POLICY (WI-mamiv declined to route it),
+and they now say so. Not changed: the 58 analyzer-specific copies of
+the message, part of WI-bagor's retrofit of skipped_passes reasons.
+
+Addresses INV-fuhin, WI-gidid.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
