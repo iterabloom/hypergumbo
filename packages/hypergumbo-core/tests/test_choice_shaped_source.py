@@ -23,21 +23,23 @@ from hypergumbo_core.verify_claims import (
 )
 
 
-def _finding(source_primitive, source_module="socket"):
+def _finding(source_primitive, source_module="socket", *, label="untrusted_input",
+             group=()):
     return TaintFlowFinding(
-        taint_label="untrusted_input",
+        taint_label=label,
         source_symbol="s", source_primitive=source_primitive,
         source_module=source_module, sink_symbol="k",
         sink_primitive="run", sink_module="subprocess",
         sink_zone="subprocess", sanitized=False,
         confidence="approximate", analysis_method="structural",
+        source_primitives=tuple(group),
     )
 
 
-def _claim():
+def _claim(label="untrusted_input"):
     return Claim(id="C1", text="untrusted input never reaches a subprocess",
                  constraint_taint_flow=TaintFlowConstraint(
-                     source_taint="untrusted_input",
+                     source_taint=label,
                      prohibited_sink_zone="subprocess"))
 
 
@@ -59,6 +61,12 @@ class TestTheRegistry:
     def test_a_content_shaped_source_is_not_matched(self):
         assert not is_choice_shaped_source("builtins.input")
         assert not is_choice_shaped_source("socket.socket.recv")
+
+    def test_local_table_reads_are_not_listed(self):
+        """WI-zakil: erlang's gethostname / getservbyname / getservbyport read
+        local tables and are host_info_read, not a value the far side chose."""
+        for name in ("gethostname", "getservbyname", "getservbyport"):
+            assert name not in CHOICE_SHAPED_SOURCE_NAMES
 
     def test_a_bare_name_still_resolves(self):
         assert is_choice_shaped_source("accept")
@@ -110,3 +118,27 @@ class TestTheCaveat:
         v = verify_taint_claim(_claim(), [])
         kinds = {c["kind"] for c in v.caveats}
         assert CAVEAT_CHOICE_SHAPED_SOURCE not in kinds
+
+
+class TestTheCaveatReadsTheRow:
+    """WI-zakil / WI-kufos: the caveat is about evidence ROWS, each row is its
+    whole collapsed group, and the shape is defined on untrusted_input."""
+
+    def _entry(self, findings, label="untrusted_input"):
+        v = verify_taint_claim(_claim(label), findings)
+        assert v.verdict == "violated"  # reach
+        return next((c for c in v.caveats if c["kind"] == CAVEAT_CHOICE_SHAPED_SOURCE), None)
+
+    def test_it_counts_rows_not_names(self):
+        entry = self._entry([_finding("accept"), _finding("accept"), _finding("accept")])
+        assert entry["entries"] == ["accept"]
+        assert entry["detail"].startswith("3 of this claim's evidence rows")
+
+    def test_a_group_whose_witness_is_not_choice_shaped_is_caveated(self):
+        row = _finding("recv", "socket.socket",
+                       group=("socket.socket.accept", "socket.socket.recv"))
+        entry = self._entry([row])
+        assert entry is not None and entry["entries"] == ["accept"]
+
+    def test_another_label_gets_no_caveat(self):
+        assert self._entry([_finding("accept", label="host_description")], "host_description") is None
