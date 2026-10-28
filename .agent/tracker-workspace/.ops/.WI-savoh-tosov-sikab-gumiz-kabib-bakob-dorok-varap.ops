@@ -42,3 +42,18 @@
   clock: 4  # a3a5
   nonce: a3a5  # a3a5
   message: "2026-10-27: a production-path closure test exists (WI-ziruv, PR #1902): packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestCatalogueTiers::test_a_community_trusted_sink_does_not_make_the_verdict_cleaner (strict xfail; its control is test_control_a_vouched_trusted_sink_does_clear_the_flow). It XPASSes when this item is fixed; remove the mark in the fix PR."  # a3a5
+- op: update  # 64ce
+  at: '2026-10-28T04:38:27Z'  # 64ce
+  by: agent  # 64ce
+  actor: jgstern_agent  # 64ce
+  clock: 5  # 64ce
+  nonce: 64ce  # 64ce
+  set:  # 64ce
+    status: done  # 64ce
+- op: discuss  # d777
+  at: '2026-10-28T04:38:27Z'  # d777
+  by: agent  # d777
+  actor: jgstern_agent  # d777
+  clock: 6  # d777
+  nonce: d777  # d777
+  message: "Fixed in PR #1913. Community sinks are stamped TaintSink.community at the community-layer merge; TaintSink.trusted (trust_level == trusted and not community) is what the three finding sites read, so a community row's trust is withheld; a violated verdict names each withheld sink in a new withheld_community_trust caveat (TaintCatalog.withheld_community_trust). Behavioural evidence: test_axiom_falsification.py::TestCatalogueTiers::test_a_community_trusted_sink_does_not_make_the_verdict_cleaner (mylib.ship via a provenance: community --taint-sinks file: trusted and untrusted both violated) was a strict xfail and now passes unmarked; its control test_control_a_vouched_trusted_sink_does_clear_the_flow still passes; core test_trusted_sink_is_disclosed.py::test_a_community_files_trust_is_withheld_and_named (violated, trusted_sink_flows 0, caveat entries [mylib.ship]) and its vouched control. Mutating TaintSink.trusted to ignore community turned both red. Not changed: the bounded-enum half of the filing; per the 10-25 re-check 'Trusted'/YAML true are inert by design (WI-lukoz)."  # d777

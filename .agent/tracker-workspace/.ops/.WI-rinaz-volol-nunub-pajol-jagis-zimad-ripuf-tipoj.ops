@@ -27,3 +27,18 @@
   clock: 2  # 6efd
   nonce: 6efd  # 6efd
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Named instance in WI-kosup section B: catalogue/overlay/taint/claims YAML keys are now in the knob inventory, and an accepted key with no reader is a write-only knob. The minimum fix here (refuse or warn, naming the key) does not wait for the sweep."  # 6efd
+- op: update  # c3fa
+  at: '2026-10-28T07:36:52Z'  # c3fa
+  by: agent  # c3fa
+  actor: jgstern_agent  # c3fa
+  clock: 3  # c3fa
+  nonce: c3fa  # c3fa
+  set:  # c3fa
+    status: done  # c3fa
+- op: discuss  # b336
+  at: '2026-10-28T07:36:52Z'  # b336
+  by: agent  # b336
+  actor: jgstern_agent  # b336
+  clock: 4  # b336
+  nonce: b336  # b336
+  message: "Fixed in PR #1914 (ccf9c92eeb). The source, sink and sanitizer loaders refuse every key they do not read, top-level and per entry, with TaintCatalogError (exit 2), naming the key, the allowed set and a near-miss suggestion; an attributes: key also says attribute sources come from an io_primitives attributes: row via --io-primitives (WI-jojis). Behavioural evidence: test_taint_catalog_unknown_keys.py::test_verify_claims_refuses_the_file_with_exit_2 (verify-claims --taint-sources with attributes: [location] -> rc 2, stderr names 'attributes'); per-shape refusals for all three files; every shipped file passes. Mutating the refusal away turned 8 of 10 tests red."  # b336
