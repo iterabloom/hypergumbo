@@ -7,7 +7,7 @@ tags is ``CATALOG_BOUNDARY_TYPES`` below (fs_read/fs_write, net_send/net_recv,
 ipc_recv/ipc_send, env_read/host_info_read/env_write, subprocess,
 db_read/db_write, navigation_read,
 process_send, logging, browser_storage_read/browser_storage_write,
-``net_listen``, ``db_compose`` and ``ipc_listen``); the synthesized
+``net_listen``, ``db_compose``, ``ipc_listen`` and ``command_line_read``); the synthesized
 ``external_potential`` and disclosed ``command_launch`` complete
 ``KNOWN_IO_BOUNDARIES``. ``net_listen``, ``db_compose`` and ``ipc_listen`` sit
 on the ADR-0049 **deferred-crossing** axis: the call does not itself cross a

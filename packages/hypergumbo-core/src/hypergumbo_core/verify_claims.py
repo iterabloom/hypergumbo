@@ -441,7 +441,16 @@ from .paths import classify_test_file, is_migration_file
 # "walk verdicts: confirmed 3" (a secret reached a sink), one word for opposite
 # facts. A consumer comparing ``walk_verdict == "confirmed"`` must read
 # ``"reached"``. ``refuted`` matches the existing ``refuted_flows`` key.
-VERIFY_CLAIMS_SCHEMA_VERSION = "3.0"
+# 3.1 adds the per-verdict ``command_line_flows`` count (WI-zidam), on 2.4's
+# reasoning: an added key, and the flows it counts -- untrusted_input from the
+# program's own command line, a source new in this version -- are not in
+# ``evidence_count`` unless the claim sets ``include_command_line: true``.
+VERIFY_CLAIMS_SCHEMA_VERSION = "3.1"
+
+#: The source boundary of argv's untrusted_input half (WI-zidam). A flow from
+#: it is set aside and counted in ``command_line_flows`` unless the claim sets
+#: ``include_command_line: true``.
+COMMAND_LINE_SOURCE_BOUNDARY = "command_line_read"
 
 #: Verdict values that ASSERT THE CLAIM HOLDS. The predicate for "did this
 #: claim pass" inside this module (the coverage gate). The CLI's exit code and
@@ -1522,11 +1531,15 @@ class TaintFlowConstraint:
         source_taint: Taint label that must not reach the sink zone.
         prohibited_sink_zone: Zone where tainted data must not arrive.
         allowed_sanitizers: Sanitizer names that neutralize the taint (optional).
+        include_command_line: Count flows that start at the program's own
+            command line (``command_line_read``, WI-zidam). Default False:
+            they are set aside and counted in ``command_line_flows``.
     """
 
     source_taint: str
     prohibited_sink_zone: str
     allowed_sanitizers: list[str] = None  # type: ignore[assignment]
+    include_command_line: bool = False
 
     def __post_init__(self) -> None:
         if self.allowed_sanitizers is None:
@@ -1689,6 +1702,17 @@ class ClaimVerdict:
     ``evidence_count`` and are counted here and named in ``details``, so a
     clean verdict says what it set aside and on whose word.
     """
+    command_line_flows: int = 0
+    """Flows excluded because their source is the program's own command line.
+
+    WI-zidam (owner ruling 2026-10-28). ``command_line_read`` mints
+    ``untrusted_input`` because the launcher chose argv, as it chose stdin;
+    measured on 10 repositories, the flows it adds were 10/10 true and 0/10
+    useful -- a command-line tool doing with its arguments what it exists to
+    do. So they leave ``evidence_count`` and are counted here, the
+    :attr:`resource_naming_flows` shape. Zero on a claim that sets
+    ``include_command_line: true``, which counts them as evidence instead.
+    """
     sanitized_flows: int = 0
     caveats: list[dict[str, Any]] = field(default_factory=list)
     #: Language -> the pass IDs that produced the call edges this verdict rests
@@ -1711,6 +1735,7 @@ class ClaimVerdict:
             "sanitized_flows": self.sanitized_flows,
             "resource_naming_flows": self.resource_naming_flows,
             "trusted_sink_flows": self.trusted_sink_flows,
+            "command_line_flows": self.command_line_flows,
             "caveats": self.caveats,
             "analysis_fidelity": self.analysis_fidelity,
         }
@@ -1944,7 +1969,8 @@ _ALLOWED_CONSTRAINT_KEYS: frozenset[str] = frozenset(
     {"boundary", "must_not_exist", "max_chains", "taint_flow"},
 )
 _ALLOWED_TAINT_FLOW_KEYS: frozenset[str] = frozenset(
-    {"source_taint", "prohibited_sink_zone", "allowed_sanitizers"},
+    {"source_taint", "prohibited_sink_zone", "allowed_sanitizers",
+     "include_command_line"},
 )
 #: The sub-keys :func:`load_extra_catalog_paths` actually consumes (INV-sisod).
 #:
@@ -2267,10 +2293,19 @@ def _parse_taint_flow(
         _ALLOWED_TAINT_FLOW_KEYS,
         where=f"taint_flow in claim '{claim_id}'",
     )
+    include_command_line = taint_flow_data.get("include_command_line", False)
+    if not isinstance(include_command_line, bool):
+        # A string "false" is truthy; reading it as a flag would count the
+        # flows the author asked to leave out.
+        raise ClaimsFileError(
+            f"taint_flow.include_command_line in claim '{claim_id}' must be "
+            f"true or false, got {include_command_line!r}.",
+        )
     return TaintFlowConstraint(
         source_taint=taint_flow_data.get("source_taint", ""),
         prohibited_sink_zone=taint_flow_data.get("prohibited_sink_zone", ""),
         allowed_sanitizers=taint_flow_data.get("allowed_sanitizers", []),
+        include_command_line=include_command_line,
     )
 
 
@@ -6246,6 +6281,25 @@ def _verify_taint_claim_uncredited(
     trusted_sink_flows = sum(1 for f in matching if f.trusted_sink)
     matching = [f for f in matching if not f.trusted_sink]
 
+    # WI-zidam (owner ruling 2026-10-28): a flow that starts at the program's
+    # own COMMAND LINE. The same exclude-and-disclose shape, asked of the
+    # SOURCE: argv is untrusted_input because the launcher chose it, and the
+    # flows that adds are true and almost never useful. A claim that means a
+    # launcher it does not trust (a setuid tool, a CLI behind a web form)
+    # counts them with ``include_command_line: true``. Keyed on
+    # ``source_boundary``, which is in the situation-collapse key, so a
+    # collapsed row cannot be half-excluded (WI-gajir).
+    command_line_flows = 0
+    if not tf.include_command_line:
+        command_line_flows = sum(
+            1 for f in matching
+            if f.source_boundary == COMMAND_LINE_SOURCE_BOUNDARY
+        )
+        matching = [
+            f for f in matching
+            if f.source_boundary != COMMAND_LINE_SOURCE_BOUNDARY
+        ]
+
     # WI-bifob: production is the default scope, and what the default leaves
     # out is DISCLOSED rather than dropped. A test that opens a listener is not
     # a network-exposure finding about the product, and a migration that writes
@@ -6344,6 +6398,14 @@ def _verify_taint_claim_uncredited(
                 f" {trusted_sink_flows} flow(s) reach that zone through a sink "
                 f"the project's catalogue declares trusted (trust_level: "
                 f"trusted); they are excluded on that declaration, not absent."
+            )
+        command_line_clause = ""
+        if command_line_flows:
+            command_line_clause = (
+                f" {command_line_flows} flow(s) reach that zone from the "
+                f"program's own command line; they are true flows set aside "
+                f"as the launcher's choice, not an absence of flows "
+                f"(include_command_line: true counts them)."
             )
         resource_naming_clause = ""
         if resource_naming_flows:
@@ -6566,12 +6628,13 @@ def _verify_taint_claim_uncredited(
                 f"No unsanitized {tf.source_taint} data reaches "
                 f"{tf.prohibited_sink_zone} zone."
                 f"{sanitized_clause}{resource_naming_clause}{trusted_sink_clause}"
-                f"{excluded_clause}{deferred_clause}"
+                f"{command_line_clause}{excluded_clause}{deferred_clause}"
             ),
             excluded_flows=excluded_flows,
             sanitized_flows=sanitized_flows,
             resource_naming_flows=resource_naming_flows,
             trusted_sink_flows=trusted_sink_flows,
+            command_line_flows=command_line_flows,
             caveats=caveats,
         )
 
@@ -6800,6 +6863,7 @@ def _verify_taint_claim_uncredited(
         sanitized_flows=sanitized_flows,
         resource_naming_flows=resource_naming_flows,
         trusted_sink_flows=trusted_sink_flows,
+        command_line_flows=command_line_flows,
         caveats=violated_caveats,
     )
 

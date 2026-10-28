@@ -294,7 +294,8 @@ class TestTheEnvelope:
 
         And for WI-lukoz: ``trusted_sink_flows``, whose flows leave
         ``evidence_count`` the same way. 2.4 -> 2.5, re-pointed. 3.0 renames
-        the walk verdicts (WI-bujum), re-pointed.
+        the walk verdicts (WI-bujum), re-pointed. 3.1 adds
+        ``command_line_flows`` (WI-zidam), re-pointed.
         """
         from hypergumbo_core.verify_claims import VERIFY_CLAIMS_SCHEMA_VERSION
-        assert VERIFY_CLAIMS_SCHEMA_VERSION == "3.0"
+        assert VERIFY_CLAIMS_SCHEMA_VERSION == "3.1"

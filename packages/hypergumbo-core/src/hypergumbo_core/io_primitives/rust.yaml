@@ -381,9 +381,17 @@ subprocess:
 
 env_read:
   - module: std::env
-    functions: [var, var_os, vars, vars_os, args, args_os]
+    functions: [var, var_os, vars, vars_os]
     notes: >-
       `vars_os` is the OsString peer of `vars` and was simply missing.
+  - module: std::env
+    functions: [args, args_os]
+    simultaneous: true
+    notes: >-
+      WI-zidam (owner ruling 2026-10-22): the command line is chosen by the
+      launcher, as stdin is, so it is untrusted_input (command_line_read) as
+      well as host_secret (env_read: an argument may carry a credential).
+      Declared under both, `simultaneous`.
 
 env_write:
   - module: std::env
@@ -733,3 +741,14 @@ module_completeness:
       std::time::SystemTime, which are deliberately NOT granted: WI-pavob ruled
       a clock read IS host_info_read, so those need rows (WI-tubij), not a
       no-I/O declaration.
+
+# WI-zidam (owner rulings 2026-10-22 and 2026-10-28): the COMMAND LINE.
+# The launcher chose it, as it chose stdin, so it mints untrusted_input. An
+# argument may also carry a credential, so each row here is simultaneous with
+# its env_read row (host_secret), which by declaration order stays the scalar
+# io_boundary. verify-claims sets these flows aside and counts them unless a
+# claim says `include_command_line: true` (ADR-0050).
+command_line_read:
+  - module: std::env
+    functions: [args, args_os]
+    simultaneous: true

@@ -78,7 +78,8 @@ is `hypergumbo_core.io_boundary_types`; the linter is
 > `simultaneous` **second** boundary records either a reading of the same
 > crossing that a taint label needs, such as that its content may carry a
 > credential (`env_read`) or that the party who navigated to the page chose it
-> (`navigation_read`), as the shipped INV-dadu URL rows do; or a second crossing
+> (`navigation_read`), as the shipped INV-dadu URL rows do, or that the party who
+> launched the process chose it (`command_line_read`, the argv rows); or a second crossing
 > the same call performs at this call site, which must satisfy this axiom on its
 > own. Every simultaneous boundary is a fact about the call, and none is
 > primary over the others.
@@ -116,6 +117,20 @@ URL rows) and 33 pair two crossings. Checked against the widened sentence:
 | `fs_write` + `subprocess` (scala `Process.apply`, `Process(...)`, `Process.run`) | 3 | **Fail.** `apply` returns a `ProcessBuilder` and launches nothing; the file write is what a child may do later. WI-novap. |
 | `host_info_read` + `subprocess` (python `platform.architecture` / `platform` / `processor`) | 3 | Kept, by judgment. They run a command and return host facts. The returned bytes cross from the child's stdout, but `ipc_recv` would mint `untrusted_input` for a host fact, so `host_info_read` stands as the reading the `host_description` label needs. |
 
+**The command line (owner rulings 2026-10-22 and 2026-10-28, WI-zidam).** Two
+reading pairs were added after that count. Every argv row (python `sys.argv` and
+`argparse` `parse_args` / `parse_known_args`, javascript `process.argv`, rust
+`std::env::args` / `args_os`, elixir `System.argv`, haskell `getArgs`, erlang
+`init:get_argument*`, swift `CommandLine.arguments`; 12 primitives) is `env_read` +
+`command_line_read`: an argument may carry a credential, and the launcher chose
+it, as it chose stdin, so it mints `untrusted_input` as well as `host_secret`.
+`command_line_read` exists so the second label can be told apart downstream: the
+flows it added were measured on 10 repositories as 10/10 true and 0/10 useful,
+so `verify-claims` sets them aside and counts them (`command_line_flows`) unless
+a claim sets `include_command_line: true`. It is not `ipc_recv`, which nothing
+at the call site crosses. And `document.cookie` is `browser_storage_read` (the
+medium) + `env_read` (it may carry a session token), keeping `host_secret` only.
+
 **"Primary" is not stored.** Consumers read every simultaneous boundary
 (`boundaries_of`; `compute_boundary_map` builds one chain per boundary; the
 auto-derived taint catalogue takes a source or sink from each row). The scalar `Edge.meta["io_boundary"]` is the
@@ -131,11 +146,11 @@ found most of its rows were host description.
 
 ### 2. Sections
 
-Four axes partition the twenty-one values.
+Four axes partition the twenty-three values.
 
 | Axis | Meaning | Values |
 |---|---|---|
-| `data_crossing` | The canonical section. Data crosses the process boundary at this call site, in a named direction. | `fs_read`, `fs_write`, `net_send`, `net_recv`, `ipc_recv`, `ipc_send`, `env_read`, `env_write`, `host_info_read`, `db_read`, `db_write`, `process_send`, `logging`, `browser_storage_read`, `browser_storage_write`, `navigation_read` |
+| `data_crossing` | The canonical section. Data crosses the process boundary at this call site, in a named direction. | `fs_read`, `fs_write`, `net_send`, `net_recv`, `ipc_recv`, `ipc_send`, `env_read`, `env_write`, `host_info_read`, `db_read`, `db_write`, `process_send`, `logging`, `browser_storage_read`, `browser_storage_write`, `navigation_read`, `command_line_read` |
 | `opacity` | Control left this process. The classification is correct and the analysis cannot see past it, so it does not license "I looked and found nothing." | `subprocess`, `command_launch` |
 | `deferred_crossing` | The call *arranges* a crossing it does not itself perform (ADR-0049). | `net_listen`, `db_compose`, `ipc_listen` |
 | `speculative` | Synthesised uncertainty; declarable by no catalogue. | `external_potential` |

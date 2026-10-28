@@ -142,6 +142,10 @@ browser_storage_write:
     notes: "Browser sessionStorage write (named global; see localStorage)"
 
 browser_storage_read:
+  - module: document
+    attributes: [cookie]
+    simultaneous: true
+    notes: "WI-zidam: the medium of document.cookie; see its env_read row for the credential half."
   - module: localStorage
     functions: [getItem, key, length]
     notes: "Browser localStorage read (named global; see the write row)"
@@ -291,10 +295,23 @@ subprocess:
 
 env_read:
   - module: process
-    attributes: [env, argv]
+    attributes: [env]
+  - module: process
+    attributes: [argv]
+    simultaneous: true
+    notes: >-
+      WI-zidam (owner ruling 2026-10-22): the command line is chosen by the
+      launcher, as stdin is, so it is untrusted_input (command_line_read) as
+      well as host_secret (env_read: an argument may carry a credential).
+      Declared under both, `simultaneous`.
   - module: document
     attributes: [cookie]
-    notes: "Session tokens. env_read means MAY CARRY A CREDENTIAL (INV-nular's ruling); nothing a link sets, so not navigation_read."
+    simultaneous: true
+    notes: >-
+      WI-zidam (owner ruling 2026-10-25): the cookie jar is BROWSER STORAGE --
+      the medium, declared under browser_storage_read -- and it may carry a
+      credential (session tokens), so it is env_read too, `simultaneous`, the
+      INV-dadu shape. Nothing a link sets, so not navigation_read.
   - module: document
     attributes: [location, referrer, URL, documentURI, baseURI]
     simultaneous: true
@@ -510,3 +527,14 @@ module_completeness:
     completeness: complete
     retrieved: "2026-09-06"
     notes: "23 unrowed exports with a signal: the uid/gid getters, cpuUsage/memoryUsage/resourceUsage/constrainedMemory/availableMemory and umask rowed host_info_read; openStdin ipc_recv; chdir env_write; dlopen fs_read. Declared NOT I/O: exit/reallyExit/abort/kill/_kill (process control, no boundary in this vocabulary), binding/_rawDebug/_debug*/_fatalException/_getActive* (internal), nextTick/emitWarning/hrtime.bigint (no crossing)."
+
+# WI-zidam (owner rulings 2026-10-22 and 2026-10-28): the COMMAND LINE.
+# The launcher chose it, as it chose stdin, so it mints untrusted_input. An
+# argument may also carry a credential, so each row here is simultaneous with
+# its env_read row (host_secret), which by declaration order stays the scalar
+# io_boundary. verify-claims sets these flows aside and counts them unless a
+# claim says `include_command_line: true` (ADR-0050).
+command_line_read:
+  - module: process
+    attributes: [argv]
+    simultaneous: true
