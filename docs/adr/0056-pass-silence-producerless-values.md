@@ -45,7 +45,7 @@ A pass that is `dependency_unavailable`, `backend_disabled` or `pass_crashed` **
 - `all_analyzers.py` — `if is_skipped:` appends a skip; the sole `analysis_runs.append` is in the `else` branch. A skipped analyzer that *did* build a run object has it **discarded**.
 - `registry.py` — a crashing linker goes to `_record_linker_crash(limits, …)` then `continue`. No result, no run.
 
-`silence_reason` is a field **on `AnalysisRun`**. These three describe a pass that *did not run*, so there is no carrier in existence to stamp. Their correct home is `limits.skipped_passes[].reason`, where their free-text twins already live — as a structured companion key, not as values on `AnalysisRun`.
+`silence_reason` is a field **on `AnalysisRun`**. These three describe a pass that *did not run*, and such a pass gets no record in `analysis_runs`: the `AnalysisRun` a grammar-gated analyzer builds before finding its grammar missing is discarded by policy, since it carries nothing the skip entry lacks (WI-gidid). Their correct home is `limits.skipped_passes[].reason`, where their free-text twins already live — as a structured companion key, not as values on `AnalysisRun`.
 
 `prerequisite_absent` is the odd one out and the only well-hosted one: the pass that suffers it *did* run (a linker executed, found no upstream output, emitted nothing). It is also **second-order** — the propagation of the other three to a downstream pass — so it cannot be stamped *correctly* until the three first-order values have structured producers. That ordering was never written down and is the substance of this ADR.
 

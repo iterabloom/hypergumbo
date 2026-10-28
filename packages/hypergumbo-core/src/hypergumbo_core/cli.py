@@ -336,6 +336,7 @@ from .supply_chain import (
     classify_file,
     collect_first_party_package_names,
     collect_in_tree_packages,
+    declaration_ecosystem,
     detect_package_roots,
     format_vendored_disclosure,
     vendored_analysed_summary,
@@ -12163,6 +12164,17 @@ def _classify_symbols(
             else:
                 symbol.supply_chain_tier = 3
                 symbol.supply_chain_reason = "dependency declaration (external)"
+                # INV-fuhin: a manifest declaration is the most direct
+                # evidence of the declaration relationship, and it names
+                # what it is fetched from. Without the stamps
+                # supply_chain_summary counted every declaration under
+                # ``unknown`` for both keys. An in-tree sibling (above) is not
+                # an external dependency and gets neither.
+                symbol.meta = {
+                    **(symbol.meta or {}),
+                    "directness": "direct",
+                    "ecosystem": declaration_ecosystem(symbol.path, symbol.name or ""),
+                }
             continue
         # WI-fojot: classify_file is a function of the PATH (it stats and
         # reads the whole file), so it runs once per path, not once per

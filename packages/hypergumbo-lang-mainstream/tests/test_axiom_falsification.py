@@ -377,7 +377,6 @@ class TestDirectnessAndEcosystem:
         assert {n["name"] for n in imported} >= {"json", "requests", "yaml"}  # reach
         assert unstamped(imported) == []
 
-    @pytest.mark.xfail(strict=True, reason="INV-fuhin: a kind=dependency declaration carries neither stamp")
     def test_a_dependency_declaration_carries_both_stamps(self, survey) -> None:
         bm = survey("supply", _PROJECT)
         declarations = [n for n in bm["nodes"] if n["kind"] == "dependency"]

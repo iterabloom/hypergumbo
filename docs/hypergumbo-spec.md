@@ -1815,8 +1815,11 @@ closer to the project than an undeclared one. The direct/transitive/undeclared
 *declaration relationship* lives on the registered `directness` meta key
 (`direct` / `transitive` / `undeclared`); the stdlib-vs-third_party *provenance*
 distinction lives on the registered `ecosystem` axis (ADR-0041 §3). Both are
-stamped once, on boundary nodes as they are synthesized; dependency declarations
-carry neither yet (INV-fuhin).
+stamped once: on boundary nodes as they are synthesized, and on an external
+dependency declaration (`kind: dependency`) at classification — `direct`, and
+`third_party` (`stdlib` for composer's platform requirements such as `php` and
+`ext-json`). A declaration naming an in-tree package is not external and carries
+neither (INV-fuhin).
 
 In-repo non-source *role* files — examples, documentation bundles, notebooks,
 fuzz/bench harnesses — are the project's own code (distance 0): tier 1, with the

@@ -148,7 +148,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from enum import IntEnum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Container, Iterable, Iterator, Optional
 
 
@@ -1951,3 +1951,29 @@ def collect_in_tree_packages(repo_root: Path) -> InTreePackages:
         by_name={key: tuple(sorted(paths)) for key, paths in by_name.items()},
         own=own,
     )
+
+
+#: Composer's platform packages: the PHP runtime and what ships with it
+#: (``php``, ``ext-json``, ``lib-icu``, ``composer-plugin-api``). A registry
+#: package is always ``vendor/name``; these have no slash.
+_COMPOSER_PLATFORM_PREFIXES: tuple[str, ...] = (
+    "php", "hhvm", "ext-", "lib-", "composer",
+)
+
+
+def declaration_ecosystem(path: str, name: str) -> str:
+    """The ADR-0041 §3 ``ecosystem`` of a manifest dependency DECLARATION (INV-fuhin).
+
+    A manifest declares a package to FETCH, so a declaration is
+    ``third_party`` -- the WI-juzaj reasoning ``ir.create_boundary_nodes``
+    applies to a module the manifest resolves -- except composer's platform
+    requirements, which name the runtime and its bundled extensions
+    (``stdlib``). The producers are pyproject / Cargo (toml_config), Maven
+    (xml_config) and package.json / composer.json (json_config); none reads a
+    lockfile, so every declaration is a direct one.
+    """
+    if PurePosixPath(path).name == "composer.json" and "/" not in name:
+        if name.startswith(_COMPOSER_PLATFORM_PREFIXES):
+            return "stdlib"
+    return "third_party"
+

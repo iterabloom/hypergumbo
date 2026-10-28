@@ -4659,16 +4659,18 @@ class TreeSitterAnalyzer:
 
         # 1. Check grammar availability
         if not self._check_grammar_available():
-            msg = (
-                f"{self.lang} analysis skipped: grammar not available. "
-                f"Install the required tree-sitter grammar package."
+            # WI-gidid: name the distribution to install (WI-pakof), not
+            # "the required tree-sitter grammar package". The warning is NOT
+            # appended to ``run.warnings``: a skipped pass's run is discarded
+            # (``all_analyzers.collect_analyzer_result`` appends only an
+            # unskipped run), so that write reached no consumer. The skip
+            # entry's reason carries the same fact.
+            distribution = type(self).grammar_distribution()
+            install = (
+                f"Install {distribution}." if distribution
+                else "Install the required tree-sitter grammar package."
             )
-            # INV-pitab: structurally record the warning on the run so
-            # consumers reading the AnalysisRun later see the gap. Also
-            # call warnings.warn so existing stderr / pytest.warns
-            # consumers continue to see it. No thread-global state
-            # mutation (would race in the orchestrator's ThreadPoolExecutor).
-            run.warnings.append(f"UserWarning: {msg}")
+            msg = f"{self.lang} analysis skipped: grammar not available. {install}"
             warnings.warn(msg, UserWarning, stacklevel=2)
             run.duration_ms = int((time.time() - start_time) * 1000)
             return AnalysisResult(
