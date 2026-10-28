@@ -1,0 +1,91 @@
+Original commit body from 5b9492afe835283e55f0a145d2aa69d4bc51b29d:
+
+Route markers are the "GET /a" nodes that carry framework_role route /
+route_mount / route_include and have a dispatches_to edge to their handler.
+Linkers already minted theirs as Class B: grpc's Route synthetic and the
+@hg:route annotation markers. Language analyzers and route-materializer
+minted theirs as Class A, with language=<host>, as if the registration
+declared something in that language. It does not. The marker is named for
+the route, anchored at the registration, and one handler can get several.
+ADR-0035 types the route as a LOGICAL entity.
+
+Owner ruling 2026-10-27: (b), keeping kind function. Every marker is now
+language=None, discovery_language=<the registration file's language>, and
+protocol_origin=<its transport> (routes.route_protocol_origin: http,
+websocket, phoenix_ipc for LiveView, grpc). kind stays function, like every
+other Class-B stand-in (ADR-0027 Phase 3).
+
+- make_route_symbol: with no protocol_origin from the caller, the family
+  comes from the transport and discovery_language is the host language. A
+  linker that passes its own (grpc, annotation) keeps its own judgement.
+- materialize_route_symbols mints through make_route_symbol instead of
+  hand-building the record (same id, name, stable_id and meta).
+- New Symbol.host_language (language, else discovery_language), for
+  consumers asking "which language's code is this about". The
+  per-language metrics already read it that way. Four consumers read it
+  now:
+  - widen_route_stable_ids, so no analyzer or materializer route id moves;
+  - entrypoint ranking's language weight;
+  - the library-export demotion (go and rails put the http_route
+    entrypoint ON the marker);
+  - the node-bearing file-anchor pass (see the regressions below).
+  The Django CBV expander and the INV-disin dead-code comment are updated.
+- stable_id_scheme v12 -> v13. @hg:route annotation markers always carried
+  discovery_language, but language None made their widening key empty.
+  They are the only ids that change. The spec's version history records it.
+
+Tests:
+- lang-mainstream test_axiom_falsification.py, TestRouteMarkerIsAStandIn:
+  every marker from express, go, rails, django and spring is Class B; and
+  dead-code-maybe no longer lists a route marker as a dead function (on dev
+  it listed "GET /u" and "GET /a"). 7 of these fail on unmodified dev.
+- core test_route_marker_host_language.py, metamorphic: the same marker as
+  Class B and as the Class-A record it was ranks every entrypoint
+  identically. Reverting either entrypoints read to Symbol.language fails
+  it: the library export escapes its demotion (0.16 -> 0.84), or the route
+  loses its language weight.
+- Four analyzer tests asserted marker.language == host. They now assert
+  the Class-B fields.
+
+Measured, dev vs this branch:
+- Fixtures (go, rails, express): only the three marker fields changed.
+  Stable ids, entrypoints, ranks, edges and per-language metrics are
+  identical.
+- Five repos (express, gin-realworld, spring-petclinic, plausible,
+  chatwoot): every one of 916 markers is Class B, with
+  discovery_language equal to the old language. protocol_origin is http,
+  plus phoenix_ipc for plausible's 12 LiveView routes. 0 stable ids moved.
+  Edges are identical except one plausible references edge, explained
+  below.
+- Entrypoint rank shifts are at most 0.002 (chatwoot routes 0.9988 ->
+  0.9970). Language dominance counts declarations, and the 623 markers no
+  longer count as ruby code in a javascript-dominant repo.
+- dead-code-maybe: the markers leave the candidate universe, which the
+  INV-disin protocol_origin filter does for every stand-in. spring-petclinic
+  stops listing 17 route markers as dead (30 -> 13 dead). Plausible drops
+  191 dead and 49 reachable markers. Chatwoot drops 623 reachable markers
+  and its dead count is unchanged. No real function changed reachability.
+- Plausible's one changed edge: react_component credits a JSX use to "the
+  innermost function, method or class", and reads only javascript and
+  typescript symbols. A route marker no longer qualifies, so the use is
+  credited to createAppRouter, the real enclosing function.
+
+Two regressions the corpus run found, both fixed here:
+- synthesize_file_anchors_for_node_bearing_paths skipped nodes with no
+  language. Chatwoot's config/routes.rb holds only route markers, and lost
+  its file node and 623 contains edges. It reads host_language now. A
+  production-path test pins a routes-only file's anchor; it fails without
+  the fix.
+- dead-code-maybe rebuilds Symbols from the map by hand, without
+  discovery_language. The rebuilt markers lost their host language, and
+  the entrypoint cap kept a different seed set (plausible 442 -> 453). It
+  now carries discovery_language and protocol_origin.
+
+Docs: ADR-0031 section 2a records the ruling, the spec describes the marker
+and the v13 transition, the http protocol-origin description covers routes,
+the survey rows for WI-mupal are updated, and CHANGELOG has an entry under
+breaking changes.
+
+Addresses WI-mupal.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
