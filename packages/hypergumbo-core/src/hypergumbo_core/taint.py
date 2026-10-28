@@ -82,7 +82,7 @@ catalogue matcher's resolved-edge and name-lookup arms, in the second bullet,
 also refuse when evidence is absent.
 
 - ``_match_propagation_entry`` refuses a callee of another language, and admits
-  an entry gated by ``requires_mode`` (sinks only) or ``requires_target_kind``
+  an entry gated by ``requires_mode_boundary`` (sinks only) or ``requires_target_boundary``
   only when the collapsed sites' mode / target kind, resolved in the entry's
   direction, selects it (INV-vukiv). An abstaining target-kind stamp admits the
   unconditional entries plus the primitive's ``abstention_fallback`` entry, so
@@ -283,7 +283,7 @@ class TaintSource:
     # boundary the STREAM ARGUMENT decides -- c's ``stdio.fgets`` is declared
     # under fs_read AND ipc_recv, and which one is true depends on what the
     # third argument was bound from. The sink side has carried the same idea as
-    # ``requires_mode`` since INV-rusof; this is that idea on the axis no mode
+    # ``requires_mode_boundary`` since INV-rusof; this is that idea on the axis no mode
     # literal can answer.
     #
     # WHY A SOURCE NEEDS IT AT ALL, given that ``_narrow_by_target_kind`` already
@@ -298,7 +298,11 @@ class TaintSource:
     #
     # Empty means UNCONDITIONAL, which is what every other source is and must
     # stay: ``scanf`` reads stdin whatever its arguments say.
-    requires_target_kind: str = ""
+    #
+    # It holds a BOUNDARY -- the one the call's target kind must resolve to --
+    # not a target kind, which is what ``IoPrimitive.requires_target_kind``
+    # holds (``std_stream``); hence the different name (WI-dinop).
+    requires_target_boundary: str = ""
     # INV-minol: True on the ONE entry of a target-kind-gated primitive that
     # an ABSTAINING stamp (absent, unknown, or disagreeing across collapsed
     # sites) still admits -- the entry derived from the row ``classify_call``
@@ -341,19 +345,19 @@ class TaintSink:
         module: The module or class path.
         name: The function/method/attribute name.
         kind: One of "function", "method", or "attribute".
-        requires_mode: Non-empty only for a sink derived from a
+        requires_mode_boundary: Non-empty only for a sink derived from a
             DUAL-CLASSIFIED I/O primitive, where the call's mode argument
             decides whether the boundary is crossed at all. ``builtins.open``
             is ``fs_read`` by default and ``fs_write`` only when handed
             ``"w"``/``"a"``/``"x"``, so its host_fs sink carries
-            ``requires_mode="fs_write"`` and does not fire on ``open(p)``.
+            ``requires_mode_boundary="fs_write"`` and does not fire on ``open(p)``.
 
             Empty is the default and means UNCONDITIONAL, which is what the
             overwhelming majority of sinks are and must stay: ``os.remove``
             takes no mode, so gating it on mode evidence would delete every
             real deletion from the violation set — a false negative in a
             security gate, the expensive direction.
-        requires_target_kind: WI-suhug, the mirror of ``TaintSource``'s field
+        requires_target_boundary: WI-suhug, the mirror of ``TaintSource``'s field
             on the WRITE side. Non-empty only for a sink derived from a
             primitive declared under two or more write boundaries -- go's
             ``io.WriteString`` is ``fs_write`` to a file, ``ipc_send`` to a
@@ -384,8 +388,8 @@ class TaintSink:
     so for a sink that takes BOTH a resource name and content a finding cannot
     be attributed to an argument and must not be suppressed.
     """
-    requires_mode: str = ""
-    requires_target_kind: str = ""
+    requires_mode_boundary: str = ""
+    requires_target_boundary: str = ""
     abstention_fallback: bool = False
     #: ADR-0061 ruling 2 (WI-savoh): True for a row from a file declaring
     #: ``provenance: community``. ``trust_level: trusted`` only takes flows OUT
@@ -1246,7 +1250,7 @@ def _target_kind_admits(entry: object, needed: Optional[str]) -> bool:
     """Does the stamp's resolution in this entry's direction admit ``entry``?
 
     Three admissions and nothing else: an UNCONDITIONAL entry (no
-    ``requires_target_kind`` -- every entry the catalogue does not gate,
+    ``requires_target_boundary`` -- every entry the catalogue does not gate,
     including sanitizers, which carry neither field); a gated entry whose
     boundary the stamp RESOLVED to; and, when the stamp ABSTAINS
     (``needed is None``: no stamp, an unknown kind, a non-crossing kind, or
@@ -1254,7 +1258,7 @@ def _target_kind_admits(entry: object, needed: Optional[str]) -> bool:
     ``abstention_fallback`` entry. ``getattr`` because the index is typed
     ``TaintEntry`` and sanitizer entries carry neither attribute.
     """
-    required = getattr(entry, "requires_target_kind", "")
+    required = getattr(entry, "requires_target_boundary", "")
     if not required:
         return True
     if needed is None:
@@ -1346,11 +1350,11 @@ def _match_propagation_entry(
         callee_name = bare
     # Mode gate for DUAL-CLASSIFIED primitives, applied before every other
     # arm so both the resolved and unresolved paths inherit it rather than
-    # growing a second copy. Only entries that opted in via ``requires_mode``
+    # growing a second copy. Only entries that opted in via ``requires_mode_boundary``
     # are affected; an entry without it is unconditional and untouched, which
     # is what keeps ``os.remove`` firing on a call that carries no mode.
     # ``getattr`` for BOTH reads, not just the guard: the index is typed
-    # ``TaintSource | TaintSink`` and only sinks carry ``requires_mode``, so
+    # ``TaintSource | TaintSink`` and only sinks carry ``requires_mode_boundary``, so
     # a direct attribute read is a strict-mode union-attr error.
     from .io_boundary import (
         resolve_mode_boundary_across_sites,
@@ -1365,7 +1369,7 @@ def _match_propagation_entry(
     _needed = resolve_mode_boundary_across_sites(io_modes)
     hits = [
         h for h in hits
-        if getattr(h, "requires_mode", "") in ("", _needed)
+        if getattr(h, "requires_mode_boundary", "") in ("", _needed)
     ]
     # WI-lipis: the same gate on the axis a mode literal cannot answer. Kept
     # beside the mode gate rather than in a second pass so both dual-classified
@@ -2275,7 +2279,7 @@ def _derive_auto_imports_from_io_primitives(
                     # Ruling 4) is classified at the call but taints nothing
                     # the call returns; see IoPrimitive.returns_handle.
                     return_tainted=not prim.returns_handle,
-                    requires_target_kind=gated_boundary,
+                    requires_target_boundary=gated_boundary,
                     abstention_fallback=is_fallback,
                     # The map above is many-to-one: net_recv, ipc_recv and
                     # db_read all become `untrusted_input`. Carry the
@@ -2291,11 +2295,11 @@ def _derive_auto_imports_from_io_primitives(
                     module=prim.module,
                     name=prim.name,
                     kind=prim.kind,
-                    requires_mode=(
+                    requires_mode_boundary=(
                         prim.boundary if key in mode_gated else ""
                     ),
                     # WI-bulag / arc T9. Derived from the catalogue row at
-                    # sink-derivation time, exactly like requires_mode above,
+                    # sink-derivation time, exactly like requires_mode_boundary above,
                     # so the walk never re-reads the catalogue. True ONLY for
                     # the class-R shape: the row declares which positions name
                     # the resource, declares EXPLICITLY that it takes no
@@ -2307,7 +2311,7 @@ def _derive_auto_imports_from_io_primitives(
                     ),
                     # WI-suhug: the write-side twin of the source field above,
                     # resolved in the WRITE direction at match time.
-                    requires_target_kind=gated_boundary,
+                    requires_target_boundary=gated_boundary,
                     abstention_fallback=is_fallback,
                 ))
 

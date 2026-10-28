@@ -165,7 +165,7 @@ def test_bare_name_lookup_is_unchanged():
 # io_boundary and taint both match a callee against a catalogue keyed without the
 # qualifier, so a fix to one and not the other is the "one fact, two homes" shape
 # this subsystem has paid for repeatedly (INV-fokik, INV-zimud, and the WI-lipis
-# TaintSource.requires_target_kind miss). Both now call the one helper.
+# TaintSource.requires_target_boundary miss). Both now call the one helper.
 
 from hypergumbo_core.taint import (  # noqa: E402
     _match_propagation_entry,

@@ -15,7 +15,7 @@ So a ``{boundary: fs_write, must_not_exist: true}`` claim over a C program that
 writes files with ``fopen`` gets an EXAMINED NEGATIVE for the boundary that is
 actually true, rather than the ``inconclusive`` an unanalysable language earns.
 
-THE SECOND CONSUMER FAILS THE OTHER WAY. ``requires_mode`` gates the derived
+THE SECOND CONSUMER FAILS THE OTHER WAY. ``requires_mode_boundary`` gates the derived
 ``host_fs`` sink on the same evidence, and ``resolve_mode_boundary(None)`` is
 ``fs_read`` — so with no producer the C write sink matched nothing at all,
 in every repo, unconditionally. One absent stamp, both directions.
@@ -243,7 +243,7 @@ class TestCppReachesTheCatalogueToo:
 def test_the_write_sink_is_reachable_at_all(language: str) -> None:
     """Non-vacuity floor for the taint half.
 
-    The sink derivation gates ``stdio.fopen`` on ``requires_mode="fs_write"``.
+    The sink derivation gates ``stdio.fopen`` on ``requires_mode_boundary="fs_write"``.
     That gate is only a discriminator if something can satisfy it; with no
     producer it is blanket suppression, and the two are indistinguishable on
     any corpus whose ``fopen`` calls happen to be reads.
@@ -253,4 +253,4 @@ def test_the_write_sink_is_reachable_at_all(language: str) -> None:
     sinks = load_builtin_taint_catalog().sinks_for_language(language)
     rows = [s for s in sinks if s.qualified_name == "stdio.fopen"]
     assert rows, f"{language} derives no stdio.fopen sink at all"
-    assert any(s.requires_mode == "fs_write" for s in rows)
+    assert any(s.requires_mode_boundary == "fs_write" for s in rows)
