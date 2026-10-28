@@ -1,0 +1,53 @@
+Original commit body from 9cbb8705cc80422db0cd3d596cb03a9cc3dab296:
+
+WI-tibib / WI-kakup. `def f(): data = input(); return C(data)` read
+violated under "untrusted input never reaches code execution" through
+`class C: y = eval(EXPR)`: the walk followed f --instantiates--> C and
+then C's class-body calls, though a class body ran at import and never
+sees a constructor's arguments. A construction passes its value to the
+INSTANCE, and the initializer hop already comes from
+construction.construction_calls (WI-satal); the instantiates edge lands
+on the TYPE. So _reachability_past_sanitizers (both arms) no longer
+reaches or expands a type node a value arrived at: the INV-putug ruling
+("a type holds no value") one hop earlier. The edge INTO the type is
+still a sink site (subprocess.Popen(tainted), INV-lalad), and a class
+whose own body reads a source is still the walk's seed.
+anchor_execution's contract now says anchored code receives no
+construction value. MEASURED: verify-claims with the 7 generic claims
+on 8 repos (fastapi, django, full-stack-fastapi-template,
+apollo-server, dash.js, growthbook, ExoPlayer, detekt), dev vs branch:
+identical verdicts and evidence rows on all 56. The change removes the
+filed false violation and has no measured effect on that corpus.
+WI-kakup (1): TAINT_EDGE_VALUE says what value each member of
+TAINT_CALL_EDGE_TYPES carries, and a test fails when the set and the
+table disagree, so a new call-family edge type answers the question.
+
+WI-kalol. A Go unix connection's OWN Write / Read were single-rowed
+net_send / net_recv. net.Conn Write/Read are now dual (net_* + ipc_*,
+call_site_undecidable, abstains_to net_*), and go.py stamps a net.Conn
+receiver through _go_target_kind_from_expression (a unix dial or an
+Accept over a unix listener -> pipe; TCP -> net_stream). *net.UnixConn
+had no rows: its writes and reads are ipc_send / ipc_recv by type, and
+library_signatures/go.yaml types net.DialUnix, ListenUnixgram,
+ListenUnix, UnixListener.Accept/AcceptUnix and net.DialTimeout.
+MEASURED (survey, dev vs branch): runc 8 edges moved, the notify
+socket's UnixConn Read/Write/ReadMsgUnix to ipc_recv/ipc_send;
+docker-cli 8, including cli-plugins/socket.go:162 conn.Read moving from
+unclassified to net_recv because a whole-repo survey gives that
+receiver the bare `net` slot (filed WI-pupus); container-libs 0. The
+dial/listen call rows stay single-rowed.
+
+WI-bobuf. verify_claims.classified_yet_starved names every module
+method_starved_modules reports starved although classify_call matched
+an edge into it in the same run: the contradiction INV-nular, WI-komun,
+INV-fugus, INV-dihun and WI-zohuk each fixed by symptom. A test asserts
+it is empty over the schema-coverage corpus and one fixture per known
+instance; it does not satisfy the module (refused for INV-fugus). The
+live eighth shape, an unbound / UFCS call into a method-only module
+(rust std::io::Write::write_all(out, b), python
+csv.DictWriter.writerow(w, row)), is held as two strict xfails naming
+WI-momiz.
+
+Addresses WI-tibib, WI-kakup, WI-kalol, WI-bobuf.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
