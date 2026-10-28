@@ -58,3 +58,10 @@
   clock: 6  # 2c90
   nonce: 2c90  # 2c90
   message: "2026-10-27: CI confirmation of the #1896 fix (8c61dbe07c). The 13:00 UTC full-suite cron ran at 0cb6bd3f, which contains it; ci-debug cron-status reports success on every step, self-tree-validation included (pipeline 5617). This is the first scheduled full suite after the fix. Status stays satisfied."  # 2c90
+- op: discuss  # 2421
+  at: '2026-10-28T14:22:26Z'  # 2421
+  by: agent  # 2421
+  actor: jgstern_agent  # 2421
+  clock: 7  # 2421
+  nonce: '2421'  # 2421
+  message: "2026-10-28: the 13:00 UTC full-suite cron went red on 02a25bba56 (pipeline 5663, step self-tree-validation): test-only-reachability flagged ONE new test-only callable, verify_claims.classified_yet_starved, which I added in PR #1920 (WI-bobuf) as a test-side guard. Caught the same day by the WI-kosup reader census; fixed in PR #1922 (0ba6186e97) by wiring it into _call_production_coverage's starvation reason (a starved-and-classified module is named as an internal inconsistency; still withheld). The baseline was not raised. Expected green on the 01:00 UTC run; not yet observed."  # 2421

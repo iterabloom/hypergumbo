@@ -35,3 +35,18 @@
   clock: 3  # 07f1
   nonce: 07f1  # 07f1
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Named instance in WI-kosup section D: the empty-zone gate checks a hand-written two-zone subset (code_execution, dom_injection) where the property holds for every zone. The fix here does not wait for the sweep."  # 07f1
+- op: update  # 2358
+  at: '2026-10-28T14:21:36Z'  # 2358
+  by: agent  # 2358
+  actor: jgstern_agent  # 2358
+  clock: 4  # 2358
+  nonce: '2358'  # 2358
+  set:  # 2358
+    status: done  # 2358
+- op: discuss  # bb82
+  at: '2026-10-28T14:21:36Z'  # bb82
+  by: agent  # bb82
+  actor: jgstern_agent  # bb82
+  clock: 5  # bb82
+  nonce: bb82  # bb82
+  message: "Fixed in PR #1922 (0ba6186e97). cli._sink_zone_gaps judges every BUILT-IN zone (taint.builtin_sink_zones: the AUTO_SINK_ZONE_MAP zones and ADR-0060's), not only code_execution/dom_injection; a zone only a project catalogue declares is not judged. Ruling taken (the re-check asked for one): a zone a language can never have (browser_storage outside JS) withholds too, as code_execution always did -- the tool cannot tell 'no such sink exists' from 'no row names it'. Behavioural evidence: test_every_builtin_zone_is_judged.py::test_a_database_claim_on_go_is_withheld (production CLI, Go fmt.Scanln -> package-global db.Exec under untrusted-input-no-database: inconclusive, 'no sink in the database zone'; mutating the gate back to two zones reds it) with a network-zone control; test_java_stdio_receiver_typed's ipc claim is now withheld for java having no ipc sink. Measured: verify-claims, 7 generic claims, on fastapi, django, full-stack-fastapi-template, apollo-server, dash.js, growthbook, ExoPlayer, detekt and gin-realworld: no verdict moved (gin-realworld's database claim was already withheld by the unclassified-call gate)."  # bb82
