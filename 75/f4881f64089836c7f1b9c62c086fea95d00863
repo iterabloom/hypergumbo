@@ -1,0 +1,58 @@
+Original commit body from 1cd058a5ba083f5cce130026ac04c470bdb502fd:
+
+Owner rulings: 2026-10-22, command-line arguments count as untrusted_input
+as well as host_secret (the launcher chose them, as it chose stdin), and
+document.cookie moves to browser storage keeping host_secret; 2026-10-28,
+on the measured delta, option (b): ship, with argv's flows set aside and
+counted rather than counted as evidence.
+
+The measurement (pre-registered, ~/hypergumbo_lab_notebook/zidam_10282026/,
+10 repos x 7 generic claims, dev vs the row change): only the two
+untrusted_input claims moved; no host_secret verdict changed; 6 verdicts
+went inconclusive -> violated (arti, growthbook x2, jaeger, livebook x2);
+counts grew up to x3.5 (qemu-meson host-fs 99 -> 351). Seeded sample of
+10 added flows: 10/10 true or plausible, 0/10 useful -- each a CLI or
+script doing with its arguments what it exists to do.
+
+What changed:
+- io_boundary_types: a new data_crossing boundary command_line_read
+  (inbound, catalogue-declarable, in the headline), declared last so
+  first-declared-wins keeps every row's scalar io_boundary. taint
+  AUTO_SOURCE_LABEL_MAP: command_line_read -> untrusted_input.
+- Catalogues: every argv row (python sys.argv, argparse parse_args /
+  parse_known_args; javascript process.argv; rust std::env::args /
+  args_os; elixir System.argv; haskell getArgs; erlang
+  init:get_argument*; swift CommandLine.arguments) is env_read +
+  command_line_read, simultaneous. document.cookie is
+  browser_storage_read + env_read, simultaneous.
+  Not ipc_recv, which the measured patch used: nothing crosses from
+  another process at the call, and an ipc_recv boundary claim would have
+  counted every argv read. The untrusted_input flows are the same set.
+- verify-claims: a flow whose source_boundary is command_line_read is
+  excluded from evidence_count and counted in a new per-verdict
+  command_line_flows, with a sentence in details on a clean verdict (the
+  resource_naming_flows shape). source_boundary is already in the
+  situation-collapse key, so a collapsed row cannot be half-excluded
+  (WI-gajir). A claim counts them with taint_flow.include_command_line:
+  true; a non-boolean value is refused. VERIFY_CLAIMS_SCHEMA_VERSION
+  3.0 -> 3.1 (an added key whose flows leave evidence_count, 2.4's
+  reasoning).
+- Docs: ADR-0050 (axiom sentence, the 23-value table, a command-line
+  paragraph), spec, CHANGELOG, generic-taint-claims.yaml, cli help,
+  concept-axes regenerated.
+
+Tests: test_command_line_read_boundary.py -- the registry entry, both
+labels each from its own boundary on all 12 argv primitives, every
+command_line_read row simultaneous with env_read, the cookie keeping
+host_secret only, and through the production CLI: an argv -> subprocess
+flow is set aside and counted; include_command_line: true makes it
+violated; argv still violates a host_secret claim; stdin (ipc_recv) is
+not set aside; a non-boolean include_command_line is refused.
+Mutation-checked: disabling the exclusion reds the set-aside test;
+ignoring the key reds the opt-in and validation tests.
+
+Not covered: go, c/cpp, the JVM languages and objc have no argv row
+(unchanged; a recall gap). The swift row stays unreachable until the
+swift analyzer emits module_attr_ref edges (stated on the row).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
