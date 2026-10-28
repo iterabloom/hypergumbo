@@ -17,7 +17,7 @@ Supersedes: ADR-0017 §3a (the removal-COVERAGE ambition only; §3a's removal ca
 **hypergumbo's taint analysis confirms flows; it does not, in practice, remove them.
 The programme of closing ADR-0017 §3a's escape sites so that refutation fires at
 scale is RETIRED.** The capability is untouched — §3a still removes a flow whose
-walk returns `unconfirmed`, and `INCLUSION_DECIDED_BY` still reads
+walk returns `refuted`, and `INCLUSION_DECIDED_BY` still reads
 `call_graph_reachability_minus_ddg_refutation` — but the coverage that removal
 would need in order to fire is no longer a goal, and the shortfall is published to
 users as a declared limitation rather than left to be inferred from a zero.
@@ -92,13 +92,13 @@ repository whose escapes do close still gets its removal.
 Retiring a goal without publishing its consequence is how a limitation becomes a
 silent one. `dataflow_coverage` already emitted `flows_removed_by_walk`, but a
 reader could not interpret a zero: `findings_by_analysis_method` rolls three walk
-verdicts into `ddg_mixed` and a fourth into `structural`, and only `unconfirmed`
+verdicts into `ddg_mixed` and a fourth into `structural`, and only `refuted`
 can remove a flow. "The walk adjudicated every flow and refuted none" and "the
 walk never got to look at any of them" had identical evidence and opposite
 meanings — the same defect `dataflow_scope` was built to prevent for
 "0 precise findings", left standing on its own field.
 
-`count_walk_verdicts` publishes the breakdown (`confirmed` / `unconfirmed` /
+`count_walk_verdicts` publishes the breakdown (`reached` / `refuted` /
 `escaped` / `not_attempted` / `unavailable`, plus `mixed` for a collapsed row
 whose members disagreed and `unrecorded`), in both JSON and text, on every run.
 A collapsed row is NEVER attributed to its first member: measured on beads,
@@ -130,7 +130,7 @@ functions. The previous output had no way to state that.
 ### Re-open trigger
 
 This decision is revisited if **either** holds: (1) a corpus measurement reports
-a non-trivial `unconfirmed` population — walks that ran, exhausted every route,
+a non-trivial `refuted` population — walks that ran, exhausted every route,
 and found no dependence — since that is the cell measurement 0007 found empty and
 the cell that makes removal worth widening; or (2) hypergumbo gains a way to
 VERIFY that a declared sanitizer sanitizes, which removes the fail-open objection

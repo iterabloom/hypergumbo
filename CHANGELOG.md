@@ -17,6 +17,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Route markers are ADR-0031 Class B stand-ins**: a node with `framework_role` `route`, `route_mount` or `route_include` has `language: null`, the registration file's language in `discovery_language`, and the transport in `protocol_origin`. Read `Symbol.host_language` for the host language. Analyzer route ids and entrypoint ranks are unchanged, and `dead-code-maybe` no longer lists markers as dead functions.
 - **`stable_id_scheme` v9 → v13**: new `stable_id`s for BitBake symbols, SCIP-only symbols (the hash includes the file path), C/C++ externals with a header-set module slot, and `@hg:route` markers.
 - **A C/C++ module slot naming several headers is a handle** (`module-set-<16 hex>`) into a new top-level `module_sets` table (`SCHEMA_VERSION` 0.20.15 → 0.21.0). A reader that splits the slot on commas must expand it there first.
+- **§3a walk verdicts `confirmed` / `unconfirmed` are `reached` / `refuted`** (`verify-claims` envelope 2.6 → 3.0), so a walk verdict no longer shares a word with a claim verdict.
 - **An exit status is no longer a taint source** (ADR-0049); the child's output still is.
 - **A `calls` edge's `src` is the code unit making the call** (ADR-0023). No output changes.
 

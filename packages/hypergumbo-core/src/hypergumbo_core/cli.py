@@ -7783,7 +7783,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             _method = getattr(finding, "analysis_method", "") or "structural"
             findings_by_method[_method] = findings_by_method.get(_method, 0) + 1
         # INV-busis. The finer axis of the same population: ``ddg_mixed`` above
-        # collapses three walk verdicts and only one of them (``unconfirmed``)
+        # collapses three walk verdicts and only one of them (``refuted``)
         # can remove a flow, so ``flows_removed_by_walk`` is uninterpretable
         # without this. Same denominator, deliberately -- both count findings
         # the propagators produced, post-collapse.

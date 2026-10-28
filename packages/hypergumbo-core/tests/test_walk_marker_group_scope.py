@@ -157,9 +157,9 @@ class TestASingletonIsNeverEmpty:
     ) -> None:
         """``ddg`` bypasses collapse entirely and must still carry the tuple."""
         out = collapse_unadjudicated_flows([
-            _make_finding(analysis_method="ddg", walk_verdict="confirmed"),
+            _make_finding(analysis_method="ddg", walk_verdict="reached"),
         ])
-        assert out[0].walk_verdict_values == ("confirmed",)
+        assert out[0].walk_verdict_values == ("reached",)
 
 
 class TestTheRecordReachesAJsonConsumer:

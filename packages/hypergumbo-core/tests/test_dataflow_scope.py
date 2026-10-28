@@ -313,9 +313,9 @@ class TestWalkVerdictDisclosure:
     this module's OWN removal count. ``flows_removed_by_walk: 0`` sits beside a
     ``findings_by_analysis_method`` rollup in which ``ddg_mixed`` collapses
     THREE walk verdicts -- ``taint.py`` records a production split of 0
-    ``unconfirmed`` / 14 ``escaped`` / 139 ``not_attempted`` -- so a reader
+    ``refuted`` / 14 ``escaped`` / 139 ``not_attempted`` -- so a reader
     cannot tell a walk that adjudicated and refuted nothing from a walk that
-    never got to look. Only ``unconfirmed`` can remove a flow.
+    never got to look. Only ``refuted`` can remove a flow.
 
     The owner retired the removal GOAL on 2026-09-09 (INV-busis option (c)):
     escapes will not be chased until refutation fires at scale. Retiring a goal
@@ -325,10 +325,10 @@ class TestWalkVerdictDisclosure:
 
     def test_a_unanimous_row_is_counted_under_its_verdict(self) -> None:
         counts = count_walk_verdicts([
-            _finding("escaped"), _finding("escaped"), _finding("confirmed"),
+            _finding("escaped"), _finding("escaped"), _finding("reached"),
         ])
         assert counts["escaped"] == 2
-        assert counts["confirmed"] == 1
+        assert counts["reached"] == 1
 
     def test_every_verdict_key_is_always_present(self) -> None:
         """Zeros are emitted, so an absent key never reads as 'not applicable'.
@@ -357,10 +357,10 @@ class TestWalkVerdictDisclosure:
         flatters the tool, since a row standing for one confirmed and three
         escaped members would read as fully adjudicated.
         """
-        row = _finding("confirmed", values=("confirmed", "escaped"))
+        row = _finding("reached", values=("reached", "escaped"))
         counts = count_walk_verdicts([row])
         assert counts["mixed"] == 1
-        assert counts["confirmed"] == 0, (
+        assert counts["reached"] == 0, (
             "a mixed row was attributed to grp[0]'s scalar"
         )
 
@@ -375,8 +375,8 @@ class TestWalkVerdictDisclosure:
 
     def test_the_breakdown_sums_to_the_number_of_findings(self) -> None:
         findings = [
-            _finding("confirmed"), _finding("escaped"), _finding(""),
-            _finding("unconfirmed", values=("unconfirmed", "confirmed")),
+            _finding("reached"), _finding("escaped"), _finding(""),
+            _finding("refuted", values=("refuted", "reached")),
         ]
         assert sum(count_walk_verdicts(findings).values()) == len(findings)
 
@@ -389,13 +389,13 @@ class TestWalkVerdictDisclosure:
         )
         assert out["walk_verdicts"]["escaped"] == 1
         assert out["walk_verdicts"]["not_attempted"] == 1
-        assert out["walk_verdicts"]["unconfirmed"] == 0
+        assert out["walk_verdicts"]["refuted"] == 0
 
     def test_dict_publishes_the_breakdown_even_when_not_supplied(self) -> None:
         """Shape stability: the key is present on every run, like its siblings."""
         out = dataflow_scope_dict([_row()], {"ddg": 1})
         assert "walk_verdicts" in out
-        assert out["walk_verdicts"]["confirmed"] == 0
+        assert out["walk_verdicts"]["reached"] == 0
 
     def test_text_says_only_unconfirmed_can_remove(self) -> None:
         """The text reader gets it too -- a json-only disclosure is half shipped."""
@@ -407,7 +407,7 @@ class TestWalkVerdictDisclosure:
             ),
         )
         blob = "\n".join(lines)
-        assert "unconfirmed" in blob
+        assert "refuted" in blob
         assert "escaped 14" in blob
         assert "not_attempted 139" in blob
         # The point of the line: 0 removals beside 139 not_attempted is NOT

@@ -226,7 +226,7 @@ real:
   `walk_verdict` field (on every JSON evidence row, and in the text view's
   "§3a walk verdicts" line) says which: `not_attempted` (a guard above the walk
   failed, so it never ran), `escaped` (it ran and lost the value), or
-  `unconfirmed` (it ran to exhaustion and found no dependence; such a flow is
+  `refuted` (it ran to exhaustion and found no dependence; such a flow is
   removed, so it never survives into a report). **Most `ddg_mixed` rows never
   ran a walk at all**: on measurement 0007's cohort re-run on 2026-09-22,
   `not_attempted` was 242 of 282 `ddg_mixed` rows (85.8%) by default and 551 of

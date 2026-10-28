@@ -83,7 +83,7 @@ def test_a_real_flow_is_confirmed_by_the_walk(
                         '    char *k = getenv("API_KEY");\n    send(fd, k, strlen(k), 0);\n')
     assert verdict["verdict"] == "violated", verdict["details"]
     assert [(e["analysis_method"], e["walk_verdict"]) for e in verdict["evidence"]] == [
-        ("ddg", "confirmed"),
+        ("ddg", "reached"),
     ]
 
 

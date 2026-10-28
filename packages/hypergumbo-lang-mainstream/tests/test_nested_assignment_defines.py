@@ -345,10 +345,10 @@ def test_a_nested_binding_is_walked_like_the_plain_assignment(
     name, nested, plain = _PAIRS[language]
     control = _verdict(tmp_path / "plain", monkeypatch, name, plain)
     assert control["verdict"] == "violated"
-    assert _walks(control) == [("ddg", "confirmed")]  # the control's own reach
+    assert _walks(control) == [("ddg", "reached")]  # the control's own reach
     got = _verdict(tmp_path / "nested", monkeypatch, name, nested)
     assert got["verdict"] == "violated"
-    assert _walks(got) == [("ddg", "confirmed")]
+    assert _walks(got) == [("ddg", "reached")]
 
 
 _REASSIGNED_ON_ONE_BRANCH = {
@@ -438,4 +438,4 @@ def test_a_short_circuited_rebinding_does_not_kill_the_secret(
     name, text = _REASSIGNED_ON_ONE_BRANCH[language]
     got = _verdict(tmp_path, monkeypatch, name, text)
     assert got["verdict"] == "violated"
-    assert _walks(got) == [("ddg", "confirmed")]
+    assert _walks(got) == [("ddg", "reached")]

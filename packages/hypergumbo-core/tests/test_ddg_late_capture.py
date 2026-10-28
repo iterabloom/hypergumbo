@@ -77,7 +77,7 @@ def test_a_closure_defined_before_the_secret_carries_it_to_the_sink(tmp_path: Pa
     verdict = _verdict(tmp_path, {"app.js": _JS_SETUP_BEFORE_SECRET % "k"})
     assert verdict["verdict"] == "violated"
     assert [(e["analysis_method"], e["walk_verdict"]) for e in verdict["evidence"]] == [
-        ("ddg", "confirmed"),
+        ("ddg", "reached"),
     ]
 
 

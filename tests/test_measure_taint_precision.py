@@ -125,8 +125,8 @@ class TestTheWalkDisclosureSurvivesCollection:
         pins that the field is carried FAITHFULLY, not defaulted."""
         rows = collector.flows_from_payload(
             _payload(analysis_method="ddg", confidence="precise",
-                     walk_verdict="confirmed"), "ArkLib")
-        assert rows[0]["walk_verdict"] == "confirmed"
+                     walk_verdict="reached"), "ArkLib")
+        assert rows[0]["walk_verdict"] == "reached"
         assert rows[0]["analysis_method"] == "ddg"
 
     def test_an_absent_disclosure_stays_absent_rather_than_inventing_one(
