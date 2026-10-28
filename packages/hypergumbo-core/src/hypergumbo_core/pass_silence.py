@@ -500,14 +500,17 @@ def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
 # The skipped_passes half of the axis (WI-dukoh / ADR-0056 W2)
 #
 # ``silence_reason`` lives on ``AnalysisRun`` and answers "this pass RAN and
-# emitted nothing — why?". Three of the axis's values could never be stamped
-# there, for a structural reason rather than an accidental one: a pass that is
-# `dependency_unavailable`, `backend_disabled` or `pass_crashed` HAS NO
-# AnalysisRun. ``all_analyzers`` returns early or appends a skip (the sole
-# ``analysis_runs.append`` sits in the ``else`` of ``if is_skipped:``), and a
-# crashing linker goes to ``_record_linker_crash`` and continues. There is no
-# carrier in existence to stamp. Their home is ``limits.skipped_passes``,
-# where their free-text twins already lived.
+# emitted nothing — why?". Three of the axis's values are not stamped there,
+# BY POLICY: a pass that is `dependency_unavailable`, `backend_disabled` or
+# `pass_crashed` gets no record in ``analysis_runs``. ``all_analyzers``
+# appends a skip instead (the sole ``analysis_runs.append`` sits in the
+# ``else`` of ``if is_skipped:``), and a crashing linker goes to
+# ``_record_linker_crash`` and continues. A grammar-gated analyzer DOES build
+# an ``AnalysisRun`` before it finds the grammar missing, and that record is
+# discarded: it carries nothing the skip entry lacks (its toolchain is the
+# default precisely because the grammar it would name is the missing thing),
+# and WI-mamiv declined to route it (WI-gidid). Their home is
+# ``limits.skipped_passes``, where their free-text twins already lived.
 #
 # THE INIT-FAILURE RULING. Six producer sites report a parser that failed to
 # INITIALISE (``"Failed to load Go parser: {e}"`` and kin) — the grammar is

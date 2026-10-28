@@ -421,13 +421,14 @@ class TestPhase6PR2WriterContractWiring:
             == "language_pack:stub_pack"
         )
 
-    def test_warnings_captured_for_grammar_unavailable_path(
+    def test_the_grammar_unavailable_warning_names_what_to_install(
         self, tmp_path: Path,
     ) -> None:
-        """INV-pitab: the grammar-unavailable branch explicitly populates
-        ``run.warnings`` so the per-run AnalysisRun record surfaces the
-        skip reason in machine-readable form (the schema declares the
-        field; the producer now writes to it)."""
+        """WI-gidid: the warning names the distribution (WI-pakof's
+        ``grammar_distribution``), not "the required tree-sitter grammar
+        package". It is not written to ``run.warnings``: a skipped pass's run
+        is discarded by ``collect_analyzer_result``, so INV-pitab's write
+        reached no consumer, and the skip entry carries the reason."""
         import pytest as _pytest
 
         class UnavailableStubAnalyzer(StubAnalyzer):
@@ -436,10 +437,27 @@ class TestPhase6PR2WriterContractWiring:
 
         (tmp_path / "test.stub").write_text("content")
         analyzer = UnavailableStubAnalyzer()
-        with _pytest.warns(UserWarning):
+        distribution = UnavailableStubAnalyzer.grammar_distribution()
+        assert distribution  # reach: the stub declares a grammar source
+        with _pytest.warns(UserWarning, match=f"Install {distribution}"):
             result = analyzer.analyze(tmp_path)
         assert result.skipped is True
-        assert any("not available" in w for w in result.run.warnings)
+        assert result.run.warnings == []
+
+    def test_an_undeclared_grammar_source_keeps_the_generic_advice(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import pytest as _pytest
+
+        class UnavailableStubAnalyzer(StubAnalyzer):
+            def _check_grammar_available(self) -> bool:
+                return False
+
+        monkeypatch.setattr(UnavailableStubAnalyzer, "grammar_distribution",
+                            classmethod(lambda cls: None))
+        (tmp_path / "test.stub").write_text("content")
+        with _pytest.warns(UserWarning, match="Install the required tree-sitter grammar package"):
+            UnavailableStubAnalyzer().analyze(tmp_path)
 
 
 class TestTreeSitterAnalyzerSkipped:

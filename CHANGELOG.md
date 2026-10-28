@@ -37,6 +37,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Pass disclosure and identity
 
 - **Every pass that ran is in `analysis_runs`, and one that found nothing says why**, including framework patterns, five post-passes and 13 more linkers.
+- **A missing grammar's warning names the package to install** (`tree-sitter-<lang>` or `tree-sitter-language-pack`) for every analyzer on the shared path.
 - **Pass-silence states are data** (`pass_silence.SILENCE_REASON_SPECS`), and `prerequisite_absent` reads them.
 - **The JS module linker counts its `package.json` reads** in `files_analyzed`.
 - **Id round-trip checks are validator errors**, ADR-0036 Ruling 3 is enforced as amended, and id slots hold what they name; node ids change, `stable_id`s do not.
@@ -71,6 +72,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Code called only from module level or a class body is not dead or untested**, in `dead-code-maybe`, `test-coverage` and sketch alike. On django, 43 more functions are tested and none is newly dead.
 - **A dependency declaration naming an in-tree package has that package's tier** (ADR-0041 §1), across five ecosystems; on nest, 172 of 1,379 declarations move from tier 3 to tier 1.
+- **An external dependency declaration carries `directness: direct` and an `ecosystem`**, so `supply_chain_summary` no longer counts every declaration as `unknown`.
 - **Sketch names a data model's framework once.**
 
 #### SCIP, run limits and security claims
