@@ -110,8 +110,14 @@ where `read` is defined, and the same primitive reached through a
 differently-named variable gets a different key. That is ADR-0023's cut reused:
 properties of an endpoint are queried from the endpoint, not smuggled into the
 label. The receiver's type already has a home in
-`Edge.meta["receiver_type_hint"]` — stamped by six analyzers and read by neither
-`io_boundary` nor `taint` (WI-monul).
+`Edge.meta["receiver_type_hint"]`, stamped by the analyzers for the linkers
+that dispatch on it. `io_boundary` and `taint` match on the owner path in the
+slot, not on the hint, and that is deliberate (WI-monul): the hint is a BARE
+type name in every language measured except Java, so it cannot say which
+package a type is in. Measured on 30 surveys: substituting a qualified hint for
+the slot changes no classification, and substituting a bare one only creates
+short-name matches against another module's rows (`B.open` read as browser
+storage), the unverified match INV-tapat and INV-maluk closed.
 
 The tell that this is right: `_module_matches` carries an explicit Swift
 carve-out (catalogue name ends with hint, never the reverse) whose only purpose

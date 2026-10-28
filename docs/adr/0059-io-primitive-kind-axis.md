@@ -153,16 +153,24 @@ not re-kinded here. Each names the tracker item that blocks it:
   `NIOAsyncChannel`, `ModelContext`), and `CommandLine` became the attribute
   read `CommandLine.arguments`.
 - **3 Swift statics, 21 ObjC class methods and 5 `kotlin.io.FilesKt` rows:**
-  WI-ziviv. No kind fits the FilesKt rows, because their module string is wrong.
+  WI-ziviv. Left the ledger on 2026-10-28. The ObjC class methods (`[NSData
+  dataWithContentsOfFile:]` and kin, the `NSURLConnection` senders, `[NSDate
+  date]`) are `function`; `Date.now` and `ProcessInfo.processInfo` are
+  `attribute` reads and `DispatchTime.now()` a `function`. Two rows were
+  adjudicated first, as their Swift twins were: `NSMutableURLRequest` builds a
+  request and sends nothing, so it is deleted, and `NSFetchRequest
+  fetchRequestWithEntityName:` composes a query, so it moved to `db_compose`.
+  The FilesKt rows were deleted: no kind fits them, because no Kotlin value has
+  that type and nothing emits it (`File(p).readText()` reaches `java.io.File`).
+  Three class-method rows added after the ledger was pinned (the two ObjC
+  `NSTask` launchers, Swift `Process.launchedProcess`) were re-kinded with them.
 
 The test fails on an entry whose row has been fixed or removed, and pins the
 size. So the ledger can only shrink, and a new exception is a visible diff. It
 records non-conformance; it does not approve it.
 
 **This ADR moved no row.** The order is measured, recorded on INV-zikab, and
-now complete through step 6. The ledger holds 29 rows, all WI-ziviv's: 3 Swift
-statics, 21 ObjC class methods and 5 `kotlin.io.FilesKt` rows. Scala
-`Process.apply` left it with WI-narij on 2026-09-24.
+now complete through step 6. The ledger is empty.
 1. The unconstrained rows went first (INV-dihun, PR #1155).
 2. The Swift boundaries are adjudicated before their kinds.
 3. The INV-nizom arm stops reading `method` as receiver evidence before the

@@ -59,7 +59,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **A Unix-domain socket server is `ipc_listen`** (ADR-0050 §1), counted in `ipc_listen_edges` (io-boundaries schema 2.4 → 2.5).
 - **A Go Unix-domain connection's own `Write` / `Read` are `ipc_send` / `ipc_recv`**: `net.Conn` rows select by how the connection was made, and `*net.UnixConn` is rowed.
+- **ObjC class methods and Swift statics have the kind their call reads as** (ADR-0059 ledger now empty); `NSMutableURLRequest` and the dead `kotlin.io.FilesKt` rows are deleted, and `fetchRequestWithEntityName:` is `db_compose`.
 - **`slice --io-boundary` keeps a call for every boundary it crosses**: `subprocess.check_output` is both `subprocess` and `ipc_recv` (`io_boundary.boundaries_of`).
+- **A taint claim on a zone with no sink for a present language is withheld for every built-in zone**, not only `code_execution` / `dom_injection`: Go's `database` claims read `confirmed`.
 - **A user overlay no longer lowers its catalogue's status**, which turned unrelated chains `[unreliable]`, and declares none itself.
 - **The taint-side `requires_target_kind` / `requires_mode` are `requires_target_boundary` / `requires_mode_boundary`**: they hold a boundary, not a target kind or mode.
 - **A taint catalogue key nothing reads is refused** (exit 2), not silently ignored: an `attributes:` source loaded and contributed nothing.
@@ -93,6 +95,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Documentation
 
+- **Reader census** ([`docs/audits/0023-reader-census.md`](docs/audits/0023-reader-census.md)): what nothing reads and what nothing produces, across fields, meta keys, knobs, functions, vocabulary subsets and kept-with-trigger verdicts.
 - **ADR-0050 §1**: a primary boundary names the medium; a `simultaneous` second boundary is a taint label's reading or a second crossing, and none is primary. `env_read` may carry a credential.
 - **ADR-0041 §1**: tier is the distance of a node's code from the project; spec §14 says a CLI run emits no tier-2 node.
 - Module docstrings: 42 corrected, 12 extended; taint and `verify-claims` prose corrected.

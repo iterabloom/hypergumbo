@@ -2424,6 +2424,19 @@ _IO_PRIMITIVES_DIR = Path(__file__).parent / "io_primitives"
 _TAINT_SINKS_DIR = Path(__file__).parent / "taint_sinks"
 
 
+def builtin_sink_zones() -> frozenset[str]:
+    """Every sink zone hypergumbo itself defines (WI-sojok).
+
+    The I/O-derived zones (:data:`AUTO_SINK_ZONE_MAP`) and ADR-0060's
+    non-boundary ones (``taint_sinks/``). A zone only a project's own sink
+    catalogue declares (PlazaFlow's ``relay``) is not one of them.
+    """
+    return frozenset(
+        {zone for zone, _trust in AUTO_SINK_ZONE_MAP.values()}
+        | set(shipped_non_boundary_sink_zones())
+    )
+
+
 def shipped_non_boundary_sink_zones() -> dict[str, dict[str, tuple[str, ...]]]:
     """The sink zones ``taint_sinks/`` ships, each with its unreached shapes.
 
