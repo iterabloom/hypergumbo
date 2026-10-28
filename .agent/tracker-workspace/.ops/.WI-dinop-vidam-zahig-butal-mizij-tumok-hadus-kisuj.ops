@@ -20,3 +20,18 @@
     pr_ref:  # d327
     description: "Split from WI-mozig (concept audit 2026-10-21/22 F6; premise re-check 2026-10-25 on dev 16534a75f7). One field name, two meanings: IoPrimitive.requires_target_kind holds a TARGET KIND (std_stream; io_boundary.py:862, used once at java.yaml:401), while TaintSource/TaintSink.requires_target_kind holds a BOUNDARY (taint.py:299, :382; derived :2161-2165, :2180, :2212; compared :1234-1237). TaintSink.requires_mode also holds a boundary (taint.py:2196-2198). Pure rename on the taint side (e.g. requires_boundary), no behaviour change; update readers and tests."  # d327
     fields: {}  # d327
+- op: update  # 1332
+  at: '2026-10-28T07:36:52Z'  # 1332
+  by: agent  # 1332
+  actor: jgstern_agent  # 1332
+  clock: 2  # 1332
+  nonce: '1332'  # 1332
+  set:  # 1332
+    status: done  # 1332
+- op: discuss  # 6a05
+  at: '2026-10-28T07:36:52Z'  # 6a05
+  by: agent  # 6a05
+  actor: jgstern_agent  # 6a05
+  clock: 3  # 6a05
+  nonce: 6a05  # 6a05
+  message: "Done in PR #1914 (750f55ae2a). TaintSource/TaintSink.requires_target_kind -> requires_target_boundary and TaintSink.requires_mode -> requires_mode_boundary, with their readers (_target_kind_admits, the mode gate in _match_propagation_entry, the io_primitives derivation) and tests; IoPrimitive.requires_target_kind (a target kind) keeps its name. Pure rename, no behaviour change: the affected suite (27,124 tests) passed unchanged apart from the renamed attribute reads; neither field is serialised."  # 6a05

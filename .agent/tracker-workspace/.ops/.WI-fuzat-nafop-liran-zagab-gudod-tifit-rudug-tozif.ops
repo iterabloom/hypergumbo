@@ -43,3 +43,25 @@
   clock: 4  # fd27
   nonce: fd27  # fd27
   message: "2026-10-25 (owner-requested note, from a review of how WI-ziruv and WI-kosup bear on the open concept-audit rows): Two audits bear on this. (1) WI-ziruv (falsify each declared axis's rule on real output)'s ADR-0061 row: three different rules decide 'builtin'. (2) WI-kosup section C: DefaultOverlay.provenance is a second free-text declaration ('never parsed') shown false, after ADR-0058's signature. ADR-0058 leaves the other free-text declarations unswept, and WI-kosup's reader classification (display/presence/branch) is where they get checked."  # fd27
+- op: update  # f452
+  at: '2026-10-28T07:36:51Z'  # f452
+  by: agent  # f452
+  actor: jgstern_agent  # f452
+  clock: 5  # f452
+  nonce: f452  # f452
+  set:  # f452
+    status: done  # f452
+- op: discuss  # ab89
+  at: '2026-10-28T07:36:51Z'  # ab89
+  by: agent  # ab89
+  actor: jgstern_agent  # ab89
+  clock: 6  # ab89
+  nonce: ab89  # ab89
+  message: "Fixed in PR #1914 (90ac53e7e2). yaml_catalogs.declares_builtin is the one rule for a SHIPPED file: builtin only when it declares provenance: builtin, otherwise community (adds, never cleans). catalogue_tiers, split_community_files(shipped=True), shipped_non_boundary_sink_sites and the CLI's loaded-file listing all read it; an operator's own file is still theirs unless it declares community. DefaultOverlay.provenance is declared bounded-enum (it is the tier token), and validate_default_overlays refuses any value but community (it checked non-empty only). Evidence: test_in_repo_catalogues.py::TestOneBuiltinRule (an undeclared shipped file is community in the disclosure and the taint split) and test_default_overlays.py::test_a_default_declares_exactly_community[builtin|Community|pypi.org/requests]; mutating each rule back turned all five red. The rules could only diverge on a malformed shipped file, so no live output changed. Not in scope: the supply-chain tier-1 'unclassified' sentinel half (WI-lidig)."  # ab89
+- op: discuss  # 5c89
+  at: '2026-10-28T07:37:11Z'  # 5c89
+  by: agent  # 5c89
+  actor: jgstern_agent  # 5c89
+  clock: 7  # 5c89
+  nonce: 5c89  # 5c89
+  message: "SHA correction: PR #1914 was rebased at merge; the commit on dev is e48f1bc2dc, not 90ac53e7e2."  # 5c89

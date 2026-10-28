@@ -42,3 +42,18 @@
   clock: 4  # 06ac
   nonce: 06ac  # 06ac
   message: "2026-10-27: a production-path closure test exists (WI-ziruv, PR #1902): packages/hypergumbo-lang-mainstream/tests/test_axiom_falsification.py::TestCatalogueTiers::test_a_flag_named_file_inside_the_repo_is_yours (strict xfail). It XPASSes when this item is fixed; remove the mark in the fix PR."  # 06ac
+- op: update  # 78c0
+  at: '2026-10-28T04:38:28Z'  # 78c0
+  by: agent  # 78c0
+  actor: jgstern_agent  # 78c0
+  clock: 5  # 78c0
+  nonce: 78c0  # 78c0
+  set:  # 78c0
+    status: done  # 78c0
+- op: discuss  # 2d25
+  at: '2026-10-28T04:38:28Z'  # 2d25
+  by: agent  # 2d25
+  actor: jgstern_agent  # 2d25
+  clock: 6  # 2d25
+  nonce: 2d25  # 2d25
+  message: "Fixed in PR #1913. LoadedCatalogueFile.named marks a file a command-line flag named (--io-primitives, --taint-sources/-sinks/-sanitizers; a directory stands for its YAML files); catalogue_tiers tiers it yours wherever it sits and keeps its git_state. Claims-file extra_catalogs stay in_repo (owner ruling 2026-10-25). Behavioural evidence: test_axiom_falsification.py::TestCatalogueTiers::test_a_flag_named_file_inside_the_repo_is_yours (committed tools/sinks.yaml named by --taint-sinks -> tiers == [yours]) was a strict xfail and now passes unmarked; test_a_flag_named_file_is_disclosed_under_exactly_one_tier holds (no double listing); core test_in_repo_catalogues.py::test_a_flag_named_file_inside_the_repo_is_yours. Mutating the named check away turned both red."  # 2d25
