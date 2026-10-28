@@ -1,0 +1,17 @@
+Original commit body from ac967250faeba2c0060e18fcf8fa66b1490cab12:
+
+One field name, two meanings: IoPrimitive.requires_target_kind holds a
+TARGET KIND (std_stream), while TaintSource/TaintSink.requires_target_kind
+held the BOUNDARY the call's target kind must resolve to, and
+TaintSink.requires_mode held the boundary the mode argument selects.
+
+The taint side is renamed: requires_target_kind -> requires_target_boundary
+and requires_mode -> requires_mode_boundary, with their readers
+(_target_kind_admits, the mode gate in _match_propagation_entry, the
+derivation in _derive_auto_imports_from_io_primitives) and tests. The
+catalogue row keeps requires_target_kind. No behaviour change; neither
+field is serialised.
+
+Addresses WI-dinop.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
