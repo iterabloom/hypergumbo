@@ -94,7 +94,7 @@ class TestCrossLanguageGuard:
 
         VEHICLE CHANGED from ``builtins.open`` to ``os.remove`` (WI-rusof).
         ``open`` is dual-classified, so its host_fs sink now carries
-        ``requires_mode="fs_write"`` and correctly declines to match a call
+        ``requires_mode_boundary="fs_write"`` and correctly declines to match a call
         with no mode evidence. Keeping it here would have made this test
         assert the mode gate rather than the language guard, and the two
         mechanisms must be able to fail independently. ``os.remove`` is an

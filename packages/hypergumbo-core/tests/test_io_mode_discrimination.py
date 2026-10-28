@@ -104,13 +104,13 @@ class TestTheKeyIsThePRIMITIVE_NotTheShortName:
     ``mode_discriminated_names`` answers "which SHORT NAMES need a mode", which
     is the right question for an EMITTER — it sees ``open(`` before it knows the
     receiver. It is the wrong question for the SINK DERIVATION, which holds the
-    whole ``IoPrimitive`` and was keying ``requires_mode`` on ``prim.name``.
+    whole ``IoPrimitive`` and was keying ``requires_mode_boundary`` on ``prim.name``.
 
     Rust pays for that. ``std::fs::File.open`` is fs_read and
     ``std::fs::OpenOptions.open`` is fs_write — two DIFFERENT primitives that
     share a short name, exactly the shape ``lookup_with_module`` exists to keep
     apart. Under short-name keying the OpenOptions sink inherited
-    ``requires_mode="fs_write"``, no Rust analyzer stamps ``io_mode``, and
+    ``requires_mode_boundary="fs_write"``, no Rust analyzer stamps ``io_mode``, and
     ``resolve_mode_boundary(None)`` is ``fs_read`` — so Rust's only mode-gated
     host_fs write sink matched NOTHING, in every repo, unconditionally.
 
@@ -153,7 +153,7 @@ class TestTheKeyIsThePRIMITIVE_NotTheShortName:
             if s.qualified_name == "std::fs::OpenOptions.open"
         ]
         assert opens, "rust must still derive an OpenOptions.open sink"
-        assert all(s.requires_mode == "" for s in opens), (
+        assert all(s.requires_mode_boundary == "" for s in opens), (
             "OpenOptions.open is unconditionally write-capable; gating it on a "
             "mode no rust analyzer stamps deletes the sink outright"
         )
@@ -169,7 +169,7 @@ class TestSimultaneousIsNotAModeQuestion:
     inferring a mode question from the boundary pair alone.
 
     Left un-consulted it was the same deletion as rust's: erlang and elixir
-    (which inherits erlang) both derived a ``requires_mode="fs_write"``
+    (which inherits erlang) both derived a ``requires_mode_boundary="fs_write"``
     ensure_dir sink that no analyzer could ever satisfy.
     """
 
@@ -201,13 +201,13 @@ class TestSimultaneousIsNotAModeQuestion:
             s for s in sinks if s.qualified_name == "filelib.ensure_dir"
         ]
         assert rows, f"{language} must still derive an ensure_dir sink"
-        assert all(s.requires_mode == "" for s in rows)
+        assert all(s.requires_mode_boundary == "" for s in rows)
 
 
 class TestEveryModeGatedLanguageHasAProducer:
     """INV-kaduh proper: a gate whose input nobody produces is a deletion.
 
-    ``requires_mode`` and ``select_by_mode`` both consume ``meta["io_mode"]``.
+    ``requires_mode_boundary`` and ``select_by_mode`` both consume ``meta["io_mode"]``.
     Python's analyzer stamps it; C's did not, so ``fopen(p, "w")`` tagged
     ``fs_read`` and the ``stdio.fopen`` write sink never matched — an EXAMINED
     negative for the boundary that is actually true, which reads clean rather
@@ -411,7 +411,7 @@ class TestTheSinkSideOfTheSameDefect:
     no mode argument, so a rule of "no ``io_mode`` means not a write" would
     delete every genuine unconditional write in the catalogue — a false
     negative in a security gate, the expensive direction. Only a
-    DUAL-CLASSIFIED sink may be mode-gated, which is what ``requires_mode``
+    DUAL-CLASSIFIED sink may be mode-gated, which is what ``requires_mode_boundary``
     records at derivation time.
     """
 
@@ -423,7 +423,7 @@ class TestTheSinkSideOfTheSameDefect:
         sinks = load_builtin_taint_catalog().sinks_for_language("python")
         opens = [s for s in sinks if s.qualified_name == "builtins.open"]
         assert opens, "builtins.open must still be derivable as a sink"
-        assert all(s.requires_mode == "fs_write" for s in opens)
+        assert all(s.requires_mode_boundary == "fs_write" for s in opens)
 
     def test_unconditional_write_sink_declares_no_requirement(self) -> None:
         """``os.remove`` must stay unconditional or real deletions vanish."""
@@ -432,14 +432,14 @@ class TestTheSinkSideOfTheSameDefect:
         sinks = load_builtin_taint_catalog().sinks_for_language("python")
         removes = [s for s in sinks if s.qualified_name == "os.remove"]
         assert removes
-        assert all(s.requires_mode == "" for s in removes)
+        assert all(s.requires_mode_boundary == "" for s in removes)
 
     def test_read_mode_call_does_not_match_a_mode_gated_sink(self) -> None:
         from hypergumbo_core.taint import TaintSink, _match_propagation_entry
 
         gated = TaintSink(
             zone="host_fs", trust_level="untrusted", module="builtins",
-            name="open", kind="function", requires_mode="fs_write",
+            name="open", kind="function", requires_mode_boundary="fs_write",
         )
         assert _match_propagation_entry(
             {"open": [gated]}, "python:builtins:0-0:open:external_symbol",
@@ -451,7 +451,7 @@ class TestTheSinkSideOfTheSameDefect:
 
         gated = TaintSink(
             zone="host_fs", trust_level="untrusted", module="builtins",
-            name="open", kind="function", requires_mode="fs_write",
+            name="open", kind="function", requires_mode_boundary="fs_write",
         )
         assert _match_propagation_entry(
             {"open": [gated]}, "python:builtins:0-0:open:external_symbol",
@@ -562,7 +562,7 @@ class TestTheWholeChainThroughTheProducer:
         )]
         sinks = [TaintSink(
             zone="host_fs", trust_level="untrusted", module="builtins",
-            name="open", kind="function", requires_mode="fs_write",
+            name="open", kind="function", requires_mode_boundary="fs_write",
         )]
         return propagate_taint_structural(
             TestTheWholeChainThroughTheProducer._edges(io_mode),

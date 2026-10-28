@@ -4,7 +4,7 @@
 ONE CATALOGUE, TWO CONSUMERS, ONE ANSWER. ``classify_call`` settles an
 unstamped target-kind-gated primitive by INV-fatok's ``abstains_to`` row (else
 the first declared row). The taint derivation marked every entry of such a
-primitive ``requires_target_kind=<boundary>`` and the matcher admitted a gated
+primitive ``requires_target_boundary=<boundary>`` and the matcher admitted a gated
 entry only on an exact stamp, so an ABSTENTION -- no stamp, an unknown kind,
 collapsed sites that disagree -- dropped the primitive entirely. For c's
 ``fgets`` that equalled the classifier by luck (its fallback, ``fs_read``,
@@ -112,7 +112,7 @@ class TestTheReadSideRepro:
             s.source_boundary: s for s in sources["go"]
             if s.module == "bufio" and s.name == "NewScanner"
         }
-        assert by_boundary["ipc_recv"].requires_target_kind == "ipc_recv"
+        assert by_boundary["ipc_recv"].requires_target_boundary == "ipc_recv"
         assert by_boundary["ipc_recv"].abstention_fallback is True
         assert by_boundary["net_recv"].abstention_fallback is False
         read = {
@@ -159,7 +159,7 @@ class TestTheWriteSideSinks:
             if s.module == "io" and s.name == "WriteString"
         }
         assert set(rows) == {"host_fs", "ipc", "network", "logging"}
-        assert {z: s.requires_target_kind for z, s in rows.items()} == {
+        assert {z: s.requires_target_boundary for z, s in rows.items()} == {
             "host_fs": "fs_write", "ipc": "ipc_send",
             "network": "net_send", "logging": "logging",
         }

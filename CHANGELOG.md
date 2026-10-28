@@ -56,6 +56,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A Unix-domain socket server is `ipc_listen`** (ADR-0050 §1), counted in `ipc_listen_edges` (io-boundaries schema 2.4 → 2.5).
 - **`slice --io-boundary` keeps a call for every boundary it crosses**: `subprocess.check_output` is both `subprocess` and `ipc_recv` (`io_boundary.boundaries_of`).
 - **A user overlay no longer lowers its catalogue's status**, which turned unrelated chains `[unreliable]`, and declares none itself.
+- **The taint-side `requires_target_kind` / `requires_mode` are `requires_target_boundary` / `requires_mode_boundary`**: they hold a boundary, not a target kind or mode.
 - **A taint catalogue key nothing reads is refused** (exit 2), not silently ignored: an `attributes:` source loaded and contributed nothing.
 - **A shipped catalogue file is `builtin` only when it declares so**, under every reader, and a default overlay's `provenance` must be `community`.
 - **A community sink's `trust_level: trusted` is withheld and named** (`withheld_community_trust`), and **a catalogue file named on the command line is `yours`** even inside the repository (ADR-0061 rulings 1–2).

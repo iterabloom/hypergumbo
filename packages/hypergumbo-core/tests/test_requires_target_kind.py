@@ -124,7 +124,7 @@ class TestTheTaintSink:
             tmp_path, include_defaults=False,
         )
         (sink,) = [s for s in sinks["java"] if s.name == "println"]
-        assert sink.requires_target_kind == "logging"
+        assert sink.requires_target_boundary == "logging"
         assert sink.abstention_fallback is False
 
 
