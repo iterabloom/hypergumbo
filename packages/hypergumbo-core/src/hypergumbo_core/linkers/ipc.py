@@ -120,6 +120,12 @@ from ..pass_silence import silence_reason_for_candidates
 PASS_ID = make_pass_id("ipc-linker")
 
 
+#: ``IpcPattern.type`` -> the ``framework_role`` its stand-in carries. A table
+#: rather than ``f"ipc_{type}"`` so the values are literal where the enclosure
+#: pass's partition test can read them (WI-pokuz); phoenix_ipc shares it.
+IPC_FRAMEWORK_ROLES: dict[str, str] = {"send": "ipc_send", "receive": "ipc_receive"}
+
+
 @dataclass
 class IpcPattern:
     """Represents a detected IPC pattern."""
@@ -538,7 +544,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     "channel_type": pattern.channel_type,
                     "channel_identifier": pattern.channel_identifier,
                     "pattern_type": pattern.pattern_type,
-                    "framework_role": f"ipc_{pattern.type}",
+                    "framework_role": IPC_FRAMEWORK_ROLES[pattern.type],
                 },
             ))
             created_symbol_ids.add(sym_id)

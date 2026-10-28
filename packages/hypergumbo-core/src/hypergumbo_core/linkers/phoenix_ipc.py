@@ -47,6 +47,7 @@ from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..pass_silence import silence_reason_for_candidates
 from ._text_filters import language_from_path, read_source_bytes
+from .ipc import IPC_FRAMEWORK_ROLES
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
 PASS_ID = make_pass_id("phoenix-ipc-linker")
@@ -325,7 +326,7 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
                     "event": event,
                     "pattern_type": pattern.pattern_type,
                     "topic": pattern.topic,
-                    "framework_role": f"ipc_{pattern.type}",
+                    "framework_role": IPC_FRAMEWORK_ROLES[pattern.type],
                 },
             ))
             created_symbol_ids.add(sym_id)
