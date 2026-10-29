@@ -1,0 +1,57 @@
+Original commit body from faee65043047c028a00328b09f4fa42c3f891ffe:
+
+Taint and io-boundaries share one row choice (io_boundary.
+gate_named_entry), which prefers a vouched row by the hit's `unvouched`
+bit (ADR-0047). io-boundaries' IoPrimitive carries it. The taint rows
+auto-derived from the same primitives did not: TaintSource had neither
+`unvouched` nor `community`, and a TaintSink derived from a community
+overlay was stamped community=False. So every taint hit sorted as
+vouched, and the overlay row -- merged IN FRONT of the base -- won by
+order. On dev 4892851370, `readProcess` after `import System.Process
+(readProcess)` was the untrusted_input source
+System.Process.Text.readProcess (process-extras, never imported) in
+verify-claims while io-boundaries named System.Process.readProcess.
+Traced at runtime: the call's module hint is `external`, so the GATE arm
+chose the row; the hinted-path candidate was not reached.
+
+Now a derived TaintSource / TaintSink carries its primitive's provenance
+as `community`, community taint-file SOURCES are stamped as their sinks
+and sanitizers already were, and both row types expose `unvouched` (=
+community), the one attribute the gate sorts on. Derived sinks are all
+trust_level untrusted, so `community` on them withholds no trust.
+
+Re-run of the filed repro: the default run now names
+System.Process.readProcess, as --no-default-overlays and io-boundaries
+do; verdict `violated` unchanged.
+
+Corpus A/B (verify-claims, generic taint claims, dev 291a3a2418 vs this
+branch, ~/hg_meas/tobur/): no verdict moved on any of the four repos.
+- shellcheck, git-bug (go, x/sys/execabs), full-stack-fastapi-template
+  (python): identical verdicts and evidence.
+- stack (haskell): 3 claims change attribution only, evidence counts
+  equal: System.Process.Text / System.Directory.Extra / System.Process.
+  Typed -> System.Process / System.Directory. Checked against the call
+  sites' imports: etc/scripts/release.hs, install-many-stack-releases.hs
+  and src/Stack/Upgrade.hs import System.Process / System.Directory, so
+  the new rows are the right ones. src/Stack/Runners.hs imports
+  RIO.Process (a typed-process wrapper): there the old Typed row was
+  closer, but the call reaches the gate with no hint and io-boundaries
+  already picks the vouched row for it -- the gap is the missing hint,
+  not this choice. withProcessWait, which only the Typed overlay has,
+  still detects (a lone unvouched row fires).
+
+Tests: test_taint_prefers_vouched_rows.py through
+load_builtin_taint_catalog: reach (both rows are candidates), the
+hint-less source and sink are the boot library, taint and io-boundaries
+name the same row, the base row without overlays, derived community rows
+and a community taint-file source are unvouched. Mutation-checked:
+dropping the provenance on derived sources reds 3, on derived sinks 1,
+on community-file sources 1. test_gate_prefers_vouched_rows' duck-typed
+test no longer claims taint rows lack the attribute.
+
+Not checked: a base/overlay pair whose boundaries differ (no verdict
+moved on this corpus).
+
+Addresses INV-tobur.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
