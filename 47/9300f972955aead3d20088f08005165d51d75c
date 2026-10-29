@@ -1,0 +1,63 @@
+Original commit body from 08943ac01d22fa1b764190266e5abce72629e2d1:
+
+The WI-kosup knob census found catalogue loaders that silently ignore an
+unknown key -- the file reports loaded and the key does nothing. Taint
+(WI-rinaz) and io_primitives (PR #1927) refuse them; this does the
+frameworks, library_signatures, function_summaries and dataflow_patterns
+loaders, through the same yaml_catalogs.reject_unknown_keys, naming the
+file, the level and the key, with a near-miss hint.
+
+Levels checked:
+- frameworks: top level, each pattern, each pattern's usage: (wrapped
+  into the existing CatalogueError naming the file);
+- library_signatures: top level (a `signature:` typo read as no rows);
+- function_summaries: top level, each entry, callback:, sanitizes.<i>;
+- dataflow_patterns (shipped load): top level and library_patterns rows.
+  The user channel still reads library_patterns only and ignores the
+  rest, by its documented, test-pinned decision; unchanged.
+
+Accepted-but-unread keys, deleted:
+- frameworks linkers: (101 files). Read into FrameworkPatternDef.linkers
+  and by nothing outside tests; a linker's activation is its
+  LinkerActivation in code. The field is gone, and so is the
+  ARCHITECTURE.md generator line telling authors to add the section.
+  Four tests asserting "framework X activates linker Y" asserted
+  something that was never true and are deleted.
+- frameworks detect: (zio, swiftui, hummingbird): no reader.
+- library_signatures module_completeness: partial (go, java, objc,
+  python, swift): no reader; three test fixtures dropped it too.
+- dataflow calls: / DataflowConfig.calls: produced by no file; the field,
+  its two map loops and its two tests are gone (a calls: section is now
+  refused).
+
+Rules that matched nothing, deleted with a note in the file:
+- graphql-python.yaml's Graphene resolver rule (name_pattern: ^resolve_,
+  unread). The supported spelling (method_name + parent_base_class)
+  cannot match either: only java.py and objc.py stamp
+  parent_base_classes, so a python method never carries it. Checked on a
+  fixture: Query(graphene.ObjectType).resolve_hello gets no concept
+  before or after.
+- zio.yaml's two zio-http route rules (usage_call:, unread). The scala
+  analyzer emits no usage context for Routes(Method.GET / "x" ->
+  handler(...)), so a usage: kind call rule would match nothing either
+  (fixture checked).
+Both gaps, and the same parent_base_classes gap in flask-restful's
+route_handler rule, are filed as WI-sorop.
+
+Every shipped framework, library-signature, function-summary and
+dataflow file loads (pinned by test). The strictness found one more live
+case, in a test: test_user_catalogue_channels' in-house framework fixture
+wrote name: / symbol_patterns: / decorators: -- none of them keys -- so it
+loaded zero patterns while asserting only 'not None'; it now writes
+patterns: / decorator: and asserts the route rule loads. A summary file
+claiming user_supplied: is now refused outright rather than ignored.
+docs/CONCEPTS.md and docs/ARCHITECTURE.md regenerated. Not done here: function-summary
+VALUES that no consumer reads (census K7) and dataflow row values the
+maps ignore (K13's returns[]._default etc.) -- outside this item's text.
+
+Tests: test_catalogue_unknown_keys.py -- a refused key per loader and
+level, every shipped file in each family loads, no linkers field, no
+shipped module_completeness. Mutation-checked: disabling each loader's
+top-level/entry check reds its test (4 of 4).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
