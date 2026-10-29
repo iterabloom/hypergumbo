@@ -583,6 +583,12 @@ def _emit_self_send(
 
 
 
+def _receiver_is_self(call: "tree_sitter.Node", source: bytes) -> bool:
+    """Whether ``call`` has no receiver or the receiver ``self``."""
+    receiver = call.child_by_field_name("receiver")
+    return receiver is None or node_text(receiver, source) == "self"
+
+
 def _enclosing_class_from_method(method: Symbol) -> Optional[str]:
     """Extract the enclosing class/module name from a method's qualified name.
 
@@ -2927,20 +2933,34 @@ def _extract_edges_from_file(
                                         origin_run_id=run_id,
                                     ))
 
-                # method(:name) — first-class method reference
-                elif callee_name == "method":
+                # method(:name) — first-class method reference. Only self's:
+                # ``obj.method(:x)`` / ``1.method(:+)`` name a method of the
+                # receiver's class, which this pass does not know, and binding
+                # the bare name there reached an unrelated ``Enumerator#+``.
+                elif callee_name == "method" and _receiver_is_self(node, source):
                     args_node = _find_child_by_field(node, "arguments")
                     if args_node is not None:
                         sym_node = find_child_by_type(args_node, "simple_symbol")
                         if sym_node is not None:
                             ref_name = node_text(sym_node, source).lstrip(":")
-                            current_method = _get_enclosing_method(
-                                node, source, decl_index,
+                            # META-mino: a reference in no method (a constant
+                            # at top level or in a class body) is anchored as
+                            # a call there is (INV-bamij): the class or module
+                            # whose body holds it, else the file.
+                            current_method: Optional[Symbol] = (
+                                _get_enclosing_method(node, source, decl_index)
+                                or enclosing_declared_symbol(
+                                    node, decl_index, _SCOPE_BODY_NODES,
+                                )
+                                or file_anchor
                             )
                             if current_method is not None:
-                                # Class-qualified lookup: App#transform
-                                enc_class = _enclosing_class_from_method(
-                                    current_method,
+                                # Class-qualified lookup: App#transform. A
+                                # class-body anchor IS the class.
+                                enc_class = (
+                                    current_method.name
+                                    if current_method.kind in ("class", "module")
+                                    else _enclosing_class_from_method(current_method)
                                 )
                                 target = None
                                 if enc_class:

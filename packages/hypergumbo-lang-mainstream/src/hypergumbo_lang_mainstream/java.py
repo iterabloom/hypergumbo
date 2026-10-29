@@ -3724,71 +3724,92 @@ def _extract_edges(
         # referenced method.  Constructor references (::new) create
         # "instantiates" edges instead.
         elif node.type == "method_reference":
-            current_method = _get_enclosing_method(
-                node, source, global_symbols, file_path, symbol_by_position,
+            # META-mino: a reference in no method (a field initializer,
+            # ``static Supplier<Integer> F = M::run;``) is anchored on its
+            # type, else the file, as a method_invocation there is.
+            current_method = (
+                _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
+                or _get_enclosing_type_symbol(node, file_path, symbol_by_position)
+                or file_anchor
             )
-            if current_method:
-                children = [c for c in node.children if c.is_named]
-                if len(children) >= 2:
-                    class_node = children[0]
-                    method_node = children[1]
-                    class_name = _node_text(class_node, source)
-                    method_name = _node_text(method_node, source)
-                elif len(children) == 1:
-                    # Only class part, method is anonymous (::new)
-                    class_name = _node_text(children[0], source)
-                    method_name = "new"
-                else:  # pragma: no cover
-                    class_name = None
-                    method_name = None
+            children = [c for c in node.children if c.is_named]
+            if len(children) >= 2:
+                class_node = children[0]
+                method_node = children[1]
+                class_name = _node_text(class_node, source)
+                method_name = _node_text(method_node, source)
+            elif len(children) == 1:
+                # Only class part, method is anonymous (::new)
+                class_name = _node_text(children[0], source)
+                method_name = "new"
+            else:  # pragma: no cover
+                class_name = None
+                method_name = None
 
-                if class_name and method_name == "new":
-                    # Constructor reference: try to resolve the class
-                    lookup_result = class_resolver.lookup(class_name, caller_path=_caller_path)
-                    if (
-                        lookup_result.found
-                        and lookup_result.symbol is not None
-                        # INV-finak: skip if import points elsewhere
-                        and not _is_import_class_mismatch(
-                            class_name, lookup_result.symbol, imports,
-                            caller_file=str(file_path),
-                        )
-                    ):
-                        edge = Edge.create(
-                            src=current_method.id,
-                            dst=lookup_result.symbol.id,
-                            edge_type="instantiates",
-                            line=node.start_point[0] + 1,
-                            resolution_score=lookup_result.confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="constructor_reference",
-                        )
-                        edges.append(edge)
+            if class_name and method_name == "new":
+                # Constructor reference: try to resolve the class
+                lookup_result = class_resolver.lookup(class_name, caller_path=_caller_path)
+                if (
+                    lookup_result.found
+                    and lookup_result.symbol is not None
+                    # INV-finak: skip if import points elsewhere
+                    and not _is_import_class_mismatch(
+                        class_name, lookup_result.symbol, imports,
+                        caller_file=str(file_path),
+                    )
+                ):
+                    edge = Edge.create(
+                        src=current_method.id,
+                        dst=lookup_result.symbol.id,
+                        edge_type="instantiates",
+                        line=node.start_point[0] + 1,
+                        resolution_score=lookup_result.confidence,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="constructor_reference",
+                    )
+                    edges.append(edge)
 
-                elif class_name and method_name:
-                    # Method reference: resolve ClassName.methodName
-                    # Try this::method → look up method in current class
-                    target_name = None
-                    if class_name == "this":
-                        # Resolve in current class scope
-                        target_name = method_name
-                    else:
-                        target_name = f"{class_name}.{method_name}"
-
-                    lookup_result = resolver.lookup(target_name, caller_path=_caller_path)
-                    if lookup_result.found and lookup_result.symbol is not None:
-                        edge = Edge.create(
-                            src=current_method.id,
-                            dst=lookup_result.symbol.id,
-                            edge_type="references",
-                            line=node.start_point[0] + 1,
-                            resolution_score=lookup_result.confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="method_reference",
+            elif class_name and method_name:
+                # Method reference: resolve ClassName.methodName
+                # Try this::method → look up method in current class
+                target_name = None
+                if class_name == "this":
+                    # ``this::m`` is THIS class's ``m``: qualify it by the
+                    # enclosing type first. The bare name alone bound
+                    # another class's same-named private method
+                    # (commons-compress: FramedLZ4CompressorInputStream's
+                    # ``this::readOneByte`` -> ZipArchiveInputStream's). An
+                    # inherited ``m`` misses the qualified name and falls
+                    # back to the bare one, as before.
+                    owner = (
+                        current_method.name
+                        if current_method.kind in _JAVA_TYPE_SYMBOL_KINDS
+                        else current_method.name.rpartition(".")[0]
+                    )
+                    target_name = method_name
+                    if owner:
+                        qualified = resolver.lookup(
+                            f"{owner}.{method_name}", caller_path=_caller_path,
                         )
-                        edges.append(edge)
+                        if qualified.found and qualified.symbol is not None:
+                            target_name = f"{owner}.{method_name}"
+                else:
+                    target_name = f"{class_name}.{method_name}"
+
+                lookup_result = resolver.lookup(target_name, caller_path=_caller_path)
+                if lookup_result.found and lookup_result.symbol is not None:
+                    edge = Edge.create(
+                        src=current_method.id,
+                        dst=lookup_result.symbol.id,
+                        edge_type="references",
+                        line=node.start_point[0] + 1,
+                        resolution_score=lookup_result.confidence,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="method_reference",
+                    )
+                    edges.append(edge)
 
     return edges
 
