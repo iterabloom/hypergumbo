@@ -20,6 +20,14 @@ Detected Patterns
 - Doc-level: ``yDoc.on('update', handler)``, ``yDoc.on('subdocs', handler)``,
   ``yDoc.on('destroy', handler)``
 
+**Yjs shared-type entries (INV-munok):**
+- Write: ``.set`` / ``.delete`` / ``.push`` / ``.insert`` / ``.unshift`` on a
+  receiver that IS a shared type -- chained (``doc.getMap('meta').set('pages', p)``)
+  or a name bound to one in the same file (``const objects = doc.getMap('objects')``,
+  ``this.log = doc.getArray('log')``)
+- Read: ``.get`` / ``.has`` / ``.toJSON`` / ``.toArray`` / ``.forEach`` /
+  ``.entries`` / ``.values`` / ``.keys`` on such a receiver
+
 **Yjs Awareness (ephemeral state):**
 - Write: ``awareness.setLocalState(state)``, ``awareness.setLocalStateField('key', value)``
 - Read: ``awareness.on('change', callback)``, ``awareness.on('update', callback)``
@@ -35,6 +43,32 @@ Detected Patterns
 BlockSuite is an abstraction layer over Yjs used by editors like AFFiNE. Block
 mutations map to Yjs operations internally, so tracing through BlockSuite's API
 captures the same data flow as raw Yjs but at the application level.
+
+Entry reads are matched by entry, not by API
+--------------------------------------------
+Every other surface here links each write to every read of the same API,
+because an observer sees all changes. A POINT READ sees one entry, so it links
+only from writes to the same shared type (the ``getMap`` / ``getArray`` name)
+and, when both sides spell the key as a literal, the same key:
+``meta.get('pages')`` reads ``meta.set('pages', p)``, not ``meta.set('name', n)``;
+a computed key (``objects.get(id)``) matches any key of its map. This is what
+PlazaFlow's flow needs (spec §4.2, §5.3-5.4): one function creates a
+SpatialObject with ``chunk.getMap('objects').set(id, {..., yjsDocId})``, another
+reads it back with ``.get(id)`` and opens the Y.Doc its id names. An observer of
+``objects`` was linked to the creator; the reader was not, so neither slice
+direction crossed from creating an object to opening its document.
+
+Entry sites in test files (``paths.is_test_file``) are not linked. A test
+builds its own throwaway Y.Doc, so ``doc.getMap('foo').get(k)`` in one test and
+``.set(k, v)`` in another are different documents that share a map name;
+measured on hocuspocus, linking them added 1,127 edges between unrelated test
+files, against none in production code.
+
+The receiver test is lexical and file-scoped: a name counts as a shared type
+when every assignment to it in the file is a bare ``getMap('x')`` /
+``getArray('x')`` of one name, so ``const objects = new Map()`` and a name bound
+to two shared types are not receivers. A chain split across lines is not seen.
+The object -> Y.Doc hop itself is not modelled: the doc id is a runtime string.
 
 Why This Design
 ---------------
@@ -60,6 +94,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ..paths import is_test_file
 from ._text_filters import js_ts_language_from_path, read_masked_source
 
 if TYPE_CHECKING:
@@ -89,7 +124,39 @@ _YJS_WRITE_PATTERN = re.compile(
 # These bind a named shared type from a Y.Doc — the name acts as the channel.
 # Group 1: the shared type name
 _YJS_SHARED_TYPE_PATTERN = re.compile(
-    r"""\.get(?:Map|Array|Text|XmlFragment)\s*\(\s*['"]([a-zA-Z0-9_.\-:]+)['"]""",
+    r"""\.get(?:Map|Array|Text|XmlFragment)\s*(?:<[^>()]*>)?\s*\(\s*['"]([a-zA-Z0-9_.\-:]+)['"]""",
+)
+
+# ---- Shared-type entry patterns (INV-munok) ----
+
+# A ``getMap('name')`` / ``getArray('name')`` call, generic or not.
+# Group 1: the shared type name.
+_SHARED_TYPE_CALL = (
+    r"""\.get(?:Map|Array)\s*(?:<[^>()]*>)?\s*\(\s*['"]([a-zA-Z0-9_.\-:]+)['"]\s*\)"""
+)
+
+_ENTRY_WRITE_METHODS = frozenset({"set", "delete", "push", "insert", "unshift"})
+_ENTRY_READ_METHODS = frozenset({
+    "get", "has", "toJSON", "toArray", "forEach", "entries", "values", "keys",
+})
+_ENTRY_METHOD_CALL = (
+    r"""\s*\??\.(""" + "|".join(sorted(_ENTRY_WRITE_METHODS | _ENTRY_READ_METHODS))
+    + r""")\s*\(\s*(?:['"]([a-zA-Z0-9_.\-:]+)['"])?"""
+)
+
+# ``<shared type call>.<method>(['key'])``. Groups: name, method, key.
+_ENTRY_CHAIN_PATTERN = re.compile(_SHARED_TYPE_CALL + _ENTRY_METHOD_CALL)
+
+# An assignment to a name: ``const x =``, ``x =``, ``this.x =`` (not ``==``,
+# ``=>``, ``+=``). Group 1: the name.
+_ASSIGNMENT_PATTERN = re.compile(
+    r"""(?:\b(?:const|let|var)\s+)?((?:this\.)?[A-Za-z_$][\w$]*)\s*(?::[^=]+?)?"""
+    r"""(?<![=!<>+\-*/%&|^])=(?![=>])\s*(.*)$""",
+)
+
+# The right-hand side is a bare shared-type call. Group 1: the name.
+_SHARED_TYPE_RHS_PATTERN = re.compile(
+    r"""^[\w$.?\[\]]*?""" + _SHARED_TYPE_CALL + r"""\s*(?:as\s+[^;]+)?;?\s*$""",
 )
 
 # Matches Yjs awareness write patterns:
@@ -182,7 +249,47 @@ class YjsSite:
     channel: str    # key name, "awareness", "yjs", or "blocksuite"
     file_path: str  # relative path
     line: int       # 1-indexed
-    api: str        # "yjs", "awareness", or "blocksuite"
+    api: str        # "yjs", "yjs_entry", "awareness", or "blocksuite"
+    key: str | None = None   # yjs_entry: the literal key, None when computed
+    verb: str | None = None  # yjs_entry: the method called on the entry
+
+
+def _shared_type_receivers(lines: list[str]) -> dict[str, str]:
+    """Names bound to ONE shared type throughout the file, mapped to its name.
+
+    A name every assignment of which is a bare ``getMap('x')`` / ``getArray('x')``
+    of the same ``x``. A name also assigned anything else (``new Map()``, a
+    second shared type) is dropped: its ``.get`` may read something else.
+    """
+    bound: dict[str, set[str]] = {}
+    other: set[str] = set()
+    for line_text in lines:
+        m = _ASSIGNMENT_PATTERN.search(line_text)
+        if m is None:
+            continue
+        rhs = _SHARED_TYPE_RHS_PATTERN.match(m.group(2))
+        if rhs is None:
+            other.add(m.group(1))
+        else:
+            bound.setdefault(m.group(1), set()).add(rhs.group(1))
+    return {
+        name: next(iter(channels))
+        for name, channels in bound.items()
+        if len(channels) == 1 and name not in other
+    }
+
+
+def _entry_label(site: YjsSite) -> str:
+    """``map.key``, or ``map.*`` for a computed key."""
+    return f"{site.channel}.{site.key if site.key is not None else '*'}"
+
+
+def _entries_match(write: YjsSite, read: YjsSite) -> bool:
+    """A point read sees a write to its own shared type and, when both keys
+    are literal, its own key."""
+    if write.channel != read.channel:
+        return False
+    return write.key is None or read.key is None or write.key == read.key
 
 
 def _scan_file_for_yjs_patterns(
@@ -204,6 +311,11 @@ def _scan_file_for_yjs_patterns(
 
     sites: list[YjsSite] = []
     lines = content.split("\n")
+    receivers = _shared_type_receivers(lines)
+    receiver_patterns = [
+        (re.compile(r"(?<![\w$.])" + re.escape(name) + _ENTRY_METHOD_CALL), channel)
+        for name, channel in receivers.items()
+    ]
 
     # BlockSuite schema definitions can span multiple lines — scan full content
     for m in _BLOCKSUITE_SCHEMA_PATTERN.finditer(content):
@@ -231,6 +343,23 @@ def _scan_file_for_yjs_patterns(
             sites.append(YjsSite(
                 kind="write", channel=channel, file_path=rel_path,
                 line=line_num, api="yjs",
+            ))
+
+        # Shared-type entry writes and point reads (INV-munok)
+        entry_calls = [
+            (m.group(1), m.group(2), m.group(3))
+            for m in _ENTRY_CHAIN_PATTERN.finditer(line_text)
+        ]
+        for pattern, channel in receiver_patterns:
+            entry_calls.extend(
+                (channel, m.group(1), m.group(2))
+                for m in pattern.finditer(line_text)
+            )
+        for channel, method, key in entry_calls:
+            sites.append(YjsSite(
+                kind="write" if method in _ENTRY_WRITE_METHODS else "read",
+                channel=channel, file_path=rel_path, line=line_num,
+                api="yjs_entry", key=key, verb=method,
             ))
 
         # Awareness write patterns
@@ -370,6 +499,9 @@ def link_yjs_crdt(
         if not abs_path.exists():
             continue
         sites = _scan_file_for_yjs_patterns(abs_path, rel_path)
+        if is_test_file(rel_path):
+            # A test's own Y.Doc shares map names with every other test's.
+            sites = [site for site in sites if site.api != "yjs_entry"]
         for site in sites:
             if site.kind == "write":
                 all_writes.append(site)
@@ -396,6 +528,8 @@ def link_yjs_crdt(
             # awareness writes match awareness reads
             if write.api != read.api:
                 continue
+            if write.api == "yjs_entry" and not _entries_match(write, read):
+                continue
 
             dedup = (write.file_path, write.line, read.file_path, read.line)
             if dedup in seen_edges:  # pragma: no cover
@@ -406,13 +540,23 @@ def link_yjs_crdt(
             # Class B via js_ts_language_from_path), not a literal.
             pub_lang = js_ts_language_from_path(Path(write.file_path))
             sub_lang = js_ts_language_from_path(Path(read.file_path))
+            # An entry site names its entry, so it does not share an id with
+            # the accessor stand-in minted for the same line's ``getMap``.
+            if write.api == "yjs_entry":
+                pub_name, sub_name = _entry_label(write), _entry_label(read)
+                pub_label = f"yjs.{write.verb}({pub_name})"
+                sub_label = f"yjs.{read.verb}({sub_name})"
+            else:
+                pub_name, sub_name = write.channel, read.channel
+                pub_label = f"yjs.write({write.channel})"
+                sub_label = f"yjs.observe({read.channel})"
             pub_id = (
                 f"{pub_lang}:{write.file_path}:{write.line}-{write.line}"
-                f":{write.channel}:crdt_publisher"
+                f":{pub_name}:crdt_publisher"
             )
             sub_id = (
                 f"{sub_lang}:{read.file_path}:{read.line}-{read.line}"
-                f":{read.channel}:crdt_subscriber"
+                f":{sub_name}:crdt_subscriber"
             )
 
             if pub_id not in seen_sym_ids:
@@ -422,12 +566,12 @@ def link_yjs_crdt(
                     id=pub_id,
                     stable_id=None,
                     shape_id=None,
-                    display_label=f"yjs.write({write.channel})",  # ADR-0032
+                    display_label=pub_label,  # ADR-0032
                     fingerprint=hashlib.sha256(pub_id.encode()).hexdigest()[:16],
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.
                     kind="function",
-                    name=write.channel,
+                    name=pub_name,
                     path=write.file_path,
                     language=None,
                     discovery_language=pub_lang,
@@ -453,12 +597,12 @@ def link_yjs_crdt(
                     id=sub_id,
                     stable_id=None,
                     shape_id=None,
-                    display_label=f"yjs.observe({read.channel})",  # ADR-0032
+                    display_label=sub_label,  # ADR-0032
                     fingerprint=hashlib.sha256(sub_id.encode()).hexdigest()[:16],
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
                     # leak.
                     kind="function",
-                    name=read.channel,
+                    name=sub_name,
                     path=read.file_path,
                     language=None,
                     discovery_language=sub_lang,
