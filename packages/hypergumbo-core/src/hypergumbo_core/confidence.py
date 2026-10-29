@@ -75,6 +75,10 @@ from collections import defaultdict
 from typing import Any, Iterable
 
 from hypergumbo_core.evidence_types import find_evidence_type
+from hypergumbo_core.ir import (
+    CONFIDENCE_SOURCE_EMITTER_CONSTANT,
+    CONFIDENCE_SOURCE_EVIDENCE_DERIVED,
+)
 
 
 def derive_confidence(evidence_type: str, *, is_resolved: bool = True) -> float | None:
@@ -237,9 +241,9 @@ def find_constant_confidence_violations(
         if len(group) <= threshold:
             continue
         sources = {getattr(e, "confidence_source", None) for e in group}
-        if sources == {"emitter_constant"}:
+        if sources == {CONFIDENCE_SOURCE_EMITTER_CONSTANT}:
             continue
-        if sources == {"evidence_derived"} and all(
+        if sources == {CONFIDENCE_SOURCE_EVIDENCE_DERIVED} and all(
             _is_derivable(e) for e in group
         ):
             continue

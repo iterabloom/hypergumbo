@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **367** Python modules (150 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 113 core, 4 CLI, 37 tracker)
-- **57083** symbols (functions, classes, methods)
-- **228510** edges by type:
-  - calls: 129340
-  - contains: 53195
-  - imports: 19543
-  - instantiates: 12792
-  - references: 9766
-  - module_attr_ref: 2100
+- **57100** symbols (functions, classes, methods)
+- **228613** edges by type:
+  - calls: 129382
+  - contains: 53210
+  - imports: 19564
+  - instantiates: 12794
+  - references: 9777
+  - module_attr_ref: 2112
   - other: 1774
 
 ## Package Architecture
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 57083 Symbols + 228510 Edges + UsageContexts           │
+│  Output: 57100 Symbols + 228613 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -246,7 +246,7 @@ A relationship between two symbols (e.g., function calls).
 - `dst_ref`: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
 - `derived_from`: Symbol (or Edge) IDs of the INPUT records the producer consumed to construct this Edge (INV-rukor) — the records whose presence decided it, e.g. the unresolved edge a linker resolved or the inheritance edges a dispatch walked. Ids the producer MINTED in the same run are not consumed and are left out, so a pass that builds both ends from a file scan records ``[]`` — a positive "consumed nothing", distinct from ``None``. A value naming only the endpoints is legal where the endpoints ARE the whole derivation, and every such linker site declares why in its source (``test_edge_derived_from.py``). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
 - `confidence`: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
-- `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite`` / ``corroborated``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
+- `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``corroborated``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
 - `attribution`: ADR-0057 §6 provenance slot, set only by the merge pass when two producers' edges for one ``(src, dst, edge_type)`` are folded: ``{field: [pass_id, ...]}`` for ``confidence`` / ``evidence_type`` — who holds the value the scalar carries. ``None`` (and omitted from the dict form) on every other edge.
 - `alternatives`: ADR-0057 §6 candidate set on a folded edge: ``{field: [{"value", "origin": [pass_id, ...]}]}`` for the values the scalar does not carry; under ``confidence_source="corroborated"`` both producers' original confidences are here.
 - `rank_score`: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
@@ -284,18 +284,18 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 10563.1 | ir.py |
 | `len` | external_symbol | 8025.0 | <external> |
-| `write_text` | external_symbol | 7295.0 | <external> |
+| `write_text` | external_symbol | 7296.0 | <external> |
 | `Span` | class | 6772.6 | ir.py |
 | `LinkerContext` | class | 3792.8 | registry.py |
-| `get` | external_symbol | 3632.0 | <external> |
+| `get` | external_symbol | 3633.0 | <external> |
 | `load_catalog` | function | 3522.8 | io_boundary.py |
-| `Edge.create` | method | 2543.7 | ir.py |
+| `Edge.create` | method | 2637.0 | ir.py |
 | `str` | external_symbol | 2482.0 | <external> |
-| `Path` | external_symbol | 2470.0 | <external> |
+| `Path` | external_symbol | 2474.0 | <external> |
 | `next` | external_symbol | 2259.0 | <external> |
 | `load_framework_patterns` | function | 2099.7 | framework_patterns.py |
 | `TrackerApp` | class | 1975.3 | tui.py |
-| `append` | external_symbol | 1925.0 | <external> |
+| `append` | external_symbol | 1927.0 | <external> |
 | `main` | function | 1781.4 | cli.py |
 
 ## Pattern System
@@ -980,8 +980,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 4dc17759c791
-  commit_count: 8664
+  commit: 479300f97295
+  commit_count: 8665
   hypergumbo: 9.2.0
   python: 3.12.3
 -->

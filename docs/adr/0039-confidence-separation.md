@@ -54,7 +54,7 @@ Seven rulings, all decided. Rulings 1–5 were decided 2026-06-10; rulings 6 and
 
 - `evidence_derived` — confidence came through `derive_confidence(...)`.
 - `emitter_constant` — a hardcoded producer constant (the legacy state of the ~566 sites).
-- `composite` — confidence still carries blended ranking adjustment (transitional; eliminated by ruling 3).
+- `composite` — confidence still carries blended ranking adjustment (transitional; eliminated by ruling 3). **Retired 2026-10-28 (WI-daruz):** no producer ever stamped it, and it is no longer a legal value. ADR-0057 §13 has since added `corroborated`, so the live set is `evidence_derived | emitter_constant | corroborated`, compared everywhere through the `ir.CONFIDENCE_SOURCE_*` constants.
 
 The discriminator lets the ~566 hardcoded emitter constants migrate incrementally — each producer flips to `evidence_derived` as it adopts the derivation layer, with no flag-day — and makes the guarding property test expressible: **no emitter may produce a single constant confidence value across >100 edges without declaring `confidence_source=emitter_constant`.** The test fails any producer that silently re-grows a flat constant while claiming derivation.
 

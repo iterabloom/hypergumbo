@@ -799,13 +799,12 @@ def _edge_spec() -> ClassSpec:
                 ),
             },
             "confidence_source": {
-                "enum": ["evidence_derived", "emitter_constant", "composite", "corroborated"],
+                "enum": ["evidence_derived", "emitter_constant", "corroborated"],
                 "description": (
                     "Provenance of the confidence value (ADR-0039 ruling 2): "
                     "evidence_derived (from the evidence_type registry base), "
                     "emitter_constant (a declared hardcoded producer value), "
-                    "composite (still fuses a ranking adjustment ruling 3 "
-                    "relocates to rank_score), or corroborated (ADR-0057 §13: "
+                    "or corroborated (ADR-0057 §13: "
                     "two producers reached this edge by DISTINCT inference "
                     "pathways, so the value is the declared corroboration "
                     "level, not either producer's; both originals are in "

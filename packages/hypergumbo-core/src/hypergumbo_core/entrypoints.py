@@ -1852,16 +1852,22 @@ def detect_entrypoints(
         if ep.kind == EntrypointKind.LIBRARY_EXPORT:
             sym = symbol_lookup.get(ep.symbol_id)
             lang = sym.language if sym else None
-            is_vendored = sym is not None and sym.supply_chain_tier >= 3
-            if is_vendored or (lang and lang in langs_with_semantic):
+            # Tier >= 3 is vendored (3) OR derived (4) code: the ordinal
+            # reading of the tier is the documented contract (module docstring,
+            # ADR-0041), and a generated export is no more the repo's API than
+            # a vendored one. Named for both so the predicate says what it
+            # holds (WI-daruz; the 10-22 audit's tier-4 KEEP fired here).
+            is_vendored_or_derived = sym is not None and sym.supply_chain_tier >= 3
+            if is_vendored_or_derived or (lang and lang in langs_with_semantic):
                 ep.rank_score *= 0.1  # 90% ranking reduction, same as test penalty
-                # A vendored export is third-party code in every repo, so the
-                # demotion must stick — suppress the boost unconditionally.
+                # A vendored or derived export is not the repo's own API in any
+                # repo, so the demotion must stick — suppress the boost
+                # unconditionally.
                 # Infrastructure-path exports (telemetry/, metrics/, logging/)
                 # are internal plumbing, not developer-facing API, and get the
                 # same treatment (in gemini-cli, 77 telemetry exports survived
                 # at ~0.14 purely on the boost).
-                if is_vendored or (
+                if is_vendored_or_derived or (
                     sym and sym.path and is_infrastructure_path(sym.path)
                 ):
                     boost_suppressed_ids.add(ep.symbol_id)

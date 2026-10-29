@@ -83,7 +83,12 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from .arbitration import BUILTIN_POLICY, ArbitrationPolicy
 from .arbitration import SUPERSEDED_STUB_RANK_FACTOR as SUPERSEDED_STUB_RANK_FACTOR  # re-export: the §14 level
-from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
+from .ir import (
+    CONFIDENCE_SOURCE_EVIDENCE_DERIVED,
+    ExternalRef,
+    _compute_run_signature,
+    _parse_dangling_id,
+)
 from .module_sets import module_sets_for
 from .pass_metadata import PassMetadataLookup
 from .owner_ancestry import stamp_external_owner_ancestors
@@ -696,7 +701,7 @@ def _rederive_confidence_from_verdict(edge: "Edge") -> None:
     Idempotent: re-deriving from the same verdict yields the same value, so the
     sub-step is safe to re-enter.
     """
-    if edge.confidence_source != "evidence_derived":
+    if edge.confidence_source != CONFIDENCE_SOURCE_EVIDENCE_DERIVED:
         return
     from hypergumbo_core.confidence import derive_confidence, derive_resolved_confidence
     if not edge.is_resolved:

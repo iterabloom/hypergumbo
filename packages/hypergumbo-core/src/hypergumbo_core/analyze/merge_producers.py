@@ -132,6 +132,7 @@ from ..arbitration import (
 from ..arbitration import CORROBORATED_CONFIDENCE as CORROBORATED_CONFIDENCE  # re-export: the §13 level
 from ..pass_clock import PassClock
 from ..ir import (
+    CONFIDENCE_SOURCE_CORROBORATED,
     PASS_VERSION,
     AnalysisRun,
     Edge,
@@ -510,7 +511,7 @@ def _fold_edges(
         chosen: Dict[str, Candidate] = {}
         if distinct_pathways:
             chosen["confidence"] = (policy.corroborated_confidence, tuple(producers))
-            survivor.confidence_source = "corroborated"
+            survivor.confidence_source = CONFIDENCE_SOURCE_CORROBORATED
             report.corroborated += 1
         winners = _stamp_slot(
             survivor, members, ("confidence", "evidence_type"), precedence, chosen=chosen,
@@ -634,7 +635,7 @@ def _absorb_partial_external_keys(
         chosen: Dict[str, Candidate] = {}
         if distinct_pathways:
             chosen["confidence"] = (policy.corroborated_confidence, tuple(producers))
-            survivor.confidence_source = "corroborated"
+            survivor.confidence_source = CONFIDENCE_SOURCE_CORROBORATED
             report.corroborated += 1
         _stamp_slot(
             survivor, members, ("confidence", "evidence_type"), precedence, chosen=chosen,

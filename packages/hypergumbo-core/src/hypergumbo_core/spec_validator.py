@@ -149,6 +149,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Callable, Iterable, Optional
 
 from .receiver_blind_magnets import find_harmful_magnets
+from .ir import CONFIDENCE_SOURCE_CORROBORATED, VALID_CONFIDENCE_SOURCES
 
 VALIDATION_REPORT_SCHEMA_VERSION = "0.4"  # 0.4: WI-motiz added stable_id_stats.floor_cohort / floor_abstained (additive); 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
 
@@ -433,7 +434,7 @@ def _check_confidence_range(edges: Iterable[Any]) -> list[ValidationViolation]:
         conf = getattr(edge, "confidence", None)
         if ev is None or conf is None:
             continue
-        if getattr(edge, "confidence_source", None) == "corroborated":
+        if getattr(edge, "confidence_source", None) == CONFIDENCE_SOURCE_CORROBORATED:
             continue
         origin = getattr(edge, "origin", None) or []
         origins = [origin] if isinstance(origin, str) else list(origin)
@@ -517,9 +518,7 @@ _BOUNDED_ENUMS: dict[tuple[str, str], frozenset[str]] = {
     # ADR-0039 ruling 2: Edge.confidence_source provenance discriminator.
     # Kept in lockstep with ir.VALID_CONFIDENCE_SOURCES by
     # test_spec_validator's drift guard.
-    ("Edge", "confidence_source"): frozenset({
-        "evidence_derived", "emitter_constant", "composite", "corroborated",
-    }),
+    ("Edge", "confidence_source"): VALID_CONFIDENCE_SOURCES,
 }
 
 
