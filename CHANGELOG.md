@@ -19,7 +19,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A C/C++ module slot naming several headers is a handle** (`module-set-<16 hex>`) into a new top-level `module_sets` table (`SCHEMA_VERSION` 0.20.15 → 0.21.0). A reader that splits the slot on commas must expand it there first.
 - **§3a walk verdicts `confirmed` / `unconfirmed` are `reached` / `refuted`** (`verify-claims` envelope 2.6 → 3.0), so a walk verdict no longer shares a word with a claim verdict.
 - **An exit status is no longer a taint source** (ADR-0049); the child's output still is.
-- **Command-line arguments are `untrusted_input` as well as `host_secret`**, through a new `command_line_read` boundary beside `env_read` on every argv row (WI-zidam). `verify-claims` sets these flows aside and counts them in a new per-verdict `command_line_flows` (envelope 3.0 → 3.1); a claim counts them with `taint_flow.include_command_line: true`. `document.cookie` is now browser storage, keeping `host_secret`.
+- **`confidence_source` drops `composite`, which nothing produced** (schema 0.21.0).
+- **Command-line arguments are `untrusted_input` too**; `verify-claims` sets their flows aside unless a claim counts them (envelope 3.1).
 - **A `calls` edge's `src` is the code unit making the call** (ADR-0023). No output changes.
 
 ### Added
@@ -35,12 +36,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
-- **A linker stand-in takes its file's supply-chain distance** (WI-zuzud): stand-ins were never tiered, so one inside a minified bundle stayed in the output as first-party while the tier filter removed the code around it. They now leave with the bundle.
-- **Nine keep-with-trigger records whose trigger had already fired are acted on and closed** (WI-daruz): bash's `redirect` module key is the shell's namespace, not a placeholder; `UsageContext.kind` declares the `library_export` value producers have emitted since January, drops `data_value`, and a test now fails on an undeclared produced value; `Edge.confidence_source` loses `composite` (no producer; schema 0.21.0 narrows) and every reader compares through named constants; the tier-4 predicate in entrypoint ranking is named for what it holds; the pass-silence Pair B and audit-methodology triggers are re-verdicted in their records. Eight framework usage rules that can never match are pinned and filed (WI-dozav).
-- **The frameworks, library_signatures, function_summaries and dataflow_patterns loaders refuse a key nothing reads** (WI-hapon), naming it with a near-miss hint, as taint and io_primitives already do. Deleted as unread: `linkers:` (101 framework files; a linker's activation is its `LinkerActivation`) and `detect:` (3), `module_completeness: partial` (5 library-signature files), and the `calls:` dataflow section (no file produced it). Three framework rules spelled with the unread `name_pattern` / `usage_call` matched nothing and are deleted with a note; the Graphene-resolver and zio-http route gaps they hid are filed (WI-sorop).
-- **A community I/O overlay can no longer declare a call not I/O** (WI-pofal): its `stdlib_other` entries are withheld with its `module_completeness` grants (ADR-0061 ruling 2), so `io-boundaries` keeps reporting the uncatalogued call as possible I/O. Measured: no `verify-claims` verdict depended on it.
-- **An `io_primitives` catalogue or overlay refuses a key nothing reads** (WI-hapon), at the top level, in a boundary row, a `stdlib_other` row and a completeness entry, naming the key with a near-miss hint. `net_sendd:` or `function:` used to load zero rows silently; the shipped bash template's `fs_delete:` section did, and its rm/shred rows are now `fs_write`.
-- **Every linker call-site stand-in is attached to the function it sits in** (WI-pokuz): Electron and Phoenix IPC sends and receives, message dispatch, crypto flow, gRPC and GraphQL clients, the two bridge callers, and `call_site` nodes (HTTP, database, subprocess, solidity ABI) had no edge from any real symbol, because the list the enclosure pass reads had drifted from what the linkers write. That list now partitions every role a linker writes, checked against the linker sources.
+- **A linker stand-in takes its file's supply-chain tier.**
+- **Every catalogue loader refuses a key nothing reads**, naming it.
+- **A community overlay can no longer declare a call not I/O.**
+- **Every linker call-site stand-in is attached to its enclosing function.**
 #### Pass disclosure and identity
 
 - **Every pass that ran is in `analysis_runs`, and one that found nothing says why**, including framework patterns, five post-passes and 13 more linkers.
