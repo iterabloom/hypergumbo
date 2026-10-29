@@ -1,0 +1,35 @@
+Original commit body from ed4b9305d7b992c03dbd034b9f1581116372b1f3:
+
+pytest exits 0 when every collected test skipped, and the Woodpecker
+per-PR pytest step read only the exit code (it already failed exit 5,
+"collected nothing", since INV-tazur). So a selection whose every test
+skipped passed the gate while smart-test locally called the same run
+ZERO TESTS EXECUTED. Reproduced before the fix by executing the real
+step block through test_ci_pytest_selection_gate's harness with a stub
+pytest printing "1 skipped" and exiting 0: the step exited 0.
+
+The step now passes --junit-xml to pytest and, on exit 0, counts the
+testcases that ran by smart-test's count_executed_tests rule: a skip does
+not count, an xfail (junit reports it as a skip) does. Zero fails with
+exit 5 and says so; no readable report fails closed (exit 1) -- the gate
+cannot count, so it does not pass. A nonzero count is printed.
+
+The counting snippet is inline, not shared with smart-test: smart-test's
+own harness drives its functions extracted from the file, and the step
+runs before anything is installed from scripts/. Two copies of the rule,
+each pointing at the other's name.
+
+Tests (the real block, driven): the stub pytest now writes the junit
+report a test gives it (default: one passed testcase). New: all skipped
+-> exit 5; one passed beside a skip -> exit 0 and the count printed; an
+xfail alone -> exit 0; no report -> fails, named. Each asserts pytest ran
+and was handed --junit-xml first. Mutation-checked: making the zero
+branch or the no-report branch pass reds exactly its own test. The
+extracted snippet reads a real xdist junit report (19 testcases).
+
+Not changed: the dormant .github/workflows/ci.yml pytest job, which has
+the same shape; GitHub Actions runs only release.yml.
+
+Addresses INV-zuvij.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
