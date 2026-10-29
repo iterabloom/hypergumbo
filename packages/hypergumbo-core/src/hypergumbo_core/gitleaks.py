@@ -50,7 +50,10 @@ runs through ``repo_inspect_scan`` (WI-fasuv), the ``repo_inspection``
 SUBPROCESS zone rather than a filesystem one. It reads every byte of output
 handed to it on stdin (``gitleaks stdin``), so it is binned separately from
 the writes above and is the sink that matters most when reasoning about
-what this module can reach.
+what this module can reach. It runs in an empty ``tmp_artifact_dir`` and
+reports on ``-`` (INV-nihab): gitleaks reads its config and ignore files
+from its working directory, which would otherwise be the analysed
+repository, and it unlinks a report PATH before writing it.
 
 The goal is safety by default without requiring a PhD to configure.
 """
@@ -310,19 +313,31 @@ def scan_content(content: str) -> list[SecretFinding]:
         # test_gitleaks.py (TestScanContentRealBinary) exists to catch that.
         # WI-fasuv: repo_inspection zone. This is the widest-reading member --
         # it sees every byte of content handed to it on stdin.
-        result = repo_inspect_scan(
-            [
-                str(gitleaks),
-                "stdin",  # Read the content to scan from stdin
-                "--report-format", "json",
-                "--report-path", "/dev/stdout",  # Output findings to stdout
-                "--exit-code", "0",  # Don't exit non-zero on findings
-                "--no-banner",  # Keep the ASCII logo out of stderr
-            ],
-            input=content.encode("utf-8"),
-            capture_output=True,
-            timeout=30,
-        )
+        #
+        # INV-nihab: gitleaks reads `.gitleaks.toml` and `.gitleaksignore` from
+        # its working directory, and the inherited one is normally the analysed
+        # repository, which could then allowlist its own secrets out of this
+        # scan. So it runs in an empty scratch directory of its own; an
+        # operator who wants a config passes it through gitleaks' own
+        # GITLEAKS_CONFIG / GITLEAKS_CONFIG_TOML, which are theirs, not the
+        # repository's. And it reports on `-`: given `/dev/stdout` as a report
+        # PATH, gitleaks unlinks it before writing, which succeeds as root (the
+        # usual user in a container).
+        with tmp_artifact_dir(prefix="hypergumbo-gitleaks-") as scan_cwd:
+            result = repo_inspect_scan(
+                [
+                    str(gitleaks),
+                    "stdin",  # Read the content to scan from stdin
+                    "--report-format", "json",
+                    "--report-path", "-",  # Findings on stdout
+                    "--exit-code", "0",  # Don't exit non-zero on findings
+                    "--no-banner",  # Keep the ASCII logo out of stderr
+                ],
+                input=content.encode("utf-8"),
+                capture_output=True,
+                timeout=30,
+                cwd=scan_cwd,
+            )
     except subprocess.TimeoutExpired:
         # Scan took too long, skip
         return []

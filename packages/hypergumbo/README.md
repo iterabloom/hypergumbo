@@ -159,7 +159,7 @@ The allowlist gate currently records these open findings:
 - Unless you turn on the rust-analyzer backend, hypergumbo parses the repository's code and never runs it.
 - Catalogue data inside the repository (the catalogue keys in `.hypergumbo.toml` and the files in `.hypergumbo/<family>.d/`) is ignored until you opt in with `--in-repo-catalogues` or `hypergumbo trust-catalogues` ([ADR-0061](https://github.com/iterabloom/hypergumbo/blob/dev/docs/adr/0061-catalogue-tiers-for-every-family.md)). Its preferences do load by default, and that is how it can switch on scip-python.
 - It cannot turn on the rust-analyzer backend, and it cannot make hypergumbo write into it.
-- If gitleaks is installed, the repository's own `.gitleaks.toml` and `.gitleaksignore` can hide secret-scan findings (INV-nihab).
+- If gitleaks is installed, it runs in an empty directory of its own, so the repository's `.gitleaks.toml` and `.gitleaksignore` cannot hide secret-scan findings. Your own `GITLEAKS_CONFIG` still applies.
 - It does control everything the parsers read. hypergumbo has no sandbox of its own, so a file crafted to exploit a parser bug would run with your permissions.
 
 **Running it confined.**
