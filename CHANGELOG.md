@@ -58,6 +58,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **New symbols**: Swift initialisers and deinitialisers, Rust `type` aliases, Dockerfile per-stage variables, and Pony `actor` / `primitive` kinds; Python class-body calls emit edges.
 - **Slice reaches the members of a Kotlin/Scala `object`, a `record`, a `union` or a Go `type`**: slice and the containment linker read one container set.
 - **A Yjs map entry read links from its writer**, by map and key; `getMap<T>()` is recognised.
+- **A Go function named in a slice literal or local binding is referenced.**
 
 #### I/O boundaries and taint
 
