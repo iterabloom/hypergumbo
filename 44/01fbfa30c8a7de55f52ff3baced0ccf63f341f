@@ -1,0 +1,40 @@
+Original commit body from 24e95600b7d08e18d738e7e010e0d981e3f9ab2d:
+
+The ini and properties analyzers print a setting's value into the
+signature, so each carried its own sensitive-key list and mask, and the
+two had drifted apart in both directions:
+
+- ini matched keywords as substrings (keyboard_layout, author, monkey
+  were hidden) and masked as v[0] + '*'*(n-2) + v[-1], so
+  `password = hunter22` printed `password = h******2`: the length and two
+  characters of every password it hid.
+- properties masked with "***" but listed five keywords, so
+  `db.passwd=hunter23` and `auth.pwd=hunter24` printed raw.
+
+Both now use hypergumbo_core.analyze.config_secrets: a key is split into
+words on separators and case humps; it is sensitive when a word (or two
+adjacent words run together) ends with a long stem -- password, passwd,
+passphrase, secret, token, credential, apikey, accesskey, secretkey,
+privatekey, privkey -- or when its LAST word is a short one -- key, pass,
+pw, pwd, auth, authorization, tlskey, sslkey. The mask is the constant
+"***".
+
+Corpus A/B: every key of the 128 corpus repos with .ini / .properties
+files (141,381 INI settings, 135,039 properties), classified by the old
+and the new rule, every changed key read:
+- newly masked: the openstack packstack *_PW passwords, stomp_pass,
+  default_pass, signing.gnupg.passphrase, and Authorization / auth keys;
+- newly shown: message-bundle labels (forgejo webauthn_* / auths.*,
+  keycloak passkey-* / keycloak-saml.*), commits.author, keystore and
+  keytab paths, X.509 extension names (keyUsage, subjectKeyIdentifier),
+  kafka key.serializer, and spring-boot's cdkey MIME mapping.
+cert / certificate / private / encryption are no longer sensitive alone:
+their values are paths, algorithms, flags or public certificates.
+
+Probed every other format the survey reads with --include-docs (TOML,
+YAML, .env, Dockerfile ENV/ARG, compose environment, Terraform, Makefile,
+CMake, XML, shell, Python and JS constants, BitBake): none prints the
+value. scss prints `$var: value`, left out on purpose (`token` is
+design-system vocabulary there).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
