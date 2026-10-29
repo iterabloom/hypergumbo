@@ -152,7 +152,10 @@ class TestWhatMustNotEmit:
             "function handle(ev) { return ev; }\n"
             "function setup() { let h; h = handle; return h; }\n"
         )})
-        assert _refs(edges, by_id) == []
+        # Not a property write: no object-field or registration stamp. The
+        # binding itself names ``handle`` as a stored function value
+        # (META-mino), which taint does not walk.
+        assert _refs(edges, by_id) == [("setup", "handle", "function_reference")]
 
     def test_own_file_handler_wins_over_another_files(self, tmp_path: Path) -> None:
         edges, by_id = _run(tmp_path, {
