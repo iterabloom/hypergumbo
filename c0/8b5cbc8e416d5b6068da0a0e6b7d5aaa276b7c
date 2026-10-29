@@ -1,0 +1,9 @@
+Original commit body from 97a95d006745a3714d71424232eb4f0e3c7d49bf:
+
+Places the four loose Fixed bullets in their subsections, merges the two
+unknown-key bullets and the two community-overlay bullets, and adds what
+was missing: document.cookie as browser storage, the bash template's
+rm/shred rows, and the catalogue keys, fields and dead framework rules
+deleted with the strict loaders. No tracker-package commits in range.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
