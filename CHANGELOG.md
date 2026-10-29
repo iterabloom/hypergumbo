@@ -71,6 +71,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The taint-side gates are `requires_target_boundary` / `requires_mode_boundary`.**
 - **A user taint row replaces only the label or zone it restates.**
 - **A collapsed taint row is judged by its whole group**, not its first member; the `choice_shaped_source` caveat applies only to `untrusted_input`.
+- **Taint picks the vouched row io-boundaries picks**, not a community overlay's twin.
 - **Taint walks module-level Python and JS/TS code** and reads through walrus, nested assignments and closures, and drops false leaks from `build_opener().open(url)` and Go's `_, err := get()`.
 - **Constructing a class no longer taints its class body**: a value reaching a type node stops there.
 

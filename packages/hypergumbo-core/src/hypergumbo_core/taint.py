@@ -314,11 +314,23 @@ class TaintSource:
     # answers, 19 lost sources on six repositories. Set by the derivation from
     # the same reordered row list the classifier reads, never by hand.
     abstention_fallback: bool = False
+    #: True for a row from a file declaring ``provenance: community``: a
+    #: community taint file, or the community io_primitives overlay the row
+    #: was derived from (ADR-0061). Read as :attr:`unvouched` by the shared
+    #: row choice (INV-tobur). Stamped at load, never read from the YAML.
+    community: bool = False
 
     @property
     def qualified_name(self) -> str:
         """Full dotted name: module.name."""
         return f"{self.module}.{self.name}"
+
+    @property
+    def unvouched(self) -> bool:
+        """The bit :func:`io_boundary.gate_named_entry` sorts on (ADR-0047):
+        a vouched row is preferred to a community twin, as io-boundaries
+        prefers it for the same call (INV-tobur)."""
+        return self.community
 
 
 #: The one ``TaintSink.trust_level`` value that changes a verdict (WI-lukoz).
@@ -408,6 +420,11 @@ class TaintSink:
     def trusted(self) -> bool:
         """Whether this sink's flows are set aside as trusted (WI-lukoz, WI-savoh)."""
         return self.trust_level == TRUST_LEVEL_TRUSTED and not self.community
+
+    @property
+    def unvouched(self) -> bool:
+        """The bit the shared row choice sorts on; see :attr:`TaintSource.unvouched`."""
+        return self.community
 
 
 @dataclass(frozen=True)
@@ -2286,6 +2303,10 @@ def _derive_auto_imports_from_io_primitives(
                     # boundary so the collapse is reversible downstream
                     # (WI-vazal) instead of information the label ate.
                     source_boundary=prim.boundary,
+                    # INV-tobur: the overlay's provenance travels with the
+                    # row, so the shared gate prefers the vouched twin here
+                    # exactly as it does for io-boundaries.
+                    community=prim.unvouched,
                 ))
             if prim.boundary in AUTO_SINK_ZONE_MAP:
                 zone, trust = AUTO_SINK_ZONE_MAP[prim.boundary]
@@ -2313,6 +2334,7 @@ def _derive_auto_imports_from_io_primitives(
                     # resolved in the WRITE direction at match time.
                     requires_target_boundary=gated_boundary,
                     abstention_fallback=is_fallback,
+                    community=prim.unvouched,  # INV-tobur, as above
                 ))
 
     return dict(sources_by_lang), dict(sinks_by_lang), ambiguous_by_lang
@@ -2758,7 +2780,9 @@ def load_builtin_taint_catalog(
     # disclosing -- the vouched row stayed.
     community = load_taint_catalog(*community_paths)
     user_catalog._sources, _ = _merge_with_user_override(
-        community._sources, user_catalog._sources,
+        {lang: [replace(src, community=True) for src in srcs]
+         for lang, srcs in community._sources.items()},
+        user_catalog._sources,
     )
     user_catalog._sinks, _ = _merge_with_user_override(
         {lang: [replace(sink, community=True) for sink in sinks]

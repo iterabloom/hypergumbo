@@ -66,8 +66,9 @@ class TestTheGateOrdersVouchedFirst:
         assert gate_named_entry(hits, "open", None, frozenset()).boundary == "fs_read"
 
     def test_a_hit_without_the_attribute_is_treated_as_vouched(self) -> None:
-        """Duck-typed callers (taint's TaintSink/TaintSource) carry no
-        ``unvouched`` field; they must not start sorting last."""
+        """A duck-typed hit with no ``unvouched`` attribute must not start
+        sorting last. (Taint's rows carry one since INV-tobur:
+        test_taint_prefers_vouched_rows.)"""
         class Bare:
             module, name, kind = "os", "getenv", "function"
         assert gate_named_entry([Bare()], "getenv", None, frozenset()) is not None
