@@ -5968,6 +5968,38 @@ def _extract_edges(
                 target = lookup_result.symbol
         return target
 
+    def _emit_value_reference(
+        site: "tree_sitter.Node", value_node: "tree_sitter.Node", evidence: str,
+    ) -> None:
+        """A ``references`` edge to the function a bare identifier in value
+        position names, from the enclosing function or the module.
+
+        Shared by the object-literal arms and the META-mino bindings and
+        arrays. A name that resolves to no function, to the referencing
+        function itself, or across an npm package boundary names nothing.
+        """
+        target = _resolve_value_ref(value_node, _node_text(value_node, source))
+        if (
+            target is None
+            or target.kind not in ("function", "method")
+            or _is_cross_package(file_path, target.path)
+        ):
+            return
+        current_function = _get_enclosing_function(
+            site, source, file_path, global_symbols,
+            symbol_by_position, line_offset,
+        ) or module_symbol
+        if current_function is not None and target.id != current_function.id:
+            edges.append(Edge.create(
+                src=current_function.id,
+                dst=target.id,
+                edge_type="references",
+                line=site.start_point[0] + 1 + line_offset,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type=evidence,
+            ))
+
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
@@ -7078,6 +7110,16 @@ def _extract_edges(
                             ),
                         ))
 
+            # META-mino: ``f = handler`` -- a plain name bound to a function.
+            if (
+                node.type == "assignment_expression"
+                and _lhs is not None
+                and _lhs.type == "identifier"
+                and _rhs is not None
+                and _rhs.type == "identifier"
+            ):
+                _emit_value_reference(node, _rhs, "function_reference")
+
         # Object literal function references: {onClick: handleClick}
         # AST: pair → property_identifier : identifier
         # When the value is a bare identifier that resolves to a function,
@@ -7091,56 +7133,28 @@ def _extract_edges(
                 elif seen_colon and pair_child.type == "identifier":
                     value_node = pair_child
                     break
-
+            # Cross-package guard: object field refs should not
+            # cross npm package boundaries (inside the helper).
             if value_node is not None:
-                ref_name = _node_text(value_node, source)
-                target = _resolve_value_ref(value_node, ref_name)
-                # Cross-package guard: object field refs should not
-                # cross npm package boundaries.
-                if (
-                    target is not None
-                    and target.kind in ("function", "method")
-                    and not _is_cross_package(file_path, target.path)
-                ):
-                    current_function = _get_enclosing_function(
-                        node, source, file_path, global_symbols,
-                        symbol_by_position, line_offset,
-                    ) or module_symbol
-                    if current_function is not None and target.id != current_function.id:
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=target.id,
-                            edge_type="references",
-                            line=node.start_point[0] + 1 + line_offset,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="object_field_reference",
-                        ))
+                _emit_value_reference(node, value_node, "object_field_reference")
 
         # Shorthand property: {handleClick} — equivalent to {handleClick: handleClick}
         elif node.type == "shorthand_property_identifier":
-            ref_name = _node_text(node, source)
-            target = _resolve_value_ref(node, ref_name)
-            # Cross-package guard: shorthand props should not cross packages
-            if (
-                target is not None
-                and target.kind in ("function", "method")
-                and not _is_cross_package(file_path, target.path)
-            ):
-                current_function = _get_enclosing_function(
-                    node, source, file_path, global_symbols,
-                    symbol_by_position, line_offset,
-                ) or module_symbol
-                if current_function is not None and target.id != current_function.id:
-                    edges.append(Edge.create(
-                        src=current_function.id,
-                        dst=target.id,
-                        edge_type="references",
-                        line=node.start_point[0] + 1 + line_offset,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        evidence_type="object_field_reference",
-                    ))
+            _emit_value_reference(node, node, "object_field_reference")
+
+        # META-mino: a function VALUE stored in a declaration or an array --
+        # ``const f = handler`` (module level or local), ``[a, b]`` (a
+        # dispatch table). The plain-assignment twin, ``f = handler``, is in
+        # the assignment arm above. Not a callback registration, so taint does
+        # not walk it: storing a function is not calling it.
+        elif node.type == "variable_declarator":
+            value_node = node.child_by_field_name("value")
+            if value_node is not None and value_node.type == "identifier":
+                _emit_value_reference(node, value_node, "function_reference")
+        elif node.type == "array":
+            for element in node.named_children:
+                if element.type == "identifier":
+                    _emit_value_reference(node, element, "function_reference")
 
     return edges
 
