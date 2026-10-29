@@ -1,0 +1,43 @@
+Original commit body from c2b517f7af2235f84e027a31aa41f2cb224c4f5e:
+
+scan_content ran `gitleaks stdin --report-path /dev/stdout` in the
+inherited working directory. Two consequences, both reproduced on dev
+4892851370 with gitleaks 8.30.0:
+- gitleaks reads .gitleaks.toml and .gitleaksignore from its cwd, which
+  is the analysed repository for `hypergumbo .`. Through the production
+  scan_content, a GitHub PAT gave 1 finding from an empty cwd and 0 from a
+  cwd holding a .gitleaks.toml allowlist: the repository could empty the
+  secret scan run on it.
+- gitleaks removes and recreates its report path: strace shows
+  openat(/dev/stdout, O_CREAT|O_TRUNC) then unlinkat(/dev/stdout) and
+  unlinkat(..., AT_REMOVEDIR), EACCES as an ordinary user. As root (the
+  usual user in a container) the unlink can succeed; that half is
+  derived, not observed -- this host blocks user namespaces and has no
+  docker access.
+
+Now the scan runs in an empty tmp_artifact_dir of its own (cwd=) and
+reports on `-`. An operator who wants a config still has gitleaks' own
+GITLEAKS_CONFIG / GITLEAKS_CONFIG_TOML, which are theirs, not the
+repository's. After the fix: the same probe gives 1 finding from the
+configured cwd; strace of a full `hypergumbo sketch` on a repo holding
+.gitleaks.toml and .gitleaksignore shows gitleaks looking for both only in
+its scratch directory (ENOENT) and no /dev/stdout operation; its argv
+carries `--report-path -`.
+
+README's untrusted-repository list said the repository's gitleaks files
+can hide findings; it now says they cannot and that GITLEAKS_CONFIG
+applies. The runtime-cli claim text (docs/hypergumbo.claims.yaml) says
+the scan runs in an empty scratch directory; SECURITY.md regenerated.
+
+Tests: TestScanRunsInADirectoryOfItsOwn (mocked, runs everywhere) --
+gitleaks is invoked with `--report-path -` and no /dev/stdout, and with a
+cwd that is not the caller's, empty at launch though the caller's cwd
+holds .gitleaks.toml and .gitleaksignore, and removed afterwards.
+TestScanContentRealBinary gains: a .gitleaks.toml allowlist in the cwd
+does not hide an AWS key (gated on the binary, like its siblings).
+Mutation-checked: dropping cwd= reds the cwd test and the real-binary
+test; restoring /dev/stdout reds the report test.
+
+Addresses INV-nihab.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
