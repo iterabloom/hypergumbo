@@ -106,6 +106,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Reader census** ([`docs/audits/0023-reader-census.md`](docs/audits/0023-reader-census.md)): what nothing reads and what nothing produces, across fields, meta keys, knobs, functions and kept-with-trigger verdicts.
 - **ADR-0050 §1**: a primary boundary names the medium; a `simultaneous` second is a label's reading or a second crossing. `env_read` may carry a credential.
 - **ADR-0041 §1**: tier is the distance of a node's code from the project.
+- **ADR-0062**: the tracker's live Yjs document is a projection of the ops log, never its replacement.
 - Module docstrings: 42 corrected, 12 extended.
 - The spec documents 63 `symbol_meta` keys; two playbooks record their latest runs; `ALLOWED_WEBSITES.md` permits discuss.python.org; ARCHITECTURE.md regenerated.
 
