@@ -1,0 +1,9 @@
+Original commit body from 51674c4a967b836340aeff24e5f7b83984f95f22:
+
+Unreleased ran 1,365 words over 113 commits (12.1 per commit) against the
+owner's 9-10 and 9.2.0's 9.7. Now 1,046 words, 9.3 per commit: bullets lose
+mechanism detail the commits and ADRs carry, Unix-socket and the two
+Removed API bullets are merged, Pony kinds join New symbols. Every ADR
+reference and version transition is kept.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
