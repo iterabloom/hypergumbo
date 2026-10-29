@@ -1,0 +1,55 @@
+Original commit body from d096af31529b622c4e1716be5c000286cf112809:
+
+Python puts a script's own directory first on sys.path, and pytest's
+default prepend mode inserts a test-tree file's basedir. So `import
+conftest` in tests/test_a.py and `import util` in scripts/run.py name
+first-party files. _extract_import_edges looked a bare import up only by
+its source-root dotted name (conftest, util), missed, and minted an
+external_symbol the dependency linker then counted as a third-party
+import (INV-nuzas's family; this is a child of INV-nuzas). Calls through
+those modules already resolved in-tree; only the import edge did not.
+
+The importer's own sys.path directory is now tried after every existing
+arm, for the two runs that have one below the source root:
+- a test-tree file (test_*.py, *_test.py, conftest.py, or a module under
+  a tests/test directory): the nearest directory upward without an
+  __init__.py, pytest's basedir rule;
+- a script run directly (a top-level main guard, not __main__.py) in a
+  directory that is not a package: that directory.
+Anything else gets nothing: inside a package Python 3 has no implicit
+relative import, and a library module's directory is never on sys.path.
+In `from X import Y` the submodule X.Y is tried before X, as the
+source-root arm does.
+
+Corpus A/B (survey, dev bf610aad12 vs this branch, ~/hg_meas/tugim/), every
+changed edge read:
+- libvirt-ci: 10 import edges move from external_symbol to the in-tree
+  file (tests/*.py and conftest.py importing test_utils.utils and
+  test_utils.mocks.{libvirt,gi}); nodes 1347 -> 1345, edge count equal.
+- vmaf: 5 (python/test/*_test.py importing vmaf, vmaf.core.*,
+  vmaf.tools.misc, basedir python/); nodes 6060 -> 6057.
+- poetry: unchanged (0 edges). A first cut keyed on "nearest non-package
+  directory" for EVERY importer resolved stdlib `import json` in
+  src/poetry modules to src/poetry/json/ (14 import edges out, 12 in) --
+  src/poetry is a PEP 420 namespace package. That is why the rule names the two runs that put a
+  directory on sys.path; the corpus found it, the suite did not, and it
+  is now a test. The same first cut sent `from vmaf.core import
+  quality_runner, train_test_model` to core/__init__.py: hence submodule
+  first.
+
+Tests: test_py_same_directory_import.py (production run_behavior_map):
+conftest, script, from-import, basedir above a package subdirectory,
+submodules each to their file; controls: a bare import inside a package
+stays external, a namespace-package library module does not shadow the
+stdlib, a library module beside a script gets no fallback, a third-party
+import beside a sibling stays external. Mutation-checked: no fallback
+reds 4; no walk past package directories reds the basedir test and the
+package control.
+
+Not changed: precedence. Python searches the script directory BEFORE the
+source root; here it is tried after, so an import that already resolved
+keeps its resolution.
+
+Addresses INV-tugim.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
