@@ -32,14 +32,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`catalog.validate_pass_dependencies`**, which nothing called (ADR-0056, ADR-0030).
 - **`DataModel.kind`, `DataModelKind` and `DataModel.to_dict()`**, which nothing read.
+- **Catalogue keys and fields nothing read**: framework `linkers:` and `detect:` sections (`FrameworkPatternDef.linkers`), library-signature `module_completeness`, `DataflowConfig.calls` and `UsageContext.kind` `data_value`. Three framework rules that matched nothing are deleted (a Graphene resolver rule, two zio-http route rules).
 - **The aardvark-dns fixture's `Cargo.lock`**; a test now fails on committed lockfiles and `==` pins.
 
 ### Fixed
 
-- **A linker stand-in takes its file's supply-chain tier.**
-- **Every catalogue loader refuses a key nothing reads**, naming it.
-- **A community overlay can no longer declare a call not I/O.**
-- **Every linker call-site stand-in is attached to its enclosing function.**
 #### Pass disclosure and identity
 
 - **Every pass that ran is in `analysis_runs`, and one that found nothing says why**, including framework patterns, five post-passes and 13 more linkers.
@@ -55,6 +52,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Python calls through a dotted module path bind in the tree**, as do method calls on in-tree module constants.
 - **A resolver-graded call keeps its graded confidence** (ADR-0039 ruling 6) through finalize; on apollo-server 244 of 18,684 edges move, all downward.
 - **Finalize keeps typed binds** for methods named like stdlib interfaces (`Close`, `Parse`), in C++ and in Java, C# and Kotlin static initializers.
+- **Every linker call-site stand-in is attached to its enclosing function.**
 - **A Python local named like a field no longer retypes `self.<field>`.**
 - **Kotlin and Scala receivers with a bare `java.lang` type name `java.lang`**, so `verify-claims` sees the launch.
 - **New symbols**: Swift initialisers and deinitialisers, Rust `type` aliases, and Dockerfile variables per build stage. Python class-body calls emit edges.
@@ -70,9 +68,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A taint claim on a zone with no sink for a present language is withheld for every built-in zone**, not only `code_execution` / `dom_injection`: Go's `database` claims read `confirmed`.
 - **A user overlay no longer lowers its catalogue's status**, which turned unrelated chains `[unreliable]`, and declares none itself.
 - **The taint-side `requires_target_kind` / `requires_mode` are `requires_target_boundary` / `requires_mode_boundary`**: they hold a boundary, not a target kind or mode.
-- **A taint catalogue key nothing reads is refused** (exit 2), not silently ignored: an `attributes:` source loaded and contributed nothing.
+- **`document.cookie` is `browser_storage_read`**, alongside `env_read`.
+- **Every catalogue loader refuses a key nothing reads**, naming it: a taint `attributes:` source loaded and contributed nothing, and the bash template's `rm` / `shred` rows (now `fs_write`) loaded as nothing.
 - **A shipped catalogue file is `builtin` only when it declares so**, under every reader, and a default overlay's `provenance` must be `community`.
-- **A community sink's `trust_level: trusted` is withheld and named** (`withheld_community_trust`), and **a catalogue file named on the command line is `yours`** even inside the repository (ADR-0061 rulings 1–2).
+- **A community overlay can no longer declare a call not I/O, and its sink's `trust_level: trusted` is withheld and named** (`withheld_community_trust`); **a catalogue file named on the command line is `yours`** even inside the repository (ADR-0061 rulings 1–2).
 - **A user taint row replaces only the label or zone it restates**, not every label or zone of the function.
 - **A collapsed taint row is judged by its whole group**, not its first member; the `choice_shaped_source` caveat counts rows and applies only to `untrusted_input`.
 - **Taint walks module-level Python and JS/TS code**, reaches reads through walrus, nested assignments and closures, and drops false leaks from `build_opener().open(url)` and Go's `_, err := get()`.
@@ -80,6 +79,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Dead code, tiers and sketch
 
+- **A linker stand-in takes its file's supply-chain tier**, so one inside a minified bundle is filtered with the bundle.
 - **Code called only from module level or a class body is not dead or untested**, in `dead-code-maybe`, `test-coverage` and sketch alike. On django, 43 more functions are tested and none is newly dead.
 - **A dependency declaration naming an in-tree package has that package's tier** (ADR-0041 §1), across five ecosystems; on nest, 172 of 1,379 declarations move from tier 3 to tier 1.
 - **An external dependency declaration carries `directness: direct` and an `ecosystem`**, so `supply_chain_summary` no longer counts every declaration as `unknown`.
