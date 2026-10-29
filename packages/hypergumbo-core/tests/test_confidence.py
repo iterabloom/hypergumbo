@@ -248,9 +248,9 @@ def test_guard_empty_is_clean():
 
 
 def test_guard_group_at_or_below_threshold_is_ignored():
-    # 100 edges (== default threshold) at one composite constant -> not > threshold.
+    # 100 edges (== default threshold) at one corroborated constant -> not > threshold.
     edges = _edges(100, src="emit", confidence=0.5,
-                   evidence_type="naming_convention", confidence_source="composite")
+                   evidence_type="naming_convention", confidence_source="corroborated")
     assert find_constant_confidence_violations(edges) == []
 
 
@@ -269,15 +269,15 @@ def test_guard_evidence_derived_at_registry_base_is_clean():
     assert find_constant_confidence_violations(edges) == []
 
 
-def test_guard_composite_constant_is_flagged():
+def test_guard_non_emitter_constant_is_flagged():
     edges = _edges(150, src="emit", confidence=0.5,
-                   evidence_type="naming_convention", confidence_source="composite")
+                   evidence_type="naming_convention", confidence_source="corroborated")
     violations = find_constant_confidence_violations(edges)
     assert len(violations) == 1
     v = violations[0]
     assert v["count"] == 150
     assert v["confidence"] == 0.5
-    assert v["sources"] == ["composite"]
+    assert v["sources"] == ["corroborated"]
     assert "emitter_constant" in v["reason"]
 
 
@@ -293,18 +293,18 @@ def test_guard_evidence_derived_masquerade_is_flagged():
 
 def test_guard_respects_custom_threshold():
     edges = _edges(60, src="emit", confidence=0.5,
-                   evidence_type="naming_convention", confidence_source="composite")
+                   evidence_type="naming_convention", confidence_source="corroborated")
     assert find_constant_confidence_violations(edges, threshold=100) == []
     assert len(find_constant_confidence_violations(edges, threshold=50)) == 1
 
 
 def test_guard_partitions_by_emitter_and_value():
     # Two emitters, each 150 emitter_constant edges at distinct values -> clean;
-    # a third emitter with 150 composite -> exactly one violation.
+    # a third emitter with 150 corroborated -> exactly one violation.
     a = _edges(150, src="emitA", confidence=0.9, evidence_type="naming_convention")
     b = _edges(150, src="emitB", confidence=0.8, evidence_type="naming_convention")
     c = _edges(150, src="emitC", confidence=0.5,
-               evidence_type="naming_convention", confidence_source="composite")
+               evidence_type="naming_convention", confidence_source="corroborated")
     violations = find_constant_confidence_violations(a + b + c)
     assert len(violations) == 1
     assert violations[0]["emitter"] == ("emitC",)

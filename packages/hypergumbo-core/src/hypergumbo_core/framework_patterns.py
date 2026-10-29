@@ -129,7 +129,7 @@ class UsagePatternSpec:
     for call-based frameworks like Django, Express, Go Gin.
 
     Attributes:
-        kind: Regex pattern to match context kind (call, data_value, export, macro)
+        kind: Regex pattern to match context kind (call, export, library_export, macro)
         name: Regex pattern to match context_name (function called, var defined, etc.)
         position: Regex pattern to match position (args[1], :get, default, etc.)
     """

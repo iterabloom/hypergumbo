@@ -456,13 +456,13 @@ def test_edge_confidence_source_emitter_constant_on_unseeded_fallback() -> None:
 
 
 def test_edge_confidence_source_explicit_override() -> None:
-    """A producer may declare confidence_source=composite while migrating."""
+    """A producer may declare its confidence_source (merge_producers does)."""
     edge = Edge.create(
         src="a", dst="b", edge_type="calls", line=1,
         origin="test", origin_run_id="test",
-        confidence=0.5, confidence_source="composite",
+        confidence=0.5, confidence_source="corroborated",
     )
-    assert edge.confidence_source == "composite"
+    assert edge.confidence_source == "corroborated"
 
 
 def test_edge_rank_score_explicit_diverges_from_confidence() -> None:
@@ -502,13 +502,13 @@ def test_edge_to_dict_and_from_dict_roundtrip_new_fields() -> None:
     edge = Edge.create(
         src="a", dst="b", edge_type="calls", line=1,
         origin="test", origin_run_id="test",
-        confidence=0.6, confidence_source="composite", rank_score=0.42,
+        confidence=0.6, confidence_source="corroborated", rank_score=0.42,
     )
     d = edge.to_dict()
-    assert d["confidence_source"] == "composite"
+    assert d["confidence_source"] == "corroborated"
     assert d["rank_score"] == 0.42
     back = Edge.from_dict(d)
-    assert back.confidence_source == "composite"
+    assert back.confidence_source == "corroborated"
     assert back.rank_score == 0.42
 
 
@@ -526,8 +526,9 @@ def test_edge_from_dict_defaults_new_fields_for_legacy_artifact() -> None:
 
 
 def test_valid_confidence_sources_vocabulary() -> None:
+    # ``composite`` had no producer and was deleted (WI-daruz).
     assert VALID_CONFIDENCE_SOURCES == {
-        "evidence_derived", "emitter_constant", "composite",
+        "evidence_derived", "emitter_constant",
         "corroborated",  # ADR-0057 §13 (WI-binis)
     }
 
@@ -1490,7 +1491,7 @@ def test_usage_context_all_kinds() -> None:
     """UsageContext should accept all valid kind values."""
     span = Span(start_line=1, end_line=1, start_col=0, end_col=10)
 
-    for kind in ["call", "data_value", "export", "macro"]:
+    for kind in ["call", "export", "library_export", "macro"]:
         ctx = UsageContext.create(
             kind=kind,  # type: ignore[arg-type]
             context_name="test",

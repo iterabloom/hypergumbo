@@ -670,6 +670,17 @@ def census_silence(
     When ``catalog_pass_ids`` is given, any id in it that appears in neither
     host is reported in ``unaccounted``. Omit it and ``unaccounted`` is
     ``None``, never ``()``.
+
+    WHICH FIELD IS AUTHORITATIVE, stated because this function is the reader
+    that re-opened the pass-silence audit's Pair B (WI-daruz, 2026-10-28):
+    ``silence_reason`` answers WHY a pass was silent and is what this census
+    reads; ``AnalysisRun.files_analyzed`` answers whether it HAD INPUT, and
+    this census never infers one from the other. They are no longer
+    restatements: since a body-stamped reason survives the orchestrator's
+    derivation (``analyze/all_analyzers.py``), ``no_candidate_files`` still
+    implies ``files_analyzed == 0`` but ``files_analyzed == 0`` no longer
+    implies ``no_candidate_files`` (a body may say ``backend_disabled``).
+    So Pair B is KEEP both, each the authority for its own question.
     """
     by_pass: dict[str, str] = {}
     hosts: dict[str, str] = {}

@@ -137,7 +137,7 @@ docstring is the source of truth for the legal values.
 
 Example in current code:
 
-- `UsageContext.kind: Literal["call", "data_value", "export", "macro"]` — four values, listed in the docstring with the re-evaluation triggers documented inline.
+- `UsageContext.kind: Literal["call", "export", "library_export", "macro"]` — four values, listed in the docstring with the re-evaluation triggers documented inline, and checked against every producer by `test_usage_context_kinds`.
 
 ### When to upgrade `bounded-enum` → registry
 
@@ -320,16 +320,25 @@ yourself wanting to, file a tracker item for the
 
 ### `UsageContext.kind` is `# axis: bounded-enum` at 4 values
 
-`UsageContext.kind: Literal["call", "data_value", "export", "macro"]`
+`UsageContext.kind: Literal["call", "export", "library_export", "macro"]`
 mixes two axes — syntactic construct (call, macro) and semantic
-role (data_value, export). The docstring documents this and lists
-the re-evaluation triggers (a 5th value that fits neither axis;
-consumer needing per-axis filtering; cross-axis bug).
+role (export, library_export). The docstring documents this and lists
+the re-evaluation triggers (a value that fits neither axis; a consumer
+needing per-axis filtering; a cross-axis bug).
 
-**Don't add a 5th value without splitting.** If a 5th value is
-needed, follow ADR-0024's seven-step workflow to declare separate
-`usage_construct` and `usage_role` axes; flip the annotations to
-`# axis: usage-construct` and `# axis: usage-role`.
+**The rule this section used to state — "don't add a 5th value without
+splitting" — was broken for nine months without anyone noticing**
+(WI-daruz, 2026-10-28): js_ts.py had emitted `library_export` since
+2026-01-30, frameworks/library-exports.yaml consumed it, and the Literal
+still said four values, one of which (`data_value`) nothing produced. A
+`Literal` is not enforced at runtime, so the rule had no watcher.
+Re-verdicted KEEP as one field: `library_export` is a role, so it sits on
+an existing axis and trigger (a) did not fire. `data_value` is deleted;
+`macro` stays declared with no producer because qt.yaml's two rules wait
+on one. The watcher is `test_usage_context_kinds`, which fails on a
+produced value the Literal lacks and on any declared-but-unproduced value
+other than `macro`. A value that fits NEITHER axis still means: split into
+`usage_construct` and `usage_role` per ADR-0024's seven-step workflow.
 
 ## How the linter runs
 

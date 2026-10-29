@@ -59,7 +59,7 @@ Key IR Classes
   call target outside the producer's translation unit. Aliased imports
   bind ``name`` to the imported symbol, not the local alias.
 - **UsageContext**: A context that gives a symbol semantic meaning through
-  how it is USED — ``kind`` is one of ``call`` / ``data_value`` / ``export`` /
+  how it is USED — ``kind`` is one of ``call`` / ``export`` / ``library_export`` /
   ``macro``. It is matched by the YAML framework-pattern system and is not an
   edge annotation.
 
@@ -115,7 +115,7 @@ import types
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, Final, List, Literal, Optional
 
 from . import __version__
 from .axis_meta_keys import per_call_site_keys
@@ -146,8 +146,14 @@ outright — "Go caller passes data to C"). ``dest_access_mode`` is removed.
 - bidirectional: data flows both ways
 """
 
+CONFIDENCE_SOURCE_EVIDENCE_DERIVED: Final[str] = "evidence_derived"
+CONFIDENCE_SOURCE_EMITTER_CONSTANT: Final[str] = "emitter_constant"
+CONFIDENCE_SOURCE_CORROBORATED: Final[str] = "corroborated"
+
 VALID_CONFIDENCE_SOURCES: frozenset[str] = frozenset({
-    "evidence_derived", "emitter_constant", "composite", "corroborated",
+    CONFIDENCE_SOURCE_EVIDENCE_DERIVED,
+    CONFIDENCE_SOURCE_EMITTER_CONSTANT,
+    CONFIDENCE_SOURCE_CORROBORATED,
 })
 """ADR-0039 ruling 2 provenance discriminator for ``Edge.confidence_source``.
 
@@ -161,9 +167,10 @@ derivation layer is machine-readable rather than an audit:
 - emitter_constant: a hardcoded producer constant (the legacy state of the
   ~566 ``confidence=`` call sites, and the last-resort 0.85 fallback for an
   unseeded pathway). A legal, declared transitional state.
-- composite: ``confidence`` still fuses a ranking adjustment that ruling 3
-  relocates to ``rank_score``; a producer stamps this explicitly while its
-  ranking migration is pending.
+- (``composite`` -- ``confidence`` still fusing a ranking adjustment ruling 3
+  relocates to ``rank_score`` -- was the fourth value, transitional by
+  ADR-0039's own wording. No producer ever stamped it, and it was deleted
+  (WI-daruz).)
 - corroborated: two producers reached this edge by DISTINCT inference
   pathways (ADR-0057 §13 — the merge pass folded, say, a tree-sitter
   ``ast_call_direct`` edge and a SCIP ``scip_occurrence_ref`` edge for one
@@ -175,10 +182,19 @@ derivation layer is machine-readable rather than an audit:
   same pathway seen twice is not new evidence and keeps the incumbent's
   value under ``emitter_constant`` / ``evidence_derived``.
 
-Re-evaluation trigger (ADR-0024 bounded-enum discipline): if ``composite``
-ever needs to split into sub-kinds (per-adjustment provenance), or a consumer
-needs to filter edges by source programmatically across the codebase, promote
-to a heavyweight registry-backed axis per ADR-0024's seven-step workflow.
+The constants above are what every reader and writer compares against, so
+the four modules that branch on the value (``finalize``, ``confidence``,
+``backend_agreement``, ``spec_validator``) and the two that write it
+(``Edge.create``, ``merge_producers``) cannot spell it differently.
+
+Re-evaluation trigger (ADR-0024 bounded-enum discipline), re-written by
+WI-daruz because its second leg ("a consumer needs to filter edges by source
+programmatically across the codebase") had already fired -- four modules
+branch on it -- and was answered by the constants rather than by promotion:
+promote to a heavyweight registry-backed axis when a value needs per-value
+METADATA a consumer reads (a confidence floor, a headline rule, a display
+label), which a bare string constant cannot carry. ``test_confidence_source_
+constants`` fails if a module compares against a bare literal again.
 """
 
 PASS_VERSION: str = __version__
@@ -996,7 +1012,7 @@ class Edge:
         dst_ref: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
         derived_from: Symbol (or Edge) IDs of the INPUT records the producer consumed to construct this Edge (INV-rukor) — the records whose presence decided it, e.g. the unresolved edge a linker resolved or the inheritance edges a dispatch walked. Ids the producer MINTED in the same run are not consumed and are left out, so a pass that builds both ends from a file scan records ``[]`` — a positive "consumed nothing", distinct from ``None``. A value naming only the endpoints is legal where the endpoints ARE the whole derivation, and every such linker site declares why in its source (``test_edge_derived_from.py``). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
         confidence: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
-        confidence_source: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite`` / ``corroborated``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
+        confidence_source: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``corroborated``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
         attribution: ADR-0057 §6 provenance slot, set only by the merge pass when two producers' edges for one ``(src, dst, edge_type)`` are folded: ``{field: [pass_id, ...]}`` for ``confidence`` / ``evidence_type`` — who holds the value the scalar carries. ``None`` (and omitted from the dict form) on every other edge.
         alternatives: ADR-0057 §6 candidate set on a folded edge: ``{field: [{"value", "origin": [pass_id, ...]}]}`` for the values the scalar does not carry; under ``confidence_source="corroborated"`` both producers' original confidences are here.
         rank_score: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
@@ -1018,7 +1034,7 @@ class Edge:
     is_resolved: bool = True
     dst_ref: Optional[ExternalRef] = None
     derived_from: Optional[List[str]] = None  # axis: identity
-    confidence_source: str = "emitter_constant"  # axis: bounded-enum
+    confidence_source: str = CONFIDENCE_SOURCE_EMITTER_CONSTANT  # axis: bounded-enum
     # ADR-0057 §6 (WI-binis): the provenance slot, present only on an edge the
     # merge pass folded from two producers. Dict-valued: no ``# axis:``.
     attribution: Optional[Dict[str, List[str]]] = None
@@ -1155,10 +1171,12 @@ class Edge:
         # ADR-0039 ruling 2: stamp the provenance discriminator. A value that
         # came through ``derive_confidence`` is ``evidence_derived``; an
         # explicit producer constant (or the unseeded 0.85 fallback) is
-        # ``emitter_constant``. A producer can override (e.g. ``composite``
-        # while its ranking migration is pending).
+        # ``emitter_constant``. A producer can override.
         if confidence_source is None:
-            confidence_source = "evidence_derived" if confidence_derived else "emitter_constant"
+            confidence_source = (
+                CONFIDENCE_SOURCE_EVIDENCE_DERIVED if confidence_derived
+                else CONFIDENCE_SOURCE_EMITTER_CONSTANT
+            )
         # ADR-0039 ruling 3: ``rank_score`` mirrors detection ``confidence``
         # until a producer relocates a ranking adjustment onto it.
         if rank_score is None:
@@ -1266,7 +1284,7 @@ class Edge:
             is_resolved=d.get("is_resolved", True),
             dst_ref=ExternalRef.from_dict(dst_ref_raw) if dst_ref_raw else None,
             derived_from=d.get("derived_from"),
-            confidence_source=d.get("confidence_source", "emitter_constant"),
+            confidence_source=d.get("confidence_source", CONFIDENCE_SOURCE_EMITTER_CONSTANT),
             attribution=d.get("attribution"),  # ADR-0057 §6
             alternatives=d.get("alternatives"),
             rank_score=d.get("rank_score"),
@@ -1511,14 +1529,21 @@ class UsageContext:
         id: Unique identifier for this usage context
         kind: How the surrounding source code references this symbol — either
             as a syntactic construct (``call``, ``macro``) or as a semantic
-            role (``data_value``, ``export``). The field currently mixes two
-            axes; the union is small enough (4 values) to be tractable, but a
-            fifth value that doesn't fit either axis should trigger a split
-            into separate fields (e.g., ``usage_construct`` + ``usage_role``).
-            Re-evaluation triggers: (a) a fifth value that fits neither
-            construct nor role; (b) a consumer needing per-axis filtering;
-            (c) a bug where the single picked value hides a cross-axis signal
-            a consumer needs. See the WI-gatuh-ruvar audit thread.
+            role (``export``, and ``library_export``: a package entry point's
+            default or named export, js_ts.py, read by
+            frameworks/library-exports.yaml). The field mixes the two axes;
+            it is kept as one because every value still sits on exactly one
+            of them. ``macro`` has NO producer today (qt.yaml's two macro
+            rules wait on one); ``data_value`` had none and was deleted.
+            WI-daruz: the old rule "don't add a 5th value without splitting"
+            had already been broken by ``library_export`` (emitted since
+            2026-01-30) with nothing noticing, because the Literal is not
+            enforced at runtime. ``test_usage_context_kinds`` now fails when
+            a producer emits a value this Literal lacks.
+            Re-evaluation triggers: (a) a value that fits neither construct
+            nor role; (b) a consumer needing per-axis filtering; (c) a bug
+            where the single picked value hides a cross-axis signal a
+            consumer needs. See the WI-gatuh-ruvar audit thread.
         context_name: Name of the function called, var defined, file exported from, etc.
         symbol_ref: ID of the symbol being used (None if inline/anonymous handler)
         position: Where in the context the symbol appears (e.g., "args[1]", ":get", "default")
@@ -1538,7 +1563,7 @@ class UsageContext:
     """
 
     id: str  # axis: identity
-    kind: Literal["call", "data_value", "export", "macro"]  # axis: bounded-enum
+    kind: Literal["call", "export", "library_export", "macro"]  # axis: bounded-enum
     context_name: str  # axis: free-text — name of the function call or export name from source; consumers display/lookup, never branch on the value itself.
     symbol_ref: Optional[str]  # axis: identity  (None for inline handlers — lambdas, blocks)
     position: str  # axis: free-text — positional descriptor like "args[1]", ":get", "default"; consumer-facing display string parsed by humans, not branched on by code.
@@ -1549,7 +1574,7 @@ class UsageContext:
     @classmethod
     def create(
         cls,
-        kind: Literal["call", "data_value", "export", "macro"],
+        kind: Literal["call", "export", "library_export", "macro"],
         context_name: str,
         position: str,
         path: str,

@@ -173,6 +173,24 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "filled with something else."
                 ),
             ),
+            EmissionSite(
+                path=(
+                    "packages/hypergumbo-lang-mainstream/src/"
+                    "hypergumbo_lang_mainstream/bash.py"
+                ),
+                line=1589,
+                anchor='module_path="redirect"',
+                note=(
+                    "The SHELL'S OWN NAMESPACE for its redirection operators "
+                    "(the name slot holds '>', '>>', '<'), as python's "
+                    "`builtins` owns its built-ins. io_primitives/bash.yaml "
+                    "keys four rows on it and taint branches on the "
+                    "`redirect.` prefix. Classified as a sentinel by the "
+                    "2026-09-01 module-key audit, whose keep-trigger ('any "
+                    "catalogue row whose module is literally redirect') was "
+                    "true before the audit was written (WI-daruz)."
+                ),
+            ),
         ),
     ),
     ModuleKeyNotion(
@@ -306,25 +324,13 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
         axis=AXIS_UNCERTAINTY,
         description=(
             "A fixed marker standing for 'no module identity was recovered': "
-            "'external' (1.5% of refs) and bash's 'redirect' (0.1%, whose "
-            "name slot is '>' -- not a call at all). Non-conformant as an "
-            "identity, and load-bearing as an admission: io_boundary and "
-            "taint share _UNRESOLVED_MODULE_PLACEHOLDERS_IO precisely so the "
-            "two cannot drift about what 'no module' looks like."
-        ),
-        emission_sites=(
-            EmissionSite(
-                path=(
-                    "packages/hypergumbo-lang-mainstream/src/"
-                    "hypergumbo_lang_mainstream/bash.py"
-                ),
-                line=1589,
-                anchor='module_path="redirect"',
-                note=(
-                    "A shell redirection is not a call; the name slot holds "
-                    "the operator ('>')."
-                ),
-            ),
+            "'external' (1.5% of refs). Non-conformant as an identity, and "
+            "load-bearing as an admission: io_boundary and taint share "
+            "_UNRESOLVED_MODULE_PLACEHOLDERS_IO precisely so the two cannot "
+            "drift about what 'no module' looks like. bash's 'redirect' was "
+            "listed here and is NOT one (WI-daruz): io_primitives/bash.yaml "
+            "ships `module: redirect` rows that match it, so it is the "
+            "shell's own namespace -- see `namespace`."
         ),
     ),
     # ------------------------------------------------------------------

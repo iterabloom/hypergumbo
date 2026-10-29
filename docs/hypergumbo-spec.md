@@ -1697,8 +1697,9 @@ Every `Edge` carries a `confidence_source` discriminator — `evidence_derived` 
 value came through `derive_confidence`), `emitter_constant` (a declared hardcoded
 producer value, incl. the unseeded 0.85 fallback), `corroborated` (ADR-0057 §13: two
 producers reached the edge by distinct inference pathways and the merge pass set the
-declared 0.95, keeping both originals in `alternatives.confidence`), or `composite` (still fuses a
-ranking adjustment) — so the migration off per-emitter constants is machine-readable.
+declared 0.95, keeping both originals in `alternatives.confidence`) — so the migration off
+per-emitter constants is machine-readable. (`composite`, a transitional fourth value, had no
+producer and was retired in schema 0.21.0, WI-daruz.)
 Post-detection **ranking** adjustments (the type-hierarchy fan-out dampener, the
 entrypoint penalties/demotions/degree-boosts) no longer contaminate `confidence`;
 they accumulate on a sibling `Edge.rank_score` / `Entrypoint.rank_score` field

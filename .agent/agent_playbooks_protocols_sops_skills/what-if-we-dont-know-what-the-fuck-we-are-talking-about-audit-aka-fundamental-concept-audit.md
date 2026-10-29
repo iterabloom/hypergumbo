@@ -449,13 +449,15 @@ Each verdict is justified by which of the four leakage tests (Step 3)
 fired most diagnostically. The audit-findings document records the
 fired test alongside the verdict.
 
-> **Refactor trigger.** If a future axis declaration reveals that the
-> verdict scheme genuinely varies per axis — i.e., a different host
-> dataclass needs a different trichotomy or a four-way split — promote
-> this subsection into a standalone `docs/family-audit-methodology.md`
-> at that point. Don't speculatively split now; the trichotomy has been
-> empirically general across the three audited axes (`Edge.edge_type`,
-> `Symbol.kind`, `Edge.evidence_type`).
+> **Refactor trigger — fired, resolved (WI-daruz, 2026-10-28).** It
+> fired on pass-silence (ADR-0054) and on the io-boundary axis (host
+> `IoPrimitive`: audit-findings 0021's `io_boundary_membership` and
+> 0022's `io_boundary_row_candidates`). Both non-trichotomy schemes
+> live as declared `kind:` block formats in `docs/audits/README.md`
+> §sibling formats, and that section is the lift — no standalone
+> `docs/family-audit-methodology.md`. New trigger (ADR-0024 carries the
+> same text): when two `kind:`s need the SAME non-trichotomy scheme,
+> write the standalone methodology file.
 
 ### Step 7 — Record findings
 
@@ -811,7 +813,15 @@ runs can find prior work:
   the "exists" question has its own field and consumers check it. Kept with a
   written re-evaluation trigger (fires the moment any consumer reads `status`
   without checking `is_supported`, or constructs `IoBoundaryCatalog` outside
-  `_from_dict`). No new axis declared — remedy is naming/documentation plus one
+  `_from_dict`). **[Fired, and closed 2026-10-28, WI-daruz:** both legs held —
+  `merge` and the missing-file path construct directly, and four readers
+  read `.status` unchecked — but the hazard they guarded was already fixed by
+  WI-gofah: a missing file now stamps `status: unsupported`, so no reader can
+  see a default `complete`. KEEP closed. The field now holds three values
+  (`provenance_declared` / `in_progress`, which a file declares, and
+  `unsupported`, which only the missing-file path sets), with `overlay_only`
+  a separate flag; new trigger: a reader that treats any status other than
+  `provenance_declared` as a completeness claim.**]** No new axis declared — remedy is naming/documentation plus one
   small fold. Two items filed: WI-maduh (document what it enforces vs. what
   gates verdicts), WI-sihiz (fold `overlay` out of the completeness field).
   Full write-up:
@@ -895,6 +905,12 @@ runs can find prior work:
   convention applied to all 15 catalogues. Pair 2 identity-vs-sentinel: Test 2
   fires, **KEEP** — guarded by `_UNRESOLVED_MODULE_PLACEHOLDERS`; trigger
   written (any catalogue row whose module is literally `external`/`redirect`).
+  **[Fired before it was written, closed 2026-10-28, WI-daruz:** `io_primitives/
+  bash.yaml` had shipped four `module: redirect` rows since 2026-08-14, so
+  `redirect` was never a sentinel — it is the shell's own namespace and the
+  module-key axis now files it under `namespace`. The KEEP rested on a
+  mis-measurement ("no catalogue row matches it"). `external` stays a
+  sentinel.**]**
   Pair 3 qualifier-in-MODULE-slot vs NAME-slot: Test 2 fires, **DEPRECATE, fix
   the producers**. Silent bugs, each verified through the production classifier:
   **F1** the suffix arm has no capitalisation test, so sops'
@@ -1013,7 +1029,13 @@ runs can find prior work:
   than after it. **Enforcement finding: INV-tadup is a DENYLIST** (four ejected
   values, with a positive control) — right for regression, blind to a value it
   has never seen, which is how `assignment` shipped through every gate in the
-  repo unreviewed. Adjacent: **`meta["receiver"]` CONFIRMED LEAK** — 9 values
+  repo unreviewed. Adjacent: **`meta["receiver"]` CONFIRMED LEAK** *(its
+  keep-trigger — "if a consumer needs to query class and shape
+  independently" — fired: `method_call_recovery` branches on `field_chain`
+  alone. Re-verdicted OK by the WI-kosup sweep (WI-mujug note, 2026-10-28):
+  both readers' value sets match the producers' and a partition test guards
+  it. New trigger in `axis_meta_keys`: a consumer needs the CLASS of a
+  `field_chain` receiver — WI-daruz)* — 9 values
   splitting into syntactic shape (`qualified`, `field_chain`, `bare`) and
   resolution outcome (`typed_var`, `stdlib`, `external`, `constant_external`),
   where `external` is the very thing `remote_external` was ejected from

@@ -132,13 +132,20 @@ per-family audit is an audit-findings document at
 [audit-findings 0001](../audits/0001-dispatch-publish-family.md),
 [audit-findings 0002](../audits/0002-ipc-family.md)).
 
-> **Refactor trigger.** If future axis declarations
-> (post-`Edge.edge_type`) reveal that the verdict scheme genuinely
-> varies per axis — i.e., a different host dataclass needs a
-> different trichotomy or a four-way split — lift this sub-section
-> into a separate `docs/family-audit-methodology.md` at that point.
-> Don't speculatively split now; the trichotomy is empirically
-> general across `Edge.edge_type`'s three audited families.
+> **Refactor trigger — fired, and resolved without the standalone
+> file (WI-daruz, 2026-10-28).** The trigger was: if a different host
+> dataclass needs a different trichotomy or a four-way split, lift
+> this sub-section into `docs/family-audit-methodology.md`. It fired
+> once on pass-silence (ADR-0054: RE-HOST / KEEP GATED) and again on
+> the io-boundary axis (host `IoPrimitive`), which needed two verdict
+> schemes of its own, `kind: io_boundary_membership` (audit-findings
+> 0021) and `kind: io_boundary_row_candidates` (0022). Each landed as a
+> declared `kind:` block format in
+> [`docs/audits/README.md`](../audits/README.md) §"sibling formats",
+> and that section IS the lift: a non-trichotomy scheme is declared
+> where its block format is, one per kind. **New trigger:** when two
+> `kind:`s need the SAME non-trichotomy scheme, it has become a
+> methodology rather than a format — write the standalone file then.
 
 ### Fold-residue discipline
 

@@ -5759,11 +5759,14 @@ def classify_call(
 #: shape this module has paid for repeatedly (INV-fokik, INV-zimud).
 #:
 #: DELIBERATELY NOT WIDENED HERE. The 2026-09-01 module-key audit measured two
-#: further non-identity values in the slot — ``<unknown>`` (minted by
+#: further values it read as non-identities — ``<unknown>`` (minted by
 #: ``_parse_dangling_id`` for malformed ids) and bash's ``redirect`` (47 refs,
-#: name slot ``>``). Both are inert today: no catalogue rows a primitive either
-#: could match. Adding them would be an unmeasured behaviour change riding along
-#: with a recall fix, so they stay out and stay recorded.
+#: name slot ``>``). ``<unknown>`` is inert: no catalogue rows a primitive it
+#: could match. ``redirect`` is NOT a placeholder and must never join this set:
+#: ``io_primitives/bash.yaml`` keys its redirection rows on ``module:
+#: redirect``, and those rows are how a ``>`` write classifies as ``fs_write``.
+#: The audit's "inert" was wrong when written (the rows shipped 2026-08-14);
+#: the module-key axis now files it under ``namespace`` (WI-daruz).
 _UNRESOLVED_MODULE_PLACEHOLDERS_IO: Final[frozenset[str]] = frozenset(
     {"external", "<external>"}
 )
