@@ -2654,6 +2654,49 @@ def _extract_imports(
     return symbol_imports, module_imports
 
 
+def _importer_sys_path_dir(
+    importing_module: str, tree: ast.AST, module_to_file_id: dict[str, str],
+) -> str | None:
+    """The dotted in-tree directory the importer's own run puts on
+    ``sys.path``, or None (INV-tugim).
+
+    Two runs put a directory BELOW the source root there, and only these:
+
+    * pytest's default ``prepend`` import mode inserts a test-tree file's
+      basedir: the nearest directory upward that is not a package (has no
+      ``__init__.py``; pytest's own rule). A test-tree file is one pytest
+      collects (``test_*.py``, ``*_test.py``, ``conftest.py``) or a support
+      module under a ``tests``/``test`` directory, imported while that basedir
+      is on the path.
+    * a script run directly (a top-level main guard, not ``__main__.py``,
+      which runs as ``-m``) in a directory that is not a package: Python puts
+      the script's own directory first.
+
+    Anything else is imported by its dotted name and its directory is never
+    on ``sys.path``; a library module in a PEP 420 namespace package
+    (``src/poetry/`` has no ``__init__.py``) does not see ``src/poetry/json``
+    as ``json``. A package is a directory whose dotted name is a key of
+    ``module_to_file_id`` (its ``__init__.py`` put it there). The source root
+    itself yields None: a key there is already tried as-is.
+    """
+    parts = importing_module.split(".")
+    name, dirs = parts[-1], parts[:-1]
+    in_test_tree = (
+        name.startswith("test_") or name.endswith("_test") or name == "conftest"
+        or any(d in ("tests", "test") for d in dirs)
+    )
+    if in_test_tree:
+        while dirs and ".".join(dirs) in module_to_file_id:
+            dirs.pop()
+    elif not (
+        name != "__main__"
+        and isinstance(tree, ast.Module) and _has_main_guard(tree)
+        and ".".join(dirs) not in module_to_file_id
+    ):
+        return None
+    return ".".join(dirs) or None
+
+
 def _extract_import_edges(
     tree: ast.AST,
     file_path: str,
@@ -2690,6 +2733,14 @@ def _extract_import_edges(
     """
     edges = []
     file_id = _make_file_id(file_path)
+    sys_path_dir = _importer_sys_path_dir(importing_module, tree, module_to_file_id)
+
+    def beside_importer(module: str) -> str | None:
+        """INV-tugim: the in-tree file ``module`` names in the importer's own
+        sys.path directory, if its run has one below the source root."""
+        if sys_path_dir is None:
+            return None
+        return module_to_file_id.get(f"{sys_path_dir}.{module}")
 
     for node in ast.walk(tree):
         # Handle 'from X import Y, Z' style imports
@@ -2717,6 +2768,13 @@ def _extract_import_edges(
                             # edge does not dangle to a phantom external twin.
                             module_to_file_id.get(f"{resolved_module}.{alias.name}")
                             or module_to_file_id.get(resolved_module)
+                            # INV-tugim: an absolute import of a module beside
+                            # the importer (its sys.path directory).
+                            or (
+                                beside_importer(f"{resolved_module}.{alias.name}")
+                                or beside_importer(resolved_module)
+                                if node.level == 0 else None
+                            )
                         )
                     ) is not None:
                         dst_id = in_repo_fid
@@ -2748,7 +2806,11 @@ def _extract_import_edges(
                 # supply:F4 — `import pkg.sub.mod` of an in-tree module resolves
                 # to its first-party file-anchor node; otherwise it stays an
                 # external module reference.
-                in_repo_fid = module_to_file_id.get(module_name)
+                # INV-tugim: or a module beside the importer, reached through
+                # its own sys.path directory.
+                in_repo_fid = (
+                    module_to_file_id.get(module_name) or beside_importer(module_name)
+                )
                 import_dst_ref: ExternalRef | None
                 if in_repo_fid is not None:
                     dst_id = in_repo_fid
