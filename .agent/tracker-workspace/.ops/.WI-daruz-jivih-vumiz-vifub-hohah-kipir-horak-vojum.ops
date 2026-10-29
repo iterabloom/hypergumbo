@@ -27,3 +27,18 @@
   nonce: '3504'  # 3504
   set:  # 3504
     status: in_progress  # 3504
+- op: update  # fb21
+  at: '2026-10-29T03:25:50Z'  # fb21
+  by: agent  # fb21
+  actor: jgstern_agent  # fb21
+  clock: 3  # fb21
+  nonce: fb21  # fb21
+  set:  # fb21
+    status: done  # fb21
+- op: discuss  # 1cf7
+  at: '2026-10-29T03:25:50Z'  # 1cf7
+  by: agent  # 1cf7
+  actor: jgstern_agent  # 1cf7
+  clock: 4  # 1cf7
+  nonce: 1cf7  # 1cf7
+  message: "Fixed in PR #1931 (dev d71106555d). All nine fired-not-acted triggers acted on and their records closed: (1) bash redirect reclassified sentinel -> namespace in module_key_axis, false 'inert' comment in io_boundary fixed, playbook + 09-01 notebook closed; (2) UsageContext.kind declares library_export, data_value deleted, test_usage_context_kinds watches producers (and pins 8 dead framework usage rules, filed WI-dozav); (3) tier 4: ordinal contract ruled, is_vendored -> is_vendored_or_derived, 10-22 notebook F4 closed with a fireable trigger; (4) confidence_source: composite deleted (ADR-0039, schema 0.21.0 narrows), named constants everywhere, test_confidence_source_constants guards; (5) ADR-0024 methodology trigger resolved by the audits README per-kind formats (ADR-0024/0054/playbook); (6) Pair B re-run KEEP-both, census_silence docstring + 09-17 notebook; (7) receiver: re-verdicted OK per WI-mujug, axis_meta_keys + playbook with new trigger; (8) ABSTRACT_KIND_LANGUAGES: fix lives in WI-hogon (already names the languages), not duplicated; (9) io status KEEP closed in playbook, pointer to WI-gofah. Evidence: production-path checks are the tests named (producer AST scans over the real sources; a reintroduced literal in finalize.py reds the constants guard)."  # 1cf7
