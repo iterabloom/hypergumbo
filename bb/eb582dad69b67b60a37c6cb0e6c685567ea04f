@@ -1,0 +1,8 @@
+Original commit body from 0fb4823302b48df0a2d8d307aba69fc5cc2133a7:
+
+Owner rule 10-27: about nine or ten words per commit and no tracker IDs.
+The seven entries for #1924-#1933 ran to paragraphs with item IDs; they
+are cut to one short line each, and the confidence_source narrowing
+moves to Breaking and contract changes.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
