@@ -1,0 +1,48 @@
+Original commit body from 2888cb9c6db3f2fff310a923835dc3a9fe5f2eeb:
+
+Java (M::run) and Ruby (method(:run)) emit a references edge, evidence
+method_reference, from the method holding the reference. One in NO method
+was dropped -- a Java field initializer (static Supplier<Integer> F =
+M::run;), a Ruby constant at top level or in a class body (HANDLERS =
+{a: method(:a)}) -- although a CALL there is anchored on the enclosing
+type/class/module, else the file (INV-bamij). Both arms now take the
+call arm's anchor; a Ruby class-body anchor resolves method(:a) as
+App#a.
+
+Two resolution faults the wider anchoring exposed, both predating it and
+both fixed here because the corpus A/B surfaced them:
+- Java this::m looked m up by bare name, so it bound whichever same-named
+  method discovery reached first: commons-compress
+  FramedLZ4CompressorInputStream's this::readOneByte bound
+  ZipArchiveInputStream's private readOneByte, and jedis HealthCheckImpl's
+  this::healthCheck / this::doHealthCheck (in methods) bound
+  MultiDbConnectionProvider.Database.healthCheck / PingStrategy's. It now
+  tries Enclosing.m first and falls back to the bare name (an inherited m).
+  The test checks both file-write orders because the old pick followed
+  discovery order.
+- Ruby obj.method(:x) / 1.method(:+) was read as self's method(:x) and
+  bound the bare name: fluent-bit's vendored mruby tests bound 1.method(:+)
+  to an unrelated Enumerator#+. Only a receiver-less or self.method(:x) is
+  a self reference now; any other receiver is an ordinary call to #method.
+
+mypy: the anchored Ruby assignment is annotated Optional[Symbol] (it is
+now the first assignment of current_method in that function), and Java's
+always-true `if current_method:` guard is removed with its block dedented.
+
+Corpus A/B (analyze_java / analyze_ruby, dev vs branch, every changed
+edge read):
+- jedis +33/-2: field initializers (pingResultHandler =
+  this::processPingReply, authResultHandler, the comparingByValue
+  comparator, DEFAULT = PingStrategy::new), test-class
+  RedisClientCommandsTestHelper::getEndpointConfig fields; the 2 removed
+  are the HealthCheckImpl misbindings, replaced by the right methods.
+- commons-compress +22: ExtraFieldUtils' IMPLEMENTATIONS registry of 14
+  X::new constructor references, ZipFile's offset comparator, the
+  E_FUNCTION exception factories, readOneByte suppliers (own class).
+- grpc +20 method_reference (RSpec file-level method(:x)), +9 calls;
+  fluent-bit +34 / mastodon +2 calls: obj.method(:x) now an ordinary call.
+- eclipse.jdt.ls, jna, postal: 0.
+
+META-mino stays open: Rust, C and C++ remain.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
