@@ -1,0 +1,74 @@
+Original commit body from 189439a63f1f22ab3fb577c33474037f5a8d1293:
+
+The WI-kosup keep-trigger re-check (kosup_reader_census_10282026/
+F_triggers.md) found nine KEEP verdicts whose re-evaluation trigger was
+true in the code with nobody acting on it. Each is acted on here and its
+record closed where it lives, with a trigger that can fire.
+
+1. bash `redirect` as a module-key SENTINEL (2026-09-01 audit). Never
+   one: io_primitives/bash.yaml has shipped four `module: redirect` rows
+   since 2026-08-14 and taint branches on the `redirect.` prefix. The
+   module-key axis files its emission site under `namespace` (the
+   shell's own, as python's builtins); the false "inert" comment beside
+   _UNRESOLVED_MODULE_PLACEHOLDERS_IO is corrected. `external` stays a
+   sentinel.
+2. UsageContext.kind "don't add a 5th value without splitting". js_ts.py
+   has emitted `library_export` since 2026-01-30 and
+   frameworks/library-exports.yaml consumes it; the Literal said four,
+   one of them (`data_value`) produced by nothing. Re-verdicted KEEP as
+   one field (library_export is a role, an existing axis): the Literal
+   declares it, data_value is deleted, macro stays (qt.yaml waits on
+   it). test_usage_context_kinds now watches: a produced value the
+   Literal lacks fails, and so does a declared-but-unproduced value
+   other than macro. It also pins, shrink-only, the eight framework
+   usage rules whose kind no producer emits (cowboy ^function$ x4, qt
+   ^macro$ x2 and ^method$, servant ^type$) -- filed as WI-dozav.
+3. Supply-chain tier 4 "KEEP until a consumer branches on it as a
+   distance" (10-22 audit F4). Born fired: --max-tier, slice, cfg and
+   entrypoints all read it ordinally, and entrypoints documents
+   "vendored or derived (tier >= 3): x 0.3" as intent. Ruled: the
+   ordinal reading is the contract. `is_vendored` is renamed
+   `is_vendored_or_derived`; no behaviour change. New trigger in the
+   audit file.
+4. Edge.confidence_source "promote when a consumer filters by source
+   across the codebase". Four modules did, with hand-written strings.
+   Answered with named constants (ir.CONFIDENCE_SOURCE_*) used by every
+   reader and writer -- finalize, confidence, backend_agreement,
+   spec_validator, Edge.create, merge_producers -- and
+   test_confidence_source_constants fails on a bare literal again.
+   `composite` had no producer and is deleted (ADR-0039 note; schema
+   0.21.0, unreleased and already breaking, narrows the enum; no
+   artifact carried it). New trigger: per-value metadata a consumer
+   reads.
+5. ADR-0024's "lift the trichotomy into docs/family-audit-methodology.md
+   when a host needs a different scheme". Fired twice (pass-silence;
+   io-boundary 0021/0022). Recorded as resolved by the audits README's
+   per-kind block formats, in ADR-0024, ADR-0054 and the playbook. New
+   trigger: two kinds needing the same non-trichotomy scheme.
+6. Pass-silence Pair B (09-17 audit). census_silence became the extra
+   reader, and the premise moved (a body-stamped reason survives when
+   files_analyzed == 0). Re-run: KEEP both, each authoritative for its
+   own question, now stated in census_silence's docstring.
+7. Edge.meta["receiver"] class-vs-shape split trigger: fired, and
+   re-verdicted OK by the kosup sweep (WI-mujug note). axis_meta_keys
+   records it with a trigger that can fire (a consumer needing the
+   CLASS of a field_chain receiver); playbook entry updated.
+8. ABSTRACT_KIND_LANGUAGES (R10): its fix is WI-hogon's, which already
+   names the missing languages; not duplicated here.
+9. io_primitives `status` missing-file KEEP: both legs held, and the
+   hazard was already fixed by WI-gofah (a missing file stamps
+   `unsupported`). KEEP closed in the playbook with a new trigger.
+
+Records closed: the concept-audit playbook (four entries), the
+multi-value-field-axis playbook (UsageContext), ADR-0024, ADR-0039,
+ADR-0054, and three lab-notebook audit files (module-key 09-01,
+pass-silence 09-17, vocabulary 10-22).
+
+Docs: spec (confidence_source), schema.json, CHANGELOG, ARCHITECTURE.md
+regenerated.
+
+Tests: test_usage_context_kinds.py, test_confidence_source_constants.py
+(mutation-checked: a bare literal restored in finalize.py reds it);
+test_confidence / test_ir re-pointed off composite.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
