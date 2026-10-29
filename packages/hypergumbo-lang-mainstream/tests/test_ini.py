@@ -13,8 +13,6 @@ from hypergumbo_lang_mainstream.ini import (
     find_ini_files,
     is_ini_tree_sitter_available,
     _categorize_section,
-    _is_sensitive_key,
-    _mask_value,
 )
 
 def make_ini_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -70,24 +68,6 @@ class TestHelperFunctions:
     def test_categorize_section_general(self) -> None:
         assert _categorize_section("myapp") == "general"
         assert _categorize_section("settings") == "general"
-
-    def test_is_sensitive_key_true(self) -> None:
-        assert _is_sensitive_key("password") is True
-        assert _is_sensitive_key("db_password") is True
-        assert _is_sensitive_key("api_key") is True
-        assert _is_sensitive_key("secret_token") is True
-        assert _is_sensitive_key("AUTH_TOKEN") is True
-
-    def test_is_sensitive_key_false(self) -> None:
-        assert _is_sensitive_key("host") is False
-        assert _is_sensitive_key("port") is False
-        assert _is_sensitive_key("username") is False
-
-    def test_mask_value(self) -> None:
-        assert _mask_value("secret123") == "s*******3"
-        assert _mask_value("ab") == "***"
-        assert _mask_value("") == "***"
-        assert _mask_value("a") == "***"
 
 class TestIsIniTreeSitterAvailable:
     """Tests for is_ini_tree_sitter_available function."""
@@ -176,8 +156,7 @@ password = secret123
         password = next((s for s in result.symbols if s.name == "password"), None)
         assert password is not None
         assert password.meta.get("is_sensitive") is True
-        assert "secret123" not in password.signature
-        assert "***" in password.signature or "*" in password.signature
+        assert password.signature == "password = ***"
 
     def test_non_sensitive_values_visible(self, tmp_path: Path) -> None:
         make_ini_file(tmp_path, "config.ini", """[database]
@@ -361,3 +340,26 @@ disable = C0111
         # Should parse without crashing
         sections = [s for s in result.symbols if s.kind == "section"]
         assert len(sections) >= 1
+
+
+class TestMaskingLeaksNothing:
+    """INV-puvoh: the mask kept length and edge characters, and a substring
+    keyword match hid keys that only contain a keyword."""
+
+    def test_a_masked_value_shows_no_character_or_length(self, tmp_path: Path) -> None:
+        make_ini_file(tmp_path, "app.ini", "[db]\npassword = hunter22\npasswd = ab\n")
+        result = analyze_ini(tmp_path)
+        sigs = {s.name: s.signature for s in result.symbols if s.kind == "setting"}
+        assert sigs == {"password": "password = ***", "passwd": "passwd = ***"}
+
+    def test_keys_that_merely_contain_a_keyword_stay_visible(self, tmp_path: Path) -> None:
+        make_ini_file(
+            tmp_path, "app.ini",
+            "[ui]\nkeyboard_layout = dvorak\nauthor = Jane\nmonkey = george\n",
+        )
+        result = analyze_ini(tmp_path)
+        settings = {s.name: s for s in result.symbols if s.kind == "setting"}
+        assert settings["keyboard_layout"].signature == "keyboard_layout = dvorak"
+        assert settings["author"].signature == "author = Jane"
+        assert settings["monkey"].signature == "monkey = george"
+        assert not any(s.meta["is_sensitive"] for s in settings.values())
