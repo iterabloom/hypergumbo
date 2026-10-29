@@ -14,97 +14,93 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
-- **Route markers are ADR-0031 Class B stand-ins**: a node with `framework_role` `route`, `route_mount` or `route_include` has `language: null`, the registration file's language in `discovery_language`, and the transport in `protocol_origin`. Read `Symbol.host_language` for the host language. Analyzer route ids and entrypoint ranks are unchanged, and `dead-code-maybe` no longer lists markers as dead functions.
-- **`stable_id_scheme` v9 → v13**: new `stable_id`s for BitBake symbols, SCIP-only symbols (the hash includes the file path), C/C++ externals with a header-set module slot, and `@hg:route` markers.
-- **A C/C++ module slot naming several headers is a handle** (`module-set-<16 hex>`) into a new top-level `module_sets` table (`SCHEMA_VERSION` 0.20.15 → 0.21.0). A reader that splits the slot on commas must expand it there first.
-- **§3a walk verdicts `confirmed` / `unconfirmed` are `reached` / `refuted`** (`verify-claims` envelope 2.6 → 3.0), so a walk verdict no longer shares a word with a claim verdict.
+- **Route markers are ADR-0031 Class B stand-ins**: `language: null`, the file's language in `discovery_language`, the transport in `protocol_origin`; read `Symbol.host_language`. Route ids and entrypoint ranks are unchanged, and `dead-code-maybe` no longer lists markers.
+- **`stable_id_scheme` v9 → v13**: new `stable_id`s for BitBake, SCIP-only and `@hg:route` symbols and C/C++ externals with a header-set module slot.
+- **A C/C++ module slot naming several headers is a `module-set-<hex>` handle** into a new `module_sets` table (`SCHEMA_VERSION` 0.20.15 → 0.21.0).
+- **Walk verdicts `confirmed` / `unconfirmed` are `reached` / `refuted`** (`verify-claims` envelope 2.6 → 3.0).
 - **An exit status is no longer a taint source** (ADR-0049); the child's output still is.
-- **`confidence_source` drops `composite`, which nothing produced** (schema 0.21.0).
-- **Command-line arguments are `untrusted_input` too**; `verify-claims` sets their flows aside unless a claim counts them (envelope 3.1).
-- **A `calls` edge's `src` is the code unit making the call** (ADR-0023). No output changes.
+- **`confidence_source` drops `composite`**, which nothing produced.
+- **Command-line arguments are `untrusted_input`**; `verify-claims` sets their flows aside unless a claim counts them (envelope 3.1).
+- **A `calls` edge's `src` is the calling code unit** (ADR-0023); output is unchanged.
 
 ### Added
 
-- **The test-only-reachability ratchet judges methods**, resolving references by receiver type on a scip-python-typed map.
-- **Static `depends_on` checks**: no empty clause, and a linker's dependencies run in an earlier priority group.
+- **The test-only-reachability ratchet judges methods** by receiver type on a scip-python-typed map.
+- **Static `depends_on` checks**: no empty clause, and a linker's dependencies run earlier.
 
 ### Removed
 
-- **`catalog.validate_pass_dependencies`**, which nothing called (ADR-0056, ADR-0030).
-- **`DataModel.kind`, `DataModelKind` and `DataModel.to_dict()`**, which nothing read.
-- **Catalogue keys and fields nothing read**: framework `linkers:` and `detect:` sections (`FrameworkPatternDef.linkers`), library-signature `module_completeness`, `DataflowConfig.calls` and `UsageContext.kind` `data_value`. Three framework rules that matched nothing are deleted (a Graphene resolver rule, two zio-http route rules).
-- **The aardvark-dns fixture's `Cargo.lock`**; a test now fails on committed lockfiles and `==` pins.
+- **`catalog.validate_pass_dependencies`** (ADR-0056, ADR-0030) and **`DataModel.kind`, `DataModelKind`, `DataModel.to_dict()`**, which nothing used.
+- **Catalogue keys and fields nothing read**: framework `linkers:` / `detect:`, library-signature `module_completeness`, `DataflowConfig.calls`, `UsageContext.kind` `data_value`, and three framework rules that matched nothing.
+- **The aardvark-dns fixture's `Cargo.lock`**; a test now rejects committed lockfiles and `==` pins.
 
 ### Fixed
 
 #### Pass disclosure and identity
 
-- **Every pass that ran is in `analysis_runs`, and one that found nothing says why**, including framework patterns, five post-passes and 13 more linkers.
-- **A missing grammar's warning names the package to install** (`tree-sitter-<lang>` or `tree-sitter-language-pack`) for every analyzer on the shared path.
+- **Every pass that ran is in `analysis_runs`, and one that found nothing says why**, now including framework patterns, five post-passes and 13 more linkers.
+- **A missing grammar's warning names the package to install** (`tree-sitter-<lang>` or `tree-sitter-language-pack`).
 - **Pass-silence states are data** (`pass_silence.SILENCE_REASON_SPECS`), and `prerequisite_absent` reads them.
 - **The JS module linker counts its `package.json` reads** in `files_analyzed`.
-- **Id round-trip checks are validator errors**, ADR-0036 Ruling 3 is enforced as amended, and id slots hold what they name; node ids change, `stable_id`s do not.
-- **Starlark `deps` labels resolve to their targets**, and **edges start and end on real nodes** for json, make, jsonnet, astro, svelte, Cargo and CSS imports, Swift/Objective-C bridging headers, WebAssembly loads and React JSX references.
+- **Id round-trip checks are validator errors** (ADR-0036 Ruling 3 as amended); node ids change, `stable_id`s do not.
+- **Edges start and end on real nodes** for Starlark `deps`, json, make, jsonnet, astro, svelte, Cargo and CSS imports, bridging headers, WebAssembly loads and JSX references.
 
 #### Calls, types and symbols
 
-- **An import of in-tree code reaches its source**: an npm workspace sibling, or a Rust `use` rooted at `crate`, `self`, `super` or an in-tree crate, no longer lands on a third-party stand-in or `external_symbol`.
-- **Python calls through a dotted module path bind in the tree**, as do method calls on in-tree module constants.
-- **A resolver-graded call keeps its graded confidence** (ADR-0039 ruling 6) through finalize; on apollo-server 244 of 18,684 edges move, all downward.
+- **An import of in-tree code reaches its source**, not a third-party stand-in or `external_symbol`: npm workspace siblings, and Rust `use` rooted at `crate`, `self`, `super` or an in-tree crate.
+- **Python calls through a dotted module path, or on in-tree module constants, bind in the tree.**
+- **A resolver-graded call keeps its graded confidence** through finalize (ADR-0039 ruling 6); on apollo-server 244 of 18,684 edges move, all down.
 - **Finalize keeps typed binds** for methods named like stdlib interfaces (`Close`, `Parse`), in C++ and in Java, C# and Kotlin static initializers.
 - **Every linker call-site stand-in is attached to its enclosing function.**
 - **A Python local named like a field no longer retypes `self.<field>`.**
-- **Kotlin and Scala receivers with a bare `java.lang` type name `java.lang`**, so `verify-claims` sees the launch.
-- **New symbols**: Swift initialisers and deinitialisers, Rust `type` aliases, and Dockerfile variables per build stage. Python class-body calls emit edges.
-- **Pony's `actor` and `primitive` kinds are registered** and own their members; the validator flagged both on every Pony run. No id changes.
-- **A slice entering a Kotlin/Scala `object`, a `record`, a `union` or a go `type` reaches its members**: slice and the containment linker read one registry-derived container set.
+- **Kotlin and Scala bare `java.lang` receivers resolve**, so `verify-claims` sees the launch.
+- **New symbols**: Swift initialisers and deinitialisers, Rust `type` aliases, Dockerfile per-stage variables, and Pony `actor` / `primitive` kinds; Python class-body calls emit edges.
+- **Slice reaches the members of a Kotlin/Scala `object`, a `record`, a `union` or a Go `type`**: slice and the containment linker read one container set.
 
 #### I/O boundaries and taint
 
-- **A Unix-domain socket server is `ipc_listen`** (ADR-0050 §1), counted in `ipc_listen_edges` (io-boundaries schema 2.4 → 2.5).
-- **A Go Unix-domain connection's own `Write` / `Read` are `ipc_send` / `ipc_recv`**: `net.Conn` rows select by how the connection was made, and `*net.UnixConn` is rowed.
-- **ObjC class methods and Swift statics have the kind their call reads as** (ADR-0059 ledger now empty); `NSMutableURLRequest` and the dead `kotlin.io.FilesKt` rows are deleted, and `fetchRequestWithEntityName:` is `db_compose`.
-- **`slice --io-boundary` keeps a call for every boundary it crosses**: `subprocess.check_output` is both `subprocess` and `ipc_recv` (`io_boundary.boundaries_of`).
-- **A taint claim on a zone with no sink for a present language is withheld for every built-in zone**, not only `code_execution` / `dom_injection`: Go's `database` claims read `confirmed`.
-- **A user overlay no longer lowers its catalogue's status**, which turned unrelated chains `[unreliable]`, and declares none itself.
-- **The taint-side `requires_target_kind` / `requires_mode` are `requires_target_boundary` / `requires_mode_boundary`**: they hold a boundary, not a target kind or mode.
+- **Unix-domain sockets are IPC**: a server is `ipc_listen` (ADR-0050 §1; io-boundaries schema 2.4 → 2.5), and a Go connection's `Write` / `Read` are `ipc_send` / `ipc_recv`.
+- **ObjC class methods and Swift statics have the kind their call reads as** (ADR-0059 ledger now empty); dead rows are deleted, and `fetchRequestWithEntityName:` is `db_compose`.
+- **`slice --io-boundary` keeps a call for every boundary it crosses** (`io_boundary.boundaries_of`): `subprocess.check_output` is both `subprocess` and `ipc_recv`.
 - **`document.cookie` is `browser_storage_read`**, alongside `env_read`.
-- **Every catalogue loader refuses a key nothing reads**, naming it: a taint `attributes:` source loaded and contributed nothing, and the bash template's `rm` / `shred` rows (now `fs_write`) loaded as nothing.
-- **A shipped catalogue file is `builtin` only when it declares so**, under every reader, and a default overlay's `provenance` must be `community`.
-- **A community overlay can no longer declare a call not I/O, and its sink's `trust_level: trusted` is withheld and named** (`withheld_community_trust`); **a catalogue file named on the command line is `yours`** even inside the repository (ADR-0061 rulings 1–2).
-- **A user taint row replaces only the label or zone it restates**, not every label or zone of the function.
-- **A collapsed taint row is judged by its whole group**, not its first member; the `choice_shaped_source` caveat counts rows and applies only to `untrusted_input`.
-- **Taint walks module-level Python and JS/TS code**, reaches reads through walrus, nested assignments and closures, and drops false leaks from `build_opener().open(url)` and Go's `_, err := get()`.
-- **Constructing a class no longer taints its class body**: a value reaching a type node stops there, and the constructor's arguments reach only the initializer.
+- **A taint claim on a zone with no sink for a present language is withheld for every built-in zone**: Go's `database` claims read `confirmed`.
+- **Every catalogue loader refuses a key nothing reads**, naming it.
+- **A user overlay no longer lowers its catalogue's status**, which turned unrelated chains `[unreliable]`, and a shipped file is `builtin` only when it says so.
+- **A community overlay cannot declare a call not I/O, and its `trusted` sinks are withheld** (`withheld_community_trust`); a catalogue named on the command line is `yours` (ADR-0061 rulings 1–2).
+- **The taint-side gates are `requires_target_boundary` / `requires_mode_boundary`.**
+- **A user taint row replaces only the label or zone it restates.**
+- **A collapsed taint row is judged by its whole group**, not its first member; the `choice_shaped_source` caveat applies only to `untrusted_input`.
+- **Taint walks module-level Python and JS/TS code** and reads through walrus, nested assignments and closures, and drops false leaks from `build_opener().open(url)` and Go's `_, err := get()`.
+- **Constructing a class no longer taints its class body**: a value reaching a type node stops there.
 
 #### Dead code, tiers and sketch
 
-- **A linker stand-in takes its file's supply-chain tier**, so one inside a minified bundle is filtered with the bundle.
-- **Code called only from module level or a class body is not dead or untested**, in `dead-code-maybe`, `test-coverage` and sketch alike. On django, 43 more functions are tested and none is newly dead.
-- **A dependency declaration naming an in-tree package has that package's tier** (ADR-0041 §1), across five ecosystems; on nest, 172 of 1,379 declarations move from tier 3 to tier 1.
-- **An external dependency declaration carries `directness: direct` and an `ecosystem`**, so `supply_chain_summary` no longer counts every declaration as `unknown`.
+- **A linker stand-in takes its file's supply-chain tier**, so a bundle's stand-ins are filtered with it.
+- **Code called only from module level or a class body is not dead or untested**; on django, 43 more functions are tested and none is newly dead.
+- **A dependency declaration naming an in-tree package has that package's tier** (ADR-0041 §1); on nest, 172 of 1,379 move from tier 3 to 1.
+- **External dependency declarations carry `directness` and `ecosystem`**, no longer `unknown`.
 - **Sketch names a data model's framework once.**
 
 #### SCIP, run limits and security claims
 
 - **SCIP edges land in their own crate target**, and SCIP-only symbols span their whole item.
-- **`--max-files` bounds every language analyzer**, and `hypergumbo catalog` names each pass's grammar package.
-- **SCIP indexer launches, trust grants, the catalogue home and the repo-tier offer go through declared zones**; the offer never writes into an analysed repository.
-- **Analysis never downloads an embedding model**: `install-embeddings` fetches the weights.
+- **`--max-files` bounds every language analyzer**; `hypergumbo catalog` names each pass's grammar package.
+- **SCIP launches, trust grants, the catalogue home and the repo-tier offer go through declared zones**; the offer never writes into an analysed repository.
+- **Analysis never downloads an embedding model**; `install-embeddings` does.
 
 #### CI and gates
 
-- **Declared axioms are tested against survey and `verify-claims` output**, each with a reach check, a checker control and a mutation ([`docs/surveys/axiom-falsifiability.md`](docs/surveys/axiom-falsifiability.md)); strict xfails record what fails today.
+- **Declared axioms are tested against survey and `verify-claims` output** ([`docs/surveys/axiom-falsifiability.md`](docs/surveys/axiom-falsifiability.md)); strict xfails record today's failures.
 - **The full-suite test-only-reachability gate is green again.**
-- **A test fails when a module the classifier matched is also reported starved** (`classified_yet_starved`), over the schema-coverage corpus and each earlier instance.
-- **Every spec-validator check has something to inspect**, and parallel tests no longer race on shared baselines or session ids.
+- **A test fails when a classified module is reported starved** (`classified_yet_starved`).
+- **Every spec-validator check has something to inspect**, and parallel tests no longer race.
 
 ### Documentation
 
-- **Reader census** ([`docs/audits/0023-reader-census.md`](docs/audits/0023-reader-census.md)): what nothing reads and what nothing produces, across fields, meta keys, knobs, functions, vocabulary subsets and kept-with-trigger verdicts.
-- **ADR-0050 §1**: a primary boundary names the medium; a `simultaneous` second boundary is a taint label's reading or a second crossing, and none is primary. `env_read` may carry a credential.
-- **ADR-0041 §1**: tier is the distance of a node's code from the project; spec §14 says a CLI run emits no tier-2 node.
-- Module docstrings: 42 corrected, 12 extended; taint and `verify-claims` prose corrected.
+- **Reader census** ([`docs/audits/0023-reader-census.md`](docs/audits/0023-reader-census.md)): what nothing reads and what nothing produces, across fields, meta keys, knobs, functions and kept-with-trigger verdicts.
+- **ADR-0050 §1**: a primary boundary names the medium; a `simultaneous` second is a label's reading or a second crossing. `env_read` may carry a credential.
+- **ADR-0041 §1**: tier is the distance of a node's code from the project.
+- Module docstrings: 42 corrected, 12 extended.
 - The spec documents 63 `symbol_meta` keys; two playbooks record their latest runs; `ALLOWED_WEBSITES.md` permits discuss.python.org; ARCHITECTURE.md regenerated.
 
 ## [9.2.0] - 2026-10-20
