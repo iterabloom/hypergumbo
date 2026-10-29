@@ -2076,37 +2076,75 @@ class TestClassifySymbolsPreservesTier:
 
         assert sym.supply_chain_reason == "manually classified"
 
-    def test_protocol_origin_stand_in_not_reclassified(self, tmp_path: Path) -> None:
-        """INV-bonup / ADR-0041 §1: a synthetic protocol stand-in (tier-1 default,
-        NO supply_chain_reason, but a truthy protocol_origin) is skipped by
-        _classify_symbols rather than reclassified by host-file path.
+    def test_a_protocol_stand_in_takes_its_files_distance(self, tmp_path: Path) -> None:
+        """WI-zuzud: a synthetic protocol stand-in is tiered by its PATH.
 
-        protocol_origin is the honest synthetic marker that replaces the old
-        supply_chain_tier=2 'lock' — the six protocol linkers used to borrow tier 2
-        purely to trip this skip, leaking mechanism into the distance axis. This
-        mirrors the solidity_abi call-site node, the one stand-in with no reason of
-        its own (so it depends on the protocol_origin skip, not the reason skip)."""
+        It used to be skipped outright (INV-bonup), which assigned it no
+        distance at all: it kept the default tier 1 even inside a minified
+        bundle the tier filter removed around it. Only the tier and its reason
+        are stamped; the per-file flags are left alone."""
         from hypergumbo_core.cli import _classify_symbols
         from hypergumbo_core.ir import Symbol, Span
 
-        stand_in = Symbol(
-            id="solidity:abi:transfer",
-            name="transfer",
-            kind="call_site",
-            language=None,
-            path="contract.ts",
-            span=Span(1, 1, 0, 0),
-            protocol_origin="solidity_abi",
+        (tmp_path / "contract.ts").write_text("export const x = 1;\n")
+        (tmp_path / "bundle.js").write_text(
+            "var a=1;send('x')\n//# sourceMappingURL=bundle.js.map\n"
         )
 
+        def stand_in(path: str) -> Symbol:
+            return Symbol(
+                id=f"solidity:abi:{path}", name="transfer", kind="call_site",
+                language=None, path=path, span=Span(1, 1, 0, 0),
+                protocol_origin="solidity_abi",
+            )
+
+        source, bundled, pathless = stand_in("contract.ts"), stand_in("bundle.js"), stand_in("")
         package_roots = detect_package_roots(tmp_path)
-        _classify_symbols([stand_in], tmp_path, package_roots)
+        _classify_symbols([source, bundled, pathless], tmp_path, package_roots)
 
-        # Skipped via protocol_origin: keeps the first-party default distance and
-        # gets no classification reason stamped (reclassification would set one).
-        assert stand_in.supply_chain_tier == 1
-        assert not stand_in.supply_chain_reason
+        assert source.supply_chain_tier == 1 and source.supply_chain_reason
+        assert bundled.supply_chain_tier == 4
+        assert "minified" in bundled.supply_chain_reason
+        assert not bundled.is_generated_file  # per-file flags untouched
+        # No path, no distance to take: left as the producer made it.
+        assert pathless.supply_chain_tier == 1
+        assert not pathless.supply_chain_classified
 
+    def test_a_linker_reason_does_not_stand_in_for_a_distance(
+        self, tmp_path: Path,
+    ) -> None:
+        """Seven linkers pass a DESCRIPTIVE reason at tier 1 ("message dispatch
+        handler"), which marks the node classified without any distance having
+        been measured. The path still decides, and the linker's words are kept
+        beside the path's. A linker's non-default tier is kept as stamped."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "bundle.js").write_text(
+            "postMessage('x')\n//# sourceMappingURL=bundle.js.map\n"
+        )
+        described = Symbol(
+            id="javascript:bundle.js:1-1:x:function", name="x", kind="function",
+            language=None, path="bundle.js", span=Span(1, 1, 0, 0),
+            protocol_origin="message_dispatch",
+            supply_chain_reason="message dispatch sender",
+        )
+        npm = Symbol(
+            id="npm:left-pad", name="left-pad", kind="function", language=None,
+            path="bundle.js", span=Span(1, 1, 0, 0), protocol_origin="npm",
+            supply_chain_tier=3, supply_chain_reason="npm_package (third-party dependency)",
+        )
+        _classify_symbols([described, npm], tmp_path, detect_package_roots(tmp_path))
+
+        assert described.supply_chain_tier == 4
+        assert described.supply_chain_reason.startswith("message dispatch sender; ")
+        assert "minified" in described.supply_chain_reason
+        assert (npm.supply_chain_tier, npm.supply_chain_reason) == (
+            3, "npm_package (third-party dependency)",
+        )
+        # Idempotent: a second pass neither re-tiers nor repeats the reason.
+        _classify_symbols([described], tmp_path, detect_package_roots(tmp_path))
+        assert described.supply_chain_reason.count("minified") == 1
 
 class TestClassifySymbolsDependencyTier:
     """_classify_symbols assigns tier 3 to dependency-kind symbols."""

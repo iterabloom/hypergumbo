@@ -12143,17 +12143,45 @@ def _classify_symbols(
     in_tree = collect_in_tree_packages(repo_root)
     for symbol in symbols:
         # INV-bonup / ADR-0041 §1: supply_chain_tier names supply-chain DISTANCE
-        # only. Skip symbols already deliberately classified (a reason is set) or
-        # synthetic protocol stand-ins (a truthy `protocol_origin` field — the
-        # canonical ADR-0031 "not a real host-file callable" signal, cli.py:6143/
-        # 6255). The six protocol linkers used to borrow supply_chain_tier=2 purely
-        # to trip this skip, leaking mechanism into the distance axis; keying the
-        # skip on the honest synthetic marker lets those nodes carry a real
-        # first-party distance instead of a phantom internal_dep tier.
+        # only. Skip symbols already deliberately classified, and give a
+        # synthetic protocol stand-in (a truthy `protocol_origin` field — the
+        # canonical ADR-0031 "not a real host-file callable" signal) only its
+        # file's distance (below). The six protocol linkers used to borrow
+        # supply_chain_tier=2 purely to trip a skip, leaking mechanism into the
+        # distance axis; keying on the honest synthetic marker removed that.
         #
+        # WI-zuzud: a protocol stand-in at tier 1 takes its FILE'S DISTANCE.
+        # Every stand-in used to be skipped, on INV-bonup's reasoning that it
+        # should carry "a real first-party distance" rather than a borrowed
+        # tier 2 -- but skipping assigned it no distance at all, so a stand-in
+        # kept tier 1 even in a minified bundle the tier filter then removed
+        # around it. And seven linkers pass a DESCRIPTIVE reason ("message
+        # dispatch handler", "synthetic IPC bridge node"; crypto_flow passes
+        # tier=1 outright), which marks the node classified (WI-lidig) without
+        # anyone having measured a distance. Measured on livebook: 249 of 450
+        # linker stand-ins sat in static/assets/ bundles (tier 4), reported as
+        # first-party, on 836 edges. Distance is a property of the path, so the
+        # path decides, and the linker's reason is kept with the path's beside
+        # it. A linker that stamps a real tier other than 1 (js_module's npm
+        # packages at 3) knows something the path does not, and keeps it. Only
+        # the tier and reason change: the per-file flags (is_test_file and the
+        # rest) describe a file's own symbols, and nothing has reviewed what
+        # they would change on a stand-in. A stand-in with no path has no
+        # distance to take.
+        if symbol.protocol_origin:
+            if symbol.path and symbol.supply_chain_tier == 1:
+                classification = _path_classification(symbol.path)
+                symbol.supply_chain_tier = classification.tier.value
+                reason = symbol.supply_chain_reason
+                if not reason:
+                    symbol.supply_chain_reason = classification.reason
+                elif classification.reason not in reason:
+                    symbol.supply_chain_reason = f"{reason}; {classification.reason}"
+                symbol.supply_chain_classified = True
+            continue
         # WI-lidig: "already classified" is an explicit flag, no longer read
         # off the default tier 1 with an empty (free-text) reason.
-        if symbol.supply_chain_classified or symbol.protocol_origin:
+        if symbol.supply_chain_classified:
             continue
         symbol.supply_chain_classified = True
         # A dependency declaration takes the tier of the package it names:

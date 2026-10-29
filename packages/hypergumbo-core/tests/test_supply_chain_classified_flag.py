@@ -61,5 +61,6 @@ def test_the_annotator_classifies_only_unclassified_nodes(tmp_path: Path) -> Non
     assert fresh.supply_chain_classified is True
     assert fresh.supply_chain_reason  # the path classifier gave a reason
     assert deliberate.supply_chain_reason == ""  # left as its producer set it
-    assert stand_in.supply_chain_classified is False  # synthetic: skipped
-    assert stand_in.supply_chain_reason == ""
+    # WI-zuzud: a synthetic stand-in takes its file's distance (and only that).
+    assert stand_in.supply_chain_classified is True
+    assert stand_in.supply_chain_reason
