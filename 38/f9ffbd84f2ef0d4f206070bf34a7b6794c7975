@@ -1,0 +1,39 @@
+Original commit body from bc8f9279a73249561d15e23b98a0abad511dd9b6:
+
+The yjs-crdt linker linked a WRITER of a shared type to an OBSERVER
+(.observe / .observeDeep) and to nothing else. A function that reads an
+entry -- chunk.getMap('objects').get(id) -- was neither, so PlazaFlow's
+flow (spec §4.2, §5.3-5.4: one function creates a SpatialObject with
+.set(id, {..., yjsDocId}), another reads it back and opens the Y.Doc its
+id names) had no edge from the creator to the reader, and neither slice
+direction crossed it.
+
+Entry sites: .set/.delete/.push/.insert/.unshift (write) and .get/.has/
+.toJSON/.toArray/.forEach/.entries/.values/.keys (read) on a receiver that
+IS a shared type, chained (doc.getMap('meta').get('pages')) or a name every
+assignment of which in the file is one bare getMap/getArray. Unlike the
+observer surfaces, which link every write to every read, a point read links
+only from writes to its own map and, when both keys are literal, its own
+key. Entry sites in test files are dropped: each test builds its own Y.Doc,
+and on hocuspocus linking them added 1,127 edges between unrelated test
+files. The accessor pattern also learns getMap<T>('x').
+
+The object -> Y.Doc hop is not modelled (the doc id is a runtime string);
+the item was re-scoped to this on 2026-10-29.
+
+Corpus A/B (old vs new linker, the seven Yjs repos in
+plazaflow_deep_repos/cohort2_yjs, every added edge read):
+- y-websocket, y-webrtc, y-sweet, yjs, hocuspocus, blocksuite: 0 changed.
+- AFFiNE: +519, -0.
+  - 29 entry edges: workspace meta.name / meta.avatar written by the
+    import, workspace-entity and first-app code and read by the electron
+    workspace-db adapter, the workspace IPC handler and the profile worker;
+    spaces subdoc set/delete in impls/doc.ts read by the idb v1 store and the
+    id converter. 28 are those flows; one reader site is a logger label in a
+    template literal (`ydoc.getMap('meta').get('name')`) in the same
+    function as the real read on the next line.
+  - 490 from getMap<T>('x') now being an accessor: five such calls each
+    link to the 98 generic observers, exactly as a non-generic getMap('x')
+    already does.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
