@@ -21,3 +21,33 @@
     pr_ref:  # 2fd7
     description: "From the WI-kosup knob census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/C_knobs.md K2). An io_primitives OVERLAY's stdlib_other: section is honoured, though the loader strips stdlib_modules / stdlib_prefixes from overlays on purpose (load_overlay_catalog's docstring). stdlib_other names stdlib symbols known NOT to be I/O, and _external_potential chain synthesis (io_boundary.py ~:4230) skips anything in it -- so an overlay can mark requests.post as stdlib non-I/O and hide its external_potential chain (reproduced by the census agent; orchestrator confirmed the code path in the pinned tree). If a COMMUNITY overlay can do this, it makes the output cleaner, which ADR-0061 ruling 2 forbids. NOT DETERMINED: whether this can move a verify-claims verdict toward clean. Measure first: a community overlay declaring stdlib_other for a third-party callee, verify-claims before/after."  # 2fd7
     fields: {}  # 2fd7
+- op: update  # 956a
+  at: '2026-10-28T22:40:15Z'  # 956a
+  by: agent  # 956a
+  actor: jgstern_agent  # 956a
+  clock: 2  # 956a
+  nonce: 956a  # 956a
+  set:  # 956a
+    status: in_progress  # 956a
+- op: update  # de71
+  at: '2026-10-29T00:08:53Z'  # de71
+  by: agent  # de71
+  actor: jgstern_agent  # de71
+  clock: 3  # de71
+  nonce: de71  # de71
+  set:  # de71
+    status: done  # de71
+- op: discuss  # a158
+  at: '2026-10-29T00:08:53Z'  # a158
+  by: agent  # a158
+  actor: jgstern_agent  # a158
+  clock: 4  # a158
+  nonce: a158  # a158
+  message: "Fixed in PR #1928 (dev d0061769ad). Measured first as the item asked (~/hg_meas/pofal/): on a one-file repo calling an uncatalogued frobnet.post, io-boundaries external_potential_edges was 1 with no overlay and 0 under a community overlay naming frobnet.post in stdlib_other; NO verify-claims verdict moved -- a net_send must_not_exist claim and a host_secret->network taint claim were inconclusive in all three arms (none/community/yours), because the unclassified-module coverage signal is computed apart from the external_potential chains. Fix: load_catalog withholds a community file's stdlib_other with its module_completeness (ADR-0061 ruling 2 table and CATALOGUES.md updated). Behavioral evidence through the production io-boundaries CLI (test_community_overlay_stdlib_other.py::test_the_production_path): external_potential_edges 1 / 1 / 0 for none / community / your own overlay. Mutation-checked."  # a158
+- op: discuss  # 10d3
+  at: '2026-10-29T00:08:59Z'  # 10d3
+  by: agent  # 10d3
+  actor: jgstern_agent  # 10d3
+  clock: 5  # 10d3
+  nonce: 10d3  # 10d3
+  message: "Correction: the PR is #1927 (dev d0061769ad), not #1928 as the closing note says."  # 10d3

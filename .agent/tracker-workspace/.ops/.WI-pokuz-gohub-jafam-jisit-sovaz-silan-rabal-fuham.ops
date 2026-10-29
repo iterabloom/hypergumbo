@@ -20,3 +20,26 @@
     pr_ref:  # 4aa9
     description: "From the WI-kosup reader census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/B_meta.md §2.1). linkers/registry.py SYNTHETIC_FRAMEWORK_ROLES (~:1172) is a hand-written subset of the framework_role meta-value vocabulary that drifted: 6 of its 15 values are never written, and the IPC linkers write values it lacks -- linkers/ipc.py ~:541 and linkers/phoenix_ipc.py ~:328 write framework_role f\"ipc_{pattern.type}\", i.e. \"ipc_send\" / \"ipc_receive\" (an f-string, emit shape 4), while the set has ipc_publisher / ipc_subscriber. Verified by the orchestrator in the pinned tree. Consequence (STATIC ONLY, not run on a repo): _is_synthetic_node is False for those Electron/Phoenix IPC stand-ins, so whatever keys on it (enclosing-function attachment) skips them. Fix: derive the set from the producers' declared values (or register the framework_role value vocabulary) and add a partition test; measure on an Electron and a Phoenix repo before/after."  # 4aa9
     fields: {}  # 4aa9
+- op: update  # 93c5
+  at: '2026-10-28T21:12:15Z'  # 93c5
+  by: agent  # 93c5
+  actor: jgstern_agent  # 93c5
+  clock: 2  # 93c5
+  nonce: 93c5  # 93c5
+  set:  # 93c5
+    status: in_progress  # 93c5
+- op: update  # 079c
+  at: '2026-10-28T22:38:46Z'  # 079c
+  by: agent  # 079c
+  actor: jgstern_agent  # 079c
+  clock: 3  # 079c
+  nonce: 079c  # 079c
+  set:  # 079c
+    status: done  # 079c
+- op: discuss  # 8bc9
+  at: '2026-10-28T22:38:48Z'  # 8bc9
+  by: agent  # 8bc9
+  actor: jgstern_agent  # 8bc9
+  clock: 4  # 8bc9
+  nonce: 8bc9  # 8bc9
+  message: "Fixed in PR #1926 (dev 48fce4044a). SYNTHETIC_FRAMEWORK_ROLES is now one half of a partition of every framework_role the linkers write (18 call-site roles attached; NOT_ENCLOSED_FRAMEWORK_ROLES names the other 8 with reasons; dispatcher marked not reviewed), and every kind=call_site node is a stand-in. ipc.py / phoenix_ipc.py share an IPC_FRAMEWORK_ROLES table instead of the f-string. test_synthetic_role_partition reads the linker sources. Behavioral evidence, survey before/after: session-desktop enclosure edges 125 -> 381, all 43 ipc_send/ipc_receive and every message_*, crypto_*, http_client stand-in now reached from a real symbol (0 before), all 262 new edges span-contained; livebook 327 -> 477, all 31 ipc_* now reached; 38 source-file edges span-contained, 112 start in tier-filtered static/assets bundles via external_symbol placeholders (dev already had 5,876 there) -- filed as WI-zuzud. Production-path tests: the Electron and Phoenix linkers through _connect_synthetic_to_enclosing attach ipcRenderer.send / broadcast! to their function."  # 8bc9
