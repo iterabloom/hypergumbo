@@ -49,6 +49,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **An import of in-tree code reaches its source**, not a third-party stand-in or `external_symbol`: npm workspace siblings, and Rust `use` rooted at `crate`, `self`, `super` or an in-tree crate.
 - **Python calls through a dotted module path, or on in-tree module constants, bind in the tree.**
+- **A Python test or script importing a sibling module reaches it**, not a third-party stand-in.
 - **A resolver-graded call keeps its graded confidence** through finalize (ADR-0039 ruling 6); on apollo-server 244 of 18,684 edges move, all down.
 - **Finalize keeps typed binds** for methods named like stdlib interfaces (`Close`, `Parse`), in C++ and in Java, C# and Kotlin static initializers.
 - **Every linker call-site stand-in is attached to its enclosing function.**
