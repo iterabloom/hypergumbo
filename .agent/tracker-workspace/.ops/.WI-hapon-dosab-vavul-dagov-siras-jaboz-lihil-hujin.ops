@@ -27,3 +27,25 @@
   clock: 2  # b354
   nonce: b354  # b354
   message: "Part 1 shipped in PR #1928: the io_primitives loader (IoBoundaryCatalog._from_dict, so shipped catalogues and every overlay) refuses an unknown key at top level, in a boundary row, a stdlib_other row and a completeness entry, naming it with a near-miss hint, via yaml_catalogs.reject_unknown_keys (lifted from taint's WI-rinaz helper, which now calls it). Live case found: docs/templates/bash-io-primitives.template.yaml's fs_delete: section (rm, shred) loaded zero rows; now fs_write. Accepted as human-read: seeded_from (init-catalogs stamp) and a completeness entry's source_url. Remaining: function_summaries, library_signatures, frameworks, dataflow_patterns loaders and their accepted-but-unread keys."  # b354
+- op: discuss  # dbf1
+  at: '2026-10-29T00:09:53Z'  # dbf1
+  by: agent  # dbf1
+  actor: jgstern_agent  # dbf1
+  clock: 3  # dbf1
+  nonce: dbf1  # dbf1
+  message: "Correction: part 1 is PR #1927 (dev d0061769ad), not #1928."  # dbf1
+- op: update  # 43b6
+  at: '2026-10-29T01:47:41Z'  # 43b6
+  by: agent  # 43b6
+  actor: jgstern_agent  # 43b6
+  clock: 4  # 43b6
+  nonce: 43b6  # 43b6
+  set:  # 43b6
+    status: done  # 43b6
+- op: discuss  # e612
+  at: '2026-10-29T01:47:41Z'  # e612
+  by: agent  # e612
+  actor: jgstern_agent  # e612
+  clock: 5  # e612
+  nonce: e612  # e612
+  message: "Done across PR #1927 (io_primitives, dev d0061769ad) and PR #1929 (dev 479300f972): every catalogue loader -- taint (WI-rinaz), io_primitives, frameworks, library_signatures, function_summaries, dataflow_patterns -- refuses a key nothing reads through yaml_catalogs.reject_unknown_keys, naming file, level and key with a near-miss hint. Behavioral evidence: an overlay with net_sendd: / function: (the census repro) now fails 'unknown top-level key(s) net_sendd ... Did you mean: net_send' (CatalogueError, exit 2) instead of loading 0 rows; test_io_catalogue_unknown_keys.py / test_catalogue_unknown_keys.py exercise each loader and level through the real loaders. Accepted-but-unread keys deleted: frameworks linkers: (101 files) and detect: (3), library_signatures module_completeness: partial (5), DataflowConfig.calls. Dead rules deleted with notes: Graphene name_pattern, zio usage_call x2 -- the gaps they hid filed as WI-sorop. Live cases the strictness caught: the shipped bash template's fs_delete: (rm/shred now fs_write) and a test's in-house framework fixture that loaded zero patterns. Not done (outside the item text): function-summary VALUES no consumer reads (census K7), dataflow row values the maps ignore (K13)."  # e612
