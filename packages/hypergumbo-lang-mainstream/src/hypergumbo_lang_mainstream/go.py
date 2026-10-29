@@ -3865,6 +3865,13 @@ def _extract_function_reference_edges(
 
 _GO_NO_LOCALS: Final[frozenset[str]] = frozenset()
 
+#: Local binding forms whose right side may name a function value (META-mino).
+#: A package-level ``var_spec`` never reaches the arm that reads this: WI-labik's
+#: alias arm takes it first.
+_GO_LOCAL_BINDINGS: Final[frozenset[str]] = frozenset({
+    "short_var_declaration", "assignment_statement", "var_spec",
+})
+
 #: What an attribute read on an import is anchored on: a callable, or the
 #: package-level variable whose initializer holds it (WI-labik).
 _GO_ATTR_OWNER_KINDS: Final[frozenset[str]] = frozenset({
@@ -4227,6 +4234,51 @@ def _extract_edges_from_file(
         if scope is None:
             scope = _scope_by_decl[key] = _GoLocalScope(decl, source)
         return scope.at(site)
+
+    def _emit_value_reference(
+        site: "tree_sitter.Node", value_node: "tree_sitter.Node", evidence: str,
+    ) -> None:
+        """A ``calls`` edge to the function a value-position expression names.
+
+        A bare identifier resolves in the caller's own package (WI-bivin), a
+        selector by its operand (WI-kibah); anything else (a call, a literal,
+        a closure) names nothing here. A name bound locally at ``site`` is
+        that local value. At package level the caller is the file.
+        """
+        current_function = _get_enclosing_function(
+            site, source, local_symbols, file_symbol=file_pseudo_symbol,
+            decl_index=decl_index,
+        )
+        if current_function is None:  # pragma: no cover - file symbol always exists
+            return
+        if value_node.type == "identifier":
+            target = _go_bare_reference_target(
+                node_text(value_node, source), local_symbols,
+                own_package, current_function, _bound_names(site),
+            )
+        elif value_node.type == "selector_expression":
+            target = _go_selector_reference_target(
+                value_node, source, bound=_bound_names(site),
+                import_aliases=import_aliases,
+                var_types=scoped_var_types.get(current_function.name, {}),
+                module_path=module_path,
+                local_symbols=local_symbols,
+                global_symbols=global_symbols, resolver=resolver,
+                caller_dir=caller_dir,
+            )
+        else:
+            return
+        if target is not None:
+            edges.append(Edge.create(
+                src=current_function.id,
+                dst=target[0].id,
+                edge_type="calls",
+                line=site.start_point[0] + 1,
+                evidence_type=evidence,
+                resolution_score=target[1],
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+            ))
 
     for node in iter_tree(tree.root_node):
         # Detect import statements
@@ -5231,50 +5283,32 @@ def _extract_edges_from_file(
         # AST: keyed_element -> literal_element (key) : literal_element (value)
         # The value's child may be an identifier or selector_expression.
         elif node.type == "keyed_element":
-            current_function = _get_enclosing_function(
-                node, source, local_symbols, file_symbol=file_pseudo_symbol,
-                decl_index=decl_index,
+            lit_elems = [c for c in node.children if c.type == "literal_element"]
+            if len(lit_elems) >= 2:
+                value_elem = lit_elems[-1]
+                # Unwrap literal_element to find the actual expression
+                value_node = value_elem.children[0] if value_elem.children else value_elem
+                _emit_value_reference(node, value_node, "struct_field_reference")
+
+        # META-mino: a function VALUE in the two other places Go writes one.
+        # An UNKEYED composite-literal element -- ``[]func(){a, b}``, the
+        # dispatch table -- and the right side of a LOCAL binding --
+        # ``f := handler``, ``h = pkg.Fn``, a function-local ``var g = run``
+        # (a package-level ``var`` is WI-labik's alias arm above). Resolved
+        # exactly as a keyed field is; a call on the right is the call arm's.
+        elif (
+            node.type == "literal_element"
+            and node.parent is not None
+            and node.parent.type == "literal_value"
+            and node.named_children
+        ):
+            _emit_value_reference(node, node.named_children[0], "function_reference")
+        elif node.type in _GO_LOCAL_BINDINGS:
+            right = find_child_by_field(
+                node, "value" if node.type == "var_spec" else "right",
             )
-            if current_function is not None:
-                # Get the value part: the last literal_element child
-                lit_elems = [c for c in node.children if c.type == "literal_element"]
-                if len(lit_elems) >= 2:
-                    value_elem = lit_elems[-1]
-                    # Unwrap literal_element to find the actual expression
-                    value_node = value_elem.children[0] if value_elem.children else value_elem
-                    if value_node.type == "identifier":
-                        # WI-bivin: the caller's own package, as for a call.
-                        field_ref = _go_bare_reference_target(
-                            node_text(value_node, source), local_symbols,
-                            own_package, current_function, _bound_names(node),
-                        )
-                    elif value_node.type == "selector_expression":
-                        # pkg.Handler or obj.Method as field value (WI-kibah:
-                        # resolved by its operand, as an argument is).
-                        field_ref = _go_selector_reference_target(
-                            value_node, source, bound=_bound_names(node),
-                            import_aliases=import_aliases,
-                            var_types=scoped_var_types.get(
-                                current_function.name, {},
-                            ),
-                            module_path=module_path,
-                            local_symbols=local_symbols,
-                            global_symbols=global_symbols, resolver=resolver,
-                            caller_dir=caller_dir,
-                        )
-                    else:
-                        field_ref = None
-                    if field_ref is not None:
-                        edges.append(Edge.create(
-                            src=current_function.id,
-                            dst=field_ref[0].id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="struct_field_reference",
-                            resolution_score=field_ref[1],
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                        ))
+            for value_node in right.named_children if right is not None else ():
+                _emit_value_reference(node, value_node, "function_reference")
 
     # WI-lozug: emit module_attr_ref edges for attribute reads on imported
     # Go packages (e.g. ``os.Stdout``, ``os.Stderr``).  These pair with the
