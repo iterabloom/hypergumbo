@@ -33,6 +33,13 @@ luck: ``CI_PREV_COMMIT_SHA`` is the previous *pipeline's* commit, and auto-pr
 merges by rebase, so on every post-merge push that SHA names a rewritten object
 absent from the clone. Both halves (fail-closed diff, validated base) are
 mutation-tested here.
+
+INV-zuvij: a THIRD. pytest exits 0 when every collected test SKIPPED, so a
+step that reads only the exit code passes a run that executed nothing. The step
+now hands pytest ``--junit-xml`` and, on exit 0, counts the testcases that ran
+by smart-test's rule (a skip does not count, an xfail does); zero, or no
+readable report, fails the step. The stub pytest writes whatever report a test
+gives it, so the count is driven, not assumed.
 """
 
 # covers: .woodpecker/woodpecker.yml
@@ -49,6 +56,26 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = REPO_ROOT / ".woodpecker" / "woodpecker.yml"
+
+
+def _junit(*cases: str) -> str:
+    return (
+        '<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest">'
+        + "".join(cases)
+        + "</testsuite></testsuites>"
+    )
+
+
+PASSED_CASE = '<testcase classname="tests.test_something" name="test_a"/>'
+SKIPPED_CASE = (
+    '<testcase classname="tests.test_something" name="test_b">'
+    '<skipped type="pytest.skip" message="no grammar"/></testcase>'
+)
+XFAIL_CASE = (
+    '<testcase classname="tests.test_something" name="test_c">'
+    '<skipped type="pytest.xfail" message="known"/></testcase>'
+)
+JUNIT_ONE_PASSED = _junit(PASSED_CASE)
 
 
 def _pytest_step_script() -> str:
@@ -71,6 +98,7 @@ def _sandbox(
     committed_readable: bool = True,
     pytest_rc: int = 0,
     absent_tests: tuple[str, ...] = (),
+    junit: str | None = JUNIT_ONE_PASSED,
 ) -> tuple[Path, Path]:
     """A fake repo + a REPLACED PATH holding only the stubs we intend (L49).
 
@@ -88,6 +116,8 @@ def _sandbox(
     in a real checkout, except those named in `absent_tests` (INV-tazur: the
     step refuses a selection naming a path the commit does not contain).
     `pytest_rc` is the stub pytest's exit status.
+    `junit` is the report the stub writes to the path given as
+    ``--junit-xml=<path>``; None writes no report at all.
     """
     repo = tmp_path / "repo"
     (repo / ".ci").mkdir(parents=True)
@@ -146,12 +176,23 @@ def _sandbox(
         exit 0
     """).replace("__DIFF__", diff_lines).replace("__CATFILE_RC__", catfile_rc)
        .replace("__SHOW__", show_arm))
-    # `pytest` stub: records that it ran, and passes.
-    (bindir / "pytest").write_text(textwrap.dedent(f"""\
-        #!/usr/bin/env bash
-        echo "$@" > {str(marker)!r}
-        exit {pytest_rc}
-    """))
+    # `pytest` stub: records that it ran, writes the junit report it was given
+    # (INV-zuvij) to the --junit-xml path, and exits with `pytest_rc`.
+    junit_body = tmp_path / "junit-body.xml"
+    write_report = ""
+    if junit is not None:
+        junit_body.write_text(junit)
+        write_report = textwrap.dedent(f"""\
+            for arg in "$@"; do
+              case "$arg" in --junit-xml=*) cat {str(junit_body)!r} > "${{arg#--junit-xml=}}" ;; esac
+            done
+        """)
+    (bindir / "pytest").write_text(
+        "#!/usr/bin/env bash\n"
+        f"echo \"$@\" > {str(marker)!r}\n"
+        + write_report
+        + f"exit {pytest_rc}\n"
+    )
     for tool in ("git", "pytest"):
         (bindir / tool).chmod(0o755)
     # Real tools the block genuinely needs, symlinked in explicitly.
@@ -520,3 +561,45 @@ def test_a_zero_collect_pytest_exit_fails_in_words(tmp_path: Path) -> None:
     assert marker.exists(), result.stdout + result.stderr
     assert result.returncode == 5, result.stdout + result.stderr
     assert "ZERO TESTS EXECUTED" in result.stdout, result.stdout
+
+
+# --- INV-zuvij: exit 0 is not a count of executed tests ----------------------
+
+def _run_with_report(tmp_path: Path, junit: str | None) -> subprocess.CompletedProcess:
+    repo, marker = _sandbox(
+        tmp_path,
+        manifest_body=MANIFEST_TEST_ONLY,
+        changed_files=["tests/test_something.py"],
+        junit=junit,
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+    assert marker.exists(), result.stdout + result.stderr  # reach: pytest ran
+    assert "--junit-xml=" in marker.read_text(), marker.read_text()
+    return result
+
+
+def test_an_all_skipped_run_fails(tmp_path: Path) -> None:
+    """pytest exits 0 on an all-skipped run; the step does not pass it."""
+    result = _run_with_report(tmp_path, _junit(SKIPPED_CASE, SKIPPED_CASE))
+    assert result.returncode == 5, result.stdout + result.stderr
+    assert "ZERO TESTS EXECUTED" in result.stdout, result.stdout
+
+
+def test_a_run_that_executed_a_test_passes(tmp_path: Path) -> None:
+    """Positive control: one passed test beside a skip is a pass."""
+    result = _run_with_report(tmp_path, _junit(PASSED_CASE, SKIPPED_CASE))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "1 test(s) executed" in result.stdout, result.stdout
+
+
+def test_an_xfail_executed(tmp_path: Path) -> None:
+    """junit reports an xfail as a skip, but it ran (smart-test's rule)."""
+    result = _run_with_report(tmp_path, _junit(XFAIL_CASE))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_missing_report_fails_closed(tmp_path: Path) -> None:
+    """Exit 0 with no readable report: how many ran is unknown, not zero, not a pass."""
+    result = _run_with_report(tmp_path, None)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "no readable junit report" in result.stdout, result.stdout

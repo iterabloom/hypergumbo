@@ -616,12 +616,39 @@ steps:
         # bare failing pytest aborts the block before the coverage gate and the
         # explicit `exit $TEST_EXIT` below. Final exit code is unchanged.
         TEST_EXIT=0
-        pytest --rootdir=. -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS || TEST_EXIT=$?
+        JUNIT="$(mktemp -d)/pytest-junit.xml"
+        pytest --rootdir=. -n "$WORKERS" --tb=short --junit-xml="$JUNIT" $COV_PATHS $SELECTED_TESTS || TEST_EXIT=$?
         # INV-tazur: exit 5 is "collected nothing". It already fails the step;
         # say so in words, because pytest's own line ("no tests ran") reads like
         # a skip rather than a failure of the selection.
         if [ "$TEST_EXIT" -eq 5 ]; then
           echo "❌ ZERO TESTS EXECUTED: the manifest selected $(echo "$SELECTED_TESTS" | wc -w) file(s) and pytest collected none (exit 5). This is not a pass."
+        elif [ "$TEST_EXIT" -eq 0 ]; then
+          # INV-zuvij: pytest also exits 0 when every collected test SKIPPED,
+          # so exit 0 is not a count of what ran. The junit report is: a
+          # testcase counts unless skipped, and an xfail (reported as a skip)
+          # did run -- smart-test's count_executed_tests rule. No readable
+          # report means the count is unknown, which fails closed here: this
+          # step is the gate, and a gate that cannot count does not pass.
+          EXECUTED=$(python3 -c '
+        import sys
+        import xml.etree.ElementTree as ET
+        n = 0
+        for case in ET.parse(sys.argv[1]).iter("testcase"):
+            skip = case.find("skipped")
+            if skip is None or skip.get("type") == "pytest.xfail":
+                n += 1
+        print(n)
+        ' "$JUNIT" 2>/dev/null || true)
+          if [ -z "$EXECUTED" ]; then
+            echo "❌ pytest exited 0 but left no readable junit report ($JUNIT), so how many tests ran is unknown. This is not a pass."
+            TEST_EXIT=1
+          elif [ "$EXECUTED" -eq 0 ]; then
+            echo "❌ ZERO TESTS EXECUTED: pytest exited 0 but every selected test was skipped. This is not a pass."
+            TEST_EXIT=5
+          else
+            echo "=== $EXECUTED test(s) executed ==="
+          fi
         fi
 
         # 100% coverage gate for changed source files only.

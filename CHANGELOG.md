@@ -92,6 +92,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Declared axioms are tested against survey and `verify-claims` output** ([`docs/surveys/axiom-falsifiability.md`](docs/surveys/axiom-falsifiability.md)); strict xfails record today's failures.
 - **The full-suite test-only-reachability gate is green again.**
+- **The per-PR pytest step fails a run whose every test skipped**, or that left no report.
 - **A test fails when a classified module is reported starved** (`classified_yet_starved`).
 - **Every spec-validator check has something to inspect**, and parallel tests no longer race.
 

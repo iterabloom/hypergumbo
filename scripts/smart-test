@@ -549,6 +549,8 @@ build_affected_cov_paths() {
 # With no readable report, fall back to the counts on pytest's result line, and
 # print "unknown" when neither says -- the caller then trusts the exit code
 # rather than inventing a zero.
+# The per-PR Woodpecker pytest step applies the same rule inline (INV-zuvij);
+# change both together.
 # `python3 -c`, not a heredoc: a heredoc inside $() is the WI-ginuj trap noted
 # at disclose_full_suite_scope.
 count_executed_tests() {
