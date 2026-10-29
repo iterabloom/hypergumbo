@@ -20,3 +20,10 @@
     pr_ref:  # 5d90
     description: "From the WI-kosup knob census (2026-10-28; /home/jgstern_agent/hypergumbo_lab_notebook/kosup_reader_census_10282026/C_knobs.md K1, K7). Catalogue YAML loaders that SILENTLY IGNORE an unknown key (a write-only knob: the file reports loaded and the key does nothing), WI-rinaz's shape in other loaders:\n- io_primitives (IoBoundaryCatalog._from_dict / load_overlay_catalog): a user overlay with net_sendd: or function: loads with 0 primitives and no message (reproduced by the census agent).\n- function_summaries, library_signatures, frameworks, dataflow_patterns loaders.\nAlso write-only keys those loaders accept: library_signatures module_completeness: partial (5 files); DataflowConfig.calls (no file produces it); frameworks linkers: (101 files, read only by tests), detect: (3 files, no reader), name_pattern (Graphene resolve_*) and usage_call (two ZIO route rules) -- those patterns match nothing (reproduced). Fix per loader: refuse unknown keys with the key named (the claims-file and WI-rinaz rule), and wire or delete each accepted-but-unread key."  # 5d90
     fields: {}  # 5d90
+- op: discuss  # b354
+  at: '2026-10-29T00:08:53Z'  # b354
+  by: agent  # b354
+  actor: jgstern_agent  # b354
+  clock: 2  # b354
+  nonce: b354  # b354
+  message: "Part 1 shipped in PR #1928: the io_primitives loader (IoBoundaryCatalog._from_dict, so shipped catalogues and every overlay) refuses an unknown key at top level, in a boundary row, a stdlib_other row and a completeness entry, naming it with a near-miss hint, via yaml_catalogs.reject_unknown_keys (lifted from taint's WI-rinaz helper, which now calls it). Live case found: docs/templates/bash-io-primitives.template.yaml's fs_delete: section (rm, shred) loaded zero rows; now fs_write. Accepted as human-read: seeded_from (init-catalogs stamp) and a completeness entry's source_url. Remaining: function_summaries, library_signatures, frameworks, dataflow_patterns loaders and their accepted-but-unread keys."  # b354

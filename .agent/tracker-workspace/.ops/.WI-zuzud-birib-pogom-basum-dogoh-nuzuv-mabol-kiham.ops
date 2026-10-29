@@ -1,0 +1,21 @@
+- op: create  # 38cc
+  at: '2026-10-28T21:26:24Z'  # 38cc
+  by: agent  # 38cc
+  actor: jgstern_agent  # 38cc
+  clock: 1  # 38cc
+  nonce: 38cc  # 38cc
+  data:  # 38cc
+    kind: work_item  # 38cc
+    title: "linker stand-ins minted in a tier-filtered file survive the tier filter, as tier 1, while the analyzer symbols around them are dropped"  # 38cc
+    status: todo_hard  # 38cc
+    priority: 3  # 38cc
+    parent:  # 38cc
+    tags:  # 38cc
+    - linker  # 38cc
+    - supply_chain  # 38cc
+    isbefore: []  # 38cc
+    duplicate_of: []  # 38cc
+    not_duplicate_of: []  # 38cc
+    pr_ref:  # 38cc
+    description: "Found measuring WI-pokuz (2026-10-28; ~/hg_meas/pokuz/livebook/{A,B}.json, survey on dev 75f4881f64 and the WI-pokuz branch). livebook's static/assets/*.js bundles are listed in limits.tier_filtered_files, so their analyzer symbols leave the output (dev already carries 5,876 external_symbol placeholders with ids under static/assets/, standing in for those functions on 16,475 calls edges and 240 enclosure edges). But the LINKER stand-ins minted in the same files stay in the output, at supply-chain tier 1: 260 function nodes, 10 call_site nodes and 11 variables under static/assets/ in B, e.g. message_sender / message_handler from the message-dispatch linker on minified code. Since WI-pokuz attaches every call-site stand-in, 112 more enclosure edges run from placeholders into them. A stand-in in a file the tier filter removed is a finding about vendored/derived code reported as first-party. Fix candidates: tier the stand-in from its path the way analyzer symbols are tiered, or filter it with its file; measure the node/edge delta on livebook and one more bundled-asset repo."  # 38cc
+    fields: {}  # 38cc
