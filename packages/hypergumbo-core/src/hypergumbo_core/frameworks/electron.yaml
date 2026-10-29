@@ -110,6 +110,3 @@ patterns:
   # Electron nativeTheme
   - concept: theme
     decorator: "^nativeTheme\\.(on|shouldUseDarkColors)$"
-
-linkers:
-  - ipc

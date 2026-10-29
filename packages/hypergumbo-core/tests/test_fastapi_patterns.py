@@ -28,7 +28,6 @@ class TestFastAPIPatternLoading:
         assert pattern_def.id == "fastapi"
         assert pattern_def.language == "python"
         assert len(pattern_def.patterns) > 0
-        assert "http" in pattern_def.linkers
 
     def test_has_route_patterns(self) -> None:
         """FastAPI has route decorator patterns."""

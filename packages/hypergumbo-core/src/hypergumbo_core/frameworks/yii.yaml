@@ -125,6 +125,3 @@ patterns:
   # Fixture
   - concept: fixture
     base_class: "^(Fixture|ActiveFixture)$"
-
-linkers:
-  - http

@@ -88,7 +88,3 @@ patterns:
   # koa-mount (for mounting sub-applications)
   - concept: middleware
     decorator: "^mount$"
-
-linkers:
-  - http
-  - websocket

@@ -198,6 +198,3 @@ patterns:
     symbol_path: "pyproject\\.toml$"
     meta_match:
       dependency_scope: "^dev$"
-
-linkers:
-  - dependency

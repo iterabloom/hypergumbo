@@ -45,6 +45,3 @@ patterns:
   # Flask-RESTful abort helper
   - concept: error_handler
     decorator: "^abort$"
-
-linkers:
-  - http

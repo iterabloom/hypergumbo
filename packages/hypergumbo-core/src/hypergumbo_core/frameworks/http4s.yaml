@@ -152,6 +152,3 @@ patterns:
   # Server trait implementation
   - concept: server
     base_class: "^Server$"
-
-linkers:
-  - http

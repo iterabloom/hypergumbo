@@ -31,6 +31,8 @@ from pathlib import Path
 
 import pytest
 
+from hypergumbo_core.yaml_catalogs import CatalogueError
+
 from hypergumbo_core.function_summaries import (
     clear_summary_cache,
     load_function_summaries,
@@ -70,12 +72,21 @@ def test_provenance_is_stamped_at_load_not_read_from_the_file(
 ) -> None:
     """A file must not be able to claim it is shipped. The stamp is what the
     caveat rests on, so a YAML key setting it would be a way to silence a
-    finding AND the disclosure of having silenced it."""
+    finding AND the disclosure of having silenced it. Since WI-hapon the key
+    is refused outright, which is stronger than ignored: the author learns the
+    claim was never available."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     _write_user_summary(tmp_path, (
         "summaries:\n"
         "  - function: acme.audit.swallow\n"
         "    user_supplied: false\n"
+        "    param_to_return: {}\n"
+    ))
+    with pytest.raises(CatalogueError, match="'user_supplied'"):
+        load_function_summaries()
+    _write_user_summary(tmp_path, (
+        "summaries:\n"
+        "  - function: acme.audit.swallow\n"
         "    param_to_return: {}\n"
     ))
     assert load_function_summaries()["acme.audit.swallow"].user_supplied is True

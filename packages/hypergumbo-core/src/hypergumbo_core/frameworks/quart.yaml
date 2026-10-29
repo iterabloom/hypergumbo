@@ -61,7 +61,3 @@ patterns:
   # Marshmallow schemas (validation/serialization)
   - concept: serializer
     base_class: "^(marshmallow\\.)?Schema$"
-
-linkers:
-  - http
-  - websocket

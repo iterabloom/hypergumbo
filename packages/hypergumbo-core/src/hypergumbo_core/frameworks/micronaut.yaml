@@ -114,8 +114,3 @@ patterns:
   # Micronaut Configuration
   - concept: config
     decorator: "^(ConfigurationProperties|EachProperty)$"
-
-linkers:
-  - http
-  - grpc
-  - message_queue

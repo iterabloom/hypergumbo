@@ -125,6 +125,3 @@ patterns:
   # Test case
   - concept: test
     base_class: "^(TestCase|AbstractHttpControllerTestCase)$"
-
-linkers:
-  - http

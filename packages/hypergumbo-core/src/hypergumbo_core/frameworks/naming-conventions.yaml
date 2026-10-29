@@ -87,5 +87,3 @@ patterns:
     symbol_name: "(^|\\.)\\w*Acceptor\\.run$"
     symbol_kind: "^method$"
     language: "^(java|scala|kotlin)$"
-
-linkers: []

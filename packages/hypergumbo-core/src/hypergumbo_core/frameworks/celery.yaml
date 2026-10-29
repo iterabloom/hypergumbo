@@ -73,6 +73,3 @@ patterns:
   # Celery configuration classes
   - concept: configuration
     base_class: "^CeleryConfig$"
-
-linkers:
-  - message_queue

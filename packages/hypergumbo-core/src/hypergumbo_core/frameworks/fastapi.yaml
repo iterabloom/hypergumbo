@@ -105,6 +105,3 @@ patterns:
     symbol_kind: "^variable$"
     meta_match:
       constructed_from: "(.*\\.)?APIRouter$"
-
-linkers:
-  - http

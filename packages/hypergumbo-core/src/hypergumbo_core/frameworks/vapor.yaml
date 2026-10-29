@@ -69,7 +69,3 @@ patterns:
   # Vapor Commands
   - concept: command
     base_class: "^(Command|AsyncCommand)$"
-
-linkers:
-  - http
-  - database_query

@@ -163,8 +163,3 @@ patterns:
 
   - concept: authentication
     decorator: "^Authenticated$"
-
-linkers:
-  - http
-  - database_query
-  - message_queue

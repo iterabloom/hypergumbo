@@ -24,6 +24,3 @@ patterns:
   # Tauri command with rename — #[tauri::command(rename_all = "camelCase")]
   - concept: ipc_handler
     annotation: "^tauri::command$"
-
-linkers:
-  - tauri_ipc

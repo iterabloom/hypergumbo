@@ -1473,7 +1473,7 @@ def generate_architecture_md() -> str:
         "",
         "**Framework pattern** (loaded when framework detected):",
         "1. Create `packages/hypergumbo-core/src/hypergumbo_core/frameworks/<framework>.yaml`",
-        "2. Add `linkers:` section to enable relevant linkers",
+        "2. Patterns only: a linker's activation is its `LinkerActivation` in code, and a key the loader does not read is refused (WI-hapon)",
         "3. Add tests in `packages/hypergumbo-core/tests/test_framework_patterns.py`",
         "",
         "**Convention pattern** (always loaded):",

@@ -167,10 +167,3 @@ patterns:
   # Wisper publisher module inclusion
   - concept: event_publisher
     base_class: "^Wisper::Publisher$"
-
-linkers:
-  - http
-  - websocket
-  - database_query
-  - view_template
-  - event-sourcing

@@ -126,6 +126,3 @@ patterns:
   # Defer utility for streaming
   - concept: async
     symbol_name: "^defer$"
-
-linkers:
-  - http

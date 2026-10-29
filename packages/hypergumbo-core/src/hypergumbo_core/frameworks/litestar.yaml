@@ -59,7 +59,3 @@ patterns:
   # DTOData base class (Litestar-specific data transfer objects)
   - concept: serializer
     base_class: "^(AbstractDTO|DTOData)$"
-
-linkers:
-  - http
-  - websocket

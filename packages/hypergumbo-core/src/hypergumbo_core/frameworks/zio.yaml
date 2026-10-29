@@ -15,11 +15,6 @@ retrieved: 2026-06-18
 id: zio
 language: scala
 
-detect:
-  - import_prefix: "zio."
-  - import_prefix: "zio.stream."
-  - base_class: "^ZIOApp"
-
 patterns:
   # ZIO application entry points
   - concept: application
@@ -27,11 +22,9 @@ patterns:
   - concept: application
     base_class: "^ZIOApp$"
 
-  # ZIO HTTP (zio-http) route patterns
-  - concept: route
-    usage_call: "^Routes\\.apply$"
-  - concept: route
-    usage_call: "^Method\\.(GET|POST|PUT|DELETE|PATCH)"
-
-linkers:
-  - http
+  # ZIO HTTP (zio-http) routes are NOT detected. Two rules here used a
+  # `usage_call:` key the loader never read, so they matched nothing; and the
+  # supported `usage:` spelling would match nothing either, because the
+  # scala analyzer emits no usage context for `Routes(Method.GET / "x" ->
+  # handler(...))` (checked on a fixture, WI-hapon). Deleted rather than
+  # kept as rules that look like coverage; the gap is filed.

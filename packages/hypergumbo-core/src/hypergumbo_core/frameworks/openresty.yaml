@@ -86,6 +86,3 @@ patterns:
   - concept: event_handler
     symbol_name: "(^|\\.)(?:init_worker|ssl_certificate|rewrite|access|content|balancer|header_filter|body_filter|log|preread)$"
     symbol_kind: "function"
-
-linkers:
-  - http

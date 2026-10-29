@@ -90,6 +90,3 @@ patterns:
     usage:
       kind: "^call$"
       name: "^Auth\\."
-
-linkers:
-  - http

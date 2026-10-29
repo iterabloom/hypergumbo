@@ -157,8 +157,3 @@ patterns:
 
   - concept: task
     base_class: "^Symfony\\\\Component\\\\Messenger\\\\Handler\\\\MessageHandlerInterface$"
-
-linkers:
-  - http
-  - database_query
-  - message_queue

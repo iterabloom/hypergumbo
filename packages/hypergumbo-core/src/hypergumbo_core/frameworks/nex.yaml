@@ -85,6 +85,3 @@ patterns:
     usage:
       kind: "^call$"
       name: "^Nex\\.Store\\.(get|put|update)$"
-
-linkers:
-  - http

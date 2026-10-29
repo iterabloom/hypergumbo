@@ -132,8 +132,3 @@ patterns:
   # Django template filters - @register.filter
   - concept: template_filter
     decorator: "^register\\.filter$"
-
-linkers:
-  - http
-  - database_query
-  - orm

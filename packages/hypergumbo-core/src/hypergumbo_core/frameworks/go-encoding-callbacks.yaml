@@ -72,5 +72,3 @@ patterns:
     symbol_name: "(^|\\.)MarshalBinary$"
     symbol_kind: "^method$"
     language: "^go$"
-
-linkers: []

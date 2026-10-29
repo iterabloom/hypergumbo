@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from hypergumbo_core.yaml_catalogs import CatalogueError
+
 from hypergumbo_core.cfg import BasicBlock, CfgEdge, CfgStatement, DdgEdge, FunctionCfg
 from hypergumbo_core.function_summaries import (
     CallbackFlow,
@@ -156,9 +158,15 @@ class TestLoadFunctionSummaries:
         assert summaries == {}
 
     def test_yaml_without_summaries_key(self, tmp_path: Path) -> None:
-        (tmp_path / "bad.yaml").write_text("other_key: value\n")
+        (tmp_path / "bare.yaml").write_text("provenance: builtin\n")
         summaries = load_function_summaries(search_dir=tmp_path)
         assert summaries == {}
+
+    def test_a_key_nothing_reads_is_refused(self, tmp_path: Path) -> None:
+        """WI-hapon: ``other_key:`` used to read as a file with no summaries."""
+        (tmp_path / "bad.yaml").write_text("other_key: value\n")
+        with pytest.raises(CatalogueError, match="'other_key'"):
+            load_function_summaries(search_dir=tmp_path)
 
     def test_empty_yaml(self, tmp_path: Path) -> None:
         (tmp_path / "empty.yaml").write_text("")

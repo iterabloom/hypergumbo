@@ -93,5 +93,3 @@ patterns:
   # Rich Progress
   - concept: output
     decorator: "^Progress$"
-
-linkers: []

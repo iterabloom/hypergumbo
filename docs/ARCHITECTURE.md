@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **367** Python modules (150 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 113 core, 4 CLI, 37 tracker)
-- **56715** symbols (functions, classes, methods)
-- **227057** edges by type:
-  - calls: 128752
-  - contains: 52848
-  - imports: 19347
-  - instantiates: 12754
-  - references: 9626
-  - module_attr_ref: 2091
-  - other: 1639
+- **57083** symbols (functions, classes, methods)
+- **228510** edges by type:
+  - calls: 129340
+  - contains: 53195
+  - imports: 19543
+  - instantiates: 12792
+  - references: 9766
+  - module_attr_ref: 2100
+  - other: 1774
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 56715 Symbols + 227057 Edges + UsageContexts           │
+│  Output: 57083 Symbols + 228510 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -203,7 +203,7 @@ A code symbol (function, class, etc.) detected by analysis.
 - `synthetic spans. Producer`: fingerprint.py.
 - `quality`: Score and reason dict for quality assessment
 - `meta`: Optional metadata dict for language-specific information
-- `supply_chain_tier`: Position in dependency graph (1=first_party, 2=internal_dep, 3=external_dep, 4=derived). See §14 of spec.
+- `supply_chain_tier`: Supply-chain distance, from the project, of the code this node stands for (1=first_party, 2=internal_dep, 3=external_dep, 4=derived); a dependency declaration stands for the package it names, a boundary stub for the code it replaces. ADR-0041 §1, spec §14.
 - `supply_chain_reason`: Why this tier was assigned (e.g., "matches ^src/")
 - `supply_chain_classified`: Whether a producer or the annotator has assigned the tier (WI-lidig). The annotator classifies every node for which this is False; it used to infer "unclassified" from the default tier 1 with an empty reason, which made a free-text field's emptiness a branch and left a deliberate "tier 1, no reason" stamp indistinguishable from none. Set by ``__post_init__`` when a constructor passes a tier or a reason, by ``from_dict`` (a serialized map is classified), and by every producer that assigns a
 - `tier afterwards. Internal`: not serialized.
@@ -282,20 +282,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10479.6 | ir.py |
-| `len` | external_symbol | 8022.0 | <external> |
-| `write_text` | external_symbol | 7268.0 | <external> |
-| `Span` | class | 6749.1 | ir.py |
-| `LinkerContext` | class | 3775.9 | registry.py |
-| `get` | external_symbol | 3604.0 | <external> |
-| `load_catalog` | function | 3408.4 | io_boundary.py |
-| `Edge.create` | method | 2536.4 | ir.py |
-| `str` | external_symbol | 2459.0 | <external> |
-| `Path` | external_symbol | 2449.0 | <external> |
-| `next` | external_symbol | 2258.0 | <external> |
-| `load_framework_patterns` | function | 2107.0 | framework_patterns.py |
+| `Symbol` | class | 10563.1 | ir.py |
+| `len` | external_symbol | 8025.0 | <external> |
+| `write_text` | external_symbol | 7295.0 | <external> |
+| `Span` | class | 6772.6 | ir.py |
+| `LinkerContext` | class | 3792.8 | registry.py |
+| `get` | external_symbol | 3632.0 | <external> |
+| `load_catalog` | function | 3522.8 | io_boundary.py |
+| `Edge.create` | method | 2543.7 | ir.py |
+| `str` | external_symbol | 2482.0 | <external> |
+| `Path` | external_symbol | 2470.0 | <external> |
+| `next` | external_symbol | 2259.0 | <external> |
+| `load_framework_patterns` | function | 2099.7 | framework_patterns.py |
 | `TrackerApp` | class | 1975.3 | tui.py |
-| `append` | external_symbol | 1918.0 | <external> |
+| `append` | external_symbol | 1925.0 | <external> |
 | `main` | function | 1781.4 | cli.py |
 
 ## Pattern System
@@ -328,7 +328,7 @@ Linkers and entrypoint detection use `meta.concepts` exclusively.
 
 **Framework pattern** (loaded when framework detected):
 1. Create `packages/hypergumbo-core/src/hypergumbo_core/frameworks/<framework>.yaml`
-2. Add `linkers:` section to enable relevant linkers
+2. Patterns only: a linker's activation is its `LinkerActivation` in code, and a key the loader does not read is refused (WI-hapon)
 3. Add tests in `packages/hypergumbo-core/tests/test_framework_patterns.py`
 
 **Convention pattern** (always loaded):
@@ -980,8 +980,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: aeaf183d1660
-  commit_count: 8626
+  commit: 4dc17759c791
+  commit_count: 8664
   hypergumbo: 9.2.0
   python: 3.12.3
 -->

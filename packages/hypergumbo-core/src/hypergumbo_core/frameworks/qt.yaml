@@ -82,5 +82,3 @@ patterns:
 
   - concept: view
     base_class: "^(QListView|QTableView|QTreeView)$"
-
-linkers: []

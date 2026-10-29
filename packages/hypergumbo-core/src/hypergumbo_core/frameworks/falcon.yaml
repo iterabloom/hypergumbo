@@ -66,6 +66,3 @@ patterns:
   # Resource base class (optional, but common)
   - concept: controller
     base_class: "^Resource$"
-
-linkers:
-  - http

@@ -180,6 +180,3 @@ patterns:
     usage:
       kind: "^call$"
       name: "^\\$this->validate$"
-
-linkers:
-  - http

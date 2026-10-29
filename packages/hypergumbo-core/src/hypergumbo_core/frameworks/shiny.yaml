@@ -66,6 +66,3 @@ patterns:
     usage:
       kind: "^call$"
       name: "^(enableBookmarking|bookmarkButton|onBookmark|onRestore)$"
-
-linkers:
-  - http

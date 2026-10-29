@@ -74,9 +74,13 @@ patterns:
     decorator: "^make_executable_schema$"
 
   # ==================== GRAPHENE PATTERNS ====================
-  # Graphene resolver prefix (resolve_field_name)
-  - concept: graphql_resolver
-    name_pattern: "^resolve_"
+  # Graphene resolvers (`resolve_<field>` methods on an ObjectType) are NOT
+  # detected. The rule here used `name_pattern:`, a key the loader never
+  # read, so it matched nothing; the supported spelling (method_name +
+  # parent_base_class) would match nothing either, because the python
+  # analyzer stamps no `parent_base_classes` on a method (checked on a
+  # fixture, WI-hapon). Deleted rather than kept as a rule that looks like
+  # coverage; the gap is filed.
 
   # Graphene ObjectType
   - concept: graphql_schema
@@ -105,6 +109,3 @@ patterns:
   # Graphene relay
   - concept: graphql_schema
     base_class: "^(Node|Connection|ConnectionField)$"
-
-linkers:
-  - graphql_resolver
