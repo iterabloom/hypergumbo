@@ -1,0 +1,33 @@
+Original commit body from 28d3c68a0639addecde28866aafc7d13922c0321:
+
+Records the six decisions WI-tofog asked for, so WI-lakid (projection),
+WI-rudat (write-back bridge) and WI-vojil (sync endpoint) have one shape
+to build to:
+
+1. One Y.Doc per tracker root. Only title, description and a draft
+   discussion entry are live-editable, each committing as the op it
+   already is (update --title / --description, discuss). Status,
+   priority, tags, links, fields, locked_fields, frozen and posted
+   entries are op-only plain values. Stealth items are not projected:
+   serve exists to be reached from a phone, and stealth never leaves the
+   machine.
+2. The ops log wins. A live edit is real only once the bridge emits its
+   op through TrackerSet/Store (never an .ops write); commit on 5 s idle
+   or an explicit post, not per keystroke; an op landing on a field with
+   uncommitted live text supersedes it and the editor is told, not
+   silently re-applied.
+3. Pseudonymous Yjs clientID in the doc; the token -> by/actor table in
+   the server process, filled at authenticated handshake; unknown tokens
+   refused.
+4. Awareness carries a server-assigned pseudonym and kind, no identity
+   (PlazaFlow v1.2 §4.8.5).
+5. Yjs 13.6 (14 is still pre-release on npm as of 2026-10-29), pycrdt
+   0.14.10 + pycrdt-websocket 0.16.5, on a /yjs route inside create_app's
+   WI-hopip guard; a Node y-websocket sidecar is rejected. States the
+   dependency on WI-pupod (run_server wires no TrackerSet), not raising it.
+6. 127.0.0.1 only until WI-sunan; no encryption (WI-pufun); not
+   federation; not a replacement for tracker sync.
+
+"Why not BlockSuite" is cited from ADR-0019 rather than restated.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
