@@ -1,0 +1,42 @@
+Original commit body from 7a07a2fe864652ce751228e8cf867690c881df5a:
+
+js_ts.py recorded a function value in an object literal ({run: h}, {h}),
+a property write (obj.h = h, WI-vubal) and a call argument. Three value
+positions had no edge, so a function used only there had no caller:
+
+- a declaration, const f = handler, at module level or in a function;
+- a plain assignment, f = handler;
+- an array element, [a, b] (dispatch tables, parser combinators).
+
+Each is a `references` edge with evidence function_reference, which is
+not a callback registration (edge_types.is_callback_registration), so
+taint does not walk it -- storing a function is not calling it, the reason
+module.exports = {parse} carries the non-crossable object-literal stamp.
+
+The pair and shorthand arms now share the new _emit_value_reference with
+the three new positions (same resolution, function/method-only, npm
+package boundary guard); their object_field_reference stamp is unchanged.
+test_js_ts_property_assigned_function's plain-assignment test asserted no
+references edge at all; it now asserts its intent (no property-write
+stamp) and the one function_reference edge the binding is.
+
+Corpus A/B (analyze_javascript, dev vs this branch; ioredis, jotai, pm2,
+knex, nuclear, hls.js; every added edge read): +174, -0, all
+function_reference:
+- knex 98: SQLite schema parser combinator arrays
+  (a([deleteReference, updateReference, ...])).
+- nuclear 32, jotai 30: React hook dependency arrays and returned tuples
+  (return [state, dispatch]); export const Toaster = ToasterImpl. Some
+  dependency-array targets are useMemo / useCallback / .then results that
+  js_ts already mints as function symbols over the wrapped arrow; those
+  edges stay inside the enclosing component.
+- pm2 9, ioredis 2, hls.js 1: the same shapes.
+No edge removed, so the object-literal refactor is behaviour-neutral.
+
+Moves two file:line citations into js_ts.py that the edit shifted
+(INV-fogul's shape): signature_axis LEGACY_VALUE_PARSERS callee.signature
+6331 -> 6363, module_key_axis global_object "process" 7584 -> 7598.
+
+META-mino stays open: Java, Ruby, Rust, C and C++ remain.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
