@@ -1,0 +1,39 @@
+Original commit body from e422d9d2ae73240391fb7de7c6287685ef6e5933:
+
+go.py recorded a function VALUE in three places: a call argument
+(register(h), function_reference_arg), a keyed composite-literal field
+(Command{Run: run}, struct_field_reference) and a package-level alias
+(var run = helper, function_reference). Two other value positions had no
+edge, so a function used only there had no caller:
+
+- an unkeyed composite-literal element: []func(){a, b}, the dispatch
+  table, at package level or in a function;
+- the right side of a local binding: f := handler, h = pkg.Fn, a
+  function-local var g = run.
+
+Both now go through the resolution the keyed field already used, factored
+into one closure: a bare name in the caller's own package (WI-bivin), a
+name bound locally at the site shadowing it, a selector by its operand
+(WI-kibah); a call, literal or closure on the right names nothing. Edges
+are `calls` with evidence function_reference, the Go convention for a
+function value. The keyed arm's own literal_element child is not counted
+twice (parent must be the literal_value).
+
+Corpus A/B (analyze_go, dev vs this branch; runc, caddy, git-bug,
+coredns, restic, watermill; every added edge read): +265, -0, all
+function_reference:
+- runc 214: 128 x/sys z/OS syscall stubs (*funcref = impl_X), the
+  libcontainer validator table, blackfriday's inlineCallback table,
+  logrus WriterLevel, protobuf method tables, dbus transport registry,
+  cgroups init hooks, cli.VersionPrinter = printVersion, lexer states.
+- restic 22: backup progress callbacks (arch.CompleteItem = ...),
+  unlock strategy (fn := repository.RemoveStaleLocks), the snapshot
+  policy table.
+- coredns 12, git-bug 13, watermill 3, caddy 1: test seams
+  (e.externalAddrFunc = externalAddress), parser state transitions
+  (p.fn = p.parseID), cfg.VerifyConnection = clientauth.verifyConnection.
+No added edge is wrong in the set read.
+
+META-mino stays open: JS/TS, Java, Ruby, Rust, C and C++ gaps remain.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
