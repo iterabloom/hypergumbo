@@ -28,7 +28,8 @@ Why This Design
 ---------------
 - TreeSitterAnalyzer eliminates boilerplate orchestration code
 - .properties files are ubiquitous in Java ecosystem
-- Configuration values reveal application behavior
+- Configuration values reveal application behavior; a sensitive key's value
+  is withheld by the shared ``hypergumbo_core.analyze.config_secrets`` rules
 - Namespace prefixes indicate logical groupings
 - i18n bundles contain user-facing strings
 """
@@ -46,6 +47,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_doc_symbol_ids,
 )
+from hypergumbo_core.analyze.config_secrets import MASK, is_sensitive_key
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
@@ -146,16 +148,13 @@ def _extract_property_symbols(
         prefix = key.split(".")[0].lower() if "." in key else ""
         category = KNOWN_PREFIXES.get(prefix, "")
 
-        # Determine if this is a sensitive key
-        is_sensitive = any(
-            s in key.lower()
-            for s in ("password", "secret", "token", "key", "credential")
-        )
+        # The key/mask rules are shared with the other config analyzers (INV-puvoh).
+        is_sensitive = is_sensitive_key(key)
 
         # Truncate long values in signature
         sig_value = value[:30] + "..." if len(value) > 30 else value
         if is_sensitive and value:
-            sig_value = "***"
+            sig_value = MASK
 
         symbol = Symbol(
             id=symbol_id,
@@ -168,7 +167,7 @@ def _extract_property_symbols(
             origin=PASS_ID,
             signature=f"{key}={sig_value}" if value else key,
             meta={
-                "value": value if not is_sensitive else "***",
+                "value": value if not is_sensitive else MASK,
                 "prefix": prefix,
                 "category": category,
                 "is_sensitive": is_sensitive,
