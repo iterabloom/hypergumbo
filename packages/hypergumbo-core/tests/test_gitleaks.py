@@ -432,6 +432,71 @@ class TestScanContentRealBinary:
         assert findings == []
 
 
+    @pytest.mark.skipif(
+        not is_gitleaks_available(),
+        reason="gitleaks binary not installed (opt-in extra)",
+    )
+    def test_real_gitleaks_ignores_a_config_in_the_working_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """INV-nihab: a ``.gitleaks.toml`` where hypergumbo runs (normally the
+        analysed repository) cannot allowlist a finding away."""
+        (tmp_path / ".gitleaks.toml").write_text(
+            '[extend]\nuseDefault = true\n[allowlist]\nregexes = ["AKIA[A-Z0-9]+"]\n'
+        )
+        monkeypatch.chdir(tmp_path)
+        findings = scan_content(f"aws_access_key_id = {self._AWS_VECTOR}\n")
+        assert findings, "the working directory's .gitleaks.toml hid the finding"
+
+
+class TestScanRunsInADirectoryOfItsOwn:
+    """INV-nihab: gitleaks auto-discovers ``.gitleaks.toml`` / ``.gitleaksignore``
+    in its working directory, and removes and recreates its report path. Run
+    in the inherited cwd with ``--report-path /dev/stdout``, the analysed
+    repository could configure (and empty) the scan, and gitleaks tried to
+    unlink ``/dev/stdout`` -- which succeeds as root. The scan now reports on
+    ``-`` and runs in an empty scratch directory of its own."""
+
+    def _invoke(self, monkeypatch: pytest.MonkeyPatch, cwd: Path) -> dict:
+        (cwd / ".gitleaks.toml").write_text('[allowlist]\nregexes = [".*"]\n')
+        (cwd / ".gitleaksignore").write_text("<stdin>:generic-api-key:1\n")
+        monkeypatch.chdir(cwd)
+        seen: dict = {}
+
+        def fake_run(argv, **kwargs):
+            seen["argv"] = list(argv)
+            seen["cwd"] = kwargs.get("cwd")
+            seen["cwd_entries"] = (
+                sorted(p.name for p in Path(kwargs["cwd"]).iterdir())
+                if kwargs.get("cwd") else None
+            )
+            result = MagicMock()
+            result.stdout = b"[]"
+            return result
+
+        with patch.object(gitleaks, "get_gitleaks_path", return_value=Path("/usr/bin/gitleaks")):
+            with patch("subprocess.run", side_effect=fake_run):
+                assert scan_content("API_KEY=secret123") == []
+        assert "argv" in seen, "gitleaks was never invoked"  # reach
+        return seen
+
+    def test_the_report_goes_to_stdout_not_dev_stdout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        argv = self._invoke(monkeypatch, tmp_path)["argv"]
+        assert argv[argv.index("--report-path") + 1] == "-"
+        assert "/dev/stdout" not in argv
+
+    def test_the_scan_runs_in_an_empty_directory_that_is_not_the_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen = self._invoke(monkeypatch, tmp_path)
+        assert seen["cwd"] is not None, "gitleaks inherited the caller's cwd"
+        assert Path(seen["cwd"]).resolve() != tmp_path.resolve()
+        assert seen["cwd_entries"] == [], seen["cwd_entries"]
+        assert not Path(seen["cwd"]).exists(), "the scratch directory was left behind"
+
+
 class TestScanContentCached:
     """Tests for content-hash-keyed scan caching (WI-julir)."""
 

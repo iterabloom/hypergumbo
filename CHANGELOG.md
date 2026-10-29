@@ -87,6 +87,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`--max-files` bounds every language analyzer**; `hypergumbo catalog` names each pass's grammar package.
 - **SCIP launches, trust grants, the catalogue home and the repo-tier offer go through declared zones**; the offer never writes into an analysed repository.
 - **Analysis never downloads an embedding model**; `install-embeddings` does.
+- **The secret scan ignores the analysed repository's gitleaks config** and no longer asks gitleaks to delete `/dev/stdout`.
 
 #### CI and gates
 

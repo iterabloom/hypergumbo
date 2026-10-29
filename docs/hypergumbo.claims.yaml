@@ -124,8 +124,10 @@ claims:
           (rev-parse HEAD, rev-list --max-parents=0 HEAD,
           config --get remote.origin.url). No fetch, no push, no network.
         - gitleaks, for the best-effort secret scan. Reads content on
-          stdin, reports findings on stdout. Runs only when the optional
-          binary is installed.
+          stdin, reports findings on stdout, and runs in an empty scratch
+          directory, so it reads no .gitleaks.toml or .gitleaksignore from
+          the analysed repository. Runs only when the optional binary is
+          installed.
         - rust-analyzer --version and scip-python --version, capability
           probes that read nothing. NOT indexing requests: rust-analyzer
           executes a project's build.rs and proc macros when it indexes,
