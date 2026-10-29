@@ -1,0 +1,45 @@
+Original commit body from e5bd21361e550124a17fb0c35893e0890262b721:
+
+The tier filter drops a DERIVED (tier 4) file's symbols by default, but
+linker stand-ins were never tiered, so a stand-in inside a minified
+bundle stayed in the output as first-party while the analyzer symbols
+around it were removed. Two ways in, both in _classify_symbols:
+- every symbol with a protocol_origin was skipped outright (INV-bonup:
+  so a stand-in would carry "a real first-party distance" rather than a
+  borrowed tier 2 -- but the skip assigned it no distance at all);
+- seven linkers pass a DESCRIPTIVE supply_chain_reason at tier 1
+  ("message dispatch handler", "synthetic IPC bridge node"; crypto_flow
+  passes tier=1 outright), and a reason marks the node classified
+  (WI-lidig) although no distance was ever measured.
+
+Now a protocol stand-in with a path, at tier 1, takes its file's tier
+from the path classifier. A linker's reason is kept with the path's
+appended ("message dispatch sender; detected as minified/generated");
+a linker that stamps a real non-default tier (js_module's npm packages,
+tier 3) keeps it; a stand-in with no path is left as made. Only the tier
+and reason change -- the per-file flags (is_test_file and the rest)
+describe a file's own symbols, and what they would change on a stand-in
+is not reviewed. Re-running the pass is idempotent.
+
+Measured, survey on dev vs this branch (~/hg_meas/zuzud/):
+- livebook (Phoenix + static/assets/ bundles): stand-ins inside
+  tier-filtered files 249 -> 0 (event_subscriber 71, event_publisher 63,
+  message_handler 54, message_sender 50, http_client 10, mq_subscriber
+  1); nodes 16,243 -> 15,976 and edges 38,173 -> 37,374, every removed
+  node under static/ or one of its placeholders; no surviving node
+  changed tier. A first cut that only dropped the protocol_origin skip
+  moved 145 of the 249 -- the 104 message-dispatch stand-ins were held by
+  their descriptive reason, which is why the reason no longer decides.
+- session-desktop (Electron, one tier-filtered file, no stand-ins in
+  it): nodes 17,806 and edges 60,352 unchanged, no node re-tiered.
+
+Tests: test_supply_chain (a stand-in in a source file / a bundle / with
+no path; a descriptive reason does not stand in for a distance, a
+linker's tier 3 is kept, idempotent) and test_supply_chain_classified_
+flag re-pointed off the old skip; test_stand_in_in_bundle_is_tier_
+filtered (mainstream) through the production run_behavior_map: the same
+Electron send in src/ survives and in a source-mapped bundle is filtered
+with it, and no stand-in survives in a tier_filtered_files path.
+Mutation-checked: disabling the path classification reds all four.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
