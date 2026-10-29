@@ -1,0 +1,52 @@
+Original commit body from c6dd91f8461b730f1c668f5d950706415711f0ae:
+
+WI-pofal. An io_primitives overlay's stdlib_other: section names calls
+known NOT to be I/O, and _compute_external_potential then stops
+reporting them as calls that might be. load_catalog already withholds a
+community file's module_completeness for ADR-0061 ruling 2 (an unvouched
+row may add, never make the output cleaner); stdlib_other is the same
+grant one symbol at a time and was honoured. Measured first, on a
+one-file repo calling an uncatalogued frobnet.post (~/hg_meas/pofal/):
+io-boundaries external_potential_edges 1 with no overlay, 0 with a
+community overlay naming frobnet.post under stdlib_other. No
+verify-claims verdict moved: a net_send must_not_exist claim and a
+host_secret -> network taint claim were inconclusive in all three arms
+(none / community / yours), because the unclassified-module coverage
+signal is computed apart from the external_potential chains. Now the
+community overlay's stdlib_other is withheld (external_potential stays
+1); your own overlay keeps the grant (0), as with module_completeness.
+
+WI-hapon, the io_primitives loader. IoBoundaryCatalog._from_dict refuses
+an unknown key at the top level, in a boundary row, in a stdlib_other
+row and in a module_completeness entry, naming it with a near-miss hint.
+Reproduced by the census: net_sendd: and a row key function: loaded zero
+primitives with no message. The shipped docs/templates/
+bash-io-primitives.template.yaml had the shape live: its fs_delete:
+section (rm, shred) is no boundary, so both rows loaded as nothing; they
+are fs_write now, as os.remove is in the shipped catalogues, and
+fs_delete: gets a reason sentence in the refusal. The check is
+yaml_catalogs.reject_unknown_keys, lifted out of taint.py's
+_reject_unknown_catalog_keys (WI-rinaz), which now calls it, so both
+families word the refusal the same. Two keys nothing in code reads are
+accepted because people read them: seeded_from (init-catalogs stamps it
+on a seeded copy, and the seeded directory's README documents it) and a
+completeness entry's source_url (the citation stdlib_provenance already
+documents). Every shipped catalogue, default
+overlay, the template and docs/io-primitives-overlays/hypergumbo-self.yaml
+load unchanged.
+
+Docs: ADR-0061 ruling 2 table, catalogues_doc / CATALOGUES.md, CHANGELOG.
+
+Tests: test_community_overlay_stdlib_other.py (load_catalog, and through
+the production io-boundaries CLI: 1 / 1 / 0 for none / community /
+yours); test_io_catalogue_unknown_keys.py (five typos at four levels,
+each refused with its hint; fs_delete's reason; every documented key
+loads; every shipped language loads; the template's rows are fs_write).
+Mutation-checked: dropping the withhold reds 2 tests, dropping the row
+check reds 2.
+
+WI-hapon is not closed by this: the function_summaries, library_signatures,
+frameworks and dataflow_patterns loaders, and their accepted-but-unread
+keys, follow.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
