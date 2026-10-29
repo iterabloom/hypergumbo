@@ -75,7 +75,3 @@ patterns:
   # Tornado testing
   - concept: test
     base_class: "^AsyncHTTPTestCase$"
-
-linkers:
-  - http
-  - websocket

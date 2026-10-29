@@ -96,7 +96,3 @@ patterns:
   # Akka Actor integration
   - concept: actor
     decorator: "^(ask|tell|ActorRef)$"
-
-linkers:
-  - http
-  - websocket

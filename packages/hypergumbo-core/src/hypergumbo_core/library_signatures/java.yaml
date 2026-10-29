@@ -24,7 +24,6 @@
 # no declaring file), so it must arrive qualified.
 provenance: builtin
 language: java
-module_completeness: partial
 signatures:
   java.sql.DriverManager.getConnection: java.sql.Connection
   java.sql.Connection.prepareStatement: java.sql.PreparedStatement

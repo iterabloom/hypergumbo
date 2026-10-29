@@ -143,6 +143,3 @@ patterns:
 
   - concept: api_handler
     symbol_name: "^setResponseStatus$"
-
-linkers:
-  - http

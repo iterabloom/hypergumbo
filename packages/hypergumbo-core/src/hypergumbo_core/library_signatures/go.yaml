@@ -19,7 +19,6 @@
 # fiber.New, echo.New -- are community-overlay rows, not shipped ones.
 provenance: builtin
 language: go
-module_completeness: partial
 signatures:
   # net: the measured case. `ln, _ := net.Listen(...)` then `ln.Accept()` emitted
   # go:external:0-0:Accept, so the catalogue's net.Listener.Accept row was inert.

@@ -102,8 +102,3 @@ patterns:
   # Background services
   - concept: background_service
     base_class: "^(BackgroundService|IHostedService)$"
-
-linkers:
-  - http
-  - websocket
-  - database_query

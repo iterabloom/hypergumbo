@@ -83,14 +83,29 @@ ROW_PARENTS: dict[str, str] = {"kotlin": "java", "scala": "java"}
 
 _WHAT = "library signature file"
 
+#: WI-hapon: the top-level keys a row file may carry.
+_FILE_KEYS: frozenset[str] = frozenset({
+    "provenance", "language", "retrieved", "signatures", "package_variables",
+})
+
 
 def _rows_from(path: "Path", section: str = "signatures") -> dict[str, str]:
     """One section of a row file, validated. A mis-keyed row never matches and raises
     nothing, so the shape of a row is checked where it is read rather than where it
     is used."""
-    from hypergumbo_core.yaml_catalogs import CatalogueError, read_catalogue_yaml
+    from hypergumbo_core.yaml_catalogs import (
+        CatalogueError,
+        read_catalogue_yaml,
+        reject_unknown_keys,
+    )
 
     raw: dict[str, Any] = read_catalogue_yaml(path, what=_WHAT)
+    # WI-hapon: a ``signature:`` typo read as no rows at all, and
+    # ``module_completeness: partial`` sat in five shipped files with no reader
+    # (deleted). ``provenance`` / ``retrieved`` feed the ADR-0061 tier.
+    reject_unknown_keys(
+        raw, _FILE_KEYS, origin=f"{_WHAT} {path}", where="top-level",
+    )
     rows: Any = raw.get(section) or {}
     if not isinstance(rows, dict):
         raise CatalogueError(f"{path}: '{section}' must be a mapping")

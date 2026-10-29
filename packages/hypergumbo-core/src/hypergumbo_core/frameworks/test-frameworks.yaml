@@ -482,5 +482,3 @@ patterns:
     symbol_name: "^(setup|cleanup|setupSpec|cleanupSpec)$"
     symbol_kind: "^method$"
     language: "^groovy$"
-
-linkers: []

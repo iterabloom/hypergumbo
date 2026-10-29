@@ -11,11 +11,6 @@ retrieved: 2026-06-18
 id: hummingbird
 language: swift
 
-detect:
-  - import_prefix: "Hummingbird"
-  - import_prefix: "HummingbirdCore"
-  - base_class: "^RouterMethods$"
-
 patterns:
   # Hummingbird route registration
   - concept: route
@@ -37,6 +32,3 @@ patterns:
   # Hummingbird application conformance
   - concept: application
     base_class: "^ApplicationProtocol$"
-
-linkers:
-  - http

@@ -9,7 +9,7 @@ access modes (read, write, mutate, delete).
 How It Works
 ------------
 1. Each language has a dataflow YAML (e.g., dataflow_patterns/python.yaml)
-   defining which AST node types represent assignments, deletions, and calls.
+   defining which AST node types represent assignments, deletions, returns and borrows.
 2. ``annotate_dataflow()`` takes a batch of edges and a parsed AST tree,
    finds the AST node at each edge's line, looks up the node type in the
    language config, and stamps ``access_mode`` into the edge's ``meta`` dict.
@@ -56,6 +56,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 import yaml
 
 from .axis_meta_keys import is_access_mode_not_applicable
+from .yaml_catalogs import reject_unknown_keys
 
 if TYPE_CHECKING:
     from .ir import Edge
@@ -88,7 +89,6 @@ class DataflowConfig:
 
     language: str
     assignments: List[Dict[str, Any]] = field(default_factory=list)
-    calls: List[Dict[str, Any]] = field(default_factory=list)
     deletions: List[Dict[str, Any]] = field(default_factory=list)
     borrows: List[Dict[str, Any]] = field(default_factory=list)
     returns: List[Dict[str, Any]] = field(default_factory=list)
@@ -118,10 +118,6 @@ class DataflowConfig:
             node_type = rule.get("node_type", "")
             if node_type and node_type not in result:
                 result[node_type] = "read"
-        for rule in self.calls:
-            node_type = rule.get("node_type", "")
-            if node_type and node_type not in result:
-                result[node_type] = "read"
         for rule in self.borrows:
             node_type = rule.get("node_type", "")
             if "mutate_if" in rule:
@@ -137,7 +133,7 @@ class DataflowConfig:
         ``{node_type: assignment, write: left, read: right}``) produce
         positional maps like ``{"assignment": {"left": "write", "right": "read"}}``.
 
-        Non-positional rules (deletions, returns, borrows, calls) produce
+        Non-positional rules (deletions, returns, borrows) produce
         a single ``_default`` key: ``{"delete_statement": {"_default": "delete"}}``.
         """
         result: Dict[str, Dict[str, str]] = {}
@@ -163,10 +159,6 @@ class DataflowConfig:
             node_type = rule.get("node_type", "")
             if node_type:
                 result[node_type] = {"_default": "read"}
-        for rule in self.calls:
-            node_type = rule.get("node_type", "")
-            if node_type and node_type not in result:
-                result[node_type] = {"_default": "read"}
         for rule in self.borrows:
             node_type = rule.get("node_type", "")
             if not node_type:
@@ -176,6 +168,17 @@ class DataflowConfig:
             elif "read_if" in rule:
                 result[node_type] = {"_default": "read"}
         return result
+
+
+#: WI-hapon: the keys :func:`load_dataflow_config` reads from a shipped file.
+#: ``provenance`` / ``retrieved`` feed the ADR-0061 tier.
+_FILE_KEYS: frozenset[str] = frozenset({
+    "provenance", "language", "retrieved", "assignments", "returns",
+    "deletions", "borrows", "library_patterns",
+})
+_LIBRARY_PATTERN_KEYS: frozenset[str] = frozenset({
+    "match", "access_mode", "channel", "channel_from",
+})
 
 
 def load_dataflow_config(yaml_path: Path) -> DataflowConfig:
@@ -196,11 +199,23 @@ def load_dataflow_config(yaml_path: Path) -> DataflowConfig:
     language = data.get("language")
     if not language:
         raise ValueError(f"Dataflow YAML {yaml_path} missing required 'language' field")
+    # WI-hapon: a key nothing reads is refused. The ``calls:`` section was
+    # read into ``DataflowConfig.calls`` and no shipped file produced it, so
+    # it was deleted rather than kept as a section that looks supported.
+    reject_unknown_keys(
+        data, _FILE_KEYS, origin=f"Dataflow YAML {yaml_path}", where="top-level",
+        error=ValueError,
+    )
+    for row in data.get("library_patterns") or []:
+        if isinstance(row, dict):
+            reject_unknown_keys(
+                row, _LIBRARY_PATTERN_KEYS, origin=f"Dataflow YAML {yaml_path}",
+                where="library_patterns row", error=ValueError,
+            )
 
     return DataflowConfig(
         language=language,
         assignments=data.get("assignments", []),
-        calls=data.get("calls", []),
         deletions=data.get("deletions", []),
         borrows=data.get("borrows", []),
         returns=data.get("returns", []),

@@ -28,7 +28,6 @@
 # Deriving beats enumerating; these rows answer a different question.
 provenance: builtin
 language: python
-module_completeness: partial
 signatures:
   # pathlib: migrated from TYPE_PRESERVING_MEMBERS. Every one returns a Path.
   pathlib.Path.__truediv__: pathlib.Path

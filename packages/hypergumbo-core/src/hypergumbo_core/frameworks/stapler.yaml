@@ -70,6 +70,3 @@ patterns:
   - concept: url_facet
     parent_base_class: "^(Action|InvisibleAction|TransientAction|RootAction|UnprotectedRootAction|ManagementLink|Describable|AbstractProject|Job|Run|View|Computer|Node)$"
     method_name: "^get[A-Z]"
-
-linkers:
-  - http

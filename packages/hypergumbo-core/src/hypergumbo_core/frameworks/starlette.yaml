@@ -38,6 +38,3 @@ patterns:
     extract:
       path: "metadata.route_path"
       method: "metadata.methods"
-
-linkers:
-  - http

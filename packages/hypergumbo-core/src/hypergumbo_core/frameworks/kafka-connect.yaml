@@ -40,5 +40,3 @@ patterns:
   - concept: controller
     base_class: "^SourceConnector$"
     symbol_kind: "^class$"
-
-linkers: []

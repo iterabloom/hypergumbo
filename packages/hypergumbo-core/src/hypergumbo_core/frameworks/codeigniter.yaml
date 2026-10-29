@@ -182,6 +182,3 @@ patterns:
     usage:
       kind: "^call$"
       name: "^(view|\\$this->load->view)$"
-
-linkers:
-  - http

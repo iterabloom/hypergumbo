@@ -167,7 +167,3 @@ patterns:
     usage:
       kind: "^call$"
       name: "^CircuitBreaker\\.create$"
-
-linkers:
-  - http
-  - event-sourcing

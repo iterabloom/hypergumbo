@@ -145,6 +145,3 @@ patterns:
     usage:
       kind: "^call$"
       name: "^(ws-listener|on-connect|on-close|on-text|on-binary)$"
-
-linkers:
-  - http

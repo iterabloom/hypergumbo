@@ -139,6 +139,3 @@ patterns:
 
   - concept: form
     symbol_name: "^deserialize$"
-
-linkers:
-  - http

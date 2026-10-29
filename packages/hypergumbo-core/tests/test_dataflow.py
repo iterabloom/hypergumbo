@@ -101,15 +101,12 @@ library_patterns:
         with pytest.raises(ValueError, match="language"):
             load_dataflow_config(yaml_file)
 
-    def test_load_with_calls_section(self, tmp_path: Path) -> None:
-        """Load a YAML with calls section."""
-        yaml_content = "language: python\n\ncalls:\n  - node_type: call\n    read: arguments\n"
+    def test_a_calls_section_is_refused(self, tmp_path: Path) -> None:
+        """WI-hapon: ``calls:`` was read into a field no shipped file produced."""
         yaml_file = tmp_path / "python.yaml"
-        yaml_file.write_text(yaml_content)
-        config = load_dataflow_config(yaml_file)
-        assert len(config.calls) == 1
-        nmap = config.build_node_type_map()
-        assert nmap["call"] == "read"
+        yaml_file.write_text("language: python\ncalls:\n  - node_type: call\n")
+        with pytest.raises(ValueError, match="'calls'"):
+            load_dataflow_config(yaml_file)
 
     def test_load_with_borrows_section(self, tmp_path: Path) -> None:
         """Load a YAML with borrows section (Rust)."""
@@ -183,15 +180,6 @@ returns:
         pmap = config.build_positional_map()
         assert pmap == {}
 
-    def test_positional_map_calls_section(self, tmp_path: Path) -> None:
-        """Calls section produces _default read in positional map."""
-        yaml_content = "language: python\ncalls:\n  - node_type: call\n    read: arguments\n"
-        yaml_file = tmp_path / "python.yaml"
-        yaml_file.write_text(yaml_content)
-        config = load_dataflow_config(yaml_file)
-        pmap = config.build_positional_map()
-        assert pmap["call"] == {"_default": "read"}
-
     def test_positional_map_borrows_section(self, tmp_path: Path) -> None:
         """Borrows section produces _default mutate/read in positional map."""
         yaml_content = "language: rust\nborrows:\n  - node_type: reference_expression\n    mutate_if: mutable\n  - node_type: borrow_expression\n    read_if: immutable\n"
@@ -220,7 +208,6 @@ returns:
 
         assert config.language == "rust"
         assert config.assignments == []
-        assert config.calls == []
         assert config.deletions == []
         assert config.returns == []
         assert config.library_patterns == []

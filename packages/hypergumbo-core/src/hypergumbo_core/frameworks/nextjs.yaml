@@ -86,6 +86,3 @@ patterns:
   # API route handlers (App Router)
   - concept: api_handler
     symbol_name: "^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$"
-
-linkers:
-  - http

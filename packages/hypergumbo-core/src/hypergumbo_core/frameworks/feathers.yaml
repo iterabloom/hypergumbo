@@ -132,7 +132,3 @@ patterns:
 
   - concept: provider
     symbol_name: "^primus$"
-
-linkers:
-  - http
-  - websocket

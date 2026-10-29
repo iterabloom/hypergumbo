@@ -128,7 +128,3 @@ patterns:
   # Superagent - request.get('/api/users')
   - concept: http_client
     decorator: "^(request|superagent)\\.(get|post|put|delete|patch|head)$"
-
-linkers:
-  - http
-  - websocket

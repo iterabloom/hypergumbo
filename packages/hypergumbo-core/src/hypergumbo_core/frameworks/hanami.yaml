@@ -121,7 +121,3 @@ patterns:
 
   - concept: mailer
     base_class: "^Hanami::Mailer$"
-
-linkers:
-  - http
-  - database_query

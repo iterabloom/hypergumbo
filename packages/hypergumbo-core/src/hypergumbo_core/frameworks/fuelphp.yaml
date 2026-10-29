@@ -121,6 +121,3 @@ patterns:
   # Parser driver (templates)
   - concept: template
     base_class: "^Parser_Driver$"
-
-linkers:
-  - http

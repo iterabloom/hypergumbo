@@ -111,7 +111,7 @@ if TYPE_CHECKING:
 # Import UsageContext at runtime since it's used by matches_usage and extract_usage_value
 from .axis_meta_keys import filter_meta_key, write_meta_key
 from .ir import UsageContext
-from .yaml_catalogs import CatalogueError, read_catalogue_yaml
+from .yaml_catalogs import CatalogueError, read_catalogue_yaml, reject_unknown_keys
 
 # Note for YAML authors: if your framework's canonical usage is manifest-declared
 # but never imported in app code (Rails-style autoload-by-convention), also add
@@ -862,6 +862,21 @@ def _extract_from_metadata(metadata: dict[str, Any], path: str) -> str | None:
     return None
 
 
+#: WI-hapon: the keys :meth:`FrameworkPatternDef.from_dict` reads. ``provenance``
+#: and ``retrieved`` are read for the ADR-0061 tier and its disclosure.
+_FILE_KEYS: frozenset[str] = frozenset({
+    "id", "language", "patterns", "provenance", "retrieved",
+})
+_PATTERN_KEYS: frozenset[str] = frozenset({
+    "concept", "decorator", "base_class", "parent_base_class", "method_name",
+    "symbol_name", "language", "annotation", "parameter_type", "symbol_kind",
+    "framework_role", "meta_match", "modifiers", "modifiers_exclude",
+    "symbol_path", "is_test_file", "extract_path", "extract_method",
+    "prefix_from_parent", "usage", "extract",
+})
+_USAGE_KEYS: frozenset[str] = frozenset({"kind", "name", "position"})
+
+
 @dataclass
 class FrameworkPatternDef:
     """Framework pattern definition loaded from YAML.
@@ -870,13 +885,18 @@ class FrameworkPatternDef:
         id: Unique framework identifier (e.g., "fastapi", "spring")
         language: Primary language for this framework
         patterns: List of patterns to match
-        linkers: Linkers that should be activated when this framework is detected
+
+    There is no ``linkers`` field (WI-hapon). 101 of 107 shipped files
+    declared ``linkers:`` -- "linkers that should be activated when this
+    framework is detected" -- and nothing outside the tests read it: a
+    linker's activation is its ``LinkerActivation`` in code. A list that says
+    which linkers run, and decides nothing, was deleted rather than kept as
+    a second, unchecked statement of the same fact.
     """
 
     id: str
     language: str
     patterns: list[Pattern] = field(default_factory=list)
-    linkers: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FrameworkPatternDef:
@@ -888,12 +908,29 @@ class FrameworkPatternDef:
         Returns:
             FrameworkPatternDef instance
         """
+        # WI-hapon: a key nothing reads is refused, at each level, naming the
+        # file (the loader wraps this ValueError). ``name_pattern`` and
+        # ``usage_call`` were accepted and read by nobody, so the Graphene
+        # resolver rule and both ZIO route rules matched nothing.
+        reject_unknown_keys(
+            data, _FILE_KEYS, origin="framework pattern definition",
+            where="top-level", error=ValueError,
+        )
         patterns = []
         for p in data.get("patterns", []):
+            reject_unknown_keys(
+                p, _PATTERN_KEYS, origin="framework pattern definition",
+                where="pattern", error=ValueError,
+            )
             # Parse usage pattern spec if present (v1.1.x)
             usage_spec = None
             if "usage" in p:
                 usage_data = p["usage"]
+                reject_unknown_keys(
+                    usage_data, _USAGE_KEYS,
+                    origin="framework pattern definition",
+                    where="pattern usage", error=ValueError,
+                )
                 usage_spec = UsagePatternSpec(
                     kind=usage_data.get("kind"),
                     name=usage_data.get("name"),
@@ -928,7 +965,6 @@ class FrameworkPatternDef:
             id=data.get("id", "unknown"),
             language=data.get("language", "unknown"),
             patterns=patterns,
-            linkers=data.get("linkers", []),
         )
 
 

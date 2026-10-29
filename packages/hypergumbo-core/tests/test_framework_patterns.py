@@ -1343,7 +1343,6 @@ class TestFrameworkPatternDef:
             "patterns": [
                 {"concept": "route", "decorator": r"^app\.get$"},
             ],
-            "linkers": ["http"],
         }
 
         pattern_def = FrameworkPatternDef.from_dict(data)
@@ -1352,7 +1351,6 @@ class TestFrameworkPatternDef:
         assert pattern_def.language == "python"
         assert len(pattern_def.patterns) == 1
         assert pattern_def.patterns[0].concept == "route"
-        assert pattern_def.linkers == ["http"]
 
     def test_from_dict_defaults(self) -> None:
         """Uses defaults for missing fields."""
@@ -1363,7 +1361,6 @@ class TestFrameworkPatternDef:
         assert pattern_def.id == "unknown"
         assert pattern_def.language == "unknown"
         assert pattern_def.patterns == []
-        assert pattern_def.linkers == []
 
 
 class TestConfigConventionsMigratedRules:
@@ -1773,8 +1770,6 @@ language: python
 patterns:
   - concept: route
     decorator: "^app\\\\.get$"
-linkers:
-  - http
 """
         yaml_file = tmp_path / "test_fw.yaml"
         yaml_file.write_text(yaml_content)
@@ -18439,14 +18434,6 @@ class TestGuicePatterns:
         hdl_concepts = [c["concept"] for c in hdl.meta.get("concepts", [])]
         assert "event_handler" in hdl_concepts
 
-    def test_guice_linkers_include_event_sourcing(self) -> None:
-        """Guice framework activates event-sourcing linker."""
-        clear_pattern_cache()
-        pattern_def = load_framework_patterns("guice")
-        assert pattern_def is not None
-        assert "event-sourcing" in pattern_def.linkers
-
-
 class TestJakartaCDIPatterns:
     """Tests for Jakarta CDI framework pattern matching."""
 
@@ -18665,14 +18652,6 @@ class TestJakartaCDIPatterns:
         concepts = [c["concept"] for c in enriched[0].meta.get("concepts", [])]
         assert "service" in concepts
 
-    def test_cdi_linkers_include_event_sourcing(self) -> None:
-        """Jakarta CDI framework activates event-sourcing linker."""
-        clear_pattern_cache()
-        pattern_def = load_framework_patterns("jakarta-cdi")
-        assert pattern_def is not None
-        assert "event-sourcing" in pattern_def.linkers
-
-
 class TestRailsCallbackPatterns:
     """Tests for Rails callback and event patterns."""
 
@@ -18812,14 +18791,6 @@ class TestRailsCallbackPatterns:
         publisher_results = [r for r in results if r["concept"] == "event_publisher"]
         assert len(publisher_results) == 1
         assert publisher_results[0]["matched_base_class"] == "Wisper::Publisher"
-
-    def test_rails_linkers_include_event_sourcing(self) -> None:
-        """Rails framework now activates event-sourcing linker."""
-        clear_pattern_cache()
-        pattern_def = load_framework_patterns("rails")
-        assert pattern_def is not None
-        assert "event-sourcing" in pattern_def.linkers
-
 
 class TestGrapePatterns:
     """Tests for Grape API framework pattern matching."""
@@ -19163,14 +19134,6 @@ class TestGrapePatterns:
         assert any(c["concept"] == "controller" for c in api_concepts)
         entity_concepts = entity_sym.meta.get("concepts", [])
         assert any(c["concept"] == "serializer" for c in entity_concepts)
-
-    def test_grape_linkers_include_http(self) -> None:
-        """Grape framework activates http linker."""
-        clear_pattern_cache()
-        pattern_def = load_framework_patterns("grape")
-        assert pattern_def is not None
-        assert "http" in pattern_def.linkers
-
 
 class TestClojureTestPrefixGuard:
     """Tests for Clojure test-* prefix path guard (WI-vutum).

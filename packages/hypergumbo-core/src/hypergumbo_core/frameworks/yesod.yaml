@@ -141,6 +141,3 @@ patterns:
   # use these as base classes, but matching catches the ones that do.
   - concept: route
     base_class: "^(HandlerFor|HandlerT|HandlerM)$"
-
-linkers:
-  - http

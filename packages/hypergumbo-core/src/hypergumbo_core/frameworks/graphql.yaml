@@ -114,7 +114,3 @@ patterns:
   # never fire. The name set is high-specificity (no realistic name
   # collisions across non-Apollo codebases) so promoting them to
   # always-loaded is safe.
-
-linkers:
-  - graphql_resolver
-  - websocket

@@ -14,7 +14,6 @@
 # names.
 provenance: builtin
 language: objc
-module_completeness: partial
 signatures:
   "NSFileManager.defaultManager": NSFileManager
   "NSFileManager.contentsOfDirectoryAtPath:error:": NSArray
