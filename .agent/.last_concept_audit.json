@@ -1,6 +1,6 @@
 {
-  "last_audit_sha": "02a25bba562dce41be7c3a70384c7f436fff6140",
-  "last_audit_iso_date": "2026-10-28T09:49:33.407392-04:00",
-  "suspect_domain": "reader-census",
-  "audits_run": 20
+  "last_audit_sha": "1f54c7e4925fe4459f8e6ce70254f6178378c9a4",
+  "last_audit_iso_date": "2026-10-30T17:54:53.581411-04:00",
+  "suspect_domain": "consumer-agreement",
+  "audits_run": 21
 }

@@ -87,6 +87,7 @@ write an ADR vs an audit-findings document."
 | [0023](0023-reader-census.md) | Reader census — write-only fields, keys, knobs and functions; producerless readers; vocabulary subsets; keep-with-trigger verdicts (WI-kosup) | reader census (sibling format, `kind: reader_census`) | Confirmed: 14 action items filed, 4 named decisions recorded |
 | [0024](0024-build-target-supersession-precision.md) | May the build-target linker demote the console-script / bin placeholder it consumed (ADR-0057 §14.1)? | linker supersession grant (sibling format, `kind: linker_supersession_precision`) | GRANTED: 16 of 16 correct across 12 repositories |
 | [0025](0025-js-module-supersession-precision.md) | May the JS module linker demote the import stub it consumed (ADR-0057 §14.1)? | linker supersession grant (sibling format, `kind: linker_supersession_precision`) | GRANTED, after three wrong routes were fixed: 6,792 resolutions over 7 repositories |
+| [0026](0026-consumer-agreement.md) | Consumer agreement — facts two consumers derive separately, and where they disagree (WI-borib) | consumer agreement (sibling format, `kind: consumer_agreement`) | Confirmed: 17 facts, 12 derived separately and 5 through one helper (3 with side paths that disagree); 14 items filed, WI-vosop decided |
 
 ## Sibling formats
 
@@ -127,6 +128,14 @@ Siblings:
   CAN FIRE). The document is the verdict summary; the per-item rows and
   scripts live in the lab notebook, and every action names a tracker item.
   First instance: `0023`.
+- **`kind: consumer_agreement`** — for each DERIVED fact (is this test code,
+  is it reached, how many files, which boundary a call crosses), every
+  consumer that derives it, whether through one helper or separately, and
+  for each separate pair the disagreements measured on real output, with one
+  verdict per fact (SINGLE-SOURCE / PIN / RENAME / KEEP WITH A TRIGGER THAT
+  CAN FIRE / OK). It is the layer above spec_validator's cross-field checks:
+  two consumers of one IR, not two fields of one record. First instance:
+  `0026`.
 
 ## File format
 

@@ -341,7 +341,9 @@ AARDVARK_DNS_ATTRIBUTE_AGREEMENT = {
 # The 93 "both" calls are the corroborated edges; the incumbent emits no
 # `references` edge and the SCIP arm no edge to an external stub.
 AARDVARK_DNS_EDGE_OVERLAP = {
-    ("calls", True): (93, 19, 7),
+    # 93 / 19 / 7 before WI-vosop: the harness's dedup now drops self-loops as a
+    # survey's does (error.rs:105 and :109, test.rs:37 -- false self-bindings, WI-lirik).
+    ("calls", True): (93, 16, 7),
     ("calls", False): (0, 245, 0),  # 244 before INV-duzom; see stub_calls
     ("decorated_by", False): (0, 1, 0),
     ("implements", False): (0, 2, 0),

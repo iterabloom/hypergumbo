@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Axis** | backend agreement (ADR-0057 §5, §10 — the only evidence that may change an arbitration default or license an `authoritative_for` declaration) |
-| **Date** | 2026-09-24 |
+| **Date** | 2026-10-30 |
 | **Artifact** | `aardvark-dns-4444d90fee-two-arm-recorded.json` |
 | **Instrument** | `hypergumbo backend-agreement` (`hypergumbo_core.backend_agreement`) |
 | **Outcome** | Measurement, not a verdict: agreement says a value is uncontested, not that it is right. |
@@ -12,7 +12,7 @@
 ```yaml
 kind: backend_agreement
 artifact: aardvark-dns-4444d90fee-two-arm-recorded.json
-date: 2026-09-24
+date: 2026-10-30
 languages:
   - language: rust
     producers: [rust, rust_analyzer]
@@ -37,7 +37,7 @@ languages:
 | `namespace` | 0 | 0 | 18 |
 | `struct` | 10 | 0 | 0 |
 | `trait` | 1 | 0 | 0 |
-| `type_alias` | 0 | 0 | 2 |
+| `type_alias` | 2 | 0 | 0 |
 | `variable` | 17 | 0 | 1 |
 
 ### Per-attribute agreement on paired records
@@ -58,12 +58,12 @@ languages:
 
 | edge type | target | both | `rust` only | `rust_analyzer` only |
 |---|---|---|---|---|
-| `calls` | in-repo | 93 | 19 | 7 |
+| `calls` | in-repo | 93 | 16 | 7 |
 | `calls` | external | 0 | 245 | 0 |
 | `decorated_by` | external | 0 | 1 | 0 |
 | `implements` | external | 0 | 2 | 0 |
 | `module_attr_ref` | external | 0 | 26 | 0 |
-| `references` | in-repo | 0 | 0 | 269 |
+| `references` | in-repo | 0 | 0 | 270 |
 
 Corroborated edges (two distinct pathways, ADR-0057 §13): 93. Superseded external stubs (§14): 3.
 
@@ -86,4 +86,10 @@ Written by the agent on 2026-09-19 from the tables above; the numbers are the in
   - Their cause was the harness, not a producer. It skipped `populate_kind_stable_ids`, which a survey runs before the merge pass.
   - A live survey of this crate at the recorded rust-analyzer version reads 0 / 150 / 0 / 0 (WI-paluk).
 - **One-sided attributes.** `qualified_name` (150), `signature` (127), `docstring` (63) and `modifiers` (36) come from the syntax arm only: the SCIP translation fills none of them although `SymbolInformation` carries signature documentation. No agreement can be measured on them until it does.
-- **Edges.** The 93 in-repo `calls` both arms emit are exactly the corroborated edges (§13); 18 in-repo calls only tree-sitter sees, 7 only SCIP. The 269 `references` edges are SCIP-only (the syntax arm emits none), and every edge to an external stub — 245 `calls`, 26 `module_attr_ref`, 2 `implements`, 1 `decorated_by` — is tree-sitter-only, since the recorded index resolves nothing outside the crate. Three of the 245 stubs are superseded (§14). (244 before INV-duzom, 2026-09-26: `std::io::Error::new(..)` at `src/server/serve.rs:384`, written with its full path, is no longer suppressed by the generic-method guard.)
+- **Edges.** The 93 in-repo `calls` both arms emit are exactly the corroborated edges (§13); 16 in-repo calls only tree-sitter sees, 7 only SCIP. The 270 `references` edges are SCIP-only (the syntax arm emits none), and every edge to an external stub — 245 `calls`, 26 `module_attr_ref`, 2 `implements`, 1 `decorated_by` — is tree-sitter-only, since the recorded index resolves nothing outside the crate. Three of the 245 stubs are superseded (§14). (244 before INV-duzom, 2026-09-26: `std::io::Error::new(..)` at `src/server/serve.rs:384`, written with its full path, is no longer suppressed by the generic-method guard.)
+- **What the edge rows describe (2026-10-30, WI-vosop).** They describe the harness's stages, not a survey's, and a live survey of this crate at the recorded rust-analyzer version reads differently for three named reasons:
+  - **Self-loops.** A survey dedups with self-loop removal; the harness now does too, which moved tree-sitter-only in-repo `calls` from 19 to 16 (three false self-bindings, `src/error.rs:105` and `:109`, `src/test/test.rs:37`).
+  - **File nodes.** A survey's orchestrator creates file nodes and the harness does not, so the harness has no `imports` edge and no module-level call: live adds `imports` 0 / 16 / 0 in-repo and 0 / 111 / 0 external, and 11 external `calls`.
+  - **File order.** A survey analyses files in sorted order, the harness in walk order, and the Rust analyzer's binding of `src/server/serve.rs:287` depends on it (WI-lirik): live it binds the `#[cfg(test)]` helper, so the corroborated pair splits into one call on each side (live calls/in-repo 92 / 17 / 8).
+
+  The `references` row, the node rows and the pairing agree with a live survey. The committed table had kept a 269 `references` row and a pre-WI-bamar `type_alias` pairing row, because its guard checked only the header and the attribute rows; it now checks every pairing and edge row.

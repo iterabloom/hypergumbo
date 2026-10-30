@@ -275,13 +275,20 @@ def _two_arm_artifact(policy: "ArbitrationPolicy | None" = None) -> dict:
     committed ``docs/audits/0019`` table is this dict through
     ``hypergumbo backend-agreement``; regenerate it with
     ``scripts/regenerate-backend-agreement-table`` (which calls this).
-    ``policy`` is the WI-hukuf arbitration policy; None is the built-in."""
+    ``policy`` is the WI-hukuf arbitration policy; None is the built-in.
+
+    The dedup is the survey's own, self-loop removal included (WI-vosop):
+    without it three tree-sitter self-loops read as one-sided calls a live
+    survey never has. Two survey stages stay out by design, and bound what
+    the edge rows describe: the orchestrator's FILE nodes (so no ``imports``
+    edge and no module-level call has a source here) and the survey's
+    sorted file order (WI-lirik's order-dependent Rust binding)."""
     from hypergumbo_core.arbitration import BUILTIN_POLICY
 
     policy = policy or BUILTIN_POLICY
     symbols, edges, runs = _both_arms()
     merge_producer_records(symbols, edges, runs, policy=policy)  # appends its own run to ``runs``
-    edges = deduplicate_edges(edges)
+    edges = deduplicate_edges(edges, remove_self_loops=True)
     ids = {s.id for s in symbols}
     for edge in edges:
         edge.is_resolved = edge.dst in ids
@@ -519,6 +526,16 @@ class TestTheAgreementInstrumentOnBothArms:
             assert re.search(rf"^    {key}: {value}$", text, re.MULTILINE), f"{key}: {value} not in the committed table"
         for attribute, (agree, disagree, rust_only, scip_only) in AARDVARK_DNS_ATTRIBUTE_AGREEMENT.items():
             assert f"| `{attribute}` | {agree} | {disagree} | {rust_only} | {scip_only} |" in text
+        # WI-vosop: the pairing and edge rows went unchecked, and the committed
+        # table kept a pre-INV-sipod 269 references row and a pre-WI-bamar
+        # type_alias row while the instrument said otherwise.
+        assert report.pairing and report.edges  # reach
+        for kind, row in report.pairing.items():
+            assert f"| `{kind}` | {row['paired']} | {row['rust']} | {row['rust_analyzer']} |" in text, kind
+        for edge in report.edges:
+            target = "in-repo" if edge.resolved else "external"
+            assert (f"| `{edge.edge_type}` | {target} | {edge.both} | {edge.only['rust']}"
+                    f" | {edge.only['rust_analyzer']} |") in text, edge.edge_type
 
 
 class TestSameSiteSupersessionOnBothArms:
