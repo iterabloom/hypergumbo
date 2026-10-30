@@ -411,4 +411,5 @@ class TestADerivationStampSupersedesWhatItConsumed:
         from hypergumbo_core.finalize import _passes_that_may_supersede
 
         granted = _passes_that_may_supersede()
-        assert granted == {"inherited-calls-linker"}
+        # 0020 (inherited-calls) and 0024 (build-target).
+        assert granted == {"inherited-calls-linker", "build-target-linker"}

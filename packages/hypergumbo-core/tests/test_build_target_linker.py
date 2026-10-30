@@ -309,8 +309,12 @@ class TestBuildTargetLinker:
         )
         assert result == "src/main.rs"
 
-    def test_python_script_falls_back_to_main(self) -> None:
-        """Python script with target_function but no match falls back to main()."""
+    def test_a_named_function_that_is_not_there_is_not_some_other_main(self) -> None:
+        """``mypackage.cli:nonexistent`` names its function; linking the script
+        to ``cli.main`` would assert the script runs ``main()``, which it does
+        not (WI-lipal). The usual cause is a re-export (``cli.py`` imports
+        ``run`` from elsewhere): the target is that ``run``, not this file's
+        ``main``. No edge, rather than a wrong one."""
         script = _make_symbol("toml", "pyproject.toml", 5, 5, "my-cli", "script")
         main_fn = _make_symbol(
             "python", "mypackage/cli.py", 1, 10, "main", "function",
@@ -328,6 +332,69 @@ class TestBuildTargetLinker:
         )
         result = link_build_targets(ctx)
 
-        # Falls back to main() when target_function not found
-        assert len(result.edges) == 1
-        assert result.edges[0].dst == main_fn.id
+        assert result.edges == []
+
+
+def _python_script(manifest: str, entry: str) -> tuple[Symbol, Edge]:
+    """A pyproject console script and its defines_target edge, as toml_config
+    emits them: a dotted placeholder dst, the file path and function in meta."""
+    module, func = entry.split(":")
+    script = _make_symbol("toml", manifest, 5, 5, "my-cli", "file")
+    edge = _make_edge(
+        script.id, f"python:{module}:0-0:{func}:unresolved", "defines_target",
+        meta={"target_path": module.replace(".", "/") + ".py", "target_function": func},
+    )
+    return script, edge
+
+
+def _link(symbols: list[Symbol], edges: list[Edge]) -> list[str]:
+    ctx = LinkerContext(repo_root=Path("/fake"), symbols=symbols, edges=edges)
+    return [e.dst for e in link_build_targets(ctx).edges]
+
+
+class TestPythonTargetsBeyondTheManifestDirectory:
+    """A console script's module is found where Python would import it from,
+    not only beside the manifest (WI-lipal). The module path is the target's
+    identity; the file is wherever exactly one in-tree file has that path."""
+
+    def test_a_src_layout_member(self) -> None:
+        script, edge = _python_script("packages/tool/pyproject.toml", "tool.cli:main")
+        main = _make_symbol("python", "packages/tool/src/tool/cli.py", 1, 9, "main", "function")
+        assert _link([script, main], [edge]) == [main.id]
+
+    def test_a_script_naming_another_package_s_module(self) -> None:
+        """The meta-package's ``hypergumbo = "hypergumbo_core.cli:main"``."""
+        script, edge = _python_script("packages/meta/pyproject.toml", "core.cli:main")
+        main = _make_symbol("python", "packages/core/src/core/cli.py", 1, 9, "main", "function")
+        assert _link([script, main], [edge]) == [main.id]
+
+    def test_a_package_module(self) -> None:
+        """``pkg:main`` is ``pkg/__init__.py``'s main."""
+        script, edge = _python_script("pyproject.toml", "pkg:main")
+        main = _make_symbol("python", "src/pkg/__init__.py", 1, 9, "main", "function")
+        assert _link([script, main], [edge]) == [main.id]
+
+    def test_two_in_tree_files_with_the_module_s_path_name_nothing(self) -> None:
+        script, edge = _python_script("packages/meta/pyproject.toml", "core.cli:main")
+        one = _make_symbol("python", "packages/a/src/core/cli.py", 1, 9, "main", "function")
+        two = _make_symbol("python", "tests/fixtures/core/cli.py", 1, 9, "main", "function")
+        assert _link([script, one, two], [edge]) == []
+
+    def test_the_manifest_s_own_tree_wins_over_a_same_path_elsewhere(self) -> None:
+        script, edge = _python_script("packages/tool/pyproject.toml", "tool.cli:main")
+        own = _make_symbol("python", "packages/tool/src/tool/cli.py", 1, 9, "main", "function")
+        other = _make_symbol("python", "vendor/x/tool/cli.py", 1, 9, "main", "function")
+        assert _link([script, own, other], [edge]) == [own.id]
+
+    def test_a_path_suffix_must_be_whole_segments(self) -> None:
+        """``mytool/cli.py`` is not module ``tool.cli``."""
+        script, edge = _python_script("packages/meta/pyproject.toml", "tool.cli:main")
+        main = _make_symbol("python", "packages/x/src/mytool/cli.py", 1, 9, "main", "function")
+        assert _link([script, main], [edge]) == []
+
+    def test_a_non_python_target_takes_no_module_route(self) -> None:
+        """A Cargo bin path is relative to its manifest only."""
+        binary = _make_symbol("toml", "crates/app/Cargo.toml", 1, 1, "app", "binary")
+        main = _make_symbol("rust", "crates/other/src/main.rs", 1, 9, "main", "function")
+        edge = _make_edge(binary.id, "src/main.rs", "defines_target")
+        assert _link([binary, main], [edge]) == []
