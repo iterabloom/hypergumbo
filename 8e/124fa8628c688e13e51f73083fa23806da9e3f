@@ -1,0 +1,68 @@
+Original commit body from c4bc66ed6df3df7fe9e7c6502ce2f8c41e2748aa:
+
+`reader, writer = await asyncio.open_connection(host, 80)` hands back a
+StreamReader and a StreamWriter; `proc = await
+asyncio.create_subprocess_exec(...)` a Process whose stdout is a
+StreamReader. py.py typed none of them -- an AWAITED call was never typed,
+and a TUPLE target never was -- so `await reader.read(100)` emitted
+python:external:0-0:read and reached no catalogue row: a TCP read through
+open_connection was not a net_recv crossing at all.
+
+Types come from the library-signature catalogue, which gains two sections
+read only by python, beside `signatures` and go's `package_variables`:
+* tuple_returns -- a producer returning a tuple, one type per position
+  (`asyncio.open_connection: asyncio.StreamReader, asyncio.StreamWriter`; a
+  string so every section keeps one value shape; load_library_tuple_returns
+  refuses a value with fewer than two or an empty position);
+* member_types -- a member attribute of a typed object
+  (`asyncio.subprocess.Process.stdout: asyncio.StreamReader`).
+plus signatures rows for create_subprocess_exec / _shell -> Process.
+
+py.py: `x = await f(...)` types x from f's signatures row through the
+constructor resolver (its binding check included); `a, b = await f(...)`
+types each position from f's tuple_returns row (a target of another arity,
+or with a starred element, is not typed by position). Binding a typed
+object also binds its member types (`proc.stdout`, `proc.stdin`), on the
+dotted keys _prune_shadowed and the field purge already manage.
+
+The MEDIUM: StreamReader is one class fed by a TCP socket, an AF_UNIX socket
+or a child's pipe, and only the factory knows which (WI-foloh). A small
+table (_STREAM_FACTORY_MEDIA: open_connection -> net_stream;
+open_unix_connection and create_subprocess_* -> pipe, as go.py stamps a
+Unix socket pipe) records it at the binding, under a `\x00io_target_kind`
+segment of the receiver's own dotted key (so it is pruned and purged with
+the receiver, and no attribute can read it); every call through that
+receiver -- `reader.read()` and the member form `proc.stdout.read()` --
+carries meta io_target_kind. A rebinding of the name drops the medium.
+Nothing selects on it yet: StreamReader.read* is rowed net_recv only, and
+io-boundaries now classifies all three reads (TCP, Unix, child pipe)
+net_recv where before none was a crossing; WI-foloh's ipc_recv twin is
+what the pipe stamp will select.
+
+Measured, analyze_python edge set, branch vs origin/dev py.py and
+signature rows: mitmproxy 41, uvloop 189, meson 3, transformers 1 calls
+move from the python:external placeholder to asyncio.StreamReader /
+StreamWriter / asyncio.subprocess.Process (read / readuntil / readexactly /
+write / drain / close / communicate / wait / kill / send_signal ...), every
+one read against its line; qemu's python 0 (its `connect =
+asyncio.open_connection(...)` is awaited later into `self._reader,
+self._writer`, attribute targets this does not type -- a residual).
+
+Not addressed: a name's TYPE outlives an untyped rebinding (`reader =
+other`), as every py.py external type does -- the typed-assignment arms
+purge only when the new value is typed; the medium is dropped regardless.
+
+Tests: test_py_asyncio_stream_readers.py through run_behavior_map
+(open_connection both ends net_stream; from-imported open_unix_connection
+pipe; a subprocess's stdout / stdin members pipe; a rebinding drops the
+medium; an annotated parameter typed without one; an unknown awaited
+factory types nothing; starred and mismatched targets untyped; a
+shadowed root, a from-imported root and a called call name no factory);
+test_library_signature_sections.py (the shipped rows, an empty language,
+a malformed tuple refused). Seven mutations (no medium, no tuple typing, no
+member types, no purge, no dotted stamp, no name stamp, no await branch)
+each turn a test red.
+
+Addresses WI-himim; unblocks WI-foloh.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
