@@ -1007,25 +1007,41 @@ def _in_tree_module_member(
     return matches[0] if len(matches) == 1 else None
 
 
-def _module_object_modules(pf: "_ParsedFile") -> frozenset[str]:
-    """The modules this file binds ONLY as module objects.
+def _module_object_reads(pf: "_ParsedFile") -> frozenset[tuple[int, str, str]]:
+    """``(line, module, attribute)`` of each member read made THROUGH a module object.
 
-    The attribute emitter keys its edges by module, not by alias, so a module
-    any named or default binding also names (``import { W } from './w'`` beside
-    ``import * as w from './w'``) cannot tell a member read from a property
-    read and is left out.
+    The attribute emitter keys its edges by module, not by the alias the read
+    went through, and one file may bind a module both ways
+    (``const { helper } = require('@ws/b'); const b = require('@ws/b')``).
+    ``b.Engine`` is the module's ``Engine``; ``W.Builder`` after ``import { W }
+    from './w'`` is a property of the exported OBJECT ``W``. So the alias is
+    read here, per read: a key some other binding also produces is ambiguous
+    and left out.
     """
     namespace = pf.namespace_imports or {}
-    objects = {namespace[a] for a in pf.module_objects if a in namespace}
-    others = {m for a, m in namespace.items() if a not in pf.module_objects}
-    others |= set((pf.named_imports or {}).values())
-    return frozenset(_strip_import_scheme(m) for m in objects - others)
+    named = pf.named_imports or {}
+    through_object: set[tuple[int, str, str]] = set()
+    through_other: set[tuple[int, str, str]] = set()
+    for node in iter_tree(pf.tree.root_node):
+        if node.type != "member_expression":
+            continue
+        obj = node.child_by_field_name("object")
+        prop = node.child_by_field_name("property")
+        if obj is None or prop is None or obj.type != "identifier":
+            continue
+        alias = _node_text(obj, pf.source)
+        module = namespace.get(alias) or named.get(alias)
+        if module is None:
+            continue
+        key = (node.start_point[0] + 1, _strip_import_scheme(module), _node_text(prop, pf.source))
+        (through_object if alias in pf.module_objects else through_other).add(key)
+    return frozenset(through_object - through_other)
 
 
 def _retarget_in_tree_module_attrs(
     edges: list[Edge], start: int, file_path: Path,
     symbols_by_name: dict[str, list["Symbol"]], run_id: str,
-    module_object_modules: frozenset[str],
+    module_object_reads: frozenset[tuple[int, str, str]],
 ) -> None:
     """Turn ``module_attr_ref`` reads of an in-tree module into ``references``.
 
@@ -1033,8 +1049,8 @@ def _retarget_in_tree_module_attrs(
     tree, so ``new b.Engine()`` after ``const b = require('@ws/b')`` became a
     ``module_attr_ref`` to ``javascript:@ws/b:0-0:@ws/b.Engine`` -- an
     external stand-in named by an in-tree package (INV-nuzas) beside the real
-    instantiation. A read of an in-tree module OBJECT's member (only modules
-    the file binds as module objects, ``_module_object_modules``) is a
+    instantiation. A read of an in-tree module OBJECT's member (a read made
+    through a module-object alias, ``_module_object_reads``) is a
     ``references`` edge to it
     (evidence ``ast_name_read``, as python's WI-huhum retarget emits); that is
     not a taint call edge, so no taint frontier moves. Edges from ``start`` on
@@ -1047,10 +1063,10 @@ def _retarget_in_tree_module_attrs(
             continue
         _lang, _, rest = edge.dst.partition(":")
         module, _, tail = rest.partition(":0-0:")
-        if module not in module_object_modules:
-            continue
         qname = tail.rsplit(":", 1)[0]
         attr = qname[len(module) + 1:]
+        if (edge.line, module, attr) not in module_object_reads:
+            continue
         target = _in_tree_module_member(module, file_path, attr, symbols_by_name)
         if target is None:
             continue
@@ -7854,7 +7870,7 @@ def _analyze_javascript_impl(
         )
         _retarget_in_tree_module_attrs(
             edges, attr_start, pf.path, symbols_by_name, run.execution_id,
-            _module_object_modules(pf),
+            _module_object_reads(pf),
         )
         # ADR-0015 Tier 1: automatic dataflow annotation from AST context
         if _df_config is not None:
