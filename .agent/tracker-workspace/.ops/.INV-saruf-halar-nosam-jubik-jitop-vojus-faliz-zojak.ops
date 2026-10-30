@@ -1,0 +1,32 @@
+- op: create  # ddd8
+  at: '2026-10-30T10:52:30Z'  # ddd8
+  by: agent  # ddd8
+  actor: jgstern_agent  # ddd8
+  clock: 1  # ddd8
+  nonce: ddd8  # ddd8
+  data:  # ddd8
+    kind: invariant  # ddd8
+    title: "a filtered file's own node is removed but its out-edges survive, so boundary synthesis mints an external_symbol SOURCE for in-tree code (knex lib/dialects/index.js beside index.ts: 27 edges)"  # ddd8
+    status: violated  # ddd8
+    priority: 3  # ddd8
+    parent:  # ddd8
+    tags:  # ddd8
+    - javascript  # ddd8
+    - analysis_quality  # ddd8
+    isbefore: []  # ddd8
+    duplicate_of: []  # ddd8
+    not_duplicate_of: []  # ddd8
+    pr_ref:  # ddd8
+    description: "FOUND 2026-10-30 by the js-module-linker precision audit (survey of knex on dev d4bac1048a; ~/hypergumbo_lab_notebook/jsmod_10302026/knex.json).\n\nOBSERVED. knex/lib/dialects/index.js is tsc output of the lib/dialects/index.ts beside it. The survey has NO real node for index.js -- only javascript:lib/dialects/index.js:0-0:file:external_symbol and ...:getDialectByNameOrAlias:external_symbol -- yet 27 edges whose origin is the javascript analyzer or js-module-linker (calls and imports: require('../util/helpers'), require('./better-sqlite3') ... ) leave that file. The file's own node was removed after analysis (it reads as derived/generated output), its out-edges were not, and boundary synthesis then minted a stand-in for the dangling SRC. Same shape on nuclear (12) and pm2 (10) import edges with src path <external>; not yet read.\n\nWHY IT IS AN INVARIANT VIOLATION. ADR-0043 section 4: tier filtering and noise filtering run before boundary-node synthesis, so boundary nodes are minted only for endpoints that survive filtering and \"the post-filter dangling-source class is closed by construction\". Here a filtered file's edges survive and its id is re-minted as an external_symbol: in-tree (if generated) code reads as an external node that makes calls.\n\nNOT YET TRACED: which pass removes the node (tier filter vs a generated-file rule vs compiled-JS-beside-TS handling) and why its edges are not filtered with it. Repro: survey knex, look for edges whose src ends :0-0:file:external_symbol."  # ddd8
+    fields:  # ddd8
+      statement: "An edge whose source file's node was removed by tier or noise filtering is removed with it: no external_symbol is ever minted for the SOURCE of an edge an in-tree file emitted (ADR-0043 section 4: the post-filter dangling-source class is closed by construction)."  # ddd8
+      root_cause: "Not yet traced. Observed: knex's compiled lib/dialects/index.js (beside index.ts) has no real node in the survey, only 0-0 external_symbol stand-ins, while 27 javascript / js-module-linker edges still leave it."  # ddd8
+- op: update  # d0c6
+  at: '2026-10-30T10:52:56Z'  # d0c6
+  by: agent  # d0c6
+  actor: jgstern_agent  # d0c6
+  clock: 2  # d0c6
+  nonce: d0c6  # d0c6
+  set: {}  # d0c6
+  add:  # d0c6
+    not_duplicate_of: [INV-polad-fimij-suhos-vanil-bokag-zanif-bunig-purak]  # d0c6
