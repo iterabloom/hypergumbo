@@ -23,3 +23,18 @@
     fields:  # 986a
       statement: "INI masking hides values of sensitive keys without flagging unrelated keys and without leaking length or edge characters."  # 986a
       root_cause: "ini.py _mask_value uses substring keyword matching and renders v[0] + '*'*(n-2) + v[-1]."  # 986a
+- op: update  # 288e
+  at: '2026-10-29T18:31:43Z'  # 288e
+  by: agent  # 288e
+  actor: jgstern_agent  # 288e
+  clock: 2  # 288e
+  nonce: 288e  # 288e
+  set:  # 288e
+    status: satisfied  # 288e
+- op: discuss  # 15c6
+  at: '2026-10-29T18:31:44Z'  # 15c6
+  by: agent  # 15c6
+  actor: jgstern_agent  # 15c6
+  clock: 3  # 15c6
+  nonce: 15c6  # 15c6
+  message: "SATISFIED. Fixed in PR #1941 (dev 4401fbfa30).\n\nFiled repro re-run on merged dev, `hypergumbo survey <repo> --include-docs` (exit 0):\n  ini        password = hunter22       -> `password = ***`         is_sensitive=True   (was `h******2`)\n  ini        keyboard_layout / author / monkey -> values shown, is_sensitive=False (were masked)\n  properties db.passwd=hunter23        -> `db.passwd=***`          (was printed raw)\n  properties auth.pwd=hunter24         -> `auth.pwd=***`           (was printed raw)\n  'hunter2' appears nowhere in the output.\n\nRoot cause: ini and properties each kept their own keyword list and mask. ini matched substrings and kept v[0]+'*'*(n-2)+v[-1]; properties masked with *** but had five keywords and no passwd/pwd. Both now call hypergumbo_core.analyze.config_secrets: words on separators/case humps; sensitive when a word or an adjacent-word pair ends with a long stem (password, passwd, passphrase, secret, token, credential, apikey, accesskey, secretkey, privatekey, privkey) or the LAST word is key/pass/pw/pwd/auth/authorization/tlskey/sslkey. Mask is the constant ***.\n\nProduction-path tests: test_ini.py::TestMaskingLeaksNothing, test_properties.py::TestMaskingCoversEveryPasswordSpelling (all 5 fail on the old analyzers); test_config_secrets.py (suffix-vs-substring, plural, last-word and pair rules each mutation-tested).\n\nCorpus A/B: every key in the 128 corpus repos with .ini/.properties (141,381 INI settings, 135,039 properties), old vs new rule, every changed key read. Newly masked: packstack *_PW passwords, stomp_pass, default_pass, signing.gnupg.passphrase, Authorization. Newly shown: forgejo/keycloak message-bundle labels, commits.author, keystore/keytab paths, X.509 extension names, kafka key.serializer.\n\nAnalogue sweep: TOML, YAML, .env, Dockerfile ENV/ARG, compose, Terraform, Makefile, CMake, XML, shell, Python/JS constants, BitBake print no value. scss prints `$var: value` and is left out on purpose (`token` is design-system vocabulary there)."  # 15c6

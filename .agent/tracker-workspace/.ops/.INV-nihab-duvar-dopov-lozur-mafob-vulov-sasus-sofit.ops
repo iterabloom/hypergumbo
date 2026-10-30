@@ -21,3 +21,25 @@
     fields:  # 3140
       statement: "hypergumbo's gitleaks invocation deletes nothing and reads no configuration from the analysed repository unless the operator opts in."  # 3140
       root_cause: "gitleaks.py passes /dev/stdout as gitleaks' report path (gitleaks removes and recreates its report path) and launches gitleaks in the inherited cwd, where gitleaks auto-discovers its config files."  # 3140
+- op: discuss  # 7d0c
+  at: '2026-10-29T07:46:15Z'  # 7d0c
+  by: agent  # 7d0c
+  actor: jgstern_agent  # 7d0c
+  clock: 2  # 7d0c
+  nonce: 7d0c  # 7d0c
+  message: "PREMISE CHECK 2026-10-29 (dev 4892851370, gitleaks 8.30.0). VERDICT: CURRENT; still violated, both legs. The invocation is unchanged (gitleaks.py:318, --report-path /dev/stdout, no cwd=) and the default sketch reaches it unless --no-secret-scan (cli.py:1201, via scan_content_cached). Leg 2 reproduced behaviorally through the production scan_content: content carrying a GitHub PAT gives 1 finding (github-pat) from an empty cwd and 0 from a cwd holding a .gitleaks.toml with [extend] useDefault + an allowlist regex -- the directory hypergumbo is run from configures, and can empty, the secret-scan section. Leg 1 reproduced as an ATTEMPT: strace shows gitleaks openat(/dev/stdout, O_CREAT|O_TRUNC) then unlinkat(/dev/stdout) and unlinkat(..., AT_REMOVEDIR), both EACCES as an ordinary user. NOT reproduced: the unlink SUCCEEDING as root -- user namespaces are blocked on this host and the docker socket is not accessible, so that half stays derived (root owns the container /dev tmpfs). Precision: the config is read from hypergumbo's CWD, which is the analysed repo for `hypergumbo .` but not for `hypergumbo /other/path`. Title, statement and root_cause stand. Proposed to the owner: P3 -> P2 (default path, false-all-clear direction, host side effect)."  # 7d0c
+- op: update  # 4b24
+  at: '2026-10-29T08:53:33Z'  # 4b24
+  by: agent  # 4b24
+  actor: jgstern_agent  # 4b24
+  clock: 3  # 4b24
+  nonce: 4b24  # 4b24
+  set:  # 4b24
+    status: satisfied  # 4b24
+- op: discuss  # 32a0
+  at: '2026-10-29T08:53:33Z'  # 32a0
+  by: agent  # 32a0
+  actor: jgstern_agent  # 32a0
+  clock: 4  # 32a0
+  nonce: 32a0  # 32a0
+  message: "Fixed in PR #1938 (dev bf610aad12). scan_content now runs gitleaks with cwd= an empty tmp_artifact_dir of its own and --report-path - (stdout), instead of the inherited cwd and /dev/stdout. Filed repro re-run on merged dev bf610aad12 through the production scan_content: from a cwd holding a .gitleaks.toml allowlist for ghp_ tokens, a GitHub PAT now gives 1 finding (github-pat), where dev 4892851370 gave 0; strace of that run records 0 operations on /dev/stdout (before: openat O_CREAT|O_TRUNC + two unlinkat). strace of a full `hypergumbo sketch` on a repo holding .gitleaks.toml and .gitleaksignore: gitleaks' threads look for both only in the scratch dir (ENOENT); argv carries --report-path -. Tests: TestScanRunsInADirectoryOfItsOwn (report on -, never /dev/stdout; cwd not the caller's, empty at launch, removed after) and a real-binary test (cwd .gitleaks.toml does not hide an AWS key); mutation-checked both ways. Operator opt-in kept: gitleaks' GITLEAKS_CONFIG / GITLEAKS_CONFIG_TOML env vars are still honoured (documented in README and the gitleaks.py comment). check-self-claims: 18 claims unchanged. README untrusted-repository bullet, claims text and SECURITY.md updated. NOT observed: the root-only unlink succeeding; it is no longer attempted, so the case is moot."  # 32a0

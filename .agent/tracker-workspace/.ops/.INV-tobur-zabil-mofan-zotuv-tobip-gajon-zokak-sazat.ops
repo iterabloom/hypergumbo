@@ -21,3 +21,34 @@
     fields:  # 1d01
       statement: "A taint source or sink matched for a call must be the same row io-boundaries attributes, and a vouched row must win over an unvouched community twin (ADR-0047, test_gate_prefers_vouched_rows). VIOLATED on dev e58250d: haskell readProcess -> putStrLn names System.Process.Text.readProcess (process-extras overlay) as the untrusted_input source; with --no-default-overlays it names System.Process.readProcess."  # 1d01
       root_cause: "NOT VERIFIED. Candidate: gate_named_entry sorts vouched-first on getattr(h, 'unvouched', False), and TaintSource/TaintSink carry 'community' instead, so all taint hits sort as vouched and the overlay rows merged in front of the base win. Second candidate: the hinted path via _module_matches arm 2."  # 1d01
+- op: discuss  # 769e
+  at: '2026-10-29T07:46:16Z'  # 769e
+  by: agent  # 769e
+  actor: jgstern_agent  # 769e
+  clock: 2  # 769e
+  nonce: 769e  # 769e
+  message: "PREMISE CHECK 2026-10-29 (dev 4892851370). VERDICT: CURRENT; still violated. Filed repro re-run unchanged (Main.hs `import System.Process (readProcess)`; readProcess -> putStrLn; claim untrusted_input -> logging): default run names System.Process.Text.readProcess (source_module System.Process.Text, the process-extras community overlay); --no-default-overlays names System.Process.readProcess; `io-boundaries` on the same tree attributes System.Process.readProcess. Verdict `violated` in both arms, caveats [] in both. ROOT CAUSE, now traced (runtime wrap of named_lookup_arm, no repo edit): the module hint for this call is 'external', so the row choice goes to the GATE arm -- candidate 2 (hinted path / _module_matches arm 2) is RULED OUT here. In the gate (io_boundary.py:754, sort on getattr(h,'unvouched')): io-boundaries' IoPrimitive hits carry unvouched=[True,True,True,False,False] for Typed/Text/Text/base/base, so the vouched base row wins there; the taint hits carry NO unvouched attribute -- TaintSource has neither unvouched nor community (TaintSink and TaintSanitizer declare `community`, and the auto-derived sink rows from community overlays carry community=False) -- so every taint hit sorts as vouched and the overlay row merged in front wins by order. A probe that also sorted on `community` changed nothing, consistent with the flag never being set on these rows. So candidate 1 is right in mechanism and wrong in detail: the fix is to carry the io row's unvouched/community bit onto auto-derived TaintSource/TaintSink rows (or have the gate read one shared attribute), not only to rename the sort key. Still NOT CHECKED: a verdict change from a base/overlay pair whose boundaries differ (this pair's rows match: both ipc_recv + subprocess, simultaneous). Side observation, not this item: an explicit import list (`import System.Process (readProcess)`) yields no usable module hint for the bare call."  # 769e
+- op: update  # cb5d
+  at: '2026-10-29T07:46:28Z'  # cb5d
+  by: agent  # cb5d
+  actor: jgstern_agent  # cb5d
+  clock: 3  # cb5d
+  nonce: cb5d  # cb5d
+  set:  # cb5d
+    fields:  # cb5d
+      root_cause: "Verified 2026-10-29: the call has no usable module hint (external), so the row is chosen by io_boundary.gate_named_entry, which prefers vouched rows by getattr(h, 'unvouched'). IoPrimitive hits carry that bit; auto-derived TaintSource rows carry neither unvouched nor community, and TaintSink rows from community overlays carry community=False, so every taint hit sorts as vouched and the overlay row (merged in front of the base) wins by declaration order. The hinted-path candidate (_module_matches arm 2) is not reached on this repro."  # cb5d
+- op: update  # b367
+  at: '2026-10-29T11:05:06Z'  # b367
+  by: agent  # b367
+  actor: jgstern_agent  # b367
+  clock: 4  # b367
+  nonce: b367  # b367
+  set:  # b367
+    status: satisfied  # b367
+- op: discuss  # fd8f
+  at: '2026-10-29T11:05:06Z'  # fd8f
+  by: agent  # fd8f
+  actor: jgstern_agent  # fd8f
+  clock: 5  # fd8f
+  nonce: fd8f  # fd8f
+  message: "Fixed in PR #1940 (dev cf3e976b92). Auto-derived TaintSource/TaintSink rows now carry their io primitive's provenance as `community` (= IoPrimitive.unvouched), community taint-file sources are stamped like their sinks and sanitizers, and both row types expose `unvouched`, the attribute io_boundary.gate_named_entry sorts on -- so taint's row choice is the one io-boundaries makes. Filed repro re-run on merged dev cf3e976b92: the default run's untrusted_input source is now System.Process.readProcess (was System.Process.Text.readProcess), the same row --no-default-overlays and io-boundaries name; verdict `violated` unchanged. Tests: test_taint_prefers_vouched_rows.py through load_builtin_taint_catalog (reach; hint-less source and sink are the boot library; taint == io-boundaries for readProcess / readProcessWithExitCode; derived community rows and a community taint-file source are unvouched), mutation-checked per stamping site. Corpus A/B (verify-claims, generic claims; shellcheck, stack, git-bug, full-stack-fastapi-template): no verdict moved anywhere; stack's attribution moved from System.Process.Text / System.Directory.Extra / System.Process.Typed to System.Process / System.Directory, checked against the call sites' imports (release.hs, install-many-stack-releases.hs, Upgrade.hs import the boot libraries). check-self-claims: 18 unchanged. Root cause as traced in the 10-29 premise check: the gate arm (hint 'external'), not the hinted path. NOT a new item: a bare non-gated Haskell call keeps the hint 'external' even under an explicit import list -- deliberate since WI-lokun (only HASKELL_GATED_NAMES are stamped from the import context), so such calls are decided vouched-first; stack's src/Stack/Runners.hs (import RIO.Process, a typed-process wrapper) is one where the old Typed attribution was nearer, and both rows are subprocess. Still not checked: a base/overlay pair whose boundaries differ."  # fd8f

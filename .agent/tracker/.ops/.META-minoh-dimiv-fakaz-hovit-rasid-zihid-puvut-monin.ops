@@ -60,3 +60,32 @@
   clock: 6  # 2f28
   nonce: 2f28  # 2f28
   message: "holding(deprecated)->violated: Lead violations fixed (Go cobra RunE keyed_element, C++ dispatch tables, Ruby/JS struct fields), but Java/Python/Rust struct-field func refs and var-assignment (var f=myFunc) refs still absent => invariant still broken. (tracker-hygiene-sweep 2026-06-08T174504Z)"  # 2f28
+- op: discuss  # dbc6
+  at: '2026-10-29T20:49:17Z'  # dbc6
+  by: agent  # dbc6
+  actor: jgstern_agent  # dbc6
+  clock: 7  # dbc6
+  nonce: dbc6  # dbc6
+  message: "PROGRESS 2026-10-29. Probe matrix on dev cf3e976b92 (one fixture per language; shapes: struct/object field, local binding, module/global binding, array/slice element, call argument; edge = any non-contains/imports edge to the target): python all 5 present (the 06-08 note saying Python struct-field/var-assignment refs are absent is STALE -- dict value, f = fn and self.cb = fn all emit references). Missing: go local binding + slice element; js/ts local binding, module binding, array element; java static field initializer; ruby top-level constant; rust ALL FIVE (incl. call argument); c global initializer; c++ struct field, local, global, array element. GO FIXED in PR #1944 (dev 62212c8cd7): unkeyed composite-literal elements and local bindings (:=, =, function-local var) now emit calls/function_reference via the keyed-field resolver; corpus A/B on 6 Go repos +265/-0, every edge read. Next: js/ts, then java, ruby, rust, c/c++, one PR each."  # dbc6
+- op: update  # d8f8
+  at: '2026-10-30T02:44:42Z'  # d8f8
+  by: agent  # d8f8
+  actor: jgstern_agent  # d8f8
+  clock: 8  # d8f8
+  nonce: d8f8  # d8f8
+  set:  # d8f8
+    status: satisfied  # d8f8
+- op: discuss  # 420e
+  at: '2026-10-30T02:44:42Z'  # 420e
+  by: agent  # 420e
+  actor: jgstern_agent  # 420e
+  clock: 9  # 420e
+  nonce: 420e  # 420e
+  message: "SATISFIED on dev 408f5950e9. Six PRs, one per language family, each with a corpus A/B whose every added edge was read:\n  #1944 Go (+265 on 6 repos), #1945 JS/TS (+174 on 6), #1946 Java+Ruby (+101/-2 on 8; the -2 were misbound this::), #1947 Rust (+197 on 5), #1948 C/C++ (+673 on 7; apt's 6 dangling C++ dispatch tables now resolve). Python needed nothing (the 06-08 note saying Python struct-field/var refs were absent was stale).\n\nFiled repro re-run on merged dev -- the 2026-10-29 matrix fixture (one file per language; fld = struct/object/dict field, var = local binding, glob = module/global binding, arr = array/slice/list element, arg = call argument), `hypergumbo survey`, exit 0, edge into each target:\n  go    calls       calls            calls       calls          calls\n  py    references  references       references  references     references\n  js    references  references       references  references     references\n  ts    references  references       references  references     references\n  java  references  references       references  references     references\n  rb    references  references       references  references     references\n  rs    references  references       references  references     references\n  c     dispatches_to calls,references references dispatches_to calls\n  cpp   references  references       references  dispatches_to  calls\n45/45 cells have an edge; before: 16 cells empty (go var/arr; js+ts var/glob/arr; java glob; rb glob; rs all 5; c glob; cpp fld/var/glob/arr).\nThe item's other named violation, Falco-style registration (vector of function pointers + push_back), on a fixture: `std::vector<void(*)(int)> table = { act_a, act_b }` -> references run->act_a, run->act_b; `actions.push_back(act_c)` -> calls run->act_c.\n\nKnown limits recorded in the PR messages (not violations of the statement, which is about extraction existing): C++ in member context does not link another file's free function (x265 `hpelcomp = sad;`), and a bare value in code tree-sitter misread (export-macro classes) is not linked; Rust `Type::f` with a non-repo Type (`String::from`) is not linked; JS useMemo/useCallback wrapper symbols are what js_ts already mints; a Yjs-style cross-line chain is not seen in JS either."  # 420e
+- op: discuss  # e72d
+  at: '2026-10-30T02:44:50Z'  # e72d
+  by: agent  # e72d
+  actor: jgstern_agent  # e72d
+  clock: 10  # e72d
+  nonce: e72d  # e72d
+  message: "Correction to the closure note: its last clause ('a Yjs-style cross-line chain is not seen in JS either') does not belong here -- that limit is the yjs-crdt linker's (INV-munok), not a META-mino extraction gap. The other listed limits stand."  # e72d

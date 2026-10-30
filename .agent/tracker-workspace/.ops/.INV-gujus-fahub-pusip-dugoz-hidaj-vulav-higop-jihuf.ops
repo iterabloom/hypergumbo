@@ -65,3 +65,10 @@
   clock: 7  # 2421
   nonce: '2421'  # 2421
   message: "2026-10-28: the 13:00 UTC full-suite cron went red on 02a25bba56 (pipeline 5663, step self-tree-validation): test-only-reachability flagged ONE new test-only callable, verify_claims.classified_yet_starved, which I added in PR #1920 (WI-bobuf) as a test-side guard. Caught the same day by the WI-kosup reader census; fixed in PR #1922 (0ba6186e97) by wiring it into _call_production_coverage's starvation reason (a starved-and-classified module is named as an internal inconsistency; still withheld). The baseline was not raised. Expected green on the 01:00 UTC run; not yet observed."  # 2421
+- op: discuss  # 88e4
+  at: '2026-10-29T05:13:41Z'  # 88e4
+  by: agent  # 88e4
+  actor: jgstern_agent  # 88e4
+  clock: 8  # 88e4
+  nonce: '88e4'  # 88e4
+  message: "2026-10-29: the full-suite cron is green again -- pipeline 5682 on 4dc17759 (2026-10-28T20:09-04:00), every step OK including self-tree-validation, which went red on 02a25bba for the test-only classified_yet_starved and was fixed in #1922."  # 88e4
