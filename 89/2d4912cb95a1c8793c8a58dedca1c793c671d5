@@ -1,0 +1,72 @@
+Original commit body from 13100d6b2b73c49fbde1e6b0d2c91b089cd26a8e:
+
+Two halves of one gap in rust.py's handling of `use`.
+
+The imports edge. The use_declaration branch took the imported path from
+the first child of type scoped_identifier / identifier / use_wildcard /
+use_list. A brace list (`use crate::error::{A, B};`, a scoped_use_list)
+and an alias (`use foo::bar as baz;`, a use_as_clause) matched none, so
+the declaration emitted NO imports edge -- among the most common use
+forms. When no single path node is there, the use-tree walker the alias
+map already uses (_use_tree_bindings: lists, nested lists, `self`,
+aliases) now expands every path the declaration binds, and each is
+resolved as a single path is (WI-rilof's _InTreeCrates: the module file
+in the tree, else the `rust:<path>:0-0:module` stand-in it always was);
+one edge per distinct target, so `use crate::m::{a, b};` is one import of
+m.rs. A top-level `use { a::b, c };` (just's prelude) matched `use_list` and
+emitted ONE edge whose module slot was the whole multi-line brace text; its
+items are now walked the same way.
+
+The framework evidence this exposed. refine_frameworks keeps a
+manifest-detected framework only if production code imports one of its
+modules, and keeps it unvalidated for a language with no imports edges.
+With brace-list uses emitting edges, the actix route-parity fixture had
+edges, and `actix_web::get` matched nothing: _module_match_kind knew `.`,
+`/` and `\` but not Rust's `::`, and Cargo's `actix-web` is imported as
+`actix_web`. Both are fixed in profile.py (a `::` prefix arm; a Rust
+framework's import names include the crate name with `-` read as `_`).
+The `::` gap predates this change: any single-path `use tokio::spawn;` was
+already evidence nothing could match.
+
+The call. `use crate_b::{Thing, helper as h2}; h2()` looked up a symbol
+NAMED h2, found none, and minted rust:crate_b:0-0:helper -- a
+workspace-prefixed stand-in (INV-nuzas). Looking up the target's name
+instead is wrong too: it prefers a same-named function of the calling file
+(zellij's `fn generate_random_name` wraps the aliased one, and would have
+read as calling itself). An aliased call now resolves the alias's PATH
+with _rust_function_in_module (#1947's resolver for function values): in
+the tree, the function in the module file the path names; outside it,
+nothing, leaving the stand-in.
+
+Measured, analyze_rust edge set {(src, dst, type, evidence, line)},
+branch vs origin/dev rust.py: imports added -- firecracker 2,065 (779 to
+in-tree files), ripgrep 547 (133), just 304 (123), zellij 1,914 (836),
+diamond-types 555 (270); removed: 60, every one a brace-text stand-in
+(ripgrep 27, just 31, firecracker 1, zellij 1). Framework detection, survey
+dev vs branch (rust.py + profile.py): firecracker, ripgrep, zellij
+unchanged; just clap / cli-rust / serde dev-only -> production (just is a
+clap CLI; its prelude's `clap::...` was hidden in the brace-text stand-in);
+diamond-types clap / cli-rust dev-only -> production (imported by
+crates/dt-cli/src/main.rs). Calls: zellij 17 replaced,
+every one read -- 12 `*_impl` aliases in src/commands.rs
+(`kill_session as kill_session_impl` ...) and zellij_exports.rs's
+generate_random_name_impl now reach zellij-utils / -client / -server
+instead of a zellij_* stand-in, and pty.rs's 4 `async_runtime()` calls
+(`use crate::global_async_runtime::get_tokio_runtime as async_runtime`)
+reach get_tokio_runtime instead of zellij-client's unrelated
+async_runtime. Other repos: 0 call changes. A random 16 of the new
+in-tree imports edges read against their use lines.
+
+Tests (test_rust_use_lists_and_aliases.py): a brace list, an alias, a
+nested list with `self` (each module once), a top-level `use {...}`, a std
+brace list's stand-ins;
+an aliased call in one crate and across workspace members (the INV-nuzas
+fixture's shape), an alias to std staying external, a local wrapper named
+like the alias target; test_profile_rust_import_evidence.py (the `::`
+prefix, `actix_web` for `actix-web`, npm names keep their hyphens). Five
+mutations (no expansion, no dedupe, alias looked up by its own name, no
+path resolution, no top-level expansion) each turn a test red.
+
+Addresses WI-silam and INV-nuzas.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
