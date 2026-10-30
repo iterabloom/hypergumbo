@@ -214,6 +214,7 @@ import ast
 import builtins
 import hashlib
 import warnings
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterator, NamedTuple, TypeVar
@@ -2477,10 +2478,49 @@ class FileAnalysis:
     methods_by_class_id: dict[str, dict[str, "Symbol"]] = field(default_factory=dict)
 
 
-def _detect_source_roots(repo_root: Path) -> list[Path]:
-    """Detect every src/ layout source root inside ``repo_root``.
+_PYTHON_PROJECT_MANIFESTS = frozenset({"pyproject.toml", "setup.py", "setup.cfg"})
 
-    A *source root* is a directory named ``src`` that:
+# The top-level directory names setuptools' flat-layout auto-discovery never
+# installs as packages (``setuptools.discovery.FlatLayoutPackageFinder
+# .DEFAULT_EXCLUDE``, setuptools 84.2.0, without its ``.*`` sub-package twins;
+# its ``[._]*`` pattern is the leading-``.``/``_`` test in
+# ``_is_flat_layout_package``).
+_FLAT_LAYOUT_EXCLUDE = frozenset({
+    "ci", "bin", "debian", "doc", "docs", "documentation", "manpages", "news",
+    "newsfragments", "changelog", "test", "tests", "unit_test", "unit_tests",
+    "example", "examples", "scripts", "tools", "util", "utils", "python",
+    "build", "dist", "venv", "env", "requirements", "tasks", "fabfile",
+    "site_scons", "benchmark", "benchmarks", "exercise", "exercises", "htmlcov",
+})
+
+
+def _is_flat_layout_package(directory: Path) -> bool:
+    """Would a flat-layout project install ``directory`` as a top-level package?"""
+    name = directory.name
+    return (
+        name.isidentifier()
+        and not name.startswith(("_", "."))
+        and name not in _FLAT_LAYOUT_EXCLUDE
+        and (directory / "__init__.py").exists()
+    )
+
+
+def _is_src_root(entry: Path) -> bool:
+    """A directory named ``src`` that is not a package but holds one."""
+    if entry.name != "src" or (entry / "__init__.py").exists():
+        return False
+    try:
+        return any(
+            (c / "__init__.py").exists() for c in entry.iterdir() if c.is_dir()
+        )
+    except (PermissionError, OSError):  # pragma: no cover
+        return False
+
+
+def _detect_source_roots(repo_root: Path) -> list[Path]:
+    """Detect every source root inside ``repo_root``: src/ layouts and flat members.
+
+    A *src root* is a directory named ``src`` that:
     1. is not itself a Python package (no ``__init__.py`` in it), and
     2. contains at least one Python package (a child dir with ``__init__.py``).
 
@@ -2493,13 +2533,27 @@ def _detect_source_roots(repo_root: Path) -> list[Path]:
     ``packages.hypergumbo-core.src.hypergumbo_core.taxonomy`` — invalid
     Python (hyphen) and not the real importable name (WI-davan E1).
 
+    A *flat member root* (WI-homih) is a directory below ``repo_root`` that
+    holds a Python project manifest (``pyproject.toml`` / ``setup.py`` /
+    ``setup.cfg``), has no src root of its own, and has at least one child
+    that a flat-layout install would put on ``sys.path`` as a package
+    (``_is_flat_layout_package``: setuptools' own discovery rule). Installed,
+    ``packages/pkg-c/pkg_c/tools.py`` is ``pkg_c.tools``; named from the repo
+    root it was ``packages.pkg-c.pkg_c.tools`` and nothing in the tree was
+    ``pkg_c``, so every import of it minted an external stand-in (INV-nuzas).
+    The repo root itself is never listed: its files are already named from it.
+    A flat root covers only its packages (``_module_name_from_path``), so its
+    ``tests/`` keep their repo-path names, and a package name two flat members
+    both supply roots NEITHER (poetry's test fixtures hold many projects with a
+    ``simple_project/`` each): a module name must name one file.
+
     Implementation: iterative directory walk. Skips
     ``discovery.manifest_walk_skip()`` names, content-claimed dependency dirs
     and dot-prefixed dirs to avoid `.git` / `node_modules` / virtualenvs /
     build outputs. When a ``src`` directory satisfies both conditions, it
     is collected and not descended into; nested ``src`` directories
     deeper inside another source root are not searched (they would be
-    inside the package, not separate roots).
+    inside the package, not separate roots). A flat member is descended into.
 
     Returns a list sorted by path (deterministic for tests and consumers).
     """
@@ -2507,6 +2561,7 @@ def _detect_source_roots(repo_root: Path) -> list[Path]:
 
     skip = manifest_walk_skip()
     roots: list[Path] = []
+    flat: dict[Path, list[str]] = {}
     stack: list[Path] = [repo_root]
     while stack:
         cur = stack.pop()
@@ -2514,6 +2569,8 @@ def _detect_source_roots(repo_root: Path) -> list[Path]:
             entries = list(cur.iterdir())
         except (PermissionError, OSError):  # pragma: no cover
             continue
+        has_src_root = False
+        packages: list[str] = []
         for entry in entries:
             # INV-pivir: never into a directory symlink (a cycle is unbounded).
             if not walks_into(entry, skip):
@@ -2521,21 +2578,36 @@ def _detect_source_roots(repo_root: Path) -> list[Path]:
             if entry.name == "src":
                 # Classify and stop descending — either a source root, a
                 # package itself, or a dir whose children aren't packages.
-                if (entry / "__init__.py").exists():
-                    continue
-                try:
-                    has_pkg = any(
-                        (c / "__init__.py").exists()
-                        for c in entry.iterdir()
-                        if c.is_dir()
-                    )
-                except (PermissionError, OSError):  # pragma: no cover
-                    has_pkg = False
-                if has_pkg:
+                if _is_src_root(entry):
                     roots.append(entry)
+                    has_src_root = True
                 continue
+            if _is_flat_layout_package(entry):
+                packages.append(entry.name)
             stack.append(entry)
+        if (
+            cur != repo_root and packages and not has_src_root
+            and any(e.name in _PYTHON_PROJECT_MANIFESTS for e in entries)
+        ):
+            flat[cur] = packages
+    supplied = Counter(name for names in flat.values() for name in names)
+    roots.extend(
+        member for member, names in flat.items()
+        if all(supplied[name] == 1 for name in names)
+    )
     return sorted(roots)
+
+
+def _root_covers(root: Path, py_file: Path) -> bool:
+    """Does source root ``root`` name ``py_file``? (``py_file`` is below it.)
+
+    A src root covers everything below it. A flat member root covers only the
+    files inside one of its installable packages (``_detect_source_roots``).
+    """
+    if root.name == "src":
+        return True
+    parts = py_file.relative_to(root).parts
+    return len(parts) > 1 and _is_flat_layout_package(root / parts[0])
 
 
 def _module_name_from_path(
@@ -2547,12 +2619,13 @@ def _module_name_from_path(
 
     E.g., ``/repo/utils.py`` -> ``utils``, ``/repo/pkg/mod.py`` -> ``pkg.mod``.
 
-    If ``source_roots`` is provided, paths under any source root are
-    computed relative to the *most-specific* (longest-path) matching root.
+    If ``source_roots`` is provided, paths under any source root that covers
+    the file (``_root_covers``) are computed relative to the *most-specific*
+    (longest-path) one.
     """
     roots = source_roots or []
-    # Pick the most-specific (deepest) source root that contains the file
-    matching = [r for r in roots if py_file.is_relative_to(r)]
+    # Pick the most-specific (deepest) source root that covers the file
+    matching = [r for r in roots if py_file.is_relative_to(r) and _root_covers(r, py_file)]
     if matching:
         best = max(matching, key=lambda r: len(r.parts))
         try:
@@ -7920,6 +7993,7 @@ def _resolve_call_target(
     Handles:
     - ClassName() -> class symbol
     - module.ClassName() -> class symbol in module
+    - pkg.sub.module.ClassName() under ``import pkg.sub.module`` -> the same
     - imported_name() -> resolved symbol
     - ClassName.method() / typed_local.method() -> the method symbol, when
       ``sym_by_path_name`` is supplied (WI-fihun blocker 1: a factory's
@@ -7975,6 +8049,18 @@ def _resolve_call_target(
                     )
                     if member is not None and member.kind in ("method", "function"):
                         return member
+        else:
+            # A fully dotted module path, ``pkg.sub.mod.Klass()`` under ``import
+            # pkg.sub.mod`` -- the spelling _process_call's Case 2g resolves
+            # (WI-lovun), with the same lookup. Without it the constructor
+            # resolver was asked first and typed the result as an EXTERNAL
+            # ``pkg.sub.mod.Klass``, so ``pkg.sub.mod.Klass().m()`` minted a
+            # stand-in named by an in-tree module (WI-homih, INV-nuzas).
+            dotted_module = _dotted_module_of_call(func, module_imports)
+            if dotted_module is not None:
+                return _lookup_symbol_by_module(
+                    global_symbols, dotted_module, func.attr, resolver=resolver
+                )
 
     return None
 
