@@ -1,0 +1,47 @@
+Original commit body from 1a3e897faec82bedd0e8078364c535918d26f639:
+
+The Fundamental Concept Audit #21, on the shape audit #20 had no scope
+for: two consumers computing ONE fact independently and disagreeing.
+Every earlier instance (WI-jufih, WI-zulij, INV-hokig, INV-pazur,
+WI-punod, WI-bobuf) was found by its symptom and fixed alone.
+
+Method: four read-only sub-agents, one per family (reachability,
+ranking and scope, counts and pass disclosure, classification and
+tier), AST walks for every derivation on the pinned tree a17367f254;
+each separate pair measured on one default survey per language family
+(mitmproxy, knex, logrus, ripgrep, jedis), every counted disagreement
+read against source, the highest-impact code claims re-checked.
+
+Confirmed: of 17 facts, 12 are derived separately. On real output:
+- five test predicates; ripgrep's #[test] functions in src/ are 434 of
+  dead-code's 817 candidates and 493 of test-coverage's 2,680
+  production functions, while slice and io-boundaries call them tests;
+- dead-code and test-coverage walk different edge sets: 12 overrides
+  reached by dispatches_to are test-only to one and untested to the
+  other (mitmproxy, knex, ripgrep 4 each);
+- io-boundaries and taint disagree on 18 of 1,488 edges: taint ignores
+  io_target_kind (a redirect to /dev/null, Fprintf into a buffer) and
+  reads process.on lifecycle handlers as untrusted input.
+14 items filed, each named beside its verdict in the document.
+
+WI-vosop, decided by the sweep: the harness and a live survey of the
+recorded aardvark-dns crate differed on calls/in-repo (93/19/7 vs
+92/17/8). Edge by edge: the survey dedups with remove_self_loops=True
+and the harness did not (3 false self-bindings); a survey's sorted file
+order makes the Rust analyzer bind serve.rs:287 to a #[cfg(test)]
+helper (a defect, WI-lirik); the survey's file nodes add every imports
+edge and 11 module-level calls.
+- _two_arm_artifact dedups with the survey's flag: 93/16/7.
+- 0019's Reading states what its edge rows describe.
+- Its guard checked only the header and attribute rows, and the table
+  kept a 269 references row and a pre-WI-bamar type_alias row; it now
+  checks every pairing and edge row against the instrument (mutation-
+  checked: the old table reds on type_alias, a 269 edge row on
+  references).
+
+Also: the consumer_agreement sibling format in docs/audits/README.md,
+the playbook's Examples entry, and the cadence record (audit #21).
+
+Addresses WI-borib and WI-vosop.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
