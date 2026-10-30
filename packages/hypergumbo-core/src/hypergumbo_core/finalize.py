@@ -477,7 +477,7 @@ def _passes_that_may_supersede() -> frozenset[str]:
     Declared on the linker registration, never inferred from being a linker.
     ADR-0057 §5's discipline applied to a different permission: a pass that
     has not been measured does not get to rank a producer's answer below its
-    own, and the grant cites ``docs/audits/0020``.
+    own, and each grant cites its table (``docs/audits/0020``, ``0024``).
     """
     from .linkers.registry import get_all_linkers
     from .pass_metadata import _resolve_linker_pass_id

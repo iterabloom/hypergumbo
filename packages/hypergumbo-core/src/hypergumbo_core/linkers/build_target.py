@@ -22,9 +22,25 @@ How It Works
 3. If no symbols live at that path, resolve it against the manifest file's
    directory (critical for monorepos where Cargo.toml/package.json are in
    subdirectories)
+   - a Python module (a console script's ``tool.cli`` made ``tool/cli.py``)
+     is also looked for where Python would import it from: the manifest's
+     ``src/``, the package form ``tool/cli/__init__.py``, else the ONE
+     in-tree file whose path ends in the module's path (two name nothing)
+     -- see ``_python_module_file`` (WI-lipal)
 4. Search symbols in that file for the function named by
-   ``meta["target_function"]`` when present, else for ``main``
-5. Create a ``calls`` edge: build_target → that function
+   ``meta["target_function"]`` when present, else for ``main``; a named
+   function that is not there gets no edge, never some other ``main``
+5. Create a ``calls`` edge: build_target → that function, naming the
+   ``defines_target`` edge it consumed in ``derived_from``
+
+Supersession
+------------
+The consumed ``defines_target`` placeholder stays in the graph. This pass
+holds ADR-0057 §14.1's permission (granted on ``docs/audits/0024``), so
+finalize demotes it and stamps ``meta["superseded_by"]`` with this pass's
+edge: a console script's ``python:tool.cli:0-0:main`` stand-in then says
+which in-tree function answered it, rather than reading as external code
+(INV-nuzas carve-out (c)).
 
 Why a Linker
 ------------
@@ -81,6 +97,39 @@ def _resolve_target_path(
     return resolved
 
 
+def _python_module_file(
+    target_path: str,
+    manifest_path: str,
+    symbols_by_path: dict[str, list[Symbol]],
+) -> str | None:
+    """The in-tree file a console script's Python module is, or None (WI-lipal).
+
+    ``target_path`` is the module made a path (``tool/cli.py`` for
+    ``tool.cli``); the module may also be a package (``tool/cli/__init__.py``).
+    Python imports it from wherever it sits on ``sys.path``, which is rarely
+    the manifest's own directory alone: under the manifest's ``src/`` (the src
+    layout), or in ANOTHER workspace package (the meta-package's ``hypergumbo
+    = "hypergumbo_core.cli:main"``). In that order of preference -- the
+    manifest's directory, its ``src/``, then the one in-tree file anywhere
+    whose path ends in the module's path, by whole segments. Two such files
+    and no way to choose name nothing: the module path is the target's
+    identity, and a guess between two files would be a wrong edge.
+    """
+    stem = target_path[: -len(".py")]
+    forms = (target_path, f"{stem}/__init__.py")
+    manifest_dir = posixpath.dirname(manifest_path)
+    for base in (manifest_dir, posixpath.join(manifest_dir, "src") if manifest_dir else "src"):
+        for form in forms:
+            path = posixpath.normpath(posixpath.join(base, form))
+            if path in symbols_by_path:
+                return path
+    found = {
+        path for path in symbols_by_path
+        for form in forms if path == form or path.endswith("/" + form)
+    }
+    return found.pop() if len(found) == 1 else None
+
+
 @register_linker(
     "build-target-linker",
     priority=15,
@@ -100,6 +149,12 @@ def _resolve_target_path(
         ["json", "manifest_targets", "toml", "xml"],
     ],
     activation=always_on_unreviewed(),
+    # ADR-0057 §14.1: the placeholder this pass consumed (named in each edge's
+    # derived_from) is demoted and stamped superseded_by. Granted on
+    # docs/audits/0024: 16 of 16 edges correct over 12 repositories, and the
+    # pass makes no choice -- an exact file and the exact named function, or
+    # no edge.
+    supersedes_consumed_stub=True,
 )
 def link_build_targets(ctx: LinkerContext) -> LinkerResult:
     """Connect defines_target edges to main() functions.
@@ -140,22 +195,30 @@ def link_build_targets(ctx: LinkerContext) -> LinkerResult:
             if resolved != target_path:
                 candidates = symbols_by_path.get(resolved, [])
 
+        # A Python module is wherever Python would import it from, not only
+        # beside the manifest (WI-lipal).
+        src_sym = symbols_by_id.get(edge.src)
+        if not candidates and target_path.endswith(".py") and src_sym is not None:
+            module_file = _python_module_file(target_path, src_sym.path, symbols_by_path)
+            if module_file is not None:
+                candidates = symbols_by_path[module_file]
+
         # Check for target_function in edge meta (Python entry points
         # specify the function name, e.g., "run_app" from "pkg.cli:run_app")
         target_func_name = (
             edge.meta.get("target_function") if edge.meta else None
         )
 
-        # Find the target function: prefer target_function if specified,
-        # fall back to main()
+        # Find the target function: the one the manifest names, else main().
+        # A manifest that NAMES its function is taken at its word: a missing
+        # name is not some other main() (WI-lipal; usually a re-export).
         main_fn = None
         if target_func_name:
             for sym in candidates:
                 if sym.name == target_func_name and sym.kind in ("function", "method"):
                     main_fn = sym
                     break
-        if main_fn is None:
-            # Fall back to main() regardless of target_function
+        else:
             for sym in candidates:
                 if sym.name == "main" and sym.kind in ("function", "method"):
                     main_fn = sym
