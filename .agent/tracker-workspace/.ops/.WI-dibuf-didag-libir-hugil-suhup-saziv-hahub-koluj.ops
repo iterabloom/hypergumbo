@@ -1,0 +1,22 @@
+- op: create  # 12b6
+  at: '2026-10-30T21:45:42Z'  # 12b6
+  by: agent  # 12b6
+  actor: jgstern_agent  # 12b6
+  clock: 1  # 12b6
+  nonce: 12b6  # 12b6
+  data:  # 12b6
+    kind: work_item  # 12b6
+    title: "dead-code, test-coverage, sketch, compact, explain and symbols decide test code by path alone: ripgrep's #[test] functions in src/ are 434 of dead-code's 817 candidates"  # 12b6
+    status: todo_hard  # 12b6
+    priority: 2  # 12b6
+    parent:  # 12b6
+    tags:  # 12b6
+    - concept_audit  # 12b6
+    - consumer_agreement  # 12b6
+    - test_detection  # 12b6
+    isbefore: []  # 12b6
+    duplicate_of: []  # 12b6
+    not_duplicate_of: []  # 12b6
+    pr_ref:  # 12b6
+    description: "From the consumer-agreement sweep (WI-borib, docs/audits/0026). Verdict SINGLE-SOURCE.\n\nFACT: is node N test code. Five predicates answer it: paths.is_test_file (path), selection.filters.is_test_path (path + tests.py / *Test.java / *Tests.swift / .test-d.ts shapes, no annotations), paths.is_test_node (is_test_file + test annotations, WI-rujun), a path-or-concept rule written twice (cli.py ~8504 closure, sketch.py:5288 _has_test_concept), and the narrow supply_chain.is_test_file. Which view uses which:\n- is_test_path: dead-code-maybe, test-coverage, explain -x, symbols -x, sketch, compact default.\n- is_test_node: slice --exclude-tests, tiered hg.Nk.json, io-boundaries, ranking's edge filter.\n- is_test_file: routes, entrypoint penalties, the test-only-reachability ratchet, linkers.\n- scripts/bakeoff-deep and scripts/hypergumbo_diag.py carry private regexes.\n\nMEASURED on default surveys at a17367f254 (~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/M/test_predicates.out): is_test_file and is_test_path agree on every path of mitmproxy, knex, logrus, ripgrep, jedis. The live split is annotations: ripgrep has 496 nodes (480 functions) that are #[test] functions in mod tests inside src/ -- test to is_test_node, production to both path predicates. Of them, dead-code-maybe lists 434 as dead candidates (of its 817), test-coverage counts 464 as untested production functions, and 493 of test-coverage's 2,680 total_functions are tests. Verified in source: crates/cli/src/escape.rs:101 #[test] fn nul. Synthetic shapes where the PATH predicates split (polls/tests.py, src/main/java/a/FooTest.java): agent B's probe in ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/B_scripts/.\n\nACCEPTANCE: one predicate for \"is this node test code\" (annotations included), routed through every view and the scripts; the narrow supply_chain verdict stays a separately named fact. Re-run ripgrep: no #[test] function is a dead-code candidate or a test-coverage production function."  # 12b6
+    fields: {}  # 12b6

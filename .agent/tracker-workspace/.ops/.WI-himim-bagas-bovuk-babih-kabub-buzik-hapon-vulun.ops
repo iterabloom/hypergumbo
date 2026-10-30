@@ -29,3 +29,18 @@
   set: {}  # e69f
   add:  # e69f
     isbefore: [WI-foloh-guvig-lapat-pubok-humud-bigis-rulal-mafov]  # e69f
+- op: update  # 6daa
+  at: '2026-10-30T20:24:42Z'  # 6daa
+  by: agent  # 6daa
+  actor: jgstern_agent  # 6daa
+  clock: 3  # 6daa
+  nonce: 6daa  # 6daa
+  set:  # 6daa
+    status: done  # 6daa
+- op: discuss  # 7f6a
+  at: '2026-10-30T20:24:43Z'  # 7f6a
+  by: agent  # 7f6a
+  actor: jgstern_agent  # 7f6a
+  clock: 4  # 7f6a
+  nonce: 7f6a  # 7f6a
+  message: "Done in PR #1964 (8e124fa862). Root cause: py.py typed neither an AWAITED call nor a TUPLE target, so the readers asyncio's stream factories return were untyped and their reads reached no row; and py.py stamped no io_target_kind anywhere. Fix: library_signatures gains tuple_returns (asyncio.open_connection / open_unix_connection -> StreamReader, StreamWriter) and member_types (asyncio.subprocess.Process.stdin / stdout / stderr), plus signatures rows for create_subprocess_exec / _shell -> Process; py.py types x = await f(...) and a, b = await f(...), binds member types, and records the factory's medium (_STREAM_FACTORY_MEDIA: open_connection net_stream; open_unix_connection and create_subprocess_* pipe), stamped as io_target_kind on calls through the receiver. (An earlier attempt, PR #1963, was closed unmerged: a failed commit was followed by an amend that rewrote origin's tracker commit; rebuilt cleanly.)\nCLOSURE EVIDENCE, the filed repro's three shapes through production hypergumbo survey on merged dev: `reader, writer = await asyncio.open_connection(host, 80); await reader.read(100)` -> python:asyncio.StreamReader:0-0:read, io_target_kind net_stream; the open_unix_connection twin -> asyncio.StreamReader read, pipe; `proc = await asyncio.create_subprocess_exec(...); await proc.stdout.read()` -> asyncio.StreamReader read, pipe (all three were python:external:0-0:read). hypergumbo io-boundaries on the same fixture: net_recv 3 chains (was 0), net_send 1 (open_connection), subprocess 1. Corpus A/B: mitmproxy 41, uvloop 189, meson 3, transformers 1 calls typed, every one read. Residual: an awaited factory bound in two steps into attributes (qemu's `connect = asyncio.open_connection(...)` ... `self._reader, self._writer = await connect`) is not typed. WI-foloh can now add its ipc_recv twin: the pipe stamp has a producer."  # 7f6a

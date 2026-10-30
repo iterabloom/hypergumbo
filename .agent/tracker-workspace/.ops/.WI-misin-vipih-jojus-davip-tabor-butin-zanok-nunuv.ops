@@ -1,0 +1,21 @@
+- op: create  # 96a6
+  at: '2026-10-30T21:45:53Z'  # 96a6
+  by: agent  # 96a6
+  actor: jgstern_agent  # 96a6
+  clock: 1  # 96a6
+  nonce: 96a6  # 96a6
+  data:  # 96a6
+    kind: work_item  # 96a6
+    title: "dead-code rebuilds entrypoint Symbols by hand, dropping supply_chain and modifiers, so detect_entrypoints gets other inputs than in survey, slice and sketch"  # 96a6
+    status: todo_hard  # 96a6
+    priority: 3  # 96a6
+    parent:  # 96a6
+    tags:  # 96a6
+    - concept_audit  # 96a6
+    - consumer_agreement  # 96a6
+    isbefore: []  # 96a6
+    duplicate_of: []  # 96a6
+    not_duplicate_of: []  # 96a6
+    pr_ref:  # 96a6
+    description: "From WI-borib (docs/audits/0026). Verdict SINGLE-SOURCE.\n\ncmd_dead_code_maybe rebuilds each node into a Symbol by hand for detect_entrypoints (cli.py ~9408-9430), keeping id/name/kind/language/discovery_language/protocol_origin/path/span/meta and dropping supply_chain (tier) and modifiers. The edges on the same path already go through Edge.from_dict for exactly this reason (WI-higap, INV-nudoj). So the one shared helper, detect_entrypoints, gets different inputs in dead-code than in survey/slice/sketch: agent A's map (~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/A_runs/synth.json) with one export set to tier 3 -- slice, sketch and the persisted entrypoints drop it, dead-code keeps it as a seed at rank 0.84.\n\nNOT measured on a real repo (dead-code does not print its seeds; agent A's appendix has an in-process diff). ACCEPTANCE: the rebuild goes through the one Symbol deserializer; a test that detect_entrypoints over dead-code's Symbols equals it over the survey's on a map with a tier-3 export."  # 96a6
+    fields: {}  # 96a6
