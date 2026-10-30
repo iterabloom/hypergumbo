@@ -14,19 +14,27 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Breaking and contract changes
 
-- **Route markers are ADR-0031 Class B stand-ins**: `language: null`, the file's language in `discovery_language`, the transport in `protocol_origin`; read `Symbol.host_language`. Route ids and entrypoint ranks are unchanged, and `dead-code-maybe` no longer lists markers.
-- **`stable_id_scheme` v9 → v13**: new `stable_id`s for BitBake, SCIP-only and `@hg:route` symbols and C/C++ externals with a header-set module slot.
-- **A C/C++ module slot naming several headers is a `module-set-<hex>` handle** into a new `module_sets` table (`SCHEMA_VERSION` 0.20.15 → 0.21.0).
-- **Walk verdicts `confirmed` / `unconfirmed` are `reached` / `refuted`** (`verify-claims` envelope 2.6 → 3.0).
-- **An exit status is no longer a taint source** (ADR-0049); the child's output still is.
+- **Behavior map, `SCHEMA_VERSION` 0.20.15 → 0.21.0**: a C/C++ module slot naming several headers is a `module-set-<hex>` handle into a new `module_sets` table.
+- **`stable_id_scheme` v9 → v13**: BitBake, SCIP-only and `@hg:route` symbols, and C/C++ externals with a header-set module slot, get new `stable_id`s.
+- **Route markers no longer claim a language** (ADR-0031 Class B): `language` is `null`; read `Symbol.host_language`, `discovery_language` or `protocol_origin`. Route ids and ranks are unchanged; `dead-code-maybe` no longer lists markers.
+- **`verify-claims` envelope 2.6 → 3.0**: walk verdicts `confirmed` / `unconfirmed` are renamed `reached` / `refuted`.
+- **`verify-claims` envelope 3.1**: command-line arguments are `untrusted_input`, and their flows are set aside unless a claim counts them.
+- **Taint: a child's exit status is no longer a source** (ADR-0049); its output still is.
 - **`confidence_source` drops `composite`**, which nothing produced.
-- **Command-line arguments are `untrusted_input`**; `verify-claims` sets their flows aside unless a claim counts them (envelope 3.1).
-- **A `calls` edge's `src` is the calling code unit** (ADR-0023); output is unchanged.
+- **Contract only: a `calls` edge's `src` is the calling code unit** (ADR-0023); output is unchanged.
 
 ### Added
 
-- **The test-only-reachability ratchet judges methods** by receiver type on a scip-python-typed map.
-- **Static `depends_on` checks**: no empty clause, and a linker's dependencies run earlier.
+- **New symbols**: Swift initialisers and deinitialisers, Rust `type` aliases, Dockerfile per-stage variables, and Pony `actor` / `primitive` kinds.
+- **`hypergumbo catalog` names the grammar package each pass loads.**
+- **CI checks**: the test-only-reachability ratchet judges methods by receiver type; `depends_on` clauses are never empty and name earlier passes.
+
+### Changed
+
+- **Sketch no longer downloads embedding models on first use**: run `hypergumbo install-embeddings`, which now fetches the weights.
+- **Every catalogue loader rejects a key nothing reads**, naming it, instead of silently ignoring it.
+- **Community catalogue overlays are restricted** (ADR-0061 rulings 1–2): they cannot declare a call not I/O, and their `trusted` sinks are withheld; a catalogue named on the command line is `yours`.
+- **Internal renames**: the taint-side gates are `requires_target_boundary` / `requires_mode_boundary`, and pass-silence states are declared in `pass_silence.SILENCE_REASON_SPECS`.
 
 ### Removed
 
@@ -36,58 +44,50 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
-#### Pass disclosure and identity
+#### Run reporting and graph integrity
 
 - **Every pass that ran is in `analysis_runs`, and one that found nothing says why**, now including framework patterns, five post-passes and 13 more linkers.
+- **A pass that found nothing to analyse is no longer reported as not having run** (`prerequisite_absent`).
 - **A missing grammar's warning names the package to install** (`tree-sitter-<lang>` or `tree-sitter-language-pack`).
-- **Pass-silence states are data** (`pass_silence.SILENCE_REASON_SPECS`), and `prerequisite_absent` reads them.
 - **The JS module linker counts its `package.json` reads** in `files_analyzed`.
-- **Id round-trip checks are validator errors** (ADR-0036 Ruling 3 as amended); node ids change, `stable_id`s do not.
+- **A node id whose kind or name slot disagrees with its node is a validator error** (ADR-0036 Ruling 3); such ids are corrected, `stable_id`s unchanged.
 - **Edges start and end on real nodes** for Starlark `deps`, json, make, jsonnet, astro, svelte, Cargo and CSS imports, bridging headers, WebAssembly loads and JSX references.
+- **Every linker call-site stand-in is attached to its enclosing function.**
 
-#### Calls, types and symbols
+#### Imports of your own code
 
 - **An import of in-tree code reaches its source**, not a third-party stand-in or `external_symbol`: npm workspace siblings, and Rust `use` rooted at `crate`, `self`, `super` or an in-tree crate.
-- **Python calls through a dotted module path, or on in-tree module constants, bind in the tree.**
-- **A Python test or script importing a sibling module reaches it**, not a third-party stand-in.
-- **A flat-layout Python workspace member is a source root**; `pkg.mod.Klass().m()` binds in the tree.
-- **A console script reaches its function on `src/` layouts and across packages**; its placeholder is demoted, not deleted (ADR-0057 §14.1).
-- **JS/TS workspace siblings resolve through module objects, namespaces and default imports**; in-tree member reads are `references`.
-- **`require('.')` / `require('..')` import the directory**, through its `package.json` entry when it has one, not an npm package named `..`.
-- **Node core modules (`fs`, `path`, `node:*`) are no longer npm package nodes** claimed as third-party dependencies.
-- **A dotted relative import (`./X.test-wrapper`) reaches its own file**, not the same-stem sibling `X.tsx`.
-- **A resolved JS/TS import's analyzer stub is demoted beside its resolution** (ADR-0057 §14.1, `docs/audits/0025`).
-- **Rust brace-list, top-level `use {...}` and aliased `use` declarations emit imports edges**; a call through an alias reaches the function its path names.
-- **A Rust `use` path is framework import evidence** (`::` separator; `actix-web` imported as `actix_web`).
-- **Python asyncio stream readers and subprocess pipes are typed**, and stamped with their medium (`net_stream` / `pipe`).
-- **A StreamReader read from a Unix socket or a child's pipe is `ipc_recv`**; a TCP or unstamped reader stays `net_recv`.
-- **A resolver-graded call keeps its graded confidence** through finalize (ADR-0039 ruling 6); on apollo-server 244 of 18,684 edges move, all down.
+- **Python**: a test or script importing the module beside it reaches it; a flat-layout workspace member is a source root; calls through a dotted module path (`pkg.mod.Klass().m()`) or on in-tree module constants bind in the tree.
+- **A console script reaches its function on `src/` layouts and across packages.**
+- **JS/TS workspace siblings resolve through module objects, namespaces and default imports**; reading a member of an in-tree module is a `references` edge.
+- **JS/TS import resolution**: `require('..')` imports the directory, via its `package.json`; Node core modules (`fs`, `node:*`) are not npm dependencies; `./X.test-wrapper` reaches its own file, not `X.tsx`.
+- **Rust brace-list (`use a::{b, c}`), top-level `use {...}` and aliased `use` declarations emit imports edges**, and a call through an alias reaches the function its path names.
+- **Rust `use` paths count as framework import evidence** (`actix-web` is imported as `actix_web`).
+- **A placeholder a linker resolves (console scripts, JS/TS imports) is demoted, not deleted** (ADR-0057 §14.1): it ranks lower and names its resolution in `superseded_by`.
+
+#### Calls, types and references
+
+- **A function used as a value is a reference, not dead code**, in Go, JS/TS, Rust, C and C++ (dispatch tables and function-pointer arrays included); Java and Ruby method references outside methods are kept.
+- **Finalize no longer overrides a resolver's graded call confidence** (ADR-0039 ruling 6); on apollo-server, 244 of 18,684 edges move, all down.
 - **Finalize keeps typed binds** for methods named like stdlib interfaces (`Close`, `Parse`), in C++ and in Java, C# and Kotlin static initializers.
-- **Every linker call-site stand-in is attached to its enclosing function.**
-- **A Python local named like a field no longer retypes `self.<field>`.**
-- **Kotlin and Scala bare `java.lang` receivers resolve**, so `verify-claims` sees the launch.
-- **New symbols**: Swift initialisers and deinitialisers, Rust `type` aliases, Dockerfile per-stage variables, and Pony `actor` / `primitive` kinds; Python class-body calls emit edges.
-- **Slice reaches the members of a Kotlin/Scala `object`, a `record`, a `union` or a Go `type`**: slice and the containment linker read one container set.
-- **A Yjs map entry read links from its writer**, by map and key; `getMap<T>()` is recognised.
-- **A Go, JS/TS, Rust, C or C++ function used as a value is referenced.**
-- **C++ dispatch tables reach the map**, including arrays of function pointers.
-- **Java and Ruby method references outside methods are kept**; `this::m` binds its own class.
+- **Python class-body calls emit edges**, and a local named like a field no longer retypes `self.<field>`.
+- **Kotlin and Scala bare `java.lang` receivers resolve**, so `verify-claims` sees the process launch.
+- **Slice reaches the members of a Kotlin/Scala `object`, a `record`, a `union` or a Go `type`.**
+- **A Yjs map entry read links from the code that wrote it**, by map and key; `getMap<T>()` is recognised.
 
 #### I/O boundaries and taint
 
-- **Unix-domain sockets are IPC**: a server is `ipc_listen` (ADR-0050 §1; io-boundaries schema 2.4 → 2.5), and a Go connection's `Write` / `Read` are `ipc_send` / `ipc_recv`.
-- **ObjC class methods and Swift statics have the kind their call reads as** (ADR-0059 ledger now empty); dead rows are deleted, and `fetchRequestWithEntityName:` is `db_compose`.
+- **Unix-domain sockets are IPC, not network**: a server is `ipc_listen` (ADR-0050 §1; io-boundaries schema 2.4 → 2.5), and a Go connection's `Write` / `Read` are `ipc_send` / `ipc_recv`.
+- **Reads from asyncio streams the code opens are I/O crossings**: a reader from `open_connection` is `net_recv`; one from `open_unix_connection` or a subprocess's pipe is `ipc_recv`.
 - **`slice --io-boundary` keeps a call for every boundary it crosses** (`io_boundary.boundaries_of`): `subprocess.check_output` is both `subprocess` and `ipc_recv`.
 - **`document.cookie` is `browser_storage_read`**, alongside `env_read`.
-- **A taint claim on a zone with no sink for a present language is withheld for every built-in zone**: Go's `database` claims read `confirmed`.
-- **Every catalogue loader refuses a key nothing reads**, naming it.
-- **A user overlay no longer lowers its catalogue's status**, which turned unrelated chains `[unreliable]`, and a shipped file is `builtin` only when it says so.
-- **A community overlay cannot declare a call not I/O, and its `trusted` sinks are withheld** (`withheld_community_trust`); a catalogue named on the command line is `yours` (ADR-0061 rulings 1–2).
-- **The taint-side gates are `requires_target_boundary` / `requires_mode_boundary`.**
+- **ObjC class methods and Swift statics have the kind their call reads as**; rows that can never match or do no I/O are deleted.
+- **`verify-claims` no longer confirms a claim about a zone a language has no sink in**: "untrusted input never reaches a database" on a Go repo using `db.Exec` is inconclusive, not `confirmed`.
+- **Taint and io-boundaries pick the same catalogue row**: a vouched row over a community overlay's twin.
+- **A user overlay no longer lowers its catalogue's status** (marking unrelated chains `[unreliable]`); a shipped file is `builtin` only if it says so.
 - **A user taint row replaces only the label or zone it restates.**
-- **A collapsed taint row is judged by its whole group**, not its first member; the `choice_shaped_source` caveat applies only to `untrusted_input`.
-- **Taint picks the vouched row io-boundaries picks**, not a community overlay's twin.
-- **Taint walks module-level Python and JS/TS code** and reads through walrus, nested assignments and closures, and drops false leaks from `build_opener().open(url)` and Go's `_, err := get()`.
+- **A collapsed taint row is judged by its whole group**, not its first member.
+- **Taint walks module-level Python and JS/TS code** and reads through walrus, nested assignments and closures; false leaks from `build_opener().open(url)` and Go's `_, err := get()` are gone.
 - **Constructing a class no longer taints its class body**: a value reaching a type node stops there.
 
 #### Dead code, tiers and sketch
@@ -98,18 +98,17 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **External dependency declarations carry `directness` and `ecosystem`**, no longer `unknown`.
 - **Sketch names a data model's framework once.**
 
-#### SCIP, run limits and security claims
+#### SCIP, run limits and security
 
 - **SCIP edges land in their own crate target**, and SCIP-only symbols span their whole item.
-- **`--max-files` bounds every language analyzer**; `hypergumbo catalog` names each pass's grammar package.
-- **SCIP launches, trust grants, the catalogue home and the repo-tier offer go through declared zones**; the offer never writes into an analysed repository.
-- **Analysis never downloads an embedding model**; `install-embeddings` does.
+- **`--max-files` bounds every language analyzer.**
+- **The repo-tier examples offer never writes into the repository being analysed**; its other writes, SCIP launches and trust grants go through declared safety zones.
 - **The secret scan ignores the analysed repository's gitleaks config** and no longer asks gitleaks to delete `/dev/stdout`.
 - **INI and `.properties` secrets print as `***`**: no length or characters, `passwd` / `pwd` covered.
 
 #### CI and gates
 
-- **Declared axioms are tested against survey and `verify-claims` output** ([`docs/surveys/axiom-falsifiability.md`](docs/surveys/axiom-falsifiability.md)); strict xfails record today's failures.
+- **Declared axioms are tested against survey and `verify-claims` output** ([`docs/surveys/axiom-falsifiability.md`](docs/surveys/axiom-falsifiability.md)).
 - **The full-suite test-only-reachability gate is green again.**
 - **The per-PR pytest step fails a run whose every test skipped**, or that left no report.
 - **A test fails when a classified module is reported starved** (`classified_yet_starved`).
@@ -117,12 +116,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Documentation
 
-- **Reader census** ([`docs/audits/0023-reader-census.md`](docs/audits/0023-reader-census.md)): what nothing reads and what nothing produces, across fields, meta keys, knobs, functions and kept-with-trigger verdicts.
+- **Reader census** ([`docs/audits/0023-reader-census.md`](docs/audits/0023-reader-census.md)): what nothing reads and what nothing produces.
 - **ADR-0050 §1**: a primary boundary names the medium; a `simultaneous` second is a label's reading or a second crossing. `env_read` may carry a credential.
 - **ADR-0041 §1**: tier is the distance of a node's code from the project.
 - **ADR-0062**: the tracker's live Yjs document is a projection of the ops log, never its replacement.
+- **Linker supersession audits** ([`docs/audits/0024`](docs/audits/0024-build-target-supersession-precision.md), [`0025`](docs/audits/0025-js-module-supersession-precision.md)): the measured precision behind the two ADR-0057 §14.1 grants.
 - Module docstrings: 42 corrected, 12 extended.
-- The spec documents 63 `symbol_meta` keys; two playbooks record their latest runs; `ALLOWED_WEBSITES.md` permits discuss.python.org; ARCHITECTURE.md regenerated.
+- The spec documents 63 `symbol_meta` keys; `ALLOWED_WEBSITES.md` permits discuss.python.org; ARCHITECTURE.md regenerated.
 
 ## [9.2.0] - 2026-10-20
 
