@@ -1,0 +1,47 @@
+- op: create  # c54b
+  at: '2026-10-30T11:56:45Z'  # c54b
+  by: agent  # c54b
+  actor: jgstern_agent  # c54b
+  clock: 1  # c54b
+  nonce: c54b  # c54b
+  data:  # c54b
+    kind: work_item  # c54b
+    title: "js-module-linker mints an npm PACKAGE node, tier 3 'third-party dependency', for Node core modules (fs, path, http...): 540 of 2,771 package-node resolutions on 7 repos"  # c54b
+    status: todo_hard  # c54b
+    priority: 3  # c54b
+    parent:  # c54b
+    tags:  # c54b
+    - javascript  # c54b
+    - supply_chain  # c54b
+    - linker_gap  # c54b
+    isbefore: []  # c54b
+    duplicate_of: []  # c54b
+    not_duplicate_of: []  # c54b
+    pr_ref:  # c54b
+    description: "FOUND 2026-10-30 by the js-module-linker precision audit for WI-halol shape 5 (7 surveys, ~/hypergumbo_lab_notebook/jsmod_10302026/rows.json, sample_read.txt).\n\nTHE DEFECT. The js-module-linker mints an npm PACKAGE node for a Node core module: require('fs') / import path from 'path' -> javascript:npm:0-0:fs:package, kind=package, meta package_ecosystem=npm, supply_chain tier 3 reason \"npm_package (third-party dependency)\". fs, path, http, child_process, util, assert, os, url ... are the runtime's own modules, not npm packages and not dependencies. 540 of 2,771 package-node resolutions (19.5%): pm2 301, knex 119, ioredis 50, apollo-server 42, hls.js 10, nuclear 9, jotai 9. Top specifiers: path 127, fs 95, http 67, child_process 38, util 36, assert 36, os 23, url 21. node:-prefixed specifiers: 0 in these repos (not measured).\n\nDISTINCT FROM WI-hotut (Node built-in boundary nodes get NO ecosystem label): here the label is present and FALSE -- a positive third-party-dependency claim for the stdlib. js_ts already has the list (_NODE_CORE_MODULES: \"an import of one is external, with no manifest needed\"); the linker does not consult it.\n\nWHY IT BLOCKS WI-halol: ADR-0057 section 14.1's permission is per pass. Granting js-module-linker would demote the analyzer's import stub beneath 540 false package claims (docs/audits/0020's refusal reason, at a 19.5% wrong rate on this route).\n\nFIX DIRECTION: a core-module specifier (bare or node:-prefixed, with or without a subpath like fs/promises) gets no npm package node; the import stays the analyzer's external stub, whose ecosystem is WI-hotut's to label. One core-module list, shared with js_ts (no second copy). Measure: package-node count by repo before/after; dependency-linker counts must not lose a real npm import."  # c54b
+    fields: {}  # c54b
+- op: update  # 8bfd
+  at: '2026-10-30T11:57:03Z'  # 8bfd
+  by: agent  # 8bfd
+  actor: jgstern_agent  # 8bfd
+  clock: 2  # 8bfd
+  nonce: 8bfd  # 8bfd
+  set: {}  # 8bfd
+  add:  # 8bfd
+    isbefore: [WI-halol-malim-kahav-tahut-tobot-sizat-dopas-limat]  # 8bfd
+    not_duplicate_of: [WI-hotut-dahog-lusas-tamom-novoj-vatop-tokos-jikoz]  # 8bfd
+- op: update  # b685
+  at: '2026-10-30T13:49:06Z'  # b685
+  by: agent  # b685
+  actor: jgstern_agent  # b685
+  clock: 3  # b685
+  nonce: b685  # b685
+  set:  # b685
+    status: done  # b685
+- op: discuss  # 57a3
+  at: '2026-10-30T13:49:06Z'  # 57a3
+  by: agent  # 57a3
+  actor: jgstern_agent  # 57a3
+  clock: 4  # 57a3
+  nonce: 57a3  # 57a3
+  message: "Done in PR #1957 (2613b61e34). Root cause: the js-module-linker sent every bare specifier no alias or workspace package resolved to the npm route and never read the core-module list js_ts had. Fix: the list moved to js_package_entry (NODE_CORE_MODULES, is_node_core_module, shared with js_ts) and the linker skips the npm route for a core module. CLOSURE EVIDENCE, production hypergumbo survey on merged dev: pm2 and knex have no package node named fs, path, http, child_process, util, assert, os or url (pm2 was 22 core package nodes / 301 import edges, knex 12 / 119); pm2 package nodes 77 -> 55, knex 60 -> 48, no npm package lost. Across the 7 audit repos the package-node route is now 2,231 of 2,231 structurally consistent (was 2,231 + 540 core modules)."  # 57a3

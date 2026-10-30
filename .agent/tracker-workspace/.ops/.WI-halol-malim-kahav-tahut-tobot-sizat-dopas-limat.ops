@@ -29,3 +29,17 @@
   set: {}  # 5c6f
   add:  # 5c6f
     isbefore: [INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap]  # 5c6f
+- op: discuss  # 052b
+  at: '2026-10-30T10:53:49Z'  # 052b
+  by: agent  # 052b
+  actor: jgstern_agent  # 052b
+  clock: 3  # 052b
+  nonce: 052b  # 052b
+  message: "PROGRESS 2026-10-30. Shapes 1-4 FIXED in PR #1953 (d4bac1048a) and PR #1954 (c5ef72894e). Evidence, the filed fixture (~/hypergumbo_lab_notebook/nuzas_10292026/fixtures/js) re-run on merged dev through production `hypergumbo survey`: (1) const b = require('@ws/b'); b.helper() -> packages/b/src/index.js helper; (2) import * as C from '@ws/c'; C.shout() -> packages/c/src/index.ts shout; (3) import cDefault from '@ws/c'; cDefault() -> c's export default cDefault (resolved through the package ENTRY's default export, whatever the local name); (4) new b.Engine() -> references to class Engine, the @ws/b.Engine stand-in gone (#1953 gated it per module and missed the filed fixture, which binds @ws/b both by destructuring and as an object; #1954 decides per read). check.py: 0 violations. Control ctl_js unchanged. Corpus A/B (8 repos): 99 module_attr_ref stand-ins became references to the in-tree symbol and 3 relative default imports resolved, every edge read; 0 lost.\nSHAPE 5 DECISION (the item asked): the `<spec>:0-0:module` import stand-in beside the linker's real file edge is the WI-lipal case exactly -- js-module-linker consumes it and names it in derived_from. Same answer: grant js-module-linker ADR-0057 section 14.1's supersedes_consumed_stub on a measured precision table, so the stub is demoted with superseded_by and INV-nuzas carve-out (c) covers it. NOT GRANTED YET: the audit (7,290 resolutions over 7 repos) found a wrong route -- require('.') / require('..') resolve to an npm package named '.' / '..' (35 edges, 4 repos), filed as WI-pulid, which now blocks this item. Also found, not this item's: INV-saruf (a filtered compiled-JS file's edges survive with an external_symbol src). Remaining here: WI-pulid, then the audit re-run, the grant (docs/audits/0025) and a fixture re-run."  # 052b
+- op: discuss  # 69fc
+  at: '2026-10-30T11:57:03Z'  # 69fc
+  by: agent  # 69fc
+  actor: jgstern_agent  # 69fc
+  clock: 4  # 69fc
+  nonce: 69fc  # 69fc
+  message: "SHAPE-5 GRANT AUDIT, continued 2026-10-30. WI-pulid fixed (#1956). Hand-read stratified sample of the other 7,255 js-module-linker resolutions: relative 25/25 correct, bare-specifier -> in-tree file (tsconfig paths, workspace entries, a dist-only entry falling back to src/index.ts) 30/30 correct, package-node 13/15 -- the 2 wrong are Node core modules (url, assert) minted as npm packages. Enumerated: 540 of 2,771 package-node edges (19.5%) are core modules labelled third-party dependencies, filed as WI-tufob, which now also blocks this item. Grant stays refused until WI-tufob lands; then re-run the enumeration and write docs/audits/0025."  # 69fc
