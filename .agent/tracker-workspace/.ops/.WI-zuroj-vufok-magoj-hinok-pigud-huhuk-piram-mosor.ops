@@ -1,0 +1,22 @@
+- op: create  # 07dd
+  at: '2026-10-30T21:46:52Z'  # 07dd
+  by: agent  # 07dd
+  actor: jgstern_agent  # 07dd
+  clock: 1  # 07dd
+  nonce: 07dd  # 07dd
+  data:  # 07dd
+    kind: work_item  # 07dd
+    title: "the ranking stack's separate copies disagree: rank_files lacks two dampeners, tiered views count test edges, compact orders entrypoints by confidence"  # 07dd
+    status: todo_hard  # 07dd
+    priority: 3  # 07dd
+    parent:  # 07dd
+    tags:  # 07dd
+    - concept_audit  # 07dd
+    - consumer_agreement  # 07dd
+    - ranking  # 07dd
+    isbefore: []  # 07dd
+    duplicate_of: []  # 07dd
+    not_duplicate_of: []  # 07dd
+    pr_ref:  # 07dd
+    description: "From WI-borib (docs/audits/0026). Verdict SINGLE-SOURCE. Code-confirmed contradictions in the ranking stack; magnitudes on real repos NOT measured (agent B's probes, ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/B_scripts/).\n\n1. ranking.rank_files (sketch's Source Files order) hand-copies five of the seven canonical dampeners -- no apply_generated_code_weights, no apply_file_kind_weights -- under a comment \"same as rank_symbols\" (ranking.py ~1328). In one sketch a generated file can lead Source Files and trail Key Symbols. Route it through _apply_canonical_dampeners.\n2. The tiered hg.Nk.json views rank over ALL edges (no production_edges), so calls from tests credit their targets; sketch, compact and symbols drop them.\n3. compact (compact.py ~1410) and the tiered view (~1917-1922) order and gate entrypoints on detection confidence; sketch, slice, dead-code and detect_entrypoints use rank_score (ADR-0039). The test penalty lowers only rank_score, so test and vendored mains pass the tiered 0.7 confidence gate.\n4. symbols: In/Out columns filter on confidence, the order on rank_score; --help says \"sorted by file connectivity\", which is not what it does. compute_centrality weights in-degree by edge type, out-degree unweighted.\n5. compact's cross-cutting seed count (compact.py ~1418) reads unfiltered edges.\n6. scripts/generate-architecture's docstring says \"same formula as hypergumbo symbols\"; it is not.\n\nACCEPTANCE: each item routed through the shared helper or its difference stated where it is output; one end-to-end test per fixed pair."  # 07dd
+    fields: {}  # 07dd

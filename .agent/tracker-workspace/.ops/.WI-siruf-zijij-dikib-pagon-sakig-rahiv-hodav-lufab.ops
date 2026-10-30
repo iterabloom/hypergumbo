@@ -1,0 +1,22 @@
+- op: create  # 68af
+  at: '2026-10-30T21:47:20Z'  # 68af
+  by: agent  # 68af
+  actor: jgstern_agent  # 68af
+  clock: 1  # 68af
+  nonce: 68af  # 68af
+  data:  # 68af
+    kind: work_item  # 68af
+    title: "Wolfram .m files are never analysed: the candidate pre-filter does not count what the analyzer's own finder finds"  # 68af
+    status: todo_hard  # 68af
+    priority: 2  # 68af
+    parent:  # 68af
+    tags:  # 68af
+    - concept_audit  # 68af
+    - consumer_agreement  # 68af
+    - file_counts  # 68af
+    isbefore: []  # 68af
+    duplicate_of: []  # 68af
+    not_duplicate_of: []  # 68af
+    pr_ref:  # 68af
+    description: "From WI-borib (docs/audits/0026; agent C, ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/C_counts_disclosure.md). A recall defect found by the sweep's count comparison.\n\nThe Wolfram analyzer's own finder (find_wolfram_files / its _find_source_files override) picks up .m files, but the orchestrator's candidate pre-filter does not count .m for wolfram, so the pass is skipped as no_candidate_files and no .m file is ever analysed. Reproduced with library calls by agent C: the pre-filter skips wolfram while find_wolfram_files returns the file. The drift gate test_prefilter_candidate_set.py compares each class's file_patterns, not an overridden _find_source_files, so it cannot see this; other analyzers that override the finder are equally unguarded (not enumerated).\n\nACCEPTANCE: a .m Wolfram fixture through run_behavior_map yields Wolfram symbols; the drift gate compares the finder each analyzer actually runs; every finder override enumerated."  # 68af
+    fields: {}  # 68af
