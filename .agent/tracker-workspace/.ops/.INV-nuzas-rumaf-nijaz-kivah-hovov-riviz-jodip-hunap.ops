@@ -269,3 +269,18 @@
   clock: 33  # a7d6
   nonce: a7d6  # a7d6
   message: "ACCEPTANCE PROPERTY, CARVE-OUT (c), decided 2026-10-30 on the owner's instruction to investigate the WI-lipal collision with ADR-0057 and decide (full reasoning on WI-lipal). A workspace-prefixed external_symbol is also accepted when every edge reaching it from production code is a stub that a STATED supersession demoted (meta superseded_by naming a resolved edge to the in-tree node, ADR-0057 section 14.1). Rationale: the statement forbids first-party symbols COLLAPSING to a placeholder; with a stated supersession the first-party symbol keeps its real path and is reached, and the placeholder carries a positive claim that names it. Carve-outs (a) and (b) of 2026-07-15 are unchanged. This does not assert that consumers counting external nodes read superseded_by. Closure check adds: each such stand-in's production in-edges all carry superseded_by."  # a7d6
+- op: update  # 23e9
+  at: '2026-10-30T18:40:51Z'  # 23e9
+  by: agent  # 23e9
+  actor: jgstern_agent  # 23e9
+  clock: 34  # 23e9
+  nonce: '23e9'  # 23e9
+  set:  # 23e9
+    status: satisfied  # 23e9
+- op: discuss  # 1960
+  at: '2026-10-30T18:40:52Z'  # 1960
+  by: agent  # 1960
+  actor: jgstern_agent  # 1960
+  clock: 35  # 1960
+  nonce: '1960'  # 1960
+  message: "SATISFIED 2026-10-30 on the acceptance property as it stands (07-15 re-scope, carve-outs (a) no in-tree definition and (b) test/script-only; 10-30 carve-out (c) a stub a stated supersession demoted). All four blockers landed: WI-homih (#1950), WI-lipal (#1952), WI-halol (#1953, #1954, #1960, after WI-pulid #1956, WI-tufob #1957, WI-dunab #1959), WI-silam (#1961).\n\nCLOSURE EVIDENCE, production hypergumbo survey on merged dev 892d4912cb (fixtures, checker and commands in ~/hypergumbo_lab_notebook/nuzas_10292026/fixtures/README.md; outputs ~/hypergumbo_lab_notebook/nuzas_10302026_close/):\n- Sentence 1 (workspace-package source is first-party) HOLDS: every workspace source node tier 1 (py 20/20, npm 27/27, cargo 14/14).\n- python fixture: 0 workspace-prefixed external_symbol (was 4, the flat-layout pkg_c member); every pkg_c shape lands on the member's code.\n- npm fixture: 0 violations. The 3 remaining @ws/ stand-ins are the analyzer's import stubs, each demoted with superseded_by naming the file edge that resolved it (packages/b/src/index.js, packages/b/src/util/deep.js, packages/c/src/index.ts) -- carve-out (c). The three call shapes (module object, namespace, default import) and new b.Engine() land on b's and c's code.\n- cargo fixture: 0 workspace-prefixed external_symbol (was 1: the aliased h2()).\n- Controls (ctl_py, ctl_js, ctl_rs, ctl_rs2, ctl_flat): nothing lost against the 10-27 baselines; the only changes are stand-ins that now resolve to the real node.\n- Self-map (hypergumbo survey .): 29 workspace-prefixed external_symbol nodes -- 23 reached only from tests/ or scripts/ (b); 3 console-script placeholders, each demoted with superseded_by naming the calls edge to the real main / textconv_main (c); 3 with no in-tree definition (a, accepted 07-15 and 10-27): SymbolsAt.get (dict.get through a type alias), scip_pb2.Index (a protobuf class built at import), hypergumbo_tracker.__file__ (a package dunder). 0 outside the carve-outs.\n\nNOT ASSERTED: that consumers counting external nodes read superseded_by (ADR-0057's general gap; WI-borib's agreement sweep is the place to ask); that the npm module stand-ins stop being nodes (demoted, by design); INV-saruf (a filtered compiled-JS file's edges keep an external_symbol source) is a separate open invariant found on the way."  # 1960
