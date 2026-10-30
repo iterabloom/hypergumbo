@@ -207,7 +207,7 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
+from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.axis_meta_keys import write_meta_key
 from hypergumbo_core.discovery import find_files
@@ -217,6 +217,7 @@ from hypergumbo_core.ir import (
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.supply_chain import own_package_name
+from hypergumbo_core.js_package_entry import package_entry, probe_file
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
@@ -466,6 +467,16 @@ class _ParsedFile:
     # sees ``Bar(...)`` but the canonical name for downstream
     # consumers is ``Foo``. Same key set as named_imports.
     named_import_originals: dict[str, str] | None = None
+    # WI-halol: the name this file's ``export default`` declaration binds
+    # (``export default function cDefault``, ``export default class X``,
+    # ``export default x``), or None. In memory only; read by
+    # ``_InTreeDefaultExports`` to resolve a default import of a workspace
+    # sibling to the entry's default export, whatever the local name.
+    default_export: str | None = None
+    # WI-halol: the namespace_imports aliases that ARE the module object
+    # (``import * as m``, ``const m = require(...)``); see
+    # ``_extract_namespace_imports``.
+    module_objects: frozenset[str] = frozenset()
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str, lang: str) -> str:
@@ -675,6 +686,7 @@ def _require_module_string(
 def _extract_namespace_imports(
     tree: "tree_sitter.Tree",
     source: bytes,
+    module_objects: "set[str] | None" = None,
 ) -> dict[str, str]:
     """Extract namespace imports from a parsed tree.
 
@@ -683,7 +695,11 @@ def _extract_namespace_imports(
     - import alias from 'module' (default import) -> alias: module
     - CommonJS ``const alias = require('module')`` -> alias: module (WI-zavad)
 
-    Returns dict mapping alias -> module name.
+    Returns dict mapping alias -> module name. When ``module_objects`` is
+    given, the aliases that ARE the module object -- ``import * as`` and a
+    plain ``require`` -- are added to it (WI-halol). A default import's
+    alias is the default export's VALUE, so ``x.m`` on it is a property of
+    that value, not a member of the module, and it is not added.
     """
     namespace_imports: dict[str, str] = {}
 
@@ -705,6 +721,8 @@ def _extract_namespace_imports(
                         for ns_child in clause_child.children:
                             if ns_child.type == "identifier":
                                 alias = _node_text(ns_child, source)
+                                if module_objects is not None:
+                                    module_objects.add(alias)
                     elif clause_child.type == "identifier":
                         # import alias from 'module' (default import)
                         alias = _node_text(clause_child, source)
@@ -738,6 +756,8 @@ def _extract_namespace_imports(
         # the whole module as a namespace alias.
         if name_node is not None and name_node.type == "identifier":
             namespace_imports[_node_text(name_node, source)] = module
+            if module_objects is not None:
+                module_objects.add(_node_text(name_node, source))
 
     return namespace_imports
 
@@ -931,6 +951,172 @@ def _in_tree_package_candidate(
             or Path(c.path).parent in {root / subpath, root / "src" / subpath}
         ]
     return matches[0][1] if len(matches) == 1 else None
+
+
+def _default_export_name(tree: "tree_sitter.Tree", source: bytes) -> str | None:
+    """The name a file's top-level ``export default`` binds, or None.
+
+    A declaration (``export default function f`` / ``class C``) binds its own
+    name; ``export default f;`` re-exports a binding by name. An anonymous
+    default (``export default () => 1``) binds nothing nameable here.
+    """
+    for node in tree.root_node.named_children:
+        if node.type != "export_statement":
+            continue
+        if not any(child.type == "default" for child in node.children):
+            continue
+        for child in node.named_children:
+            if child.type in (
+                "function_declaration", "generator_function_declaration",
+                "class_declaration", "abstract_class_declaration",
+            ):
+                return _find_name_in_children(child, source)
+            if child.type == "identifier":
+                return _node_text(child, source)
+    return None
+
+
+_MODULE_MEMBER_KINDS = frozenset({"function", "class", "variable"})
+
+
+def _in_tree_module_member(
+    module: str, file_path: Path, attr: str, symbols_by_name: dict[str, list["Symbol"]],
+) -> "Symbol | None":
+    """The in-tree symbol ``module.attr`` reads, or None (WI-halol).
+
+    ``module`` is the specifier an import binding names. A bare one names an
+    in-tree package only through ``_in_tree_package_candidate`` (exact package,
+    and subpath file when given); a relative one names the file it resolves
+    to, or that directory's ``index``. Exact matches only, never a suffix: a
+    coincidentally named in-tree file is not an external module's member
+    (INV-fahub, the reason python's WI-huhum retarget is exact too).
+    """
+    candidates = [
+        s for s in symbols_by_name.get(attr, []) if s.kind in _MODULE_MEMBER_KINDS
+    ]
+    if not candidates:
+        return None
+    if not module.startswith("."):
+        return _in_tree_package_candidate(module, file_path, candidates)
+    resolved = (file_path.parent / module).resolve()
+    matches = [
+        c for c in candidates
+        if Path(c.path).with_suffix("") == resolved
+        or (Path(c.path).parent == resolved and Path(c.path).stem == "index")
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _module_object_modules(pf: "_ParsedFile") -> frozenset[str]:
+    """The modules this file binds ONLY as module objects.
+
+    The attribute emitter keys its edges by module, not by alias, so a module
+    any named or default binding also names (``import { W } from './w'`` beside
+    ``import * as w from './w'``) cannot tell a member read from a property
+    read and is left out.
+    """
+    namespace = pf.namespace_imports or {}
+    objects = {namespace[a] for a in pf.module_objects if a in namespace}
+    others = {m for a, m in namespace.items() if a not in pf.module_objects}
+    others |= set((pf.named_imports or {}).values())
+    return frozenset(_strip_import_scheme(m) for m in objects - others)
+
+
+def _retarget_in_tree_module_attrs(
+    edges: list[Edge], start: int, file_path: Path,
+    symbols_by_name: dict[str, list["Symbol"]], run_id: str,
+    module_object_modules: frozenset[str],
+) -> None:
+    """Turn ``module_attr_ref`` reads of an in-tree module into ``references``.
+
+    The shared emitter (``emit_module_attribute_refs``) knows imports, not the
+    tree, so ``new b.Engine()`` after ``const b = require('@ws/b')`` became a
+    ``module_attr_ref`` to ``javascript:@ws/b:0-0:@ws/b.Engine`` -- an
+    external stand-in named by an in-tree package (INV-nuzas) beside the real
+    instantiation. A read of an in-tree module OBJECT's member (only modules
+    the file binds as module objects, ``_module_object_modules``) is a
+    ``references`` edge to it
+    (evidence ``ast_name_read``, as python's WI-huhum retarget emits); that is
+    not a taint call edge, so no taint frontier moves. Edges from ``start`` on
+    are the ones this file's emitter call appended; an external module's read
+    (``net.Socket``, ``process.env``) is left for the io-boundary rows.
+    """
+    for i in range(start, len(edges)):
+        edge = edges[i]
+        if edge.edge_type != "module_attr_ref":  # pragma: no cover - the emitter appends only these
+            continue
+        _lang, _, rest = edge.dst.partition(":")
+        module, _, tail = rest.partition(":0-0:")
+        if module not in module_object_modules:
+            continue
+        qname = tail.rsplit(":", 1)[0]
+        attr = qname[len(module) + 1:]
+        target = _in_tree_module_member(module, file_path, attr, symbols_by_name)
+        if target is None:
+            continue
+        edges[i] = Edge.create(
+            src=edge.src,
+            dst=target.id,
+            edge_type="references",
+            line=edge.line,
+            evidence_type="ast_name_read",
+            origin=PASS_ID,
+            origin_run_id=run_id,
+        )
+
+
+class _InTreeDefaultExports:
+    """A default import of an in-tree package is its entry's default export (WI-halol).
+
+    ``import x from '@ws/c'; x()`` calls whatever ``@ws/c``'s entry file
+    exports as default -- the local name ``x`` says nothing about it. The
+    entry is the file Node loads (``js_package_entry.package_entry``, the same
+    rule the js_module linker resolves the import edge with), or for a subpath
+    the file it names; the callee is that file's ``export default``
+    declaration; a relative specifier names the file its path does. A package
+    the tree does not define, a package importing itself, an absolute path, or
+    an entry with no named default declaration answers None.
+    """
+
+    def __init__(
+        self, parsed_files: "list[_ParsedFile]", symbols_by_name: dict[str, list["Symbol"]],
+    ) -> None:
+        self._default_by_path = {
+            str(pf.path): pf.default_export for pf in parsed_files if pf.default_export
+        }
+        self._symbols_by_name = symbols_by_name
+        self._roots: dict[str, Path | None] = {}
+        for pf in parsed_files:
+            root = _find_package_root(pf.path)
+            name = _package_json_name(root) if root is not None else None
+            if name is not None:
+                # Two roots declaring one name: no way to choose.
+                self._roots[name] = root if self._roots.get(name, root) == root else None
+
+    def __call__(self, specifier: str, importer: Path) -> "Symbol | None":
+        entry: Path | None
+        if specifier.startswith("."):
+            # A relative default import names the file the path does.
+            entry = probe_file((importer.parent / specifier).resolve())
+        elif specifier.startswith("/"):
+            return None
+        else:
+            package = _js_package_name(specifier)
+            root = self._roots.get(package)
+            if root is None or root == _find_package_root(importer):
+                return None
+            subpath = specifier[len(package):].lstrip("/")
+            entry = (
+                (probe_file(root / subpath) or probe_file(root / "src" / subpath))
+                if subpath else package_entry(root)
+            )
+        name = self._default_by_path.get(str(entry)) if entry is not None else None
+        if name is None:
+            return None
+        return next(
+            (s for s in self._symbols_by_name.get(name, []) if s.path == str(entry)),
+            None,
+        )
 
 
 @functools.lru_cache(maxsize=4096)
@@ -5889,6 +6075,8 @@ def _extract_edges(
     module_symbol: Symbol | None = None,
     named_import_originals: dict[str, str] | None = None,
     file_symbols: list[Symbol] | None = None,
+    default_export_of: "Callable[[str, Path], Symbol | None] | None" = None,
+    module_objects: frozenset[str] = frozenset(),
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
@@ -6244,6 +6432,14 @@ def _extract_edges(
                             # rather than a function: that is the import
                             # binding itself, not a callee.
                             callee = None
+                        if (
+                            callee is None and _called_module is not None
+                            and default_export_of is not None
+                        ):
+                            # WI-halol: a called default binding of an
+                            # in-tree package is its entry's default export.
+                            callee = default_export_of(_called_module, file_path)
+                            resolution_score = _JS_ROUTE_SCORE_EXACT
                         if callee is not None:
                             edge = Edge.create(
                                 src=current_function.id,
@@ -6484,36 +6680,55 @@ def _extract_edges(
                             # Resolve via global symbols using import path as hint
                             # to disambiguate when same name exists in multiple modules
                             import_path = namespace_imports[obj_name]
+                            # WI-halol: a member of an in-tree package's module
+                            # object (``const b = require('@ws/b'); b.helper()``,
+                            # ``import * as C from '@ws/c'; C.shout()``) takes
+                            # the answer a named binding of it takes (WI-rilof),
+                            # before the cross-package guard below refuses it.
+                            ns_target = (
+                                _disambiguate_by_import(
+                                    import_path, file_path, method_name, symbols_by_name,
+                                )
+                                if symbols_by_name and obj_name in module_objects
+                                and not import_path.startswith(".")
+                                else None
+                            )
                             lookup_result = resolver.lookup(method_name, path_hint=import_path, caller_path=_caller_path)
-                            if lookup_result.found and lookup_result.symbol is not None:
+                            if ns_target is None and lookup_result.found and lookup_result.symbol is not None:
                                 # Cross-package guard: block resolution when
                                 # the target lives in a different npm package.
-                                if _is_cross_package(file_path, lookup_result.symbol.path):
-                                    pass  # suppress cross-package namespace call
-                                else:
-                                    is_class = lookup_result.symbol.kind == "class"
-                                    edge = Edge.create(
-                                        src=current_function.id,
-                                        dst=lookup_result.symbol.id,
-                                        edge_type="instantiates" if is_class else "calls",
-                                        line=node.start_point[0] + 1 + line_offset,
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        evidence_type="ast_new" if is_class else "ast_call_namespace",
-                                        resolution_score=(
-                                            lookup_result.confidence if is_class else None
-                                        ),
-                                        # ADR-0039 caller-valued: ast_call_namespace is a
-                                        # pending-classification placeholder with no seeded
-                                        # band (its cluster-D audit may fold it into
-                                        # ast_call_direct), so it keeps this value until then.
-                                        confidence=(
-                                            None if is_class
-                                            else 0.90 * lookup_result.confidence
-                                        ),
-                                    )
-                                    edges.append(edge)
-                                    edge_added = True
+                                if not _is_cross_package(file_path, lookup_result.symbol.path):
+                                    ns_target = lookup_result.symbol
+                            if ns_target is not None:
+                                # The in-tree candidate is an exact package
+                                # match; the resolver's grade is for its own.
+                                ns_conf = (
+                                    lookup_result.confidence
+                                    if lookup_result.symbol is ns_target else 1.0
+                                )
+                                is_class = ns_target.kind == "class"
+                                edge = Edge.create(
+                                    src=current_function.id,
+                                    dst=ns_target.id,
+                                    edge_type="instantiates" if is_class else "calls",
+                                    line=node.start_point[0] + 1 + line_offset,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_new" if is_class else "ast_call_namespace",
+                                    resolution_score=(
+                                        ns_conf if is_class else None
+                                    ),
+                                    # ADR-0039 caller-valued: ast_call_namespace is a
+                                    # pending-classification placeholder with no seeded
+                                    # band (its cluster-D audit may fold it into
+                                    # ast_call_direct), so it keeps this value until then.
+                                    confidence=(
+                                        None if is_class
+                                        else 0.90 * ns_conf
+                                    ),
+                                )
+                                edges.append(edge)
+                                edge_added = True
                             if not edge_added:
                                 # WI-vurop: fall back to an unresolved-call
                                 # edge so io-boundaries can match the catalog
@@ -7431,12 +7646,15 @@ def _analyze_javascript_impl(
             tree = parser.parse(source)
             record_partial_parse(run, str(file_path.relative_to(repo_root)), tree)  # WI-bulaz
             lang = _get_language_for_file(file_path)
-            ns_imports = _extract_namespace_imports(tree, source)
+            module_objects: set[str] = set()
+            ns_imports = _extract_namespace_imports(tree, source, module_objects)
             nm_imports, nm_originals = _extract_named_imports(tree, source)
             parsed_files.append(_ParsedFile(
                 path=file_path, tree=tree, source=source, lang=lang,
                 namespace_imports=ns_imports, named_imports=nm_imports,
                 named_import_originals=nm_originals,
+                default_export=_default_export_name(tree, source),
+                module_objects=frozenset(module_objects),
             ))
             symbols = _extract_symbols(tree, source, file_path, lang, run, repo_root=repo_root)
             populate_docstrings_from_tree(tree.root_node, source, symbols)
@@ -7555,6 +7773,7 @@ def _analyze_javascript_impl(
     resolver = NameResolver(global_symbols)
     method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     class_resolver = NameResolver(global_classes)
+    default_export_of = _InTreeDefaultExports(parsed_files, symbols_by_name)
     all_edges: list[Edge] = []
     for pf in parsed_files:
         # INV-kokaj: look up the file pseudo-node by its new canonical
@@ -7576,6 +7795,8 @@ def _analyze_javascript_impl(
             module_symbol=file_mod_sym,
             named_import_originals=pf.named_import_originals or {},
             file_symbols=symbols_for_path(_symbols_by_path, str(pf.path), pf_name),
+            default_export_of=default_export_of,
+            module_objects=pf.module_objects,
         )
         # WI-lozug: emit module_attr_ref edges for attribute reads on
         # imported modules and well-known JS/Node globals (``process``,
@@ -7604,6 +7825,7 @@ def _analyze_javascript_impl(
         # parsed_files (see the INV-kokaj file pseudo-node emission in
         # ``_extract_symbols``), so it is non-None here.  A
         # defensive ``is not None`` check is omitted intentionally.
+        attr_start = len(edges)
         emit_module_attribute_refs(
             pf.tree.root_node,
             pf.source,
@@ -7629,6 +7851,10 @@ def _analyze_javascript_impl(
             enclosing_symbols=symbols_for_path(
                 _symbols_by_path, str(pf.path), pf_name,
             ),
+        )
+        _retarget_in_tree_module_attrs(
+            edges, attr_start, pf.path, symbols_by_name, run.execution_id,
+            _module_object_modules(pf),
         )
         # ADR-0015 Tier 1: automatic dataflow annotation from AST context
         if _df_config is not None:

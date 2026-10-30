@@ -90,6 +90,10 @@ from ..supply_chain import own_package_name
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
 from ..taxonomy import get_language
 from ._text_filters import note_source_read, read_source_text
+from ..js_package_entry import (
+    package_entry as _package_entry,
+    probe_file as _probe_file,
+)
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -102,9 +106,6 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("js-module-linker")
 
-# Extensions to probe when import path has no extension, in priority order.
-# .js first because it's the most common in real-world JS/TS projects.
-_PROBE_EXTENSIONS = (".js", ".ts", ".jsx", ".tsx", ".mjs", ".mts", ".vue", ".json")
 
 # Symbol kinds that represent exportable callable code in a JS/TS module.
 # A kind is necessary, not sufficient: module_exports also requires
@@ -213,40 +214,6 @@ def _extract_import_path(dst: str) -> tuple[str, str] | None:
         return None
 
     return (lang, import_path)
-
-
-def _probe_file(base_path: Path) -> Path | None:
-    """Probe for a file with various extensions and index patterns.
-
-    Given a base path (without extension), tries to find the actual file:
-    1. If the path already has an extension and exists, return it.
-    2. Try appending each extension in _PROBE_EXTENSIONS.
-    3. If it's a directory, try {dir}/index.{ext}.
-
-    Args:
-        base_path: The base file path (possibly without extension).
-
-    Returns:
-        Resolved Path if found, None otherwise.
-    """
-    # If the path already exists as a file, return it
-    if base_path.is_file():
-        return base_path
-
-    # Try appending extensions
-    for ext in _PROBE_EXTENSIONS:
-        candidate = base_path.with_suffix(ext)
-        if candidate.is_file():
-            return candidate
-
-    # If it's a directory, try index files
-    if base_path.is_dir():
-        for ext in _PROBE_EXTENSIONS:
-            index = base_path / f"index{ext}"
-            if index.is_file():
-                return index
-
-    return None
 
 
 def _make_npm_package_id(package_name: str, lang: str) -> str:
@@ -673,41 +640,6 @@ def _build_workspace_package_index(repo_root: Path) -> dict[str, Path]:
         if name is not None and name not in index:
             index[name] = manifest.parent.resolve()
     return index
-
-
-def _package_entry(root: Path) -> Path | None:
-    """A workspace package's entry file, the way Node finds it for a bare
-    ``require``: a string ``exports`` or ``exports["."]`` (its ``import`` /
-    ``require`` / ``default`` condition when it is a map), then ``module``,
-    then ``main``, then ``index.<ext>``.
-
-    A TypeScript package's entry usually names BUILD output
-    (``"main": "dist/cjs/index.js"``) that is not in the tree, so when no
-    declared entry exists the package's own source entry, ``src/index.<ext>``,
-    answers instead (apollo-server: four of its workspace packages)."""
-    # ``root`` came from _build_workspace_package_index, which read this
-    # manifest as a JSON object naming a package moments ago.
-    try:
-        data = json_module.loads(read_source_text(root / "package.json", errors="ignore"))
-    except (OSError, ValueError):  # pragma: no cover - indexed as valid JSON above
-        data = {}
-    if not isinstance(data, dict):  # pragma: no cover - indexed as an object above
-        data = {}
-    exports = data.get("exports")
-    if isinstance(exports, dict):
-        exports = exports.get(".", exports)
-        if isinstance(exports, dict):
-            exports = next(
-                (exports[k] for k in ("import", "require", "default")
-                 if isinstance(exports.get(k), str)),
-                None,
-            )
-    for field_value in (exports, data.get("module"), data.get("main")):
-        if isinstance(field_value, str):
-            found = _probe_file((root / field_value).resolve())
-            if found is not None:
-                return found
-    return _probe_file(root / "index") or _probe_file(root / "src" / "index")
 
 
 def _resolve_workspace_import(
