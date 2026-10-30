@@ -49,7 +49,11 @@ Wolfram Language Considerations
 Files: ``.wl``, ``.wls``, ``.nb``, and the ``.m`` files that
 ``classify_dot_m_file`` labels Wolfram (``find_wolfram_files`` is the
 analyzer's file discovery; ``.m`` is shared with MATLAB and Objective-C, whose
-analyzers apply the same classifier).
+analyzers apply the same classifier). The registration names the same finder
+(``find_files=``), so the profile counts these ``.m`` files too: the
+file-presence pre-filter reads the profile, and with the taxonomy's globs
+alone a ``.m``-only Wolfram repo counted zero and was never analysed
+(WI-siruf).
 
 Definitions and identity (INV-kagib, WI-tusad)
 ----------------------------------------------
@@ -516,7 +520,10 @@ def is_wolfram_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("wolfram")
+# find_files: the profile must count the ``.m`` files this pass reads, or the
+# file-presence pre-filter skips a ``.m``-only Wolfram repo as having no
+# candidates (WI-siruf; INV-hokig's registration).
+@register_analyzer("wolfram", find_files=find_wolfram_files)
 def analyze_wolfram(repo_root: Path) -> AnalysisResult:
     """Analyze Wolfram files in a repository."""
     return _analyzer.analyze(repo_root)

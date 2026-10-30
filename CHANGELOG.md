@@ -48,6 +48,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Every pass that ran is in `analysis_runs`, and one that found nothing says why**, now including framework patterns, five post-passes and 13 more linkers.
 - **A pass that found nothing to analyse is no longer reported as not having run** (`prerequisite_absent`).
+- **Wolfram `.m` files are analysed**: the profile counts them, so a `.m`-only package is no longer skipped.
 - **A missing grammar's warning names the package to install** (`tree-sitter-<lang>` or `tree-sitter-language-pack`).
 - **The JS module linker counts its `package.json` reads** in `files_analyzed`.
 - **A node id whose kind or name slot disagrees with its node is a validator error** (ADR-0036 Ruling 3); such ids are corrected, `stable_id`s unchanged.

@@ -121,6 +121,80 @@ def test_no_analyzer_reads_files_its_taxonomy_entry_cannot_see() -> None:
     )
 
 
+#: Files whose language is decided by CONTENT, which no extension list can
+#: express. An overriding finder that reads one of these is exactly the shape
+#: the declared-patterns gate above cannot see.
+_CONTENT_PROBES = {
+    "probe_wolfram.m": 'BeginPackage["P`"]\nf[x_] := x^2\nEndPackage[]\n',
+    "probe_objc.m": "#import <Foundation/Foundation.h>\n@interface A : NSObject\n@end\n",
+    "probe_matlab.m": "function y = f(x)\n  y = x;\nend\n",
+    "probe_hack.php": "<?hh\nfunction f(): void {}\n",
+    "probe_forth.fs": ": square dup * ;\n",
+    "probe_fsharp.fs": "module M\nlet f x = x + 1\n",
+}
+
+
+def _probe_tree(root: Path) -> None:
+    """One file per glob any taxonomy entry or analyzer class declares, plus
+    the content probes."""
+    patterns: set[str] = set()
+    for spec in taxonomy.LANGUAGES.values():
+        patterns |= set(spec.extensions)
+    for analyzer in get_analyzers():
+        patterns |= _analyzer_file_patterns(analyzer) or set()
+    for pattern in patterns:
+        name = pattern.removeprefix("**/")
+        if "/" in name:
+            continue
+        name = name.replace("*", "probe", 1) if name.startswith("*") else name
+        if "*" in name or "?" in name or "[" in name:
+            continue
+        (root / name).write_text("x\n", encoding="utf-8")
+    for name, text in _CONTENT_PROBES.items():
+        (root / name).write_text(text, encoding="utf-8")
+
+
+def _finder_overrides(analyzer) -> list:
+    module = importlib.import_module(analyzer.module_path)
+    return [
+        obj for _name, obj in inspect.getmembers(module, inspect.isclass)
+        if obj.__module__ == analyzer.module_path and "_find_source_files" in vars(obj)
+    ]
+
+
+def test_no_finder_override_reads_files_its_taxonomy_entry_cannot_see(tmp_path: Path) -> None:
+    """WI-siruf: the gate above compares DECLARED ``file_patterns``; an
+    analyzer that overrides ``_find_source_files`` can read more than it
+    declares. Wolfram did -- its finder takes ``.m`` files whose content is
+    Wolfram, its patterns and taxonomy entry name only ``.wl``/``.wls``/``.nb``,
+    and the pre-filter skipped every ``.m``-only Wolfram repo. So run each
+    override that has no registered ``find_files`` on a probe tree, and require
+    what it yields to be what the taxonomy's globs see there."""
+    from hypergumbo_core.discovery import find_files
+
+    _probe_tree(tmp_path)
+    exercised: list[str] = []
+    offenders: list[str] = []
+    for analyzer in get_analyzers():
+        langs = set(analyzer.languages)
+        if not langs or not langs <= set(taxonomy.LANGUAGE_EXTENSIONS) or analyzer.find_files is not None:
+            continue
+        seen = set(find_files(tmp_path, sorted(_taxonomy_patterns(analyzer))))
+        for cls in _finder_overrides(analyzer):
+            yielded = set(cls._find_source_files(cls.__new__(cls), tmp_path))
+            exercised.append(analyzer.name)
+            extra = sorted(p.name for p in yielded - seen)
+            if extra:
+                offenders.append(f"{analyzer.name} ({cls.__name__}): reads {extra} unseen by taxonomy")
+
+    assert exercised, "no finder override was exercised: the gate checks nothing"  # reach
+    assert not offenders, (
+        "these analyzers' finders read files the profile does not count, so the "
+        "pre-filter can skip them with real work -- register find_files= (INV-hokig):\n  "
+        + "\n  ".join(sorted(offenders))
+    )
+
+
 def test_a_gnumakefile_only_repo_still_runs_the_make_pass(tmp_path: Path) -> None:
     """WI-juzig made ``make`` profile-gated under the taxonomy name ``makefile``
     (before, its phantom language ``make`` was outside the taxonomy and it was
