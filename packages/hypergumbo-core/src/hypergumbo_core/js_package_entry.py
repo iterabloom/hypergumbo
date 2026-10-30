@@ -71,14 +71,16 @@ def package_entry(root: Path) -> Path | None:
     (``"main": "dist/cjs/index.js"``) that is not in the tree, so when no
     declared entry exists the package's own source entry, ``src/index.<ext>``,
     answers instead (apollo-server: four of its workspace packages)."""
-    # Callers pass a root whose package.json they have already read as a JSON
-    # object naming a package (the js_module workspace index; js_ts's
-    # _package_json_name).
+    # A workspace root's package.json was read as a JSON object naming a
+    # package (the js_module workspace index; js_ts's _package_json_name),
+    # but a relative DIRECTORY import (``require('..')``, WI-pulid) reaches
+    # here with a manifest nobody has validated: an unreadable or non-object
+    # one declares no entry, and the index probe below answers.
     try:
         data = json_module.loads(read_source_text(root / "package.json", errors="ignore"))
-    except (OSError, ValueError):  # pragma: no cover - indexed as valid JSON above
+    except (OSError, ValueError):
         data = {}
-    if not isinstance(data, dict):  # pragma: no cover - indexed as an object above
+    if not isinstance(data, dict):
         data = {}
     exports = data.get("exports")
     if isinstance(exports, dict):

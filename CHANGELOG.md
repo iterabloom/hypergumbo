@@ -53,6 +53,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A flat-layout Python workspace member is a source root**; `pkg.mod.Klass().m()` binds in the tree.
 - **A console script reaches its function on `src/` layouts and across packages**; its placeholder is demoted, not deleted (ADR-0057 §14.1).
 - **JS/TS workspace siblings resolve through module objects, namespaces and default imports**; in-tree member reads are `references`.
+- **`require('.')` / `require('..')` import the directory**, through its `package.json` entry when it has one, not an npm package named `..`.
 - **A resolver-graded call keeps its graded confidence** through finalize (ADR-0039 ruling 6); on apollo-server 244 of 18,684 edges move, all down.
 - **Finalize keeps typed binds** for methods named like stdlib interfaces (`Close`, `Parse`), in C++ and in Java, C# and Kotlin static initializers.
 - **Every linker call-site stand-in is attached to its enclosing function.**
