@@ -1,0 +1,41 @@
+Original commit body from 7a1d542765ce487b21a544960a2fd58824e4e97b:
+
+WI-halol shape 5. Every JS/TS import is an analyzer `imports` edge to a
+`<spec>:0-0:module` placeholder; js-module-linker resolves the specifier,
+emits its own edge to the file or npm package, and names the placeholder
+in derived_from. For a workspace sibling the placeholder became a
+workspace-prefixed external_symbol (javascript:@ws/b:0-0:module) beside
+the real file edge -- an INV-nuzas counterexample. This is the WI-lipal
+case: ADR-0057 is bound (a stub is demoted, never deleted), and section
+14.1 lets the consuming pass demote what it names -- granted per pass, on
+measurement.
+
+js-module-linker now holds supersedes_consumed_stub, on the new
+docs/audits/0025. The audit came first and found three wrong routes,
+each fixed before this grant: '.' / '..' as npm packages (35, WI-pulid,
+#1956), Node core modules as npm "third-party dependencies" (540,
+WI-tufob, #1957), a dotted basename bound to its same-stem sibling (30,
+WI-dunab, #1959). On the fixed tree (7 repositories, 6,792 resolutions):
+relative 3,877 / 3,877 agree with Node's resolution order re-run against
+the file tree; 55 / 55 directory manifests read; package nodes 2,231 /
+2,231; bare specifiers to in-tree files 50 / 50 read. ADR-0057 section
+14.1's grant sentence, finalize's docstring and the pinned grant set name
+the third table.
+
+Measured with the grant, the same 7 surveys: 6,792 import stubs demoted
+(2,231 beside a package node, 4,561 beside a file), every superseded_by
+naming an edge in the graph; stubs no edge resolves (core modules,
+specifiers with no in-tree target) keep their rank. The INV-nuzas JS
+fixture's four @ws/ module stand-ins each now name the sibling file that
+resolved them.
+
+docs/ARCHITECTURE.md regenerated (24 of its 30-commit window used).
+
+Tests: test_js_import_stub_superseded.py through run_behavior_map (the
+workspace, relative and npm imports' stubs name their resolution; a core
+module's stub is not demoted); the pinned grant set. Revoking the grant
+turns both red.
+
+Addresses WI-halol and INV-nuzas.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
