@@ -710,6 +710,18 @@ net_recv:
     methods: [retrbinary, retrlines]
   - module: asyncio.StreamReader
     methods: [read, readline, readexactly, readuntil]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_recv
+    notes: >-
+      WI-foloh. One StreamReader class is fed by a TCP socket
+      (asyncio.open_connection), an AF_UNIX socket (open_unix_connection,
+      streams.py) or a child's pipe (asyncio.create_subprocess_*,
+      asyncio/subprocess.py): read() drains whatever transport set_transport
+      attached, so the medium is a fact of the call that MADE the reader
+      (ADR-0050 §1). py.py stamps it at that binding (WI-himim: net_stream /
+      pipe); a pipe stamp selects the ipc_recv twin, and an unstamped reader
+      -- an annotated parameter -- abstains to this row, today's answer. The
+      net.Conn Read shape in go.yaml (WI-kalol).
   - module: http.client.HTTPResponse
     methods: [read, read1, readinto, readinto1, readline, readlines, peek, getheader, getheaders, info, geturl, getcode, begin]
     notes: >-
@@ -942,6 +954,11 @@ logging:
     notes: "Terminal / log output; redirectable to file or pipe but not by itself an IPC channel"
 
 ipc_recv:
+  - module: asyncio.StreamReader
+    methods: [read, readline, readexactly, readuntil]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_recv
+    notes: "WI-foloh: the ipc_recv twin of the net_recv StreamReader row (see it); selected by a `pipe` stamp -- a reader from open_unix_connection or a subprocess's stdout / stderr."
   - module: typing.TextIO
     methods: [read, readline, readlines]
     boundary_ruling: call_site_undecidable
