@@ -29,3 +29,18 @@
   set: {}  # d49e
   add:  # d49e
     isbefore: [WI-halol-malim-kahav-tahut-tobot-sizat-dopas-limat]  # d49e
+- op: update  # 6120
+  at: '2026-10-30T11:56:45Z'  # 6120
+  by: agent  # 6120
+  actor: jgstern_agent  # 6120
+  clock: 3  # 6120
+  nonce: '6120'  # 6120
+  set:  # 6120
+    status: done  # 6120
+- op: discuss  # bbbc
+  at: '2026-10-30T11:56:45Z'  # bbbc
+  by: agent  # bbbc
+  actor: jgstern_agent  # bbbc
+  clock: 4  # bbbc
+  nonce: bbbc  # bbbc
+  message: "Done in PR #1956 (caa332e01c). Root cause: linkers/js_module.py _is_relative_import accepted ./ and ../ prefixes only, so '.' and '..' took the bare-specifier route and became npm package nodes named '.' / '..'. Fix: exactly '.' and '..' are relative; a relative import naming a directory with a package.json loads its entry (js_package_entry.package_entry, Node's LOAD_AS_DIRECTORY), else the index. CLOSURE EVIDENCE, production hypergumbo survey on merged dev: apollo-server has no package node named '.' or '..' (was 5 edges to them); packages/server/src/__tests__/logger.test.ts:1 import from '..' -> packages/server/src/index.ts file node; packages/integration-testsuite/src/apolloServerTests.ts:43 '.' -> its src/index.ts. Branch A/B (same code) on the other repos: nuclear 25 package edges -> index.ts files, pm2 5 removed with no in-tree target (examples/ has no manifest or index), knex 4 added ('../../../..' -> the root package.json main knex.js); every edge read."  # bbbc

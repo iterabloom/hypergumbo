@@ -1,0 +1,21 @@
+- op: create  # fbf5
+  at: '2026-10-30T13:49:07Z'  # fbf5
+  by: agent  # fbf5
+  actor: jgstern_agent  # fbf5
+  clock: 1  # fbf5
+  nonce: fbf5  # fbf5
+  data:  # fbf5
+    kind: work_item  # fbf5
+    title: "js probe_file resolves a dotted relative specifier to the WRONG sibling: './X.test-wrapper' lands on X.tsx (with_suffix replaces the last suffix; Node appends): 30 nuclear edges"  # fbf5
+    status: todo_hard  # fbf5
+    priority: 3  # fbf5
+    parent:  # fbf5
+    tags:  # fbf5
+    - javascript  # fbf5
+    - linker_gap  # fbf5
+    isbefore: []  # fbf5
+    duplicate_of: []  # fbf5
+    not_duplicate_of: []  # fbf5
+    pr_ref:  # fbf5
+    description: "FOUND 2026-10-30 by the js-module-linker precision audit for WI-halol shape 5, re-run on merged dev 2613b61e34 (7 surveys, ~/hypergumbo_lab_notebook/jsmod_10302026/merged/; the 30 rows in wrong_relative.json).\n\nTHE DEFECT. A relative specifier whose basename contains a dot resolves to the WRONG FILE: import from './ConnectedPlayerBar.test-wrapper' lands on ConnectedPlayerBar.tsx, not ConnectedPlayerBar.test-wrapper.tsx. 30 of 3,890 relative resolutions, all nuclear (*.test-wrapper imports in its tests), every one an existing, different sibling.\n\nCAUSE, read in code: js_package_entry.probe_file tries base_path.with_suffix(ext) for each extension. Path.with_suffix REPLACES the last suffix, so 'X.test-wrapper' + '.tsx' is 'X.tsx'. Node appends: it tries the path, then path + each extension, then the directory index. The replacement also happens to give TypeScript's ESM convention ('./x.js' naming x.ts), which the fix must keep, but only for a specifier ending in a JS extension.\n\nWHY IT BLOCKS WI-halol: a section 14.1 grant to js-module-linker would demote the analyzer's import stub beneath these 30 wrong file edges.\n\nFIX DIRECTION: probe the path as given, then the path with each extension APPENDED, then (only when it ends .js/.jsx/.mjs/.cjs) the TS twin (.ts/.tsx/.mts/.cts), then the directory's index. Test: a dotted basename beside a same-stem file; './x.js' -> x.ts kept; './styles.css' as-is. Measure the edge diff on nuclear."  # fbf5
+    fields: {}  # fbf5
