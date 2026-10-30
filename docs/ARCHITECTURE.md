@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **367** Python modules (150 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 113 core, 4 CLI, 37 tracker)
-- **57100** symbols (functions, classes, methods)
-- **228613** edges by type:
-  - calls: 129382
-  - contains: 53210
-  - imports: 19564
-  - instantiates: 12794
-  - references: 9777
-  - module_attr_ref: 2112
-  - other: 1774
+- **369** Python modules (151 analyzers, 63 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 11, Framework 32, Infrastructure 9; 114 core, 4 CLI, 37 tracker)
+- **57429** symbols (functions, classes, methods)
+- **229976** edges by type:
+  - calls: 130189
+  - contains: 53517
+  - imports: 19680
+  - instantiates: 12815
+  - references: 9887
+  - module_attr_ref: 2113
+  - other: 1775
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 57100 Symbols + 228613 Edges + UsageContexts           │
+│  Output: 57429 Symbols + 229976 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -282,21 +282,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10563.1 | ir.py |
-| `len` | external_symbol | 8025.0 | <external> |
-| `write_text` | external_symbol | 7296.0 | <external> |
-| `Span` | class | 6772.6 | ir.py |
-| `LinkerContext` | class | 3792.8 | registry.py |
-| `get` | external_symbol | 3633.0 | <external> |
-| `load_catalog` | function | 3522.8 | io_boundary.py |
-| `Edge.create` | method | 2637.0 | ir.py |
-| `str` | external_symbol | 2482.0 | <external> |
-| `Path` | external_symbol | 2474.0 | <external> |
-| `next` | external_symbol | 2259.0 | <external> |
+| `Symbol` | class | 10596.1 | ir.py |
+| `len` | external_symbol | 8036.0 | <external> |
+| `write_text` | external_symbol | 7341.0 | <external> |
+| `Span` | class | 6793.3 | ir.py |
+| `LinkerContext` | class | 3797.0 | registry.py |
+| `get` | external_symbol | 3665.0 | <external> |
+| `load_catalog` | function | 3534.9 | io_boundary.py |
+| `Edge.create` | method | 2648.4 | ir.py |
+| `Path` | external_symbol | 2495.0 | <external> |
+| `str` | external_symbol | 2487.0 | <external> |
+| `next` | external_symbol | 2265.0 | <external> |
 | `load_framework_patterns` | function | 2099.7 | framework_patterns.py |
 | `TrackerApp` | class | 1975.3 | tui.py |
-| `append` | external_symbol | 1927.0 | <external> |
-| `main` | function | 1781.4 | cli.py |
+| `append` | external_symbol | 1942.0 | <external> |
+| `main` | function | 1792.0 | cli.py |
 
 ## Pattern System
 
@@ -643,6 +643,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.io_boundary_types`**: Canonical registry of I/O-boundary values — the io-boundary axis (A...
 - **`hypergumbo_core.io_primitive_kinds`**: Canonical registry of I/O-primitive kinds — the io-primitive-kind a...
 - **`hypergumbo_core.ir`**: Internal Representation (IR) for code analysis.
+- **`hypergumbo_core.js_package_entry`**: The file a bare npm specifier names inside an in-tree package: Node...
 - **`hypergumbo_core.library_signatures`**: The library-signature catalogue: what a library producer RETURNS.
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
@@ -715,6 +716,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.analyze.all_analyzers`**: Analyzer orchestration + the stable analyzer-dispatch import points.
 - **`hypergumbo_core.analyze.base`**: Base classes and utilities for language analyzers.
 - **`hypergumbo_core.analyze.c_family`**: The C-family declarator walk: where a C, C++ or CUDA definition nam...
+- **`hypergumbo_core.analyze.config_secrets`**: Which config keys hold secrets, and what their values become in the...
 - **`hypergumbo_core.analyze.cyclomatic`**: Grammar-agnostic McCabe cyclomatic-complexity walker + decision-poi...
 - **`hypergumbo_core.analyze.edge_source`**: Where an edge comes FROM: the src of every edge is an emitted symbo...
 - **`hypergumbo_core.analyze.merge_producers`**: The merge pass: two producers' records for one declaration become o...
@@ -980,8 +982,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 479300f97295
-  commit_count: 8665
+  commit: 9dbf7e2c3001
+  commit_count: 8696
   hypergumbo: 9.2.0
   python: 3.12.3
 -->

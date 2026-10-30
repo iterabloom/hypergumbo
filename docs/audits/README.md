@@ -86,6 +86,7 @@ write an ADR vs an audit-findings document."
 | [0022](0022-inv-nular-remainder-sweep-tranche-3.md) | INV-nular remainder sweep, tranche 3 — catalogue rows checked against source | io-boundary row candidates (sibling format, `kind: io_boundary_row_candidates`) | Candidate list: tranche 3 6 ACCEPT / 3 HOLD; prior backlog 13 ACCEPT / 7 HOLD; no rows moved |
 | [0023](0023-reader-census.md) | Reader census — write-only fields, keys, knobs and functions; producerless readers; vocabulary subsets; keep-with-trigger verdicts (WI-kosup) | reader census (sibling format, `kind: reader_census`) | Confirmed: 14 action items filed, 4 named decisions recorded |
 | [0024](0024-build-target-supersession-precision.md) | May the build-target linker demote the console-script / bin placeholder it consumed (ADR-0057 §14.1)? | linker supersession grant (sibling format, `kind: linker_supersession_precision`) | GRANTED: 16 of 16 correct across 12 repositories |
+| [0025](0025-js-module-supersession-precision.md) | May the JS module linker demote the import stub it consumed (ADR-0057 §14.1)? | linker supersession grant (sibling format, `kind: linker_supersession_precision`) | GRANTED, after three wrong routes were fixed: 6,792 resolutions over 7 repositories |
 
 ## Sibling formats
 

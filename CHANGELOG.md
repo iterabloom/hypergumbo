@@ -56,6 +56,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`require('.')` / `require('..')` import the directory**, through its `package.json` entry when it has one, not an npm package named `..`.
 - **Node core modules (`fs`, `path`, `node:*`) are no longer npm package nodes** claimed as third-party dependencies.
 - **A dotted relative import (`./X.test-wrapper`) reaches its own file**, not the same-stem sibling `X.tsx`.
+- **A resolved JS/TS import's analyzer stub is demoted beside its resolution** (ADR-0057 §14.1, `docs/audits/0025`).
 - **A resolver-graded call keeps its graded confidence** through finalize (ADR-0039 ruling 6); on apollo-server 244 of 18,684 edges move, all down.
 - **Finalize keeps typed binds** for methods named like stdlib interfaces (`Close`, `Parse`), in C++ and in Java, C# and Kotlin static initializers.
 - **Every linker call-site stand-in is attached to its enclosing function.**

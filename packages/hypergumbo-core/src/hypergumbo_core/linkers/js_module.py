@@ -1042,6 +1042,14 @@ def _count_js_import_edges(ctx: LinkerContext) -> int:
     ),
     # CNF: JS/TS module resolution; JS/TS share the "javascript" analyzer pass id.
     depends_on=[["javascript"]],
+    # ADR-0057 section 14.1: the analyzer's ``<spec>:0-0:module`` import stub this
+    # pass consumed (named in each edge's derived_from) is demoted and stamped
+    # superseded_by. Granted on docs/audits/0025: on 7 repositories every edge
+    # a mechanical check can judge agrees with Node's resolution (2,231
+    # package nodes, 3,877 relative, 55 directory manifests) and a hand-read
+    # sample of the rest is correct, after WI-pulid, WI-tufob and WI-dunab
+    # removed the three wrong routes the audit found.
+    supersedes_consumed_stub=True,
 )
 def link_js_module(ctx: LinkerContext) -> LinkerResult:
     """Entry point for the JS module linker via the registry.
