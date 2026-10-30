@@ -3211,11 +3211,15 @@ def _import_modules_for_framework(framework: str) -> set[str]:
         Set of lowercased import module names.
     """
     modules: set[str] = set()
-    for _lang, fw_dict in LANGUAGE_FRAMEWORKS.items():
+    for lang, fw_dict in LANGUAGE_FRAMEWORKS.items():
         if framework in fw_dict:
             for pattern in fw_dict[framework]:
                 canonical = IMPORT_OVERRIDES.get(pattern, pattern)
                 modules.add(canonical.lower())
+                if lang == "rust":
+                    # Cargo imports a crate named ``actix-web`` as ``actix_web``
+                    # (WI-silam): a `use` path never contains the hyphen.
+                    modules.add(canonical.lower().replace("-", "_"))
     return modules
 
 
@@ -3358,7 +3362,7 @@ def _module_match_kind(imported: str, pattern: str) -> str | None:
       Example: imported = ``"django"``, pattern = ``"django"``.
     - ``"prefix"`` — ``imported`` starts with the pattern followed by
       a separator (``.`` for Python / Maven coords, ``/`` for npm
-      scoped paths and Go paths). Example: imported = ``"django.db"``,
+      scoped paths and Go paths, ``\\`` for PHP, ``::`` for a Rust ``use``). Example: imported = ``"django.db"``,
       pattern = ``"django"``; imported = ``"@apollo/server/standalone"``,
       pattern = ``"@apollo/server"``.
     - ``None`` — no match.
@@ -3380,7 +3384,8 @@ def _module_match_kind(imported: str, pattern: str) -> str | None:
         return "exact"
     if (imported_lower.startswith(pattern + ".")
             or imported_lower.startswith(pattern + "/")
-            or imported_lower.startswith(pattern + "\\")):  # INV-naguv: PHP namespace separator
+            or imported_lower.startswith(pattern + "\\")  # INV-naguv: PHP namespace separator
+            or imported_lower.startswith(pattern + "::")):  # WI-silam: a Rust `use` path
         return "prefix"
     return None
 
