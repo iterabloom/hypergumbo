@@ -1,0 +1,35 @@
+Original commit body from feb176222c0b136d63f85ed0097f974b65969b66:
+
+_is_relative_import accepted the `./` and `../` prefixes only, so the bare
+`.` and `..` fell to the bare-specifier route and became a third-party
+package node named `.` / `..` (javascript:npm:0-0:..:package) -- 35 of the
+7,290 linker resolutions the WI-halol shape-5 precision audit enumerated
+over 7 repositories. They are relative: Node loads the directory.
+
+* _is_relative_import is also true for exactly "." and "..".
+* A relative import that names a DIRECTORY with a package.json loads that
+  package's entry (exports / module / main, then index: Node's
+  LOAD_AS_DIRECTORY), through js_package_entry.package_entry; a directory
+  without one probes its index as before. package_entry's "already read as
+  valid JSON" pragmas were true only for its workspace callers; a directory
+  import reaches it with an unvalidated manifest, so an unreadable or
+  non-object one declares no entry and the index answers (tested, pragmas
+  removed).
+
+Measured, js-module-linker edges, branch vs the dev surveys of the audit:
+nuclear 25 package edges -> the directory's index.ts (`import { Badge }
+from '.'`, `import { Button } from '..'`); apollo-server 5 -> src/index.ts;
+pm2 5 package edges removed, none added (examples/ has no manifest or
+index, so the import has no in-tree target); knex 4 added
+(`import { Knex } from '../../../..'` -> the repository root's
+package.json main, knex.js). Every edge read against its line.
+
+Tests: test_js_dot_specifiers.py through run_behavior_map ('..' -> the
+parent's index, '.' -> this directory's index, no package named like a
+path, a directory's package.json main wins over index, a broken manifest
+falls back to index); the predicate in test_js_module_linker.py. Two
+mutations (no bare dots, no directory manifest) each turn a test red.
+
+Addresses WI-pulid; unblocks WI-halol's shape-5 grant.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
