@@ -147,7 +147,14 @@ from hypergumbo_core.analyze.base import (
     symbols_at,
     SymbolsAt,
 )
-from hypergumbo_core.analyze.c_family import c_family_declarator, c_family_scope_chain
+from hypergumbo_core.analyze.c_family import (
+    c_family_array_declarator,
+    c_family_declarator,
+    c_family_declares_local,
+    c_family_file_scope_variables,
+    c_family_is_value_operand,
+    c_family_scope_chain,
+)
 from hypergumbo_core.analyze.edge_source import anchor_in_definitions, mark_stand_in
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
@@ -280,25 +287,6 @@ def _extract_c_signature(
             sig += f" {return_type}"
 
     return sig
-
-
-#: Declarator wrappers between an ``init_declarator`` and the array a dispatch
-#: table declares (WI-dirij): ``(*cmds[])(int)`` nests all three.
-_C_TABLE_WRAPPERS = frozenset({
-    "function_declarator", "parenthesized_declarator", "pointer_declarator",
-})
-
-
-def _array_declarator_of(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
-    """The ``array_declarator`` a declarator declares, through function,
-    parenthesized and pointer wrappers; None for anything else."""
-    current: Optional["tree_sitter.Node"] = node
-    while current is not None and current.type in _C_TABLE_WRAPPERS:
-        current = current.child_by_field_name("declarator") or next(
-            (c for c in current.named_children
-             if c.type == "array_declarator" or c.type in _C_TABLE_WRAPPERS),
-            None)
-    return current if current is not None and current.type == "array_declarator" else None
 
 
 def _function_pointer_name(declarator: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -965,6 +953,9 @@ def _extract_edges(
     # Imported here, as ``_c_ambiguous_names`` imports the catalogue loader.
     from hypergumbo_core.io_boundary import declared_by_an_included_header
 
+    # META-mino: the file's file-scope variables, computed on the first value
+    # reference (a variable shadows a same-named function elsewhere).
+    _file_scope_vars: Optional[frozenset[str]] = None
     for node in iter_tree(tree.root_node):
         # Function calls: func_name(...)
         if node.type == "call_expression":
@@ -1152,11 +1143,14 @@ def _extract_edges(
                 )
                 if ident:
                     ref_name = node_text(ident, source)
-                    # A file-scope ``&f`` emits nothing; one in a definition the
-                    # analyzer could not name is stood in for, as a call is.
+                    # A file-scope ``&f`` (``int (*g)(void) = &f;``) is anchored
+                    # on the file (META-mino: it used to emit nothing, so a
+                    # function reached only through a global pointer looked
+                    # dead); one in a definition the analyzer could not name is
+                    # stood in for, as a call is.
                     current_function, _stands_in = anchor_in_definitions(
                         node, decl_index, _C_DEFINITIONS,
-                        top_level=None, fallback=file_anchor,
+                        top_level=file_anchor, fallback=file_anchor,
                     )
                     if current_function:
                         lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
@@ -1178,6 +1172,54 @@ def _extract_edges(
                             ))
                             if _stands_in:
                                 mark_stand_in(edges, len(edges) - 1, current_function.id)
+
+        # META-mino: a function named as a VALUE -- a pointer initialiser
+        # (``int (*g)(void) = f;``, at file scope too), an assignment
+        # (``h = f;``), a return operand. An initializer-list or designated
+        # element is left to the dispatch-table pass below, which already
+        # links ``{ f }`` / ``{ .run = f }`` from the table; a call argument is
+        # the ``function_pointer_arg`` arm's. A pointer the file calls also
+        # gets that call's ``calls`` edge; this one says the function is HELD.
+        elif (
+            node.type == "identifier"
+            and c_family_is_value_operand(node)
+            and node.parent is not None
+            and node.parent.type not in ("initializer_list", "initializer_pair")
+        ):
+            ref_name = node_text(node, source)
+            lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
+            # The lookup is the cheap filter: only a name that IS some function
+            # pays for the local-declaration walk.
+            if (
+                lookup_result.found
+                and lookup_result.symbol is not None
+                and lookup_result.symbol.kind == "function"
+            ):
+                if _file_scope_vars is None:
+                    _file_scope_vars = c_family_file_scope_variables(tree.root_node, source)
+                current_function, _stands_in = anchor_in_definitions(
+                    node, decl_index, _C_DEFINITIONS,
+                    top_level=file_anchor, fallback=file_anchor,
+                )
+                if (
+                    current_function is not None
+                    and lookup_result.symbol.id != current_function.id
+                    and not c_family_declares_local(
+                        node, ref_name, source, _file_scope_vars,
+                    )
+                ):
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=lookup_result.symbol.id,
+                        edge_type="references",
+                        line=node.start_point[0] + 1,
+                        resolution_score=lookup_result.confidence,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="function_reference",
+                    ))
+                    if _stands_in:
+                        mark_stand_in(edges, len(edges) - 1, current_function.id)
 
     # Dispatch table detection: function pointers in static array initializers.
     # Pattern: static struct Foo table[] = { { "name", func_ptr }, ... };
@@ -1240,7 +1282,7 @@ def _extract_edges(
             if child.type == "initializer_list":
                 init_list = child
             elif array_decl is None:
-                array_decl = _array_declarator_of(child)
+                array_decl = c_family_array_declarator(child)
         if array_decl is None or init_list is None:
             continue
 

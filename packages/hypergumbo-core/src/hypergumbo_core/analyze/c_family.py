@@ -58,6 +58,21 @@ tree-sitter-cpp, tree-sitter-glsl extends tree-sitter-c) and cannot import
 :func:`c_family_scope_chain`, the enclosing namespaces and classes an
 inline member's identity needs beside its bare name (and, on request, the
 enclosing functions a block-scope declaration's identity needs).
+
+Function values
+---------------
+A function named as a VALUE (META-mino) -- a pointer initialiser
+(``int (*g)(void) = f;``), an assignment (``h = f;``), a return operand, a
+designated or positional aggregate element (``{ .run = f }``, ``{ "n", f }``)
+-- is how C-family code builds callbacks and dispatch tables.
+:func:`c_family_is_value_operand` says whether an identifier stands in one of
+those places; a call's callee, a call ARGUMENT (each analyzer's own
+``function_pointer_arg`` arm), an assignment's target and an operand of an
+operator are not. :func:`c_family_array_declarator` finds the array an
+``init_declarator`` declares through the wrappers an array of function
+POINTERS adds (``int (*t[])(void)`` is function_declarator ->
+parenthesized_declarator -> pointer_declarator -> array_declarator), so a
+dispatch-table pass sees ``{ f }`` there as it sees a struct array's.
 """
 from __future__ import annotations
 
@@ -87,6 +102,161 @@ class CFamilyDeclarator(NamedTuple):
     name: Optional["tree_sitter.Node"]
     returns_function: bool
     pointer_depth: int
+
+
+#: Declarator wrappers between an ``init_declarator`` and the array it declares.
+_ARRAY_WRAPPERS: frozenset[str] = frozenset({
+    "function_declarator", "parenthesized_declarator", "pointer_declarator",
+})
+
+#: Parents under which an expression is a VALUE, and the field that holds it
+#: (``None``: any named child).
+_VALUE_PARENTS: dict[str, Optional[str]] = {
+    "init_declarator": "value",
+    "initializer_pair": "value",
+    "assignment_expression": "right",
+    "return_statement": None,
+    "initializer_list": None,
+}
+
+
+def c_family_array_declarator(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The ``array_declarator`` a declarator declares, through function,
+    parenthesized and pointer wrappers; None for anything else."""
+    current: Optional["tree_sitter.Node"] = node
+    while current is not None and current.type in _ARRAY_WRAPPERS:
+        current = current.child_by_field_name("declarator") or next(
+            (c for c in current.named_children
+             if c.type == "array_declarator" or c.type in _ARRAY_WRAPPERS),
+            None)
+    return current if current is not None and current.type == "array_declarator" else None
+
+
+def c_family_is_value_operand(node: "tree_sitter.Node") -> bool:
+    """Whether ``node`` (an identifier or qualified identifier) is an expression
+    whose VALUE is taken: an initialiser, an assignment's right side, a return
+    operand or an aggregate element -- not a callee, an argument, a target or
+    an operator's operand."""
+    parent = node.parent
+    if parent is None or parent.type not in _VALUE_PARENTS:
+        return False
+    field = _VALUE_PARENTS[parent.type]
+    if field is None:
+        return node.is_named
+    if parent.type == "assignment_expression":
+        # ``x += f`` is arithmetic on ``f``, not storing it (zstd's
+        # ``ip += ZSTD_frameHeaderSize``); only plain ``=`` stores a value.
+        operator = parent.child_by_field_name("operator")
+        if operator is None or operator.type != "=":
+            return False
+    value = parent.child_by_field_name(field)
+    return value is not None and value.id == node.id
+
+
+def _declared_identifier(declarator: Optional["tree_sitter.Node"]) -> Optional["tree_sitter.Node"]:
+    """The identifier node a (possibly wrapped) declarator declares, else None."""
+    current = declarator
+    while current is not None and current.type != "identifier":
+        nxt = current.child_by_field_name("declarator")
+        if nxt is None:
+            nxt = next((c for c in current.named_children if c.type.endswith("declarator")
+                        or c.type == "identifier"), None)
+        current = nxt
+    return current
+
+
+def _declared_name(declarator: Optional["tree_sitter.Node"], source: bytes) -> Optional[str]:
+    """The identifier a (possibly wrapped) declarator declares, else None."""
+    ident = _declared_identifier(declarator)
+    return source[ident.start_byte:ident.end_byte].decode("utf-8", "replace") if ident else None
+
+
+def c_family_declares_local(
+    node: "tree_sitter.Node",
+    name: str,
+    source: bytes,
+    file_scope_vars: Optional[frozenset[str]] = None,
+) -> bool:
+    """Whether ``name`` at ``node`` is a VARIABLE of this translation unit, not
+    the function of that name elsewhere: a parameter, local or enumerator of
+    the enclosing function, or a file-scope variable of this file (zstd's
+    ``static const size_t ZSTD_frameHeaderSize = 4;`` in zstd_v01.c beside a
+    ``ZSTD_frameHeaderSize()`` in zstd_decompress.c). ``file_scope_vars`` is
+    :func:`c_family_file_scope_variables` of ``node``'s tree, when the caller
+    has it; otherwise it is computed here."""
+    if file_scope_vars is None:
+        root = node
+        while root.parent is not None:
+            root = root.parent
+        file_scope_vars = c_family_file_scope_variables(root, source)
+    if name in file_scope_vars:
+        return True
+    function = node.parent
+    while function is not None and function.type != "function_definition":
+        function = function.parent
+    if function is None:
+        return False
+    stack = [function]
+    # A C++ template's parameters sit outside the definition it declares
+    # (``template<int size> void f(...) { dst += size; }``, x265).
+    template = function.parent
+    while template is not None and template.type == "template_declaration":
+        params = template.child_by_field_name("parameters")
+        if params is not None:
+            stack.append(params)
+        template = template.parent
+    while stack:
+        current = stack.pop()
+        if current.type in (
+            "parameter_declaration", "declaration",
+            "optional_parameter_declaration",
+            # C++ ``for (auto const& x : xs)`` declares ``x`` in the loop.
+            "for_range_loop",
+        ):
+            for declarator in current.children_by_field_name("declarator"):
+                if _declared_name(declarator, source) == name:
+                    return True
+        elif current.type == "enumerator":
+            # ``enum { empty, full } state = empty;`` in the function (apt).
+            enum_name = current.child_by_field_name("name")
+            if enum_name is not None and enum_name.text == name.encode():
+                return True
+        stack.extend(current.named_children)
+    return False
+
+
+def c_family_file_scope_variables(root: "tree_sitter.Node", source: bytes) -> frozenset[str]:
+    """The names declared as VARIABLES (not function prototypes) outside every
+    function and class in a translation unit. Computed once per file by a
+    caller that asks :func:`c_family_declares_local` about many names."""
+    names: set[str] = set()
+    defined: set[str] = set()
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        if current.type == "function_definition":
+            # A name this file DEFINES is a function whatever its other
+            # declarations look like: zstd's ``void *myalloc _Z_OF((...));``
+            # (a macro-wrapped prototype) reads as a variable.
+            leaf = c_family_declarator(current).name
+            if leaf is not None:
+                defined.add(source[leaf.start_byte:leaf.end_byte].decode("utf-8", "replace"))
+            continue  # its locals are not file scope
+        if current.type in ("class_specifier", "struct_specifier"):
+            continue  # a member: not file scope
+        if current.type == "declaration":
+            for declarator in current.children_by_field_name("declarator"):
+                # A FUNCTION is declared when the name's own parent is a
+                # function_declarator: ``void *f(void)`` (pointer return) is
+                # one, ``void *(*f)(void)`` (a function POINTER) is a variable.
+                ident = _declared_identifier(declarator)
+                if ident is not None and (
+                    ident.parent is None or ident.parent.type != "function_declarator"
+                ):
+                    names.add(source[ident.start_byte:ident.end_byte].decode("utf-8", "replace"))
+            continue
+        stack.extend(current.named_children)
+    return frozenset(names - defined)
 
 
 def _is_declarator_or_name(node_type: str) -> bool:
