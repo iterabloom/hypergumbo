@@ -19,3 +19,27 @@
     pr_ref:  # fbf5
     description: "FOUND 2026-10-30 by the js-module-linker precision audit for WI-halol shape 5, re-run on merged dev 2613b61e34 (7 surveys, ~/hypergumbo_lab_notebook/jsmod_10302026/merged/; the 30 rows in wrong_relative.json).\n\nTHE DEFECT. A relative specifier whose basename contains a dot resolves to the WRONG FILE: import from './ConnectedPlayerBar.test-wrapper' lands on ConnectedPlayerBar.tsx, not ConnectedPlayerBar.test-wrapper.tsx. 30 of 3,890 relative resolutions, all nuclear (*.test-wrapper imports in its tests), every one an existing, different sibling.\n\nCAUSE, read in code: js_package_entry.probe_file tries base_path.with_suffix(ext) for each extension. Path.with_suffix REPLACES the last suffix, so 'X.test-wrapper' + '.tsx' is 'X.tsx'. Node appends: it tries the path, then path + each extension, then the directory index. The replacement also happens to give TypeScript's ESM convention ('./x.js' naming x.ts), which the fix must keep, but only for a specifier ending in a JS extension.\n\nWHY IT BLOCKS WI-halol: a section 14.1 grant to js-module-linker would demote the analyzer's import stub beneath these 30 wrong file edges.\n\nFIX DIRECTION: probe the path as given, then the path with each extension APPENDED, then (only when it ends .js/.jsx/.mjs/.cjs) the TS twin (.ts/.tsx/.mts/.cts), then the directory's index. Test: a dotted basename beside a same-stem file; './x.js' -> x.ts kept; './styles.css' as-is. Measure the edge diff on nuclear."  # fbf5
     fields: {}  # fbf5
+- op: update  # 0d7e
+  at: '2026-10-30T13:50:49Z'  # 0d7e
+  by: agent  # 0d7e
+  actor: jgstern_agent  # 0d7e
+  clock: 2  # 0d7e
+  nonce: 0d7e  # 0d7e
+  set: {}  # 0d7e
+  add:  # 0d7e
+    isbefore: [WI-halol-malim-kahav-tahut-tobot-sizat-dopas-limat]  # 0d7e
+- op: update  # c7e4
+  at: '2026-10-30T15:20:14Z'  # c7e4
+  by: agent  # c7e4
+  actor: jgstern_agent  # c7e4
+  clock: 3  # c7e4
+  nonce: c7e4  # c7e4
+  set:  # c7e4
+    status: done  # c7e4
+- op: discuss  # a6fb
+  at: '2026-10-30T15:20:15Z'  # a6fb
+  by: agent  # a6fb
+  actor: jgstern_agent  # a6fb
+  clock: 4  # a6fb
+  nonce: a6fb  # a6fb
+  message: "Done in PR #1959 (18e47b3960 + 9dbf7e2c30). Root cause: js_package_entry.probe_file used Path.with_suffix, which REPLACES the last dotted segment, so './Album.test-wrapper' + '.tsx' became Album.tsx. Fix: append each extension (Node's rule), then the TS twin only for a JS-extension specifier, then the directory index; core tests for package_entry added after CI flagged core-only coverage. CLOSURE EVIDENCE, production hypergumbo survey of nuclear on merged dev: packages/player/src/views/Album/Album.test.tsx:8 import from './Album.test-wrapper' -> packages/player/src/views/Album/Album.test-wrapper.tsx (was Album.tsx); the 7-repo re-audit has 0 relative edges disagreeing with Node's resolution order (3,877 checked)."  # a6fb
