@@ -1,0 +1,49 @@
+Original commit body from 44d758ba8f0c1cadbac86d831db840829b0b9a99:
+
+rust.py recorded only calls (plus tokio::spawn(task)), so a function used
+as a value had no incoming edge at all: a struct field (Cmd { run: h }),
+a binding (let f = h; static F: fn() = h;), an array or tuple element (a
+dispatch table), an assignment, a call argument (.map(parse),
+.unwrap_or_else(default_dir)), a block's tail and a return operand. Each
+is now a `references` edge, evidence function_reference.
+
+Resolution follows Rust's scoping, and each rule is there because the
+corpus A/B or a test caught the looser version binding the wrong thing:
+- A bare name is a function of this file (its own module's, by qualified
+  name), else one a `use` imports -- never a same-named function elsewhere
+  that nothing imports. A name bound by a let, parameter, closure
+  parameter or pattern in an enclosing function is the local.
+- A module path (crate::b::handler, and an imported name's use path)
+  resolves the module to its file with the existing _InTreeCrates map and
+  takes the function of that name in that file. A free function's name
+  carries only its inline mod path, so the full text names nothing and the
+  name lookup picked one of two same-named handlers by order. Without a
+  crate layout only an unambiguous name binds; a std / core / registry
+  path names nothing in the repo (`use std::cmp::max` is not a repo max).
+- A Type::f path counts only when the repo declares Type: zellij's
+  .map(String::from) on a &str had bound a repo impl From<Name> for
+  String. Several same-named declarations are narrowed to the caller's
+  crate (new _InTreeCrates.crate_dir): ripgrep's crates/regex
+  .map_err(Error::regex) had bound crates/pcre2's Error::regex. Still
+  several: no edge.
+- The candidate set is the analyzer's multi-value kind index, not
+  global_symbols, which is keyed by qualified name and keeps one of two
+  same-named free functions.
+
+Corpus A/B (analyze_rust, dev vs branch; ripgrep, just, diamond-types,
+zellij, firecracker; every added edge read): +197, -0:
+- just 84: the builtin-function table ("trim" => Unary(trim), ~60
+  entries), Node::tree mappers, Line::is_empty.
+- firecracker 40: the vCPU state machine (StateMachine::next(Self::paused)),
+  .map(TokenBucketConfig::from) / RateLimiterConfig::try_into, the balloon
+  .unwrap_or_else(report_balloon_event_fail), signal handlers, test
+  callbacks; log::LevelFilter::from is firecracker's own impl From.
+- zellij 32: get_os_input(get_server_os_input), axum .route(..,
+  post(handle_login)), .or_else(default_layout_dir), protobuf converters.
+- ripgrep 32: .map_err(Error::regex) / Error::generic in the right crate,
+  IgnoreMatch mappers, Data::from_path.
+- diamond-types 9: Timestamps::from_file, random_agent_name, encoders.
+
+META-mino stays open: C and C++ remain.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
