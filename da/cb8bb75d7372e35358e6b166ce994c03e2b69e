@@ -1,0 +1,38 @@
+Original commit body from 19da93d3a42d77d0bb6516f0328a3a7e8ac3b536:
+
+The Wolfram analyzer's finder (find_wolfram_files) takes .wl / .wls /
+.nb and the .m files whose content classify_dot_m_file calls Wolfram:
+.m is shared with MATLAB and Objective-C, so no extension list can say
+it. The file-presence pre-filter decides from the profile, and the
+profile counted Wolfram with the taxonomy's globs alone. A repo whose
+Wolfram code is .m files counted zero, the pass was skipped as
+no_candidate_files, and no .m file was ever analysed. Found by
+WI-borib's count comparison (docs/audits/0026).
+
+The registration now names the finder (find_files=find_wolfram_files),
+INV-hokig's cure, as bash, c, cpp, objc, php, d, ini, fortran and
+verilog already do.
+
+The gate. test_no_analyzer_reads_files_its_taxonomy_entry_cannot_see
+compares each class's DECLARED file_patterns; Wolfram's equal the
+taxonomy's, and the .m files come from an overridden
+_find_source_files, which it cannot see. A new gate runs every
+override that has no registered finder on a probe tree (one file per
+glob any taxonomy entry or analyzer class declares, plus content-
+decided probes: Wolfram / Objective-C / MATLAB .m, Hack .php, Forth and
+F# .fs) and requires what it yields to be what the taxonomy's globs see.
+Before the fix it named wolfram alone; the other overrides it exercises
+(clojure, fsharp, latex, markdown) read subsets. Hack, gitignore and
+requirements are outside the taxonomy and dispatched unconditionally.
+
+Measured: the curriculum corpus holds 29 .m files, 26 Objective-C and 3
+MATLAB, none Wolfram -- no corpus repo changes. The fix is shown by the
+filed repro only.
+
+Tests: test_wolfram_dot_m_prefilter.py through detect_profile and
+run_all_analyzers (a .m-only package is counted and analysed; a MATLAB
+.m is not counted as Wolfram); the gate in test_prefilter_candidate_set.py.
+
+Addresses WI-siruf.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
