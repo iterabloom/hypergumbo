@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The file a bare npm specifier names inside an in-tree package: Node's entry rule.
 
+It also holds Node's core-module list (``is_node_core_module``), which the
+linker reads so it never mints an npm package for ``fs``, and js_ts reads so
+an import of one is external.
+
 ONE COPY, TWO CONSUMERS. The js_module linker resolves a workspace sibling's
 import to its entry file (WI-rilof); the JS/TS analyzer resolves a DEFAULT
 import of that sibling to the entry's ``export default`` declaration (WI-halol).
@@ -21,6 +25,25 @@ import json as json_module
 from pathlib import Path
 
 from .linkers._text_filters import read_source_text
+
+# Node's core modules: an import of one is the runtime's own module, external
+# with no manifest and never an npm package (WI-tufob). ONE copy, read by the
+# js_module linker (no package node) and js_ts (an import-bound external).
+NODE_CORE_MODULES = frozenset({
+    "assert", "async_hooks", "buffer", "child_process", "cluster", "console",
+    "constants", "crypto", "dgram", "diagnostics_channel", "dns", "domain",
+    "events", "fs", "http", "http2", "https", "inspector", "module", "net",
+    "os", "path", "perf_hooks", "process", "punycode", "querystring",
+    "readline", "repl", "stream", "string_decoder", "timers", "tls",
+    "trace_events", "tty", "url", "util", "v8", "vm", "wasi",
+    "worker_threads", "zlib",
+})
+
+
+def is_node_core_module(specifier: str) -> bool:
+    """``fs``, ``fs/promises``, ``node:anything`` -- not ``fs-extra``."""
+    return specifier.startswith("node:") or specifier.split("/", 1)[0] in NODE_CORE_MODULES
+
 
 # Extensions to probe when import path has no extension, in priority order.
 # .js first because it's the most common in real-world JS/TS projects.

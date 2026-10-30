@@ -91,6 +91,7 @@ from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
 from ..taxonomy import get_language
 from ._text_filters import note_source_read, read_source_text
 from ..js_package_entry import (
+    is_node_core_module,
     package_entry as _package_entry,
     probe_file as _probe_file,
 )
@@ -943,8 +944,11 @@ def link_js_modules(
                         derived_from=[file_sym.id, edge.id],
                     ))
 
-        elif not _is_relative_import(import_path):
-            # Non-relative import that didn't resolve via alias → npm package
+        elif not _is_relative_import(import_path) and not is_node_core_module(import_path):
+            # Non-relative import that didn't resolve via alias → npm package.
+            # A Node core module (``fs``, ``node:path``) is the runtime's own,
+            # not a third-party package: no package node, and the import stays
+            # the analyzer's external stand-in (WI-tufob).
             pkg_name = _get_npm_package_name(import_path)
 
             if pkg_name not in npm_package_cache:

@@ -718,6 +718,13 @@ class TestNpmHelpers:
 
         assert _get_npm_package_name("@babel/core/lib/foo") == "@babel/core"
 
+    def test_node_core_modules_are_recognised(self) -> None:
+        """WI-tufob: the runtime's own modules, never an npm package."""
+        from hypergumbo_core.js_package_entry import is_node_core_module
+        assert is_node_core_module("fs") and is_node_core_module("fs/promises")
+        assert is_node_core_module("node:anything")
+        assert not is_node_core_module("fs-extra") and not is_node_core_module("lodash")
+
     def test_bare_dot_specifiers_are_relative(self) -> None:
         """WI-pulid: ``.`` and ``..`` are the directory, not a package."""
         from hypergumbo_core.linkers.js_module import _is_npm_package, _is_relative_import

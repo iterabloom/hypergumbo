@@ -217,7 +217,7 @@ from hypergumbo_core.ir import (
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.supply_chain import own_package_name
-from hypergumbo_core.js_package_entry import package_entry, probe_file
+from hypergumbo_core.js_package_entry import is_node_core_module, package_entry, probe_file
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
@@ -1151,16 +1151,6 @@ def _find_package_root(file_path: Path) -> Path | None:
     return None
 
 
-# Node core modules: an import of one is external, with no manifest needed.
-_NODE_CORE_MODULES = frozenset({
-    "assert", "async_hooks", "buffer", "child_process", "cluster", "console",
-    "constants", "crypto", "dgram", "diagnostics_channel", "dns", "domain",
-    "events", "fs", "http", "http2", "https", "inspector", "module", "net",
-    "os", "path", "perf_hooks", "process", "punycode", "querystring",
-    "readline", "repl", "stream", "string_decoder", "timers", "tls",
-    "trace_events", "tty", "url", "util", "v8", "vm", "wasi",
-    "worker_threads", "zlib",
-})
 
 # A dependency whose version spec points INTO the repo, not at a registry.
 _IN_REPO_DEP_PROTOCOLS = ("workspace:", "file:", "link:", "portal:")
@@ -1226,11 +1216,9 @@ def _bare_specifier_is_external(
     """
     if specifier.startswith((".", "/")):
         return False
-    if specifier.startswith("node:"):
+    if is_node_core_module(specifier):
         return True
     package = _js_package_name(specifier)
-    if package in _NODE_CORE_MODULES:
-        return True
     if package in index.in_repo_names:
         return False
     spec = index.declared(file_path, package)
