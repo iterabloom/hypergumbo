@@ -1,0 +1,23 @@
+- op: create  # ef1c
+  at: '2026-10-30T21:48:26Z'  # ef1c
+  by: agent  # ef1c
+  actor: jgstern_agent  # ef1c
+  clock: 1  # ef1c
+  nonce: ef1c  # ef1c
+  data:  # ef1c
+    kind: work_item  # ef1c
+    title: "verify-claims' empty-zone gate counts community sinks as coverage, so community rows alone can make a withheld claim judgeable (ADR-0061)"  # ef1c
+    status: todo_hard  # ef1c
+    priority: 2  # ef1c
+    parent:  # ef1c
+    tags:  # ef1c
+    - concept_audit  # ef1c
+    - consumer_agreement  # ef1c
+    - adr_0061  # ef1c
+    - verify_claims  # ef1c
+    isbefore: []  # ef1c
+    duplicate_of: []  # ef1c
+    not_duplicate_of: []  # ef1c
+    pr_ref:  # ef1c
+    description: "From WI-borib (docs/audits/0026; agent D). Possible false-all-clear direction under ADR-0061 (\"community rows ADD, never clean\").\n\nverify-claims' per-language empty-zone gate (_sink_zone_gaps over taint.builtin_sink_zones) counts COMMUNITY sinks as zone coverage. Agent D's zone_coverage_by_provenance.py: Haskell's network zone is covered only by 28 community rows, so a \"never reaches the network\" claim on a Haskell repo is judged (and can read confirmed) because of community data alone; with --no-default-overlays the same claim is withheld. A withheld claim becoming judgeable on unvouched rows is the cleaner-verdict direction ADR-0061 denies them.\n\nNOT measured on a Haskell repo (none in the corpus has been checked). ACCEPTANCE: read ADR-0061's rulings against the gate; either the gate counts vouched sinks only, or the ADR ruling that permits this is cited in the gate's docstring; a test either way."  # ef1c
+    fields: {}  # ef1c

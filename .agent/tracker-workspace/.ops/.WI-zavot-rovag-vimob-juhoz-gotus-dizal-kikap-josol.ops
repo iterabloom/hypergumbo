@@ -1,0 +1,23 @@
+- op: create  # aef1
+  at: '2026-10-30T21:48:14Z'  # aef1
+  by: agent  # aef1
+  actor: jgstern_agent  # aef1
+  clock: 1  # aef1
+  nonce: aef1  # aef1
+  data:  # aef1
+    kind: work_item  # aef1
+    title: "io-boundaries and taint disagree on 18 of 1,488 edges: taint ignores io_target_kind (/dev/null, in-memory buffers) and reads process.on lifecycle handlers as untrusted input"  # aef1
+    status: todo_hard  # aef1
+    priority: 2  # aef1
+    parent:  # aef1
+    tags:  # aef1
+    - concept_audit  # aef1
+    - consumer_agreement  # aef1
+    - io_boundary  # aef1
+    - taint  # aef1
+    isbefore: []  # aef1
+    duplicate_of: []  # aef1
+    not_duplicate_of: []  # aef1
+    pr_ref:  # aef1
+    description: "From WI-borib (docs/audits/0026). Verdict PIN, with the defects it finds fixed. INV-foda's one row-choice rule (io_boundary.named_lookup_arm, called from io_boundary.py:1355 and taint.py:1211) holds, but taint differs around it: its own sink rows and edge types, no FFI redirect, no target-kind gate on some rows, and a separate path for resolved edges.\n\nMEASURED per edge on default surveys at a17367f254 with agent D's instrument (~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/D_scripts/diff_io_vs_taint.py; outputs ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/M/d/): agree_sink mitmproxy 491, knex 813, logrus 29, ripgrep 22, jedis 115; disagreements 18, every one read:\n- taint sink, io none, io_target_kind ignored by taint: knex 6 bash redirects to /dev/null (null_device) or an unresolved target read as host_fs (scripts/build-for-release.sh:74, scripts/oracledb-install-driver-libs.sh:7); mitmproxy 1 redirect; logrus text_formatter.go:273 fmt.Fprintf(b, ...) into a buffer (in_memory) read as a logging sink -- io-boundaries reports it external_potential.\n- knex: a call resolved to the in-tree const writeFile = promisify(fs.writeFile) (lib/migrations/util/fs.js:10) is matched by NAME to fs.writeFile by taint, not by io -- right by coincidence of the local name.\n- taint-only sources: knex 7 process.on('exit' | 'uncaughtException' | 'unhandledRejection') read as untrusted_input (lifecycle handlers, not input) -- false; mitmproxy os.urandom (key_material) and Fernet.decrypt (plaintext) -- taint labels with no I/O boundary, a legitimately different question.\nCode-only (agent D): cgo / ctypes / Ruby FFI calls classified by io through the C catalogue, no taint sink; io tags imports, event_publishes and bridge edges taint never walks (from os import environ is an env_read chain with no taint source); a language: javascript overlay classifies a TypeScript call in io but gives taint no TypeScript sink, and a language: typescript overlay does nothing in both while the banner says it loaded.\n\nACCEPTANCE: a corpus property test over the projection (io boundary in AUTO_SINK_ZONE_MAP / AUTO_SOURCE_LABEL_MAP vs taint's match) with an explicit list of the legitimately-different labels; the target-kind gate applied in taint; the process.on rows corrected."  # aef1
+    fields: {}  # aef1
