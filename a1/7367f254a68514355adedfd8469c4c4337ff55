@@ -1,0 +1,29 @@
+Original commit body from 1dd48891bc5fa51803f5e2c10597de9371d16c41:
+
+Phase 0: nothing to relocate (no commit since c08b5cbc8e touches
+packages/hypergumbo-tracker/). Phase 1: every commit since c08b5cbc8e is
+represented; the one missing item, the two linker-supersession precision
+audits (docs/audits/0024, 0025), joins Documentation.
+
+Phase 2, for a reader rather than an implementer:
+- Breaking: each bullet leads with the surface it changes (behavior-map
+  schema, stable_id scheme, verify-claims envelope), output-shape changes
+  first.
+- A Changed section: the embedding-download change, catalogue loaders
+  rejecting unread keys, the community-overlay restrictions, and two
+  internal renames (a no-op the old entry presented as a fix).
+- Added gains the new symbol kinds and `hypergumbo catalog`'s grammar
+  package, previously filed under Fixed.
+- The 26-bullet "Calls, types and symbols" splits into "Imports of your
+  own code" and "Calls, types and references"; the three JS resolution
+  fixes, the two placeholder demotions, the function-as-value fixes and
+  the two asyncio entries each become one bullet.
+- Mechanism phrasing gives way to effect (pass-silence states, the id
+  round-trip, declared zones, the ADR-0059 ledger).
+- A correction: Go's `database` claims went FROM `confirmed` TO
+  inconclusive; the old entry read the other way.
+
+1,441 words for 144 commits since v9.2.0 (10.0 per commit; 9.2.0 used
+9.7); 80 bullets -> 74. Every ADR reference and version transition kept.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
