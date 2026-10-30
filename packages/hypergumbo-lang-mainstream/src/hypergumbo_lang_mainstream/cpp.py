@@ -160,16 +160,17 @@ from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional, TypeAlias
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.module_sets import module_slot
 from hypergumbo_core.ir import (
-    AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id,
+    AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
 )
 from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, OverloadChoice, choose_overload, declared_arity,
     declared_arity_stable_id, nested_member_qualified_name,
-    node_declared_arity_stable_id,
+    nested_qualified_name, node_declared_arity_stable_id,
 )
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.c_family import (
-    c_family_declarator, c_family_parameter_list, c_family_parameters,
+    c_family_array_declarator, c_family_declarator, c_family_declares_local,
+    c_family_file_scope_variables, c_family_is_value_operand, c_family_parameter_list, c_family_parameters,
     c_family_scope_chain,
 )
 from hypergumbo_core.analyze.edge_source import mark_stand_in
@@ -1743,6 +1744,100 @@ def _cpp_stream_target_kind(
     return _cpp_declared_type_kind(call_node, source, bare)
 
 
+def _cpp_bare_value_is_a_member(
+    node: "tree_sitter.Node",
+    target: Symbol,
+    current_function: Symbol,
+    file_path: str,
+) -> bool:
+    """Whether a BARE value identifier is (likely) a class member, not ``target``.
+
+    C++ spells a member function as a value ``&C::m``, so a bare name never
+    names one; in a member function a bare value is usually a DATA member of
+    that name. Neither side always says so: a class declared with an export
+    macro (``class APT_PUBLIC pkgCache::RlsFileIterator { ... }``) parses with
+    no class at all, its inline members come out as free ``function`` symbols
+    (INV-tohuj's family), and apt's ``return Origin;`` (a data member) bound
+    one. So:
+
+    - in code tree-sitter misread (:func:`_cpp_in_a_misread_region`) a bare
+      value is never taken -- apt's export-macro classes put data members and
+      accessors side by side in such regions, same file or not;
+    - in MEMBER context -- a method, a ``X::f`` definition, code inside a
+      class body -- only a function of this same file is taken: x265's
+      ``CUData::initialize`` storing its file's ``bcast64`` is kept, a data
+      member that shares a name with another file's function is not. The cost
+      is a member storing another file's free function: x265's
+      ``hpelcomp = sad;`` (a template in pixel.cpp) is not linked.
+    """
+    if _cpp_in_a_misread_region(node):
+        return True
+    member_context = current_function.kind == "method" or "::" in current_function.name
+    current = node.parent
+    while current is not None and not member_context:
+        member_context = current.type in (
+            "class_specifier", "struct_specifier", "field_declaration_list",
+        )
+        current = current.parent
+    return member_context and target.path != file_path
+
+
+#: Block parents that mean a file-scope ``{ ... }`` -- a class body tree-sitter
+#: could not read as one (C++ has no file-scope blocks).
+_CPP_FILE_SCOPE_PARENTS: frozenset[str] = frozenset({
+    "translation_unit", "preproc_ifdef", "preproc_if", "preproc_else",
+    "preproc_elif", "preproc_elifdef",
+})
+
+
+def _cpp_in_a_misread_region(node: "tree_sitter.Node") -> bool:
+    """Whether ``node`` sits in code tree-sitter could not read as written,
+    where a bare name is as likely a member as anything (apt's export-macro
+    classes, ``class APT_PUBLIC X { ... }``): an ERROR; a function definition
+    inside another (C++ has no nested functions); an access label
+    (``public:``) read as a statement label; or a block at file scope. An
+    ERROR beyond the enclosing definition is not evidence: that definition
+    parsed."""
+    definitions = 0
+    current = node.parent
+    while current is not None:
+        # An ERROR counts only where no well-formed definition stands between
+        # it and ``node``: x265 files carry a file-level ERROR (macros around
+        # a namespace) over functions that parsed cleanly beneath it.
+        if current.type == "ERROR" and definitions == 0:
+            return True
+        if current.type == "function_definition":
+            definitions += 1
+            if definitions > 1:
+                return True
+        if current.type == "labeled_statement":
+            label = current.child_by_field_name("label")
+            if label is not None and label.text in (b"public", b"protected", b"private"):
+                return True
+        if (
+            current.type == "compound_statement"
+            and current.parent is not None
+            and current.parent.type in _CPP_FILE_SCOPE_PARENTS
+        ):
+            return True
+        current = current.parent
+    return False
+
+
+def _cpp_in_array_table(node: "tree_sitter.Node") -> bool:
+    """Whether ``node`` is an element of an ARRAY initialiser -- the
+    dispatch-table pass's, which links it from the table (META-mino)."""
+    current = node.parent
+    while current is not None and current.type in ("initializer_list", "initializer_pair"):
+        current = current.parent
+    if node.parent is None or node.parent.type not in ("initializer_list", "initializer_pair"):
+        return False
+    if current is None or current.type != "init_declarator":
+        return False
+    declarator = current.child_by_field_name("declarator")
+    return declarator is not None and c_family_array_declarator(declarator) is not None
+
+
 def _extract_edges_from_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -1758,6 +1853,7 @@ def _extract_edges_from_tree(
     file_symbols: list[Symbol],
     callables_by_name: dict[str, list[Symbol]],
     include_closure: IncludeClosure | None = None,
+    table_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract include, call, and instantiation edges from a parsed tree.
 
@@ -1919,6 +2015,9 @@ def _extract_edges_from_tree(
     stack: list[tuple["tree_sitter.Node", Optional[Symbol], bool]] = [
         (tree.root_node, file_anchor, False)
     ]
+    # META-mino: the file's file-scope variables, computed on the first value
+    # reference (a variable shadows a same-named function elsewhere).
+    file_scope_vars: Optional[frozenset[str]] = None
 
     while stack:
         node, current_function, stands_in = stack.pop()
@@ -2445,6 +2544,55 @@ def _extract_edges_from_tree(
                                 origin_run_id=run.execution_id,
                             ))
 
+        # META-mino: a function named as a VALUE -- a pointer initialiser
+        # (``int (*f)(void) = g;``, at file scope too), an assignment, a return
+        # operand, a designated or positional aggregate element
+        # (``{ .run = g }``). An array table's elements are the dispatch-table
+        # pass's (below); a call argument is the function_pointer_arg arm's.
+        elif (
+            node.type in ("identifier", "qualified_identifier")
+            and c_family_is_value_operand(node)
+            and not _cpp_in_array_table(node)
+        ):
+            ref_name = _node_text(node, source)
+            target = local_symbols.get(ref_name)
+            if target is None:
+                lk = resolver.lookup(ref_name, caller_path=_caller_path)
+                if lk.found and lk.symbol is not None:
+                    target = lk.symbol
+            # A BARE name as a value names a free function; a member is
+            # spelled ``&C::m`` (or ``C::m`` for a static). The suffix
+            # lookup bound ``dst += size`` to ``PicList::size`` (x265).
+            kinds = ("function",) if node.type == "identifier" else ("function", "method")
+            # The lookup is the cheap filter: only a name that IS some
+            # function pays for the scope checks.
+            if (
+                current_function is not None
+                and target is not None
+                and target.kind in kinds
+                and target.id != current_function.id
+            ):
+                if file_scope_vars is None:
+                    file_scope_vars = c_family_file_scope_variables(tree.root_node, source)
+                if not (
+                    node.type == "identifier"
+                    and (
+                        c_family_declares_local(node, ref_name, source, file_scope_vars)
+                        or _cpp_bare_value_is_a_member(
+                            node, target, current_function, str(file_path),
+                        )
+                    )
+                ):
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=target.id,
+                        edge_type="references",
+                        line=node.start_point[0] + 1,
+                        evidence_type="function_reference",
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+
         if stands_in and current_function is not None:
             mark_stand_in(edges, edges_before_node, current_function.id)
 
@@ -2462,6 +2610,37 @@ def _extract_edges_from_tree(
     # to the dispatch table variable, creating `references` edges carrying
     # meta.ref_construct='dispatch_table'.
     dispatch_tables: dict[str, str] = {}  # variable name -> symbol ID
+    emitted_tables: set[str] = set()
+
+    def _table_symbol(declaration: "tree_sitter.Node", name: str, table_id: str) -> None:
+        """Emit the table variable once it holds a function (WI-dirij's C++
+        twin): every ``dispatches_to`` edge starts at its id, and before it was
+        emitted the src named no node and finalize dropped every edge."""
+        if table_symbols is None or table_id in emitted_tables:
+            return
+        emitted_tables.add(table_id)
+        line = declaration.start_point[0] + 1
+        table_symbols.append(Symbol(
+            id=table_id,
+            name=name,
+            kind="variable",
+            language="cpp",
+            path=str(file_path),
+            span=Span(
+                start_line=line, end_line=line,
+                start_col=declaration.start_point[1], end_col=declaration.end_point[1],
+            ),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            stable_id=_analyzer.compute_stable_id(
+                declaration, kind="variable", name=name,
+                qualified_name=nested_qualified_name(
+                    c_family_scope_chain(declaration, source, functions=True), name,
+                ),
+                file_stable_id=_analyzer._file_anchor(rel_path),
+            ),
+        ))
+
     for dt_node in iter_tree(tree.root_node):
         if dt_node.type != "init_declarator":
             continue
@@ -2471,10 +2650,12 @@ def _extract_edges_from_tree(
         array_decl = None
         init_list = None
         for child in dt_node.children:
-            if child.type == "array_declarator":
-                array_decl = child
-            elif child.type == "initializer_list":
+            if child.type == "initializer_list":
                 init_list = child
+            elif array_decl is None:
+                # Through the wrappers an array of function POINTERS adds
+                # (``int (*t[])(void)``), as C's pass does (WI-dirij).
+                array_decl = c_family_array_declarator(child)
         if array_decl is None or init_list is None:
             continue
 
@@ -2508,6 +2689,7 @@ def _extract_edges_from_tree(
             if lookup_result.symbol.kind != "function":
                 continue  # pragma: no cover - type names parse as type_identifier
             seen_funcs.add(ident_name)
+            _table_symbol(dt_node, array_name, array_src_id)
             edges.append(Edge.create(
                 src=array_src_id,
                 dst=lookup_result.symbol.id,
@@ -2703,6 +2885,8 @@ class CppAnalyzer(TreeSitterAnalyzer):
     _callables_by_name: Optional[dict[str, list[Symbol]]] = None
     #: INV-zikul: the run's include graph, live only inside ``analyze()``.
     _include_closure: Optional[IncludeClosure] = None
+    #: Dispatch-table variables the edge pass emits, added in ``post_process``.
+    _table_symbols: Optional[list[Symbol]] = None
 
     def analyze(
         self, repo_root: Path, max_files: Optional[int] = None,
@@ -2711,12 +2895,24 @@ class CppAnalyzer(TreeSitterAnalyzer):
         self._prototypes = {}
         self._callables_by_name = {}
         self._include_closure = IncludeClosure(repo_root)
+        self._table_symbols = []
         try:
             return super().analyze(repo_root, max_files)
         finally:
             self._prototypes = None
             self._callables_by_name = None
             self._include_closure = None
+            self._table_symbols = None
+
+    def post_process(
+        self,
+        symbols: list[Symbol],
+        edges: list[Edge],
+        usage_contexts: list[UsageContext],
+        run: AnalysisRun,
+    ) -> tuple[list[Symbol], list[Edge], list[UsageContext]]:
+        """Add the dispatch-table variables the edge pass emitted (WI-dirij)."""
+        return symbols + list(self._table_symbols or ()), edges, usage_contexts
 
     def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
         """Yield C++ files (headers before sources for declaration ordering)."""
@@ -2793,6 +2989,7 @@ class CppAnalyzer(TreeSitterAnalyzer):
             file_symbols=self.file_symbols(local_symbols),
             callables_by_name=self._callables_by_name or {},
             include_closure=self._include_closure,
+            table_symbols=self._table_symbols,
         )
 
     def get_import_aliases(
