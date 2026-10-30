@@ -1,0 +1,55 @@
+Original commit body from b287b06090e747880678536a1dc8b94ad6b98c8f:
+
+A uv workspace member that keeps its package beside its manifest
+(packages/pkg-c/pyproject.toml + packages/pkg-c/pkg_c/__init__.py, no
+src/) installs with packages/pkg-c on sys.path, so its files are pkg_c and
+pkg_c.tools. _detect_source_roots collected only directories named src, so
+they were named by their repo path (packages.pkg-c.pkg_c.tools), nothing in
+the tree was pkg_c, and `import pkg_c`, `pkg_c.tools.shout()` and the
+member's own `from pkg_c import tools` landed on python:pkg_c:...
+external_symbol stand-ins: INV-nuzas counterexamples.
+
+A directory below the repo root that holds a pyproject.toml / setup.py /
+setup.cfg, has no src root of its own, and has a child a flat-layout
+install would put on sys.path is now a source root. "Would install" is
+setuptools' own rule (FlatLayoutPackageFinder.DEFAULT_EXCLUDE, copied as a
+constant with its version): an __init__.py, an identifier, not tests /
+docs / examples / tools / _private. The root covers only those packages, so
+the member's tests/ and loose files keep their repo-path names (two
+members' tests/test_api.py would otherwise both be tests.test_api), and a
+package name two flat members both supply roots neither (poetry's test
+fixtures hold many projects each with a simple_project/).
+
+The filed shape also had `pkg_c.tools.Loud().go()`, which minted
+python:pkg_c.tools.Loud:0-0:go in ANY layout: _resolve_call_target knew
+`tools.Loud()` but not the fully dotted spelling WI-lovun taught
+_process_call (Case 2g), so the constructor resolver was asked first and
+typed the result as an external pkg_c.tools.Loud. _resolve_call_target now
+takes the dotted path with Case 2g's lookup; the chain then resolves as
+`tools.Loud().go()` does, and `x = pkg_c.tools.Loud(); x.go()` types x as
+the in-tree class. A stdlib dotted constructor (http.client) is unchanged.
+
+Measured, analyze_python edge set {(src, dst, type, evidence, line)},
+branch vs origin/dev py.py, same tree: firecracker 67 edges replaced by 67
+(tests/pyproject.toml beside tests/framework and tests/host_tools, which its
+pytest suite imports as framework.* / host_tools.*: 62 imports, 3 calls, 2
+references now land on those files; all 67 read against their source
+lines, including tools/sandbox.py's import of host_tools.cargo_build, the
+only in-tree candidate). poetry, pants, fastapi, django, pretix: 0 changed.
+INV-nuzas fixture (py): the 4 pkg_c stand-ins are gone; every pkg_c shape
+lands on the member's code.
+
+Tests (test_python_flat_layout_members.py, run_behavior_map for the
+end-to-end ones): roots for a flat member, setup.py and setup.cfg; not for
+a src-layout member, the repo root, a member whose packages are not
+installed, or a colliding package name; module names inside and outside
+the member's packages; the filed repro through the survey with a reach
+control on the instantiates edge; the root-level control; the dotted
+constructor inline and assigned, and the stdlib control. Eight mutations
+(no flat roots, no collision rule, cover everything, no dotted lookup,
+tests not excluded, no src-root guard, no repo-root guard, any file a
+manifest) each turn a test red.
+
+Addresses WI-homih and INV-nuzas.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
