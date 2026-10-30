@@ -2912,11 +2912,28 @@ def _extract_edges_from_file(
                 path_node = find_child_by_type(node, "identifier")
             if not path_node:
                 path_node = find_child_by_type(node, "use_wildcard")
-            if not path_node:
-                path_node = find_child_by_type(node, "use_list")
 
             if path_node:
-                import_path = node_text(path_node, source)
+                import_paths = [node_text(path_node, source)]
+            else:
+                # WI-silam: a brace list (``use a::{b, c};``, a
+                # ``scoped_use_list``) or an alias (``use a::b as c;``, a
+                # ``use_as_clause``) matched none of the shapes above and
+                # emitted NO imports edge; a top-level ``use {...}`` matched
+                # ``use_list`` and emitted ONE edge to its whole text. The use-tree walker the alias map
+                # already uses expands every path it binds, at any depth.
+                # A top-level ``use { a::b, c };`` (just's prelude) is a bare
+                # ``use_list`` the walker does not take as a node: its items
+                # are walked with no prefix. It used to be one stand-in whose
+                # module slot was the whole brace text.
+                bindings: dict[str, str] = {}
+                for child in node.named_children:
+                    items = child.named_children if child.type == "use_list" else [child]
+                    for item in items:
+                        _use_tree_bindings(item, "", source, bindings)
+                import_paths = list(dict.fromkeys(bindings.values()))
+            emitted: set[str] = set()
+            for import_path in import_paths:
                 # WI-rilof: a path into the tree imports the file it reaches
                 # rather than a ``module`` placeholder finalize turns into a
                 # tier-3 external_symbol.
@@ -2931,12 +2948,17 @@ def _extract_edges_from_file(
                     # nothing from another file; no edge, rather than a
                     # self-import or the external stub it used to become.
                     continue
+                dst = (
+                    make_file_id("rust", in_tree) if in_tree is not None
+                    else f"rust:{import_path}:0-0:module:module"
+                )
+                if dst in emitted:
+                    # ``use crate::m::{a, b};`` is one import of m.rs.
+                    continue
+                emitted.add(dst)
                 edges.append(Edge.create(
                     src=file_id,
-                    dst=(
-                        make_file_id("rust", in_tree) if in_tree is not None
-                        else f"rust:{import_path}:0-0:module:module"
-                    ),
+                    dst=dst,
                     edge_type="imports",
                     line=node.start_point[0] + 1,
                     evidence_type="use_declaration",
@@ -3412,7 +3434,31 @@ def _extract_edges_from_file(
                                         )
                                 else:
                                     import_hint = use_aliases.get(callee_name)
-                                    lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
+                                    if (
+                                        import_hint is not None
+                                        and import_hint.rsplit("::", 1)[-1] != callee_name
+                                    ):
+                                        # WI-silam: ``use m::helper as h3; h3()``
+                                        # calls the function the alias's PATH
+                                        # names. A lookup of the name ``h3``
+                                        # found nothing and minted a stand-in,
+                                        # and a lookup of ``helper`` prefers a
+                                        # same-named function of THIS file
+                                        # (zellij: ``fn generate_random_name``
+                                        # wraps the aliased one). So the path
+                                        # is resolved: in the tree, the function
+                                        # in the module file it names
+                                        # (``_rust_function_in_module``, as for
+                                        # function values); outside, nothing.
+                                        aliased = _rust_function_in_module(
+                                            import_hint, file_path, kind_index or {},
+                                            analyzer.in_tree_crates() if analyzer is not None else None,
+                                        )
+                                        lookup_result = LookupResult(
+                                            symbol=aliased[0] if aliased is not None else None,
+                                        )
+                                    else:
+                                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
                                     # The magnet gate applies only to genuinely
                                     # BARE identifier calls (``foo()``). Method /
                                     # scoped calls that fall through here purely
