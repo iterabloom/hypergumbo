@@ -279,6 +279,10 @@ class TestAnnotationLabels:
 #: assignment target or enclosing function, never a line number.
 _ALLOWED_PRIVATE_LISTS = {
     ("js_package_entry.py", "PROBE_EXTENSIONS"),
+    # TypeScript's ESM convention (``./x.js`` names ``x.ts``): a probe rule
+    # mapping a JS extension to its TS twin, not a "which files are JS/TS"
+    # list (WI-dunab).
+    ("js_package_entry.py", "_JS_TO_TS"),
     ("tauri_ipc.py", "_resolve_import_path"),
 }
 
