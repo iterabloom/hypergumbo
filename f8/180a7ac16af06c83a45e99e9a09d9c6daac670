@@ -1,0 +1,60 @@
+Original commit body from dc37b2dd7f29120ceadaf8ce89e2155f93b01075:
+
+`[project.scripts] tool = "tool.cli:main"` is a defines_target edge to the
+dotted placeholder python:tool.cli:0-0:main:unresolved, with tool/cli.py and
+main in meta; the build-target linker adds the calls edge to the real
+function. It looked for tool/cli.py only beside the manifest, so on a src/
+layout, and for a meta-package naming another package's module, the real
+function got no edge at all and the placeholder became a workspace-prefixed
+external_symbol. On this repository all three console scripts
+(hypergumbo_core.cli:main, hypergumbo_tracker.cli:main / textconv_main) read
+as running external code, and their real functions had no inbound edge from
+any manifest.
+
+* A Python target is also looked for where Python imports it from: the
+  manifest's src/, the package form tool/cli/__init__.py, else the ONE
+  in-tree file whose path ends in the module's path by whole segments. Two
+  such files name nothing.
+* A manifest that names its function is taken at its word: a missing name
+  no longer falls back to some other main() in the file (a re-export's
+  target is elsewhere; the old test pinned that wrong edge and now asserts
+  none). Elixir, the one other producer of target_function, names "main".
+* build-target-linker holds ADR-0057 §14.1's supersedes_consumed_stub
+  permission, granted on the new docs/audits/0024: every edge it emitted on
+  12 repositories (16) read against its manifest line, 0 wrong, and the pass
+  makes no choice -- an exact file and the exact named function, or no edge.
+  Finalize therefore demotes each placeholder it consumed and stamps
+  superseded_by with the resolved edge. Nothing is deleted. ADR-0057 §14.1's
+  grant sentence and finalize's docstring name both tables.
+
+Why demote and not re-point (owner asked for the reconciliation to be
+investigated and decided; recorded on WI-lipal and INV-nuzas): ADR-0057 is
+a bound decision (a stub is demoted, never deleted), this is its §14.1 case
+exactly (a pass that consumed a stub names it in derived_from, which this
+pass already did), and LinkerContext's Unresolved Edge Protocol has the
+linker create a new edge. INV-nuzas's acceptance property gains carve-out
+(c): a workspace-prefixed stand-in whose production in-edges are all stubs a
+stated supersession demoted.
+
+Measured (12 surveys, docs/audits/0024): 49 defines_target edges, 16
+resolved -- 11 by the manifest directory as before, 5 by the new module
+route (hypergumbo's 4, poetry's 1); 0 wrong. The 33 left unresolved are
+right to be: poetry test fixtures naming modules the fixture lacks,
+ripgrep/just tests/ and fuzz/ targets with no main, npm `main` entries that
+are modules. No edge lost: the only Python targets naming a missing function
+are those poetry fixtures, whose files do not exist.
+
+Tests: test_build_target_linker.py (src layout, a meta-package naming
+another package's module, a package module, two same-path files name
+nothing, the manifest's own tree wins, whole segments only, a Cargo bin
+takes no module route, a missing named function is no edge);
+test_console_script_targets.py through run_behavior_map (both scripts reach
+the src-layout function; each placeholder's superseded_by names the
+resolving edge; a script naming a module the tree lacks keeps an undemoted
+placeholder); the pinned grant set. Seven mutations (no grant, no module
+route, ambiguity accepted, partial segments, no src/ base, main fallback
+restored, no package form) each turn a test red.
+
+Addresses WI-lipal and INV-nuzas.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
