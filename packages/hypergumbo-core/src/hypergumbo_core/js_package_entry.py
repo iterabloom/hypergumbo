@@ -50,13 +50,22 @@ def is_node_core_module(specifier: str) -> bool:
 PROBE_EXTENSIONS = (".js", ".ts", ".jsx", ".tsx", ".mjs", ".mts", ".vue", ".json")
 
 
-def probe_file(base_path: Path) -> Path | None:
-    """Probe for a file with various extensions and index patterns.
+# TypeScript's ESM convention: a specifier spelled with the JS extension the
+# build will produce (``./x.js``) names the TS source before the build.
+_JS_TO_TS = {".js": (".ts", ".tsx"), ".jsx": (".tsx",), ".mjs": (".mts",), ".cjs": (".cts",)}
 
-    Given a base path (without extension), tries to find the actual file:
-    1. If the path already has an extension and exists, return it.
-    2. Try appending each extension in PROBE_EXTENSIONS.
-    3. If it's a directory, try {dir}/index.{ext}.
+
+def probe_file(base_path: Path) -> Path | None:
+    """The file a relative specifier names, the way Node looks for it.
+
+    1. The path itself, when it is a file.
+    2. The path with each extension in PROBE_EXTENSIONS APPENDED. WI-dunab:
+       this used ``Path.with_suffix``, which REPLACES the last dotted
+       segment, so ``./X.test-wrapper`` became ``X.tsx`` -- an existing,
+       different file (30 nuclear test imports bound to the component).
+    3. For a specifier ending in a JS extension, its TS twin
+       (``./x.js`` -> ``x.ts``; ``_JS_TO_TS``).
+    4. A directory's ``index.<ext>``.
 
     Args:
         base_path: The base file path (possibly without extension).
@@ -64,23 +73,21 @@ def probe_file(base_path: Path) -> Path | None:
     Returns:
         Resolved Path if found, None otherwise.
     """
-    # If the path already exists as a file, return it
     if base_path.is_file():
         return base_path
-
-    # Try appending extensions
     for ext in PROBE_EXTENSIONS:
+        candidate = base_path.with_name(base_path.name + ext)
+        if candidate.is_file():
+            return candidate
+    for ext in _JS_TO_TS.get(base_path.suffix, ()):
         candidate = base_path.with_suffix(ext)
         if candidate.is_file():
             return candidate
-
-    # If it's a directory, try index files
     if base_path.is_dir():
         for ext in PROBE_EXTENSIONS:
             index = base_path / f"index{ext}"
             if index.is_file():
                 return index
-
     return None
 
 

@@ -188,6 +188,34 @@ class TestProbeFile:
         assert result.name == "config.json"
 
 
+class TestProbeAppendsTheExtension:
+    """WI-dunab: Node APPENDS an extension; ``Path.with_suffix`` replaced the
+    last dotted segment, so ``./X.test-wrapper`` resolved to ``X.tsx`` (30
+    nuclear test imports bound to the component instead of its wrapper)."""
+
+    def test_a_dotted_basename_is_not_its_same_stem_sibling(self, tmp_path: Path) -> None:
+        (tmp_path / "X.tsx").write_text("")
+        (tmp_path / "X.test-wrapper.tsx").write_text("")
+        assert _probe_file(tmp_path / "X.test-wrapper") == tmp_path / "X.test-wrapper.tsx"
+
+    def test_a_dotted_basename_with_no_file_names_nothing(self, tmp_path: Path) -> None:
+        (tmp_path / "X.tsx").write_text("")
+        assert _probe_file(tmp_path / "X.test-wrapper") is None
+
+    def test_a_js_specifier_still_names_its_ts_source(self, tmp_path: Path) -> None:
+        """TypeScript's ESM convention: ``./x.js`` is ``x.ts`` before build."""
+        (tmp_path / "x.ts").write_text("")
+        (tmp_path / "y.tsx").write_text("")
+        (tmp_path / "z.mts").write_text("")
+        assert _probe_file(tmp_path / "x.js") == tmp_path / "x.ts"
+        assert _probe_file(tmp_path / "y.jsx") == tmp_path / "y.tsx"
+        assert _probe_file(tmp_path / "z.mjs") == tmp_path / "z.mts"
+
+    def test_a_non_js_specifier_is_not_swapped(self, tmp_path: Path) -> None:
+        (tmp_path / "styles.ts").write_text("")
+        assert _probe_file(tmp_path / "styles.css") is None
+
+
 class TestLinkJsModules:
     """Tests for the main linker function."""
 
