@@ -1,0 +1,37 @@
+Original commit body from ed59229b913999316e26688b15c41a88f70fec5d:
+
+#1953 turned a module_attr_ref read of an in-tree module object's member
+into a references edge, but gated it per MODULE: a module the file also
+bound by name or default was left alone, because the attribute emitter
+keys its edges by module, not by the alias the read went through. The
+filed INV-nuzas fixture is exactly that shape -- `const { helper } =
+require('@ws/b'); const b = require('@ws/b'); new b.Engine()` -- so its
+javascript:@ws/b:0-0:@ws/b.Engine stand-in survived the fix (found
+re-running the filed repro on merged dev).
+
+_module_object_reads now walks the file's member_expression nodes and
+records (line, module, attribute) for each read made THROUGH a
+module-object alias (import * as, a plain require), and separately for
+reads through a named or default binding. An edge is retargeted only if
+its (line, module, attribute) is a module-object read that no other
+binding also produces. `W.Builder` after `import { W } from './w'` (a
+property of the exported object) is still left alone.
+
+Measured, analyze_javascript edge set, branch vs origin/dev js_ts.py: knex
+1 (lib/schema/tablecompiler.js:306 `helpers.normalizeArr`, which binds
+../util/helpers both as `helpers` and by destructuring -- the case #1953
+missed), blocksuite 5 (note-edgeless-block.ts, `import { X } from
+'./note-edgeless-block.css'` beside `import * as styles from` the same),
+each read against its source line; nuclear's named-object reads unchanged;
+apollo-server, jotai, hls.js, pm2, ioredis 0. Line pins into js_ts.py
+relocated by anchor (module_key_axis 7819 -> 7835, 1354 -> 1370;
+signature_axis 6559 -> 6575).
+
+Test: the filed shape (a module bound by destructuring and as a module
+object) through run_behavior_map. Four mutations (other-alias reads
+ignored, every alias a module object, no per-read gate, no module-object
+reads) each turn a test red.
+
+Addresses WI-halol and INV-nuzas.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
