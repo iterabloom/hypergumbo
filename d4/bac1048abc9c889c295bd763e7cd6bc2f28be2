@@ -1,0 +1,73 @@
+Original commit body from a0174ee579dcb6c6a37d468b8600af259a9a4d76:
+
+WI-rilof made a NAMED binding of an npm workspace sibling resolve. Three
+other spellings still called a tier-3 @ws/ stand-in (INV-nuzas), because
+the lookup found the sibling's function and the cross-package guard
+refused it:
+  const b = require('@ws/b'); b.helper()   -> javascript:@ws/b:0-0:helper
+  import * as C from '@ws/c'; C.shout()    -> typescript:@ws/c:0-0:shout
+  import cDefault from '@ws/c'; cDefault() -> typescript:@ws/c:0-0:default
+
+* A member call on a MODULE OBJECT (import * as, a plain require) takes the
+  answer a named binding takes: _disambiguate_by_import, i.e.
+  _in_tree_package_candidate, before the guard. namespace_imports also
+  holds default imports, whose alias is the default export's VALUE, so
+  _extract_namespace_imports now records which aliases are module objects
+  and only those take this route; `cd.shout()` on a default import is not
+  guessed to be the module's shout.
+* A called default binding of an in-tree package is its ENTRY's `export
+  default` declaration, whatever the local name (`import x from '@ws/c';
+  x()` is cDefault; a relative `import y from './c'; y()` names c's
+  default export the same way). The entry is found by Node's rule, now in the new
+  core module js_package_entry (package_entry, probe_file), moved verbatim
+  from the js_module linker, which imports it back, so the import edge
+  and the call agree on the file. A package name two roots declare, a
+  self-import, or an entry with no named default declaration names nothing.
+  The per-file default-export name lives on _ParsedFile (in memory).
+* The item's shape 4: `new b.Engine()` / `b.VERSION` -- a read of an in-tree
+  module object's member -- was a module_attr_ref to a @ws/b.Engine
+  stand-in beside the real instantiation (relative imports too: ./b.Engine).
+  It is now a `references` edge to the in-tree symbol (evidence
+  ast_name_read), python's WI-huhum answer to the same shape; references is
+  not a taint call edge, so no taint frontier moves. Exact matches only. The
+  shared emitter keys edges by module, not alias, so a module the file also
+  binds by name or default is left alone (a miss, never a wrong edge).
+  Shape 5 (the `<spec>:0-0:module` import stand-ins beside the linker's real
+  file edge) is the WI-lipal case and is left for its own change.
+
+The extension single-source gate scanned linkers/ for private JS/TS
+extension lists and allowed js_module.py's _PROBE_EXTENSIONS (a probe
+order); the list moved with the code, so the gate now also scans
+js_package_entry.py and allows it there (same allowlist size). Three
+line-pinned citations into js_ts.py relocated by anchor (module_key_axis
+7598 -> 7819, 1168 -> 1354; signature_axis 6363 -> 6559).
+
+Measured, analyze_javascript edge set {(src, dst, type, evidence, line)},
+branch vs origin/dev js_ts.py: apollo-server, jotai, hls.js, pm2 0 changed;
+three relative default-import calls move from a `<path>.default` stand-in to
+the export (knex docs `import KnexDialectsPlugins from './knexDialects'` ->
+knexDialects; ioredis `import debug from "../../lib/utils/debug"` x2 ->
+genDebugFunction); knex 7, nuclear 7, blocksuite 82 module_attr_ref stand-ins replaced
+by references edges to the in-tree symbol, every one read against its
+source line (knex `helpers.normalizeArr`, `new utils.NameHelper`; nuclear
+`import * as themes` test reads; blocksuite `import * as styles from
+'./x.css'` style variables). The module-object gate removed two nuclear
+reads that were right only by coincidence (`import { Wrapper as W }` then
+`new W.QueueItemBuilder()` reads an exported object's property). INV-nuzas
+fixture (js): shapes 1-3 now land on b's helper, c's shout and cDefault;
+the @ws/b.Engine stand-in is gone.
+
+Tests (test_js_workspace_module_objects.py, run_behavior_map): the three
+spellings; a default import under another local name; a CommonJS entry
+with no default declaration; an external package and the relative control
+unchanged; the member reads of a sibling's class and constant, a relative
+module object, an external module's (net, process) kept; a named import's
+property not retargeted, a namespace of the same module retargeted; a
+default import's member call not guessed; a package name two roots
+declare; a relative default import under another name. Seven mutations
+each turn a test red (one survived until the decoy default export was
+made to sort first).
+
+Addresses WI-halol and INV-nuzas.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
