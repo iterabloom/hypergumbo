@@ -1,0 +1,33 @@
+Original commit body from 3c3dc97772eac10d115a3815e3b6feb382fe28d2:
+
+js_package_entry.probe_file tried base_path.with_suffix(ext) for each
+probe extension. Path.with_suffix REPLACES the last dotted segment, so
+`import { AlbumWrapper } from './Album.test-wrapper'` became Album.tsx -- an
+existing, different file -- and a dotted name with no same-stem sibling
+(`./cli/help.spec`, `../mocks/hls.mock`, `./dashboard.meta`) resolved to
+nothing. Node APPENDS the extension. Found by the WI-halol shape-5
+precision audit re-run on merged dev: 30 of 3,890 relative resolutions
+bound to the wrong sibling, all nuclear.
+
+probe_file now tries the path, then the path with each extension
+appended, then -- only for a specifier ending in a JS extension -- its TS
+twin (`./x.js` -> x.ts, .jsx -> .tsx, .mjs -> .mts, .cjs -> .cts:
+TypeScript's ESM convention, which the replacement had given by accident),
+then the directory's index. The linker and js_ts's default-export
+resolver share this function.
+
+Measured, js-module-linker edges, branch vs merged dev 2613b61e34: nuclear
+36 removed (every `*.test-wrapper` import bound to the component, and the
+module_exports derived from those wrong files) and 53 added (the wrapper
+files, `*.meta`, `*.test.data`, `log-stories.data`); knex 9 added
+(`require('./cli/help.spec')` ...); hls.js 10 added (`../../mocks/hls.mock`
+...); apollo-server 0. Every edge read against its import line.
+
+Tests (test_js_module_linker.py): a dotted basename beside a same-stem
+file; a dotted basename with no file names nothing; ./x.js / ./y.jsx /
+./z.mjs still name their TS sources; ./styles.css is not swapped. Two
+mutations (replace the suffix again, no TS twin) each turn a test red.
+
+Addresses WI-dunab; unblocks WI-halol's shape-5 grant.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
