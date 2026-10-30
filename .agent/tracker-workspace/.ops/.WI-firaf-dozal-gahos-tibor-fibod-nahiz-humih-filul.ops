@@ -1,0 +1,22 @@
+- op: create  # d69f
+  at: '2026-10-30T21:47:03Z'  # d69f
+  by: agent  # d69f
+  actor: jgstern_agent  # d69f
+  clock: 1  # d69f
+  nonce: d69f  # d69f
+  data:  # d69f
+    kind: work_item  # d69f
+    title: "profile.languages counts extension globs while analyzers walk their own finders; the sketch's test-file count is a third walk; knex has 3 duplicate node ids"  # d69f
+    status: todo_hard  # d69f
+    priority: 3  # d69f
+    parent:  # d69f
+    tags:  # d69f
+    - concept_audit  # d69f
+    - consumer_agreement  # d69f
+    - file_counts  # d69f
+    isbefore: []  # d69f
+    duplicate_of: []  # d69f
+    not_duplicate_of: []  # d69f
+    pr_ref:  # d69f
+    description: "From WI-borib (docs/audits/0026). Verdict SINGLE-SOURCE. Agent C's inventory (~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/C_counts_disclosure.md, C_scripts/diff_counts.py), real numbers read from the default surveys in ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/surveys/.\n\nFACT: how many files of language L. profile.languages counts LANGUAGE_EXTENSIONS globs; each analyzer walks its own finder. They differ for .pyi, *.kts, *.rake, scss/less/sass counted as css (mitmproxy css 62 in the profile, 30 analysed), .lhs/.mli/.sc/.tfvars/.gvy and generic YAML; logrus go 47 vs 46 (a file with no symbols). The profile is computed before --max-file-bytes, so capped files are counted and not analysed; --max-files refusals are recorded nowhere.\nAlso: the sketch Overview's \"N files (A non-test + B test)\" takes B from a separate walk over files with a node, never profile.test_files (which has no reader): mitmproxy 392 vs 355, knex 294 vs 289 (offline reproduction of the sketch logic, not a sketch run). knex has 12,895 nodes and 12,892 distinct ids: three file anchors emitted twice (the analyzer's and orchestrator_file_symbol_synthesis'), counted twice by metrics.total_nodes, unflagged by the validator. The profile has no key for analysed pony, scss and gitignore. bakeoff-broad / bakeoff-deep each carry a private 18-extension detect_languages.\n\nACCEPTANCE: the profile's per-language file set and the analyzers' candidate sets come from one table (or the difference is a named field); node ids unique per map, enforced."  # d69f
+    fields: {}  # d69f
