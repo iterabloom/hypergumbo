@@ -1,0 +1,22 @@
+- op: create  # e35f
+  at: '2026-10-30T21:48:09Z'  # e35f
+  by: agent  # e35f
+  actor: jgstern_agent  # e35f
+  clock: 1  # e35f
+  nonce: e35f  # e35f
+  data:  # e35f
+    kind: work_item  # e35f
+    title: "four readers re-derive pass status outside pass_silence: a truncated-only pass reads no_candidate_files, partial-install guesses languages from pass names"  # e35f
+    status: todo_hard  # e35f
+    priority: 3  # e35f
+    parent:  # e35f
+    tags:  # e35f
+    - concept_audit  # e35f
+    - consumer_agreement  # e35f
+    - pass_silence  # e35f
+    isbefore: []  # e35f
+    duplicate_of: []  # e35f
+    not_duplicate_of: []  # e35f
+    pr_ref:  # e35f
+    description: "From WI-borib (docs/audits/0026; agent C, ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/C_counts_disclosure.md). Verdict SINGLE-SOURCE: four readers re-derive pass status outside pass_silence.\n\n1. pass_silence.derive_silence_reason returns no_candidate_files whenever files_analyzed == 0 (pass_silence.py ~335), including a pass whose every file --max-file-bytes dropped -- while limits.truncated_files lists those files. Its docstring calls that the one silence \"the orchestrator can attribute with certainty\". Reproduced on the schema-coverage fixture with --max-file-bytes 400 (rust/erlang/js/csharp/markdown read \"nothing to find\"; stderr folds them into routine; skipped_languages stays null).\n2. The partial-install check infers languages from PASS NAMES, not the registry's declared languages: it prints \"Detected N llvm_ir file(s) but ... analyzer not installed\" while the llvm_ir analyzer is installed and runs.\n3. catalog.CONFIG_LANGUAGES (skipped_languages) and CONFIG_ONLY_LANGUAGES (partial install) disagree: asciidoc, cmake, hcl, ini, makefile, rst, starlark on one side; css, just, mermaid on the other.\n4. AnalysisRun.files_skipped means four things (read error, any exception, no symbols for go/csharp/ruby/kotlin, binary file), yet any value > 0 sets partial_results_reason -- logrus is flagged partial for one Go file with no symbols.\n5. test_only_reachability.pass_contribution_problem reads nodes_emitted (pre-filter: logrus 1,126 emitted vs 1,007 kept) as contribution and calls an edges-only pass \"emitted nothing\", contradicting derive_silence_reason.\n\nACCEPTANCE: each reader consumes pass_silence / the registry; a test per pair keyed on the contradiction (e.g. a truncated-only pass is not no_candidate_files)."  # e35f
+    fields: {}  # e35f
