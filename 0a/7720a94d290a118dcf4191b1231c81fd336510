@@ -1,0 +1,33 @@
+Original commit body from bc6617770f5e14661cef1a82924ed12a3c91f0ea:
+
+asyncio.StreamReader.read / readline / readexactly / readuntil were rowed
+net_recv only, but one StreamReader class is fed by a TCP socket
+(asyncio.open_connection), an AF_UNIX socket (open_unix_connection) or a
+child's pipe (asyncio.create_subprocess_*): read() drains whatever
+transport set_transport attached, so the medium is a fact of the call that
+made the reader (ADR-0050 section 1). WI-himim (#1964) made py.py stamp
+it at that binding (io_target_kind net_stream / pipe); until then the
+ipc_recv twin this item asked for had no producer.
+
+python.yaml now carries WI-kalol's net.Conn dual-row shape: the net_recv
+row and an ipc_recv twin, both call_site_undecidable and abstaining to
+net_recv. A pipe stamp selects ipc_recv; a net_stream stamp or none (an
+annotated parameter, whose reader came from anywhere) keeps net_recv,
+today's answer.
+
+ADR-0049 ruling 3, at the finding level: net_recv and ipc_recv both derive
+untrusted_input (AUTO_SOURCE_LABEL_MAP), so no taint source is lost; what
+moves is which claim a pipe read meets. Measured with `hypergumbo
+io-boundaries --include-tests`, branch vs origin/dev python.yaml: uvloop
+net_recv 41 -> 26 chains, ipc_recv 1 -> 16 (the same 42), the 15 moved
+read: 11 subprocess pipe reads (proc.stdout.read() / readline() in
+test_process, test_signals, test_dealloc) and 4 open_unix_connection
+reads (test_unix); mitmproxy 0 changed (its readers are TCP).
+
+Tests: test_py_stream_reader_medium.py (analyze_python + tag_io_boundaries:
+a TCP reader net_recv, a Unix-socket reader and a child's stdout ipc_recv,
+an annotated reader abstains to net_recv; both media are untrusted_input).
+
+Addresses WI-foloh.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
