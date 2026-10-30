@@ -41,3 +41,18 @@
   clock: 4  # 040b
   nonce: 040b  # 040b
   message: "2026-10-28 premise measurement (production CLI, dev 3c53837bb5): the shapes this item is about do not reach the asyncio.StreamReader row at all. reader, writer = await asyncio.open_unix_connection(p) then reader.read(), the open_connection twin, and proc.stdout.read() after create_subprocess_exec all emit python:external:0-0:read / readuntil and classify as nothing; only an annotated parameter (reader: asyncio.StreamReader) reaches the net_recv row, and its medium is unknown at the call site. So the ipc_recv twin the fix shape names would have NO producer today (py.py stamps no io_target_kind anywhere, and cannot type a tuple-unpacked awaited producer), which is the LIVE rule-7 defect; not added. Filed the blocker as WI-himim (isbefore this item): type the stream-factory readers and stamp pipe / net_stream, after which this item's dual row (net_recv + ipc_recv, call_site_undecidable, abstains_to net_recv) has a producer. Status unchanged: the row is still net_recv only."  # 040b
+- op: update  # fb39
+  at: '2026-10-30T20:58:12Z'  # fb39
+  by: agent  # fb39
+  actor: jgstern_agent  # fb39
+  clock: 5  # fb39
+  nonce: fb39  # fb39
+  set:  # fb39
+    status: done  # fb39
+- op: discuss  # f84e
+  at: '2026-10-30T20:58:12Z'  # f84e
+  by: agent  # f84e
+  actor: jgstern_agent  # f84e
+  clock: 6  # f84e
+  nonce: f84e  # f84e
+  message: "Done in PR #1965 (0a7720a94d), after its blocker WI-himim (#1964) gave the pipe stamp a producer. Root cause: asyncio.StreamReader.read* had one row, net_recv, though the class is fed by TCP, AF_UNIX and subprocess-pipe transports alike. Fix: WI-kalol's net.Conn dual-row shape in python.yaml -- the net_recv row and an ipc_recv twin, both call_site_undecidable, abstains_to net_recv; py.py's pipe stamp (open_unix_connection, create_subprocess_*) selects ipc_recv, net_stream or no stamp keeps net_recv.\nCLOSURE EVIDENCE, production `hypergumbo io-boundaries` on merged dev over a fixture with the filed shapes: `reader, writer = await asyncio.open_unix_connection(p); await reader.read(100)` -> ipc_recv; `proc = await asyncio.create_subprocess_exec(...); await proc.stdout.read()` -> ipc_recv; the open_connection TCP control -> net_recv. Production-path tests (test_py_stream_reader_medium.py): an annotated reader abstains to net_recv. ADR-0049 ruling 3 at the finding level: net_recv and ipc_recv both derive untrusted_input, so no taint source is lost; corpus: uvloop 15 chains net_recv -> ipc_recv (11 subprocess pipe reads, 4 open_unix_connection reads, every one read; total chains unchanged at 42), mitmproxy 0 changed (TCP readers)."  # f84e
