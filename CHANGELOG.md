@@ -121,6 +121,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **ADR-0041 §1**: tier is the distance of a node's code from the project.
 - **ADR-0062**: the tracker's live Yjs document is a projection of the ops log, never its replacement.
 - **Linker supersession audits** ([`docs/audits/0024`](docs/audits/0024-build-target-supersession-precision.md), [`0025`](docs/audits/0025-js-module-supersession-precision.md)): the measured precision behind the two ADR-0057 §14.1 grants.
+- **Consumer agreement** ([`docs/audits/0026-consumer-agreement.md`](docs/audits/0026-consumer-agreement.md)): which facts two views derive separately, and where they disagree. The 0019 backend-agreement table now checks every row, and states what its edge rows describe.
 - Module docstrings: 42 corrected, 12 extended.
 - The spec documents 63 `symbol_meta` keys; `ALLOWED_WEBSITES.md` permits discuss.python.org; ARCHITECTURE.md regenerated.
 

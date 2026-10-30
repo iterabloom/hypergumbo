@@ -1156,6 +1156,25 @@ runs can find prior work:
 
 (Future audits append here.)
 
+- **2026-10-30 — consumer agreement (`consumer-agreement`, WI-borib).**
+  Trigger: the input filed after audit #20 for the one critique shape it had
+  no scope for -- two consumers deriving one fact separately. Method: four
+  read-only sub-agents on the pinned tree (a17367f254), one per family
+  (reachability, ranking and scope, counts and pass disclosure,
+  classification and tier), AST walks for every derivation; the orchestrator
+  measured each separate pair on one default survey per language family and
+  read every disagreement it counted. **Confirmed**: of 17 facts, 12 are
+  derived separately. On real output: five test predicates, so ripgrep's
+  `#[test]` functions are 434 of dead-code's 817 candidates while slice calls
+  them tests; dead-code and test-coverage contradict on overrides reached by
+  `dispatches_to`; taint ignores `io_target_kind` where io-boundaries honours
+  it. Write-up `docs/audits/0026-consumer-agreement.md`; 14 items, WI-vosop
+  decided. The lesson worth carrying: re-taking WI-vosop's harness-vs-survey
+  diff edge by edge found a Rust binding that depends on FILE ORDER -- the
+  harness walks files, a survey sorts them, and the two produce different
+  call graphs from one analyzer. An instrument that imitates a pipeline
+  inherits none of the pipeline's ambient state unless it is told to.
+
 - **2026-10-28 — reader census (`reader-census`, WI-kosup).** Trigger: the
   input filed after audit #19, scope widened by the owner on 10-25. Method:
   six read-only sub-agents on one pinned worktree (02a25bba56), one per scope
