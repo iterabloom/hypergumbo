@@ -27,3 +27,18 @@
   nonce: '1544'  # 1544
   set:  # 1544
     status: in_progress  # 1544
+- op: update  # 8502
+  at: '2026-10-29T05:12:48Z'  # 8502
+  by: agent  # 8502
+  actor: jgstern_agent  # 8502
+  clock: 3  # 8502
+  nonce: '8502'  # 8502
+  set:  # 8502
+    status: done  # 8502
+- op: discuss  # 50e1
+  at: '2026-10-29T05:12:48Z'  # 50e1
+  by: agent  # 50e1
+  actor: jgstern_agent  # 50e1
+  clock: 4  # 50e1
+  nonce: '50e1'  # 50e1
+  message: "Fixed in PR #1933 (dev 69192ed917). _classify_symbols now gives a protocol stand-in with a path at tier 1 its FILE'S distance (two ways in: the blanket protocol_origin skip, and seven linkers' descriptive supply_chain_reason marking the node classified at tier 1); the linker's reason is kept with the path's appended, a linker's real non-default tier (npm packages, 3) is kept, a pathless stand-in is left. Behavioral evidence, survey dev vs branch (~/hg_meas/zuzud/): livebook stand-ins inside tier-filtered files 249 -> 0; nodes 16,243 -> 15,976, edges 38,173 -> 37,374, every removed node under static/ or its placeholder; no surviving node re-tiered. session-desktop unchanged (17,806 nodes / 60,352 edges). Production-path test test_stand_in_in_bundle_is_tier_filtered.py: the same Electron send survives in src/ and is filtered with a source-mapped bundle. Mutation-checked (4 tests red with the classification disabled)."  # 50e1
