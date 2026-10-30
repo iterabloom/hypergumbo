@@ -35,3 +35,25 @@
   set: {}  # baf7
   add:  # baf7
     isbefore: [INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap]  # baf7
+- op: update  # 265e
+  at: '2026-10-30T18:36:53Z'  # 265e
+  by: agent  # 265e
+  actor: jgstern_agent  # 265e
+  clock: 4  # 265e
+  nonce: 265e  # 265e
+  set:  # 265e
+    status: done  # 265e
+- op: discuss  # 719c
+  at: '2026-10-30T18:36:53Z'  # 719c
+  by: agent  # 719c
+  actor: jgstern_agent  # 719c
+  clock: 5  # 719c
+  nonce: 719c  # 719c
+  message: "Done in PR #1961 (892d4912cb). Root cause: rust.py's use_declaration branch read only a single path child, so a scoped_use_list / use_as_clause emitted no imports edge (and a top-level use {...} emitted one whose module slot was the whole brace text); an aliased call looked up a symbol named by the alias. Fix: the use-tree walker expands every bound path, each resolved as a single path is; an aliased call resolves the alias's PATH (_rust_function_in_module). The change exposed profile.py's Rust import-evidence gap (no :: separator, actix-web vs actix_web), fixed in the same PR. CLOSURE EVIDENCE, the filed fixture (INV-nuzas cargo) through production hypergumbo survey on merged dev: crate-a/src/lib.rs:3  now has an imports edge to crate-b/src/lib.rs (had none); line 8  calls rust:crate-b/src/lib.rs helper (was rust:crate_b:0-0:helper stand-in); 0 workspace-prefixed external_symbol nodes. Controls ctl_rs / ctl_rs2: their crate::m alias calls now resolve to src/m/mod.rs (were stand-ins), nothing lost. Corpus A/B: 5 repos, imports +5,385 / -60 (brace-text stand-ins), zellij 17 alias calls corrected, every call edge read."  # 719c
+- op: discuss  # e8cd
+  at: '2026-10-30T18:37:25Z'  # e8cd
+  by: agent  # e8cd
+  actor: jgstern_agent  # e8cd
+  clock: 6  # e8cd
+  nonce: e8cd  # e8cd
+  message: "CORRECTION to the closure note above: its evidence sentence was truncated by shell quoting (backticks in the argument ran as a command). The evidence, restated exactly. The filed fixture (INV-nuzas cargo, ~/hypergumbo_lab_notebook/nuzas_10292026/fixtures/cargo) through production hypergumbo survey on merged dev 892d4912cb: crate-a/src/lib.rs line 3 is use crate_b::{Thing, helper as h2}; -- it imports crate-b/src/lib.rs, recorded on the one deduplicated imports edge to that file, whose meta call_lines is [1, 3] (line 1's use crate_b::helper names the same file; before this change line 3 contributed nothing). Line 8, h2(), calls rust:crate-b/src/lib.rs:2-2:helper:function (was the rust:crate_b:0-0:helper stand-in). 0 workspace-prefixed external_symbol nodes in the fixture. Controls ctl_rs / ctl_rs2: their crate::m alias calls resolve to src/m/mod.rs (were stand-ins); nothing lost. Corpus A/B on 5 repos: imports +5,385, -60 (every one a brace-text stand-in); zellij's 17 aliased calls corrected, every one read."  # e8cd

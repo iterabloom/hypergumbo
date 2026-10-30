@@ -59,6 +59,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A resolved JS/TS import's analyzer stub is demoted beside its resolution** (ADR-0057 §14.1, `docs/audits/0025`).
 - **Rust brace-list, top-level `use {...}` and aliased `use` declarations emit imports edges**; a call through an alias reaches the function its path names.
 - **A Rust `use` path is framework import evidence** (`::` separator; `actix-web` imported as `actix_web`).
+- **Python asyncio stream readers and subprocess pipes are typed**, and stamped with their medium (`net_stream` / `pipe`).
 - **A resolver-graded call keeps its graded confidence** through finalize (ADR-0039 ruling 6); on apollo-server 244 of 18,684 edges move, all down.
 - **Finalize keeps typed binds** for methods named like stdlib interfaces (`Close`, `Parse`), in C++ and in Java, C# and Kotlin static initializers.
 - **Every linker call-site stand-in is attached to its enclosing function.**

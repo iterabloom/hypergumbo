@@ -45,3 +45,10 @@
   clock: 4  # 57a3
   nonce: 57a3  # 57a3
   message: "Done in PR #1957 (2613b61e34). Root cause: the js-module-linker sent every bare specifier no alias or workspace package resolved to the npm route and never read the core-module list js_ts had. Fix: the list moved to js_package_entry (NODE_CORE_MODULES, is_node_core_module, shared with js_ts) and the linker skips the npm route for a core module. CLOSURE EVIDENCE, production hypergumbo survey on merged dev: pm2 and knex have no package node named fs, path, http, child_process, util, assert, os or url (pm2 was 22 core package nodes / 301 import edges, knex 12 / 119); pm2 package nodes 77 -> 55, knex 60 -> 48, no npm package lost. Across the 7 audit repos the package-node route is now 2,231 of 2,231 structurally consistent (was 2,231 + 540 core modules)."  # 57a3
+- op: discuss  # 68a9
+  at: '2026-10-30T13:50:48Z'  # 68a9
+  by: agent  # 68a9
+  actor: jgstern_agent  # 68a9
+  clock: 5  # 68a9
+  nonce: 68a9  # 68a9
+  message: "Precision on the closure note's counts: 'pm2 package nodes 77 -> 55, knex 60 -> 48' are DISTINCT PACKAGE NAMES (the A/B counted a name set). pm2 on merged dev has 57 package nodes carrying 55 names (example-module and import each have two nodes: one javascript npm stand-in, one json manifest declaration); knex 48 nodes. The core-module removals (22 / 12 names, 301 / 119 import edges) are unaffected."  # 68a9

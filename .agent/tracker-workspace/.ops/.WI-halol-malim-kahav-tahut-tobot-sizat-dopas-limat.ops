@@ -43,3 +43,18 @@
   clock: 4  # 69fc
   nonce: 69fc  # 69fc
   message: "SHAPE-5 GRANT AUDIT, continued 2026-10-30. WI-pulid fixed (#1956). Hand-read stratified sample of the other 7,255 js-module-linker resolutions: relative 25/25 correct, bare-specifier -> in-tree file (tsconfig paths, workspace entries, a dist-only entry falling back to src/index.ts) 30/30 correct, package-node 13/15 -- the 2 wrong are Node core modules (url, assert) minted as npm packages. Enumerated: 540 of 2,771 package-node edges (19.5%) are core modules labelled third-party dependencies, filed as WI-tufob, which now also blocks this item. Grant stays refused until WI-tufob lands; then re-run the enumeration and write docs/audits/0025."  # 69fc
+- op: update  # 856b
+  at: '2026-10-30T16:30:49Z'  # 856b
+  by: agent  # 856b
+  actor: jgstern_agent  # 856b
+  clock: 5  # 856b
+  nonce: 856b  # 856b
+  set:  # 856b
+    status: done  # 856b
+- op: discuss  # fd4d
+  at: '2026-10-30T16:30:49Z'  # fd4d
+  by: agent  # fd4d
+  actor: jgstern_agent  # fd4d
+  clock: 6  # fd4d
+  nonce: fd4d  # fd4d
+  message: "Done. Shapes 1-4 in PR #1953 (d4bac1048a) and #1954 (c5ef72894e); shape 5 in PR #1960 (e7a90a03fd), after its precision audit found and fixed three js-module-linker wrong routes (WI-pulid #1956, WI-tufob #1957, WI-dunab #1959). Root causes: the cross-package guard refused a module-object / namespace member and a default import that WI-rilof's named-binding route would have accepted; an attribute read on an in-tree module object was emitted as a module_attr_ref stand-in; the analyzer's <spec>:0-0:module import stub survived beside the linker's file edge with nothing stating the relation. CLOSURE EVIDENCE, the filed fixture (~/hypergumbo_lab_notebook/nuzas_10292026/fixtures/js) through production `hypergumbo survey` on merged dev: (1) b.helper() via const b = require('@ws/b') -> packages/b/src/index.js helper; (2) C.shout() via import * as C -> packages/c/src/index.ts shout; (3) cDefault() via a default import -> c's export default cDefault; (4) new b.Engine() -> references to class Engine, no @ws/b.Engine stand-in; (5) each of the 4 @ws/ module stand-ins (index.js:1, index.js:3 @ws/b/src/util/deep, test/a.test.js:1, esm.ts:1) carries superseded_by naming the file edge that resolved it (packages/b/src/index.js, packages/b/src/util/deep.js, packages/c/src/index.ts) -- INV-nuzas carve-out (c). check.py with carve-out (c): 0 violations. Control ctl_js: calls / instantiates / imports edge set identical to 10-27. Grant table docs/audits/0025: 6,792 resolutions over 7 repos, 6,213 judged, 0 wrong. Not asserted: consumers that count external nodes read superseded_by (ADR-0057's general gap)."  # fd4d

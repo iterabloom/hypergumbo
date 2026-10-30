@@ -237,6 +237,7 @@ from hypergumbo_core.analyze.registry import (
     last_segment,
     register_analyzer,
 )
+from hypergumbo_core.library_signatures import load_library_member_types, load_library_tuple_returns
 from hypergumbo_core.qualified_name_axis import QUALIFIED_NAME_SEPARATORS
 from hypergumbo_lang_mainstream._pyscope import NestedDef, Scope, ScopeStack
 
@@ -4298,6 +4299,83 @@ def _comprehension_scope_nodes(node: ast.AST) -> list[ast.AST]:
     return parts
 
 
+#: WI-himim: the medium a stream FACTORY's streams carry, by the factory's
+#: import-resolved name, as ``io_target_kind`` (io_boundary's
+#: ``_READ_TARGET_KIND_BOUNDARY``: a ``net_stream`` reads as ``net_recv``, a
+#: ``pipe`` as ``ipc_recv``). ``StreamReader`` is ONE class fed by a TCP socket,
+#: an AF_UNIX socket or a child's pipe; only the call that made it knows which
+#: (WI-foloh), so the binding records it and every call through the receiver
+#: carries it. go.py stamps a Unix socket ``pipe`` too (WI-kalol).
+_STREAM_FACTORY_TARGET_KINDS: dict[str, str] = {
+    "asyncio.open_connection": "net_stream",
+    "asyncio.open_unix_connection": "pipe",
+    "asyncio.create_subprocess_exec": "pipe",
+    "asyncio.create_subprocess_shell": "pipe",
+}
+
+#: The ``external_var_types`` key segment under which a receiver's medium is
+#: kept: ``reader.\x00io_target_kind``. A dotted key rooted at the receiver, so
+#: ``_prune_shadowed`` and ``_bind_project_class_fields`` drop it exactly when
+#: they drop the receiver's own type, and a ``\x00`` segment is no Python
+#: attribute, so no receiver-type lookup can read it as a field type.
+_MEDIUM_SEGMENT = "\x00io_target_kind"
+
+
+def _assigned_simple_names(targets: "list[ast.expr]") -> list[str]:
+    """The plain names an assignment's targets bind: ``a``, ``a, (b, *c)``.
+
+    Attribute and subscript targets bind no name of their own.
+    """
+    names: list[str] = []
+    stack: list[ast.expr] = list(targets)
+    while stack:
+        target = stack.pop()
+        if isinstance(target, ast.Name):
+            names.append(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            stack.extend(target.elts)
+        elif isinstance(target, ast.Starred):
+            stack.append(target.value)
+    return names
+
+
+def _medium_key(receiver: str) -> str:
+    """The ``external_var_types`` key holding ``receiver``'s medium (WI-himim)."""
+    return f"{receiver}.{_MEDIUM_SEGMENT}"
+
+
+def _call_qualified_name(
+    call: ast.Call,
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+    shadowed: frozenset[str],
+) -> str | None:
+    """The import-resolved qualified name ``call`` calls, or None (WI-himim).
+
+    The name half of :func:`_external_constructor_type`, without its type
+    policies: ``asyncio.open_connection(...)`` under ``import asyncio`` and
+    ``open_connection(...)`` under ``from asyncio import open_connection`` are
+    both ``asyncio.open_connection``. A root the call site's scope shadows, or
+    one no import binds, names nothing.
+    """
+    func = call.func
+    if isinstance(func, ast.Name):
+        return None if func.id in shadowed else _import_binding_for(
+            func.id, imports, module_imports,
+        )
+    if isinstance(func, ast.Attribute):
+        chain = _unwind_attribute_chain(func)
+        if chain is None or chain[0].id in shadowed:
+            return None
+        root, attrs = chain
+        if root.id in module_imports:
+            return ".".join([module_imports[root.id], *attrs])
+        if root.id in imports:
+            module, original = imports[root.id]
+            return ".".join([module, original, *attrs] if module else [original, *attrs])
+    return None
+
+
 def _prune_shadowed(
     var_types: dict[str, "Symbol"],
     external_var_types: dict[str, str],
@@ -6558,6 +6636,51 @@ def _extract_edges(
                 call, imports, module_imports, shadowed=_value_shadow,
             )
 
+        def _bind_external(name: str, ext_type: str, medium: str | None) -> None:
+            """Type ``name`` as ``ext_type``, with its library member types and,
+            when the producer says, the medium its streams carry (WI-himim)."""
+            _bind_project_class_fields(name, None, external_var_types)
+            external_var_types[name] = ext_type
+            if medium is not None:
+                external_var_types[_medium_key(name)] = medium
+            for _key, _member_type in load_library_member_types("python").items():
+                if _key.startswith(ext_type + "."):
+                    _member = f"{name}.{_key[len(ext_type) + 1:]}"
+                    external_var_types[_member] = _member_type
+                    if medium is not None:
+                        external_var_types[_medium_key(_member)] = medium
+
+        def _bind_awaited_producer(targets: list[ast.expr], call: ast.Call) -> None:
+            """``x = await f(...)`` / ``a, b = await f(...)`` (WI-himim).
+
+            An AWAITED call was never typed, and a TUPLE target never was, so
+            ``reader, writer = await asyncio.open_connection(h, p)`` left both
+            untyped and ``reader.read()`` reached no row. A Name target takes
+            the producer's ``signatures`` row through the constructor resolver
+            (its binding check included); a Tuple target takes the producer's
+            ``tuple_returns`` row position by position.
+            """
+            qualified = _call_qualified_name(call, imports, module_imports, _value_shadow)
+            if qualified is None:
+                return
+            medium = _STREAM_FACTORY_TARGET_KINDS.get(qualified)
+            for target in targets:
+                if isinstance(target, ast.Tuple):
+                    _types = load_library_tuple_returns("python").get(qualified, ())
+                    # A target of another arity, or with a starred element
+                    # (``a, *rest = ...``), is not typed by position at all.
+                    if len(_types) != len(target.elts) or any(
+                        isinstance(_elt, ast.Starred) for _elt in target.elts
+                    ):
+                        continue
+                    for _elt, _type in zip(target.elts, _types, strict=True):
+                        if isinstance(_elt, ast.Name):
+                            _bind_external(_elt.id, _type, medium)
+                elif isinstance(target, ast.Name):
+                    _type_one = _external_constructor_module(call)
+                    if _type_one is not None:
+                        _bind_external(target.id, _type_one, medium)
+
         # WI-hiziz PR-3 (review): the caller method's OWN __init__ field names
         # (from the closure-visible ``class_own_field_names``). The Site-3 emit
         # excludes these so an own field re-declared by the caller's class never
@@ -6755,6 +6878,17 @@ def _extract_edges(
             # Track variable assignments for type inference
             # e.g., stub = EmailServiceStub(channel) -> var_types['stub'] = EmailServiceStub
             if isinstance(node, ast.Assign):
+                # WI-himim: a rebinding drops the medium the old value carried
+                # (and its members'), whatever the new value is.
+                for _bound_name in _assigned_simple_names(node.targets):
+                    for _stale in [
+                        k for k in external_var_types
+                        if (k == _bound_name or k.startswith(_bound_name + "."))
+                        and k.endswith(_MEDIUM_SEGMENT)
+                    ]:
+                        del external_var_types[_stale]
+                if isinstance(node.value, ast.Await) and isinstance(node.value.value, ast.Call):
+                    _bind_awaited_producer(node.targets, node.value.value)
                 # WI-gulaz: a MODEL INSTANCE returned by a manager --
                 # ``o = Order.objects.get(...)``, ``p = order.payments.create(...)``,
                 # ``obj, made = ....get_or_create(...)`` -- binds the target to the
@@ -9550,6 +9684,21 @@ def _process_call(
             ext_module = _receiver_type(
                 func.value, external_var_types, _ctor_type_here, _manager_root_here,
             )
+            _inline_meta = {
+                "call_construct": "method",
+                # Only an ORM slot can have been filled from an accessor
+                # NAME; every other module here came from a typed root, and
+                # asking otherwise would stamp a Django provenance on a
+                # pathlib receiver.
+                "resolution_quality": (
+                    _orm_resolution_quality(func.value, _manager_prov_here)
+                    if ext_module == DJANGO_ORM_MODULE else "type_inferred"
+                ),
+            }
+            # WI-himim: a member stream (``proc.stdout``) carries its factory's medium.
+            _dotted_recv = _dotted_receiver_name(func.value)
+            if _dotted_recv is not None and _medium_key(_dotted_recv) in external_var_types:
+                _inline_meta["io_target_kind"] = external_var_types[_medium_key(_dotted_recv)]
             edges.append(Edge.create(
                 src=caller_symbol.id,
                 dst=f"python:{ext_module}:0-0:{func.attr}:unresolved",
@@ -9557,17 +9706,7 @@ def _process_call(
                 line=call_node.lineno,
                 evidence_type="ast_call",
                 is_resolved=False,
-                meta={
-                    "call_construct": "method",
-                    # Only an ORM slot can have been filled from an accessor
-                    # NAME; every other module here came from a typed root, and
-                    # asking otherwise would stamp a Django provenance on a
-                    # pathlib receiver.
-                    "resolution_quality": (
-                        _orm_resolution_quality(func.value, _manager_prov_here)
-                        if ext_module == DJANGO_ORM_MODULE else "type_inferred"
-                    ),
-                },
+                meta=_inline_meta,
                 dst_ref=ExternalRef(
                     lang="python", module_path=ext_module or "", name=func.attr,
                 ),
@@ -9688,6 +9827,10 @@ def _process_call(
             elif receiver_name in external_var_types:
                 ext_module = external_var_types[receiver_name]
                 dst_id = f"python:{ext_module}:0-0:{attr_name}:unresolved"
+                _typed_meta = {"call_construct": "method", "resolution_quality": "type_inferred"}
+                _medium = external_var_types.get(_medium_key(receiver_name))
+                if _medium is not None:
+                    _typed_meta["io_target_kind"] = _medium  # WI-himim
                 edges.append(Edge.create(
                     src=caller_symbol.id,
                     dst=dst_id,
@@ -9695,7 +9838,7 @@ def _process_call(
                     line=call_node.lineno,
                     evidence_type="ast_call",
                     is_resolved=False,
-                    meta={"call_construct": "method", "resolution_quality": "type_inferred"},
+                    meta=_typed_meta,
                     dst_ref=ExternalRef(
                         lang="python", module_path=ext_module, name=attr_name
                     ),

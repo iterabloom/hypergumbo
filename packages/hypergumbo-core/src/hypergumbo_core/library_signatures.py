@@ -52,7 +52,11 @@ row file has two sections read this way: ``signatures`` (producer key -> returne
 :func:`load_library_signatures`) and ``package_variables`` (``<package>.<Variable>`` ->
 its type, :func:`load_library_package_variables`), for a typed value a library exposes
 without a call, such as Go's ``http.DefaultClient``. Only the go analyzer reads the second
-section.
+section. Two more sections are read only by python (WI-himim): ``tuple_returns``
+(a producer that returns a tuple: ``asyncio.open_connection`` -> ``"StreamReader,
+StreamWriter"``, :func:`load_library_tuple_returns`) and ``member_types`` (an
+attribute of a typed object: ``asyncio.subprocess.Process.stdout`` ->
+``StreamReader``, :func:`load_library_member_types`).
 """
 from __future__ import annotations
 
@@ -86,6 +90,7 @@ _WHAT = "library signature file"
 #: WI-hapon: the top-level keys a row file may carry.
 _FILE_KEYS: frozenset[str] = frozenset({
     "provenance", "language", "retrieved", "signatures", "package_variables",
+    "tuple_returns", "member_types",
 })
 
 
@@ -183,6 +188,52 @@ def load_library_signatures(lang: str) -> dict[str, str]:
     that only add.
     """
     return _load_section(lang, "signatures")
+
+
+def _split_tuple(key: str, value: str, origin: str) -> tuple[str, ...]:
+    """A ``tuple_returns`` value split by position, every position non-empty (WI-himim)."""
+    from hypergumbo_core.yaml_catalogs import CatalogueError
+
+    types = tuple(part.strip() for part in value.split(","))
+    if len(types) < 2 or not all(types):
+        raise CatalogueError(
+            f"{origin}: tuple_returns row {key!r} must list two or more non-empty types"
+        )
+    return types
+
+
+@lru_cache(maxsize=None)
+def load_library_tuple_returns(lang: str) -> dict[str, tuple[str, ...]]:
+    """``<producer key>`` -> the types of the tuple it returns, by position (WI-himim).
+
+    ``reader, writer = await asyncio.open_connection(h, p)``: the producer returns
+    a ``(StreamReader, StreamWriter)`` pair, which a single-typed ``signatures``
+    row cannot say, and nine analyzers read that section's values as one type
+    each. So it is a section of its own, read only where a TUPLE target is typed
+    (python), and the value stays a string -- ``"A, B"`` -- so every section of
+    a row file has one shape; :func:`_split_tuple` refuses a value that does
+    not split into two or more non-empty positions. Layered like the others:
+    built-in, then community rows that only add, then the user's rows, which
+    replace.
+    """
+    return {
+        key: _split_tuple(key, value, f"{_WHAT} ({lang})")
+        for key, value in _load_section(lang, "tuple_returns").items()
+    }
+
+
+@lru_cache(maxsize=None)
+def load_library_member_types(lang: str) -> dict[str, str]:
+    """``<type>.<attribute>`` -> the attribute's type (WI-himim).
+
+    A MEMBER ATTRIBUTE is how a library object hands over another typed object
+    without a call: ``proc.stdout`` is the ``StreamReader`` of an
+    ``asyncio.subprocess.Process``. ``signatures`` keys producers that are
+    CALLED and ``package_variables`` module-level values; this keys an
+    attribute read off an object already typed, so ``proc.stdout.read()`` can
+    reach the reader's rows. Only python reads it today.
+    """
+    return _load_section(lang, "member_types")
 
 
 @lru_cache(maxsize=None)
