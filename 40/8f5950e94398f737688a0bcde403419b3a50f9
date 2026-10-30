@@ -1,0 +1,65 @@
+Original commit body from 3d7165e76eedf72e0d8343dc7a5a144066497e70:
+
+C linked a function value everywhere but at file scope: `int (*G)(void) =
+glob;` and `= &adr;` emitted nothing. C++ linked only `&f` and call
+arguments: a designated field ({ .run = f }), a pointer variable, an
+assignment, a return and an array of function pointers had no edge, and
+its static dispatch tables' dispatches_to edges started at a table symbol
+C++ never emitted (C's WI-dirij, unported) -- finalize dropped them (apt:
+6 tables).
+
+Shared in core analyze/c_family (C, C++ and CUDA import it):
+- c_family_is_value_operand: an initialiser, a plain `=` right side, a
+  return operand, an aggregate element -- not a callee, argument, target,
+  operator operand or compound assignment (zstd `ip += ZSTD_frameHeaderSize`).
+- c_family_array_declarator (moved from c.py): the array through the
+  function / parenthesized / pointer wrappers an array of function pointers
+  adds.
+- c_family_declares_local / c_family_file_scope_variables: a parameter,
+  local, range-for variable (apt `for (auto const& Arch : Archs)`), local
+  enumerator, C++ template parameter (x265 `template<int size>`) or file-scope
+  VARIABLE of the name (zstd's `static const size_t ZSTD_frameHeaderSize = 4;`
+  beside a ZSTD_frameHeaderSize() elsewhere) shadows the function. A
+  prototype -- a pointer return too (`void *nk_malloc(...)`) -- is no
+  variable; a name the file defines is never one (zstd's macro-wrapped
+  `void *myalloc _Z_OF((...));`). Computed once per file, and only after the
+  name resolves to a function, so the arm costs ~1% (haproxy + x265: 54.5 s
+  vs 53.9 s).
+
+C: a value arm (initialisers, assignments, returns) anchored on the file at
+file scope; file-scope `&f` now anchors there too. Initializer lists stay
+with the dispatch-table pass.
+
+C++: the same arm plus positional and designated aggregate elements; array
+tables stay with the dispatch pass, which now unwraps pointer arrays and
+emits the table symbol (post_process). A bare name names a free function,
+never a member (C++ spells one `&C::m`). In code tree-sitter misread -- an
+ERROR with no clean definition between, a definition nested in another (C++
+has none), a `public:` read as a statement label, a file-scope block -- no
+bare value is taken: apt's export-macro classes (`class APT_PUBLIC
+pkgCacheFile`) parse as functions whose inline accessors sit beside the data
+members they shadow, and had bound `return Cache;` / `return Origin;` /
+`OldMetaIndex->Origin = Origin;` to them (35 edges, all wrong). In member
+context (a method, an X::f definition, a class body) only this file's
+function is taken; cost: x265's `hpelcomp = sad;` (a template in another
+file) is not linked.
+
+Corpus A/B (analyze_c / analyze_cpp, dev vs branch; every added edge read,
+every rule above added because a read edge was wrong): +673, -0:
+- haproxy 372: task->process = h1_io_cb, ops tables, memprof handler
+  globals, ssl_ckch &loaders.
+- x265 197: the primitive tables (p.cu[BLOCK_8x8].idct = idct8_c, sao,
+  loopfilter, per-ISA setup functions).
+- glfw 57: context vtables (window->context.makeCurrent =
+  makeContextCurrentEGL ...), nuklear allocators.
+- zstd 34: sequence-copier selection, benchmark function tables, zlib
+  wrapper allocators.
+- tmux 13: tty / popup / drag callbacks.
+- apt 0 added; its 6 dangling dispatch tables now resolve. bento4 0.
+
+Moves one file:line citation the edit shifted (INV-fogul's shape):
+module_key_axis disjunction `module_hint = module_slot(_slots)`
+cpp.py 2265 -> 2364.
+
+META-mino: this closes the last language family in the 2026-10-29 matrix.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
