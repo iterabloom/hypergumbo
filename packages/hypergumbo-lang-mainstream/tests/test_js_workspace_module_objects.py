@@ -272,3 +272,23 @@ def test_an_absolute_default_import_names_nothing(tmp_path: Path) -> None:
         "src/a.ts": "import y from '/src/c';\nexport function e3(): number { return y(); }\n",
     })
     assert not any(":cDefault:" in d for d in _calls_from(data, "src/a.ts").get("e3", []))
+
+
+def test_a_module_bound_twice_still_retargets_the_module_object_s_read(tmp_path: Path) -> None:
+    """The filed fixture binds ``@ws/b`` by destructuring AND as a module
+    object (``const { helper } = require('@ws/b'); const b = require('@ws/b')``).
+    ``new b.Engine()`` reads through ``b``, so it is the module's ``Engine``;
+    which alias a read went through is decided per read, not per module."""
+    data = _survey(tmp_path / "repo", {**_ROOT, **_B, **_A_PKG, "packages/a/src/index.js": (
+        "const { helper } = require('@ws/b');\n"
+        "const b = require('@ws/b');\n"
+        "function run() { return helper(); }\n"
+        "function run3() { const e = new b.Engine(); return e.run(); }\n"
+        "module.exports = { run, run3 };\n"
+    )})
+    refs = sorted(
+        (e["type"], e["dst"]) for e in data["edges"]
+        if ":packages/a/src/index.js:" in e["src"] and e["type"] in ("references", "module_attr_ref")
+    )
+    assert ("references", "javascript:packages/b/src/index.js:2-2:Engine:class") in refs, refs
+    assert not any(t == "module_attr_ref" for t, _ in refs), refs
