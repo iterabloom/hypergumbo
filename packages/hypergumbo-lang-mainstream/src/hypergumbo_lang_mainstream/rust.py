@@ -2386,6 +2386,10 @@ class _InTreeCrates:
             return parent
         return None
 
+    def crate_dir(self, rel: str) -> Optional[Path]:
+        """The directory of the in-tree crate ``rel`` belongs to, if any."""
+        return self._crate_dir_of.get(rel)
+
     def _root_file(self, crate_dir: Path) -> Optional[Path]:
         for name in ("lib.rs", "main.rs"):
             candidate = crate_dir / "src" / name
@@ -2564,6 +2568,171 @@ def _extract_macro_call_names(
             results.extend(_extract_macro_call_names(child, source))
         i += 1
     return results
+
+
+#: Where an expression is a VALUE, by parent node type and, when the parent
+#: has other expression children too, the field that holds the value
+#: (META-mino). ``None``: every named child is a value position.
+_RUST_VALUE_PARENTS: dict[str, str | None] = {
+    "field_initializer": "value",
+    "let_declaration": "value",
+    "static_item": "value",
+    "const_item": "value",
+    "assignment_expression": "right",
+    "array_expression": None,
+    "tuple_expression": None,
+    "arguments": None,
+    # A block's tail expression is its value (a statement is wrapped in
+    # ``expression_statement``), and so is a ``return``'s operand.
+    "block": None,
+    "return_expression": None,
+}
+
+#: What a ``Type`` in a ``Type::f`` value path may be declared as.
+_RUST_TYPE_KINDS: frozenset[str] = frozenset({
+    "struct", "enum", "trait", "type_alias",
+})
+
+#: Pattern-holding nodes and the field their pattern is in; every identifier
+#: under that pattern is a local binding.
+_RUST_PATTERN_FIELDS: dict[str, str] = {
+    "let_declaration": "pattern",
+    "parameter": "pattern",
+    "match_arm": "pattern",
+    "for_expression": "pattern",
+    "let_condition": "pattern",
+}
+
+
+def _is_rust_value_position(node: "tree_sitter.Node") -> bool:
+    """Whether ``node`` is an expression whose value is used, not called,
+    named or matched (META-mino)."""
+    parent = node.parent
+    if parent is None or parent.type not in _RUST_VALUE_PARENTS:
+        return False
+    field = _RUST_VALUE_PARENTS[parent.type]
+    if field is None:
+        return True
+    value = parent.child_by_field_name(field)
+    return value is not None and value.id == node.id
+
+
+def _rust_locally_bound(node: "tree_sitter.Node", name: str, source: bytes) -> bool:
+    """Whether ``name`` is bound by a pattern, parameter or closure parameter
+    in a function that encloses ``node`` -- a local value, not the item."""
+    current = node.parent
+    while current is not None:
+        if current.type in ("function_item", "closure_expression"):
+            for sub in iter_tree(current):
+                if sub.type == "closure_parameters":
+                    patterns = [sub]
+                else:
+                    field = _RUST_PATTERN_FIELDS.get(sub.type)
+                    held = sub.child_by_field_name(field) if field else None
+                    patterns = [held] if held is not None else []
+                for bound_pattern in patterns:
+                    for ident in iter_tree(bound_pattern):
+                        if ident.type == "identifier" and node_text(ident, source) == name:
+                            return True
+        current = current.parent
+    return False
+
+
+def _rust_value_target(
+    node: "tree_sitter.Node",
+    source: bytes,
+    file_path: str,
+    local_symbols: dict[str, Symbol],
+    free_fns_by_qname: dict[str, Symbol],
+    use_aliases: dict[str, str],
+    candidates_by_name: "dict[str, list[Symbol]]",
+    crates: "_InTreeCrates | None",
+) -> tuple[Symbol, float | None] | None:
+    """The function a value-position path names, scored, or ``None``.
+
+    A BARE name is scoped as Rust scopes it: a function this file declares
+    (its own module's, by qualified name, before any same-named one), else one
+    a ``use`` imports -- never a same-named function elsewhere that nothing
+    imports. A locally bound name is the local. A PATH resolves by its text:
+    ``Self::f`` / ``Type::f`` as the qualified method or function, and a
+    module path (``crate::b::handler``) -- like an imported name, whose
+    ``use`` path is one -- by :func:`_rust_function_in_module`.
+    """
+    text = node_text(node, source)
+    if node.type == "identifier":
+        if _rust_locally_bound(node, text, source):
+            return None
+        local = local_symbols.get(text)
+        if local is not None and local.kind == "function":
+            return free_fns_by_qname.get(
+                _make_rust_qualified_name(_get_rust_mod_path(node, source), None, text),
+            ) or local, None
+        if text not in use_aliases:
+            return None
+        return _rust_function_in_module(
+            use_aliases[text], file_path, candidates_by_name, crates,
+        )
+    if text.startswith("Self::"):
+        impl_type = _get_impl_target(node, source)
+        if impl_type is None:
+            return None
+        text = f"{impl_type}::{text[len('Self::'):]}"
+    owner = text.rpartition("::")[0].rsplit("::", 1)[-1]
+    if owner in ("crate", "self", "super") or owner[:1].islower():
+        return _rust_function_in_module(
+            text, file_path, candidates_by_name, crates,
+        )
+    # ``Type::f`` with a ``Type`` this repo does not declare (``String::from``,
+    # ``log::LevelFilter::from``) is chosen by trait dispatch on the argument
+    # type, which this pass cannot see: a repo ``impl From<Foo> for String``
+    # bound every ``.map(String::from)`` on a ``&str`` (zellij).
+    owners = candidates_by_name.get(owner) or [
+        s for s in local_symbols.values() if s.name == owner
+    ]
+    if not any(s.kind in _RUST_TYPE_KINDS for s in owners):
+        return None
+    local = local_symbols.get(text)
+    if local is not None and local.kind in ("function", "method"):
+        return local, None
+    # Every declaration of that name, narrowed to the caller's crate when there
+    # are several -- two crates may each have an ``Error::regex`` (ripgrep's
+    # regex and pcre2), and the name lookup picked one by order. Still
+    # several: no edge.
+    hits = [
+        s for s in candidates_by_name.get(text, ())
+        if s.kind in ("function", "method")
+    ]
+    if len(hits) > 1 and crates is not None:
+        own = crates.crate_dir(file_path)
+        hits = [s for s in hits if own is not None and crates.crate_dir(s.path) == own]
+    return (hits[0], None) if len(hits) == 1 else None
+
+
+def _rust_function_in_module(
+    path: str,
+    file_path: str,
+    candidates_by_name: "dict[str, list[Symbol]]",
+    crates: "_InTreeCrates | None",
+) -> tuple[Symbol, float | None] | None:
+    """The free function ``path`` (``crate::b::handler``) names, or ``None``.
+
+    A free function's name carries only its inline ``mod`` path, never its
+    file module, so the full text names nothing. The module part is resolved
+    to the file that declares it (``_InTreeCrates``, the standard ``b.rs`` /
+    ``b/mod.rs`` layout) and the function of that name IN that file is the
+    target. Without a crate layout to read, only an unambiguous name resolves:
+    with two same-named functions the bare lookup would pick one by order.
+    """
+    module, _, name = path.rpartition("::")
+    functions = [s for s in candidates_by_name.get(name, ()) if s.kind == "function"]
+    target_file = crates.resolve(file_path, module) if crates is not None and module else None
+    if target_file is not None:
+        functions = [s for s in functions if s.path == target_file]
+    elif module.split("::", 1)[0] not in ("crate", "self", "super"):
+        # ``use std::cmp::max`` / ``serde_json::from_str``: outside the tree,
+        # so a same-named function of this repo is not it.
+        return None
+    return (functions[0], None) if len(functions) == 1 else None
 
 
 def _extract_edges_from_file(
@@ -3685,6 +3854,35 @@ def _extract_edges_from_file(
         # Tree-sitter parses macro bodies as flat token_tree, not structured
         # AST, so call_expression nodes are never created.  We pattern-match
         # token sequences to extract likely calls.
+        # META-mino: a function VALUE -- ``Cmd { run: handler }``,
+        # ``let f = handler``, ``static F: fn() = handler``, ``[a, b]``,
+        # ``(a, 0)``, ``h = handler``, ``xs.iter().map(parse)``. Until this arm
+        # Rust recorded only calls, so a function used as a value looked dead.
+        elif (
+            node.type in ("identifier", "scoped_identifier")
+            and _is_rust_value_position(node)
+        ):
+            current_function = (
+                _get_enclosing_function(node, source, local_symbols, span_index)
+                or file_anchor
+            )
+            value_target = _rust_value_target(
+                node, source, _caller_path, local_symbols, _free_fns_by_qname,
+                use_aliases, kind_index or {},
+                analyzer.in_tree_crates() if analyzer is not None else None,
+            )
+            if value_target is not None and value_target[0].id != current_function.id:
+                edges.append(Edge.create(
+                    src=current_function.id,
+                    dst=value_target[0].id,
+                    edge_type="references",
+                    line=node.start_point[0] + 1,
+                    evidence_type="function_reference",
+                    resolution_score=value_target[1],
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                ))
+
         elif node.type == "macro_invocation":
             # INV-bamij: a call in no function (a static / const initialiser, a
             # LazyLock closure, a top-level macro) is anchored on the file.
