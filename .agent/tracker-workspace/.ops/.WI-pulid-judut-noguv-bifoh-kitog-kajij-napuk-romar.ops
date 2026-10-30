@@ -1,0 +1,31 @@
+- op: create  # 64ab
+  at: '2026-10-30T10:52:17Z'  # 64ab
+  by: agent  # 64ab
+  actor: jgstern_agent  # 64ab
+  clock: 1  # 64ab
+  nonce: 64ab  # 64ab
+  data:  # 64ab
+    kind: work_item  # 64ab
+    title: "js-module-linker resolves require('.') / require('..') to an npm package named '.' / '..' (35 of 7,290 resolutions on 4 repos): _is_relative_import misses the bare dot specifiers"  # 64ab
+    status: todo_hard  # 64ab
+    priority: 3  # 64ab
+    parent:  # 64ab
+    tags:  # 64ab
+    - javascript  # 64ab
+    - linker_gap  # 64ab
+    - supply_chain  # 64ab
+    isbefore: []  # 64ab
+    duplicate_of: []  # 64ab
+    not_duplicate_of: []  # 64ab
+    pr_ref:  # 64ab
+    description: "FOUND 2026-10-30 by the js-module-linker precision audit for WI-halol shape 5 (7 surveys on dev d4bac1048a: knex, ioredis, pm2, nuclear, apollo-server, jotai, hls.js; enumeration ~/hypergumbo_lab_notebook/jsmod_10302026/).\n\nTHE DEFECT. `require('.')` / `require('..')` / `import x from '.'` resolve to an npm PACKAGE named \".\" or \"..\" (javascript:npm:0-0:..:package), a tier-3 third-party stand-in, instead of the directory's index file. 35 of 7,290 linker resolutions: nuclear '.' 19 and '..' 6, pm2 '..' 5 (examples/misc-examples/*.js -> examples/index.js? read each), apollo-server '..' 4 and '.' 1.\n\nCAUSE, read in code: linkers/js_module.py _is_relative_import returns import_path.startswith(\"./\") or startswith(\"../\"), so the bare \".\" and \"..\" fall through to the npm-package route. Node resolves both as relative paths (the directory, then its index / package.json main).\n\nWHY IT BLOCKS WI-halol: granting js-module-linker ADR-0057 section 14.1's supersedes_consumed_stub would demote the analyzer's import stub beneath these wrong package answers (0020's refusal reason). Fix this, re-run the audit, then grant.\n\nFIX DIRECTION: _is_relative_import also true for \".\" and \"..\" exactly; check the analyzer side (js_ts module hints, _in_tree_module_member, _InTreeDefaultExports) treat them as relative too. Test: '.' and '..' through run_behavior_map reach the index file; a package literally named like a path cannot exist, so no control is lost."  # 64ab
+    fields: {}  # 64ab
+- op: update  # d49e
+  at: '2026-10-30T10:52:56Z'  # d49e
+  by: agent  # d49e
+  actor: jgstern_agent  # d49e
+  clock: 2  # d49e
+  nonce: d49e  # d49e
+  set: {}  # d49e
+  add:  # d49e
+    isbefore: [WI-halol-malim-kahav-tahut-tobot-sizat-dopas-limat]  # d49e
