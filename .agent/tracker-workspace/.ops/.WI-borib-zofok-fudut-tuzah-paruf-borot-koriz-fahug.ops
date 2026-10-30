@@ -1,0 +1,37 @@
+- op: create  # d6b6
+  at: '2026-10-30T03:29:47Z'  # d6b6
+  by: agent  # d6b6
+  actor: jgstern_agent  # d6b6
+  clock: 1  # d6b6
+  nonce: d6b6  # d6b6
+  data:  # d6b6
+    kind: work_item  # d6b6
+    title: "next concept audit input: sweep for facts two consumers derive separately and disagree on (dead vs test-only, classified vs starved, sketch vs compact top symbols, profile vs pass file counts); single-source each or pin agreement with a property test"  # d6b6
+    status: todo_hard  # d6b6
+    priority: 3  # d6b6
+    parent:  # d6b6
+    tags:  # d6b6
+    - concept_audit  # d6b6
+    - consumer_agreement  # d6b6
+    isbefore: []  # d6b6
+    duplicate_of: []  # d6b6
+    not_duplicate_of: []  # d6b6
+    pr_ref:  # d6b6
+    description: "Proposed 2026-10-29 from a review of the reader census (audit #20, docs/audits/0023-reader-census.md) against the 2026-10-25 critique of WI-kosup's method; filed on the owner's request as an input for the next Fundamental Concept Audit when the cadence comes due (27 commits since audit #20 at 02a25bba56, threshold 72). The critique's other four shapes were adopted into WI-kosup's scope (its SCOPE WIDENED A-D) and swept; this one was not, and audit #20 had no scope for it.\n\nFINDING. Two or more consumers compute ONE fact independently -- each from its own reading of the IR, its own filter, its own default -- and disagree. Every instance so far was found by its symptom, one at a time, and fixed one at a time:\n- WI-bobuf / INV-dihun: the io classifier matched a call into a module that method_starved_modules reported starved in the same run. Five per-row fixes (INV-nular, WI-komun, INV-fugus, INV-dihun x2) before WI-bobuf keyed a guard on the contradiction itself (verify_claims.classified_yet_starved + test_classified_yet_starved.py, PR #1920). THAT GUARD IS THE MODEL for this sweep.\n- WI-jufih: dead-code and test-coverage contradicted each other on test-only-reachable functions.\n- WI-zulij: sketch and compact disagreed on the top symbols.\n- INV-hokig: profile.languages and the analyzer pass disagreed on file count (10 vs 41 bash files), from two exclude policies.\n- INV-pazur: nodes_summary reported pre-shrink counts that contradicted the on-disk arrays.\n- WI-punod: the pass-silence State A/B/C split existed in prose, and its one branching consumer re-derived it as a proxy that disagreed with ROUTINE_SILENCE_REASONS.\n- WI-vosop (open): audit 0019's recorded two-arm harness and a live survey disagree on edge rows at the same rust-analyzer version.\n\nNOT THIS ITEM (already gated, or the wrong layer). Agreement between two fields of ONE record is spec_validator's cross_field class (Edge.dst_ref vs dst, is_resolved vs dst, display_label on stand-ins) plus _check_id_roundtrip; INV-dulah (node.id kind slot vs Symbol.kind) and WI-kukuk belong there. An edge_type derivable from its endpoints is runtime_coherence. A declared axis's axiom on real output is WI-ziruv (done). A hand-written subset of a registered vocabulary is WI-tilav. This item is the layer above all of them: DERIVED facts, computed by consumers.\n\nSCOPE (the inventory). Every fact a consumer derives from the IR and reports, with every consumer that derives it. Consumers: the CLI views (sketch, compact, explain, slice / reverse slice, dead-code, test-coverage, entrypoints, routes, io-boundaries, supply-chain summary, profile), verify-claims (classification, starvation, zone gates, walk verdicts, caveats), the behavior map's own summaries (nodes_summary, supply_chain_summary, limits, coverage roll-ups), and the measurement scripts the audits and bakeoffs rely on. Facts to start from: is X reachable / dead / test-only; is X an entry point; X's tier; is module M classified / starved / blind; how many files / symbols / edges of a language; which pass ran or was silent and why; the top-N symbols; whether a claim's zone has sinks for a language.\nMETHOD. For each fact with two or more deriving consumers: (1) find each derivation by AST walk, not grep (audit #16's grep missed 126 of 140 emit sites); (2) say whether they derive it from ONE helper (OK) or separately; (3) for each separate pair, run both over the schema-coverage corpus and one real survey per language family and report every disagreement, each read and classified as a real contradiction or a legitimately different question that needs a different NAME (the four leakage tests). Measure across configurations, not only defaults.\nVERDICTS per fact: SINGLE-SOURCE (route every consumer through one helper; name it), PIN (keep the separate derivations and add a property test asserting they agree, keyed on the contradiction as WI-bobuf's is, with a reach control that the test fires on a constructed disagreement), RENAME (they answer different questions; say which in each consumer's output), or KEEP WITH A TRIGGER THAT CAN FIRE (LIVE rule; 'when a consumer appears' is not one).\nDELIVERABLE. The per-fact table (docs/audits/ per docs/audits/README.md), filed items for each SINGLE-SOURCE / PIN / RENAME verdict with a tracker id beside every action, and the audit recorded with scripts/concept-audit-record. WI-vosop is decided by this sweep (or closed first on its own)."  # d6b6
+    fields: {}  # d6b6
+- op: update  # 0af5
+  at: '2026-10-30T03:30:14Z'  # 0af5
+  by: agent  # 0af5
+  actor: jgstern_agent  # 0af5
+  clock: 2  # 0af5
+  nonce: 0af5  # 0af5
+  set: {}  # 0af5
+  add:  # 0af5
+    not_duplicate_of: [INV-tabaf-vaniz-rorin-pidup-punif-mimid-damod-zavit, INV-titid-favuv-kubam-kapib-vapon-kamub-talos-madoj, WI-finij-kurib-bibom-davom-kulus-bapok-binaj-muzig]  # 0af5
+- op: discuss  # e2fb
+  at: '2026-10-30T03:30:14Z'  # e2fb
+  by: agent  # e2fb
+  actor: jgstern_agent  # e2fb
+  clock: 3  # e2fb
+  nonce: e2fb  # e2fb
+  message: "Not a duplicate of INV-tabaf (an overlay completeness grant's disclosure), INV-titid (compact's features array pointing at pruned nodes: ONE output inconsistent with itself, not two consumers disagreeing) or WI-finij (silence_reason values with no producer); the tracker's SimHash flagged all three at 8 bits. Companions: WI-kosup (audit #20's input, done), WI-tilav (subset-partition gate), WI-ziruv (axiom falsification, done)."  # e2fb

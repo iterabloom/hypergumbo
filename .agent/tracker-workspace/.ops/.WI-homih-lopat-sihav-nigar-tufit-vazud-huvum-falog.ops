@@ -29,3 +29,18 @@
   set: {}  # f3ba
   add:  # f3ba
     isbefore: [INV-nuzas-rumaf-nijaz-kivah-hovov-riviz-jodip-hunap]  # f3ba
+- op: update  # 8027
+  at: '2026-10-30T04:47:13Z'  # 8027
+  by: agent  # 8027
+  actor: jgstern_agent  # 8027
+  clock: 3  # 8027
+  nonce: '8027'  # 8027
+  set:  # 8027
+    status: done  # 8027
+- op: discuss  # 2f23
+  at: '2026-10-30T04:47:13Z'  # 2f23
+  by: agent  # 2f23
+  actor: jgstern_agent  # 2f23
+  clock: 4  # 2f23
+  nonce: 2f23  # 2f23
+  message: "Done in PR #1950 (e8fe59d786). Root cause: _detect_source_roots collected only directories named src, so a flat-layout member's files were named by repo path (packages.pkg-c.pkg_c.tools) and nothing in the tree was pkg_c. A directory below the repo root with a pyproject.toml / setup.py / setup.cfg, no src root of its own, and a child setuptools' flat-layout discovery would install is now a source root; it covers only those packages (the member's tests/ keep repo names) and a package name two flat members supply roots neither. The filed pkg_c.tools.Loud().go() shape failed in ANY layout (_resolve_call_target lacked WI-lovun's dotted-module spelling, so the constructor resolver typed the result as external); fixed in the same PR. CLOSURE EVIDENCE, the filed repro re-run on merged dev through production `hypergumbo survey` (fixture ~/hypergumbo_lab_notebook/nuzas_10292026/fixtures/py): 0 workspace-prefixed external_symbol nodes (was 4); import pkg_c -> packages/pkg-c/pkg_c/__init__.py file node; pkg_c.tools.shout() -> tools.py shout function; pkg_c.tools.Loud().go() -> instantiates Loud class + calls Loud.go (method-call-recovery-linker, as tools.Loud().go() already did); from pkg_c import tools in the member's __init__ -> tools.py file node. Control ctl_flat (same package at the repo root): no pkg_c external_symbol, unchanged. Corpus A/B: firecracker 67 edges moved, all read correct; poetry/pants/fastapi/django/pretix 0."  # 2f23
