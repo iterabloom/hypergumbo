@@ -78,3 +78,22 @@ signatures:
   # WI-kanor: os.popen hands back a pipe to the child, not its output; the
   # read through it (os._wrap_close.read) is where the child's bytes cross.
   os.popen: os._wrap_close
+  # WI-himim: the subprocess factories return an asyncio.subprocess.Process,
+  # whose pipes are typed under member_types below.
+  asyncio.create_subprocess_exec: asyncio.subprocess.Process
+  asyncio.create_subprocess_shell: asyncio.subprocess.Process
+
+# WI-himim: producers that return a TUPLE, one type per position, comma-separated.
+# `reader, writer = await asyncio.open_connection(h, p)`: the reader's read* and the
+# writer's write rows (io_primitives) are reachable only once each end is typed.
+tuple_returns:
+  asyncio.open_connection: asyncio.StreamReader, asyncio.StreamWriter
+  asyncio.open_unix_connection: asyncio.StreamReader, asyncio.StreamWriter
+
+# WI-himim: a member ATTRIBUTE of a typed object, `<type>.<attribute>: <its type>`.
+# Process.stdout / stderr are StreamReaders (None unless the pipe was requested;
+# a read through None is no read at all, so typing the PIPE case loses nothing).
+member_types:
+  asyncio.subprocess.Process.stdin: asyncio.StreamWriter
+  asyncio.subprocess.Process.stdout: asyncio.StreamReader
+  asyncio.subprocess.Process.stderr: asyncio.StreamReader
