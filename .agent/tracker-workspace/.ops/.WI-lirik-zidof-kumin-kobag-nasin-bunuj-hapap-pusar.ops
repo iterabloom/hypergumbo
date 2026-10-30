@@ -1,0 +1,22 @@
+- op: create  # 0f2b
+  at: '2026-10-30T21:49:26Z'  # 0f2b
+  by: agent  # 0f2b
+  actor: jgstern_agent  # 0f2b
+  clock: 1  # 0f2b
+  nonce: 0f2b  # 0f2b
+  data:  # 0f2b
+    kind: work_item  # 0f2b
+    title: "rust: a call to a use-imported function binds by discovery order (a test helper under a survey's sorted order), and receiver and path calls bind to the enclosing function"  # 0f2b
+    status: todo_hard  # 0f2b
+    priority: 2  # 0f2b
+    parent:  # 0f2b
+    tags:  # 0f2b
+    - concept_audit  # 0f2b
+    - consumer_agreement  # 0f2b
+    - rust  # 0f2b
+    isbefore: []  # 0f2b
+    duplicate_of: []  # 0f2b
+    not_duplicate_of: []  # 0f2b
+    pr_ref:  # 0f2b
+    description: "From WI-borib's WI-vosop measurement (docs/audits/0026; ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/vosop/FINDINGS.md, capture.py, diff_inrepo.py).\n\n1. ORDER DEPENDENCE. aardvark-dns src/server/serve.rs:287 calls parse_configs(...), imported by use crate::config::parse_configs;. analyze_rust binds it to src/config/mod.rs under walk order and to src/test/test.rs:30 (a #[cfg(test)] helper of the same name) under sorted order -- the order a survey's FileIndex gives. Reversed order binds correctly. So every live survey of this crate has the wrong edge, and the recorded harness (walk order) the right one.\n2. SELF-BINDING. self.0.push(err) inside fn push (src/error.rs:105), self.0.is_empty() inside fn is_empty (:109), and config::parse_configs(dir, \"\") inside the test helper parse_configs (src/test/test.rs:37) each resolve to the enclosing function; the survey then drops them as self-loops (deduplicate_edges(..., remove_self_loops=True), cli.py:13177), so the real callee (Vec::push; config/mod.rs) is lost, not just mislabelled.\n\nACCEPTANCE: a call through a single-path use binds the path's function regardless of discovery order (test both orders, LIVE's bare-name rule); a path-qualified or receiver call does not bind to the enclosing same-named function; aardvark-dns re-measured."  # 0f2b
+    fields: {}  # 0f2b

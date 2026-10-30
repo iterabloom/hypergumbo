@@ -1,0 +1,22 @@
+- op: create  # ba3b
+  at: '2026-10-30T21:49:20Z'  # ba3b
+  by: agent  # ba3b
+  actor: jgstern_agent  # ba3b
+  clock: 1  # ba3b
+  nonce: ba3b  # ba3b
+  data:  # ba3b
+    kind: work_item  # ba3b
+    title: "linker activation names four frameworks detection never emits (spring, spring-mvc, openapi, protobuf): view_template_spring never runs automatically"  # ba3b
+    status: todo_hard  # ba3b
+    priority: 3  # ba3b
+    parent:  # ba3b
+    tags:  # ba3b
+    - concept_audit  # ba3b
+    - consumer_agreement  # ba3b
+    - frameworks  # ba3b
+    isbefore: []  # ba3b
+    duplicate_of: []  # ba3b
+    not_duplicate_of: []  # ba3b
+    pr_ref:  # ba3b
+    description: "From WI-borib (docs/audits/0026; agent D, ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/D_scripts/framework_vocab.py). A reader keyed to a value nothing produces (LIVE rule 7).\n\nview_template_spring's activation names frameworks spring / spring-mvc; framework auto-detection never emits either (it emits spring-boot), so the linker never runs automatically. framework_vocab.py finds four activation names detection never emits: openapi, protobuf, spring, spring-mvc. Adjacent to WI-tilav (hand-written subsets of a registered vocabulary).\n\nACCEPTANCE: every LinkerActivation framework name is one detection can emit (a test over the registry), and the four are corrected or their producers added."  # ba3b
+    fields: {}  # ba3b
