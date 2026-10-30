@@ -718,6 +718,13 @@ class TestNpmHelpers:
 
         assert _get_npm_package_name("@babel/core/lib/foo") == "@babel/core"
 
+    def test_bare_dot_specifiers_are_relative(self) -> None:
+        """WI-pulid: ``.`` and ``..`` are the directory, not a package."""
+        from hypergumbo_core.linkers.js_module import _is_npm_package, _is_relative_import
+        assert _is_relative_import(".") and _is_relative_import("..")
+        assert not _is_npm_package(".") and not _is_npm_package("..")
+        assert not _is_relative_import(".bin") and not _is_relative_import("...")
+
     def test_is_npm_package_relative(self) -> None:
         """Relative paths are not npm packages."""
         from hypergumbo_core.linkers.js_module import _is_npm_package

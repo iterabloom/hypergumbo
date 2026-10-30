@@ -246,8 +246,12 @@ def _make_npm_package_id(package_name: str, lang: str) -> str:
 
 
 def _is_relative_import(import_path: str) -> bool:
-    """Check if an import path is relative (starts with ./ or ../)."""
-    return import_path.startswith("./") or import_path.startswith("../")
+    """Check if an import path is relative: ``./`` / ``../``, or exactly ``.`` / ``..``.
+
+    WI-pulid: the bare ``require('.')`` / ``require('..')`` name the directory;
+    read as bare specifiers they became an npm package named ``.`` / ``..``.
+    """
+    return import_path in (".", "..") or import_path.startswith(("./", "../"))
 
 
 def _is_dynamic_import(import_path: str) -> bool:
@@ -803,7 +807,13 @@ def link_js_modules(
         if _is_relative_import(import_path):
             # Relative import: resolve from source file's directory
             base_path = (abs_src.parent / import_path).resolve()
-            resolved = _probe_file(base_path)
+            # Node's LOAD_AS_DIRECTORY: a directory with a package.json loads
+            # its entry (``main`` / ``exports``), else its ``index``.
+            resolved = (
+                _package_entry(base_path)
+                if (base_path / "package.json").is_file()
+                else _probe_file(base_path)
+            )
         else:
             # Non-relative: get per-file aliases (nearest tsconfig + Vite)
             src_dir = str(abs_src.parent)
