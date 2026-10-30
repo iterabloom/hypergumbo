@@ -1,0 +1,36 @@
+Original commit body from c90c135c33b5145a6445ae7da8326721ab065e85:
+
+The js_module linker sent every bare specifier no alias or workspace
+package resolved to the npm route, so require('fs') minted
+javascript:npm:0-0:fs:package -- kind package, package_ecosystem npm,
+tier 3 "npm_package (third-party dependency)". 540 of the 2,771
+package-node resolutions the WI-halol shape-5 audit enumerated were the
+runtime's own modules (path 127, fs 95, http 67, child_process 38, util 36,
+assert 36, os 23, url 21 ...) claimed as dependencies. js_ts already had
+the core-module list; the linker did not read it.
+
+* The list moves to js_package_entry as NODE_CORE_MODULES with
+  is_node_core_module (`fs`, `fs/promises`, any `node:` specifier; not
+  `fs-extra`). js_ts's private copy is deleted and it reads the shared one,
+  so the two cannot drift.
+* The linker skips the npm route for a core module: no package node, and
+  the import stays the analyzer's external stand-in (whose missing stdlib
+  ecosystem label is WI-hotut's, unchanged).
+
+The deleted copy moves js_ts.py's lines, so three line-pinned citations
+relocate by anchor (module_key_axis 7835 -> 7823, 1370 -> 1358;
+signature_axis 6575 -> 6563).
+
+Measured, survey before (dev caa332e01c) and after: pm2 package nodes 77 ->
+55 (22 core modules, 301 import edges), knex 60 -> 48 (12, 119 edges) --
+the audit's per-repo counts exactly; no non-core package node lost, none
+added.
+
+Tests: test_js_core_modules_not_npm.py through run_behavior_map (fs, path,
+fs/promises, node:child_process get no package node; lodash and fs-extra
+keep theirs); is_node_core_module in test_js_module_linker.py. Two
+mutations (linker ignores the list, no subpath split) each turn a test red.
+
+Addresses WI-tufob; unblocks WI-halol's shape-5 grant.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
