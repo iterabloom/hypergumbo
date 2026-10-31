@@ -6837,7 +6837,9 @@ def _sink_zone_gaps(
     have (``browser_storage`` outside JS) withholds too, as ``code_execution``
     always did: the tool cannot tell "no such sink exists" from "no row
     names it". A zone only a project catalogue declares is not judged: its
-    sinks are where the project put them.
+    sinks are where the project put them. A zone whose sinks for a language
+    are all COMMUNITY rows is reported apart (``community_only_languages``)
+    and withholds the same way (WI-mizog, ADR-0061 ruling 2).
 
     ``present_languages`` are the taint-supported languages with production
     source in the repo (the census that decides support), narrowed to the
@@ -6864,18 +6866,26 @@ def _sink_zone_gaps(
         if tf.source_taint in flow_languages_by_label:
             present &= set(flow_languages_by_label[tf.source_taint])
         zone = tf.prohibited_sink_zone
-        uncovered = sorted(
-            lang for lang in present
-            if not any(s.zone == zone for s in taint_catalog.sinks_for_language(lang))
+        in_zone = {
+            lang: [s for s in taint_catalog.sinks_for_language(lang) if s.zone == zone]
+            for lang in present
+        }
+        uncovered = sorted(lang for lang, sinks in in_zone.items() if not sinks)
+        # WI-mizog: a zone covered by community rows alone is not covered --
+        # ADR-0061 ruling 2 lets them add findings, never clean a verdict.
+        community_only = sorted(
+            lang for lang, sinks in in_zone.items()
+            if sinks and all(s.community for s in sinks)
         )
         unreached = tuple(sorted(
             (lang, shapes) for lang, shapes in zones.get(zone, {}).items()
             if lang in present and lang not in uncovered
         ))
-        if uncovered or unreached:
+        if uncovered or unreached or community_only:
             gaps[key] = SinkZoneGap(
                 zone=zone, uncovered_languages=tuple(uncovered),
                 unreached_shapes=unreached,
+                community_only_languages=tuple(community_only),
             )
     return gaps
 

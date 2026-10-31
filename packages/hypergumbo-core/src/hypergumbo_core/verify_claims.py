@@ -894,11 +894,18 @@ class SinkZoneGap:
     time. ``unreached_shapes``: for present languages that do have sinks in
     the zone, the shapes of it no call edge reaches -- a clean verdict is
     qualified with :data:`CAVEAT_UNREACHED_SINK_SHAPES` naming them.
+    ``community_only_languages``: present languages whose every sink in the
+    zone is a COMMUNITY row (WI-mizog). Those rows still find flows, but under
+    ADR-0061 ruling 2 they "may add findings, but never make a verdict
+    cleaner", and counting them as the zone's coverage was exactly that: a
+    claim withheld without them read ``confirmed`` with them. Withheld like an
+    uncovered language, and named apart so the reason is true.
     """
 
     zone: str
     uncovered_languages: tuple[str, ...]
     unreached_shapes: tuple[tuple[str, tuple[str, ...]], ...]
+    community_only_languages: tuple[str, ...] = ()
 
 
 def _apply_sink_zone_gap(verdict: ClaimVerdict, gap: SinkZoneGap) -> ClaimVerdict:
@@ -912,13 +919,23 @@ def _apply_sink_zone_gap(verdict: ClaimVerdict, gap: SinkZoneGap) -> ClaimVerdic
     """
     if verdict.verdict not in CONFIRMING_VERDICTS:
         return verdict
-    if gap.uncovered_languages:
-        langs = ", ".join(gap.uncovered_languages)
-        return _require_coverage_to_confirm(verdict, (
-            f"language(s) {langs} ha{'s' if len(gap.uncovered_languages) == 1 else 've'} "
-            f"no sink in the '{gap.zone}' zone, so a flow into it there could "
-            f"not be seen"
-        ))
+    if gap.uncovered_languages or gap.community_only_languages:
+        reasons = []
+        if gap.uncovered_languages:
+            langs = ", ".join(gap.uncovered_languages)
+            reasons.append(
+                f"language(s) {langs} ha{'s' if len(gap.uncovered_languages) == 1 else 've'} "
+                f"no sink in the '{gap.zone}' zone, so a flow into it there could "
+                f"not be seen"
+            )
+        if gap.community_only_languages:
+            langs = ", ".join(gap.community_only_languages)
+            reasons.append(
+                f"language(s) {langs} ha{'s' if len(gap.community_only_languages) == 1 else 've'} "
+                f"only community rows in the '{gap.zone}' zone, which may add "
+                f"findings but never make a verdict cleaner (ADR-0061 ruling 2)"
+            )
+        return _require_coverage_to_confirm(verdict, "; ".join(reasons))
     if not gap.unreached_shapes:
         return verdict
     entries = sorted(
