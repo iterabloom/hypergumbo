@@ -200,6 +200,13 @@ grammar. The tag scan is quote-aware, so Vue's ``generic="T extends A<B>"``
 does not end the tag at its ``>``; a self-closing ``<script src=... />`` has
 no body and is skipped.
 
+A component yields ONE file symbol however many blocks it has (WI-rolub;
+``_parse_sfc_blocks``): its language is ``typescript`` when any block is
+TypeScript, else ``javascript``, and its span covers every block. Each block
+is still parsed and walked on its own (its members keep their block's
+language), but all blocks fold that one file symbol's identity anchor, and
+pass 2 anchors every block's file-level edges (imports, requires) on it.
+
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
@@ -4561,6 +4568,7 @@ def _extract_symbols(
     run: AnalysisRun,
     line_offset: int = 0,
     repo_root: Optional[Path] = None,
+    file_lang: Optional[str] = None,
 ) -> list[Symbol]:
     """Extract symbols from a parsed tree (pass 1).
 
@@ -4577,8 +4585,15 @@ def _extract_symbols(
             the file pseudo-node Symbol's ``name`` is the repo-relative
             path (INV-kokaj mirror of INV-vaguj). Tests calling this
             helper directly may pass ``None``.
+        file_lang: Language of the FILE this tree is part of, when it differs
+            from the tree's own ``lang``: a JavaScript ``<script>`` block in a
+            component whose other block is TypeScript (WI-rolub). The file
+            pseudo-node and the members' file-identity anchor take it; the
+            members keep ``lang``. Defaults to ``lang``.
     """
     symbols: list[Symbol] = []
+    if file_lang is None:
+        file_lang = lang
 
     # INV-kokaj: emit the file pseudo-node as kind="file" with the
     # canonical file-id shape so the orchestrator file-symbol synthesizer
@@ -4611,12 +4626,12 @@ def _extract_symbols(
     # functions/methods in different files hash distinctly. Keyed on the per-file
     # runtime ``lang`` to match the file Symbol's ``language=lang`` and the
     # orchestrator's make_file_stable_id(s.language, s.path) backstop.
-    file_stable_id = make_file_stable_id(lang, normalize_path(file_name))
+    file_stable_id = make_file_stable_id(file_lang, normalize_path(file_name))
     module_symbol = Symbol(
-        id=make_file_id(lang, str(file_path)),
+        id=make_file_id(file_lang, str(file_path)),
         name=file_name,
         kind="file",
-        language=lang,
+        language=file_lang,
         path=str(file_path),
         span=module_span,
         origin=PASS_ID,
@@ -6136,6 +6151,15 @@ def _extract_edges(
     if class_resolver is None:  # pragma: no cover - defensive
         class_resolver = NameResolver(global_classes)
     _caller_path = str(file_path)
+    # WI-rolub: file-anchored edges (imports, requires) start at the file
+    # symbol the caller hands in. Minting ``make_file_id(lang, ...)`` here
+    # instead named a ``javascript:`` file for a JavaScript ``<script>`` block
+    # of a component whose one file symbol is ``typescript:``, and the
+    # orchestrator then synthesized a second file node for that dangling src.
+    file_id = (
+        module_symbol.id if module_symbol is not None
+        else make_file_id(lang, str(file_path))
+    )
     # WI-sofuh: this file's own symbols by name, for the scope binder. The
     # multi-file pass hands them in; a single-file caller's registry IS the file.
     _file_symbols_by_name: dict[str, list[Symbol]] = {}
@@ -6227,7 +6251,6 @@ def _extract_edges(
                     # WI-fiham: the call path's spelling, scheme dropped.
                     module_name = _strip_import_scheme(
                         _node_text(child, source).strip("'\""))
-                    file_id = make_file_id(lang, str(file_path))
                     dst_id = f"{lang}:{module_name}:0-0:module:module"
                     edge = Edge.create(
                         src=file_id,
@@ -6315,7 +6338,6 @@ def _extract_edges(
                             # WI-fiham: the call path's spelling, scheme dropped.
                             module_name = _strip_import_scheme(
                                 _node_text(arg, source).strip("'\""))
-                            file_id = make_file_id(lang, str(file_path))
                             dst_id = f"{lang}:{module_name}:0-0:module:module"
                             edge = Edge.create(
                                 src=file_id,
@@ -6330,7 +6352,6 @@ def _extract_edges(
                             break
                         elif arg.type == "identifier":
                             var_name = _node_text(arg, source)
-                            file_id = make_file_id(lang, str(file_path))
                             dst_id = f"{lang}:<dynamic:{var_name}>:0-0:module:module"
                             edge = Edge.create(
                                 src=file_id,
@@ -7475,11 +7496,90 @@ def _get_parser_for_lang(
         return parser
 
 
-def _analyze_svelte_file(
+def _parse_sfc_blocks(
+    file_path: Path,
+    blocks: list[SfcScriptBlock],
+    run: AnalysisRun,
+    repo_root: Optional[Path] = None,
+) -> tuple[list[_ParsedFile], list[Symbol]]:
+    """Parse a single-file component's ``<script>`` blocks (pass 1).
+
+    Returns one ``_ParsedFile`` per parsed block (each keeps its own grammar,
+    language and line offset, so pass 2 walks it as before) and the file's
+    symbols, among which there is exactly ONE ``kind="file"`` symbol
+    (WI-rolub). ``_extract_symbols`` mints the file pseudo-node for every tree
+    it is given, and it used to be given each block in turn: ``<script
+    lang="ts">`` plus ``<script setup lang="ts">`` made two symbols with one
+    id, and a JavaScript ``context="module"`` block beside a TypeScript
+    instance block made a ``javascript:`` and a ``typescript:`` file node for
+    one file.
+
+    The file symbol's language is ``typescript`` when any block is TypeScript
+    (the superset: a component with a TypeScript block is type-checked as
+    TypeScript), else ``javascript``; every block is extracted with that
+    ``file_lang`` so all blocks' copies of the pseudo-node share its id, the
+    first copy is kept, and its span is widened to cover every block. Members
+    keep their own block's language.
+    """
+    file_lang = (
+        "typescript" if any(b.is_typescript for b in blocks) else "javascript"
+    )
+    parsed: list[_ParsedFile] = []
+    symbols: list[Symbol] = []
+    file_symbol: Optional[Symbol] = None
+    for block in blocks:
+        parser = _get_parser_for_lang(block.is_typescript, tsx=block.is_tsx)
+        if parser is None:
+            continue
+        source_bytes = block.content.encode("utf-8")
+        tree = parser.parse(source_bytes)
+        lang = "typescript" if block.is_typescript else "javascript"
+        line_offset = block.start_line - 1
+        ns_imports = _extract_namespace_imports(tree, source_bytes)
+        nm_imports, nm_originals = _extract_named_imports(tree, source_bytes)
+        parsed.append(_ParsedFile(
+            path=file_path, tree=tree, source=source_bytes,
+            lang=lang, line_offset=line_offset, namespace_imports=ns_imports,
+            named_imports=nm_imports,
+            named_import_originals=nm_originals,
+        ))
+        block_symbols = _extract_symbols(
+            tree, source_bytes, file_path, lang, run, line_offset,
+            repo_root=repo_root, file_lang=file_lang,
+        )
+        populate_docstrings_from_tree(tree.root_node, source_bytes, block_symbols)
+        for sym in block_symbols:
+            if sym.kind != "file":
+                symbols.append(sym)
+            elif file_symbol is None:
+                file_symbol = sym
+            else:
+                # Same id by construction; keep the first and cover this block.
+                assert file_symbol.span is not None and sym.span is not None
+                file_symbol.span = Span(
+                    start_line=min(file_symbol.span.start_line, sym.span.start_line),
+                    end_line=max(file_symbol.span.end_line, sym.span.end_line),
+                    start_col=0,
+                    end_col=0,
+                )
+                file_symbol.line_span = (
+                    file_symbol.span.end_line - file_symbol.span.start_line + 1
+                )
+    if file_symbol is not None:
+        symbols.insert(0, file_symbol)
+    return parsed, symbols
+
+
+def _analyze_sfc_file(
     file_path: Path,
     run: AnalysisRun,
 ) -> tuple[list[Symbol], list[Edge], bool]:
-    """Analyze a Svelte file by extracting and parsing <script> blocks.
+    """Analyze one Svelte / Vue file on its own (legacy single-file path).
+
+    Pass 1 is :func:`_parse_sfc_blocks`, so the file has one file symbol;
+    pass 2 resolves every block against the whole file's symbols (a ``<script
+    setup>`` call to a function of the plain ``<script>`` resolves) and
+    anchors file-level edges on that one file symbol.
 
     Returns (symbols, edges, success).
     """
@@ -7488,52 +7588,40 @@ def _analyze_svelte_file(
     except (OSError, IOError):
         return [], [], False
 
-    script_blocks = extract_svelte_scripts(source_text)
-    if not script_blocks:
-        # No script blocks found - not an error, just empty
-        return [], [], True
+    parsed, symbols = _parse_sfc_blocks(
+        file_path, _extract_sfc_scripts(source_text), run,
+    )
+    local_symbols: dict[str, Symbol] = {}
+    local_methods: dict[str, list[Symbol]] = {}
+    local_classes: dict[str, Symbol] = {}
+    for sym in symbols:
+        local_symbols[sym.name] = sym
+        if sym.kind == "method":
+            method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+            local_methods.setdefault(method_name, []).append(sym)
+        elif sym.kind == "class":
+            local_classes[sym.name] = sym
+    file_symbol = next((s for s in symbols if s.kind == "file"), None)
 
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
+    edges: list[Edge] = []
+    for pf in parsed:
+        edges.extend(_extract_edges(
+            pf.tree, pf.source, pf.path, pf.lang, run,
+            local_symbols, local_methods, local_classes, pf.line_offset,
+            module_symbol=file_symbol,
+        ))
+    return symbols, edges, True
 
-    for block in script_blocks:
-        parser = _get_parser_for_lang(block.is_typescript, tsx=block.is_tsx)
-        if parser is None:
-            continue
 
-        source_bytes = block.content.encode("utf-8")
-        tree = parser.parse(source_bytes)
+def _analyze_svelte_file(
+    file_path: Path,
+    run: AnalysisRun,
+) -> tuple[list[Symbol], list[Edge], bool]:
+    """Analyze a Svelte file by extracting and parsing <script> blocks.
 
-        lang = "typescript" if block.is_typescript else "javascript"
-        line_offset = block.start_line - 1
-
-        symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
-        populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
-
-        # Build local symbol registry for this block
-        local_symbols: dict[str, Symbol] = {}
-        local_methods: dict[str, list[Symbol]] = {}
-        local_classes: dict[str, Symbol] = {}
-
-        for sym in symbols:
-            local_symbols[sym.name] = sym
-            if sym.kind == "method":
-                method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-                if method_name not in local_methods:
-                    local_methods[method_name] = []
-                local_methods[method_name].append(sym)
-            elif sym.kind == "class":
-                local_classes[sym.name] = sym
-
-        edges = _extract_edges(
-            tree, source_bytes, file_path, lang, run,
-            local_symbols, local_methods, local_classes, line_offset
-        )
-
-        all_symbols.extend(symbols)
-        all_edges.extend(edges)
-
-    return all_symbols, all_edges, True
+    Returns (symbols, edges, success).
+    """
+    return _analyze_sfc_file(file_path, run)
 
 
 def _analyze_vue_file(
@@ -7544,57 +7632,7 @@ def _analyze_vue_file(
 
     Returns (symbols, edges, success).
     """
-    try:
-        source_text = file_path.read_text(encoding="utf-8", errors="replace")
-    except (OSError, IOError):
-        return [], [], False
-
-    script_blocks = extract_vue_scripts(source_text)
-    if not script_blocks:
-        # No script blocks found - not an error, just empty
-        return [], [], True
-
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for block in script_blocks:
-        parser = _get_parser_for_lang(block.is_typescript, tsx=block.is_tsx)
-        if parser is None:
-            continue
-
-        source_bytes = block.content.encode("utf-8")
-        tree = parser.parse(source_bytes)
-
-        lang = "typescript" if block.is_typescript else "javascript"
-        line_offset = block.start_line - 1
-
-        symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
-        populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
-
-        # Build local symbol registry for this block
-        local_symbols: dict[str, Symbol] = {}
-        local_methods: dict[str, list[Symbol]] = {}
-        local_classes: dict[str, Symbol] = {}
-
-        for sym in symbols:
-            local_symbols[sym.name] = sym
-            if sym.kind == "method":
-                method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-                if method_name not in local_methods:
-                    local_methods[method_name] = []
-                local_methods[method_name].append(sym)
-            elif sym.kind == "class":
-                local_classes[sym.name] = sym
-
-        edges = _extract_edges(
-            tree, source_bytes, file_path, lang, run,
-            local_symbols, local_methods, local_classes, line_offset
-        )
-
-        all_symbols.extend(symbols)
-        all_edges.extend(edges)
-
-    return all_symbols, all_edges, True
+    return _analyze_sfc_file(file_path, run)
 
 
 # ADR-0057 §10 (WI-hohuh): this analyzer shares ``vue`` and ``svelte`` with the
@@ -7697,77 +7735,23 @@ def _analyze_javascript_impl(
             files_skipped += 1
             run.record_failed_file(str(file_path.relative_to(repo_root)), f"{type(e).__name__}: {e}")
 
-    # Analyze Svelte files
-    for file_path in find_svelte_files(repo_root, max_files=max_files):
-        try:
-            source_text = file_path.read_text(encoding="utf-8", errors="replace")
-            script_blocks = extract_svelte_scripts(source_text)
-            if not script_blocks:
+    # Analyze Svelte and Vue single-file components: one extractor and one
+    # pass-1 helper serve both hosts, and each file yields one file symbol
+    # however many <script> blocks it has (WI-rolub).
+    for find_sfc_files in (find_svelte_files, find_vue_files):
+        for file_path in find_sfc_files(repo_root, max_files=max_files):
+            try:
+                source_text = file_path.read_text(encoding="utf-8", errors="replace")
+                sfc_parsed, sfc_symbols = _parse_sfc_blocks(
+                    file_path, _extract_sfc_scripts(source_text), run,
+                    repo_root=repo_root,
+                )
+                parsed_files.extend(sfc_parsed)
+                all_symbols.extend(sfc_symbols)
                 files_analyzed += 1
-                continue
-
-            for block in script_blocks:
-                parser = _get_parser_for_lang(block.is_typescript, tsx=block.is_tsx)
-                if parser is None:
-                    continue
-
-                source_bytes = block.content.encode("utf-8")
-                tree = parser.parse(source_bytes)
-                lang = "typescript" if block.is_typescript else "javascript"
-                line_offset = block.start_line - 1
-                ns_imports = _extract_namespace_imports(tree, source_bytes)
-                nm_imports, nm_originals = _extract_named_imports(tree, source_bytes)
-
-                parsed_files.append(_ParsedFile(
-                    path=file_path, tree=tree, source=source_bytes,
-                    lang=lang, line_offset=line_offset, namespace_imports=ns_imports,
-                    named_imports=nm_imports,
-                    named_import_originals=nm_originals,
-                ))
-                symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset, repo_root=repo_root)
-                populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
-                all_symbols.extend(symbols)
-
-            files_analyzed += 1
-        except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
-            files_skipped += 1
-            run.record_failed_file(str(file_path.relative_to(repo_root)), f"{type(e).__name__}: {e}")
-
-    # Analyze Vue SFC files
-    for file_path in find_vue_files(repo_root, max_files=max_files):
-        try:
-            source_text = file_path.read_text(encoding="utf-8", errors="replace")
-            script_blocks = extract_vue_scripts(source_text)
-            if not script_blocks:
-                files_analyzed += 1
-                continue
-
-            for block in script_blocks:
-                parser = _get_parser_for_lang(block.is_typescript, tsx=block.is_tsx)
-                if parser is None:
-                    continue
-
-                source_bytes = block.content.encode("utf-8")
-                tree = parser.parse(source_bytes)
-                lang = "typescript" if block.is_typescript else "javascript"
-                line_offset = block.start_line - 1
-                ns_imports = _extract_namespace_imports(tree, source_bytes)
-                nm_imports, nm_originals = _extract_named_imports(tree, source_bytes)
-
-                parsed_files.append(_ParsedFile(
-                    path=file_path, tree=tree, source=source_bytes,
-                    lang=lang, line_offset=line_offset, namespace_imports=ns_imports,
-                    named_imports=nm_imports,
-                    named_import_originals=nm_originals,
-                ))
-                symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset, repo_root=repo_root)
-                populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
-                all_symbols.extend(symbols)
-
-            files_analyzed += 1
-        except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
-            files_skipped += 1
-            run.record_failed_file(str(file_path.relative_to(repo_root)), f"{type(e).__name__}: {e}")
+            except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
+                files_skipped += 1
+                run.record_failed_file(str(file_path.relative_to(repo_root)), f"{type(e).__name__}: {e}")
 
     # Build global symbol registries
     global_symbols: dict[str, Symbol] = {}
