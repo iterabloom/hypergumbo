@@ -41,7 +41,12 @@ Electron contextBridge (preload → renderer):
   from renderer call sites to the IPC send symbols in the preload file (post WI-mifor-
   vabul Phase 3 bridge/FFI; pre-fold edge_type was ``bridge_invokes``), enabling
   end-to-end traceability from UI code through the preload bridge into the main process
-  handler.
+  handler. The edge's dst IS the send site's own node -- same (file, line, channel),
+  so same id -- the one the channel join's ``event_publishes`` edge leaves, so
+  renderer -> preload -> main is one connected path (WI-kokuv; it used to target a
+  separate ``0-0`` stand-in with no outgoing edge). A bridge send through a custom
+  ``ipcInvoke('ch')`` wrapper, which no ``ipcRenderer.*`` pattern detects, is added
+  to the senders before the join and publishes to the receivers itself.
 
 Web Workers / postMessage:
 - worker.postMessage(data)                 -> detected, but NO edge and NO symbol: the
@@ -77,12 +82,14 @@ How It Works
 3. Extract channel literals, resolving identifiers to same-file string constants
 4. Create edges linking sites with matching channel values (or, when a value
    is unknown, matching identifiers)
-5. Detect contextBridge.exposeInMainWorld() wrappers in preload scripts,
-   then scan other files for window.namespace.method() calls and create
-   canonical ``calls`` edges (``meta["bridge_kind"]="context_bridge"``; the
-   pre-fold edge type was ``bridge_invokes``) linking those calls to the IPC
-   send symbols. The same path also covers individually-exposed functions and
-   custom ``ipcInvoke`` / ``ipcSend`` wrappers
+5. Detect contextBridge.exposeInMainWorld() wrappers in preload scripts
+   (in the same scan as step 2, recording each exposure's send line, so its
+   send site joins the step-4 channel match), then scan the files for
+   window.namespace.method() calls and create canonical ``calls`` edges
+   (``meta["bridge_kind"]="context_bridge"``; the pre-fold edge type was
+   ``bridge_invokes``) linking those calls to the IPC send symbols. The same
+   path also covers individually-exposed functions and custom ``ipcInvoke`` /
+   ``ipcSend`` wrappers
 
 Why This Design
 ---------------
@@ -216,11 +223,48 @@ _CONTEXT_BRIDGE_PATTERN = re.compile(
 #   methodName: (...) => ipcRenderer.invoke('channel', ...)
 #   methodName(...) { return ipcRenderer.send('channel', ...) }
 _BRIDGE_METHOD_PATTERN = re.compile(
-    r"""(\w+)\s*(?::\s*(?:\([^)]*\)\s*=>|function\s*\([^)]*\)\s*\{)|"""
+    r"""(?P<method>\w+)\s*(?::\s*(?:\([^)]*\)\s*=>|function\s*\([^)]*\)\s*\{)|"""
     r"""\([^)]*\)\s*\{)\s*"""
-    r"""(?:return\s+)?ipcRenderer\s*\.\s*(send|invoke|sendSync)\s*\(\s*"""
-    r"""['"]([^'"]+)['"]""",
+    r"""(?:return\s+)?(?P<ipc>ipcRenderer)\s*\.\s*(?P<ipc_method>send|invoke|sendSync)"""
+    r"""\s*\(\s*['"](?P<channel>[^'"]+)['"]""",
 )
+
+
+@dataclass(frozen=True)
+class _BridgeSend:
+    """The IPC send a contextBridge exposure forwards to, at its real site.
+
+    ``line`` is the line of the token that starts the IPC call
+    (``ipcRenderer`` or an ``ipcInvoke``-style wrapper) -- the same line
+    :func:`detect_ipc_patterns` records for an ``ipcRenderer.*`` send there,
+    so the bridge's send node and the detected one share an id (WI-kokuv).
+    """
+
+    channel: str
+    ipc_method: str
+    line: int
+
+
+def _line_at(text: str, offset: int) -> int:
+    """1-based line number of ``offset`` in ``text``."""
+    return text.count("\n", 0, offset) + 1
+
+
+def _bridge_wrapper_sends(text: str) -> list[tuple[str, dict[str, _BridgeSend]]]:
+    """Object-literal contextBridge exposures, with each method's send site."""
+    results: list[tuple[str, dict[str, _BridgeSend]]] = []
+    for bridge_match in _CONTEXT_BRIDGE_PATTERN.finditer(text):
+        body_start = bridge_match.start(2)
+        methods: dict[str, _BridgeSend] = {}
+        for method_match in _BRIDGE_METHOD_PATTERN.finditer(bridge_match.group(2)):
+            methods[method_match.group("method")] = _BridgeSend(
+                channel=method_match.group("channel"),
+                ipc_method=method_match.group("ipc_method"),
+                line=_line_at(text, body_start + method_match.start("ipc")),
+            )
+        if methods:
+            results.append((bridge_match.group(1), methods))
+    return results
 
 
 def detect_context_bridge_wrappers(
@@ -243,23 +287,10 @@ def detect_context_bridge_wrappers(
         method_name -> (channel_name, ipc_method).
     """
     text = source.decode("utf-8", errors="replace")
-    results: list[tuple[str, dict[str, tuple[str, str]]]] = []
-
-    for bridge_match in _CONTEXT_BRIDGE_PATTERN.finditer(text):
-        namespace = bridge_match.group(1)
-        body = bridge_match.group(2)
-        methods: dict[str, tuple[str, str]] = {}
-
-        for method_match in _BRIDGE_METHOD_PATTERN.finditer(body):
-            method_name = method_match.group(1)
-            ipc_method = method_match.group(2)
-            channel = method_match.group(3)
-            methods[method_name] = (channel, ipc_method)
-
-        if methods:
-            results.append((namespace, methods))
-
-    return results
+    return [
+        (namespace, {name: (b.channel, b.ipc_method) for name, b in methods.items()})
+        for namespace, methods in _bridge_wrapper_sends(text)
+    ]
 
 
 # contextBridge.exposeInMainWorld('funcName', async (...) => { ... ipcRenderer.invoke('channel') ... })
@@ -305,13 +336,17 @@ def detect_context_bridge_functions(
         List of (func_name, channel, ipc_method) tuples.
     """
     text = source.decode("utf-8", errors="replace")
-    results: list[tuple[str, str, str]] = []
+    return [
+        (func_name, b.channel, b.ipc_method)
+        for func_name, b in _bridge_function_sends(text)
+    ]
 
+
+def _bridge_function_sends(text: str) -> list[tuple[str, _BridgeSend]]:
+    """Single-function contextBridge exposures, with each one's send site."""
+    results: list[tuple[str, _BridgeSend]] = []
     for match in _CONTEXT_BRIDGE_FUNC_PATTERN.finditer(text):
-        func_name = match.group(1)
-        body = match.group(2)
-
-        ipc_match = _FUNC_BODY_IPC_PATTERN.search(body)
+        ipc_match = _FUNC_BODY_IPC_PATTERN.search(match.group(2))
         if ipc_match:
             # ipcRenderer.method or ipcXxx wrapper
             if ipc_match.group(1):
@@ -320,9 +355,11 @@ def detect_context_bridge_functions(
                 # Custom wrapper: ipcInvoke → invoke, ipcSend → send, etc.
                 wrapper_name = ipc_match.group(2)
                 ipc_method = wrapper_name[0].lower() + wrapper_name[1:]
-            channel = ipc_match.group(3)
-            results.append((func_name, channel, ipc_method))
-
+            results.append((match.group(1), _BridgeSend(
+                channel=ipc_match.group(3),
+                ipc_method=ipc_method,
+                line=_line_at(text, match.start(2) + ipc_match.start()),
+            )))
     return results
 
 
@@ -471,12 +508,28 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     files_analyzed = 0
     files_skipped = 0
 
+    # contextBridge exposures, collected in the same scan (one read per file)
+    # because their send sites must be in ``senders`` BEFORE the channel join.
+    # namespace -> { method_name: (preload_file, send) }
+    bridge_methods: dict[str, dict[str, tuple[str, _BridgeSend]]] = {}
+    # func_name -> (preload_file, send)
+    bridge_funcs: dict[str, tuple[str, _BridgeSend]] = {}
+    file_contents: dict[str, str] = {}  # file_path -> content (for Phase 3)
+
     # Scan all JS/TS files for IPC patterns
     for file_path in _find_js_files(repo_root):
         try:
             source = read_source_bytes(file_path)
             language = _get_language(file_path)
             patterns = detect_ipc_patterns(source, language)
+            file_str = str(file_path)
+            content = source.decode("utf-8", errors="replace")
+            file_contents[file_str] = content
+            for namespace, methods in _bridge_wrapper_sends(content):
+                for method_name, send in methods.items():
+                    bridge_methods.setdefault(namespace, {})[method_name] = (file_str, send)
+            for func_name, send in _bridge_function_sends(content):
+                bridge_funcs[func_name] = (file_str, send)
 
             for p in patterns:
                 all_patterns.append(IpcPattern(
@@ -555,6 +608,44 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
             created_symbol_ids.add(sym_id)
         return sym_id
 
+    # WI-kokuv: a bridge's send IS the send site the scan detected there --
+    # the same (file, line, channel) gives the same id, so the bridge ``calls``
+    # edge and the join's ``event_publishes`` edge meet on ONE node and
+    # renderer -> preload -> main is a connected path. A bridge send no
+    # ``ipcRenderer.*`` pattern detected (a custom ``ipcInvoke('ch')`` wrapper)
+    # joins ``senders`` itself, so it, too, publishes to the receivers.
+    sender_ids = {_make_symbol_id(s, s.channel) for s in senders}
+
+    def _bridge_send_id(preload_file: str, send: _BridgeSend) -> str:
+        site = IpcPattern(
+            type="send",
+            channel=send.channel,
+            line=send.line,
+            file_path=preload_file,
+            pattern_type="electron",
+            channel_type=KIND_LITERAL,
+        )
+        sym_id = _make_symbol_id(site, send.channel)
+        if sym_id not in sender_ids:
+            sender_ids.add(sym_id)
+            senders.append(site)
+            all_patterns.append(site)
+        return sym_id
+
+    # namespace -> { method_name: (channel, send symbol id) }
+    bridge_maps: dict[str, dict[str, tuple[str, str]]] = {
+        namespace: {
+            method_name: (send.channel, _bridge_send_id(preload_file, send))
+            for method_name, (preload_file, send) in methods.items()
+        }
+        for namespace, methods in bridge_methods.items()
+    }
+    # func_name -> (channel, send symbol id)
+    bridge_func_map: dict[str, tuple[str, str]] = {
+        func_name: (send.channel, _bridge_send_id(preload_file, send))
+        for func_name, (preload_file, send) in bridge_funcs.items()
+    }
+
     # Every named send site gets a symbol, joined or not.
     for sender in senders:
         _ensure_symbol(sender, sender.channel)
@@ -612,36 +703,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     # window.<namespace>.<method>() calls and create calls edges
     # (meta.bridge_kind="context_bridge").
 
-    # Collect bridge wrapper definitions from all scanned files
-    bridge_maps: dict[str, dict[str, tuple[str, str, str]]] = {}
-    # namespace -> { method_name: (channel, ipc_method, preload_file_path) }
-
-    # Individual function exposures: func_name -> (channel, ipc_method, preload_file)
-    bridge_func_map: dict[str, tuple[str, str, str]] = {}
-
-    file_contents: dict[str, str] = {}  # file_path -> content (cached for Phase 3)
-
-    for file_path in _find_js_files(repo_root):
-        try:
-            source = read_source_bytes(file_path)
-        except (OSError, IOError):
-            continue
-
-        file_str = str(file_path)
-        content = source.decode("utf-8", errors="replace")
-        file_contents[file_str] = content
-
-        wrappers = detect_context_bridge_wrappers(source)
-        for namespace, methods in wrappers:
-            if namespace not in bridge_maps:
-                bridge_maps[namespace] = {}
-            for method_name, (channel, ipc_method) in methods.items():
-                bridge_maps[namespace][method_name] = (channel, ipc_method, file_str)
-
-        # Individual function exposures: contextBridge.exposeInMainWorld('funcName', ...)
-        func_exposures = detect_context_bridge_functions(source)
-        for func_name, channel, _ipc_method in func_exposures:
-            bridge_func_map[func_name] = (channel, _ipc_method, file_str)
+    # The exposures were collected in the scan above and their send ids
+    # resolved before the join (``bridge_maps`` / ``bridge_func_map``).
 
     # Scan all files for window.<namespace>.<method>() calls
     seen_bridge_edges: set[tuple[str, str, str]] = set()  # (file, namespace, method)
@@ -662,7 +725,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     continue
                 seen_bridge_edges.add(dedup_key)
 
-                channel, ipc_method, preload_file = method_map[method_name]
+                channel, preload_send_id = method_map[method_name]
                 call_line = content[:call_match.start()].count("\n") + 1
 
                 # Relativize file path
@@ -707,29 +770,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     ))
                     created_symbol_ids.add(caller_id)
 
-                # Find or create the IPC send symbol in the preload file for dst
-                preload_send_id = _make_symbol_id(
-                    IpcPattern(
-                        type="send",
-                        channel=channel,
-                        line=0,
-                        file_path=preload_file,
-                        pattern_type="electron",
-                        channel_type="literal",
-                    ),
-                    channel,
-                )
-                _ensure_symbol(
-                    IpcPattern(
-                        type="send",
-                        channel=channel,
-                        line=0,
-                        file_path=preload_file,
-                        pattern_type="electron",
-                        channel_type="literal",
-                    ),
-                    channel,
-                )
+                # dst: the preload send site's own node (WI-kokuv), which
+                # every sender got above.
 
                 # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical
                 # 'calls' + meta['bridge_kind']='context_bridge' for
@@ -764,7 +806,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     seen_func_edges: set[tuple[str, str]] = set()  # (file, func_name)
 
     for file_str, content in file_contents.items():
-        for func_name, (channel, _ipc_method, preload_file) in bridge_func_map.items():
+        for func_name, (channel, preload_send_id) in bridge_func_map.items():
             # Match window.funcName( but NOT window.funcName.something(
             func_call_pattern = re.compile(
                 rf"window\s*\.\s*{re.escape(func_name)}\s*\(",
@@ -815,29 +857,6 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                         },
                     ))
                     created_symbol_ids.add(caller_id)
-
-                preload_send_id = _make_symbol_id(
-                    IpcPattern(
-                        type="send",
-                        channel=channel,
-                        line=0,
-                        file_path=preload_file,
-                        pattern_type="electron",
-                        channel_type="literal",
-                    ),
-                    channel,
-                )
-                _ensure_symbol(
-                    IpcPattern(
-                        type="send",
-                        channel=channel,
-                        line=0,
-                        file_path=preload_file,
-                        pattern_type="electron",
-                        channel_type="literal",
-                    ),
-                    channel,
-                )
 
                 # ADR-0023 §6 Phase 3 (WI-mifor-vabul): canonical
                 # 'calls' + meta['bridge_kind']='context_bridge'.

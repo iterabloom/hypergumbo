@@ -1439,3 +1439,142 @@ ipcMain.handle('container-provider-registry:listContainers', async () => {
             e.meta.get("channel") == "container-provider-registry:listContainers"
             for e in bridge_edges
         )
+
+
+class TestContextBridgeChainConnectivity:
+    """WI-kokuv: renderer -> preload -> main is ONE connected path.
+
+    The contextBridge ``calls`` edge used to target a freshly minted
+    ``<preload>:0-0:send:<channel>`` stand-in while the channel join's
+    ``event_publishes`` edge left the send detected at its real line, so the
+    0-0 node had no outgoing edge and the chain never connected. The
+    invariant asserted here is structural: every bridge ``calls`` edge's dst
+    is a send node at a real (non-zero) line, and a directed path exists from
+    the renderer's bridge caller to the main-process receiver.
+    """
+
+    @staticmethod
+    def _reaches(edges: list, src_pred, dst_pred) -> bool:
+        adjacency: dict[str, set[str]] = {}
+        for edge in edges:
+            adjacency.setdefault(edge.src, set()).add(edge.dst)
+        frontier = [e.src for e in edges if src_pred(e.src)]
+        seen = set(frontier)
+        while frontier:
+            node = frontier.pop()
+            if dst_pred(node):
+                return True
+            for nxt in adjacency.get(node, ()):
+                if nxt not in seen:
+                    seen.add(nxt)
+                    frontier.append(nxt)
+        return False
+
+    def _assert_chain(self, tmp_path: Path, preload_src: str, renderer_src: str,
+                      main_src: str, renderer_name: str = "renderer.js") -> None:
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        (tmp_path / "preload.js").write_text(preload_src)
+        (tmp_path / renderer_name).write_text(renderer_src)
+        (tmp_path / "main.js").write_text(main_src)
+
+        result = link_ipc(tmp_path)
+        bridge_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and (e.meta or {}).get("bridge_kind") == "context_bridge"
+        ]
+        # Reach: the fixture really exercises the bridge path.
+        assert bridge_edges, "fixture did not produce a contextBridge edge"
+
+        sym_by_id = {s.id: s for s in result.symbols}
+        for edge in bridge_edges:
+            dst = sym_by_id[edge.dst]
+            assert dst.span.start_line > 0, f"line-0 stand-in: {edge.dst}"
+            # The bridge's send node is the one the channel join publishes from.
+            assert any(
+                e.src == edge.dst and e.edge_type == "event_publishes"
+                for e in result.edges
+            ), f"bridge dst {edge.dst} has no outgoing event_publishes edge"
+
+        # No symbol the linker emits sits at line 0.
+        assert all(s.span.start_line > 0 for s in result.symbols)
+
+        assert self._reaches(
+            result.edges,
+            lambda n: n.endswith(":bridge_caller") and renderer_name in n,
+            lambda n: "main.js" in n and ":receive:" in n,
+        ), "renderer -> preload -> main path is disconnected"
+
+    def test_object_bridge_send_connects_to_main(self, tmp_path: Path) -> None:
+        self._assert_chain(
+            tmp_path,
+            "const { contextBridge, ipcRenderer } = require('electron');\n"
+            "contextBridge.exposeInMainWorld('api', {\n"
+            "  openFile: () => ipcRenderer.send('open-file'),\n"
+            "});\n",
+            "function onClick() {\n  window.api.openFile();\n}\n",
+            "const { ipcMain } = require('electron');\n"
+            "ipcMain.on('open-file', (event) => {\n  console.log('open');\n});\n",
+        )
+
+    def test_object_bridge_shorthand_multiline_connects(self, tmp_path: Path) -> None:
+        """Method shorthand, ipcRenderer on a later line than the method name."""
+        self._assert_chain(
+            tmp_path,
+            "contextBridge.exposeInMainWorld('api', {\n"
+            "  getData(id) {\n"
+            "    return ipcRenderer\n"
+            "      .invoke('get-data', id)\n"
+            "  },\n"
+            "  saveFile: (d) =>\n"
+            "    ipcRenderer.send('save-file', d),\n"
+            "});\n",
+            "window.api.getData(1);\nwindow.api.saveFile('x');\n",
+            "ipcMain.handle('get-data', async () => 1);\n"
+            "ipcMain.on('save-file', () => {});\n",
+        )
+
+    def test_function_bridge_connects_to_main(self, tmp_path: Path) -> None:
+        self._assert_chain(
+            tmp_path,
+            "contextBridge.exposeInMainWorld('getVersion', async () => {\n"
+            "  return ipcRenderer.invoke('app:version');\n"
+            "});\n",
+            "const v = await window.getVersion();\n",
+            "ipcMain.handle('app:version', async () => '1.0');\n",
+            renderer_name="app.ts",
+        )
+
+    def test_custom_wrapper_bridge_connects_to_main(self, tmp_path: Path) -> None:
+        """``ipcInvoke('ch')`` wrapper: no ipcRenderer.* site names the channel,
+        so the bridge's own send site must join the receiver itself."""
+        self._assert_chain(
+            tmp_path,
+            "const ipcInvoke = (channel, ...a) => ipcRenderer.invoke(channel, ...a);\n"
+            "contextBridge.exposeInMainWorld('listContainers', async () => {\n"
+            "  return ipcInvoke('registry:listContainers');\n"
+            "});\n",
+            "const c = await window.listContainers();\n",
+            "ipcMain.handle('registry:listContainers', async () => []);\n",
+            renderer_name="app.ts",
+        )
+
+    def test_bridge_dst_is_the_detected_send_node(self, tmp_path: Path) -> None:
+        """The stand-in IS the detected send: same id, one send node per site."""
+        from hypergumbo_core.linkers.ipc import link_ipc
+
+        (tmp_path / "preload.js").write_text(
+            "contextBridge.exposeInMainWorld('api', {\n"
+            "  openFile: () => ipcRenderer.send('open-file'),\n"
+            "});\n"
+        )
+        (tmp_path / "renderer.js").write_text("window.api.openFile();\n")
+        result = link_ipc(tmp_path)
+        sends = [
+            s for s in result.symbols
+            if (s.meta or {}).get("framework_role") == "ipc_send"
+        ]
+        assert [s.span.start_line for s in sends] == [2]
+        bridge = [e for e in result.edges if e.edge_type == "calls"]
+        assert [e.dst for e in bridge] == [sends[0].id]
