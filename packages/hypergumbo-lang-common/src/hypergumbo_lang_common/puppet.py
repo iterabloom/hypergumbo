@@ -7,9 +7,23 @@ infrastructure-as-code analysis and system configuration auditing.
 
 How It Works
 ------------
-1. Uses tree-sitter-puppet grammar from tree-sitter-language-pack
-2. Extracts classes, defined types, resources, and nodes
-3. Identifies include statements and resource relationships
+The analyzer runs on ``TreeSitterAnalyzer``'s two-pass pipeline (the
+tree-sitter-puppet grammar from tree-sitter-language-pack):
+
+1. Pass 1 (``extract_symbols_from_file``) declares every manifest's classes,
+   defined types, resources and nodes, and emits no edge.
+2. The base registers the symbols of ALL files before any edge is made;
+   ``register_symbol`` keeps only classes, the one thing an ``include`` binds.
+3. Pass 2 (``extract_edges_from_file``) emits include and resource
+   relationship edges.
+
+An include therefore binds to a class declared lower in the same file or in a
+file that sorts later just as it does to one declared earlier: resolution
+does not depend on declaration or file order (WI-vahun). It used to, because
+one sequential walk both filled the class registry and read it, leaving a
+forward include dangling with ``is_resolved=False``. A relationship edge
+leaves the resource that declares it, found by its declaration's position
+(``symbols_at``), not re-derived.
 
 Symbols Extracted
 -----------------
@@ -23,7 +37,12 @@ Include statements emit only edges, not Symbols (per audit-findings
 
 Edges Extracted
 ---------------
-- **includes**: Links the manifest file to included class definitions
+- **includes**: Links the manifest file to the included class, wherever in
+  the repository it is declared (``is_resolved=True``); a class declared
+  nowhere gives a dangling ``puppet:class:<name>:1-1:<name>:class`` dst with
+  ``is_resolved=False``. When a class name is declared twice, the last
+  declaration (by file sort order, then position) is the target: the base
+  registry is last-writer.
 - **depends_on**: Resource relationships from ``require`` (evidence_type
   ``require``, meta ref_construct ``puppet_require``) and ``notify``
   (evidence_type ``notify``, meta ref_construct ``puppet_notify`` and
@@ -48,23 +67,22 @@ Why This Design
 
 from __future__ import annotations
 
-import time
-import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
+from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
-    AnalysisResult, TreeSitterAnalyzer, ancestor_labels, block_prelude, make_doc_symbol_ids,
-    make_file_id, populate_docstrings_from_tree,
+    AnalysisResult, FileAnalysis, TreeSitterAnalyzer, ancestor_labels, block_prelude,
+    iter_tree, make_doc_symbol_ids, make_file_id, symbol_declared_by, symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
-from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
+
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 
 PASS_ID = make_pass_id("puppet")
@@ -106,415 +124,357 @@ def find_puppet_files(repo_root: Path) -> list[Path]:
 
 
 
-class _PuppetExtractor:
-    """Analyzer for Puppet manifest files."""
+def _span(node: "tree_sitter.Node") -> Span:
+    return Span(
+        start_line=node.start_point[0] + 1,
+        start_col=node.start_point[1],
+        end_line=node.end_point[0] + 1,
+        end_col=node.end_point[1],
+    )
 
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = repo_root
-        self._symbols: list[Symbol] = []
-        self._edges: list[Edge] = []
-        self._execution_id = f"uuid:{uuid.uuid4()}"
-        self._files_analyzed = 0
-        self._class_registry: dict[str, str] = {}  # class name -> symbol id
 
-    def analyze(self) -> AnalysisResult:
-        """Run the Puppet analysis."""
-        start_time = time.time()
+def _extract_params(node: "tree_sitter.Node") -> list[str]:
+    """Extract parameter names from a parameter list."""
+    params: list[str] = []
+    for child in node.children:
+        if child.type == "parameter":
+            for param_child in child.children:
+                if param_child.type == "variable":
+                    var_name = _get_node_text(param_child)
+                    # Remove $ prefix for cleaner display
+                    if var_name.startswith("$"):
+                        var_name = var_name[1:]
+                    params.append(var_name)
+                    break
+    return params
 
-        files = find_puppet_files(self.repo_root)
-        if not files:
-            return AnalysisResult(
-                symbols=[],
-                edges=[],
-                run=None,
-            )
 
-        from tree_sitter_language_pack import get_parser
+def _resource_parts(node: "tree_sitter.Node") -> tuple[str, str, dict[str, str]]:
+    """A resource declaration's type, title and ``key => value`` attributes."""
+    resource_type = ""
+    resource_title = ""
+    attributes: dict[str, str] = {}
 
-        parser = get_parser("puppet")
+    for child in node.children:
+        if child.type == "identifier":
+            resource_type = _get_node_text(child)
+        elif child.type == "class_identifier":
+            resource_type = _get_node_text(child)
+        elif child.type == "string":
+            if not resource_title:
+                resource_title = _get_node_text(child).strip("'\"")
+        elif child.type == "attribute":
+            attr_text = _get_node_text(child)
+            if "=>" in attr_text:
+                parts = attr_text.split("=>", 1)
+                key = parts[0].strip()
+                value = parts[1].strip() if len(parts) > 1 else ""
+                attributes[key] = value
+    return resource_type, resource_title, attributes
 
-        for path in files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                before = len(self._symbols)
-                self._extract_symbols(tree.root_node, path)
-                populate_docstrings_from_tree(tree.root_node, content, self._symbols[before:])
-                self._files_analyzed += 1
-            except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
-                continue
 
-        duration_ms = int((time.time() - start_time) * 1000)
+def _class_symbol(node: "tree_sitter.Node", rel_path: str) -> Optional[Symbol]:
+    """A class definition's symbol."""
+    class_name = ""
+    params: list[str] = []
 
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._execution_id,
-            version=PASS_VERSION,
-            toolchain=_get_python_toolchain(),
-            duration_ms=duration_ms,
-            files_analyzed=self._files_analyzed,
-        )
+    for child in node.children:
+        if child.type == "identifier":
+            class_name = _get_node_text(child)
+        elif child.type == "parameter_list":
+            params = _extract_params(child)
 
-        return AnalysisResult(
-            symbols=self._symbols,
-            edges=self._edges,
-            run=run,
-        )
+    if not class_name:
+        return None  # pragma: no cover
 
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
-        if node.type == "class_definition":
-            self._extract_class(node, path)
-        elif node.type == "defined_resource_type":
-            self._extract_defined_type(node, path)
-        elif node.type == "resource_declaration":
-            self._extract_resource(node, path)
-        elif node.type == "node_definition":
-            self._extract_node(node, path)
-        elif node.type == "include_statement":
-            self._extract_include(node, path)
+    span = _span(node)
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah);
+    # node.id stays byte-identical to the old raw composite.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "puppet", rel_path, "class", class_name, span.start_line, span.end_line,
+        _scope(node),
+    )
 
-        for child in node.children:
-            self._extract_symbols(child, path)
+    param_str = ", ".join(params) if params else ""
+    signature = f"class {class_name}({param_str})" if params else f"class {class_name}"
 
-    def _extract_class(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a class definition."""
-        class_name = ""
-        params: list[str] = []
+    return Symbol(
+        id=symbol_id,
+        stable_id=stable_id,
+        name=class_name,
+        kind="class",
+        language="puppet",
+        path=rel_path,
+        span=span,
+        origin=PASS_ID,
+        signature=signature,
+        meta={
+            "params": params,
+            "param_count": len(params),
+        },
+    )
 
-        for child in node.children:
-            if child.type == "identifier":
-                class_name = _get_node_text(child)
-            elif child.type == "parameter_list":
-                params = self._extract_params(child)
 
-        if not class_name:
-            return  # pragma: no cover
+def _defined_type_symbol(node: "tree_sitter.Node", rel_path: str) -> Optional[Symbol]:
+    """A defined resource type's symbol."""
+    type_name = ""
+    params: list[str] = []
 
-        rel_path = path.relative_to(self.repo_root)
-        line = node.start_point[0] + 1
+    for child in node.children:
+        if child.type == "class_identifier":
+            type_name = _get_node_text(child)
+        elif child.type == "identifier" and not type_name:  # pragma: no cover
+            type_name = _get_node_text(child)
+        elif child.type == "parameter_list":
+            params = _extract_params(child)
 
-        span = Span(
-            start_line=line,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
-        )
+    if not type_name:
+        return None  # pragma: no cover
 
-        # Both ids minted together by make_doc_symbol_ids (INV-dulah);
-        # node.id stays byte-identical to the old raw composite.
-        symbol_id, stable_id = make_doc_symbol_ids(
-            "puppet", rel_path, "class", class_name, span.start_line, span.end_line,
-            _scope(node),
-        )
+    span = _span(node)
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah);
+    # node.id stays byte-identical to the old raw composite.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "puppet", rel_path, "defined_type", type_name, span.start_line, span.end_line,
+        _scope(node),
+    )
 
-        # Register class for edge creation
-        self._class_registry[class_name] = symbol_id
+    param_str = ", ".join(params) if params else ""
+    signature = f"define {type_name}({param_str})" if params else f"define {type_name}"
 
-        param_str = ", ".join(params) if params else ""
-        signature = f"class {class_name}({param_str})" if params else f"class {class_name}"
+    return Symbol(
+        id=symbol_id,
+        stable_id=stable_id,
+        name=type_name,
+        kind="defined_type",
+        language="puppet",
+        path=rel_path,
+        span=span,
+        origin=PASS_ID,
+        signature=signature,
+        meta={
+            "params": params,
+            "param_count": len(params),
+        },
+    )
 
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=stable_id,
-            name=class_name,
-            kind="class",
-            language="puppet",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=signature,
-            meta={
-                "params": params,
-                "param_count": len(params),
-            },
-        )
-        self._symbols.append(symbol)
 
-    def _extract_defined_type(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a defined resource type."""
-        type_name = ""
-        params: list[str] = []
+def _resource_symbol(node: "tree_sitter.Node", rel_path: str) -> Optional[Symbol]:
+    """A resource declaration's symbol."""
+    resource_type, resource_title, attributes = _resource_parts(node)
 
-        for child in node.children:
-            if child.type == "class_identifier":
-                type_name = _get_node_text(child)
-            elif child.type == "identifier" and not type_name:  # pragma: no cover
-                type_name = _get_node_text(child)
-            elif child.type == "parameter_list":
-                params = self._extract_params(child)
+    if not resource_type:
+        return None  # pragma: no cover
 
-        if not type_name:
-            return  # pragma: no cover
+    name = f"{resource_type}[{resource_title}]" if resource_title else resource_type
+    span = _span(node)
 
-        rel_path = path.relative_to(self.repo_root)
-        line = node.start_point[0] + 1
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah);
+    # node.id stays byte-identical to the old raw composite.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "puppet", rel_path, "resource", name, span.start_line, span.end_line,
+        _scope(node),
+    )
 
-        span = Span(
-            start_line=line,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
-        )
+    return Symbol(
+        id=symbol_id,
+        stable_id=stable_id,
+        name=name,
+        kind="resource",
+        language="puppet",
+        path=rel_path,
+        span=span,
+        origin=PASS_ID,
+        signature=f"{resource_type} {{ '{resource_title}': ... }}",
+        meta={
+            "resource_type": resource_type,
+            "title": resource_title,
+            "ensure": attributes.get("ensure", ""),
+        },
+    )
 
-        # Both ids minted together by make_doc_symbol_ids (INV-dulah);
-        # node.id stays byte-identical to the old raw composite.
-        symbol_id, stable_id = make_doc_symbol_ids(
-            "puppet", rel_path, "defined_type", type_name, span.start_line, span.end_line,
-            _scope(node),
-        )
 
-        param_str = ", ".join(params) if params else ""
-        signature = f"define {type_name}({param_str})" if params else f"define {type_name}"
+def _node_symbol(node: "tree_sitter.Node", rel_path: str) -> Optional[Symbol]:
+    """A node definition's symbol."""
+    node_name = ""
 
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=stable_id,
-            name=type_name,
-            kind="defined_type",
-            language="puppet",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=signature,
-            meta={
-                "params": params,
-                "param_count": len(params),
-            },
-        )
-        self._symbols.append(symbol)
+    for child in node.children:
+        if child.type == "node_name":
+            # Get the string content
+            for name_child in child.children:
+                if name_child.type == "string":
+                    node_name = _get_node_text(name_child).strip("'\"")
+                    break
+            if not node_name:  # pragma: no cover
+                node_name = _get_node_text(child).strip("'\"")
 
-    def _extract_params(self, node: "tree_sitter.Node") -> list[str]:
-        """Extract parameter names from a parameter list."""
-        params: list[str] = []
-        for child in node.children:
-            if child.type == "parameter":
-                for param_child in child.children:
-                    if param_child.type == "variable":
-                        var_name = _get_node_text(param_child)
-                        # Remove $ prefix for cleaner display
-                        if var_name.startswith("$"):
-                            var_name = var_name[1:]
-                        params.append(var_name)
-                        break
-        return params
+    if not node_name:
+        return None  # pragma: no cover
 
-    def _extract_resource(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a resource declaration."""
-        resource_type = ""
-        resource_title = ""
-        attributes: dict[str, str] = {}
+    span = _span(node)
+    # Both ids minted together by make_doc_symbol_ids (INV-dulah);
+    # node.id stays byte-identical to the old raw composite.
+    symbol_id, stable_id = make_doc_symbol_ids(
+        "puppet", rel_path, "node", node_name, span.start_line, span.end_line,
+        _scope(node),
+    )
 
-        for child in node.children:
-            if child.type == "identifier":
-                resource_type = _get_node_text(child)
-            elif child.type == "class_identifier":
-                resource_type = _get_node_text(child)
-            elif child.type == "string":
-                if not resource_title:
-                    resource_title = _get_node_text(child).strip("'\"")
-            elif child.type == "attribute":
-                attr_text = _get_node_text(child)
-                if "=>" in attr_text:
-                    parts = attr_text.split("=>", 1)
-                    key = parts[0].strip()
-                    value = parts[1].strip() if len(parts) > 1 else ""
-                    attributes[key] = value
+    return Symbol(
+        id=symbol_id,
+        stable_id=stable_id,
+        name=node_name,
+        kind="node",
+        language="puppet",
+        path=rel_path,
+        span=span,
+        origin=PASS_ID,
+        signature=f"node '{node_name}'",
+        meta={},
+    )
 
-        if not resource_type:
-            return  # pragma: no cover
 
-        rel_path = path.relative_to(self.repo_root)
-        line = node.start_point[0] + 1
+#: Pass 1: the declaration node types and the builder of each one's symbol.
+_SYMBOL_BUILDERS = {
+    "class_definition": _class_symbol,
+    "defined_resource_type": _defined_type_symbol,
+    "resource_declaration": _resource_symbol,
+    "node_definition": _node_symbol,
+}
 
-        name = f"{resource_type}[{resource_title}]" if resource_title else resource_type
-        span = Span(
-            start_line=line,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
-        )
+#: Resource relationship attributes Pass 2 turns into ``depends_on`` edges:
+#: attribute -> (evidence_type, meta).
+_RELATIONSHIP_ATTRIBUTES: dict[str, tuple[str, dict[str, object]]] = {
+    "require": ("require", {"ref_construct": "puppet_require"}),
+    "notify": ("notify", {"ref_construct": "puppet_notify", "refresh": True}),
+}
 
-        # Both ids minted together by make_doc_symbol_ids (INV-dulah);
-        # node.id stays byte-identical to the old raw composite.
-        symbol_id, stable_id = make_doc_symbol_ids(
-            "puppet", rel_path, "resource", name, span.start_line, span.end_line,
-            _scope(node),
-        )
 
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=stable_id,
-            name=name,
-            kind="resource",
-            language="puppet",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=f"{resource_type} {{ '{resource_title}': ... }}",
-            meta={
-                "resource_type": resource_type,
-                "title": resource_title,
-                "ensure": attributes.get("ensure", ""),
-            },
-        )
-        self._symbols.append(symbol)
+def _relationship_edges(
+    node: "tree_sitter.Node", resource: Symbol, run_id: str,
+) -> list[Edge]:
+    """``depends_on`` edges for a resource's ``require`` / ``notify``
+    attributes (``notify`` carries meta ``refresh=True``)."""
+    _, _, attributes = _resource_parts(node)
+    line = node.start_point[0] + 1
+    edges: list[Edge] = []
+    for attribute, (evidence_type, meta) in _RELATIONSHIP_ATTRIBUTES.items():
+        if attribute in attributes:
+            edges.append(Edge.create(
+                src=resource.id,
+                # Raw reference text, e.g. ``Package['nginx']`` (WI-tuniz).
+                dst=f"puppet:resource:{attributes[attribute]}",
+                edge_type="depends_on",
+                line=line,
+                origin=PASS_ID,
+                origin_run_id=run_id,
+                evidence_type=evidence_type,
+                meta=dict(meta),
+            ))
+    return edges
 
-        # Create depends_on edges for require/notify relationships
-        if "require" in attributes:
-            self._create_require_edge(symbol_id, attributes["require"], line)
-        if "notify" in attributes:
-            self._create_notify_edge(symbol_id, attributes["notify"], line)
 
-    def _create_require_edge(self, src_id: str, require_value: str, line: int) -> None:
-        """Create a depends_on edge for a ``require`` attribute."""
-        # Parse require value like "Package['nginx']"
-        edge = Edge.create(
-            src=src_id,
-            dst=f"puppet:resource:{require_value}",
-            edge_type="depends_on",
-            line=line,
-            origin=PASS_ID,
-            origin_run_id=self._execution_id,
-            evidence_type="require",
-            meta={"ref_construct": "puppet_require"},
-        )
-        self._edges.append(edge)
+def _include_edge(
+    node: "tree_sitter.Node", rel_path: str,
+    classes: dict[str, Symbol], run_id: str,
+) -> Optional[Edge]:
+    """The ``includes`` edge for an include statement, bound to the class of
+    that name wherever in the repository it is declared."""
+    class_name = ""
 
-    def _create_notify_edge(self, src_id: str, notify_value: str, line: int) -> None:
-        """Create a depends_on edge for a ``notify`` attribute (meta refresh=True)."""
-        edge = Edge.create(
-            src=src_id,
-            dst=f"puppet:resource:{notify_value}",
-            edge_type="depends_on",
-            line=line,
-            origin=PASS_ID,
-            origin_run_id=self._execution_id,
-            evidence_type="notify",
-            meta={"ref_construct": "puppet_notify", "refresh": True},
-        )
-        self._edges.append(edge)
+    for child in node.children:
+        if child.type == "identifier":
+            class_name = _get_node_text(child)
+        elif child.type == "class_identifier":  # pragma: no cover
+            class_name = _get_node_text(child)
 
-    def _extract_node(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a node definition."""
-        node_name = ""
+    if not class_name:
+        return None  # pragma: no cover
 
-        for child in node.children:
-            if child.type == "node_name":
-                # Get the string content
-                for name_child in child.children:
-                    if name_child.type == "string":
-                        node_name = _get_node_text(name_child).strip("'\"")
-                        break
-                if not node_name:  # pragma: no cover
-                    node_name = _get_node_text(child).strip("'\"")
-
-        if not node_name:
-            return  # pragma: no cover
-
-        rel_path = path.relative_to(self.repo_root)
-        line = node.start_point[0] + 1
-
-        span = Span(
-            start_line=line,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
-        )
-
-        # Both ids minted together by make_doc_symbol_ids (INV-dulah);
-        # node.id stays byte-identical to the old raw composite.
-        symbol_id, stable_id = make_doc_symbol_ids(
-            "puppet", rel_path, "node", node_name, span.start_line, span.end_line,
-            _scope(node),
-        )
-
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=stable_id,
-            name=node_name,
-            kind="node",
-            language="puppet",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=f"node '{node_name}'",
-            meta={},
-        )
-        self._symbols.append(symbol)
-
-    def _extract_include(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract an include statement."""
-        class_name = ""
-
-        for child in node.children:
-            if child.type == "identifier":
-                class_name = _get_node_text(child)
-            elif child.type == "class_identifier":  # pragma: no cover
-                class_name = _get_node_text(child)
-
-        if not class_name:
-            return  # pragma: no cover
-
-        rel_path = path.relative_to(self.repo_root)
-        line = node.start_point[0] + 1
-
-        # Cluster E sub-case (b) per audit-findings 0010: per-include Symbol
-        # was redundant. Edge src is now the manifest file id; edge is
-        # emitted unconditionally — when the class isn't in the local
-        # registry, dst is a 5-part dangling id that the IR's boundary
-        # materialization handles (so unresolved-include cases keep their
-        # representation in the graph instead of disappearing with the
-        # dropped Symbol).
-        manifest_id = make_file_id("puppet", str(rel_path))
-        dst = self._class_registry.get(
-            class_name, f"puppet:class:{class_name}:1-1:{class_name}:class"
-        )
-        edge = Edge.create(
-            src=manifest_id,
-            dst=dst,
-            edge_type="includes",
-            line=line,
-            origin=PASS_ID,
-            origin_run_id=self._execution_id,
-            evidence_type="include",
-            # ADR-0039: the include is certain, so it derives the base;
-            # a target defined elsewhere is unresolved (ADR-0037).
-            is_resolved=class_name in self._class_registry,
-            meta={"class_name": class_name, "ref_construct": "puppet_class"},
-        )
-        self._edges.append(edge)
+    # Cluster E sub-case (b) per audit-findings 0010: per-include Symbol
+    # was redundant. Edge src is now the manifest file id; edge is
+    # emitted unconditionally — when no class of that name exists, dst
+    # is a 5-part dangling id that the IR's boundary materialization
+    # handles (so unresolved-include cases keep their representation in
+    # the graph instead of disappearing with the dropped Symbol).
+    target = classes.get(class_name)
+    return Edge.create(
+        src=make_file_id("puppet", rel_path),
+        dst=target.id if target is not None else f"puppet:class:{class_name}:1-1:{class_name}:class",
+        edge_type="includes",
+        line=node.start_point[0] + 1,
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        evidence_type="include",
+        # ADR-0039: the include is certain, so it derives the base;
+        # a target declared nowhere in the repository is unresolved (ADR-0037).
+        is_resolved=target is not None,
+        meta={"class_name": class_name, "ref_construct": "puppet_class"},
+    )
 
 
 class PuppetAnalyzer(TreeSitterAnalyzer):
     """Tree-sitter-based analyzer for Puppet manifest files.
 
     Extracts classes, defined types, resources, nodes, includes, and
-    relationship edges. Uses language_pack_name for the puppet grammar.
+    relationship edges on the base class's two-pass pipeline: Pass 1
+    (``extract_symbols_from_file``) declares every file's symbols, the base
+    registers them repo-wide (classes only, see ``register_symbol``), and
+    Pass 2 (``extract_edges_from_file``) resolves against that registry.
+    Uses language_pack_name for the puppet grammar.
     """
 
     lang = "puppet"
     file_patterns: ClassVar[list[str]] = ["**/*.pp"]
     language_pack_name = "puppet"
 
-    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
-        """Run Puppet analysis with cross-file class registry."""
-        if not self._check_grammar_available():
-            import warnings
-            warnings.warn(
-                f"{self.lang} analysis skipped: grammar not available. "
-                f"Install the required tree-sitter grammar package.",
-                UserWarning,
-                stacklevel=2,
-            )
-            return AnalysisResult(
-                skipped=True,
-                skip_reason=f"{self.lang} tree-sitter grammar not available",
-                skip_reason_code=DEPENDENCY_UNAVAILABLE,
-            )
+    def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
+        """The manifests, in the sorted order ``find_puppet_files`` gives."""
+        yield from find_puppet_files(repo_root)
 
-        extractor = _PuppetExtractor(repo_root)
-        return extractor.analyze()
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: AnalysisRun,
+    ) -> FileAnalysis:
+        """Pass 1: the classes, defined types, resources and nodes a file declares."""
+        analysis = FileAnalysis()
+        for node in iter_tree(tree.root_node):
+            builder = _SYMBOL_BUILDERS.get(node.type)
+            if builder is None:
+                continue
+            sym = builder(node, rel_path)
+            if sym is not None:
+                analysis.symbols.append(sym)
+                analysis.symbol_by_name[sym.name] = sym
+        return analysis
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
+        """Register CLASSES only: the registry is what an ``include`` binds
+        against, and a node or defined type sharing a class's name is not an
+        include target."""
+        if symbol.kind == "class":
+            global_symbols[symbol.name] = symbol
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
+        run: AnalysisRun, import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Pass 2: include edges (against every class in the repository) and
+        resource relationship edges (from the resource declaring them)."""
+        declared = symbols_at(self.file_symbols(local_symbols))
+        edges: list[Edge] = []
+        for node in iter_tree(tree.root_node):
+            if node.type == "include_statement":
+                edge = _include_edge(node, rel_path, global_symbols, run.execution_id)
+                if edge is not None:
+                    edges.append(edge)
+            elif node.type == "resource_declaration":
+                resource = symbol_declared_by(node, declared)
+                if resource is not None:
+                    edges.extend(_relationship_edges(node, resource, run.execution_id))
+        return edges
 
 
 _analyzer = PuppetAnalyzer()

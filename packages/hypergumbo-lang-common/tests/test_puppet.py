@@ -56,9 +56,13 @@ class TestAnalyzePuppet:
         assert "not available" in result.skip_reason
 
     def test_empty_repo(self, tmp_path: Path) -> None:
+        # The base pipeline reports a run that read no file (the
+        # orchestrator's no_candidate_files), not a missing run.
         result = analyze_puppet(tmp_path)
         assert result.symbols == []
-        assert result.run is None
+        assert result.edges == []
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_extracts_class(self, tmp_path: Path) -> None:
         make_puppet_file(tmp_path, "init.pp", """class nginx {
@@ -360,3 +364,111 @@ node 'webserver.example.com' {
         assert len(notify_edges) >= 2
         include_edges = [e for e in result.edges if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "puppet_class"]
         assert len(include_edges) >= 1
+
+
+def _class_includes(result: AnalysisResult) -> list:
+    return [
+        e for e in result.edges
+        if e.edge_type == "includes" and (e.meta or {}).get("ref_construct") == "puppet_class"
+    ]
+
+
+class TestIncludeResolutionIsOrderIndependent:
+    """WI-vahun: an include resolves against every class in the repository,
+    wherever it is declared. Pass 1 collects the definitions of every file;
+    Pass 2 resolves, so neither the position of a class in its file nor the
+    sort order of the files decides whether an include binds."""
+
+    def test_class_defined_lower_in_the_same_file(self, tmp_path: Path) -> None:
+        make_puppet_file(tmp_path, "a.pp", "class alpha {\n  include beta\n}\nclass beta {\n}\n")
+        result = analyze_puppet(tmp_path)
+        beta = next(s for s in result.symbols if s.kind == "class" and s.name == "beta")
+        edges = [e for e in _class_includes(result) if e.meta["class_name"] == "beta"]
+        assert len(edges) == 1  # reach: the include site is seen
+        assert edges[0].dst == beta.id
+        assert edges[0].is_resolved is True
+
+    def test_class_defined_in_a_later_sorted_file(self, tmp_path: Path) -> None:
+        make_puppet_file(tmp_path, "a.pp", "class alpha {\n  include zeta\n}\n")
+        make_puppet_file(tmp_path, "z.pp", "class zeta {\n}\n")
+        result = analyze_puppet(tmp_path)
+        zeta = next(s for s in result.symbols if s.kind == "class" and s.name == "zeta")
+        edges = [e for e in _class_includes(result) if e.meta["class_name"] == "zeta"]
+        assert len(edges) == 1
+        assert edges[0].dst == zeta.id
+        assert edges[0].is_resolved is True
+
+    def test_every_include_of_an_existing_class_binds_to_it(self, tmp_path: Path) -> None:
+        """The item's repro: both targets exist, so no include dangles."""
+        make_puppet_file(
+            tmp_path, "a.pp",
+            "class alpha {\n  include beta\n  include zeta\n}\nclass beta {\n}\n",
+        )
+        make_puppet_file(tmp_path, "z.pp", "class zeta {\n}\n")
+        result = analyze_puppet(tmp_path)
+        class_ids = {s.id for s in result.symbols if s.kind == "class"}
+        edges = _class_includes(result)
+        assert {e.meta["class_name"] for e in edges} == {"beta", "zeta"}
+        for e in edges:
+            assert e.is_resolved is True
+            assert e.dst in class_ids
+
+    def test_resolution_does_not_depend_on_file_order(self, tmp_path: Path) -> None:
+        """The same manifests under swapped file names bind identically."""
+        include = "class web {\n  include db\n}\n"
+        define = "class db {\n}\n"
+        first = tmp_path / "first"
+        second = tmp_path / "second"
+        make_puppet_file(first, "a.pp", include)
+        make_puppet_file(first, "b.pp", define)
+        make_puppet_file(second, "a.pp", define)
+        make_puppet_file(second, "b.pp", include)
+        outcomes = []
+        for root in (first, second):
+            result = analyze_puppet(root)
+            db = next(s for s in result.symbols if s.name == "db")
+            (edge,) = _class_includes(result)
+            outcomes.append((edge.is_resolved, edge.dst == db.id))
+        assert outcomes == [(True, True), (True, True)]
+
+    def test_include_of_an_absent_class_stays_unresolved(self, tmp_path: Path) -> None:
+        make_puppet_file(tmp_path, "a.pp", "class alpha {\n  include missing\n}\n")
+        result = analyze_puppet(tmp_path)
+        (edge,) = _class_includes(result)
+        assert edge.is_resolved is False
+        assert edge.dst not in {s.id for s in result.symbols}
+
+    def test_a_same_named_non_class_is_not_an_include_target(self, tmp_path: Path) -> None:
+        """Only a class is a class include's target: a node or defined type
+        sharing the name is not bound."""
+        make_puppet_file(
+            tmp_path, "a.pp",
+            "node 'web' {\n  include web\n  include site::thing\n}\n"
+            "define site::thing {\n}\n",
+        )
+        result = analyze_puppet(tmp_path)
+        edges = _class_includes(result)
+        assert {e.meta["class_name"] for e in edges} == {"web", "site::thing"}
+        assert all(e.is_resolved is False for e in edges)
+
+
+class TestRelationshipEdgeSources:
+    """require/notify edges leave the resource that declares them."""
+
+    def test_each_relationship_edge_leaves_its_own_resource(self, tmp_path: Path) -> None:
+        make_puppet_file(tmp_path, "init.pp", """class nginx {
+  service { 'nginx':
+    require => Package['nginx'],
+  }
+  file { '/etc/nginx.conf':
+    notify => Service['nginx'],
+  }
+}""")
+        result = analyze_puppet(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.kind == "resource"}
+        rel = {
+            (e.meta or {}).get("ref_construct"): e for e in result.edges if e.edge_type == "depends_on"
+        }
+        assert rel["puppet_require"].src == by_name["service[nginx]"].id
+        assert rel["puppet_notify"].src == by_name["file[/etc/nginx.conf]"].id
+        assert rel["puppet_require"].line == by_name["service[nginx]"].span.start_line
