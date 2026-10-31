@@ -24,7 +24,13 @@ This analyzer uses tree-sitter to parse Rust files and extract:
 - Function call relationships
 - ``implements`` edges for ``impl Trait for Struct``
 - ``module_attr_ref`` edges for bare path-attribute reads
-- Import relationships (use statements)
+- Import relationships (use statements). A ``use`` path that starts inside
+  the tree (``crate``, ``self``, ``super``, or an in-tree package's name)
+  imports the module file it reaches (``_InTreeCrates``); a path into the
+  file's own inline modules emits no edge, and any other path imports a
+  ``module`` placeholder. The same layout binds a call or a function value
+  named through a ``use`` path to the one free function of that name in the
+  file it reaches (``_rust_function_in_module``)
 - Axum route handlers (.route("/path", get(handler)))
 - Actix-web route attributes (#[get("/path")], #[post("/path")]), recorded in
   ``meta["annotations"]`` for the framework YAML patterns to match
@@ -47,8 +53,11 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    call receiver typed by return type, 2 short-name fallback), plus
    ``implements`` edges, ``async_spawn`` call edges for a bare function
    reference passed to a spawn function, calls appearing only
-   inside macro bodies, ``module_attr_ref`` edges, use edges, and Axum
-   usage contexts
+   inside macro bodies, ``references`` edges
+   (``evidence_type="function_reference"``) for a function named as a value
+   (``Cmd { run: handler }``, ``let f = handler``, ``xs.iter().map(parse)``;
+   ``_is_rust_value_position``), ``module_attr_ref`` edges, use edges, and
+   Axum usage contexts
    - A call (or macro-body call) in no function -- a ``static`` / ``const``
      initialiser, a top-level macro -- is anchored on the file (INV-bamij).
    - A bare identifier call that the short-name fallback (2) binds in this

@@ -49,7 +49,7 @@ extract:
 - Decorator application: ``decorated_by`` (edges); an unresolved or
   non-callable decorator gets an unresolved ``decorated_by`` edge to
   ``typescript:unresolved:0-0:<name>:unresolved``
-- ``references`` edges for functions passed rather than called:
+- ``references`` edges for functions passed or stored rather than called:
   ``callback_argument_reference`` (a named function, or an inline anonymous
   callback, given as a call argument), ``object_field_reference``
   (``{onClick: handleClick}`` and the shorthand ``{handleClick}``), and a
@@ -59,14 +59,22 @@ extract:
   property (``obj.h = fn``, ``module.exports = fn``) is an
   ``object_field_reference`` too, except where the write is a catalogued
   handler registration (``ws.onmessage = fn``, below), which is a
-  ``callback_argument_reference`` like its ``addEventListener`` twin (WI-vubal)
+  ``callback_argument_reference`` like its ``addEventListener`` twin (WI-vubal).
+  A function stored as a value (``f = handler``, ``const f = handler``, or an
+  element of an array dispatch table ``[a, b]``) is a ``function_reference``;
+  storing a function is not calling it, so taint does not walk that edge
 - Handler registration by assignment (``ws.onmessage = h``): an unresolved
   ``calls`` edge with ``call_construct="assignment"``, emitted only when the
   receiver has a catalogue module and the property is one of its rows in
   ``JS_ASSIGNABLE_ROWS``
 - ``module_attr_ref`` edges (``emit_module_attribute_refs``) for member reads
   on imported modules and on ``process`` / ``window`` / ``document`` /
-  ``navigator``, anchored to the enclosing callable rather than the file
+  ``navigator``, anchored to the enclosing callable rather than the file. A
+  read through an in-tree module object (``const b = require('@ws/b');
+  new b.Engine()``) is rewritten to a ``references`` edge to the in-tree
+  symbol with ``evidence_type="ast_name_read"``
+  (``_retarget_in_tree_module_attrs``); any other read, such as an external
+  module's, keeps its ``module_attr_ref``
 - TypeScript type references — type alias / interface signatures —
   emitted as ``references`` edges carrying
   ``evidence_type="ast_type_ref"`` (refactoring blast radius). The

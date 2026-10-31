@@ -21,7 +21,12 @@ Phase 1 (Ruby FFI gem):
   Scans ``.rb`` files for ``attach_function :name, ...`` or
   ``attach_function :ruby_name, :c_name, ...`` patterns. When the C function
   name matches a C/C++ function symbol, creates a ``calls`` edge from
-  the enclosing Ruby symbol to the C function.
+  the enclosing Ruby symbol to the C function (0.90; 0.5 with
+  ``meta.disambiguation_fallback`` when several C symbols share the name).
+  When nothing matches (an external library such as libzmq or libc), it
+  emits an unresolved ``calls`` edge at 0.75 to the pseudo-namespace
+  ``ruby:C_ffi:0-0:<name>:unresolved`` (``RUBY_FFI_STDLIB_PREFIX``), which
+  the io_boundary tagger redirects to the C catalog.
 
 Phase 2 (C extensions):
   Scans ``.c`` and ``.cpp`` files for ``rb_define_method(klass, "name", c_func, argc)``

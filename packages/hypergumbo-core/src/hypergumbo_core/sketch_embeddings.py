@@ -12,6 +12,12 @@ The main entry points are:
 - batch_embed_files(): Batch embed files with caching
 - compute_5w1h_similarity(): Score a file against the 5W1H rubric
 
+The install path has its own entry point: ``fetch_embedding_models()``
+downloads every model in ``EMBEDDING_MODELS`` that is not yet cached,
+lifting ``HF_HUB_OFFLINE`` while it runs. ``cli.py`` calls it, in a fresh
+interpreter, only for ``install-embeddings`` and ``add-extras``; it is the
+one place a model is fetched. Analysis loads from the cache only.
+
 Two models back these. ``microsoft/unixcoder-base`` (``_load_embedding_model``)
 serves README description extraction, and ``sketch.py``'s config discovery
 and extraction import ``_load_embedding_model`` and ``NEGATIVE_PATTERNS``

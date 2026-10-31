@@ -126,7 +126,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **ADR-0062**: the tracker's live Yjs document is a projection of the ops log, never its replacement.
 - **Linker supersession audits** ([`docs/audits/0024`](docs/audits/0024-build-target-supersession-precision.md), [`0025`](docs/audits/0025-js-module-supersession-precision.md)): the measured precision behind the two ADR-0057 §14.1 grants.
 - **Consumer agreement** ([`docs/audits/0026-consumer-agreement.md`](docs/audits/0026-consumer-agreement.md)): which facts two views derive separately, and where they disagree.
-- Module docstrings: 66 corrected, 12 extended (two staleness audits).
+- Module docstrings: 66 corrected, 23 extended (two staleness audits).
 - The spec documents 63 `symbol_meta` keys; `ALLOWED_WEBSITES.md` permits discuss.python.org; ARCHITECTURE.md regenerated.
 
 ## [9.2.0] - 2026-10-20

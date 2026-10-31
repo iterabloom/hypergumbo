@@ -20,6 +20,11 @@ This analyzer uses tree-sitter to parse Go files and extract:
   6) for an own-package function in another file or an import-qualified
   function, exactly 0.70 for a same-file hit or a method;
   ``_extract_function_reference_edges``)
+- A function named as an unkeyed composite-literal element
+  (``[]func(){a, b}``) or on the right side of a local binding
+  (``f := handler``, ``h = pkg.Fn``, a function-local ``var g = run``),
+  resolved as a keyed struct-literal field value is (``calls`` edges with
+  ``evidence_type="function_reference"``; ``_emit_value_reference``)
 - Import relationships (import statements)
 - ``wraps`` edges for middleware composition, ``module_attr_ref`` for bare
   package-attribute reads, and ``references`` edges for build-tag alternatives

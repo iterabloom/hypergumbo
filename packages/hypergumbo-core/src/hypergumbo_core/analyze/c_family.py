@@ -75,6 +75,14 @@ operator are not. :func:`c_family_array_declarator` finds the array an
 POINTERS adds (``int (*t[])(void)`` is function_declarator ->
 parenthesized_declarator -> pointer_declarator -> array_declarator), so a
 dispatch-table pass sees ``{ f }`` there as it sees a struct array's.
+:func:`c_family_declares_local` says whether a name in one of those places is
+instead a VARIABLE of the translation unit -- a parameter, local, enumerator,
+template parameter or range-for variable of the enclosing function, or a
+file-scope variable of the file (:func:`c_family_file_scope_variables`, which
+a caller computes once per file). The bare-value arms of ``c.py`` and
+``cpp.py`` ask it before they emit a ``references`` edge; without it, a use
+of zstd's file-scope ``static const size_t ZSTD_frameHeaderSize`` would be
+taken for the ``ZSTD_frameHeaderSize()`` defined in another file.
 """
 from __future__ import annotations
 

@@ -8,6 +8,15 @@ between code that writes to shared state and code that observes it. (The
 bespoke ``crdt_publishes`` type was folded onto ``event_publishes`` per the
 audit-findings 0001/0014 consolidation.)
 
+The linker is gated on the manifest (``_find_yjs_dependency``). Unless a
+package.json declares a dependency named in ``YJS_DEPENDENCY_NAMES``
+(``yjs``, ``y-protocols``, ``y-websocket``), it scans nothing and emits
+nothing: its write and read patterns (``.set(``, ``.observe(``, ``.on(``)
+are common vocabulary in JS/TS code that does not use Yjs. Every edge it
+emits names that dependency symbol in ``derived_from``. A write and a read
+in the same file are never linked, because that is not cross-component
+coupling.
+
 Four API surfaces are covered:
 
 Detected Patterns
@@ -46,10 +55,10 @@ captures the same data flow as raw Yjs but at the application level.
 
 Entry reads are matched by entry, not by API
 --------------------------------------------
-Every other surface here links each write to every read of the same API,
-because an observer sees all changes. A POINT READ sees one entry, so it links
-only from writes to the same shared type (the ``getMap`` / ``getArray`` name)
-and, when both sides spell the key as a literal, the same key:
+Every other surface here links each write to every read of the same API in
+another file, because an observer sees all changes. A POINT READ sees one
+entry, so it links only from writes to the same shared type (the ``getMap`` /
+``getArray`` name) and, when both sides spell the key as a literal, the same key:
 ``meta.get('pages')`` reads ``meta.set('pages', p)``, not ``meta.set('name', n)``;
 a computed key (``objects.get(id)``) matches any key of its map. This is what
 PlazaFlow's flow needs (spec §4.2, §5.3-5.4): one function creates a
