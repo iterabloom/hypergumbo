@@ -1,0 +1,67 @@
+Original commit body from 5cefb189b979faf1954a2eae5d6d0ac81898fa1b:
+
+Found by WI-borib re-taking WI-vosop's harness-vs-survey diff edge by
+edge on the recorded aardvark-dns crate (docs/audits/0026).
+
+1. ORDER. `use crate::config::parse_configs; parse_configs(..)` was
+   looked up by its bare name, and the resolver's exact-name entry is
+   whichever same-named function registered LAST: under walk order
+   config/mod.rs, under a survey's sorted FileIndex order a
+   #[cfg(test)] helper of the same name. One analyzer, two call graphs.
+   A non-method call now resolves the absolute path its use bindings
+   give (`h()` after `use a::b::h`, `m::h()` after `use a::m`, or a path
+   from crate / self / super) to the function in the module FILE that
+   path names (_rust_use_path_function over WI-rilof's _InTreeCrates and
+   #1947's _rust_function_in_module). Positive evidence only: the module
+   must resolve to a file and that file declare exactly one free function
+   of the name; anything else -- an external path, `Thing::new` -- falls
+   to the existing strategies unchanged.
+2. SELF-BINDING. `self.0.push(err)` inside `fn push` and
+   `self.items.push(x)` (items: Vec<u8>) bound the enclosing push, or
+   another type's: the typed lookup `Vec::push` missed and the short-name
+   fallback took any `push`. Two parts: tuple structs now register their
+   fields by position ("0", "1", ...; the old docstring said
+   `self.0.method()` "doesn't apply"); and when the receiver's type is
+   KNOWN EXTERNAL -- a prelude type, a path rooted outside the tree, a
+   name a `use` brought in from outside it -- the short name binds
+   nothing. A type parameter (`backend: B`) is not that evidence: the
+   first draft treated it as external and lost firecracker's
+   Vsock<B>.backend.as_raw_fd -> TestBackend and sent ripgrep's
+   `self.sink.matched(` to the enclosing Core.matched; caught in the A/B
+   and pinned by a control test.
+
+Measured, analyze_rust call edges {(src, dst, type, line)} by call site,
+branch vs origin/dev rust.py: sites changed firecracker 142, ripgrep 93,
+just 18, zellij 543, diamond-types 147, aardvark-dns 3. By class:
+first-party -> external 588 (fields of HashMap / BTreeMap / VecDeque no
+longer bind a first-party values / get_mut / len), removed first-party
+100 (false self-bindings such as `self.0.len()` inside `len`, the real
+callee a suppressed std generic method), first-party -> first-party
+165, external -> first-party 12 (zellij xtask `build::build` through
+`use crate::build`; firecracker's tuple field `self.0.machine_config`),
+added 44, external -> external 37 (the module slot now carries the
+field's type, `fnv::HashMap`). Read: two random samples of 10 per class
+plus the 4 sites first flagged. All read correct but one judgement call:
+zellij os_input_output.rs:291 `setup_ipc`, imported twice under
+#[cfg(not(windows))] / #[cfg(windows)], now binds the last use (the
+windows one) where dev's registration order gave the unix one -- both
+are real; the pick is now fixed by source order, not discovery order.
+
+aardvark-dns: test.rs:37 `config::parse_configs(..)` now binds
+config/mod.rs, the edge SCIP emits, so the recorded harness's
+calls/in-repo moves 93/16/7 -> 94/16/6 (pins and docs/audits/0019
+updated), and a LIVE survey at rust-analyzer 1.94.0 now reads 94/16/6
+too: WI-vosop's file-order difference is gone.
+
+Tests: test_rust_use_path_binding.py through analyze_rust -- both file
+orders forced (the defect showed in one); a scoped call through a used
+module; a call written from crate:: with no use; tuple, named and
+full-path (std::collections::VecDeque) external-typed fields; controls for a field of
+the enclosing type (recursion kept) and a type-parameter field (fallback
+kept). Four mutations (no use-path resolution, no external guard, no
+tuple fields, an unexplained name read as external) each turn a test
+red. test_rust.py's tuple-struct pin now asserts positional fields.
+
+Addresses WI-lirik.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
