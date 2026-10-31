@@ -25,9 +25,13 @@ Key constructs extracted:
 Symbol kinds: a model is ``kind="class"`` with ``meta["is_model"]``, an enum is
 ``kind="enum"``, and a datasource or generator is ``kind="block"`` with the
 construct kept in ``meta["block_type"]``. Each ``@relation`` field yields a
-``references`` edge from its model to the target model, looked up by name in
-the repo-wide registry: a hit is confidence 1.0, a miss goes to
-``prisma:unresolved:<Target>`` at 0.6.
+``references`` edge from its model to the target model. The source model is
+the ``model_block`` containing the field, found by POSITION
+(``symbol_declared_by``; WI-jusah, the WI-kosar family); the target is looked
+up by name in THIS schema first, then the repo-wide registry: a hit is
+confidence 1.0, a miss goes to ``prisma:unresolved:<Target>`` at 0.6. Before,
+both were repo-wide name lookups, which keep one symbol per name, so two
+apps' schemas each declaring ``model User`` crossed their relations.
 """
 
 from __future__ import annotations
@@ -39,8 +43,11 @@ from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     make_symbol_id,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -243,41 +250,49 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
         for _ in rel_parts:
             repo_root = repo_root.parent
 
+        # Target lookup: this schema's models over the repo-wide registry's.
+        targets = {**global_symbols, **local_symbols}
         self._extract_edges_recursive(
-            tree.root_node, file_path, repo_root, global_symbols, run, edges,
+            tree.root_node, file_path, repo_root, targets, run, edges,
+            symbols_at(self.file_symbols(local_symbols)),
         )
         return edges
 
     def _extract_edges_recursive(
         self, node: "tree_sitter.Node", path: Path, repo_root: Path,
-        global_symbols: dict[str, Symbol], run: "AnalysisRun", edges: list[Edge],
+        targets: dict[str, Symbol], run: "AnalysisRun", edges: list[Edge],
+        decl_index: SymbolsAt,
     ) -> None:
-        """Extract relationship edges from a syntax tree node recursively."""
+        """Extract relationship edges from a syntax tree node recursively.
+
+        A model block's own symbol comes from ``decl_index`` by POSITION, never
+        by its name (WI-jusah).
+        """
         if node.type == "model_block":
-            model_name = _get_identifier(node)
-            if model_name:
-                model_sym = global_symbols.get(model_name)
-                model_id = model_sym.id if model_sym else None
-                if model_id:
-                    for child in node.children:
-                        if child.type == "model_field":
-                            self._process_field_relation(
-                                child, model_id, path, repo_root,
-                                global_symbols, run, edges,
-                            )
+            model_sym = symbol_declared_by(node, decl_index)
+            if model_sym is not None:
+                for child in node.children:
+                    if child.type == "model_field":
+                        self._process_field_relation(
+                            child, model_sym.id, path, repo_root,
+                            targets, run, edges,
+                        )
 
         # Recursively process children
         for child in node.children:
             self._extract_edges_recursive(
-                child, path, repo_root, global_symbols, run, edges,
+                child, path, repo_root, targets, run, edges, decl_index,
             )
 
     def _process_field_relation(
         self, field_node: "tree_sitter.Node", source_model_id: str,
         path: Path, repo_root: Path,
-        global_symbols: dict[str, Symbol], run: "AnalysisRun", edges: list[Edge],
+        targets: dict[str, Symbol], run: "AnalysisRun", edges: list[Edge],
     ) -> None:
-        """Process a model field for potential relations."""
+        """Process a model field for potential relations.
+
+        ``targets`` is this schema's models overlaid on the repo-wide table.
+        """
         has_relation = False
         for child in field_node.children:
             if child.type == "model_single_attribute":
@@ -289,7 +304,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
         if has_relation:
             target_model = _get_relation_target(field_node)
             if target_model:
-                target_sym = global_symbols.get(target_model)
+                target_sym = targets.get(target_model)
                 target_id = target_sym.id if target_sym else None
                 confidence = 1.0 if target_id else 0.6
                 if target_id is None:

@@ -830,3 +830,75 @@ class TestApexCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('method', 'constructor'):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestApexCallerByPosition:
+    """WI-jusah (WI-kosar family): a call's CALLER is the method or
+    constructor whose body contains it, found by POSITION
+    (``symbol_declared_by``), and a callee binds THIS file's definition before
+    the run-wide registry.
+
+    The caller used to be ``symbol_registry.get("Class.method")`` over a
+    registry built from ``global_symbols`` (one symbol per name, last wins):
+    an overload's calls came out of the other overload, and an inner class
+    named the same in two files (``Wrap.go``) crossed its calls between them.
+    """
+
+    @staticmethod
+    def _calls(result: AnalysisResult) -> list:
+        return [e for e in result.edges if e.edge_type == "calls"]
+
+    def test_overload_calls_come_from_their_own_overload(self, tmp_path: Path) -> None:
+        make_apex_file(tmp_path, "A.cls", (
+            "public class A {\n"
+            "    public void run(Integer x) {\n"
+            "        alpha();\n"
+            "    }\n"
+            "    public void run(String s) {\n"
+            "        beta();\n"
+            "    }\n"
+            "    public void alpha() {}\n"
+            "    public void beta() {}\n"
+            "}\n"
+        ))
+        result = analyze_apex(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        calls = self._calls(result)
+        assert sorted(e.line for e in calls) == [3, 6]
+        for e in calls:
+            src = by_id[e.src]
+            assert src.name == "A.run"
+            assert src.span.start_line <= e.line <= src.span.end_line, (e.line, e.src)
+
+    def test_same_named_inner_class_in_two_files_keeps_its_calls(
+        self, tmp_path: Path,
+    ) -> None:
+        # B.cls is padded so each file's ``Wrap.go`` call sits on a line the
+        # other file's ``Wrap.go`` does not span.
+        for name, pad in (("A.cls", ""), ("B.cls", "\n\n\n\n\n\n")):
+            cls = name[0]
+            make_apex_file(tmp_path, name, pad + (
+                f"public class {cls} {{\n"
+                "    public class Wrap {\n"
+                "        public void go() {\n"
+                "            this.helper();\n"
+                "            new Wrap();\n"
+                "        }\n"
+                "        public Wrap() {\n"
+                "            this.helper();\n"
+                "        }\n"
+                "        public void helper() {}\n"
+                "    }\n"
+                "}\n"
+            ))
+        result = analyze_apex(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        calls = self._calls(result)
+        # Reach: per file, two ``helper`` calls and one ``new Wrap()``, all
+        # resolved.
+        assert len(calls) == 6
+        for e in calls:
+            file_of_line = "A.cls" if e.line < 10 else "B.cls"
+            src, dst = by_id[e.src], by_id[e.dst]
+            assert src.path == dst.path == file_of_line, (e.line, e.src, e.dst)
+            assert src.span.start_line <= e.line <= src.span.end_line

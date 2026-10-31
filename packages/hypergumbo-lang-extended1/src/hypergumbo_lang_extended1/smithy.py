@@ -32,6 +32,13 @@ Edge Types
 ----------
 - references: Type references (input/output types, member types)
 - contains: Service-to-operation relationships
+
+An edge's source is the service, operation or structure whose statement
+contains the reference, found by POSITION (``symbol_declared_by``; WI-jusah,
+the WI-kosar family), not by its ``ns#Shape`` name: the run-wide table keeps
+one symbol per name, so two model projects in one repository declaring the
+same shapes crossed their references. A target name binds this file's shape
+before the run-wide table's. Every edge carries ``line=1``.
 """
 
 from __future__ import annotations
@@ -46,6 +53,8 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     iter_tree,
     make_symbol_id,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
@@ -224,7 +233,7 @@ def _extract_simple_shape(
 
 
 def _extract_service_object_refs(
-    node: "tree_sitter.Node", rel_path: str, service_name: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: str,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -238,14 +247,14 @@ def _extract_service_object_refs(
                     key = _get_node_text(subchild)
                 elif subchild.type == "node_value" and key == "operations":
                     edges.extend(_extract_array_refs(
-                        subchild, rel_path, service_name, "contains",
+                        subchild, rel_path, src_id, "contains",
                         symbol_registry, current_namespace, run_id,
                     ))
     return edges
 
 
 def _extract_array_refs(
-    node: "tree_sitter.Node", rel_path: str, src_name: str, edge_type: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: str, edge_type: str,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -259,7 +268,7 @@ def _extract_array_refs(
                         if item.type == "shape_id":
                             ref_name = _get_node_text(item)
                             edge = _make_reference_edge(
-                                rel_path, src_name, ref_name, edge_type,
+                                rel_path, src_id, ref_name, edge_type,
                                 symbol_registry, current_namespace, run_id,
                             )
                             if edge:
@@ -268,7 +277,7 @@ def _extract_array_refs(
 
 
 def _extract_operation_types(
-    node: "tree_sitter.Node", rel_path: str, op_name: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: str,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -279,14 +288,14 @@ def _extract_operation_types(
             for subchild in child.children:
                 if subchild.type == "operation_member":
                     edges.extend(_extract_operation_member(
-                        subchild, rel_path, op_name,
+                        subchild, rel_path, src_id,
                         symbol_registry, current_namespace, run_id,
                     ))
     return edges
 
 
 def _extract_operation_member(
-    node: "tree_sitter.Node", rel_path: str, op_name: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: str,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -296,21 +305,21 @@ def _extract_operation_member(
         if child.type == "shape_id":
             ref_name = _get_node_text(child)
             edge = _make_reference_edge(
-                rel_path, op_name, ref_name, "references",
+                rel_path, src_id, ref_name, "references",
                 symbol_registry, current_namespace, run_id,
             )
             if edge:
                 edges.append(edge)
         elif child.type == "operation_errors":
             edges.extend(_extract_error_refs(
-                child, rel_path, op_name,
+                child, rel_path, src_id,
                 symbol_registry, current_namespace, run_id,
             ))
     return edges
 
 
 def _extract_error_refs(
-    node: "tree_sitter.Node", rel_path: str, src_name: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: str,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -320,7 +329,7 @@ def _extract_error_refs(
         if child.type == "operation_error":
             ref_name = _get_node_text(child)
             edge = _make_reference_edge(
-                rel_path, src_name, ref_name, "references",
+                rel_path, src_id, ref_name, "references",
                 symbol_registry, current_namespace, run_id,
             )
             if edge:
@@ -329,7 +338,7 @@ def _extract_error_refs(
 
 
 def _extract_member_types(
-    node: "tree_sitter.Node", rel_path: str, struct_name: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: str,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -340,14 +349,14 @@ def _extract_member_types(
             for subchild in child.children:
                 if subchild.type == "shape_member":
                     edges.extend(_extract_shape_member_type(
-                        subchild, rel_path, struct_name,
+                        subchild, rel_path, src_id,
                         symbol_registry, current_namespace, run_id,
                     ))
     return edges
 
 
 def _extract_shape_member_type(
-    node: "tree_sitter.Node", rel_path: str, struct_name: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: str,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> list[Edge]:
@@ -362,7 +371,7 @@ def _extract_shape_member_type(
                                 "BigInteger", "BigDecimal", "Timestamp",
                                 "Blob", "Document"):
                 edge = _make_reference_edge(
-                    rel_path, struct_name, ref_name, "references",
+                    rel_path, src_id, ref_name, "references",
                     symbol_registry, current_namespace, run_id,
                 )
                 if edge:
@@ -371,11 +380,12 @@ def _extract_shape_member_type(
 
 
 def _make_reference_edge(
-    rel_path: str, src_name: str, ref_name: str, edge_type: str,
+    rel_path: str, src_id: str, ref_name: str, edge_type: str,
     symbol_registry: dict[str, str], current_namespace: Optional[str],
     run_id: str,
 ) -> Optional[Edge]:
-    """Add a reference edge between shapes."""
+    """Add a reference edge from ``src_id`` (the source shape, found by
+    position in Pass 2) to the shape ``ref_name`` names."""
     # Try to resolve the reference
     qualified_ref = ref_name
     if "#" not in ref_name and current_namespace:
@@ -395,8 +405,6 @@ def _make_reference_edge(
         # sentinel leak that the 2-part 'unresolved:{name}' previously
         # produced via ir._parse_dangling_id fallthrough.
         dst = f"smithy:unresolved:0-0:{ref_name}:unresolved"
-
-    src_id = symbol_registry.get(src_name, f"smithy:{rel_path}:file")
 
     return Edge.create(
         src=src_id,
@@ -527,11 +535,20 @@ class SmithyAnalyzer(TreeSitterAnalyzer):
         edges: list[Edge] = []
         current_namespace: Optional[str] = import_aliases.get("__namespace__")
 
-        # Build a name->id registry from global_symbols
-        symbol_registry: dict[str, str] = {}
-        for name, sym in global_symbols.items():
-            if isinstance(sym, Symbol):
-                symbol_registry[name] = sym.id
+        # Target registry (name -> id): the run-wide table overlaid with THIS
+        # file's shapes, so a shape declared here wins over a same-named one
+        # elsewhere (WI-jusah).
+        symbol_registry: dict[str, str] = {
+            name: sym.id for name, sym in global_symbols.items()
+        }
+        symbol_registry.update(
+            (name, sym.id) for name, sym in local_symbols.items()
+        )
+        # A reference's SOURCE is the shape whose statement contains it, by
+        # POSITION (WI-jusah, WI-kosar family), never by its ``ns#Shape`` name:
+        # the run-wide table keeps one symbol per name, so two model projects
+        # declaring the same shapes crossed their references.
+        decl_index = symbols_at(self.file_symbols(local_symbols))
 
         for node in iter_tree(tree.root_node):
             if node.type == "namespace_statement":
@@ -544,52 +561,31 @@ class SmithyAnalyzer(TreeSitterAnalyzer):
                             break
 
             elif node.type == "service_statement":
-                service_name = None
-                for child in node.children:
-                    if child.type == "identifier":
-                        service_name = _get_qualified_name(
-                            _get_node_text(child), current_namespace,
-                        )
-                        break
-
-                if service_name:
+                service = symbol_declared_by(node, decl_index)
+                if service is not None:
                     # Extract service-to-operation relationships
                     for child in node.children:
                         if child.type == "node_object":
                             edges.extend(_extract_service_object_refs(
-                                child, rel_path, service_name,
+                                child, rel_path, service.id,
                                 symbol_registry, current_namespace,
                                 run.execution_id,
                             ))
 
             elif node.type == "operation_statement":
-                op_name = None
-                for child in node.children:
-                    if child.type == "identifier":
-                        op_name = _get_qualified_name(
-                            _get_node_text(child), current_namespace,
-                        )
-                        break
-
-                if op_name:
+                operation = symbol_declared_by(node, decl_index)
+                if operation is not None:
                     edges.extend(_extract_operation_types(
-                        node, rel_path, op_name,
+                        node, rel_path, operation.id,
                         symbol_registry, current_namespace,
                         run.execution_id,
                     ))
 
             elif node.type == "structure_statement":
-                struct_name = None
-                for child in node.children:
-                    if child.type == "identifier":
-                        struct_name = _get_qualified_name(
-                            _get_node_text(child), current_namespace,
-                        )
-                        break
-
-                if struct_name:
+                structure = symbol_declared_by(node, decl_index)
+                if structure is not None:
                     edges.extend(_extract_member_types(
-                        node, rel_path, struct_name,
+                        node, rel_path, structure.id,
                         symbol_registry, current_namespace,
                         run.execution_id,
                     ))

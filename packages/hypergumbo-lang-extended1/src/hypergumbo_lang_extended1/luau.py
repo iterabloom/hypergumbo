@@ -36,9 +36,21 @@ Call resolution
 - A call is dropped when either its first or its last ``.`` / ``:``
   segment is in ``LUAU_BUILTINS`` (Lua builtins, ``string``/``table``/
   ``math`` members, Roblox globals and services).
-- The callee is looked up by its full text (``Module.fn``) among the
-  cross-file symbol names; failing that, by its short name (the last
-  ``.`` / ``:`` segment) in the same table (confidence 1.0 either way).
+- The caller is the innermost ``function_declaration`` containing the call,
+  found by POSITION in this file (``symbols_at`` / ``enclosing_declared_symbol``
+  over ``file_symbols()``; WI-jusah, the WI-kosar family). Before, it was the
+  OUTERMOST named function, looked up by name in a registry built from the
+  run-wide symbol table, which keeps one symbol per name: two files each
+  defining ``local function helper`` had one file's calls credited to the
+  other's, and a nested function's calls went to the function around it. An
+  anonymous ``function () ... end`` has no symbol, so its calls belong to the
+  named function around it; a call in no function comes from
+  ``luau:<path>:file``.
+- The callee is looked up by its full text (``Module.fn``), then by its
+  short name (the last ``.`` / ``:`` segment), each time in THIS file's
+  symbols before the run-wide table (confidence 1.0 either way): a
+  ``local function`` is file-scoped, so another file's same-named one must
+  not win while this file has its own.
 - An unmatched call is still emitted, to
   ``luau:unresolved:0-0:<name>:unresolved`` with confidence 0.6. All call
   edges carry evidence_type ``tree_sitter``.
@@ -53,9 +65,13 @@ from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     ancestor_labels,
+    enclosing_declared_symbol,
+    iter_tree,
     make_symbol_id,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.overload_arity import nested_qualified_name
@@ -329,56 +345,86 @@ def _extract_symbols_recursive(
         _extract_symbols_recursive(child, rel_path, analysis, analyzer, file_anchor)
 
 
-def _extract_function_call(
-    node: "tree_sitter.Node", rel_path: str, current_function: Optional[str],
-    symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
-) -> None:
-    """Extract a function call edge."""
-    call_name = None
+# A call's caller is the nearest enclosing declaration of these types that has
+# a symbol. An anonymous ``function_definition`` has none, so a call inside a
+# callback is credited to the named function around it.
+_CALLER_NODE_TYPES = frozenset({"function_declaration"})
 
+
+def _first_segment(call_name: str) -> str:
+    """``Mod.sub:fn`` -> ``Mod``: the text before the first ``.`` / ``:``."""
+    return call_name.split(".")[0].split(":")[0]
+
+
+def _last_segment(call_name: str) -> str:
+    """``Mod.sub:fn`` -> ``fn``: the text after the last ``.`` / ``:``."""
+    return call_name.split(".")[-1].split(":")[-1]
+
+
+def _call_name(node: "tree_sitter.Node") -> Optional[str]:
+    """The callee text of a ``function_call``: ``fn``, ``Mod.fn`` or ``obj:fn``."""
     for child in node.children:
-        if child.type == "identifier":
-            call_name = _get_node_text(child)
-            break
-        elif child.type == "dot_index_expression":
-            # Module.method or object.method
-            call_name = _get_node_text(child)
-            break
-        elif child.type == "method_index_expression":
-            # object:method
-            call_name = _get_node_text(child)
-            break
+        if child.type in ("identifier", "dot_index_expression", "method_index_expression"):
+            return _get_node_text(child)
+    return None
 
-    if call_name:
-        # Skip built-in functions
-        base_name = call_name.split(".")[0] if "." in call_name else call_name
-        base_name = base_name.split(":")[0] if ":" in base_name else base_name
-        method_name = call_name.split(".")[-1] if "." in call_name else call_name
-        method_name = method_name.split(":")[-1] if ":" in method_name else method_name
 
-        if base_name in LUAU_BUILTINS or method_name in LUAU_BUILTINS:
-            return
+def _resolve_callee(
+    call_name: str,
+    local_symbols: dict[str, Symbol],
+    global_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """The symbol a call names, THIS file's first (WI-jusah).
 
-        # Determine source
-        if current_function:
-            src_id = symbol_registry.get(
-                current_function, f"luau:{rel_path}:file"
-            )
-        else:  # pragma: no cover
-            # Module-level call (rare in Luau)
-            src_id = f"luau:{rel_path}:file"
+    The full text (``Mod.fn``) is tried before the short name (``fn``), and at
+    each step this file's definition before the run-wide registry, which keeps
+    one symbol per name (the last file registered). A ``local function`` is
+    file-scoped, so a same-named one elsewhere in the run is never the right
+    answer while this file has its own; and a same-file short name must not
+    pre-empt another file's exact ``Mod.fn``.
+    """
+    for key in dict.fromkeys((call_name, _last_segment(call_name))):
+        for table in (local_symbols, global_symbols):
+            sym = table.get(key)
+            if sym is not None:
+                return sym
+    return None
 
-        # Try to resolve the callee
-        dst_id = symbol_registry.get(call_name)
-        if not dst_id:
-            # Try short name
-            short_name = call_name.split(".")[-1] if "." in call_name else call_name
-            short_name = short_name.split(":")[-1] if ":" in short_name else short_name
-            dst_id = symbol_registry.get(short_name)
 
-        if dst_id:
+def _extract_call_edges(
+    root: "tree_sitter.Node", rel_path: str, decl_index: SymbolsAt,
+    local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
+    run_id: str,
+) -> list[Edge]:
+    """One ``calls`` edge per non-builtin ``function_call`` in the tree.
+
+    The caller is the innermost ``function_declaration`` containing the call,
+    found by POSITION (``enclosing_declared_symbol`` over ``decl_index``), never
+    by its name (WI-jusah, WI-kosar family): a name lookup in the run-wide
+    registry handed back whichever same-named function registered last, and a
+    nested function's calls went to the outer one. A call in no function comes
+    from the file.
+    """
+    edges: list[Edge] = []
+    for node in iter_tree(root):
+        if node.type != "function_call":
+            continue
+        call_name = _call_name(node)
+        if not call_name:
+            continue
+        if (
+            _first_segment(call_name) in LUAU_BUILTINS
+            or _last_segment(call_name) in LUAU_BUILTINS
+        ):
+            continue
+
+        caller = enclosing_declared_symbol(node, decl_index, _CALLER_NODE_TYPES)
+        src_id = caller.id if caller is not None else f"luau:{rel_path}:file"
+
+        callee = _resolve_callee(call_name, local_symbols, global_symbols)
+        if callee is not None:
             confidence = 1.0
-            dst = dst_id
+            dst = callee.id
         else:
             confidence = 0.6
             # WI-bagon: 2-part 'unresolved:{name}' was malformed and fell
@@ -389,7 +435,7 @@ def _extract_function_call(
             # carries language='luau'.
             dst = f"luau:unresolved:0-0:{call_name}:unresolved"
 
-        edge = Edge.create(
+        edges.append(Edge.create(
             src=src_id,
             dst=dst,
             edge_type="calls",
@@ -399,65 +445,8 @@ def _extract_function_call(
             evidence_type="tree_sitter",
             confidence=confidence,
             evidence_lang="luau",
-        )
-        edges.append(edge)
-
-
-def _extract_calls_recursive(
-    node: "tree_sitter.Node", rel_path: str, current_function: Optional[str],
-    symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
-) -> None:
-    """Extract function calls from a code block."""
-    if node.type == "function_call":
-        _extract_function_call(
-            node, rel_path, current_function, symbol_registry, run_id, edges,
-        )
-
-    for child in node.children:
-        _extract_calls_recursive(
-            child, rel_path, current_function, symbol_registry, run_id, edges,
-        )
-
-
-def _extract_edges_recursive(
-    node: "tree_sitter.Node", rel_path: str, current_function: Optional[str],
-    symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
-) -> None:
-    """Recursively extract edges from a syntax tree."""
-    if node.type == "function_declaration":
-        # Track current function context
-        name = None
-        for child in node.children:
-            if child.type == "identifier" and name is None:
-                name = _get_node_text(child)
-                break
-            elif child.type == "dot_index_expression":
-                name = _get_node_text(child)
-                break
-            elif child.type == "method_index_expression":
-                name = _get_node_text(child)
-                break
-
-        if name:
-            # Extract calls from function body
-            for child in node.children:
-                if child.type == "block":
-                    _extract_calls_recursive(
-                        child, rel_path, name, symbol_registry, run_id, edges,
-                    )
-            return
-
-    elif node.type == "function_call":  # pragma: no cover
-        # Top-level function calls (rare in Luau, usually wrapped)
-        _extract_function_call(
-            node, rel_path, current_function, symbol_registry, run_id, edges,
-        )
-
-    # Recurse into children
-    for child in node.children:
-        _extract_edges_recursive(
-            child, rel_path, current_function, symbol_registry, run_id, edges,
-        )
+        ))
+    return edges
 
 
 # ---------------------------------------------------------------------------
@@ -494,8 +483,10 @@ class LuauAnalyzer(TreeSitterAnalyzer):
     ) -> None:
         """Register symbol by qualified name only.
 
-        The ``NameResolver`` suffix index handles short-name lookups
-        across ``.`` and ``:`` separators.
+        Last registration wins on a name clash. Pass 2 never consults the
+        ``NameResolver``: a short-name lookup (``fn`` for ``Mod:fn``) is
+        its own second probe of this table, after this file's symbols
+        (``_resolve_callee``).
         """
         global_symbols[symbol.name] = symbol
 
@@ -506,18 +497,16 @@ class LuauAnalyzer(TreeSitterAnalyzer):
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:
-        """Extract call edges from a single Luau file."""
-        edges: list[Edge] = []
+        """Extract call edges from a single Luau file.
 
-        # Build symbol registry (name -> id) from global symbols
-        symbol_registry: dict[str, str] = {}
-        for sym_name, sym in global_symbols.items():
-            symbol_registry[sym_name] = sym.id
-
-        _extract_edges_recursive(
-            tree.root_node, rel_path, None, symbol_registry, run.execution_id, edges,
+        Callers are matched by position over every symbol of this file
+        (``file_symbols``); callees by name, this file's first.
+        """
+        return _extract_call_edges(
+            tree.root_node, rel_path,
+            symbols_at(self.file_symbols(local_symbols)),
+            local_symbols, global_symbols, run.execution_id,
         )
-        return edges
 
 
 _analyzer = LuauAnalyzer()

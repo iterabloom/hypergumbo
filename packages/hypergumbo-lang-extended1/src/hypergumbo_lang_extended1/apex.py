@@ -29,6 +29,14 @@ Edge Types
 ----------
 - calls: Method calls from one symbol to another
 
+Calls are read from method and constructor bodies only. The caller is the
+member whose declaration contains the body, found by POSITION
+(``symbol_declared_by``; WI-jusah, the WI-kosar family) -- not by its
+``Class.method`` name, which overloads share and which an inner class
+declared in two files (``Wrap.go``) shares across them. A callee name
+(``Class.method``, then the short name) is looked up in this file's symbols
+before the run-wide table.
+
 Identity
 --------
 A nested type and its members hash the full chain of enclosing types
@@ -50,8 +58,11 @@ from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     make_symbol_id,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -656,30 +667,30 @@ def _extract_symbols_recursive(
 
 
 def _extract_calls_from_block(
-    node: "tree_sitter.Node", rel_path: str, src_name: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: str,
     current_class: Optional[str], symbol_registry: dict[str, str],
     run_id: str, edges: list[Edge],
 ) -> None:
     """Extract method calls from a code block."""
     if node.type == "method_invocation":
         _extract_method_call(
-            node, rel_path, src_name, current_class,
+            node, rel_path, src_id, current_class,
             symbol_registry, run_id, edges,
         )
     elif node.type == "object_creation_expression":
         _extract_constructor_call(
-            node, rel_path, src_name, symbol_registry, run_id, edges,
+            node, rel_path, src_id, symbol_registry, run_id, edges,
         )
 
     for child in node.children:
         _extract_calls_from_block(
-            child, rel_path, src_name, current_class,
+            child, rel_path, src_id, current_class,
             symbol_registry, run_id, edges,
         )
 
 
 def _extract_method_call(
-    node: "tree_sitter.Node", rel_path: str, src_name: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: str,
     current_class: Optional[str], symbol_registry: dict[str, str],
     run_id: str, edges: list[Edge],
 ) -> None:
@@ -718,13 +729,13 @@ def _extract_method_call(
                 call_name = method_name
 
         _add_call_edge(
-            rel_path, src_name, call_name, node.start_point[0] + 1,
+            rel_path, src_id, call_name, node.start_point[0] + 1,
             symbol_registry, run_id, edges,
         )
 
 
 def _extract_constructor_call(
-    node: "tree_sitter.Node", rel_path: str, src_name: str,
+    node: "tree_sitter.Node", rel_path: str, src_id: str,
     symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
 ) -> None:
     """Extract a constructor call (new ClassName()) edge."""
@@ -744,16 +755,16 @@ def _extract_constructor_call(
     if type_name and type_name not in APEX_BUILTINS:
         call_name = f"{type_name}.{type_name}"
         _add_call_edge(
-            rel_path, src_name, call_name, node.start_point[0] + 1,
+            rel_path, src_id, call_name, node.start_point[0] + 1,
             symbol_registry, run_id, edges,
         )
 
 
 def _add_call_edge(
-    rel_path: str, src_name: str, call_name: str, line: int,
+    rel_path: str, src_id: str, call_name: str, line: int,
     symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
 ) -> None:
-    """Add a call edge."""
+    """Add a call edge from ``src_id`` (the caller, found by position)."""
     dst_id = symbol_registry.get(call_name)
     if not dst_id:
         short_name = call_name.split(".")[-1] if "." in call_name else call_name
@@ -769,10 +780,6 @@ def _add_call_edge(
         # 'unresolved:{name}' produced via ir._parse_dangling_id fallthrough.
         dst = f"apex:unresolved:0-0:{call_name}:unresolved"
 
-    src_id = symbol_registry.get(
-        src_name, f"apex:{rel_path}:file"
-    )
-
     edge = Edge.create(
         src=src_id,
         dst=dst,
@@ -787,10 +794,24 @@ def _add_call_edge(
     edges.append(edge)
 
 
+def _caller_id(node: "tree_sitter.Node", rel_path: str, decl_index: SymbolsAt) -> str:
+    """The id of the method or constructor ``node`` declares, by POSITION.
+
+    WI-jusah (WI-kosar family): never by its ``Class.method`` name, which the
+    run-wide registry keeps one symbol for -- an overload's calls came out of
+    the other overload, and an inner class named the same in two files crossed
+    its calls between them.
+    """
+    caller = symbol_declared_by(node, decl_index)
+    if caller is None:  # pragma: no cover - every named member in a class has a symbol
+        return f"apex:{rel_path}:file"
+    return caller.id
+
+
 def _extract_edges_recursive(
     node: "tree_sitter.Node", rel_path: str,
     current_class: Optional[str], symbol_registry: dict[str, str],
-    run_id: str, edges: list[Edge],
+    run_id: str, edges: list[Edge], decl_index: SymbolsAt,
 ) -> None:
     """Recursively extract edges from a syntax tree."""
     if node.type == "class_declaration":
@@ -800,6 +821,7 @@ def _extract_edges_recursive(
                 for c in node.children:
                     _extract_edges_recursive(
                         c, rel_path, new_class, symbol_registry, run_id, edges,
+                        decl_index,
                     )
                 return
 
@@ -811,11 +833,11 @@ def _extract_edges_recursive(
                 break
 
         if method_name and current_class:
-            src_name = f"{current_class}.{method_name}"
+            src_id = _caller_id(node, rel_path, decl_index)
             for child in node.children:
                 if child.type == "block":
                     _extract_calls_from_block(
-                        child, rel_path, src_name, current_class,
+                        child, rel_path, src_id, current_class,
                         symbol_registry, run_id, edges,
                     )
 
@@ -827,17 +849,18 @@ def _extract_edges_recursive(
                 break
 
         if constructor_name and current_class:
-            src_name = f"{current_class}.{constructor_name}"
+            src_id = _caller_id(node, rel_path, decl_index)
             for child in node.children:
                 if child.type == "constructor_body":
                     _extract_calls_from_block(
-                        child, rel_path, src_name, current_class,
+                        child, rel_path, src_id, current_class,
                         symbol_registry, run_id, edges,
                     )
 
     for child in node.children:
         _extract_edges_recursive(
             child, rel_path, current_class, symbol_registry, run_id, edges,
+            decl_index,
         )
 
 
@@ -878,17 +901,26 @@ class ApexAnalyzer(TreeSitterAnalyzer):
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:
-        """Extract call edges from a single Apex file."""
+        """Extract call edges from a single Apex file.
+
+        The callee registry is the run-wide table overlaid with THIS file's
+        symbols, so a ``Class.method`` (an inner ``Wrap.go``) defined here wins
+        over a same-named one elsewhere. Callers are matched by position over
+        every symbol of this file (``file_symbols``), not by name.
+        """
         edges: list[Edge] = []
 
-        # Build symbol registry (name -> id) from global symbols
-        symbol_registry: dict[str, str] = {}
-        for sym_name, sym in global_symbols.items():
-            symbol_registry[sym_name] = sym.id
+        symbol_registry: dict[str, str] = {
+            name: sym.id for name, sym in global_symbols.items()
+        }
+        symbol_registry.update(
+            (name, sym.id) for name, sym in local_symbols.items()
+        )
 
         _extract_edges_recursive(
             tree.root_node, rel_path, None,
             symbol_registry, run.execution_id, edges,
+            symbols_at(self.file_symbols(local_symbols)),
         )
         return edges
 
