@@ -1347,8 +1347,11 @@ def _extract_struct_field_types(
     children. Wrapper types (``Box``, ``Arc``, etc.) are unwrapped via
     ``_unwrap_deref_type`` so the registry contains effective dispatch types.
 
-    Tuple structs (``struct Foo(Bar)``) are skipped — their fields are
-    positional, not named, so ``self.0.method()`` patterns don't apply.
+    Tuple structs (``struct Foo(Bar)``) register their fields by POSITION
+    (``"0"``, ``"1"``, ...), the names ``self.0.method()`` uses. They were
+    skipped on the belief that the pattern does not apply; it does, and with
+    no field type ``self.0.push(x)`` fell to the short-name fallback and bound
+    a first-party ``push`` (WI-lirik).
 
     Args:
         tree: Parsed tree-sitter tree for a single file.
@@ -1367,21 +1370,24 @@ def _extract_struct_field_types(
             continue  # pragma: no cover — defensive; struct_item always has name
         struct_name = node_text(name_node, source)
 
-        # Find the field_declaration_list (named struct, not tuple struct)
+        fields: dict[str, str] = {}
         body = find_child_by_type(node, "field_declaration_list")
         if not body:
-            continue
-
-        fields: dict[str, str] = {}
-        for child in body.children:
-            if child.type != "field_declaration":
-                continue
-            field_name_node = child.child_by_field_name("name")
-            field_type_node = child.child_by_field_name("type")
-            if field_name_node and field_type_node:
-                fname = node_text(field_name_node, source)
-                ftype = _unwrap_deref_type(field_type_node, source)
-                fields[fname] = ftype
+            ordered = find_child_by_type(node, "ordered_field_declaration_list")
+            if ordered is not None:
+                types = [c for c in ordered.children if c.is_named and c.type not in (
+                    "visibility_modifier", "attribute_item",
+                )]
+                fields = {str(i): _unwrap_deref_type(t, source) for i, t in enumerate(types)}
+        else:
+            for child in body.children:
+                if child.type != "field_declaration":
+                    continue
+                field_name_node = child.child_by_field_name("name")
+                field_type_node = child.child_by_field_name("type")
+                if field_name_node and field_type_node:
+                    fname = node_text(field_name_node, source)
+                    fields[fname] = _unwrap_deref_type(field_type_node, source)
 
         if fields:
             result[struct_name] = fields
@@ -2735,6 +2741,76 @@ def _rust_function_in_module(
     return (functions[0], None) if len(functions) == 1 else None
 
 
+#: Types every Rust module can name without a ``use`` (the std prelude's).
+_RUST_PRELUDE_TYPES = frozenset({"Vec", "String", "Option", "Result", "Box", "str"})
+
+
+def _rust_type_is_external(
+    type_text: str, use_aliases: dict[str, str], crates: "_InTreeCrates | None",
+) -> bool:
+    """Positive evidence that a receiver type is NOT this repo's (WI-lirik).
+
+    A prelude type (``Vec<u8>``), a path rooted outside the tree
+    (``std::collections::HashMap``), or a name a ``use`` brought in from
+    outside it (``use std::collections::VecDeque``). A type parameter
+    (``inner: T``), a first-party type, or a name nothing explains is not
+    evidence, and returns False: the short-name fallback then runs as before.
+    """
+    def outside(path: str) -> bool:
+        head = path.split("::", 1)[0]
+        in_tree = crates is not None and head in crates.by_name
+        return head not in ("crate", "self", "super", "Self") and not in_tree
+
+    base = type_text.split("<", 1)[0].strip().lstrip("&").strip()
+    if "::" in base:
+        return outside(base.lstrip(":"))
+    if base in _RUST_PRELUDE_TYPES:
+        return True
+    imported = use_aliases.get(base)
+    return imported is not None and "::" in imported and outside(imported)
+
+
+def _rust_use_path_function(
+    path: "str | None",
+    file_path: str,
+    candidates_by_name: "dict[str, list[Symbol]]",
+    crates: "_InTreeCrates | None",
+) -> "Symbol | None":
+    """The in-tree free function a call's ``use`` path names, or ``None`` (WI-lirik).
+
+    ``use crate::config::parse_configs; parse_configs(..)`` and ``use
+    app::config; config::parse_configs(..)`` name ONE function, in the module
+    file the path resolves to. The bare-name lookup they used to fall to
+    returns whichever same-named function registered last, so the call graph
+    depended on file order: a survey's sorted order bound a ``#[cfg(test)]``
+    helper of the same name, the recorded harness's walk order did not.
+
+    Positive evidence only: the path's module must resolve to a file in the
+    tree, and that file must declare exactly one free function of the name.
+    Anything else -- an external path, a type's associated function
+    (``Thing::new``), a module no file declares -- returns ``None`` and the
+    caller's existing strategies run unchanged.
+    """
+    if not path or crates is None:
+        return None
+    module, _, _name = path.rpartition("::")
+    if not module or crates.resolve(file_path, module) is None:
+        return None
+    hit = _rust_function_in_module(path, file_path, candidates_by_name, crates)
+    return hit[0] if hit is not None else None
+
+
+def _rust_use_path_of_call(full_scoped_name: str, use_aliases: dict[str, str]) -> "str | None":
+    """The absolute path a SCOPED call names through the file's ``use``
+    bindings: ``m::h()`` after ``use a::m``, or a path written from ``crate`` /
+    ``self`` / ``super``. A bare ``h()`` after ``use a::b::h`` needs no
+    rewriting: its ``use_aliases`` entry is already the path."""
+    head, _, tail = full_scoped_name.partition("::")
+    if head in use_aliases:
+        return f"{use_aliases[head]}::{tail}"
+    return full_scoped_name if head in ("crate", "self", "super") else None
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -3116,8 +3192,21 @@ def _extract_edges_from_file(
                                 resolved = True
                             else:
                                 import_hint = use_aliases.get(callee_name)
-                                lookup_result = resolver.lookup(
-                                    full_scoped_name, path_hint=import_hint, caller_path=_caller_path,
+                                # WI-lirik: ``config::parse_configs(..)`` after
+                                # ``use app::config`` names the function in
+                                # config's file; looked up by name it bound a
+                                # same-named caller, itself included.
+                                _by_path = _rust_use_path_function(
+                                    _rust_use_path_of_call(full_scoped_name, use_aliases),
+                                    file_path, kind_index or {},
+                                    analyzer.in_tree_crates() if analyzer is not None else None,
+                                )
+                                lookup_result = (
+                                    LookupResult(symbol=_by_path)
+                                    if _by_path is not None
+                                    else resolver.lookup(
+                                        full_scoped_name, path_hint=import_hint, caller_path=_caller_path,
+                                    )
                                 )
                                 if lookup_result.found and lookup_result.symbol is not None:
                                     edges.append(Edge.create(
@@ -3358,7 +3447,25 @@ def _extract_edges_from_file(
 
                         # Strategy 2: Fall back to short name
                         if not resolved:
+                            # WI-lirik: the receiver's type is known to be
+                            # EXTERNAL (``self.items: Vec<u8>``, a
+                            # ``use std::collections::VecDeque`` field), and the
+                            # typed lookup above missed. A same-named
+                            # first-party method is then not the callee --
+                            # ``self.items.push(x)`` bound the enclosing
+                            # ``push`` -- so the short name binds nothing. A
+                            # type parameter is not that evidence.
+                            _receiver_is_external = (
+                                is_method_call
+                                and field_receiver_type is not None
+                                and _rust_type_is_external(
+                                    field_receiver_type, use_aliases,
+                                    analyzer.in_tree_crates() if analyzer is not None else None,
+                                )
+                            )
                             _local = local_symbols.get(callee_name)
+                            if _receiver_is_external:
+                                _local = None
                             if (
                                 _local is not None
                                 and inner.type != "identifier"
@@ -3411,7 +3518,7 @@ def _extract_edges_from_file(
                                     is_method_call or full_scoped_name is not None
                                 )
                                 if use_method_guard and method_resolver is not None:
-                                    if callee_name in _RUST_GENERIC_TRAIT_METHODS:
+                                    if callee_name in _RUST_GENERIC_TRAIT_METHODS or _receiver_is_external:
                                         # Generic trait methods (.into(), .clone(),
                                         # .len(), etc.) cannot be resolved without
                                         # receiver type info — skip lookup to avoid
@@ -3458,7 +3565,19 @@ def _extract_edges_from_file(
                                             symbol=aliased[0] if aliased is not None else None,
                                         )
                                     else:
-                                        lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
+                                        # WI-lirik: an unaliased ``use`` path
+                                        # names its function too; the exact-
+                                        # name entry below is whichever
+                                        # same-named function registered last.
+                                        _by_path = _rust_use_path_function(
+                                            import_hint, file_path, kind_index or {},
+                                            analyzer.in_tree_crates() if analyzer is not None else None,
+                                        )
+                                        lookup_result = (
+                                            LookupResult(symbol=_by_path)
+                                            if _by_path is not None
+                                            else resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
+                                        )
                                     # The magnet gate applies only to genuinely
                                     # BARE identifier calls (``foo()``). Method /
                                     # scoped calls that fall through here purely
