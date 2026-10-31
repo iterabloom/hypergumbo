@@ -19,3 +19,10 @@
     pr_ref:  # efc8
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. circom.py:409 resolver.lookup(ref_name) though stable_ids scope signals by template (102-106, 232). Templates A and B each with out <== in: A's constraint references B's in/out; A's own get no edge. v10."  # efc8
     fields: {}  # efc8
+- op: discuss  # 54b0
+  at: '2026-10-31T22:46:21Z'  # 54b0
+  by: agent  # 54b0
+  actor: jgstern_agent  # 54b0
+  clock: 2  # 54b0
+  nonce: 54b0  # 54b0
+  message: "Concurrent fix run 2026-10-31 (agent loviz), branch jgstern-agent/fix/loviz commit b69cf5ba33 (not pushed; integration downstream). Premise reproduced on a fixture: A and B each `out <== in`, A's references went to B's in/out. Root cause wider than signals: every name in circom.py (signals, params/vars/loop indices, template and function callees) resolved through the bare-name, last-wins global registry. Fix: per-run _CircomScope (signals by owning template; component access c.in / c[i].out read from the constraint's leaves because the grammar parses `y <== c.out` as `(y <== c).out`; callees same file -> include closure -> unique -> ambiguous last-registered at NameResolver ambiguity confidence; includes resolved beside the file, else by path suffix). Also fixed in passing: `signal output out <== in;` was not a constraint; `signal input a, b;` gave no symbol for b; include edges pointed at dangling circom:<text>:0-0 ids. circomlib A/B: cross-file references to a file the source template never instantiates 696 -> 0; dangling imports 149 -> 0; 27 calls edges retargeted, all to same-file definitions (e.g. every test circuit's `component main = Main()` had pointed at circuits/sha256/main.circom). WI-volat (component c = A() emits calls twice) does NOT fall out of this change. Sibling found: solidity resolves contract member calls/emits by bare name per file, filed as WI-rafin-gunoh-nogav-lunuk-pinon-fajot-gapup-jifur."  # 54b0

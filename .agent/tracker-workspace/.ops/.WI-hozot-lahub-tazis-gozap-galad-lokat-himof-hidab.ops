@@ -1,0 +1,21 @@
+- op: create  # 8f36
+  at: '2026-10-31T21:28:29Z'  # 8f36
+  by: agent  # 8f36
+  actor: jgstern_agent  # 8f36
+  clock: 1  # 8f36
+  nonce: 8f36  # 8f36
+  data:  # 8f36
+    kind: work_item  # 8f36
+    title: "puppet: a namespaced class (class a::b) is never extracted, and an include list or quoted include drops names, so includes of existing classes stay unbound in any order"  # 8f36
+    status: todo_hard  # 8f36
+    priority: 2  # 8f36
+    parent:  # 8f36
+    tags:  # 8f36
+    - analysis_quality  # 8f36
+    - resolution  # 8f36
+    isbefore: []  # 8f36
+    duplicate_of: []  # 8f36
+    not_duplicate_of: []  # 8f36
+    pr_ref:  # 8f36
+    description: "Found while fixing WI-vahun-fijuv-vojag-rogij-bujaf-lagam-vuhaf-logup (2026-10-31, dev 217890b1aa). These are separate from that item's order-dependence: every one happens however the files are ordered. All are in puppet.py and all show the same symptom, an include or class reference that exists in the repository and still does not bind. Reproduced with tree-sitter-language-pack's puppet grammar:\n\n1. A namespaced class is not extracted at all. class a::b {} parses as class_definition > class_identifier(identifier a, identifier b). The class builder (_extract_class on dev; _class_symbol on the fix branch) only reads an identifier child, so it returns early on the line marked pragma: no cover, and no symbol is emitted. Namespaced classes (apache::params, nginx::config) are what most real Puppet modules use, so an include of one of them can never resolve, and the class is missing from the graph. The defined-type builder already reads class_identifier, and the scope labeller _NAMED_SCOPES has the same identifier-only gap for class_definition.\n\n2. An include list keeps only its last name. include a::b, c parses as include_statement > class_identifier, identifier, and the include loop overwrites class_name on every child, so only c gets an edge. include ::beta, gamma (leading ::) gives ERROR, identifier beta, identifier gamma, and only gamma gets an edge.\n\n3. A quoted include, include \"c\" (include_statement > string), gets no edge.\n\n4. No edge for a class's inherits parent (class alpha inherits beta, a class_inherits node) or for the require function form (require delta, a require_statement node). This grammar parses contain x and class { 'x': } as ERROR/identifiers, so those two cannot be fixed in the analyzer.\n\nFixture: m.pp = 'class a::b {}  class c {}  class top { include a::b, c  include \"c\" }' gives one includes edge (to c). Expected: three include edges, all resolved, and three class symbols (a::b, c, top). No corpus repo contains Puppet: the 21 .pp files under ~/whole_bunch_of_repos are compiled SELinux policy packages."  # 8f36
+    fields: {}  # 8f36

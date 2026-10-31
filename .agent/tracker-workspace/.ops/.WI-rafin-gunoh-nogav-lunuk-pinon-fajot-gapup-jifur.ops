@@ -1,0 +1,20 @@
+- op: create  # 028f
+  at: '2026-10-31T22:18:28Z'  # 028f
+  by: agent  # 028f
+  actor: jgstern_agent  # 028f
+  clock: 1  # 028f
+  nonce: 028f  # 028f
+  data:  # 028f
+    kind: work_item  # 028f
+    title: "solidity: a call or emit inside contract A resolves by bare name per file, so A.f's helper() and emit Transfer() point at contract B's same-named members"  # 028f
+    status: todo_hard  # 028f
+    priority: 3  # 028f
+    parent:  # 028f
+    tags:  # 028f
+    - analysis_quality  # 028f
+    isbefore: []  # 028f
+    duplicate_of: []  # 028f
+    not_duplicate_of: []  # 028f
+    pr_ref:  # 028f
+    description: "Found by the WI-loviz-savig-gigir-tukul-mipih-goboj-hupal-zigub sweep (circom signals resolved by bare name while their stable_ids are template-scoped). Same mechanism in solidity.py: contract members get contract-scoped ids (A.helper, B.helper), but a bare call helper() and an emit Transfer(...) are resolved by name through local_symbols / global_symbols, which hold one symbol per short name (last registered wins).\n\nFixture (one file, dev 217890b1aa):\n\n    contract A { event Transfer(uint a); function helper() internal {} function f() public { helper(); emit Transfer(1); } }\n    contract B { event Transfer(uint a); function helper() internal {} function g() public { helper(); emit Transfer(2); } }\n\nanalyze_solidity output:\n    calls      line 7   A.f -> B.helper   (ast_call_direct)\n    references line 8   A.f -> B.Transfer (reference, emit)\n    calls      line 16  B.g -> B.helper\n    references line 17  B.g -> B.Transfer\n\nExpected: A.f -> A.helper and A.f -> A.Transfer. Invariant: an unqualified member name inside contract C resolves to C's own member, then to members C inherits (is-list, linearized), and only then file/global; never to an unrelated contract's member. Code: solidity.py emit branch (~L785 local_symbols.get(event_name) or global_symbols.get(event_name)) and the call_expression branch (~L676 target = local_symbols.get(call_name), which emitted the ast_call_direct edge above); the member-access fallback (~L750, method_name after the last dot) has the same shape. Not measured on the corpus (openzeppelin would be the obvious A/B). Not checked: modifier invocations (no modifier-use edge is emitted in this fixture at all), overloads across contracts.\n\nOther extended1 analyzers read for the same shape (scoped id, bare-name resolution), none confirmed: pascal (looks up owner-qualified key first, L309), vhdl (architecture->entity by name, unit-level, WI-morud), gnuplot / bitbake / blade / mermaid (scoped_stable_id but no member-reference edges resolved by name)."  # 028f
+    fields: {}  # 028f
