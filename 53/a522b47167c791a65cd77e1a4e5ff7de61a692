@@ -1,0 +1,44 @@
+Original commit body from 0b81e1f957e23314d6b0c78fe3e7eba1e6d1b8a4:
+
+WI-borib (docs/audits/0026) measured io-boundaries against taint per
+edge on five corpus repositories and counted 18 disagreements: taint
+"ignoring io_target_kind" (bash `> /dev/null`, Go `Fprintf` into a
+buffer), knex `process.on('exit')` handlers read as untrusted_input,
+and a promisified fs.writeFile. That instrument stopped at taint's row
+match (_match_propagation_entry). The real walk then refuses the SITE:
+_sink_call_can_carry_taint (INV-kosur's discard clause, literal-only
+arguments, origin-less redirects) and _source_call_can_mint_taint
+(WI-lipis; js_ts.py stamps in_memory on any literal event but
+'message', WI-punar). Re-measured with both gates: logrus, ripgrep,
+jedis and mitmproxy agree on every edge; the one disagreement left is
+knex's `const writeFile = promisify(fs.writeFile)` (5 edges), filed as
+WI-riloj. The item's premise -- "taint ignores io_target_kind" -- was
+the instrument's, and is recorded so on the item.
+
+So the deliverable is the PIN, the WI-bobuf shape: a test that asks the
+question of the OUTPUT. disagreements() tags a behavior map with
+io-boundaries' production assembly and matches it with taint's, projects
+io's boundaries onto taint's vocabulary (AUTO_SINK_ZONE_MAP zones,
+AUTO_SOURCE_LABEL_MAP labels), and reports per call io_only_sink /
+taint_only_sink / zone_mismatch / io_only_source / taint_only_source.
+Two differences are named, not counted:
+- taint matched the row and refused the site -- io asks "does it
+  cross", taint "can taint flow";
+- a taint source with no boundary behind it (os.urandom ->
+  key_material) -- a label, not a crossing.
+
+Measured with the helper itself on the five surveys: mitmproxy, logrus,
+ripgrep, jedis {}; knex taint_only_sink 5 (lib/migrations/util/fs.js:10
+writeFile, :12 mkdir). The match rides on the FILE being named fs.js:
+`.../fs.js:...:writeFile` reads as fs.writeFile -- added to WI-riloj.
+
+Tests (test_io_taint_agreement.py, through run_behavior_map): the
+schema-coverage corpus has no disagreement; the first measurement's false
+shapes (a /dev/null redirect, a buffered Fprintf, process.on('exit'))
+are none; a reach control removes taint's subprocess.run row and the
+check reports the io-only sink; knex's alias shape is a strict xfail on
+WI-riloj (failing with taint_only_sink, the filed reason).
+
+Addresses WI-zavot.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
