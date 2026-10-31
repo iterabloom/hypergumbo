@@ -13,8 +13,13 @@ Shared Components
   analyzer follows — Pass 1 extracts symbols per file, Pass 2 resolves calls
   and imports against the global symbol registry — plus grammar loading,
   file discovery, graceful degradation when a grammar is unavailable, and
-  result assembly. Subclasses override the language-specific extraction
-  hooks and inherit the orchestration. ~105 analyzer modules subclass it.
+  result assembly. Most subclasses override the language-specific extraction
+  hooks and inherit the orchestration. ~105 analyzer modules subclass it,
+  but 34 of those classes (go, java, js_ts, csharp, kotlin, php and ruby
+  among them) override ``analyze()`` with their own loop and never reach
+  ``_analyze_body``, so the per-file and between-pass steps described next
+  apply only to the subclasses that run it, directly or through
+  ``super().analyze`` (as cpp, dart, elixir and scala do).
   Per file, Pass 1 parses through the ``parse_source`` hook (an override may
   rewrite the bytes, length-preserving, for a grammar that lags its
   language), records a tree that needed error recovery in

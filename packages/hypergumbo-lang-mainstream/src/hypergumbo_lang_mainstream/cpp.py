@@ -36,6 +36,14 @@ This analyzer uses tree-sitter to parse C++ files and extract:
   for the USE of a dispatch table inside a lookup function, which completes
   the chain from caller through lookup to dispatched target
 - Function-pointer references (address-of expressions like `&func` or `&Class::method`)
+- Bare-value function references: a function named as a value -- a pointer
+  initialiser (``int (*q)(void) = f1;``, at file scope too), an assignment,
+  a return operand, a designated or positional aggregate element outside an
+  array table -- gives a ``references`` edge with
+  ``evidence_type="function_reference"``. A bare name that a parameter,
+  template parameter, local, range-for variable, enumerator or file-scope
+  variable declares (``c_family_declares_local``), or that reads as a class
+  member (``_cpp_bare_value_is_a_member``), gets none
 - Module attribute references for iostream IO (`std::cout`/`std::cerr`/`std::cin` and namespace-alias attribute reads; feeds io-boundaries)
 
 Call-edge details:

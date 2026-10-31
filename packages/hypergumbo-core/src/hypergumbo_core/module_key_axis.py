@@ -304,7 +304,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=2365,
+                line=2373,
                 anchor="module_hint = module_slot(_slots)",
                 note=(
                     "Every header the file can see (its own includes, quoted "
@@ -359,7 +359,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=7823,
+                line=7831,
                 anchor='"process": "process",',
                 note=(
                     "The identity mapping that puts a global's own name into "
@@ -371,7 +371,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=1358,
+                line=1366,
                 anchor="JS_KNOWN_GLOBALS",
                 note=(
                     "The globals treated as addressable owners — 11 as of "

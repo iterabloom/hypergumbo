@@ -38,6 +38,10 @@ Each claim in ``claims`` specifies:
       Accepted as a key (its value is not type-checked), but no verdict
       consults it yet: a flow counts as sanitized only through the taint
       catalogue's sanitizers.
+    - ``include_command_line``: Count flows whose source is the program's
+      own command line (optional, default false; anything but true or
+      false raises :class:`ClaimsFileError`). By default those flows are
+      left out of the verdict and disclosed as ``command_line_flows``.
 
 Verdict Types
 -------------

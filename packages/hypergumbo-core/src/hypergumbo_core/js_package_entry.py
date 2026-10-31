@@ -5,6 +5,15 @@ It also holds Node's core-module list (``is_node_core_module``), which the
 linker reads so it never mints an npm package for ``fs``, and js_ts reads so
 an import of one is external.
 
+It also holds Node's file probe (``probe_file``) for a relative specifier or a
+package subpath (``@ws/c/lib/x``): the path itself, then the path with each
+``PROBE_EXTENSIONS`` extension APPENDED rather than substituted (so
+``./X.test-wrapper`` never becomes ``X.tsx``), then the TypeScript twin of a
+JS-extension specifier (``./x.js`` names ``x.ts``; ``_JS_TO_TS``), then a
+directory's ``index.<ext>``. Both consumers resolve relative and subpath
+imports through it, and the entry rule below probes each declared entry with
+it.
+
 ONE COPY, TWO CONSUMERS. The js_module linker resolves a workspace sibling's
 import to its entry file (WI-rilof); the JS/TS analyzer resolves a DEFAULT
 import of that sibling to the entry's ``export default`` declaration (WI-halol).
