@@ -20,3 +20,18 @@
     pr_ref:  # 0f2b
     description: "From WI-borib's WI-vosop measurement (docs/audits/0026; ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/vosop/FINDINGS.md, capture.py, diff_inrepo.py).\n\n1. ORDER DEPENDENCE. aardvark-dns src/server/serve.rs:287 calls parse_configs(...), imported by use crate::config::parse_configs;. analyze_rust binds it to src/config/mod.rs under walk order and to src/test/test.rs:30 (a #[cfg(test)] helper of the same name) under sorted order -- the order a survey's FileIndex gives. Reversed order binds correctly. So every live survey of this crate has the wrong edge, and the recorded harness (walk order) the right one.\n2. SELF-BINDING. self.0.push(err) inside fn push (src/error.rs:105), self.0.is_empty() inside fn is_empty (:109), and config::parse_configs(dir, \"\") inside the test helper parse_configs (src/test/test.rs:37) each resolve to the enclosing function; the survey then drops them as self-loops (deduplicate_edges(..., remove_self_loops=True), cli.py:13177), so the real callee (Vec::push; config/mod.rs) is lost, not just mislabelled.\n\nACCEPTANCE: a call through a single-path use binds the path's function regardless of discovery order (test both orders, LIVE's bare-name rule); a path-qualified or receiver call does not bind to the enclosing same-named function; aardvark-dns re-measured."  # 0f2b
     fields: {}  # 0f2b
+- op: update  # 3595
+  at: '2026-10-31T02:24:17Z'  # 3595
+  by: agent  # 3595
+  actor: jgstern_agent  # 3595
+  clock: 2  # 3595
+  nonce: '3595'  # 3595
+  set:  # 3595
+    status: done  # 3595
+- op: discuss  # 01f4
+  at: '2026-10-31T02:24:18Z'  # 01f4
+  by: agent  # 01f4
+  actor: jgstern_agent  # 01f4
+  clock: 3  # 01f4
+  nonce: 01f4  # 01f4
+  message: "Fixed in PR #1973 (9591306872). Re-run on merged dev, live: hypergumbo survey of the aardvark-dns crate copy (sorted FileIndex order, the order that showed the defect): src/server/serve.rs:287 parse_configs -> src/config/mod.rs (was src/test/test.rs, the cfg(test) helper); src/test/test.rs:37 config::parse_configs -> src/config/mod.rs (was itself, then dropped as a self-loop); src/error.rs:105/:109 self.0.push / self.0.is_empty emit no first-party edge (were self-bindings). With rust-analyzer 1.94.0 the live backend-agreement reads calls/in-repo 94/16/6, identical to the recorded harness (was 92/17/8 vs 93/16/7). Corpus A/B (firecracker, ripgrep, just, zellij, diamond-types): 943 call sites changed, two random samples of 10 per class read, all correct but one judgement call (zellij setup_ipc imported under two cfg alternatives now binds the last use). Four mutations each red a test."  # 01f4
