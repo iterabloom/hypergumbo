@@ -25,8 +25,12 @@ reflecting the ADR-0027 Phase-4b axis split between
   canonical ``method`` / ``function`` symbols that should be
   suppressed (e.g., framework-dispatched event subscribers folded out
   of the old ``kind="event_subscriber"`` shape by Wave 5 of ADR-0027).
-- ``is_excluded_kind(kind, meta)``: the public predicate consumers
-  should call. True when ``kind in EXCLUDED_KINDS``, or when ``kind`` is
+- ``is_excluded_kind(kind, meta, *, language=None)``: the public
+  predicate consumers should call. A ``section`` whose language is known
+  is excluded only in a document language
+  (``noise_filter._NOISE_SECTION_LANGUAGES``), because a COBOL section is
+  a callable. Otherwise it is True when ``kind in EXCLUDED_KINDS``, or
+  when ``kind`` is
   ``function`` / ``method`` and ``meta.get("framework_role")`` is in
   ``EXCLUDED_FRAMEWORK_ROLES``. Only the post-fold shape of a framework
   role is matched: ADR-0027 Phase 4b removed the legacy literals (such as
@@ -36,10 +40,12 @@ reflecting the ADR-0027 Phase-4b axis split between
 Key-symbol selection is the population policy sketch ranks over and compact
 applies (its centrality path filters to it; its connectivity path takes seeds
 only from it). ``KEY_SYMBOL_KINDS`` is an allowlist of declaration kinds across
-languages; ``is_key_symbol`` requires a kind in it, a non-test path, no
-``test_`` substring in the name, and ``supply_chain_tier != 4``;
-``key_symbols`` filters a list by it; and ``production_edges`` drops edges
-whose source symbol is in a test file (edges into a test file are kept). The
+languages; ``is_key_symbol`` requires a kind in it, a symbol that is not
+test code (neither in a test file nor carrying a test annotation,
+``paths.is_test_node``), no ``test_`` substring in the name, and
+``supply_chain_tier != 4``; ``key_symbols`` filters a list by it; and
+``production_edges`` drops edges whose source symbol is test code by the
+same predicate (edges into test code are kept). The
 allowlist is deliberately not the complement of the ``EXCLUDED_KINDS``
 denylist: ``variable`` is in both.
 
@@ -71,13 +77,12 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard, types only
 # - AXIS_LANGUAGE_CONSTRUCT (Cluster A): ``variable``.
 # - AXIS_ENDPOINT_SHAPE (Cluster D — Wave 5 fold target):
 #   ``event_subscriber``. WI-jukav slice 2 closes this leg via the
-#   :func:`is_excluded_kind` dual-shape predicate below — post-Wave-5
-#   producers emit ``kind="method"`` + ``meta["framework_role"]=
-#   "event_subscriber"``, which the predicate matches alongside the
-#   pre-fold ``kind="event_subscriber"`` shape. The set still names
-#   the legacy label so the predicate's ``meta`` lookup has a
-#   reference vocabulary and so any unmigrated producer continues to
-#   match.
+#   :func:`is_excluded_kind` predicate below — post-Wave-5 producers
+#   emit ``kind="method"`` + ``meta["framework_role"]=
+#   "event_subscriber"``, which the predicate matches through
+#   ``EXCLUDED_FRAMEWORK_ROLES``. ADR-0027 Phase 4b removed the legacy
+#   label from this set, so a symbol still emitted as
+#   ``kind="event_subscriber"`` is not excluded.
 # - AXIS_PENDING (Clusters B/G/H residue): ``target``,
 #   ``special_target``, ``section``, ``code_block``, ``link``,
 #   ``class_selector``, ``id_selector``, ``keyframes``, ``media``,
@@ -92,8 +97,8 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard, types only
 #   ``devDependency``. Producer now emits ``kind="dependency"`` +
 #   ``meta["dependency_scope"]="dev"``; the post-fold shape is
 #   excluded automatically because the fold target (``dependency``)
-#   is already in the set; the legacy literal stays through the
-#   Phase 4a deprecation window.
+#   is already in the set; the legacy literal was removed from the
+#   set by ADR-0027 Phase 4b.
 # - AXIS_LANGUAGE_CONSTRUCT post-promotion (Wave 6 PR 1, audit-findings
 #   0005): ``file``, ``project``, ``package``. The set keeps these
 #   names because the policy is "synthetic file/package-shape nodes
@@ -106,8 +111,8 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard, types only
 #   ``kind="package"`` + ``meta["package_ecosystem"]="npm"``
 #   (npm_package). The post-fold shapes are excluded automatically
 #   because their fold targets (``file`` / ``package``) are already
-#   in the set; the legacy literals stay through the Phase 4a
-#   deprecation window for any unmigrated producer.
+#   in the set; the legacy literals were removed from the set by
+#   ADR-0027 Phase 4b, so an unmigrated producer is not excluded.
 EXCLUDED_KINDS = frozenset({
     "dependency",       # package.json, pyproject.toml dependencies
     "file",             # file-level nodes (import targets)
@@ -149,12 +154,14 @@ def is_excluded_kind(
 ) -> bool:
     """Dual-shape predicate for ``EXCLUDED_KINDS`` (WI-jukav slice 2).
 
-    Forward-compatible across ADR-0027 §"Phase 3" Wave 5 framework_role
-    fold: matches both the pre-fold emit shape (``Symbol.kind`` directly
-    carries the legacy framework-role label, e.g. ``"event_subscriber"``)
-    and the post-fold shape (``Symbol.kind`` is the canonical language
-    construct ``"function"`` or ``"method"`` and the role moves to
-    ``Symbol.meta["framework_role"]``).
+    Matches the post-fold shape of ADR-0027 §"Phase 3" Wave 5
+    framework_role fold: ``Symbol.kind`` is the canonical language
+    construct ``"function"`` or ``"method"`` and the role lives in
+    ``Symbol.meta["framework_role"]`` (checked against
+    ``EXCLUDED_FRAMEWORK_ROLES``). The pre-fold shape (``Symbol.kind``
+    directly carrying a legacy label such as ``"event_subscriber"``) is
+    no longer matched: ADR-0027 Phase 4b removed those literals from
+    ``EXCLUDED_KINDS``.
 
     Why this lives here rather than as ``sym.kind in EXCLUDED_KINDS``
     inline: post-fold synthetic nodes (Phoenix Channels event subscribers,
@@ -302,8 +309,9 @@ KEY_SYMBOL_KINDS = frozenset({
 def is_key_symbol(symbol: "Symbol") -> bool:
     """The four-clause "is this worth showing a reader" predicate.
 
-    A key symbol is a declaration of a kind in :data:`KEY_SYMBOL_KINDS`, not in
-    a test file, not named like a test function, and not a derived artifact.
+    A key symbol is a declaration of a kind in :data:`KEY_SYMBOL_KINDS`, not
+    test code (``paths.is_test_node``: a test file or a test annotation), not
+    named like a test function, and not a derived artifact.
 
     The ``"test_" not in symbol.name`` clause is deliberately a SUBSTRING test
     rather than a prefix test, and it is kept verbatim from the sketch original
@@ -329,12 +337,12 @@ def key_symbols(symbols: List["Symbol"]) -> List["Symbol"]:
 def production_edges(
     symbols: List["Symbol"], edges: List["Edge"]
 ) -> List["Edge"]:
-    """Drop edges ORIGINATING in a test file.
+    """Drop edges ORIGINATING in test code (``paths.is_test_node``).
 
     Centrality computed over test-sourced edges credits a symbol for being
     called by its own test suite, which inflates well-tested internals over
     genuinely central code. Filtering by source only (not destination) is
-    deliberate: an edge INTO a test file is still evidence about the target.
+    deliberate: an edge INTO test code is still evidence about the target.
 
     Extracted alongside :func:`key_symbols` because the two are one policy —
     sketch applied both and compact's default applied neither, so adopting the

@@ -3,13 +3,15 @@
 
 This module provides a registration system for cross-language
 linkers (Tier 2 edge-recovery passes), enabling loop-based dispatch
-in run_behavior_map() instead of many repetitive code blocks.
+in run_survey() (``run_behavior_map`` is its deprecated alias) instead
+of many repetitive code blocks.
 
 Subcategory taxonomy (ADR-3bbb)
 -----------------------------------
 Every linker belongs to one of four subcategories. The categorization
 is declared in each linker module's top-level docstring (per the
-``generate-architecture`` lint) and pinned by ``_LINKER_SUBCATEGORIES``:
+``generate-architecture`` lint) and pinned by that script's
+``_LINKER_SUBCATEGORIES``:
 
 - **Protocol** — framework-agnostic over-the-wire shapes
   (HTTP, WebSocket, message queues, SQL).
@@ -77,8 +79,10 @@ ADR-0027's Phase-4b kind-vs-framework-role axis split.
 
 Why This Design
 ---------------
-- Adding a new linker requires only creating the linker file
-- No need to edit cli.py imports or run_behavior_map()
+- Adding a new linker needs the linker file plus one side-effect import
+  line in cli.py's linker-import block (registration happens at import
+  time; nothing discovers linker modules automatically)
+- No need to edit run_survey(): dispatch loops over whatever registered
 - Linkers can specify their own ordering priority and gating
 - Consistent interface for all linkers despite different needs
 - Parallel within-priority dispatch keeps wall time bounded even
@@ -915,7 +919,7 @@ def _stamp_config_fingerprint(
     INV-lidul / WI-mipul: linker bodies build their ``AnalysisRun`` via
     ``AnalysisRun.create(...)`` with no ``config_fingerprint``, so every one
     falls through to the constant ``_default_config_fingerprint()`` sentinel
-    (sha256 of ``{}``) — collapsing ~40 linker passes onto one cache-keying
+    (sha256 of ``{}``) — collapsing every linker pass onto one cache-keying
     fingerprint. This is the linker analogue of
     ``TreeSitterAnalyzer._stamp_config_fingerprint``: it derives a stable
     ``sha256:<16hex>`` from the ``RegisteredLinker``'s IDENTITY (module +
@@ -949,7 +953,7 @@ def _record_linker_crash(
 
     §17 / WI-madal L3: an exception escaping a single linker must not abort the
     whole linker phase. When a ``Limits`` sink is supplied (the
-    ``run_behavior_map`` path), the crash is recorded pass-level via
+    ``run_survey`` path), the crash is recorded pass-level via
     ``Limits.record_crashed_pass``; callers without a sink (direct/test
     invocations) still get skip-and-continue containment.
     """

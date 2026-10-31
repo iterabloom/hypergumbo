@@ -145,7 +145,7 @@ Project-local sink overrides flow through the ``--taint-sinks`` CLI flag.
 Built-in sources are auto-derived the same way: every primitive whose
 boundary is a key of :data:`AUTO_SOURCE_LABEL_MAP` (``env_read``,
 ``host_info_read``, ``net_recv``, ``ipc_recv``, ``db_read``,
-``navigation_read``) becomes a source
+``navigation_read``, ``command_line_read``) becomes a source
 carrying that label and its ``source_boundary``; ``taint_sources/`` adds only
 the labels no boundary implies (``plaintext``, ``key_material``). The entry
 point end-users hit is :func:`load_full_taint_catalog`, which stacks

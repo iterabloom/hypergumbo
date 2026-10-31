@@ -128,10 +128,10 @@ How It Works
    reach a nested type from another file (``_is_import_class_mismatch``;
    INV-finak, WI-bunul). Colliding base-class names resolve same-file, then
    import, then first by id (``_resolve_base_class_java``).
-   A call or ``new`` in no method or constructor (a field initialiser, an
-   initialiser block) is anchored on the enclosing class / interface / enum /
-   record, else the file (``_get_enclosing_type_symbol``, INV-bamij); a method
-   reference there gets no such fallback and emits nothing. An unresolved call
+   A call, ``new`` or method reference (``Type::m``, ``Type::new``) in no
+   method or constructor (a field initialiser, an initialiser block) is
+   anchored on the enclosing class / interface / enum / record, else the file
+   (``_get_enclosing_type_symbol``, INV-bamij). An unresolved call
    with a receiver token is stamped ``call_construct="function"`` when the receiver
    provably names a TYPE (``Files.readAllBytes(p)``), else ``method``; a bare
    ``m(x)`` stays unstamped (``_java_call_construct``, WI-fuvaj). Receivers

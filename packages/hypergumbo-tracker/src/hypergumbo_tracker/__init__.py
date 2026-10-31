@@ -28,13 +28,17 @@ Beyond storage, the package ships the surfaces that consume it:
 
 - **TUI** (``tui.py``): the full-screen interactive client, and the largest
   module in the package.
-- **Web server** (``serve.py``): an HTTP/WebSocket view (ADR-0019). The
-  shipped ``htrac serve`` path calls ``create_app()`` without a TrackerSet,
-  so ``/api/*`` return 503 and only ``/health`` answers. The ADR-0019 auth
-  modules (``serve_webauthn.py``, ``serve_password.py`` with its duress
-  password, ``serve_sessions.py``, ``serve_duress.py``, configured by
-  ``serve_auth_config.py``) exist but are not yet wired into ``serve.py``,
-  whose routes perform no auth check (WI-hopip).
+- **Web server** (``serve.py``): an HTTP/WebSocket view (ADR-0019). Every
+  route except ``/health`` and the static mount sits behind a
+  deny-by-default ``authenticate`` gate: a request the authenticator does
+  not accept gets 401, and a WebSocket is closed with 1008. With no
+  authenticator, every guarded request is denied. The shipped
+  ``htrac serve`` path calls ``create_app()`` with neither a TrackerSet nor
+  an authenticator, so ``/api/*`` return 401 and only ``/health`` answers.
+  The ADR-0019 login modules (``serve_webauthn.py``, ``serve_password.py``
+  with its duress password, ``serve_sessions.py``, ``serve_duress.py``,
+  configured by ``serve_auth_config.py``) exist but are not wired into
+  ``serve.py``: nothing builds an authenticator from them.
 - **Sync** (``sync.py``, ``sync_log.py``): the auto-sync mechanism that
   batches pending ops into a branch, pushes, polls CI and merges, plus its
   audit log.

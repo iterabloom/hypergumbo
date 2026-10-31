@@ -8,9 +8,11 @@ or linker; the catalog is built from ``_ANALYZER_REGISTRY`` +
 
 How It Works
 ------------
-1. :func:`build_catalog_from_registries` triggers entry-point discovery
-   (``ensure_discovered()``) so all language packages have a chance to
-   register their analyzers/linkers.
+1. :func:`build_catalog_from_registries` triggers analyzer entry-point
+   discovery (``ensure_discovered()``) so every language package registers
+   its analyzers. Linkers are not discovered this way: they register when
+   their modules are imported (``hypergumbo_core.cli`` imports them), so a
+   caller that has not imported them gets an analyzer-only catalog.
 2. For each registered pass it constructs a :class:`Pass` whose ``id`` is
    the registration name (no ``-v1`` / ``-ts-v1`` suffix — INV-morag PR 2).
 3. Catalog metadata (description, languages, availability, requires,

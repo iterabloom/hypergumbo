@@ -6,10 +6,10 @@ ANALYSED DECLARATIONS: an analyzer fills ``FileAnalysis.method_return_types`` du
 and :meth:`TreeSitterAnalyzer.analyze` aggregates it, first writer wins, into
 ``_method_return_type_registry`` for Pass 2. A receiver bound to a LIBRARY call therefore
 cannot be typed at all -- there is no declaration in the repository to register -- and the
-820 method-kind ``io_primitives`` rows across nine languages that need a typed receiver stay
-unreachable no matter how correct they are. Measured on Go: ``ln, _ := net.Listen(...)``
-then ``ln.Accept()`` emits ``go:external:0-0:Accept`` and the catalogue's
-``net.Listener.Accept`` row matches nothing.
+method-kind ``io_primitives`` rows across nine languages that need a typed receiver (820 of
+them when this catalogue was proposed) stay unreachable no matter how correct they are.
+Measured on Go: ``ln, _ := net.Listen(...)`` then ``ln.Accept()`` emits
+``go:external:0-0:Accept`` and the catalogue's ``net.Listener.Accept`` row matches nothing.
 
 WHY A SEPARATE FAMILY AND NOT A ``returns:`` KEY ON THE io_primitives ROWS (WI-lalot weighed
 these in order): it is a SIGNATURE fact, not an I/O fact, and one file whose declared job is
@@ -33,8 +33,9 @@ THE KEY SHAPE IS PER-LANGUAGE AND IS THE ONE THING A ROW FILE CAN GET SILENTLY W
 because a mis-keyed row simply never matches and no error is raised. Go is the sharp case:
 keys carry an UNQUALIFIED receiver (``Listener.Accept``, the fold ``go.py::_bare_go_type``
 performs) while VALUES are package-QUALIFIED (``net.Conn``), because the io-boundary module
-slot needs the package. Each shipped row file states its own key shape in a header comment,
-and :func:`load_library_signatures` refuses a row whose value is empty or whose key is not a
+slot needs the package. Each shipped built-in row file states its key shape in a header
+comment (a community companion uses its built-in file's shape), and
+:func:`load_library_signatures` refuses a row whose value is empty or whose key is not a
 string, which is as much as a loader can check without re-implementing nine analyzers.
 
 ONE LIBRARY, SEVERAL LANGUAGES (WI-jubim). kotlin and scala call the JDK directly, so they
@@ -53,10 +54,11 @@ row file has two sections read this way: ``signatures`` (producer key -> returne
 its type, :func:`load_library_package_variables`), for a typed value a library exposes
 without a call, such as Go's ``http.DefaultClient``. Only the go analyzer reads the second
 section. Two more sections are read only by python (WI-himim): ``tuple_returns``
-(a producer that returns a tuple: ``asyncio.open_connection`` -> ``"StreamReader,
-StreamWriter"``, :func:`load_library_tuple_returns`) and ``member_types`` (an
-attribute of a typed object: ``asyncio.subprocess.Process.stdout`` ->
-``StreamReader``, :func:`load_library_member_types`).
+(a producer that returns a tuple: ``asyncio.open_connection`` ->
+``"asyncio.StreamReader, asyncio.StreamWriter"``, :func:`load_library_tuple_returns`)
+and ``member_types`` (an attribute of a typed object:
+``asyncio.subprocess.Process.stdout`` -> ``asyncio.StreamReader``,
+:func:`load_library_member_types`).
 """
 from __future__ import annotations
 

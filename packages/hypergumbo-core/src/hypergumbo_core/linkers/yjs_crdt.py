@@ -8,7 +8,7 @@ between code that writes to shared state and code that observes it. (The
 bespoke ``crdt_publishes`` type was folded onto ``event_publishes`` per the
 audit-findings 0001/0014 consolidation.)
 
-Three API surfaces are covered:
+Four API surfaces are covered:
 
 Detected Patterns
 -----------------

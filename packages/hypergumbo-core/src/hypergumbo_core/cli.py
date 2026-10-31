@@ -136,8 +136,9 @@ any is ``confirmed_with_caveats`` and none of the above.
 ``dead-code-maybe`` is implemented here too (``cmd_dead_code_maybe`` and its
 helpers ``production_callables``, ``_bfs_reachable`` and
 ``_compute_cross_language_hits``): production callables minus a BFS over
-``_REACHABILITY_EDGE_TYPES`` edges plus a class-to-initializer hop for each
-constructed class, from the ``--seeds`` set (plus ``view_func``
+``_REACHABILITY_EDGE_TYPES`` edges plus two walk-only hops (class to
+initializer for each constructed class, and container to the code anchored
+on it, ``anchor_execution_edges``), from the ``--seeds`` set (plus ``view_func``
 dispatch handlers), after which three false-positive demoters drop symbols in
 generated files, methods reached by inheritance dispatch, and candidates
 whose name appears in at least ``--cross-lang-threshold`` other-language
@@ -156,8 +157,10 @@ Why This Design
   ``io-boundaries`` and ``verify-claims`` rebuild edges through a six-field
   facade (``_rehydrate_io_boundary_edges``) that keeps ``is_resolved`` and
   ``dst_ref`` for the boundary classifier. ``dead-code-maybe`` builds its
-  entrypoint-detection Symbols by hand from seven
-  fields (dropping ``supply_chain_tier`` and ``modifiers``), and only its
+  entrypoint-detection Symbols by hand from nine
+  fields (keeping ``discovery_language``, which entrypoint ranking reads
+  through ``host_language``, and dropping the rest, ``supply_chain_tier``
+  and ``modifiers`` among them), and only its
   edges go through ``Edge.from_dict``. ``sketch`` is the exception to the
   reload: the CLI reads a survey only with ``--input``; otherwise
   ``sketch.py`` finds the cached survey itself and runs a survey only on a

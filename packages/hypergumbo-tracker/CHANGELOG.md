@@ -12,6 +12,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 - **TUI preferences are per user**: they live in `$XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/`, not in the shared checkout, where `git clean` removed them and two accounts overwrote each other's on every save. An existing in-repo file is read once and carried over.
 - **TUI tests click only once the target is under the pointer.** On a starved run a button reported a stale region, the click landed on the dialog, and the modal was never dismissed. Every `pilot.click` in the TUI tests now goes through a helper that waits for the target and fails if the click did not land.
 
+### Documentation
+
+- The web server's module docstrings describe its deny-by-default auth gate (401 for any request no authenticator accepts) and say the login modules are not wired in.
+
 ## [0.11.0] - 2026-10-20
 
 ### Breaking and contract changes

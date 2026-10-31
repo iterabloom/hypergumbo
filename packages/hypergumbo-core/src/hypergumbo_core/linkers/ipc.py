@@ -25,7 +25,9 @@ Electron IPC (main → renderer):
 
 Electron IPC (receive side — main and renderer):
 - ipcMain.on / .handle / .handleOnce       -> detected and used as the DST of the forward
-- ipcRenderer.on / .once                      edge; receive symbols are emitted. Only the
+- ipcRenderer.on / .once                      edge; a receive symbol is emitted only for a
+                                              receiver some sender joins (an unpaired
+                                              ipcMain.handle gets no node). Only the
                                               converse-direction edge is dropped
                                               (DEPRECATE-NO-FOLD per audit-findings 0002:
                                               forward event_publishes captures the
@@ -47,7 +49,9 @@ Web Workers / postMessage:
                                               skips a call whose channel is empty. Pairing
                                               an unnamed postMessage with its listener needs
                                               a channel the syntax does not carry.
-- addEventListener('message', handler)     -> dropped (per audit-findings 0002, as above)
+- addEventListener('message', handler)     -> detected, but NO edge and NO symbol, for
+                                              the same reason as postMessage: it names
+                                              no channel
 
 Channel Detection Strategy
 --------------------------
@@ -67,7 +71,8 @@ symbol ``channel_type`` the SITE.
 
 How It Works
 ------------
-1. Find all JavaScript/TypeScript files in the repository
+1. Find the non-test JavaScript/TypeScript files in the repository
+   (``find_non_test_files``); IPC sites in test files are not scanned
 2. Scan each file for IPC patterns using regex
 3. Extract channel literals, resolving identifiers to same-file string constants
 4. Create edges linking sites with matching channel values (or, when a value
@@ -433,7 +438,7 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
 
 
 def _find_js_files(repo_root: Path) -> Iterator[Path]:
-    """Find all JavaScript/TypeScript files in the repository."""
+    """Find the non-test JavaScript/TypeScript files in the repository."""
     yield from find_non_test_files(repo_root, extension_globs(*JS_TS_LANGUAGES))  # WI-hizon
 
 

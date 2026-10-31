@@ -44,8 +44,9 @@ which in-tree function answered it, rather than reading as external code
 
 Why a Linker
 ------------
-The TOML analyzer runs before language analyzers and doesn't know main()'s
-node ID. This linker runs after all analyzers, when both the Cargo binary
+A manifest analyzer (TOML, JSON, XML, ``manifest_targets``) runs alongside
+the language analyzers and cannot see the node IDs they mint, so it cannot
+know main()'s. This linker runs after all analyzers, when both the Cargo binary
 symbol and the Rust main() symbol exist.
 """
 from __future__ import annotations

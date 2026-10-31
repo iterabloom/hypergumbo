@@ -20,7 +20,7 @@ receiver-blind magnet edge," shared so its consumers can never drift: the
 finalize demotion (``demote_harmful_magnets``, finalize step 6c), the
 ``spec_validator`` ``no_harmful_receiver_blind_magnets`` whole-graph check
 (``find_harmful_magnets``), and a Rust analyzer test that runs the raw detector
-on ``run_analyzer`` output.
+(``find_receiver_blind_magnets``) on ``analyze_rust`` output.
 
 **How it distinguishes a magnet from a legitimate bind.** A legitimate
 resolution *knows the target type* and stamps it — either a receiver-aware
@@ -40,8 +40,9 @@ resolver understood about the receiver is excluded by construction, so genuine
 inherited-call recoveries (``ast_call_inherited``) and typed binds never trip.
 
 **What happens to a magnet.** Only two cleanly-harmful sub-classes are acted
-on (``_harmful_magnet_reason``): a production caller bound to a method defined
-in a test-support file, and a method whose short name is in
+on (``_harmful_magnet_reason``): a production caller bound to a method that is
+test code (defined in a test-support file or carrying a test annotation,
+``paths.is_test_node``), and a method whose short name is in
 ``_STDLIB_INTERFACE_METHODS`` (PascalCase stdlib interface methods such as
 ``Close`` / ``Parse`` / ``Len``, matched case-sensitively so Rust snake_case
 trait methods are not swept). ``demote_harmful_magnets`` runs at finalize,
@@ -403,10 +404,11 @@ def demote_harmful_magnets(
     def. Its owner ruling refines *which* magnets to act on: only the two
     sub-classes where the bound internal target is almost-certainly WRONG —
 
-    * **production → test-helper**: the ``dst`` def lives in a test-support file
-      (``paths.is_test_file`` — the broad heuristic that flags ``testutils/`` /
-      ``fixtures/`` / ``mocks/`` / ``benches/`` …) while the ``src`` caller does
-      not. Production code binding ``.Add()`` to a *test* ``Collector.Add`` is a
+    * **production → test-helper**: the ``dst`` def is test code
+      (``paths.is_test_node`` — the broad path heuristic that flags
+      ``testutils/`` / ``fixtures/`` / ``mocks/`` / ``benches/`` …, plus test
+      annotations such as Rust ``#[test]``) while the ``src`` caller is not.
+      Production code binding ``.Add()`` to a *test* ``Collector.Add`` is a
       misbind; the real target is elsewhere/external.
     * **stdlib-interface shadow**: the method's short name is a well-known
       standard-library interface method (``Close`` / ``Parse`` / ``Len`` …), which

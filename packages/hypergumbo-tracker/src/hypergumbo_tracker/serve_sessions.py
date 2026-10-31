@@ -15,9 +15,11 @@ instances. ``create_session()`` generates a 32-byte URL-safe random token via
 (intended for the restart case; currently uncalled, and a process restart
 empties the in-memory dict anyway — no persistent session storage by design).
 
-Not yet wired into serve.py as of 2026-10 (WI-hopip): no route creates or
-checks sessions, and nothing reads ``auth_class`` yet. The restart and
-duress bullets below describe the ADR-0019 design intent.
+Not yet wired into serve.py: no route creates or checks sessions, and
+nothing reads ``auth_class`` yet. ``serve.py``'s deny-by-default gate calls a
+caller-supplied ``authenticate`` callable, and nothing builds one from a
+``SessionStore``. The restart and duress bullets below describe the ADR-0019
+design intent.
 
 Why This Design
 ---------------
