@@ -191,7 +191,14 @@ Svelte / Vue Support
 --------------------
 Svelte and Vue files contain <script> blocks with TypeScript or JavaScript.
 We extract these blocks, preserving line numbers for accurate spans,
-and analyze them using the appropriate tree-sitter grammar.
+and analyze them using the appropriate tree-sitter grammar. One extractor
+(``_extract_sfc_scripts``) serves both hosts. The grammar is read from the
+tag's ``lang`` attribute wherever it sits among the attributes, in any HTML
+quoting (WI-zakij): ``ts`` / ``typescript`` take the TypeScript grammar,
+``tsx`` its TSX variant, anything else (or no ``lang``) the JavaScript
+grammar. The tag scan is quote-aware, so Vue's ``generic="T extends A<B>"``
+does not end the tag at its ``>``; a self-closing ``<script src=... />`` has
+no body and is skipped.
 
 Why This Design
 ---------------
@@ -298,112 +305,116 @@ def find_vue_files(
     yield from find_files(repo_root, ["*.vue"], max_files=max_files)
 
 
-# Regex to extract <script> blocks from Svelte files
-# Captures: lang attribute (if present) and script content
-_SVELTE_SCRIPT_RE = re.compile(
-    r'<script(?:\s+lang=["\']?(ts|typescript)["\']?)?[^>]*>(.*?)</script>',
+# WI-zakij: one ``<script ...>`` element of a Svelte / Vue single-file
+# component. Group 1 is the opening tag's attribute text, group 2 the body
+# (None for a self-closing ``<script ... />``, which has no body to parse and
+# must not pair with the NEXT block's ``</script>``). The attribute text is
+# quote-aware, so a ``>`` inside a quoted value -- Vue 3.3's
+# ``generic="T extends Record<string, unknown>"`` -- does not end the tag. The
+# grammar is decided from the attributes afterwards (``_script_block_lang``),
+# never by the position of ``lang`` in the tag: the per-host regexes this
+# replaced matched ``lang`` only as the first attribute (Vue: after an
+# optional ``setup``), so ``<script context="module" lang="ts">``,
+# ``<script type="module" lang="ts">`` and ``<script setup generic="T"
+# lang="ts">`` were all read with the JavaScript grammar.
+_SFC_SCRIPT_RE = re.compile(
+    r"<script(?=[\s/>])((?:[^>\"'/]|/(?!>)|\"[^\"]*\"|'[^']*')*)"
+    r"(?:/>|>(.*?)</script\s*>)",
     re.DOTALL | re.IGNORECASE,
 )
 
-# Regex to extract <script> blocks from Vue SFC files
-# Handles both regular <script> and <script setup> variants
-# Captures: lang attribute (if present) and script content
-_VUE_SCRIPT_RE = re.compile(
-    r'<script(?:\s+setup)?(?:\s+lang=["\']?(ts|typescript)["\']?)?'
-    r'(?:\s+setup)?[^>]*>(.*?)</script>',
-    re.DOTALL | re.IGNORECASE,
+# One attribute of an opening tag: its name, then an optional value in any of
+# HTML's three spellings (double-quoted, single-quoted, unquoted). Scanning
+# whole attributes, rather than searching for ``lang=``, keeps a ``lang=``
+# inside another attribute's quoted value (``title="lang=ts"``) or a
+# ``data-lang`` attribute from deciding the grammar.
+_TAG_ATTR_RE = re.compile(
+    r"""([^\s"'=<>/`]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?"""
 )
+
+# ``lang`` values read with the TypeScript grammar. ``tsx`` takes the TSX
+# variant (TypeScript plus JSX), as a ``.tsx`` file does; any other value
+# (absent, ``js``, ``jsx``, ...) takes the JavaScript grammar, which reads JSX.
+_TS_SCRIPT_LANGS = frozenset({"ts", "typescript", "tsx"})
+
+
+def _script_block_lang(attr_text: str) -> str:
+    """The lowercased ``lang`` value of a ``<script>`` tag's attributes.
+
+    ``""`` when the tag has no ``lang``. The first ``lang`` wins, as in an
+    HTML parser's handling of a duplicated attribute.
+    """
+    for match in _TAG_ATTR_RE.finditer(attr_text):
+        if match.group(1).lower() == "lang":
+            value = next((g for g in match.group(2, 3, 4) if g is not None), "")
+            return value.strip().lower()
+    return ""
 
 
 @dataclass
-class SvelteScriptBlock:
-    """Extracted script block from a Svelte file."""
+class SfcScriptBlock:
+    """One ``<script>`` block extracted from a Svelte or Vue file."""
 
     content: str
     start_line: int  # 1-indexed line where script content starts
     is_typescript: bool
+    is_tsx: bool = False  # lang="tsx": the TSX grammar, not plain TypeScript
 
 
-def extract_svelte_scripts(source: str) -> list[SvelteScriptBlock]:
-    """Extract <script> blocks from Svelte file content.
+# The two hosts' block types were identical dataclasses; the names stay for
+# callers that import them.
+SvelteScriptBlock = SfcScriptBlock
+VueScriptBlock = SfcScriptBlock
 
-    Returns list of script blocks with their content and line offsets.
-    Handles both TypeScript (lang="ts") and JavaScript scripts.
+
+def _extract_sfc_scripts(source: str) -> list[SfcScriptBlock]:
+    """Extract the ``<script>`` blocks of a single-file component.
+
+    Svelte and Vue spell a script block the same way (Vue's ``setup``,
+    Svelte's ``context="module"`` and either host's ``generic`` / ``type``
+    are just more attributes), so one extractor serves both. Each block
+    carries the line its content starts on and the grammar its ``lang``
+    attribute selects, wherever that attribute sits in the tag.
     """
-    blocks: list[SvelteScriptBlock] = []
-
-    # Find all script tags with their positions
-    for match in _SVELTE_SCRIPT_RE.finditer(source):
-        lang = match.group(1)
+    blocks: list[SfcScriptBlock] = []
+    for match in _SFC_SCRIPT_RE.finditer(source):
         content = match.group(2)
-        is_ts = lang is not None and lang.lower() in ("ts", "typescript")
-
-        # Calculate line number where content starts
-        # Count newlines before the match start
-        prefix = source[: match.start()]
-        tag_start_line = prefix.count("\n") + 1
-
-        # Find where the actual content starts (after the opening tag)
-        tag_text = match.group(0)
-        opening_tag_end = tag_text.find(">") + 1
-        opening_tag_lines = tag_text[:opening_tag_end].count("\n")
-        content_start_line = tag_start_line + opening_tag_lines
-
+        if content is None:
+            continue  # self-closing <script src=... />: no body
+        lang = _script_block_lang(match.group(1))
+        # The content starts on the line of the opening tag's closing ``>``
+        # (the tag may span lines).
+        content_start_line = source.count("\n", 0, match.start(2)) + 1
         blocks.append(
-            SvelteScriptBlock(
+            SfcScriptBlock(
                 content=content,
                 start_line=content_start_line,
-                is_typescript=is_ts,
+                is_typescript=lang in _TS_SCRIPT_LANGS,
+                is_tsx=lang == "tsx",
             )
         )
-
     return blocks
 
 
-@dataclass
-class VueScriptBlock:
-    """Extracted script block from a Vue SFC file."""
+def extract_svelte_scripts(source: str) -> list[SfcScriptBlock]:
+    """Extract <script> blocks from Svelte file content.
 
-    content: str
-    start_line: int  # 1-indexed line where script content starts
-    is_typescript: bool
+    Returns list of script blocks with their content and line offsets.
+    Handles both TypeScript (lang="ts") and JavaScript scripts, with
+    ``lang`` read wherever it sits among the tag's attributes.
+    """
+    return _extract_sfc_scripts(source)
 
 
-def extract_vue_scripts(source: str) -> list[VueScriptBlock]:
+def extract_vue_scripts(source: str) -> list[SfcScriptBlock]:
     """Extract <script> blocks from Vue SFC file content.
 
     Returns list of script blocks with their content and line offsets.
     Handles both TypeScript (lang="ts") and JavaScript scripts.
-    Also handles <script setup> blocks.
+    Also handles <script setup> blocks, ``generic`` attributes whose value
+    contains ``>``, and ``lang`` read wherever it sits among the attributes.
     """
-    blocks: list[VueScriptBlock] = []
-
-    # Find all script tags with their positions
-    for match in _VUE_SCRIPT_RE.finditer(source):
-        lang = match.group(1)
-        content = match.group(2)
-        is_ts = lang is not None and lang.lower() in ("ts", "typescript")
-
-        # Calculate line number where content starts
-        # Count newlines before the match start
-        prefix = source[: match.start()]
-        tag_start_line = prefix.count("\n") + 1
-
-        # Find where the actual content starts (after the opening tag)
-        tag_text = match.group(0)
-        opening_tag_end = tag_text.find(">") + 1
-        opening_tag_lines = tag_text[:opening_tag_end].count("\n")
-        content_start_line = tag_start_line + opening_tag_lines
-
-        blocks.append(
-            VueScriptBlock(
-                content=content,
-                start_line=content_start_line,
-                is_typescript=is_ts,
-            )
-        )
-
-    return blocks
+    return _extract_sfc_scripts(source)
 
 
 class JstsTreeSitterAnalyzer(TreeSitterAnalyzer):
@@ -7428,8 +7439,15 @@ def _extract_symbols_and_edges(
     return symbols, edges
 
 
-def _get_parser_for_lang(is_typescript: bool) -> Optional["tree_sitter.Parser"]:
-    """Get tree-sitter parser for TypeScript or JavaScript."""
+def _get_parser_for_lang(
+    is_typescript: bool, tsx: bool = False,
+) -> Optional["tree_sitter.Parser"]:
+    """Get tree-sitter parser for TypeScript or JavaScript.
+
+    ``tsx`` selects the TSX variant of the TypeScript grammar (a ``<script
+    lang="tsx">`` block), which reads JSX that the plain TypeScript grammar
+    parses as broken type assertions.
+    """
     try:
         import tree_sitter
         import tree_sitter_javascript
@@ -7442,7 +7460,10 @@ def _get_parser_for_lang(is_typescript: bool) -> Optional["tree_sitter.Parser"]:
         try:
             import tree_sitter_typescript
 
-            lang_ptr = tree_sitter_typescript.language_typescript()
+            lang_ptr = (
+                tree_sitter_typescript.language_tsx() if tsx
+                else tree_sitter_typescript.language_typescript()
+            )
             parser.language = tree_sitter.Language(lang_ptr)
             return parser
         except ImportError:
@@ -7476,7 +7497,7 @@ def _analyze_svelte_file(
     all_edges: list[Edge] = []
 
     for block in script_blocks:
-        parser = _get_parser_for_lang(block.is_typescript)
+        parser = _get_parser_for_lang(block.is_typescript, tsx=block.is_tsx)
         if parser is None:
             continue
 
@@ -7537,7 +7558,7 @@ def _analyze_vue_file(
     all_edges: list[Edge] = []
 
     for block in script_blocks:
-        parser = _get_parser_for_lang(block.is_typescript)
+        parser = _get_parser_for_lang(block.is_typescript, tsx=block.is_tsx)
         if parser is None:
             continue
 
@@ -7686,7 +7707,7 @@ def _analyze_javascript_impl(
                 continue
 
             for block in script_blocks:
-                parser = _get_parser_for_lang(block.is_typescript)
+                parser = _get_parser_for_lang(block.is_typescript, tsx=block.is_tsx)
                 if parser is None:
                     continue
 
@@ -7722,7 +7743,7 @@ def _analyze_javascript_impl(
                 continue
 
             for block in script_blocks:
-                parser = _get_parser_for_lang(block.is_typescript)
+                parser = _get_parser_for_lang(block.is_typescript, tsx=block.is_tsx)
                 if parser is None:
                     continue
 
