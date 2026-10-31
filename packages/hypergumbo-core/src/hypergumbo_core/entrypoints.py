@@ -125,7 +125,7 @@ import re
 
 from .ir import Symbol, Edge
 from .routes import method_token, route_of
-from .paths import is_infrastructure_path, is_test_file, is_utility_file
+from .paths import is_infrastructure_path, is_test_node, is_utility_file
 
 
 # File path patterns that indicate frontend UI code (React, Vue, Angular, Svelte).
@@ -1722,7 +1722,7 @@ def detect_entrypoints(
         # broadened to cover that support-code breadth, re-open the audit and
         # reconsider consolidating (guarded by
         # test_support_dir_entrypoint_penalized_via_broad_path_heuristic).
-        if sym.path and is_test_file(sym.path):
+        if sym.path and is_test_node(sym.path, sym.meta):
             ep.rank_score *= 0.1
 
         # Penalty for utility/example/docs files (50% reduction)
@@ -1932,7 +1932,7 @@ def detect_entrypoints(
         if ep.kind == EntrypointKind.TEST_FUNCTION:
             continue
         sym = symbol_lookup.get(ep.symbol_id)
-        if sym and sym.path and is_test_file(sym.path):
+        if sym and sym.path and is_test_node(sym.path, sym.meta):
             continue
         # Skip the connectivity boost for deliberately-demoted entries
         # (infrastructure-path exports, build wrappers, vendored exports).

@@ -8,6 +8,7 @@ import pytest
 
 from hypergumbo_core.schema import SCHEMA_VERSION
 from hypergumbo_core.ir import Symbol, Edge, Span
+from hypergumbo_core.selection.filters import is_test_path as _is_test_path
 from hypergumbo_core.compact import (
     tokenize_name,
     extract_path_pattern,
@@ -36,7 +37,6 @@ from hypergumbo_core.compact import (
     CHARS_PER_TOKEN,
     # Filtering constants
     EXCLUDED_KINDS,
-    _is_test_path,
     _is_example_path,
     EXAMPLE_PATH_PATTERNS,
 )

@@ -96,6 +96,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Dead code, tiers and sketch
 
 - **A linker stand-in takes its file's supply-chain tier**, so a bundle's stand-ins are filtered with it.
+- **Every view decides test code alike, test annotations included**: ripgrep's `#[test]` functions in `src/` leave dead-code's candidates (817 → 383) and test-coverage's production functions (coverage 9.3% → 36.2%).
 - **Code called only from module level or a class body is not dead or untested**; on django, 43 more functions are tested and none is newly dead.
 - **A dependency declaration naming an in-tree package has that package's tier** (ADR-0041 §1); on nest, 172 of 1,379 move from tier 3 to 1.
 - **External dependency declarations carry `directness` and `ecosystem`**, no longer `unknown`.

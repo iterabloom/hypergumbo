@@ -66,7 +66,7 @@ from ..edge_types import (
     is_inheritance_edge_record,
 )
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
-from ..paths import is_test_file
+from ..paths import is_test_node
 from ..member_names import member_owner, member_short_name
 from ..symbol_kinds import is_abstract_type, type_like_kind_names
 from .registry import (
@@ -832,7 +832,7 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                 # relocates to ``rank_score`` alongside the fan-out dampener,
                 # leaving detection confidence at the derived in-band base.
                 rank = dampened_rank
-                if override.path and is_test_file(override.path):
+                if override.path and is_test_node(override.path, override.meta):
                     rank = 0.30
 
                 edge = Edge.create(

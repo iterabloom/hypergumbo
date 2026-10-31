@@ -147,7 +147,7 @@ from .profile import detect_profile, RepoProfile
 from .supply_chain import format_vendored_disclosure
 from . import run_status
 from .ir import Symbol, Edge, is_external_boundary
-from .paths import names_no_source_file
+from .paths import is_test_node, names_no_source_file
 from .entrypoints import detect_entrypoints, Entrypoint, EntrypointKind
 from .datamodels import detect_datamodels, DataModel
 from .ranking import (
@@ -5307,9 +5307,10 @@ def _is_test_symbol(symbol: Symbol) -> bool:
     framework-pattern enrichment tagged it with a ``test_*`` concept.
 
     INV-gifoh: this is the canonical methodology shared by sketch and the
-    `test-coverage` subcommand.
+    `test-coverage` subcommand. WI-dibuf: the path half is the NODE predicate
+    (``paths.is_test_node``), so a ``#[test]`` function in ``src/`` is a test.
     """
-    return _is_test_path(symbol.path) or _has_test_concept(symbol)
+    return is_test_node(symbol.path, symbol.meta) or _has_test_concept(symbol)
 
 
 def _estimate_test_coverage(
@@ -5562,7 +5563,7 @@ def _run_analysis(
     # Filter out test files if requested (significant speedup for large codebases)
     if exclude_tests:
         # Filter symbols from test files
-        filtered_symbols = [s for s in all_symbols if not _is_test_path(s.path)]
+        filtered_symbols = [s for s in all_symbols if not is_test_node(s.path, s.meta)]
         # Get IDs of remaining symbols for edge filtering
         remaining_ids = {s.id for s in filtered_symbols}
         # Filter edges to only include those between remaining symbols
@@ -6801,7 +6802,7 @@ def _generate_sketch_impl(
             # Apply exclude_tests filter if requested
             if exclude_tests:
                 # Filter out test symbols
-                symbols = [s for s in symbols if not _is_test_path(s.path)]
+                symbols = [s for s in symbols if not is_test_node(s.path, s.meta)]
                 # Get IDs of remaining symbols for edge filtering
                 remaining_ids = {s.id for s in symbols}
                 # Filter edges to only include those between remaining symbols

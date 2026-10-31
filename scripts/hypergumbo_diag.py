@@ -45,11 +45,6 @@ PREFERRED_REPO_ORDER = [
 # Repos where we expect HTTP routes
 ROUTE_EXPECTED_REPOS = ["fastapi", "nestjs", "socketio", "microservices", "express", "flask", "django"]
 
-# Test path detection
-TEST_PAT = re.compile(
-    r"(^|/)(test|tests|__tests__|spec|specs)(/|$)|(_test\.py$)|(\.spec\.)|(_spec\.rb$)|(/testdata/)",
-    re.I
-)
 
 # Node ID line-span pattern (e.g., ":44:" or ":44-46:")
 ID_SPAN_RE = re.compile(r":\d+(?:-\d+)?:")
@@ -75,8 +70,10 @@ def pct(numerator: int, denominator: int) -> float:
 
 
 def is_test_path(p: str) -> bool:
-    """Check if path looks like a test file."""
-    return bool(TEST_PAT.search(p or ""))
+    """Whether *p* is a test file: hypergumbo's own path predicate (WI-dibuf;
+    this script carried a private, narrower regex)."""
+    from hypergumbo_core.paths import is_test_file
+    return bool(p) and is_test_file(p)
 
 
 def preview_file(path: str, n: int = 12) -> list[str]:
