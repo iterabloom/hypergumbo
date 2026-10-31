@@ -18,7 +18,7 @@ Also provides:
   main-functions, test-frameworks, library-exports, naming-conventions, ...)
   that ``enrich_symbols`` applies on every repo regardless of framework
   detection.
-- A user-channel override: a ``frameworks/`` file in the user channel whose
+- A user-channel override: a file in the user's ``frameworks.d`` channel whose
   stem matches a framework id (or its alias) replaces the shipped YAML whole
   rather than merging into it (ADR-0047 ruling 10, ``load_framework_patterns``).
 - Route-marker hygiene at enrichment: on a symbol that already carries a
@@ -67,8 +67,9 @@ function gets tagged as a route handler). This is complementary to — not a
 replacement for — route-marker symbols. Route symbols are first-class IR
 entities representing the route itself, consumed by the ``route_handler``
 linker to create ``dispatches_to`` edges. Language analyzers create route
-markers directly for routing DSLs (Go, JS/TS, Django urls.py, Rails, Phoenix,
-Laravel, Swift, Play ``conf/routes``).
+markers directly for routing DSLs and constructor-style routing (Go, JS/TS,
+Django urls.py, Starlette ``Route``, Flask-RESTful ``add_resource``, Rails,
+Phoenix, Laravel, Swift, Play ``conf/routes``).
 For handlers enriched with ``concept: route`` that have no marker (decorator
 and annotation frameworks such as JAX-RS, Spring, ASP.NET, FastAPI),
 ``materialize_route_symbols`` creates the marker.

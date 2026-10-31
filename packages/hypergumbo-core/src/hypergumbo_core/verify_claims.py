@@ -172,12 +172,14 @@ How It Works
    production-sourced flows by default: flows sourced in test, mock,
    fixture, benchmark, test-support or migration code are left out of
    ``evidence_count`` and counted per rule in ``excluded_flows`` (restored by
-   ``include_non_production``). Three further exclusions are disclosed the
+   ``include_non_production``). Four further exclusions are disclosed the
    same way: ``sanitized_flows`` (a sanitizer lies on every route),
    ``resource_naming_flows`` (the tainted value only names the resource of a
-   sink whose catalogue row takes no content argument), and
+   sink whose catalogue row takes no content argument),
    ``trusted_sink_flows`` (the project declared the sink ``trust_level:
-   trusted``). A flow whose ``walk_blocked_by_values`` is exactly
+   trusted``), and ``command_line_flows`` (the source is the program's own
+   command line, restored by the claim's ``include_command_line: true``). A
+   flow whose ``walk_blocked_by_values`` is exactly
    ``("sink_before_source",)`` cannot carry a ``violated`` verdict alone:
    when every surviving flow is of that shape they are reported as
    ``evidence`` and the verdict is ``confirmed_with_caveats`` with
@@ -222,10 +224,12 @@ How It Works
    (``LoadedCatalogueFile``), not only the flag's and the claims file's, under
    ``CATALOGUE_TIERS`` (``builtin`` / ``community`` / ``yours`` / ``in_repo``;
    ``catalogue_tiers``, ADR-0061 ruling 5): a ``provenance: community`` line
-   wins, other shipped files are builtin, and the rest are placed by whether
-   they sit inside the analysed repository (a file inside it also carries its
-   git state). ``user_supplied`` is also true when a ``yours`` / ``in_repo``
-   file came from the config tiers or a channel directory, and a
+   wins, a shipped file is builtin only when it declares ``provenance:
+   builtin`` (any other shipped file is community), a file a command-line
+   flag named is ``yours`` wherever it sits, and the rest are placed by
+   whether they sit inside the analysed repository (a file inside it also
+   carries its git state). ``user_supplied`` is also true when a ``yours``
+   / ``in_repo`` file came from the config tiers or a channel directory, and a
    ``module_completeness`` grant in a community file is listed under
    ``withheld_completeness_grants`` whatever path loaded it -- CLI flag,
    claims file, config tier or channel directory -- because the load
@@ -2358,9 +2362,11 @@ def catalogue_tiers(
     """Group loaded catalogue files by tier (ADR-0061 rulings 3-5).
 
     The tier is the file's own ``provenance:`` line where it says
-    ``community``. Otherwise a shipped file is ``builtin``, a file a
-    command-line flag named is ``yours`` (ruling 1: naming it opts it in), and
-    any other file the operator or the repository supplied is named by
+    ``community``. Otherwise a shipped file is ``builtin`` only when it
+    declares ``provenance: builtin`` (any other shipped file is
+    ``community``), a file a command-line flag named is ``yours`` (ruling 1:
+    naming it opts it in), and any other file the operator or the
+    repository supplied is named by
     LOCATION: ``in_repo`` when it lives inside the analysed repository,
     ``yours`` when it does not. A claims file's ``extra_catalogs`` are not
     named (owner ruling 2026-10-25), so an in-repo one stays ``in_repo``. A file

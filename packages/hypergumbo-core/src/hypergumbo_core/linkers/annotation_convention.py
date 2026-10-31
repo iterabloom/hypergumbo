@@ -7,11 +7,15 @@ can't be automatically detected by framework-specific linkers.
 
 Supported Directives
 --------------------
-- ``@hg:publishes <channel>`` — marks the enclosing function as a publisher
-  to the named channel. Creates an ``event_publishes`` edge (tagged
-  ``meta.mechanism="annotation"``) when matched with a ``@hg:subscribes``
-  directive on the same channel.
-- ``@hg:subscribes <channel>`` — marks the enclosing function as a subscriber.
+- ``@hg:publishes <channel>`` — when a ``@hg:subscribes`` directive names
+  the same channel, mints a synthetic publisher node at the directive's own
+  line (kind ``function``, named after the channel,
+  ``meta.framework_role="event_publisher"``) and an ``event_publishes`` edge
+  (tagged ``meta.mechanism="annotation"``) from it to each subscriber node.
+  The enclosing function is not looked up and gets no edge.
+- ``@hg:subscribes <channel>`` — the matching synthetic subscriber node
+  (``meta.framework_role="event_subscriber"``) at the directive's line,
+  minted only when a ``@hg:publishes`` directive names the same channel.
 - ``@hg:route <method> <path>`` — creates a route symbol (``kind="function"``
   with ``meta.framework_role="route"``) with the given method and
   path/identifier.

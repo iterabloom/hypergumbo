@@ -24,9 +24,10 @@ during the same pass (single-pass symbol+edge extraction).
    and prerequisite dependency edges together
 4. Create depends_on edges for target dependencies: 0.90 when the
    prerequisite names an already-registered target, otherwise a dangling
-   ``makefile:external:<prereq>:target`` edge at 0.70 (a file on disk or a
-   target defined elsewhere). ``$``-variable prerequisites are skipped, not
-   resolved.
+   ``makefile:<prereq>:0-0:<prereq>:target`` edge at 0.70, the prerequisite
+   filling both the path slot and the (sanitized) name slot (a file on disk
+   or a target defined elsewhere). ``$``-variable prerequisites are skipped,
+   not resolved.
 
 Dot-prefixed targets (``.PHONY``, ``.SUFFIXES``) are emitted with kind
 ``special_target`` rather than dropped. A variable assigned more than once

@@ -30,7 +30,8 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Function call relationships
 - Include directives
 - Object instantiation (new expressions, stack construction, and compound literals)
-- Dispatch table edges (function pointers in static array initializers),
+- Dispatch table edges (function pointers in array initializers, static or
+  not, at file scope or inside a function),
   plus ``references`` edges carrying ``meta.ref_construct='dispatch_table'``
   for the USE of a dispatch table inside a lookup function, which completes
   the chain from caller through lookup to dispatched target
@@ -2644,7 +2645,7 @@ def _extract_edges_from_tree(
     for dt_node in iter_tree(tree.root_node):
         if dt_node.type != "init_declarator":
             continue
-        # Must be at file scope (inside a declaration, not inside a function body)
+        # Must sit in a declaration (at file scope or inside a function body)
         if not dt_node.parent or dt_node.parent.type != "declaration":
             continue  # pragma: no cover - defensive
         array_decl = None

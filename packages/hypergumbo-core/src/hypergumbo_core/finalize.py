@@ -17,7 +17,7 @@ sites rather than declared edges:
   sub-step — it validates exactly the substrate that serializes (§7). Pinned by a test.
 
 Entry precondition (R1): the node/edge set is final on entry (Phase D filtering + Phase E
-boundary synthesis already ran; see ``cli.run_behavior_map``). finalize never changes set
+boundary synthesis already ran; see ``cli.run_survey``). finalize never changes set
 membership; it reconciles fields and commits the reconciled view into ``behavior_map``.
 
 What this carrier (run-lifecycle:F1) implements vs. defers
@@ -31,8 +31,9 @@ What this carrier (run-lifecycle:F1) implements vs. defers
   it is an ADR-0037 addition that postdates the §6.1 plan, placed before commit so the
   serialized edges carry the verdict and before referential-integrity so the FK predicate
   validates it; it also re-derives an ``evidence_derived`` confidence from the verdict,
-  INV-fazim**); receiver-blind magnet demotion (6c, INV-fahub, before 7); same-site stub
-  demotion (7a, ADR-0057 §14); the visibility fold (7b, INV-jusot); repro-grammar pruning
+  INV-fazim**); receiver-blind magnet demotion (6c, INV-fahub, before 7); stub demotion
+  (7a, ADR-0057 §14: first the stubs a resolved edge names in ``derived_from``,
+  then same-site stubs); the visibility fold (7b, INV-jusot); repro-grammar pruning
   (7c); the inherited-owner stamp (7d, ``owner_ancestry`` — a call on an in-repo type that
   does not define the member names the type's external ancestors); commit-dicts (8); referential-integrity validate_ir lift (10, now also carrying the
   ADR-0037 ruling-5 ``is_resolved ⇒ first-party`` FK predicate). Violations are sorted

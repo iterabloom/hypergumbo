@@ -18,9 +18,12 @@ and extraction import ``_load_embedding_model`` and ``NEGATIVE_PATTERNS``
 from here directly. ``nomic-ai/modernbert-embed-base``
 (``_load_modernbert_model``) serves the Additional Files semantic ranking:
 ``embed_file_for_semantic_ranking``, ``batch_embed_files`` and the 5W1H
-probe embeddings. Once both models are in the HF cache, loading either one
-sets ``HF_HUB_OFFLINE=1`` for the whole process
-(``_ensure_hf_offline_for_cached_models``, INV-dasig).
+probe embeddings. Before every sentence_transformers import (in
+``_has_sentence_transformers`` and in both loaders),
+``_ensure_hf_offline_for_cached_models`` sets ``HF_HUB_OFFLINE=1`` for the
+whole process unless the variable is already set. It does this whether or
+not the models are cached, despite its name (INV-dasig, made unconditional
+by INV-gujus).
 
 The module also hosts the per-repo XDG cache layout under
 ``$XDG_CACHE_HOME/hypergumbo/<fingerprint>/`` (``_get_repo_fingerprint``,
@@ -28,8 +31,9 @@ The module also hosts the per-repo XDG cache layout under
 (``_get_cache_dir``) and the analysis-results cache (``_get_results_cache_dir``),
 keyed by repo state hash, resolved opt-in backend set, trace_deps token,
 digests of the analysis-stage user catalogue channels and the config tiers,
-and analyzer identity. ``cli.py`` and ``sketch.py`` import the results-cache
-helpers from here; they have nothing to do with embeddings.
+a digest of the run's ``--exclude`` patterns, and analyzer identity.
+``cli.py`` and ``sketch.py`` import the results-cache helpers from here;
+they have nothing to do with embeddings.
 
 Degradation contract — TWO failure modes, not one
 -------------------------------------------------
@@ -43,23 +47,27 @@ conflating them is what made ``hypergumbo .`` exit 1 writing zero bytes
    ``compute_5w1h_similarity`` needs only numpy and reaches the guard
    only through ``_get_additional_files_probe_embeddings`` when the
    precomputed probes are missing.
-2. **The library imports but the model WEIGHTS are not on disk** and
-   cannot be downloaded (no network, ``HF_HUB_OFFLINE``, a cache miss on
-   a machine that has never fetched them). ``_has_sentence_transformers()``
-   returns True in this case. The load itself raises, so
+2. **The library imports but the model WEIGHTS are not on disk** (a
+   machine that has never run ``hypergumbo install-embeddings``, or a
+   cleared cache). Analysis never downloads them.
+   ``_has_sentence_transformers()`` returns True in this case. The load
+   itself raises, so
    ``_load_st_model_offline_first`` converts that into
    :class:`EmbeddingsUnavailable`.
 
 Callers must handle BOTH. The three embedding entry points already do: each
-catches :class:`EmbeddingsUnavailable` and degrades to the same result its
-import-guard branch returns (``compute_5w1h_similarity`` inherits this
+catches :class:`EmbeddingsUnavailable` and degrades to the result its
+import-guard branch returns, except that ``batch_embed_files`` keeps the
+embeddings it already found in the cache and returns None only for the
+files it would have encoded (``compute_5w1h_similarity`` inherits this
 through its probe loader), and :func:`_warn_embeddings_unavailable`
 warns once per process rather than per file. Consumers outside this module
 (see ``sketch.py``) degrade to their heuristic path.
 
 The probe is deliberately NOT strengthened to demand weights: a first
-install legitimately has the library and no weights, and downloading them
-then is the sanctioned path. The guard answers "can I import"; the loader
+install legitimately has the library and no weights, and the remedy,
+``hypergumbo install-embeddings``, is named by the loader's error and the
+one-time warning. The guard answers "can I import"; the loader
 answers "can I load".
 """
 
@@ -207,7 +215,7 @@ def _load_embedding_model():
     if _cached_embedding_model is not None:
         return _cached_embedding_model
 
-    # INV-dasig: force HF offline (when models are cached) BEFORE importing
+    # INV-dasig: force HF offline (unless the variable is set) BEFORE importing
     # sentence_transformers, which imports huggingface_hub and freezes its
     # offline constant at import time.
     _ensure_hf_offline_for_cached_models()
@@ -306,9 +314,8 @@ def _hf_model_is_cached(model_name: str) -> bool:
     Checks the standard hub layout
     ``$HF_HOME/hub/models--<org>--<name>/snapshots/<rev>/`` for a non-empty
     revision directory, WITHOUT importing huggingface_hub or touching the
-    network. Used to decide whether it is safe to force offline mode before
-    the (offline-constant-freezing) huggingface_hub import — see
-    ``_ensure_hf_offline_for_cached_models``.
+    network. Used by :func:`fetch_embedding_models` to skip models that are
+    already downloaded.
     """
     hf_home = os.environ.get("HF_HOME") or os.path.join(
         os.path.expanduser("~"), ".cache", "huggingface",
@@ -616,7 +623,7 @@ NEGATIVE_PATTERNS = [
 
 def _has_sentence_transformers() -> bool:
     """Check if sentence-transformers is available."""
-    # INV-dasig: force HF offline (when cached) before this import freezes the
+    # INV-dasig: force HF offline (unless set) before this import freezes the
     # huggingface_hub offline constant — this is often the process's first one.
     _ensure_hf_offline_for_cached_models()
     try:
@@ -1746,7 +1753,7 @@ def _load_modernbert_model():
         Temporarily sanitizes NO_PROXY to work around httpx bug with IPv6 CIDR
         notation (e.g., fd00:200::/40) which causes InvalidURL parsing errors.
     """
-    # INV-dasig: force HF offline (when models are cached) BEFORE importing
+    # INV-dasig: force HF offline (unless the variable is set) BEFORE importing
     # sentence_transformers, which freezes huggingface_hub's offline constant.
     _ensure_hf_offline_for_cached_models()
 

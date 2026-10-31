@@ -72,10 +72,10 @@ Configuration
 The ``SupplyChainConfig`` arms (``derived_patterns``,
 ``internal_package_roots``, ``first_party_patterns``) are honoured in steps
 1, 5 and 9 when a caller passes ``classify_file(config=...)``, but as of
-2026-10 no CLI flag or config key feeds them: both production callers
-(``cli._classify_symbols`` and ``sketch._run_analysis``) pass no ``config``,
-and ``.hypergumbo.toml`` rejects these keys as unknown settings, so a CLI run
-emits no tier-2 node.
+2026-10 no CLI flag or config key feeds them: its one production caller,
+``cli._classify_symbols`` (which ``sketch._run_analysis`` also goes through),
+passes no ``config``, and ``.hypergumbo.toml`` rejects these keys as unknown
+settings, so a CLI run emits no tier-2 node.
 
 Dependency Declarations
 -----------------------
@@ -83,7 +83,10 @@ A ``kind='dependency'`` node is not a file of the project: it stands for the
 package it names. ``cli._classify_symbols`` gives a declaration naming an
 in-tree package (:func:`collect_in_tree_packages`) the tier that package's
 manifest classifies to, and every other declaration tier 3, so the declaration
-and the package node it names carry one tier (INV-kutub, ADR-0041 §1).
+and the package node it names carry one tier (INV-kutub, ADR-0041 §1). It
+also stamps each external declaration's ADR-0041 §3 ``ecosystem``
+(:func:`declaration_ecosystem`: ``third_party``, except composer's platform
+packages, which are ``stdlib``).
 
 Role Flags Beside the Tier
 --------------------------
@@ -104,9 +107,10 @@ of which step matched:
 
 Manifest Readers
 ----------------
-- :func:`detect_package_roots` reads npm/yarn/pnpm workspaces, Cargo
-  workspace members, Maven modules and Gradle ``include`` lines into the
-  workspace roots that step 6 consults.
+- :func:`detect_package_roots` reads the root ``package.json``
+  ``workspaces`` key (npm and yarn; a pnpm ``pnpm-workspace.yaml`` is not
+  read), Cargo workspace members, Maven modules and Gradle ``include`` lines
+  into the workspace roots that step 6 consults.
 - :class:`DependencyManifest` holds what a language analyzer parsed from
   go.mod / Maven / Gradle / Python manifests (the flat ``entries``) and from
   Mix and npm manifests (the per-package-scheme ``scoped`` tables, WI-juzaj).
@@ -118,7 +122,9 @@ Manifest Readers
   repo publishes itself under (Cargo ``[package].name``, the go.mod module
   path, ``package.json`` ``name``) so ``verify-claims`` stops reporting a
   repo's self-references by published name as uncatalogued third-party
-  modules.
+  modules. Its per-manifest form, :func:`own_package_name`, lets js_module,
+  js_ts and the Rust ``use`` resolver map a workspace sibling's import to
+  that sibling's directory.
 
 Vendored-Code Disclosure and Path-Only Tiering
 ----------------------------------------------
@@ -1400,7 +1406,7 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
     """Detect internal package roots from workspace/monorepo configs.
 
     Scans for:
-    - npm/yarn/pnpm workspaces in package.json
+    - npm/yarn workspaces in package.json (pnpm-workspace.yaml is not read)
     - Cargo workspace members in Cargo.toml
     - Maven modules in pom.xml
     - Gradle subprojects in settings.gradle / settings.gradle.kts

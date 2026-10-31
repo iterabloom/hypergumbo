@@ -13,7 +13,8 @@ analyzer independently extracts method/function symbols from the same
 How It Works
 ------------
 1. Collect all ``directive`` symbols with ``handler_expression`` metadata
-2. Group JS/TS method/function symbols by their normalized file path
+2. Group JS/TS method, function, getter and setter symbols by their
+   normalized file path
 3. For each directive, find matching method/function in the same file
 4. Create ``calls`` edges (tagged ``meta.framework_dispatch="vue_event_handler"``,
    ``meta.mechanism="template"``) linking directive to method
@@ -27,9 +28,11 @@ existed from template event handlers to script methods.
 
 Path Normalization
 ------------------
-Vue analyzer stores relative paths (``src/App.vue``), while JS/TS
-analyzer stores absolute paths (``/repo/src/App.vue``). The linker
-normalizes both to relative paths using ``repo_root`` for matching.
+The Vue analyzer emits relative paths (``src/App.vue``) and the JS/TS
+analyzer emits absolute ones (``/repo/src/App.vue``). The survey makes
+every path repo-relative before linkers run, so in production both
+already match. The linker still normalizes both to relative paths using
+``repo_root``, so a direct call with un-relativized symbols matches too.
 """
 
 from __future__ import annotations

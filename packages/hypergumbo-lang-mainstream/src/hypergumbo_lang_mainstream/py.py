@@ -147,7 +147,8 @@ Flask add_url_rule() and FastAPI add_api_route() produce only the first
 (UsageContext records, the YAML-only path) and emit no route marker:
 
 1. **UsageContext records** — matched by YAML framework patterns (django.yaml,
-   flask.yaml) to enrich *handler* symbols with ``concept: route`` metadata.
+   flask.yaml, fastapi.yaml, flask-restful.yaml, starlette.yaml) to enrich
+   *handler* symbols with ``concept: route`` metadata.
    This lets the enrichment layer tag view functions as route handlers.
 
 2. **Route-marker symbols** — ``kind="function"`` with

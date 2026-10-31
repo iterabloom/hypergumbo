@@ -41,12 +41,14 @@ invented name.
 
 The parameters, too
 -------------------
-The same declarator holds the function's ``parameter_list``, and every
-C-family analyzer needs it twice: as ``meta["parameters"]``, the declared
-home of the arity fact that overload selection reads (WI-hilum), and as the
-identity input that tells same-name overloads apart (WI-tusad:
+The same declarator holds the function's ``parameter_list``, and the
+C-family analyzers that have overloads to tell apart (``cpp.py``, CUDA, GLSL,
+HLSL) need it twice: as ``meta["parameters"]``, the declared home of the
+arity fact that overload selection reads (WI-hilum), and as the identity
+input that tells same-name overloads apart (WI-tusad:
 ``overload_arity.declared_arity_stable_id``, whose typed tier hashes the
 parameter types, since ``f(int)`` / ``f(float)`` tie on the count alone).
+``c.py`` reads neither, since C has no overloading.
 ``compute_stable_id`` looks for the list as a DIRECT child of the definition
 and never finds it here, so it hashed ``param_count 0`` for every C-family
 overload. :func:`c_family_parameter_list` finds it through

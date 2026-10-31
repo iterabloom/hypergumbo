@@ -8,10 +8,11 @@ This analyzer uses tree-sitter-c to parse C files and extract:
 - Enum declarations (symbols)
 - Function call relationships (edges)
 - Function-pointer references and callback-argument calls (edges)
-- Dispatch tables from static-array and designated-struct initializers
-  (dispatches_to edges), plus a ``references`` edge with
+- Dispatch tables from array initializers (static or not, at file scope or
+  inside a function) and designated-struct initializers (dispatches_to
+  edges), plus a ``references`` edge with
   ``meta.ref_construct="dispatch_table"`` from each function whose body
-  names a static-array dispatch table to that table. The table is emitted
+  names an array dispatch table to that table. The table is emitted
   as a ``kind=variable`` symbol by the id those edges use, once it holds a
   function (WI-dirij): before, the src named no node and every such edge
   was dropped from the map. An array of function POINTERS (``static int
