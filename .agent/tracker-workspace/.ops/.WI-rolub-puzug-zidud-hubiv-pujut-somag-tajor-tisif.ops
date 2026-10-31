@@ -1,0 +1,21 @@
+- op: create  # 1ce7
+  at: '2026-10-31T10:07:22Z'  # 1ce7
+  by: agent  # 1ce7
+  actor: jgstern_agent  # 1ce7
+  clock: 1  # 1ce7
+  nonce: 1ce7  # 1ce7
+  data:  # 1ce7
+    kind: work_item  # 1ce7
+    title: "js/ts: a Vue or Svelte file with two <script> blocks gets two file symbols (same id when both are TS)"  # 1ce7
+    status: todo_hard  # 1ce7
+    priority: 2  # 1ce7
+    parent:  # 1ce7
+    tags:  # 1ce7
+    - docstring_audit  # 1ce7
+    - analysis_quality  # 1ce7
+    isbefore: []  # 1ce7
+    duplicate_of: []  # 1ce7
+    not_duplicate_of: []  # 1ce7
+    pr_ref:  # 1ce7
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. The Svelte/Vue loops call _extract_symbols once per block (js_ts.py:7681, 7715), each minting make_file_id(lang, path). <script lang=ts> plus <script setup lang=ts> gives two typescript:B.vue:1-1:file:file nodes in survey output; a mixed Svelte file gives two file nodes. v03."  # 1ce7
+    fields: {}  # 1ce7

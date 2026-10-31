@@ -28,3 +28,18 @@
   clock: 2  # c905
   nonce: c905  # c905
   message: "PREMISE CORRECTION (2026-10-30, measured). The 18 disagreements came from agent D's instrument, which stopped at taint._match_propagation_entry. The real walk then applies two call-site gates: _sink_call_can_carry_taint (taint.py:4548, :6040) and _source_call_can_mint_taint. Re-measured with both gates (M/diff_io_vs_taint_gated.py, outputs M/d/*.gated.json):\n- \"taint ignores io_target_kind\": FALSE. knex's /dev/null redirects (null_device) and logrus text_formatter.go:273 Fprintf into a buffer (in_memory) are refused by _sink_call_can_carry_taint (INV-kosur).\n- \"process.on handlers read as untrusted_input\": FALSE in a real run. js_ts.py stamps io_target_kind in_memory on every literal event but 'message' (WI-punar), and _source_call_can_mint_taint refuses them; all 7 knex sites carry the stamp.\nAfter gating: logrus, ripgrep, jedis agree on every edge.\n- LEGITIMATELY DIFFERENT, mitmproxy: 42 io-only sinks. Literal-only arguments, origin-less redirects and similar: these sites cross a boundary, but no taint can reach them. Also 2 taint-only sources with no I/O boundary (os.urandom key_material, Fernet.decrypt plaintext).\n- REAL, knex: 5 taint-only sinks. writeFile and mkdir bound in-tree as const writeFile = promisify(fs.writeFile) (lib/migrations/util/fs.js:10, :12). Taint matches the resolved local by name to fs.writeFile; io-boundaries classifies nothing. Filed separately.\nSo the remaining work is the PIN: a corpus agreement property test through the real gates, with the two legitimate classes named."  # c905
+- op: update  # 83ba
+  at: '2026-10-31T03:45:18Z'  # 83ba
+  by: agent  # 83ba
+  actor: jgstern_agent  # 83ba
+  clock: 3  # 83ba
+  nonce: 83ba  # 83ba
+  set:  # 83ba
+    status: done  # 83ba
+- op: discuss  # 2f71
+  at: '2026-10-31T03:45:18Z'  # 2f71
+  by: agent  # 2f71
+  actor: jgstern_agent  # 2f71
+  clock: 4  # 2f71
+  nonce: 2f71  # 2f71
+  message: "Done in PR #1976 (53a522b471). The item's premise was the first instrument's (it stopped at _match_propagation_entry); with taint's site gates (_sink_call_can_carry_taint, _source_call_can_mint_taint) the /dev/null, buffered-Fprintf and process.on('exit') shapes agree -- see the premise-correction entry above. Delivered the PIN: test_io_taint_agreement.py's disagreements() over run_behavior_map output, the site-refusal and boundary-less-label classes named as different questions. Re-run on merged dev: 3 passed, 1 xfailed (WI-riloj, strict). Measured with the helper on the five default corpus surveys: mitmproxy, logrus, ripgrep, jedis {}; knex taint_only_sink 5 (the promisify alias, WI-riloj). Code-only shapes from agent D's inventory -- FFI calls classified through the C catalogue, io-tagged imports / event_publishes edge types taint never walks, a javascript overlay on TypeScript -- produced no disagreement on these five surveys or the corpus; not separately measured with overlays."  # 2f71

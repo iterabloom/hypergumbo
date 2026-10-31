@@ -1,0 +1,21 @@
+- op: create  # 8432
+  at: '2026-10-31T10:07:27Z'  # 8432
+  by: agent  # 8432
+  actor: jgstern_agent  # 8432
+  clock: 1  # 8432
+  nonce: '8432'  # 8432
+  data:  # 8432
+    kind: work_item  # 8432
+    title: "ipc linker: the contextBridge calls edge targets a new line-0 send stand-in, so renderer -> preload -> main never connects"  # 8432
+    status: todo_hard  # 8432
+    priority: 2  # 8432
+    parent:  # 8432
+    tags:  # 8432
+    - docstring_audit  # 8432
+    - analysis_quality  # 8432
+    isbefore: []  # 8432
+    duplicate_of: []  # 8432
+    not_duplicate_of: []  # 8432
+    pr_ref:  # 8432
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. linkers/ipc.py:706-727 and 814-835 build IpcPattern(type=send, line=0); the event_publishes edge leaves the send detected at its real line (preload.js:3-3:send:open-file), and the 0-0 node has no outgoing edge. Reproduced on a 3-file Electron fixture. v03."  # 8432
+    fields: {}  # 8432

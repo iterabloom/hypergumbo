@@ -1,0 +1,21 @@
+- op: create  # 9912
+  at: '2026-10-31T10:07:11Z'  # 9912
+  by: agent  # 9912
+  actor: jgstern_agent  # 9912
+  clock: 1  # 9912
+  nonce: '9912'  # 9912
+  data:  # 9912
+    kind: work_item  # 9912
+    title: "build-target linker: lstrip('./') eats every leading dot and slash, so './.bin/x' and './../x' targets resolve to the wrong file"  # 9912
+    status: todo_hard  # 9912
+    priority: 3  # 9912
+    parent:  # 9912
+    tags:  # 9912
+    - docstring_audit  # 9912
+    - analysis_quality  # 9912
+    isbefore: []  # 9912
+    duplicate_of: []  # 9912
+    not_duplicate_of: []  # 9912
+    pr_ref:  # 9912
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. linkers/build_target.py:93 `target_path.lstrip('./')`; normpath on the next line already handles ./. Under crates/app/Cargo.toml, ./.bin/main.rs -> crates/app/bin/main.rs and ./../shared/main.rs -> crates/app/shared/main.rs. v08."  # 9912
+    fields: {}  # 9912

@@ -1,0 +1,21 @@
+- op: create  # 8d29
+  at: '2026-10-31T10:08:10Z'  # 8d29
+  by: agent  # 8d29
+  actor: jgstern_agent  # 8d29
+  clock: 1  # 8d29
+  nonce: 8d29  # 8d29
+  data:  # 8d29
+    kind: work_item  # 8d29
+    title: "pony: an explicit T.create(...) or x.apply(...) call emits no edge (create and apply are in the builtin skip set)"  # 8d29
+    status: todo_hard  # 8d29
+    priority: 3  # 8d29
+    parent:  # 8d29
+    tags:  # 8d29
+    - docstring_audit  # 8d29
+    - analysis_quality  # 8d29
+    isbefore: []  # 8d29
+    duplicate_of: []  # 8d29
+    not_duplicate_of: []  # 8d29
+    pr_ref:  # 8d29
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. PONY_BUILTINS includes create and apply (pony.py:93); _extract_call_edge drops any call whose last segment is in it (pony.py:478). Counter.create() gives no edge though Counter.create is a symbol in the file; the sugar form Counter() does emit, to the class. v09."  # 8d29
+    fields: {}  # 8d29

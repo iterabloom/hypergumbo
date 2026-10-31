@@ -1,0 +1,21 @@
+- op: create  # 5c2e
+  at: '2026-10-31T10:09:21Z'  # 5c2e
+  by: agent  # 5c2e
+  actor: jgstern_agent  # 5c2e
+  clock: 1  # 5c2e
+  nonce: 5c2e  # 5c2e
+  data:  # 5c2e
+    kind: work_item  # 5c2e
+    title: "jni: the overload-suffix regex rejects lowercase, so an object signature (__Ljava_lang_String_2) or a bare __ overload is mis-split"  # 5c2e
+    status: todo_hard  # 5c2e
+    priority: 3  # 5c2e
+    parent:  # 5c2e
+    tags:  # 5c2e
+    - docstring_audit  # 5c2e
+    - analysis_quality  # 5c2e
+    isbefore: []  # 5c2e
+    duplicate_of: []  # 5c2e
+    not_duplicate_of: []  # 5c2e
+    pr_ref:  # 5c2e
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. jni.py:145 r\"__[A-Z\\d_]+$\". ..._processData__Ljava_lang_String_2 gives package com.example.MyClass.processData..Ljava.lang, class String, method 2; ..._processData__ gives empty class and method. v11."  # 5c2e
+    fields: {}  # 5c2e

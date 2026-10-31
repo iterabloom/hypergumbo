@@ -1,0 +1,21 @@
+- op: create  # d8af
+  at: '2026-10-31T10:08:37Z'  # d8af
+  by: agent  # d8af
+  actor: jgstern_agent  # d8af
+  clock: 1  # d8af
+  nonce: d8af  # d8af
+  data:  # d8af
+    kind: work_item  # d8af
+    title: "puppet: require/notify edges point at a raw 3-slot string and never bind the declared resource symbol"  # d8af
+    status: todo_hard  # d8af
+    priority: 3  # d8af
+    parent:  # d8af
+    tags:  # d8af
+    - docstring_audit  # d8af
+    - analysis_quality  # d8af
+    isbefore: []  # d8af
+    duplicate_of: []  # d8af
+    not_duplicate_of: []  # d8af
+    pr_ref:  # d8af
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. puppet.py:374/388 dst=f\"puppet:resource:{value}\". service { 'nginx': require => Package['nginx'] } gives dst puppet:resource:Package['nginx'], which finalize pads with an <unknown> path; the package[nginx] resource two lines above is never reached. Same class as WI-zihij, which does not list puppet. v10."  # d8af
+    fields: {}  # d8af

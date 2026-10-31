@@ -1,0 +1,21 @@
+- op: create  # a530
+  at: '2026-10-31T10:06:50Z'  # a530
+  by: agent  # a530
+  actor: jgstern_agent  # a530
+  clock: 1  # a530
+  nonce: a530  # a530
+  data:  # a530
+    kind: work_item  # a530
+    title: "python: a module whose only executable code is annotated assignments (X: T = call()) gets no file anchor, so those calls emit no edges"  # a530
+    status: todo_hard  # a530
+    priority: 3  # a530
+    parent:  # a530
+    tags:  # a530
+    - docstring_audit  # a530
+    - analysis_quality  # a530
+    isbefore: []  # a530
+    duplicate_of: []  # a530
+    not_duplicate_of: []  # a530
+    pr_ref:  # a530
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _has_module_level_code skips every ast.AnnAssign, value or not (py.py:1366-1368); with no module docstring no file anchor is emitted (py.py:3390) and the module block is never walked (py.py:7591). X = compute() gives file -> compute; X: int = compute() gives nothing. v02."  # a530
+    fields: {}  # a530

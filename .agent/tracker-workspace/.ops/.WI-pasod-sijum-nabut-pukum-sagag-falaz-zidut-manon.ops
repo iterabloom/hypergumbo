@@ -1,0 +1,21 @@
+- op: create  # f03d
+  at: '2026-10-31T10:09:26Z'  # f03d
+  by: agent  # f03d
+  actor: jgstern_agent  # f03d
+  clock: 1  # f03d
+  nonce: f03d  # f03d
+  data:  # f03d
+    kind: work_item  # f03d
+    title: "fennel: an anonymous fn takes the first bare symbol in its body as its name, minting a phantom function and crediting calls to a caller id that does not exist"  # f03d
+    status: todo_hard  # f03d
+    priority: 3  # f03d
+    parent:  # f03d
+    tags:  # f03d
+    - docstring_audit  # f03d
+    - analysis_quality  # f03d
+    isbefore: []  # f03d
+    duplicate_of: []  # f03d
+    not_duplicate_of: []  # f03d
+    pr_ref:  # f03d
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _get_function_name returns the first symbol child (fennel.py:79-81), also used by _find_enclosing_function (122-125); the grammar has a name field. ((fn [x] (helper) x) v) mints a function x. Related to but distinct from WI-donan. v11."  # f03d
+    fields: {}  # f03d

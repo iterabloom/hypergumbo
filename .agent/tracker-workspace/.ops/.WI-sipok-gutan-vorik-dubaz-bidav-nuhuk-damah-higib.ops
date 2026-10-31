@@ -1,0 +1,21 @@
+- op: create  # ab1a
+  at: '2026-10-31T10:09:32Z'  # ab1a
+  by: agent  # ab1a
+  actor: jgstern_agent  # ab1a
+  clock: 1  # ab1a
+  nonce: ab1a  # ab1a
+  data:  # ab1a
+    kind: work_item  # ab1a
+    title: "html: the script-src regex reads data-src= as src"  # ab1a
+    status: todo_hard  # ab1a
+    priority: 3  # ab1a
+    parent:  # ab1a
+    tags:  # ab1a
+    - docstring_audit  # ab1a
+    - analysis_quality  # ab1a
+    isbefore: []  # ab1a
+    duplicate_of: []  # ab1a
+    not_duplicate_of: []  # ab1a
+    pr_ref:  # ab1a
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. SCRIPT_SRC_PATTERN r'<script\\s+[^>]*src\\s*=...' (html.py:114): <script data-src=\"lazy.js\"> yields an import of lazy.js. v11."  # ab1a
+    fields: {}  # ab1a

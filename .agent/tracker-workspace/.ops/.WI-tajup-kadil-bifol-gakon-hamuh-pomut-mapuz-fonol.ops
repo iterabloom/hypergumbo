@@ -1,0 +1,22 @@
+- op: create  # 72e5
+  at: '2026-10-31T10:07:00Z'  # 72e5
+  by: agent  # 72e5
+  actor: jgstern_agent  # 72e5
+  clock: 1  # 72e5
+  nonce: '72e5'  # 72e5
+  data:  # 72e5
+    kind: work_item  # 72e5
+    title: "verify-claims exits 1 (the violated code) when the --claims file or the --input map does not exist; bad input must exit 2"  # 72e5
+    status: todo_hard  # 72e5
+    priority: 3  # 72e5
+    parent:  # 72e5
+    tags:  # 72e5
+    - docstring_audit  # 72e5
+    - analysis_quality  # 72e5
+    - cli_robustness  # 72e5
+    isbefore: []  # 72e5
+    duplicate_of: []  # 72e5
+    not_duplicate_of: []  # 72e5
+    pr_ref:  # 72e5
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. cli.py:7182-7184 (claims file missing) and 7217-7222 (--input missing) return 1; --help gives 2 for a claims file that fails validation, and cli.py:7200 says rc=2 keeps bad input distinct from a violation. Repro: hypergumbo verify-claims repo --claims /nonexistent.yaml -> 'Error: Claims file not found', rc 1. v01."  # 72e5
+    fields: {}  # 72e5

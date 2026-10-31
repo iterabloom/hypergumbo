@@ -1,0 +1,21 @@
+- op: create  # 3d63
+  at: '2026-10-31T10:09:53Z'  # 3d63
+  by: agent  # 3d63
+  actor: jgstern_agent  # 3d63
+  clock: 1  # 3d63
+  nonce: 3d63  # 3d63
+  data:  # 3d63
+    kind: work_item  # 3d63
+    title: "handlebars: openers with whitespace control ({{~#each}}), split across lines, or partial blocks ({{#> layout}}, {{#*inline}}) emit no symbol and corrupt the scope chain"  # 3d63
+    status: todo_hard  # 3d63
+    priority: 3  # 3d63
+    parent:  # 3d63
+    tags:  # 3d63
+    - docstring_audit  # 3d63
+    - analysis_quality  # 3d63
+    isbefore: []  # 3d63
+    duplicate_of: []  # 3d63
+    not_duplicate_of: []  # 3d63
+    pr_ref:  # 3d63
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _BLOCK_RE / _OPEN_RE (handlebars.py:58, 62) miss {{~# and a tag whose }} is on the next line, while _CLOSE_RE accepts {{~/; the next close pops the outer block, so scopes (which feed stable ids) are wrong. All reproduced (v11, and the blind re-review b01)."  # 3d63
+    fields: {}  # 3d63

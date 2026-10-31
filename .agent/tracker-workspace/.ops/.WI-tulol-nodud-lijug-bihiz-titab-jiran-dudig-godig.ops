@@ -1,0 +1,21 @@
+- op: create  # c44b
+  at: '2026-10-31T10:09:04Z'  # c44b
+  by: agent  # c44b
+  actor: jgstern_agent  # c44b
+  clock: 1  # c44b
+  nonce: c44b  # c44b
+  data:  # c44b
+    kind: work_item  # c44b
+    title: "lua_ffi: the lib-call regex has no left word boundary, so stdlib.compress() reads as an FFI call through a loaded lib"  # c44b
+    status: todo_hard  # c44b
+    priority: 3  # c44b
+    parent:  # c44b
+    tags:  # c44b
+    - docstring_audit  # c44b
+    - analysis_quality  # c44b
+    isbefore: []  # c44b
+    duplicate_of: []  # c44b
+    not_duplicate_of: []  # c44b
+    pr_ref:  # c44b
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _LIB_CALL_RE_TEMPLATE = r'{var}\\.(\\w+)\\s*\\(' (lua_ffi.py:81). With local lib = ffi.load(\"mylib\") in scope, stdlib.compress(1) is scanned as compress. v11."  # c44b
+    fields: {}  # c44b

@@ -1,0 +1,21 @@
+- op: create  # 87f2
+  at: '2026-10-31T10:07:38Z'  # 87f2
+  by: agent  # 87f2
+  actor: jgstern_agent  # 87f2
+  clock: 1  # 87f2
+  nonce: 87f2  # 87f2
+  data:  # 87f2
+    kind: work_item  # 87f2
+    title: "rust: a call inside a macro body skips the cross-impl deferral and the extern-declaration exclusion"  # 87f2
+    status: todo_hard  # 87f2
+    priority: 3  # 87f2
+    parent:  # 87f2
+    tags:  # 87f2
+    - docstring_audit  # 87f2
+    - analysis_quality  # 87f2
+    isbefore: []  # 87f2
+    duplicate_of: []  # 87f2
+    not_duplicate_of: []  # 87f2
+    pr_ref:  # 87f2
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. rust.py:4072-4079: local_symbols.get(short) then resolver.lookup with no INV-fahub defer and no ffi exclusion. println!(\"{:?}\", Instant::now()) binds a same-file extern \"C\" fn now; a bare helper() in a macro binds another file's A::helper; both stay unresolved outside a macro. Related to but distinct from WI-hilib. v07."  # 87f2
+    fields: {}  # 87f2

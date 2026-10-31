@@ -1,0 +1,21 @@
+- op: create  # bf28
+  at: '2026-10-31T10:08:05Z'  # bf28
+  by: agent  # bf28
+  actor: jgstern_agent  # bf28
+  clock: 1  # bf28
+  nonce: bf28  # bf28
+  data:  # bf28
+    kind: work_item  # bf28
+    title: "nim: an import of a slash path (import std/strutils) emits its edge to the wrong segment"  # bf28
+    status: todo_hard  # bf28
+    priority: 3  # bf28
+    parent:  # bf28
+    tags:  # bf28
+    - docstring_audit  # bf28
+    - analysis_quality  # bf28
+    isbefore: []  # bf28
+    duplicate_of: []  # bf28
+    not_duplicate_of: []  # bf28
+    pr_ref:  # bf28
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _extract_import_edges takes an identifier of the infix_expression (nim.py:540-556): std/strutils -> nim:std:0-0:module:module, pkg/sub/thing -> thing. Call resolution is unaffected. A fix must keep import karax/vdom naming karax, which framework detection relies on. v09."  # bf28
+    fields: {}  # bf28
