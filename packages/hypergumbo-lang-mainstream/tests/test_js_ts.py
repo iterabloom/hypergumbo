@@ -2744,7 +2744,7 @@ class MyComponent {
         # Mock _get_parser_for_lang to return None only for TypeScript
         original_get_parser = None
 
-        def mock_get_parser(is_typescript):
+        def mock_get_parser(is_typescript, tsx=False):
             if is_typescript is False:  # JavaScript from Vue file
                 return None
             import tree_sitter
