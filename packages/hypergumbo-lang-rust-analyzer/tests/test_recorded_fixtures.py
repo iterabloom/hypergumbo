@@ -327,7 +327,7 @@ class TestTheMergePassOnBothArms:
     """WI-kokiz's acceptance, on committed input: the pass folds exactly the
     150 declarations the anchors pair, leaves the 21 SCIP-only records and
     no tree-sitter-only record, stamps both producers on every merged
-    record, and rewires the edges so the 121 shared call sites collapse."""
+    record, and rewires the edges so the 122 shared call sites collapse."""
 
     def test_the_pass_folds_the_paired_declarations(self) -> None:
         symbols, edges, runs = _both_arms()
@@ -427,7 +427,7 @@ class TestTheMergePassOnBothArms:
     def test_shared_call_sites_are_folded_and_corroborated(self) -> None:
         """WI-kokiz folds the endpoints; WI-binis folds the agreeing edges in
         the same pass (§11) and combines their confidence (§13): every one of
-        the 93 shared call keys becomes ONE edge, corroborated at 0.95 because
+        the 94 shared call keys becomes ONE edge, corroborated at 0.95 because
         the two arms reached it by distinct pathways, both originals kept."""
         symbols, edges, runs = _both_arms()
         tree_sitter_edges = [e for e in edges if e.origin == ["rust"]]
@@ -441,7 +441,7 @@ class TestTheMergePassOnBothArms:
         assert not any(e.src in dropped or e.dst in dropped for e in edges)
         shared = AARDVARK_DNS_CALL_SITE_TALLY["shared_call_keys_after_fold"]
         assert report.edges_folded == AARDVARK_DNS_CALL_SITE_TALLY["edges_absorbed_by_fold"]
-        assert report.corroborated == shared  # 93 survivors, each corroborated
+        assert report.corroborated == shared  # 94 survivors, each corroborated
         folded = [e for e in edges if e.origin == ["rust", "scip"]]
         assert len(folded) == shared
         assert all(e.edge_type == "calls" for e in folded)

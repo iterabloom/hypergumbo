@@ -69,6 +69,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Calls, types and references
 
 - **A function used as a value is a reference, not dead code**, in Go, JS/TS, Rust, C and C++ (dispatch tables and function-pointer arrays included); Java and Ruby method references outside methods are kept.
+- **A Rust call binds the function its `use` path names**, whatever the file order; a field of an external type (`Vec`, `HashMap`) no longer binds a same-named first-party method.
 - **Finalize no longer overrides a resolver's graded call confidence** (ADR-0039 ruling 6); on apollo-server, 244 of 18,684 edges move, all down.
 - **Finalize keeps typed binds** for methods named like stdlib interfaces (`Close`, `Parse`), in C++ and in Java, C# and Kotlin static initializers.
 - **Python class-body calls emit edges**, and a local named like a field no longer retypes `self.<field>`.

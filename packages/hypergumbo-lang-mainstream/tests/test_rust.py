@@ -4790,10 +4790,15 @@ struct Server {
         assert result["Server"]["app"] == "App"
         assert result["Server"]["client"] == "Client"
 
-    def test_tuple_struct_skipped(self) -> None:
-        """Tuple structs (no named fields) are skipped."""
-        result = self._parse(b"struct Wrapper(App);")
-        assert "Wrapper" not in result
+    def test_tuple_struct_fields_by_position(self) -> None:
+        """Tuple structs register their fields by position, the names
+        ``self.0.method()`` uses (WI-lirik; they were skipped before)."""
+        result = self._parse(b"struct Wrapper(pub App, Box<Handler>);")
+        assert result["Wrapper"] == {"0": "App", "1": "Handler"}
+
+    def test_unit_struct_skipped(self) -> None:
+        """A unit struct has no fields to register."""
+        assert "Marker" not in self._parse(b"struct Marker;")
 
     def test_multiple_structs(self) -> None:
         """Extracts from multiple structs in one file."""

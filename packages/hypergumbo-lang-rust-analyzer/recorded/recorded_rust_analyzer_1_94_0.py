@@ -267,18 +267,21 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
     # 130 until INV-midag: the three `impl From<_> for AardvarkError` share the
     # name `AardvarkError::from`, and the tree-sitter arm credited all their calls
     # to one of them, so two `IOError(e)` constructions had no SCIP twin.
-    "twins": 132,
-    "twins_calls_calls": 121,
+    # 133 / 122 since WI-lirik: src/test/test.rs:37 ``config::parse_configs(..)``
+    # (after ``use aardvark_dns::config``) bound its own enclosing helper; it now
+    # binds src/config/mod.rs, the edge SCIP emits.
+    "twins": 133,
+    "twins_calls_calls": 122,
     "twins_references_calls": 11,
-    # After the merge pass rewires endpoints (WI-kokiz), the 121 calls/calls
-    # twins fall onto 93 DISTINCT (src, dst, edge_type) keys — SCIP emits one
+    # After the merge pass rewires endpoints (WI-kokiz), the 122 calls/calls
+    # twins fall onto 94 DISTINCT (src, dst, edge_type) keys — SCIP emits one
     # edge per call occurrence and within-arm dedup already folds repeats —
-    # so deduplicate_edges removes exactly 93 cross-arm duplicates.
-    "shared_call_keys_after_fold": 93,
-    # Edges the fold absorbs into those 93 survivors (WI-binis): the 121 SCIP
+    # so deduplicate_edges removes exactly 94 cross-arm duplicates.
+    "shared_call_keys_after_fold": 94,
+    # Edges the fold absorbs into those 94 survivors (WI-binis): the 122 SCIP
     # twins plus each arm's own repeats of the same key — a producer's repeated
     # call sites are absorbed the same way, their lines unioned into call_lines.
-    "edges_absorbed_by_fold": 149,
+    "edges_absorbed_by_fold": 150,
     # ADR-0057 §14 (WI-lihis), after the fold and the resolution verdict: of
     # the tree-sitter call edges that end at an external stub, how many share
     # a src, a call line, the edge type AND the declared callee name with a
@@ -341,9 +344,10 @@ AARDVARK_DNS_ATTRIBUTE_AGREEMENT = {
 # The 93 "both" calls are the corroborated edges; the incumbent emits no
 # `references` edge and the SCIP arm no edge to an external stub.
 AARDVARK_DNS_EDGE_OVERLAP = {
-    # 93 / 19 / 7 before WI-vosop: the harness's dedup now drops self-loops as a
-    # survey's does (error.rs:105 and :109, test.rs:37 -- false self-bindings, WI-lirik).
-    ("calls", True): (93, 16, 7),
+    # 93 / 19 / 7 before WI-vosop: the harness's dedup drops self-loops as a
+    # survey's does (error.rs:105 and :109, test.rs:37 were false self-bindings).
+    # 94 / 16 / 6 since WI-lirik: test.rs:37 binds config/mod.rs, corroborated.
+    ("calls", True): (94, 16, 6),
     ("calls", False): (0, 245, 0),  # 244 before INV-duzom; see stub_calls
     ("decorated_by", False): (0, 1, 0),
     ("implements", False): (0, 2, 0),
