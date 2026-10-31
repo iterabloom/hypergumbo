@@ -1,0 +1,21 @@
+- op: create  # 8ea9
+  at: '2026-10-31T10:09:10Z'  # 8ea9
+  by: agent  # 8ea9
+  actor: jgstern_agent  # 8ea9
+  clock: 1  # 8ea9
+  nonce: 8ea9  # 8ea9
+  data:  # 8ea9
+    kind: work_item  # 8ea9
+    title: "lua_ffi: ffi.load is tracked only for a bare \\w+ library name, so ffi.load(\"./libz.so\") and its calls are missed"  # 8ea9
+    status: todo_hard  # 8ea9
+    priority: 3  # 8ea9
+    parent:  # 8ea9
+    tags:  # 8ea9
+    - docstring_audit  # 8ea9
+    - analysis_quality  # 8ea9
+    isbefore: []  # 8ea9
+    duplicate_of: []  # 8ea9
+    not_duplicate_of: []  # 8ea9
+    pr_ref:  # 8ea9
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _FFI_LOAD_RE (lua_ffi.py:77). local z = ffi.load(\"./libz.so\") is never tracked and z.deflate(2) is missed. v11."  # 8ea9
+    fields: {}  # 8ea9

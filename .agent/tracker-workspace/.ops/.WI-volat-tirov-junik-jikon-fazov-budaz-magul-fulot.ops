@@ -19,3 +19,10 @@
     pr_ref:  # 4b96
     description: "Found by the 2026-10-25 docstring staleness audit (dev 95c0ff7b93): a reviewer flagged it and a default-REJECT verifier confirmed it by reading the code itself (a repro where stated). Severity is not asserted; impact not measured on the corpus.\n\n- circom.py: `component c = A(2);` emits the same `calls` edge twice -- evidence: repro prints `EDGE edge:sha256:0d0cf33c4ff3b039 circom:a.circom:5-7:B:class -> circom:a.circom:2-4:A:class calls 0.85` twice. Code: the `component_declaration_statement` branch (L360-382) emits an edge for its inner `call_expression`, and `iter_tree` later visits that same `call_expression` and the `call_expression` branch (L303-327) emits it again. (The edge id differs from the reviewer's because the fixture differs; the duplicate is reproduced.)\n\nReproduced independently by the blind re-review.\n\nNot asserted: that the fix is the one sketched above, or that no other language has the same shape."  # 4b96
     fields: {}  # 4b96
+- op: discuss  # 3cfb
+  at: '2026-10-31T10:09:59Z'  # 3cfb
+  by: agent  # 3cfb
+  actor: jgstern_agent  # 3cfb
+  clock: 2  # 3cfb
+  nonce: 3cfb  # 3cfb
+  message: "2026-10-31 docstring audit re-reproduced this twice (a reviewer and the blind re-review): component c = A(); gives two calls edges with one id. No new item filed."  # 3cfb

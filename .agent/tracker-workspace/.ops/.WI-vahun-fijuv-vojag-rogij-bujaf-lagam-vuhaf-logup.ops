@@ -1,0 +1,21 @@
+- op: create  # 374d
+  at: '2026-10-31T10:08:32Z'  # 374d
+  by: agent  # 374d
+  actor: jgstern_agent  # 374d
+  clock: 1  # 374d
+  nonce: 374d  # 374d
+  data:  # 374d
+    kind: work_item  # 374d
+    title: "puppet: an include of a class defined later (lower in the file or in a later-sorted file) is emitted dangling and unresolved"  # 374d
+    status: todo_hard  # 374d
+    priority: 2  # 374d
+    parent:  # 374d
+    tags:  # 374d
+    - docstring_audit  # 374d
+    - analysis_quality  # 374d
+    isbefore: []  # 374d
+    duplicate_of: []  # 374d
+    not_duplicate_of: []  # 374d
+    pr_ref:  # 374d
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _class_registry is filled during the same sequential walk that reads it (puppet.py:136-142, 212, 470-483). class alpha { include beta include zeta } with beta lower in a.pp and zeta in z.pp gives two is_resolved=False edges though both classes exist. v10."  # 374d
+    fields: {}  # 374d

@@ -1,0 +1,21 @@
+- op: create  # efc8
+  at: '2026-10-31T10:08:43Z'  # efc8
+  by: agent  # efc8
+  actor: jgstern_agent  # efc8
+  clock: 1  # efc8
+  nonce: efc8  # efc8
+  data:  # efc8
+    kind: work_item  # efc8
+    title: "circom: signal-constraint references resolve signals by bare name repo-wide, so a template's out <== in points at another template's signals"  # efc8
+    status: todo_hard  # efc8
+    priority: 2  # efc8
+    parent:  # efc8
+    tags:  # efc8
+    - docstring_audit  # efc8
+    - analysis_quality  # efc8
+    isbefore: []  # efc8
+    duplicate_of: []  # efc8
+    not_duplicate_of: []  # efc8
+    pr_ref:  # efc8
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. circom.py:409 resolver.lookup(ref_name) though stable_ids scope signals by template (102-106, 232). Templates A and B each with out <== in: A's constraint references B's in/out; A's own get no edge. v10."  # efc8
+    fields: {}  # efc8

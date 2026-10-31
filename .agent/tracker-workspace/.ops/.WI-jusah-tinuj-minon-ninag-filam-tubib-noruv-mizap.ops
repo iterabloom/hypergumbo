@@ -1,0 +1,21 @@
+- op: create  # 5a27
+  at: '2026-10-31T10:08:21Z'  # 5a27
+  by: agent  # 5a27
+  actor: jgstern_agent  # 5a27
+  clock: 1  # 5a27
+  nonce: 5a27  # 5a27
+  data:  # 5a27
+    kind: work_item  # 5a27
+    title: "luau: a call's caller is looked up by name in the run-wide registry, so two files defining the same local function cross their calls"  # 5a27
+    status: todo_hard  # 5a27
+    priority: 2  # 5a27
+    parent:  # 5a27
+    tags:  # 5a27
+    - docstring_audit  # 5a27
+    - analysis_quality  # 5a27
+    isbefore: []  # 5a27
+    duplicate_of: []  # 5a27
+    not_duplicate_of: []  # 5a27
+    pr_ref:  # 5a27
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. luau.py:364 symbol_registry.get(current_function), registry keyed by bare name, last file wins (luau.py:500, 513-515). a.luau and b.luau each with local function helper(): b's call comes out from a.luau's helper. WI-kosar fixed this family for tlaplus, zig, llvm_ir, agda and cobol, not luau. v10."  # 5a27
+    fields: {}  # 5a27

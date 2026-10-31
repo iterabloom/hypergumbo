@@ -20,3 +20,18 @@
     pr_ref:  # 12b6
     description: "From the consumer-agreement sweep (WI-borib, docs/audits/0026). Verdict SINGLE-SOURCE.\n\nFACT: is node N test code. Five predicates answer it: paths.is_test_file (path), selection.filters.is_test_path (path + tests.py / *Test.java / *Tests.swift / .test-d.ts shapes, no annotations), paths.is_test_node (is_test_file + test annotations, WI-rujun), a path-or-concept rule written twice (cli.py ~8504 closure, sketch.py:5288 _has_test_concept), and the narrow supply_chain.is_test_file. Which view uses which:\n- is_test_path: dead-code-maybe, test-coverage, explain -x, symbols -x, sketch, compact default.\n- is_test_node: slice --exclude-tests, tiered hg.Nk.json, io-boundaries, ranking's edge filter.\n- is_test_file: routes, entrypoint penalties, the test-only-reachability ratchet, linkers.\n- scripts/bakeoff-deep and scripts/hypergumbo_diag.py carry private regexes.\n\nMEASURED on default surveys at a17367f254 (~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/M/test_predicates.out): is_test_file and is_test_path agree on every path of mitmproxy, knex, logrus, ripgrep, jedis. The live split is annotations: ripgrep has 496 nodes (480 functions) that are #[test] functions in mod tests inside src/ -- test to is_test_node, production to both path predicates. Of them, dead-code-maybe lists 434 as dead candidates (of its 817), test-coverage counts 464 as untested production functions, and 493 of test-coverage's 2,680 total_functions are tests. Verified in source: crates/cli/src/escape.rs:101 #[test] fn nul. Synthetic shapes where the PATH predicates split (polls/tests.py, src/main/java/a/FooTest.java): agent B's probe in ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/B_scripts/.\n\nACCEPTANCE: one predicate for \"is this node test code\" (annotations included), routed through every view and the scripts; the narrow supply_chain verdict stays a separately named fact. Re-run ripgrep: no #[test] function is a dead-code candidate or a test-coverage production function."  # 12b6
     fields: {}  # 12b6
+- op: update  # 7243
+  at: '2026-10-31T08:03:46Z'  # 7243
+  by: agent  # 7243
+  actor: jgstern_agent  # 7243
+  clock: 2  # 7243
+  nonce: '7243'  # 7243
+  set:  # 7243
+    status: done  # 7243
+- op: discuss  # f54b
+  at: '2026-10-31T08:03:46Z'  # f54b
+  by: agent  # f54b
+  actor: jgstern_agent  # f54b
+  clock: 3  # f54b
+  nonce: f54b  # f54b
+  message: "Fixed in PR #1977 (d3bbf8bdcf). One PATH predicate (paths.classify_test_file absorbed is_test_path's shapes plus FooIT / *Test.scala / unittest/; filters.is_test_path is the same function), one NODE predicate (paths.is_test_node: path or test annotation, dict or text form), called by every node-level consumer: cli views (routes, explain/symbols -x, test-coverage, dead-code, repeat-finder, handler slices), sketch, compact, key-symbol / production-edge filters, ranking, entrypoints, receiver_blind_magnets, the test-only ratchet, symbol_resolution, six linkers; scripts/bakeoff-deep and hypergumbo_diag call the core predicates. Re-run on merged dev, live on ripgrep's default survey: dead-code-maybe 383 candidates, 0 of them test code (was 817, 434 tests); test-coverage 2,187 production functions, 0 test code (was 2,680, 493), total_tests 582 (was 89), coverage 36.2% (was 9.3%). mitmproxy, knex, logrus, jedis unchanged on both views; re-surveys: jedis identical, ripgrep 5 edges retargeted (production Box::new / err.path() no longer bound to a test-module TempDir helper). Residual, stated: the concept rule's two copies (cli dict closure, sketch _has_test_concept) are not merged; bakeoff-deep's bare integration/ and TestFoo prefix rules did not move into core, so those measurements narrow."  # f54b

@@ -1,0 +1,22 @@
+- op: create  # 61f3
+  at: '2026-10-31T10:07:59Z'  # 61f3
+  by: agent  # 61f3
+  actor: jgstern_agent  # 61f3
+  clock: 1  # 61f3
+  nonce: 61f3  # 61f3
+  data:  # 61f3
+    kind: work_item  # 61f3
+    title: "tracker serve: load_duress_handler accepts a module whose handler does not satisfy DuressHandler, silently and with no warning"  # 61f3
+    status: todo_hard  # 61f3
+    priority: 3  # 61f3
+    parent:  # 61f3
+    tags:  # 61f3
+    - docstring_audit  # 61f3
+    - analysis_quality  # 61f3
+    - tracker_serve  # 61f3
+    isbefore: []  # 61f3
+    duplicate_of: []  # 61f3
+    not_duplicate_of: []  # 61f3
+    pr_ref:  # 61f3
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. serve_duress.py:135-138 checks only handler is None. handler = 42 loads, isinstance(h, DuressHandler) is False, and call_on_duress_login then returns False quietly, so a broken hook looks armed. Latent: nothing wires the module yet. v09."  # 61f3
+    fields: {}  # 61f3

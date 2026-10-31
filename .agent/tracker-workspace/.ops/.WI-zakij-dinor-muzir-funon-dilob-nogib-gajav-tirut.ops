@@ -1,0 +1,21 @@
+- op: create  # 79d5
+  at: '2026-10-31T10:07:17Z'  # 79d5
+  by: agent  # 79d5
+  actor: jgstern_agent  # 79d5
+  clock: 1  # 79d5
+  nonce: 79d5  # 79d5
+  data:  # 79d5
+    kind: work_item  # 79d5
+    title: "js/ts: a Svelte or Vue <script> whose lang=ts is not its first attribute is parsed with the JavaScript grammar"  # 79d5
+    status: todo_hard  # 79d5
+    priority: 2  # 79d5
+    parent:  # 79d5
+    tags:  # 79d5
+    - docstring_audit  # 79d5
+    - analysis_quality  # 79d5
+    isbefore: []  # 79d5
+    duplicate_of: []  # 79d5
+    not_duplicate_of: []  # 79d5
+    pr_ref:  # 79d5
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. Svelte regex js_ts.py:295-298 sees lang only as the first attribute; the Vue regex has the same gap for <script setup generic=T lang=ts> and <script type=module lang=ts>. Repro: <script context=module lang=ts> symbols come out language=javascript. v03."  # 79d5
+    fields: {}  # 79d5

@@ -23,3 +23,10 @@
     fields:  # 85a2
       statement: "Identifier lookups never resolve to a route marker (WI-zugob); route markers are built by make_route_symbol."  # 85a2
       root_cause: "The JSX <Route> marker (js_ts.py ~4250-4262) is built by hand with handler_name = component name and kind-slot 'route' (fails id_roundtrip), and global_symbols[sym.name] is last-one-wins."  # 85a2
+- op: discuss  # 2c43
+  at: '2026-10-31T10:09:59Z'  # 2c43
+  by: agent  # 2c43
+  actor: jgstern_agent  # 2c43
+  clock: 2  # 2c43
+  nonce: 2c43  # 2c43
+  message: "2026-10-31 docstring audit re-reproduced this for the hand-built JSX <Route> marker (js_ts.py:4714, kind slot route; 2 id_format errors in survey validation). No new item filed."  # 2c43

@@ -1,0 +1,21 @@
+- op: create  # 3d2b
+  at: '2026-10-31T10:08:16Z'  # 3d2b
+  by: agent  # 3d2b
+  actor: jgstern_agent  # 3d2b
+  clock: 1  # 3d2b
+  nonce: 3d2b  # 3d2b
+  data:  # 3d2b
+    kind: work_item  # 3d2b
+    title: "Pascal and Puppet both analyze every .pp file: no content disambiguation for the shared extension"  # 3d2b
+    status: todo_hard  # 3d2b
+    priority: 3  # 3d2b
+    parent:  # 3d2b
+    tags:  # 3d2b
+    - docstring_audit  # 3d2b
+    - analysis_quality  # 3d2b
+    isbefore: []  # 3d2b
+    duplicate_of: []  # 3d2b
+    not_duplicate_of: []  # 3d2b
+    pr_ref:  # 3d2b
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. pascal.py:352 and puppet.py:104/497 both claim *.pp; discovery.py's ambiguous-extension section covers .m, .d and .php only. On a fixture with one Puppet and one Pascal .pp, each analyzer reported files_analyzed 2. Same shape as WI-fovop (.v) and WI-somod (.h). v10."  # 3d2b
+    fields: {}  # 3d2b

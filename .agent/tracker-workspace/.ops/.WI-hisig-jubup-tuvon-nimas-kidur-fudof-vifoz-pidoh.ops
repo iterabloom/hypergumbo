@@ -1,0 +1,21 @@
+- op: create  # afc4
+  at: '2026-10-31T10:09:48Z'  # afc4
+  by: agent  # afc4
+  actor: jgstern_agent  # afc4
+  clock: 1  # afc4
+  nonce: afc4  # afc4
+  data:  # afc4
+    kind: work_item  # afc4
+    title: "mermaid: class and node patterns run in every diagram type, so a flowchart's class A hot becomes a class symbol and erDiagram entities become node symbols"  # afc4
+    status: todo_hard  # afc4
+    priority: 3  # afc4
+    parent:  # afc4
+    tags:  # afc4
+    - docstring_audit  # afc4
+    - analysis_quality  # afc4
+    isbefore: []  # afc4
+    duplicate_of: []  # afc4
+    not_duplicate_of: []  # afc4
+    pr_ref:  # afc4
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _CLASS_RE (mermaid.py:68) is applied regardless of diagram type; the docstring limits class to class diagrams. Both reproduced. v11."  # afc4
+    fields: {}  # afc4

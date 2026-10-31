@@ -1,0 +1,21 @@
+- op: create  # 65c5
+  at: '2026-10-31T10:08:48Z'  # 65c5
+  by: agent  # 65c5
+  actor: jgstern_agent  # 65c5
+  clock: 1  # 65c5
+  nonce: 65c5  # 65c5
+  data:  # 65c5
+    kind: work_item  # 65c5
+    title: "make: a prerequisite whose name matches a variable or define (case-insensitively) resolves to that symbol at 0.90"  # 65c5
+    status: todo_hard  # 65c5
+    priority: 3  # 65c5
+    parent:  # 65c5
+    tags:  # 65c5
+    - docstring_audit  # 65c5
+    - analysis_quality  # 65c5
+    isbefore: []  # 65c5
+    duplicate_of: []  # 65c5
+    not_duplicate_of: []  # 65c5
+    pr_ref:  # 65c5
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. target_registry holds variables (make.py:215), targets (268) and defines (336), lowercased, read at 278. CC := gcc then all: cc main.o gives depends_on all -> CC:variable 0.9. v10."  # 65c5
+    fields: {}  # 65c5

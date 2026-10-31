@@ -1,0 +1,21 @@
+- op: create  # e096
+  at: '2026-10-31T10:08:26Z'  # e096
+  by: agent  # e096
+  actor: jgstern_agent  # e096
+  clock: 1  # e096
+  nonce: e096  # e096
+  data:  # e096
+    kind: work_item  # e096
+    title: "luau: calls inside a nested function are credited to the outermost enclosing function"  # e096
+    status: todo_hard  # e096
+    priority: 3  # e096
+    parent:  # e096
+    tags:  # e096
+    - docstring_audit  # e096
+    - analysis_quality  # e096
+    isbefore: []  # e096
+    duplicate_of: []  # e096
+    not_duplicate_of: []  # e096
+    pr_ref:  # e096
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _extract_edges_recursive walks the outer body with the outer name and returns (luau.py:441-448); _extract_calls_recursive never resets current_function (406-419). inner's doB() comes out as outer -> doB. v10."  # e096
+    fields: {}  # e096

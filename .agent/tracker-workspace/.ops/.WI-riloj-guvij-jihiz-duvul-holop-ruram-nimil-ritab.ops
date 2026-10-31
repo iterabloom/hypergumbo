@@ -20,3 +20,10 @@
     pr_ref:  # 9b35
     description: "From WI-zavot's gated re-measurement (WI-borib, docs/audits/0026). io-boundaries misses a crossing reached through an in-tree alias of a catalogued function: knex lib/migrations/util/fs.js:10 `const writeFile = promisify(fs.writeFile)` (and :12 mkdir); calls `writeFile(stubPath, code)` (bin/cli.js:214, lib/migrations/util/template.js:43, ...) resolve to the in-tree variable, so io classifies nothing, while taint matches the resolved local BY NAME to fs.writeFile and calls it a host_fs sink -- right here only because the local name equals the catalogued one. Neither consumer follows the alias: io under-reports the write, taint's answer is a coincidence of names.\nACCEPTANCE: a call through a binding whose value is a catalogued function (promisify(fs.X), a bare re-export `const write = fs.writeFile`) is classified by the catalogued function in both consumers, or by neither; the name coincidence is not the route. WI-zavot's agreement test holds this as a strict xfail."  # 9b35
     fields: {}  # 9b35
+- op: discuss  # 3936
+  at: '2026-10-31T03:45:18Z'  # 3936
+  by: agent  # 3936
+  actor: jgstern_agent  # 3936
+  clock: 2  # 3936
+  nonce: '3936'  # 3936
+  message: "Measured while writing WI-zavot's PIN: taint's match rides on the in-tree FILE being named fs.js -- javascript:lib/migrations/util/fs.js:10-10:writeFile:variable is matched to fs.writeFile; the same alias in util/fs_util.js matches nothing (both consumers then agree, by both missing the write). test_io_taint_agreement.py::test_a_promisified_alias_is_answered_alike holds the fs.js shape as a strict xfail."  # 3936

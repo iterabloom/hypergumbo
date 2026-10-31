@@ -1,0 +1,21 @@
+- op: create  # 2c1b
+  at: '2026-10-31T10:09:37Z'  # 2c1b
+  by: agent  # 2c1b
+  actor: jgstern_agent  # 2c1b
+  clock: 1  # 2c1b
+  nonce: 2c1b  # 2c1b
+  data:  # 2c1b
+    kind: work_item  # 2c1b
+    title: "gitignore: pattern categories depend on PYTHONHASHSEED and on substring hits (layout.xml is build, catalog.txt is logs)"  # 2c1b
+    status: todo_hard  # 2c1b
+    priority: 3  # 2c1b
+    parent:  # 2c1b
+    tags:  # 2c1b
+    - docstring_audit  # 2c1b
+    - analysis_quality  # 2c1b
+    isbefore: []  # 2c1b
+    duplicate_of: []  # 2c1b
+    not_duplicate_of: []  # 2c1b
+    pr_ref:  # 2c1b
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. __pycache__ is in both the dependencies and cache sets (gitignore.py:74, 84), PATTERN_TO_CATEGORY is filled in set order (95-97), and the scan takes the first substring hit (115-122): venv/__pycache__/ is dependencies under seeds 1,3,4,6,7,8 and cache under 2,5; layout.xml, cabinet/, about.html come out build, catalog.txt logs. v11."  # 2c1b
+    fields: {}  # 2c1b

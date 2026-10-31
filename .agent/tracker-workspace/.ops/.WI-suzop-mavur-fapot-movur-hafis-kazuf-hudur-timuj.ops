@@ -26,3 +26,10 @@
   nonce: '2544'  # 2544
   set:  # 2544
     description: "EVIDENCE (production entry point analyze_make_files, 2026-09-25):\n  Makefile:  .PHONY all: dep\n  -> symbols [('.PHONY', 'special_target'), ('all', 'special_target')]\n`all` is an ordinary target but is labelled special_target.\n\nMECHANISM: make.py (the target loop near \"Mark special targets like .PHONY\") sets `kind = \"target\"` / \"pattern_rule\" once per rule, then does `kind = \"special_target\"` INSIDE the per-target loop and never resets it. Every target after the first dotted one in the same rule inherits the special kind (and its symbol id carries that kind slot).\n\nSCOPE: rules listing a dotted target before an ordinary one in the same targets list. This is uncommon in practice; `.PHONY: all` (the usual form) is unaffected because `all` is a prerequisite there, not a target. Not measured on the corpus.\n\nPRIOR ART: none found. WI-kunag and WI-dubab touched make.py for other reasons. Found by the 2026-09-25 docstring-staleness audit (verified while reviewing PR #1199).\n\nASKED: compute the kind per target (a local per iteration). Add a two-target fixture. Check whether any corpus Makefile has the shape."  # 2544
+- op: discuss  # accc
+  at: '2026-10-31T10:09:59Z'  # accc
+  by: agent  # accc
+  actor: jgstern_agent  # accc
+  clock: 3  # accc
+  nonce: accc  # accc
+  message: "2026-10-31 docstring audit re-reproduced this: .SUFFIXES realtarget: dep gives realtarget special_target (make.py:235-240). No new item filed."  # accc

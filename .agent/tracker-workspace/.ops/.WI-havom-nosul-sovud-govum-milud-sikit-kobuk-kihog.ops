@@ -1,0 +1,21 @@
+- op: create  # 3e13
+  at: '2026-10-31T10:07:32Z'  # 3e13
+  by: agent  # 3e13
+  actor: jgstern_agent  # 3e13
+  clock: 1  # 3e13
+  nonce: '3e13'  # 3e13
+  data:  # 3e13
+    kind: work_item  # 3e13
+    title: "io-boundary: a community overlay for a language with no shipped catalogue keeps status 'unsupported' beside is_supported=True, so its external_potential chains read dst_classification_unreliable=False"  # 3e13
+    status: todo_hard  # 3e13
+    priority: 3  # 3e13
+    parent:  # 3e13
+    tags:  # 3e13
+    - docstring_audit  # 3e13
+    - analysis_quality  # 3e13
+    isbefore: []  # 3e13
+    duplicate_of: []  # 3e13
+    not_duplicate_of: []  # 3e13
+    pr_ref:  # 3e13
+    description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. io_boundary.py:2608-2611 `if community or _status != CATALOG_STATUS_UNSUPPORTED` restores the fallback status, against the contract at :266-269. A ruby overlay with provenance: community gives unsupported/True/True; without the line in_progress/True/True. Faraday.post with no row reads dst_classification_unreliable False under the community overlay, True under a user overlay (_compute_external_potential :4402). WI-donod fixed the user-overlay half of this line. v04."  # 3e13
+    fields: {}  # 3e13
