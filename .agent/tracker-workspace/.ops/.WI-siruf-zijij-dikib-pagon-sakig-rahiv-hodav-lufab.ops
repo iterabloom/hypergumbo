@@ -20,3 +20,18 @@
     pr_ref:  # 68af
     description: "From WI-borib (docs/audits/0026; agent C, ~/hypergumbo_lab_notebook/borib_consumer_agreement_10302026/C_counts_disclosure.md). A recall defect found by the sweep's count comparison.\n\nThe Wolfram analyzer's own finder (find_wolfram_files / its _find_source_files override) picks up .m files, but the orchestrator's candidate pre-filter does not count .m for wolfram, so the pass is skipped as no_candidate_files and no .m file is ever analysed. Reproduced with library calls by agent C: the pre-filter skips wolfram while find_wolfram_files returns the file. The drift gate test_prefilter_candidate_set.py compares each class's file_patterns, not an overridden _find_source_files, so it cannot see this; other analyzers that override the finder are equally unguarded (not enumerated).\n\nACCEPTANCE: a .m Wolfram fixture through run_behavior_map yields Wolfram symbols; the drift gate compares the finder each analyzer actually runs; every finder override enumerated."  # 68af
     fields: {}  # 68af
+- op: update  # 00a9
+  at: '2026-10-30T23:32:11Z'  # 00a9
+  by: agent  # 00a9
+  actor: jgstern_agent  # 00a9
+  clock: 2  # 00a9
+  nonce: 00a9  # 00a9
+  set:  # 00a9
+    status: done  # 00a9
+- op: discuss  # 49e3
+  at: '2026-10-30T23:32:11Z'  # 49e3
+  by: agent  # 49e3
+  actor: jgstern_agent  # 49e3
+  clock: 3  # 49e3
+  nonce: '49e3'  # 49e3
+  message: "Fixed in PR #1972 (dacb8bb75d): wolfram registers find_files=find_wolfram_files, so the profile counts the .m files its finder reads and the pre-filter no longer skips a .m-only package. Re-run on merged dev, live: a repo holding only Geometry.m (BeginPackage / area[r_] := Pi r^2) -> hypergumbo survey rc=0, profile.languages.wolfram.files=1, the wolfram pass files_analyzed=1 silence_reason None, symbol area emitted (before: files 0, pass skipped as no_candidate_files). Gate: test_no_finder_override_reads_files_its_taxonomy_entry_cannot_see runs every override with no registered finder on a probe tree; before the fix it named wolfram alone (clojure, fsharp, latex, markdown read subsets). Corpus: 29 .m files, none Wolfram -- no repo changed."  # 49e3

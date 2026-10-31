@@ -21,3 +21,18 @@
     pr_ref:  # ef1c
     description: "From WI-borib (docs/audits/0026; agent D). Possible false-all-clear direction under ADR-0061 (\"community rows ADD, never clean\").\n\nverify-claims' per-language empty-zone gate (_sink_zone_gaps over taint.builtin_sink_zones) counts COMMUNITY sinks as zone coverage. Agent D's zone_coverage_by_provenance.py: Haskell's network zone is covered only by 28 community rows, so a \"never reaches the network\" claim on a Haskell repo is judged (and can read confirmed) because of community data alone; with --no-default-overlays the same claim is withheld. A withheld claim becoming judgeable on unvouched rows is the cleaner-verdict direction ADR-0061 denies them.\n\nNOT measured on a Haskell repo (none in the corpus has been checked). ACCEPTANCE: read ADR-0061's rulings against the gate; either the gate counts vouched sinks only, or the ADR ruling that permits this is cited in the gate's docstring; a test either way."  # ef1c
     fields: {}  # ef1c
+- op: update  # 8227
+  at: '2026-10-31T03:34:19Z'  # 8227
+  by: agent  # 8227
+  actor: jgstern_agent  # 8227
+  clock: 2  # 8227
+  nonce: '8227'  # 8227
+  set:  # 8227
+    status: done  # 8227
+- op: discuss  # 4217
+  at: '2026-10-31T03:34:19Z'  # 4217
+  by: agent  # 4217
+  actor: jgstern_agent  # 4217
+  clock: 3  # 4217
+  nonce: '4217'  # 4217
+  message: "Fixed in PR #1974 (a13e6cac1a): _sink_zone_gaps reports community_only_languages (every sink in the zone a community row) and _apply_sink_zone_gap withholds a clean verdict for them, per ADR-0061 ruling 2 (community rows may add findings, never make a verdict cleaner). Re-run on merged dev, live verify-claims on a two-function Haskell repo (fetch calls httpLbs on a literal URL; no input read), claim untrusted_input -> network: default inconclusive rc=2, details 'haskell has only community rows in the network zone, which may add findings but never make a verdict cleaner (ADR-0061 ruling 2)' (was confirmed); --no-default-overlays inconclusive rc=2 'no sink in the network zone' (unchanged). With getLine flowing into httpLbs: default violated rc=1 (the adding half stands). Catalogue-wide (haskell, network) is the only community-only pair; no corpus repo is Haskell, so no corpus verdict moves."  # 4217

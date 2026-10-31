@@ -35,3 +35,18 @@
   clock: 3  # e2fb
   nonce: e2fb  # e2fb
   message: "Not a duplicate of INV-tabaf (an overlay completeness grant's disclosure), INV-titid (compact's features array pointing at pruned nodes: ONE output inconsistent with itself, not two consumers disagreeing) or WI-finij (silence_reason values with no producer); the tracker's SimHash flagged all three at 8 bits. Companions: WI-kosup (audit #20's input, done), WI-tilav (subset-partition gate), WI-ziruv (axiom falsification, done)."  # e2fb
+- op: update  # 0a97
+  at: '2026-10-30T22:02:24Z'  # 0a97
+  by: agent  # 0a97
+  actor: jgstern_agent  # 0a97
+  clock: 4  # 0a97
+  nonce: 0a97  # 0a97
+  set:  # 0a97
+    status: done  # 0a97
+- op: discuss  # 3460
+  at: '2026-10-30T22:02:25Z'  # 3460
+  by: agent  # 3460
+  actor: jgstern_agent  # 3460
+  clock: 5  # 3460
+  nonce: '3460'  # 3460
+  message: "Done in PR #1970 (e7fbd56d75): docs/audits/0026-consumer-agreement.md (kind consumer_agreement), audit #21 recorded with concept-audit-record. 17 facts inventoried by AST walk; 12 derived separately. Measured on default surveys of mitmproxy, knex, logrus, ripgrep, jedis at a17367f254, every counted disagreement read in source: ripgrep #[test] functions in src/ are 434 of dead-code's 817 candidates (WI-dibuf); 12 dispatches_to overrides test-only to dead-code and untested to test-coverage (WI-mofaz); 18 of 1,488 io-vs-taint edges disagree (WI-zavot). Items per verdict: WI-dibuf, WI-mofaz, WI-misin, WI-zuroj, WI-kojof, WI-firaf, WI-siruf, WI-nifog, WI-zavot, WI-tobit, WI-mizog, WI-nolud, WI-vigap, WI-lirik; WI-vosop decided and closed. Not determined (stated in 0026): real-repo magnitudes for the rows reproduced only on constructed maps, fixtures or code, overlays on real repos, a Haskell repo for the zone gate."  # 3460
