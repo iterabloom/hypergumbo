@@ -85,6 +85,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`document.cookie` is `browser_storage_read`**, alongside `env_read`.
 - **ObjC class methods and Swift statics have the kind their call reads as**; rows that can never match or do no I/O are deleted.
 - **`verify-claims` no longer confirms a claim about a zone a language has no sink in**: "untrusted input never reaches a database" on a Go repo using `db.Exec` is inconclusive, not `confirmed`.
+- **A zone covered only by community sinks is not covered** (ADR-0061 ruling 2): a Haskell `network` claim is withheld, not `confirmed`; their flows still violate.
 - **Taint and io-boundaries pick the same catalogue row**: a vouched row over a community overlay's twin.
 - **A user overlay no longer lowers its catalogue's status** (marking unrelated chains `[unreliable]`); a shipped file is `builtin` only if it says so.
 - **A user taint row replaces only the label or zone it restates.**

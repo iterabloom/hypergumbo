@@ -35,11 +35,19 @@ def _claim(label: str, zone: str | None) -> SimpleNamespace:
 
 
 class _Catalog:
-    def __init__(self, zones_by_lang: dict[str, set[str]]) -> None:
+    """Sinks carry ``community`` as ``TaintSink`` does; a zone named in
+    ``community`` is filed by community rows only for that language."""
+
+    def __init__(self, zones_by_lang: dict[str, set[str]],
+                 community: dict[str, set[str]] | None = None) -> None:
         self._zones = zones_by_lang
+        self._community = community or {}
 
     def sinks_for_language(self, lang: str) -> list[SimpleNamespace]:
-        return [SimpleNamespace(zone=z) for z in self._zones.get(lang, set())]
+        return [
+            SimpleNamespace(zone=z, community=z in self._community.get(lang, set()))
+            for z in self._zones.get(lang, set())
+        ]
 
 
 def _verdict(verdict: str = "confirmed") -> ClaimVerdict:
@@ -76,6 +84,20 @@ def test_gaps_per_claim() -> None:
     # WI-sojok: an I/O-derived zone is judged the same way; javascript has no
     # host_fs sink in this catalogue.
     assert gaps[("host_secret", "host_fs")].uncovered_languages == ("javascript",)
+
+
+def test_a_zone_only_community_rows_cover_is_reported_apart() -> None:
+    """WI-mizog: haskell's network sinks are all community rows."""
+    catalog = _Catalog({"haskell": {"network"}, "go": {"network"}},
+                       community={"haskell": {"network"}})
+    gap = _sink_zone_gaps([_claim("untrusted_input", "network")], catalog, {"haskell", "go"}, {})[
+        ("untrusted_input", "network")
+    ]
+    assert gap.community_only_languages == ("haskell",)
+    assert gap.uncovered_languages == ()
+    out = _apply_sink_zone_gap(_verdict(), gap)
+    assert out.verdict == "inconclusive"
+    assert "haskell has only community rows in the 'network' zone" in out.details
 
 
 def test_an_uncovered_language_withholds_a_clean_verdict() -> None:
