@@ -296,3 +296,44 @@ class TestUnresolvedRelations:
         # Should have lower confidence for unresolved target
         assert relation_edges[0].confidence == 0.6
         assert "unresolved:Unknown" in relation_edges[0].dst
+
+
+def test_same_model_in_two_schemas_keeps_its_relations(tmp_path: Path) -> None:
+    """WI-jusah (WI-kosar family): a relation's SOURCE is the model whose
+    block contains the field, found by POSITION (``symbol_declared_by``), and
+    its target binds THIS schema's model before the run-wide registry.
+
+    Both were ``global_symbols.get(<name>)`` (one symbol per name, last wins),
+    so two apps' schemas each declaring ``model User`` had one app's
+    relations come out of, or point into, the other app's model.
+    """
+    for app, target in (("app1", "Alpha"), ("app2", "Beta")):
+        d = tmp_path / app
+        d.mkdir()
+        (d / "schema.prisma").write_text(
+            "model User {\n"
+            "  id Int @id\n"
+            f"  thing {target} @relation(fields: [thingId], references: [id])\n"
+            "  thingId Int\n"
+            "}\n\n"
+            f"model {target} {{\n"
+            "  id Int @id\n"
+            "  owner User @relation(fields: [ownerId], references: [id])\n"
+            "  ownerId Int\n"
+            "}\n"
+        )
+    result = analyze_prisma(tmp_path)
+    by_id = {s.id: s for s in result.symbols}
+    refs = [e for e in result.edges if e.edge_type == "references"]
+    # Reach: per schema, User -> target and target -> User, all resolved.
+    assert len(refs) == 4
+    assert all(e.dst in by_id for e in refs)
+    pairs = set()
+    for e in refs:
+        src, dst = by_id[e.src], by_id[e.dst]
+        assert src.path == dst.path, (e.src, e.dst)
+        pairs.add((src.path.split("/")[0], src.name, dst.name))
+    assert pairs == {
+        ("app1", "User", "Alpha"), ("app1", "Alpha", "User"),
+        ("app2", "User", "Beta"), ("app2", "Beta", "User"),
+    }

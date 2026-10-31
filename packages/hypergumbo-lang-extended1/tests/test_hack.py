@@ -464,3 +464,40 @@ def test_analyzer_reads_php_files_with_hh_header(tmp_path: Path) -> None:
     result = analyze_hack(tmp_path)
     names = {(s.name, s.path) for s in result.symbols if s.kind == "function"}
     assert names == {("foo", "src/a.php"), ("bar", "src/b.hack")}
+
+
+class TestHackCallerByPosition:
+    """WI-jusah (WI-kosar family): a call's CALLER is the method whose
+    declaration contains it, found by POSITION (``enclosing_declared_symbol``),
+    and a callee binds THIS file's definition before the run-wide registry.
+
+    The caller used to be ``symbol_registry.get("ns\\Class::method")`` over
+    the run-wide table (one symbol per name, last wins), so two copies of one
+    class (a vendored or versioned tree) had one copy's calls come out of the
+    other's method.
+    """
+
+    def test_duplicate_class_in_two_files_keeps_its_calls(self, tmp_path: Path) -> None:
+        # v2 is padded so each copy's call sits on a line the other copy's
+        # ``run`` does not span; each calls a function only its own file has.
+        for sub, pad, fn in (("v1", "", "alpha"), ("v2", "\n\n\n\n\n\n", "beta")):
+            make_hack_file(tmp_path, f"{sub}/svc.hack", (
+                "<?hh\nnamespace App;\n" + pad + "\n"
+                "class Svc {\n"
+                "  public function run(): void {\n"
+                f"    {fn}();\n"
+                "    $this->run();\n"
+                "  }\n"
+                "}\n\n"
+                f"function {fn}(): void {{}}\n"
+            ))
+        result = analyze_hack(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        # Reach: each copy's function call and its ``$this->run()``.
+        assert sorted(e.line for e in calls) == [6, 7, 12, 13]
+        for e in calls:
+            file_of_line = "v1/svc.hack" if e.line < 10 else "v2/svc.hack"
+            src, dst = by_id[e.src], by_id[e.dst]
+            assert src.path == dst.path == file_of_line, (e.line, e.src, e.dst)
+            assert src.span.start_line <= e.line <= src.span.end_line

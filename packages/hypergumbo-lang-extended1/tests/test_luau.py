@@ -396,3 +396,134 @@ class TestLuauCyclomaticComplexity:
         for s in result.symbols:
             if s.kind not in ('function',):
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestLuauCallerAndCalleeByFile:
+    """WI-jusah (WI-kosar family): a call's CALLER is the function that
+    contains it, found by POSITION (``symbols_at`` / ``symbol_declared_by``),
+    and a callee binds THIS file's definition before the run-wide registry.
+
+    Both used to be name lookups in a registry built from ``global_symbols``,
+    which keeps one symbol per name (last file wins), so two files each
+    defining ``local function helper`` had one file's calls come out of, or
+    go into, the other file's ``helper``.
+    """
+
+    @staticmethod
+    def _calls(result: AnalysisResult) -> list:
+        return [e for e in result.edges if e.edge_type == "calls"]
+
+    def test_two_files_same_name_caller_stays_in_its_file(self, tmp_path: Path) -> None:
+        make_luau_file(tmp_path, "a.luau", (
+            "local function alpha()\nend\n\n"
+            "local function helper()\n    alpha()\nend\n"
+        ))
+        make_luau_file(tmp_path, "b.luau", (
+            "local function beta()\nend\n\n"
+            "local function helper()\n    beta()\nend\n"
+        ))
+        result = analyze_luau(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        calls = self._calls(result)
+        # Reach: both helpers' calls are emitted and resolved.
+        targets = {by_id[e.dst].name for e in calls if e.dst in by_id}
+        assert targets == {"alpha", "beta"}
+        assert len(calls) == 2
+        for e in calls:
+            src, dst = by_id[e.src], by_id[e.dst]
+            assert src.name == "helper"
+            # The callee is defined once, so it names the call's file; the
+            # caller must be that file's ``helper``.
+            assert src.path == dst.path, (e.src, e.dst)
+            assert src.span.start_line <= e.line <= src.span.end_line
+
+    def test_two_files_same_name_callee_binds_own_file(self, tmp_path: Path) -> None:
+        # b.luau is padded so its call line (7) lies outside a.luau's ``run``
+        # (4-6) and vice versa: a call's line then names its file.
+        for name, pad in (("a.luau", ""), ("b.luau", "\n\n")):
+            make_luau_file(tmp_path, name, pad + (
+                "local function helper()\nend\n\n"
+                "local function run()\n    helper()\nend\n"
+            ))
+        result = analyze_luau(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        calls = self._calls(result)
+        assert sorted(e.line for e in calls) == [5, 7]
+        file_of_line = {5: "a.luau", 7: "b.luau"}
+        for e in calls:
+            src, dst = by_id[e.src], by_id[e.dst]
+            assert (src.name, dst.name) == ("run", "helper")
+            assert src.path == dst.path == file_of_line[e.line], (e.line, e.src, e.dst)
+
+    def test_qualified_callee_in_other_file_still_resolves(self, tmp_path: Path) -> None:
+        # A same-file SHORT name must not pre-empt another file's exact
+        # ``Module.fn`` match.
+        make_luau_file(tmp_path, "m.luau", (
+            "local Mod = {}\nfunction Mod.go()\nend\nreturn Mod\n"
+        ))
+        make_luau_file(tmp_path, "u.luau", (
+            "local function go()\nend\n\n"
+            "local function run()\n    Mod.go()\nend\n"
+        ))
+        result = analyze_luau(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        (edge,) = self._calls(result)
+        assert by_id[edge.dst].name == "Mod.go"
+        assert by_id[edge.dst].path == "m.luau"
+        assert by_id[edge.src].path == "u.luau"
+
+    def test_nested_function_call_credits_innermost_function(self, tmp_path: Path) -> None:
+        make_luau_file(tmp_path, "n.luau", (
+            "local function beta()\nend\n\n"
+            "local function outer()\n"
+            "    local function inner()\n"
+            "        beta()\n"
+            "    end\n"
+            "    inner()\n"
+            "end\n"
+        ))
+        result = analyze_luau(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        pairs = {
+            (by_id[e.src].name, by_id[e.dst].name) for e in self._calls(result)
+        }
+        assert pairs == {("inner", "beta"), ("outer", "inner")}
+
+    def test_anonymous_function_call_credits_enclosing_named_function(
+        self, tmp_path: Path,
+    ) -> None:
+        make_luau_file(tmp_path, "x.luau", (
+            "local function go()\nend\n\n"
+            "local function run()\n"
+            "    local cb = function()\n"
+            "        go()\n"
+            "    end\n"
+            "end\n"
+        ))
+        result = analyze_luau(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        (edge,) = self._calls(result)
+        assert (by_id[edge.src].name, by_id[edge.dst].name) == ("run", "go")
+
+    def test_top_level_call_comes_from_the_file(self, tmp_path: Path) -> None:
+        make_luau_file(tmp_path, "t.luau", (
+            "local function go()\nend\n\ngo()\n"
+        ))
+        result = analyze_luau(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        (edge,) = self._calls(result)
+        assert edge.src not in by_id
+        assert edge.src == "luau:t.luau:file"
+        assert by_id[edge.dst].name == "go"
+
+    def test_call_with_no_named_callee_is_skipped(self, tmp_path: Path) -> None:
+        # ``make()()``: the outer call's callee is itself a call, so only the
+        # inner ``make()`` names a function.
+        make_luau_file(tmp_path, "c.luau", (
+            "local function make()\nend\n\n"
+            "local function run()\n    make()()\nend\n"
+        ))
+        result = analyze_luau(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        (edge,) = self._calls(result)
+        assert (by_id[edge.src].name, by_id[edge.dst].name) == ("run", "make")

@@ -374,3 +374,45 @@ structure CityNotFound {}
         )
         assert edge is not None
         assert edge.edge_type == "references"
+
+
+class TestSmithySourceByPosition:
+    """WI-jusah (WI-kosar family): a reference's SOURCE is the shape whose
+    statement contains it, found by POSITION (``symbol_declared_by``), and a
+    target binds THIS file's shape before the run-wide registry.
+
+    The source used to be ``symbol_registry.get("ns#Shape")`` over the
+    run-wide table (one symbol per name, last wins), so two model projects in
+    one repository declaring the same ``namespace example`` shapes crossed
+    their references.
+    """
+
+    def test_same_shapes_in_two_files_keep_their_references(self, tmp_path: Path) -> None:
+        for name, suffix in (("a.smithy", "A"), ("b.smithy", "B")):
+            make_smithy_file(tmp_path, name, (
+                "namespace example\n\n"
+                "service Svc {\n"
+                '    version: "1.0"\n'
+                f"    operations: [Get{suffix}]\n"
+                "}\n\n"
+                "operation Op {\n"
+                f"    input: In{suffix}\n"
+                "}\n\n"
+                "structure Foo {\n"
+                f"    m: In{suffix}\n"
+                "}\n\n"
+                f"operation Get{suffix} {{}}\n"
+                f"structure In{suffix} {{}}\n"
+            ))
+        result = analyze_smithy(tmp_path)
+        by_id = {s.id: s for s in result.symbols}
+        edges = [e for e in result.edges if e.edge_type in ("references", "contains")]
+        # Reach: per file, service->GetX, Op->InX and Foo->InX, all resolved.
+        assert len(edges) == 6
+        assert {by_id[e.src].name for e in edges} == {
+            "example#Svc", "example#Op", "example#Foo",
+        }
+        for e in edges:
+            src, dst = by_id[e.src], by_id[e.dst]
+            # Each target is declared in one file only, so it names the file.
+            assert src.path == dst.path, (e.src, e.dst)

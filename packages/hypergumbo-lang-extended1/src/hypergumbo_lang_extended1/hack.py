@@ -31,6 +31,12 @@ Edge Types
 - calls: Function/method invocations. A call inside a class, interface or
   trait method starts at that method; every other call (inside a standalone
   function or at top level) starts at the file pseudo-node ``hack:<path>:file``.
+  The method is the ``method_declaration`` containing the call, found by
+  POSITION (``enclosing_declared_symbol``; WI-jusah, the WI-kosar family), not
+  by its ``ns\\Class::method`` name: the run-wide table keeps one symbol per
+  name, so two copies of one class (a vendored or versioned tree) had one
+  copy's calls come out of the other's method. A callee name binds this
+  file's symbol before the run-wide table's.
 """
 
 from __future__ import annotations
@@ -43,8 +49,11 @@ from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
+    enclosing_declared_symbol,
     make_symbol_id,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -343,16 +352,8 @@ def _extract_symbols_recursive(
         _extract_symbols_recursive(child, rel_path, current_namespace, analysis, analyzer)
 
 
-def _find_enclosing_method(node: "tree_sitter.Node") -> Optional[str]:
-    """Find the name of the enclosing method."""
-    current = node.parent
-    while current:
-        if current.type == "method_declaration":
-            for child in current.children:
-                if child.type == "identifier":
-                    return _get_node_text(child)
-        current = current.parent
-    return None  # pragma: no cover
+# A call's caller: the nearest enclosing method that has a symbol, by POSITION.
+_CALLER_NODE_TYPES = frozenset({"method_declaration"})
 
 
 def _resolve_call(
@@ -390,8 +391,14 @@ def _extract_edges_recursive(
     node: "tree_sitter.Node", rel_path: str,
     current_namespace: Optional[str], current_class: Optional[str],
     symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
+    decl_index: SymbolsAt,
 ) -> None:
-    """Recursively extract edges from a syntax tree."""
+    """Recursively extract edges from a syntax tree.
+
+    ``decl_index`` (``symbols_at`` over this file's symbols) is how a call
+    finds the method that contains it: by the declaration's POSITION, never
+    by its ``ns\\Class::method`` name (WI-jusah, WI-kosar family).
+    """
     if node.type == "namespace_declaration":
         for child in node.children:
             if child.type == "qualified_identifier":
@@ -407,7 +414,7 @@ def _extract_edges_recursive(
                 for subchild in node.children:
                     _extract_edges_recursive(
                         subchild, rel_path, current_namespace, current_class,
-                        symbol_registry, run_id, edges,
+                        symbol_registry, run_id, edges, decl_index,
                     )
                 current_class = old_class
                 return
@@ -442,14 +449,8 @@ def _extract_edges_recursive(
                 # fallthrough.
                 dst = f"hack:unresolved:0-0:{call_name}:unresolved"
 
-            caller_id = f"hack:{rel_path}:file"
-            if current_class:
-                method_name = _find_enclosing_method(node)
-                if method_name:
-                    caller_id = symbol_registry.get(
-                        f"{current_class}::{method_name}",
-                        caller_id
-                    )
+            caller = enclosing_declared_symbol(node, decl_index, _CALLER_NODE_TYPES)
+            caller_id = caller.id if caller is not None else f"hack:{rel_path}:file"
 
             edge = Edge.create(
                 src=caller_id,
@@ -467,7 +468,7 @@ def _extract_edges_recursive(
     for child in node.children:
         _extract_edges_recursive(
             child, rel_path, current_namespace, current_class,
-            symbol_registry, run_id, edges,
+            symbol_registry, run_id, edges, decl_index,
         )
 
 
@@ -534,10 +535,15 @@ class HackAnalyzer(TreeSitterAnalyzer):
         """Extract call edges from a single Hack file."""
         edges: list[Edge] = []
 
-        # Build symbol registry (name -> id) from global symbols
-        symbol_registry: dict[str, str] = {}
-        for sym_name, sym in global_symbols.items():
-            symbol_registry[sym_name] = sym.id
+        # Callee registry (name -> id): the run-wide table overlaid with THIS
+        # file's symbols, so a name defined here wins over a same-named one
+        # elsewhere (WI-jusah).
+        symbol_registry: dict[str, str] = {
+            name: sym.id for name, sym in global_symbols.items()
+        }
+        symbol_registry.update(
+            (name, sym.id) for name, sym in local_symbols.items()
+        )
 
         # Get namespace from import_aliases context
         current_namespace = import_aliases.get("__namespace__")
@@ -545,6 +551,7 @@ class HackAnalyzer(TreeSitterAnalyzer):
         _extract_edges_recursive(
             tree.root_node, rel_path, current_namespace, None,
             symbol_registry, run.execution_id, edges,
+            symbols_at(self.file_symbols(local_symbols)),
         )
         return edges
 
