@@ -112,6 +112,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### CI and gates
 
 - **Declared axioms are tested against survey and `verify-claims` output** ([`docs/surveys/axiom-falsifiability.md`](docs/surveys/axiom-falsifiability.md)).
+- **A test checks that io-boundaries and taint answer each call alike**; a site taint refuses after matching is named a different question.
 - **The full-suite test-only-reachability gate is green again.**
 - **The per-PR pytest step fails a run whose every test skipped**, or that left no report.
 - **A test fails when a classified module is reported starved** (`classified_yet_starved`).
