@@ -62,7 +62,7 @@ from __future__ import annotations
 from typing import Any, Iterable, List, Optional
 
 from .member_names import member_owner, member_short_name
-from .paths import is_test_file
+from .paths import is_test_node
 from .symbol_kinds import type_like_kind_names
 
 __all__ = [
@@ -345,9 +345,9 @@ def _harmful_magnet_reason(edge: Any, by_id: "dict[Any, Any]") -> Optional[str]:
     method = _method_short_name(
         _get(dst, "name", None) or _get(dst, "qualified_name", None)
     )
-    dst_is_helper = is_test_file(_get(dst, "path", "") or "")
+    dst_is_helper = is_test_node(_get(dst, "path", "") or "", _get(dst, "meta", None))
     src_is_helper = (
-        is_test_file(_get(src, "path", "") or "") if src is not None else False
+        is_test_node(_get(src, "path", "") or "", _get(src, "meta", None)) if src is not None else False
     )
     if dst_is_helper and not src_is_helper:
         return "test_helper"

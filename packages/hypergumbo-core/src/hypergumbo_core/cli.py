@@ -342,7 +342,7 @@ from .supply_chain import (
     vendored_analysed_summary,
 )
 from .ranking import (
-    rank_symbols, _is_test_path, compute_transitive_test_coverage,
+    rank_symbols, compute_transitive_test_coverage,
     compute_symbol_mention_centrality_batch, compute_raw_in_degree,
 )
 from .paths import is_test_node as _is_test_node
@@ -2496,7 +2496,6 @@ def cmd_routes(args: argparse.Namespace) -> int:
     behavior_map = load_substrate(input_path)
     nodes = behavior_map.get("nodes", [])
 
-    from .paths import is_test_file
 
     # Find route handlers - symbols with route concepts in meta.concepts
     # OR symbols carrying meta.framework_role == "route" (analyzers emit
@@ -2528,7 +2527,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
             # Exclude routes from test files when -x/--exclude-tests is set.
             # Django bakeoff showed 73% of route source files were from test
             # directories — use this flag to filter them out.
-            if exclude_tests and is_test_file(node.get("path", "")):
+            if exclude_tests and _is_test_node(node.get("path", ""), node.get("meta")):
                 continue
             routes.append(node)
 
@@ -3112,7 +3111,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     else _extract_path_from_symbol_id(src_id)
                 )
                 # Skip test files if --exclude-tests
-                if exclude_tests and _is_test_path(src_path):
+                if exclude_tests and _is_test_node(src_path, src_node.get("meta") if src_node else None):
                     continue
                 src_line = edge.get("line", 0)
                 src_in_degree = in_degree.get(src_id, 0)
@@ -3137,7 +3136,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
                     else _extract_path_from_symbol_id(dst_id)
                 )
                 # Skip test files if --exclude-tests
-                if exclude_tests and _is_test_path(dst_path):
+                if exclude_tests and _is_test_node(dst_path, dst_node.get("meta") if dst_node else None):
                     continue
                 edge_line = edge.get("line", 0)
                 dst_in_degree = in_degree.get(dst_id, 0)
@@ -5339,6 +5338,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     # Build node ID set and ID->path mapping for filtering
     node_ids = {n["id"] for n in nodes}
     node_paths: dict[str, str] = {n["id"]: n.get("path", "") for n in nodes}
+    node_meta: dict[str, Any] = {n["id"]: n.get("meta") for n in nodes}
 
     # Check exclude_tests flag before computing degrees
     exclude_tests = getattr(args, "exclude_tests", False)
@@ -5384,7 +5384,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
             if not is_inheritance_edge_record(edge):
                 src_path = node_paths.get(src, _extract_path_from_symbol_id(src))
                 dst_path = node_paths.get(dst, _extract_path_from_symbol_id(dst))
-                if _is_test_path(src_path) or _is_test_path(dst_path):
+                if _is_test_node(src_path, node_meta.get(src)) or _is_test_node(dst_path, node_meta.get(dst)):
                     continue
 
         if src in node_ids:
@@ -5425,7 +5425,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
             continue
         if args.language and lang != args.language:
             continue
-        if exclude_tests and _is_test_path(path):
+        if exclude_tests and _is_test_node(path, node.get("meta")):
             continue
 
         symbol_rows.append((name, kind, ind, outd, degree, path, node_id))
@@ -8527,7 +8527,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         kind = node.get("kind", "")
         if kind not in ("function", "method"):
             continue
-        if _is_test_path(path) or _has_test_concept(node):
+        if _is_test_node(path, node.get("meta")) or _has_test_concept(node):
             test_symbols.add(node["id"])
 
     # Identify non-test callable symbols (coverage targets).
@@ -8539,7 +8539,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         kind = node.get("kind", "")
         if kind not in ("function", "method"):
             continue
-        if _is_test_path(path) or _has_test_concept(node):
+        if _is_test_node(path, node.get("meta")) or _has_test_concept(node):
             continue
         target_symbols[node["id"]] = node
 
@@ -9042,7 +9042,7 @@ def production_callables(
         if node.get("protocol_origin"):
             continue
         path = node.get("path", "")
-        if _is_test_path(path):
+        if _is_test_node(path, node.get("meta")):
             test_symbols.add(node["id"])
         else:
             production_symbols[node["id"]] = node
@@ -9167,7 +9167,7 @@ def _cluster_repeats(
         cc = members[0].get("cyclomatic_complexity")
         if cc is not None and cc < min_complexity:
             continue
-        prod = [m for m in members if not _is_test_path(m.get("path", ""))]
+        prod = [m for m in members if not _is_test_node(m.get("path", ""), m.get("meta"))]
         record = _build_repeat_cluster(language, shape_id, members, prod)
         (tests if record["is_test_only"] else production).append(record)
 
@@ -12562,7 +12562,6 @@ def _emit_handler_slices(
     if not enabled:
         return []
 
-    from .paths import is_test_file
     from .slice import AmbiguousEntryError, SliceQuery, slice_graph
 
     # Step 1: collect route symbols, excluding test-file handlers. Order is
@@ -12572,7 +12571,7 @@ def _emit_handler_slices(
     for sym in all_symbols:
         if not _is_route_symbol(sym):
             continue
-        if sym.path and is_test_file(sym.path):
+        if sym.path and _is_test_node(sym.path, sym.meta):
             continue
         handlers.append(sym)
 

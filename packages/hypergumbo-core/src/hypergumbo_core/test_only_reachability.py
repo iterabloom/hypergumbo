@@ -117,7 +117,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_inheritance_edge_record
-from .paths import is_test_file
+from .paths import is_test_node
 
 #: Node kinds this gate adjudicates. A method only on a map with receiver
 #: typing -- see the module docstring.
@@ -338,14 +338,14 @@ def find_test_only_symbols(
         if node.get("kind") not in GATED_KINDS:
             continue
         path = node.get("path") or ""
-        if not _is_production(path) or is_test_file(path):
+        if not _is_production(path) or is_test_node(path, node.get("meta")):
             continue
         callers = [
             by_id[c] for c in incoming.get(node["id"], []) if c in by_id
         ]
         if not callers:
             continue
-        if all(is_test_file(c.get("path") or "") for c in callers):
+        if all(is_test_node(c.get("path") or "", c.get("meta")) for c in callers):
             found.append(TestOnlySymbol(
                 symbol_id=node["id"], name=node.get("name") or "",
                 kind=node["kind"], path=path,
@@ -397,8 +397,9 @@ def _member_name(dst: str, by_id: Mapping[str, Mapping[str, Any]]) -> str:
     return str(name).rsplit(".", 1)[-1]
 
 
-def _is_production_caller(path: str) -> bool:
-    return (_is_production(path) or path.startswith("scripts/")) and not is_test_file(path)
+def _is_production_caller(node: Mapping[str, Any]) -> bool:
+    path = node.get("path") or ""
+    return (_is_production(path) or path.startswith("scripts/")) and not is_test_node(path, node.get("meta"))
 
 
 def typed_references(
@@ -442,7 +443,7 @@ def typed_references(
                     src, set()).add(dst)
         elif etype in reference_types:
             caller = by_id.get(src)
-            if caller is not None and _is_production_caller(caller.get("path") or ""):
+            if caller is not None and _is_production_caller(caller):
                 typed.production_reached.add(dst)
             if origin in _origins(edge):
                 typed.resolved.setdefault(

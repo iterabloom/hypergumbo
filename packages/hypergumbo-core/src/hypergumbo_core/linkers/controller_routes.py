@@ -90,7 +90,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
-from ..paths import is_test_file
+from ..paths import is_test_node
 from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
@@ -142,7 +142,7 @@ def link_controller_routes(ctx: LinkerContext) -> LinkerResult:
         span = sym.span
         if span is None:
             continue
-        if is_test_file(sym.path):
+        if is_test_node(sym.path, sym.meta):
             continue
         if has_concept(sym, "controller"):
             controllers_by_file.setdefault(sym.path, []).append((sym, span))

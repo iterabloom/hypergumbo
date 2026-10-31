@@ -56,7 +56,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
-from ..paths import is_test_file
+from ..paths import is_test_node
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -314,7 +314,7 @@ def link_pyffi(
     # the repo — it consumes in-memory symbol lists — so the gate sits on the
     # symbol path instead. Both emit phases are covered: Phase 1 filters the
     # scanned file set, Phase 2 filters by the source symbol's id.
-    test_symbol_ids = {sym.id for sym in python_symbols if is_test_file(sym.path)}
+    test_symbol_ids = {sym.id for sym in python_symbols if is_test_node(sym.path, sym.meta)}
 
     # --- Phase 1: Scan Python files for ctypes/cffi calls ---
     python_files: set[str] = set()
@@ -322,7 +322,7 @@ def link_pyffi(
         if (
             sym.language == "python"
             and sym.path.endswith(".py")
-            and not is_test_file(sym.path)
+            and not is_test_node(sym.path, sym.meta)
         ):
             python_files.add(sym.path)
 

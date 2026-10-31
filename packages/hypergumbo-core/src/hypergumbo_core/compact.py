@@ -135,7 +135,6 @@ from .selection.filters import (
     EXCLUDED_KINDS,  # re-export: test_compact.py imports this  # noqa: F401
     is_excluded_kind,
     is_key_symbol,
-    is_test_path as _is_test_path,  # also imported by test_compact.py
     is_example_path as _is_example_path,
     key_symbols,
     production_edges,
@@ -1390,7 +1389,7 @@ def format_compact_behavior_map(
         edges = production_edges(symbols, edges)
         symbols = [
             s for s in symbols
-            if not is_external_boundary(s) and not _is_test_path(s.path)
+            if not is_external_boundary(s) and not _is_test_node(s.path, s.meta)
         ]
 
     # Extract entrypoint symbol_ids to force-include them, ranked by

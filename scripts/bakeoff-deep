@@ -139,61 +139,32 @@ _CODE_NODE_KINDS = frozenset({
 # avoid false positives on partial matches.  Without this, `/spec` inside
 # `/special_repos/` (the bakeoff pool path) matched, filtering out ALL
 # entrypoints and producing zero forward slices for every repo in the pool.
-_TEST_PATH_RE = re.compile(
-    r'(?:^|/)(tests?|spec|__tests__|test-[^/]+|unittest)/' # dirs (incl. test-artifacts/)
-    r'|(?:^|/)(t)/'                                   # t/ (C/Perl convention)
-    r'|(?:^|/)test_[^/]'                               # test_ prefix files
-    r'|(?:^|/)integration/'                            # integration test dirs
-    r'|_test\.'                                        # Go: *_test.go
-    r'|\.(?:test|spec)\.'                              # JS/TS: *.test.js, *.spec.ts
-    r'|/Test[A-Z][^/]*\.java'                          # JVM: TestFoo.java
-    r'|/[A-Z]\w*(?:IT|Tests?)\.(?:java|scala|kt)'     # JVM: FooIT.java, FooTest.java
-    r'|(?:^|/)tests\.rs$'                                # Rust: co-located test module
-    r'|(?:^|/)testonly[/.]'                             # Rust: testonly/ dirs and testonly.rs
-)
+def _is_test_path(path: str) -> bool:
+    """Whether *path* is a test file: hypergumbo's own path predicate.
 
-# Annotation names that indicate a test function/method.
-# Covers Rust (#[test], #[tokio::test], #[actix_rt::test], #[async_std::test]),
-# Java/Kotlin (@Test, @org.junit.Test), and C# ([TestMethod], [Fact], [Theory]).
-_TEST_ANNOTATION_NAMES = frozenset({
-    "test", "Test",
-    "tokio::test", "actix_rt::test", "async_std::test",
-    "org.junit.Test", "org.junit.jupiter.api.Test",
-    "TestMethod", "Fact", "Theory",
-})
+    WI-dibuf: this script used to carry a private regex (and a copy of the
+    test-annotation names below it), which drifted from the analyzer's in both
+    directions. The shapes it knew that the analyzer lacked (Maven
+    Failsafe's ``FooIT.java``, ``*Test.scala``, ``unittest/``) moved into
+    ``paths.classify_test_file``. Two did not, so those measurements narrow:
+    its bare ``integration/`` directory rule (the analyzer reads
+    ``src/integration/`` and Gradle's ``intTest/`` / ``integrationTest/``),
+    and its ``TestFoo.java`` prefix rule (the analyzer pins ``TestConfig.java``
+    as not a test).
+    """
+    from hypergumbo_core.paths import is_test_file
+    return is_test_file(path)
 
 
 def _is_test_node(node: dict) -> bool:
-    """Check if a node is test code by path, annotation, or is_test_file flag.
-
-    Extends file-path matching with annotation-based detection so that
-    Rust ``#[test]``/``#[cfg(test)]`` functions in non-test files (e.g.
-    ``src/lib.rs``) are correctly identified as test nodes.  This prevents
-    test functions from appearing as rslice seed candidates and ensures
-    edges from test functions don't inflate production in-degree.
-
-    Also checks the ``is_test_file`` field from supply_chain (WI-rigun /
-    PR #2813) when available, providing a structured signal that doesn't
-    depend on regex matching.
-    """
-    # WI-movar: check structured is_test_file flag first (fastest path)
+    """Whether a node is test code: the narrow ``supply_chain.is_test_file``
+    flag (WI-movar), or hypergumbo's node predicate -- the path predicate or a
+    test annotation (``#[test]`` in ``src/lib.rs``), ``paths.is_test_node``."""
+    from hypergumbo_core.paths import is_test_node
     sc = node.get("supply_chain") or {}
     if sc.get("is_test_file"):
         return True
-    if _TEST_PATH_RE.search(node.get("path", "")):
-        return True
-    meta = node.get("meta") or {}
-    for key in ("decorators", "annotations"):
-        for dec in (meta.get(key) or []):
-            name = dec.get("name", "")
-            if name in _TEST_ANNOTATION_NAMES:
-                return True
-            # Rust #[cfg(test)] — "cfg" with "test" in args
-            if name == "cfg":
-                for arg in (dec.get("args") or []):
-                    if isinstance(arg, str) and "test" in arg:
-                        return True
-    return False
+    return is_test_node(node.get("path", ""), node.get("meta"))
 
 
 # Quality thresholds
@@ -2117,7 +2088,7 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = 
             for line in stdout.split("\n"):
                 line = line.strip()
                 if re.match(r'^[a-z]+:\S', line):
-                    if not _TEST_PATH_RE.search(line):
+                    if not _is_test_path(line.split(":", 2)[1]):
                         entries.append(line)
         except Exception:
             pass
@@ -2275,7 +2246,7 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = 
 
         # 5. Tier-bounded slices
         # WI-puvab: use the same explicit non-test entry as slice.0 (the first
-        # entry in entries.txt has already been filtered against _TEST_PATH_RE)
+        # entry in entries.txt has already been filtered against _is_test_path)
         # and DO NOT pass --exclude-tests during traversal.  Previous code used
         # --entry auto --exclude-tests, which caused tier-2 slices on
         # test-dominated repos (e.g., alertmanager: 800/801 tier-2 nodes are

@@ -56,11 +56,10 @@ method).
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..noise_filter import _NOISE_SECTION_LANGUAGES
-from ..paths import is_test_file
+from ..paths import is_test_file, is_test_node
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, types only
     from ..ir import Edge, Symbol
@@ -206,73 +205,16 @@ EXAMPLE_PATH_PATTERNS = (
 
 
 def is_test_path(path: str) -> bool:
-    """Check if a path looks like a test file.
+    """Whether *path* is a test file: :func:`paths.is_test_file`, by this name.
 
-    Delegates to ``paths.is_test_file()`` for core patterns (t/ directory,
-    test-* prefix, mock/fake files, spec/, fixtures/, testdata/) and adds
-    language-specific patterns not covered there.
-
-    Matches common test patterns across many languages:
-    - Python: test_*.py, *_test.py, tests.py, tests/, test/
-    - JavaScript/TypeScript: *.test.js, *.spec.ts, __tests__/, *.test-d.ts
-    - Ruby: *_spec.rb, test_*.rb, spec/
-    - Swift: Tests/, *Tests.swift (Xcode convention)
-    - Go: *_test.go
-    - Java/Kotlin: src/test/, *Test.java, *Test.kt, testFixtures/, intTest/
-    - Rust: tests/, *_test.rs
-    - C/Perl: t/, test-*.c
-
-    Only matches actual test files, not directories that happen to contain 'test'.
-
-    Args:
-        path: File path to check.
-
-    Returns:
-        True if the path appears to be a test file.
+    WI-dibuf: this used to add language-specific shapes (``tests.py``,
+    ``*Test.java``, ``*Tests.swift``, ``.test-d.ts``, Gradle's ``intTest/``)
+    on top of ``is_test_file``, so a view filtering with one and a view
+    filtering with the other disagreed on those files. The shapes now live in
+    ``paths.classify_test_file``, and the two names are one predicate. A
+    NODE's test-ness (annotations too) is :func:`paths.is_test_node`.
     """
-    if not path:
-        return False
-
-    # Delegate to is_test_file for core patterns: t/ directory, test-* prefix,
-    # mock/fake files, spec/, fixtures/, testdata/, etc.
-    if is_test_file(path):
-        return True
-
-    filename = os.path.basename(path)
-
-    # Additional directory patterns not in is_test_file
-    path_lower = path.lower()
-    # Gradle test fixtures and integration test source sets
-    if "/testfixtures/" in path_lower or "/inttest/" in path_lower:
-        return True
-    if "/integrationtest/" in path_lower:
-        return True
-    # Gradle/Maven integration test source set: src/integration/
-    if "/src/integration/" in path_lower:
-        return True
-
-    # Python single-file test module (tests.py)
-    if filename == "tests.py":
-        return True
-
-    # TypeScript type test files (.test-d.ts, .test-d.tsx)
-    if filename.endswith(".test-d.ts") or filename.endswith(".test-d.tsx"):
-        return True
-
-    # Go test files: *_test.go (also in is_test_file via _test. pattern)
-    # Rust test files: *_test.rs (also in is_test_file via _test. pattern)
-
-    # Swift test files: *Tests.swift (Xcode convention - test class suffix)
-    # Match "RouteTests.swift" but not "TestHelpers.swift"
-    if filename.endswith("Tests.swift"):
-        return True
-
-    # Java/Kotlin test files: *Test.java, *Test.kt, *Tests.java, *Tests.kt
-    for ext in (".java", ".kt"):
-        if filename.endswith(f"Test{ext}") or filename.endswith(f"Tests{ext}"):
-            return True
-
-    return False
+    return bool(path) and is_test_file(path)
 
 
 # Symbol kinds that count as a "key symbol" — the declaration kinds a reader
@@ -373,7 +315,7 @@ def is_key_symbol(symbol: "Symbol") -> bool:
     """
     return (
         symbol.kind in KEY_SYMBOL_KINDS
-        and not is_test_path(symbol.path)
+        and not is_test_node(symbol.path, symbol.meta)
         and "test_" not in symbol.name
         and symbol.supply_chain_tier != 4
     )
@@ -399,11 +341,13 @@ def production_edges(
     symbol filter without the edge filter would leave the two surfaces ranking
     the same population with different weights.
     """
-    path_by_id = {s.id: s.path for s in symbols}
-    return [
-        e for e in edges
-        if not is_test_path(path_by_id.get(getattr(e, "src", ""), ""))
-    ]
+    by_id = {s.id: s for s in symbols}
+
+    def from_test(edge: Any) -> bool:
+        src = by_id.get(getattr(edge, "src", ""))
+        return src is not None and is_test_node(src.path, src.meta)
+
+    return [e for e in edges if not from_test(e)]
 
 
 def is_example_path(path: str) -> bool:

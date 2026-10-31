@@ -38,7 +38,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
-from ..paths import is_test_file
+from ..paths import is_test_node
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
@@ -133,7 +133,7 @@ def link_decorator_dispatch(ctx: LinkerContext) -> LinkerResult:
     decorated = _find_decorated_symbols(ctx.symbols, DISPATCH_DECORATOR_PATTERNS)
     handlers_by_family: dict[str, list[Symbol]] = {}
     for sym, dec_name in decorated:
-        if is_test_file(sym.path):
+        if is_test_node(sym.path, sym.meta):
             continue
         handlers_by_family.setdefault(dec_name, []).append(sym)
 

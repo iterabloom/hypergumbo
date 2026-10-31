@@ -18,6 +18,7 @@ Key design decisions:
 - Path comparisons handle mixed formats gracefully
 """
 
+import itertools
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -372,6 +373,22 @@ def classify_test_file(path: str) -> Optional[str]:
     if filename_lower in ("tests.rs", "testonly.rs"):
         return TEST_FILE_REASON_TEST
 
+    # WI-dibuf: the shapes ``selection.filters.is_test_path`` used to add on
+    # top of this classifier, so the two path predicates are one. A Python
+    # single-file test module, TypeScript type tests, Xcode's ``*Tests.swift``
+    # (``RouteTests.swift``, not ``TestHelpers.swift``), and JVM test naming:
+    # ``*Test`` / ``*Tests`` / ``*IT`` (Maven Failsafe), shapes
+    # scripts/bakeoff-deep's private regex also knew.
+    if filename_lower == "tests.py" or filename_lower.endswith((".test-d.ts", ".test-d.tsx")):
+        return TEST_FILE_REASON_TEST
+    if filename.endswith("Tests.swift"):
+        return TEST_FILE_REASON_TEST
+    # A ``Test`` PREFIX is deliberately not matched: ``TestConfig.java`` is as
+    # often test support or production config (test_sketch pins it).
+    stem, _, ext = filename.rpartition(".")
+    if ext in ("java", "kt", "scala") and stem.endswith(("Test", "Tests", "IT")):  # JUnit / Failsafe FooIT
+        return TEST_FILE_REASON_TEST
+
     # Mock/fake filename patterns (any language)
     name_without_ext = filename_lower.rsplit(".", 1)[0] if "." in filename_lower else filename_lower
     if name_without_ext.endswith("_mock") or name_without_ext.endswith("_fake"):
@@ -394,6 +411,14 @@ def classify_test_file(path: str) -> Optional[str]:
             return TEST_FILE_REASON_MOCK
         if part_lower.startswith("test-") or part_lower.startswith("testsuite"):
             return TEST_FILE_REASON_TEST
+
+    # WI-dibuf, from ``is_test_path``: Gradle's integration-test source sets
+    # (``intTest/``, ``integrationTest/``) and Maven's ``src/integration/``.
+    lowered = [p.lower() for p in path_parts[:-1]]
+    if "inttest" in lowered or "integrationtest" in lowered or "unittest" in lowered:
+        return TEST_FILE_REASON_TEST
+    if any(a == "src" and b == "integration" for a, b in itertools.pairwise(lowered)):
+        return TEST_FILE_REASON_TEST
 
     # spec/ only matches as the first path component (Ruby RSpec convention).
     # Nested spec/ dirs (e.g., airflow/listeners/spec/) are often production
@@ -503,24 +528,42 @@ _TEST_ANNOTATION_NAMES = frozenset({
 })
 
 
-def _has_test_annotation(decorators: list[Dict[str, Any]]) -> bool:
+def _has_test_annotation(decorators: list[Any]) -> bool:
     """Check if any decorator/annotation indicates a test function.
 
     Matches exact annotation names (e.g., ``#[test]``, ``@Test``) and also
     the Rust ``#[cfg(test)]`` pattern where ``cfg`` has ``"test"`` as an arg.
     """
     for dec in decorators:
-        name = dec.get("name", "")
+        if isinstance(dec, str):
+            # The text form some maps carry (``"@Test"``, ``"#[cfg(test)]"``),
+            # which ``dead-code-maybe --exclude-annotated`` already reads; a
+            # node predicate every view calls must not crash on it (WI-dibuf).
+            text = dec.strip().lstrip("@").removeprefix("#[").removesuffix("]")
+            name, _, rest = text.partition("(")
+            args = [a.strip() for a in rest.rstrip(")").split(",")] if rest else []
+        elif isinstance(dec, dict):
+            name, args = dec.get("name", ""), dec.get("args", [])
+        else:
+            continue
         if name in _TEST_ANNOTATION_NAMES:
             return True
         # Rust #[cfg(test)] — "cfg" with "test" in args
-        if name == "cfg" and "test" in dec.get("args", []):
+        if name == "cfg" and "test" in args:
             return True
     return False
 
 
 def is_test_node(path: str, meta: Optional[Dict[str, Any]]) -> bool:
     """Check if a node is test code, using both file path and annotations.
+
+    THE NODE PREDICATE (WI-dibuf): every consumer deciding whether a NODE is
+    test code -- dead-code, test-coverage, explain / symbols ``-x``, sketch,
+    compact, slice, io-boundaries, ranking, entrypoints, routes, the linkers,
+    the test-only ratchet -- calls this; a FILE's test-ness (discovery, file
+    counts) is :func:`is_test_file`. Before, six views used a path-only
+    predicate, and ripgrep's ``#[test]`` functions in ``src/`` were 434 of
+    dead-code's 817 candidates while slice called them tests.
 
     Extends ``is_test_file`` by also consulting the node's metadata for
     language-specific test annotations. This catches:

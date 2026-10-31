@@ -80,6 +80,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from .paths import is_test_node
 from .selection.filters import is_test_path
 
 if TYPE_CHECKING:
@@ -635,7 +636,7 @@ class NameResolver:
         ):
             non_test_pairs = [
                 (c, k) for c, k in zip(candidates, candidates_keys, strict=True)
-                if not is_test_path(c.path)
+                if not is_test_node(c.path, c.meta)
             ]
             if non_test_pairs:
                 candidates = [p[0] for p in non_test_pairs]

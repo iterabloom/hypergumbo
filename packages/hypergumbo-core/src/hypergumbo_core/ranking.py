@@ -123,7 +123,7 @@ from .edge_types import (
     is_grpc_rpc_implementation,
 )
 from .ir import Symbol, Edge
-from .paths import is_test_file, is_test_node
+from .paths import is_test_node
 from .selection.filters import is_test_path
 
 logger = logging.getLogger(__name__)
@@ -455,11 +455,11 @@ def apply_test_weights(
     Returns:
         Dictionary mapping symbol ID to test-weighted centrality score.
     """
-    symbol_paths = {s.id: s.path for s in symbols}
+    symbol_by_id = {s.id: s for s in symbols}
     weighted = {}
     for sid, score in centrality.items():
-        path = symbol_paths.get(sid, "")
-        if is_test_file(path):
+        sym = symbol_by_id.get(sid)
+        if sym is not None and is_test_node(sym.path, sym.meta):
             weighted[sid] = score * test_weight
         else:
             weighted[sid] = score
