@@ -18,7 +18,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`stable_id_scheme` v9 → v13**: BitBake, SCIP-only and `@hg:route` symbols, and C/C++ externals with a header-set module slot, get new `stable_id`s.
 - **Route markers no longer claim a language** (ADR-0031 Class B): `language` is `null`; read `Symbol.host_language`, `discovery_language` or `protocol_origin`. Route ids and ranks are unchanged; `dead-code-maybe` no longer lists markers.
 - **`verify-claims` envelope 2.6 → 3.0**: walk verdicts `confirmed` / `unconfirmed` are renamed `reached` / `refuted`.
-- **`verify-claims` envelope 3.1**: command-line arguments are `untrusted_input`, and their flows are set aside unless a claim counts them.
+- **`verify-claims` envelope 3.0 → 3.1**: command-line arguments are `untrusted_input`, and their flows are set aside unless a claim counts them.
 - **Taint: a child's exit status is no longer a source** (ADR-0049); its output still is.
 - **`confidence_source` drops `composite`**, which nothing produced.
 - **Contract only: a `calls` edge's `src` is the calling code unit** (ADR-0023); output is unchanged.
@@ -62,16 +62,16 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A console script reaches its function on `src/` layouts and across packages.**
 - **JS/TS workspace siblings resolve through module objects, namespaces and default imports**; reading a member of an in-tree module is a `references` edge.
 - **JS/TS import resolution**: `require('..')` imports the directory, via its `package.json`; Node core modules (`fs`, `node:*`) are not npm dependencies; `./X.test-wrapper` reaches its own file, not `X.tsx`.
-- **Rust brace-list (`use a::{b, c}`), top-level `use {...}` and aliased `use` declarations emit imports edges**, and a call through an alias reaches the function its path names.
+- **Rust brace-list (`use a::{b, c}`), top-level `use {...}` and aliased `use` declarations emit imports edges**, and a call through a `use` path, aliased or not, reaches the function that path names, not whichever same-named function was indexed last.
 - **Rust `use` paths count as framework import evidence** (`actix-web` is imported as `actix_web`).
 - **A placeholder a linker resolves (console scripts, JS/TS imports) is demoted, not deleted** (ADR-0057 §14.1): it ranks lower and names its resolution in `superseded_by`.
 
 #### Calls, types and references
 
 - **A function used as a value is a reference, not dead code**, in Go, JS/TS, Rust, C and C++ (dispatch tables and function-pointer arrays included); Java and Ruby method references outside methods are kept.
-- **A Rust call binds the function its `use` path names**, whatever the file order; a field of an external type (`Vec`, `HashMap`) no longer binds a same-named first-party method.
-- **Finalize no longer overrides a resolver's graded call confidence** (ADR-0039 ruling 6); on apollo-server, 244 of 18,684 edges move, all down.
-- **Finalize keeps typed binds** for methods named like stdlib interfaces (`Close`, `Parse`), in C++ and in Java, C# and Kotlin static initializers.
+- **A method call on a Rust field of an external type** (`Vec`, `HashMap`) no longer binds a same-named first-party method.
+- **The final call-resolution pass no longer overrides a resolver's graded confidence** (ADR-0039 ruling 6); on apollo-server, 244 of 18,684 edges move, all down.
+- **The final pass also keeps typed binds** for methods named like stdlib interfaces (`Close`, `Parse`), in C++ and in Java, C# and Kotlin static initializers.
 - **Python class-body calls emit edges**, and a local named like a field no longer retypes `self.<field>`.
 - **Kotlin and Scala bare `java.lang` receivers resolve**, so `verify-claims` sees the process launch.
 - **Slice reaches the members of a Kotlin/Scala `object`, a `record`, a `union` or a Go `type`.**
@@ -84,8 +84,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`slice --io-boundary` keeps a call for every boundary it crosses** (`io_boundary.boundaries_of`): `subprocess.check_output` is both `subprocess` and `ipc_recv`.
 - **`document.cookie` is `browser_storage_read`**, alongside `env_read`.
 - **ObjC class methods and Swift statics have the kind their call reads as**; rows that can never match or do no I/O are deleted.
-- **`verify-claims` no longer confirms a claim about a zone a language has no sink in**: "untrusted input never reaches a database" on a Go repo using `db.Exec` is inconclusive, not `confirmed`.
-- **A zone covered only by community sinks is not covered** (ADR-0061 ruling 2): a Haskell `network` claim is withheld, not `confirmed`; their flows still violate.
+- **`verify-claims` no longer confirms a claim about a zone a language has no sink in**: "untrusted input never reaches a database" on a Go repo using `db.Exec` is inconclusive, not `confirmed`. Community sinks alone do not cover a zone (ADR-0061 ruling 2), though a flow they find still violates.
 - **Taint and io-boundaries pick the same catalogue row**: a vouched row over a community overlay's twin.
 - **A user overlay no longer lowers its catalogue's status** (marking unrelated chains `[unreliable]`); a shipped file is `builtin` only if it says so.
 - **A user taint row replaces only the label or zone it restates.**
@@ -96,7 +95,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Dead code, tiers and sketch
 
 - **A linker stand-in takes its file's supply-chain tier**, so a bundle's stand-ins are filtered with it.
-- **Every view decides test code alike, test annotations included**: ripgrep's `#[test]` functions in `src/` leave dead-code's candidates (817 → 383) and test-coverage's production functions (coverage 9.3% → 36.2%).
+- **Every command recognises the same test code**, by annotation (`#[test]`, `@Test`) or file name (`tests.py`, `FooTest.java`, `FooTests.swift`, `intTest/`): on ripgrep, dead-code candidates fall 817 → 383 and test coverage rises 9.3% → 36.2%.
 - **Code called only from module level or a class body is not dead or untested**; on django, 43 more functions are tested and none is newly dead.
 - **A dependency declaration naming an in-tree package has that package's tier** (ADR-0041 §1); on nest, 172 of 1,379 move from tier 3 to 1.
 - **External dependency declarations carry `directness` and `ecosystem`**, no longer `unknown`.
@@ -106,14 +105,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **SCIP edges land in their own crate target**, and SCIP-only symbols span their whole item.
 - **`--max-files` bounds every language analyzer.**
-- **The repo-tier examples offer never writes into the repository being analysed**; its other writes, SCIP launches and trust grants go through declared safety zones.
+- **The prompt offering example repositories no longer writes into the repository being analysed**; hypergumbo's own state and config writes, SCIP launches and trust grants go through declared safety zones.
 - **The secret scan ignores the analysed repository's gitleaks config** and no longer asks gitleaks to delete `/dev/stdout`.
 - **INI and `.properties` secrets print as `***`**: no length or characters, `passwd` / `pwd` covered.
 
 #### CI and gates
 
 - **Declared axioms are tested against survey and `verify-claims` output** ([`docs/surveys/axiom-falsifiability.md`](docs/surveys/axiom-falsifiability.md)).
-- **A test checks that io-boundaries and taint answer each call alike**; a site taint refuses after matching is named a different question.
+- **A test checks that io-boundaries and taint classify each call alike**, apart from calls taint deliberately ignores, such as a write to `/dev/null`.
 - **The full-suite test-only-reachability gate is green again.**
 - **The per-PR pytest step fails a run whose every test skipped**, or that left no report.
 - **A test fails when a classified module is reported starved** (`classified_yet_starved`).
@@ -126,7 +125,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **ADR-0041 §1**: tier is the distance of a node's code from the project.
 - **ADR-0062**: the tracker's live Yjs document is a projection of the ops log, never its replacement.
 - **Linker supersession audits** ([`docs/audits/0024`](docs/audits/0024-build-target-supersession-precision.md), [`0025`](docs/audits/0025-js-module-supersession-precision.md)): the measured precision behind the two ADR-0057 §14.1 grants.
-- **Consumer agreement** ([`docs/audits/0026-consumer-agreement.md`](docs/audits/0026-consumer-agreement.md)): which facts two views derive separately, and where they disagree. The 0019 backend-agreement table now checks every row, and states what its edge rows describe.
+- **Consumer agreement** ([`docs/audits/0026-consumer-agreement.md`](docs/audits/0026-consumer-agreement.md)): which facts two views derive separately, and where they disagree.
 - Module docstrings: 42 corrected, 12 extended.
 - The spec documents 63 `symbol_meta` keys; `ALLOWED_WEBSITES.md` permits discuss.python.org; ARCHITECTURE.md regenerated.
 
