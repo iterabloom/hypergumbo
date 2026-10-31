@@ -1,0 +1,40 @@
+Original commit body from 35aa48b801b2c5ba2cba1e49d9d6c02c22723e36:
+
+verify-claims withholds a clean taint verdict when a present language has
+no sink in the claim's zone (INV-pivam; every built-in zone since
+WI-sojok). _sink_zone_gaps counted ANY sink, community rows included.
+Haskell's network zone is covered only by community rows
+(Network.HTTP.Client.httpLbs / httpBS / ...), so "untrusted input never
+reaches the network" on a Haskell repo read `confirmed` by default and
+`inconclusive` under --no-default-overlays: the clean verdict rested on
+unvouched rows alone. Found by WI-borib (docs/audits/0026).
+
+ADR-0061 ruling 2 decides it: community rows "may add findings, but
+never make a verdict cleaner", and a verdict is cleaner whenever it
+moves toward `confirmed`; "an I/O row that makes a call count as
+examined" is named in the removing column. So:
+- _sink_zone_gaps reports community_only_languages: present languages
+  whose every sink in the zone is a community row;
+- _apply_sink_zone_gap withholds a clean verdict for them as for an
+  uncovered language, with its own reason ("only community rows in the
+  'network' zone, which may add findings but never make a verdict
+  cleaner (ADR-0061 ruling 2)") so the details stay true;
+- violated / inconclusive verdicts are untouched, as before: a flow a
+  community sink finds still reads `violated` (the adding half).
+
+Reproduced on a two-function Haskell repo: before, default `confirmed`,
+--no-default-overlays `inconclusive`; now both `inconclusive`, each
+naming its reason; with getLine flowing into httpLbs, `violated` either
+way by default. Catalogue-wide, (haskell, network) is the only
+(language, zone) pair covered by community rows alone, and the corpus
+holds no Haskell repository: no corpus verdict moves.
+
+Tests: test_community_sinks_zone_coverage.py through `verify-claims`
+(the filed case; the no-overlay reason; a found flow still violates);
+test_sink_zone_gaps.py's stub catalogue now carries `community` as
+TaintSink does, plus a unit case for the separate reason. A mutation
+dropping the community-only set turns two tests red.
+
+Addresses WI-mizog.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
