@@ -1,0 +1,21 @@
+- op: create  # cbb2
+  at: '2026-10-31T22:46:58Z'  # cbb2
+  by: agent  # cbb2
+  actor: jgstern_agent  # cbb2
+  clock: 1  # cbb2
+  nonce: cbb2  # cbb2
+  data:  # cbb2
+    kind: work_item  # cbb2
+    title: "java (reproduced) + kotlin/ruby (shape): an extends/implements or super source is the run-wide class looked up by bare package-less name, so two same-named classes in different packages cross (WI-kosar family, outside lang-extended1)"  # cbb2
+    status: todo_hard  # cbb2
+    priority: 2  # cbb2
+    parent:  # cbb2
+    tags:  # cbb2
+    - analysis_quality  # cbb2
+    - call_resolution  # cbb2
+    isbefore: []  # cbb2
+    duplicate_of: []  # cbb2
+    not_duplicate_of: []  # cbb2
+    pr_ref:  # cbb2
+    description: "Found by the WI-jusah sweep (2026-10-31), WI-kosar family, outside hypergumbo-lang-extended1 (which WI-jusah fixed for luau, apex, hack, smithy and prisma). Shape: the ENCLOSING/SOURCE symbol of an edge is fetched by bare (package-less) name from a run-wide, name-keyed table, so two files declaring the same name cross. LIVE rule: an enclosing symbol is found by the declaration's POSITION (core symbols_at / symbol_declared_by / enclosing_declared_symbol over file_symbols()).\n\nREPRODUCED (1): java.py ~L2689 and ~L2730, extends/implements emission in _extract_edges: src_sym = class_symbols[current_class], where class_symbols is the run-wide type table keyed by the dotted class name WITHOUT package (passed at ~L4221). Fixture: x/Base.java and y/Base.java (package x / y, each `public class Base`), a/Foo.java `package a; import x.Base; public class Foo extends Base` and b/Foo.java `package b; import y.Base;` (two blank lines) `public class Foo extends Base`. Output: BOTH extends edges have src a/Foo.java:3-7:Foo:class and dst x/Base.java (the line-5 edge is b/Foo.java's; it should be b.Foo -> y.Base). The base-class resolver (_resolve_base_class_java, WI-guvuz) then disambiguates against the WRONG class's file imports.\n\nSHAPE MATCHES, NOT REPRODUCED (read only):\n- java.py ~L4100 (inheritance pre-pass for global_class_parents): src_sym = class_symbols.get(current), same package-less key; and ~L4152: cls_sym = class_symbols.get(cls_name) attaches the global_class_fields meta to whichever same-named class registered last.\n- kotlin.py ~L1903 (INV-dupol super.m()): owner_sym = class_symbols.get(owner) with class_symbols built from global_symbols.values() (~L1700), so super.m() in one of two same-named classes walks the other's base_classes.\n- ruby.py ~L507 _superclass_of(class_name, global_symbols): the enclosing class's superclass read off the run-wide by-name symbol. Ruby reopens classes by name, so this may be intended; it needs a decision, not just a fix.\nLooked at and NOT members: solidity.py ~L194 (name fallback is a pragma'd dead path behind a span match), elixir.py ~L2129 (file table first; module names are app-global), jupyter.py ~L337 (per-notebook table, disambiguated by start line), cmake.py ~L310 (CMake target names are project-global), swift.py ~L2500 (base-type walk, a type resolution not an enclosing lookup). The two-file same-name fixture idea is already WI-gilur."  # cbb2
+    fields: {}  # cbb2
