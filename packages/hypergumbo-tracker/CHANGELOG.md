@@ -9,6 +9,7 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Fixed
 
+- **The TUI list keeps its place when it rebuilds.** Mark Read and Mark Unread jumped the list back to the top whenever it was scrolled. The same happened on the status, tag and full-ID toggles, on reorder (`<`/`>`), and on the edit-mode toggle. All of these now keep the scroll offset and the cursor's item. If the cursor's row disappears (Mark Read on an unread item a filter hides), the cursor stays at the same row number. If the rows above the cursor were filtered away, the list scrolls just enough to keep it in view.
 - **TUI preferences are per user**: they live in `$XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/`, not in the shared checkout, where `git clean` removed them and two accounts overwrote each other's on every save. An existing in-repo file is read once and carried over.
 - **TUI tests click only once the target is under the pointer.** On a starved run a button reported a stale region, the click landed on the dialog, and the modal was never dismissed. Every `pilot.click` in the TUI tests now goes through a helper that waits for the target and fails if the click did not land.
 
