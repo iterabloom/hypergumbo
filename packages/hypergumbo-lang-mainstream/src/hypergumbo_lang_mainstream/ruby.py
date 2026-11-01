@@ -2896,10 +2896,10 @@ def _extract_edges_from_file(
     run_id: str,
     resolver: NameResolver,
     require_hints: dict[str, str],
+    superclass_by_qualified: dict[str, str],
     method_candidates: dict[str, list[Symbol]] | None = None,
     method_resolver: ListNameResolver | None = None,
     file_symbols: list[Symbol] | None = None,
-    superclass_by_qualified: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2918,7 +2918,6 @@ def _extract_edges_from_file(
         superclass_by_qualified: Run-wide ``{qualified class name:
             superclass}`` (:func:`superclasses_by_qualified_name`), for a
             ``super`` in a reopened class that names no superclass itself.
-            Derived from this file's own symbols when absent.
     """
     # Every declaration of this file, by position (INV-midag): ``local_symbols``
     # keeps ONE symbol per name.
@@ -2926,8 +2925,6 @@ def _extract_edges_from_file(
         file_symbols if file_symbols is not None
         else list({s.id: s for s in local_symbols.values()}.values()))
     decl_index = symbols_at(decl_symbols)
-    if superclass_by_qualified is None:
-        superclass_by_qualified = superclasses_by_qualified_name(decl_symbols)
     _caller_path = str(file_path)
     edges: list[Edge] = []
     # WI-misir: per-scope local bindings, computed once per scope.
