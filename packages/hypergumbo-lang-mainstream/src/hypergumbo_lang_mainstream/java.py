@@ -116,8 +116,9 @@ How It Works
      registry, attach canonical ``dst_ref`` for cross-translation-unit
      edges
 4. Detect method calls, inheritance, and instantiation patterns. A
-   ``this.m()`` / bare ``m()`` call that does not resolve on the enclosing
-   class is emitted unresolved with an ``enclosing_class`` hint, and a
+   ``this.m()`` / bare ``m()`` call binds the enclosing class's own member,
+   which Java declares in the same file; one that the class does not declare
+   is emitted unresolved with an ``enclosing_class`` hint, and a
    typed-receiver or inherited-field call is emitted unresolved with a
    ``receiver_type_hint`` / ``inherited_field_receiver`` hint even when
    ``<Type>.<method>`` is a project symbol; the Tier-2
@@ -128,6 +129,14 @@ How It Works
    reach a nested type from another file (``_is_import_class_mismatch``;
    INV-finak, WI-bunul). Colliding base-class names resolve same-file, then
    import, then first by id (``_resolve_base_class_java``).
+   A class's OWN facts are found by its declaration's POSITION
+   (``_java_symbol_declared_by`` over the run-wide ``(path, line, col)``
+   index), never by its dotted name, which carries no package: the source of
+   its ``extends`` / ``implements`` edges, its ``meta["fields"]``, the start
+   of the inherited-field walk (parents and field tables keyed by symbol id)
+   and the member a ``this.m()`` binds. Before, ``a.Foo`` and ``b.Foo`` shared
+   one entry and both files' facts went to whichever registered last
+   (WI-gikuk, the WI-kosar family).
    A call, ``new`` or method reference (``Type::m``, ``Type::new``) in no
    method or constructor (a field initialiser, an initialiser block) is
    anchored on the enclosing class / interface / enum / record, else the file
@@ -170,7 +179,7 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
+from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.library_signatures import load_library_signatures
@@ -179,7 +188,7 @@ from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id,
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
-from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -1325,7 +1334,7 @@ def _qualify_receiver_type(
 
 
 def _inherited_field_module(
-    current_class: str,
+    current_class_id: str,
     field_name: str,
     class_parents: dict[str, str],
     class_fields: dict[str, dict[str, str]],
@@ -1334,18 +1343,25 @@ def _inherited_field_module(
     project_class_names: frozenset[str],
     depth_cap: int = 8,
 ) -> str | None:
-    """The qualified LIBRARY type of ``field_name`` declared in an ancestor of ``current_class``.
+    """The qualified LIBRARY type of ``field_name`` declared in an ancestor of a class.
 
-    INV-vugon. Walks ``class_parents`` (child name -> parent symbol name) up
-    to ``depth_cap`` with a cycle guard and returns the first ancestor's
-    declared type for the field, qualified through THAT ancestor's file
-    imports (``sym_file_imports`` keyed by the class symbol's id). ``None``
-    when no ancestor declares it, when the type is a project class (the
-    Tier-2 ``inherited_calls`` linker resolves those from
+    INV-vugon. Walks ``class_parents`` (child class symbol ID -> parent class
+    symbol ID) from ``current_class_id`` up to ``depth_cap`` with a cycle
+    guard and returns the first ancestor's declared type for the field
+    (``class_fields`` is keyed by class symbol ID too), qualified through THAT
+    ancestor's file imports (``sym_file_imports``, keyed by symbol id).
+    ``None`` when no ancestor declares it, when the type is a project class
+    (the Tier-2 ``inherited_calls`` linker resolves those from
     ``inherited_field_receiver``), or when the declaring file gives no path.
+
+    WI-gikuk: every key is a symbol ID, never the class's dotted name. That
+    name has no package, so ``a.Foo`` and ``b.Foo`` shared one chain entry
+    and one field table, and a field inherited from ``y.Base`` was typed from
+    ``x.Base``. ``class_symbols`` (by name) is read only to ask whether a
+    TYPE name is a project class.
     """
     seen: set[str] = set()
-    cls = current_class
+    cls = current_class_id
     for _ in range(depth_cap):
         parent = class_parents.get(cls)
         if parent is None or parent in seen:
@@ -1355,14 +1371,9 @@ def _inherited_field_module(
         if field_type is not None:
             if field_type in class_symbols or field_type in project_class_names:
                 return None
-            parent_sym = class_symbols.get(parent)
-            parent_imports = (
-                (sym_file_imports or {}).get(parent_sym.id, {})
-                if parent_sym is not None else {}
-            )
             return _qualify_receiver_type(
-                field_type, parent_imports, None, class_symbols,
-                project_class_names,
+                field_type, (sym_file_imports or {}).get(parent, {}), None,
+                class_symbols, project_class_names,
             )
         cls = parent
     return None
@@ -2243,17 +2254,42 @@ def _get_enclosing_type_symbol(
     """
     if not symbol_by_position or file_path is None:
         return None
-    path = str(file_path)
     current = node.parent
     while current is not None:
         if current.type in _JAVA_TYPE_BODY_NODES:
-            sym = symbol_by_position.get(
-                (path, current.start_point[0] + 1, current.start_point[1]),
-            )
+            sym = _java_symbol_declared_by(current, file_path, symbol_by_position)
             if sym is not None:
                 return sym
         current = current.parent
     return None
+
+
+def _java_symbol_declared_by(
+    node: "tree_sitter.Node",
+    file_path: Path,
+    symbol_by_position: dict[tuple[str, int, int], Symbol],
+) -> Optional[Symbol]:
+    """The symbol whose declaration node is ``node``, by POSITION (WI-gikuk).
+
+    Java's run-wide twin of core ``symbol_declared_by``: the index is keyed
+    ``(path, start_line, start_col)`` across every file, the way
+    :func:`_get_enclosing_method` keys it, so one dict serves every file of
+    the run. A Java symbol's span starts at its declaration node (annotations
+    are inside the node's ``modifiers``), so the node's start IS the key.
+    """
+    return symbol_by_position.get(
+        (str(file_path), node.start_point[0] + 1, node.start_point[1]),
+    )
+
+
+def _java_position_index(
+    symbols: Iterable[Symbol],
+) -> dict[tuple[str, int, int], Symbol]:
+    """``(path, start_line, start_col) -> symbol`` over ``symbols``."""
+    return {
+        (s.path, s.span.start_line, s.span.start_col): s
+        for s in symbols if s.span is not None
+    }
 
 
 def _is_import_class_mismatch(
@@ -2343,7 +2379,13 @@ def _resolve_base_class_java(
     1. Same-file match: base class defined in the same file as the child
     2. Import match: child's file has ``import com.example.models.Model`` and a
        candidate's fully qualified name or file path matches
-    3. First by ID: deterministic fallback (sorted by symbol ID)
+    3. Same-package match (WI-gikuk): the candidate whose package-qualified
+       name is ``<child's package>.<base_name>``. Java needs no import for a
+       class of its own package, so ``package b; class Foo extends Base``
+       with ``a.Base`` and ``b.Base`` in the repo is ``b.Base``; it fell
+       through to the by-id pick, which chose ``a.Base``. After the import
+       tier because a single-type import shadows a same-package class.
+    4. First by ID: deterministic fallback (sorted by symbol ID)
 
     Args:
         base_name: The base class/interface name to resolve (e.g., 'Model')
@@ -2397,7 +2439,17 @@ def _resolve_base_class_java(
                 if cand_no_ext.endswith(short_path):
                     return cand
 
-    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
+    # 3. Same-package match, by package-qualified name.
+    child_qn = child_sym.qualified_name or ""
+    child_package = (
+        child_qn[: -len(child_sym.name) - 1] if child_qn.endswith(f".{child_sym.name}") else ""
+    )
+    same_package_qn = f"{child_package}.{base_name}" if child_package else base_name
+    same_package = [c for c in candidates if c.qualified_name == same_package_qn]
+    if len(same_package) == 1:
+        return same_package[0]
+
+    # 4. Deterministic fallback: first by symbol ID (sorted for stability)
     candidates_sorted = sorted(candidates, key=lambda c: c.id)
     return candidates_sorted[0]
 
@@ -2467,6 +2519,7 @@ def _extract_edges(
     wildcard_imports: list[str] | None = None,
     method_return_type_registry: dict[str, str] | None = None,
     project_class_names: frozenset[str] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -2493,6 +2546,13 @@ def _extract_edges(
 
     ``project_class_names`` is the set of simple names of every project class
     (nested ones included); it is derived from ``class_symbols`` when absent.
+
+    ``file_symbols`` is every symbol THIS file declares and ``symbol_by_position``
+    every symbol of the run by ``(path, line, col)``; both are derived from the
+    name-keyed registries when absent. WI-gikuk: a class's own facts (the
+    source of its ``extends`` / ``implements`` edges, the start of its
+    inherited-field walk, the member a ``this.m()`` binds) come from these, by
+    position and file, never from ``class_symbols`` by its package-less name.
     """
     if imports is None:
         imports = {}
@@ -2504,6 +2564,22 @@ def _extract_edges(
         method_return_type_registry = {}
     if project_class_names is None:
         project_class_names = frozenset(k.rsplit(".", 1)[-1] for k in class_symbols)
+    if symbol_by_position is None or file_symbols is None:
+        # A direct call with name-keyed registries only (a test): index what
+        # they hold.
+        held = list(
+            {s.id: s for s in [*global_symbols.values(), *class_symbols.values()]}.values(),
+        )
+        if symbol_by_position is None:
+            symbol_by_position = _java_position_index(held)
+        if file_symbols is None:
+            file_symbols = [s for s in held if s.path == str(file_path)]
+    # WI-gikuk: this file's members by name, for a call on the enclosing class
+    # (``helper()`` / ``this.helper()``). Last declaration wins, as the
+    # run-wide table's did for an overload.
+    own_members: dict[str, Symbol] = {
+        s.name: s for s in file_symbols if s.kind in ("method", "constructor")
+    }
     edges: list[Edge] = []
     # INV-bamij: a call in no method is anchored on its type, else the file.
     file_anchor = file_anchor_symbol("java", str(file_path), PASS_ID, run.execution_id)
@@ -2669,93 +2745,75 @@ def _extract_edges(
         # Copy to avoid mutating the shared dict
         class_parents = dict(class_parents)
 
+    def _emit_base(
+        src_sym: Symbol, base_name: str, edge_type: str, evidence: str, line: int,
+    ) -> Symbol | None:
+        """Emit ``src_sym``'s ``extends`` / ``implements`` edge to ``base_name``.
+
+        The base is resolved through ``src_sym``'s OWN file (same file, then
+        its imports; :func:`_resolve_base_class_java`), or is an external
+        base its import names. Returns the in-repo base it bound, else None.
+        """
+        dst_sym = None
+        if class_by_name is not None and sym_file_imports is not None:
+            dst_sym = _resolve_base_class_java(
+                base_name, src_sym, class_by_name, sym_file_imports,
+            )
+        elif base_name in class_symbols:
+            dst_sym = class_symbols[base_name]
+        ext = _java_external_base(base_name, src_sym, class_by_name, sym_file_imports)
+        if ext is not None:
+            edges.append(external_base_edge(src_sym, ext, edge_type, line, PASS_ID, run))
+            return None
+        if dst_sym is None or dst_sym.id == src_sym.id:
+            return None
+        edges.append(Edge.create(
+            src=src_sym.id,
+            dst=dst_sym.id,
+            edge_type=edge_type,
+            line=line,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type=evidence,
+        ))
+        return dst_sym
+
     for node in iter_tree(tree.root_node):
         _close_scopes_before(node)
-        # Check for extends (superclass) in class declarations
+        # Check for extends (superclass) / implements in class declarations
         if node.type == "class_declaration":
-            name = _get_class_name(node, source)
-            if name:
-                ancestors = _get_class_ancestors(node, source)
-                current_class = ".".join(ancestors + [name]) if ancestors else name
-
-                # Check for extends (superclass)
+            # WI-gikuk: the edge's SOURCE is the class this declaration node
+            # declares, by position. ``class_symbols`` is keyed by the dotted
+            # name without a package, so ``a.Foo`` and ``b.Foo`` (or two
+            # methods' local ``class L``) shared one entry and both files'
+            # edges started at whichever registered last -- and the base
+            # resolver then read THAT class's file imports.
+            decl_sym = _java_symbol_declared_by(node, file_path, symbol_by_position)
+            if decl_sym is not None:
                 for child in node.children:
                     if child.type == "superclass":
                         # superclass contains "extends" keyword and type_identifier
                         for subchild in child.children:
                             if subchild.type == "type_identifier":
-                                parent_name = _node_text(subchild, source)
-                                if current_class in class_symbols:
-                                    src_sym = class_symbols[current_class]
-                                    # Use multi-value resolver when available
-                                    dst_sym = None
-                                    if class_by_name is not None and sym_file_imports is not None:
-                                        dst_sym = _resolve_base_class_java(
-                                            parent_name, src_sym,
-                                            class_by_name, sym_file_imports,
-                                        )
-                                    elif parent_name in class_symbols:
-                                        dst_sym = class_symbols[parent_name]
-                                    ext = _java_external_base(
-                                        parent_name, src_sym, class_by_name, sym_file_imports,
-                                    )
-                                    if ext is not None:
-                                        edges.append(external_base_edge(
-                                            src_sym, ext, "extends",
-                                            child.start_point[0] + 1, PASS_ID, run,
-                                        ))
-                                    elif dst_sym is not None and dst_sym.id != src_sym.id:
-                                        edge = Edge.create(
-                                            src=src_sym.id,
-                                            dst=dst_sym.id,
-                                            edge_type="extends",
-                                            line=child.start_point[0] + 1,
-                                            origin=PASS_ID,
-                                            origin_run_id=run.execution_id,
-                                            evidence_type="ast_extends",
-                                        )
-                                        edges.append(edge)
-                                        # Record parent for inherited method resolution
-                                        class_parents[current_class] = dst_sym.name
-
-                    # Check for implements (interfaces)
-                    if child.type == "super_interfaces":
+                                dst_sym = _emit_base(
+                                    decl_sym, _node_text(subchild, source),
+                                    "extends", "ast_extends", child.start_point[0] + 1,
+                                )
+                                if dst_sym is not None:
+                                    # Record parent for inherited field resolution
+                                    class_parents[decl_sym.id] = dst_sym.id
+                    elif child.type == "super_interfaces":
                         # super_interfaces contains "implements" and type_list
                         for subchild in child.children:
-                            if subchild.type == "type_list":
-                                for type_node in subchild.children:
-                                    if type_node.type == "type_identifier":
-                                        iface_name = _node_text(type_node, source)
-                                        if current_class in class_symbols:
-                                            src_sym = class_symbols[current_class]
-                                            # Use multi-value resolver when available
-                                            dst_sym = None
-                                            if class_by_name is not None and sym_file_imports is not None:
-                                                dst_sym = _resolve_base_class_java(
-                                                    iface_name, src_sym,
-                                                    class_by_name, sym_file_imports,
-                                                )
-                                            elif iface_name in class_symbols:
-                                                dst_sym = class_symbols[iface_name]
-                                            ext = _java_external_base(
-                                                iface_name, src_sym, class_by_name, sym_file_imports,
-                                            )
-                                            if ext is not None:
-                                                edges.append(external_base_edge(
-                                                    src_sym, ext, "implements",
-                                                    type_node.start_point[0] + 1, PASS_ID, run,
-                                                ))
-                                            elif dst_sym is not None and dst_sym.id != src_sym.id:
-                                                edge = Edge.create(
-                                                    src=src_sym.id,
-                                                    dst=dst_sym.id,
-                                                    edge_type="implements",
-                                                    line=type_node.start_point[0] + 1,
-                                                    origin=PASS_ID,
-                                                    origin_run_id=run.execution_id,
-                                                    evidence_type="ast_implements",
-                                                )
-                                                edges.append(edge)
+                            if subchild.type != "type_list":
+                                continue
+                            for type_node in subchild.children:
+                                if type_node.type == "type_identifier":
+                                    _emit_base(
+                                        decl_sym, _node_text(type_node, source),
+                                        "implements", "ast_implements",
+                                        type_node.start_point[0] + 1,
+                                    )
 
         # Method/constructor declarations - extract parameter types for type inference
         elif node.type in _JAVA_CALLABLE_NODES:
@@ -2979,9 +3037,15 @@ def _extract_edges(
                     # so the sink edge was never emitted at all.
                     if object_node is None or object_node.type in ("this", "super"):
                         if current_class:
-                            candidate = f"{current_class}.{method_name}"
-                            lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
-                            if lookup_result.found:
+                            # WI-gikuk: the enclosing class's OWN member, which
+                            # Java declares in this file. The run-wide
+                            # name-keyed table holds one ``Foo.helper`` for
+                            # ``a.Foo`` and ``b.Foo`` both, so b's ``helper()``
+                            # bound a's; and where this class declares no
+                            # ``helper`` another file's namesake is not its
+                            # inherited one either (the linker walks for that).
+                            own_member = own_members.get(f"{current_class}.{method_name}")
+                            if own_member is not None:
                                 # INV-zatug: the base was a hardcoded 0.95, so a
                                 # fully-resolved call published 0.95 — above the
                                 # ast_call_direct ceiling of 0.85. ADR-0039
@@ -2989,17 +3053,17 @@ def _extract_edges(
                                 # the pathway band instead.
                                 edge = Edge.create(
                                     src=current_method.id,
-                                    dst=lookup_result.symbol.id,
+                                    dst=own_member.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
-                                    resolution_score=lookup_result.confidence,
+                                    resolution_score=NameResolver.CONFIDENCE_EXACT,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
                                 )
                                 edges.append(edge)
                                 edge_added = True
-                                resolved_sym = lookup_result.symbol
+                                resolved_sym = own_member
                             else:
                                 # WI-dukog (PR-3 of INV-nilud): the
                                 # extends-chain walk that used to live
@@ -3142,10 +3206,18 @@ def _extract_edges(
                         # Qualified through the DECLARING (parent) file's
                         # imports, never this file's; a project-class type is
                         # left to the linker's own walk, unchanged.
-                        inherited_module = _inherited_field_module(
-                            current_class, receiver_name, class_parents,
-                            class_fields, class_symbols, sym_file_imports,
-                            project_class_names,
+                        # WI-gikuk: the walk starts at the enclosing class
+                        # found by POSITION (its chain is keyed by symbol id).
+                        enclosing_type = _get_enclosing_type_symbol(
+                            node, file_path, symbol_by_position,
+                        )
+                        inherited_module = (
+                            _inherited_field_module(
+                                enclosing_type.id, receiver_name, class_parents,
+                                class_fields, class_symbols, sym_file_imports,
+                                project_class_names,
+                            )
+                            if enclosing_type is not None else None
                         )
                         if inherited_module is not None:
                             pr4_receiver_type_hint = inherited_module
@@ -3623,6 +3695,16 @@ def _extract_edges(
                             ),
                             call_construct=pr4_call_construct,
                         )
+                        # WI-gikuk: the enclosing class's id, found by
+                        # position, beside its package-less name, so the
+                        # inherited_calls linker starts at exactly this class
+                        # (WI-supat's id path) rather than at every ``Foo``.
+                        if pr4_enclosing_class_hint is not None:
+                            _enclosing_type = _get_enclosing_type_symbol(
+                                node, file_path, symbol_by_position,
+                            )
+                            if _enclosing_type is not None and _unresolved_edge.meta is not None:
+                                _unresolved_edge.meta["enclosing_class_id"] = _enclosing_type.id
                         # WI-tusav: stamp the receiver's ORIGIN on the read, so
                         # java.yaml's dual fs_read/ipc_recv rows can be narrowed.
                         # Set on the edge rather than threaded through
@@ -3773,7 +3855,6 @@ def _extract_edges(
             elif class_name and method_name:
                 # Method reference: resolve ClassName.methodName
                 # Try this::method → look up method in current class
-                target_name = None
                 if class_name == "this":
                     # ``this::m`` is THIS class's ``m``: qualify it by the
                     # enclosing type first. The bare name alone bound
@@ -3781,23 +3862,25 @@ def _extract_edges(
                     # (commons-compress: FramedLZ4CompressorInputStream's
                     # ``this::readOneByte`` -> ZipArchiveInputStream's). An
                     # inherited ``m`` misses the qualified name and falls
-                    # back to the bare one, as before.
+                    # back to the bare one, as before. WI-gikuk: the
+                    # qualified name is looked up among THIS file's members,
+                    # since ``Foo.m`` run-wide is any package's ``Foo``.
                     owner = (
                         current_method.name
                         if current_method.kind in _JAVA_TYPE_SYMBOL_KINDS
                         else current_method.name.rpartition(".")[0]
                     )
-                    target_name = method_name
-                    if owner:
-                        qualified = resolver.lookup(
-                            f"{owner}.{method_name}", caller_path=_caller_path,
-                        )
-                        if qualified.found and qualified.symbol is not None:
-                            target_name = f"{owner}.{method_name}"
+                    own_ref = own_members.get(f"{owner}.{method_name}") if owner else None
+                    lookup_result = (
+                        LookupResult(symbol=own_ref, confidence=NameResolver.CONFIDENCE_EXACT)
+                        if own_ref is not None
+                        else resolver.lookup(method_name, caller_path=_caller_path)
+                    )
                 else:
-                    target_name = f"{class_name}.{method_name}"
+                    lookup_result = resolver.lookup(
+                        f"{class_name}.{method_name}", caller_path=_caller_path,
+                    )
 
-                lookup_result = resolver.lookup(target_name, caller_path=_caller_path)
                 if lookup_result.found and lookup_result.symbol is not None:
                     edge = Edge.create(
                         src=current_method.id,
@@ -3947,7 +4030,11 @@ def _analyze_java_file(
         if sym.kind in _JAVA_TYPE_SYMBOL_KINDS:
             class_symbols[sym.name] = sym
 
-    edges = _extract_edges(tree, source, file_path, run, global_symbols, class_symbols)
+    edges = _extract_edges(
+        tree, source, file_path, run, global_symbols, class_symbols,
+        symbol_by_position=_java_position_index(symbols),
+        file_symbols=symbols,
+    )
     return symbols, edges, True
 
 
@@ -4041,15 +4128,13 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     # Multi-value method lookup for AMB-METHOD ambiguity guard
     global_methods: dict[str, list[Symbol]] = {}
 
-    # Position-based lookup for enclosing method resolution in monorepos
-    symbol_by_position: dict[tuple[str, int, int], Symbol] = {}
+    # Position-based lookup for enclosing method resolution in monorepos. A
+    # symbol without a span has no position to index; consumers fall back to
+    # name-based lookup in global_symbols.
+    symbol_by_position = _java_position_index(all_symbols)
 
     for sym in all_symbols:
         global_symbols[sym.name] = sym
-        # A symbol without a span has no position to index; consumers fall
-        # back to name-based lookup in global_symbols.
-        if sym.span is not None:
-            symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind in _JAVA_TYPE_SYMBOL_KINDS:
             class_symbols[sym.name] = sym
             if sym.name not in class_by_name:
@@ -4067,8 +4152,10 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     # (434M iterations, 400s on kafka).  This version: two linear passes.
     sym_file_imports: dict[str, dict[str, str]] = {}
     syms_by_path: dict[str, list[str]] = {}
+    file_symbols_by_path: dict[str, list[Symbol]] = {}
     for sym in all_symbols:
         syms_by_path.setdefault(sym.path, []).append(sym.id)
+        file_symbols_by_path.setdefault(sym.path, []).append(sym)
     _symbols_by_path = symbols_by_path_index(all_symbols)
     for pf in parsed_files:
         file_imports = pf.imports or {}
@@ -4076,66 +4163,52 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             for sym_id in syms_by_path.get(str(pf.path), []):
                 sym_file_imports[sym_id] = file_imports
 
-    # Build global class inheritance map for inherited method resolution.
-    # Maps child class name -> parent class name (resolved to symbol name).
-    global_class_parents: dict[str, str] = {}
+    # Build global class inheritance map for inherited field resolution.
+    # Maps child class symbol ID -> parent class symbol ID.
     # Build global class field types for inherited field resolution.
-    # Maps class_name -> {field_name: type_name}
+    # Maps class symbol ID -> {field_name: type_name}
+    #
+    # WI-gikuk: both are keyed by the class SYMBOL, found by its declaration's
+    # position. They were keyed by the dotted class name without a package,
+    # so two same-named classes in two packages merged their field tables and
+    # kept one parent between them (last file wins).
+    global_class_parents: dict[str, str] = {}
     global_class_fields: dict[str, dict[str, str]] = {}
     for pf in parsed_files:
         for node in iter_tree(pf.tree.root_node):
             if node.type == "class_declaration":
-                name = _get_class_name(node, pf.source)
-                if not name:  # pragma: no cover
+                src_sym = _java_symbol_declared_by(node, pf.path, symbol_by_position)
+                if src_sym is None:  # pragma: no cover - Pass 1 emits every class
                     continue
-                ancestors = _get_class_ancestors(node, pf.source)
-                current = ".".join(ancestors + [name]) if ancestors else name
                 for child in node.children:
                     if child.type == "superclass":
                         for subchild in child.children:
                             if subchild.type == "type_identifier":
-                                parent_name = _node_text(subchild, pf.source)
-                                # Resolve parent to its symbol name
-                                dst_sym = None
-                                src_sym = class_symbols.get(current)
-                                if (
-                                    src_sym is not None
-                                    and class_by_name is not None
-                                    and sym_file_imports is not None
-                                ):
-                                    dst_sym = _resolve_base_class_java(
-                                        parent_name, src_sym,
-                                        class_by_name, sym_file_imports,
-                                    )
-                                if (
-                                    dst_sym is None
-                                    and parent_name in class_symbols
-                                    and not (src_sym is not None and _java_external_base(
-                                        parent_name, src_sym, class_by_name, sym_file_imports,
-                                    ))
-                                ):  # pragma: no cover
-                                    dst_sym = class_symbols[parent_name]
+                                # Resolve the parent through the child's file
+                                dst_sym = _resolve_base_class_java(
+                                    _node_text(subchild, pf.source), src_sym,
+                                    class_by_name, sym_file_imports,
+                                )
                                 if dst_sym is not None:
-                                    global_class_parents[current] = dst_sym.name
+                                    global_class_parents[src_sym.id] = dst_sym.id
                                 break
             # Collect field declarations per class. INV-vugon: through
             # ``_declared_type_name``, so a generic or inline-qualified field
             # registers its base type for the inherited-field walk, the same
             # reading ``_extract_edges`` gives the file's own fields.
             elif node.type == "field_declaration":
-                cls_ancestors = _get_class_ancestors(node, pf.source)
+                owner_sym = _get_enclosing_type_symbol(node, pf.path, symbol_by_position)
                 declared_field_type = _declared_type_name(
                     node.child_by_field_name("type"), pf.source,
                 )
-                if cls_ancestors and declared_field_type is not None:
-                    cls_name = ".".join(cls_ancestors)
+                if owner_sym is not None and declared_field_type is not None:
                     for child in node.children:
                         if child.type != "variable_declarator":
                             continue
                         vc = child.child_by_field_name("name")
                         if vc is None:  # pragma: no cover - the grammar always names one
                             continue
-                        global_class_fields.setdefault(cls_name, {})[
+                        global_class_fields.setdefault(owner_sym.id, {})[
                             _node_text(vc, pf.source)
                         ] = declared_field_type
 
@@ -4148,9 +4221,10 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     # the linker's ``_walk_parents_for_field`` helper that reads this
     # meta off the parent class symbols it finds via the ``extends``
     # edges emitted by ``inheritance.py``.
-    for cls_name, fields_dict in global_class_fields.items():
-        cls_sym = class_symbols.get(cls_name)
-        if cls_sym is None:  # pragma: no cover
+    type_by_id = {s.id: s for s in all_symbols if s.kind in _JAVA_TYPE_SYMBOL_KINDS}
+    for cls_id, fields_dict in global_class_fields.items():
+        cls_sym = type_by_id.get(cls_id)
+        if cls_sym is None:  # pragma: no cover - keyed by a type symbol's id
             continue
         if cls_sym.meta is None:
             cls_sym.meta = {}
@@ -4231,6 +4305,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             wildcard_imports=pf.wildcard_imports or [],
             method_return_type_registry=method_return_type_registry,
             project_class_names=project_class_names,
+            file_symbols=file_symbols_by_path.get(str(pf.path), []),
         )
         # WI-lozug: emit module_attr_ref edges for field_access nodes
         # whose base resolves to an imported class or to ``System``
