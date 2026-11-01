@@ -29,3 +29,10 @@
   clock: 2  # f77c
   nonce: f77c  # f77c
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph2/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e. route_handler.py ~:615-620 still classifies by '@' else rails, and the rails resolver needs '#'. Fixture (conf/routes with 3 routes + app/controllers/UserController.scala) via `hypergumbo run`: route markers carry controller_action controllers.UserController.list etc., and there are 0 dispatches_to edges (only scala calls/imports/extends). play_routes.py's top docstring now states the gap (line ~22), but its line ~114 docstring still claims route_handler creates dispatches_to edges. MECHANISM: route_handler._extract_handler_ref dispatches on separator ('@' -> laravel, else rails) instead of on producer, so Play's dotted controllers.Foo.bar fails the rails '#' split. SHARES MECHANISM WITH: none."  # f77c
+- op: discuss  # ca99
+  at: '2026-11-01T10:57:56Z'  # ca99
+  by: agent  # ca99
+  actor: jgstern_agent  # ca99
+  clock: 3  # ca99
+  nonce: ca99  # ca99
+  message: "P3 REVIEW 2026-11-01 side finding (misc2/fx_mirus2): on a Play routes->controller fixture route-handler-linker emitted 0 edges and its silence_reason is 'unreported', so the gap is also not disclosed by reason."  # ca99

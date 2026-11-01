@@ -50,3 +50,10 @@
   clock: 5  # 3388
   nonce: '3388'  # 3388
   message: "New instance of this statement (one file-kind Symbol per path across producers), found 2026-10-01 during WI-majov on dev af4e16964b: a .ts file importing ./util.js makes js-module-linker mint typescript:src/util.js:1-1:file:file beside the analyzer's javascript:src/util.js:1-1:file:file (target id built with the IMPORTER's language, js_module.py ~805). Filed as WI-babuk-nufoh-rolig-sabus-gobuk-zituh-sofup-holid. This note changes no status; this row's fix (absolute-path shape) is not contradicted."  # 3388
+- op: discuss  # c82e
+  at: '2026-11-01T10:57:56Z'  # c82e
+  by: agent  # c82e
+  actor: jgstern_agent  # c82e
+  clock: 6  # c82e
+  nonce: c82e  # c82e
+  message: "P3 REVIEW 2026-11-01 side finding (misc3/fx_modan): on .svelte and .vue files each path carries TWO file-kind Symbols, javascript:src/App.svelte:1-1:file:file and svelte:src/App.svelte:1-1:file:file (likewise vue:), which contradicts this invariant's statement (one file-kind Symbol per path). Recorded on WI-modan point 5 too. Proposal for the owner: re-open as violated, or narrow the statement to per-analyzer. Status unchanged."  # c82e

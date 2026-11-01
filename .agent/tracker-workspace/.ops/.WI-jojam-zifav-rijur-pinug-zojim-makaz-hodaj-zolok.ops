@@ -1,0 +1,22 @@
+- op: create  # 1653
+  at: '2026-11-01T10:57:17Z'  # 1653
+  by: agent  # 1653
+  actor: jgstern_agent  # 1653
+  clock: 1  # 1653
+  nonce: '1653'  # 1653
+  data:  # 1653
+    kind: work_item  # 1653
+    title: "go: a method on a generic receiver (func (b Box[T]) Foo) is named bare 'Foo', not 'Box.Foo'"  # 1653
+    status: todo_hard  # 1653
+    priority: 3  # 1653
+    parent:  # 1653
+    tags:  # 1653
+    - go  # 1653
+    - analysis_quality  # 1653
+    - receiver_typing  # 1653
+    isbefore: []  # 1653
+    duplicate_of: []  # 1653
+    not_duplicate_of: []  # 1653
+    pr_ref:  # 1653
+    description: "Found by the 2026-11-01 P3 stale-item review (~/hypergumbo_lab_notebook/p3_review_11012026/gorc1/, dev 100b6fbb6e). _extract_receiver_type_from_node (go.py:1361) handles only type_identifier and pointer_type receiver nodes, so a generic_type receiver yields no type name and the method symbol is minted unqualified (go:a.go:5-5:Foo:method). Consequence: typed calls x.Foo() with x Box[int] resolve ambiguous. Fixture gorc1/fx_moloj2. Split out of WI-moloj (part 3)."  # 1653
+    fields: {}  # 1653

@@ -19,3 +19,10 @@
     pr_ref:  # 3d2b
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. pascal.py:352 and puppet.py:104/497 both claim *.pp; discovery.py's ambiguous-extension section covers .m, .d and .php only. On a fixture with one Puppet and one Pascal .pp, each analyzer reported files_analyzed 2. Same shape as WI-fovop (.v) and WI-somod (.h). v10."  # 3d2b
     fields: {}  # 3d2b
+- op: discuss  # 7106
+  at: '2026-11-01T10:57:56Z'  # 7106
+  by: agent  # 7106
+  actor: jgstern_agent  # 7106
+  clock: 2  # 7106
+  nonce: '7106'  # 7106
+  message: "P3 REVIEW 2026-11-01 side finding (misc2): still live on dev 100b6fbb6e: limits.failed_files lists BOTH pascal and puppet for the same init.pp."  # 7106
