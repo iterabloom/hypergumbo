@@ -96,7 +96,17 @@ field's type, an inline fully-qualified path under
 ``inline_qualified_owner``, and a chain ending in a project type resolves on
 that type. ``super.m()`` resolves through the enclosing class's
 ``base_classes`` (``_emit_super_call``); an external base leaves an
-unresolved edge whose ``receiver_type_hint`` names it.
+unresolved edge whose ``receiver_type_hint`` names it. The enclosing class
+of a ``super.m()``, ``this.m()``, ``::m`` or ``this::m`` is the one whose
+declaration contains the call, by POSITION, and its own member is this
+file's declaration at ``<class qualified name>.m`` (``_own_class_lookup``);
+the base's ``m`` is the one at the path the file imports
+(``_kt_import_target``), else its own package's; a base class resolves
+same-file, import, same package, then by id (``_resolve_base_class_kotlin``).
+The run-wide name-keyed table had kept one ``Foo``
+and one ``Foo.m`` for every package's ``Foo`` (WI-gikuk). A ``this.m()`` the
+class does not declare (an extension, an inherited member) keeps the name
+lookup.
 
 The process's own standard streams (WI-rabum). ``System.err.println(k)`` is
 a call on the ``java.io.PrintStream`` the field declares, emitted with that
@@ -164,7 +174,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Spa
 from hypergumbo_core.overload_arity import scoped_table_stable_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
-from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     SymbolsAt,
@@ -217,6 +227,10 @@ PASS_ID = make_pass_id("kotlin")
 
 #: INV-bamij: declarations whose BODY anchors a call that sits in no function.
 _TYPE_BODY_NODES: frozenset[str] = frozenset({"class_declaration", "object_declaration", "companion_object"})
+
+#: The declarations whose ``base_classes`` a ``super.m()`` inside them walks
+#: (INV-dupol; found by position since WI-gikuk).
+_SUPER_OWNER_NODES: frozenset[str] = frozenset({"class_declaration", "object_declaration"})
 
 
 def find_kotlin_files(repo_root: Path) -> Iterator[Path]:
@@ -898,6 +912,9 @@ class FileAnalysis:
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
     imports: dict[str, str] = field(default_factory=dict)
+    #: The file's ``package`` header, ``None`` for the default package. A
+    #: base named without an import is looked up here first (WI-gikuk).
+    package: Optional[str] = None
 
 
 def _kt_declared_type(type_node: "tree_sitter.Node | None", source: bytes) -> str | None:
@@ -1214,6 +1231,7 @@ def _extract_symbols_from_file(
     analysis.imports = _extract_imports(tree, source)
     # ADR-0032 Phase 4 PR4: extract package once for qualified_name population.
     package_name = _extract_kotlin_package(tree.root_node, source)
+    analysis.package = package_name
 
     for node in iter_tree(tree.root_node):
         # Function declaration
@@ -1661,6 +1679,7 @@ def _extract_edges_from_file(
         return []
 
     _caller_path = str(file_path)
+    file_package = _extract_kotlin_package(tree.root_node, source)
     edges: list[Edge] = []
     file_id = make_file_id("kotlin", str(file_path))
     file_anchor = file_anchor_symbol("kotlin", str(file_path), PASS_ID, run.execution_id)
@@ -1889,6 +1908,31 @@ def _extract_edges_from_file(
             run.execution_id, call_construct="method",
         ))
 
+    # WI-gikuk: this file's declarations by qualified name (``a.Foo.helper``).
+    own_by_qualified: dict[str, Symbol] = {
+        s.qualified_name: s for s in decl_symbols if s.qualified_name
+    }
+
+    def _own_class_lookup(
+        node: "tree_sitter.Node", member: str, name_key: str,
+    ) -> LookupResult:
+        """``this.member`` / ``::member``: the enclosing class's OWN member first.
+
+        WI-gikuk. The class is the one whose declaration contains ``node`` (by
+        POSITION) and its member the declaration of this file at
+        ``<class qualified name>.<member>``. The run-wide resolver keeps one
+        ``Foo.helper`` for every ``Foo`` in the project, so ``b.Foo``'s
+        ``this.helper()`` bound ``a.Foo``'s. When this class declares no such
+        member (an extension function, an inherited one) the old name lookup
+        of ``name_key`` stands.
+        """
+        owner = enclosing_declared_symbol(node, decl_index, _SUPER_OWNER_NODES)
+        if owner is not None and owner.qualified_name:
+            own = own_by_qualified.get(f"{owner.qualified_name}.{member}")
+            if own is not None:
+                return LookupResult(symbol=own, confidence=NameResolver.CONFIDENCE_EXACT)
+        return resolver.lookup(name_key, caller_path=_caller_path)
+
     def _emit_super_call(call: "tree_sitter.Node", method_name: str) -> None:
         """INV-dupol: ``super.m()`` calls the BASE's ``m``.
 
@@ -1896,17 +1940,42 @@ def _extract_edges_from_file(
         delegation specifiers the symbol pass already records). A base the
         project does not define keeps an unresolved edge whose receiver type
         names it, with the module its import (or java.lang) gives.
+
+        WI-gikuk: the enclosing class is the one whose declaration node
+        contains the call, by POSITION. It was looked up by bare name in
+        ``class_symbols`` (one class per name, run-wide), so ``a.Foo`` and
+        ``b.Foo``, or two outer classes' nested ``Inner``, walked one class's
+        bases. The base's member is the one at the path the file imports
+        (WI-tipoh's :func:`_kt_import_target`), or for a base it does not
+        import, its own package's, not the name-keyed resolver's pick among
+        same-named bases.
         """
         assert current_function is not None  # narrowed by the call arm
         line = call.start_point[0] + 1
-        owner = _get_enclosing_class(call, source)
-        owner_sym = class_symbols.get(owner) if owner else None
+        owner_sym = enclosing_declared_symbol(call, decl_index, _SUPER_OWNER_NODES)
         bases = list((owner_sym.meta or {}).get("base_classes", [])) if owner_sym else []
         for base in bases:
-            found = resolver.lookup(f"{base}.{method_name}", caller_path=_caller_path)
-            if found.found and found.symbol is not None:
+            # A base the file does not import is first its own package's.
+            same_package = (
+                project_by_qualified.get(
+                    f"{file_package}.{base}.{method_name}" if file_package
+                    else f"{base}.{method_name}",
+                )
+                if base not in imports else None
+            )
+            found = (
+                LookupResult(symbol=same_package, confidence=NameResolver.CONFIDENCE_EXACT)
+                if same_package is not None
+                else resolver.lookup(f"{base}.{method_name}", caller_path=_caller_path)
+            )
+            target = (
+                _kt_import_target(found.symbol, imports.get(base), method_name,
+                                  project_by_qualified)
+                if found.found and found.symbol is not None else None
+            )
+            if target is not None:
                 edges.append(Edge.create(
-                    src=current_function.id, dst=found.symbol.id,
+                    src=current_function.id, dst=target.id,
                     edge_type="calls", line=line,
                     resolution_score=found.confidence,
                     origin=PASS_ID, origin_run_id=run.execution_id,
@@ -2044,8 +2113,9 @@ def _extract_edges_from_file(
                         # Look for method in enclosing class
                         enclosing_class = _get_enclosing_class(node, source)
                         if enclosing_class:
-                            candidate = f"{enclosing_class}.{method_name}"
-                            lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
+                            lookup_result = _own_class_lookup(
+                                node, method_name, f"{enclosing_class}.{method_name}",
+                            )
                             if lookup_result.found and lookup_result.symbol is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -2450,7 +2520,7 @@ def _extract_edges_from_file(
                 target_name = (
                     f"{enclosing_class}.{ref_name}" if enclosing_class else ref_name
                 )
-                lookup_result = resolver.lookup(target_name, caller_path=_caller_path)
+                lookup_result = _own_class_lookup(node, ref_name, target_name)
                 if not (lookup_result.found and lookup_result.symbol is not None):
                     lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                 if lookup_result.found and lookup_result.symbol is not None:
@@ -2506,11 +2576,12 @@ def _extract_edges_from_file(
                             if enclosing_class
                             else method_name
                         )
+                        lookup_result = _own_class_lookup(node, method_name, target)
                     else:
                         receiver_name = node_text(receiver_node, source)
                         target = f"{receiver_name}.{method_name}"
+                        lookup_result = resolver.lookup(target, caller_path=_caller_path)
 
-                    lookup_result = resolver.lookup(target, caller_path=_caller_path)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -2557,6 +2628,7 @@ def _resolve_base_class_kotlin(
     child_sym: Symbol,
     candidates_by_name: dict[str, list[Symbol]],
     sym_file_imports: dict[str, dict[str, str]],
+    package_by_path: dict[str, Optional[str]] | None = None,
 ) -> Symbol | None:
     """Resolve a base class/interface name to a specific Symbol, disambiguating collisions.
 
@@ -2566,7 +2638,13 @@ def _resolve_base_class_kotlin(
     1. Same-file match: base class defined in the same file as the child
     2. Import match: child's file has ``import com.example.models.Model`` and a
        candidate's fully qualified name or file path matches
-    3. First by ID: deterministic fallback (sorted by symbol ID)
+    3. Same-package match (WI-gikuk): the candidate whose qualified name is
+       ``<child's package>.<base_name>``. Kotlin needs no import for a class
+       of its own package, so ``package b; class Foo : Base()`` with
+       ``a.Base`` and ``b.Base`` in the repo is ``b.Base``; it fell through
+       to the by-id pick. After the import tier: an explicit import shadows
+       a same-package class.
+    4. First by ID: deterministic fallback (sorted by symbol ID)
 
     Args:
         base_name: The base class/interface name to resolve (e.g., 'Model')
@@ -2574,6 +2652,8 @@ def _resolve_base_class_kotlin(
         candidates_by_name: Multi-value lookup: name -> list of Symbol candidates
         sym_file_imports: Maps symbol ID -> file-level imports dict
             (simple name -> fully qualified name)
+        package_by_path: Each file's package (``None`` = default package);
+            without it the same-package tier is skipped.
 
     Returns:
         The resolved base class/interface Symbol, or None if no match found.
@@ -2621,7 +2701,15 @@ def _resolve_base_class_kotlin(
                 if cand_no_ext.endswith(short_path):
                     return cand
 
-    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
+    # 3. Same-package match, by package-qualified name.
+    if package_by_path is not None and child_path in package_by_path:
+        child_package = package_by_path[child_path]
+        same_package_qn = f"{child_package}.{base_name}" if child_package else base_name
+        same_package = [c for c in candidates if c.qualified_name == same_package_qn]
+        if len(same_package) == 1:
+            return same_package[0]
+
+    # 4. Deterministic fallback: first by symbol ID (sorted for stability)
     candidates_sorted = sorted(candidates, key=lambda c: c.id)
     return candidates_sorted[0]
 
@@ -2632,6 +2720,7 @@ def _extract_inheritance_edges(
     interface_by_name: dict[str, list[Symbol]],
     sym_file_imports: dict[str, dict[str, str]],
     run: AnalysisRun,
+    package_by_path: dict[str, Optional[str]] | None = None,
 ) -> list[Edge]:
     """Extract extends/implements edges from class inheritance (META-001).
 
@@ -2671,7 +2760,7 @@ def _extract_inheritance_edges(
             # Determine edge type based on whether target is interface or class
             # Try interface first, then class, using disambiguation
             iface_sym = _resolve_base_class_kotlin(
-                base_name, sym, interface_by_name, sym_file_imports
+                base_name, sym, interface_by_name, sym_file_imports, package_by_path,
             )
             if iface_sym is not None and iface_sym.id != sym.id:
                 # An interface EXTENDS its base interface; only a class
@@ -2680,7 +2769,7 @@ def _extract_inheritance_edges(
                 base_sym = iface_sym
             else:
                 class_sym = _resolve_base_class_kotlin(
-                    base_name, sym, class_by_name, sym_file_imports
+                    base_name, sym, class_by_name, sym_file_imports, package_by_path,
                 )
                 if class_sym is not None and class_sym.id != sym.id:
                     edge_type = "extends"
@@ -2968,7 +3057,11 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
             for sym in analysis.symbols:
                 sym_file_imports[sym.id] = analysis.imports
         inheritance_edges = _extract_inheritance_edges(
-            all_symbols, class_by_name, interface_by_name, sym_file_imports, run
+            all_symbols, class_by_name, interface_by_name, sym_file_imports, run,
+            package_by_path={
+                str(kt_file): analysis.package
+                for kt_file, analysis in file_analyses.items()
+            },
         )
         all_edges.extend(inheritance_edges)
 
