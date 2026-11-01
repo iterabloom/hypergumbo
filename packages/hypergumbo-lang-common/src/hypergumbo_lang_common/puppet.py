@@ -341,14 +341,6 @@ _SYMBOL_BUILDERS = {
     "node_definition": _node_symbol,
 }
 
-#: Resource relationship attributes Pass 2 turns into ``depends_on`` edges:
-#: attribute -> (evidence_type, meta).
-_RELATIONSHIP_ATTRIBUTES: dict[str, tuple[str, dict[str, object]]] = {
-    "require": ("require", {"ref_construct": "puppet_require"}),
-    "notify": ("notify", {"ref_construct": "puppet_notify", "refresh": True}),
-}
-
-
 def _relationship_edges(
     node: "tree_sitter.Node", resource: Symbol, run_id: str,
 ) -> list[Edge]:
@@ -357,19 +349,29 @@ def _relationship_edges(
     _, _, attributes = _resource_parts(node)
     line = node.start_point[0] + 1
     edges: list[Edge] = []
-    for attribute, (evidence_type, meta) in _RELATIONSHIP_ATTRIBUTES.items():
-        if attribute in attributes:
-            edges.append(Edge.create(
-                src=resource.id,
-                # Raw reference text, e.g. ``Package['nginx']`` (WI-tuniz).
-                dst=f"puppet:resource:{attributes[attribute]}",
-                edge_type="depends_on",
-                line=line,
-                origin=PASS_ID,
-                origin_run_id=run_id,
-                evidence_type=evidence_type,
-                meta=dict(meta),
-            ))
+    # The evidence type is the attribute's name. Each meta is a literal here,
+    # not a shared table entry, so the meta-key coherence scan can read its
+    # keys (a copied table value is a write it cannot enumerate).
+    for attribute in ("require", "notify"):
+        if attribute not in attributes:
+            continue
+        if attribute == "notify":
+            meta: dict[str, object] = {
+                "ref_construct": "puppet_notify", "refresh": True,
+            }
+        else:
+            meta = {"ref_construct": "puppet_require"}
+        edges.append(Edge.create(
+            src=resource.id,
+            # Raw reference text, e.g. ``Package['nginx']`` (WI-tuniz).
+            dst=f"puppet:resource:{attributes[attribute]}",
+            edge_type="depends_on",
+            line=line,
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            evidence_type=attribute,
+            meta=meta,
+        ))
     return edges
 
 
