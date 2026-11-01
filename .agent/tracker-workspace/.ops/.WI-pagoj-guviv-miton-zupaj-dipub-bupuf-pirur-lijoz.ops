@@ -1,0 +1,22 @@
+- op: create  # 5174
+  at: '2026-11-01T09:56:21Z'  # 5174
+  by: agent  # 5174
+  actor: jgstern_agent  # 5174
+  clock: 1  # 5174
+  nonce: '5174'  # 5174
+  data:  # 5174
+    kind: work_item  # 5174
+    title: "llvm-ir: a `declare` of a function overwrites the `define` of the same name in the bare-name table, so a cross-file call binds to the declaration when the declaring file is indexed last"  # 5174
+    status: todo_hard  # 5174
+    priority: 3  # 5174
+    parent:  # 5174
+    tags:  # 5174
+    - llvm_ir  # 5174
+    - analysis_quality  # 5174
+    - call_resolution  # 5174
+    isbefore: []  # 5174
+    duplicate_of: []  # 5174
+    not_duplicate_of: []  # 5174
+    pr_ref:  # 5174
+    description: "SPLIT 2026-11-01 from WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum. Confirmed (dev 24d0b860ee; ~/hypergumbo_lab_notebook/p2_review_11012026/C1/fx_sipoj, sipoj_direct.log): utils.ll defines utility_func, main.ll declares it and calls it; with utils.ll enumerated first the call binds to the define; with main.ll enumerated first it binds to llvm_ir:main.ll:1-1:utility_func:declaration, and packages/hypergumbo-lang-extended1/tests/test_llvm_ir.py::TestAnalyzeLlvmIr::test_cross_file_call_resolution (:213) fails. MECHANISM: one name -> symbol map filled in file order with last-writer-wins and no definition-over-declaration preference. ACCEPTANCE: the call binds to the define in both orders; a declaration is chosen only when no define exists in the tree."  # 5174
+    fields: {}  # 5174

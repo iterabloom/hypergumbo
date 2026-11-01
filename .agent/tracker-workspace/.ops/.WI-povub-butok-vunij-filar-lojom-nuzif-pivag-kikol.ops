@@ -1,0 +1,22 @@
+- op: create  # 0763
+  at: '2026-11-01T09:56:15Z'  # 0763
+  by: agent  # 0763
+  actor: jgstern_agent  # 0763
+  clock: 1  # 0763
+  nonce: '0763'  # 0763
+  data:  # 0763
+    kind: work_item  # 0763
+    title: "js/ts: the namespace-import path_hint does not override the bare-name symbol table, so `import * as u from './a_early/utils'; u.process()` binds to whichever same-named function was indexed last in directory-enumeration order"  # 0763
+    status: todo_hard  # 0763
+    priority: 2  # 0763
+    parent:  # 0763
+    tags:  # 0763
+    - javascript  # 0763
+    - analysis_quality  # 0763
+    - call_resolution  # 0763
+    isbefore: []  # 0763
+    duplicate_of: []  # 0763
+    not_duplicate_of: []  # 0763
+    pr_ref:  # 0763
+    description: "SPLIT 2026-11-01 from WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum (which keeps the test-order limb). Confirmed a product bug, not a local-vs-CI difference (dev 24d0b860ee; ~/hypergumbo_lab_notebook/p2_review_11012026/C1/fx_sipoj, sipoj_direct.log): with a_early/utils.js and z_late/utils.js both defining process(), and main.js importing the a_early one by namespace, the call binds to a_early when the directory enumerates a_early last and to z_late/utils.js:1-1:process:function when z_late enumerates last. MECHANISM: js_ts.py:7442 and :7771 fill global_symbols[sym.name] = sym (last-writer-wins) in find_js_ts_files order (:286, unsorted readdir); the namespace path_hint lookup at :7191 consults the name-keyed table and does not prefer the imported file. Same family as INV-dosoz / INV-tohuj (identity keyed by bare name) and the WI-kosar principle (resolve by position, not by name). ACCEPTANCE: the call binds to a_early/utils.js in BOTH creation orders (the test must create z_late first - see the sibling test item WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum); a same-named function in an unrelated file never wins over the file the import names."  # 0763
+    fields: {}  # 0763
