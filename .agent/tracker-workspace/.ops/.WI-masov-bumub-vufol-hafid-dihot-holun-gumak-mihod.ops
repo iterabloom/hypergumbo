@@ -33,3 +33,18 @@
   nonce: fe8d  # fe8d
   set:  # fe8d
     description: "[REVIEW 2026-11-01, CURRENT] Reviewed 2026-11-01 on dev 9ae4abe13f. _extract_param_types (py.py:4428, local_symbols checked before imports at ~4452) is unchanged. Fixture fx_masov: pkg/m.py defines class Foo, then 'from pkg.other import Foo', then def use(x: Foo): x.bar(). Survey emits a RESOLVED calls edge use -> python:pkg/m.py:2-3:Foo.bar:method at confidence 0.85 (evidence_derived, ast_call); the right target is pkg/other.py Foo.bar. So the residual is not just imprecision: a confidently-wrong direct-method edge is live, the 'surface elsewhere' case the item predicted. The low-priority rationale ('the confidently-wrong edge is already closed') is false. (Original text below; the review entry in the thread has the evidence.)\n\nDeeper root cause behind the WI-supat PR-A adversarial-review blocker. When resolving a bare `param: Name` annotation, `_extract_param_types` (py.py ~3565) deterministically prefers `local_symbols.get(type_name)` (a LOCAL class) over a same-named import, even when the import SHADOWS the local class (Python last-binding-wins: `class Foo(...)` followed by `from x import Foo` rebinds `Foo` to the import). So `var_types[param]` holds the WRONG class in that self-shadow case.\n\nWI-supat PR-A closed the CONFIDENTLY-WRONG downstream symptom at the producer (the `_receiver_type_id_trustworthy` gate omits `receiver_type_id` when the resolved type is the in-file class AND the name is import-shadowed, so no wrong resolved edge is minted). But the underlying var_types mis-resolution remains and could surface elsewhere (e.g. Case 2c/2f direct method resolution on the wrong local type, or any future consumer of var_types).\n\nFix options: (a) when a bare annotation name is BOTH a local class and an import, bias `_extract_param_types` to unresolved (drop the entry); or (b) honor Python import precedence (last binding wins) — resolve to the import. (a) is the conservative INV-fahub-aligned choice. Low priority: the confidently-wrong edge is already closed by WI-supat PR-A; this is the residual imprecision, and the trigger (F811 self-shadow: a local class def immediately shadowed by a same-name import in one module) is pathological."  # fe8d
+- op: update  # 94c1
+  at: '2026-11-01T22:27:40Z'  # 94c1
+  by: agent  # 94c1
+  actor: jgstern_agent  # 94c1
+  clock: 4  # 94c1
+  nonce: 94c1  # 94c1
+  set:  # 94c1
+    priority: 3  # 94c1
+- op: discuss  # 716a
+  at: '2026-11-01T22:27:40Z'  # 716a
+  by: agent  # 716a
+  actor: jgstern_agent  # 716a
+  clock: 5  # 716a
+  nonce: 716a  # 716a
+  message: "PRIORITY P4 -> P3 (owner-approved 2026-11-01). Reason: a confidently-wrong edge is live. With pkg/m.py defining class Foo, then 'from pkg.other import Foo', then def use(x: Foo): x.bar(), survey emits a RESOLVED calls edge to the shadowed local Foo.bar at 0.85 (Case-2 direct method path); the right target is pkg/other.py Foo.bar. The earlier low-priority rationale (the wrong edge already closed by WI-supat PR-A) is false."  # 716a

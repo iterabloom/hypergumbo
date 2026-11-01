@@ -28,3 +28,10 @@
   clock: 2  # 0b0c
   nonce: 0b0c  # 0b0c
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e. Both filed probes reproduce: probe 1 has no 'go', probe 2 has no 'run'; the control emits all four. The tree dump shows 'run : Nat -> Nat' as two sibling function nodes. Extra probes: dropping the blank line after the data block still loses 'go'; two postulate lines followed by a blank line keep 'run', so the trigger depends on the grammar's layout handling. MECHANISM: agda analyzer skips a signature tree-sitter-agda splits into two sibling function nodes (lhs atom name | lhs atom ':' ...)."  # 0b0c
+- op: discuss  # 1c77
+  at: '2026-11-01T22:27:40Z'  # 1c77
+  by: agent  # 1c77
+  actor: jgstern_agent  # 1c77
+  clock: 3  # 1c77
+  nonce: 1c77  # 1c77
+  message: "SPLIT IN from WI-molon-rorop-nuhuv-finuz-dabuk-ravaf-fidij-pokas part 1 (owner-approved 2026-11-01, P4 review). Live at dev 9ae4abe13f with tree-sitter-agda 1.3.3 (fixtures ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/fx_molon): after a data block with ONE constructor, the next signature 'foo : Unit -> Unit' is split into two function nodes ('foo' and ': Unit -> Unit') and foo is not emitted; a following 'data Bool' header is lost too (Bool not emitted, true/false come out as functions). It breaks the next declaration, not every later one. Same layout-block mechanism as this item."  # 1c77

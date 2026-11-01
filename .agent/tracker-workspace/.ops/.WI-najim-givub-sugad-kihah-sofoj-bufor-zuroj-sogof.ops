@@ -38,3 +38,18 @@
   nonce: fa26  # fa26
   set:  # fa26
     description: "[REVIEW 2026-11-01, OBSOLETE] P4 review 2026-11-01 at dev 9ae4abe13f: pyproject.toml [tool.mypy] enable_error_code omits explicit-override, and lines 130-134 record why. Commit 12c4dbc65e (2026-07-19, after this item was filed) dropped it, citing 289 errors, a stricter-than-pyright default, the typing_extensions dependency on 3.10, and low bug value. 0 @override uses in packages/*/src. The item's premise that the code is 'already proposed in W4's list; this sweep lets the gate close' was superseded. mypy's default `override` check (2 errors in the baseline) already catches incompatible subclass signatures. Close as wont_do unless the owner reverses 12c4dbc65e. (Original text below; the review entry in the thread has the evidence.)\n\nMechanical sweep: add @override (typing.override on 3.12+, typing_extensions.override on 3.10/3.11) to every method that overrides a base-class method. Then enable the explicit-override error code in [tool.mypy] (already proposed in W4's error-code list; this is the sweep that lets the gate close). Catches drift when a base-class method signature changes but a subclass doesn't update. Useful for the analyzer-base-class family and any linker subclasses that override base behavior."  # fa26
+- op: update  # 2ebd
+  at: '2026-11-01T22:27:39Z'  # 2ebd
+  by: agent  # 2ebd
+  actor: jgstern_agent  # 2ebd
+  clock: 4  # 2ebd
+  nonce: 2ebd  # 2ebd
+  set:  # 2ebd
+    status: wont_do  # 2ebd
+- op: discuss  # 1741
+  at: '2026-11-01T22:27:39Z'  # 1741
+  by: agent  # 1741
+  actor: jgstern_agent  # 1741
+  clock: 5  # 1741
+  nonce: '1741'  # 1741
+  message: "WONT_DO (obsolete). explicit-override was deliberately dropped from the mypy bar in 12c4dbc65e (WI-rokup, 2026-07-19): 289 errors, a stricter-than-pyright default, a typing_extensions dependency on 3.10, low bug value (pyproject.toml:130-134). mypy's default `override` check still catches incompatible subclass signatures. Evidence: this item's 'P4 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/). Owner approved this on 2026-11-01 after the P4 review."  # 1741

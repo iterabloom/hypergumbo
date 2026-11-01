@@ -82,3 +82,18 @@
   nonce: 4ff0  # 4ff0
   set:  # 4ff0
     description: "[REVIEW 2026-11-01, OBSOLETE] Review 2026-11-01 at dev 9ae4abe13f. Deliverable 2 populated dest_access_mode, which ADR-0038 ruling 3 removed (ir.py:141 and slice.py:96 say so). Deliverable 3 cross-references WI-hukoh, which closed done with defer-indefinitely, and the would_admit_dst_reader trigger is gone. Deliverable 1 asks type_hierarchy.py to disambiguate a multi-candidate registry. But _method_return_type_registry (analyze/base.py:4783-4800) is an analyzer-internal, first-writer-wins dict[str,str] that no linker reads, and the ambiguous-candidate problem is now tracked analyzer-side by INV-zujag, WI-jutur and WI-hubik. (Original text below; the review entry in the thread has the evidence.)\n\nPhase 5 (follow-on) of the ADR-0006 Return-Type Registry Pre-Pass. Optional cross-linker integration that consumes the registry built in Phases 1-4.\n\nDELIVERABLES:\n(1) type_hierarchy.py fallback for ambiguous receiver types: when the registry has multiple candidate methods for a given short name, use type_hierarchy's receiver→class index to disambiguate.\n\n(2) dataflow.py refinement for chained method-call access_mode: when a chained call like 'cache.Get(k).Set(v)' has known receiver types (Cache.Get returns *Entry, Entry.Set is a write), populate dest_access_mode for the second call's receiver edge. This is Phase 5's contribution to the WI-hukoh forward-dataflow option (2)/(3) decision.\n\n(3) Cross-reference WI-hukoh in the PR description.\n\nOPTIONAL: only after Phases 1-4 are validated against deep-bakeoff metrics. Skip if the registry signal turns out to be too noisy or too thin to support cross-linker consumption.\n\nPREREQUISITE: Phase 4 (created above)."  # 4ff0
+- op: update  # 9797
+  at: '2026-11-01T22:27:39Z'  # 9797
+  by: agent  # 9797
+  actor: jgstern_agent  # 9797
+  clock: 10  # 9797
+  nonce: '9797'  # 9797
+  set:  # 9797
+    status: wont_do  # 9797
+- op: discuss  # bdc5
+  at: '2026-11-01T22:27:39Z'  # bdc5
+  by: agent  # bdc5
+  actor: jgstern_agent  # bdc5
+  clock: 11  # bdc5
+  nonce: bdc5  # bdc5
+  message: "WONT_DO (obsolete). Deliverable 2 fills dest_access_mode, which ADR-0038 ruling 3 removed; deliverable 3 depends on WI-hukoh, closed done (defer indefinitely); deliverable 1 presumes a multi-candidate registry that no linker reads (_method_return_type_registry is analyzer-internal). The ambiguous-candidate concern is tracked analyzer-side by INV-zujag, WI-jutur and WI-hubik. Evidence: this item's 'P4 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/). Owner approved this on 2026-11-01 after the P4 review."  # bdc5

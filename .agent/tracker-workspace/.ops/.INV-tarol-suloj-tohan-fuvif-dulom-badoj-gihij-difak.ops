@@ -83,3 +83,10 @@
   set:  # 23db
     fields:  # 23db
       severity:  # 23db
+- op: discuss  # 650b
+  at: '2026-11-01T22:23:31Z'  # 650b
+  by: agent  # 650b
+  actor: jgstern_agent  # 650b
+  clock: 9  # 650b
+  nonce: 650b  # 650b
+  message: "P4 REVIEW 2026-11-01 side finding (dev 9ae4abe13f, ctrl1/fx_gukoh): the leak this invariant names survives on a different entry path. A forward slice that reaches a CLASS (here via an instantiates edge) still adds that class's file imports (slice.py:903-908), giving imports edges whose source file node is not in the slice (2 of 12 edges open for service_b). Filed as a new P2 work item ('slice: a forward slice that reaches a class ...'). This note changes no status; the function-entry fix this row records still holds."  # 650b

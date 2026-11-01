@@ -38,3 +38,18 @@
   clock: 3  # ac85
   nonce: ac85  # ac85
   message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/ctrl1/). VERDICT: CURRENT. P4 review 2026-11-01 at dev 9ae4abe13f: fixture with os.remove, os.system, subprocess.run, os.getenv, os.environ, urllib.request.urlopen (py) and process.env (js). `hypergumbo io-boundaries fx` reported exactly 7 boundary calls, all correct: env_read x3 (os.environ, os.getenv, process.env), fs_write os.remove, net_send urllib.request.urlopen, subprocess os.system + subprocess.run. No false positives. The control holds. The upstream defects it bounded (WI-zavad, WI-fuvuj) are both done, so its isolating role is used up and it can close. MECHANISM: io-boundary matcher keys on the module-qualified dst; correct whenever the analyzer preserves the module qualifier. PROPOSED DISPOSITION: close (awaiting owner authorization; status unchanged)."  # ac85
+- op: update  # 43f0
+  at: '2026-11-01T22:27:40Z'  # 43f0
+  by: agent  # 43f0
+  actor: jgstern_agent  # 43f0
+  clock: 4  # 43f0
+  nonce: 43f0  # 43f0
+  set:  # 43f0
+    status: done  # 43f0
+- op: discuss  # 8dce
+  at: '2026-11-01T22:27:40Z'  # 8dce
+  by: agent  # 8dce
+  actor: jgstern_agent  # 8dce
+  clock: 5  # 8dce
+  nonce: 8dce  # 8dce
+  message: "DONE (positive control holds). Live at dev 9ae4abe13f: `hypergumbo io-boundaries` on a py+js fixture reports exactly 7 boundary calls, all correctly classified (env_read x3, fs_write os.remove, net_send urllib.request.urlopen, subprocess os.system + subprocess.run), no false positives. The upstream defects it bounded (WI-zavad, WI-fuvuj) are done. Evidence: this item's 'P4 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/). Owner approved this on 2026-11-01 after the P4 review."  # 8dce

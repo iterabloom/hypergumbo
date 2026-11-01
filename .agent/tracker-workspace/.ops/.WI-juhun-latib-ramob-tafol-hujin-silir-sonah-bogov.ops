@@ -46,3 +46,18 @@
   nonce: 7c86  # 7c86
   set:  # 7c86
     description: "[REVIEW 2026-11-01, PARTLY-STALE] P4 review 2026-11-01 at dev 9ae4abe13f: 3 surveys of a py+js fixture. Sorted node ids, stable_ids, edge ids and (pass, run_signature) pairs were identical (same hash) across all 3, so the L2 contract holds. But with the item's five fields removed and the three arrays sorted, the runs are no longer byte-identical: analysis_runs[].cpu_ms (added 704ffe3b9e, after filing) varies, and so does the ORDER of limits.skipped_passes[] (scheme/racket/scss/matlab/robot moved around). Both are already in WI-sazap's 11-01 scope. The control has no work left, so it can close. (Original text below; the review entry in the thread has the evidence.)\n\nF64.A1 (blind severity 1/Cosmetic; positive control). Three independent runs of an identical fixture produce byte-identical output once five non-semantic field-classes (execution_id, origin_run_id, started_at, duration_ms, generated_at) are neutralized and the analysis_runs[]/nodes[]/edges[] arrays are sorted. Every content-derived identity field — nodes[].id, nodes[].stable_id, edges[].id, and the per-pass run_signature content hash — is bit-for-bit stable across runs. The documented L2 'functionally identical up to OS/hardware variation' reproducibility contract HOLDS; the only churn is in a handful of provenance/timing fields. This SCOPES the separate byte-reproducibility gap (card 010/WI-pifaj F64.A2) to provenance/timing fields only — the analysis itself is deterministic. No negative consequence. Filed for trend-cohort completeness (clearing measurement). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 7c86
+- op: update  # 6f71
+  at: '2026-11-01T22:27:39Z'  # 6f71
+  by: agent  # 6f71
+  actor: jgstern_agent  # 6f71
+  clock: 5  # 6f71
+  nonce: 6f71  # 6f71
+  set:  # 6f71
+    status: done  # 6f71
+- op: discuss  # 73f8
+  at: '2026-11-01T22:27:39Z'  # 73f8
+  by: agent  # 73f8
+  actor: jgstern_agent  # 73f8
+  clock: 6  # 73f8
+  nonce: 73f8  # 73f8
+  message: "DONE (positive control holds for the L2 contract). Live at dev 9ae4abe13f: 3 surveys of a py+js fixture give identical sorted node ids, stable_ids, edge ids and (pass, run_signature) pairs. The byte-level residual (analysis_runs[].cpu_ms, and the order of limits.skipped_passes[]) is owned by WI-sazap. Evidence: this item's 'P4 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/). Owner approved this on 2026-11-01 after the P4 review."  # 73f8

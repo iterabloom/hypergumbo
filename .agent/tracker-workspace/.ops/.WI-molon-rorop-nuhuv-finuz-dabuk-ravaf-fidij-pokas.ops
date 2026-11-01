@@ -41,3 +41,18 @@
   nonce: '5178'  # 5178
   set:  # 5178
     description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 on dev 9ae4abe13f (tree-sitter-agda 1.3.3, fx_molon). Part 1 reproduces but is INV-vokir's (P3) mechanism: after a one-constructor data block the next signature splits into two function nodes (foo not emitted), and a following 'data Bool' header is lost too. It does not swallow every later declaration. Part 2 as titled does NOT reproduce: in 4 where-block probes each block nests under its own clause. The F2 correction does reproduce: an empty nested 'module C where' gives an ERROR, enclosing module A is not emitted, and 'run' loses its A chain. agda.py:65-69 repeats the where claim. (Original text below; the review entry in the thread has the evidence.)\n\nReported by the WI-tusad B4 fix agent (PR #1562, 2026-10-12); not independently reproduced. Two tree-sitter-agda parse defects seen while migrating Agda stable_ids: (1) a data declaration with exactly one constructor is misparsed; (2) only the first clause-level where block in a file is nested under its clause, later ones are not. Neither was caused by B4. Effect on output not measured: symbols inside a mis-nested where may get the wrong scope chain (and so a different stable_id than intended). Next step: minimal repro for each, then decide grammar upgrade/patch vs analyzer-side workaround (see scripts/build-source-grammars if agda is built from source)."  # 5178
+- op: update  # 2cc7
+  at: '2026-11-01T22:27:40Z'  # 2cc7
+  by: agent  # 2cc7
+  actor: jgstern_agent  # 2cc7
+  clock: 5  # 2cc7
+  nonce: 2cc7  # 2cc7
+  set:  # 2cc7
+    title: "agda: an empty nested module body (module C where, nothing after) makes tree-sitter-agda ERROR the enclosing module, losing it and later scope chains"  # 2cc7
+- op: discuss  # 288a
+  at: '2026-11-01T22:27:40Z'  # 288a
+  by: agent  # 288a
+  actor: jgstern_agent  # 288a
+  clock: 6  # 288a
+  nonce: 288a  # 288a
+  message: "SPLIT (owner-approved 2026-11-01). Part 1 (one-constructor data block breaks the next declaration) moved to INV-vokir-bohuj-vumop-datup-tobog-rovoz-furoj-vofos. Part 2 as originally titled (where-blocks nest under the wrong clause) does not reproduce in 4 probes. This item now covers the empty-nested-module ERROR: 'module C where' with an empty body ERRORs lines 3-20, module A is not emitted and 'run' loses its A chain. agda.py:65-69 repeats the non-reproducing where claim and should be corrected with the fix."  # 288a

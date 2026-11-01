@@ -45,3 +45,18 @@
   clock: 4  # 0965
   nonce: '0965'  # 0965
   message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/ctrl1/). VERDICT: CURRENT. P4 review 2026-11-01 at dev 9ae4abe13f: fixture with a SyntaxError .py, a chmod-000 .py and a good .py. `hypergumbo survey fx --out X.json` exited 0 and analyzed good.py (10 nodes/11 edges). limits.failed_files = [{analyzer:python,path:pkg/bad.py,reason:'SyntaxError: invalid syntax ...'},{analyzer:python,path:pkg/noperm.py,reason:'PermissionError: [Errno 13] ...'}]. The control holds, and the PermissionError extension asked for on 06-09 now holds too (WI-madal done). Tests test_cli_run_behavior_map.py:459-517 and test_python_ast_analysis.py:106-148 pin it. No work is left, so it can close as a recorded control. MECHANISM: per-file read/parse exceptions (SyntaxError, UnicodeDecodeError, OSError incl. PermissionError) are caught at the extraction site (py.py:3332) and recorded in limits.failed_files; the run fails open. PROPOSED DISPOSITION: close (awaiting owner authorization; status unchanged)."  # 0965
+- op: update  # 0b84
+  at: '2026-11-01T22:27:39Z'  # 0b84
+  by: agent  # 0b84
+  actor: jgstern_agent  # 0b84
+  clock: 5  # 0b84
+  nonce: 0b84  # 0b84
+  set:  # 0b84
+    status: done  # 0b84
+- op: discuss  # 954b
+  at: '2026-11-01T22:27:39Z'  # 954b
+  by: agent  # 954b
+  actor: jgstern_agent  # 954b
+  clock: 6  # 954b
+  nonce: 954b  # 954b
+  message: "DONE (positive control holds, no work left). Live at dev 9ae4abe13f: `hypergumbo survey` on a fixture with a SyntaxError .py, a chmod-000 .py and a good .py exits 0, analyzes good.py (10 nodes / 11 edges), and records both failures in limits.failed_files with analyzer/path/reason (SyntaxError and PermissionError). Pinned by test_cli_run_behavior_map.py:459-517 and test_python_ast_analysis.py:106-148. Evidence: this item's 'P4 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/). Owner approved this on 2026-11-01 after the P4 review."  # 954b
