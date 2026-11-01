@@ -1604,7 +1604,7 @@
               "description": "Short name of the class that lexically owns an unresolved call site (Site 1: a bare / ``self`` / ``this`` call; Site 3 beside ``inherited_field_receiver``). Written by ``analyze.base.make_unresolved_edge`` for every language that passes it, and by py.py's Site-3 branch; read by the ``inherited_calls`` linker to walk the ancestor chain and by py.py's Django-ORM instance check."
             },
             "enclosing_class_id": {
-              "description": "Symbol id of the class that lexically owns the call site, stamped by py.py beside ``enclosing_class`` when the id is known (WI-supat D3) so ``inherited_calls`` can start the ancestor walk from exactly that class and skip its same-short-name ambiguity guard."
+              "description": "Symbol id of the class that lexically owns the call site, stamped by py.py (WI-supat D3) and java.py (WI-gikuk: the class found by position) beside ``enclosing_class`` when the id is known so ``inherited_calls`` can start the ancestor walk from exactly that class and skip its same-short-name ambiguity guard."
             },
             "env_var": {
               "description": "The variable name behind a synthesized environment read \u2014 the `API_KEY` in `$API_KEY`. Carried for the READER rather than for matching: bash's env_read catalogue is ONE row on the os.environ precedent, so the name never participates in the lookup. PER CALL SITE (INV-vukiv): `$HOME` then `$API_KEY` in one function collapsed to `env_var='HOME'`, which named the harmless read and dropped the secret one."
