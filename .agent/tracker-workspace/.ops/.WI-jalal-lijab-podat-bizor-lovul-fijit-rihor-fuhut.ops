@@ -33,3 +33,26 @@
   clock: 3  # 50f7
   nonce: 50f7  # 50f7
   message: "Correction to the note above: the origin/dev counts (79 / 22 / 153 / 306) were ALREADY call_construct=method -> field on dev; the phrase 'where most of these were stamped function' is wrong. The field-bind population is essentially unchanged by the kibah branch (78 / 23 / 158 / 312)."  # 50f7
+- op: discuss  # 7dda
+  at: '2026-11-01T10:56:11Z'  # 7dda
+  by: agent  # 7dda
+  actor: jgstern_agent  # 7dda
+  clock: 4  # 7dda
+  nonce: 7dda  # 7dda
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/gorc1/). VERDICT: PARTLY-STALE. 2026-11-01 review (dev 100b6fbb6e): split done. alertmanager 710984e now has 78 calls edges to field dsts (not 266): 43 func-typed (correct), 35 not - 32 span.End() -> timeinterval InclusiveRange.End (int), 2 d.route.Match() -> config.Route.Match (map), 1 amURL.User.Password() -> string field. cert-manager: 158 cc=method field dsts, 124 with func(...) signatures plus several named func types. Mechanism (a) is the majority; the defect half is WI-surid's short-name lookup. MECHANISM: hint-less short-name lookup on a value receiver accepts a non-callable field. SHARES MECHANISM WITH: WI-surid."  # 7dda
+- op: update  # 80bb
+  at: '2026-11-01T10:56:11Z'  # 80bb
+  by: agent  # 80bb
+  actor: jgstern_agent  # 80bb
+  clock: 5  # 80bb
+  nonce: 80bb  # 80bb
+  set:  # 80bb
+    title: "go: value-receiver call binds a NON-func struct field by short name (alertmanager 35/78 field dsts, span.End()->InclusiveRange.End); func fields OK"  # 80bb
+- op: update  # 386e
+  at: '2026-11-01T10:56:11Z'  # 386e
+  by: agent  # 386e
+  actor: jgstern_agent  # 386e
+  clock: 6  # 386e
+  nonce: 386e  # 386e
+  set:  # 386e
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review (dev 100b6fbb6e): split done. alertmanager 710984e now has 78 calls edges to field dsts (not 266): 43 func-typed (correct), 35 not - 32 span.End() -> timeinterval InclusiveRange.End (int), 2 d.route.Match() -> config.Route.Match (map), 1 amURL.User.Password() -> string field. cert-manager: 158 cc=method field dsts, 124 with func(...) signatures plus several named func types. Mechanism (a) is the majority; the defect half is WI-surid's short-name lookup. (Original text below; the review entry in the thread has the evidence.)\n\nOBSERVED 2026-08-10 while measuring the WI-jolif fix on alertmanager. Filed as a\nlead with a real count, NOT as a diagnosed defect -- the mechanism was not read.\n\nA `calls` edge whose dst kind slot is `field` is incoherent on its face: a field\nis not callable. alertmanager carries 266 of them.\n\n    calls-edge dst kinds (alertmanager, go):\n        external_symbol 5427\n        function        1668\n        method           874\n        field            266   <- this\n        type              75\n        unresolved         4\n        variable           3\n        port               3\n        route              2\n\nWHY IT SURFACED. The WI-jolif return-type-registry fix added exactly ONE such edge\n(266 -> 267): InhibitRule.hasEqual -> template/template.go:345:Alert.Fingerprint:field.\nThat one is the known receiver-typing collision shape -- an external qualified type\nwalking into a lookup against the repo's own symbols -- and it is the reason this\ncount got looked at. The other 265 predate it and have no filed cause.\n\nPLAUSIBLE MECHANISMS, NONE VERIFIED (do not treat this list as a diagnosis):\n (a) a Go struct field holding a func value, where `s.handler()` genuinely calls\n     through a field -- in which case SOME of the 266 are CORRECT and the edge kind\n     is right even if it reads oddly. This must be checked FIRST, because if it is\n     the dominant case the whole item dissolves.\n (b) a method and a field sharing a name on the same type, with the lookup picking\n     the field.\n (c) embedded-struct promotion, where the real target is a method on the embedded\n     type and the outer type only has the field.\n\nWHY IT MATTERS IF (a) IS NOT DOMINANT: a calls edge to a non-callable is a false\nedge, and false edges feed centrality, dead-code reachability, and the taint call\ngraph. It is also the exact shape the INV-sapit / first-party-collision guard\nfamily exists to prevent, so a hit here suggests a door that family does not cover.\n\nFIRST STEP IS A SPLIT, NOT A FIX: classify the 266 by whether the target field's\ndeclared type is a func type. That single split decides whether this is a defect\nat all. One repo, one language -- do not generalise the 266 before measuring a\nsecond repo."  # 386e

@@ -20,3 +20,18 @@
     pr_ref:  # 8da8
     description: "FOUND 2026-10-04 by WI-tozar. The tozar item stated Rust is unaffected by nested assignments because assignment yields (). A BLOCK EXPRESSION nests a whole assignment statement inside an expression, and the Rust def/use extractor does not see it:\n\n  fn f(n: i32) { let mut x = 0; let y = { x = g(n); x + 1 }; h({ x = g(n); x }); s(x, y); }\n  -> L3 let_declaration def=[y] use=[x, n, x]   (x is not defined)\n  -> L4 expression_statement def=[] use=[x, n, x]\n\n(probe: cfg.build_function_cfg + populate_def_use_for_cfg, tree c1dd831558). `let z = if c { x = g(n); 1 } else { 2 };` is decomposed by the builder instead and loses z (WI-faful's shape).\n\nNot checked: frequency in the corpus; verdict effect."  # 8da8
     fields: {}  # 8da8
+- op: discuss  # 2c17
+  at: '2026-11-01T10:55:30Z'  # 2c17
+  by: agent  # 2c17
+  actor: jgstern_agent  # 2c17
+  clock: 2  # 2c17
+  nonce: 2c17  # 2c17
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint1/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: probe of let y = { x = g(n); x + 1 }; h({ x = g(n); x }) still gives L3 def=[y] use=[x,n,x] and L4 def=[] use=[x,n,x]; DDG chains x from 'let mut x = 0' to the final use (false dependence). The description's aside is fixed: let z = if c { x = g(n); 1 } else { 2 } now defines z and records x = g(n) as its own statement defining x (WI-faful done). MECHANISM: Rust extractor reads a block expression's inner assignment target as a use, never a definition. SHARES MECHANISM WITH: WI-ruhuv."  # 2c17
+- op: update  # 02d0
+  at: '2026-11-01T10:55:30Z'  # 02d0
+  by: agent  # 02d0
+  actor: jgstern_agent  # 02d0
+  clock: 3  # 02d0
+  nonce: 02d0  # 02d0
+  set:  # 02d0
+    description: "[REVIEW 2026-11-01, CURRENT] 2026-11-01 review on dev 100b6fbb6e: probe of let y = { x = g(n); x + 1 }; h({ x = g(n); x }) still gives L3 def=[y] use=[x,n,x] and L4 def=[] use=[x,n,x]; DDG chains x from 'let mut x = 0' to the final use (false dependence). The description's aside is fixed: let z = if c { x = g(n); 1 } else { 2 } now defines z and records x = g(n) as its own statement defining x (WI-faful done). (Original text below; the review entry in the thread has the evidence.)\n\nFOUND 2026-10-04 by WI-tozar. The tozar item stated Rust is unaffected by nested assignments because assignment yields (). A BLOCK EXPRESSION nests a whole assignment statement inside an expression, and the Rust def/use extractor does not see it:\n\n  fn f(n: i32) { let mut x = 0; let y = { x = g(n); x + 1 }; h({ x = g(n); x }); s(x, y); }\n  -> L3 let_declaration def=[y] use=[x, n, x]   (x is not defined)\n  -> L4 expression_statement def=[] use=[x, n, x]\n\n(probe: cfg.build_function_cfg + populate_def_use_for_cfg, tree c1dd831558). `let z = if c { x = g(n); 1 } else { 2 };` is decomposed by the builder instead and loses z (WI-faful's shape).\n\nNot checked: frequency in the corpus; verdict effect."  # 02d0

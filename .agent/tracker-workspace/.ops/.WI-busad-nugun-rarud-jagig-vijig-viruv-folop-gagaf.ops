@@ -21,3 +21,18 @@
     pr_ref:  # 1da9
     description: "WI-rujoz was closed done with 'TUI wiring is part of WI-fubij/WI-gikut'; both are done and neither wired it. tui.action_capture_screenshot (~3740-3791) saves under .agent/screenshots/ with a $TMPDIR fallback. .ci/test-only-reachability-baseline.json lists save_screenshot_with_item. Decide: wire or delete (ADR-0020 lists it shipped).\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 1da9
     fields: {}  # 1da9
+- op: discuss  # 1429
+  at: '2026-11-01T10:55:48Z'  # 1429
+  by: agent  # 1429
+  actor: jgstern_agent  # 1429
+  clock: 2  # 1429
+  nonce: '1429'  # 1429
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool2/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at dev 100b6fbb6e. Still holds: no production code references save_screenshot_with_item (collect_production_references: loads=[]; save_screenshot is referenced only inside screenshot_save.py), the key is in .ci/test-only-reachability-baseline.json, and tui.action_capture_screenshot (now ~3821-3871) writes <tracker_root>/screenshots with a $TMPDIR/<uid>-htrac-screenshots fallback. No longer holds: 'ADR-0020 lists it shipped'. 17a5440feb (2026-10-11 07:32, after filing) rewrote ADR-0020 to say screenshot_save.py exists and 'the TUI uses neither'. MECHANISM: screenshot_save backend shipped (WI-rujoz) but no production caller was ever wired; TUI writes its own path. SHARES MECHANISM WITH: WI-rujoz."  # 1429
+- op: update  # 98ff
+  at: '2026-11-01T10:55:48Z'  # 98ff
+  by: agent  # 98ff
+  actor: jgstern_agent  # 98ff
+  clock: 3  # 98ff
+  nonce: 98ff  # 98ff
+  set:  # 98ff
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at dev 100b6fbb6e. Still holds: no production code references save_screenshot_with_item (collect_production_references: loads=[]; save_screenshot is referenced only inside screenshot_save.py), the key is in .ci/test-only-reachability-baseline.json, and tui.action_capture_screenshot (now ~3821-3871) writes <tracker_root>/screenshots with a $TMPDIR/<uid>-htrac-screenshots fallback. No longer holds: 'ADR-0020 lists it shipped'. 17a5440feb (2026-10-11 07:32, after filing) rewrote ADR-0020 to say screenshot_save.py exists and 'the TUI uses neither'. (Original text below; the review entry in the thread has the evidence.)\n\nWI-rujoz was closed done with 'TUI wiring is part of WI-fubij/WI-gikut'; both are done and neither wired it. tui.action_capture_screenshot (~3740-3791) saves under .agent/screenshots/ with a $TMPDIR fallback. .ci/test-only-reachability-baseline.json lists save_screenshot_with_item. Decide: wire or delete (ADR-0020 lists it shipped).\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 98ff

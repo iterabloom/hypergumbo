@@ -23,3 +23,10 @@
     pr_ref:  # 1e95
     description: "Configure dmypy (mypy daemon) for fast incremental type-checking — closes the speed gap with pyright for editor/pre-commit use. Add a make target or scripts/mypy wrapper that spawns dmypy on first invocation and keeps it warm. Document the recommended VS Code / Pylance hybrid setup (Pylance for inline feedback; mypy via dmypy as authoritative gate). Add IDE-integration section to CONTRIBUTING / dev docs."  # 1e95
     fields: {}  # 1e95
+- op: discuss  # c55f
+  at: '2026-11-01T10:55:49Z'  # c55f
+  by: agent  # c55f
+  actor: jgstern_agent  # c55f
+  clock: 2  # c55f
+  nonce: c55f  # c55f
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool3/). VERDICT: CURRENT. Reviewed 2026-11-01 at 100b6fbb6e: no file mentions dmypy; CONTRIBUTING.md has 0 mypy mentions and no IDE/Pylance section. The authoritative gate now exists (check-mypy-ratchet --mode=strict, blocking in ci.yml and as smart-test Gate 0), so what remains is exactly the dmypy speed path plus IDE docs. MECHANISM: dmypy daemon + IDE-integration docs not started. SHARES MECHANISM WITH: WI-kotog,WI-totov."  # c55f

@@ -18,3 +18,10 @@
     pr_ref:  # c639
     description: "FOUND 2026-10-13 by WI-tusad F4 (INV-punig two-parent fixtures), not fixed there (kind classification, not identity).\n\nREPRO: a play whose `tasks:` list is followed by `handlers:` (the gate's ansible fixture, playbooks/site.yml):\n  - name: Web / hosts: web / tasks: [Install (apt), Start (service)] / handlers: [Restart]\n`hypergumbo run --include-docs` emits `Install` and `Start` (tasks) with kind `handler`, beside the real handler `Restart`; a task in a play WITHOUT a following handlers list (the second play's `Install`) is kind `task`.\n\nEXPECTED: tasks under `tasks:` are kind `task` whatever follows them.\nNOT CHECKED: roles/tasks/main.yml files, `pre_tasks` / `post_tasks`, `block:` contents (a block's tasks emit nothing)."  # c639
     fields: {}  # c639
+- op: discuss  # 1cf9
+  at: '2026-11-01T10:55:53Z'  # 1cf9
+  by: agent  # 1cf9
+  actor: jgstern_agent  # 1cf9
+  clock: 2  # 1cf9
+  nonce: 1cf9  # 1cf9
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e. The item fixture emits Install and Start (under tasks:) as kind handler and the second play's Install as task. yaml_ansible.py:347-396 sets in_tasks/in_handlers while processing play pairs, and task items processed afterwards read kind='handler' if in_handlers. The same fixture's file node spans 1-1. MECHANISM: section membership taken from a mutable last-seen section flag (in_handlers), not the item's ancestor key. SHARES MECHANISM WITH: INV-palot,WI-janon."  # 1cf9

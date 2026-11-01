@@ -22,3 +22,10 @@
     fields:  # c419
       statement: "An ambiguous libc call with no include evidence at all is unexamined: it must withhold or qualify a clean boundary verdict, not vanish."  # c419
       root_cause: "c.py stamps an ambiguous call with its include closure only when the file has an #include naming a header; otherwise the slot is the external placeholder, which _adjudicate_external_modules skips as the disclosed untyped-receiver residual, and gate_named_entry refuses the hint-less ambiguous name, so the call is neither classified nor counted."  # c419
+- op: discuss  # 5dc2
+  at: '2026-11-01T10:55:35Z'  # 5dc2
+  by: agent  # 5dc2
+  actor: jgstern_agent  # 5dc2
+  clock: 2  # 5dc2
+  nonce: 5dc2  # 5dc2
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint3/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e. The filed repro still reproduces after INV-zikul (601fee315b) and INV-jahuf (17cd29d60f) changed c.py: main.c containing only int run(int fd){return (int)send(fd,\"x\",1,0);} emits c:external:0-0:send, and verify-claims gives NO-NET-SEND confirmed and SECRET-NO-NET confirmed, with no caveats and exit 0. Adding #include <sys/socket.h> gives c:sys/socket.h:0-0:send and NO-NET-SEND violated (exit 1). MECHANISM: c.py stamps an ambiguous libc name only from #include evidence; the external placeholder is skipped as the untyped-receiver residual."  # 5dc2

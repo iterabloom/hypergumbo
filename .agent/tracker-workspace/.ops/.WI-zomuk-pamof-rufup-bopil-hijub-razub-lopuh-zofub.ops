@@ -19,3 +19,10 @@
     pr_ref:  # f877
     description: "Consumer-facing capability behind aijo's \"survey as a first-class PR artifact\": diff two surveys (base vs head) and surface only real structural changes — added / removed / changed nodes, edges, routes, entrypoints. Identity-keyed STRUCTURAL diff (keyed on stable_id / edge identity), NOT a text diff — so it ignores volatile provenance by construction and short-circuits when the two canonical digests match. Read-view + JSON envelope {schema_version, view: \"survey_diff\", ...}.\n\nBeyond G8 / WI-pifaj scope: new aijo-layer work, confirmed absent by the 2026-07-21 G8 verification pass (no diff exists today). Demand-gated on aijo — build when the aijo layer needs it.\n\nBlocked-by: the canonical-digest item (its short-circuit key) and, transitively, the `--reproducible` byte-repro mode (a text-noisy survey makes the diff meaningless)."  # f877
     fields: {}  # f877
+- op: discuss  # 0b63
+  at: '2026-11-01T10:55:49Z'  # 0b63
+  by: agent  # 0b63
+  actor: jgstern_agent  # 0b63
+  clock: 2  # 0b63
+  nonce: 0b63  # 0b63
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool2/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e. Not built: `hypergumbo diff` -> \"'diff' is not a valid subcommand\" and no diff appears in `hypergumbo --help`. Blockers still open: WI-situf (isbefore this item) and WI-sazap (--reproducible mode). Related but distinct: WI-vufad (committed survey plus git line-diff), which names this item as its polished renderer. Premise unchanged. MECHANISM: no structural survey diff; blocked on digest (WI-situf) and --reproducible (WI-sazap). SHARES MECHANISM WITH: WI-situf, WI-sazap, WI-vufad."  # 0b63

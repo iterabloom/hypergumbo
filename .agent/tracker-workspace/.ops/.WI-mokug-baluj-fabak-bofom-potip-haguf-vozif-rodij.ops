@@ -20,3 +20,18 @@
     pr_ref:  # f5bc
     description: "Found incidentally during the WI-bahid investigation. erlang.yaml:93 declares module 'http_client' with function 'request'. No such module exists in OTP; the inets HTTP client is 'httpc', which is already catalogued at erlang.yaml:90. So the row can never match anything.\n\nWHY IT MATTERS BEYOND ONE DEAD ROW: erlang.yaml declares status: complete, which io_boundary.py:893-898 documents as asserting 'a provenance-backed stdlib enumeration'. A phantom row means that provenance was not checked, at least once, in a catalogue making the stronger of the two status claims. Worth asking how it got there and whether sibling rows share the defect, rather than just deleting the line.\n\nUNVERIFIED BY ME: I have not run an OTP module-existence check across erlang.yaml, only noted this one. The cheap version is to compare declared modules against a real OTP install's module list, which would also settle whether this is isolated."  # f5bc
     fields: {}  # f5bc
+- op: discuss  # c7d1
+  at: '2026-11-01T10:55:44Z'  # c7d1
+  by: agent  # c7d1
+  actor: jgstern_agent  # c7d1
+  clock: 2  # c7d1
+  nonce: c7d1  # c7d1
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/iobcat4/). VERDICT: STALE-FIXED. Reviewed 2026-11-01 on dev 100b6fbb6e. 7ed180a2e7 (WI-surun, 2026-08-28) removed the http_client row. erlang.yaml:141-150 records the removal with match evidence (httpc 10/9 vs http_client 0 on ejabberd/emqx), and status is now provenance_declared rather than complete. Sibling check against local OTP 27: code:which found every one of the 26 row modules in erlang.yaml (application ... supervisor); none are missing. MECHANISM: catalogue row names a module that does not exist in the stdlib it claims to enumerate. SHARES MECHANISM WITH: WI-gidob. PROPOSED DISPOSITION: close (awaiting owner authorization; status unchanged)."  # c7d1
+- op: update  # 3167
+  at: '2026-11-01T10:55:44Z'  # 3167
+  by: agent  # 3167
+  actor: jgstern_agent  # 3167
+  clock: 3  # 3167
+  nonce: '3167'  # 3167
+  set:  # 3167
+    description: "[REVIEW 2026-11-01, STALE-FIXED] Reviewed 2026-11-01 on dev 100b6fbb6e. 7ed180a2e7 (WI-surun, 2026-08-28) removed the http_client row. erlang.yaml:141-150 records the removal with match evidence (httpc 10/9 vs http_client 0 on ejabberd/emqx), and status is now provenance_declared rather than complete. Sibling check against local OTP 27: code:which found every one of the 26 row modules in erlang.yaml (application ... supervisor); none are missing. (Original text below; the review entry in the thread has the evidence.)\n\nFound incidentally during the WI-bahid investigation. erlang.yaml:93 declares module 'http_client' with function 'request'. No such module exists in OTP; the inets HTTP client is 'httpc', which is already catalogued at erlang.yaml:90. So the row can never match anything.\n\nWHY IT MATTERS BEYOND ONE DEAD ROW: erlang.yaml declares status: complete, which io_boundary.py:893-898 documents as asserting 'a provenance-backed stdlib enumeration'. A phantom row means that provenance was not checked, at least once, in a catalogue making the stronger of the two status claims. Worth asking how it got there and whether sibling rows share the defect, rather than just deleting the line.\n\nUNVERIFIED BY ME: I have not run an OTP module-existence check across erlang.yaml, only noted this one. The cheap version is to compare declared modules against a real OTP install's module list, which would also settle whether this is isolated."  # 3167

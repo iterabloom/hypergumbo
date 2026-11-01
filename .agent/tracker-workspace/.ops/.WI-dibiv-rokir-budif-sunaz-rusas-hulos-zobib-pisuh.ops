@@ -18,3 +18,18 @@
     pr_ref:  # dd80
     description: "FOUND by WI-tusad F2 (finding 4, ledger), re-stated by F3. The OCaml analyzer registers type and module symbols in symbol_by_name, so a call can bind to a TYPE. After F2 named nested types with their module (`A.t`), 16 of 17 such calls on a 723-node OCaml sample now reach the function; 1 still binds a type: `mime_type` -> type `Destination.path` (b8a corpus, ocaml). Fix: keep non-callable kinds out of the call-resolution table (or filter by kind at resolution). Not measured beyond the 40-file sample."  # dd80
     fields: {}  # dd80
+- op: discuss  # 6c1c
+  at: '2026-11-01T10:55:53Z'  # 6c1c
+  by: agent  # 6c1c
+  actor: jgstern_agent  # 6c1c
+  clock: 2  # 6c1c
+  nonce: 6c1c  # 6c1c
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: fixture dest.ml gives mime_type -> Destination.path:type (suffix match) and other -> config:type (plain top-level type called as config x). ocaml.py:334 still registers type/module symbols in symbol_by_name; the lookup at ~L507 does not filter by kind. Scope is wider than '1 case left': any call whose name matches a type binds to it. MECHANISM: type/module symbols registered in symbol_by_name and resolver.lookup has no kind filter, so a call binds a non-callable. SHARES MECHANISM WITH: INV-nupak,WI-surid,WI-jalal."  # 6c1c
+- op: update  # d46f
+  at: '2026-11-01T10:55:53Z'  # d46f
+  by: agent  # d46f
+  actor: jgstern_agent  # d46f
+  clock: 3  # d46f
+  nonce: d46f  # d46f
+  set:  # d46f
+    title: "ocaml: calls resolve to TYPE symbols (types share the call-resolution table): `config x` -> type config, `path f` -> type Destination.path"  # d46f

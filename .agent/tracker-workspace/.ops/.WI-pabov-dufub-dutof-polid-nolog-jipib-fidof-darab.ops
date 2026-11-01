@@ -19,3 +19,10 @@
     pr_ref:  # 89b5
     description: "Swift main.swift top-level code is THE program entry point, but hypergumbo detects it only via the connectivity_based fallback (graph centrality), not a structural rule. A structural detector — file named main.swift carrying top-level executable code, or an @main-attributed type — should emit a main_function / script_module-equivalent entrypoint concept. Surfaced during the WI-tosul investigation (2026-06-24): on the emission-parity swift fixture (main.swift with a top-level Service().run()), run_behavior_map yields only connectivity_based entrypoints. The pipeline gate test_entrypoint_parity.py deliberately locks swift at >=1 entrypoint of ANY kind so this improvement will not falsely break it. Right-reason refinement (detection works today, but for the wrong reason). See lab notebook notebookjournal_06242026_0440.md and the entrypoint-parity-gate branch."  # 89b5
     fields: {}  # 89b5
+- op: discuss  # 98e3
+  at: '2026-11-01T10:56:03Z'  # 98e3
+  by: agent  # 98e3
+  actor: jgstern_agent  # 98e3
+  clock: 2  # 98e3
+  nonce: '98e3'  # 98e3
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph1/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e: main.swift with top-level Service().run() yields only a connectivity_based entrypoint (Service.run, 0.5); an @main struct App { static func main() } also yields only connectivity_based (App.main is kind method, so main-functions.yaml's ^main$/^function$ swift rule misses it). Premise holds; the @main shape is missed too. MECHANISM: swift entrypoint rule (main-functions.yaml) matches only a free function named main; no main.swift top-level or @main detector."  # 98e3

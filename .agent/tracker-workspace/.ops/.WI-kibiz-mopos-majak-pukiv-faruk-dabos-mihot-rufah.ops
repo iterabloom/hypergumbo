@@ -23,3 +23,18 @@
     pr_ref:  # 4648
     description: "Declare a Protocol class (AnalyzerProtocol) in packages/hypergumbo-core that names every method + attribute a language analyzer must provide: analyze(), pass_version, supported_extensions, etc. Refactor each hypergumbo-lang-* analyzer to structurally fulfill the protocol (no inheritance required). mypy + pyright catch any analyzer that drifts. Closes some INV-jahiv analyzer-parity sub-cases (declared Symbol/Edge fields populated unevenly across languages) at type-check time — protocol requires the methods exist with correct signatures even if the runtime population coverage requires a separate property test."  # 4648
     fields: {}  # 4648
+- op: discuss  # fd28
+  at: '2026-11-01T10:55:45Z'  # fd28
+  by: agent  # fd28
+  actor: jgstern_agent  # fd28
+  clock: 2  # fd28
+  nonce: fd28  # fd28
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool1/). VERDICT: CURRENT. At dev 100b6fbb6e there is no AnalyzerProtocol. Analyzers are @register_analyzer functions typed AnalyzerFunc = Callable[..., AnalysisResult] (registry.py:63), in two call shapes (repo_root[, max_files], by supports_max_files), plus 105 TreeSitterAnalyzer subclasses. The description's analyze()/pass_version/supported_extensions attributes do not exist; the real scope is a callable Protocol replacing Callable[...]. MECHANISM: analyzer callable typed Callable[..., AnalysisResult], so mypy cannot check its signature. SHARES MECHANISM WITH: WI-fofud,WI-kobot,INV-zogud."  # fd28
+- op: update  # 7c85
+  at: '2026-11-01T10:55:45Z'  # 7c85
+  by: agent  # 7c85
+  actor: jgstern_agent  # 7c85
+  clock: 3  # 7c85
+  nonce: 7c85  # 7c85
+  set:  # 7c85
+    description: "[REVIEW 2026-11-01, CURRENT] At dev 100b6fbb6e there is no AnalyzerProtocol. Analyzers are @register_analyzer functions typed AnalyzerFunc = Callable[..., AnalysisResult] (registry.py:63), in two call shapes (repo_root[, max_files], by supports_max_files), plus 105 TreeSitterAnalyzer subclasses. The description's analyze()/pass_version/supported_extensions attributes do not exist; the real scope is a callable Protocol replacing Callable[...]. (Original text below; the review entry in the thread has the evidence.)\n\nDeclare a Protocol class (AnalyzerProtocol) in packages/hypergumbo-core that names every method + attribute a language analyzer must provide: analyze(), pass_version, supported_extensions, etc. Refactor each hypergumbo-lang-* analyzer to structurally fulfill the protocol (no inheritance required). mypy + pyright catch any analyzer that drifts. Closes some INV-jahiv analyzer-parity sub-cases (declared Symbol/Edge fields populated unevenly across languages) at type-check time — protocol requires the methods exist with correct signatures even if the runtime population coverage requires a separate property test."  # 7c85

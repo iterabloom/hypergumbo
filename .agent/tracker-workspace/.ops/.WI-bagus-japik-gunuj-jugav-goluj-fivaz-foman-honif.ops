@@ -18,3 +18,10 @@
     pr_ref:  # f5f6
     description: "EVIDENCE (production entry point, 2026-09-25):\n  justfile A:  test: build / build:   -> edges: []\n  justfile B:  build: / test: build   -> edges: [test depends_on build]\nThe same recipes produce a different graph depending only on declaration order.\n\nMECHANISM: packages/hypergumbo-lang-common/src/hypergumbo_lang_common/just.py ~L155 `if dep and dep in recipe_symbols`. recipe_symbols is filled in the same single pass, so a dependency declared further down the file is not there yet, and the edge is silently dropped. just itself allows forward references.\n\nPRIOR ART: none found. No tracker row mentions the just analyzer or dropped forward references. The module docstring now states the limitation (PR #1197).\n\nASKED: collect the recipe symbols first, then emit the dependency edges (two passes, or a deferred list). Add a fixture in forward order. Then remove the limitation sentence from the docstring."  # f5f6
     fields: {}  # f5f6
+- op: discuss  # 90c9
+  at: '2026-11-01T10:55:53Z'  # 90c9
+  by: agent  # 90c9
+  actor: jgstern_agent  # 90c9
+  clock: 2  # 90c9
+  nonce: 90c9  # 90c9
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e. justfile 'test: build' before 'build:' gives no edges; the reverse order gives test depends_on build. just.py:210 still checks 'dep in recipe_symbols', which is filled in the same pass (L202), and the docstring still states the limitation. MECHANISM: single-pass resolution against a partially filled recipe_symbols table."  # 90c9

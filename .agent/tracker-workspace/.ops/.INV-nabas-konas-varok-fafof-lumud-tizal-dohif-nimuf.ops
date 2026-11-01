@@ -22,3 +22,10 @@
     fields:  # 814a
       statement: "Every route producer whose markers carry handler info gets a route->handler edge when the handler symbol exists (INV-nimik), including Play (conf/routes, controller_action=controllers.Foo.bar)."  # 814a
       root_cause: "linkers/route_handler.py ~:596-603 classifies controller_action by separator only: '@' -> laravel, else rails; the rails resolver returns None without '#' (~:147). play_routes.py ~:133-144 stores the dotted Play form (leading '@' stripped). No other linker reads these markers for dispatch (http.py ~:1612 lists play-routes only as an HTTP-client destination)."  # 814a
+- op: discuss  # f77c
+  at: '2026-11-01T10:56:06Z'  # f77c
+  by: agent  # f77c
+  actor: jgstern_agent  # f77c
+  clock: 2  # f77c
+  nonce: f77c  # f77c
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph2/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e. route_handler.py ~:615-620 still classifies by '@' else rails, and the rails resolver needs '#'. Fixture (conf/routes with 3 routes + app/controllers/UserController.scala) via `hypergumbo run`: route markers carry controller_action controllers.UserController.list etc., and there are 0 dispatches_to edges (only scala calls/imports/extends). play_routes.py's top docstring now states the gap (line ~22), but its line ~114 docstring still claims route_handler creates dispatches_to edges. MECHANISM: route_handler._extract_handler_ref dispatches on separator ('@' -> laravel, else rails) instead of on producer, so Play's dotted controllers.Foo.bar fails the rails '#' split. SHARES MECHANISM WITH: none."  # f77c

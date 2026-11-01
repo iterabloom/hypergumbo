@@ -37,3 +37,10 @@
     tags: [dogfood_tranche_04]  # b4e6
   remove:  # b4e6
     tags: [dogfood_tranch_04]  # b4e6
+- op: discuss  # 99b4
+  at: '2026-11-01T10:56:00Z'  # 99b4
+  by: agent  # 99b4
+  actor: jgstern_agent  # 99b4
+  clock: 4  # 99b4
+  nonce: 99b4  # 99b4
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc4/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e: slice.py:296 SliceQuery.hub_threshold=50 (CLI --hub-threshold default 50) still sits beside ranking.compute_dampened_centrality hub_threshold=100 (ranking.py:1137, 1251, 1323), with no rename or disambiguation. The 2026-06-08 facet also still holds: cli.py:12470 _HANDLER_SLICE_HUB_THRESHOLD=100 is what the handler-slice producer echoes into feature.query, while docs/hypergumbo-spec.md:1291 says hub_threshold=50. MECHANISM: two independent knobs share the literal name hub_threshold (slice BFS hub-prune vs centrality in-degree saturation). SHARES MECHANISM WITH: WI-zajov."  # 99b4

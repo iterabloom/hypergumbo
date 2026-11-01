@@ -20,3 +20,10 @@
     pr_ref:  # bc42
     description: "FOUND 2026-10-03 while fixing WI-kibah / WI-kugap (branch jgstern-agent/fix/kibah). The same position-blind family as WI-bopiv, in the TYPE half: _extract_go_var_types keys a variable's type by (enclosing function name, variable name) and the FIRST binding wins, so a receiver or a method-value operand is typed from the first binding of its name anywhere in the function, not the one in scope at the use.\n\nLive (kibah branch 5e60e3ea7d; the call arm behaves the same on dev):\n\n    func F(x bool) {\n        if x { h := &A{}; reg(h.Serve); h.Serve() }\n        else { h := &B{}; reg(h.Serve); h.Serve() }\n    }\n\n-> both branches bind A.Serve (function_reference_arg and ast_call); the else branch is B.Serve.\n\nThe scope model that answers \"which binding is in scope here\" now exists: _GoLocalScope (go.py, WI-bopiv) records each local's byte range. FIX SHAPE (not built): key var_types by binding (name + scope range) and look a name up by position, as _GoLocalScope.binds does; _go_last_binding already reads the latest binding at or above a line for the handle-kind readers.\n\nNOT MEASURED: frequency on the corpus (needs a per-site comparison of the first vs the in-scope binding's type)."  # bc42
     fields: {}  # bc42
+- op: discuss  # c9da
+  at: '2026-11-01T10:56:11Z'  # c9da
+  by: agent  # c9da
+  actor: jgstern_agent  # c9da
+  clock: 2  # c9da
+  nonce: c9da  # c9da
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/gorc1/). VERDICT: CURRENT. 2026-11-01 review (dev 100b6fbb6e): the item's if/else fixture still binds both branches' reg(h.Serve) and h.Serve() to A.Serve (L18 function_reference_arg, L19 typed_receiver 0.85); no B.Serve edge. _extract_go_var_types docstring still states first assignment wins; _GoLocalScope and _go_last_binding exist as described. Premise unchanged. MECHANISM: var types keyed by (function,name) first-binding-wins instead of by binding position. SHARES MECHANISM WITH: WI-bopiv."  # c9da

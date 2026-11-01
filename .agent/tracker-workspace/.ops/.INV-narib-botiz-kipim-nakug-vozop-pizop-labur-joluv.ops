@@ -21,3 +21,10 @@
     fields:  # 9c52
       statement: "A partial-install 'no analyzer is available' warning is emitted only for a language no registered analyzer declares."  # 9c52
       root_cause: "partial_install_warnings._get_registered_analyzer_languages splits underscore names and keeps only parts in LANGUAGE_PACKAGES, so llvm_ir is never in the registered set."  # 9c52
+- op: discuss  # f2f6
+  at: '2026-11-01T10:55:55Z'  # f2f6
+  by: agent  # f2f6
+  actor: jgstern_agent  # f2f6
+  clock: 2  # f2f6
+  nonce: f2f6  # f2f6
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: a survey of a .ll fixture prints 'Detected 1 llvm_ir file(s) but Llvm_Ir analyzer not installed. Install hypergumbo-lang-extended1' while emitting llvm_ir symbols. The probe 'llvm_ir' in _get_registered_analyzer_languages() gives False; the heuristic at partial_install_warnings.py:232-236 is unchanged. llvm_ir is the only LANGUAGE_PACKAGES key missing from the set. The message wording changed. MECHANISM: registered-language set guessed by splitting analyzer names instead of read from each analyzer's declared languages."  # f2f6

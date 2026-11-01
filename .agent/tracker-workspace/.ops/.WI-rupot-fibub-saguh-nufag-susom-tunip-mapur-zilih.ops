@@ -19,3 +19,26 @@
     pr_ref:  # dcc7
     description: "Found while pricing INV-rolok's option A (re-point the instantiates dst at the\ninitializer, the shape WI-fagit gave csharp).\n\nlinkers/method_call_recovery builds its class hints with:\n\n    if e.edge_type in _CLASS_HINT_EDGE_TYPES and e.dst in class_ids:\n\n_CLASS_HINT_EDGE_TYPES is {\"calls\", \"instantiates\"} and class_ids is\n{s.id for s in ctx.symbols if s.kind == \"class\"}. The dst must therefore BE a\nclass node.\n\nWI-fagit (PR #689) moved csharp's instantiates dst onto the constructor symbol\n(Type.Type, kind=\"constructor\"), and java emits kind=\"constructor\" too. For\nthose languages e.dst is no longer in class_ids, so their construction edges\nhave silently contributed NO class hints since #689. The linker's own comment\nacknowledges the shape -- \"dart/csharp/java/py/js_ts/php/cpp/verilog emit\ninstantiates with the class (or constructor) as dst\" -- but the code has no\nbranch for the constructor half it names.\n\nThe fix shape is small: when the dst is an initializer, resolve it to its\nowning class (member_owner / the contains edge) before looking it up in\nclass_ids. That also unblocks INV-rolok's option A for python, which is\ncurrently priced out because re-pointing python's dst would drop python from\nthis linker too. The linker produced 89 edges on hypergumbo self-analysis;\nthat is the volume at risk, and the java/csharp loss is unmeasured because no\njava/csharp repo was probed for it.\n\nNOT URGENT AND NOT COSMETIC: this is lost recall in a recovery linker, so its\nfailure mode is quiet -- unresolved calls that stay unresolved."  # dcc7
     fields: {}  # dcc7
+- op: discuss  # ef09
+  at: '2026-11-01T10:56:05Z'  # ef09
+  by: agent  # ef09
+  actor: jgstern_agent  # ef09
+  clock: 2  # ef09
+  nonce: ef09  # ef09
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph1/). VERDICT: MIS-PREMISED. Reviewed 2026-11-01 at dev 100b6fbb6e: method_call_recovery.py:264/271 still requires dst in class_ids. Java never re-pointed: new Runner().run() gives instantiates -> Runner:class (java.py class_resolver). C# does point at Runner.Runner:constructor when declared, but in 3 fixtures the csharp analyzer resolved Run/Spin itself, so no recovery was lost. INV-rolok is satisfied via construction.py, so the option-A motivation is obsolete. MECHANISM: class-hint filter keys on dst kind==class and does not lift a constructor dst to its owning class. SHARES MECHANISM WITH: WI-sudum,WI-fihun."  # ef09
+- op: update  # 870a
+  at: '2026-11-01T10:56:05Z'  # 870a
+  by: agent  # 870a
+  actor: jgstern_agent  # 870a
+  clock: 3  # 870a
+  nonce: 870a  # 870a
+  set:  # 870a
+    title: "method_call_recovery ignores csharp instantiates edges whose dst is a declared constructor; no lost recovery observed (csharp binds the call itself)"  # 870a
+- op: update  # 7c2f
+  at: '2026-11-01T10:56:05Z'  # 7c2f
+  by: agent  # 7c2f
+  actor: jgstern_agent  # 7c2f
+  clock: 4  # 7c2f
+  nonce: 7c2f  # 7c2f
+  set:  # 7c2f
+    description: "[REVIEW 2026-11-01, MIS-PREMISED] Reviewed 2026-11-01 at dev 100b6fbb6e: method_call_recovery.py:264/271 still requires dst in class_ids. Java never re-pointed: new Runner().run() gives instantiates -> Runner:class (java.py class_resolver). C# does point at Runner.Runner:constructor when declared, but in 3 fixtures the csharp analyzer resolved Run/Spin itself, so no recovery was lost. INV-rolok is satisfied via construction.py, so the option-A motivation is obsolete. (Original text below; the review entry in the thread has the evidence.)\n\nFound while pricing INV-rolok's option A (re-point the instantiates dst at the\ninitializer, the shape WI-fagit gave csharp).\n\nlinkers/method_call_recovery builds its class hints with:\n\n    if e.edge_type in _CLASS_HINT_EDGE_TYPES and e.dst in class_ids:\n\n_CLASS_HINT_EDGE_TYPES is {\"calls\", \"instantiates\"} and class_ids is\n{s.id for s in ctx.symbols if s.kind == \"class\"}. The dst must therefore BE a\nclass node.\n\nWI-fagit (PR #689) moved csharp's instantiates dst onto the constructor symbol\n(Type.Type, kind=\"constructor\"), and java emits kind=\"constructor\" too. For\nthose languages e.dst is no longer in class_ids, so their construction edges\nhave silently contributed NO class hints since #689. The linker's own comment\nacknowledges the shape -- \"dart/csharp/java/py/js_ts/php/cpp/verilog emit\ninstantiates with the class (or constructor) as dst\" -- but the code has no\nbranch for the constructor half it names.\n\nThe fix shape is small: when the dst is an initializer, resolve it to its\nowning class (member_owner / the contains edge) before looking it up in\nclass_ids. That also unblocks INV-rolok's option A for python, which is\ncurrently priced out because re-pointing python's dst would drop python from\nthis linker too. The linker produced 89 edges on hypergumbo self-analysis;\nthat is the volume at risk, and the java/csharp loss is unmeasured because no\njava/csharp repo was probed for it.\n\nNOT URGENT AND NOT COSMETIC: this is lost recall in a recovery linker, so its\nfailure mode is quiet -- unresolved calls that stay unresolved."  # 7c2f

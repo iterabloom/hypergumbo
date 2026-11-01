@@ -20,3 +20,26 @@
     pr_ref:  # 8177
     description: "FOUND 2026-10-04 measuring WI-fohuh on whisper.cpp, pytorch (aten .cu/.cuh), ffmpeg, vmaf, branch jgstern-agent/fix/darik. After that branch every CUDA definition with a nameable declarator is a symbol, calls are drawn from it by position, and a macro-named one (TORCH_IMPL_FUNC(x)(args): 960 sites on pytorch) is stood in for (src_stands_in_for). What cuda.py still does NOT emit:\n\n1. File-scope calls (a global initialiser, a static member init): left unemitted, unlike c/cpp, which anchor them on the file (INV-bamij). Call sites outside every definition: pytorch 1,223, whisper.cpp 469, ffmpeg 54, vmaf 12 (instrument: sites.top in ~/hypergumbo_lab_notebook/decontend/run_10032026/darik/after*.cuda.*.json). Not all are calls (macro-shaped declarations parse as call_expression too); not split.\n2. Calls whose callee is not a bare identifier: a member call (obj.f(), p->f()), a qualified call (ns::f()), a template call (f<T>(x)). The field_expression branch of _extract_cuda_edges is marked pragma: no cover but is reachable; qualified and template callees are not read at all. Gap measured, not split by shape: pytorch 26,903 call sites inside named definitions vs 17,695 call edges recovered on their lines; whisper.cpp 5,743 vs 4,784.\n\ncpp.py reads all three callee shapes; reusing its call-name reader (or moving it beside hypergumbo_core.analyze.c_family) is the likely cure."  # 8177
     fields: {}  # 8177
+- op: discuss  # 4551
+  at: '2026-11-01T10:56:03Z'  # 4551
+  by: agent  # 4551
+  actor: jgstern_agent  # 4551
+  clock: 2  # 4551
+  nonce: '4551'  # 4551
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph1/). VERDICT: PARTLY-STALE. Reviewed 2026-11-01 at dev 100b6fbb6e on a .cu fixture: ps->f() and s.f() DO emit a calls edge (cuda.py:369-377 field_expression fallback, present since Jan though marked pragma no cover, binds by bare name); ns::helper(), tf<int>() and a file-scope static init g(3) emit nothing. Remaining scope: qualified + template callees and file-scope calls; member calls are not part of the gap. MECHANISM: callee reader accepts identifier/field_identifier only, not qualified_identifier/template_function; file-scope calls get top_level=None. SHARES MECHANISM WITH: WI-gufip."  # 4551
+- op: update  # 06d8
+  at: '2026-11-01T10:56:03Z'  # 06d8
+  by: agent  # 06d8
+  actor: jgstern_agent  # 06d8
+  clock: 3  # 06d8
+  nonce: 06d8  # 06d8
+  set:  # 06d8
+    title: "cuda: file-scope calls and qualified (ns::f) / template (f<T>) callees emit no edge; member calls do emit (bound by bare name)"  # 06d8
+- op: update  # 2ba8
+  at: '2026-11-01T10:56:03Z'  # 2ba8
+  by: agent  # 2ba8
+  actor: jgstern_agent  # 2ba8
+  clock: 4  # 2ba8
+  nonce: 2ba8  # 2ba8
+  set:  # 2ba8
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Reviewed 2026-11-01 at dev 100b6fbb6e on a .cu fixture: ps->f() and s.f() DO emit a calls edge (cuda.py:369-377 field_expression fallback, present since Jan though marked pragma no cover, binds by bare name); ns::helper(), tf<int>() and a file-scope static init g(3) emit nothing. Remaining scope: qualified + template callees and file-scope calls; member calls are not part of the gap. (Original text below; the review entry in the thread has the evidence.)\n\nFOUND 2026-10-04 measuring WI-fohuh on whisper.cpp, pytorch (aten .cu/.cuh), ffmpeg, vmaf, branch jgstern-agent/fix/darik. After that branch every CUDA definition with a nameable declarator is a symbol, calls are drawn from it by position, and a macro-named one (TORCH_IMPL_FUNC(x)(args): 960 sites on pytorch) is stood in for (src_stands_in_for). What cuda.py still does NOT emit:\n\n1. File-scope calls (a global initialiser, a static member init): left unemitted, unlike c/cpp, which anchor them on the file (INV-bamij). Call sites outside every definition: pytorch 1,223, whisper.cpp 469, ffmpeg 54, vmaf 12 (instrument: sites.top in ~/hypergumbo_lab_notebook/decontend/run_10032026/darik/after*.cuda.*.json). Not all are calls (macro-shaped declarations parse as call_expression too); not split.\n2. Calls whose callee is not a bare identifier: a member call (obj.f(), p->f()), a qualified call (ns::f()), a template call (f<T>(x)). The field_expression branch of _extract_cuda_edges is marked pragma: no cover but is reachable; qualified and template callees are not read at all. Gap measured, not split by shape: pytorch 26,903 call sites inside named definitions vs 17,695 call edges recovered on their lines; whisper.cpp 5,743 vs 4,784.\n\ncpp.py reads all three callee shapes; reusing its call-name reader (or moving it beside hypergumbo_core.analyze.c_family) is the likely cure."  # 2ba8

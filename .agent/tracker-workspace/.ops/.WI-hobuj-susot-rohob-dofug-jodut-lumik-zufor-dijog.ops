@@ -29,3 +29,26 @@
   clock: 2  # e284
   nonce: e284  # e284
   message: "ADR-0020 Status corrected in PR #1538 (merge 17a5440feb; docs only, per human decision 'Only fix ADR-0020'). Status is now 'Accepted — partially implemented'; a new Implementation status section records: Part 1 (S capture, R/A/L/U annotation overlay, arrow-key nudge, sanitized SVG injection via tui._on_annotation_result) is live, with deviations (annotated SVG overwrites the original; no JSON sidecar/<metadata>). Part 2 is not wired: TUI calls only preview.extract_svg_paths + format_preview_placeholder ('[screenshot: name]' / '— file not found'). Library-only, no production caller: preview.render_svg_preview/cache/clear_cache/format_unavailable_notice, preview_pipeline.py, svg_detection.py (disagrees: accepts 'docs/x.svg', preview rejects — re-verified), svg_injection.py, screenshot_save.py. README index row and tracker CHANGELOG v0.2.0 entry aligned. Code left in place; item stays open for the decision on wiring vs. removing the preview code."  # e284
+- op: discuss  # 91d2
+  at: '2026-11-01T10:55:44Z'  # 91d2
+  by: agent  # 91d2
+  actor: jgstern_agent  # 91d2
+  clock: 3  # 91d2
+  nonce: 91d2  # 91d2
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/tool1/). VERDICT: PARTLY-STALE. Checked at dev 100b6fbb6e: tui.py:369 still imports only preview.extract_svg_paths and format_preview_placeholder; no caller of render_svg_preview, preview_pipeline, svg_detection, svg_injection or screenshot_save in packages/*/src, scripts, hooks or workflows. The detectors still disagree: preview drops 'docs/x.svg', svg_detection keeps it. ADR-0020 Status was already corrected (PR #1538), so the title's ADR clause is stale; the wire-vs-delete decision is still open. MECHANISM: library code shipped with no production caller; duplicate path detector and annotation transform beside the live ones."  # 91d2
+- op: update  # 1073
+  at: '2026-11-01T10:55:44Z'  # 1073
+  by: agent  # 1073
+  actor: jgstern_agent  # 1073
+  clock: 4  # 1073
+  nonce: '1073'  # 1073
+  set:  # 1073
+    title: "tracker: ADR-0020 Part 2 inline SVG preview has no production caller — decide wire vs delete preview_pipeline/svg_detection/svg_injection/screenshot_save"  # 1073
+- op: update  # e4bc
+  at: '2026-11-01T10:55:44Z'  # e4bc
+  by: agent  # e4bc
+  actor: jgstern_agent  # e4bc
+  clock: 5  # e4bc
+  nonce: e4bc  # e4bc
+  set:  # e4bc
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] Checked at dev 100b6fbb6e: tui.py:369 still imports only preview.extract_svg_paths and format_preview_placeholder; no caller of render_svg_preview, preview_pipeline, svg_detection, svg_injection or screenshot_save in packages/*/src, scripts, hooks or workflows. The detectors still disagree: preview drops 'docs/x.svg', svg_detection keeps it. ADR-0020 Status was already corrected (PR #1538), so the title's ADR clause is stale; the wire-vs-delete decision is still open. (Original text below; the review entry in the thread has the evidence.)\n\nThe TUI imports only preview.extract_svg_paths and preview.format_preview_placeholder. render_svg_preview (preview.py), preview_pipeline (whole module, its PreviewCache unused), svg_detection (a second path detector that disagrees: 'docs/x.svg' accepted vs rejected) and svg_injection (a second annotation transform; tui.py ~3815-3899 reimplements it differently) have no production caller (checked packages/, scripts/, hooks, workflows, entry points, git log -S: never wired since e4a0c60237). ADR-0020's Status lists them as shipped. Decide: wire the preview or delete the dead pairs and correct ADR-0020. Docstrings and the I/O allowlist were corrected in the 2026-10-10 audit PR.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # e4bc

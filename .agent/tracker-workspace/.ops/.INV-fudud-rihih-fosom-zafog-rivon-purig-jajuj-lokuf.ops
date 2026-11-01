@@ -21,3 +21,10 @@
     fields:  # 8d27
       statement: "the websocket linker detects the Django Channels async_to_sync send idiom in sync consumers"  # 8d27
       root_cause: "DJANGO_ASYNC_SEND matches only a bare channel_layer, not self.channel_layer"  # 8d27
+- op: discuss  # 98fe
+  at: '2026-11-01T10:56:10Z'  # 98fe
+  by: agent  # 98fe
+  actor: jgstern_agent  # 98fe
+  clock: 2  # 98fe
+  nonce: 98fe  # 98fe
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs2/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: websocket.py:303 DJANGO_ASYNC_SEND is still async_to_sync\\s*\\(\\s*channel_layer..., applied at :614 with DJANGO_CHANNEL_SEND. Tested the compiled patterns: 'async_to_sync(self.channel_layer.send)(\"chat\",...)' and the group_send form match neither (False/False). The bare 'async_to_sync(channel_layer.send)' matches. DJANGO_CONSUMER_SEND/DJANGO_CHANNELS_ROUTE are still compiled but never applied, as the docstring says. MECHANISM: send regex anchors on bare channel_layer, so self.channel_layer inside async_to_sync never matches."  # 98fe

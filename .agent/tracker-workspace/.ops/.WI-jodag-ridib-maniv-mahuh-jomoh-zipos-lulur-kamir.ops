@@ -29,3 +29,10 @@
   clock: 2  # 10ed
   nonce: 10ed  # 10ed
   message: "Addendum (same dogfood run): `hypergumbo sketch --include-docs` → exit 2, 'unrecognized arguments: --include-docs'. Only `run` accepts the flag (run --help: 2 mentions; sketch --help: 0). So on a doc-dominant repo the sketch — the agent-facing entry point — has no way to show document structure at all, and any disclosure line it prints must point users at `run --include-docs` until sketch gains the flag. Suggest the fix adds the flag to sketch (and any other subcommand that builds an analysis) in the same change, so the disclosure is actionable where it is read."  # 10ed
+- op: discuss  # ad64
+  at: '2026-11-01T10:56:05Z'  # ad64
+  by: agent  # ad64
+  actor: jgstern_agent  # ad64
+  clock: 3  # ad64
+  nonce: ad64  # ad64
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph2/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e (9.2.0). Two-file markdown fixture: default `run` gives 2 file nodes, 0 edges; limits keys are analyzer_version/max_tier_applied/not_captured/skipped_passes/supply_chain/test_files_excluded (no noise count); 'include-docs' appears 0 times in run JSON/stderr and sketch output. `run --include-docs` gives 4 section, 2 link, 1 code_block, 1 external_symbol, 2 file, 1 edge. `sketch --include-docs` still exits 2 (unrecognized argument). The drop site moved to cli.py ~13321; noise_filter.py changes since filing (COBOL, docs) do not touch disclosure. MECHANISM: noise filter (cli.py is_noise_symbol drop, now ~:13321) removes doc/config symbols without recording counts anywhere, and sketch has no --include-docs flag. SHARES MECHANISM WITH: INV-gosub."  # ad64

@@ -18,3 +18,26 @@
     pr_ref:  # a7e2
     description: "On all 84 AnalysisRuns, the three parallel 'what didn't go right this pass' fields use two container types: files_skipped=0 (int) while failed_files=[] and warnings=[] (lists). A consumer iterating the per-pass problem channels must special-case files_skipped. Fix: harmonize the AR what-went-wrong field container types (e.g. make files_skipped a list, or document the intentional asymmetry). Distinct from INV-buhur (satisfied: failed_files never populated) — different mechanism. Surfaced via dogfooding; blinded severity 2/5."  # a7e2
     fields: {}  # a7e2
+- op: discuss  # b6d8
+  at: '2026-11-01T10:55:59Z'  # b6d8
+  by: agent  # b6d8
+  actor: jgstern_agent  # b6d8
+  clock: 2  # b6d8
+  nonce: b6d8  # b6d8
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc4/). VERDICT: PARTLY-STALE. 2026-11-01 review: ir.py:393-396 and to_dict still emit files_skipped as an int on every run. Since 6e7e48bf42 (INV-virik), failed_files and warnings are emitted only when non-empty, so the 'failed_files=[] and warnings=[] on all runs' wording is stale. On the packages/ self-analysis, 99/99 ARs have an int files_skipped and 2 have a failed_files list. The type asymmetry remains, now with presence asymmetry on top. MECHANISM: AR per-pass problem channels use different container shapes (scalar count vs optional list). SHARES MECHANISM WITH: WI-sizih."  # b6d8
+- op: update  # 074d
+  at: '2026-11-01T10:55:59Z'  # 074d
+  by: agent  # 074d
+  actor: jgstern_agent  # 074d
+  clock: 3  # 074d
+  nonce: 074d  # 074d
+  set:  # 074d
+    title: "analysis_run files_skipped is an always-present int while failed_files/warnings are omit-when-empty lists"  # 074d
+- op: update  # 7de0
+  at: '2026-11-01T10:55:59Z'  # 7de0
+  by: agent  # 7de0
+  actor: jgstern_agent  # 7de0
+  clock: 4  # 7de0
+  nonce: 7de0  # 7de0
+  set:  # 7de0
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review: ir.py:393-396 and to_dict still emit files_skipped as an int on every run. Since 6e7e48bf42 (INV-virik), failed_files and warnings are emitted only when non-empty, so the 'failed_files=[] and warnings=[] on all runs' wording is stale. On the packages/ self-analysis, 99/99 ARs have an int files_skipped and 2 have a failed_files list. The type asymmetry remains, now with presence asymmetry on top. (Original text below; the review entry in the thread has the evidence.)\n\nOn all 84 AnalysisRuns, the three parallel 'what didn't go right this pass' fields use two container types: files_skipped=0 (int) while failed_files=[] and warnings=[] (lists). A consumer iterating the per-pass problem channels must special-case files_skipped. Fix: harmonize the AR what-went-wrong field container types (e.g. make files_skipped a list, or document the intentional asymmetry). Distinct from INV-buhur (satisfied: failed_files never populated) — different mechanism. Surfaced via dogfooding; blinded severity 2/5."  # 7de0

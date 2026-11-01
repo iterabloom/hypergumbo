@@ -19,3 +19,10 @@
     pr_ref:  # 2a17
     description: "Follow-up gap surfaced by the WI-hiziz PR-2 (Site-1) adversarial review (wf_e6f81f04-d63) and design premortem. PR-2 stamps meta['enclosing_class'] for self.method() only (receiver == 'self'); a classmethod's inherited call cls.method() (receiver == 'cls') never reaches the self-branch, so it stays python:external:0-0:<attr>:unresolved and the inherited classmethod/method looks dead (a dead-code FP). Mechanical mirror of PR-2's producer branch: add a cls-branch gated on receiver_name == 'cls' AND caller is a @classmethod (its decorators contain 'classmethod') AND 'cls' in _caller_locals, stamping enclosing_class = caller_symbol.qualified_name.split('.')[-2]; the existing _resolve_site1 (Python C3 walker + _SITE1_STRICT_LANGS guard) resolves it. CAVEAT (precision): classmethod polymorphism — cls may be a SUBCLASS at runtime, so binding to the DEFINING class's MRO is an approximation (can miss a subclass override); this is the same soundness posture as self (self may also be a subclass instance), so it is acceptable, but note it. Existing test test_cls_method_gets_no_hint currently locks 'no hint' for cls.build() — it must be updated when this lands. Lower priority than PR-3 (Site-3)."  # 2a17
     fields: {}  # 2a17
+- op: discuss  # 37bc
+  at: '2026-11-01T10:56:04Z'  # 37bc
+  by: agent  # 37bc
+  actor: jgstern_agent  # 37bc
+  clock: 2  # 37bc
+  nonce: 37bc  # 37bc
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/graph1/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 100b6fbb6e: in a @classmethod, cls.build() (inherited, cross-file) and cls.build2() (same file) both stay python:external unresolved with no linker edge, while the control self.helper() resolves to Base.helper via inherited-calls-linker (0.9). test_cls_method_gets_no_hint still exists (test_py_receiver_type_hint.py:219). Premise holds. MECHANISM: Site-1 enclosing_class hint is stamped only for receiver self, never cls. SHARES MECHANISM WITH: WI-mosof,WI-basij."  # 37bc

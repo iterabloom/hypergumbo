@@ -18,3 +18,10 @@
     pr_ref:  # c205
     description: "Seen in the cron test-agent-infra log 2026-10-14: with pytest-cov missing, pytest rejected --cov (exit 4) and smart-test's summary still printed 'COVERAGE: (all files at 100%)'. The exit code stayed non-zero, so nothing passed falsely, but the summary claims coverage for a run that measured nothing. count_executed_tests returns 'unknown' when there is neither a junit file nor a result line, so zero_run stays false. Fix: no coverage section unless a coverage TOTAL line exists; say 'pytest did not run (exit 4: usage error)'."  # c205
     fields: {}  # c205
+- op: discuss  # 02f0
+  at: '2026-11-01T10:56:03Z'  # 02f0
+  by: agent  # 02f0
+  actor: jgstern_agent  # 02f0
+  clock: 2  # 02f0
+  nonce: 02f0  # 02f0
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc5/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e (smart-test last changed e98c083991): count_executed_tests and summarize_pytest_output were taken from scripts/smart-test:556+ and run with exit 4, no junit, and a pytest 'unrecognized arguments: --cov' log. That gives executed=unknown, zero_run=false, and the output 'COVERAGE: (all files at 100%)'. The zero-run guard at :809-812 does not catch exit 4 + unknown, although its own comment says exit 4 is covered. MECHANISM: zero_run requires exit 5 or a counted 0; exit 4 with no junit and no result line counts as 'unknown', so the coverage section prints vacuously. SHARES MECHANISM WITH: WI-kazig, WI-palah."  # 02f0

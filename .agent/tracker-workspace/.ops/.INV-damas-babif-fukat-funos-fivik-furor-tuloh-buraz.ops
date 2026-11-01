@@ -22,3 +22,10 @@
     fields:  # a163
       statement: "A reference through an Agda renamed import (open import M renaming (x to y); ... y ...) resolves to the original definition x, as the docstring promises."  # a163
       root_cause: "extract_edges_from_file drops the import_aliases parameter and the _aliases return value, and reference lookup is a bare resolver.lookup(ref_name), so the alias map get_import_aliases builds is never read."  # a163
+- op: discuss  # 53db
+  at: '2026-11-01T10:56:08Z'  # 53db
+  by: agent  # 53db
+  actor: jgstern_agent  # 53db
+  clock: 2  # 53db
+  nonce: 53db  # 53db
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/docs1/). VERDICT: CURRENT. 2026-11-01 review at dev 100b6fbb6e: the item's own repro (Data/Lib.agda mapper; Use.agda renaming (mapper to lm), go x = lm x, go2 x = mapper x) still yields only references go2 -> mapper and nothing from go. Code shape unchanged, lines moved: resolver.lookup(ref_name) agda.py:444, get_import_aliases :621, '_aliases' discarded :651. WI-kosar (ac651f01d5) touched agda but not this path. MECHANISM: alias map built by get_import_aliases is discarded; references looked up by literal name."  # 53db

@@ -98,3 +98,10 @@
   clock: 11  # d130
   nonce: d130  # d130
   message: "CONSUMER RECORDED, 2026-09-06 (WI-baran): tmux's sendmsg/recvmsg sites (compat/imsg-buffer.c) take the socket descriptor as a function PARAMETER; the AF_UNIX socket()/socketpair() calls are two functions up (client.c:122, server.c:123, proc.c:364). The same-function stamp abstains there, so measurement 0012's tmux VACUOUS deduction survives WI-baran. A parameter-to-argument summary that carries io_target_kind from the caller's binding to the callee's parameter is what would move it -- the read-side twin of the shape INV-fumod (a) closed \"fixed in principle\" against this item."  # d130
+- op: discuss  # e04c
+  at: '2026-11-01T10:55:30Z'  # e04c
+  by: agent  # e04c
+  actor: jgstern_agent  # e04c
+  clock: 12  # e04c
+  nonce: e04c  # e04c
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint1/). VERDICT: CURRENT. 2026-11-01 review on dev 100b6fbb6e: infer_summary (function_summaries/__init__.py:397) still has no production caller; param_to_calls/CallArgFlow/param_to_param absent from packages/*/src; return_sources still computed and dropped (:442-453); cross_function bail at taint.py:6262; ADR-0017 Status line splits §4a/§4b. ADR-0052 (2026-09-09) retiring the removal-coverage goal reinforces the 09-01 option-3 ruling; walk vocabulary 'unconfirmed' is now 'refuted'. Remains the deferred decision's home. MECHANISM: §4a summary dataclass has no param-to-call-argument field and infer_summary is unwired, so §3a bails cross_function. SHARES MECHANISM WITH: WI-ritog,WI-nulam."  # e04c

@@ -25,3 +25,18 @@
   clock: 2  # 5286
   nonce: '5286'  # 5286
   message: "Dogfood finding (member F145.A1-b, split from F145.A1), reproduces on the frozen substrate. Mechanism: the schema/serializer carries a failed_files array on the top-level limits block AND a failed_files key on every analysis_runs entry. The same parse-failure concept is split across two locations. Scope: failed_files present in limits (1 array) and in all 84 analysis_runs entries; affects every run output. Exposure/consequence: a consumer collecting \"which files failed to parse\" must know to read both locations, or risk double-counting if it reads both naively; reporting parse failures either misses per-pass detail (reading only limits), double-counts (reading both), or builds brittle dedup logic — an agent assessing analysis completeness gets an ambiguous count. Expectation: a given concept (files that failed to parse) has one canonical home, or the two are clearly differentiated (per-pass vs aggregate) in the contract. This is the duplication/placement concern, distinct from INV-buhur (limits.failed_files never POPULATED by Python analyzer) and the schema-staleness concern in the E01 enrichment on WI-sirir (AnalysisRun.failed_files absent from the schema $def). Cross-ref INV-buhur, WI-sirir."  # 5286
+- op: discuss  # 1eb3
+  at: '2026-11-01T10:55:59Z'  # 1eb3
+  by: agent  # 1eb3
+  actor: jgstern_agent  # 1eb3
+  clock: 3  # 1eb3
+  nonce: 1eb3  # 1eb3
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc4/). VERDICT: PARTLY-STALE. 2026-11-01 review @100b6fbb6e: on a 4-file fixture with 3 broken files, limits.failed_files held 3 entries ({analyzer,path,reason}) and the python/javascript ARs held the same 3 ({path,reason}). On the packages/ self-analysis: limits 10, AR sum 10. The claim that all 84 ARs carry failed_files is stale: since 6e7e48bf42 (INV-virik) the key is omitted when empty (2 of 99 ARs carry it). The schema describes AR.failed_files as 'drained into limits.failed_files', but the records are not removed from the AR, so the duplication holds. MECHANISM: per-pass AnalysisRun.failed_files is copied, not moved, into the aggregate limits.failed_files, so one record lives in two places. SHARES MECHANISM WITH: WI-vikub."  # 1eb3
+- op: update  # f498
+  at: '2026-11-01T10:55:59Z'  # f498
+  by: agent  # f498
+  actor: jgstern_agent  # f498
+  clock: 4  # f498
+  nonce: f498  # f498
+  set:  # f498
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review @100b6fbb6e: on a 4-file fixture with 3 broken files, limits.failed_files held 3 entries ({analyzer,path,reason}) and the python/javascript ARs held the same 3 ({path,reason}). On the packages/ self-analysis: limits 10, AR sum 10. The claim that all 84 ARs carry failed_files is stale: since 6e7e48bf42 (INV-virik) the key is omitted when empty (2 of 99 ARs carry it). The schema describes AR.failed_files as 'drained into limits.failed_files', but the records are not removed from the AR, so the duplication holds. (Original text below; the review entry in the thread has the evidence.)"  # f498

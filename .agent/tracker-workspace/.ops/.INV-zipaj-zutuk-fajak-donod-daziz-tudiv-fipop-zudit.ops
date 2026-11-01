@@ -23,3 +23,10 @@
     fields:  # 858f
       statement: "Every edge the LaTeX analyzer emits has endpoints that are canonical symbol ids: src is the emitted file symbol's id and dst is a 5-part external id, so the id_format validator is clean and the edges resolve to the file node."  # 858f
       root_cause: "latex.py builds edges with src=f\"{rel_path}:file\" (lines 298/325/349/377) and dst=<raw target name> instead of make_symbol_id / a reshaped external id; create_boundary_nodes then parses the 2-part src as <language>:<path>, putting the file path in the language slot. Family: INV-habit (latex bypasses the TreeSitterAnalyzer conventions)."  # 858f
+- op: discuss  # 9c3e
+  at: '2026-11-01T10:55:58Z'  # 9c3e
+  by: agent  # 9c3e
+  actor: jgstern_agent  # 9c3e
+  clock: 2  # 9c3e
+  nonce: 9c3e  # 9c3e
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: one .tex with usepackage/input/label+ref gives '[warn] 4 id_format validation violation(s)'; every edge src is a.tex:<unknown>:0-0:a.tex:external_symbol (non_canonical_language_prefix error) and dsts fontenc/chap1/sec:<unknown>..., is_resolved False. latex.py:299/326/350/378 unchanged. Also \\ref{sec:a} becomes dst 'sec:...' (label colon truncated). MECHANISM: LaTeX analyzer hand-spells edge endpoints (rel_path:file src, raw-name dst) instead of make_file_id and a reshaped external id. SHARES MECHANISM WITH: INV-habit,WI-modan."  # 9c3e

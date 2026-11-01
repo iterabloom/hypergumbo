@@ -19,3 +19,10 @@
     pr_ref:  # 32ba
     description: "Release tags v7.0.0-v9.0.0 sit on main, so 'git describe --tags --abbrev=0 --match v*' run on dev returns v6.1.0. Two consumers: (1) prepare-release:286 PREV_TAG writes the CHANGELOG link definition, which is how 9.0.0 got '[9.0.0]: .../compare/v6.1.0...v9.0.0' (fixed by hand in PR #1639; 9.1.0 run with PREV_TAG=v9.0.0 override); (2) bump-version:200 LAST_TAG drives 'hypergumbo-tracker source changed since v6.1.0 but --tracker not specified', diffing tracker src across three releases. Repro on dev at 3cb2eb8625: git describe --tags --abbrev=0 --match 'v*' -> v6.1.0 while git tag -l 'v*' --sort=-v:refname | head -1 -> v9.0.0. Fix direction: pick the highest v* tag below VERSION by version sort (git tag -l --sort=-v:refname), shared by both scripts, with a test that builds a repo whose release tags are off the current branch."  # 32ba
     fields: {}  # 32ba
+- op: discuss  # 74e2
+  at: '2026-11-01T10:56:02Z'  # 74e2
+  by: agent  # 74e2
+  actor: jgstern_agent  # 74e2
+  clock: 2  # 74e2
+  nonce: '74e2'  # 74e2
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc5/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e: `git describe --tags --abbrev=0 --match 'v*'` on dev gives v6.1.0, while `git tag -l 'v*' --sort=-v:refname | head -1` gives v9.2.0. scripts/prepare-release:286 (PREV_TAG) and scripts/bump-version:200 (LAST_TAG) still use git describe. Neither script has changed since 2026-09-25 (56f069874e). The gap has grown by one release since filing. MECHANISM: previous-release tag taken from git describe on dev, which cannot reach tags that sit on main. SHARES MECHANISM WITH: none."  # 74e2

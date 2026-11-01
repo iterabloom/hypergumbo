@@ -29,3 +29,10 @@
   set: {}  # 58e6
   add:  # 58e6
     not_duplicate_of: [INV-tabaf-vaniz-rorin-pidup-punif-mimid-damod-zavit]  # 58e6
+- op: discuss  # 41a1
+  at: '2026-11-01T10:55:35Z'  # 41a1
+  by: agent  # 41a1
+  actor: jgstern_agent  # 41a1
+  clock: 3  # 41a1
+  nonce: 41a1  # 41a1
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint3/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e. No io_primitives or io_primitives_overlays file mentions servant/ClientM/runClientM. newManager is still rowed in io_primitives_overlays/haskell-network.yaml:109 (moved there from haskell.yaml by WI-surun 7ed180a2e7, 2026-08-28, before filing). Fixture: newManager + runClientM; io-boundaries classifies only Network.HTTP.Client.newManager as net_send, runClientM stays haskell:external unclassified. Steps 2-3 (the servant A/B) need the servant corpus checkout, which was not run here. MECHANISM: servant-client executors uncatalogued; newManager is the only rowed network sink in servant client code."  # 41a1

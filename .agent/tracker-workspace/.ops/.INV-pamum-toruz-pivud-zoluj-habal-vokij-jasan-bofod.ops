@@ -21,3 +21,10 @@
     fields:  # 61fc
       statement: "Any change to the repo_fingerprint algorithm bumps REPO_FINGERPRINT_SCHEME, and the spec's definition matches the algorithm the scheme names (repo_fingerprint.py's own docstring states this rule)."  # 61fc
       root_cause: "24c52b5c94 (2026-07-21) bumped to hypergumbo-repofp-v2; 8611a7a73d (2026-08-06) changed the git path to hash HEAD plus the whole source tree (repo_fingerprint.py ~:249-250, _iter_non_git_files) without a bump; schema.py ~:199 is still v2 and docs/hypergumbo-spec.md ~:677-680 still describes sha256(git_head + dirty files)."  # 61fc
+- op: discuss  # be9d
+  at: '2026-11-01T10:56:02Z'  # be9d
+  by: agent  # be9d
+  actor: jgstern_agent  # be9d
+  clock: 2  # be9d
+  nonce: be9d  # be9d
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc5/). VERDICT: CURRENT. 2026-11-01 review @100b6fbb6e: on a clean 1-commit git fixture, compute_repo_fingerprint = 58a0ab5b..., while the spec's formula sha256(head + empty dirty set) = 93d7ff9b..., so they differ. REPO_FINGERPRINT_SCHEME is still hypergumbo-repofp-v2. docs/hypergumbo-spec.md:694-697 still describes the dirty-file set. f590a68477 (2026-10-06) fixed the module docstring's rotted citation and now names INV-pamum, but bumped neither the scheme nor the spec. MECHANISM: repo_fingerprint algorithm changed (8611a7a73d whole-tree hash) without a scheme bump; spec still documents the dirty-file formula. SHARES MECHANISM WITH: WI-talos."  # be9d

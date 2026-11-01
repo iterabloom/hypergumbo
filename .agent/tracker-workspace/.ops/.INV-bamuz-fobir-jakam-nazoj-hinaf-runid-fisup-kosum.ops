@@ -20,3 +20,18 @@
     fields:  # 5359
       statement: "generate-concepts must not treat a documentation example of the concepts dict shape as a concept declaration."  # 5359
       root_cause: "The scraper matches the concepts dict literal anywhere in a .py file, including inside a docstring or comment, so prose describing the shape is indistinguishable from a producer declaring it. Measured: adding an illustrative literal to axis_meta_keys.py inserted that module into docs/CONCEPTS.md as a framework declaring the route concept; removing it restored the file exactly."  # 5359
+- op: discuss  # 2ef5
+  at: '2026-11-01T10:55:52Z'  # 2ef5
+  by: agent  # 2ef5
+  actor: jgstern_agent  # 2ef5
+  clock: 2  # 2ef5
+  nonce: 2ef5  # 2ef5
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e (scripts/generate-concepts unchanged since 2026-05-12). scan_producers on a fixture module whose only literals are in a docstring and a comment returned route and websocket_x as produced by it. The consumer scan has the same flaw live: docs/CONCEPTS.md:236 lists axis_meta_keys.py as a route consumer from description prose at axis_meta_keys.py:1013. MECHANISM: generate-concepts regexes run over raw source text, not AST code context."  # 2ef5
+- op: update  # 8fdd
+  at: '2026-11-01T10:55:52Z'  # 8fdd
+  by: agent  # 8fdd
+  actor: jgstern_agent  # 8fdd
+  clock: 3  # 8fdd
+  nonce: 8fdd  # 8fdd
+  set:  # 8fdd
+    title: "generate-concepts regex-scrapes raw text: docstring/comment/string examples count as concept producers AND consumers (axis_meta_keys.py listed as a route consumer in CONCEPTS.md today)"  # 8fdd

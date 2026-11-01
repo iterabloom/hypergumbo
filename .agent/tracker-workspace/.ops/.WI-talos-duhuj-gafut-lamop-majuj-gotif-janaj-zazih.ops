@@ -71,3 +71,18 @@
   clock: 8  # 06c7
   nonce: 06c7  # 06c7
   message: "2026-09-18: two data points for this row. (1) INV-kutid filed — the SCIP\nscheme's sha256(moniker) collides across crate TARGETS (`crate/`, `main().`\nin lib, bin and build.rs; 5 of 756 on aardvark-dns), i.e. the second\nundeclared scheme under the `sha256:` prefix has its own scope defect. (2)\nPR #1044 (INV-dolud) documents that the SCIP scheme is NEVER replaced by\nthe rust.py scheme in production (0 of 52), so every SCIP Symbol in a\nsurvey carries the undeclared scheme, not just the failures. Any fix for\nkutid that folds the document path into the hash should declare the\nscheme it produces, per this row."  # 06c7
+- op: discuss  # 4a97
+  at: '2026-11-01T10:56:01Z'  # 4a97
+  by: agent  # 4a97
+  actor: jgstern_agent  # 4a97
+  clock: 9  # 4a97
+  nonce: 4a97  # 4a97
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc5/). VERDICT: PARTLY-STALE. 2026-11-01 review @100b6fbb6e: the declarations now read stableid-v13 / shapeid-v3 / repofp-v2 / symbol-fp-v2. Emitted values: stable_id sha256:<16hex>, shape_id sha256:<16hex>, repo_fingerprint sha256:<64hex> (config_fingerprint and run_signature also sha256:); fingerprint hgfp2:. No hgstableid/hgshapeid/hgrepofp prefix exists in src. The collision complaint holds. Stale parts: the owner plan's 'v9 = relabel, v10 = bitbake' numbering was used up by WI-tusad (v9) and WI-banod (v10), so the relabel is now v14 and the prefixes need new numbers. The undeclared-SCIP-scheme concern from 2026-09-18 is now declared: v11 (INV-kutid) names scip_stable_id in the spec history. MECHANISM: identity values carry an algorithm prefix (sha256:) rather than a per-scheme, versioned prefix, so three or more identity fields share one value grammar. SHARES MECHANISM WITH: WI-vuvah, INV-pamum, WI-marok."  # 4a97
+- op: update  # 9b05
+  at: '2026-11-01T10:56:01Z'  # 9b05
+  by: agent  # 9b05
+  actor: jgstern_agent  # 9b05
+  clock: 10  # 9b05
+  nonce: 9b05  # 9b05
+  set:  # 9b05
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] 2026-11-01 review @100b6fbb6e: the declarations now read stableid-v13 / shapeid-v3 / repofp-v2 / symbol-fp-v2. Emitted values: stable_id sha256:<16hex>, shape_id sha256:<16hex>, repo_fingerprint sha256:<64hex> (config_fingerprint and run_signature also sha256:); fingerprint hgfp2:. No hgstableid/hgshapeid/hgrepofp prefix exists in src. The collision complaint holds. Stale parts: the owner plan's 'v9 = relabel, v10 = bitbake' numbering was used up by WI-tusad (v9) and WI-banod (v10), so the relabel is now v14 and the prefixes need new numbers. The undeclared-SCIP-scheme concern from 2026-09-18 is now declared: v11 (INV-kutid) names scip_stable_id in the spec history. (Original text below; the review entry in the thread has the evidence.)"  # 9b05

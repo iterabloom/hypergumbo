@@ -21,3 +21,10 @@
     fields:  # 69ce
       statement: "Every top-level type signature and its defining clause yield one function symbol, whatever declaration precedes them."  # 69ce
       root_cause: "tree-sitter-agda parses 'go : Nat' on the line after a 'data ... where' block as two sibling 'function' nodes (lhs atom go | lhs atom ':' atom Nat) instead of one with a signature rhs; agda.py's function branch finds no name/rhs pair for either and skips both, and the next clause 'go = zero' then has no signature to attach to."  # 69ce
+- op: discuss  # 0b0c
+  at: '2026-11-01T10:55:52Z'  # 0b0c
+  by: agent  # 0b0c
+  actor: jgstern_agent  # 0b0c
+  clock: 2  # 0b0c
+  nonce: 0b0c  # 0b0c
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 100b6fbb6e. Both filed probes reproduce: probe 1 has no 'go', probe 2 has no 'run'; the control emits all four. The tree dump shows 'run : Nat -> Nat' as two sibling function nodes. Extra probes: dropping the blank line after the data block still loses 'go'; two postulate lines followed by a blank line keep 'run', so the trigger depends on the grammar's layout handling. MECHANISM: agda analyzer skips a signature tree-sitter-agda splits into two sibling function nodes (lhs atom name | lhs atom ':' ...)."  # 0b0c

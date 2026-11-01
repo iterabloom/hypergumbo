@@ -30,3 +30,10 @@
   set: {}  # 1a47
   add:  # 1a47
     not_duplicate_of: [WI-mital-jusaf-kuzif-lukin-sanat-gotok-biput-mutih]  # 1a47
+- op: discuss  # 9c08
+  at: '2026-11-01T10:55:37Z'  # 9c08
+  by: agent  # 9c08
+  actor: jgstern_agent  # 9c08
+  clock: 3  # 9c08
+  nonce: 9c08  # 9c08
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/iobcat1/). VERDICT: CURRENT. Review 2026-11-01 on 100b6fbb6e: fixture main with s <- getLine, getContents >>= putStrLn, lines <$> getContents, f =<< getLine emits only getLine and putStrLn calls edges; getContents (infix operand only) gets none. test_infix_operand_is_deliberately_excluded still pinned at test_haskell_zero_arg_actions.py:199. Option (b)'s signature-coverage measurement is still undone. MECHANISM: syntax cannot distinguish IO bind/fmap from pure Functor/Monad use; needs a type discriminator. SHARES MECHANISM WITH: WI-zozun,WI-tanor."  # 9c08

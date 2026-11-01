@@ -55,3 +55,10 @@
   clock: 6  # cfa9
   nonce: cfa9  # cfa9
   message: "OWNER DECISION 2026-10-04: RE-SCOPED to the ad-hoc parallel measurement fan-out case. The script half is DONE (PR #1408): the 12 scripts/measure-* cohort instruments state \"COHORT: covered K of N given\", name each uncovered member (DISK FULL included) and exit 4 when K != N, through scripts/lib/cohort_ledger.py, with a guard test. What remains is the orchestrator side: a parallel agent fan-out must state covered-of-given (members assigned vs results returned, with each missing member named) before any aggregate is reported. That means an orchestrator-side check, a prompt rule, or both. Residual script runners are tracked separately: WI-vivof (prospector/bakeoff), WI-huhip (CLI calls ENOSPC \"a bug\"), WI-bomos."  # cfa9
+- op: discuss  # ae84
+  at: '2026-11-01T10:55:57Z'  # ae84
+  by: agent  # ae84
+  actor: jgstern_agent  # ae84
+  clock: 7  # ae84
+  nonce: ae84  # ae84
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: grep of .agent/ playbooks/hooks and AGENTS.md finds no covered-of-given / attempted-vs-completed rule; the script half (scripts/lib/cohort_ledger.py, 12 measure-* scripts) is in place; residuals WI-vivof, WI-huhip, WI-bomos still todo_hard. /tmp is a 12G tmpfs at 86% today. Re-scoped premise holds; fix needs governance approval (.agent/). MECHANISM: no orchestrator-side check that results returned equal members assigned in ad-hoc agent fan-outs. SHARES MECHANISM WITH: WI-vivof."  # ae84

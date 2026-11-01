@@ -19,3 +19,10 @@
     pr_ref:  # 5dae
     description: "Residual of WI-nuvam-julik-lupig-sohid-rigod-kimom-lovup-fobuk (branch jgstern-agent/fix/nuvam, not yet merged when filed).\n\nAnalysisRun now carries cpu_ms (the CPU of the thread that ran the pass) beside duration_ms (wall). The two measurement scripts that read per-pass cards still read only duration_ms:\n\n- scripts/measure-analyzer-scaling.py (_card_rows, ~line 64) sums \"card seconds\" and prints card/wall as the parallelism measurement;\n- scripts/measure-survey-phase-split.py (~line 253-268) sums duration_ms per pass id.\n\nBoth warn in their docstrings that card sums OVERLAP and cannot be added into a share of wall. cpu_ms sums CAN be added: measured on a snapshot of this repository, analyzer-phase cpu_ms summed to 5.44 s against process CPU 5.44 s (max_files=1) and 103.94 s against 104.14 s (uncapped), while duration_ms summed to 21.82 s and 157.65 s inside 6.47 s and 135.67 s phases.\n\nExpectation: each script reports the cpu_ms sum beside the card wall sum (and per-pass cpu next to per-pass wall in the slowest-passes table), treats a null or absent cpu_ms as not measured rather than 0, and says that cpu_ms excludes child-process CPU (scip-python / rust-analyzer backends).\n\nNot done in WI-nuvam's branch: scope was the producer side and the schema/spec surfaces."  # 5dae
     fields: {}  # 5dae
+- op: discuss  # 3d01
+  at: '2026-11-01T10:55:58Z'  # 3d01
+  by: agent  # 3d01
+  actor: jgstern_agent  # 3d01
+  clock: 2  # 3d01
+  nonce: 3d01  # 3d01
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/). VERDICT: CURRENT. Review 2026-11-01 at dev 100b6fbb6e: scripts/measure-analyzer-scaling.py and measure-survey-phase-split.py contain no 'cpu' (grep 0) and still sum duration_ms only (lines ~64-68, ~253-268). Producer side is live: a survey's analysis_runs carry cpu_ms (julia 47 ms wall / 16 ms cpu); WI-nuvam done (PR #1387). MECHANISM: consumer measurement scripts not updated for the producer's new cpu_ms field."  # 3d01

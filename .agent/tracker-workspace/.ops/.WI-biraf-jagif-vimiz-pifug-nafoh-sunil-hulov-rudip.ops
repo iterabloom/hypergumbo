@@ -26,3 +26,10 @@
   clock: 2  # 4159
   nonce: '4159'  # 4159
   message: "2026-10-16 docstring audit, reproduced: the value is not type-checked either. A claims file with allowed_sanitizers: \"notalist\" loads cleanly (TaintFlowConstraint(..., allowed_sanitizers='notalist')); only the key name is validated (_ALLOWED_TAINT_FLOW_KEYS). verify_claims docstring now says 'accepted as a key (its value is not type-checked)'."  # 4159
+- op: discuss  # f0f4
+  at: '2026-11-01T10:55:37Z'  # f0f4
+  by: agent  # f0f4
+  actor: jgstern_agent  # f0f4
+  clock: 3  # f0f4
+  nonce: f0f4  # f0f4
+  message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/taint4/). VERDICT: CURRENT. Re-checked at dev 100b6fbb6e: allowed_sanitizers appears only in docstrings, the dataclass default (verify_claims.py:1570-1571), the key allowlist (1997) and the parse (2332); no other reader in packages/*/src. Fixture os.environ->clean(v)->subprocess.run: verdict violated, sanitized_flows 0, identical for allowed_sanitizers [], [app.clean, clean] and \"notalist\" (all load without error). Premise and the 10-16 note both hold. MECHANISM: claim key parsed into TaintFlowConstraint with no consumer and no value type check."  # f0f4
