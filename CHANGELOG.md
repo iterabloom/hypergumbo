@@ -54,7 +54,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **A node id whose kind or name slot disagrees with its node is a validator error** (ADR-0036 Ruling 3); such ids are corrected, `stable_id`s unchanged.
 - **Edges start and end on real nodes** for Starlark `deps`, json, make, jsonnet, astro, svelte, Cargo and CSS imports, bridging headers, WebAssembly loads and JSX references.
 - **Every linker call-site stand-in is attached to its enclosing function.**
-- **A Svelte or Vue file has one file symbol, and each `<script>` block is parsed in the language its `lang` names**, wherever the attribute sits.
+- **A Svelte or Vue file has one file symbol, and each `<script>` block is parsed as the language its `lang` attribute names**, wherever the attribute sits in the tag.
 
 #### Imports of your own code
 
@@ -65,6 +65,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **JS/TS import resolution**: `require('..')` imports the directory, via its `package.json`; Node core modules (`fs`, `node:*`) are not npm dependencies; `./X.test-wrapper` reaches its own file, not `X.tsx`.
 - **Rust brace-list (`use a::{b, c}`), top-level `use {...}` and aliased `use` declarations emit imports edges**, and a call through a `use` path, aliased or not, reaches the function that path names, not whichever same-named function was indexed last.
 - **Rust `use` paths count as framework import evidence** (`actix-web` is imported as `actix_web`).
+- **A Puppet `include` reaches its class** wherever it is declared, later in the file or in another one, and namespaced classes (`class a::b`) are now found. Each name in an include list, a quoted name, `require` and `inherits` gives its own edge. Resources inside a namespaced class get new `stable_id`s.
 - **A placeholder a linker resolves (console scripts, JS/TS imports) is demoted, not deleted** (ADR-0057 §14.1): it ranks lower and names its resolution in `superseded_by`.
 
 #### Calls, types and references
@@ -77,13 +78,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Kotlin and Scala bare `java.lang` receivers resolve**, so `verify-claims` sees the process launch.
 - **Slice reaches the members of a Kotlin/Scala `object`, a `record`, a `union` or a Go `type`.**
 - **A Yjs map entry read links from the code that wrote it**, by map and key; `getMap<T>()` is recognised.
-- **An edge's caller is found by position, its callee in the same file first**, in Luau, Apex, Hack, Smithy and Prisma: two files defining one name no longer cross edges.
-- **Circom resolves names in their template's scope**: a signal binds its own template's, `c.in` the bound component's; includes reach their file.
-- **Puppet `include` binds a class declared later or in another file.**
-- **Puppet namespaced classes (`class a::b`) are extracted**, and include lists, quoted includes, `require` and `inherits` each give an edge; resources inside such a class get new `stable_id`s.
-- **Electron `contextBridge` calls reach the preload's send**, so renderer → preload → main connects.
-- **A call through a project's own Electron IPC wrapper is an IPC site** (`this.ipcHandle('ch', …)`): on podman-desktop, 66 of 66 bridge calls reach the main process, up from 1.
-- **Java, Kotlin and Ruby same-named classes in different packages or modules no longer share edges**: `extends`, `super` and `this` start at the enclosing class, and a base resolves in its own package first.
+- **Same-named code in two places no longer gets mixed up.** Java, Kotlin and Ruby classes with one name in different packages or modules each keep their own `extends`, `super` and `this` edges, and a base class is looked up in its own package first. In Luau, Apex, Hack, Smithy and Prisma, a call starts from the function it is written in, even when another file defines a function of the same name.
+- **Circom names resolve in the right template**: a signal finds its own template's signal, `c.in` finds the signal of the template `c` instantiates, and an `include` reaches the file it names.
+- **Electron IPC connects renderer → preload → main**, both through `contextBridge` and through a project's own IPC wrapper (`this.ipcHandle('ch', …)`): on podman-desktop, 66 of 66 bridge calls reach the main process, up from 1.
 
 #### I/O boundaries and taint
 
@@ -91,12 +88,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Reads from asyncio streams the code opens are I/O crossings**: a reader from `open_connection` is `net_recv`; one from `open_unix_connection` or a subprocess's pipe is `ipc_recv`.
 - **`slice --io-boundary` keeps a call for every boundary it crosses** (`io_boundary.boundaries_of`): `subprocess.check_output` is both `subprocess` and `ipc_recv`.
 - **`document.cookie` is `browser_storage_read`**, alongside `env_read`.
-- **ObjC class methods and Swift statics have the kind their call reads as**; rows that can never match or do no I/O are deleted.
+- **I/O catalogue rows for ObjC class methods and Swift statics match how the code calls them**, as a function call or, like `Date.now`, an attribute read; rows that can never match or do no I/O are deleted. No classification changes on the repositories measured.
 - **`verify-claims` no longer confirms a claim about a zone a language has no sink in**: "untrusted input never reaches a database" on a Go repo using `db.Exec` is inconclusive, not `confirmed`. Community sinks alone do not cover a zone (ADR-0061 ruling 2), though a flow they find still violates.
-- **Taint and io-boundaries pick the same catalogue row**: a vouched row over a community overlay's twin.
+- **Taint and io-boundaries pick the same catalogue row for a call**: when a built-in row and a community overlay's row both match, both use the built-in one. Haskell `readProcess` is `System.Process.readProcess`, not a same-named function from a package the code never imports.
 - **A user overlay no longer lowers its catalogue's status** (marking unrelated chains `[unreliable]`); a shipped file is `builtin` only if it says so.
 - **A user taint row replaces only the label or zone it restates.**
-- **A collapsed taint row is judged by its whole group**, not its first member.
+- **`verify-claims` judges a merged taint row by every flow it stands for**, not only the first: a group that also reaches `document.write` is `inconclusive`, not `confirmed_with_caveats`.
 - **Taint walks module-level Python and JS/TS code** and reads through walrus, nested assignments and closures; false leaks from `build_opener().open(url)` and Go's `_, err := get()` are gone.
 - **Constructing a class no longer taints its class body**: a value reaching a type node stops there.
 
