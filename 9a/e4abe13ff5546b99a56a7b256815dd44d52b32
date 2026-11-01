@@ -1,0 +1,30 @@
+Original commit body from 8ed2b44bd1987cd515aa148cff0876c7511a6668:
+
+The standard/wide table is now an ItemTable (a DataTable subclass) that
+reports row clicks. A Shift+click posts RowShiftClicked and is consumed:
+prevent_default stops DataTable's own click handler, which Textual would
+otherwise run next in the MRO walk as a plain click. Other row clicks post
+RowPlainClicked and proceed as usual.
+
+- Shift+click toggles the clicked row in the selection; starting a
+  selection also takes the row highlighted before the click, so
+  highlight-then-Shift+click selects both. The cursor follows the click.
+- Space toggles the highlighted row: the keyboard route, for terminals
+  that keep Shift+click for their own text selection and never report it.
+- Selected rows carry a check in the # column (drawn by the populate and
+  chain-highlight passes, which rewrite that column on every highlight).
+- The right panel shows "(N items selected)", with a note that other keys
+  act on the highlighted row.
+- Mark Read / Mark Unread apply to every selected item through one
+  _set_human_read(): one preferences save, one in-place rebuild. The
+  selection stays, so Mark Unread undoes it in one click.
+- Esc or a plain click clears the selection. A rebuild drops selected
+  items that are no longer listed (a read unread row that a filter hides),
+  so a batch never reaches an item the user cannot see. Tree view and
+  compact tier have no multi-select and drop it.
+
+Tests: TestMultiSelect drives real Shift+clicks through the pilot (the
+tui_pilot.click helper gains shift=). Tracker package coverage 100% in
+isolation.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
