@@ -31,3 +31,18 @@
     tags: [dogfood_tranche_04]  # 77c5
   remove:  # 77c5
     tags: [dogfood_tranch_04]  # 77c5
+- op: discuss  # ffd9
+  at: '2026-11-01T22:22:30Z'  # ffd9
+  by: agent  # ffd9
+  actor: jgstern_agent  # ffd9
+  clock: 3  # ffd9
+  nonce: ffd9  # ffd9
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/ctrl1/). VERDICT: PARTLY-STALE. P4 review 2026-11-01 at dev 9ae4abe13f: 3 surveys of a py+js fixture. Sorted node ids, stable_ids, edge ids and (pass, run_signature) pairs were identical (same hash) across all 3, so the L2 contract holds. But with the item's five fields removed and the three arrays sorted, the runs are no longer byte-identical: analysis_runs[].cpu_ms (added 704ffe3b9e, after filing) varies, and so does the ORDER of limits.skipped_passes[] (scheme/racket/scss/matlab/robot moved around). Both are already in WI-sazap's 11-01 scope. The control has no work left, so it can close. MECHANISM: content-derived identities (node id/stable_id, edge id, run_signature) are deterministic; run-to-run churn is in provenance/timing fields and in the order of limits.skipped_passes[] (emitted in thread-completion order). SHARES MECHANISM WITH: WI-sazap WI-situf. PROPOSED DISPOSITION: close (awaiting owner authorization; status unchanged)."  # ffd9
+- op: update  # 7c86
+  at: '2026-11-01T22:22:30Z'  # 7c86
+  by: agent  # 7c86
+  actor: jgstern_agent  # 7c86
+  clock: 4  # 7c86
+  nonce: 7c86  # 7c86
+  set:  # 7c86
+    description: "[REVIEW 2026-11-01, PARTLY-STALE] P4 review 2026-11-01 at dev 9ae4abe13f: 3 surveys of a py+js fixture. Sorted node ids, stable_ids, edge ids and (pass, run_signature) pairs were identical (same hash) across all 3, so the L2 contract holds. But with the item's five fields removed and the three arrays sorted, the runs are no longer byte-identical: analysis_runs[].cpu_ms (added 704ffe3b9e, after filing) varies, and so does the ORDER of limits.skipped_passes[] (scheme/racket/scss/matlab/robot moved around). Both are already in WI-sazap's 11-01 scope. The control has no work left, so it can close. (Original text below; the review entry in the thread has the evidence.)\n\nF64.A1 (blind severity 1/Cosmetic; positive control). Three independent runs of an identical fixture produce byte-identical output once five non-semantic field-classes (execution_id, origin_run_id, started_at, duration_ms, generated_at) are neutralized and the analysis_runs[]/nodes[]/edges[] arrays are sorted. Every content-derived identity field — nodes[].id, nodes[].stable_id, edges[].id, and the per-pass run_signature content hash — is bit-for-bit stable across runs. The documented L2 'functionally identical up to OS/hardware variation' reproducibility contract HOLDS; the only churn is in a handful of provenance/timing fields. This SCOPES the separate byte-reproducibility gap (card 010/WI-pifaj F64.A2) to provenance/timing fields only — the analysis itself is deterministic. No negative consequence. Filed for trend-cohort completeness (clearing measurement). filed via tranch 04 (methodology-comparability run, reused tranch-03 substrate sha a32c4a31)."  # 7c86

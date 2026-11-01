@@ -82,3 +82,10 @@
   clock: 9  # 5eef
   nonce: 5eef  # 5eef
   message: "Cross-ref backfill: closure of this item advances INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad, the May-28 dogfood integrated cluster on call-graph non-traversal of dispatch-primitive patterns. Go marshal callbacks (encoding/json/xml/yaml MarshalJSON, etc.) are one such primitive. Note: parent WI-pimig is closed (done), so this is now top-of-chain for that branch."  # 5eef
+- op: discuss  # bf5f
+  at: '2026-11-01T22:22:26Z'  # bf5f
+  by: agent  # bf5f
+  actor: jgstern_agent  # bf5f
+  clock: 10  # bf5f
+  nonce: bf5f  # bf5f
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/links1/). VERDICT: CURRENT. Re-checked 2026-11-01 at 9ae4abe13f. go-encoding-callbacks.yaml still describes only Phase 1 and defers Phases 2/3. Fixture: type Config with UnmarshalYAML/MarshalJSON, and main calling yaml.Unmarshal(b, &c) and json.Marshal(c). Survey shows calls main->yaml.v3 Unmarshal and main->encoding/json Marshal (external), both methods as library_export entrypoints, and no dispatches_to or other edge from main or the call sites to either method. The plan remains valid. MECHANISM: Go marshal methods are entrypoints only (WI-pimig Phase 1); no caller-site detection links yaml.Unmarshal/json.Marshal call sites to the receiver type's Marshal/Unmarshal methods."  # bf5f

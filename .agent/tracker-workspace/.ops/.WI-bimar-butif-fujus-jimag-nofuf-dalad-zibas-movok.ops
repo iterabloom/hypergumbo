@@ -55,3 +55,18 @@
   clock: 6  # 8ce4
   nonce: 8ce4  # 8ce4
   message: "Cross-ref backfill: closure of this item advances INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad, the May-28 dogfood integrated cluster on call-graph non-traversal of dispatch-primitive patterns. LuaJIT FFI metatype-based C struct method binding is one such primitive."  # 8ce4
+- op: discuss  # bd81
+  at: '2026-11-01T22:22:26Z'  # bd81
+  by: agent  # bd81
+  actor: jgstern_agent  # bd81
+  clock: 7  # bd81
+  nonce: bd81  # bd81
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/links1/). VERDICT: CURRENT. Re-checked 2026-11-01 at 9ae4abe13f: grep finds no metatype handling in lua_ffi.py or anywhere in packages/*/src except swift.py. Fixture with ffi.metatype(\"point_t\", mt), where mt.__index holds area and len, then p:len() + p:area(): the survey emits calls run->lua:external:len and run->lua:external:area. The table functions have no symbols, and only ffi.C.hypot links to C. Correction to the 2026-05-12 note: the linker stamps meta.bridge_kind=\"ffi\", not \"luajit_ffi\". MECHANISM: lua_ffi.py links only ffi.C.<name>/ffi.load calls to cdef declarations; functions in a table passed to ffi.metatype are neither symbols nor dispatch targets."  # bd81
+- op: update  # b14b
+  at: '2026-11-01T22:22:26Z'  # b14b
+  by: agent  # b14b
+  actor: jgstern_agent  # b14b
+  clock: 8  # b14b
+  nonce: b14b  # b14b
+  set:  # b14b
+    description: "[REVIEW 2026-11-01, CURRENT] Re-checked 2026-11-01 at 9ae4abe13f: grep finds no metatype handling in lua_ffi.py or anywhere in packages/*/src except swift.py. Fixture with ffi.metatype(\"point_t\", mt), where mt.__index holds area and len, then p:len() + p:area(): the survey emits calls run->lua:external:len and run->lua:external:area. The table functions have no symbols, and only ffi.C.hypot links to C. Correction to the 2026-05-12 note: the linker stamps meta.bridge_kind=\"ffi\", not \"luajit_ffi\". (Original text below; the review entry in the thread has the evidence.)\n\nFollow-up carved off WI-masuz at close-time (2026-04-27). The base Lua FFI linker (packages/hypergumbo-core/src/hypergumbo_core/linkers/lua_ffi.py, 305 lines, Bridge subcategory per ADR-0003-ext) parses ffi.cdef string literals and links ffi.C.func_name calls to C declarations. The one specification gap surfaced in WI-masuz's 2026-02-18T14:01:12Z early-design entry that the merged implementation does not address: 'LuaJIT metatype patterns also need handling for C struct method binding.'\n\nContext: ffi.metatype(ctype, {...}) attaches Lua method tables to FFI-declared C types so that struct_instance:method() dispatches to a Lua-side function that internally manipulates the C struct. The dispatch is invisible to the current ffi.C.<name> regex/AST scan because the method call site uses bare colon-syntax on a value of FFI type, not a qualified ffi.C reference.\n\nWhen to address: only when a polyglot Lua+C bakeoff cohort or a UAT report surfaces the metatype-binding gap as a measurable dead-code or call-graph FP. Until then, sits at P4 todo_soft as scope-expansion work per the Commitment Protocol. No acute signal currently.\n\nSource plan reference: WI-masuz close discussion + 2026-02-18T14:01:12Z scope note."  # b14b

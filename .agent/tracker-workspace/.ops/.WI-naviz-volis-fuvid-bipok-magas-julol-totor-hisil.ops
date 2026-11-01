@@ -18,3 +18,10 @@
     pr_ref:  # 6fd0
     description: "FOUND by WI-tusad F3 (analogue sweep for \"qualified_name keeps only the innermost scope\", fixed for C#, TypeScript and Tcl in PR #1571). Python sets qualified_name equal to the emitted name: a method of a nested class is `B.go` with qualified_name `B.go`, not `A.B.go` (PEP 3155 __qualname__), and the nested class `B` has qualified_name `B`. py.py documents this as deliberate (\"v6 is a stable_id-only change; the field's scope-qualification (and its call-resolution effects) is separate work\"); stable_ids already hash the full chain. This item is that separate work: decide whether Python qualified_name follows __qualname__ (and module path), and measure the call-resolution effect first. Probe: scratchpad fixes/f3/qn/probe.py."  # 6fd0
     fields: {}  # 6fd0
+- op: discuss  # 1e0c
+  at: '2026-11-01T22:22:24Z'  # 1e0c
+  by: agent  # 1e0c
+  actor: jgstern_agent  # 1e0c
+  clock: 2  # 1e0c
+  nonce: 1e0c  # 1e0c
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 9ae4abe13f (fx_naviz: class A: class B: def go). Survey emits method 'B.go' with qualified_name 'B.go' and class B with qualified_name 'B'. The py.py:3542-3543 comment still calls the scope qualification separate work. A.B().go() calls from A.run and top resolve only to external_symbol go/B, so the call-resolution effect this item says to measure first is live. Premise holds. Changing name/qualified_name to the full chain would trigger WI-fazid's latent split('.')[0] bug. MECHANISM: python qualified_name is set to the emitted name (innermost class + member), not the full __qualname__ scope chain. SHARES MECHANISM WITH: WI-fazid."  # 1e0c

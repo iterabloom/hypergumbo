@@ -19,3 +19,18 @@
     description: ""  # a40c
     fields:  # a40c
       description: "Measured 2026-07-29: 104 zero-byte .agent/.transcript-injection-state.<sid>.lock files, earliest 2026-04-24, newest today. rotate-on-session-end.sh step 4 removes the ENDING session's per-session state files (.transcript-sync.<sid>.pid, -sync-state, -poll-state, -injection-state.json) but NOT the .lock, and launch-transcript-sync.sh's orphan sweep removes the same four names for a crashed session, also excluding the .lock. So every session leaves one behind either way. Zero-byte, so this is clutter rather than a defect: cost is a noisier .agent/ listing and one inode per session. Two candidate fixes -- add the .lock to both cleanup lists, or move the locks to a subdirectory so the top level stays legible. Worth pairing with the retention item (WI-nubik) since both are .agent/ housekeeping and a single sweep could cover both."  # a40c
+- op: discuss  # 2570
+  at: '2026-11-01T22:22:31Z'  # 2570
+  by: agent  # 2570
+  actor: jgstern_agent  # 2570
+  clock: 2  # 2570
+  nonce: '2570'  # 2570
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/tool1/). VERDICT: CURRENT. Reviewed 2026-11-01 at dev 9ae4abe13f. ls ~/hypergumbo/.agent counts 131 .transcript-injection-state.*.lock files (was 104 on 2026-07-29), all zero-byte, dated 2026-04-24 to 2026-11-01. rotate-on-session-end.sh step 4 (lines 163-166) and launch-transcript-sync.sh orphan sweep (lines 206-209) still rm the .pid/-sync-state/-poll-state/-injection-state.json only; both files changed in 6c70e8c5d9 (2026-09-05), which did not add the .lock. Premise holds; the count in the title is stale. MECHANISM: session-end rotation (step 4) and the orphan sweep each remove four per-session state files but omit the injection-state .lock created by on_transcript_change.py:1055. SHARES MECHANISM WITH: WI-nubik."  # 2570
+- op: update  # de03
+  at: '2026-11-01T22:22:31Z'  # de03
+  by: agent  # de03
+  actor: jgstern_agent  # de03
+  clock: 3  # de03
+  nonce: de03  # de03
+  set:  # de03
+    title: "Per-session .transcript-injection-state.<sid>.lock files are never removed (131 in .agent/ on 2026-11-01); add .lock to both cleanup lists"  # de03

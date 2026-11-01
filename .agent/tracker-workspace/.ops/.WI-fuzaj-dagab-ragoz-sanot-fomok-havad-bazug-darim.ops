@@ -18,3 +18,10 @@
     pr_ref:  # 5c35
     description: "FOUND by WI-tusad F2 (finding 8). tree-sitter-v lexes any one-capital name as a generic placeholder. F2 recovers `struct A {}`, `enum E`, `interface I` from the ERROR node (_recover_single_letter_type), but a one-letter type alias (`type A = int`) still does not parse and is not recovered; V emits no alias kind at all, so nothing is lost relative to multi-letter aliases today, but the alias kind gap and the grammar bug both stand. Fix path: emit V type aliases (kind `type`) and extend the recovery to `type X = ...`, or bump/patch the grammar."  # 5c35
     fields: {}  # 5c35
+- op: discuss  # 636d
+  at: '2026-11-01T22:22:23Z'  # 636d
+  by: agent  # 636d
+  actor: jgstern_agent  # 636d
+  clock: 2  # 636d
+  nonce: 636d  # 636d
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 9ae4abe13f. 'type A = int' parses as ERROR(type, ERROR(type_placeholder A, =), int), and no symbol is emitted. 'type Meters = int' parses cleanly as type_declaration and still emits nothing; v_lang.py has no type_declaration branch. Both halves hold. Side finding, not in this item: _recover_single_letter_type also misses 'struct S {}' for the letters C,E,F,G,S,X. For those letters the grammar gives ERROR('struct S') + block with no type_placeholder child, so S is not emitted (A,B,T recover). Worth a sibling item. MECHANISM: tree-sitter-v lexes a lone capital as type_placeholder; recovery covers struct/enum/interface only and the analyzer has no type_declaration (alias) branch."  # 636d

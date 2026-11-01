@@ -67,3 +67,18 @@
   clock: 7  # 5dda
   nonce: 5dda  # 5dda
   message: "Cross-ref backfill: closure of this item advances INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad, the May-28 dogfood integrated cluster on call-graph non-traversal of dispatch-primitive patterns. Cross-linker integration of the return-type registry (consuming Phases 1-4 to drive call-graph resolution) is the final phase of the dispatch primitive INV-pohik names for typed multi-language code. Note: parent INV-dihos is closed (satisfied), so this is now effectively top-of-chain."  # 5dda
+- op: discuss  # 3170
+  at: '2026-11-01T22:22:28Z'  # 3170
+  by: agent  # 3170
+  actor: jgstern_agent  # 3170
+  clock: 8  # 3170
+  nonce: '3170'  # 3170
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/graph1/). VERDICT: OBSOLETE. Review 2026-11-01 at dev 9ae4abe13f. Deliverable 2 populated dest_access_mode, which ADR-0038 ruling 3 removed (ir.py:141 and slice.py:96 say so). Deliverable 3 cross-references WI-hukoh, which closed done with defer-indefinitely, and the would_admit_dst_reader trigger is gone. Deliverable 1 asks type_hierarchy.py to disambiguate a multi-candidate registry. But _method_return_type_registry (analyze/base.py:4783-4800) is an analyzer-internal, first-writer-wins dict[str,str] that no linker reads, and the ambiguous-candidate problem is now tracked analyzer-side by INV-zujag, WI-jutur and WI-hubik. MECHANISM: Phase 5 assumed a linker-visible multi-candidate registry and the dest_access_mode field; neither exists (the registry is analyzer-internal and first-writer-wins, and dest_access_mode was removed). SHARES MECHANISM WITH: INV-zujag,WI-jutur,WI-hubik. PROPOSED DISPOSITION: close (awaiting owner authorization; status unchanged)."  # 3170
+- op: update  # 4ff0
+  at: '2026-11-01T22:22:28Z'  # 4ff0
+  by: agent  # 4ff0
+  actor: jgstern_agent  # 4ff0
+  clock: 9  # 4ff0
+  nonce: 4ff0  # 4ff0
+  set:  # 4ff0
+    description: "[REVIEW 2026-11-01, OBSOLETE] Review 2026-11-01 at dev 9ae4abe13f. Deliverable 2 populated dest_access_mode, which ADR-0038 ruling 3 removed (ir.py:141 and slice.py:96 say so). Deliverable 3 cross-references WI-hukoh, which closed done with defer-indefinitely, and the would_admit_dst_reader trigger is gone. Deliverable 1 asks type_hierarchy.py to disambiguate a multi-candidate registry. But _method_return_type_registry (analyze/base.py:4783-4800) is an analyzer-internal, first-writer-wins dict[str,str] that no linker reads, and the ambiguous-candidate problem is now tracked analyzer-side by INV-zujag, WI-jutur and WI-hubik. (Original text below; the review entry in the thread has the evidence.)\n\nPhase 5 (follow-on) of the ADR-0006 Return-Type Registry Pre-Pass. Optional cross-linker integration that consumes the registry built in Phases 1-4.\n\nDELIVERABLES:\n(1) type_hierarchy.py fallback for ambiguous receiver types: when the registry has multiple candidate methods for a given short name, use type_hierarchy's receiver→class index to disambiguate.\n\n(2) dataflow.py refinement for chained method-call access_mode: when a chained call like 'cache.Get(k).Set(v)' has known receiver types (Cache.Get returns *Entry, Entry.Set is a write), populate dest_access_mode for the second call's receiver edge. This is Phase 5's contribution to the WI-hukoh forward-dataflow option (2)/(3) decision.\n\n(3) Cross-reference WI-hukoh in the PR description.\n\nOPTIONAL: only after Phases 1-4 are validated against deep-bakeoff metrics. Skip if the registry signal turns out to be too noisy or too thin to support cross-linker consumption.\n\nPREREQUISITE: Phase 4 (created above)."  # 4ff0

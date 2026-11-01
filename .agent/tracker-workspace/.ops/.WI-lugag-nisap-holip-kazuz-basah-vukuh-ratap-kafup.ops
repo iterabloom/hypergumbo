@@ -41,3 +41,10 @@
   set: {}  # 4074
   add:  # 4074
     isbefore: [WI-vaguk-supun-vihoz-kolaz-hanin-jubum-vuvig-zusoz]  # 4074
+- op: discuss  # 121b
+  at: '2026-11-01T22:22:25Z'  # 121b
+  by: agent  # 121b
+  actor: jgstern_agent  # 121b
+  clock: 4  # 121b
+  nonce: 121b  # 121b
+  message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/links1/). VERDICT: CURRENT. Re-checked 2026-11-01 at 9ae4abe13f: url_folding/ holds only array_join.yaml and string_interpolation.yaml, and there is no fold_printf_format in url_folding/__init__.py. SCOPE.md still defers go and java to Phase C. Fixture requests.get(\"/api/%s\" % \"items\") against @app.route(\"/api/items\") produced no HTTP edge (the literal control did). Predecessor WI-mogan (Phase B) is still open, so the isbefore chain is intact. MECHANISM: No printf_format idiom YAML or fold_printf_format engine exists; Go/Java/Python scanners match only bare literal or identifier URL args. SHARES MECHANISM WITH: INV-miloj,WI-mogan,WI-vaguk."  # 121b

@@ -51,3 +51,11 @@
   clock: 5  # ffc8
   nonce: ffc8  # ffc8
   message: "CLOSED AS OBSOLETE (invariants have no wont_do; the tracker reserves status deleted for a human). The two digest-blind channels are still there (block_hash.py unchanged since f1250331f6), but the trigger this item waited on, narrowing, landed in 1ee9984304 (WI-bolot) and keeps touching_test_files (selection_index.py:403), i.e. every test observed executing any block of a changed FILE, so a shadowing def or a pragma edit still keeps that file's tests. This rests on a code read; no live narrow was run. Evidence: this item's 'P3 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/). Owner approved this closure on 2026-11-01 after the P3 review. ACTION FOR THE OWNER: set status deleted (the agent cannot); parked at needs_human_review so it no longer blocks."  # ffc8
+- op: update  # 5951
+  at: '2026-11-01T20:08:38Z'  # 5951
+  by: human  # 5951
+  actor: jgstern  # 5951
+  clock: 6  # 5951
+  nonce: '5951'  # 5951
+  set:  # 5951
+    status: deleted  # 5951
