@@ -27,3 +27,18 @@
   clock: 2  # 8298
   nonce: '8298'  # 8298
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/gorc1/). VERDICT: CURRENT. 2026-11-01 review (dev 100b6fbb6e): register(Map[int]) and S{Handler: Map[int]} still emit no reference edge (Plain controls do). Part 2 reproduces but is broader: Plain(x).Bar() (non-generic conversion) is also untyped (external 0.4), and a method on a generic receiver func (b Box[T]) Foo() is emitted as bare Foo (not Box.Foo) because _extract_receiver_type_from_node handles only type_identifier/pointer_type, so even typed x.Foo() is ambiguous. Suggest split: value arms / conversion-call typing / generic-receiver method naming. MECHANISM: value-reference arms read no index_expression; conversion-call results carry no type; generic receiver type nodes unread. SHARES MECHANISM WITH: WI-nulig."  # 8298
+- op: update  # 94b4
+  at: '2026-11-01T20:00:45Z'  # 94b4
+  by: agent  # 94b4
+  actor: jgstern_agent  # 94b4
+  clock: 3  # 94b4
+  nonce: 94b4  # 94b4
+  set:  # 94b4
+    title: "go: a generic function used as a VALUE (register(Map[int]), Handler: Map[int]) emits no reference edge; the index_expression operand is read by neither the function-reference nor the keyed_element arm"  # 94b4
+- op: discuss  # f23e
+  at: '2026-11-01T20:00:45Z'  # f23e
+  by: agent  # f23e
+  actor: jgstern_agent  # f23e
+  clock: 4  # f23e
+  nonce: f23e  # f23e
+  message: "SPLIT (owner-approved 2026-11-01). This item now covers part 1 only (value arms). Part 2, the conversion-call receiver typing, is now its own work item (title 'go: a method chained on a conversion call ...'), broadened to non-generic Plain(x).Bar(). Part 3, the generic-receiver method naming bare Foo instead of Box.Foo, is WI-jojam-zifav-rijur-pinug-zojim-makaz-hodaj-zolok."  # f23e

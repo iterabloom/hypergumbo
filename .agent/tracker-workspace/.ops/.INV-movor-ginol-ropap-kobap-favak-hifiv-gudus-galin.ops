@@ -57,3 +57,18 @@
   clock: 6  # c82e
   nonce: c82e  # c82e
   message: "P3 REVIEW 2026-11-01 side finding (misc3/fx_modan): on .svelte and .vue files each path carries TWO file-kind Symbols, javascript:src/App.svelte:1-1:file:file and svelte:src/App.svelte:1-1:file:file (likewise vue:), which contradicts this invariant's statement (one file-kind Symbol per path). Recorded on WI-modan point 5 too. Proposal for the owner: re-open as violated, or narrow the statement to per-analyzer. Status unchanged."  # c82e
+- op: update  # 4c80
+  at: '2026-11-01T20:00:46Z'  # 4c80
+  by: agent  # 4c80
+  actor: jgstern_agent  # 4c80
+  clock: 7  # 4c80
+  nonce: 4c80  # 4c80
+  set:  # 4c80
+    status: violated  # 4c80
+- op: discuss  # 7cea
+  at: '2026-11-01T20:00:46Z'  # 7cea
+  by: agent  # 7cea
+  actor: jgstern_agent  # 7cea
+  clock: 8  # 7cea
+  nonce: 7cea  # 7cea
+  message: "REOPENED as violated (owner-approved 2026-11-01). Live at dev 100b6fbb6e, `hypergumbo survey` on ~/hypergumbo_lab_notebook/p3_review_11012026/misc3/fx_modan: every .svelte/.vue path carries two file-kind Symbols: src/App.svelte -> javascript: + svelte:, src/App.vue -> javascript: + vue:, src/Kid.vue -> vue: + javascript:, and src/Child.svelte -> javascript: + vue: (a vue:-language id on a .svelte file). This contradicts the statement 'one file-kind Symbol per path'. The 2026-05-19 js_module fix for .ts paths still holds; this is a different producer pair (the javascript analyzer and the SFC analyzers both emit a file node). Also recorded on WI-modan point 5."  # 7cea

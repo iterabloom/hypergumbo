@@ -122,3 +122,20 @@
   nonce: 02ee  # 02ee
   set:  # 02ee
     description: "[REVIEW 2026-11-01, OBSOLETE] Reviewed 2026-11-01 at dev 100b6fbb6e. di_resolution.py:806 still declares activation=LinkerActivation(always=True). On a DI-free py/js fixture the pass runs (files_analyzed=1, 0 nodes, 0 edges, silence_reason=no_candidate_construct), so it still does not short-circuit. But its canonical INV-bikaj is satisfied (2026-09-16), the silence-disclosure residual WI-finij is done, and INV-nanon's 2026-10-25 entry records the gate as refused by ADR-0055, naming this item as an instance of it. The filed 2550 ms and files_analyzed=0 figures are stale or wrong (988 ms and 396 files at 2026-09-16). What is left is a refused design choice, not a defect. (Original text below; the review entry in the thread has the evidence.)"  # 02ee
+- op: update  # 7ef6
+  at: '2026-11-01T20:01:06Z'  # 7ef6
+  by: agent  # 7ef6
+  actor: jgstern_agent  # 7ef6
+  clock: 14  # 7ef6
+  nonce: 7ef6  # 7ef6
+  set:  # 7ef6
+    status: needs_human_review  # 7ef6
+  add:  # 7ef6
+    duplicate_of: [INV-nanon-pavav-ragod-tunur-riroj-siraj-fugan-gotiz]  # 7ef6
+- op: discuss  # 8d84
+  at: '2026-11-01T20:01:07Z'  # 8d84
+  by: agent  # 8d84
+  actor: jgstern_agent  # 8d84
+  clock: 15  # 8d84
+  nonce: 8d84  # 8d84
+  message: "MERGED into INV-nanon (owner-approved 2026-11-01; the convention for duplicate invariants is status deleted, which the tracker reserves for a human). The pass still runs on DI-free repos, but the gate was refused by ADR-0055 and its canonical INV-bikaj is satisfied; the live measurement was copied to INV-nanon. Evidence: this item's 'P3 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/). ACTION FOR THE OWNER: set status deleted (the agent cannot); parked at needs_human_review so it no longer blocks."  # 8d84

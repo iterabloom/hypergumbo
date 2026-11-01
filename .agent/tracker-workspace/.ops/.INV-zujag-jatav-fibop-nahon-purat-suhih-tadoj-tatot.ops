@@ -36,3 +36,10 @@
   clock: 3  # dd72
   nonce: dd72  # dd72
   message: "P3 REVIEW 2026-11-01 (dev 100b6fbb6e; owner-requested re-check of open P3 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/gorc1/). VERDICT: CURRENT. 2026-11-01 review (dev 100b6fbb6e): two-package fixture (aaa/zzz Config.Load, field typed *aaa.Config) gives h.cfg.Load() -> zzz Config.Load typed_field and m.Make().Load() -> zzz chained_return_type (both wrong) while var c *aaa.Config; c.Load() -> aaa (right). External-field sibling also holds: h.logger.Info with *slog.Logger -> repo mylog Logger.Info 0.85. Code moved to go.py:4567-4573 and 4706-4712; still target = candidates[0], external check after the lookup. MECHANISM: unqualified Type.Method key looked up as global candidates[0] without the type's package. SHARES MECHANISM WITH: WI-punat,WI-garol."  # dd72
+- op: discuss  # 93aa
+  at: '2026-11-01T20:00:39Z'  # 93aa
+  by: agent  # 93aa
+  actor: jgstern_agent  # 93aa
+  clock: 4  # 93aa
+  nonce: 93aa  # 93aa
+  message: "MERGED IN from WI-kamin-sovih-jamuk-hopuk-guzal-musug-husug-kohak (owner-approved 2026-11-01, P3 review). WI-kamin's initializer-typing half already shipped qualified (WI-vutav be544268dc, 21e15bcfa8). Its live remainder is this item's field-chain arm (go.py ~4562-4570): fields typed *bufio.Writer, *http.Transport, certmagic.Storage resolve to in-repo Writer.WriteString / Transport.RoundTrip / Storage.Load (typed_field 0.85). Evidence carried over: WI-kamin's A/B where 118 of 692 moved edges (17.1%) pointed at the wrong in-repo symbol for +0.61% recall; and caddy's fabricated route StoragePool.Provision -> caddy.Load (capools.go:358 ca.storage.Load on certmagic.Storage), which also makes a true-positive taint flow uncheckable from its record. Full text on WI-kamin."  # 93aa

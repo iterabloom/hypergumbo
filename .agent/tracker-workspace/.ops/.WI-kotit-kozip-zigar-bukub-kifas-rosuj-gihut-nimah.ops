@@ -34,3 +34,18 @@
   nonce: 015a  # 015a
   set:  # 015a
     description: "[REVIEW 2026-11-01, STALE-FIXED] Reviewed 2026-11-01 at dev 100b6fbb6e. Fixed by 181251b5dc (2026-10-17): staleness_distance() subtracts count_tracker_only_commits(), matched by commit SUBJECT (^tracker(scope)?:) rather than the path predicate the item proposed. Live: `scripts/generate-architecture --check` -> 'OK: ... generated 3 commit(s) ago (window 30) (7 including 4 tracker-only commit(s), not counted)'. Residual nit: the comment above RECENT_COMMIT_WINDOW (lines 75-79) still says excluding them was 'filed separately'. (Original text below; the review entry in the thread has the evidence.)\n\nFOUND 2026-08-03 when the gate failed a taint-analysis PR whose diff touched\nno architecture at all.\n\nscripts/generate-architecture --check measures how many commits separate HEAD\nfrom the commit the doc was generated against, and fails past a window (raised\n15 -> 30 in PR #189). The counter advances on EVERY commit, including ones that\ncannot possibly invalidate the document.\n\nThe clearest class is tracker auto-sync. Those commits touch only\n.agent/tracker-workspace/.ops and .agent/tracker/.ops -- never any analyzed\nsource -- yet each one consumes window. Three landed during a single session\nhere, alongside two feature merges, taking the distance to 17 and failing an\nunrelated open PR. The failure therefore lands on whoever happens to be holding\na PR when the counter rolls over: a scheduling accident, not a signal.\n\nRaising the window makes this rarer without making it principled. The fix is to\ncount only commits that could change the generated output -- i.e. skip commits\nwhose changed paths are entirely outside what the self-analysis reads. A\nconservative first cut is to exclude commits touching only .agent/tracker*/.ops\n(the mechanically-generated class), rather than trying to model the analyzed\nfile set exactly.\n\nWHY NOT FOLDED INTO THE WINDOW BUMP: that PR was a one-line constant change\nrequested directly; changing what the counter counts is a behavioural change to\na CI gate and deserves its own diff and its own before/after (how many recent\ndev commits are inert by this definition -- measure it before choosing the\npredicate)."  # 015a
+- op: update  # 72d1
+  at: '2026-11-01T20:00:35Z'  # 72d1
+  by: agent  # 72d1
+  actor: jgstern_agent  # 72d1
+  clock: 4  # 72d1
+  nonce: 72d1  # 72d1
+  set:  # 72d1
+    status: done  # 72d1
+- op: discuss  # 9c7c
+  at: '2026-11-01T20:00:35Z'  # 9c7c
+  by: agent  # 9c7c
+  actor: jgstern_agent  # 9c7c
+  clock: 5  # 9c7c
+  nonce: 9c7c  # 9c7c
+  message: "DONE. Fixed by 181251b5dc: staleness_distance() subtracts tracker-only commits (matched by subject). Live: generate-architecture --check reports '7 including 4 tracker-only commit(s), not counted'. Residual comment nit above RECENT_COMMIT_WINDOW is cosmetic. Evidence: this item's 'P3 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/). Owner approved this closure on 2026-11-01 after the P3 review."  # 9c7c

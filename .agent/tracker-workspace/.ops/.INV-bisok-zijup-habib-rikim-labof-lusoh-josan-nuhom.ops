@@ -65,3 +65,18 @@
   nonce: '9116'  # 9116
   set:  # 9116
     description: "[REVIEW 2026-11-01, STALE-FIXED] Reviewed 2026-11-01 at dev 100b6fbb6e (tree-sitter-swift 0.7.4, floor raised in 5493072f42): Alamofire has Session as a class (30-1354); its 5 partial files are missing-! tokens and one #error in a class_body, with no declaration under ERROR, no class lost and 0 members kinded top-level. VernissageServer has 3 partial files (U+200B identifiers), with the same result. A fixture with #if os(Linux), switch try await and a continued-line if-try condition now parses clean. Residual: ZWSP method names truncated (should), a separate naming defect. (Original text below; the review entry in the thread has the evidence.)\n\nObserved 2026-09-04 while measuring INV-kotob on Alamofire: `open class Session: @unchecked Sendable {` (Source/Core/Session.swift, 1457 lines) is NOT among the extracted symbols — its methods (`webSocketRequest`, `withAllRequests`, `cancelAllRequests`, ...) are extracted as top-level FUNCTIONS instead (82 symbols from the file, no class). A three-line snippet `open class Session: @unchecked Sendable { func go() {} }` extracts `Session` as a class, so the miss is file-specific: something earlier in the file drops the class_declaration (an ERROR node from newer Swift syntax is the first hypothesis; not confirmed). Consequences: every `Session.x` / `session.x` receiver in Alamofire is treated as an EXTERNAL type (`swift:Session:0-0:request:unresolved` reached the module slot in the kotob arm B), and the class's 100+ methods are mis-kinded. Repro: `analyze_swift` on a dir holding only that file; check for a `class` symbol named `Session`. Lab: ~/hypergumbo_lab_notebook/higob_swiftobjc_09032026/README.md (pass 1 read-back)."  # 9116
+- op: update  # cdce
+  at: '2026-11-01T20:00:38Z'  # cdce
+  by: agent  # cdce
+  actor: jgstern_agent  # cdce
+  clock: 8  # cdce
+  nonce: cdce  # cdce
+  set:  # cdce
+    status: satisfied  # cdce
+- op: discuss  # 2eb6
+  at: '2026-11-01T20:00:38Z'  # 2eb6
+  by: agent  # 2eb6
+  actor: jgstern_agent  # 2eb6
+  clock: 9  # 2eb6
+  nonce: 2eb6  # 2eb6
+  message: "SATISFIED. Behavioural evidence, re-running this item's own repro at dev 100b6fbb6e (tree-sitter-swift 0.7.4, floor raised in 5493072f42): Alamofire Source/Core/Session.swift extracts `Session` as a class spanning 30-1354 with its members, no declaration under ERROR, 0 members kinded top-level; VernissageServer gives the same result; a #if os(Linux) / switch try await / continued-line if-try fixture parses clean. The remaining ZWSP-identifier truncation is a separate naming defect, filed as WI-ropob. Evidence: this item's 'P3 REVIEW 2026-11-01' entry above (fixtures under ~/hypergumbo_lab_notebook/p3_review_11012026/). Owner approved this closure on 2026-11-01 after the P3 review."  # 2eb6
