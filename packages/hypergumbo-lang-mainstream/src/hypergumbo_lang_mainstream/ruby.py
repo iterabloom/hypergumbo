@@ -81,7 +81,11 @@ How It Works
      for ``super``) and that owner as the module, for the inherited-calls
      linker -- ``external`` only when no owner is known (a top-level
      caller, or ``super`` with no declared superclass); direct recursion
-     emits its self edge.
+     emits its self edge. ``super``'s superclass is read off the class whose
+     declaration contains it, by POSITION, and for a reopened ``class Foo``
+     that names none, off the declaration of the same QUALIFIED name
+     (``A::Foo``) that does (``_superclass_of``, WI-gikuk): the bare name
+     drops the module nesting, so ``A::Foo`` and ``B::Foo`` had shared one.
      Each file's edges are then annotated with dataflow access modes
      (ADR-0015 Tier 1, ``_annotate_dataflow``).
    - Passes 2b / 2c / 2d and 3, plus a post-pass inheritance sweep
@@ -110,7 +114,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
@@ -500,19 +504,55 @@ def _method_short_name(method: Symbol) -> str:
     return name
 
 
-def _superclass_of(class_name: Optional[str], global_symbols: dict[str, Symbol]) -> Optional[str]:
-    """The superclass a ``class K < Base`` declares, from its symbol's meta."""
-    if not class_name:
+#: The scopes whose superclass a ``super`` inside them reaches. A
+#: ``singleton_class`` (``class << self``) is walked past to its class.
+_SUPER_OWNER_NODES: frozenset[str] = frozenset({"class", "module"})
+
+
+def _superclass_of(
+    class_sym: Optional[Symbol],
+    superclass_by_qualified: dict[str, str],
+) -> Optional[str]:
+    """The superclass of the class ``class_sym`` declares.
+
+    WI-gikuk. ``class_sym`` is the class whose declaration contains the
+    ``super``, found by POSITION. It was looked up by its bare name in the
+    run-wide registry, which drops the module nesting: ``module A; class Foo
+    < BaseA`` and ``module B; class Foo < BaseB`` are two classes, and both
+    ``super`` calls read whichever ``Foo`` registered last.
+
+    Ruby REOPENS a class by its full constant path, so a ``class Foo`` that
+    declares no superclass (``class Foo`` in another file, adding methods) is
+    the same class as the ``class Foo < Base`` elsewhere. Its superclass is
+    looked up by the QUALIFIED name (``A::Foo``) in ``superclass_by_qualified``,
+    never by the bare one. A module has no superclass.
+    """
+    if class_sym is None or class_sym.kind != "class":
         return None
-    sym = global_symbols.get(class_name)
-    bases = (sym.meta or {}).get("base_classes") if sym is not None else None
-    return bases[0] if bases else None
+    bases = (class_sym.meta or {}).get("base_classes")
+    if bases:
+        return str(bases[0])
+    return superclass_by_qualified.get(class_sym.qualified_name or "")
+
+
+def superclasses_by_qualified_name(symbols: Iterable[Symbol]) -> dict[str, str]:
+    """``{qualified class name: declared superclass}`` over ``symbols``.
+
+    The first declaration that names a superclass wins (Ruby raises
+    ``superclass mismatch`` on a second, different one).
+    """
+    out: dict[str, str] = {}
+    for sym in symbols:
+        bases = (sym.meta or {}).get("base_classes") if sym.kind == "class" else None
+        if bases and sym.qualified_name:
+            out.setdefault(sym.qualified_name, str(bases[0]))
+    return out
 
 
 def _super_edge(
     current_method: Symbol,
-    enc_class: Optional[str],
-    global_symbols: dict[str, Symbol],
+    class_sym: Optional[Symbol],
+    superclass_by_qualified: dict[str, str],
     line: int,
     run_id: str,
 ) -> Edge:
@@ -520,7 +560,7 @@ def _super_edge(
     the PARENT class (WI-misir). The superclass rides as ``enclosing_class``,
     so the inherited-calls linker's walk starts there; with no declared
     superclass the owner is unknown and the hint is omitted."""
-    parent = _superclass_of(enc_class, global_symbols)
+    parent = _superclass_of(class_sym, superclass_by_qualified)
     return make_unresolved_edge(
         lang="ruby",
         src_id=current_method.id,
@@ -2859,6 +2899,7 @@ def _extract_edges_from_file(
     method_candidates: dict[str, list[Symbol]] | None = None,
     method_resolver: ListNameResolver | None = None,
     file_symbols: list[Symbol] | None = None,
+    superclass_by_qualified: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2874,12 +2915,19 @@ def _extract_edges_from_file(
         method_resolver: Optional ListNameResolver with ambiguity_threshold for
             method-specific lookups.  When provided, used instead of ``resolver``
             for method name lookups (bare calls and receiver call fallbacks).
+        superclass_by_qualified: Run-wide ``{qualified class name:
+            superclass}`` (:func:`superclasses_by_qualified_name`), for a
+            ``super`` in a reopened class that names no superclass itself.
+            Derived from this file's own symbols when absent.
     """
     # Every declaration of this file, by position (INV-midag): ``local_symbols``
     # keeps ONE symbol per name.
-    decl_index = symbols_at(
+    decl_symbols = (
         file_symbols if file_symbols is not None
         else list({s.id: s for s in local_symbols.values()}.values()))
+    decl_index = symbols_at(decl_symbols)
+    if superclass_by_qualified is None:
+        superclass_by_qualified = superclasses_by_qualified_name(decl_symbols)
     _caller_path = str(file_path)
     edges: list[Edge] = []
     # WI-misir: per-scope local bindings, computed once per scope.
@@ -3014,7 +3062,11 @@ def _extract_edges_from_file(
                             # the ``enclosing_class`` hint, so the inherited-calls
                             # linker walks from there.
                             edges.append(_super_edge(
-                                current_method, enc_class, global_symbols,
+                                current_method,
+                                enclosing_declared_symbol(
+                                    node, decl_index, _SUPER_OWNER_NODES,
+                                ),
+                                superclass_by_qualified,
                                 node.start_point[0] + 1, run_id,
                             ))
                         elif receiver_node is not None and receiver_node.type == "self":
@@ -3180,8 +3232,9 @@ def _extract_edges_from_file(
             current_method = _get_enclosing_method(node, source, decl_index)
             if current_method is not None:
                 edges.append(_super_edge(
-                    current_method, _enclosing_class_from_method(current_method),
-                    global_symbols, node.start_point[0] + 1, run_id,
+                    current_method,
+                    enclosing_declared_symbol(node, decl_index, _SUPER_OWNER_NODES),
+                    superclass_by_qualified, node.start_point[0] + 1, run_id,
                 ))
 
         # Detect bare method calls (identifier nodes that are method names)
@@ -3597,6 +3650,11 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                     short = short.split(".")[-1] if "." in short else short
                     method_candidates.setdefault(short, []).append(symbol)
 
+        # WI-gikuk: a reopened class's superclass, by its QUALIFIED name.
+        superclass_by_qualified = superclasses_by_qualified_name(
+            sym for analysis in file_analyses.values() for sym in analysis.symbols
+        )
+
         # Pass 2: Extract edges from files with symbols
         resolver = NameResolver(global_symbols)
         method_resolver = ListNameResolver(
@@ -3621,6 +3679,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 method_candidates=method_candidates,
                 method_resolver=method_resolver,
                 file_symbols=analysis.symbols,
+                superclass_by_qualified=superclass_by_qualified,
             )
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             _ruby_df = _get_dataflow_config("ruby")
