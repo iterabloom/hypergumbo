@@ -1,0 +1,20 @@
+- op: create  # 6e5f
+  at: '2026-11-01T07:56:33Z'  # 6e5f
+  by: agent  # 6e5f
+  actor: jgstern_agent  # 6e5f
+  clock: 1  # 6e5f
+  nonce: 6e5f  # 6e5f
+  data:  # 6e5f
+    kind: work_item  # 6e5f
+    title: "puppet: include / require edges start at the manifest file, not the class whose body holds the statement, so class-to-class dependencies are lost"  # 6e5f
+    status: todo_hard  # 6e5f
+    priority: 3  # 6e5f
+    parent:  # 6e5f
+    tags:  # 6e5f
+    - analysis_quality  # 6e5f
+    isbefore: []  # 6e5f
+    duplicate_of: []  # 6e5f
+    not_duplicate_of: []  # 6e5f
+    pr_ref:  # 6e5f
+    description: "Found closing WI-hozot (PR #1985). Every Puppet include / require-function edge has the MANIFEST FILE as its source (puppet.py extract_edges: src=make_file_id(\"puppet\", rel_path)), even when the statement sits inside a class body. Fixture m.pp: class a::b {}   class c {}   class d inherits c {} class top { include a::b, c include \"c\" require d } Output: includes m.pp:1-1:file:file -> a::b / c / d. `inherits` already starts at the class (d -> c). So the graph says \"the file includes a::b\", not \"class top includes a::b\": class-to-class dependency (which class pulls in which) is lost, and a slice from `top` does not reach a::b. It is the documented design (module docstring, **includes** bullet, both before and after #1985), not a regression. Invariant (WI-kosar rule): an edge's source is the declaration that ENCLOSES the statement, by position (core symbols_at / enclosing_declared_symbol over the file's symbols); the file only when no class or define encloses it. Changing it moves edge src ids, so check consumers that may count file-sourced includes."  # 6e5f
+    fields: {}  # 6e5f
