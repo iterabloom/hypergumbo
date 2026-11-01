@@ -40,8 +40,10 @@ write/UI keybindings do not follow the gather-input modal pattern: z
 (repair_drift) pushes a ConfirmScreen, and S (capture_screenshot) opens the
 ADR-0020 screenshot+annotation overlay. Wide mode also exposes inline Mark
 Read / Mark Unread human read-state controls. Errors are shown
-via ``self.notify(str(e), severity="error")``. After each write, _load_items()
-refreshes the tables and _restore_selection() keeps the cursor stable.
+via ``self.notify(str(e), severity="error")``. After each write, and after
+every in-place rebuild (Mark Read / Mark Unread, status and tag toggles, the
+full-ID toggle, reorder), ``_rebuild_in_place()`` refreshes the tables and
+keeps the scroll offset, the cursor's item, and the cursor in view.
 
 Status visibility is toggled via the filter panel (open with ``f``): digit
 keys ``1``-``9`` (or clicking an entry) hide/show items by status or tag.  A
@@ -2564,8 +2566,7 @@ class TrackerApp(App[None]):
         if not self._items:
             self._load_items()
         elif old_tier != self._layout_tier:
-            self._reload_active_table()
-            self._restore_selection()
+            self._rebuild_in_place()
 
     # ------------------------------------------------------------------
     # Tier / layout management
@@ -2905,8 +2906,14 @@ class TrackerApp(App[None]):
         else:
             self._populate_compact_table()
 
-    def _restore_selection(self) -> None:
-        """After tier change or reload, move cursor to _selected_item_id."""
+    def _restore_selection(self, fallback_row: int | None = None) -> None:
+        """After tier change or reload, move cursor to _selected_item_id.
+
+        When the selected item is no longer listed (Mark Read on an unread
+        row that a filter hides removes it), the cursor goes to
+        *fallback_row*, clamped to the new length, so it stays where the user
+        was instead of the row-0 that the rebuild left it on.
+        """
         if not self._selected_item_id:
             return
 
@@ -2919,6 +2926,8 @@ class TrackerApp(App[None]):
             if str(row_key.value) == self._selected_item_id:
                 table.move_cursor(row=idx)
                 return
+        if fallback_row is not None and table.row_count:
+            table.move_cursor(row=min(fallback_row, table.row_count - 1))
 
     # ------------------------------------------------------------------
     # Detail display
@@ -3386,8 +3395,7 @@ class TrackerApp(App[None]):
     def action_toggle_full_ids(self) -> None:
         """Toggle between shortest-unique-prefix and full ID display."""
         self._show_full_ids = not self._show_full_ids
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
 
     def action_toggle_edit_mode(self) -> None:
         """WI-zonur: Ctrl-E toggles the per-message edit-mode window.
@@ -3409,7 +3417,7 @@ class TrackerApp(App[None]):
             self.notify(f"Edit-mode toggle failed: {exc}", severity="error")
         self._update_edit_mode_banner()
         # Tombstones may now be filtered/restored — pick that up.
-        self._reload_active_table()
+        self._rebuild_in_place()
 
     def _update_edit_mode_banner(self) -> None:
         """Refresh the edit-mode banner widget with current state.
@@ -3450,8 +3458,7 @@ class TrackerApp(App[None]):
         else:
             self._hidden_statuses.add(status)
         self._update_status_filter_bar()
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
 
     def _update_status_filter_bar(self) -> None:
         """Refresh the status filter bar text.
@@ -3528,8 +3535,7 @@ class TrackerApp(App[None]):
             self.notify("Could not save display order (permission denied)",
                         severity="warning")
         self._selected_item_id = item.id
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
 
     def _ensure_custom_order(self, displayed: list[CompiledItem]) -> None:
         """Populate ``_custom_order`` from *displayed* items if incomplete.
@@ -3560,8 +3566,7 @@ class TrackerApp(App[None]):
         else:
             self._hidden_tags.add(tag)
         self._update_status_filter_bar()
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
 
     def _increment_toggle_count(self, key: str) -> None:
         """Bump toggle count for *key* in the current session."""
@@ -3580,8 +3585,7 @@ class TrackerApp(App[None]):
         self._hidden_tags.clear()
         self._hide_tagged = False
         self._update_status_filter_bar()
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
         if self._filter_panel_visible:
             self._refresh_filter_panel()
 
@@ -3595,8 +3599,7 @@ class TrackerApp(App[None]):
         )
         self._hide_tagged = bool(self._last_filters.get("hide_tagged", False))
         self._update_status_filter_bar()
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
         if self._filter_panel_visible:
             self._refresh_filter_panel()
 
@@ -3737,8 +3740,7 @@ class TrackerApp(App[None]):
             if key == "meta:tagged":
                 self._hide_tagged = not self._hide_tagged
                 self._update_status_filter_bar()
-                self._reload_active_table()
-                self._restore_selection()
+                self._rebuild_in_place()
             self._increment_toggle_count(key)
         if self._filter_panel_visible:
             self._refresh_filter_panel()
@@ -4040,12 +4042,73 @@ class TrackerApp(App[None]):
         that internal scroll; scheduling the restore for after the next
         render pass lets the new virtual size settle first.
         """
-        saved_scroll = self._capture_active_scroll()
-        self._load_items()
         if select_id:
             self._selected_item_id = select_id
-        self._restore_selection()
-        self.call_after_refresh(self._restore_active_scroll, saved_scroll)
+        self._rebuild_in_place(reload_items=True)
+
+    def _rebuild_in_place(self, *, reload_items: bool = False) -> None:
+        """Rebuild the item list without moving the user's place in it.
+
+        Every rebuild that is not a new search — Mark Read / Mark Unread,
+        a status or tag toggle, the full-ID toggle, a reorder, a write, a
+        background reload — goes through here. ``_populate_table`` clears the
+        table and leaves the cursor on row 0, which scrolls the viewport to
+        the top; Mark Read used to rebuild without capturing the offset, so
+        the list jumped to the top on every click.
+
+        Captures the scroll offset and the cursor row, rebuilds (re-reading
+        items from the TrackerSet when *reload_items*), puts the cursor back
+        on the selected item (or, if that item is gone, on the same row
+        index), and restores the offset after the next refresh. If the cursor
+        was on screen before, it is kept on screen; if the user had scrolled
+        it out of view (mouse wheel), the offset alone is restored, so a
+        background reload never yanks the view back to the cursor.
+        """
+        saved_scroll = self._capture_active_scroll()
+        saved_row = self._capture_cursor_row()
+        cursor_was_visible = self._cursor_in_view()
+        if reload_items:
+            self._load_items()
+        else:
+            self._reload_active_table()
+        self._restore_selection(fallback_row=saved_row)
+        self.call_after_refresh(
+            self._restore_active_scroll, saved_scroll,
+            keep_cursor_visible=cursor_was_visible,
+        )
+
+    def _cursor_in_view(self) -> bool:
+        """True when the active table's cursor row is inside its viewport.
+
+        Every row is added at the default height of one line, so a row's
+        virtual y is its index and the viewport spans the content height
+        minus the fixed header.
+        """
+        table = self._active_table()
+        if table is None or not table.row_count:
+            return False
+        header = table.header_height if table.show_header else 0
+        top = table.scroll_y
+        bottom = top + table.scrollable_content_region.height - header
+        return top <= table.cursor_row < bottom
+
+    def _capture_cursor_row(self) -> int | None:
+        """Return the active table's cursor row, or ``None`` before mount."""
+        table = self._active_table()
+        return None if table is None else table.cursor_row
+
+    def _active_table(self) -> DataTable[Any] | None:
+        """Return the DataTable of the current tier, or ``None`` before mount
+        (no screen yet, so ``query_one`` raises), as in
+        ``_capture_active_scroll``."""
+        widget_id = (
+            "#std-table" if self._layout_tier in ("standard", "wide")
+            else "#item-table"
+        )
+        try:
+            return self.query_one(widget_id, DataTable)
+        except Exception:  # defensive pre-mount path: no screen yet
+            return None
 
     def _capture_active_scroll(self) -> tuple[str, float] | None:
         """Return ``(widget_id, scroll_y)`` for the currently-rendered item
@@ -4068,6 +4131,7 @@ class TrackerApp(App[None]):
 
     def _restore_active_scroll(
         self, saved: tuple[str, float] | None,
+        *, keep_cursor_visible: bool = False,
     ) -> None:
         """Restore a scroll offset previously captured via
         ``_capture_active_scroll``.
@@ -4078,6 +4142,13 @@ class TrackerApp(App[None]):
         Textual's ``scroll_to`` clamps the y offset to the table's
         scrollable bounds, so overflow is harmless. A broad ``Exception``
         catch mirrors ``_capture_active_scroll`` for the pre-mount case.
+
+        The offset is applied immediately. With *keep_cursor_visible* (the
+        cursor was on screen before the rebuild) the cursor is then scrolled
+        into view, which moves the viewport only when the rebuild put the
+        cursor outside it (rows above it were filtered away, so the restored
+        offset no longer shows it). When the list did not change under the
+        cursor, the offset stays exactly as it was.
         """
         if saved is None:
             return
@@ -4093,7 +4164,13 @@ class TrackerApp(App[None]):
                 table = self.query_one(widget_id)
             except Exception:  # noqa: S112  # nosec B112 — defensive pre-mount path; no logger available on unmounted App
                 continue
-            table.scroll_to(y=saved_y, animate=False)
+            table.scroll_to(y=saved_y, animate=False, immediate=True)
+            if (
+                keep_cursor_visible
+                and isinstance(table, DataTable)
+                and table.row_count
+            ):
+                table.move_cursor(row=table.cursor_row, scroll=True)
             return
 
     def _check_external_writes(self) -> None:
@@ -4151,8 +4228,7 @@ class TrackerApp(App[None]):
             "discussion_len": len(item.discussion),
         }
         self._save_human_read_state()
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
 
     def _mark_human_unread(self, item_id: str) -> None:
         """Mark an item as unread by the human.
@@ -4168,8 +4244,7 @@ class TrackerApp(App[None]):
             "discussion_len": len(item.discussion),
         }
         self._save_human_read_state()
-        self._reload_active_table()
-        self._restore_selection()
+        self._rebuild_in_place()
 
     def _save_human_read_state(self) -> None:
         """Persist the human read state to the preferences file."""

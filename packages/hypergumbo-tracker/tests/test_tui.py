@@ -10275,6 +10275,19 @@ class TestCheckExternalWrites:
         # widget id raises NoMatches, which _capture_active_scroll catches.
         assert app._capture_active_scroll() is None
 
+    def test_cursor_helpers_handle_no_table_mounted(
+        self, tmp_path: Path,
+    ) -> None:
+        """Before mount there is no table: the cursor-row capture returns
+        None and the cursor counts as not visible, without raising."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        assert app._active_table() is None
+        assert app._capture_cursor_row() is None
+        assert app._cursor_in_view() is False
+
     def test_restore_active_scroll_noop_when_saved_is_none(
         self, tmp_path: Path,
     ) -> None:
@@ -10458,3 +10471,231 @@ async def test_the_app_reads_and_writes_the_user_location(
         assert app._hidden_statuses == {"done"}
     assert app._prefs_path.is_relative_to(state)
     assert app._prefs_path.is_file()
+
+
+# ---------------------------------------------------------------------------
+# In-place list rebuilds keep the viewport (Mark Read jumped to the top)
+# ---------------------------------------------------------------------------
+
+
+def _make_unread_tracker_set(
+    tmp_path: Path,
+    n_items: int,
+    *,
+    tagged_first: int = 0,
+    done_unread: bool = False,
+) -> TrackerSet:
+    """A tall TrackerSet whose items all carry an agent discussion entry,
+    so every row is human-unread and Mark Read has something to do.
+
+    ``tagged_first`` gives the first N items the tag ``batch_x`` and no
+    discussion, so they are read and hiding the tag really removes them
+    (an unread hidden item would be appended back at the end). ``done_unread`` adds one unread
+    ``done`` item, which a hidden ``done`` status appends as a ghost row at
+    the end and Mark Read then removes.
+    """
+    from helpers import make_test_config_dict
+    from unittest.mock import patch as _patch
+    from hypergumbo_tracker import store as _store_mod
+    import yaml as _yaml
+
+    root = tmp_path / ".agent"
+    for d in [
+        root / "tracker" / ".ops",
+        root / "tracker-workspace" / ".ops",
+        root / "tracker-workspace" / "stealth",
+    ]:
+        d.mkdir(parents=True, exist_ok=True)
+    (root / "tracker" / "config.yaml").write_text(
+        _yaml.dump(make_test_config_dict()),
+    )
+    ts = TrackerSet(root, config=_make_config())
+    with _patch.object(
+        _store_mod, "resolve_actor", return_value=("agent", "test_agent"),
+    ):
+        for i in range(n_items):
+            extra: dict[str, Any] = (
+                {"tags": ["batch_x"]} if i < tagged_first else {}
+            )
+            item_id = ts.add(
+                kind="work_item",
+                title=f"Item {i:02d}",
+                status="todo_hard",
+                priority=2,
+                **extra,
+            )
+            if not extra:
+                ts.discuss(item_id, "agent note")
+        if done_unread:
+            item_id = ts.add(
+                kind="work_item", title="Closed but unread",
+                status="done", priority=2,
+            )
+            ts.discuss(item_id, "agent note")
+    return ts
+
+
+def _cursor_row_visible(table: Any) -> bool:
+    """True when the table's cursor row lies inside its viewport."""
+    region = table._get_row_region(table.cursor_row)
+    header = table.header_height if table.show_header else 0
+    top = table.scroll_y
+    bottom = top + table.scrollable_content_region.height - header
+    return top <= region.y - header < bottom
+
+
+async def _settle(pilot: Any, rounds: int = 4) -> None:
+    for _ in range(rounds):
+        await pilot.pause()
+
+
+def _move_to_row(table: Any, row: int) -> None:
+    table.move_cursor(row=row, scroll=False)
+
+
+class TestRebuildKeepsViewport:
+    """A rebuild of the item list in place (Mark Read / Mark Unread, filter
+    and display toggles, reorder) keeps the scroll offset and the cursor's
+    item, and keeps the cursor visible when the list changes under it."""
+
+    async def test_mark_read_button_keeps_scroll_offset(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp, _is_human_unread
+        from textual.widgets import Button
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=90)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.scroll_to(y=30, animate=False, immediate=True)
+            _move_to_row(table, 35)
+            await _settle(pilot)
+            captured_y = table.scroll_y
+            assert captured_y == 30
+            target = app._selected_item_id
+            app.query_one("#mark-read", Button).press()
+            await _settle(pilot)
+            item = next(i for i in app._items if i.id == target)
+            assert _is_human_unread(item, app._human_read_state) is False
+            table = app.query_one("#std-table")
+            assert table.scroll_y == captured_y
+            assert app._selected_item_id == target
+            assert table.cursor_row == 35
+
+    @pytest.mark.parametrize("rebuild", [
+        lambda app: app._mark_human_unread(app._selected_item_id),
+        lambda app: app.action_toggle_full_ids(),
+        lambda app: app._toggle_status("wont_do"),
+        lambda app: app._toggle_tag("no_such_tag"),
+        lambda app: app.action_toggle_edit_mode(),
+        lambda app: app._clear_all_filters(),
+        lambda app: app._restore_last_filters(),
+    ], ids=[
+        "mark_unread", "toggle_full_ids", "toggle_status", "toggle_tag",
+        "toggle_edit_mode", "clear_filters", "restore_filters",
+    ])
+    async def test_in_place_rebuild_keeps_scroll_offset(
+        self, tmp_path: Path, rebuild: Any,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=60)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.scroll_to(y=20, animate=False, immediate=True)
+            _move_to_row(table, 24)
+            await _settle(pilot)
+            captured_y = table.scroll_y
+            assert captured_y == 20
+            target = app._selected_item_id
+            rebuild(app)
+            await _settle(pilot)
+            table = app.query_one("#std-table")
+            assert table.scroll_y == captured_y
+            assert app._selected_item_id == target
+
+    async def test_reorder_keeps_scroll_offset(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=60)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.scroll_to(y=20, animate=False, immediate=True)
+            _move_to_row(table, 24)
+            await _settle(pilot)
+            target = app._selected_item_id
+            app.action_move_down()
+            await _settle(pilot)
+            table = app.query_one("#std-table")
+            assert table.scroll_y == 20
+            assert app._selected_item_id == target
+            assert table.cursor_row == 25
+
+    async def test_rebuild_brings_cursor_into_view_when_rows_above_vanish(
+        self, tmp_path: Path,
+    ) -> None:
+        """Hiding a tag that covers every row above the cursor moves the
+        cursor's item to row 0. The restored offset is clamped to the
+        shorter list, which can still leave row 0 above the viewport, so
+        the rebuild scrolls just far enough to show the cursor."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=100, tagged_first=60)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            first_untagged = next(
+                idx for idx, rk in enumerate(table.rows)
+                if "batch_x" not in next(
+                    i for i in app._items if i.id == str(rk.value)
+                ).tags
+            )
+            table.scroll_to(y=first_untagged - 2, animate=False, immediate=True)
+            _move_to_row(table, first_untagged)
+            await _settle(pilot)
+            target = app._selected_item_id
+            app._toggle_tag("batch_x")
+            await _settle(pilot)
+            table = app.query_one("#std-table")
+            assert app._selected_item_id == target
+            assert table.row_count == 40
+            assert table.cursor_row == 0
+            assert _cursor_row_visible(table)
+
+    async def test_mark_read_on_vanishing_row_keeps_cursor_position(
+        self, tmp_path: Path,
+    ) -> None:
+        """An unread item hidden by the status filter shows as an extra row
+        at the end; Mark Read removes it. The cursor stays at the same row
+        index (clamped to the shorter list) rather than jumping to row 0,
+        and the viewport does not jump to the top."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=60, done_unread=True)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hidden_statuses = {"done"}
+            app._reload_after_write()
+            await _settle(pilot)
+            table = app.query_one("#std-table")
+            last = table.row_count - 1
+            assert str(list(table.rows)[last].value) in app._unread_override_ids
+            table.move_cursor(row=last)
+            await _settle(pilot)
+            captured_y = table.scroll_y
+            assert captured_y > 0
+            app._mark_human_read(app._selected_item_id)
+            await _settle(pilot)
+            table = app.query_one("#std-table")
+            assert table.row_count == last
+            assert table.cursor_row == last - 1
+            assert table.scroll_y > 0
+            assert _cursor_row_visible(table)
