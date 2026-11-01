@@ -356,6 +356,14 @@ module_completeness:
     retrieved: "2026-08-16"
     notes: >-
       TUI widget construction; terminal I/O happens in the app driver, not at these slots.
+  - module: textual.events.Click
+    completeness: complete
+    retrieved: "2026-11-01"
+    notes: >-
+      Mouse-click event object. The TUI reads its shift flag and style meta
+      and calls prevent_default() / stop(), which only set the in-memory
+      dispatch flags _no_default_action / _stop_propagation (textual 7.5.0
+      message.py); no I/O.
   - module: textual.strip
     completeness: complete
     retrieved: "2026-08-16"
