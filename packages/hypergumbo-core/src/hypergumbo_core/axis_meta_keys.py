@@ -1472,8 +1472,9 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "py.py's Django-ORM instance check."),
     MetaKeySpec("enclosing_class_id", AXIS_EDGE_META,
                 "Symbol id of the class that lexically owns the call site, "
-                "stamped by py.py beside ``enclosing_class`` when the id is "
-                "known (WI-supat D3) so ``inherited_calls`` can start the "
+                "stamped by py.py (WI-supat D3) and java.py (WI-gikuk: the "
+                "class found by position) beside ``enclosing_class`` when the "
+                "id is known so ``inherited_calls`` can start the "
                 "ancestor walk from exactly that class and skip its "
                 "same-short-name ambiguity guard."),
     MetaKeySpec("inherited_field_receiver", AXIS_EDGE_META,

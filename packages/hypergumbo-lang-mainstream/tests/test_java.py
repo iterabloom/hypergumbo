@@ -5239,8 +5239,11 @@ public class Sub extends Base {
             f"Got {len(helper_unresolved)}: "
             f"{[(e.dst, e.meta) for e in helper_unresolved]}"
         )
+        # WI-gikuk: the class itself (by position) rides beside its name.
+        sub_id = next(s.id for s in result.symbols if s.kind == "class" and s.name == "Sub")
         assert helper_unresolved[0].meta == {
             "callee_name": "helper", "enclosing_class": "Sub",
+            "enclosing_class_id": sub_id,
         }
 
     def test_this_else_emits_single_unresolved_edge(
