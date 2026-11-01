@@ -1695,7 +1695,7 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Twig includes edge: 'function' when the include was the "
                 "``include()`` function rather than the ``{% include %}`` tag."),
     MetaKeySpec("class_name", AXIS_EDGE_META,
-                "Puppet includes edge: the included class's name."),
+                "Puppet includes / inherits edge: the named class's full name."),
     MetaKeySpec("mixin_name", AXIS_EDGE_META,
                 "SCSS includes edge: the ``@include``d mixin's name."),
     MetaKeySpec("include_file", AXIS_EDGE_META,

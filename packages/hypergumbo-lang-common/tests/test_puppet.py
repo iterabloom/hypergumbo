@@ -472,3 +472,180 @@ class TestRelationshipEdgeSources:
         assert rel["puppet_require"].src == by_name["service[nginx]"].id
         assert rel["puppet_notify"].src == by_name["file[/etc/nginx.conf]"].id
         assert rel["puppet_require"].line == by_name["service[nginx]"].span.start_line
+
+
+def _canonical_id(node_id: str) -> bool:
+    """The production id gate: the five-slot grammar, colon-free name slot."""
+    from hypergumbo_core.spec_validator import _CANONICAL_ID_PATTERN
+
+    return _CANONICAL_ID_PATTERN.match(node_id) is not None
+
+
+def _classes(result: AnalysisResult) -> dict[str, list]:
+    by_name: dict[str, list] = {}
+    for s in result.symbols:
+        if s.kind == "class":
+            by_name.setdefault(s.name, []).append(s)
+    return by_name
+
+
+def _names_bound(result: AnalysisResult, edge_type: str, evidence: str) -> list[tuple[str, bool, str]]:
+    return sorted(
+        (e.meta["class_name"], e.is_resolved, e.dst)
+        for e in result.edges
+        if e.edge_type == edge_type and e.evidence_type == evidence
+    )
+
+
+class TestEveryClassNameIsReadInFull:
+    """WI-hozot: every class definition yields one class symbol named by its
+    full ``::``-joined name (a leading ``::`` names the same top-scope class),
+    and every class an include / require / inherits names yields one edge,
+    bound to that class when the repository declares it, whatever its list
+    position, quoting or leading ``::``."""
+
+    def test_the_items_fixture(self, tmp_path: Path) -> None:
+        make_puppet_file(
+            tmp_path, "m.pp",
+            'class a::b {}  class c {}  class top { include a::b, c  include "c" }\n',
+        )
+        result = analyze_puppet(tmp_path)
+        classes = _classes(result)
+        assert sorted(classes) == ["a::b", "c", "top"]
+        assert all(len(v) == 1 for v in classes.values())
+        assert _names_bound(result, "includes", "include") == [
+            ("a::b", True, classes["a::b"][0].id),
+            ("c", True, classes["c"][0].id),
+            ("c", True, classes["c"][0].id),
+        ]
+
+    def test_a_namespaced_class_is_one_symbol_with_canonical_ids(self, tmp_path: Path) -> None:
+        make_puppet_file(
+            tmp_path, "init.pp",
+            "class apache::mod::ssl($port = 443) {}\nclass ::site {}\nclass ::site::web {}\n",
+        )
+        result = analyze_puppet(tmp_path)
+        classes = _classes(result)
+        assert sorted(classes) == ["apache::mod::ssl", "site", "site::web"]
+        ssl = classes["apache::mod::ssl"][0]
+        assert ssl.signature == "class apache::mod::ssl(port)"
+        for (sym,) in classes.values():
+            assert _canonical_id(sym.id), sym.id
+            assert re.match(r"^sha256:[0-9a-f]{16}$", sym.stable_id)
+
+    def test_a_namespaced_class_opens_its_own_scope(self, tmp_path: Path) -> None:
+        """Two same-titled resources in two namespaced classes are two
+        identities: the scope labeller reads the class's full name."""
+        make_puppet_file(
+            tmp_path, "init.pp",
+            "class a::b {\n  file { '/tmp/x': }\n}\nclass a::c {\n  file { '/tmp/x': }\n}\n",
+        )
+        result = analyze_puppet(tmp_path)
+        files = [s for s in result.symbols if s.kind == "resource"]
+        assert len(files) == 2  # reach
+        assert files[0].stable_id != files[1].stable_id
+
+    @pytest.mark.parametrize("statement", [
+        "include alpha, beta, gamma",
+        "include ::alpha, beta, gamma",
+        "include alpha, ::beta, gamma",
+        "include alpha\ninclude beta\ninclude gamma",
+        "include 'alpha', \"beta\", ::gamma",
+    ])
+    def test_every_name_in_an_include_binds(self, tmp_path: Path, statement: str) -> None:
+        make_puppet_file(tmp_path, "a.pp", f"class top {{\n  {statement}\n}}\n")
+        make_puppet_file(tmp_path, "b.pp", "class alpha {}\nclass beta {}\nclass gamma {}\n")
+        result = analyze_puppet(tmp_path)
+        classes = _classes(result)
+        assert _names_bound(result, "includes", "include") == sorted(
+            (n, True, classes[n][0].id) for n in ("alpha", "beta", "gamma")
+        )
+
+    def test_a_leading_double_colon_names_the_top_scope_class(self, tmp_path: Path) -> None:
+        make_puppet_file(tmp_path, "a.pp", "class apache::params {}\nclass ::web {}\n")
+        make_puppet_file(tmp_path, "b.pp", "node 'n' {\n  include ::apache::params\n  include web\n}\n")
+        result = analyze_puppet(tmp_path)
+        classes = _classes(result)
+        assert _names_bound(result, "includes", "include") == [
+            ("apache::params", True, classes["apache::params"][0].id),
+            ("web", True, classes["web"][0].id),
+        ]
+
+    def test_a_dynamic_include_names_no_class(self, tmp_path: Path) -> None:
+        """A variable or an interpolated string is not a class name."""
+        make_puppet_file(
+            tmp_path, "a.pp",
+            'class top {\n  include $role\n  include "${role}::base"\n  include \'\'\n  include plain\n}\n',
+        )
+        result = analyze_puppet(tmp_path)
+        assert [n for n, _, _ in _names_bound(result, "includes", "include")] == ["plain"]
+
+    def test_a_dangling_namespaced_include_has_a_canonical_dst(self, tmp_path: Path) -> None:
+        make_puppet_file(tmp_path, "a.pp", "class top {\n  include missing::thing\n}\n")
+        result = analyze_puppet(tmp_path)
+        ((name, resolved, dst),) = _names_bound(result, "includes", "include")
+        assert (name, resolved) == ("missing::thing", False)
+        assert _canonical_id(dst), dst
+        assert dst not in {s.id for s in result.symbols}
+
+    def test_inherits_binds_the_child_class_to_its_parent(self, tmp_path: Path) -> None:
+        make_puppet_file(
+            tmp_path, "a.pp",
+            "class alpha inherits beta {}\n"
+            "class apache::ssl($p = 1) inherits ::apache::params {}\n"
+            "class orphan inherits nowhere::params {}\n",
+        )
+        make_puppet_file(tmp_path, "b.pp", "class beta {}\nclass apache::params {}\n")
+        result = analyze_puppet(tmp_path)
+        classes = _classes(result)
+        edges = {e.meta["class_name"]: e for e in result.edges if e.edge_type == "inherits"}
+        assert sorted(edges) == ["apache::params", "beta", "nowhere::params"]
+        assert edges["beta"].src == classes["alpha"][0].id
+        assert edges["beta"].dst == classes["beta"][0].id
+        assert edges["apache::params"].src == classes["apache::ssl"][0].id
+        assert edges["apache::params"].dst == classes["apache::params"][0].id
+        assert edges["beta"].is_resolved and edges["apache::params"].is_resolved
+        orphan = edges["nowhere::params"]
+        assert orphan.src == classes["orphan"][0].id
+        assert orphan.is_resolved is False
+        assert _canonical_id(orphan.dst), orphan.dst
+        assert {e.evidence_type for e in edges.values()} == {"ast_extends"}
+
+    @pytest.mark.parametrize("statement", [
+        "require alpha, beta, gamma",
+        "require ::alpha, ::beta, ::gamma",
+        "require 'alpha', \"beta\", gamma",
+        "require alpha\n  require beta\n  require gamma",
+    ])
+    def test_every_name_a_require_function_names_binds(self, tmp_path: Path, statement: str) -> None:
+        """The grammar ends a ``require`` statement at its first name and
+        leaves the rest of the list as ``, name`` siblings: each binds."""
+        make_puppet_file(tmp_path, "a.pp", f"class top {{\n  {statement}\n  file {{ '/x': }}\n}}\n")
+        make_puppet_file(tmp_path, "b.pp", "class alpha {}\nclass beta {}\nclass gamma {}\n")
+        result = analyze_puppet(tmp_path)
+        classes = _classes(result)
+        assert _names_bound(result, "includes", "require") == sorted(
+            (n, True, classes[n][0].id) for n in ("alpha", "beta", "gamma")
+        )
+        # The list recovery stops at the list: the resource after it stays one.
+        assert "file[/x]" in {s.name for s in result.symbols if s.kind == "resource"}
+
+    def test_a_require_function_of_an_absent_class_dangles(self, tmp_path: Path) -> None:
+        make_puppet_file(tmp_path, "a.pp", "class top {\n  require gone::away\n}\n")
+        result = analyze_puppet(tmp_path)
+        ((name, resolved, dst),) = _names_bound(result, "includes", "require")
+        assert (name, resolved) == ("gone::away", False)
+        assert _canonical_id(dst), dst
+
+    @pytest.mark.parametrize("statement", [
+        "require alpha, $role",
+        "require alpha\n  Package { ensure => present }",
+        "require alpha, beta\n  Package { ensure => present }",
+    ])
+    def test_the_require_list_ends_where_its_names_end(self, tmp_path: Path, statement: str) -> None:
+        """A ``$variable`` in the list names no class and ends the read; a
+        statement after the list is not read as part of it."""
+        make_puppet_file(tmp_path, "a.pp", f"class top {{\n  {statement}\n}}\nclass alpha {{}}\nclass beta {{}}\n")
+        result = analyze_puppet(tmp_path)
+        names = [n for n, _, _ in _names_bound(result, "includes", "require")]
+        assert names == (["alpha", "beta"] if "beta" in statement else ["alpha"])
