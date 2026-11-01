@@ -1,0 +1,22 @@
+- op: create  # 9ffa
+  at: '2026-11-01T10:57:51Z'  # 9ffa
+  by: agent  # 9ffa
+  actor: jgstern_agent  # 9ffa
+  clock: 1  # 9ffa
+  nonce: 9ffa  # 9ffa
+  data:  # 9ffa
+    kind: work_item  # 9ffa
+    title: "spec still says nothing merges the rust-analyzer and tree-sitter arms and cites 'pending WI-gojum'; the ADR-0057 producer-merge pass is live"  # 9ffa
+    status: todo_hard  # 9ffa
+    priority: 3  # 9ffa
+    parent:  # 9ffa
+    tags:  # 9ffa
+    - docs  # 9ffa
+    - spec  # 9ffa
+    - scip  # 9ffa
+    isbefore: []  # 9ffa
+    duplicate_of: []  # 9ffa
+    not_duplicate_of: []  # 9ffa
+    pr_ref:  # 9ffa
+    description: "Found by the 2026-11-01 P3 stale-item review (~/hypergumbo_lab_notebook/p3_review_11012026/misc5/, dev 100b6fbb6e). docs/hypergumbo-spec.md ~1577 ('nothing in the pipeline merges, prefers or reconciles the two arms') and the v6->v7 history entry (~2464, 'independent identities pending WI-gojum') predate WI-kokiz/WI-givib/WI-sobig. Live: --backend rust-analyzer survey runs producer-merge and emits one node per function with origin ['rust','scip']. WI-gojum is proposed for closure as OBSOLETE."  # 9ffa
+    fields: {}  # 9ffa

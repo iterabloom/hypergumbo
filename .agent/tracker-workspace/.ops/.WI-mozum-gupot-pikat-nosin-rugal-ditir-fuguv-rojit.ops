@@ -1,0 +1,22 @@
+- op: create  # 1cc9
+  at: '2026-11-01T10:57:28Z'  # 1cc9
+  by: agent  # 1cc9
+  actor: jgstern_agent  # 1cc9
+  clock: 1  # 1cc9
+  nonce: 1cc9  # 1cc9
+  data:  # 1cc9
+    kind: work_item  # 1cc9
+    title: "go: a package whose name differs from its import-path leaf (go-smtp imported as smtp) is read as a value receiver and binds an unrelated repo function"  # 1cc9
+    status: todo_hard  # 1cc9
+    priority: 3  # 1cc9
+    parent:  # 1cc9
+    tags:  # 1cc9
+    - go  # 1cc9
+    - analysis_quality  # 1cc9
+    - false_positive  # 1cc9
+    isbefore: []  # 1cc9
+    duplicate_of: []  # 1cc9
+    not_duplicate_of: []  # 1cc9
+    pr_ref:  # 1cc9
+    description: "Found by the 2026-11-01 P3 stale-item review (~/hypergumbo_lab_notebook/p3_review_11012026/gorc1/, dev 100b6fbb6e). With import \"github.com/emersion/go-smtp\", smtp.NewServer() is not recognised as a package-qualified call (leaf 'go-smtp' != package name 'smtp'); the short-name lookup then binds an unrelated cross-package repo NewServer at 0.85. alertmanager email_test.go:760 has the same shape. Fixture gorc1/fx_smtp. Related: WI-surid (hintless short-name lookup)."  # 1cc9
+    fields: {}  # 1cc9

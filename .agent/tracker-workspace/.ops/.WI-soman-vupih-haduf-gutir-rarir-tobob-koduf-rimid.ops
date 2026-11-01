@@ -1,0 +1,22 @@
+- op: create  # 064b
+  at: '2026-11-01T10:57:39Z'  # 064b
+  by: agent  # 064b
+  actor: jgstern_agent  # 064b
+  clock: 1  # 064b
+  nonce: 064b  # 064b
+  data:  # 064b
+    kind: work_item  # 064b
+    title: "r_lang: a qualified call (dplyr::filter) gets dst r:external:0-0::external_symbol, losing package and function name"  # 064b
+    status: todo_hard  # 064b
+    priority: 3  # 064b
+    parent:  # 064b
+    tags:  # 064b
+    - r  # 064b
+    - analysis_quality  # 064b
+    - symbol_identity  # 064b
+    isbefore: []  # 064b
+    duplicate_of: []  # 064b
+    not_duplicate_of: []  # 064b
+    pr_ref:  # 064b
+    description: "Found by the 2026-11-01 P3 stale-item review (~/hypergumbo_lab_notebook/p3_review_11012026/misc3/, dev 100b6fbb6e). r_lang.py:488 builds dst_id = f\"r:external:{path_hint}::{func_name}\", which is not a 5-slot id; canonicalisation then yields r:external:0-0::external_symbol with empty name, so every qualified R call collapses onto one nameless node. Fixture misc3/fx_fivof."  # 064b
+    fields: {}  # 064b

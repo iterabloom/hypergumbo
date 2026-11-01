@@ -1,0 +1,21 @@
+- op: create  # 748d
+  at: '2026-11-01T10:57:34Z'  # 748d
+  by: agent  # 748d
+  actor: jgstern_agent  # 748d
+  clock: 1  # 748d
+  nonce: 748d  # 748d
+  data:  # 748d
+    kind: work_item  # 748d
+    title: "tracker: update --status accepts any string (--status bogus_status exits 0); only validate rejects it later"  # 748d
+    status: todo_hard  # 748d
+    priority: 3  # 748d
+    parent:  # 748d
+    tags:  # 748d
+    - tracker  # 748d
+    - developer_experience  # 748d
+    isbefore: []  # 748d
+    duplicate_of: []  # 748d
+    not_duplicate_of: []  # 748d
+    pr_ref:  # 748d
+    description: "Found by the 2026-11-01 P3 stale-item review (~/hypergumbo_lab_notebook/p3_review_11012026/tool3/, dev 100b6fbb6e). On a temp tracker, `update --status wontfix` and `update --status bogus_status` both exit 0 and write the op; `validate` then exits 1 with \"unknown status\". The write path does not check the status vocabulary. Surfaced under WI-mudov (whose shipped prose names 'wontfix'). Related in spirit: INV-linan (write path checks only required-present for fields). Fixture tool3/fx_mudov/r.py."  # 748d
+    fields: {}  # 748d

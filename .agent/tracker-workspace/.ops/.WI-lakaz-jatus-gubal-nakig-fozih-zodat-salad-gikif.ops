@@ -1,0 +1,22 @@
+- op: create  # e25c
+  at: '2026-11-01T10:57:23Z'  # e25c
+  by: agent  # e25c
+  actor: jgstern_agent  # e25c
+  clock: 1  # e25c
+  nonce: e25c  # e25c
+  data:  # e25c
+    kind: work_item  # e25c
+    title: "go: a method promoted through a SAME-package struct embedding (c.Process()) resolves external at 0.4"  # e25c
+    status: todo_hard  # e25c
+    priority: 3  # e25c
+    parent:  # e25c
+    tags:  # e25c
+    - go  # e25c
+    - analysis_quality  # e25c
+    - receiver_typing  # e25c
+    isbefore: []  # e25c
+    duplicate_of: []  # e25c
+    not_duplicate_of: []  # e25c
+    pr_ref:  # e25c
+    description: "Found by the 2026-11-01 P3 stale-item review (~/hypergumbo_lab_notebook/p3_review_11012026/gorc1/, dev 100b6fbb6e). _go_promoted_method (go.py ~3762-3768) runs only for package-qualified embedded types, so a call through an in-package embedded struct gets no promoted-method resolution and stays go:external at 0.4. Fixture gorc1 (WI-vavas fixture variant)."  # e25c
+    fields: {}  # e25c
