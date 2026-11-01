@@ -80,7 +80,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **An edge's caller is found by position, its callee in the same file first**, in Luau, Apex, Hack, Smithy and Prisma: two files defining one name no longer cross edges.
 - **Circom resolves names in their template's scope**: a signal binds its own template's, `c.in` the bound component's; includes reach their file.
 - **Puppet `include` binds a class declared later or in another file.**
+- **Puppet namespaced classes (`class a::b`) are extracted**, and include lists, quoted includes, `require` and `inherits` each give an edge; resources inside such a class get new `stable_id`s.
 - **Electron `contextBridge` calls reach the preload's send**, so renderer → preload → main connects.
+- **A call through a project's own Electron IPC wrapper is an IPC site** (`this.ipcHandle('ch', …)`): on podman-desktop, 66 of 66 bridge calls reach the main process, up from 1.
+- **Java, Kotlin and Ruby same-named classes in different packages or modules no longer share edges**: `extends`, `super` and `this` start at the enclosing class, and a base resolves in its own package first.
 
 #### I/O boundaries and taint
 
