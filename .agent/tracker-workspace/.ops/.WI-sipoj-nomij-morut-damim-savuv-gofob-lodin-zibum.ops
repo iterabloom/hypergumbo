@@ -33,3 +33,18 @@
   clock: 3  # dc05
   nonce: dc05  # dc05
   message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C1/). VERDICT: CURRENT, and the item's 'second reading' (a product bug, not an environment dependency) is confirmed. On tmpfs (readdir = reverse creation order): JS files created a_early then z_late -> rglob [main, z_late, a_early] -> dst a_early PASS; created z_late then a_early -> rglob [main, a_early, z_late] -> dst z_late/utils.js:1-1:process:function FAIL. LLVM: created utils then main PASS; main then utils -> dst llvm_ir:main.ll:1-1:utility_func:declaration FAIL. `scripts/smart-test --no-cov <both node ids>` -> 2 passed (pytest tmp_path creates in the passing order here). Code: js_ts.py:7442/7771 global_symbols[sym.name] = sym (last-writer-wins); find_js_ts_files (:286) does not sort; the namespace path_hint lookup (:7191) does not override the name-keyed table; in LLVM a `declare` overwrites the `define` of the same name. The test docstring's 'rglob processes alphabetically' is false. PROPOSED (owner): split - (a) js namespace path_hint does not disambiguate same-name functions; (b) llvm declare shadows define; (c) make both tests create files in the failing order, or sort discovery. ROOT-CAUSE GROUP: symbol identity keyed by bare name in enumeration order (with INV-dosoz, INV-tohuj). Status unchanged."  # dc05
+- op: update  # 36b3
+  at: '2026-11-01T09:57:48Z'  # 36b3
+  by: agent  # 36b3
+  actor: jgstern_agent  # 36b3
+  clock: 4  # 36b3
+  nonce: 36b3  # 36b3
+  set:  # 36b3
+    title: "test_namespace_import_disambiguates_same_name_functions (js) and test_cross_file_call_resolution (llvm) pass only when tmp_path creates the fixture files in the lucky order: create them in the failing order, or sort analyzer file discovery, so the tests pin WI-povub and WI-pagoj"  # 36b3
+- op: discuss  # d1b1
+  at: '2026-11-01T09:57:48Z'  # d1b1
+  by: agent  # d1b1
+  actor: jgstern_agent  # d1b1
+  clock: 5  # d1b1
+  nonce: d1b1  # d1b1
+  message: "SPLIT 2026-11-01 (owner-approved, P2 review): the two product bugs are WI-povub-butok-vunij-filar-lojom-nuzif-pivag-kikol (js namespace path_hint does not override the bare-name last-writer-wins table) and WI-pagoj-guviv-miton-zupaj-dipub-bupuf-pirur-lijoz (llvm declare shadows define). This item keeps the test limb: both tests pass today only because pytest's tmp_path on this box creates files in the passing order (verified on tmpfs, where readdir is reverse creation order: a_early created first -> PASS, z_late created first -> FAIL; utils.ll first -> PASS, main.ll first -> FAIL). Make them create the files in the failing order (z_late before a_early; main.ll before utils.ll), or sort find_js_ts_files (js_ts.py:286) and the llvm discovery, so the tests pin the two bugs; fix the docstring's false 'rglob processes alphabetically'. Title re-scoped; priority unchanged."  # d1b1

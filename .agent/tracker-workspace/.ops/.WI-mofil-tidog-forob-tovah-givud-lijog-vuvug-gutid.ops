@@ -87,3 +87,10 @@
   clock: 10  # ed52
   nonce: ed52  # ed52
   message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A1/). VERDICT: PARTLY-STALE: mechanism holds, number and population stale, the item is now an umbrella. Re-ran the item's own instrument (~/hypergumbo_lab_notebook/dodop_swift_09102026/untyped.py, vapor @ ff88583): 4,886 method edges (was 5,243), typed 55.0% (was 36.0%), 1,407 classified; bucket B 'lowercase hint, _type_of None' = 510 (was 622), now the LARGEST bucket at 36.2%, ahead of chain-off-identifier 417 and self.<method> 331 (A1/mofil_untyped_now.out). Children: WI-dimad, WI-silos done; WI-zobif (unannotated closure param, swift.py:2758-2770 binds it untyped - the biggest cause), WI-hubik, WI-rajig, WI-jofin, WI-sizas todo_hard. Title re-scoped to the umbrella. PROPOSED (owner): keep as umbrella, or close on the 510 re-measure and let the five children carry it. ROOT-CAUSE GROUP: receiver type not carried to the emission site. Status unchanged."  # ed52
+- op: discuss  # 6e50
+  at: '2026-11-01T09:57:48Z'  # 6e50
+  by: agent  # 6e50
+  actor: jgstern_agent  # 6e50
+  clock: 11  # 6e50
+  nonce: '6e50'  # 6e50
+  message: "UMBRELLA MADE STRUCTURAL 2026-11-01 (owner-approved, P2 review): WI-zobif, WI-hubik, WI-rajig, WI-jofin and WI-sizas now carry parent = this item (none had a parent). This item stays open as the roll-up only: its number is the vapor bucket-B count (510 on 2026-11-01 at dev 24d0b860ee, instrument ~/hypergumbo_lab_notebook/dodop_swift_09102026/untyped.py, output ~/hypergumbo_lab_notebook/p2_review_11012026/A1/mofil_untyped_now.out), to be re-taken when a child closes; it closes when the bucket is drained or every remaining site has a filed cause. No independent work lives here. Chosen over closing on the re-measure because 510 sites still reproduce and 'done' would read as fixed."  # 6e50
