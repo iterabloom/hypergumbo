@@ -19,3 +19,25 @@
     pr_ref:  # 374d
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. _class_registry is filled during the same sequential walk that reads it (puppet.py:136-142, 212, 470-483). class alpha { include beta include zeta } with beta lower in a.pp and zeta in z.pp gives two is_resolved=False edges though both classes exist. v10."  # 374d
     fields: {}  # 374d
+- op: discuss  # 10d2
+  at: '2026-10-31T23:30:02Z'  # 10d2
+  by: agent  # 10d2
+  actor: jgstern_agent  # 10d2
+  clock: 2  # 10d2
+  nonce: 10d2  # 10d2
+  message: "Fix committed on local branch jgstern-agent/fix/vahun as c352cb51f6. Not pushed; the integrator handles it. The premise reproduced on dev 217890b1aa: in the item's fixture, both include edges were dangling with is_resolved=False. Fix: PuppetAnalyzer now runs on TreeSitterAnalyzer's two-pass template methods. Pass 1 declares symbols; the base registers ALL files' classes; Pass 2 resolves includes and emits require/notify edges. After the fix, beta binds to puppet:a.pp:5-6:beta:class and zeta to puppet:z.pp:1-2:zeta:class, both is_resolved=True. An old/new dump of a 2-file fixture shows identical symbols and edges, except the 2 forward includes. Tests: 7 property tests. RED 4 failed on dev; GREEN 11444 passed with changed files at 100%; a mutation that restores the declared-so-far registry fails 5 of them. Side effect of the base pipeline: an empty repo returns a run with files_analyzed=0, not run=None. Corpus A/B was not possible: no corpus repo contains Puppet (the 21 .pp files are compiled SELinux policies). Related defects filed: WI-hozot-lahub-tazis-gozap-galad-lokat-himof-hidab (namespaced class a::b never extracted; include lists and quoted includes drop names; these keep real-world includes unbound in any order) and WI-zotoh-sagod-jifiz-tamoj-hosar-kobup-vuboz-hafap (the same order-dependence in scss and svelte)."  # 10d2
+- op: update  # 6a7a
+  at: '2026-11-01T02:26:27Z'  # 6a7a
+  by: agent  # 6a7a
+  actor: jgstern_agent  # 6a7a
+  clock: 3  # 6a7a
+  nonce: 6a7a  # 6a7a
+  set:  # 6a7a
+    status: done  # 6a7a
+- op: discuss  # 96df
+  at: '2026-11-01T02:26:27Z'  # 96df
+  by: agent  # 96df
+  actor: jgstern_agent  # 96df
+  clock: 4  # 96df
+  nonce: 96df  # 96df
+  message: "Fixed in PR #1983 (a48300e738 and d834645220 on dev). Root cause: one sequential walk both filled _class_registry and read it, so an include saw only classes declared earlier. Puppet now runs the base TreeSitterAnalyzer two-pass pipeline: Pass 1 records every file, classes are registered before Pass 2 resolves includes. The integration full suite caught a meta write the meta-key scan could not enumerate; it is now a literal (d834645220). Live repro on merged dev: hypergumbo survey on the item fixture (class alpha { include beta include zeta }, beta lower in a.pp, zeta in z.pp): rc=0, includes target puppet:a.pp:5-6:beta:class and puppet:z.pp:1-2:zeta:class, both real nodes (before: two unresolved dangling edges). Tests: 7 in test_puppet.py (4 red before). Residuals filed: WI-hozot (namespaced classes not extracted, multi-name include), WI-zotoh (SCSS and lang-common Svelte order dependence)."  # 96df

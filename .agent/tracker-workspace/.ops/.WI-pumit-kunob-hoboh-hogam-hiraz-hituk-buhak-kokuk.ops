@@ -1,0 +1,20 @@
+- op: create  # 76f3
+  at: '2026-10-31T23:32:36Z'  # 76f3
+  by: agent  # 76f3
+  actor: jgstern_agent  # 76f3
+  clock: 1  # 76f3
+  nonce: 76f3  # 76f3
+  data:  # 76f3
+    kind: work_item  # 76f3
+    title: "ipc linker: a main-process handler registered through a custom wrapper (podman-desktop this.ipcHandle('ch', ...)) is no receive site, so 65 of 66 podman contextBridge callers still stop at the preload"  # 76f3
+    status: todo_hard  # 76f3
+    priority: 2  # 76f3
+    parent:  # 76f3
+    tags:  # 76f3
+    - analysis_quality  # 76f3
+    isbefore: []  # 76f3
+    duplicate_of: []  # 76f3
+    not_duplicate_of: []  # 76f3
+    pr_ref:  # 76f3
+    description: "Found during WI-kokuv-dakak-sitop-tinul-jodin-gizoh-namir-dakum (branch jgstern-agent/fix/kokuv, 098155b5a0). linkers/ipc.py detects receivers only via ipcMain.on/.handle/.handleOnce and ipcRenderer.on/.once. A main process that registers handlers through its own wrapper, e.g. podman-desktop packages/main/src/plugin/index.ts:280 `ipcHandle(channel, listener)` called as `this.ipcHandle('containerfile:getInfo', ...)` (containerfile-parser.ts:34, index.ts:472, and many more), yields NO receive site for those channels. Effect, measured with link_ipc on ~/whole_bunch_of_repos/podman-desktop/packages after the kokuv fix: 66 contextBridge bridge callers, 58 distinct preload send nodes, and only 1 bridge caller reaches any ipcMain receiver, so the renderer -> preload -> main chain still stops at the preload for 65 of 66 callers. The send side already accepts custom wrappers (ipcInvoke/ipcSend in _FUNC_BODY_IPC_PATTERN, and the kokuv fix lets those wrapper send sites join receivers); the receive side has no such path. Likely shape of a fix: detect a same-repo function/method whose body forwards its first parameter to ipcMain.handle/on (`ipcMain.handle(channel, ...)`) and treat literal-channel calls to that function as receive sites. That is the same wrapper-forwarding mechanism as the send-side ipcInvoke support, mirrored. Corpus impact beyond podman-desktop: not measured."  # 76f3
+    fields: {}  # 76f3

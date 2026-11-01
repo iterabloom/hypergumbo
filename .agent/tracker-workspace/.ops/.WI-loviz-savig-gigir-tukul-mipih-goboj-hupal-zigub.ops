@@ -26,3 +26,18 @@
   clock: 2  # 54b0
   nonce: 54b0  # 54b0
   message: "Concurrent fix run 2026-10-31 (agent loviz), branch jgstern-agent/fix/loviz commit b69cf5ba33 (not pushed; integration downstream). Premise reproduced on a fixture: A and B each `out <== in`, A's references went to B's in/out. Root cause wider than signals: every name in circom.py (signals, params/vars/loop indices, template and function callees) resolved through the bare-name, last-wins global registry. Fix: per-run _CircomScope (signals by owning template; component access c.in / c[i].out read from the constraint's leaves because the grammar parses `y <== c.out` as `(y <== c).out`; callees same file -> include closure -> unique -> ambiguous last-registered at NameResolver ambiguity confidence; includes resolved beside the file, else by path suffix). Also fixed in passing: `signal output out <== in;` was not a constraint; `signal input a, b;` gave no symbol for b; include edges pointed at dangling circom:<text>:0-0 ids. circomlib A/B: cross-file references to a file the source template never instantiates 696 -> 0; dangling imports 149 -> 0; 27 calls edges retargeted, all to same-file definitions (e.g. every test circuit's `component main = Main()` had pointed at circuits/sha256/main.circom). WI-volat (component c = A() emits calls twice) does NOT fall out of this change. Sibling found: solidity resolves contract member calls/emits by bare name per file, filed as WI-rafin-gunoh-nogav-lunuk-pinon-fajot-gapup-jifur."  # 54b0
+- op: update  # c240
+  at: '2026-11-01T02:26:27Z'  # c240
+  by: agent  # c240
+  actor: jgstern_agent  # c240
+  clock: 3  # c240
+  nonce: c240  # c240
+  set:  # c240
+    status: done  # c240
+- op: discuss  # 6e9d
+  at: '2026-11-01T02:26:27Z'  # 6e9d
+  by: agent  # 6e9d
+  actor: jgstern_agent  # 6e9d
+  clock: 4  # 6e9d
+  nonce: 6e9d  # 6e9d
+  message: "Fixed in PR #1983 (695a28148a on dev). Root cause: every circom name went through resolver.lookup(bare) against a last-wins registry. Pass 2 now resolves through one _CircomScope: signals, params and vars in their own template, a component access c.in / c[i].out only in the bound template, callees same file then include-reachable then unique, includes to real file nodes. Live repro on merged dev: hypergumbo survey on templates A and B each with out <== in, and C with component c = B(): rc=0, A references only a.circom:4-4:in and 5-5:out (its own), B only 10-10 and 11-11, C reaches B in/out through c (before: A referenced B signals, A own got none, c.in/c.out gave no edge). Tests: 12 in test_circom.py (9 of 10 red before). Corpus circomlib: references to never-instantiated files 696 to 0, dangling imports 149 to 0. WI-volat is not fixed by this. Residual filed: WI-rafin (solidity contract scope)."  # 6e9d

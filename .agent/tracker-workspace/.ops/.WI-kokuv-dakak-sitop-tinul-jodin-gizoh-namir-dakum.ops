@@ -19,3 +19,25 @@
     pr_ref:  # 8432
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. linkers/ipc.py:706-727 and 814-835 build IpcPattern(type=send, line=0); the event_publishes edge leaves the send detected at its real line (preload.js:3-3:send:open-file), and the 0-0 node has no outgoing edge. Reproduced on a 3-file Electron fixture. v03."  # 8432
     fields: {}  # 8432
+- op: discuss  # e705
+  at: '2026-10-31T23:32:47Z'  # e705
+  by: agent  # e705
+  actor: jgstern_agent  # e705
+  clock: 2  # e705
+  nonce: e705  # e705
+  message: "kokuv fix agent (concurrent run 2026-10-31), branch jgstern-agent/fix/kokuv, commit 098155b5a0. Premise REPRODUCED on a 3-file Electron fixture: before, calls renderer.js:2-2:api.openFile:bridge_caller -> preload.js:0-0:send:open-file, and that 0-0 node had no outgoing edge; event_publishes left preload.js:3-3:send:open-file. Root cause: both Phase-3 sites (object bridge and function exposure) built the calls-edge dst from IpcPattern(line=0). Fix: bridge detection records the line of the IPC call's first token, exposures are collected in the Phase-1 scan and resolved to send ids BEFORE the channel join (same file+line+channel gives the detected sender's id; an ipcInvoke('ch') wrapper send that no ipcRenderer.* pattern detects joins the senders itself). After: calls ... -> preload.js:3-3:send:open-file -> event_publishes -> main.js:2-2:receive:open-file. Tests: TestContextBridgeChainConnectivity (5, path-exists property), RED 5 failed / GREEN / a line-0 mutation fails all 5; affected smart-test 5472 passed, changed files at 100% coverage. Family swept: tauri_ipc Phase 4 already reuses its Phase-3 publisher id; the other 0-0 producers (tauri_ipc Phase 5, wasm_bindgen, js_module, cgo, inheritance, beam_behaviour) mint unresolved sentinels or file-level nodes with no detected counterpart, a different mechanism. Only ipc.py had it. Corpus A/B, link_ipc before vs after (edge set, by endpoint): podman-desktop/packages 0 -> 0 line-0 symbols (was 58), 66 bridge edges retargeted from 0-0 to real lines, bridge callers reaching a receiver 0 -> 1; nextjs/examples/with-electron-typescript 1 -> 1 reaching (was 0), line-0 1 -> 0; workadventure/desktop/electron and nextjs/examples/with-electron unchanged (no bridge callers). RESIDUAL: podman's other 65 callers stop at the preload because its main process registers handlers through a this.ipcHandle('ch', ...) wrapper that ipc.py does not detect as a receive site; filed as WI-pumit-kunob-hoboh-hogam-hiraz-hituk-buhak-kokuk."  # e705
+- op: update  # 985c
+  at: '2026-11-01T02:26:27Z'  # 985c
+  by: agent  # 985c
+  actor: jgstern_agent  # 985c
+  clock: 3  # 985c
+  nonce: 985c  # 985c
+  set:  # 985c
+    status: done  # 985c
+- op: discuss  # 844c
+  at: '2026-11-01T02:26:27Z'  # 844c
+  by: agent  # 844c
+  actor: jgstern_agent  # 844c
+  clock: 4  # 844c
+  nonce: 844c  # 844c
+  message: "Fixed in PR #1983 (277f56df99 on dev). Root cause: both contextBridge sites in link_ipc built the calls-edge target as a new IpcPattern(line=0), because bridge detection recorded no line. Bridge detection now records the IPC call line, the bridge edge targets the send detected at that file/line/channel, and a wrapper send with no detected counterpart joins main itself; no line-0 stand-in remains. Live repro on merged dev: hypergumbo survey on the 3-file Electron fixture: rc=0, path onClick -> ipc:src/renderer.js:2-2:api.openFile:bridge_caller -> ipc:src/preload.js:3-3:send:open-file -> ipc:src/main.js:2-2:receive:open-file exists; zero ipc: nodes at 0-0 (before: target preload.js:0-0, no outgoing edge). Tests: TestContextBridgeChainConnectivity (5, all red before). Residual filed: WI-pumit (main-side ipcHandle wrapper not a receiver; podman-desktop 65 of 66 callers stop at preload)."  # 844c

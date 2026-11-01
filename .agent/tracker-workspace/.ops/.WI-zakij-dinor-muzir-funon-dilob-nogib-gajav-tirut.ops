@@ -19,3 +19,25 @@
     pr_ref:  # 79d5
     description: "Found by the 2026-10-31 docstring staleness audit (dev 5f6b2af921): a reviewer flagged it and a default-REJECT verifier re-reproduced it on a fixture of its own (reports under ~/hypergumbo_lab_notebook/staleness_audit_10312026/review and verify). Corpus impact not measured. Svelte regex js_ts.py:295-298 sees lang only as the first attribute; the Vue regex has the same gap for <script setup generic=T lang=ts> and <script type=module lang=ts>. Repro: <script context=module lang=ts> symbols come out language=javascript. v03."  # 79d5
     fields: {}  # 79d5
+- op: discuss  # 7008
+  at: '2026-10-31T23:33:41Z'  # 7008
+  by: agent  # 7008
+  actor: jgstern_agent  # 7008
+  clock: 2  # 7008
+  nonce: '7008'  # 7008
+  message: "Fix on local branch jgstern-agent/fix/zakij, commit e26e5a942b (not pushed; integration pending). Premise reproduced on a scratch fixture: <script context=\"module\" lang=\"ts\"> (Svelte) and <script type=\"module\" lang='ts'> (Vue) symbols came out language=javascript; worse than filed, a Vue <script setup generic=\"T extends Record<string, unknown>\" lang=\"ts\"> yielded NO symbols, because the old [^>]* tag tail stopped at the > inside the quoted generic and fed the rest of the tag to the parser. Fix: one quote-aware extractor (_extract_sfc_scripts) for both hosts; lang read by scanning whole attributes (order and quoting free; data-lang and lang= inside another quoted value do not count). ts/typescript -> TypeScript grammar, tsx -> TSX grammar (previously plain TS via the old regex's ts prefix, which misparses JSX), else JavaScript. Self-closing <script src=... /> is skipped instead of pairing with the next block's </script>. Tests: test_js_ts_sfc_script_lang.py (37 cases; 31 RED before; first-attribute-only mutant fails 19). Corpus scan (read-only regex over the 6710 .vue/.svelte files in whole_bunch_of_repos + curriculum_repos): 21 blocks change grammar (podman-desktop 19, workadventure 1, koel 1), plus vite playground/optimize-deps/generics.vue (generic with >). A/B on those dirs: e.g. podman-desktop Table.stories.svelte variable Person (JS misparse of a type alias) -> type Person; workadventure MessageInputBar.svelte gains the ApplicationProperty interface fields. Residual, not changed: a <script ...> spelled inside a JS string in a component (gitlab clone_code_dropdown.vue) is still taken as a block boundary, before and after."  # 7008
+- op: update  # f861
+  at: '2026-11-01T02:26:26Z'  # f861
+  by: agent  # f861
+  actor: jgstern_agent  # f861
+  clock: 3  # f861
+  nonce: f861  # f861
+  set:  # f861
+    status: done  # f861
+- op: discuss  # ebbb
+  at: '2026-11-01T02:26:26Z'  # ebbb
+  by: agent  # ebbb
+  actor: jgstern_agent  # ebbb
+  clock: 4  # ebbb
+  nonce: ebbb  # ebbb
+  message: "Fixed in PR #1983 (6d3d163a42 on dev). Root cause: the Svelte and Vue block regexes read lang only as the first attribute and ended the tag at a > inside a quoted value. One extractor (_extract_sfc_scripts, _script_block_lang) now reads lang from the attribute set, any order or quoting; ts/typescript get TypeScript, tsx gets TSX. Live repro on merged dev: hypergumbo survey on a fixture with <script context=\"module\" lang=\"ts\"> (A.svelte), <script setup generic=\"T extends Record<string, unknown>\" lang=\"ts\"> (D.vue) and <script type=\"module\" lang=ts> (E.vue): rc=0, every non-file symbol in all three is language typescript (before: javascript, and D.vue had no symbols). Tests: test_js_ts_sfc_script_lang.py (37 cases, 31 red before). Corpus: 21 blocks change grammar (podman-desktop 19, workadventure 1, koel 1)."  # ebbb
