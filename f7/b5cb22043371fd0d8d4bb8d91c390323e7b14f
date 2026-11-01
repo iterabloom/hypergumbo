@@ -1,0 +1,10 @@
+Original commit body from 7740df24bc1895da463f88dc2de1698f4d408162:
+
+Owner-approved after the 2026-11-01 P3 review. `check-mypy-ratchet
+--mode strict` on dev bfb30ab950 reported 477 whole-tree strict errors
+against the 492 baseline, same instrument (mypy 2.1.0). No code grew; the
+shrink is arg-type 90->83, assignment 46->44, var-annotated 2->0,
+dict-item 1->0, redundant-expr 15->14, type-arg 148->147, union-attr
+20->19. Regenerated with --update-baseline.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
