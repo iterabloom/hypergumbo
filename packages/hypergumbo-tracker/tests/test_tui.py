@@ -10699,3 +10699,333 @@ class TestRebuildKeepsViewport:
             assert table.cursor_row == last - 1
             assert table.scroll_y > 0
             assert _cursor_row_visible(table)
+
+
+# ---------------------------------------------------------------------------
+# Multi-select (Shift+click / Space) and batch Mark Read / Mark Unread
+# ---------------------------------------------------------------------------
+
+
+async def _click_row(
+    pilot: Any, table: Any, row: int, *, shift: bool = False,
+) -> None:
+    """Click the Title column of visible *row* in *table*."""
+    header = table.header_height if table.show_header else 0
+    y = header + row - int(table.scroll_y)
+    x = sum(
+        col.get_render_width(table) for col in table.ordered_columns
+        if col.key.value != "title"
+        and table.ordered_columns.index(col) < next(
+            i for i, c in enumerate(table.ordered_columns)
+            if c.key.value == "title"
+        )
+    ) + 2
+    await _click(pilot, table, offset=(x, y), shift=shift)
+    await _settle(pilot)
+
+
+def _row_id(table: Any, row: int) -> str:
+    return str(list(table.rows)[row].value)
+
+
+class TestMultiSelect:
+    """Shift+click (or Space) builds a multi-selection on the std table; the
+    right panel shows a generic message; Mark Read / Mark Unread apply to
+    every selected item at once."""
+
+    async def test_shift_click_seeds_with_highlighted_row_and_adds_clicked(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=12)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.move_cursor(row=1)
+            await _settle(pilot)
+            await _click_row(pilot, table, 4, shift=True)
+            assert app._multi_selected == {_row_id(table, 1), _row_id(table, 4)}
+            assert table.cursor_row == 4
+            detail = str(app.query_one("#std-detail-content", Static).render())
+            assert "2 items selected" in detail
+            await _click_row(pilot, table, 6, shift=True)
+            assert len(app._multi_selected) == 3
+            assert "3 items selected" in str(
+                app.query_one("#std-detail-content", Static).render(),
+            )
+
+    async def test_shift_click_on_selected_row_removes_it(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=12)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 3, shift=True)
+            await _click_row(pilot, table, 5, shift=True)
+            assert app._multi_selected == {
+                _row_id(table, 0), _row_id(table, 3), _row_id(table, 5),
+            }
+            await _click_row(pilot, table, 3, shift=True)
+            assert app._multi_selected == {_row_id(table, 0), _row_id(table, 5)}
+
+    async def test_shift_click_on_highlighted_row_selects_just_it(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=6)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 0, shift=True)
+            assert app._multi_selected == {_row_id(table, 0)}
+            assert "1 item selected" in str(
+                app.query_one("#std-detail-content", Static).render(),
+            )
+
+    async def test_selected_rows_carry_a_marker(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=8)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 2, shift=True)
+
+            def num(row: int) -> str:
+                cell = table.get_cell(list(table.rows)[row], "row_num")
+                return cell.plain if hasattr(cell, "plain") else str(cell)
+
+            assert num(0).startswith("✓")
+            assert num(2).startswith("✓")
+            assert not num(1).startswith("✓")
+            # The marker survives a cursor move (chain highlight rewrites
+            # the # column on every highlight) and a rebuild.
+            await pilot.press("down")
+            await _settle(pilot)
+            app._rebuild_in_place()
+            await _settle(pilot)
+            assert num(0).startswith("✓")
+            assert num(2).startswith("✓")
+
+    async def test_plain_click_clears_the_selection(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=8)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 2, shift=True)
+            assert app._multi_selected
+            await _click_row(pilot, table, 5)
+            assert app._multi_selected == set()
+            assert table.cursor_row == 5
+            detail = str(app.query_one("#std-detail-content", Static).render())
+            assert "selected" not in detail
+            assert app._selected_item_id == _row_id(table, 5)
+
+    async def test_escape_clears_the_selection(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=8)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 2, shift=True)
+            table.focus()
+            await pilot.press("escape")
+            await _settle(pilot)
+            assert app._multi_selected == set()
+            assert "selected" not in str(
+                app.query_one("#std-detail-content", Static).render(),
+            )
+
+    async def test_space_toggles_the_highlighted_row(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=8)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.focus()
+            await pilot.press("space")
+            await pilot.press("down", "down")
+            await pilot.press("space")
+            await _settle(pilot)
+            assert app._multi_selected == {_row_id(table, 0), _row_id(table, 2)}
+            await pilot.press("space")
+            await _settle(pilot)
+            assert app._multi_selected == {_row_id(table, 0)}
+
+    async def test_mark_read_applies_to_every_selected_item(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp, _is_human_unread
+        from textual.widgets import Button
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=12)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.move_cursor(row=1)
+            await _settle(pilot)
+            for row in (3, 7):
+                await _click_row(pilot, table, row, shift=True)
+            chosen = {_row_id(table, r) for r in (1, 3, 7)}
+            assert app._multi_selected == chosen
+            app._save_human_read_state = MagicMock(  # type: ignore[method-assign]
+                wraps=app._save_human_read_state,
+            )
+            app.query_one("#mark-read", Button).press()
+            await _settle(pilot)
+            by_id = {i.id: i for i in app._items}
+            for item_id, item in by_id.items():
+                assert _is_human_unread(item, app._human_read_state) is (
+                    item_id not in chosen
+                )
+            assert app._save_human_read_state.call_count == 1
+            # The selection stays, so Mark Unread can undo it in one click.
+            assert app._multi_selected == chosen
+            app.query_one("#mark-unread", Button).press()
+            await _settle(pilot)
+            for item in app._items:
+                assert _is_human_unread(item, app._human_read_state) is True
+
+    async def test_mark_read_with_selection_keeps_scroll_offset(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Button
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=90)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.scroll_to(y=30, animate=False, immediate=True)
+            table.move_cursor(row=35, scroll=False)
+            await _settle(pilot)
+            await _click_row(pilot, table, 38, shift=True)
+            assert table.scroll_y == 30
+            app.query_one("#mark-read", Button).press()
+            await _settle(pilot)
+            assert app.query_one("#std-table").scroll_y == 30
+
+    async def test_selection_drops_items_that_leave_the_list(
+        self, tmp_path: Path,
+    ) -> None:
+        """Mark Read on a selected unread row that a filter hides removes
+        that row; the selection keeps only what is still listed, so a later
+        batch never acts on something the user can no longer see."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Button, Static
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=5, done_unread=True)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hidden_statuses = {"done"}
+            app._reload_after_write()
+            await _settle(pilot)
+            table = app.query_one("#std-table")
+            ghost = table.row_count - 1
+            ghost_id = _row_id(table, ghost)
+            assert ghost_id in app._unread_override_ids
+            await _click_row(pilot, table, ghost, shift=True)
+            assert ghost_id in app._multi_selected
+            app.query_one("#mark-read", Button).press()
+            await _settle(pilot)
+            assert ghost_id not in app._multi_selected
+            assert app._multi_selected == {_row_id(table, 0)}
+            assert "1 item selected" in str(
+                app.query_one("#std-detail-content", Static).render(),
+            )
+
+    async def test_shift_click_on_header_is_ignored(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=5)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click(pilot, table, offset=(10, 0), shift=True)
+            await _settle(pilot)
+            assert app._multi_selected == set()
+
+    async def test_space_outside_the_std_table_does_nothing(
+        self, tmp_path: Path,
+    ) -> None:
+        """Multi-select lives on the standard/wide table only: in compact
+        tier, and in tree view, Space is a no-op."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=5)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(50, 18)) as pilot:
+            await pilot.pause()
+            app.action_toggle_select()
+            assert app._multi_selected == set()
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app.action_toggle_tree()
+            await _settle(pilot)
+            app.action_toggle_select()
+            assert app._multi_selected == set()
+
+    async def test_plain_click_without_selection_is_an_ordinary_click(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=8)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 3)
+            assert app._multi_selected == set()
+            assert table.cursor_row == 3
+            assert app._selected_item_id == _row_id(table, 3)
+
+    async def test_resize_to_compact_drops_the_selection(
+        self, tmp_path: Path,
+    ) -> None:
+        """Compact tier shows a different table with no multi-select, so a
+        tier change that rebuilds into it drops the selection."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_unread_tracker_set(tmp_path, n_items=8)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await _click_row(pilot, table, 2, shift=True)
+            assert app._multi_selected
+            await pilot.resize_terminal(50, 18)
+            await _settle(pilot)
+            assert app._layout_tier == "compact"
+            assert app._multi_selected == set()

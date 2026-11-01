@@ -56,8 +56,12 @@ def _under(pilot: Any, widget: Any, offset: tuple[int, int]) -> tuple[Any, Any, 
 
 async def click(
     pilot: Any, widget: Any, offset: tuple[int, int] = (0, 0), timeout: float = 10.0,
+    *, shift: bool = False,
 ) -> None:
-    """Click *widget* at *offset* once it is what the compositor finds there."""
+    """Click *widget* at *offset* once it is what the compositor finds there.
+
+    *shift* holds Shift during the click (the TUI's multi-select gesture).
+    """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     target, region, under = _under(pilot, widget, offset)
@@ -70,7 +74,7 @@ async def click(
             )
         await asyncio.sleep(_POLL)
         target, region, under = _under(pilot, widget, offset)
-    landed = await pilot.click(widget, offset=offset)
+    landed = await pilot.click(widget, offset=offset, shift=shift)
     if not landed:
         _, region, under = _under(pilot, widget, offset)
         raise AssertionError(
