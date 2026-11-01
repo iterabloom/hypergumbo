@@ -26,3 +26,18 @@
   clock: 2  # dbf9
   nonce: dbf9  # dbf9
   message: "P2 REVIEW 2026-09-25 (dev e4a47383ab). PARTLY DONE; status unchanged. Current state of the homes:\n\nROUTED TO THE CHOKEPOINT by d1116cc1af (2026-08-04, \"one right-anchored parser for the symbol-id path slot\"). It added `ir.symbol_path_slot` (ir.py:1639: right-anchored, span-anchored per INV-fokik) and folded four copies:\n  - ir._extract_path_slot (ir.py:1793): delegates. This was the naive copy, and WI-guror is now closed on it.\n  - ir._parse_dangling_id (ir.py:1805): uses symbol_path_slot.\n  - verify_claims._symbol_path_slot (verify_claims.py:4875): its docstring records the fold.\n  - taint._extract_callee_module (taint.py:2224): delegates. This was a fourth naive copy the row did not list.\n  io_boundary.py (4638/4661) also calls it.\n\nSTILL SEPARATE HOMES:\n  - profile.py:3399 `edge.src.split(\":\")[1]`: STILL NAIVE. This is the second of the two naive sites the row named. It is the only `.split(\":\")[1]` left in core. It is the import-map fallback when `sym_path` misses, so a colon-bearing path (dart:io) is truncated in module_importers.\n  - cli.py:1355 `_extract_path_from_symbol_id`: its own regex, and its docstring still states the retired slot order `{kind}:{name}`.\n  - linkers/js_module.py:133 `_extract_path_from_id`: own regex.\n  - ranking.py:139 `_extract_path_from_id`: own parse, and its docstring also says `{kind}:{name}`.\n\nSo what remains is 1 naive site plus 3 independent correct-ish mechanisms, down from the filed 2 naive + 4. The two docstrings with the retired slot order are docstring-staleness hits the 09-25 audit did not catch."  # dbf9
+- op: update  # 17f4
+  at: '2026-11-01T09:32:30Z'  # 17f4
+  by: agent  # 17f4
+  actor: jgstern_agent  # 17f4
+  clock: 3  # 17f4
+  nonce: 17f4  # 17f4
+  set:  # 17f4
+    title: "symbol-id path slot: one naive split(':')[1] fallback (profile.py) and three private regexes (cli, ranking, js_module) still bypass ir.symbol_path_slot; two docstrings state the retired {kind}:{name} order"  # 17f4
+- op: discuss  # 0b9c
+  at: '2026-11-01T09:32:30Z'  # 0b9c
+  by: agent  # 0b9c
+  actor: jgstern_agent  # 0b9c
+  clock: 4  # 0b9c
+  nonce: 0b9c  # 0b9c
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A2/). VERDICT: PARTLY-STALE (4 of 6 homes folded, as the 09-25 entry records). Direct calls on dart:dart:io:0-0:module:module, rust:std::fs:0-0:write:external_symbol, python:src/a:b.py:1-1:file:file: ir.symbol_path_slot (ir.py:1819), cli._extract_path_from_symbol_id (:1493), ranking._extract_path_from_id (:139), js_module._extract_path_from_id (:169) all return the full slot; the one remaining naive site profile.py:3530 `edge.src.split(':')[1]` (fallback when sym_path misses) returns dart/std/src/a. Docstrings at cli.py:1496 and ranking.py:147 still spell the retired {kind}:{name} order. Blast radius of profile.py:3530 still uncounted. Title re-scoped. ROOT-CAUSE GROUP: the ADR-0036 id contract bypassed on the READ side (INV-dulah, WI-hulup are the emission side). Status unchanged."  # 0b9c

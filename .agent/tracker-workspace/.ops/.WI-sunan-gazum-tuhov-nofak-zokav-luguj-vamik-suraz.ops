@@ -54,3 +54,10 @@
   clock: 5  # 7850
   nonce: '7850'  # 7850
   message: "Owner ruling 2026-10-16: do this BEFORE any frontend work -- it is the hypergumbo-native answer to 'is the tracker safe to run' and would track WI-hopip mechanically (a claim 'serve's write API requires auth' is VIOLATED today). isbefore edges added to the frontend experiment items WI-fujus-nojaz-pomoz-kinid-jutot-jolom-bisus-gazam and WI-kinab-zunas-gozat-musan-hivoj-rural-sosuf-pinur."  # 7850
+- op: discuss  # 1323
+  at: '2026-11-01T09:32:32Z'  # 1323
+  by: agent  # 1323
+  actor: jgstern_agent  # 1323
+  clock: 6  # 1323
+  nonce: '1323'  # 1323
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C1/). VERDICT: PARTLY-STALE. docs/hypergumbo.claims.yaml:47-53 sources = six core *_sources.yaml; hypergumbo_tracker appears in docs/hypergumbo-self-catalog/ only in dev_zone_sinks.yaml; no htrac sources file - the ask stands. Stale: 'expect violated on serve until WI-hopip lands' - WI-hopip is done (PR #1751, 666bb1f70b: serve.create_app takes authenticate, _accepts fails closed, serve.py:422-424), so a serve-auth claim would read satisfied today. Partial cover since: SECURITY.md:32 scripts/check-io-allowlist (99ad3588af) covers hypergumbo-tracker at site level (20 entries in docs/hypergumbo.io-allowlist.yaml, zones dev_zone/dev_ui), not as flow claims. MECHANISM: the claims' source catalogue enumerates only core cmd_* handlers, so there is no taint label to state a tracker claim over. ROOT-CAUSE GROUP: tracker package (with WI-manor, INV-linan). Status unchanged."  # 1323

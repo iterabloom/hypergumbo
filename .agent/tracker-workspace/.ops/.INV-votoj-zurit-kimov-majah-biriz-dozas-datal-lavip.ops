@@ -44,3 +44,10 @@
   set:  # 05b7
     fields:  # 05b7
       statement: "Any registry populated as an import side effect must expose a restore path that works after the registry is cleared. Re-importing an already-imported module does not re-run its decorators, so a restore built on import alone returns success while restoring nothing. RE-SCOPED 2026-10-25: the def/use registry restores (f013cc7d13); STILL VIOLATED for the DDG registry (ensure() returns True with it empty, and python's spec, registered inside core at ddg_build.py:1030, is never restored), the analyzer registry (clear_registry then ensure_discovered restores 0 of 119), and unprobed for linkers/registry.py clear_registry. No gate checks that a test-only clear_* leaves the process recoverable."  # 05b7
+- op: discuss  # 3583
+  at: '2026-11-01T09:32:33Z'  # 3583
+  by: agent  # 3583
+  actor: jgstern_agent  # 3583
+  clock: 5  # 3583
+  nonce: '3583'  # 3583
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C1/). VERDICT: CURRENT; all three unclosed parts reproduce (probe C1/votoj_probe.py, logs beside it). A def/use: clear -> bare re-import of py_def_use/ts_def_use -> []; ensure() -> 7 restored (the fixed half). B DDG: clear_ddg_languages() -> ensure() returns True with DDG []; both cleared -> def/use 7, DDG 6 - python missing (registered at ddg_build.py:1030 inside core). C analyzers: 119 -> clear_registry()+ensure_discovered() -> 0; bare re-import of 154 modules -> 0 (conftest.py:18-47 works around per session). D linkers: 63 registered -> clear_registry() + bare re-import -> 0; importlib.reload of each -> 63 - restorable only by reload, no restore function exists. No gate asserts restorability. ROOT-CAUSE GROUP: open-by-default contract with no mechanical guard (with WI-vukor, INV-linan, WI-kajip). Status unchanged."  # 3583

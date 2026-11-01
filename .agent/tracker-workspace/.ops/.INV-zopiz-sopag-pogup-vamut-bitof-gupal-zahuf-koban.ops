@@ -46,3 +46,10 @@
   clock: 4  # 5ea8
   nonce: 5ea8  # 5ea8
   message: "Cross-ref (2026-10-25): the .kts / .rake / Rakefile discovery gap is WI-pogad (related to WI-midik)."  # 5ea8
+- op: discuss  # 115e
+  at: '2026-11-01T09:32:29Z'  # 115e
+  by: agent  # 115e
+  actor: jgstern_agent  # 115e
+  clock: 5  # 115e
+  nonce: 115e  # 115e
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A1/). VERDICT: CURRENT. Gates still read `if analysis.symbols:` at csharp.py:2370, go.py:6703, kotlin.py:2958, ruby.py:3634 (lines drifted, text unchanged). Fixtures: top.rb and spec/foo_spec.rb -> no file node, no edges, while with_def.rb -> imports json + calls file -> puts, Foo.bar; Imports.kt -> nothing vs Decl.kt -> imports + 2 calls; go reg.go (`var _ = lib.Register()`) -> nothing; C# Program.cs -> nothing vs Helper.cs -> imports System + call. ROOT-CAUSE GROUP: analyzer has no arm for the construct / early exit (with WI-kavam, WI-gokun, WI-zihuf). Status unchanged."  # 115e

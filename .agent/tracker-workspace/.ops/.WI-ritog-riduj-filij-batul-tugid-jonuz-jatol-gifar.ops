@@ -36,3 +36,10 @@
   clock: 3  # 0981
   nonce: '0981'  # 0981
   message: "2026-09-25: now blocks WI-vogos, per the delegated WI-vogos ruling (condition 2). The JS server-launch rows may move to net_listen only once the handler passed to a net_listen call is seeded as an untrusted_input source (this row's tier 1, or a JS-first slice of it), shown on the fixtures named in WI-vogos's ruling entry."  # 0981
+- op: discuss  # bf47
+  at: '2026-11-01T09:32:30Z'  # bf47
+  by: agent  # bf47
+  actor: jgstern_agent  # bf47
+  clock: 4  # bf47
+  nonce: bf47  # bf47
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/B1/). VERDICT: CURRENT. grep entrypoints|framework_role|route_handler in taint.py and verify_claims.py: 0; start_at: callee only in docs/hypergumbo-self-catalog/. Flask fixture: routes finds /run -> run_cmd, the survey has entrypoints http_route -> run_cmd and concepts route/flask, no dispatches_to; request.args.get lands as python:external:0-0:get; untrusted-input-no-subprocess inconclusive, 0 flows. Express fixture: the route-handler-linker DOES emit dispatches_to from the route marker to _GET_run_handler (an inbound edge, already in TAINT_CALL_EDGE_TYPES taint.py:3008) and the handler calls child_process.exec, yet 0 flows; the one violated flow is http.createServer [server.js:1-1:file] -> fs.writeFileSync, seeded at the LAUNCH call on the FILE node - the shape ruling 3 wants relocated. Tier-3 note correction: Express has an inbound dispatches_to; Flask has none. MECHANISM: taint seeds only from catalogue rows matched on call edges; nothing turns an entrypoints record, a route concept or a dispatches_to target into a start_at:callee source. ROOT-CAUSE GROUP: taint seeding and walk bound to call edges and owned memory (with WI-vogos, WI-nulam, WI-zitul, WI-potan, WI-mojaz; WI-pimun's FILE-node anchor is this seed). Status unchanged."  # bf47

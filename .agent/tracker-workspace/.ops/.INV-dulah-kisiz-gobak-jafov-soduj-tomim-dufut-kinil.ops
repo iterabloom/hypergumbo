@@ -298,3 +298,19 @@
     title: "node.id kind slot disagrees with Symbol.kind for robot test_case, JSX route markers (INV-lubij) and BitBake python_task; WI-banod T1 FIXED (v10), pony actor/primitive moved to vocabulary (WI-higik/WI-totam)"  # d435
     fields:  # d435
       statement: "node.id is documented as 'lang:path:span:name:kind' and its kind slot must equal Symbol.kind (ADR-0036). RE-SCOPED 2026-10-25: the stable_id = node id limb (WI-banod T1) is FIXED (ad925ef6d5, scheme v10), and the scheme gate it waited on has lapsed (v10-v12 are unreleased on dev). Pony 'actor'/'primitive' round-trip correctly and are unregistered-kind vocabulary work (WI-higik, WI-totam), not this item. LIVE LIMBS: (1) robot passes kind 'test_case' while building a kind='test' Symbol (robot.py:316/330); (2) JSX <Route> markers are hand-built with kind 'route' on a kind=function symbol (js_ts.py:4470; INV-lubij); (3) BitBake python tasks carry 'python_task' on a kind=task Symbol (bitbake.py:337). Each fires 2 id_format errors. OPEN QUESTION: located BitBake symbols use the 0-0 span slot (bitbake.py:70-78) though ADR-0036 Ruling 3 reserves 0-0 for synthetic nodes. CLOSE CONDITION: a fleet-wide measurement (including the owed 28-survey lang-slot count), not a per-family 0."  # d435
+- op: update  # e6b7
+  at: '2026-11-01T09:32:30Z'  # e6b7
+  by: agent  # e6b7
+  actor: jgstern_agent  # e6b7
+  clock: 37  # e6b7
+  nonce: e6b7  # e6b7
+  set:  # e6b7
+    fields:  # e6b7
+      root_cause: "A producer hand-rolls node.id with a ROLE word in the kind slot (robot 'test_case' on kind=test, JSX route marker 'route' on kind=function, BitBake 'python_task' on kind=task) instead of deriving the slot from Symbol.kind via make_symbol_id / make_route_symbol. The earlier 'NPM/Rust/route emitters ... colons' mechanism is drained (WI-banod, scheme v10)."  # e6b7
+- op: discuss  # f950
+  at: '2026-11-01T09:32:30Z'  # f950
+  by: agent  # f950
+  actor: jgstern_agent  # f950
+  clock: 38  # f950
+  nonce: f950  # f950
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A2/). VERDICT: CURRENT as re-scoped 10-25. Fixtures: robot -> robot:tests.robot:2-4:My Test:test_case with kind=test (2 id_format errors); JSX -> javascript:app.jsx:5-5:Users:route with kind=function AND language=javascript (2 errors; the marker bypasses make_route_symbol, so WI-mupal's language=null does not reach it); BitBake -> bitbake:recipes/bar.bb:0-0:do_patchit:python_task with kind=task (2 errors). Pony: 0 violations. Code refs today: robot.py:318/330, js_ts.py:4747 (statement says :4470), bitbake.py:337/355. The fleet count is still owed (fleet_langslot.py and ~/whole_bunch_of_repos exist; not run, over the 5-min cap). root_cause field updated from the drained 'colons' mechanism to 'role word in the kind slot'. ROOT-CAUSE GROUP: hand-rolled ids bypass the ADR-0036 chokepoint (with WI-hulup, WI-ribuz, META-sigap). Status unchanged."  # f950

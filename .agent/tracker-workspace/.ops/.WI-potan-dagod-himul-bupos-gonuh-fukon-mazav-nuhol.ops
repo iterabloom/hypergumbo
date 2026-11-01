@@ -49,3 +49,18 @@
   clock: 5  # 032a
   nonce: 032a  # 032a
   message: "SHIPPED as PR #961 (merged). The false dead-end marker is off fmt.Fprintf and\nfmt.Fprintln, the entries are kept as tombstones, and the terminating set is\npinned as a 37-entry census with its own controls (fmt.Printf and log.Println\nMUST still terminate, so a blanket change fails rather than passing).\n\nThis closes the LIVE defect. The item stays open on the narrowed residual it\nwas corrected to: there is no param_to_param, so the flow INTO arg 0 can be\nrefused but not MODELLED. Refusing is correct and safe; modelling buys recall\nand should be designed with WI-famig's param_to_calls rather than bolted on.\n\nVerified after merge: 27087 passed on the full suite (the targeted slice\nselected ONE file -- INV-dohoj), ratchet 669 delta +0."  # 032a
+- op: update  # 0b15
+  at: '2026-11-01T09:32:31Z'  # 0b15
+  by: agent  # 0b15
+  actor: jgstern_agent  # 0b15
+  clock: 6  # 0b15
+  nonce: 0b15  # 0b15
+  set:  # 0b15
+    title: "FunctionSummary lacks param_to_param, so fmt.Fprintf/Fprintln's write into arg 0 is refused (ddg_mixed/escaped) rather than modelled (the live dead-end marker was fixed in PR #961); design with WI-famig's param_to_calls"  # 0b15
+- op: discuss  # 6f5b
+  at: '2026-11-01T09:32:31Z'  # 6f5b
+  by: agent  # 6f5b
+  actor: jgstern_agent  # 6f5b
+  clock: 7  # 6f5b
+  nonce: 6f5b  # 6f5b
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/B2/). VERDICT: PARTLY-STALE: the title described the live defect, which PR #961 fixed (go_stdlib.yaml:61-64 tombstones carry only param_to_return: {}; _summary_terminates(fmt.Fprintf)=False, fmt.Printf True as control; test_terminating_summary_census.py:88 pins both out). The narrowed residual of the 09-15 entries holds: FunctionSummary fields are function, param_to_return, param_to_self, mutates_self, side_effect, sanitizes, callback, user_supplied, community - no param_to_param/writes_to. Fixture: host-secret-no-logging violated; the viaFprintf/viaFprintln flows survive only as ddg_mixed / walk_verdict escaped, the viaSprintf control is ddg / reached - the arg-0 write is refused, not modelled. Title re-scoped. ROOT-CAUSE GROUPS: the summary model cannot express a destination-as-parameter (Go twin of WI-nulam's out-parameter); catalogue schema lacks the needed field (design together with WI-famig's param_to_calls). Status unchanged."  # 6f5b

@@ -37,3 +37,10 @@
   nonce: f154  # f154
   set:  # f154
     title: "ci-debug logs cannot address a matrix LEG: the log resolver parses the leg's workflow index and discards it (github-api.sh:402), so every nightly/N returns the same log; status and cron-status already show legs"  # f154
+- op: discuss  # d9df
+  at: '2026-11-01T09:32:33Z'  # d9df
+  by: agent  # d9df
+  actor: jgstern_agent  # d9df
+  clock: 4  # d9df
+  nonce: d9df  # d9df
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C1/). VERDICT: CURRENT (code read; ci-debug not run). scripts/lib/github-api.sh unchanged since 23c768b6b4: _wp_pipeline_coords :170-177 parses [/<workflow index>]; the log path :401-402 `read -r wp_repo wp_pipeline _` discards it; the candidate loop :365 likewise; the step resolver :415-417 flattens every workflow's children. _wp_render_steps :206-246 filters by WP_WF and ci-debug:383-407 groups legs, so status/cron-status address legs and logs does not. ROOT-CAUSE GROUP: CI tooling reads flattened evidence (with WI-pisal, WI-totak). Status unchanged."  # d9df

@@ -70,3 +70,18 @@
   clock: 7  # 0c28
   nonce: 0c28  # 0c28
   message: "Field limb FIXED by WI-bufud, PR #1854 (dev e45b60e109): on merged dev the b2 wrong edge (Other.ping @0.85) now lands on Conn.ping, and the a1/a4/a6 comprehension and lambda cases recover Conn.ping @0.85 (were external @0.4). STAYS VIOLATED on the remaining limb, re-run on merged dev with the dj2 fixture: def g(events): label = Order.LABELS.get('a'); return [label.payment_set.count() for label in events] -> python:external (refused) at line 6, while the same comprehension with no outer assignment (def h: [ev.payment_set.count() for ev in events]) -> python:django.db.models:0-0:count at line 10. Mechanism (unchanged): var_types is pruned at the comprehension boundary but the block's _assigned set is not, so the comprehension's own label is read as the outer, assigned-but-untyped label. Conservative (a lost edge, never a wrong one)."  # 0c28
+- op: update  # f477
+  at: '2026-11-01T09:32:29Z'  # f477
+  by: agent  # f477
+  actor: jgstern_agent  # f477
+  clock: 8  # f477
+  nonce: f477  # f477
+  set:  # f477
+    title: "python: `_assigned` is not shadow-pruned at a comprehension/lambda boundary, so a shadowing comprehension variable is read as the outer untyped name and the call is refused (lost edge, never a wrong one)"  # f477
+- op: discuss  # 0ddc
+  at: '2026-11-01T09:32:29Z'  # 0ddc
+  by: agent  # 0ddc
+  actor: jgstern_agent  # 0ddc
+  clock: 9  # 0ddc
+  nonce: 0ddc  # 0ddc
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A1/). VERDICT: PARTLY-STALE: the title's defect (empty context at depth) was fixed in 7f3de7a4b6 and the field limb by WI-bufud (#1854); the remaining limb reproduces. Fixture: g (`label = Order.LABELS.get('a')`; `[label.payment_set.count() for label in events]`) -> python:external:0-0:count (refused); h (same comprehension, no outer assignment) -> django.db.models:0-0:count; k (top-level dict value) -> external (correct). Code: _assigned is computed once per block (py.py:6709-6712) and threaded; at comprehension/lambda boundaries (~6831-6880) _prune_shadowed (:4384) prunes var_types for the shadow set while assigned_names=_assigned passes unpruned. A lost edge, never a wrong one. Title re-scoped to the residual. ROOT-CAUSE GROUP: receiver type not carried to the emission site. Status unchanged (violated)."  # 0ddc

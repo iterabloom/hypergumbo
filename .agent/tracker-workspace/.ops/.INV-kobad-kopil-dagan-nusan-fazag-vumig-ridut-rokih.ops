@@ -168,3 +168,18 @@
   clock: 20  # 1a7c
   nonce: 1a7c  # 1a7c
   message: "Cross-ref (2026-10-25): matrix row 1 ruby cell is WI-harij; row 5 is WI-jubag (external) plus WI-gaduf (ruby in-repo Local.new) and WI-josik (scala in-repo new)."  # 1a7c
+- op: update  # 83fd
+  at: '2026-11-01T09:32:30Z'  # 83fd
+  by: agent  # 83fd
+  actor: jgstern_agent  # 83fd
+  clock: 21  # 83fd
+  nonce: 83fd  # 83fd
+  set:  # 83fd
+    description: "Structural gap: features for one language not propagated to siblings. Open cells of the matrix (re-taken 2026-11-01, dev 24d0b860ee): row 1 ruby cyclomatic complexity ignores the ternary (`conditional`) and `*_modifier` forms (WI-harij); row 5 external-constructor `instantiates` is emitted only by Python - Java/C#/PHP/TypeScript/Scala emit no edge, Kotlin/Ruby/Swift emit a plain `calls` (META-sigap; WI-jubag, WI-gaduf, WI-josik). Closed cells: row 2 signatures, row 3 (INV-bamij), row 4 external extends placeholders; the Feb-2026 list (C++ dispatch tables, Scala/Groovy annotations PR #1376, extends/implements, param types PR #1377, docstrings PR #1371, Erlang OTP callbacks, Ruby base_classes) is all done. Root cause: per-language feature tables are extended analyzer-by-analyzer with no cross-grammar parity gate."  # 83fd
+- op: discuss  # ab6c
+  at: '2026-11-01T09:32:30Z'  # ab6c
+  by: agent  # ab6c
+  actor: jgstern_agent  # ab6c
+  clock: 22  # ab6c
+  nonce: ab6c  # ab6c
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A2/). VERDICT: CURRENT as restated 10-25; the description field still carried the Feb-2026 'All items resolved (1)..(7)' text, contradicting the matrix statement - replaced with the open cells. Row 1 ruby: `a > b ? a : b` and `return 1 if a` both cc=1 (java control cc=2); analyze/cyclomatic.py:116-119 lists 'ternary' (tree-sitter-ruby: conditional) and no *_modifier forms; WI-harij todo_hard P3. Row 2 signature populated across ruby/python/swift/kotlin/php/ts/java. Row 3 INV-bamij satisfied. Row 4 java/ts extends reach an external placeholder. Row 5 = META-sigap. isbefore links INV-nogas, INV-vusog are satisfied (inert). ROOT CAUSE: per-language feature tables extended analyzer-by-analyzer with no cross-grammar parity gate. Status unchanged."  # ab6c

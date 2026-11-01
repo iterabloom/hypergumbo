@@ -46,3 +46,10 @@
   clock: 4  # 746a
   nonce: 746a  # 746a
   message: "ITS ROLE AS A BLOCKER IS RETIRED (2026-08-17 perf close). WI-madut named\n`--reproducible` as a precondition, because it is only sound to cache a\ndeterministic function's output. WI-madut is now parked wont_do+someday, so\nnothing is waiting on this item for that reason.\n\nIt is NOT parked itself: byte-reproducible output has value independent of\ncaching — diffing two surveys of the same tree, and the differential equivalence\nguard that any future incremental work would need. Judge it on that merit alone\nnow, at whatever priority that earns, rather than as a dependency of a parked\nitem."  # 746a
+- op: discuss  # af7b
+  at: '2026-11-01T09:32:33Z'  # af7b
+  by: agent  # af7b
+  actor: jgstern_agent  # af7b
+  clock: 5  # af7b
+  nonce: af7b  # af7b
+  message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/C2/). VERDICT: CURRENT. `hypergumbo survey --help` has no reproducible flag; grep reproducible|SOURCE_DATE_EPOCH in packages/*/src -> prose only. Two default runs on one fixture, diffed by key path: generated_at (1), analysis_runs[].execution_id (73, uuid: prefix), analysis_runs[].started_at (73), analysis_runs[].duration_ms (27), analysis_runs[].cpu_ms (11), nodes[].origin_run_id (16), edges[].origin_run_id (14), and the ORDER of limits.skipped_passes[].pass (3) - the skipped-pass list is not sorted between runs. Same byte size, different bytes. Scope addition: cpu_ms and the unsorted skipped_passes list belong on the omit/sort list. ROOT CAUSE: execution_id is uuid4 copied into every origin_run_id; timing fields are unconditional; skipped_passes emitted in iteration order (design item, singleton). Status unchanged."  # af7b
