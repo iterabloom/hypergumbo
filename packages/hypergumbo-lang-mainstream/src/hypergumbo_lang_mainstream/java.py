@@ -2198,39 +2198,22 @@ def _extract_symbols(
 
 def _get_enclosing_method(
     node: "tree_sitter.Node",
-    source: bytes,
-    global_symbols: dict[str, Symbol],
-    file_path: Path | None = None,
-    symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
+    file_path: Path,
+    symbol_by_position: dict[tuple[str, int, int], Symbol],
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing method/constructor.
+    """The method or constructor whose body contains ``node``, by POSITION.
 
-    Returns the Symbol for the enclosing method, or None if not inside a method.
-
-    Uses symbol_by_position (keyed by file path + start position) when available,
-    which correctly handles monorepos where multiple files define methods with
-    the same name. Falls back to global_symbols when symbol_by_position is unavailable.
+    Returns None outside any method. The innermost callable declaration node
+    is looked up in the run-wide position index
+    (:func:`_java_symbol_declared_by`), so two files, or two classes in one
+    file, that declare a same-named method each anchor their own calls
+    (WI-gikuk). There is no name fallback: the index holds every symbol the
+    run declares, and a name lookup could only pick some other class's twin.
     """
-    file_path_str = str(file_path) if file_path else None
     current = node.parent
     while current is not None:
         if current.type in _JAVA_CALLABLE_NODES:
-            # Position-based lookup handles duplicate names across files
-            if symbol_by_position and file_path_str:
-                pos_key = (file_path_str, current.start_point[0] + 1, current.start_point[1])
-                sym = symbol_by_position.get(pos_key)
-                if sym:
-                    return sym
-            # Fallback to name-based lookup
-            name = _get_method_name(current, source)
-            if name:
-                # Get class context
-                ancestors = _get_class_ancestors(current, source)
-                if ancestors:
-                    full_name = f"{'.'.join(ancestors)}.{name}"
-                    if full_name in global_symbols:
-                        return global_symbols[full_name]
-            return None  # pragma: no cover  # Found method but couldn't resolve it
+            return _java_symbol_declared_by(current, file_path, symbol_by_position)
         current = current.parent
     return None
 
@@ -2924,7 +2907,7 @@ def _extract_edges(
         # Method invocations — use tree-sitter field names for reliable extraction
         elif node.type == "method_invocation":
             current_method = (
-                _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
+                _get_enclosing_method(node, file_path, symbol_by_position)
                 or _get_enclosing_type_symbol(node, file_path, symbol_by_position)
                 or file_anchor
             )
@@ -3750,7 +3733,7 @@ def _extract_edges(
         # Object creation: new ClassName()
         elif node.type == "object_creation_expression":
             current_method = (
-                _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
+                _get_enclosing_method(node, file_path, symbol_by_position)
                 or _get_enclosing_type_symbol(node, file_path, symbol_by_position)
                 or file_anchor
             )
@@ -3810,7 +3793,7 @@ def _extract_edges(
             # ``static Supplier<Integer> F = M::run;``) is anchored on its
             # type, else the file, as a method_invocation there is.
             current_method = (
-                _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
+                _get_enclosing_method(node, file_path, symbol_by_position)
                 or _get_enclosing_type_symbol(node, file_path, symbol_by_position)
                 or file_anchor
             )
@@ -4128,9 +4111,9 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     # Multi-value method lookup for AMB-METHOD ambiguity guard
     global_methods: dict[str, list[Symbol]] = {}
 
-    # Position-based lookup for enclosing method resolution in monorepos. A
-    # symbol without a span has no position to index; consumers fall back to
-    # name-based lookup in global_symbols.
+    # Position-based lookup for enclosing method and type resolution in
+    # monorepos (WI-gikuk): an enclosing symbol is found by where it is
+    # declared, never by its name.
     symbol_by_position = _java_position_index(all_symbols)
 
     for sym in all_symbols:
