@@ -20,3 +20,10 @@
     pr_ref:  # 0763
     description: "SPLIT 2026-11-01 from WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum (which keeps the test-order limb). Confirmed a product bug, not a local-vs-CI difference (dev 24d0b860ee; ~/hypergumbo_lab_notebook/p2_review_11012026/C1/fx_sipoj, sipoj_direct.log): with a_early/utils.js and z_late/utils.js both defining process(), and main.js importing the a_early one by namespace, the call binds to a_early when the directory enumerates a_early last and to z_late/utils.js:1-1:process:function when z_late enumerates last. MECHANISM: js_ts.py:7442 and :7771 fill global_symbols[sym.name] = sym (last-writer-wins) in find_js_ts_files order (:286, unsorted readdir); the namespace path_hint lookup at :7191 consults the name-keyed table and does not prefer the imported file. Same family as INV-dosoz / INV-tohuj (identity keyed by bare name) and the WI-kosar principle (resolve by position, not by name). ACCEPTANCE: the call binds to a_early/utils.js in BOTH creation orders (the test must create z_late first - see the sibling test item WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum); a same-named function in an unrelated file never wins over the file the import names."  # 0763
     fields: {}  # 0763
+- op: discuss  # 87ba
+  at: '2026-11-01T09:57:48Z'  # 87ba
+  by: agent  # 87ba
+  actor: jgstern_agent  # 87ba
+  clock: 2  # 87ba
+  nonce: 87ba  # 87ba
+  message: "Sibling: WI-pagoj-guviv-miton-zupaj-dipub-bupuf-pirur-lijoz (llvm, same bare-name last-writer-wins shape); test limb: WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum."  # 87ba

@@ -26,3 +26,11 @@
   clock: 2  # 894b
   nonce: 894b  # 894b
   message: "From WI-hojib (branch jgstern-agent/fix/hojib, not merged): member chains are now typed, so this item's overload collision is reached more often. One instance was read: vapor Tests/VaporTests/PasswordTests.swift:55 and :62, `app.password.async(...).hash(\"vapor\").wait()`.\n\n`AsyncPasswordHasher.hash` has overloads returning `EventLoopFuture<[UInt8]>`, `EventLoopFuture<String>` and (in another file) `String`. The name-keyed registry holds `AsyncPasswordHasher.hash -> String` (first writer), so `.wait()` is stamped `swift:String`; the receiver is an EventLoopFuture.\n\nOther instances were not counted."  # 894b
+- op: update  # 5918
+  at: '2026-11-01T09:57:47Z'  # 5918
+  by: agent  # 5918
+  actor: jgstern_agent  # 5918
+  clock: 3  # 5918
+  nonce: '5918'  # 5918
+  set:  # 5918
+    parent: WI-mofil-tidog-forob-tovah-givud-lijog-vuvug-gutid  # 5918

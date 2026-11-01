@@ -27,3 +27,11 @@
   clock: 2  # a253
   nonce: a253  # a253
   message: "From WI-silos (branch jgstern-agent/fix/silos, commit 41fd9834a6, not yet merged): an unannotated closure parameter is now recorded as an untyped declaration in the closure's scope, so it no longer takes an outer same-named binding's type. In the 4-repo A/B, 8 of 12 sampled closure-parameter stamps WI-silos removed were wrong (vapor/hummingbird `box.withLockedValue { x in x.m() }` stamped NIOLockedValueBox on the box's VALUE; Alamofire `state.write { state in }` stamped Protected<State>). A closure-signature type for this item lands at the same `_bind(node, pname, ptype, ...)` call."  # a253
+- op: update  # 3ea2
+  at: '2026-11-01T09:57:47Z'  # 3ea2
+  by: agent  # 3ea2
+  actor: jgstern_agent  # 3ea2
+  clock: 3  # 3ea2
+  nonce: 3ea2  # 3ea2
+  set:  # 3ea2
+    parent: WI-mofil-tidog-forob-tovah-givud-lijog-vuvug-gutid  # 3ea2

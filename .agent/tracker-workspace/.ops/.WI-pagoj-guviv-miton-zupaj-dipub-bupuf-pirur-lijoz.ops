@@ -20,3 +20,10 @@
     pr_ref:  # 5174
     description: "SPLIT 2026-11-01 from WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum. Confirmed (dev 24d0b860ee; ~/hypergumbo_lab_notebook/p2_review_11012026/C1/fx_sipoj, sipoj_direct.log): utils.ll defines utility_func, main.ll declares it and calls it; with utils.ll enumerated first the call binds to the define; with main.ll enumerated first it binds to llvm_ir:main.ll:1-1:utility_func:declaration, and packages/hypergumbo-lang-extended1/tests/test_llvm_ir.py::TestAnalyzeLlvmIr::test_cross_file_call_resolution (:213) fails. MECHANISM: one name -> symbol map filled in file order with last-writer-wins and no definition-over-declaration preference. ACCEPTANCE: the call binds to the define in both orders; a declaration is chosen only when no define exists in the tree."  # 5174
     fields: {}  # 5174
+- op: discuss  # 229b
+  at: '2026-11-01T09:57:48Z'  # 229b
+  by: agent  # 229b
+  actor: jgstern_agent  # 229b
+  clock: 2  # 229b
+  nonce: 229b  # 229b
+  message: "Sibling: WI-povub-butok-vunij-filar-lojom-nuzif-pivag-kikol (js, same bare-name last-writer-wins shape); test limb: WI-sipoj-nomij-morut-damim-savuv-gofob-lodin-zibum."  # 229b

@@ -42,3 +42,18 @@
   clock: 4  # bcc5
   nonce: bcc5  # bcc5
   message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/A1/). VERDICT: PARTLY-STALE, confirming the 2026-09-25 entry; nothing changed since. Fixture: ruby emits ruby:m.rb:2-2:APP:variable (meta visibility_signal only, no constructed_from); php emits only C:class + file; elixir emits C, C.new, M, M.a and `calls M -> C.new` on the module, no @app symbol. test_constructed_from_parity.py:64-69 still says 'NO SYMBOL (WI-kavam)' for ruby (wrong). MECHANISM: php (php.py:1264) and elixir (_module_attribute_call :879 reads attributes for behaviours only) have no file-scope binding-symbol arm; ruby lacks only the constructed_from stamp. Title re-scoped. PROPOSED (owner): split into ruby key-stamp (+ fix the xfail reason) vs php/elixir symbol emission. ROOT-CAUSE GROUP: analyzer has no arm for the construct. Status unchanged."  # bcc5
+- op: update  # 81c9
+  at: '2026-11-01T09:57:48Z'  # 81c9
+  by: agent  # 81c9
+  actor: jgstern_agent  # 81c9
+  clock: 5  # 81c9
+  nonce: 81c9  # 81c9
+  set:  # 81c9
+    title: "php and elixir emit no file-scope binding symbol ($app = new C(); @app C.new()), so a binding has nothing to carry constructed_from or to resolve against"  # 81c9
+- op: discuss  # a84b
+  at: '2026-11-01T09:57:48Z'  # a84b
+  by: agent  # a84b
+  actor: jgstern_agent  # a84b
+  clock: 6  # a84b
+  nonce: a84b  # a84b
+  message: "SPLIT 2026-11-01 (owner-approved, P2 review): the ruby limb (variable emitted, constructed_from missing; wrong xfail text in test_constructed_from_parity.py:64-69) is WI-duzun-novop-gibut-guful-tavor-bofar-zohin-fuvag. This item keeps php and elixir, which emit no binding symbol at all (php.py:1264; elixir _module_attribute_call :879 reads attributes for behaviours only). Title re-scoped accordingly; priority unchanged."  # a84b

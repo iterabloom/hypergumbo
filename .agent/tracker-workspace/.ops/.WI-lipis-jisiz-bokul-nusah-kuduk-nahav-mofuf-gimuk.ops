@@ -132,3 +132,18 @@
   clock: 16  # 8475
   nonce: '8475'  # 8475
   message: "P2 REVIEW 2026-11-01 (dev 24d0b860ee; owner-requested re-check of the 51 open P2 violated/todo_hard/todo_soft items; fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/B1/). VERDICT: PARTLY-STALE: the titled work is done in all four languages; one residual the thread names remains. Go fixture: violated ONLY from fromStdin (bufio.NewReader, os.Stdin; Reader.ReadString); fromFile (os.Open) and fromMem (strings.NewReader) silent, correct - but fromPipe (`io.ReadAll(out)` over cmd.StdoutPipe()) ALSO silent (wrong). C: fgets(stdin) and fgets over popen() violate (origins ipc_recv), fgets over fopen silent. Haskell: hGetLine on stdin violates, over openFile silent. Java: Scanner.nextLine [scannerStdin] and BufferedReader.readLine [readerStdin] violate, scannerFile silent - java.yaml:124-134 dual rows + java.py:1207-1271 stamp landed in c6ba0f1ead (WI-tusav, 2026-09-14, done), closing the 09-01 entry's 'WHAT REMAINS: java' unrecorded here; INV-bagok, INV-hahak, INV-fofoj satisfied; WI-kanor, WI-lalot done. RESIDUAL: io.ReadAll / io.Copy / io.ReadFull are single fixed fs_read rows (go.yaml:68-69) with no stream stamp; _target_kind_discriminated_keys narrows only when two or more read boundaries are declared, so the wrapper fix cannot act on them. PROPOSED (owner): split - close the wrapper-constructor title on the four fixtures, open 'go io.ReadAll/io.Copy/io.ReadFull over a pipe or net body mint nothing'. ROOT-CAUSE GROUP: a catalogue row cannot express an argument-dependent boundary (with WI-nukub, WI-vafad, WI-potan). Status unchanged."  # 8475
+- op: update  # 06e6
+  at: '2026-11-01T09:57:47Z'  # 06e6
+  by: agent  # 06e6
+  actor: jgstern_agent  # 06e6
+  clock: 17  # 06e6
+  nonce: '06e6'  # 06e6
+  set:  # 06e6
+    status: done  # 06e6
+- op: discuss  # 1365
+  at: '2026-11-01T09:57:47Z'  # 1365
+  by: agent  # 1365
+  actor: jgstern_agent  # 1365
+  clock: 18  # 1365
+  nonce: '1365'  # 1365
+  message: "CLOSED 2026-11-01 (owner-approved split, P2 review). Behavioral evidence on dev 24d0b860ee, fixtures and outputs under ~/hypergumbo_lab_notebook/p2_review_11012026/B1/: Go fx_lipis_go - untrusted-input-no-host-fs violated from fromStdin (bufio.NewReader(os.Stdin).ReadString), silent for fromFile (os.Open) and fromMem (strings.NewReader); C fx_lipis_c - fgets(stdin) and fgets over popen() violate (origins ipc_recv), fgets over fopen silent; Haskell fx_lipis_hs - hGetLine on stdin violates, over openFile silent; Java fx_lipis_java - Scanner.nextLine [scannerStdin] and BufferedReader.readLine [readerStdin] violate, scannerFile silent (java.yaml:124-134 dual rows + java.py:1207-1271 argument-origin stamp, c6ba0f1ead, WI-tusav done). INV-bagok, INV-hahak, INV-fofoj satisfied; WI-kanor, WI-lalot done. The wrapper constructor's boundary IS inferred from its argument's origin in all four languages the title names. Residual (generic readers io.ReadAll / io.Copy / io.ReadFull over a pipe or net body are single fs_read rows with no stream stamp; fromPipe silent) filed as WI-mamar-nofij-gasiz-gotah-hofav-volap-sugat-zahur."  # 1365

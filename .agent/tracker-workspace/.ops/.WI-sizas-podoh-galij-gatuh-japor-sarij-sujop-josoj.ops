@@ -33,3 +33,11 @@
   clock: 3  # 1c1a
   nonce: 1c1a  # 1c1a
   message: "From WI-hojib (branch jgstern-agent/fix/hojib on top of WI-silos, not merged): the DEEPER-CHAIN half of this item is built there, as a member lookup through DECLARED types.\n\nThe expression walker types `E.m` as typeof(E) and then `m`'s declared type on that type, through its bases (`_member_lookup`: this file's own members, then the field-type registry). It covers `self.a.b.m()` and value chains `v.p.m()`. A member the intermediate type does not declare stays silent: the no-guess half of `test_a_DEEPER_self_chain_is_not_guessed_at` is kept, and its typed half is flipped deliberately.\n\nThe bare-self half (`self.doThing()` stamping the enclosing type) is NOT changed and stays pinned. Only the RESULT of `self.m()` is typed, as the bare `m()` already was.\n\nMeasured on the 4-repo frozen A/B (silos vs silos+hojib):\n- Kingfisher gains 8 catalogued FileManager chains via `config.fileManager`.\n- vapor gains 19 catalogued Logger / NonBlockingFileIO chains via `request.logger` / `self.application.logger` / `req.application.fileio`.\n- 843 project-type receiver_type_hints are ADDED with no slot.\n\nThis item's step-3a concern applies to those 843: `method_call_recovery` recovered-edge counts were NOT measured on that branch. Record: ~/hypergumbo_lab_notebook/decontend/run_10032026/hojib.md."  # 1c1a
+- op: update  # 31bb
+  at: '2026-11-01T09:57:48Z'  # 31bb
+  by: agent  # 31bb
+  actor: jgstern_agent  # 31bb
+  clock: 4  # 31bb
+  nonce: 31bb  # 31bb
+  set:  # 31bb
+    parent: WI-mofil-tidog-forob-tovah-givud-lijog-vuvug-gutid  # 31bb
