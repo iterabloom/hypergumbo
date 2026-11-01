@@ -25,3 +25,10 @@
   clock: 2  # cc1e
   nonce: cc1e  # cc1e
   message: "P4 REVIEW 2026-11-01 (dev 9ae4abe13f; owner-requested re-check of open P4 items last modified before 2026-10-20; fixtures under ~/hypergumbo_lab_notebook/p4_review_11012026/langs1/). VERDICT: CURRENT. Reviewed 2026-11-01 on dev 9ae4abe13f. jsonnet.py:306 still sets confidence = 1.0 for a resolved call (0.6 otherwise), and test_jsonnet.py:149 asserts 1.0. Survey on fx_rafut emits calls edges at 1.0, confidence_source=emitter_constant, evidence_type=tree_sitter. Same computed-1.0 shape at hack.py:441, smithy.py:399, apex.py:774, prisma.py:309 and luau.py:426; luau checked live (twice -> add at 1.0, emitter_constant). Fix as a family. Side note: jsonnet call edges have the FILE as src, not the enclosing local function. MECHANISM: analyzer computes resolved-call confidence as a private 1.0 constant instead of the evidence-derived pathway band (<=0.95)."  # cc1e
+- op: discuss  # a871
+  at: '2026-11-01T22:23:37Z'  # a871
+  by: agent  # a871
+  actor: jgstern_agent  # a871
+  clock: 3  # a871
+  nonce: a871  # a871
+  message: "P4 REVIEW 2026-11-01 analogues (langs1): the same private computed-1.0 confidence for resolved calls appears at hack.py:441, smithy.py:399, apex.py:774, prisma.py:309 and luau.py:426 (luau checked live: twice -> add at 1.0). Fix as a family, not jsonnet alone. Separately, jsonnet calls edges use the FILE, not the enclosing function, as src."  # a871

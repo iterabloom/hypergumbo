@@ -1,0 +1,21 @@
+- op: create  # ea72
+  at: '2026-11-01T22:23:26Z'  # ea72
+  by: agent  # ea72
+  actor: jgstern_agent  # ea72
+  clock: 1  # ea72
+  nonce: ea72  # ea72
+  data:  # ea72
+    kind: work_item  # ea72
+    title: "slice: a forward slice that reaches a class (e.g. through an instantiates edge) adds that class's file imports, so imports edges whose source file node is not in the slice leak into edge_ids (INV-tarol residual)"  # ea72
+    status: todo_hard  # ea72
+    priority: 2  # ea72
+    parent:  # ea72
+    tags:  # ea72
+    - slice  # ea72
+    - analysis_quality  # ea72
+    isbefore: []  # ea72
+    duplicate_of: []  # ea72
+    not_duplicate_of: []  # ea72
+    pr_ref:  # ea72
+    description: "FOUND 2026-11-01 during the P4 review (batch ctrl1, WI-gukoh control) at dev 9ae4abe13f. Fixture ~/hypergumbo_lab_notebook/p4_review_11012026/ctrl1/fx_gukoh: a forward slice of service_b has 12 edges, of which only 10 are closed. The 2 open edges are imports lib/core.py:file -> normalize and -> os, whose source file node is not in the slice. Cause: the BFS reaches class Engine through an instantiates edge, and slice.py:903-908 calls add_file_imports for ANY reached container-kind node. INV-tarol-suloj-tohan-fuvif-dulom-badoj-gihij-difak (P1, satisfied) fixed only the function-entry case. Reverse slices are unaffected: the reverse BFS never calls add_file_imports. Invariant: every edge in a slice has both endpoints in the slice."  # ea72
+    fields: {}  # ea72
